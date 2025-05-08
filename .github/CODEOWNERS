@@ -1,24 +1,24 @@
 #cpp code owners
-cpp/               @rapidsai/cuopt-cpp-codeowners
+cpp/               @nvidia/cuopt-engine-codeowners
 
 #python code owners
-python/            @rapidsai/cuopt-python-codeowners
-notebooks/         @rapidsai/cuopt-python-codeowners
-docs/              @rapidsai/cuopt-python-codeowners
+python/            @nvidia/cuopt-infra-codeowners
+notebooks/         @nvidia/cuopt-infra-codeowners
+docs/              @nvidia/cuopt-infra-codeowners
 
 #infra code owners
-**/CMakeLists.txt  @rapidsai/cuopt-infra-codeowners
-**/cmake/          @rapidsai/cuopt-infra-codeowners
-container-builder/ @rapidsai/cuopt-infra-codeowners
+**/CMakeLists.txt  @nvidia/cuopt-infra-codeowners
+**/cmake/          @nvidia/cuopt-infra-codeowners
+container-builder/ @nvidia/cuopt-infra-codeowners
 
 #CI code owners
-/.github/                @rapidsai/ci-codeowners
-/ci/                     @rapidsai/ci-codeowners
-/.pre-commit-config.yaml @rapidsai/ci-codeowners
+/.github/                @nvidia/cuopt-ci-codeowners
+/ci/                     @nvidia/cuopt-ci-codeowners
+/.pre-commit-config.yaml @nvidia/cuopt-ci-codeowners
 
 #packaging code owners
-/.devcontainer/    @rapidsai/packaging-codeowners
-/conda/            @rapidsai/packaging-codeowners
-/dependencies.yaml @rapidsai/packaging-codeowners
-/build.sh          @rapidsai/packaging-codeowners
-pyproject.toml     @rapidsai/packaging-codeowners
+/.devcontainer/    @nvidia/cuopt-infra-codeowners
+/conda/            @nvidia/cuopt-infra-codeowners
+/dependencies.yaml @nvidia/cuopt-infra-codeowners
+/build.sh          @nvidia/cuopt-infra-codeowners
+pyproject.toml     @nvidia/cuopt-infra-codeowners
