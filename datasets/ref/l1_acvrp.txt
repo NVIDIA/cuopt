@@ -1,0 +1,8 @@
+acvrp/A034-02f.dat,1367,2
+acvrp/A036-03f.dat,1595,3
+acvrp/A039-03f.dat,1617,3
+acvrp/A045-03f.dat,1719,3
+acvrp/A048-03f.dat,1947,3
+acvrp/A056-03f.dat,1802,3
+acvrp/A065-03f.dat,1953,3
+acvrp/A071-03f.dat,2085,3

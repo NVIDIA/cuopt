@@ -1,0 +1,6 @@
+solomon/In/c101.txt,363.247,5
+solomon/In/c201.txt,444.961,2
+solomon/In/r101.txt,1047.54,12
+solomon/In/r201.txt,958.504,2
+solomon/In/rc101.txt,946.46,8
+solomon/In/rc201.txt,838.756,3

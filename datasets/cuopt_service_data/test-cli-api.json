@@ -1,0 +1,4 @@
+{
+    "auth": "https://bvuehlapsvdurm6kziwyjqrvfbmcxe2idnqs61ld1lk.stg.ssa.nvidia.com/token",
+    "api":  "http://nvcf-local:8080/v2/nvcf"
+}

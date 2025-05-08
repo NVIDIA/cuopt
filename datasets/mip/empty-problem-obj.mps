@@ -1,0 +1,8 @@
+NAME Presolved
+ROWS
+ N  OBJ
+COLUMNS
+RHS
+    RHS1      OBJ       -81
+BOUNDS
+ENDATA

@@ -1,0 +1,7 @@
+{
+    "defaults": {
+        "function_name": "cuopt-nightly",
+        "function_id": "",
+        "function_version_id": "123456"
+    }
+}
