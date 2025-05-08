@@ -31,11 +31,12 @@ enum class lp_status_t {
   OPTIMAL          = 0,
   INFEASIBLE       = 1,
   UNBOUNDED        = 2,
-  TIME_LIMIT       = 3,
-  NUMERICAL_ISSUES = 4,
-  CUTOFF           = 5,
-  CONCURRENT_LIMIT = 6,
-  UNSET            = 7
+  ITERATION_LIMIT  = 3,
+  TIME_LIMIT       = 4,
+  NUMERICAL_ISSUES = 5,
+  CUTOFF           = 6,
+  CONCURRENT_LIMIT = 7,
+  UNSET            = 8
 };
 
 template <typename i_t, typename f_t>

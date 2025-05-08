@@ -15,39 +15,25 @@
  * limitations under the License.
  */
 
-#pragma once
+#include <cuopt/linear_programming/cuopt_c.h>
 
-#include <type_traits>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-namespace cuopt {
-namespace internals {
+int test_int_size();
+int test_float_size();
+void test_version(int* major, int* minor, int* patch);
+cuopt_int_t burglar_problem();
+cuopt_int_t solve_mps_file(const char* filename,
+                           double time_limit,
+                           double iteration_limit,
+                           cuopt_int_t* termination_status);
+cuopt_int_t test_missing_file();
+cuopt_int_t test_infeasible_problem();
+cuopt_int_t test_bad_parameter_name();
+cuopt_int_t test_ranged_problem(cuopt_int_t* termination_status_ptr, cuopt_float_t* objective_ptr);
 
-class Callback {
- public:
-  virtual ~Callback() {}
-};
-
-class lp_incumbent_sol_callback_t : public Callback {
- public:
-  template <typename T>
-  void setup()
-  {
-    this->isFloat = std::is_same<T, float>::value;
-  }
-  virtual void set_solution(void* data, size_t size, double objective_value) = 0;
-
- protected:
-  bool isFloat = true;
-};
-
-}  // namespace internals
-
-namespace linear_programming {
-
-class base_solution_t {
- public:
-  virtual bool is_mip() const = 0;
-};
-
-}  // namespace linear_programming
-}  // namespace cuopt
+#ifdef __cplusplus
+}
+#endif

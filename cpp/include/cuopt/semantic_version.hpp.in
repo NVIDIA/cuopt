@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/constants.h>
+#define CUOPT_SEMANTIC_VERSION_MAJOR @CUOPT_SEMANTIC_VERSION_MAJOR@
+#define CUOPT_SEMANTIC_VERSION_MINOR @CUOPT_SEMANTIC_VERSION_MINOR@
+#define CUOPT_SEMANTIC_VERSION_PATCH @CUOPT_SEMANTIC_VERSION_PATCH@
 
-#define MIP_INSTANTIATE_FLOAT  CUOPT_INSTANTIATE_FLOAT
-#define MIP_INSTANTIATE_DOUBLE CUOPT_INSTANTIATE_DOUBLE

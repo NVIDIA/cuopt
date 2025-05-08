@@ -35,7 +35,7 @@
 namespace cuopt::linear_programming {
 
 enum class var_t { CONTINUOUS = 0, INTEGER };
-enum class problem_category_t { LP = 0, MIP, IP };
+enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
 
 /**
  * @brief Standard form representation of a Linear Program with a twist from the standard form for

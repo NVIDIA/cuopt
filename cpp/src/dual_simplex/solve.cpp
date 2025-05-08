@@ -164,6 +164,7 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
     return lp_status_t::NUMERICAL_ISSUES;
   }
   if (phase1_status == dual::status_t::TIME_LIMIT) { return lp_status_t::TIME_LIMIT; }
+  if (phase1_status == dual::status_t::ITERATION_LIMIT) { return lp_status_t::ITERATION_LIMIT; }
   if (phase1_status == dual::status_t::CONCURRENT_LIMIT) { return lp_status_t::CONCURRENT_LIMIT; }
   phase1_obj = phase1_solution.objective;
   if (phase1_obj > -settings.primal_tol) {
@@ -210,9 +211,10 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
     }
     if (status == dual::status_t::DUAL_UNBOUNDED) { lp_status = lp_status_t::INFEASIBLE; }
     if (status == dual::status_t::TIME_LIMIT) { lp_status = lp_status_t::TIME_LIMIT; }
+    if (status == dual::status_t::ITERATION_LIMIT) { lp_status = lp_status_t::ITERATION_LIMIT; }
+    if (status == dual::status_t::CONCURRENT_LIMIT) { lp_status = lp_status_t::CONCURRENT_LIMIT; }
     if (status == dual::status_t::NUMERICAL) { lp_status = lp_status_t::NUMERICAL_ISSUES; }
     if (status == dual::status_t::CUTOFF) { lp_status = lp_status_t::CUTOFF; }
-    if (status == dual::status_t::CONCURRENT_LIMIT) { lp_status = lp_status_t::CONCURRENT_LIMIT; }
     original_solution.iterations = iter;
   } else {
     // Dual infeasible -> Primal unbounded

@@ -21,7 +21,10 @@ import pytest
 
 from cuopt.linear_programming import data_model, solver, solver_settings
 from cuopt.linear_programming.internals import LPIncumbentSolCallback
-from cuopt.linear_programming.solver.solver_wrapper import LPTerminationStatus
+from cuopt.linear_programming.solver.solver_wrapper import (
+    LPTerminationStatus,
+    MILPTerminationStatus,
+)
 from cuopt.linear_programming.solver_settings import SolverMode
 from cuopt.utilities import InputValidationError
 
@@ -147,7 +150,7 @@ def test_solver():
     settings.set_optimality_tolerance(1e-2)
 
     solution = solver.Solve(data_model_obj, settings)
-    assert solution.get_termination_status() == 1
+    assert solution.get_termination_reason() == "Optimal"
     assert solution.get_primal_solution()[0] == pytest.approx(0.0)
     assert solution.get_lp_stats()["primal_residual"] == pytest.approx(0.0)
     assert solution.get_lp_stats()["dual_residual"] == pytest.approx(0.0)
@@ -164,7 +167,7 @@ def test_parser_and_solver():
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-2)
     solution = solver.Solve(data_model_obj, settings)
-    assert solution.get_termination_status() == 1
+    assert solution.get_termination_reason() == "Optimal"
 
 
 def test_very_low_tolerance():
@@ -184,7 +187,7 @@ def test_very_low_tolerance():
 
     expected_time = 69
 
-    assert solution.get_termination_status() == 1
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
     assert solution.get_primal_objective() == pytest.approx(-464.7531)
     # Rougly up to 5 times slower on V100
     assert solution.get_solve_time() <= expected_time * 5
@@ -204,7 +207,9 @@ def test_iteration_limit_solver():
     settings.set_time_limit(99999999)
 
     solution = solver.Solve(data_model_obj, settings)
-    assert solution.get_termination_status() == 4
+    assert (
+        solution.get_termination_status() == LPTerminationStatus.IterationLimit
+    )
     # Check we don't return empty (all 0) solution
     assert solution.get_primal_objective() != 0.0
     assert np.any(solution.get_primal_solution())
@@ -670,7 +675,7 @@ def test_dual_simplex():
 
     solution = solver.Solve(data_model_obj, settings)
 
-    assert solution.get_termination_status() == 1
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
     assert solution.get_primal_objective() == pytest.approx(-464.7531)
 
 
@@ -712,7 +717,10 @@ def test_incumbent_solver_callback(file_name):
     solution = solver.Solve(data_model_obj, settings)
 
     assert callback.n_callbacks > 0
-    assert solution.get_termination_status() == 2
+    assert (
+        solution.get_termination_status()
+        == MILPTerminationStatus.FeasibleFound
+    )
 
     for sol in callback.solution:
         check_solution(data_model_obj, settings, sol["solution"], sol["cost"])

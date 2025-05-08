@@ -166,8 +166,8 @@ void test_elim_var_solution(std::string test_instance)
     standardized_problem, solution_1, default_settings.get_absolute_tolerance(), 120.);
   solution_1.compute_feasibility();
   // the solution might not be feasible per row as we are getting the result of pdlp
-  bool sol_1_feasible = (int)result_1.get_termination_status() == 1;
-  EXPECT_EQ((int)result_1.get_termination_status(), 1);
+  bool sol_1_feasible = (int)result_1.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
+  EXPECT_EQ((int)result_1.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
   standardized_problem.post_process_solution(solution_1);
   auto opt_sol_1 = solution_1.get_solution(sol_1_feasible, solver_stats_t<double>{});
   test_objective_sanity(
@@ -191,8 +191,8 @@ void test_elim_var_solution(std::string test_instance)
   auto result_2 = detail::get_relaxed_lp_solution(
     sub_problem, solution_2, default_settings.get_absolute_tolerance(), 120.);
   solution_2.compute_feasibility();
-  bool sol_2_feasible = (int)result_2.get_termination_status() == 1;
-  EXPECT_EQ((int)result_2.get_termination_status(), 1);
+  bool sol_2_feasible = (int)result_2.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
+  EXPECT_EQ((int)result_2.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
   sub_problem.post_process_solution(solution_2);
   auto opt_sol_2 = solution_2.get_solution(sol_2_feasible, solver_stats_t<double>{});
   test_objective_sanity(
