@@ -223,12 +223,20 @@ f_t sgn(f_t x)
 }
 
 template <typename f_t>
+f_t relative_gap(f_t obj_value, f_t lower_bound)
+{
+  f_t user_mip_gap = obj_value == 0.0
+                       ? (lower_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity())
+                       : std::abs(obj_value - lower_bound) / std::abs(obj_value);
+  if (user_mip_gap != user_mip_gap) { return std::numeric_limits<f_t>::infinity(); }
+  return user_mip_gap;
+}
+
+template <typename f_t>
 std::string user_mip_gap(f_t obj_value, f_t lower_bound)
 {
-  const f_t user_mip_gap = obj_value == 0.0
-                             ? (lower_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity())
-                             : std::abs(obj_value - lower_bound) / std::abs(obj_value);
-  if (user_mip_gap != user_mip_gap) {
+  const f_t user_mip_gap = relative_gap(obj_value, lower_bound);
+  if (user_mip_gap == std::numeric_limits<f_t>::infinity()) {
     return "  -  ";
   } else {
     constexpr int BUFFER_LEN = 32;
@@ -545,7 +553,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   f_t total_lp_iters = 0.0;
   f_t last_log       = 0;
-  while (gap > settings.mip_gap_tol && heap.size() > 0) {
+  while (gap > settings.absolute_mip_gap_tol &&
+         relative_gap(get_upper_bound<f_t>(), lower_bound) > settings.relative_mip_gap_tol &&
+         heap.size() > 0) {
     // Check if there are any solutions to repair
     std::vector<std::vector<f_t>> to_repair;
     global_variables::mutex_repair.lock();
@@ -607,7 +617,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     const i_t leaf_depth = node_ptr->depth;
     f_t now              = toc(start_time);
     f_t time_since_log   = last_log == 0 ? 1.0 : toc(last_log);
-    if ((nodes_explored % 1000 == 0 || gap < 10 * settings.mip_gap_tol || nodes_explored < 1000) &&
+    if ((nodes_explored % 1000 == 0 || gap < 10 * settings.absolute_mip_gap_tol ||
+         nodes_explored < 1000) &&
           (time_since_log >= 1) ||
         (time_since_log > 60) || now > settings.time_limit) {
       settings.log.printf(" %8d %8lu       %+13.6e  %+10.6e   %4d   %7.1e     %s %9.2f\n",
@@ -789,11 +800,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     compute_user_objective(original_lp, get_upper_bound<f_t>()),
     compute_user_objective(original_lp, lower_bound));
 
-  if (gap < settings.mip_gap_tol) {
+  if (gap <= settings.absolute_mip_gap_tol ||
+      relative_gap(get_upper_bound<f_t>(), lower_bound) <= settings.relative_mip_gap_tol) {
     status = mip_status_t::OPTIMAL;
-    if (gap > 0) {
-      settings.log.printf("Optimal solution found within MIP gap tolerance (%.1e)\n",
-                          settings.mip_gap_tol);
+    if (gap > 0 && gap <= settings.absolute_mip_gap_tol) {
+      settings.log.printf("Optimal solution found within absolute MIP gap tolerance (%.1e)\n",
+                          settings.absolute_mip_gap_tol);
+    } else if (gap > 0 &&
+               relative_gap(get_upper_bound<f_t>(), lower_bound) <= settings.relative_mip_gap_tol) {
+      settings.log.printf("Optimal solution found within relative MIP gap tolerance (%.1e)\n",
+                          settings.relative_mip_gap_tol);
     } else {
       settings.log.printf("Optimal solution found.\n");
     }
@@ -803,9 +819,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   uncrush_primal_solution(original_problem, original_lp, incumbent.x, solution.x);
-  solution.objective   = incumbent.objective;
-  solution.lower_bound = lower_bound;
-
+  solution.objective          = incumbent.objective;
+  solution.lower_bound        = lower_bound;
+  solution.nodes_explored     = nodes_explored;
+  solution.simplex_iterations = total_lp_iters;
   return status;
 }
 

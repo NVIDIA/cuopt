@@ -28,11 +28,13 @@
 #include <mip/presolve/trivial_presolve.cuh>
 #include <mip/utils.cuh>
 
+#include <thrust/binary_search.h>
 #include <thrust/copy.h>
 #include <thrust/count.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/set_operations.h>
+#include <thrust/sort.h>
 #include <thrust/tabulate.h>
 #include <thrust/tuple.h>
 #include <cuda/std/functional>
@@ -71,11 +73,13 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
   // Set variables bounds to default if not set and constraints bounds if user has set a row type
   set_bounds_if_not_set(*this);
   // Check before any modifications
-  check_problem_representation();
+  // Don't check MIP related data as it is not yet initialized
+  check_problem_representation(false, false);
   check_bounds_sanity(*this);
   // If maximization problem, convert the problem
   if (maximize) convert_to_maximization_problem(*this);
-  if (original_problem_ptr->get_problem_category() != problem_category_t::LP) {
+  const bool is_mip = original_problem_ptr->get_problem_category() != problem_category_t::LP;
+  if (is_mip) {
     // Resize what is needed for MIP
     raft::common::nvtx::range scope("trivial_presolve");
     variable_types =
@@ -89,7 +93,7 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
   }
   compute_transpose_of_problem();
   // Check after modifications
-  check_problem_representation(true);
+  check_problem_representation(true, is_mip);
   combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
 }
 
@@ -403,6 +407,19 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
     "Constraints bounds are invalid");
 
   if (check_mip_related_data) {
+    cuopt_assert(n_integer_vars == integer_indices.size(), "incorrect integer indices structure");
+    cuopt_assert(is_binary_variable.size() == n_variables, "incorrect binary variable table size");
+
+    cuopt_assert(thrust::is_sorted(
+                   handle_ptr->get_thrust_policy(), binary_indices.begin(), binary_indices.end()),
+                 "binary indices are not sorted");
+    cuopt_assert(
+      thrust::is_sorted(
+        handle_ptr->get_thrust_policy(), nonbinary_indices.begin(), nonbinary_indices.end()),
+      "nonbinary indices are not sorted");
+    cuopt_assert(thrust::is_sorted(
+                   handle_ptr->get_thrust_policy(), integer_indices.begin(), integer_indices.end()),
+                 "integer indices are not sorted");
     // check precomputed helpers
     cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
                                 integer_indices.cbegin(),
@@ -425,6 +442,105 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                                   return !bin_table[idx];
                                 }),
                  "The non-binary indices table contains references to binary variables.");
+    cuopt_assert(
+      thrust::all_of(
+        handle_ptr->get_thrust_policy(),
+        thrust::make_counting_iterator<i_t>(0),
+        thrust::make_counting_iterator<i_t>(n_variables),
+        [types     = variable_types.data(),
+         bin_table = is_binary_variable.data(),
+         pb_view   = view()] __device__(i_t idx) {
+          // ensure the binary variable tables are correct
+          if (bin_table[idx]) {
+            if (!thrust::binary_search(
+                  thrust::seq, pb_view.binary_indices.begin(), pb_view.binary_indices.end(), idx))
+              return false;
+          } else {
+            if (!thrust::binary_search(thrust::seq,
+                                       pb_view.nonbinary_indices.begin(),
+                                       pb_view.nonbinary_indices.end(),
+                                       idx))
+              return false;
+          }
+
+          // finish by checking the correctness of the integer indices table
+          switch (types[idx]) {
+            case var_t::INTEGER:
+              return thrust::binary_search(
+                thrust::seq, pb_view.integer_indices.begin(), pb_view.integer_indices.end(), idx);
+            case var_t::CONTINUOUS:
+              return !thrust::binary_search(
+                thrust::seq, pb_view.integer_indices.begin(), pb_view.integer_indices.end(), idx);
+          }
+          return true;
+        }),
+      "Some variables aren't referenced in the appropriate indice tables");
+    cuopt_assert(
+      thrust::all_of(
+        handle_ptr->get_thrust_policy(),
+        thrust::make_counting_iterator<i_t>(0),
+        thrust::make_counting_iterator<i_t>(n_variables),
+        [types     = variable_types.data(),
+         bin_table = is_binary_variable.data(),
+         pb_view   = view()] __device__(i_t idx) {
+          // ensure the binary variable tables are correct
+          if (bin_table[idx]) {
+            if (!thrust::binary_search(
+                  thrust::seq, pb_view.binary_indices.begin(), pb_view.binary_indices.end(), idx))
+              return false;
+          } else {
+            if (!thrust::binary_search(thrust::seq,
+                                       pb_view.nonbinary_indices.begin(),
+                                       pb_view.nonbinary_indices.end(),
+                                       idx))
+              return false;
+          }
+
+          // finish by checking the correctness of the integer indices table
+          switch (types[idx]) {
+            case var_t::INTEGER:
+              return thrust::binary_search(
+                thrust::seq, pb_view.integer_indices.begin(), pb_view.integer_indices.end(), idx);
+            case var_t::CONTINUOUS:
+              return !thrust::binary_search(
+                thrust::seq, pb_view.integer_indices.begin(), pb_view.integer_indices.end(), idx);
+          }
+          return true;
+        }),
+      "Some variables aren't referenced in the appropriate indice tables");
+    cuopt_assert(
+      thrust::all_of(
+        handle_ptr->get_thrust_policy(),
+        thrust::make_counting_iterator<i_t>(0),
+        thrust::make_counting_iterator<i_t>(n_variables),
+        [types     = variable_types.data(),
+         bin_table = is_binary_variable.data(),
+         pb_view   = view()] __device__(i_t idx) {
+          // ensure the binary variable tables are correct
+          if (bin_table[idx]) {
+            if (!thrust::binary_search(
+                  thrust::seq, pb_view.binary_indices.begin(), pb_view.binary_indices.end(), idx))
+              return false;
+          } else {
+            if (!thrust::binary_search(thrust::seq,
+                                       pb_view.nonbinary_indices.begin(),
+                                       pb_view.nonbinary_indices.end(),
+                                       idx))
+              return false;
+          }
+
+          // finish by checking the correctness of the integer indices table
+          switch (types[idx]) {
+            case var_t::INTEGER:
+              return thrust::binary_search(
+                thrust::seq, pb_view.integer_indices.begin(), pb_view.integer_indices.end(), idx);
+            case var_t::CONTINUOUS:
+              return !thrust::binary_search(
+                thrust::seq, pb_view.integer_indices.begin(), pb_view.integer_indices.end(), idx);
+          }
+          return true;
+        }),
+      "Some variables aren't referenced in the appropriate indice tables");
     cuopt_assert(
       thrust::all_of(
         handle_ptr->get_thrust_policy(),
@@ -767,6 +883,9 @@ void problem_t<i_t, f_t>::insert_variables(variables_delta_t<i_t, f_t>& h_vars)
              h_vars.objective_coefficients.size(),
              handle_ptr->get_stream());
   n_variables += h_vars.size();
+
+  compute_n_integer_vars();
+  compute_binary_var_table();
 }
 
 // note that these don't change the reverse structure
@@ -1094,7 +1213,7 @@ void problem_t<i_t, f_t>::preprocess_problem()
   standardize_bounds(variable_constraint_map, *this);
   compute_csr(variable_constraint_map, *this);
   compute_transpose_of_problem();
-  check_problem_representation(true);
+  check_problem_representation(true, false);
   presolve_data.variable_mapping.resize(n_variables, handle_ptr->get_stream());
   thrust::sequence(handle_ptr->get_thrust_policy(),
                    presolve_data.variable_mapping.begin(),
@@ -1108,6 +1227,7 @@ void problem_t<i_t, f_t>::preprocess_problem()
   is_binary_variable.resize(n_variables, handle_ptr->get_stream());
   compute_n_integer_vars();
   compute_binary_var_table();
+  check_problem_representation(true);
   preprocess_called = true;
 }
 

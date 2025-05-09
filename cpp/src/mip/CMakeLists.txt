@@ -17,6 +17,7 @@ set(MIP_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/problem/problem.cu)
 
 list(PREPEND
   MIP_SRC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/problem/write_mps.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu

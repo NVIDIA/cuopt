@@ -133,7 +133,7 @@ def BatchSolve(data_model_list, solver_settings=None, log_file=""):
         List of Solution objects containing both primal and dual solutions,
         objectives and more statistics about the result.
     solve_time: double
-        The engine solve time for the whole batch in milliseconds as a float64.
+        The engine solve time for the whole batch in seconds as a float64.
 
     Examples
     --------

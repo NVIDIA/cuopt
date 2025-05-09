@@ -137,7 +137,7 @@ __global__ void load_balancing_prepare_iteration(const __grid_constant__
 
     for (i_t i = blockIdx.x + range.first; i < range.second; i += gridDim.x) {
       i_t var_idx = fj.pb.related_variables[i];
-      update_jump_value<i_t, f_t, false>(fj, var_idx);
+      update_jump_value<i_t, f_t, FJ_MTM_VIOLATED, false>(fj, var_idx);
     }
 
     if (FIRST_THREAD) *fj.load_balancing_skip = true;
@@ -410,6 +410,8 @@ __global__ void load_balancing_mtm_compute_candidates(
     cuopt_assert(rcp_cstr_coeff == 1 / fj.pb.reverse_coefficients[csr_offset], "");
     f_t cstr_coeff = fj.pb.reverse_coefficients[csr_offset];
 
+    f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx);
+
     f_t old_val   = fj.incumbent_assignment[var_idx];
     f_t obj_coeff = fj.pb.objective_coefficients[var_idx];
     f_t delta     = 0;
@@ -417,7 +419,7 @@ __global__ void load_balancing_mtm_compute_candidates(
     f_t bound = c_lb;
     i_t sign  = -1;
     // if this bound is not violated (or is infinite), switch to the other bound
-    if (fj.incumbent_lhs[cstr_idx] + fj.pb.tolerances.absolute_tolerance >= c_lb) {
+    if (fj.incumbent_lhs[cstr_idx] + cstr_tolerance >= c_lb) {
       bound = c_ub;
       sign  = 1;
     }
@@ -562,6 +564,9 @@ __launch_bounds__(TPB_loadbalance, 16) __global__
           // check if this move candidate would be better than the current assigned one for this
           // variable.
 
+          cuopt_assert(isfinite(candidate.score.base), "invalid score");
+          cuopt_assert(isfinite(candidate.score.bonus), "invalid score");
+
           // early exit, atomic load
           cuda::atomic_ref<typename fj_t<i_t, f_t>::move_score_t, cuda::thread_scope_device>
             best_score_ref{fj.jump_move_scores[var_idx]};
@@ -571,10 +576,17 @@ __launch_bounds__(TPB_loadbalance, 16) __global__
               (best_score == candidate.score && candidate.delta < fj.jump_move_delta[var_idx])) {
             // update the best move delta
             acquire_lock(&fj.jump_locks[var_idx]);
-            if (fj.jump_move_scores[var_idx] < candidate.score
-                // determinism for ease of debugging
-                || (fj.jump_move_scores[var_idx] == candidate.score &&
-                    candidate.delta < fj.jump_move_delta[var_idx])) {
+
+            // reject this move if it would increase the target variable to a numerically unstable
+            // value
+            if (!fj.move_numerically_stable(fj.incumbent_assignment[var_idx],
+                                            fj.incumbent_assignment[var_idx] + delta,
+                                            base_feas)) {
+              fj.jump_move_scores[var_idx] = fj_t<i_t, f_t>::move_score_t::invalid();
+            } else if (fj.jump_move_scores[var_idx] < candidate.score
+                       // determinism for ease of debugging
+                       || (fj.jump_move_scores[var_idx] == candidate.score &&
+                           candidate.delta < fj.jump_move_delta[var_idx])) {
               fj.jump_move_delta[var_idx]  = candidate.delta;
               fj.jump_move_scores[var_idx] = candidate.score;
             }
@@ -582,6 +594,73 @@ __launch_bounds__(TPB_loadbalance, 16) __global__
           }
         }
       }
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+__global__ void load_balancing_sanity_checks(const __grid_constant__
+                                             typename fj_t<i_t, f_t>::climber_data_t::view_t v)
+{
+  // check that all warps have arrived
+  for (i_t var_idx = blockIdx.x; var_idx < v.pb.n_variables; var_idx += gridDim.x) {
+    auto [offset_begin, offset_end] = v.pb.reverse_range_for_var(var_idx);
+    i_t warp_count                  = (offset_end - offset_begin - 1) / raft::WarpSize + 1;
+
+    if (v.pb.is_binary_variable[var_idx]) continue;
+    i_t candidate_count = v.jump_candidate_count[var_idx];
+    for (i_t i = offset_begin + threadIdx.x; i < offset_begin + candidate_count; i += blockDim.x) {
+      if (!(v.candidate_arrived_workids[i] == warp_count)) {
+        printf("(iter %d) [%d]: %d vs %d\n",
+               *v.iterations,
+               var_idx,
+               v.candidate_arrived_workids[i],
+               warp_count);
+        __trap();
+      }
+
+      if (!isfinite(v.jump_move_delta_check[var_idx])) {
+        printf(
+          "--- (iter %d) [%d]: delta %g\n", *v.iterations, var_idx, v.jump_candidates[i].delta);
+        cuopt_assert(isnan(v.jump_candidates[i].delta), "invalid delta");
+        __trap();
+      }
+    }
+  }
+
+  cg::this_grid().sync();
+
+  for (i_t var_idx = TH_ID_X; var_idx < v.pb.n_variables; var_idx += GRID_STRIDE) {
+    f_t delta_1  = v.jump_move_delta[var_idx];
+    f_t delta_2  = v.jump_move_delta_check[var_idx];
+    auto score_1 = v.jump_move_scores[var_idx];
+    auto score_2 = v.jump_move_score_check[var_idx];
+
+    f_t rel_error = abs((delta_1 - delta_2) / delta_1);
+    if (rel_error > 1e-3) {
+      printf("(iter %d) [%d]: was %g, is %g, error %g\n",
+             *v.iterations,
+             var_idx,
+             delta_1,
+             delta_2,
+             rel_error);
+      __trap();
+    }
+
+    if (!(score_1 == score_1.invalid() && score_2 == score_2.invalid()) &&
+        !(v.pb.integer_equal(score_1.base, score_2.base) &&
+          v.pb.integer_equal(score_1.bonus, score_2.bonus))) {
+      printf("(iter %d) [%d, int:%d]: delta %g/%g was %f/%f, is %f/%f\n",
+             *v.iterations,
+             var_idx,
+             v.pb.is_integer_var(var_idx),
+             delta_1,
+             delta_2,
+             score_1.base,
+             score_1.bonus,
+             score_2.base,
+             score_2.bonus);
+      __trap();
     }
   }
 }

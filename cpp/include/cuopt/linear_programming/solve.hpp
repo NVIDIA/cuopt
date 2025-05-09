@@ -38,7 +38,7 @@ namespace cuopt::linear_programming {
  * @tparam f_t Data type of the variables and their weights in the equations
  *
  * @param[in] op_problem  An optimization_problem_t<i_t, f_t> object with a
- * representation of a linear program on standard form.
+ * representation of a linear program
  * @param[in] settings  A pdlp_solver_settings_t<i_t, f_t> object with the settings for the PDLP
  * solver.
  * @param[in] problem_checking  If true, the problem is checked for consistency.
@@ -63,7 +63,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
  *
  * @param[in] handle_ptr  A raft::handle_t object with its corresponding CUDA stream.
  * @param[in] mps_data_model  An optimization_problem_t<i_t, f_t> object with a
- * representation of a linear program on standard form.
+ * representation of a linear program
  * @param[in] settings  A pdlp_solver_settings_t<i_t, f_t> object with the settings for the PDLP
  * solver.
  * @param[in] problem_checking  If true, the problem is checked for consistency.
@@ -86,7 +86,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
  * @tparam f_t Data type of the variables and their weights in the equations
  *
  * @param[in] op_problem  An optimization_problem_t<i_t, f_t> object with a
- * representation of a linear program on standard form.
+ * representation of a linear program
  * @return optimization_problem_solution_t<i_t, f_t> owning container for the solver solution
  */
 template <typename i_t, typename f_t>
@@ -101,7 +101,7 @@ mip_solution_t<i_t, f_t> solve_mip(
  * @tparam f_t Data type of the variables and their weights in the equations
  *
  * @param[in] mps_data_model  An optimization_problem_t<i_t, f_t> object with a
- * representation of a linear program on standard form.
+ * representation of a linear program
  * @return optimization_problem_solution_t<i_t, f_t> owning container for the solver solution
  */
 template <typename i_t, typename f_t>

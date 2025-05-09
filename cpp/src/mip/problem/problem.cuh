@@ -101,6 +101,8 @@ class problem_t {
   void get_host_user_problem(
     cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const;
 
+  void write_as_mps(const std::string& path);
+
   struct view_t {
     DI std::pair<i_t, i_t> reverse_range_for_var(i_t v) const
     {
@@ -195,9 +197,9 @@ class problem_t {
   std::function<void(const std::vector<f_t>&)> branch_and_bound_callback;
 
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances{};
-  i_t n_variables;
-  i_t n_constraints;
-  i_t nnz;
+  i_t n_variables{0};
+  i_t n_constraints{0};
+  i_t nnz{0};
   i_t n_binary_vars{0};
   i_t n_integer_vars{0};
   bool maximize{false};

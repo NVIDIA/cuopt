@@ -539,7 +539,7 @@ f_t solution_t<i_t, f_t>::compute_max_variable_violation()
 // returns the solution after applying the conversions
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible,
-                                                            solver_stats_t<f_t> stats)
+                                                            solver_stats_t<i_t, f_t> stats)
 {
   cuopt::default_logger().flush();
   cuopt_expects(
@@ -554,11 +554,14 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
     f_t max_variable_bound_violation = compute_max_variable_violation();
     f_t total_solve_time             = stats.total_solve_time;
     f_t presolve_time                = stats.presolve_time;
+    i_t num_nodes                    = stats.num_nodes;
+    i_t num_simplex_iterations       = stats.num_simplex_iterations;
     handle_ptr->sync_stream();
     CUOPT_LOG_INFO(
       "Solution objective: %f , relative_mip_gap %f solution_bound %f presolve_time %f "
       "total_solve_time %f "
-      "max constraint violation %f max int violation %f max var bounds violation %f",
+      "max constraint violation %f max int violation %f max var bounds violation %f "
+      "nodes %d simplex_iterations %d",
       h_user_obj,
       rel_mip_gap,
       solution_bound,
@@ -566,7 +569,9 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
       total_solve_time,
       max_constraint_violation,
       max_int_violation,
-      max_variable_bound_violation);
+      max_variable_bound_violation,
+      num_nodes,
+      num_simplex_iterations);
     const double optimality_threshold = problem_ptr->tolerances.relative_mip_gap;
     auto term_reason = rel_mip_gap > optimality_threshold ? mip_termination_status_t::FeasibleFound
                                                           : mip_termination_status_t::Optimal;
@@ -580,7 +585,9 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
                                     term_reason,
                                     max_constraint_violation,
                                     max_int_violation,
-                                    max_variable_bound_violation);
+                                    max_variable_bound_violation,
+                                    num_nodes,
+                                    num_simplex_iterations);
   } else {
     return mip_solution_t<i_t, f_t>{mip_termination_status_t::Infeasible, handle_ptr->get_stream()};
   }

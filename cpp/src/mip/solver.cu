@@ -125,6 +125,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     // Fill in the settings for branch and bound
     branch_and_bound_settings.time_limit           = timer_.remaining_time();
     branch_and_bound_settings.print_presolve_stats = false;
+    branch_and_bound_settings.absolute_mip_gap_tol = context.settings.get_absolute_mip_gap();
+    branch_and_bound_settings.relative_mip_gap_tol = context.settings.get_relative_mip_gap();
+    branch_and_bound_settings.integer_tol          = context.settings.get_integrality_tolerance();
 
     if (context.settings.get_num_cpu_threads() != -1) {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.get_num_cpu_threads());
@@ -163,6 +166,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.stats.solution_bound =
         context.problem_ptr->get_user_obj_from_solver_obj(branch_and_bound_solution.lower_bound);
     }
+    context.stats.num_nodes              = branch_and_bound_solution.nodes_explored;
+    context.stats.num_simplex_iterations = branch_and_bound_solution.simplex_iterations;
   }
   sol.compute_feasibility();
   rmm::device_scalar<i_t> is_feasible(sol.handle_ptr->get_stream());

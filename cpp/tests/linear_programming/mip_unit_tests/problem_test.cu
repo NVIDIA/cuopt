@@ -341,7 +341,7 @@ TEST(optimization_problem_t_DeathTest, test_check_problem_validity)
   problem2.reverse_offsets      = rmm::device_uvector<int>(0, handle.get_stream());
 
   // Test if assert is thrown when transpose is not set, yet ask for it to be checked
-  EXPECT_DEATH({ problem2.check_problem_representation(true); }, "");
+  EXPECT_DEATH({ problem2.check_problem_representation(true, false); }, "");
 
   // Set the tranpose matrix
   /*
@@ -360,18 +360,18 @@ TEST(optimization_problem_t_DeathTest, test_check_problem_validity)
   problem2.reverse_offsets              = device_copy(reverse_offset_host, handle.get_stream());
 
   // Test if assert is not thrown when transpose is set
-  problem2.check_problem_representation(true);
+  problem2.check_problem_representation(true, false);
 
   // Test if assert is thrown when a basic (not correct size) transpose csr issue occurs
   std::vector<int> incorrect_reverse_offset_host = {0, 2, 4};
   problem2.reverse_offsets = device_copy(incorrect_reverse_offset_host, handle.get_stream());
-  EXPECT_DEATH({ problem2.check_problem_representation(true); }, "");
+  EXPECT_DEATH({ problem2.check_problem_representation(true, false); }, "");
 
   // Test if assert is thrown when a value swap transpose csr issue occurs
 
   // First make sure putting back offset doesn't trigger anything
   problem2.reverse_offsets = device_copy(reverse_offset_host, handle.get_stream());
-  problem2.check_problem_representation(true);
+  problem2.check_problem_representation(true, false);
 
   // Now just reverse two value in the transposed which should trigger an assert (since tranpose
   // needs to match and non transposed)
@@ -379,7 +379,7 @@ TEST(optimization_problem_t_DeathTest, test_check_problem_validity)
   problem2.reverse_coefficients = device_copy(incorrect_reverse_A_host, handle.get_stream());
 
   // Check that it does assert
-  EXPECT_DEATH({ problem2.check_problem_representation(true); }, "");
+  EXPECT_DEATH({ problem2.check_problem_representation(true, false); }, "");
 }
 
 }  // namespace cuopt::linear_programming::test

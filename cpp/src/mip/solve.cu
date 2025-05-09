@@ -84,7 +84,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     detail::solution_t<i_t, f_t> solution(problem);
     problem.post_process_solution(solution);
     solution.compute_objective();  // just to ensure h_user_obj is set
-    auto stats           = solver_stats_t<f_t>{};
+    auto stats           = solver_stats_t<i_t, f_t>{};
     stats.solution_bound = solution.get_user_objective();
     return solution.get_solution(true, stats);
   }

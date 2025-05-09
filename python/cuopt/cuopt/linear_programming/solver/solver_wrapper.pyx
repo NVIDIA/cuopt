@@ -513,6 +513,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         max_constraint_violation = sol_ret.mip_ret.max_constraint_violation_
         max_int_violation = sol_ret.mip_ret.max_int_violation_
         max_variable_bound_violation = sol_ret.mip_ret.max_variable_bound_violation_ # noqa
+        num_nodes = sol_ret.mip_ret.nodes_
+        num_simplex_iterations = sol_ret.mip_ret.simplex_iterations_
 
         solution = cudf.Series._from_column(
             cudf.core.column.build_column(
@@ -533,7 +535,9 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             presolve_time=presolve_time,
             max_variable_bound_violation=max_variable_bound_violation,
             max_int_violation=max_int_violation,
-            max_constraint_violation=max_constraint_violation
+            max_constraint_violation=max_constraint_violation,
+            num_nodes=num_nodes,
+            num_simplex_iterations=num_simplex_iterations
         )
 
     else:

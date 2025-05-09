@@ -195,7 +195,9 @@ mip_ret_t call_solve_mip(
                     solution.get_presolve_time(),
                     solution.get_max_constraint_violation(),
                     solution.get_max_int_violation(),
-                    solution.get_max_variable_bound_violation()};
+                    solution.get_max_variable_bound_violation(),
+                    solution.get_num_nodes(),
+                    solution.get_num_simplex_iterations()};
   return mip_ret;
 }
 
@@ -275,7 +277,7 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
   auto end      = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
 
-  return {std::move(list), duration.count()};
+  return {std::move(list), duration.count() / 1000.0};
 }
 
 }  // namespace cython

@@ -34,7 +34,7 @@ class mip_solver_t {
                         timer_t timer);
 
   solution_t<i_t, f_t> run_solver();
-  solver_stats_t<f_t>& get_solver_stats() { return context.stats; }
+  solver_stats_t<i_t, f_t>& get_solver_stats() { return context.stats; }
 
   mip_solver_context_t<i_t, f_t> context;
   // reference to the original problem

@@ -29,17 +29,18 @@
 
 #include <utilities/event_handler.cuh>
 
-#define PRINT_TIMERS 0
+#define FJ_DEBUG_LOAD_BALANCING 0
+#define FJ_SINGLE_STEP          0
 
 namespace cuopt::linear_programming::detail {
 
-static constexpr int TPB_resetmoves    = raft::WarpSize * 4;
-static constexpr int TPB_heavyvars     = raft::WarpSize * 16;
-static constexpr int TPB_heavycstrs    = raft::WarpSize * 4;
-static constexpr int TPB_updateweights = raft::WarpSize * 4;
-static constexpr int TPB_setval        = raft::WarpSize * 16;
-static constexpr int TPB_liftmoves     = raft::WarpSize * 4;
-static constexpr int TPB_loadbalance   = raft::WarpSize * 4;
+static constexpr int TPB_resetmoves  = raft::WarpSize * 4;
+static constexpr int TPB_heavyvars   = raft::WarpSize * 16;
+static constexpr int TPB_heavycstrs  = raft::WarpSize * 4;
+static constexpr int TPB_localmin    = raft::WarpSize * 4;
+static constexpr int TPB_setval      = raft::WarpSize * 16;
+static constexpr int TPB_liftmoves   = raft::WarpSize * 4;
+static constexpr int TPB_loadbalance = raft::WarpSize * 4;
 
 struct fj_hyper_parameters_t {
   // The number of moves to evaluate, if there are many positive-score
@@ -86,7 +87,7 @@ enum fj_move_type_t {
   FJ_MOVE_BEGIN = 0,
   FJ_MOVE_LIFT  = FJ_MOVE_BEGIN,
   FJ_MOVE_BREAKTHROUGH,
-  FJ_MOVE_SIZE
+  FJ_MOVE_SIZE,
 };
 
 enum class fj_mode_t {
@@ -95,6 +96,8 @@ enum class fj_mode_t {
   TREE,               // tree mode
   EXIT_NON_IMPROVING  // iterate until we are don't improve the best
 };
+
+enum class fj_load_balancing_mode_t { ALWAYS_ON, AUTO, ALWAYS_OFF };
 
 enum class fj_candidate_selection_t { WEIGHTED_SCORE, FEASIBLE_FIRST };
 
@@ -111,6 +114,7 @@ struct fj_settings_t {
   bool update_weights         = true;
   bool feasibility_run        = true;
   bool keep_farthest_l1_sol   = false;
+  fj_load_balancing_mode_t load_balancing_mode{fj_load_balancing_mode_t::AUTO};
 };
 
 struct fj_move_t {
@@ -200,7 +204,7 @@ class fj_t {
   void climber_init(i_t climber_idx);
   void climber_init(i_t climber_idx, const rmm::cuda_stream_view& stream);
   void set_fj_settings(fj_settings_t settings_);
-  void reset_weights(const rmm::cuda_stream_view& stream);
+  void reset_weights(const rmm::cuda_stream_view& stream, f_t weight = 10.);
   void randomize_weights(const raft::handle_t* handle_ptr);
   void copy_weights(const weight_t<i_t, f_t>& weights, const raft::handle_t* handle_ptr);
   i_t host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx = 0);
@@ -282,6 +286,7 @@ class fj_t {
     rmm::device_scalar<f_t> best_excess;
     rmm::device_scalar<f_t> best_l1_distance;
     rmm::device_scalar<f_t> best_objective;
+    rmm::device_scalar<f_t> saved_solution_objective;
     rmm::device_scalar<f_t> incumbent_quality;
     rmm::device_scalar<f_t> incumbent_objective;
     rmm::device_scalar<i_t> last_minimum_iteration;
@@ -306,6 +311,8 @@ class fj_t {
     rmm::device_uvector<f_t> farthest_l1_sol;
     rmm::device_uvector<f_t> incumbent_assignment;
     rmm::device_uvector<f_t> incumbent_lhs;
+    // compensation term of the Kahan summation algorithm
+    rmm::device_uvector<f_t> incumbent_lhs_sumcomp;
     rmm::device_uvector<i_t> move_last_update;
     rmm::device_uvector<f_t> move_delta;
     rmm::device_uvector<move_score_t> move_score;
@@ -342,6 +349,8 @@ class fj_t {
         best_excess(-std::numeric_limits<f_t>::infinity(), fj.handle_ptr->get_stream()),
         best_l1_distance(0., fj.handle_ptr->get_stream()),
         best_objective(+std::numeric_limits<f_t>::infinity(), fj.handle_ptr->get_stream()),
+        saved_solution_objective(+std::numeric_limits<f_t>::infinity(),
+                                 fj.handle_ptr->get_stream()),
         incumbent_quality(+std::numeric_limits<f_t>::infinity(), fj.handle_ptr->get_stream()),
         incumbent_objective(0.0, fj.handle_ptr->get_stream()),
         iterations_until_feasible_counter(0, fj.handle_ptr->get_stream()),
@@ -359,6 +368,7 @@ class fj_t {
         tabu_lastinc(fj.pb_ptr->n_variables, fj.handle_ptr->get_stream()),
         incumbent_assignment(fj.pb_ptr->n_variables, fj.handle_ptr->get_stream()),
         incumbent_lhs(fj.pb_ptr->n_constraints, fj.handle_ptr->get_stream()),
+        incumbent_lhs_sumcomp(fj.pb_ptr->n_constraints, fj.handle_ptr->get_stream()),
         jump_move_scores(fj.pb_ptr->n_variables, fj.handle_ptr->get_stream()),
         jump_move_infeasibility(fj.pb_ptr->n_variables, fj.handle_ptr->get_stream()),
         jump_move_delta(fj.pb_ptr->n_variables, fj.handle_ptr->get_stream()),
@@ -408,6 +418,7 @@ class fj_t {
       raft::device_span<f_t> best_assignment;
       raft::device_span<f_t> farthest_l1_sol;
       raft::device_span<f_t> incumbent_lhs;
+      raft::device_span<f_t> incumbent_lhs_sumcomp;
       raft::device_span<move_score_t> jump_move_scores;
       raft::device_span<f_t> jump_move_infeasibility;
       raft::device_span<f_t> jump_move_delta_check;
@@ -456,6 +467,7 @@ class fj_t {
       f_t* best_excess;
       f_t* best_l1_distance;
       f_t* best_objective;
+      f_t* saved_solution_objective;
       f_t* incumbent_quality;
       f_t* incumbent_objective;
       f_t weight_update_increment;
@@ -518,6 +530,12 @@ class fj_t {
         return excess_score(cstr, lhs) >= -cstr_tolerance;
       }
 
+      DI bool move_numerically_stable(f_t old_val, f_t new_val, f_t infeasibility) const
+      {
+        return fabs(new_val - old_val) < 1e6 && fabs(new_val) < 1e20 &&
+               fabs(*violation_score - infeasibility) < 1e20;
+      }
+
       DI bool admits_move(i_t var_idx) const
       {
         f_t delta = jump_move_delta[var_idx];
@@ -528,9 +546,17 @@ class fj_t {
             (delta > 0 && iter < tabu_noinc_until[var_idx]))
           return false;
 
+        // give priority to MTM moves.
+        if (jump_move_scores[var_idx].base > 0) return true;
+
 #pragma unroll
         for (i_t move_type = FJ_MOVE_BEGIN; move_type < FJ_MOVE_SIZE; ++move_type) {
           if (move_type == FJ_MOVE_LIFT && violated_constraints.size() > 0) continue;
+          if (move_type == FJ_MOVE_BREAKTHROUGH &&
+              (*best_objective == std::numeric_limits<f_t>::infinity() ||
+               *incumbent_objective <
+                 *best_objective + 1e-6 - settings->parameters.breakthrough_move_epsilon))
+            continue;
 
           // only select moves that were updated during this iteration
           if (move_last_update(move_type, var_idx) == iter &&
@@ -542,16 +568,11 @@ class fj_t {
 
             jump_move_scores[var_idx] = move_score(move_type, var_idx);
             jump_move_delta[var_idx]  = move_delta(move_type, var_idx);
-            // DEVICE_LOG_DEBUG("{move type %d}, move %d is candidate, improv %g to obj %g\n",
-            //               move_type,
-            //               var_idx,
-            //               obj_delta,
-            //               *incumbent_objective);
             return true;
           }
         }
 
-        return jump_move_scores[var_idx].base > 0;
+        return false;
       }
     };
 

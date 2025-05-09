@@ -34,9 +34,9 @@ class ping_pong_graph_t {
   void start_capture(i_t total_pdlp_iterations)
   {
     if (total_pdlp_iterations % 2 == 0 && !even_initialized) {
-      RAFT_CUDA_TRY(cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeRelaxed));
+      RAFT_CUDA_TRY(cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeThreadLocal));
     } else if (total_pdlp_iterations % 2 == 1 && !odd_initialized) {
-      RAFT_CUDA_TRY(cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeRelaxed));
+      RAFT_CUDA_TRY(cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeThreadLocal));
     }
   }
 

@@ -68,6 +68,8 @@ class mip_solution_t {
   std::vector<f_t> x;
   f_t objective;
   f_t lower_bound;
+  i_t nodes_explored;
+  i_t simplex_iterations;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

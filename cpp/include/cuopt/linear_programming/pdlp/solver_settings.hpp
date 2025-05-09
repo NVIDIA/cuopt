@@ -214,7 +214,7 @@ class pdlp_solver_settings_t {
    *
    * @note By default there is no time limit.
    * For performance reasons, cuOpt's does not constantly checks for time limit, thus, the solver
-   * might run a few milliseconds over the limit.
+   * might run slightly over the limit.
    * If set along iteration limit, the first limit reached will exit.
    *
    * @param time_limit Time limit to set in seconds

@@ -38,6 +38,8 @@ mip_solution_t<i_t, f_t>::mip_solution_t(rmm::device_uvector<f_t> solution,
                                          f_t max_constraint_violation,
                                          f_t max_int_violation,
                                          f_t max_variable_bound_violation,
+                                         i_t num_nodes,
+                                         i_t num_simplex_iterations,
                                          std::vector<rmm::device_uvector<f_t>> solution_pool)
   : solution_(std::move(solution)),
     var_names_(std::move(var_names)),
@@ -50,6 +52,8 @@ mip_solution_t<i_t, f_t>::mip_solution_t(rmm::device_uvector<f_t> solution,
     max_constraint_violation_(max_constraint_violation),
     max_int_violation_(max_int_violation),
     max_variable_bound_violation_(max_variable_bound_violation),
+    num_nodes_(num_nodes),
+    num_simplex_iterations_(num_simplex_iterations),
     solution_pool_(std::move(solution_pool))
 {
 }
@@ -66,7 +70,9 @@ mip_solution_t<i_t, f_t>::mip_solution_t(mip_termination_status_t termination_st
     termination_status_(termination_status),
     max_constraint_violation_(0),
     max_int_violation_(0),
-    max_variable_bound_violation_(0)
+    max_variable_bound_violation_(0),
+    num_nodes_(0),
+    num_simplex_iterations_(0)
 {
 }
 
@@ -156,6 +162,18 @@ template <typename i_t, typename f_t>
 f_t mip_solution_t<i_t, f_t>::get_max_variable_bound_violation() const
 {
   return max_variable_bound_violation_;
+}
+
+template <typename i_t, typename f_t>
+i_t mip_solution_t<i_t, f_t>::get_num_nodes() const
+{
+  return num_nodes_;
+}
+
+template <typename i_t, typename f_t>
+i_t mip_solution_t<i_t, f_t>::get_num_simplex_iterations() const
+{
+  return num_simplex_iterations_;
 }
 
 template <typename i_t, typename f_t>

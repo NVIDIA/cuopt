@@ -87,7 +87,7 @@ void test_bounds_standardization_test(std::string test_instance)
   EXPECT_TRUE(sol_1_feasible);
   standardized_problem.post_process_solution(solution_1);
   auto optimization_prob_solution =
-    solution_1.get_solution(sol_1_feasible, solver_stats_t<double>{});
+    solution_1.get_solution(sol_1_feasible, solver_stats_t<int, double>{});
   test_objective_sanity(problem,
                         optimization_prob_solution.get_solution(),
                         optimization_prob_solution.get_objective_value());

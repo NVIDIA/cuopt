@@ -41,6 +41,9 @@ ConfigureTest(MULTI_PROBE_TEST
 ConfigureTest(INCUMBENT_CALLBACK_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/mip_unit_tests/incumbent_callback_test.cu
 )
+ConfigureTest(FEASIBILITY_JUMP_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/mip_unit_tests/feasibility_jump_tests.cu
+)
 ConfigureTest(DOC_EXAMPLE_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/mip_unit_tests/doc_example_test.cu
 )

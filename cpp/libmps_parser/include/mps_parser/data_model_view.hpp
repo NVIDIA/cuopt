@@ -27,14 +27,11 @@
 namespace cuopt::mps_parser {
 
 /**
- * @brief Standard form representation of a Linear Program with a twist from the standard form for
- * Quadratic Programs.
+ * @brief A representation of a linear programming (LP) optimization problem
  *
  * @tparam f_t  Data type of the variables and their weights in the equations
  *
- * Standard form representation follows the description from the wiki article here:
- * https://en.wikipedia.org/wiki/Linear_programming#Standard_form. In other words,
- * this structure stores all information used to represent the following LP equation:
+ * A linear programming optimization problem is defined as follows:
  * <pre>
  * Minimize:
  *   dot(c, x)

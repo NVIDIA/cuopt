@@ -13,6 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from cuopt.linear_programming.solver.solver_wrapper import (
+    LPTerminationStatus,
+    MILPTerminationStatus,
+    ProblemCategory,
+)
+
 
 class PDLPWarmStartData:
     def __init__(
@@ -162,6 +168,8 @@ class Solution:
         max_constraint_violation=0.0,
         max_int_violation=0.0,
         max_variable_bound_violation=0.0,
+        num_nodes=0,
+        num_simplex_iterations=0,
     ):
         self.problem_category = problem_category
         self.primal_solution = primal_solution
@@ -185,7 +193,8 @@ class Solution:
             sum_solution_weight,
             iterations_since_last_restart,
         )
-        self.termination_status = termination_status
+        self._set_termination_status(termination_status)
+
         self.primal_objective = primal_objective
         self.dual_objective = dual_objective
         self.solve_time = solve_time
@@ -204,23 +213,23 @@ class Solution:
             "max_constraint_violation": max_constraint_violation,
             "max_int_violation": max_int_violation,
             "max_variable_bound_violation": max_variable_bound_violation,
+            "num_nodes": num_nodes,
+            "num_simplex_iterations": num_simplex_iterations,
         }
 
-    def raise_if_milp_solution(self, function_name):
-        from cuopt.linear_programming.solver.solver_wrapper import (
-            ProblemCategory,
-        )
+    def _set_termination_status(self, ts):
+        if self.problem_category == ProblemCategory.LP:
+            self.termination_status = LPTerminationStatus(ts)
+        else:
+            self.termination_status = MILPTerminationStatus(ts)
 
+    def raise_if_milp_solution(self, function_name):
         if self.problem_category in (ProblemCategory.MIP, ProblemCategory.IP):
             raise AttributeError(
                 f"Attribute {function_name} is not supported for milp solution"
             )
 
     def raise_if_lp_solution(self, function_name):
-        from cuopt.linear_programming.solver.solver_wrapper import (
-            ProblemCategory,
-        )
-
         if self.problem_category == ProblemCategory.LP:
             raise AttributeError(
                 f"Attribute {function_name} is not supported for lp solution"
@@ -268,7 +277,7 @@ class Solution:
 
     def get_solve_time(self):
         """
-        Returns the engine solve time in milliseconds as a float64.
+        Returns the engine solve time in seconds as a float64.
         """
         return self.solve_time
 
@@ -355,6 +364,12 @@ class Solution:
             For minimization problems, this is a lower bound on the optimal
             value.
             For maximization problems, this is an upper bound.
+
+        num_nodes: int
+            Number of nodes explored during the MIP solve
+
+        num_simplex_iterations: int
+            Number of simplex iterations performed during the MIP solve
         """
 
         self.raise_if_lp_solution(__name__)

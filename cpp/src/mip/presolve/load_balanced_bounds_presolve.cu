@@ -178,7 +178,7 @@ bool build_graph(managed_stream_pool& streams,
   cudaEvent_t fork_stream_event;
   cudaEventCreate(&fork_stream_event);
 
-  cudaStreamBeginCapture(handle_ptr->get_stream(), cudaStreamCaptureModeGlobal);
+  cudaStreamBeginCapture(handle_ptr->get_stream(), cudaStreamCaptureModeThreadLocal);
   cudaEventRecord(fork_stream_event, handle_ptr->get_stream());
 
   // dry-run - managed pool tracks how many streams were issued

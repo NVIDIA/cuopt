@@ -76,7 +76,7 @@ class diversity_manager_t {
   all_recombine_stats recombine_stats;
   std::mt19937 rng;
   i_t current_step{0};
-  solver_stats_t<f_t>& stats;
+  solver_stats_t<i_t, f_t>& stats;
   std::vector<solution_t<i_t, f_t>> initial_sol_vector;
 };
 

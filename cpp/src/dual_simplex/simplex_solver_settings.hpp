@@ -34,7 +34,8 @@ struct simplex_solver_settings_t {
   simplex_solver_settings_t()
     : iteration_limit(std::numeric_limits<i_t>::max()),
       time_limit(std::numeric_limits<f_t>::infinity()),
-      mip_gap_tol(1e-3),
+      absolute_mip_gap_tol(0.0),
+      relative_mip_gap_tol(1e-3),
       integer_tol(1e-5),
       primal_tol(1e-6),
       dual_tol(1e-6),
@@ -73,15 +74,16 @@ struct simplex_solver_settings_t {
   void close_log_file() { log.close_log_file(); }
   i_t iteration_limit;
   f_t time_limit;
-  f_t mip_gap_tol;  // Tolerance on mip gap to declare optimal
-  f_t integer_tol;  // Tolerance on integralitiy violation
-  f_t primal_tol;   // Absolute primal infeasibility tolerance
-  f_t dual_tol;     // Absolute dual infeasibility tolerance
-  f_t pivot_tol;    // Simplex pivot tolerance
-  f_t tight_tol;    // A tight tolerance used to check for infeasibility
-  f_t fixed_tol;    // If l <= x <= u with u - l < fixed_tol a variable is consider fixed
-  f_t zero_tol;     // Values below this tolerance are considered numerically zero
-  f_t cut_off;      // If the dual objective is greater than the cutoff we stop
+  f_t absolute_mip_gap_tol;  // Tolerance on mip gap to declare optimal
+  f_t relative_mip_gap_tol;  // Tolerance on mip gap to declare optimal
+  f_t integer_tol;           // Tolerance on integralitiy violation
+  f_t primal_tol;            // Absolute primal infeasibility tolerance
+  f_t dual_tol;              // Absolute dual infeasibility tolerance
+  f_t pivot_tol;             // Simplex pivot tolerance
+  f_t tight_tol;             // A tight tolerance used to check for infeasibility
+  f_t fixed_tol;             // If l <= x <= u with u - l < fixed_tol a variable is consider fixed
+  f_t zero_tol;              // Values below this tolerance are considered numerically zero
+  f_t cut_off;               // If the dual objective is greater than the cutoff we stop
   f_t
     steepest_edge_ratio;  // the ratio of computed steepest edge mismatch from updated steepest edge
   f_t steepest_edge_primal_tol;    // Primal tolerance divided by steepest edge norm

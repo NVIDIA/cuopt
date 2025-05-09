@@ -93,7 +93,7 @@ class optimization_problem_solution_t : public base_solution_t {
     /** Objective value for the extreme dual ray */
     f_t dual_ray_linear_objective;
 
-    /** Solve time in milliseconds */
+    /** Solve time in seconds */
     double solve_time;
   };
 
@@ -163,7 +163,7 @@ class optimization_problem_solution_t : public base_solution_t {
                                   bool deep_copy);
 
   /**
-   * @brief Set the solve time in milliseconds
+   * @brief Set the solve time in seconds
    *
    * @param ms Time in ms
    */
@@ -177,9 +177,9 @@ class optimization_problem_solution_t : public base_solution_t {
   void set_termination_status(pdlp_termination_status_t termination_status);
 
   /**
-   * @brief Get the solve time in milliseconds
+   * @brief Get the solve time in seconds
    *
-   * @return Time in ms
+   * @return Time in seconds
    */
   double get_solve_time() const;
 

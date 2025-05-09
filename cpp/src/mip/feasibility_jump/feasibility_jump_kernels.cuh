@@ -76,7 +76,7 @@ __global__ void update_heavy_constraints_score(
 // when we reach the bottom of a greedy descent, increase the weight of the violated constraints
 // to escape the local minimum (as outlined in the paper)
 template <typename i_t, typename f_t>
-__global__ void update_search_weights_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj);
+__global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj);
 
 template <typename i_t, typename f_t>
 __global__ void update_lift_moves_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj);
@@ -96,9 +96,14 @@ __global__ void update_changed_constraints_kernel(
 template <typename i_t, typename f_t>
 __global__ void update_best_solution_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj);
 
-template <typename i_t, typename f_t, bool is_binary_pb = false>
-__global__ void reset_moves_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
-                                   bool ForceRefresh = false);
+enum MTMMoveType { FJ_MTM_VIOLATED, FJ_MTM_SATISFIED };
+
+template <typename i_t,
+          typename f_t,
+          MTMMoveType move_type = FJ_MTM_VIOLATED,
+          bool is_binary_pb     = false>
+__global__ void compute_mtm_moves_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
+                                         bool ForceRefresh = false);
 
 template <typename i_t, typename f_t>
 __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj);

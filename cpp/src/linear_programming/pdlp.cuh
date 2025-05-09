@@ -61,7 +61,7 @@ class pdlp_solver_t {
    * For full description of algorithm, see https://arxiv.org/abs/2106.04756
    *
    * @param[in] op_problem An problem_t<i_t, f_t> object with a
-   * representation of a linear program on standard form.
+   * representation of a linear program
    */
   pdlp_solver_t(
     problem_t<i_t, f_t>& op_problem,

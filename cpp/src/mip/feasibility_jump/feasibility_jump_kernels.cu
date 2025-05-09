@@ -33,6 +33,24 @@ namespace cg = cooperative_groups;
 
 namespace cuopt::linear_programming::detail {
 
+template <typename i_t, typename f_t, typename Iterator>
+static DI f_t KahanBabushkaNeumaierSum(Iterator begin, Iterator end)
+{
+  f_t sum = 0;
+  f_t c   = 0;
+  for (Iterator it = begin; it != end; ++it) {
+    f_t delta = *it;
+    f_t t     = sum + delta;
+    if (fabs(sum) > fabs(delta)) {
+      c += (sum - t) + delta;
+    } else {
+      c += (delta - t) + sum;
+    }
+    sum = t;
+  }
+  return sum + c;
+}
+
 template <typename i_t, typename f_t>
 DI thrust::pair<f_t, f_t> move_objective_score(
   const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj, i_t var_idx, f_t delta)
@@ -47,10 +65,8 @@ DI thrust::pair<f_t, f_t> move_objective_score(
 
   f_t bonus_breakthrough = 0;
 
-  bool old_obj_better = *fj.incumbent_objective <
-                        *fj.best_objective - fj.settings->parameters.breakthrough_move_epsilon;
-  bool new_obj_better = *fj.incumbent_objective + obj_diff <
-                        *fj.best_objective - fj.settings->parameters.breakthrough_move_epsilon;
+  bool old_obj_better = *fj.incumbent_objective < *fj.best_objective;
+  bool new_obj_better = *fj.incumbent_objective + obj_diff < *fj.best_objective;
   if (!old_obj_better && new_obj_better)
     bonus_breakthrough += *fj.objective_weight;
   else if (old_obj_better && !new_obj_better) {
@@ -242,12 +258,14 @@ __global__ void init_lhs_and_violation(typename fj_t<i_t, f_t>::climber_data_t::
   for (i_t cstr_idx = TH_ID_X; cstr_idx < fj.pb.n_constraints; cstr_idx += GRID_STRIDE) {
     auto [offset_begin, offset_end] = fj.pb.range_for_constraint(cstr_idx);
 
-    fj.incumbent_lhs[cstr_idx] = 0;
-    // loop over all constraints that the variable appears in
-    for (i_t j = offset_begin; j < offset_end; ++j) {
-      fj.incumbent_lhs[cstr_idx] +=
-        fj.pb.coefficients[j] * fj.incumbent_assignment[fj.pb.variables[j]];
-    }
+    auto delta_it =
+      thrust::make_transform_iterator(thrust::make_counting_iterator(0), [fj] __device__(i_t j) {
+        return fj.pb.coefficients[j] * fj.incumbent_assignment[fj.pb.variables[j]];
+      });
+    fj.incumbent_lhs[cstr_idx] =
+      KahanBabushkaNeumaierSum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
+    fj.incumbent_lhs_sumcomp[cstr_idx] = 0;
+
     f_t th_violation       = fj.excess_score(cstr_idx, fj.incumbent_lhs[cstr_idx]);
     f_t weighted_violation = th_violation * fj.cstr_weights[cstr_idx];
     atomicAdd(fj.violation_score, th_violation);
@@ -257,7 +275,7 @@ __global__ void init_lhs_and_violation(typename fj_t<i_t, f_t>::climber_data_t::
   }
 }
 
-template <typename i_t, typename f_t, i_t TPB = 0, bool IgnoreCstrWeights = false>
+template <typename i_t, typename f_t, i_t TPB, bool IgnoreCstrWeights = false>
 DI typename fj_t<i_t, f_t>::move_score_info_t compute_new_score(
   const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj, i_t var_idx, f_t delta)
 {
@@ -311,10 +329,8 @@ DI typename fj_t<i_t, f_t>::move_score_info_t compute_new_score(
 
   f_t bonus_breakthrough = 0;
 
-  bool old_obj_better = *fj.incumbent_objective <
-                        *fj.best_objective - fj.settings->parameters.breakthrough_move_epsilon;
-  bool new_obj_better = *fj.incumbent_objective + obj_diff <
-                        *fj.best_objective - fj.settings->parameters.breakthrough_move_epsilon;
+  bool old_obj_better = *fj.incumbent_objective < *fj.best_objective;
+  bool new_obj_better = *fj.incumbent_objective + obj_diff < *fj.best_objective;
   if (!old_obj_better && new_obj_better)
     bonus_breakthrough += *fj.objective_weight;
   else if (old_obj_better && !new_obj_better) {
@@ -323,8 +339,8 @@ DI typename fj_t<i_t, f_t>::move_score_info_t compute_new_score(
 
   typename fj_t<i_t, f_t>::move_score_info_t score_info;
 
-  score_info.score.base    = base_obj + base_feas_sum;
-  score_info.score.bonus   = bonus_breakthrough + bonus_robust_sum;
+  score_info.score.base    = round(base_obj + base_feas_sum);
+  score_info.score.bonus   = round(bonus_breakthrough + bonus_robust_sum);
   score_info.infeasibility = base_feas_sum;
 
   if (threadIdx.x == 0) {
@@ -336,9 +352,12 @@ DI typename fj_t<i_t, f_t>::move_score_info_t compute_new_score(
   return score_info;
 }
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, MTMMoveType move_type>
 DI thrust::tuple<f_t, f_t, f_t, f_t> get_mtm_for_constraint(
-  typename fj_t<i_t, f_t>::climber_data_t::view_t& fj, i_t var_idx, i_t cstr_idx, f_t cstr_coeff)
+  const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
+  i_t var_idx,
+  i_t cstr_idx,
+  f_t cstr_coeff)
 {
   f_t sign     = -1;
   f_t delta_ij = 0;
@@ -352,6 +371,8 @@ DI thrust::tuple<f_t, f_t, f_t, f_t> get_mtm_for_constraint(
 
   // process each bound as two separate constraints
   f_t bounds[2] = {c_lb, c_ub};
+  cuopt_assert(isfinite(bounds[0]) || isfinite(bounds[1]), "");
+
   for (i_t bound_idx = 0; bound_idx < 2; ++bound_idx) {
     if (!isfinite(bounds[bound_idx])) continue;
 
@@ -362,8 +383,9 @@ DI thrust::tuple<f_t, f_t, f_t, f_t> get_mtm_for_constraint(
     f_t rhs = bounds[bound_idx] * sign;
     slack   = rhs - lhs;
 
+    // skip constraints that are violated/satisfied based on the MTM move type
     bool violated = slack < -cstr_tolerance;
-    if (!violated) continue;
+    if (move_type == MTMMoveType::FJ_MTM_VIOLATED ? !violated : violated) continue;
 
     f_t new_val = old_val;
 
@@ -375,9 +397,9 @@ DI thrust::tuple<f_t, f_t, f_t, f_t> get_mtm_for_constraint(
 }
 
 // find best mixed tight move
-template <typename i_t, typename f_t, i_t TPB>
+template <typename i_t, typename f_t, i_t TPB, MTMMoveType move_type>
 DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
-  typename fj_t<i_t, f_t>::climber_data_t::view_t& fj, i_t var_idx)
+  const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj, i_t var_idx)
 {
   f_t best_val         = fj.incumbent_assignment[var_idx];
   auto best_score_info = fj_t<i_t, f_t>::move_score_info_t::invalid();
@@ -394,6 +416,7 @@ DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
   f_t v_lb      = fj.pb.variable_lower_bounds[var_idx];
   f_t v_ub      = fj.pb.variable_upper_bounds[var_idx];
   raft::random::PCGenerator rng(fj.settings->seed + *fj.iterations, 0, 0);
+  cuopt_assert(isfinite(v_lb) || isfinite(v_ub), "unexpected free variable");
 
   auto [offset_begin, offset_end] = fj.pb.reverse_range_for_var(var_idx);
   for (auto i = offset_begin; i < offset_end; i += 1) {
@@ -402,12 +425,21 @@ DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
 
     cuopt_assert(isfinite(fj.incumbent_lhs[cstr_idx]), "");
 
-    // only consider violated constraints
-    if (!fj.violated_constraints.contains(cstr_idx)) continue;
+    if constexpr (move_type == MTMMoveType::FJ_MTM_VIOLATED) {
+      // only consider violated constraints
+      if (!fj.violated_constraints.contains(cstr_idx)) continue;
+    } else if constexpr (move_type == MTMMoveType::FJ_MTM_SATISFIED) {
+      // only consider satisfied constraints
+      if (fj.violated_constraints.contains(cstr_idx)) continue;
+      // sample only a limited amounts of constraints in satisfied mode
+      // reservoir sampling to get 20 random constraints
+      f_t selection_probability = min(1.0, 20.0 / (offset_end - offset_begin));
+      if (rng.next_double() > selection_probability) continue;
+    }
 
     f_t new_val;
     auto [delta_ij, sign, slack, cstr_tolerance] =
-      get_mtm_for_constraint<i_t, f_t>(fj, var_idx, cstr_idx, cstr_coeff);
+      get_mtm_for_constraint<i_t, f_t, move_type>(fj, var_idx, cstr_idx, cstr_coeff);
     if (fj.pb.is_integer_var(var_idx)) {
       new_val = cstr_coeff * sign > 0
                   ? floor(old_val + delta_ij + fj.pb.tolerances.integrality_tolerance)
@@ -434,10 +466,13 @@ DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
 
     auto new_score_info = compute_new_score<i_t, f_t, TPB>(fj, var_idx, new_val - old_val);
     if (threadIdx.x == 0) {
-      if (new_score_info.score > best_score_info.score ||
-          (new_score_info.score == best_score_info.score && new_val < best_val)) {
-        best_score_info = new_score_info;
-        best_val        = new_val;
+      // reject this move if it would increase the target variable to a numerically unstable value
+      if (fj.move_numerically_stable(old_val, new_val, new_score_info.infeasibility)) {
+        if (new_score_info.score > best_score_info.score ||
+            (new_score_info.score == best_score_info.score && new_val < best_val)) {
+          best_score_info = new_score_info;
+          best_val        = new_val;
+        }
       }
     }
   }
@@ -456,10 +491,15 @@ DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
   return std::make_pair(best_val, best_score_info);
 }
 
-template <typename i_t, typename f_t, bool is_binary_pb = false>
+template <typename i_t, typename f_t, MTMMoveType move_type, bool is_binary_pb = false>
 DI void update_jump_value(typename fj_t<i_t, f_t>::climber_data_t::view_t fj, i_t var_idx)
 {
   cuopt_assert(var_idx >= 0 && var_idx < fj.pb.n_variables, "invalid variable index");
+
+  // skip binary variables when considering MTM satisfied moves
+  if constexpr (move_type == MTMMoveType::FJ_MTM_SATISFIED) {
+    if (fj.pb.is_binary_variable[var_idx]) return;
+  }
 
   // Fast path for binary variables: the only valid jump value not equal to x is ~x
   f_t delta;
@@ -479,9 +519,10 @@ DI void update_jump_value(typename fj_t<i_t, f_t>::climber_data_t::view_t fj, i_
       }
       best_score_info = compute_new_score<i_t, f_t, TPB_resetmoves>(fj, var_idx, delta);
     } else {
-      auto [best_val, score_info] = compute_best_mtm<i_t, f_t, TPB_resetmoves>(fj, var_idx);
-      delta                       = best_val - fj.incumbent_assignment[var_idx];
-      best_score_info             = score_info;
+      auto [best_val, score_info] =
+        compute_best_mtm<i_t, f_t, TPB_resetmoves, move_type>(fj, var_idx);
+      delta           = best_val - fj.incumbent_assignment[var_idx];
+      best_score_info = score_info;
     }
   } else {
     delta = 1.0 - 2 * fj.incumbent_assignment[var_idx];
@@ -524,14 +565,13 @@ DI bool check_feasibility(const typename fj_t<i_t, f_t>::climber_data_t::view_t&
                           bool check_integer = true)
 {
   for (i_t cIdx = threadIdx.x; cIdx < fj.pb.n_constraints; cIdx += blockDim.x) {
-    f_t old_lhs = fj.incumbent_lhs[cIdx];
-    f_t lhs     = 0;
-
     auto [offset_begin, offset_end] = fj.pb.range_for_constraint(cIdx);
-    // loop over all constraints that the variable appears in
-    for (i_t j = offset_begin; j < offset_end; ++j)
-      lhs += fj.pb.coefficients[j] * fj.incumbent_assignment[fj.pb.variables[j]];
+    auto delta_it =
+      thrust::make_transform_iterator(thrust::make_counting_iterator(0), [fj] __device__(i_t j) {
+        return fj.pb.coefficients[j] * fj.incumbent_assignment[fj.pb.variables[j]];
+      });
 
+    f_t lhs = KahanBabushkaNeumaierSum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
     cuopt_assert(fj.cstr_satisfied(cIdx, lhs), "constraint violated");
   }
   cuopt_func_call((check_variable_feasibility<i_t, f_t>(fj, check_integer)));
@@ -565,14 +605,15 @@ DI bool save_best_solution(typename fj_t<i_t, f_t>::climber_data_t::view_t& fj)
   if (fj.settings->keep_farthest_l1_sol) { save_best_l1_distance_solution<i_t, f_t>(fj); }
 
   if (FIRST_THREAD) {
-    bool better_objective = *fj.incumbent_objective <= *fj.best_objective;
-    save_sol              = better_objective;
+    bool better_objective = *fj.incumbent_objective < *fj.saved_solution_objective;
+    save_sol              = better_objective && fj.violated_constraints.size() == 0;
     // save least infeasible solution
-    if (*fj.violation_score < 0.) {
-      if (*fj.violation_score > *fj.best_excess) {
+    if (*fj.best_excess < 0 && *fj.violation_score > *fj.best_excess) {
+      if (fj.violated_constraints.size() == 0)
+        *fj.best_excess = 0;
+      else
         *fj.best_excess = *fj.violation_score;
-        save_sol        = true;
-      }
+      save_sol = true;
     }
   }
 
@@ -580,12 +621,14 @@ DI bool save_best_solution(typename fj_t<i_t, f_t>::climber_data_t::view_t& fj)
   if (save_sol) {
     if (FIRST_THREAD) {
       // DEVICE_LOG_TRACE("Updating best objective from %f to %f. vio %f \n",
-      //                  *fj.best_objective,
+      //                  *fj.saved_solution_objective,
       //                  *fj.incumbent_objective,
       //                  *fj.violation_score);
       if (*fj.violation_score == 0.) {
         cuopt_assert(fj.violated_constraints.size() == 0, "Violated constraint and score mismatch");
       }
+
+      if (*fj.best_excess == 0) { *fj.saved_solution_objective = *fj.incumbent_objective; }
     }
     cuopt_func_call((check_variable_feasibility<i_t, f_t>(fj, false)));
     for (i_t i = threadIdx.x; i < fj.pb.n_variables; i += blockDim.x) {
@@ -661,10 +704,10 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
         *fj.constraints_changed_count >= 0 && *fj.constraints_changed_count <= fj.pb.n_constraints,
         "");
       f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx);
-      if (new_cost <= -cstr_tolerance && !fj.violated_constraints.contains(cstr_idx))
+      if (new_cost < -cstr_tolerance && !fj.violated_constraints.contains(cstr_idx))
         fj.constraints_changed[atomicAdd(fj.constraints_changed_count, 1)] =
           (cstr_idx << 1) | CONSTRAINT_FLAG_INSERT;
-      else if (new_cost > -cstr_tolerance && fj.violated_constraints.contains(cstr_idx))
+      else if (!(new_cost < -cstr_tolerance) && fj.violated_constraints.contains(cstr_idx))
         fj.constraints_changed[atomicAdd(fj.constraints_changed_count, 1)] =
           cstr_idx << 1 | CONSTRAINT_FLAG_REMOVE;
     }
@@ -672,7 +715,12 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
     __syncthreads();
 
     cuopt_assert(isfinite(fj.jump_move_delta[var_idx]), "delta should be finite");
-    fj.incumbent_lhs[cstr_idx] = old_lhs + cstr_coeff * fj.jump_move_delta[var_idx];
+    // Kahan compensated summation
+    // fj.incumbent_lhs[cstr_idx] = old_lhs + cstr_coeff * fj.jump_move_delta[var_idx];
+    f_t y = cstr_coeff * fj.jump_move_delta[var_idx] - fj.incumbent_lhs_sumcomp[cstr_idx];
+    f_t t = old_lhs + y;
+    fj.incumbent_lhs_sumcomp[cstr_idx] = (t - old_lhs) - y;
+    fj.incumbent_lhs[cstr_idx]         = t;
     cuopt_assert(isfinite(fj.incumbent_lhs[cstr_idx]), "assignment should be finite");
   }
 
@@ -680,17 +728,36 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
   if (FIRST_THREAD) {
     f_t new_val = fj.incumbent_assignment[var_idx] + fj.jump_move_delta[var_idx];
 
-    // reset the score
-    fj.jump_move_scores[var_idx]        = fj_t<i_t, f_t>::move_score_t::invalid();
-    fj.jump_move_infeasibility[var_idx] = -std::numeric_limits<f_t>::infinity();
-
     cuopt_assert(fj.pb.check_variable_within_bounds(var_idx, new_val),
                  "assignment not within bounds");
     cuopt_assert(isfinite(new_val), "assignment is not finite");
 
     if (fj.pb.is_integer_var(var_idx)) {
       cuopt_assert(fj.pb.is_integer(new_val), "The variable must be integer");
+      new_val = round(new_val);
     }
+
+#if defined(FJ_SINGLE_STEP)
+    DEVICE_LOG_TRACE(
+      "=---- FJ: updated %d [%g/%g] :%.4g+{%.4g}=%.4g score {%g,%g}, d_obj %.2g+%.2g=%.2g, "
+      "infeas %.2g, total viol %d\n",
+      var_idx,
+      fj.pb.variable_lower_bounds[var_idx],
+      fj.pb.variable_upper_bounds[var_idx],
+      fj.incumbent_assignment[var_idx],
+      fj.jump_move_delta[var_idx],
+      fj.incumbent_assignment[var_idx] + fj.jump_move_delta[var_idx],
+      fj.jump_move_scores[var_idx].base,
+      fj.jump_move_scores[var_idx].bonus,
+      *fj.incumbent_objective,
+      fj.jump_move_delta[var_idx] * fj.pb.objective_coefficients[var_idx],
+      *fj.incumbent_objective + fj.jump_move_delta[var_idx] * fj.pb.objective_coefficients[var_idx],
+      fj.jump_move_infeasibility[var_idx],
+      fj.violated_constraints.size());
+#endif
+    // reset the score
+    fj.jump_move_scores[var_idx]        = fj_t<i_t, f_t>::move_score_t::invalid();
+    fj.jump_move_infeasibility[var_idx] = -std::numeric_limits<f_t>::infinity();
 
     fj.incumbent_assignment[var_idx] = new_val;
 
@@ -771,7 +838,8 @@ DI void update_lift_moves(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
                    "cstr should be satisfied");
 
       auto [delta, sign, slack, cstr_tolerance] =
-        get_mtm_for_constraint<i_t, f_t>(fj, var_idx, cstr_idx, cstr_coeff);
+        get_mtm_for_constraint<i_t, f_t, MTMMoveType::FJ_MTM_SATISFIED>(
+          fj, var_idx, cstr_idx, cstr_coeff);
 
       // skip this variable if there is no slack
       if (fabs(slack) <= cstr_tolerance) {
@@ -799,6 +867,7 @@ DI void update_lift_moves(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
     if (lfd_lb >= lfd_ub) continue;
 
     // Now that the life move domain is computed, compute the correct lift move
+    cuopt_assert(isfinite(fj.incumbent_assignment[var_idx]), "invalid assignment value");
     delta = obj_coeff < 0 ? lfd_ub : lfd_lb;
     delta = delta - fj.incumbent_assignment[var_idx];
 
@@ -807,8 +876,7 @@ DI void update_lift_moves(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
 
     f_t obj_score = -1 * obj_coeff * delta;  // negated to turn this into a positive score
     score.base    = obj_score;
-    if (threadIdx.x == 0 && !fj.pb.integer_equal(delta, (f_t)0)) {
-      cuopt_assert(isfinite(delta), "");
+    if (threadIdx.x == 0 && isfinite(delta) && !fj.pb.integer_equal(delta, (f_t)0)) {
       fj.move_delta(FJ_MOVE_LIFT, var_idx)       = delta;
       fj.move_score(FJ_MOVE_LIFT, var_idx)       = score;
       fj.move_last_update(FJ_MOVE_LIFT, var_idx) = *fj.iterations;
@@ -830,9 +898,14 @@ DI f_t get_breakthrough_move(typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
   f_t obj_coeff = fj.pb.objective_coefficients[var_idx];
   f_t v_lb      = fj.pb.variable_lower_bounds[var_idx];
   f_t v_ub      = fj.pb.variable_upper_bounds[var_idx];
+  cuopt_assert(isfinite(v_lb) || isfinite(v_ub), "unexpected free variable");
+  cuopt_assert(v_lb <= v_ub, "invalid bounds");
+  cuopt_assert(fj.pb.check_variable_within_bounds(var_idx, fj.incumbent_assignment[var_idx]),
+               "invalid incumbent assignment");
+  cuopt_assert(isfinite(obj_coeff), "invalid objective coefficient");
+  cuopt_assert(obj_coeff != 0, "objective coefficient shouldn't be null");
 
-  f_t excess = (*fj.best_objective - fj.settings->parameters.breakthrough_move_epsilon) -
-               *fj.incumbent_objective;
+  f_t excess = (*fj.best_objective) - *fj.incumbent_objective;
 
   cuopt_assert(isfinite(excess) && excess < 0,
                "breakthru move invoked during invalid solver state");
@@ -841,6 +914,7 @@ DI f_t get_breakthrough_move(typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
   f_t new_val = old_val;
 
   f_t delta_ij = excess / obj_coeff;
+
   if (fj.pb.is_integer_var(var_idx)) {
     new_val = obj_coeff > 0 ? floor(old_val + delta_ij + fj.pb.tolerances.integrality_tolerance)
                             : ceil(old_val + delta_ij - fj.pb.tolerances.integrality_tolerance);
@@ -863,7 +937,7 @@ DI void update_breakthrough_moves(typename fj_t<i_t, f_t>::climber_data_t::view_
   // breakthru moves are only considered if we have found a feasible solution before and the
   // incumbent is worse
   if (*fj.best_objective == std::numeric_limits<f_t>::infinity() ||
-      *fj.incumbent_objective < *fj.best_objective)
+      *fj.incumbent_objective <= *fj.best_objective)
     return;
 
   cuopt_assert(TPB == blockDim.x, "Invalid TPB");
@@ -924,9 +998,18 @@ DI void update_changed_constraints(typename fj_t<i_t, f_t>::climber_data_t::view
 
     // important to always keep this up to date (not only at minimas) as it is used in the
     // generation of moves
-    if (fj.violated_constraints.size() == 0 && *fj.incumbent_objective < *fj.best_objective) {
-      *fj.best_objective = *fj.incumbent_objective;
+    __shared__ bool update_sol;
+    if (threadIdx.x == 0) {
+      if (fj.violated_constraints.size() == 0 && *fj.incumbent_objective < *fj.best_objective) {
+        *fj.best_objective =
+          *fj.incumbent_objective - fj.settings->parameters.breakthrough_move_epsilon;
+        update_sol = true;
+      } else {
+        update_sol = false;
+      }
     }
+    __syncthreads();
+    if (update_sol) { save_best_solution<i_t, f_t>(fj); }
   }
 }
 template <typename i_t, typename f_t>
@@ -988,9 +1071,9 @@ __global__ void compute_iteration_related_variables_kernel(
   compute_iteration_related_variables<i_t, f_t>(fj);
 }
 
-template <typename i_t, typename f_t, bool is_binary_pb>
-__global__ void reset_moves_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
-                                   bool ForceRefresh)
+template <typename i_t, typename f_t, MTMMoveType move_type, bool is_binary_pb>
+__device__ void compute_mtm_moves(typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
+                                  bool ForceRefresh)
 {
   if (*fj.break_condition) return;
 
@@ -998,6 +1081,9 @@ __global__ void reset_moves_kernel(typename fj_t<i_t, f_t>::climber_data_t::view
   if (ForceRefresh || *fj.iterations == 0) full_refresh = true;
   if (*fj.full_refresh_iteration == *fj.iterations) full_refresh = true;
   if (*fj.selected_var == std::numeric_limits<i_t>::max()) full_refresh = true;
+
+  // always do a full sweep when looking for satisfied mtm moves
+  if constexpr (move_type == MTMMoveType::FJ_MTM_SATISFIED) full_refresh = true;
 
   // only update related variables
   i_t split_begin, split_end;
@@ -1048,8 +1134,15 @@ __global__ void reset_moves_kernel(typename fj_t<i_t, f_t>::climber_data_t::view
     }
 
     cuopt_assert(var_idx >= 0 && var_idx < fj.pb.n_variables, "");
-    update_jump_value<i_t, f_t, is_binary_pb>(fj, var_idx);
+    update_jump_value<i_t, f_t, move_type, is_binary_pb>(fj, var_idx);
   }
+}
+
+template <typename i_t, typename f_t, MTMMoveType move_type, bool is_binary_pb>
+__global__ void compute_mtm_moves_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
+                                         bool ForceRefresh)
+{
+  compute_mtm_moves<i_t, f_t, move_type, is_binary_pb>(fj, ForceRefresh);
 }
 
 template <typename i_t, typename f_t>
@@ -1081,7 +1174,8 @@ __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::
       auto var_idx    = fj.candidate_variables.contents[setidx];
       auto move_score = fj.jump_move_scores[var_idx];
 
-      if (move_score > th_best_score) {
+      if (move_score > th_best_score ||
+          (move_score == th_best_score && var_idx > th_selected_var)) {
         th_best_score   = move_score;
         th_selected_var = var_idx;
       }
@@ -1118,34 +1212,50 @@ __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::
     *fj.candidate_variables.set_size = 0;
     *fj.selected_var                 = selected_var;
     if (selected_var != std::numeric_limits<i_t>::max()) {
-      // DEVICE_LOG_INFO(
-      //   "=---- FJ: selected var %d:[%g]=%g best score {%g,%g} (%g %g), total viol %d, out of"
-      //   "%d\n",
-      //   selected_var,
-      //   fj.jump_move_delta[selected_var],
-      //   fj.incumbent_assignment[selected_var] + fj.jump_move_delta[selected_var],
-      //   fj.jump_move_scores[selected_var].base,
-      //   fj.jump_move_scores[selected_var].bonus,
-      //   fj.jump_move_infeasibility[selected_var],
-      //   fj.violated_constraints.size(),
-      //   good_var_count);
+#if FJ_SINGLE_STEP
+      DEVICE_LOG_INFO(
+        "=---- FJ: selected %d [%g/%g] :%.2g+{%.2g}=%.2g score {%g,%g}, d_obj %.2g+%.2g->%.2g, "
+        "infeas %.2g, total viol %d, out of %d\n",
+        selected_var,
+        fj.pb.variable_lower_bounds[selected_var],
+        fj.pb.variable_upper_bounds[selected_var],
+        fj.incumbent_assignment[selected_var],
+        fj.jump_move_delta[selected_var],
+        fj.incumbent_assignment[selected_var] + fj.jump_move_delta[selected_var],
+        fj.jump_move_scores[selected_var].base,
+        fj.jump_move_scores[selected_var].bonus,
+        *fj.incumbent_objective,
+        fj.jump_move_delta[selected_var] * fj.pb.objective_coefficients[selected_var],
+        *fj.incumbent_objective +
+          fj.jump_move_delta[selected_var] * fj.pb.objective_coefficients[selected_var],
+        fj.jump_move_infeasibility[selected_var],
+        fj.violated_constraints.size(),
+        good_var_count);
+#endif
       cuopt_assert(fj.jump_move_scores[selected_var].valid(), "");
     }
   }
 }
 
-template <typename i_t, typename f_t, i_t TPB, bool WeakTabu, typename Callback>
+template <typename i_t,
+          typename f_t,
+          i_t TPB,
+          bool WeakTabu,
+          bool recompute_score,
+          typename Callback,
+          typename CandidateIterator>
 DI thrust::tuple<i_t, f_t, typename fj_t<i_t, f_t>::move_score_t> gridwide_reduce_best_move(
   typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
-  raft::device_span<i_t> candidates,
+  CandidateIterator candidates_begin,
+  CandidateIterator candidates_end,
   Callback get_move)
 {
   auto best_score = fj_t<i_t, f_t>::move_score_t::invalid();
   i_t best_var    = std::numeric_limits<i_t>::max();
   f_t best_delta  = 0;
 
-  for (i_t i = blockIdx.x; i < candidates.size(); i += gridDim.x) {
-    i_t var_idx = candidates[i];
+  for (auto it = candidates_begin + blockIdx.x; it < candidates_end; it += gridDim.x) {
+    i_t var_idx = *it;
 
     // affected by tabu
     f_t delta = get_move(var_idx);
@@ -1161,10 +1271,17 @@ DI thrust::tuple<i_t, f_t, typename fj_t<i_t, f_t>::move_score_t> gridwide_reduc
 
     if (!fj.pb.check_variable_within_bounds(var_idx, fj.incumbent_assignment[var_idx] + delta))
       continue;
+    if (fabs(delta) < fj.pb.tolerances.absolute_tolerance) continue;
 
-    auto loc_best_score_info = compute_new_score<i_t, f_t, TPB>(fj, var_idx, delta);
+    typename fj_t<i_t, f_t>::move_score_info_t loc_best_score_info = {};
+    loc_best_score_info.score                                      = fj.jump_move_scores[var_idx];
+    if constexpr (recompute_score) {
+      loc_best_score_info = compute_new_score<i_t, f_t, TPB>(fj, var_idx, delta);
+    }
+
     if (threadIdx.x == 0) {
-      if (loc_best_score_info.score > best_score) {
+      if (loc_best_score_info.score > best_score ||
+          (loc_best_score_info.score == best_score && var_idx > best_var)) {
         best_score = loc_best_score_info.score;
         best_var   = var_idx;
         best_delta = delta;
@@ -1191,7 +1308,8 @@ DI thrust::tuple<i_t, f_t, typename fj_t<i_t, f_t>::move_score_t> gridwide_reduc
       auto var_idx    = fj.grid_var_buf[i];
       auto move_score = fj.grid_score_buf[i];
 
-      if (move_score > th_best_score) {
+      if (move_score > th_best_score ||
+          (move_score == th_best_score && var_idx > fj.grid_var_buf[th_best_block])) {
         th_best_score = move_score;
         th_best_block = i;
       }
@@ -1225,18 +1343,31 @@ DI thrust::tuple<i_t, f_t, typename fj_t<i_t, f_t>::move_score_t> best_random_mt
   i_t cstr_idx = fj.violated_constraints.contents[rng.next_u32() % fj.violated_constraints.size()];
   auto [offset_begin, offset_end] = fj.pb.range_for_constraint(cstr_idx);
 
-  return gridwide_reduce_best_move<i_t, f_t, TPB, /*WeakTabu=*/true>(
+  return gridwide_reduce_best_move<i_t, f_t, TPB, /*WeakTabu=*/true, /*recompute_score=*/true>(
     fj,
-    raft::device_span<i_t>(fj.pb.variables.begin() + offset_begin, offset_end - offset_begin),
+    fj.pb.variables.begin() + offset_begin,
+    fj.pb.variables.begin() + offset_end,
     [fj] __device__(i_t var_idx) { return fj.jump_move_delta[var_idx]; });
+}
+
+template <typename i_t, typename f_t, i_t TPB>
+DI thrust::tuple<i_t, f_t, typename fj_t<i_t, f_t>::move_score_t> best_sat_cstr_mtm_move(
+  typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
+{
+  // compute all MTM moves within satisfied constraints
+  compute_mtm_moves<i_t, f_t, MTMMoveType::FJ_MTM_SATISFIED, false>(fj, true);
+  return gridwide_reduce_best_move<i_t, f_t, TPB, /*WeakTabu=*/false, /*recompute_score=*/false>(
+    fj, fj.objective_vars.begin(), fj.objective_vars.end(), [fj] __device__(i_t var_idx) {
+      return fj.jump_move_delta[var_idx];
+    });
 }
 
 template <typename i_t, typename f_t, i_t TPB>
 DI thrust::tuple<i_t, f_t, typename fj_t<i_t, f_t>::move_score_t>
 best_breakthrough_move_at_local_min(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
 {
-  return gridwide_reduce_best_move<i_t, f_t, TPB, /*WeakTabu=*/false>(
-    fj, fj.objective_vars, [fj] __device__(i_t var_idx) {
+  return gridwide_reduce_best_move<i_t, f_t, TPB, /*WeakTabu=*/false, /*recompute_score=*/true>(
+    fj, fj.objective_vars.begin(), fj.objective_vars.end(), [fj] __device__(i_t var_idx) {
       return get_breakthrough_move<i_t, f_t>(fj, var_idx) - fj.incumbent_assignment[var_idx];
     });
 }
@@ -1244,17 +1375,24 @@ best_breakthrough_move_at_local_min(typename fj_t<i_t, f_t>::climber_data_t::vie
 // when we reach the bottom of a greedy descent, increase the weight of the violated constraints
 // to escape the local minimum (as outlined in the paper)
 template <typename i_t, typename f_t>
-__global__ void update_search_weights_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
+__global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
 {
   raft::random::PCGenerator rng(fj.settings->seed + *fj.iterations, 0, 0);
   __shared__ typename fj_t<i_t, f_t>::move_score_t shmem[2 * raft::WarpSize];
   if (*fj.break_condition) return;
   // did we reach a local minimum?
   if (*fj.selected_var != std::numeric_limits<i_t>::max()) return;
+
+  auto best_score = fj_t<i_t, f_t>::move_score_t::invalid();
+  i_t best_var    = std::numeric_limits<i_t>::max();
+  f_t best_delta  = 0;
+
+  char best_movetype = 'M';
+
   // Local minimum, update weights.
   if (fj.settings->update_weights) update_weights<i_t, f_t>(fj);
 
-  cuopt_assert(blockDim.x == TPB_updateweights, "invalid TPB");
+  cuopt_assert(blockDim.x == TPB_localmin, "invalid TPB");
 
   if (blockIdx.x == 0) {
     bool improving = save_best_solution<i_t, f_t>(fj);
@@ -1269,15 +1407,11 @@ __global__ void update_search_weights_kernel(typename fj_t<i_t, f_t>::climber_da
   // if we're in greedy-descent mode, stop here.
   if (fj.settings->mode == fj_mode_t::GREEDY_DESCENT) return;
 
-  auto best_score = fj_t<i_t, f_t>::move_score_t::invalid();
-  i_t best_var    = std::numeric_limits<i_t>::max();
-  f_t best_delta  = 0;
-
   // Pick the best move among the variables involved in a random violated constraint.
   if (!fj.violated_constraints.empty()) {
     cg::this_grid().sync();
     thrust::tie(best_var, best_delta, best_score) =
-      best_random_mtm_move<i_t, f_t, TPB_updateweights>(fj);
+      best_random_mtm_move<i_t, f_t, TPB_localmin>(fj);
     if (FIRST_THREAD && best_score.valid())
       cuopt_assert(fj.pb.check_variable_within_bounds(
                      best_var, fj.incumbent_assignment[best_var] + best_delta),
@@ -1286,18 +1420,41 @@ __global__ void update_search_weights_kernel(typename fj_t<i_t, f_t>::climber_da
 
   // also consider breakthrough moves
   if (*fj.best_objective < std::numeric_limits<f_t>::infinity() &&
-      *fj.incumbent_objective >
-        *fj.best_objective - fj.settings->parameters.breakthrough_move_epsilon) {
+      *fj.incumbent_objective > *fj.best_objective) {
     cg::this_grid().sync();
     auto [bm_best_var, bm_best_delta, bm_best_score] =
-      best_breakthrough_move_at_local_min<i_t, f_t, TPB_updateweights>(fj);
+      best_breakthrough_move_at_local_min<i_t, f_t, TPB_localmin>(fj);
     if (bm_best_score > best_score) {
-      best_score = bm_best_score;
-      best_var   = bm_best_var;
-      best_delta = bm_best_delta;
+      best_score    = bm_best_score;
+      best_var      = bm_best_var;
+      best_delta    = bm_best_delta;
+      best_movetype = 'B';
       cuopt_assert(fj.pb.check_variable_within_bounds(
                      best_var, fj.incumbent_assignment[best_var] + best_delta),
                    "assignment not within bounds");
+    }
+  }
+
+  if (FIRST_THREAD) *fj.selected_var = best_var;
+  cg::this_grid().sync();
+  // still nothing? try sat MTM moves if we are in the feasible region
+  // Attempt to find a valid move by going over MTM moves in valid constraints
+  if (*fj.selected_var == std::numeric_limits<i_t>::max() &&
+      *fj.incumbent_objective < std::numeric_limits<f_t>::infinity()) {
+    auto [sat_best_var, sat_best_delta, sat_best_score] =
+      best_sat_cstr_mtm_move<i_t, f_t, TPB_localmin>(fj);
+
+    if (FIRST_THREAD && sat_best_score.valid())
+      cuopt_assert(fj.pb.check_variable_within_bounds(
+                     sat_best_var, fj.incumbent_assignment[sat_best_var] + sat_best_delta),
+                   "assignment not within bounds");
+
+    if (sat_best_score.base > 0 && sat_best_score > best_score) {
+      if (FIRST_THREAD) {
+        best_score = sat_best_score;
+        best_var   = sat_best_var;
+        best_delta = sat_best_delta;
+      }
     }
   }
 
@@ -1340,13 +1497,15 @@ __global__ void update_search_weights_kernel(typename fj_t<i_t, f_t>::climber_da
     const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);   \
   template __global__ void load_balancing_mtm_compute_scores<int, F_TYPE>(            \
     const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);   \
+  template __global__ void load_balancing_sanity_checks<int, F_TYPE>(                 \
+    const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);   \
   template __global__ void init_lhs_and_violation<int, F_TYPE>(                       \
     typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
   template __global__ void update_lift_moves_kernel<int, F_TYPE>(                     \
     typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
   template __global__ void update_breakthrough_moves_kernel<int, F_TYPE>(             \
     typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
-  template __global__ void update_search_weights_kernel<int, F_TYPE>(                 \
+  template __global__ void handle_local_minimum_kernel<int, F_TYPE>(                  \
     typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
   template __global__ void update_assignment_kernel<int, F_TYPE>(                     \
     typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool IgnoreLoadBalancing); \
@@ -1354,9 +1513,17 @@ __global__ void update_search_weights_kernel(typename fj_t<i_t, f_t>::climber_da
     typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
   template __global__ void update_best_solution_kernel<int, F_TYPE>(                  \
     typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
-  template __global__ void reset_moves_kernel<int, F_TYPE, false>(                    \
+  template __global__ void                                                            \
+  compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, false>(         \
     typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool);                     \
-  template __global__ void reset_moves_kernel<int, F_TYPE, true>(                     \
+  template __global__ void                                                            \
+  compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, true>(          \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool);                     \
+  template __global__ void                                                            \
+  compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_SATISFIED, false>(        \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool);                     \
+  template __global__ void                                                            \
+  compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_SATISFIED, true>(         \
     typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool);                     \
   template __global__ void select_variable_kernel<int, F_TYPE>(                       \
     typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);

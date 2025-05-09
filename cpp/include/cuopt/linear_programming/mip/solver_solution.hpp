@@ -53,6 +53,8 @@ class mip_solution_t : public base_solution_t {
                  f_t max_constraint_violation,
                  f_t max_int_violation,
                  f_t max_variable_bound_violation,
+                 i_t num_nodes,
+                 i_t num_simplex_iterations,
                  std::vector<rmm::device_uvector<f_t>> solution_pool = {});
 
   mip_solution_t(mip_termination_status_t termination_status, rmm::cuda_stream_view stream_view);
@@ -71,6 +73,8 @@ class mip_solution_t : public base_solution_t {
   f_t get_max_constraint_violation() const;
   f_t get_max_int_violation() const;
   f_t get_max_variable_bound_violation() const;
+  i_t get_num_nodes() const;
+  i_t get_num_simplex_iterations() const;
   const std::vector<std::string>& get_variable_names() const;
   const std::vector<rmm::device_uvector<f_t>>& get_solution_pool() const;
   void write_to_sol_file(std::string_view filename, rmm::cuda_stream_view stream_view) const;
@@ -87,6 +91,8 @@ class mip_solution_t : public base_solution_t {
   f_t max_constraint_violation_;
   f_t max_int_violation_;
   f_t max_variable_bound_violation_;
+  i_t num_nodes_;
+  i_t num_simplex_iterations_;
   std::vector<rmm::device_uvector<f_t>> solution_pool_;
 };
 

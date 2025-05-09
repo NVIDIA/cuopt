@@ -21,10 +21,7 @@ class DataModel(data_model_wrapper.DataModel):
     """
     Initialize a DataModel which represents a Linear Program.
 
-    Standard form representation follows the description from the wiki article
-    here: https://en.wikipedia.org/wiki/Linear_programming#Standard_form.
-    In other words, this structure stores all information used to represent the
-    following LP equation:
+    A linear programming optimization problem is defined as follows:
     Minimize :
 
       dot(c, x)

@@ -84,6 +84,8 @@ struct mip_ret_t {
   double max_constraint_violation_;
   double max_int_violation_;
   double max_variable_bound_violation_;
+  int nodes_;
+  int simplex_iterations_;
 };
 
 struct solver_ret_t {

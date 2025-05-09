@@ -38,14 +38,12 @@ enum class var_t { CONTINUOUS = 0, INTEGER };
 enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
 
 /**
- * @brief Standard form representation of a Linear Program with a twist from the standard form for
- * Quadratic Programs.
+ * @brief A representation of a linear programming (LP) optimization problem
  *
  * @tparam f_t  Data type of the variables and their weights in the equations
  *
- * Standard form representation follows the description from the wiki article here:
- * https://en.wikipedia.org/wiki/Linear_programming#Standard_form. In other words,
- * this structure stores all information used to represent the following LP equation:
+ * This structure stores all the information necessary to represent the following LP:
+ *
  * <pre>
  * Minimize:
  *   dot(c, x)
@@ -63,7 +61,7 @@ enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
  *
  * Objective value can be scaled and offset accordingly:
  * objective_scaling_factor * (dot(c, x) + objective_offset)
- * please refeto to the `set_objective_scaling_factor()` and `set_objective_offset()` method.
+ * please refer to the `set_objective_scaling_factor()` and `set_objective_offset()` methods.
  */
 template <typename i_t, typename f_t>
 class optimization_problem_t {

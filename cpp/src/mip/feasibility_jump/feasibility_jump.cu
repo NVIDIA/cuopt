@@ -41,7 +41,11 @@
 
 namespace cuopt::linear_programming::detail {
 
+#if FJ_SINGLE_STEP
+static constexpr int iterations_per_graph = 1;
+#else
 static constexpr int iterations_per_graph = 50;
+#endif
 
 __constant__ fj_settings_t device_settings;
 
@@ -71,11 +75,13 @@ fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_, fj_settings_t in_
   setval_launch_dims = get_launch_dims_max_occupancy(
     (void*)update_assignment_kernel<i_t, f_t>, TPB_setval, pb_ptr->handle_ptr);
   resetmoves_launch_dims = get_launch_dims_max_occupancy(
-    (void*)reset_moves_kernel<i_t, f_t>, TPB_resetmoves, pb_ptr->handle_ptr);
-  resetmoves_bin_launch_dims = get_launch_dims_max_occupancy(
-    (void*)reset_moves_kernel<i_t, f_t, true>, TPB_resetmoves, pb_ptr->handle_ptr);
+    (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED>, TPB_resetmoves, pb_ptr->handle_ptr);
+  resetmoves_bin_launch_dims =
+    get_launch_dims_max_occupancy((void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED, true>,
+                                  TPB_resetmoves,
+                                  pb_ptr->handle_ptr);
   update_weights_launch_dims = get_launch_dims_max_occupancy(
-    (void*)update_search_weights_kernel<i_t, f_t>, TPB_updateweights, pb_ptr->handle_ptr);
+    (void*)handle_local_minimum_kernel<i_t, f_t>, TPB_localmin, pb_ptr->handle_ptr);
   lift_move_launch_dims = get_launch_dims_max_occupancy(
     (void*)update_lift_moves_kernel<i_t, f_t>, TPB_liftmoves, pb_ptr->handle_ptr);
   load_balancing_workid_map_launch_dims = get_launch_dims_max_occupancy(
@@ -113,18 +119,17 @@ fj_t<i_t, f_t>::~fj_t()
 }
 
 template <typename i_t, typename f_t>
-void fj_t<i_t, f_t>::reset_weights(const rmm::cuda_stream_view& climber_stream)
+void fj_t<i_t, f_t>::reset_weights(const rmm::cuda_stream_view& climber_stream, f_t weight)
 {
   // unless reset explicitly, the values are kept across runs and across climbers
-  constexpr f_t ten = 10.;
-  max_cstr_weight.set_value_async(ten, climber_stream);
+  max_cstr_weight.set_value_async(weight, climber_stream);
   objective_weight.set_value_to_zero_async(climber_stream);
   thrust::uninitialized_fill(
-    rmm::exec_policy(climber_stream), cstr_weights.begin(), cstr_weights.end(), ten);
+    rmm::exec_policy(climber_stream), cstr_weights.begin(), cstr_weights.end(), weight);
   thrust::uninitialized_fill(
-    rmm::exec_policy(climber_stream), cstr_left_weights.begin(), cstr_left_weights.end(), ten);
+    rmm::exec_policy(climber_stream), cstr_left_weights.begin(), cstr_left_weights.end(), weight);
   thrust::uninitialized_fill(
-    rmm::exec_policy(climber_stream), cstr_right_weights.begin(), cstr_right_weights.end(), ten);
+    rmm::exec_policy(climber_stream), cstr_right_weights.begin(), cstr_right_weights.end(), weight);
 }
 
 template <typename i_t, typename f_t>
@@ -164,6 +169,7 @@ fj_t<i_t, f_t>::climber_data_t::view_t fj_t<i_t, f_t>::climber_data_t::view()
   v.constraint_upper_bounds_csr = make_span(fj.constraint_upper_bounds_csr);
   v.cstr_coeff_reciprocal       = make_span(fj.cstr_coeff_reciprocal);
   v.incumbent_lhs               = make_span(incumbent_lhs);
+  v.incumbent_lhs_sumcomp       = make_span(incumbent_lhs_sumcomp);
   v.jump_move_scores            = make_span(jump_move_scores);
   v.jump_move_infeasibility     = make_span(jump_move_infeasibility);
   v.jump_move_delta             = make_span(jump_move_delta);
@@ -201,6 +207,7 @@ fj_t<i_t, f_t>::climber_data_t::view_t fj_t<i_t, f_t>::climber_data_t::view()
   v.best_excess                       = best_excess.data();
   v.best_l1_distance                  = best_l1_distance.data();
   v.best_objective                    = best_objective.data();
+  v.saved_solution_objective          = saved_solution_objective.data();
   v.incumbent_quality                 = incumbent_quality.data();
   v.incumbent_objective               = incumbent_objective.data();
   v.weight_update_increment           = fj.weight_update_increment;
@@ -298,6 +305,10 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
                climber->incumbent_lhs.end(),
                (f_t)0);
   thrust::fill(rmm::exec_policy(climber_stream),
+               climber->incumbent_lhs_sumcomp.begin(),
+               climber->incumbent_lhs_sumcomp.end(),
+               (f_t)0);
+  thrust::fill(rmm::exec_policy(climber_stream),
                climber->jump_move_scores.begin(),
                climber->jump_move_scores.end(),
                move_score_t::invalid());
@@ -379,10 +390,26 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
   f_t h_incumbent_obj = compute_objective_from_vec<i_t, f_t>(
     climber->incumbent_assignment, pb_ptr->objective_coefficients, pb_ptr->handle_ptr);
   climber->incumbent_objective.set_value_async(h_incumbent_obj, climber_stream);
+  f_t inf = std::numeric_limits<f_t>::infinity();
+  climber->best_objective.set_value_async(inf, climber_stream);
+  climber->saved_solution_objective.set_value_async(inf, climber_stream);
   climber->violation_score.set_value_to_zero_async(climber_stream);
   climber->best_l1_distance.set_value_to_zero_async(climber_stream);
   climber->weighted_violation_score.set_value_to_zero_async(climber_stream);
   init_lhs_and_violation<i_t, f_t><<<256, 256, 0, climber_stream.value()>>>(view);
+
+  // initialize the best_objective values according to the initial assignment
+  f_t best_obj = compute_objective_from_vec<i_t, f_t>(
+    climber->incumbent_assignment, pb_ptr->objective_coefficients, pb_ptr->handle_ptr);
+  if (climber->violated_constraints.set_size.value(climber_stream) == 0) {
+    climber->best_excess.set_value_to_zero_async(climber_stream);
+    climber->best_objective.set_value_async(best_obj, climber_stream);
+    climber->saved_solution_objective.set_value_async(best_obj, climber_stream);
+  } else {
+    f_t excess = climber->violation_score.value(climber_stream);
+    climber->best_excess.set_value_async(excess, climber_stream);
+  }
+  climber_stream.synchronize();
 
   climber->break_condition.set_value_to_zero_async(climber_stream);
   climber->temp_break_condition.set_value_to_zero_async(climber_stream);
@@ -396,6 +423,8 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
   climber->iterations.set_value_to_zero_async(climber_stream);
   climber->full_refresh_iteration.set_value_to_zero_async(climber_stream);
   climber->iterations_until_feasible_counter.set_value_to_zero_async(climber_stream);
+
+  climber_stream.synchronize();
 
   view = climber->view();
 
@@ -563,6 +592,11 @@ void fj_t<i_t, f_t>::load_balancing_score_update(const rmm::cuda_stream_view& st
   if (pb_ptr->binary_indices.size() > 0) data.load_balancing_bin_finished_event.stream_wait(stream);
   if (pb_ptr->nonbinary_indices.size() > 0)
     data.load_balancing_nonbin_finished_event.stream_wait(stream);
+
+#if FJ_DEBUG_LOAD_BALANCING
+  expand_device_copy(data.jump_move_delta_check, data.jump_move_delta, stream);
+  expand_device_copy(data.jump_move_score_check, data.jump_move_scores, stream);
+#endif
 }
 
 template <typename i_t, typename f_t>
@@ -583,10 +617,19 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
   // ensure an updated copy of the settings is used device-side
   raft::copy(v.settings, &settings, 1, climber_stream);
 
-  bool is_binary_pb = pb_ptr->n_variables == thrust::count(handle_ptr->get_thrust_policy(),
+  bool is_binary_pb       = pb_ptr->n_variables == thrust::count(handle_ptr->get_thrust_policy(),
                                                            pb_ptr->is_binary_variable.begin(),
                                                            pb_ptr->is_binary_variable.end(),
                                                            1);
+  bool use_load_balancing = false;
+  if (settings.load_balancing_mode == fj_load_balancing_mode_t::ALWAYS_OFF) {
+    use_load_balancing = false;
+  } else if (settings.load_balancing_mode == fj_load_balancing_mode_t::ALWAYS_ON) {
+    use_load_balancing = true;
+  } else if (settings.load_balancing_mode == fj_load_balancing_mode_t::AUTO) {
+    use_load_balancing =
+      pb_ptr->n_variables > settings.parameters.load_balancing_codepath_min_varcount;
+  }
 
   cudaGraph_t graph;
   void* kernel_args[]            = {&v};
@@ -624,25 +667,43 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
         }
 
         // don't run the LB codepath if this is a small instance (n_var below threshold)
-        if (pb_ptr->n_variables > settings.parameters.load_balancing_codepath_min_varcount) {
+        if (use_load_balancing) {
           load_balancing_score_update(climber_stream, climber_idx);
         } else {
           if (is_binary_pb) {
-            cudaLaunchCooperativeKernel((void*)reset_moves_kernel<i_t, f_t, true>,
-                                        grid_resetmoves_bin,
-                                        blocks_resetmoves_bin,
-                                        reset_moves_args,
-                                        0,
-                                        climber_stream);
+            cudaLaunchCooperativeKernel(
+              (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED, true>,
+              grid_resetmoves_bin,
+              blocks_resetmoves_bin,
+              reset_moves_args,
+              0,
+              climber_stream);
           } else {
-            cudaLaunchCooperativeKernel((void*)reset_moves_kernel<i_t, f_t, false>,
-                                        grid_resetmoves,
-                                        blocks_resetmoves,
-                                        reset_moves_args,
-                                        0,
-                                        climber_stream);
+            cudaLaunchCooperativeKernel(
+              (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED, false>,
+              grid_resetmoves,
+              blocks_resetmoves,
+              reset_moves_args,
+              0,
+              climber_stream);
           }
         }
+#if FJ_DEBUG_LOAD_BALANCING
+        if (use_load_balancing) {
+          cudaLaunchCooperativeKernel((void*)compute_mtm_moves_kernel<i_t, f_t>,
+                                      grid_resetmoves_bin,
+                                      blocks_resetmoves_bin,
+                                      reset_moves_args,
+                                      0,
+                                      climber_stream);
+          cudaLaunchCooperativeKernel((void*)load_balancing_sanity_checks<i_t, f_t>,
+                                      512,
+                                      128,
+                                      kernel_args,
+                                      0,
+                                      climber_stream);
+        }
+#endif
 
         cudaLaunchKernel((void*)update_lift_moves_kernel<i_t, f_t>,
                          grid_lift_move,
@@ -675,7 +736,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                        0,
                        climber_stream);
 
-      cudaLaunchCooperativeKernel((void*)update_search_weights_kernel<i_t, f_t>,
+      cudaLaunchCooperativeKernel((void*)handle_local_minimum_kernel<i_t, f_t>,
                                   grid_update_weights,
                                   blocks_update_weights,
                                   kernel_args,
@@ -735,7 +796,6 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
     objective_weight.set_value_to_zero_async(handle_ptr->get_stream());
   }
   f_t obj = -std::numeric_limits<f_t>::infinity();
-  data.best_excess.set_value_async(obj, handle_ptr->get_stream());
   data.incumbent_quality.set_value_async(obj, handle_ptr->get_stream());
 
   cuopt_assert((settings.termination & fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT) ||
@@ -758,20 +818,23 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
       limit_reached = true;
     }
 
+#if !FJ_SINGLE_STEP
     if (steps % 500 == 0)
+#endif
+    {
       CUOPT_LOG_TRACE(
-        "------- " FJ_LOG_PREFIX
-        "step %d viol %.3f [%d], quality %.3f, obj %.3f, best quality %.3f, minima %d, maxw %g, "
-        "objw %g\n",
+        "FJ "
+        "step %d viol %.2g [%d], obj %.8g, best %.8g, mins %d, maxw %g, "
+        "objw %g",
         steps,
         data.violation_score.value(climber_stream),
         data.violated_constraints.set_size.value(climber_stream),
-        -data.incumbent_quality.value(climber_stream),
         data.incumbent_objective.value(climber_stream),
         data.best_objective.value(climber_stream),
         data.local_minimums_reached.value(climber_stream),
         max_cstr_weight.value(climber_stream),
         objective_weight.value(climber_stream));
+    }
 
     if (!limit_reached) { run_step_device(climber_stream, climber_idx); }
 
@@ -785,7 +848,6 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
     // feasible solution found!*view.break_condition
     if (steps % settings.parameters.sync_period == 0 || limit_reached) {
       i_t break_condition = data.break_condition.value(climber_stream);
-      CUOPT_LOG_TRACE("mode %d break_condition %d", (i_t)settings.mode, break_condition);
       if (settings.mode == fj_mode_t::GREEDY_DESCENT) {
         if (!limit_reached && !break_condition) { continue; }
       }
@@ -834,10 +896,11 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
                   same_sol,
                   max_cstr_weight.value(climber_stream));
 #endif
-  CUOPT_LOG_TRACE("EXIT step %d, best objective %f best_excess %f",
+  CUOPT_LOG_TRACE("EXIT step %d, best objective %f best_excess %f, feas %d",
                   data.iterations.value(climber_stream),
-                  -data.best_excess.value(climber_stream),
-                  solution.get_total_excess());
+                  solution.get_user_objective(),
+                  solution.get_total_excess(),
+                  solution.get_feasible());
 
   return steps;
 }
@@ -884,6 +947,7 @@ void fj_t<i_t, f_t>::resize_vectors(const raft::handle_t* handle_ptr)
   climbers[0]->farthest_l1_sol.resize(pb_ptr->n_variables, handle_ptr->get_stream());
   climbers[0]->incumbent_assignment.resize(pb_ptr->n_variables, handle_ptr->get_stream());
   climbers[0]->incumbent_lhs.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
+  climbers[0]->incumbent_lhs_sumcomp.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
   climbers[0]->jump_move_scores.resize(pb_ptr->n_variables, handle_ptr->get_stream());
   climbers[0]->jump_move_delta.resize(pb_ptr->n_variables, handle_ptr->get_stream());
   climbers[0]->jump_move_infeasibility.resize(pb_ptr->n_variables, handle_ptr->get_stream());
@@ -933,6 +997,8 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
   pb_ptr->check_problem_representation(true);
   resize_vectors(solution.handle_ptr);
 
+  bool is_initial_feasible = solution.compute_feasibility();
+
   // TODO only call this when the size is different
   device_init(handle_ptr->get_stream());
   // TODO check if we are returning the initial solution
@@ -960,11 +1026,21 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
 
   f_t effort_rate = (f_t)iterations / timer.elapsed_time();
 
-  CUOPT_LOG_TRACE("GPU solver took %g\n", timer.elapsed_time());
-  CUOPT_LOG_TRACE("limit reached, effort rate %g steps/secm %d steps\n", effort_rate, iterations);
+  CUOPT_LOG_TRACE("GPU solver took %g", timer.elapsed_time());
+  CUOPT_LOG_TRACE("limit reached, effort rate %g steps/secm %d steps", effort_rate, iterations);
   reset_cuda_graph();
   cuopt_assert(solution.test_number_all_integer(), "All integers must be rounded");
-  return solution.compute_feasibility();
+  bool is_new_feasible = solution.compute_feasibility();
+
+  if (is_initial_feasible && !is_new_feasible) {
+    CUOPT_LOG_ERROR(
+      "Feasibility jump caused feasible solution to become infeasible\n"
+      "Best excess is %g",
+      climbers[0]->best_excess.value(handle_ptr->get_stream()));
+    cuopt_assert(false, "Feasibility jump caused feasible solution to become infeasible");
+  }
+
+  return is_new_feasible;
 }
 
 #if MIP_INSTANTIATE_FLOAT

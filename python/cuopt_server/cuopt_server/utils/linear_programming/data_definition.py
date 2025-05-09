@@ -578,7 +578,7 @@ class SolutionData(StrictModel):
     )
     solver_time: float = Field(
         default=None,
-        description=("Returns the engine solve time in milliseconds"),
+        description=("Returns the engine solve time in seconds"),
     )
     primal_objective: float = Field(
         default=None,

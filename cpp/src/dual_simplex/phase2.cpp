@@ -325,6 +325,7 @@ i_t phase2_ratio_test(const lp_problem_t<i_t, f_t>& lp,
 template <typename i_t, typename f_t>
 i_t bound_flipping_ratio_test(const lp_problem_t<i_t, f_t>& lp,
                               const simplex_solver_settings_t<i_t, f_t>& settings,
+                              f_t start_time,
                               const std::vector<variable_status_t>& vstatus,
                               const std::vector<i_t>& nonbasic_list,
                               const std::vector<f_t>& x,
@@ -420,6 +421,12 @@ i_t bound_flipping_ratio_test(const lp_problem_t<i_t, f_t>& lp,
     } else {
       // we hit a variable that is not bounded. Exit
       break;
+    }
+
+    if (toc(start_time) > settings.time_limit) { return -2; }
+    if (settings.concurrent_halt != nullptr &&
+        settings.concurrent_halt->load(std::memory_order_acquire) == 1) {
+      return -3;
     }
   }
   // step_length, nonbasic_entering, and entering_index are defined after the
@@ -1327,6 +1334,7 @@ dual::status_t dual_phase2(i_t phase,
     } else if (bound_flip_ratio) {
       entering_index = phase2::bound_flipping_ratio_test(lp,
                                                          settings,
+                                                         start_time,
                                                          vstatus,
                                                          nonbasic_list,
                                                          x,
@@ -1340,6 +1348,8 @@ dual::status_t dual_phase2(i_t phase,
       entering_index = phase2::phase2_ratio_test(
         lp, settings, vstatus, nonbasic_list, z, delta_z, step_length, nonbasic_entering_index);
     }
+    if (entering_index == -2) { return dual::status_t::TIME_LIMIT; }
+    if (entering_index == -3) { return dual::status_t::CONCURRENT_LIMIT; }
     if (entering_index == -1) {
       if (primal_infeasibility > settings.primal_tol &&
           max_val < settings.steepest_edge_primal_tol) {

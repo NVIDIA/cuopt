@@ -168,6 +168,7 @@ cdef extern from "cuopt/linear_programming/pdlp/solver_solution.hpp" namespace "
         DualInfeasible "cuopt::linear_programming::pdlp_termination_status_t::DualInfeasible" # noqa
         IterationLimit "cuopt::linear_programming::pdlp_termination_status_t::IterationLimit" # noqa
         TimeLimit "cuopt::linear_programming::pdlp_termination_status_t::TimeLimit" # noqa
+        ConcurrentLimit "cuopt::linear_programming::pdlp_termination_status_t::ConcurrentLimit" # noqa
         PrimalFeasible "cuopt::linear_programming::pdlp_termination_status_t::PrimalFeasible" # noqa
 
 
@@ -215,6 +216,8 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         double max_constraint_violation_
         double max_int_violation_
         double max_variable_bound_violation_
+        int nodes_
+        int simplex_iterations_
 
     cdef cppclass solver_ret_t:
         problem_category_t problem_type

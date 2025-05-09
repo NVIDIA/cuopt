@@ -222,27 +222,12 @@ void setup_device_symbols()
 std::atomic<int> global_concurrent_halt;
 
 template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
-  detail::problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
+optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
+  detail::problem_t<i_t, f_t>& problem,
+  const dual_simplex::lp_solution_t<i_t, f_t>& solution,
+  dual_simplex::lp_status_t status,
+  f_t duration)
 {
-  dual_simplex::user_problem_t<i_t, f_t> user_problem =
-    cuopt_problem_to_simplex_problem<i_t, f_t>(problem);
-
-  auto start_solver = std::chrono::high_resolution_clock::now();
-
-  dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-  dual_simplex_settings.time_limit =
-    settings.get_time_limit().value_or(dual_simplex_settings.time_limit);
-  dual_simplex_settings.iteration_limit = settings.get_iteration_limit();
-  dual_simplex_settings.concurrent_halt = settings.get_concurrent_halt();
-  if (dual_simplex_settings.concurrent_halt != nullptr) {
-    // Don't show the dual simplex log in concurrent mode. Show the PDLP log instead
-    dual_simplex_settings.log.log = false;
-  }
-
-  dual_simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
-  auto status =
-    dual_simplex::solve_linear_program<i_t, f_t>(user_problem, dual_simplex_settings, solution);
   auto to_termination_status = [](dual_simplex::lp_status_t status) {
     switch (status) {
       case dual_simplex::lp_status_t::OPTIMAL: return pdlp_termination_status_t::Optimal;
@@ -265,13 +250,11 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
   rmm::device_uvector<f_t> final_reduced_cost =
     cuopt::device_copy(solution.z, problem.handle_ptr->get_stream());
   problem.handle_ptr->sync_stream();
-  auto end      = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
 
   // Should be filled with more information from dual simplex
   typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t info;
   info.primal_objective      = solution.user_objective;
-  info.solve_time            = duration.count();
+  info.solve_time            = duration;
   info.number_of_steps_taken = solution.iterations;
 
   auto sol = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
@@ -282,14 +265,57 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
                                                        problem.row_names,
                                                        info,
                                                        to_termination_status(status));
+
+  problem.handle_ptr->sync_stream();
+  return sol;
+}
+
+template <typename i_t, typename f_t>
+std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t> run_dual_simplex(
+  dual_simplex::user_problem_t<i_t, f_t>& user_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  auto start_solver = std::chrono::high_resolution_clock::now();
+
+  dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
+  dual_simplex_settings.time_limit =
+    settings.get_time_limit().value_or(dual_simplex_settings.time_limit);
+  dual_simplex_settings.iteration_limit = settings.get_iteration_limit();
+  dual_simplex_settings.concurrent_halt = settings.get_concurrent_halt();
+  if (dual_simplex_settings.concurrent_halt != nullptr) {
+    // Don't show the dual simplex log in concurrent mode. Show the PDLP log instead
+    dual_simplex_settings.log.log = false;
+  }
+
+  dual_simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
+  auto status =
+    dual_simplex::solve_linear_program<i_t, f_t>(user_problem, dual_simplex_settings, solution);
+
+  auto end      = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
+
   CUOPT_LOG_INFO("Dual simplex finished in %.2f seconds", duration.count() / 1000.0);
 
   if (settings.get_concurrent_halt() != nullptr) {
     // We finished. Tell PDLP to stop if it is still running.
     settings.get_concurrent_halt()->store(1, std::memory_order_release);
   }
-  problem.handle_ptr->sync_stream();
-  return sol;
+
+  return {std::move(solution), status, duration.count() / 1000.0};
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
+  detail::problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  // Convert data structures to dual simplex format and back
+  dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
+    cuopt_problem_to_simplex_problem<i_t, f_t>(problem);
+  auto sol_dual_simplex = run_dual_simplex(dual_simplex_problem, settings);
+  return convert_dual_simplex_sol(problem,
+                                  std::get<0>(sol_dual_simplex),
+                                  std::get<1>(sol_dual_simplex),
+                                  std::get<2>(sol_dual_simplex));
 }
 
 template <typename i_t, typename f_t>
@@ -302,14 +328,14 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
   auto sol      = solver.run_solver(start_solver);  // Passing it for time limit
   auto end      = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
-  sol.set_solve_time(duration.count());
+  sol.set_solve_time(duration.count() / 1000.0);
   CUOPT_LOG_INFO("PDLP finished");
   if (sol.get_termination_status() != pdlp_termination_status_t::ConcurrentLimit) {
     CUOPT_LOG_INFO("Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs",
                    sol.get_termination_status_string().c_str(),
                    sol.get_objective_value(),
                    sol.get_additional_termination_information().number_of_steps_taken,
-                   sol.get_solve_time() / 1000.0);
+                   sol.get_solve_time());
   }
 
   const bool do_crossover = settings.get_crossover();
@@ -362,7 +388,7 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     auto crossover_end         = std::chrono::high_resolution_clock::now();
     auto crossover_duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(crossover_end - start_solver);
-    info.solve_time    = crossover_duration.count();
+    info.solve_time    = crossover_duration.count() / 1000.0;
     auto sol_crossover = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
                                                                    final_dual_solution,
                                                                    final_reduced_cost,
@@ -381,18 +407,16 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
 }
 
 template <typename i_t, typename f_t>
-void run_dual_simplex_thread(detail::problem_t<i_t, f_t>& problem,
-                             pdlp_solver_settings_t<i_t, f_t> const& settings,
-                             std::unique_ptr<optimization_problem_solution_t<i_t, f_t>>& sol_ptr)
+void run_dual_simplex_thread(
+  dual_simplex::user_problem_t<i_t, f_t>& problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  std::unique_ptr<
+    std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t>>& sol_ptr)
 {
-  pdlp_solver_settings_t<i_t, f_t> thread_settings(settings, problem.handle_ptr->get_stream());
-
-  // Load address of concurrent halt into settings
-  thread_settings.set_concurrent_halt(&global_concurrent_halt);
-
   // We will return the solution from the thread as a unique_ptr
-  sol_ptr = std::make_unique<optimization_problem_solution_t<i_t, f_t>>(
-    run_dual_simplex(problem, thread_settings));
+  sol_ptr = std::make_unique<
+    std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t>>(
+    run_dual_simplex(problem, settings));
 }
 
 template <typename i_t, typename f_t>
@@ -412,11 +436,17 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   global_concurrent_halt.store(0, std::memory_order_release);
   settings_pdlp.set_concurrent_halt(&global_concurrent_halt);
 
+  // Initialize the dual simplex structures before we run PDLP.
+  // Otherwise, CUDA API calls to the problem stream may occur in both threads and throw graph
+  // capture off
+  dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
+    cuopt_problem_to_simplex_problem<i_t, f_t>(problem);
   // Create a thread for dual simplex
-  std::unique_ptr<optimization_problem_solution_t<i_t, f_t>> sol_dual_simplex_ptr;
+  std::unique_ptr<std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t>>
+    sol_dual_simplex_ptr;
   std::thread dual_simplex_thread(run_dual_simplex_thread<i_t, f_t>,
-                                  std::ref(problem),
-                                  std::ref(settings),
+                                  std::ref(dual_simplex_problem),
+                                  std::ref(settings_pdlp),
                                   std::ref(sol_dual_simplex_ptr));
 
   // Run pdlp in the main thread
@@ -424,24 +454,33 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
 
   // Wait for dual simplex thread to finish
   dual_simplex_thread.join();
+
+  // copy the dual simplex solution to the device
+  auto sol_dual_simplex = convert_dual_simplex_sol(problem,
+                                                   std::get<0>(*sol_dual_simplex_ptr),
+                                                   std::get<1>(*sol_dual_simplex_ptr),
+                                                   std::get<2>(*sol_dual_simplex_ptr));
+
   f_t end_time = dual_simplex::toc(start_time);
   CUOPT_LOG_INFO("Concurrent time:  %.3fs", end_time);
   // Check status to see if we should return the pdlp solution or the dual simplex solution
-  if (sol_dual_simplex_ptr->get_termination_status() == pdlp_termination_status_t::Optimal ||
-      sol_dual_simplex_ptr->get_termination_status() ==
-        pdlp_termination_status_t::PrimalInfeasible ||
-      sol_dual_simplex_ptr->get_termination_status() == pdlp_termination_status_t::DualInfeasible) {
+  if (sol_dual_simplex.get_termination_status() == pdlp_termination_status_t::Optimal ||
+      sol_dual_simplex.get_termination_status() == pdlp_termination_status_t::PrimalInfeasible ||
+      sol_dual_simplex.get_termination_status() == pdlp_termination_status_t::DualInfeasible) {
     CUOPT_LOG_INFO("Solved with dual simplex");
-    sol_pdlp.copy_from(op_problem.get_handle_ptr(), *sol_dual_simplex_ptr);
-    sol_pdlp.set_solve_time(end_time * 1000.0);
+    sol_pdlp.copy_from(op_problem.get_handle_ptr(), sol_dual_simplex);
+    sol_pdlp.set_solve_time(end_time);
     CUOPT_LOG_INFO("Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs",
                    sol_pdlp.get_termination_status_string().c_str(),
                    sol_pdlp.get_objective_value(),
                    sol_pdlp.get_additional_termination_information().number_of_steps_taken,
                    end_time);
     return sol_pdlp;
+  } else if (sol_pdlp.get_termination_status() == pdlp_termination_status_t::Optimal) {
+    CUOPT_LOG_INFO("Solved with PDLP");
+    return sol_pdlp;
   } else {
-    CUOPT_LOG_INFO("Solved with PDLP\n");
+    CUOPT_LOG_INFO("Using PDLP solve info");
     return sol_pdlp;
   }
 }
