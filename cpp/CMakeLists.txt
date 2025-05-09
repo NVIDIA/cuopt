@@ -28,7 +28,7 @@ rapids_cuda_init_architectures(CUOPT)
 project(
   CUOPT
   VERSION 25.05.00
-  LANGUAGES CXX CUDA
+  LANGUAGES CXX CUDA C
 )
 
 if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_LESS 12.0.0)
@@ -39,8 +39,14 @@ endif()
 set(DEPENDENT_LIB_MAJOR_VERSION "25")
 set(DEPENDENT_LIB_MINOR_VERSION "04")
 
+# Define the semantic version, which is separate from the release name (i.e 25.05)
+set(CUOPT_SEMANTIC_VERSION_MAJOR "0")
+set(CUOPT_SEMANTIC_VERSION_MINOR "0")
+set(CUOPT_SEMANTIC_VERSION_PATCH "0")
+
 # Write the version header
 rapids_cmake_write_version_file(include/cuopt/version_config.hpp)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/cuopt/semantic_version.hpp.in ${CMAKE_CURRENT_SOURCE_DIR}/include/cuopt/semantic_version.hpp)
 
 # ##################################################################################################
 # - build type ------------------------------------------------------------------------------------

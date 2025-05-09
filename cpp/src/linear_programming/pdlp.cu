@@ -406,10 +406,10 @@ void pdlp_solver_t<i_t, f_t>::record_best_primal_so_far(
 
   // First find best between current and average
 
-  const auto& current_quality =
-    current.get_convergence_information().to_primal_quality_adapter((i_t)termination_current);
-  const auto& average_quality =
-    average.get_convergence_information().to_primal_quality_adapter((i_t)termination_average);
+  const auto& current_quality = current.get_convergence_information().to_primal_quality_adapter(
+    termination_current == pdlp_termination_status_t::PrimalFeasible);
+  const auto& average_quality = average.get_convergence_information().to_primal_quality_adapter(
+    termination_average == pdlp_termination_status_t::PrimalFeasible);
   const auto& best_candidate = get_best_quality(current_quality, average_quality);
 
   // Then best between last and best_candidate

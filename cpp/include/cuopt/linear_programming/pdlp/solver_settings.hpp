@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/constants.h>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
 #include <optional>
 #include <raft/core/device_span.hpp>
@@ -25,6 +26,10 @@
 #include <atomic>
 
 namespace cuopt::linear_programming {
+
+// Forward declare solver_settings_t for friend class
+template <typename i_t, typename f_t>
+class solver_settings_t;
 
 /**
  * @brief Enum representing the different solver modes under which PDLP can operate.
@@ -38,7 +43,12 @@ namespace cuopt::linear_programming {
  * @note Default mode is Stable2.
  */
 // Forced to use an enum instead of an enum class for compatibility with the Cython layer
-enum pdlp_solver_mode_t { Stable1 = 0, Stable2, Methodical1, Fast1 };
+enum pdlp_solver_mode_t : int {
+  Stable1     = CUOPT_PDLP_SOLVER_MODE_STABLE1,
+  Stable2     = CUOPT_PDLP_SOLVER_MODE_STABLE2,
+  Methodical1 = CUOPT_PDLP_SOLVER_MODE_METHODICAL1,
+  Fast1       = CUOPT_PDLP_SOLVER_MODE_FAST1
+};
 
 /**
  * @brief Enum representing the different methods that can be used to solve the linear programming
@@ -50,7 +60,11 @@ enum pdlp_solver_mode_t { Stable1 = 0, Stable2, Methodical1, Fast1 };
  *
  * @note Default method is Concurrent.
  */
-enum method_t { Concurrent = 0, PDLP = 1, DualSimplex = 2 };
+enum method_t : int {
+  Concurrent  = CUOPT_METHOD_CONCURRENT,
+  PDLP        = CUOPT_METHOD_PDLP,
+  DualSimplex = CUOPT_METHOD_DUAL_SIMPLEX
+};
 
 template <typename i_t, typename f_t>
 class pdlp_solver_settings_t {
@@ -520,7 +534,7 @@ class pdlp_solver_settings_t {
   bool detect_infeasibility_{false};
   bool strict_infeasibility_{false};
   i_t iteration_limit_ = std::numeric_limits<i_t>::max();
-  std::optional<double> time_limit_;
+  double time_limit_{std::numeric_limits<double>::infinity()};
   pdlp_solver_mode_t solver_mode_{pdlp_solver_mode_t::Stable2};
   bool log_to_console_{true};
   std::string log_file_{""};
@@ -540,6 +554,8 @@ class pdlp_solver_settings_t {
   // For concurrent termination
   std::atomic<i_t>* concurrent_halt_;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
+
+  friend class solver_settings_t<i_t, f_t>;
 };
 
 }  // namespace cuopt::linear_programming

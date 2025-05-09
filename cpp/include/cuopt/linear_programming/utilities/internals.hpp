@@ -41,4 +41,13 @@ class lp_incumbent_sol_callback_t : public Callback {
 };
 
 }  // namespace internals
+
+namespace linear_programming {
+
+class base_solution_t {
+ public:
+  virtual bool is_mip() const = 0;
+};
+
+}  // namespace linear_programming
 }  // namespace cuopt

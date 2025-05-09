@@ -25,6 +25,7 @@
 #include <utilities/base_fixture.hpp>
 #include <utilities/common_utils.hpp>
 
+#include <cuopt/linear_programming/constants.h>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
@@ -73,7 +74,7 @@ TEST(pdlp_class, run_double)
     cuopt::mps_parser::parse_mps<int, double>(path, true);
 
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem);
-  EXPECT_EQ((int)solution.get_termination_status(), 1);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
   EXPECT_FALSE(is_incorrect_objective(
     afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
 }
@@ -98,7 +99,7 @@ TEST(pdlp_class, run_double_very_low_accuracy)
   settings.set_relative_gap_tolerance(0);
 
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem);
-  EXPECT_EQ((int)solution.get_termination_status(), 1);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
   EXPECT_FALSE(is_incorrect_objective(
     afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
 }
@@ -118,7 +119,7 @@ TEST(pdlp_class, run_double_initial_solution)
   auto solver_settings = pdlp_solver_settings_t<int, double>{};
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, op_problem, solver_settings);
-  EXPECT_EQ((int)solution.get_termination_status(), 1);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
   EXPECT_FALSE(is_incorrect_objective(
     afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
 }
@@ -140,7 +141,7 @@ TEST(pdlp_class, run_iteration_limit)
   settings.set_method(cuopt::linear_programming::method_t::PDLP);
 
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
-  EXPECT_EQ((int)solution.get_termination_status(), 4);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT);
   // By default we would return all 0, we now return what we currently have so not all 0
   EXPECT_FALSE(thrust::all_of(handle_.get_thrust_policy(),
                               solution.get_primal_solution().begin(),
@@ -166,7 +167,7 @@ TEST(pdlp_class, run_time_limit)
 
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
 
-  EXPECT_EQ((int)solution.get_termination_status(), 5);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_TIME_LIMIT);
   // By default we would return all 0, we now return what we currently have so not all 0
   EXPECT_FALSE(thrust::all_of(handle_.get_thrust_policy(),
                               solution.get_primal_solution().begin(),
@@ -212,7 +213,7 @@ TEST(pdlp_class, run_sub_mittleman)
       const raft::handle_t handle_{};
       optimization_problem_solution_t<int, double> solution =
         solve_lp(&handle_, op_problem, settings);
-      EXPECT_EQ((int)solution.get_termination_status(), 1);
+      EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
       EXPECT_FALSE(
         is_incorrect_objective(expected_objective_value,
                                solution.get_additional_termination_information().primal_objective));

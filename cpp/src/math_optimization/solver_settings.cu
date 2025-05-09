@@ -20,6 +20,193 @@
 
 namespace cuopt::linear_programming {
 
+namespace {
+
+bool string_to_int(const std::string& value, int& result)
+{
+  try {
+    result = std::stoi(value);
+    return true;
+  } catch (const std::invalid_argument& e) {
+    return false;
+  }
+}
+
+template <typename f_t>
+bool string_to_float(const std::string& value, f_t& result)
+{
+  try {
+    if constexpr (std::is_same_v<f_t, float>) { result = std::stof(value); }
+    if constexpr (std::is_same_v<f_t, double>) { result = std::stod(value); }
+    return true;
+  } catch (const std::invalid_argument& e) {
+    return false;
+  }
+}
+
+bool string_to_bool(const std::string& value, bool& result)
+{
+  if (value == "true" || value == "True" || value == "TRUE" || value == "1" || value == "t" ||
+      value == "T") {
+    result = true;
+    return true;
+  } else if (value == "false" || value == "False" || value == "FALSE" || value == "0" ||
+             value == "f" || value == "F") {
+    result = false;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+}  // namespace
+
+template <typename i_t, typename f_t>
+void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& name,
+                                                            const std::string& value)
+{
+  bool found = false;
+  for (auto& param : int_parameters) {
+    if (param.param_name == name) {
+      i_t value_int;
+      if (string_to_int(value, value_int)) {
+        if (value_int < param.min_value || value_int > param.max_value) {
+          throw std::invalid_argument("Parameter " + name + " out of range");
+        }
+        *param.value_ptr = value_int;
+        found            = true;
+      } else {
+        throw std::invalid_argument("Parameter " + name + " is not an integer");
+      }
+    }
+  }
+  for (auto& param : float_parameters) {
+    if (param.param_name == name) {
+      f_t value_float;
+      if (string_to_float<f_t>(value, value_float)) {
+        if (value_float < param.min_value || value_float > param.max_value) {
+          throw std::invalid_argument("Parameter " + name + " out of range");
+        }
+        *param.value_ptr = value_float;
+        found            = true;
+      } else {
+        throw std::invalid_argument("Parameter " + name + " is not a float");
+      }
+      return;
+    }
+  }
+  for (auto& param : bool_parameters) {
+    if (param.param_name == name) {
+      bool value_bool;
+      if (string_to_bool(value, value_bool)) {
+        *param.value_ptr = value_bool;
+        found            = true;
+      } else {
+        throw std::invalid_argument("Parameter " + name + " must be true or false");
+      }
+    }
+  }
+
+  for (auto& param : string_parameters) {
+    if (param.param_name == name) {
+      *param.value_ptr = value;
+      found            = true;
+    }
+  }
+  if (!found) { throw std::invalid_argument("Parameter " + name + " not found"); }
+}
+
+template <typename i_t, typename f_t>
+template <typename T>
+void solver_settings_t<i_t, f_t>::set_parameter(const std::string& name, T value)
+{
+  bool found = false;
+  if constexpr (std::is_same_v<T, i_t>) {
+    for (auto& param : int_parameters) {
+      if (param.param_name == name) {
+        if (value < param.min_value || value > param.max_value) {
+          throw std::invalid_argument("Parameter " + name + " out of range");
+        }
+        *param.value_ptr = value;
+        found            = true;
+      }
+    }
+  }
+  if constexpr (std::is_same_v<T, f_t>) {
+    for (auto& param : float_parameters) {
+      if (param.param_name == name) {
+        if (value < param.min_value || value > param.max_value) {
+          throw std::invalid_argument("Parameter " + name + " out of range");
+        }
+        *param.value_ptr = value;
+        found            = true;
+      }
+    }
+  }
+  if constexpr (std::is_same_v<T, bool>) {
+    for (auto& param : bool_parameters) {
+      if (param.param_name == name) {
+        *param.value_ptr = value;
+        found            = true;
+      }
+    }
+  }
+  if constexpr (std::is_same_v<T, std::string>) {
+    for (auto& param : string_parameters) {
+      if (param.param_name == name) {
+        *param.value_ptr = value;
+        found            = true;
+      }
+    }
+  }
+  if (!found) { throw std::invalid_argument("Parameter " + name + " not found"); }
+}
+
+template <typename i_t, typename f_t>
+template <typename T>
+T solver_settings_t<i_t, f_t>::get_parameter(const std::string& name) const
+{
+  if constexpr (std::is_same_v<T, i_t>) {
+    for (auto& param : int_parameters) {
+      if (param.param_name == name) { return *param.value_ptr; }
+    }
+  }
+  if constexpr (std::is_same_v<T, f_t>) {
+    for (auto& param : float_parameters) {
+      if (param.param_name == name) { return *param.value_ptr; }
+    }
+  }
+  if constexpr (std::is_same_v<T, bool>) {
+    for (auto& param : bool_parameters) {
+      if (param.param_name == name) { return *param.value_ptr; }
+    }
+  }
+  if constexpr (std::is_same_v<T, std::string>) {
+    for (auto& param : string_parameters) {
+      if (param.param_name == name) { return *param.value_ptr; }
+    }
+  }
+  throw std::invalid_argument("Parameter " + name + " not found");
+}
+
+template <typename i_t, typename f_t>
+std::string solver_settings_t<i_t, f_t>::get_parameter_as_string(const std::string& name) const
+{
+  for (auto& param : int_parameters) {
+    if (param.param_name == name) { return std::to_string(*param.value_ptr); }
+  }
+  for (auto& param : float_parameters) {
+    if (param.param_name == name) { return std::to_string(*param.value_ptr); }
+  }
+  for (auto& param : bool_parameters) {
+    if (param.param_name == name) { return *param.value_ptr ? "true" : "false"; }
+  }
+  for (auto& param : string_parameters) {
+    if (param.param_name == name) { return *param.value_ptr; }
+  }
+  throw std::invalid_argument("Parameter " + name + " not found");
+}
+
 // PDLP Settings Forwarding Implementations
 template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::set_optimality_tolerance(f_t eps_optimal)
@@ -447,10 +634,22 @@ solver_settings_t<i_t, f_t>::get_pdlp_warm_start_data_view() const noexcept
 
 #if MIP_INSTANTIATE_FLOAT
 template class solver_settings_t<int, float>;
+template void solver_settings_t<int, float>::set_parameter(const std::string& name, int value);
+template void solver_settings_t<int, float>::set_parameter(const std::string& name, float value);
+template void solver_settings_t<int, float>::set_parameter(const std::string& name, bool value);
+template int solver_settings_t<int, float>::get_parameter(const std::string& name) const;
+template float solver_settings_t<int, float>::get_parameter(const std::string& name) const;
+template bool solver_settings_t<int, float>::get_parameter(const std::string& name) const;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template class solver_settings_t<int, double>;
+template void solver_settings_t<int, double>::set_parameter(const std::string& name, int value);
+template void solver_settings_t<int, double>::set_parameter(const std::string& name, double value);
+template void solver_settings_t<int, double>::set_parameter(const std::string& name, bool value);
+template int solver_settings_t<int, double>::get_parameter(const std::string& name) const;
+template double solver_settings_t<int, double>::get_parameter(const std::string& name) const;
+template bool solver_settings_t<int, double>::get_parameter(const std::string& name) const;
 #endif
 
 }  // namespace cuopt::linear_programming

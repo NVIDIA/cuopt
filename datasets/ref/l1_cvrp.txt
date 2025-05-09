@@ -1,0 +1,4 @@
+cvrp/Vrp-Set-X/X/X-n186-k15.vrp,24145,15
+cvrp/Vrp-Set-X/X/X-n172-k51.vrp,45607,53
+cvrp/Vrp-Set-X/X/X-n195-k51.vrp,44225,53
+cvrp/Vrp-Set-X/X/X-n167-k10.vrp,20557,10

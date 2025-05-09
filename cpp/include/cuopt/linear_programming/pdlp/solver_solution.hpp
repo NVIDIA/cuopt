@@ -17,7 +17,9 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/constants.h>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
+#include <cuopt/linear_programming/utilities/internals.hpp>
 
 #include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
@@ -31,15 +33,15 @@
 namespace cuopt::linear_programming {
 
 // Possible reasons for terminating
-enum class pdlp_termination_status_t {
-  NumericalError   = 0,
-  Optimal          = 1,
-  PrimalInfeasible = 2,
-  DualInfeasible   = 3,
-  IterationLimit   = 4,
-  TimeLimit        = 5,
-  PrimalFeasible   = 6,
-  ConcurrentLimit  = 7,
+enum class pdlp_termination_status_t : int8_t {
+  NumericalError   = CUOPT_TERIMINATION_STATUS_NUMERICAL_ERROR,
+  Optimal          = CUOPT_TERIMINATION_STATUS_OPTIMAL,
+  PrimalInfeasible = CUOPT_TERIMINATION_STATUS_INFEASIBLE,
+  DualInfeasible   = CUOPT_TERIMINATION_STATUS_UNBOUNDED,
+  IterationLimit   = CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT,
+  TimeLimit        = CUOPT_TERIMINATION_STATUS_TIME_LIMIT,
+  PrimalFeasible   = CUOPT_TERIMINATION_STATUS_PRIMAL_FEASIBLE,
+  ConcurrentLimit  = CUOPT_TERIMINATION_STATUS_CONCURRENT_LIMIT,
 };
 
 /**
@@ -48,8 +50,9 @@ enum class pdlp_termination_status_t {
  * @tparam f_t Floating point type. Currently only float (32bit) and double (64bit) are supported.
  */
 template <typename i_t, typename f_t>
-class optimization_problem_solution_t {
+class optimization_problem_solution_t : public base_solution_t {
  public:
+  bool is_mip() const override { return false; }
   /**
    * @brief Structure containing additional termination information such as the number of steps,
    * objective and residual values

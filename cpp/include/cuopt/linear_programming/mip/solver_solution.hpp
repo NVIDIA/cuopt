@@ -17,6 +17,9 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/constants.h>
+#include <cuopt/linear_programming/utilities/internals.hpp>
+
 #include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -28,16 +31,16 @@
 
 namespace cuopt::linear_programming {
 
-enum class mip_termination_status_t {
-  NoTermination = 0,
-  Optimal       = 1,
-  FeasibleFound = 2,
-  Infeasible    = 3,
-  Unbounded     = 4,
+enum class mip_termination_status_t : int8_t {
+  NoTermination = CUOPT_TERIMINATION_STATUS_NO_TERMINATION,
+  Optimal       = CUOPT_TERIMINATION_STATUS_OPTIMAL,
+  FeasibleFound = CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND,
+  Infeasible    = CUOPT_TERIMINATION_STATUS_INFEASIBLE,
+  Unbounded     = CUOPT_TERIMINATION_STATUS_UNBOUNDED
 };
 
 template <typename i_t, typename f_t>
-class mip_solution_t {
+class mip_solution_t : public base_solution_t {
  public:
   mip_solution_t(rmm::device_uvector<f_t> solution,
                  std::vector<std::string> var_names,
@@ -54,6 +57,7 @@ class mip_solution_t {
 
   mip_solution_t(mip_termination_status_t termination_status, rmm::cuda_stream_view stream_view);
 
+  bool is_mip() const override { return true; }
   const rmm::device_uvector<f_t>& get_solution() const;
   rmm::device_uvector<f_t>& get_solution();
   f_t get_objective_value() const;

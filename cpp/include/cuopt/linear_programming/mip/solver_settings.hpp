@@ -24,6 +24,10 @@
 
 namespace cuopt::linear_programming {
 
+// Forward declare solver_settings_t for friend class
+template <typename i_t, typename f_t>
+class solver_settings_t;
+
 template <typename i_t, typename f_t>
 class mip_solver_settings_t {
  public:
@@ -243,6 +247,8 @@ class mip_solver_settings_t {
   std::shared_ptr<rmm::device_uvector<f_t>> initial_solution_;
   internals::lp_incumbent_sol_callback_t* incumbent_sol_callback_ = nullptr;
   bool mip_scaling_                                               = true;
+
+  friend class solver_settings_t<i_t, f_t>;
 };
 
 }  // namespace cuopt::linear_programming

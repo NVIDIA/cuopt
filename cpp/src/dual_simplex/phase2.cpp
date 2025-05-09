@@ -1589,7 +1589,7 @@ dual::status_t dual_phase2(i_t phase,
       return dual::status_t::CONCURRENT_LIMIT;
     }
   }
-  if (iter > iter_limit) { status = dual::status_t::ITERATION_LIMIT; }
+  if (iter >= iter_limit) { status = dual::status_t::ITERATION_LIMIT; }
   return status;
 }
 

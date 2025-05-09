@@ -17,5 +17,7 @@
 
 #pragma once
 
-#define MIP_INSTANTIATE_FLOAT  0
-#define MIP_INSTANTIATE_DOUBLE 1
+#include <cuopt/linear_programming/constants.h>
+
+#define MIP_INSTANTIATE_FLOAT  CUOPT_INSTANTIATE_FLOAT
+#define MIP_INSTANTIATE_DOUBLE CUOPT_INSTANTIATE_DOUBLE

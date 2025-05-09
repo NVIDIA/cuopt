@@ -1,0 +1,30 @@
+{
+    "csr_constraint_matrix": {
+        "offsets": [0, 2],
+        "indices": [0, 1],
+        "values": [1.0, 1.0]
+    },
+    "constraint_bounds": {
+        "upper_bounds": [5000.0],
+        "lower_bounds": [0.0]
+    },
+    "objective_data": {
+        "coefficients": [1.2, 1.7],
+        "scalability_factor": 1.0,
+        "offset": 0.0
+    },
+    "variable_bounds": {
+        "upper_bounds": [3000.0, 5000.0],
+        "lower_bounds": [0.0, 0.0]
+    },
+    "maximize": "True",
+    "variable_names": ["x", "y"],
+    "variable_types": ["I", "C"],
+    "solver_config":{
+        "time_limit": 5,
+        "tolerances": {
+            "optimality": 0.0001
+        }
+    }
+}
+

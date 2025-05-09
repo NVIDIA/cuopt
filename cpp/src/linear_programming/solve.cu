@@ -233,6 +233,7 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
   dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
   dual_simplex_settings.time_limit =
     settings.get_time_limit().value_or(dual_simplex_settings.time_limit);
+  dual_simplex_settings.iteration_limit = settings.get_iteration_limit();
   dual_simplex_settings.concurrent_halt = settings.get_concurrent_halt();
   if (dual_simplex_settings.concurrent_halt != nullptr) {
     // Don't show the dual simplex log in concurrent mode. Show the PDLP log instead
@@ -249,6 +250,8 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
         return pdlp_termination_status_t::PrimalInfeasible;
       case dual_simplex::lp_status_t::UNBOUNDED: return pdlp_termination_status_t::DualInfeasible;
       case dual_simplex::lp_status_t::TIME_LIMIT: return pdlp_termination_status_t::TimeLimit;
+      case dual_simplex::lp_status_t::ITERATION_LIMIT:
+        return pdlp_termination_status_t::IterationLimit;
       case dual_simplex::lp_status_t::CONCURRENT_LIMIT:
         return pdlp_termination_status_t::ConcurrentLimit;
       default: return pdlp_termination_status_t::NumericalError;
@@ -270,7 +273,8 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
   info.primal_objective      = solution.user_objective;
   info.solve_time            = duration.count();
   info.number_of_steps_taken = solution.iterations;
-  auto sol                   = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
+
+  auto sol = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
                                                        final_dual_solution,
                                                        final_reduced_cost,
                                                        problem.objective_name,
@@ -319,6 +323,7 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
     dual_simplex_settings.time_limit =
       settings.get_time_limit().value_or(dual_simplex_settings.time_limit);
+    dual_simplex_settings.iteration_limit = settings.get_iteration_limit();
     dual_simplex_settings.concurrent_halt = settings.get_concurrent_halt();
     dual_simplex::lp_solution_t<i_t, f_t> vertex_solution(lp.num_rows, lp.num_cols);
     std::vector<dual_simplex::variable_status_t> vstatus(lp.num_cols);

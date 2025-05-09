@@ -1,0 +1,115 @@
+{"data": {
+    "cost_waypoint_graph_data": {
+        "waypoint_graph": null
+    },
+    "travel_time_waypoint_graph_data": {
+        "waypoint_graph": null
+    },
+    "cost_matrix_data": {
+        "data": {
+            "0": [
+                [
+                    0,
+                    1,
+                    1
+                ],
+                [
+                    1,
+                    0,
+                    1
+                ]
+            ]
+        }
+    },
+    "travel_time_matrix_data": {
+        "data": null
+    },
+    "task_data": {
+        "task_locations": [
+            0,
+            1,
+            2
+        ],
+        "demand": [
+            [
+                0,
+                1,
+                1
+            ],
+            [
+                0,
+                3,
+                1
+            ]
+        ],
+        "task_time_windows": [
+            [
+                0,
+                10
+            ],
+            [
+                0,
+                4
+            ],
+            [
+                2,
+                4
+            ]
+        ],
+        "service_times": [
+            0,
+            1,
+            1
+        ]
+    },
+    "fleet_data": {
+        "vehicle_locations": [
+            [
+                0,
+                0
+            ],
+            [
+                0,
+                0
+            ]
+        ],
+        "capacities": [
+            [
+                2,
+                2
+            ],
+            [
+                4,
+                1
+            ]
+        ],
+        "vehicle_time_windows": [
+            [
+                0,
+                10
+            ],
+            [
+                0,
+                10
+            ]
+        ],
+        "skip_first_trips": [
+            false,
+            false
+        ],
+        "drop_return_trips": [
+            false,
+            false
+        ],
+        "vehicle_max_costs": [
+            20,
+            20
+        ]
+    },
+    "solver_config": {
+        "time_limit": 0.1,
+        "objectives": {
+            "cost": 1
+        }
+    }
+}}
