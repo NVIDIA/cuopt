@@ -26,6 +26,7 @@ set(LP_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/cusparse_view.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_hyper_params.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_warm_start_data.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/spmv.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/initial_scaling_strategy/initial_scaling.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/step_size_strategy/adaptive_step_size_strategy.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/restart_strategy/pdlp_restart_strategy.cu
