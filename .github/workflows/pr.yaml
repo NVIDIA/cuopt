@@ -109,6 +109,7 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@branch-25.06
     with:
       build_type: pull-request
+      matrix_filter: map(select(.PY_VER != "3.13"))
   conda-python-tests:
     needs: [conda-python-build, changed-files]
     secrets: inherit
@@ -117,6 +118,7 @@ jobs:
     with:
       run_codecov: false
       build_type: pull-request
+      matrix_filter: map(select(.PY_VER != "3.13"))
   #docs-build:
   #  needs: checks
   #  secrets: inherit
@@ -147,7 +149,7 @@ jobs:
       package-type: python
       wheel-name: cuopt_mps_parser
       append-cuda-suffix: false
-      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
+      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
   wheel-build-libcuopt:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
@@ -168,6 +170,7 @@ jobs:
       script: ci/build_wheel_cuopt.sh
       package-type: python
       wheel-name: cuopt
+      matrix_filter: map(select(.PY_VER != "3.13"))
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, changed-files]
     secrets: inherit
@@ -185,13 +188,14 @@ jobs:
       script: ci/build_wheel_cuopt_server.sh
       package-type: python
       wheel-name: cuopt_server
+      matrix_filter: map(select(.PY_VER != "3.13"))
   wheel-build-cuopt-sh-client:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt_sh_client.sh
-      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
+      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
       package-type: python
       wheel-name: cuopt_sh_client
       append-cuda-suffix: false
@@ -203,6 +207,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
+      matrix_filter: map(select(.PY_VER != "3.13"))
   test-self-hosted-server:
     needs: [wheel-build-cuopt-server, changed-files]
     secrets: inherit
