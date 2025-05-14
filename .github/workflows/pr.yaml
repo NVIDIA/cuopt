@@ -147,8 +147,8 @@ jobs:
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt_mps_parser.sh
+      package-name: cuopt_mps_parser
       package-type: python
-      wheel-name: cuopt_mps_parser
       append-cuda-suffix: false
       matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
   wheel-build-libcuopt:
@@ -158,8 +158,8 @@ jobs:
     with:
       # build for every combination of arch and CUDA version, but only for the latest Python
       matrix_filter: map(select(.PY_VER == "3.12")) | group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | add
+      package-name: libcuopt
       package-type: cpp
-      wheel-name: libcuopt
       build_type: pull-request
       script: ci/build_wheel_libcuopt.sh
   wheel-build-cuopt:
@@ -169,6 +169,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt.sh
+      package-name: cuopt
       package-type: python
       wheel-name: cuopt
       matrix_filter: map(select(.PY_VER != "3.13"))
@@ -180,6 +181,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
+      matrix_filter: map(select(.PY_VER != "3.13"))
   wheel-build-cuopt-server:
     needs: wheel-build-cuopt
     secrets: inherit
@@ -187,8 +189,8 @@ jobs:
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt_server.sh
+      package-name: cuopt_server
       package-type: python
-      wheel-name: cuopt_server
       matrix_filter: map(select(.PY_VER != "3.13"))
   wheel-build-cuopt-sh-client:
     secrets: inherit
@@ -197,8 +199,8 @@ jobs:
       build_type: pull-request
       script: ci/build_wheel_cuopt_sh_client.sh
       matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
+      package-name: cuopt_sh_client
       package-type: python
-      wheel-name: cuopt_sh_client
       append-cuda-suffix: false
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt-server, changed-files]

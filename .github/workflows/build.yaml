@@ -54,49 +54,49 @@ jobs:
       date: ${{ inputs.date }}
       script: ci/build_wheel_cuopt_mps_parser.sh
       matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
+      package-name: cuopt_mps_parser
       package-type: python
-      wheel-name: cuopt_mps_parser
       append-cuda-suffix: false
   wheel-build-libcuopt:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
     with:
-      # build for every combination of arch and CUDA version, but only for the latest Python
-      matrix_filter: map(select(.PY_VER == "3.12")) | group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | add
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
       script: ci/build_wheel_libcuopt.sh
+      package-name: libcuopt
       package-type: cpp
-      wheel-name: libcuopt
+      # build for every combination of arch and CUDA version, but only for the latest Python
+      matrix_filter: map(select(.PY_VER == "3.12")) | group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | add
   wheel-build-cuopt:
     needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
     with:
+      matrix_filter: map(select(.PY_VER != "3.13"))
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
       script: ci/build_wheel_cuopt.sh
+      package-name: cuopt
       package-type: python
-      wheel-name: cuopt
-      matrix_filter: map(select(.PY_VER != "3.13"))
   wheel-build-cuopt-server:
     needs: wheel-build-cuopt
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
     with:
+      matrix_filter: map(select(.PY_VER != "3.13"))
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
       script: ci/build_wheel_cuopt_server.sh
+      package-name: cuopt_server
       package-type: python
-      wheel-name: cuopt_server
-      matrix_filter: map(select(.PY_VER != "3.13"))
   #docs-build:
   #  if: inputs.build_type == 'nightly' || github.ref_type == 'branch'
   #  needs: [python-build]
@@ -122,8 +122,8 @@ jobs:
       date: ${{ inputs.date }}
       script: ci/build_wheel_cuopt_sh_client.sh
       matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
+      package-name: cuopt_sh_client
       package-type: python
-      wheel-name: cuopt_sh_client
       append-cuda-suffix: false
   service-container:
     if: inputs.build_type == 'nightly'
