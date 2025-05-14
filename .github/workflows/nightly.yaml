@@ -21,7 +21,7 @@ jobs:
         run: |
           export CUOPT_BRANCH="branch-${{ matrix.cuopt_version }}"
           export DATE=$(date +%F)
-          export SHA=$(gh api -q '.commit.sha' "repos/rapidsai/cuopt/branches/${CUOPT_BRANCH}")
+          export SHA=$(gh api -q '.commit.sha' "repos/nvidia/cuopt/branches/${CUOPT_BRANCH}")
 
           gh workflow run build.yaml \
             -f branch=${CUOPT_BRANCH} \
@@ -44,7 +44,7 @@ jobs:
         run: |
           export CUOPT_BRANCH="branch-${{ matrix.cuopt_version }}"
           export DATE=$(date +%F)
-          export SHA=$(gh api -q '.commit.sha' "repos/rapidsai/cuopt/branches/${CUOPT_BRANCH}")
+          export SHA=$(gh api -q '.commit.sha' "repos/nvidia/cuopt/branches/${CUOPT_BRANCH}")
 
           gh workflow run test.yaml \
             -f branch=${CUOPT_BRANCH} \
