@@ -108,7 +108,7 @@ class managed_stream_pool {
   {
     for (int i = 0; i < end_unsycned + 1; ++i) {
       streams_[i].synchronize();
-      RAFT_CHECK_CUDA(streams_[i].value());
+      RAFT_CHECK_CUDA(streams_[i]);
     }
     end_unsycned = -1;
     next_stream  = 0;
@@ -159,6 +159,8 @@ class load_balanced_bounds_presolve_t {
 
   void calculate_activity_graph(bool erase_inf_cnst, bool dry_run = false);
   void calculate_bounds_update_graph(bool dry_run = false);
+  void init_changed_constraints(const raft::handle_t* handle_ptr);
+  void prepare_for_next_iteration(const raft::handle_t* handle_ptr);
 
   void calculate_constraint_slack(const raft::handle_t* handle_ptr);
   void calculate_constraint_slack_iter(const raft::handle_t* handle_ptr);
@@ -179,6 +181,7 @@ class load_balanced_bounds_presolve_t {
   void set_bounds(const std::vector<thrust::pair<i_t, f_t>>& var_probe_vals,
                   const raft::handle_t* handle_ptr);
   void set_updated_bounds(load_balanced_problem_t<i_t, f_t>* problem);
+  void set_updated_bounds(rmm::device_uvector<f_t>& lb, rmm::device_uvector<f_t>& ub);
 
   struct activity_view_t {
     raft::device_span<const i_t> cnst_reorg_ids;
@@ -188,6 +191,10 @@ class load_balanced_bounds_presolve_t {
     raft::device_span<const f_t2> cnst_bnd;  // new indexing
     raft::device_span<const f_t2> vars_bnd;  // old indexing
     raft::device_span<f_t2> cnst_slack;      // old indexing
+    raft::device_span<i_t> var_bounds_changed;
+    raft::device_span<i_t> changed_constraints;
+    raft::device_span<i_t> changed_variables;
+    raft::device_span<i_t> next_changed_constraints;
     i_t nnz;
     typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
   };
@@ -200,6 +207,10 @@ class load_balanced_bounds_presolve_t {
     raft::device_span<const var_t> vars_types;  // new indexing
     raft::device_span<f_t2> vars_bnd;           // old indexing
     raft::device_span<f_t2> cnst_slack;         // old indexing
+    raft::device_span<i_t> var_bounds_changed;
+    raft::device_span<i_t> changed_constraints;
+    raft::device_span<i_t> changed_variables;
+    raft::device_span<i_t> next_changed_constraints;
     i_t* bounds_changed;
     i_t nnz;
     typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
@@ -216,6 +227,11 @@ class load_balanced_bounds_presolve_t {
   const load_balanced_problem_t<i_t, f_t>* pb;
 
   rmm::device_scalar<i_t> bounds_changed;
+
+  rmm::device_uvector<i_t> var_bounds_changed;
+  rmm::device_uvector<i_t> changed_constraints;
+  rmm::device_uvector<i_t> changed_variables;
+  rmm::device_uvector<i_t> next_changed_constraints;
 
   rmm::device_uvector<f_t> cnst_slack;
   rmm::device_uvector<f_t> vars_bnd;

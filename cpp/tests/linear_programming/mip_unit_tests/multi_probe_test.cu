@@ -22,7 +22,10 @@
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <mip/presolve/bounds_presolve.cuh>
+#include <mip/presolve/lb_multi_probe.cuh>
+#include <mip/presolve/load_balanced_bounds_presolve.cuh>
 #include <mip/presolve/multi_probe.cuh>
+#include <mip/problem/load_balanced_problem.cuh>
 #include <mps_parser/parser.hpp>
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
@@ -99,6 +102,32 @@ convert_probe_tuple(std::tuple<std::vector<int>, std::vector<double>, std::vecto
 }
 
 std::tuple<std::vector<double>, std::vector<double>, std::vector<double>, std::vector<double>>
+bounds_probe_results(detail::load_balanced_bounds_presolve_t<int, double>& bnd_prb_0,
+                     detail::load_balanced_bounds_presolve_t<int, double>& bnd_prb_1,
+                     detail::problem_t<int, double>& problem,
+                     const std::pair<std::vector<thrust::pair<int, double>>,
+                                     std::vector<thrust::pair<int, double>>>& probe)
+{
+  auto& probe_first  = std::get<0>(probe);
+  auto& probe_second = std::get<1>(probe);
+  rmm::device_uvector<double> b_lb_0(problem.n_variables, problem.handle_ptr->get_stream());
+  rmm::device_uvector<double> b_ub_0(problem.n_variables, problem.handle_ptr->get_stream());
+  rmm::device_uvector<double> b_lb_1(problem.n_variables, problem.handle_ptr->get_stream());
+  rmm::device_uvector<double> b_ub_1(problem.n_variables, problem.handle_ptr->get_stream());
+  bnd_prb_0.solve(probe_first);
+  bnd_prb_1.solve(probe_second);
+  bnd_prb_0.set_updated_bounds(b_lb_0, b_ub_0);
+  bnd_prb_1.set_updated_bounds(b_lb_1, b_ub_1);
+
+  auto h_lb_0 = host_copy(b_lb_0);
+  auto h_ub_0 = host_copy(b_ub_0);
+  auto h_lb_1 = host_copy(b_lb_1);
+  auto h_ub_1 = host_copy(b_ub_1);
+  return std::make_tuple(
+    std::move(h_lb_0), std::move(h_ub_0), std::move(h_lb_1), std::move(h_ub_1));
+}
+
+std::tuple<std::vector<double>, std::vector<double>, std::vector<double>, std::vector<double>>
 bounds_probe_results(detail::bound_presolve_t<int, double>& bnd_prb_0,
                      detail::bound_presolve_t<int, double>& bnd_prb_1,
                      detail::problem_t<int, double>& problem,
@@ -126,11 +155,11 @@ bounds_probe_results(detail::bound_presolve_t<int, double>& bnd_prb_0,
 
 std::tuple<std::vector<double>, std::vector<double>, std::vector<double>, std::vector<double>>
 multi_probe_results(
-  detail::multi_probe_t<int, double>& prb,
+  detail::lb_multi_probe_t<int, double>& prb,
   detail::problem_t<int, double>& problem,
   const std::tuple<std::vector<int>, std::vector<double>, std::vector<double>>& probe_tuple)
 {
-  prb.solve(problem, probe_tuple);
+  prb.solve(probe_tuple);
   rmm::device_uvector<double> m_lb_0(problem.n_variables, problem.handle_ptr->get_stream());
   rmm::device_uvector<double> m_ub_0(problem.n_variables, problem.handle_ptr->get_stream());
   rmm::device_uvector<double> m_lb_1(problem.n_variables, problem.handle_ptr->get_stream());
@@ -169,9 +198,11 @@ void test_multi_probe(std::string path)
                                                                problem.reverse_constraints,
                                                                true);
   detail::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
+  detail::load_balanced_problem_t<int, double> lb_problem(problem);
   detail::bound_presolve_t<int, double> bnd_prb_0(solver.context);
   detail::bound_presolve_t<int, double> bnd_prb_1(solver.context);
-  detail::multi_probe_t<int, double> multi_probe_prs(solver.context);
+
+  detail::lb_multi_probe_t<int, double> multi_probe_prs(lb_problem, solver.context);
 
   auto probe_tuple       = select_k_random(problem, 100);
   auto bounds_probe_vals = convert_probe_tuple(probe_tuple);
@@ -181,28 +212,11 @@ void test_multi_probe(std::string path)
   auto [m_lb_0, m_ub_0, m_lb_1, m_ub_1] =
     multi_probe_results(multi_probe_prs, problem, probe_tuple);
 
-  auto bnd_min_act_0 = host_copy(bnd_prb_0.upd.min_activity);
-  auto bnd_max_act_0 = host_copy(bnd_prb_0.upd.max_activity);
-  auto bnd_min_act_1 = host_copy(bnd_prb_1.upd.min_activity);
-  auto bnd_max_act_1 = host_copy(bnd_prb_1.upd.max_activity);
-
-  auto mlp_min_act_0 = host_copy(multi_probe_prs.upd_0.min_activity);
-  auto mlp_max_act_0 = host_copy(multi_probe_prs.upd_0.max_activity);
-  auto mlp_min_act_1 = host_copy(multi_probe_prs.upd_1.min_activity);
-  auto mlp_max_act_1 = host_copy(multi_probe_prs.upd_1.max_activity);
-
-  for (int i = 0; i < (int)bnd_min_act_0.size(); ++i) {
-    EXPECT_DOUBLE_EQ(bnd_min_act_0[i], mlp_min_act_0[i]);
-    EXPECT_DOUBLE_EQ(bnd_max_act_0[i], mlp_max_act_0[i]);
-    EXPECT_DOUBLE_EQ(bnd_min_act_1[i], mlp_min_act_1[i]);
-    EXPECT_DOUBLE_EQ(bnd_max_act_1[i], mlp_max_act_1[i]);
-  }
-
   for (int i = 0; i < (int)bnd_lb_0.size(); ++i) {
-    EXPECT_DOUBLE_EQ(bnd_lb_0[i], m_lb_0[i]);
-    EXPECT_DOUBLE_EQ(bnd_ub_0[i], m_ub_0[i]);
-    EXPECT_DOUBLE_EQ(bnd_lb_1[i], m_lb_1[i]);
-    EXPECT_DOUBLE_EQ(bnd_ub_1[i], m_ub_1[i]);
+    EXPECT_DOUBLE_EQ(bnd_lb_0[i], m_lb_0[i]) << "index 0 " << i << std::endl;
+    EXPECT_DOUBLE_EQ(bnd_ub_0[i], m_ub_0[i]) << "index 0 " << i << std::endl;
+    EXPECT_DOUBLE_EQ(bnd_lb_1[i], m_lb_1[i]) << "index 1 " << i << std::endl;
+    EXPECT_DOUBLE_EQ(bnd_ub_1[i], m_ub_1[i]) << "index 1 " << i << std::endl;
   }
 }
 

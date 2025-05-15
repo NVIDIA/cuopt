@@ -56,6 +56,10 @@ load_balanced_bounds_presolve_t<i_t, f_t>::load_balanced_bounds_presolve_t(
   : streams(max_stream_count_),
     pb(&problem_),
     bounds_changed(problem_.handle_ptr->get_stream()),
+    var_bounds_changed(0, problem_.handle_ptr->get_stream()),
+    changed_constraints(0, problem_.handle_ptr->get_stream()),
+    changed_variables(0, problem_.handle_ptr->get_stream()),
+    next_changed_constraints(0, problem_.handle_ptr->get_stream()),
     cnst_slack(0, problem_.handle_ptr->get_stream()),
     vars_bnd(0, problem_.handle_ptr->get_stream()),
     tmp_act(0, problem_.handle_ptr->get_stream()),
@@ -94,44 +98,6 @@ load_balanced_bounds_presolve_t<i_t, f_t>::~load_balanced_bounds_presolve_t()
   if (upd_bnd_graph_created) { cudaGraphExecDestroy(upd_bnd_exec); }
 }
 
-template <typename i_t>
-std::pair<bool, i_t> sub_warp_meta(rmm::cuda_stream_view stream,
-                                   rmm::device_uvector<i_t>& d_warp_offsets,
-                                   rmm::device_uvector<i_t>& d_warp_id_offsets,
-                                   const std::vector<i_t>& bin_offsets,
-                                   i_t w_t_r)
-{
-  // 1, 2, 4, 8, 16
-  auto sub_warp_bin_count = 5;
-  std::vector<i_t> warp_counts(sub_warp_bin_count);
-
-  std::vector<i_t> warp_offsets(warp_counts.size() + 1);
-  std::vector<i_t> warp_id_offsets(warp_counts.size() + 1);
-
-  for (size_t i = 0; i < warp_id_offsets.size(); ++i) {
-    warp_id_offsets[i] = bin_offsets[i + std::log2(w_t_r) + 1];
-  }
-  warp_id_offsets[0] = bin_offsets[0];
-
-  i_t non_empty_bin_count = 0;
-  for (size_t i = 0; i < warp_counts.size(); ++i) {
-    warp_counts[i] =
-      raft::ceildiv<i_t>((warp_id_offsets[i + 1] - warp_id_offsets[i]) * (1 << i), raft::WarpSize);
-    if (warp_counts[i] != 0) { non_empty_bin_count++; }
-  }
-
-  warp_offsets[0] = 0;
-  for (size_t i = 1; i < warp_offsets.size(); ++i) {
-    warp_offsets[i] = warp_offsets[i - 1] + warp_counts[i - 1];
-  }
-  expand_device_copy(d_warp_offsets, warp_offsets, stream);
-  expand_device_copy(d_warp_id_offsets, warp_id_offsets, stream);
-
-  // If there is only 1 bin active, then there is no need to add logic to determine which warps work
-  // on which bin
-  return std::make_pair(non_empty_bin_count == 1, warp_offsets.back());
-}
-
 template <typename i_t, typename f_t>
 void load_balanced_bounds_presolve_t<i_t, f_t>::copy_input_bounds(
   const load_balanced_problem_t<i_t, f_t>& problem)
@@ -165,55 +131,6 @@ void load_balanced_bounds_presolve_t<i_t, f_t>::update_device_bounds(
   raft::copy(vars_bnd.data(), host_bounds.data(), host_bounds.size(), handle_ptr->get_stream());
 }
 
-template <typename DryRunFunc, typename CaptureGraphFunc>
-bool build_graph(managed_stream_pool& streams,
-                 const raft::handle_t* handle_ptr,
-                 cudaGraph_t& graph,
-                 cudaGraphExec_t& graph_exec,
-                 DryRunFunc d_func,
-                 CaptureGraphFunc g_func)
-{
-  bool graph_created = false;
-  cudaGraphCreate(&graph, 0);
-  cudaEvent_t fork_stream_event;
-  cudaEventCreate(&fork_stream_event);
-
-  cudaStreamBeginCapture(handle_ptr->get_stream(), cudaStreamCaptureModeThreadLocal);
-  cudaEventRecord(fork_stream_event, handle_ptr->get_stream());
-
-  // dry-run - managed pool tracks how many streams were issued
-  d_func();
-  streams.wait_issued_on_event(fork_stream_event);
-  streams.reset_issued();
-
-  g_func();
-  auto activity_done = streams.create_events_on_issued();
-  streams.reset_issued();
-  for (auto& e : activity_done) {
-    cudaStreamWaitEvent(handle_ptr->get_stream(), e);
-  }
-
-  cudaStreamEndCapture(handle_ptr->get_stream(), &graph);
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
-
-  if (graph_exec != nullptr) {
-    cudaGraphExecDestroy(graph_exec);
-    cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0);
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
-  } else {
-    cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0);
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
-  }
-
-  cudaGraphDestroy(graph);
-  graph_created = true;
-
-  handle_ptr->get_stream().synchronize();
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
-
-  return graph_created;
-}
-
 template <typename i_t, typename f_t>
 void load_balanced_bounds_presolve_t<i_t, f_t>::setup(
   const load_balanced_problem_t<i_t, f_t>& problem)
@@ -223,6 +140,10 @@ void load_balanced_bounds_presolve_t<i_t, f_t>::setup(
   auto stream     = handle_ptr->get_stream();
   stream.synchronize();
   host_bounds.resize(2 * pb->n_variables);
+  var_bounds_changed.resize(pb->n_variables, stream);
+  changed_constraints.resize(pb->n_constraints, stream);
+  changed_variables.resize(pb->n_variables, stream);
+  next_changed_constraints.resize(pb->n_constraints, stream);
   cnst_slack.resize(2 * pb->n_constraints, stream);
   vars_bnd.resize(2 * pb->n_variables, stream);
   calc_slack_graph_created                = false;
@@ -300,15 +221,19 @@ load_balanced_bounds_presolve_t<i_t, f_t>::get_activity_view(
   const load_balanced_problem_t<i_t, f_t>& pb)
 {
   load_balanced_bounds_presolve_t<i_t, f_t>::activity_view_t v;
-  v.cnst_reorg_ids = make_span(pb.cnst_reorg_ids);
-  v.coeff          = make_span(pb.coefficients);
-  v.vars           = make_span(pb.variables);
-  v.offsets        = make_span(pb.offsets);
-  v.cnst_bnd       = make_span_2(pb.cnst_bounds_data);
-  v.vars_bnd       = make_span_2(vars_bnd);
-  v.cnst_slack     = make_span_2(cnst_slack);
-  v.nnz            = pb.nnz;
-  v.tolerances     = pb.tolerances;
+  v.cnst_reorg_ids           = make_span(pb.cnst_reorg_ids);
+  v.coeff                    = make_span(pb.coefficients);
+  v.vars                     = make_span(pb.variables);
+  v.offsets                  = make_span(pb.offsets);
+  v.cnst_bnd                 = make_span_2(pb.cnst_bounds_data);
+  v.vars_bnd                 = make_span_2(vars_bnd);
+  v.cnst_slack               = make_span_2(cnst_slack);
+  v.var_bounds_changed       = make_span(var_bounds_changed);
+  v.changed_constraints      = make_span(changed_constraints);
+  v.changed_variables        = make_span(changed_variables);
+  v.next_changed_constraints = make_span(next_changed_constraints);
+  v.nnz                      = pb.nnz;
+  v.tolerances               = pb.tolerances;
   return v;
 }
 
@@ -318,16 +243,20 @@ load_balanced_bounds_presolve_t<i_t, f_t>::get_bounds_update_view(
   const load_balanced_problem_t<i_t, f_t>& pb)
 {
   load_balanced_bounds_presolve_t<i_t, f_t>::bounds_update_view_t v;
-  v.vars_reorg_ids = make_span(pb.vars_reorg_ids);
-  v.coeff          = make_span(pb.reverse_coefficients);
-  v.cnst           = make_span(pb.reverse_constraints);
-  v.offsets        = make_span(pb.reverse_offsets);
-  v.vars_types     = make_span(pb.vars_types);
-  v.vars_bnd       = make_span_2(vars_bnd);
-  v.cnst_slack     = make_span_2(cnst_slack);
-  v.bounds_changed = bounds_changed.data();
-  v.nnz            = pb.nnz;
-  v.tolerances     = pb.tolerances;
+  v.vars_reorg_ids           = make_span(pb.vars_reorg_ids);
+  v.coeff                    = make_span(pb.reverse_coefficients);
+  v.cnst                     = make_span(pb.reverse_constraints);
+  v.offsets                  = make_span(pb.reverse_offsets);
+  v.vars_types               = make_span(pb.vars_types);
+  v.vars_bnd                 = make_span_2(vars_bnd);
+  v.cnst_slack               = make_span_2(cnst_slack);
+  v.bounds_changed           = bounds_changed.data();
+  v.var_bounds_changed       = make_span(var_bounds_changed);
+  v.changed_constraints      = make_span(changed_constraints);
+  v.changed_variables        = make_span(changed_variables);
+  v.next_changed_constraints = make_span(next_changed_constraints);
+  v.nnz                      = pb.nnz;
+  v.tolerances               = pb.tolerances;
   return v;
 }
 
@@ -437,12 +366,45 @@ bool load_balanced_bounds_presolve_t<i_t, f_t>::update_bounds_from_slack(
 }
 
 template <typename i_t, typename f_t>
+void load_balanced_bounds_presolve_t<i_t, f_t>::init_changed_constraints(
+  const raft::handle_t* handle_ptr)
+{
+  thrust::fill(
+    handle_ptr->get_thrust_policy(), var_bounds_changed.begin(), var_bounds_changed.end(), 0);
+  thrust::fill(
+    handle_ptr->get_thrust_policy(), changed_variables.begin(), changed_variables.end(), 1);
+  thrust::fill(
+    handle_ptr->get_thrust_policy(), changed_constraints.begin(), changed_constraints.end(), 1);
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               next_changed_constraints.begin(),
+               next_changed_constraints.end(),
+               0);
+}
+
+template <typename i_t, typename f_t>
+void load_balanced_bounds_presolve_t<i_t, f_t>::prepare_for_next_iteration(
+  const raft::handle_t* handle_ptr)
+{
+  std::swap(changed_constraints, next_changed_constraints);
+  handle_ptr->sync_stream();
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               next_changed_constraints.begin(),
+               next_changed_constraints.end(),
+               0);
+  thrust::fill(
+    handle_ptr->get_thrust_policy(), changed_variables.begin(), changed_variables.end(), 0);
+  thrust::fill(
+    handle_ptr->get_thrust_policy(), var_bounds_changed.begin(), var_bounds_changed.end(), 0);
+}
+
+template <typename i_t, typename f_t>
 termination_criterion_t load_balanced_bounds_presolve_t<i_t, f_t>::bound_update_loop(
   const raft::handle_t* handle_ptr, timer_t timer)
 {
   termination_criterion_t criteria = termination_criterion_t::ITERATION_LIMIT;
 
   i_t iter;
+  init_changed_constraints(handle_ptr);
   for (iter = 0; iter < settings.iteration_limit; ++iter) {
     calculate_constraint_slack_iter(handle_ptr);
     if (!update_bounds_from_slack(handle_ptr)) {
@@ -453,6 +415,7 @@ termination_criterion_t load_balanced_bounds_presolve_t<i_t, f_t>::bound_update_
       }
       break;
     }
+    prepare_for_next_iteration(handle_ptr);
     if (timer.check_time_limit()) {
       criteria = termination_criterion_t::TIME_LIMIT;
       CUOPT_LOG_DEBUG("Exiting bounds prop because of time limit at iter %d", iter);
@@ -598,6 +561,20 @@ void load_balanced_bounds_presolve_t<i_t, f_t>::set_updated_bounds(
   auto& handle_ptr = problem->handle_ptr;
   raft::copy(
     problem->variable_bounds.data(), vars_bnd.data(), vars_bnd.size(), handle_ptr->get_stream());
+}
+
+template <typename i_t, typename f_t>
+void load_balanced_bounds_presolve_t<i_t, f_t>::set_updated_bounds(rmm::device_uvector<f_t>& lb,
+                                                                   rmm::device_uvector<f_t>& ub)
+{
+  auto& handle_ptr = pb->handle_ptr;
+  auto out         = thrust::make_zip_iterator(thrust::make_tuple(lb.begin(), ub.begin()));
+  auto bnd_span    = make_span_2(vars_bnd);
+  thrust::transform(handle_ptr->get_thrust_policy(),
+                    bnd_span.begin(),
+                    bnd_span.end(),
+                    out,
+                    [] __device__(auto bnd) { return thrust::make_tuple(bnd.x, bnd.y); });
 }
 
 #if MIP_INSTANTIATE_FLOAT
