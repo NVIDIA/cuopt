@@ -63,5 +63,3 @@ We also provide [nightly Conda packages](https://anaconda.org/rapidsai-nightly) 
 of our latest development branch.
 
 Note: cuOpt is supported only on Linux, and with Python versions 3.10 and later.
-
-See the [NVIDIA cuOpt installation guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) for more OS and version info.
