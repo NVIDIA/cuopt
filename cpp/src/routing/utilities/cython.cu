@@ -90,7 +90,9 @@ std::unique_ptr<vehicle_routing_ret_t> call_solve(
     std::make_unique<rmm::device_buffer>(routing_solution.get_unserviced_nodes().release()),
     std::make_unique<rmm::device_buffer>(routing_solution.get_accepted().release()),
     routing_solution.get_status(),
-    routing_solution.get_status_string()};
+    routing_solution.get_status_string(),
+    routing_solution.get_error_status().get_error_type(),
+    routing_solution.get_error_status().what()};
   return std::make_unique<vehicle_routing_ret_t>(std::move(vr_ret));
 }
 

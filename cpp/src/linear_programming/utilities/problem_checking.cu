@@ -17,10 +17,9 @@
 
 #include "problem_checking.cuh"
 
+#include <cuopt/error.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <mip/mip_constants.hpp>
-
-#include <utilities/error.hpp>
 
 #include <thrust/functional.h>
 #include <thrust/logical.h>

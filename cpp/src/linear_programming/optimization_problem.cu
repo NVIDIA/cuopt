@@ -15,11 +15,11 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
 #include <mps_parser/data_model_view.hpp>
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <mip/mip_constants.hpp>
-#include <utilities/error.hpp>
 
 #include <raft/common/nvtx.hpp>
 #include <raft/util/cuda_utils.cuh>

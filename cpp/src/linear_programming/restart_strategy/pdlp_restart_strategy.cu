@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
+
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <linear_programming/pdlp_constants.hpp>
 #include <linear_programming/restart_strategy/pdlp_restart_strategy.cuh>
 #include <linear_programming/utils.cuh>
 #include <mip/mip_constants.hpp>
-
-#include <utilities/error.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/common/nvtx.hpp>

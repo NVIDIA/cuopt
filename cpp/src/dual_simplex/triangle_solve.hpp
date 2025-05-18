@@ -24,7 +24,7 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
-#define FLIP(i)      (-(i)-2)  // flips an unsigned integer about -1
+#define FLIP(i)      (-(i) - 2)  // flips an unsigned integer about -1
 #define UNFLIP(i)    (((i) < 0) ? FLIP(i) : (i))
 #define MARKED(w, j) (w[j] < 0)
 #define MARK(w, j)     \

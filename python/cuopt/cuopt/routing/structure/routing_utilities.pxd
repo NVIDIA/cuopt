@@ -38,6 +38,12 @@ cdef extern from "cuopt/routing/assignment.hpp" namespace "cuopt::routing":
         TIMEOUT "cuopt::routing::solution_status_t::TIMEOUT"
         EMPTY "cuopt::routing::solution_status_t::EMPTY"
 
+cdef extern from "cuopt/error.hpp" namespace "cuopt": # noqa
+    ctypedef enum error_type_t "cuopt::error_type_t": # noqa
+        Success "cuopt::error_type_t::Success" # noqa
+        ValidationError "cuopt::error_type_t::ValidationError" # noqa
+        OutOfMemoryError "cuopt::error_type_t::OutOfMemoryError" # noqa
+        RuntimeError "cuopt::error_type_t::RuntimeError" # noqa        
 
 cdef extern from "cuopt/routing/routing_structures.hpp" namespace "cuopt::routing": # noqa
     ctypedef enum objective_t "cuopt::routing::objective_t":
@@ -90,6 +96,8 @@ cdef extern from "cuopt/routing/cython/cython.hpp" namespace "cuopt::cython": # 
         unique_ptr[device_buffer] d_accepted_
         solution_status_t status_
         string solution_string_
+        error_type_t error_status_
+        string error_message_
 
     cdef cppclass dataset_ret_t:
         int n_locations_

@@ -20,11 +20,11 @@
 #include <thrust/inner_product.h>
 #include <thrust/logical.h>
 #include <thrust/transform_reduce.h>
+#include <cuopt/error.hpp>
 #include <linear_programming/utils.cuh>
 #include <raft/random/rng_device.cuh>
 #include <random>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/error.hpp>
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 
@@ -221,10 +221,10 @@ bool check_integer_equal_on_indices(const rmm::device_uvector<i_t>& indices,
 template <typename i_t, typename f_t>
 f_t compute_objective_from_vec(const rmm::device_uvector<f_t>& assignment,
                                const rmm::device_uvector<f_t>& objective_coefficients,
-                               const raft::handle_t* handle_ptr)
+                               rmm::cuda_stream_view stream)
 {
   cuopt_assert(assignment.size() == objective_coefficients.size(), "Size mismatch!");
-  f_t computed_obj = thrust::inner_product(handle_ptr->get_thrust_policy(),
+  f_t computed_obj = thrust::inner_product(rmm::exec_policy(stream),
                                            assignment.begin(),
                                            assignment.end(),
                                            objective_coefficients.begin(),
@@ -306,7 +306,7 @@ f_t compute_rel_mip_gap(f_t user_obj, f_t solution_bound)
 }
 
 template <typename f_t>
-void print_solution(const rmm::device_uvector<f_t>& solution, const raft::handle_t* handle_ptr)
+void print_solution(const raft::handle_t* handle_ptr, const rmm::device_uvector<f_t>& solution)
 {
   auto host_solution = cuopt::host_copy(solution, handle_ptr->get_stream());
   std::string log_str{"sol: ["};
@@ -314,6 +314,45 @@ void print_solution(const rmm::device_uvector<f_t>& solution, const raft::handle
     log_str.append(std::to_string(host_solution[i]) + ", ");
   }
   CUOPT_LOG_DEBUG("%s]", log_str.c_str());
+}
+
+template <typename f_t>
+bool has_nans(const raft::handle_t* handle_ptr, const rmm::device_uvector<f_t>& vec)
+{
+  return thrust::any_of(
+    handle_ptr->get_thrust_policy(), vec.begin(), vec.end(), [] __device__(f_t val) {
+      return isnan(val);
+    });
+}
+
+template <typename i_t, typename f_t>
+bool has_integrality_discrepancy(const raft::handle_t* handle_ptr,
+                                 const rmm::device_uvector<i_t>& integer_var_indices,
+                                 const rmm::device_uvector<f_t>& assignment,
+                                 f_t int_tol)
+{
+  auto const assignment_span = make_span(assignment);
+  return thrust::any_of(handle_ptr->get_thrust_policy(),
+                        integer_var_indices.begin(),
+                        integer_var_indices.end(),
+                        [assignment_span, int_tol] __host__ __device__(i_t idx) {
+                          return !is_integer<f_t>(assignment_span[idx], int_tol);
+                        });
+}
+
+template <typename i_t, typename f_t>
+bool has_variable_bounds_violation(const raft::handle_t* handle_ptr,
+                                   const rmm::device_uvector<f_t>& assignment,
+                                   problem_t<i_t, f_t>* problem_ptr)
+{
+  auto const assignment_span = make_span(assignment);
+  return thrust::any_of(
+    handle_ptr->get_thrust_policy(),
+    thrust::make_counting_iterator(0),
+    thrust::make_counting_iterator(0) + problem_ptr->original_problem_ptr->get_n_variables(),
+    [assignment_span, problem_view = problem_ptr->view()] __device__(i_t idx) {
+      return !problem_view.check_variable_within_bounds(idx, assignment_span[idx]);
+    });
 }
 
 }  // namespace cuopt::linear_programming::detail

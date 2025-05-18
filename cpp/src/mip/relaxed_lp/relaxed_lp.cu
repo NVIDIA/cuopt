@@ -17,10 +17,10 @@
 
 #include "relaxed_lp.cuh"
 
+#include <cuopt/error.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <mip/mip_constants.hpp>
 #include <mip/utils.cuh>
-#include <utilities/error.hpp>
 
 #include <linear_programming/pdlp.cuh>
 
@@ -62,15 +62,15 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
 {
   raft::common::nvtx::range fun_scope("get_relaxed_lp_solution");
   pdlp_solver_settings_t<i_t, f_t> settings{};
-  settings.set_infeasibility_detection(check_infeasibility);
+  settings.detect_infeasibility = check_infeasibility;
   settings.set_optimality_tolerance(tolerance);
-  settings.set_relative_primal_tolerance(tolerance / 100.);
-  settings.set_relative_dual_tolerance(tolerance / 100.);
-  settings.set_time_limit(time_limit);
-  if (return_first_feasible) { settings.set_per_constraint_residual(true); }
+  settings.tolerances.relative_primal_tolerance = tolerance / 100.;
+  settings.tolerances.relative_dual_tolerance   = tolerance / 100.;
+  settings.time_limit                           = time_limit;
+  if (return_first_feasible) { settings.per_constraint_residual = true; }
   // settings.set_save_best_primal_so_far(true);
   // currently disable first primal setting as it is not supported without per constraint mode
-  settings.set_first_primal_feasible_encountered(return_first_feasible);
+  settings.first_primal_feasible = return_first_feasible;
   pdlp_solver_t<i_t, f_t> lp_solver(op_problem, settings);
   if (save_state) {
     i_t prev_size = lp_state.prev_dual.size();

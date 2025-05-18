@@ -17,8 +17,8 @@
 
 #pragma once
 
+#include <cuopt/error.hpp>
 #include <cuopt/routing/routing_structures.hpp>
-#include <utilities/error.hpp>
 #include <utilities/macros.cuh>
 
 namespace cuopt {

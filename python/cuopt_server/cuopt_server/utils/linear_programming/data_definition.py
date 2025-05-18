@@ -367,16 +367,16 @@ class Tolerances(StrictModel):
         default=None,
         description="Dual infeasible tolerance" "NOTE: Only applicable to LP",
     )
-    integrality_tolerance: float = Field(
+    mip_integrality_tolerance: float = Field(
         default=None,
         description="NOTE: Only applicable to MILP." "Integrality tolerance.",
     )
-    absolute_mip_gap: float = Field(
+    mip_absolute_gap: float = Field(
         default=None,
         description="MIP gap absolute tolerance"
         "NOTE: Only applicable to MILP",
     )
-    relative_mip_gap: float = Field(
+    mip_relative_gap: float = Field(
         default=None,
         description="MIP gap relative tolerance"
         "NOTE: Only applicable to MILP",
@@ -418,9 +418,9 @@ class SolverConfig(StrictModel):
         "<br>"
         "Note: Not supported for MILP. ",
     )
-    solver_mode: Optional[int] = Field(
+    pdlp_solver_mode: Optional[int] = Field(
         default=1,
-        description="Solver mode to use:"
+        description="Solver mode to use for PDLP:"
         "<br>"
         "- Stable1: 0, Legacy stable mode"
         "<br>"
@@ -434,11 +434,23 @@ class SolverConfig(StrictModel):
         "<br>"
         "Note: Not supported for MILP. ",
     )
+    method: Optional[int] = Field(
+        default=0,
+        description="Method to use:"
+        "<br>"
+        "- Concurrent: 0, Concurrent method"
+        "<br>"
+        "- PDLP: 1, PDLP method"
+        "<br>"
+        "- Dual Simplex: 2, Dual Simplex method"
+        "<br>"
+        "Note: Not supported for MILP. ",
+    )
     mip_scaling: Optional[bool] = Field(
         default=True,
         description="Set True to enable MIP scaling, False to disable.",
     )
-    heuristics_only: Optional[bool] = Field(
+    mip_heuristics_only: Optional[bool] = Field(
         default=False,
         description="Set True to run heuristics only, False to run "
         "heuristics and branch and bound for MILP",
@@ -446,6 +458,10 @@ class SolverConfig(StrictModel):
     num_cpu_threads: Optional[int] = Field(
         default=None,
         description="Set the number of CPU threads to use for branch and bound.",  # noqa
+    )
+    crossover: Optional[bool] = Field(
+        default=False,
+        description="Set True to use crossover, False to not use crossover.",
     )
     log_to_console: Optional[bool] = Field(
         default=True,

@@ -267,15 +267,6 @@ class lut_test_t : public routing_test_t<i_t, f_t>, public ::testing::TestWithPa
     this->check_vehicle_breaks(h_routing_solution);
     this->check_cost(routing_solution);
   }
-
-  void test_lut()
-  {
-    if (this->vehicle_breaks_) {
-      test_vehicle_breaks();
-    } else {
-      test_cvrptw();
-    }
-  }
 };
 
 template <typename i_t, typename f_t>
@@ -542,7 +533,6 @@ class routing_retail_test_t : public base_test_t<i_t, f_t>,
 };
 
 typedef l0_routing_test_t<int, float> l0_float_test_t;
-typedef lut_test_t<int, float> lut_float_test_t;
 typedef routing_retail_test_t<int, float> retail_float_test_t;
 
 TEST_P(l0_float_test_t, TSP) { test_tsp(); }
@@ -551,10 +541,6 @@ TEST_P(l0_float_test_t, CVRP) { test_cvrp(); }
 TEST_P(l0_float_test_t, VRPTW) { test_vrptw(); }
 TEST_P(l0_float_test_t, CVRPTW) { test_cvrptw(); }
 INSTANTIATE_TEST_SUITE_P(level0_base, l0_float_test_t, ::testing::Values(""));
-
-// Disabling it for 23.08
-// TEST_P(lut_float_test_t, LUT) { test_lut(); }
-// INSTANTIATE_TEST_SUITE_P(level0_lut, lut_float_test_t, ::testing::Values(true));
 
 TEST_P(retail_float_test_t, CVRPTW_Retail) { test_cvrptw(); }
 INSTANTIATE_TEST_SUITE_P(

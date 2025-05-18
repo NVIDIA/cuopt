@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
+
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/trivial_presolve.cuh>
 #include <mip/solver.cuh>
@@ -27,7 +29,6 @@
 #include <linear_programming/utilities/logger_init.hpp>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <linear_programming/utils.cuh>
-#include <utilities/error.hpp>
 #include <utilities/timer.hpp>
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
@@ -67,8 +68,8 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                                  mip_solver_settings_t<i_t, f_t> const& settings)
 {
   const f_t time_limit =
-    settings.get_time_limit() == 0 ? std::numeric_limits<f_t>::max() : settings.get_time_limit();
-  if (settings.get_heuristics_only() && time_limit == std::numeric_limits<f_t>::max()) {
+    settings.time_limit == 0 ? std::numeric_limits<f_t>::max() : settings.time_limit;
+  if (settings.heuristics_only && time_limit == std::numeric_limits<f_t>::max()) {
     CUOPT_LOG_ERROR("Time limit cannot be infinity when heuristics only is set");
     cuopt_expects(false,
                   error_type_t::RuntimeError,
@@ -115,17 +116,18 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     running_mip);
 
   cuopt_func_call(auto saved_problem = scaled_problem);
-  if (settings.get_mip_scaling()) { scaling.scale_problem(); }
+  if (settings.mip_scaling) { scaling.scale_problem(); }
   if (settings.has_initial_solution()) { scaling.scale_primal(settings.get_initial_solution()); }
   // only call preprocess on scaled problem, so we can compute feasibility on the original problem
   scaled_problem.preprocess_problem();
   // cuopt_func_call((check_scaled_problem<i_t, f_t>(scaled_problem, saved_problem)));
   detail::trivial_presolve(scaled_problem);
+
   detail::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, scaling, timer);
   auto scaled_sol                 = solver.run_solver();
   bool is_feasible_before_scaling = scaled_sol.get_feasible();
   scaled_sol.problem_ptr          = &problem;
-  if (settings.get_mip_scaling()) { scaling.unscale_solutions(scaled_sol); }
+  if (settings.mip_scaling) { scaling.unscale_solutions(scaled_sol); }
   // at this point we need to compute the feasibility on the original problem not the presolved one
   bool is_feasible_after_unscaling = scaled_sol.compute_feasibility();
   if (!scaled_problem.empty && is_feasible_before_scaling != is_feasible_after_unscaling) {
@@ -133,14 +135,20 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
       "The feasibility does not match on scaled and unscaled problems. To overcome this issue, "
       "please provide a more numerically stable problem.");
   }
-  // If the reduced problem is empty and feasible, then this solution is optimal
-  // Set the solution bound appropriately
+
+  // If the trivial presolve fully reduced the problem:
   if (scaled_problem.empty) {
-    solver.get_solver_stats().solution_bound = scaled_sol.get_user_objective();
+    detail::solution_t<i_t, f_t> fixed_assignment_solution(problem);
+    if (fixed_assignment_solution.compute_feasibility()) {
+      solver.get_solver_stats().solution_bound = scaled_sol.get_user_objective();
+    } else {
+      scaled_sol.set_problem_infeasible();
+    }
   }
+
   auto sol = scaled_sol.get_solution(is_feasible_before_scaling || is_feasible_after_unscaling,
                                      solver.get_solver_stats());
-  detail::print_solution(sol.get_solution(), scaled_problem.handle_ptr);
+  detail::print_solution(scaled_problem.handle_ptr, sol.get_solution());
   return sol;
 }
 
@@ -148,28 +156,40 @@ template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                    mip_solver_settings_t<i_t, f_t> const& settings)
 {
-  // Create log stream for file logging and add it to default logger
-  init_logger_t log(settings.get_log_file(), settings.get_log_to_console());
+  try {
+    // Create log stream for file logging and add it to default logger
+    init_logger_t log(settings.log_file, settings.log_to_console);
 #if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
-  cuopt::default_logger().set_pattern("%v");
+    cuopt::default_logger().set_pattern("%v");
 #endif
-  // Init libraies before to not include it in solve time
-  // This needs to be called before pdlp is initialized
-  init_handler(op_problem.get_handle_ptr());
+    // Init libraies before to not include it in solve time
+    // This needs to be called before pdlp is initialized
+    init_handler(op_problem.get_handle_ptr());
 
-  raft::common::nvtx::range fun_scope("Running solver");
+    raft::common::nvtx::range fun_scope("Running solver");
 
-  // This is required as user might forget to set some fields
-  problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
-  problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
+    // This is required as user might forget to set some fields
+    problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
+    problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
 
-  // have solve, problem, solution, utils etc. in common dir
-  detail::problem_t<i_t, f_t> problem(op_problem);
+    // have solve, problem, solution, utils etc. in common dir
+    detail::problem_t<i_t, f_t> problem(op_problem);
 
-  // this is for PDLP, i think this should be part of pdlp solver
-  setup_device_symbols();
+    // this is for PDLP, i think this should be part of pdlp solver
+    setup_device_symbols();
 
-  return run_mip(problem, settings);
+    auto sol = run_mip(problem, settings);
+
+    if (settings.sol_file != "") {
+      CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
+      sol.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
+    }
+
+    return sol;
+  } catch (const cuopt::logic_error& e) {
+    CUOPT_LOG_ERROR("Error in solve_mip: %s", e.what());
+    return mip_solution_t<i_t, f_t>{e, op_problem.get_handle_ptr()->get_stream()};
+  }
 }
 
 template <typename i_t, typename f_t>

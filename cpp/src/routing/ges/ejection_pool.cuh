@@ -17,10 +17,10 @@
 
 #pragma once
 
-#include <utilities/cuda_helpers.cuh>
 #include "../node/node.cuh"
 
-#include <utilities/error.hpp>
+#include <cuopt/error.hpp>
+#include <utilities/cuda_helpers.cuh>
 #include <utilities/seed_generator.cuh>
 
 #include <rmm/cuda_stream_view.hpp>

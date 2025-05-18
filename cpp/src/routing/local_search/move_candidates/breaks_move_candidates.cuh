@@ -27,8 +27,7 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
-struct __align__(16) break_cand_t
-{
+struct __align__(16) break_cand_t {
   int ejection_idx{-1};
   int insertion_idx{-1};
   int inserting_break_dim{-1};

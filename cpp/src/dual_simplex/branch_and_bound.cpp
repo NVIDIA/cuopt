@@ -818,6 +818,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
   }
 
+  if (heap.size() == 0 && get_upper_bound<f_t>() == inf) {
+    settings.log.printf("Integer infeasible.\n");
+    status = mip_status_t::INFEASIBLE;
+    if (settings.heuristic_preemption_callback != nullptr) {
+      settings.heuristic_preemption_callback();
+    }
+  }
+
   uncrush_primal_solution(original_problem, original_lp, incumbent.x, solution.x);
   solution.objective          = incumbent.objective;
   solution.lower_bound        = lower_bound;

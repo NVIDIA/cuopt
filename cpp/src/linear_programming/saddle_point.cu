@@ -15,10 +15,9 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
 #include <linear_programming/saddle_point.hpp>
 #include <mip/mip_constants.hpp>
-
-#include <utilities/error.hpp>
 
 #include <thrust/fill.h>
 

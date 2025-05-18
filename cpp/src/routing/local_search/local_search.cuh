@@ -182,16 +182,13 @@ class local_search_t {
   bool run_cross_search(solution_t<i_t, f_t, REQUEST>& sol);
   bool run_inter_search(solution_t<i_t, f_t, REQUEST>& sol);
   template <request_t r_t = REQUEST, std::enable_if_t<r_t == request_t::PDP, bool> = true>
-  bool run_fast_search(solution_t<i_t, f_t, r_t>& sol);
+  bool run_fast_search(solution_t<i_t, f_t, r_t>& sol, bool full_set = false);
   template <request_t r_t = REQUEST, std::enable_if_t<r_t == request_t::VRP, bool> = true>
   bool run_fast_search(solution_t<i_t, f_t, r_t>& sol, bool full_set = false);
 
   void reset_cross_vectors(solution_t<i_t, f_t, REQUEST>& solution);
 
   bool run_collect_prizes(solution_t<i_t, f_t, REQUEST>& solution);
-  void fill_tsp_random_considered_nodes(solution_t<i_t, f_t, REQUEST>& solution,
-                                        move_candidates_t<i_t, f_t>& move_candidates,
-                                        std::mt19937& rng);
   void fill_pdp_considered_nodes(solution_t<i_t, f_t, REQUEST>& solution,
                                  move_candidates_t<i_t, f_t>& move_candidates);
 

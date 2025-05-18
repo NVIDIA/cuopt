@@ -20,6 +20,7 @@
 #include <utilities/cuda_helpers.cuh>
 #include "../node/node.cuh"
 #include "../solution/solution_handle.cuh"
+#include "tsp_route.cuh"
 
 #include <raft/core/handle.hpp>
 #include <raft/core/nvtx.hpp>
@@ -37,7 +38,9 @@ template <typename i_t, typename f_t, request_t REQUEST>
 class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::PDP>> {
  public:
   request_route_t(solution_handle_t<i_t, f_t> const* sol_handle_)
-    : node_info(0, sol_handle_->get_stream()), brother_info(0, sol_handle_->get_stream())
+    : node_info(0, sol_handle_->get_stream()),
+      brother_info(0, sol_handle_->get_stream()),
+      tsp_requests(sol_handle_)
   {
     raft::common::nvtx::range fun_scope("zero pdp_route_t copy_ctr");
   }
@@ -45,7 +48,8 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
   request_route_t(const request_route_t& request_route,
                   solution_handle_t<i_t, f_t> const* sol_handle_)
     : node_info(request_route.node_info, sol_handle_->get_stream()),
-      brother_info(request_route.brother_info, sol_handle_->get_stream())
+      brother_info(request_route.brother_info, sol_handle_->get_stream()),
+      tsp_requests(request_route.tsp_requests, sol_handle_)
   {
     raft::common::nvtx::range fun_scope("pdp route copy_ctr");
   }
@@ -64,7 +68,7 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
     std::cout << "]\n";
   }
 
-  void resize(i_t max_nodes_per_route, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, bool is_tsp, rmm::cuda_stream_view stream)
   {
     node_info.resize(max_nodes_per_route, stream);
     brother_info.resize(max_nodes_per_route, stream);
@@ -105,7 +109,9 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
 
     DI i_t brother_id(i_t idx) const { return brother_info[idx].node(); };
 
-    static DI thrust::tuple<view_t, i_t*> create_shared_route(i_t* shmem, i_t n_nodes_route)
+    static DI thrust::tuple<view_t, i_t*> create_shared_route(i_t* shmem,
+                                                              i_t n_nodes_route,
+                                                              bool is_tsp = false)
     {
       view_t v;
 
@@ -120,6 +126,7 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
 
     raft::device_span<NodeInfo<i_t>> node_info;
     raft::device_span<NodeInfo<i_t>> brother_info;
+    typename tsp_route_t<i_t, f_t>::view_t tsp_requests;
   };
 
   view_t view()
@@ -127,7 +134,7 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
     view_t v;
     v.node_info    = raft::device_span<NodeInfo<i_t>>{node_info.data(), node_info.size()};
     v.brother_info = raft::device_span<NodeInfo<i_t>>{brother_info.data(), brother_info.size()};
-
+    v.tsp_requests = tsp_requests.view();
     return v;
   }
 
@@ -137,7 +144,7 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
    * @param route_size
    * @return size_t
    */
-  HDI static size_t get_shared_size(i_t route_size)
+  HDI static size_t get_shared_size(i_t route_size, bool is_tsp = false)
   {
     // node, brother
     size_t byte_size = request_info_t<i_t, REQUEST>::size() * route_size * sizeof(NodeInfo<i_t>);
@@ -149,19 +156,23 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
 
   // brother ids
   rmm::device_uvector<NodeInfo<i_t>> brother_info;
+
+  // PDP is instantiated so this variable is needed but not the implementation
+  tsp_route_t<i_t, f_t> tsp_requests;
 };
 
 template <typename i_t, typename f_t, request_t REQUEST>
 class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::VRP>> {
  public:
   request_route_t(solution_handle_t<i_t, f_t> const* sol_handle_)
-    : node_info(0, sol_handle_->get_stream())
+    : node_info(0, sol_handle_->get_stream()), tsp_requests(sol_handle_)
   {
   }
 
   request_route_t(const request_route_t& request_route,
                   solution_handle_t<i_t, f_t> const* sol_handle_)
-    : node_info(request_route.node_info, sol_handle_->get_stream())
+    : node_info(request_route.node_info, sol_handle_->get_stream()),
+      tsp_requests(request_route.tsp_requests, sol_handle_)
   {
   }
 
@@ -179,9 +190,10 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
     std::cout << "]\n";
   }
 
-  void resize(i_t max_nodes_per_route, rmm::cuda_stream_view stream)
+  void resize(i_t max_nodes_per_route, bool is_tsp, rmm::cuda_stream_view stream)
   {
     node_info.resize(max_nodes_per_route, stream);
+    if (is_tsp) { tsp_requests.resize(max_nodes_per_route, stream); }
   }
 
   struct view_t {
@@ -208,17 +220,11 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
       block_copy(node_info.subspan(write_start), orig_route.node_info.subspan(from_idx), size);
     }
 
-    static DI thrust::tuple<view_t, i_t*> create_shared_request_route(i_t* shmem, i_t n_nodes_route)
-    {
-      view_t v;
-      v.node_info = raft::device_span<i_t>{shmem, (size_t)n_nodes_route + 1};
-      i_t* sh_ptr = (i_t*)&v.node_info.data()[n_nodes_route + 1];
-      return thrust::make_tuple(v, sh_ptr);
-    }
-
     DI i_t node_id(i_t idx) const { return node_info[idx].node(); };
 
-    static DI thrust::tuple<view_t, i_t*> create_shared_route(i_t* shmem, i_t n_nodes_route)
+    static DI thrust::tuple<view_t, i_t*> create_shared_route(i_t* shmem,
+                                                              i_t n_nodes_route,
+                                                              bool is_tsp)
     {
       view_t v;
 
@@ -227,16 +233,22 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
       size_t sz_aligned =
         raft::alignTo((size_t)(n_nodes_route + 1), sizeof(double) / sizeof(NodeInfo<i_t>));
       i_t* sh_ptr = (i_t*)&v.node_info.data()[sz_aligned];
+      if (is_tsp) {
+        thrust::tie(v.tsp_requests, sh_ptr) =
+          tsp_route_t<i_t, f_t>::view_t::create_shared_route(sh_ptr, n_nodes_route);
+      }
       return thrust::make_tuple(v, sh_ptr);
     }
 
     raft::device_span<NodeInfo<i_t>> node_info;
+    typename tsp_route_t<i_t, f_t>::view_t tsp_requests;
   };
 
   view_t view()
   {
     view_t v;
-    v.node_info = raft::device_span<NodeInfo<i_t>>{node_info.data(), node_info.size()};
+    v.node_info    = raft::device_span<NodeInfo<i_t>>{node_info.data(), node_info.size()};
+    v.tsp_requests = tsp_requests.view();
     return v;
   }
 
@@ -246,14 +258,16 @@ class request_route_t<i_t, f_t, REQUEST, std::enable_if_t<REQUEST == request_t::
    * @param route_size
    * @return size_t
    */
-  HDI static size_t get_shared_size(i_t route_size)
+  HDI static size_t get_shared_size(i_t route_size, bool is_tsp = false)
   {
     // node, brother
     size_t byte_size = request_info_t<i_t, REQUEST>::size() * route_size * sizeof(NodeInfo<i_t>);
+    if (is_tsp) { byte_size += tsp_route_t<i_t, f_t>::get_shared_size(route_size); }
     return raft::alignTo(byte_size, sizeof(double));
   }
 
   rmm::device_uvector<NodeInfo<i_t>> node_info;
+  tsp_route_t<i_t, f_t> tsp_requests;
 };
 
 }  // namespace detail

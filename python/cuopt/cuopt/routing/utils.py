@@ -54,66 +54,67 @@ def generate_dataset(
     Parameters
     ----------
     locations: int32
-    Number of locations to visit, including the depot.
+        Number of locations to visit, including the depot.
 
     asymmetric : bool
-    Specifies if the matrices (both cost and time) should be asymmetric.
+        Specifies if the matrices (both cost and time)
+        should be asymmetric.
 
     min_demand : cudf.Series
-    Series will be cast to int32.
-    Minimum demand value along each dimension.
+        Series will be cast to int32.
+        Minimum demand value along each dimension.
 
     max_demand : cudf.Series
-    Series will be cast to int32.
-    Maximum demand value along each dimension.
+        Series will be cast to int32.
+        Maximum demand value along each dimension.
 
     min_capacities : cudf.Series
-    Series will be cast to int32.
-    Minimum capacity value along each dimension.
+        Series will be cast to int32.
+        Minimum capacity value along each dimension.
 
     max_capacities : cudf.Series
-    Series will be cast to int32.
-    Maximum capacity value along each dimension.
+        Series will be cast to int32.
+        Maximum capacity value along each dimension.
 
     min_service_time : int32
-    Lower bound for generated service time
+        Lower bound for generated service time.
 
     max_service_time : int32
-    upper bound for generated service time
+        Upper bound for generated service time.
 
     tw_tightness : float32
-    Can make a problem more or less difficult to solve. Feasibility is ensured
-    because we made sure the latest time of a node is larger than its
-    depot-node distance.
+        Can make a problem more or less difficult to solve.
+        Feasibility is ensured because we made sure the latest time of
+        a node is larger than its depot-node distance.
 
     drop_return_trips : float32
-    Percentage of vehicles in the fleet that shouldn't return to the depot.
+        Percentage of vehicles in the fleet that shouldn't return to the depot.
 
     shifts : int32
-    The number of shiftsin the datset. This will create vehicle time windows
-    that split the fleet into multipke shifts.
+        The number of shifts in the dataset. This will create vehicle
+        time windows that split the fleet into multiple shifts.
 
     n_vehicle_types : int32
-    Multiple vehicle types can be generated each with a corresponding
-    cost matrix or time matrix.
+        Multiple vehicle types can be generated each with a corresponding
+        cost matrix or time matrix.
 
     n_matrix_types : int32
-    There can be one cost and time matrix per vehicle type.
-    The cupy array generated is of size dim4(n_vehicle_types, n_matrix_types,
-    nloc, nloc). In the case the n_matrix_types is 1, the cost matrix
-    is used for time.
+        There can be one cost and time matrix per vehicle type.
+        The cupy array generated is of size dim4(n_vehicle_types,
+        n_matrix_types, nloc, nloc). In the case the n_matrix_types is 1,
+        the cost matrix is used for time.
 
     distribution : DatasetDistribution
-    The distribution fo datapoints similar to what is done for the homberger
-    cvrptw dataset.
-    https://www.sintef.no/projectweb/top/vrptw/homberger-benchmark/
-    Clustered datasets are usually faster to generate and solve.
+        The distribution of datapoints similar to what is done for the
+        homberger cvrptw dataset.
+        https://www.sintef.no/projectweb/top/vrptw/homberger-benchmark/
+        Clustered datasets are usually faster to generate and solve.
 
     center_box : tuple
-    The bounding box which constrains all the centroids
+        The bounding box which constrains all the centroids.
 
     seed : int32
-    Random seed for the raft generator.
+        Random seed for the raft generator.
 
     Returns
     -------

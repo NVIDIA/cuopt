@@ -22,10 +22,10 @@
 #include "routing/utilities/cuopt_utils.cuh"
 #include "routing/utilities/env_utils.hpp"
 
+#include <cuopt/error.hpp>
 #include <routing/structures.hpp>
 #include <routing/utilities/check_input.hpp>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/error.hpp>
 #include <utilities/high_res_timer.hpp>
 #include <utilities/vector_helpers.cuh>
 

@@ -128,8 +128,7 @@ struct node_stack_t {
   }
 
   // this will be in shared memory for each thread
-  struct __align__(32ul) item_t
-  {
+  struct __align__(32ul) item_t {
     double distance_forward;
     double transit_time_forward;
     double latest_arrival_forward;

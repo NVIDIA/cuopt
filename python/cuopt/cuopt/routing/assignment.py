@@ -57,6 +57,8 @@ class Assignment:
         accepted,
         status,
         message,
+        error_status,
+        error_message,
         undeliverable_orders,
     ):
         self.vehicle_count = vehicle_count
@@ -67,6 +69,8 @@ class Assignment:
         self.accepted = accepted
         self.status = status
         self.message = message
+        self.error_status = error_status
+        self.error_message = error_message
         self.undeliverable_orders = undeliverable_orders
 
     @catch_cuopt_exception
@@ -96,11 +100,6 @@ class Assignment:
         """
         Returns the route, truck ids for each stop and the arrival stamp
         as cudf.DataFrame.
-
-        LIMITED:
-            Limited version only return routes if the number of nodes
-            is less than 1001,
-            else it will return only cost and number of vehicles.
 
         Examples
         --------
@@ -155,6 +154,20 @@ class Assignment:
         return self.message
 
     @catch_cuopt_exception
+    def get_error_status(self):
+        """
+        Returns the error status as per ErrorStatus.
+        """
+        return self.error_status
+
+    @catch_cuopt_exception
+    def get_error_message(self):
+        """
+        Returns the error message as per ErrorMessage.
+        """
+        return self.error_message
+
+    @catch_cuopt_exception
     def get_infeasible_orders(self):
         """
         Returns the infeasible order numbers as cudf.Series.
@@ -171,11 +184,6 @@ class Assignment:
         """
         Display the solution in human readable format.
         Intended for relatively small inputs.
-
-        LIMITED:
-            Limited version only return routes if the number of nodes
-            is less than 1001,
-            else it will return only cost and number of vehicles.
 
         Examples
         --------

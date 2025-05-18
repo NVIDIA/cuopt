@@ -327,6 +327,7 @@ class move_candidates_t {
                     const viables_t<i_t, f_t>& viables_)
     : cand_matrix(n_orders, n_routes, sol_handle_),
       debug_delta(sol_handle_->get_stream()),
+      temp_storage(0, sol_handle_->get_stream()),
       graph(n_orders + n_routes + 1, sol_handle_->get_stream()),
       cycles(2 * n_routes, sol_handle_->get_stream()),
       move_path(n_routes, sol_handle_),
@@ -497,6 +498,7 @@ class move_candidates_t {
   cand_matrix_t<i_t, f_t> cand_matrix;
   // cost delta used in runtime tests
   rmm::device_scalar<double> debug_delta;
+  rmm::device_uvector<std::byte> temp_storage;
   i_t special_index;
   graph_t<i_t, f_t> graph;
   move_path_t<i_t, f_t> move_path;

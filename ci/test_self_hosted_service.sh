@@ -19,19 +19,18 @@ set -euo pipefail
 
 # Download the cuopt built in the previous step
 RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
-RAPIDS_PY_WHEEL_NAME="cuopt_server_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-s3 ./dist
-
-RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-s3 ./dist
-RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-s3 cpp ./dist
-RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-s3 ./local-cuopt-dep
+CUOPT_MPS_PARSER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python)
+CUOPT_SERVER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_server_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python)
+CUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python)
+LIBCUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github cpp)
 
 # echo to expand wildcard before adding `[extra]` requires for pip
 rapids-pip-retry install \
     --extra-index-url=https://pypi.nvidia.com \
-    ./dist/libcuopt*.whl \
-    ./dist/cuopt_mps_parser*.whl \
-    ./local-cuopt-dep/cuopt*.whl \
-    "$(echo ./dist/cuopt_server*.whl)[test]"
+    "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
+    "${CUOPT_WHEELHOUSE}"/cuopt*.whl \
+    "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl \
+    "$(echo "${CUOPT_SERVER_WHEELHOUSE}"/cuopt_server*.whl)[test]"
 
 check_message()
 {
@@ -74,7 +73,7 @@ CERT_FOLDER=$(pwd)/python/cuopt_self_hosted/cuopt_sh_client/tests/utils/certs
 export CUOPT_SSL_CERTFILE=${CERT_FOLDER}/server.crt
 export CUOPT_SSL_KEYFILE=${CERT_FOLDER}/server.key
 export CLIENT_CERT=${CERT_FOLDER}/ca.crt
-python -m cuopt_server.cuopt_amr_service &
+python -m cuopt_server.cuopt_service &
 export SERVER_PID=$!
 
 DELAY=10

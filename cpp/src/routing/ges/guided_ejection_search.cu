@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
+
 #include "guided_ejection_search.cuh"
 
 #include <utilities/cuda_helpers.cuh>
@@ -29,8 +31,6 @@
 #include "ejection_pool.cuh"
 #include "execute_insertion.cuh"
 #include "found_solution.cuh"
-
-#include <utilities/error.hpp>
 
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>

@@ -15,14 +15,14 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
+
 #include "feasibility_jump.cuh"
 #include "feasibility_jump_kernels.cuh"
 
 #include <mip/mip_constants.hpp>
 #include <mip/utils.cuh>
 #include <utilities/seed_generator.cuh>
-
-#include <utilities/error.hpp>
 #include <utilities/timer.hpp>
 
 #include <raft/linalg/eltwise.cuh>
@@ -388,7 +388,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
 
   // this does a stream sync inside
   f_t h_incumbent_obj = compute_objective_from_vec<i_t, f_t>(
-    climber->incumbent_assignment, pb_ptr->objective_coefficients, pb_ptr->handle_ptr);
+    climber->incumbent_assignment, pb_ptr->objective_coefficients, climber_stream);
   climber->incumbent_objective.set_value_async(h_incumbent_obj, climber_stream);
   f_t inf = std::numeric_limits<f_t>::infinity();
   climber->best_objective.set_value_async(inf, climber_stream);
@@ -400,7 +400,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
 
   // initialize the best_objective values according to the initial assignment
   f_t best_obj = compute_objective_from_vec<i_t, f_t>(
-    climber->incumbent_assignment, pb_ptr->objective_coefficients, pb_ptr->handle_ptr);
+    climber->incumbent_assignment, pb_ptr->objective_coefficients, climber_stream);
   if (climber->violated_constraints.set_size.value(climber_stream) == 0) {
     climber->best_excess.set_value_to_zero_async(climber_stream);
     climber->best_objective.set_value_async(best_obj, climber_stream);

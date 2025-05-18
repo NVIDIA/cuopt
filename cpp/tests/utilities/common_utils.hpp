@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <utilities/error.hpp>
+#include <cuopt/error.hpp>
 #include <utilities/macros.cuh>
 
 #include <fstream>

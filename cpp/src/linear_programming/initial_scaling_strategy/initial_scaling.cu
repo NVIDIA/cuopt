@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
+
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <linear_programming/utils.cuh>
 #include <mip/mip_constants.hpp>
-
-#include <utilities/error.hpp>
 
 #include <raft/common/nvtx.hpp>
 #include <raft/linalg/binary_op.cuh>
@@ -417,11 +417,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_solutions(
                                        cummulative_variable_scaling_.data(),
                                        primal_size_h_,
                                        stream_view_);
-  raft::linalg::eltwiseDivideCheckZero(dual_solution.data(),
-                                       dual_solution.data(),
-                                       cummulative_constraint_matrix_scaling_.data(),
-                                       dual_size_h_,
-                                       stream_view_);
+  if (dual_solution.size()) {
+    raft::linalg::eltwiseDivideCheckZero(dual_solution.data(),
+                                         dual_solution.data(),
+                                         cummulative_constraint_matrix_scaling_.data(),
+                                         dual_size_h_,
+                                         stream_view_);
+  }
 }
 
 template <typename i_t, typename f_t>

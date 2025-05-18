@@ -20,3 +20,4 @@ from cuopt.utilities.exception_handler import (
     catch_cuopt_exception,
 )
 from cuopt.utilities.type_casting import type_cast
+from cuopt.utilities.utils import check_solution

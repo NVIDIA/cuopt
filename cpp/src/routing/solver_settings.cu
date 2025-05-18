@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
 #include <cuopt/routing/solver_settings.hpp>
-#include <utilities/error.hpp>
 
 namespace cuopt {
 namespace routing {

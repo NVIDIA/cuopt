@@ -53,7 +53,8 @@ def Solve(data_model, solver_settings=None, log_file=""):
     Examples
     --------
     >>> from cuopt import linear_programming
-    >>> from cuopt.linear_programming.solver_settings import SolverMode
+    >>> from cuopt.linear_programming.solver_settings import PDLPSolverMode
+    >>> from cuopt.linear_programming.solver_parameters import *
     >>>
     >>> data_model = linear_programming.DataModel()
     >>>
@@ -65,7 +66,7 @@ def Solve(data_model, solver_settings=None, log_file=""):
     >>> # Lower the accuracy from 1e-4 to 1e-2 for a faster result
     >>> settings.set_optimality_tolerance(1e-2)
     >>> # Also change the solver mode to Fast1 which can be faster
-    >>> settings.set_pdlp_solver_mode(SolverMode.Fast1)
+    >>> settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Fast1)
     >>>
     >>> # Call solve
     >>> solution = linear_programming.Solve(data_model, settings)
@@ -138,7 +139,8 @@ def BatchSolve(data_model_list, solver_settings=None, log_file=""):
     Examples
     --------
     >>> from cuopt import linear_programming
-    >>> from cuopt.linear_programming.solver_settings import SolverMode
+    >>> from cuopt.linear_programming.solver_settings import PDLPSolverMode
+    >>> from cuopt.linear_programming.solver_parameters import *
     >>> import cuopt_mps_parser
     >>>
     >>> data_models = []
@@ -149,8 +151,9 @@ def BatchSolve(data_model_list, solver_settings=None, log_file=""):
     >>> settings = linear_programming.SolverSettings()
     >>> # Lower the accuracy from 1e-4 to 1e-2 for a faster result
     >>> settings.set_optimality_tolerance(1e-2)
-    >>> # Also change the solver mode to SolverMode.Fast1 which can be faster
-    >>> settings.set_pdlp_solver_mode(SolverMode.Fast1)
+    >>> # Also change the solver mode to PDLPSolverMode.Fast1
+    >>> # which can be faster
+    >>> settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Fast1)
     >>>
     >>> # Call solve
     >>> solutions, solve_time = linear_programming.BatchSolve(

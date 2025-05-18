@@ -66,6 +66,8 @@ struct vehicle_routing_ret_t {
   std::unique_ptr<rmm::device_buffer> d_accepted_;
   routing::solution_status_t status_;
   std::string solution_string_;
+  cuopt::error_type_t error_status_;
+  std::string error_message_;
 };
 
 // aggregate for dataset_t() return type

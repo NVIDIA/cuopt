@@ -56,7 +56,7 @@ bool file_exists(const std::string& file)
 TEST(mps_parser, bad_mps_files)
 {
   std::stringstream ss;
-  static constexpr int NumMpsFiles = 13;
+  static constexpr int NumMpsFiles = 15;
   for (int i = 1; i <= NumMpsFiles; ++i) {
     ss << "linear_programming/bad-mps-" << i << ".mps";
     // Check if file exists

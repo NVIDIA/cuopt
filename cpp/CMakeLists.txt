@@ -15,6 +15,8 @@
 
 cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
 
+include(GNUInstallDirs)
+
 set(RAFT_NVTX ON)
 include(../cmake/rapids_config.cmake)
 include(rapids-cmake)
@@ -39,15 +41,7 @@ endif()
 set(DEPENDENT_LIB_MAJOR_VERSION "25")
 set(DEPENDENT_LIB_MINOR_VERSION "04")
 
-# Define the semantic version, which is separate from the release name (i.e 25.05)
-set(CUOPT_SEMANTIC_VERSION_MAJOR "0")
-set(CUOPT_SEMANTIC_VERSION_MINOR "0")
-set(CUOPT_SEMANTIC_VERSION_PATCH "0")
-
-# Write the version header
 rapids_cmake_write_version_file(include/cuopt/version_config.hpp)
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/cuopt/semantic_version.hpp.in ${CMAKE_CURRENT_SOURCE_DIR}/include/cuopt/semantic_version.hpp)
-
 # ##################################################################################################
 # - build type ------------------------------------------------------------------------------------
 
@@ -58,7 +52,6 @@ rapids_cmake_build_type(Release)
 # - User Options  ------------------------------------------------------------
 option(CMAKE_CUDA_LINEINFO "Enable the -lineinfo option for nvcc useful for cuda-memcheck / profiler" ON)
 option(BUILD_TESTS "Configure CMake to build tests" ON)
-option(BUILD_CUOPT_MG_TESTS "Build cuOpt multigpu tests" OFF)
 option(DISABLE_OPENMP "Disable OpenMP" OFF)
 option(CUDA_STATIC_RUNTIME "Statically link the CUDA toolkit runtime and libraries" OFF)
 
@@ -316,6 +309,34 @@ if(Doxygen_FOUND)
 
   add_custom_target(docs_cuopt DEPENDS CUOPT_DOXYGEN)
 endif()
+
+
+add_executable(cuopt_cli cuopt_cli.cpp)
+target_compile_options(cuopt_cli
+  PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+  "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
+)
+
+target_include_directories(cuopt_cli
+  PRIVATE  
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+  "$<INSTALL_INTERFACE:include>"
+)
+
+target_link_libraries(cuopt_cli
+  PUBLIC
+  cuopt
+  OpenMP::OpenMP_CXX
+)
+set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
+
+# FIXME:: Is this the right way? 
+install(TARGETS cuopt_cli
+  DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 
 option(BUILD_BENCHMARKS "Build benchmarks" ON)
 if(BUILD_BENCHMARKS)

@@ -146,7 +146,8 @@ bool local_search_t<i_t, f_t, REQUEST>::run_cross_search(solution_t<i_t, f_t, RE
 
 template <typename i_t, typename f_t, request_t REQUEST>
 template <request_t r_t, std::enable_if_t<r_t == request_t::PDP, bool>>
-bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t>& sol)
+bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t>& sol,
+                                                        bool full_set)
 {
   raft::common::nvtx::range fun_scope("run_fast_search");
 
@@ -192,8 +193,13 @@ bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t
 {
   raft::common::nvtx::range fun_scope("run_fast_search");
 
-  std::vector<fast_operators_t> fast_operators{
-    fast_operators_t::SLIDING, fast_operators_t::VRP, fast_operators_t::TWO_OPT};
+  std::vector<fast_operators_t> fast_operators{fast_operators_t::SLIDING};
+
+  if (!sol.problem_ptr->is_tsp) {
+    fast_operators.push_back(fast_operators_t::VRP);
+    fast_operators.push_back(fast_operators_t::TWO_OPT);
+  }
+
   if (!sol.problem_ptr->fleet_info.is_homogenous_ && !sol.problem_ptr->has_non_uniform_breaks()) {
     fast_operators.push_back(fast_operators_t::REGRET);
   }
@@ -274,7 +280,7 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
     while (true) {
       if (time_limit_enabled && local_search_t<i_t, f_t, REQUEST>::check_time_limit()) { break; }
       iter++;
-      if (run_fast_search(sol)) { continue; }
+      if (run_fast_search(sol, sol.problem_ptr->is_tsp && iter == 2)) { continue; }
       if (consider_unserviced && sol.problem_ptr->has_prize_collection() &&
           run_collect_prizes(sol)) {
         continue;

@@ -22,3 +22,8 @@ from .cuopt_self_host_client import (
     mime_type,
     set_log_level,
 )
+from .thin_client_solver_settings import (
+    PDLPSolverMode,
+    SolverMethod,
+    ThinClientSolverSettings,
+)

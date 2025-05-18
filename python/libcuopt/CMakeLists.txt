@@ -37,6 +37,15 @@ endif()
 
 unset(cuopt_FOUND)
 
+
+include(FetchContent)
+FetchContent_Declare(
+  argparse
+  GIT_REPOSITORY https://github.com/p-ranav/argparse.git
+  GIT_TAG v2.9
+)
+FetchContent_MakeAvailable(argparse)
+
 set(BUILD_TESTS OFF)
 set(BUILD_BENCHMARKS OFF)
 set(CUOPT_BUILD_TESTUTIL OFF)
@@ -44,7 +53,11 @@ set(CUDA_STATIC_RUNTIME ON)
 
 add_subdirectory(../../cpp cuopt-cpp)
 
+target_link_libraries(cuopt PRIVATE argparse)
+target_link_libraries(cuopt_cli PRIVATE argparse)
+
 set(rpaths
+  "$ORIGIN/../lib64"
   "$ORIGIN/../../nvidia/cublas/lib"
   "$ORIGIN/../../nvidia/curand/lib"
   "$ORIGIN/../../nvidia/cusolver/lib"
@@ -52,3 +65,4 @@ set(rpaths
 )
 
 set_property(TARGET cuopt PROPERTY INSTALL_RPATH ${rpaths} APPEND)
+set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH ${rpaths} APPEND)

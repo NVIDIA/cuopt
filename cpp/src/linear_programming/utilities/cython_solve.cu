@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/cython_solve.hpp>
 #include <mip/logger.hpp>
 #include <mps_parser/data_model_view.hpp>
-#include <utilities/error.hpp>
 
 #include <raft/common/nvtx.hpp>
 #include <raft/core/handle.hpp>
@@ -157,6 +157,8 @@ linear_programming_ret_t call_solve_lp(
     solution.get_pdlp_warm_start_data().sum_solution_weight_,
     solution.get_pdlp_warm_start_data().iterations_since_last_restart_,
     solution.get_termination_status(),
+    solution.get_error_status().get_error_type(),
+    solution.get_error_status().what(),
     solution.get_additional_termination_information().l2_primal_residual,
     solution.get_additional_termination_information().l2_dual_residual,
     solution.get_additional_termination_information().primal_objective,
@@ -188,6 +190,8 @@ mip_ret_t call_solve_mip(
   auto solution = cuopt::linear_programming::solve_mip(op_problem, solver_settings);
   mip_ret_t mip_ret{std::make_unique<rmm::device_buffer>(solution.get_solution().release()),
                     solution.get_termination_status(),
+                    solution.get_error_status().get_error_type(),
+                    solution.get_error_status().what(),
                     solution.get_objective_value(),
                     solution.get_mip_gap(),
                     solution.get_solution_bound(),

@@ -20,22 +20,22 @@ set -eou pipefail
 mkdir -p ./dist
 RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
 
-RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-s3 ./dist
-rapids-pip-retry install --no-deps ./dist/cuopt_mps_parser*.whl
-
-RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-s3 cpp ./dist
-rapids-pip-retry install --no-deps ./dist/libcuopt_*.whl
-
-RAPIDS_PY_WHEEL_NAME="cuopt_server_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-s3 ./dist
-
-# Download the cuopt built in the previous step
-RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-s3 ./local-cuopt-dep
-rapids-pip-retry install --no-deps ./local-cuopt-dep/cuopt*.whl --extra-index-url=https://pypi.nvidia.com
-rapids-pip-retry install "$(echo ./dist/libcuopt_${RAPIDS_PY_CUDA_SUFFIX}*.whl)[test]" --extra-index-url=https://pypi.nvidia.com
+# Download the packages built in the previous step
+RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
+CUOPT_MPS_PARSER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python)
+CUOPT_SERVER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_server_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python)
+CUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python)
+LIBCUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github cpp)
 
 # echo to expand wildcard before adding `[extra]` requires for pip
-rapids-pip-retry install "$(echo ./dist/cuopt_server*.whl)[test]" --extra-index-url=https://pypi.nvidia.com
+rapids-pip-retry install \
+    --extra-index-url=https://pypi.nvidia.com \
+    "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
+    "$(echo "${CUOPT_SERVER_WHEELHOUSE}"/cuopt_server*.whl)[test]" \
+    "${CUOPT_WHEELHOUSE}"/cuopt*.whl \
+    "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl
 
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
+./datasets/mip/download_miplib_test_dataset.sh
 
 RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt_server/cuopt_server/tests/

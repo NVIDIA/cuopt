@@ -365,6 +365,7 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
       if constexpr (I != (size_t)dim_t::DIST) { is_tsp = false; }
     });
   }
+  dimensions_info.is_tsp = is_tsp;
 
   if (!is_tsp) {
     is_cvrp_ = !is_pdp() && (data_view_ptr->get_cost_matrices().size() == 1);

@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
 #include <cuopt/routing/distance_engine/waypoint_matrix.hpp>
 
 #include <routing/utilities/check_input.hpp>
-#include <utilities/error.hpp>
 
 #include <raft/util/cudart_utils.hpp>
 

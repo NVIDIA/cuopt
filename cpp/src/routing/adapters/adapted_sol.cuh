@@ -250,7 +250,8 @@ struct adapted_sol_t {
   double calculate_similarity_radius(const adapted_sol_t<i_t, f_t, REQUEST>& second) const
   {
     // always do symmetric measure if it is a CVRP or if there are unserviced nodes
-    if (problem->is_cvrp() || this->has_unserviced_nodes || second.has_unserviced_nodes) {
+    if (problem->is_tsp || problem->is_cvrp() || this->has_unserviced_nodes ||
+        second.has_unserviced_nodes) {
       return 0.5 * (this->calculate_similarity_radius_asymetric(second) +
                     second.calculate_similarity_radius_asymetric(*this));
     }

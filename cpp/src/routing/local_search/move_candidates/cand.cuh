@@ -28,8 +28,7 @@ union cost_counter_t {
   double cost;
 };
 
-struct __align__(16) cand_t
-{
+struct __align__(16) cand_t {
   HDI cand_t(uint pair_1_, uint pair_2_, uint64_t counter_) : pair_1(pair_1_), pair_2(pair_2_)
   {
     cost_counter.counter = counter_;

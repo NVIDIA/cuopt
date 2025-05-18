@@ -22,7 +22,7 @@ from typing import Dict, List, Optional
 import pytest
 import requests
 
-from cuopt_server import cuopt_amr_service
+from cuopt_server import cuopt_service
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:
@@ -282,7 +282,7 @@ def cuopt_service_sync(
 # Fixture and client to allow full cuopt service
 # to run as a separate process for multiple tests
 cuoptmain = None
-server_script = cuopt_amr_service.__file__
+server_script = cuopt_service.__file__
 python_path = shutil.which("python")
 
 

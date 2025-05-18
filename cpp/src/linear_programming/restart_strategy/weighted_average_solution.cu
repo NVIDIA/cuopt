@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
+
 #include <linear_programming/pdlp_constants.hpp>
 #include <linear_programming/restart_strategy/weighted_average_solution.hpp>
 #include <linear_programming/utils.cuh>
 #include <mip/mip_constants.hpp>
-
-#include <utilities/error.hpp>
 
 #include <raft/linalg/binary_op.cuh>
 #include <raft/linalg/divide.cuh>

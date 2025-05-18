@@ -183,6 +183,18 @@ bool solution_t<i_t, f_t>::get_feasible()
 }
 
 template <typename i_t, typename f_t>
+bool solution_t<i_t, f_t>::get_problem_infeasible()
+{
+  return is_problem_infeasible;
+}
+
+template <typename i_t, typename f_t>
+void solution_t<i_t, f_t>::set_problem_infeasible()
+{
+  is_problem_infeasible = true;
+}
+
+template <typename i_t, typename f_t>
 std::vector<f_t> solution_t<i_t, f_t>::get_host_assignment()
 {
   // do not use the size of assignment as it might be different than the n_variables
@@ -304,7 +316,7 @@ template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::compute_objective()
 {
   h_obj = compute_objective_from_vec<i_t, f_t>(
-    assignment, problem_ptr->objective_coefficients, handle_ptr);
+    assignment, problem_ptr->objective_coefficients, handle_ptr->get_stream());
   // to save from memory transactions, don't update the device objective
   // when needed we can update the device objective here
   h_user_obj = problem_ptr->get_user_obj_from_solver_obj(h_obj);
@@ -589,7 +601,9 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
                                     num_nodes,
                                     num_simplex_iterations);
   } else {
-    return mip_solution_t<i_t, f_t>{mip_termination_status_t::Infeasible, handle_ptr->get_stream()};
+    return mip_solution_t<i_t, f_t>{is_problem_infeasible ? mip_termination_status_t::Infeasible
+                                                          : mip_termination_status_t::TimeLimit,
+                                    handle_ptr->get_stream()};
   }
 }
 

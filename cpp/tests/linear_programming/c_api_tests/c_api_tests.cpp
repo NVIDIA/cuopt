@@ -18,7 +18,6 @@
 #include "c_api_tests.h"
 
 #include <cuopt/linear_programming/cuopt_c.h>
-#include <cuopt/semantic_version.hpp>
 
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
@@ -28,15 +27,6 @@
 TEST(c_api, int_size) { EXPECT_EQ(test_int_size(), sizeof(int32_t)); }
 
 TEST(c_api, float_size) { EXPECT_EQ(test_float_size(), sizeof(double)); }
-
-TEST(c_api, version)
-{
-  int major, minor, patch;
-  test_version(&major, &minor, &patch);
-  EXPECT_EQ(major, CUOPT_SEMANTIC_VERSION_MAJOR);
-  EXPECT_EQ(minor, CUOPT_SEMANTIC_VERSION_MINOR);
-  EXPECT_EQ(patch, CUOPT_SEMANTIC_VERSION_PATCH);
-}
 
 TEST(c_api, afiro)
 {

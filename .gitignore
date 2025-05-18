@@ -43,6 +43,7 @@ datasets/**
 
 ## Doxygen
 cpp/doxygen/html
+cpp/doxygen/xml
 
 # Jupyter Notebooks
 .ipynb_checkpoints
@@ -55,5 +56,12 @@ version_cache.json
 error_log.txt
 
 # docs
-docs/cuopt/_build
-docs/cuopt/_repo
+docs/cuopt/source/cuopt-c/lp-milp/cuopt-cli-help.txt
+docs/cuopt/source/cuopt-server/client-api/sh-cli-help.txt
+docs/cuopt/source/cuopt-server/server-api/server-cli-help.txt
+docs/cuopt/source/cuopt_spec.yaml
+python/cuopt_self_hosted/cuopt_sh_client/tests/utils/certs/*.key
+docs/cuopt/build
+
+# generated version file
+cpp/include/cuopt/semantic_version.hpp

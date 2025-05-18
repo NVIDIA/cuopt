@@ -18,11 +18,11 @@
 #include "fleet_order_constraints.hpp"
 
 #include <thrust/fill.h>
+#include <cuopt/error.hpp>
 #include <raft/core/span.hpp>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/error.hpp>
-
 #include <vector>
+
 namespace cuopt {
 namespace routing {
 namespace detail {

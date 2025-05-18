@@ -44,6 +44,7 @@ from cuopt.linear_programming.data_model.data_model_wrapper cimport DataModel
 from cuopt.linear_programming.solver.solver cimport (
     call_batch_solve,
     call_solve,
+    error_type_t,
     mip_termination_status_t,
     pdlp_solver_mode_t,
     pdlp_termination_status_t,
@@ -64,15 +65,16 @@ from numba import cuda
 import cudf
 from cudf.core.buffer import as_buffer
 
+from cuopt.linear_programming.solver.solver_parameters import CUOPT_LOG_FILE
 from cuopt.linear_programming.solver_settings.solver_settings import (
-    SolverMode,
+    PDLPSolverMode,
     SolverSettings,
 )
 from cuopt.utilities import InputValidationError
 
 
 cdef extern from "cuopt/linear_programming/utilities/internals.hpp" namespace "cuopt::internals": # noqa
-    cdef cppclass lp_incumbent_sol_callback_t
+    cdef cppclass base_solution_callback_t
 
 
 class MILPTerminationStatus(IntEnum):
@@ -81,9 +83,11 @@ class MILPTerminationStatus(IntEnum):
     FeasibleFound = mip_termination_status_t.FeasibleFound
     Infeasible = mip_termination_status_t.Infeasible
     Unbounded = mip_termination_status_t.Unbounded
+    TimeLimit = mip_termination_status_t.TimeLimit
 
 
 class LPTerminationStatus(IntEnum):
+    NoTermination = pdlp_termination_status_t.NoTermination
     NumericalError = pdlp_termination_status_t.NumericalError
     Optimal = pdlp_termination_status_t.Optimal
     PrimalInfeasible = pdlp_termination_status_t.PrimalInfeasible
@@ -91,6 +95,13 @@ class LPTerminationStatus(IntEnum):
     IterationLimit = pdlp_termination_status_t.IterationLimit
     TimeLimit = pdlp_termination_status_t.TimeLimit
     PrimalFeasible = pdlp_termination_status_t.PrimalFeasible
+
+
+class ErrorStatus(IntEnum):
+    Success = error_type_t.Success
+    ValidationError = error_type_t.ValidationError
+    OutOfMemoryError = error_type_t.OutOfMemoryError
+    RuntimeError = error_type_t.RuntimeError
 
 
 class ProblemCategory(IntEnum):
@@ -292,7 +303,6 @@ cdef set_solver_setting(
     cdef uintptr_t c_last_restart_duality_gap_primal_solution
     cdef uintptr_t c_last_restart_duality_gap_dual_solution
     cdef uintptr_t callback_ptr = 0
-
     if mip:
         if data_model_obj is not None and data_model_obj.get_initial_primal_solution().shape[0] != 0:  # noqa
             c_solver_settings.set_initial_mip_solution(
@@ -300,46 +310,20 @@ cdef set_solver_setting(
                 data_model_obj.get_initial_primal_solution().shape[0]
             )
 
-        if settings.get_absolute_primal_tolerance() is not None:
-            c_solver_settings.set_absolute_tolerance(
-                <double> settings.get_absolute_primal_tolerance()
+        for name, value in settings.settings_dict.items():
+            c_solver_settings.set_parameter_from_string(
+                name.encode('utf-8'),
+                str(value).encode('utf-8')
             )
 
-        if settings.get_relative_primal_tolerance() is not None:
-            c_solver_settings.set_relative_tolerance(
-                <double> settings.get_relative_primal_tolerance()
-            )
-        if settings.get_integrality_tolerance() is not None:
-            c_solver_settings.set_integrality_tolerance(
-                <double> settings.get_integrality_tolerance()
-            )
-        if settings.get_absolute_mip_gap() is not None:
-            c_solver_settings.set_absolute_mip_gap(
-                <double> settings.get_absolute_mip_gap()
-            )
-        if settings.get_relative_mip_gap() is not None:
-            c_solver_settings.set_relative_mip_gap(
-                <double> settings.get_relative_mip_gap()
-            )
-        if settings.get_mip_scaling() is not None:
-            c_solver_settings.set_mip_scaling(
-                <bool> settings.get_mip_scaling()
-            )
-        callback = settings.get_mip_incumbent_solution_callback()
-        if callback:
-            callback_ptr = callback.get_native_callback()
+        callbacks = settings.get_mip_callbacks()
+        for callback in callbacks:
+            if callback:
+                callback_ptr = callback.get_native_callback()
 
-            c_solver_settings.set_mip_incumbent_solution_callback(
-                <lp_incumbent_sol_callback_t*>callback_ptr
-            )
-        if settings.get_mip_heuristics_only() is not None:
-            c_solver_settings.set_mip_heuristics_only(
-                <bool> settings.get_mip_heuristics_only()
-            )
-        if settings.get_mip_num_cpu_threads() is not None:
-            c_solver_settings.set_mip_num_cpu_threads(
-                <int> settings.get_mip_num_cpu_threads()
-            )
+                c_solver_settings.set_mip_callback(
+                    <base_solution_callback_t*>callback_ptr
+                )
     else:
         if data_model_obj is not None and data_model_obj.get_initial_primal_solution().shape[0] != 0:  # noqa
             c_solver_settings.set_initial_pdlp_primal_solution(
@@ -352,51 +336,12 @@ cdef set_solver_setting(
                 data_model_obj.get_initial_dual_solution().shape[0]
             )
 
-        # Set solver setting on the C++ side
-        if settings.get_absolute_dual_tolerance() is not None:
-            c_solver_settings.set_absolute_dual_tolerance(
-                <double> settings.get_absolute_dual_tolerance()
-            )
-        if settings.get_relative_dual_tolerance() is not None:
-            c_solver_settings.set_relative_dual_tolerance(
-                <double> settings.get_relative_dual_tolerance()
-            )
-        if settings.get_absolute_primal_tolerance() is not None:
-            c_solver_settings.set_absolute_primal_tolerance(
-                <double> settings.get_absolute_primal_tolerance()
-            )
-        if settings.get_relative_primal_tolerance() is not None:
-            c_solver_settings.set_relative_primal_tolerance(
-                <double> settings.get_relative_primal_tolerance()
+        for name, value in settings.settings_dict.items():
+            c_solver_settings.set_parameter_from_string(
+                name.encode('utf-8'),
+                str(value).encode('utf-8')
             )
 
-    if settings.get_absolute_gap_tolerance() is not None:
-        c_solver_settings.set_absolute_gap_tolerance(
-            <double> settings.get_absolute_gap_tolerance()
-        )
-    if settings.get_relative_gap_tolerance() is not None:
-        c_solver_settings.set_relative_gap_tolerance(
-            <double> settings.get_relative_gap_tolerance()
-        )
-    c_solver_settings.set_infeasibility_detection(
-        <bool> settings.get_infeasibility_detection()
-    )
-    if settings.get_primal_infeasible_tolerance() is not None:
-        c_solver_settings.set_primal_infeasible_tolerance(
-            <double> settings.get_primal_infeasible_tolerance()
-        )
-    if settings.get_dual_infeasible_tolerance() is not None:
-        c_solver_settings.set_dual_infeasible_tolerance(
-            <double> settings.get_dual_infeasible_tolerance()
-        )
-
-    if not isinstance(settings.get_pdlp_solver_mode(), SolverMode):
-        raise InputValidationError(
-            "Invalid option for set_pdlp_solver_mode. Must be one of the solver_settings.SolverMode enum values."  # noqa
-        )
-    c_solver_settings.set_pdlp_solver_mode(
-        SolverMode(settings.get_pdlp_solver_mode())
-    )
 
     if settings.get_pdlp_warm_start_data() is not None:  # noqa
         if len(data_model_obj.get_objective_coefficients()) != len(
@@ -481,16 +426,11 @@ cdef set_solver_setting(
         )
 
     # Common to LP and MIP
-    if settings.get_iteration_limit() is not None:
-        c_solver_settings.set_iteration_limit(
-            <int> settings.get_iteration_limit()
-        )
-    if settings.get_time_limit() is not None:
-        c_solver_settings.set_time_limit(
-            <double> settings.get_time_limit()
-        )
-    c_solver_settings.set_log_file(log_file.encode())
-    c_solver_settings.set_log_to_console(settings.get_log_to_console())
+
+    c_solver_settings.set_parameter_from_string(
+        CUOPT_LOG_FILE.encode('utf-8'),
+        log_file.encode('utf-8')
+    )
 
 cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                      DataModel data_model_obj,
@@ -505,6 +445,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             move(sol_ret.mip_ret.solution_)
         )
         termination_status = sol_ret.mip_ret.termination_status_
+        error_status = sol_ret.mip_ret.error_status_
+        error_message = sol_ret.mip_ret.error_message_
         objective = sol_ret.mip_ret.objective_
         mip_gap = sol_ret.mip_ret.mip_gap_
         solution_bound = sol_ret.mip_ret.solution_bound_
@@ -529,6 +471,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             solve_time,
             primal_solution=solution,
             termination_status=MILPTerminationStatus(termination_status),
+            error_status=ErrorStatus(error_status),
+            error_message=str(error_message),
             primal_objective=objective,
             mip_gap=mip_gap,
             solution_bound=solution_bound,
@@ -567,6 +511,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         ).to_numpy()
 
         termination_status = sol_ret.lp_ret.termination_status_
+        error_status = sol_ret.lp_ret.error_status_
+        error_message = sol_ret.lp_ret.error_message_
         l2_primal_residual = sol_ret.lp_ret.l2_primal_residual_
         l2_dual_residual = sol_ret.lp_ret.l2_dual_residual_
         primal_objective = sol_ret.lp_ret.primal_objective_
@@ -693,6 +639,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 sum_solution_weight,
                 iterations_since_last_restart,
                 LPTerminationStatus(termination_status),
+                ErrorStatus(error_status),
+                str(error_message),
                 l2_primal_residual,
                 l2_dual_residual,
                 primal_objective,
@@ -708,6 +656,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             dual_solution=dual_solution,
             reduced_cost=reduced_cost,
             termination_status=LPTerminationStatus(termination_status),
+            error_status=ErrorStatus(error_status),
+            error_message=str(error_message),
             primal_residual=l2_primal_residual,
             dual_residual=l2_dual_residual,
             primal_objective=primal_objective,

@@ -39,6 +39,7 @@ classifiers = [
     "Environment :: GPU :: NVIDIA CUDA",
 ]
 dependencies = [
+    "cuopt-mps-parser==25.5.*,>=0.0.0a0",
     "librmm==25.4.*,>=0.0.0a0",
     "nvidia-cublas",
     "nvidia-curand",
@@ -85,6 +86,7 @@ dependencies-file = "../../dependencies.yaml"
 matrix-entry = "cuda_suffixed=true;use_cuda_wheels=true"
 requires = [
     "cmake>=3.30.4",
+    "cuopt-mps-parser==25.5.*,>=0.0.0a0",
     "librmm==25.4.*,>=0.0.0a0",
     "ninja",
     "rapids-logger==0.1.*,>=0.0.0a0",

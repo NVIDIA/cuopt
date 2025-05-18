@@ -161,19 +161,19 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   compute_primal_objective(primal_iterate);
   my_l2_norm<i_t, f_t>(primal_residual_, l2_primal_residual_, handle_ptr_);
   // If per_constraint_residual is false we still need to perform the l2 since it's used in kkt
-  if (settings.get_per_constraint_residual()) {
+  if (settings.per_constraint_residual) {
     // Compute the linf of (residual_i - rel * b_i)
     thrust::device_ptr<f_t> result_ptr(linf_primal_residual_.data());
     const f_t neutral = f_t(0.0);
 
-    if (settings.get_save_best_primal_so_far()) {
+    if (settings.save_best_primal_so_far) {
       const i_t zero_int = 0;
       nb_violated_constraints_.set_value_async(zero_int, handle_ptr_->get_stream());
       *result_ptr = thrust::transform_reduce(
         handle_ptr_->get_thrust_policy(),
         thrust::make_zip_iterator(primal_residual_.cbegin(), combined_bounds.cbegin()),
         thrust::make_zip_iterator(primal_residual_.cend(), combined_bounds.cend()),
-        relative_residual_t<i_t, f_t>{settings.get_relative_primal_tolerance()},
+        relative_residual_t<i_t, f_t>{settings.tolerances.relative_primal_tolerance},
         neutral,
         thrust::maximum<f_t>());
     } else {
@@ -181,7 +181,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
         handle_ptr_->get_thrust_policy(),
         thrust::make_zip_iterator(primal_residual_.cbegin(), combined_bounds.cbegin()),
         thrust::make_zip_iterator(primal_residual_.cend(), combined_bounds.cend()),
-        relative_residual_t<i_t, f_t>{settings.get_relative_primal_tolerance()},
+        relative_residual_t<i_t, f_t>{settings.tolerances.relative_primal_tolerance},
         neutral,
         thrust::maximum<f_t>());
     }
@@ -193,7 +193,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   compute_dual_objective(dual_iterate);
   my_l2_norm<i_t, f_t>(dual_residual_, l2_dual_residual_, handle_ptr_);
   // If per_constraint_residual is false we still need to perform the l2 since it's used in kkt
-  if (settings.get_per_constraint_residual()) {
+  if (settings.per_constraint_residual) {
     // Compute the linf of (residual_i - rel * c_i)
     thrust::device_ptr<f_t> result_ptr(linf_dual_residual_.data());
     const f_t neutral = f_t(0.0);
@@ -202,7 +202,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
       handle_ptr_->get_thrust_policy(),
       thrust::make_zip_iterator(dual_residual_.cbegin(), objective_coefficients.cbegin()),
       thrust::make_zip_iterator(dual_residual_.cend(), objective_coefficients.cend()),
-      relative_residual_t<i_t, f_t>{settings.get_relative_dual_tolerance()},
+      relative_residual_t<i_t, f_t>{settings.tolerances.relative_dual_tolerance},
       neutral,
       thrust::maximum<f_t>());
   }

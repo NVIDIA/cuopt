@@ -89,7 +89,8 @@ class DataModel(data_model_wrapper.DataModel):
     >>>
     >>> # Set the CSR matrix representation, for more information about CSR
     >>> # checkout:
-    >>> # https://docs.nvidia.com/cuda/cusparse/index.html#compressed-sparse-row-csr # noqa
+    >>> # https://docs.nvidia.com/cuda/cusparse/index.html
+    #compressed-sparse-row-csr
     >>>
     >>> # Define the different np.array for the CSR representation
     >>> # The 4 values of the constraint matrix (A)
@@ -174,7 +175,8 @@ class DataModel(data_model_wrapper.DataModel):
         """
         Set the constraint matrix (A) in CSR format.
         For more information about CSR checkout:
-        https://docs.nvidia.com/cuda/cusparse/index.html#compressed-sparse-row-csr # noqa
+        https://docs.nvidia.com/cuda/cusparse/index.html
+        compressed-sparse-row-csr
 
         Parameters
         ----------

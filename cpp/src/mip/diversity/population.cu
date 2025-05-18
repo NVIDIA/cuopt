@@ -20,6 +20,7 @@
 #include <thrust/for_each.h>
 #include <linear_programming/utils.cuh>
 #include <mip/mip_constants.hpp>
+#include <utilities/copy_helpers.hpp>
 #include <utilities/seed_generator.cuh>
 
 #include <mutex>
@@ -148,8 +149,8 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
     return_vector.emplace_back(std::move(sol));
   }
   if (external_solution_queue.size() > 0) {
-    CUOPT_LOG_DEBUG("Consuming B&B solutions, solution queue size %lu",
-                    external_solution_queue.size());
+    CUOPT_LOG_INFO("Consuming B&B solutions, solution queue size %lu",
+                   external_solution_queue.size());
     external_solution_queue.clear();
   }
   return return_vector;
@@ -161,6 +162,8 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
   bool better_solution_found = problem_ptr->maximize
                                  ? sol.get_user_objective() > best_feasible_objective
                                  : sol.get_user_objective() < best_feasible_objective;
+  auto user_callbacks        = context.settings.get_mip_callbacks();
+
   if (better_solution_found && sol.get_feasible()) {
     CUOPT_LOG_DEBUG("Population: Found new best solution %g", sol.get_user_objective());
     best_feasible_objective = sol.get_user_objective();
@@ -168,18 +171,63 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       problem_ptr->branch_and_bound_callback(sol.get_host_assignment());
     }
 
-    auto incumbent_sol_callback = context.settings.get_incumbent_solution_callback();
-    if (incumbent_sol_callback != nullptr) {
-      rmm::device_uvector<f_t> incumbent_assignment(sol.assignment, sol.handle_ptr->get_stream());
-      problem_ptr->post_process_assignment(incumbent_assignment);
-      rmm::device_uvector<f_t> dummy(0, sol.handle_ptr->get_stream());
-      if (context.settings.get_mip_scaling()) {
-        context.scaling.unscale_solutions(incumbent_assignment, dummy);
+    for (auto callback : user_callbacks) {
+      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
+        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
+        rmm::device_uvector<f_t> incumbent_assignment(sol.assignment, sol.handle_ptr->get_stream());
+        problem_ptr->post_process_assignment(incumbent_assignment);
+        rmm::device_uvector<f_t> dummy(0, sol.handle_ptr->get_stream());
+        if (context.settings.mip_scaling) {
+          context.scaling.unscale_solutions(incumbent_assignment, dummy);
+        }
+
+        rmm::device_uvector<f_t> user_objective_vec(1, sol.handle_ptr->get_stream());
+
+        f_t user_objective = sol.problem_ptr->get_user_obj_from_solver_obj(sol.get_objective());
+        user_objective_vec.set_element_async(0, user_objective, sol.handle_ptr->get_stream());
+        CUOPT_LOG_DEBUG("Returning incumbent solution with objective %g", user_objective);
+        get_sol_callback->get_solution(incumbent_assignment.data(), user_objective_vec.data());
       }
-      f_t user_objective = sol.problem_ptr->get_user_obj_from_solver_obj(sol.get_objective());
-      CUOPT_LOG_DEBUG("Returning incumbent solution with objective %g", user_objective);
-      incumbent_sol_callback->set_solution(
-        incumbent_assignment.data(), incumbent_assignment.size(), user_objective);
+    }
+  }
+
+  for (auto callback : user_callbacks) {
+    if (callback->get_type() == internals::base_solution_callback_type::SET_SOLUTION) {
+      auto set_sol_callback = static_cast<internals::set_solution_callback_t*>(callback);
+      rmm::device_uvector<f_t> incumbent_assignment(
+        problem_ptr->original_problem_ptr->get_n_variables(), sol.handle_ptr->get_stream());
+      rmm::device_uvector<f_t> dummy(0, sol.handle_ptr->get_stream());
+      solution_t<i_t, f_t> outside_sol(sol);
+      rmm::device_scalar<f_t> d_outside_sol_objective(sol.handle_ptr->get_stream());
+      set_sol_callback->set_solution(incumbent_assignment.data(), d_outside_sol_objective.data());
+
+      f_t outside_sol_objective = d_outside_sol_objective.value(sol.handle_ptr->get_stream());
+
+      CUOPT_LOG_DEBUG("Injecting external solution with objective %g", outside_sol_objective);
+
+      if (context.settings.mip_scaling) {
+        context.scaling.scale_solutions(incumbent_assignment, dummy);
+      }
+      bool is_valid = problem_ptr->pre_process_assignment(incumbent_assignment);
+      if (!is_valid) { return; }
+
+      cuopt_assert(outside_sol.assignment.size() == incumbent_assignment.size(),
+                   "Incumbent assignment size mismatch");
+      raft::copy(outside_sol.assignment.data(),
+                 incumbent_assignment.data(),
+                 incumbent_assignment.size(),
+                 sol.handle_ptr->get_stream());
+
+      outside_sol.compute_feasibility();
+
+      CUOPT_LOG_DEBUG("Injected solution feasibility =  %d", outside_sol.get_feasible());
+
+      cuopt_assert(std::abs(outside_sol.problem_ptr->get_user_obj_from_solver_obj(
+                              outside_sol.get_objective()) -
+                            outside_sol_objective) <= 1e-6,
+                   "External solution objective mismatch");
+      auto h_outside_sol = outside_sol.get_host_assignment();
+      add_external_solution(h_outside_sol, outside_sol.get_objective());
     }
   }
 }
@@ -324,7 +372,7 @@ void population_t<i_t, f_t>::compute_new_weights()
                      [v            = best_sol.view(),
                       cstr_weights = weights.cstr_weights.data(),
                       l2_norm_ptr  = l2_norm.data(),
-                      rel_tol      = settings.get_relative_tolerance()] __device__(i_t idx) {
+                      rel_tol      = settings.tolerances.relative_tolerance] __device__(i_t idx) {
                        if ((v.lower_excess[idx] + v.upper_excess[idx]) > rel_tol) {
                          cstr_weights[idx] *= weight_increase_ratio;
                          cstr_weights[idx] = min(cstr_weights[idx], 100000.);

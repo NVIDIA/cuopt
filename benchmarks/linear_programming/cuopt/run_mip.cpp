@@ -140,10 +140,10 @@ int run_single_file(std::string file_path,
     if (out_dir != "") {
       std::string log_file =
         out_dir + "/" + base_filename.substr(0, base_filename.find(".mps")) + ".log";
-      settings.set_log_file(log_file);
+      settings.log_file = log_file;
     } else {
       std::string log_file = base_filename.substr(0, base_filename.find(".mps")) + ".log";
-      settings.set_log_file(log_file);
+      settings.log_file    = log_file;
     }
   }
 
@@ -169,17 +169,17 @@ int run_single_file(std::string file_path,
     settings.set_initial_solution(initial_solution.data(), initial_solution.size());
     test_constraint_sanity(mps_data_model,
                            initial_solution,
-                           settings.get_absolute_tolerance(),
-                           settings.get_relative_tolerance(),
-                           settings.get_integrality_tolerance());
+                           settings.tolerances.absolute_tolerance,
+                           settings.tolerances.relative_tolerance,
+                           settings.tolerances.integrality_tolerance);
   }
 
-  settings.set_time_limit(time_limit);
-  settings.set_heuristics_only(heuristics_only);
-  settings.set_num_cpu_threads(num_cpu_threads);
-  settings.set_log_to_console(log_to_console);
-  auto start_run_solver = std::chrono::high_resolution_clock::now();
-  auto solution         = cuopt::linear_programming::solve_mip(&handle_, mps_data_model, settings);
+  settings.time_limit      = time_limit;
+  settings.heuristics_only = heuristics_only;
+  settings.num_cpu_threads = num_cpu_threads;
+  settings.log_to_console  = log_to_console;
+  auto start_run_solver    = std::chrono::high_resolution_clock::now();
+  auto solution = cuopt::linear_programming::solve_mip(&handle_, mps_data_model, settings);
   // solution.write_to_sol_file(base_filename + ".sol", handle_.get_stream());
   std::chrono::milliseconds duration;
   auto end = std::chrono::high_resolution_clock::now();

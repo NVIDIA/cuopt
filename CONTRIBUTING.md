@@ -81,7 +81,7 @@ CUDA/GPU Runtime:
 You can obtain CUDA from
 [https://developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads).
 
-### Create the build environment
+### Build NVIDIA cuOpt from source
 
 - Clone the repository:
 
@@ -110,8 +110,6 @@ conda activate cuopt_dev
 - **Note**: the conda environment files are updated frequently, so the
   development environment may also need to be updated if dependency versions or
   pinnings are changed.
-
-### Build NVIDIA cuOpt from source
 
 - A `build.sh` script is provided in `$CUOPT_HOME`. Running the script with no additional arguments
   will install the `libmps_parser`, `libcuopt` and `cuopt` libraries. By default, the libraries are

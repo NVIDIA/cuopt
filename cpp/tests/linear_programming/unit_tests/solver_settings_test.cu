@@ -39,45 +39,46 @@ TEST(SolverSettingsTest, TestSetGet)
   const double tolerance_value = 1e-5;
 
   // Setting tolerances
-  solver_settings.set_absolute_dual_tolerance(tolerance_value);
-  solver_settings.set_relative_dual_tolerance(tolerance_value);
-  solver_settings.set_absolute_primal_tolerance(tolerance_value);
-  solver_settings.set_relative_primal_tolerance(tolerance_value);
-  solver_settings.set_absolute_gap_tolerance(tolerance_value);
-  solver_settings.set_relative_gap_tolerance(tolerance_value);
-  solver_settings.set_primal_infeasible_tolerance(tolerance_value);
-  solver_settings.set_dual_infeasible_tolerance(tolerance_value);
-  EXPECT_FALSE(solver_settings.get_per_constraint_residual());
-  solver_settings.set_per_constraint_residual(true);
+  solver_settings.tolerances.absolute_dual_tolerance     = tolerance_value;
+  solver_settings.tolerances.relative_dual_tolerance     = tolerance_value;
+  solver_settings.tolerances.absolute_primal_tolerance   = tolerance_value;
+  solver_settings.tolerances.relative_primal_tolerance   = tolerance_value;
+  solver_settings.tolerances.absolute_gap_tolerance      = tolerance_value;
+  solver_settings.tolerances.relative_gap_tolerance      = tolerance_value;
+  solver_settings.tolerances.primal_infeasible_tolerance = tolerance_value;
+  solver_settings.tolerances.dual_infeasible_tolerance   = tolerance_value;
 
-  EXPECT_NEAR(solver_settings.get_absolute_dual_tolerance(), 1e-5, 1e-10);
-  EXPECT_NEAR(solver_settings.get_relative_dual_tolerance(), 1e-5, 1e-10);
-  EXPECT_NEAR(solver_settings.get_absolute_primal_tolerance(), 1e-5, 1e-10);
-  EXPECT_NEAR(solver_settings.get_relative_primal_tolerance(), 1e-5, 1e-10);
-  EXPECT_NEAR(solver_settings.get_absolute_gap_tolerance(), 1e-5, 1e-10);
-  EXPECT_NEAR(solver_settings.get_relative_gap_tolerance(), 1e-5, 1e-10);
-  EXPECT_NEAR(solver_settings.get_primal_infeasible_tolerance(), 1e-5, 1e-10);
-  EXPECT_NEAR(solver_settings.get_dual_infeasible_tolerance(), 1e-5, 1e-10);
+  EXPECT_FALSE(solver_settings.per_constraint_residual);
+  solver_settings.per_constraint_residual = true;
 
-  solver_settings.set_infeasibility_detection(true);
-  EXPECT_TRUE(solver_settings.get_infeasibility_detection());
+  EXPECT_NEAR(solver_settings.tolerances.absolute_dual_tolerance, 1e-5, 1e-10);
+  EXPECT_NEAR(solver_settings.tolerances.relative_dual_tolerance, 1e-5, 1e-10);
+  EXPECT_NEAR(solver_settings.tolerances.absolute_primal_tolerance, 1e-5, 1e-10);
+  EXPECT_NEAR(solver_settings.tolerances.relative_primal_tolerance, 1e-5, 1e-10);
+  EXPECT_NEAR(solver_settings.tolerances.absolute_gap_tolerance, 1e-5, 1e-10);
+  EXPECT_NEAR(solver_settings.tolerances.relative_gap_tolerance, 1e-5, 1e-10);
+  EXPECT_NEAR(solver_settings.tolerances.primal_infeasible_tolerance, 1e-5, 1e-10);
+  EXPECT_NEAR(solver_settings.tolerances.dual_infeasible_tolerance, 1e-5, 1e-10);
+
+  solver_settings.detect_infeasibility = true;
+  EXPECT_TRUE(solver_settings.detect_infeasibility);
 
   // To avoid the "," inside the macros which are interpreted as extra parameters
   auto Stable2 = cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
   auto Fast1   = cuopt::linear_programming::pdlp_solver_mode_t::Fast1;
-  EXPECT_EQ(solver_settings.get_pdlp_solver_mode(), Stable2);
-  solver_settings.set_pdlp_solver_mode(Fast1);
-  EXPECT_EQ(solver_settings.get_pdlp_solver_mode(), Fast1);
+  EXPECT_EQ(solver_settings.pdlp_solver_mode, Stable2);
+  solver_settings.pdlp_solver_mode = Fast1;
+  EXPECT_EQ(solver_settings.pdlp_solver_mode, Fast1);
 
-  EXPECT_TRUE(solver_settings.get_per_constraint_residual());
+  EXPECT_TRUE(solver_settings.per_constraint_residual);
 
-  EXPECT_FALSE(solver_settings.get_save_best_primal_so_far());
-  solver_settings.set_save_best_primal_so_far(true);
-  EXPECT_TRUE(solver_settings.get_save_best_primal_so_far());
+  EXPECT_FALSE(solver_settings.save_best_primal_so_far);
+  solver_settings.save_best_primal_so_far = true;
+  EXPECT_TRUE(solver_settings.save_best_primal_so_far);
 
-  EXPECT_FALSE(solver_settings.get_first_primal_feasible_encountered());
-  solver_settings.set_first_primal_feasible_encountered(true);
-  EXPECT_TRUE(solver_settings.get_first_primal_feasible_encountered());
+  EXPECT_FALSE(solver_settings.first_primal_feasible);
+  solver_settings.first_primal_feasible = true;
+  EXPECT_TRUE(solver_settings.first_primal_feasible);
 }
 
 TEST(SolverSettingsTest, warm_start_smaller_vector)

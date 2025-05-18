@@ -19,6 +19,9 @@ from cuopt.utilities import catch_cuopt_exception
 
 class WaypointMatrix(waypoint_matrix_wrapper.WaypointMatrix):
     """
+
+    WaypointMatrix(offsets, indices, weights)
+
     Initialize a Waypoint Matrix.
 
     Parameters
@@ -87,15 +90,15 @@ class WaypointMatrix(waypoint_matrix_wrapper.WaypointMatrix):
         target_locations : numpy.ndarray
             numpy.ndarray representing the target locations indices
             with respect to the graph.
-            Target locations indices must be in the range [0, V)
+            Target locations indices must be in the range [0, V-1]
             (V: number of vertices).
 
         Raises
         ------
         ValueError
-            Shape of target_locations needs to be of length 1
+            Shape of target_locations needs to be of length 1.
         ValueError
-            Target_locations length must be positive
+            Target_locations length must be positive.
 
         Returns
         -------
@@ -137,7 +140,7 @@ class WaypointMatrix(waypoint_matrix_wrapper.WaypointMatrix):
         The waypoint sequence is an extend version of the route.
         Between each route target locations, all the intermediate waypoints
         are added.
-        Waypoints & target locations ids are based on the graph.
+        Waypoints and target locations ids are based on the graph.
 
         A new field is added to route_df to browse through the returned
         waypoint sequence.
@@ -153,12 +156,12 @@ class WaypointMatrix(waypoint_matrix_wrapper.WaypointMatrix):
         target_locations : numpy.ndarray
             numpy.ndarray representing the target locations indices
             with respect to the graph.
-            Target locations indices must be in the range [0, V)
+            Target locations indices must be in the range [0, V]
             (V: number of vertices).
         route_df: cudf.DataFrame
             Contains route, vehicle_id, arrival_stamp,
             and locations. Contains an extra 'sequence_offset' field
-            after this call
+            after this call.
 
         Raises
         ------
@@ -263,7 +266,7 @@ class WaypointMatrix(waypoint_matrix_wrapper.WaypointMatrix):
         compute_cost_matrix call.
 
         This function allows setting a custom cost between waypoints (for
-        example time) and then getting the total cost it takes to go from one
+        example, time) and then getting the total cost it takes to go from one
         target location to all the others. The shortest paths are **not**
         recomputed. The path found from compute_cost_matrix between target
         locations stays the same but the new weight set is used to compute the

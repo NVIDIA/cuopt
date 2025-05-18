@@ -1,0 +1,1 @@
+NAME   non-empty-no-newline

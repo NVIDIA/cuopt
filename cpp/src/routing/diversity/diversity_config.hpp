@@ -17,7 +17,7 @@
 
 namespace cuopt::routing {
 
-enum class config_t : int { DEFAULT, CVRP };
+enum class config_t : int { DEFAULT, CVRP, TSP };
 
 template <typename i_t>
 struct diversity_config_t {
@@ -26,6 +26,8 @@ struct diversity_config_t {
   {
     if constexpr (CONFIG == config_t::DEFAULT) {
       return 3;
+    } else if constexpr (CONFIG == config_t::TSP) {
+      return 10;
     } else {
       return population_size<CONFIG>() / 2;
     }

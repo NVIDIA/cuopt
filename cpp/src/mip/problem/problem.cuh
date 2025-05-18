@@ -90,6 +90,7 @@ class problem_t {
   void resize_variables(size_t size);
   void resize_constraints(size_t matrix_size, size_t constraint_size, size_t var_size);
   void preprocess_problem();
+  bool pre_process_assignment(rmm::device_uvector<f_t>& assignment);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment);
   void post_process_solution(solution_t<i_t, f_t>& solution);
   void compute_transpose_of_problem();

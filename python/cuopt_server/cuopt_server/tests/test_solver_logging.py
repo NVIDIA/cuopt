@@ -62,6 +62,7 @@ def test_solver_logging(cuoptproc):  # noqa
         if "error" not in res.json():
             break
         time.sleep(1)
+        cnt += 1
 
     i = res.json()
     assert "log" in i

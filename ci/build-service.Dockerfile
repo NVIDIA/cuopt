@@ -72,4 +72,4 @@ COPY ./container-builder/README.md /cache/
 COPY ./container-builder/CHANGELOG.md /cache/
 COPY ./git_info.txt /cache/
 
-CMD ["python3", "-m", "cuopt_server.cuopt_amr_service"]
+CMD ["python3", "-m", "cuopt_server.cuopt_service"]

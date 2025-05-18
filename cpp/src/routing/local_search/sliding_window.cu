@@ -1014,31 +1014,6 @@ __global__ void execute_sliding_move(typename solution_t<i_t, f_t, REQUEST>::vie
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
-void local_search_t<i_t, f_t, REQUEST>::fill_tsp_random_considered_nodes(
-  solution_t<i_t, f_t, REQUEST>& solution,
-  move_candidates_t<i_t, f_t>& move_candidates,
-  std::mt19937& rng)
-{
-  constexpr i_t random_subset_size = 320;
-  std::unordered_set<i_t> random_subset;
-  while (random_subset.size() != random_subset_size) {
-    std::uniform_int_distribution<int> dist(1, solution.get_num_depot_excluded_orders());
-    i_t random_id = dist(rng);
-    random_subset.insert(random_id);
-  }
-  std::vector<NodeInfo<i_t>> node_id_vector;
-  for (auto item : random_subset) {
-    node_id_vector.push_back(solution.problem_ptr->get_node_info_of_node(item));
-  }
-  move_candidates.nodes_to_search.n_sampled_nodes = random_subset.size();
-  raft::copy(move_candidates.nodes_to_search.sampled_nodes_to_search.data(),
-             node_id_vector.data(),
-             random_subset.size(),
-             solution.sol_handle->get_stream());
-  solution.sol_handle->sync_stream();
-}
-
-template <typename i_t, typename f_t, request_t REQUEST>
 void local_search_t<i_t, f_t, REQUEST>::fill_pdp_considered_nodes(
   solution_t<i_t, f_t, REQUEST>& solution, move_candidates_t<i_t, f_t>& move_candidates)
 {
@@ -1063,15 +1038,8 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_window(
   i_t n_moves_found           = 0;
   size_t shared_for_tmp_route = 0;
   solution.compute_max_active();
-  // if a single route size is greater than select a random subset of 500 nodes to search
-  constexpr i_t tsp_route_size_threshold = 512;
-  if ((solution.problem_ptr->is_tsp &&
-       solution.get_num_depot_excluded_orders() > tsp_route_size_threshold) &&
-      REQUEST != request_t::PDP) {
-    fill_tsp_random_considered_nodes(solution, move_candidates, rng);
-  } else if (REQUEST == request_t::PDP) {
-    fill_pdp_considered_nodes(solution, move_candidates);
-  }
+
+  if (REQUEST == request_t::PDP) { fill_pdp_considered_nodes(solution, move_candidates); }
 
   // FIXME:: we should be using is_cvrp_intra(), but other dimensions are not handled correctly in
   // this case, need to replicate what we do in the two opt here
@@ -1167,16 +1135,6 @@ template bool local_search_t<int, float, request_t::PDP>::perform_sliding_window
   solution_t<int, float, request_t::PDP>& solution, move_candidates_t<int, float>& move_candidates);
 template bool local_search_t<int, float, request_t::VRP>::perform_sliding_window(
   solution_t<int, float, request_t::VRP>& solution, move_candidates_t<int, float>& move_candidates);
-
-template void local_search_t<int, float, request_t::PDP>::fill_tsp_random_considered_nodes(
-  solution_t<int, float, request_t::PDP>& solution,
-  move_candidates_t<int, float>& move_candidates,
-  std::mt19937& rng);
-
-template void local_search_t<int, float, request_t::VRP>::fill_tsp_random_considered_nodes(
-  solution_t<int, float, request_t::VRP>& solution,
-  move_candidates_t<int, float>& move_candidates,
-  std::mt19937& rng);
 
 template void local_search_t<int, float, request_t::PDP>::fill_pdp_considered_nodes(
   solution_t<int, float, request_t::PDP>& solution, move_candidates_t<int, float>& move_candidates);

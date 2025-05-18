@@ -19,6 +19,9 @@ import cuopt_mps_parser
 import msgpack
 
 from cuopt.linear_programming import solver_settings
+from cuopt.linear_programming.solver.solver_parameters import (
+    CUOPT_INFEASIBILITY_DETECTION,
+)
 
 from cuopt_server.tests.utils.utils import cuoptproc  # noqa
 from cuopt_server.tests.utils.utils import (
@@ -38,8 +41,8 @@ def test_warmstart(cuoptproc):  # noqa
     data = cuopt_mps_parser.toDict(data_model_obj, json=True)
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-4)
-    settings.set_infeasibility_detection(False)
-    data["solver_config"] = solver_settings.toDict(settings)
+    settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
+    data["solver_config"] = settings.toDict()
 
     headers = {"CLIENT-VERSION": "custom"}
 
@@ -55,7 +58,7 @@ def test_warmstart(cuoptproc):  # noqa
     solve_1_iter = response["solution"]["lp_statistics"]["nb_iterations"]
 
     settings.set_optimality_tolerance(1e-3)
-    data["solver_config"] = solver_settings.toDict(settings)
+    data["solver_config"] = settings.toDict()
 
     res = client.post(
         "/cuopt/request",
@@ -75,7 +78,7 @@ def test_warmstart(cuoptproc):  # noqa
     assert res.status_code == 200
     res = msgpack.loads(res.content)
     settings.set_optimality_tolerance(1e-4)
-    data["solver_config"] = solver_settings.toDict(settings)
+    data["solver_config"] = settings.toDict()
 
     params = {"warmstartId": reqId}
     res = client.post(

@@ -25,6 +25,7 @@
 
 #include <linear_programming/utils.cuh>
 #include <mip/mip_constants.hpp>
+
 #include <mip/presolve/trivial_presolve.cuh>
 #include <mip/utils.cuh>
 
@@ -72,10 +73,10 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
 
   // Set variables bounds to default if not set and constraints bounds if user has set a row type
   set_bounds_if_not_set(*this);
-  // Check before any modifications
-  // Don't check MIP related data as it is not yet initialized
-  check_problem_representation(false, false);
+  // check bounds sanity before, so that we can throw exceptions before going into asserts
   check_bounds_sanity(*this);
+  // Check before any modifications
+  check_problem_representation(false, false);
   // If maximization problem, convert the problem
   if (maximize) convert_to_maximization_problem(*this);
   const bool is_mip = original_problem_ptr->get_problem_category() != problem_category_t::LP;
@@ -566,6 +567,70 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                    "is_binary_pb is incorrectly set");
     }
   }
+}
+
+template <typename i_t, typename f_t>
+bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assignment)
+{
+  cuopt_assert(assignment.size() == original_problem_ptr->get_n_variables(), "size mismatch");
+  auto has_nans = cuopt::linear_programming::detail::has_nans(handle_ptr, assignment);
+  if (has_nans) {
+    CUOPT_LOG_DEBUG("Solution discared due to nans");
+    return false;
+  }
+
+  auto has_integrality_discrepancy = cuopt::linear_programming::detail::has_integrality_discrepancy(
+    handle_ptr, integer_indices, assignment, tolerances.integrality_tolerance);
+  if (has_integrality_discrepancy) {
+    CUOPT_LOG_DEBUG("Solution discared due to integrality discrepancy");
+    return false;
+  }
+
+  auto has_variable_bounds_violation =
+    cuopt::linear_programming::detail::has_variable_bounds_violation(handle_ptr, assignment, this);
+  if (has_variable_bounds_violation) {
+    CUOPT_LOG_DEBUG("Solution discared due to variable bounds violation");
+    return false;
+  }
+
+  // Map assignment to internal solution using variable mapping
+  rmm::device_uvector<f_t> internal_assignment(presolve_data.variable_mapping.size(),
+                                               handle_ptr->get_stream());
+  thrust::gather(handle_ptr->get_thrust_policy(),
+                 presolve_data.variable_mapping.begin(),
+                 presolve_data.variable_mapping.end(),
+                 assignment.begin(),
+                 internal_assignment.begin());
+
+  auto d_additional_var_used =
+    cuopt::device_copy(presolve_data.additional_var_used, handle_ptr->get_stream());
+  auto d_additional_var_id_per_var =
+    cuopt::device_copy(presolve_data.additional_var_id_per_var, handle_ptr->get_stream());
+
+  thrust::for_each(
+    handle_ptr->get_thrust_policy(),
+    thrust::make_counting_iterator<i_t>(0),
+    thrust::make_counting_iterator<i_t>(presolve_data.variable_mapping.size()),
+    [additional_var_used       = d_additional_var_used.data(),
+     additional_var_id_per_var = d_additional_var_id_per_var.data(),
+     assgn                     = internal_assignment.data()] __device__(auto idx) {
+      if (additional_var_used[idx]) {
+        cuopt_assert(additional_var_id_per_var[idx] != -1, "additional_var_id_per_var is not set");
+        // We have two non-negative variables y and z that simulate a free variable x. If the value
+        // of x is negative, we can set z to be something higher than y. If the value of  x is
+        // positive we can set y greater than z
+        assgn[additional_var_id_per_var[idx]] = assgn[idx] < 0 ? -assgn[idx] : assgn[idx];
+        assgn[idx] += assgn[additional_var_id_per_var[idx]];
+      }
+    });
+  assignment.resize(internal_assignment.size(), handle_ptr->get_stream());
+  assignment.shrink_to_fit(handle_ptr->get_stream());
+  raft::copy(assignment.data(),
+             internal_assignment.data(),
+             internal_assignment.size(),
+             handle_ptr->get_stream());
+  handle_ptr->sync_stream();
+  return true;
 }
 
 // this function is used to post process the assignment

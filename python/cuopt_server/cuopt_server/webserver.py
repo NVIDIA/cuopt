@@ -1232,6 +1232,7 @@ async def get_body(request: Request):
         "use /cuopt/request instead. Takes all the data and options at once, "
         "solves any type of cuOpt problem and returns result."
     ),
+    include_in_schema=False,
     summary="Managed Service Endpoint",
     response_model=Union[EmptyResponseModel, SolutionModel],
     responses=ManagedRequestResponse,

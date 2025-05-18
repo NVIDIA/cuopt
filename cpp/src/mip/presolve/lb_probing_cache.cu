@@ -128,7 +128,7 @@ void inline insert_current_probing_to_cache(
   const std::vector<i_t>& h_integer_indices,
   i_t& n_implied_singletons)
 {
-  f_t int_tol = bound_presolve.context.settings.get_integrality_tolerance();
+  f_t int_tol = bound_presolve.context.settings.tolerances.integrality_tolerance;
 
   cache_entry_t<i_t, f_t> cache_item;
   cache_item.val_interval = probe_val;

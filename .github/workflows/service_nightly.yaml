@@ -82,15 +82,16 @@ jobs:
 
       - name: Download latest artifacts from S3
         run: |
-          mkdir wheels
-          
+          # make rapids-download-wheels-from-github download everything to the same directory
+          export RAPIDS_UNZIP_DIR="$(pwd)/wheels"
+          mkdir "${RAPIDS_UNZIP_DIR}"
+
+          # download latest wheels built from build.yaml
           RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen ${RAPIDS_CUDA_VERSION})"
-
-          RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-s3 ./wheels
-
-          RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-s3 ./wheels
-
-          RAPIDS_PY_WHEEL_NAME="cuopt_server_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-s3 ./wheels
+          RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python
+          RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python
+          RAPIDS_PY_WHEEL_NAME="cuopt_server_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python
+          RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github cpp
 
       - name: Generate git commit file for tracking the container
         run: |
@@ -165,15 +166,16 @@ jobs:
 
       - name: Download latest artifacts from S3
         run: |
-          mkdir wheels
-          
+          # make rapids-download-wheels-from-github download everything to the same directory
+          export RAPIDS_UNZIP_DIR="$(pwd)/wheels"
+          mkdir "${RAPIDS_UNZIP_DIR}"
+
+          # download latest wheels built from build.yaml
           RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen ${RAPIDS_CUDA_VERSION})"
-
-          RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-s3 ./wheels
-
-          RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-s3 ./wheels
-
-          RAPIDS_PY_WHEEL_NAME="cuopt_server_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-s3 ./wheels
+          RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python
+          RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python
+          RAPIDS_PY_WHEEL_NAME="cuopt_server_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python
+          RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github cpp
 
       - name: Generate git commit file for tracking the container
         run: |

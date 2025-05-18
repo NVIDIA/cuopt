@@ -31,7 +31,7 @@ from cuopt.linear_programming.data_model.data_model cimport data_model_view_t
 
 
 cdef extern from "cuopt/linear_programming/utilities/internals.hpp" namespace "cuopt::internals": # noqa
-    cdef cppclass lp_incumbent_sol_callback_t
+    cdef cppclass base_solution_callback_t
 
 cdef extern from "cuopt/linear_programming/pdlp/solver_settings.hpp" namespace "cuopt::linear_programming": # noqa
     ctypedef enum pdlp_solver_mode_t "cuopt::linear_programming::pdlp_solver_mode_t": # noqa
@@ -39,46 +39,12 @@ cdef extern from "cuopt/linear_programming/pdlp/solver_settings.hpp" namespace "
         Stable2 "cuopt::linear_programming::pdlp_solver_mode_t::Stable2" # noqa
         Methodical1 "cuopt::linear_programming::pdlp_solver_mode_t::Methodical1" # noqa
         Fast1 "cuopt::linear_programming::pdlp_solver_mode_t::Fast1" # noqa
-        DualSimplex "cuopt::linear_programming::pdlp_solver_mode_t::DualSimplex" # noqa
 
 cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt::linear_programming": # noqa
 
     cdef cppclass solver_settings_t[i_t, f_t]:
         solver_settings_t() except +
-        void set_optimality_tolerance(f_t eps_optimal) except +
-        void set_absolute_dual_tolerance(f_t absolute_dual_tolerance) except +
-        void set_relative_dual_tolerance(f_t relative_dual_tolerance) except +
-        void set_absolute_primal_tolerance(
-            f_t absolute_primal_tolerance
-        ) except +
-        void set_relative_primal_tolerance(
-            f_t relative_primal_tolerance
-        ) except +
-        void set_absolute_gap_tolerance(f_t absolute_gap_tolerance) except +
-        void set_relative_gap_tolerance(f_t relative_gap_tolerance) except +
 
-        void set_infeasibility_detection(bool detect) except +
-        void set_primal_infeasible_tolerance(
-            f_t primal_infeasible_tolerance
-        ) except +
-        void set_dual_infeasible_tolerance(
-            f_t dual_infeasible_tolerance
-        ) except +
-        void set_iteration_limit(
-            i_t iteration_limit
-        ) except +
-        void set_time_limit(
-            f_t time_limit
-        ) except +
-        void set_pdlp_solver_mode(
-            pdlp_solver_mode_t solver_mode
-        ) except +
-        void set_log_file(
-            string log_file
-        ) except +
-        void set_log_to_console(
-            bool log_to_console
-        ) except +
         void set_pdlp_warm_start_data(
             const f_t* current_primal_solution,
             const f_t* current_dual_solution,
@@ -100,6 +66,13 @@ cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt
             f_t sum_solution_weight_,
             i_t iterations_since_last_restart_) except +
 
+        void set_parameter_from_string(
+            const string& name,
+            const string& value
+        ) except +
+
+        string get_parameter_as_string(const string& name) except +
+
         # LP settings
         void set_initial_pdlp_primal_solution(
             const f_t* initial_primal_solution,
@@ -115,32 +88,8 @@ cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt
             const f_t* initial_solution,
             i_t size
         ) except +
-        void set_absolute_tolerance(
-            f_t absolute_tolerance
-        ) except +
-        void set_relative_tolerance(
-            f_t relative_tolerance
-        ) except +
-        void set_integrality_tolerance(
-            f_t integrality_tolerance
-        )
-        void set_absolute_mip_gap(
-            f_t absolute_mip_gap
-        )
-        void set_relative_mip_gap(
-            f_t relative_mip_gap
-        )
-        void set_mip_incumbent_solution_callback(
-            lp_incumbent_sol_callback_t* callback
-        ) except +
-        void set_mip_scaling(
-            bool mip_scaling
-        ) except +
-        void set_mip_heuristics_only(
-            bool heuristics_only
-        ) except +
-        void set_mip_num_cpu_threads(
-            i_t num_cpu_threads
+        void set_mip_callback(
+            base_solution_callback_t* callback
         ) except +
 
 
@@ -150,6 +99,12 @@ cdef extern from "cuopt/linear_programming/optimization_problem.hpp" namespace "
         MIP "cuopt::linear_programming::problem_category_t::MIP"
         IP "cuopt::linear_programming::problem_category_t::IP"
 
+cdef extern from "cuopt/error.hpp" namespace "cuopt": # noqa
+    ctypedef enum error_type_t "cuopt::error_type_t": # noqa
+        Success "cuopt::error_type_t::Success" # noqa
+        ValidationError "cuopt::error_type_t::ValidationError" # noqa
+        OutOfMemoryError "cuopt::error_type_t::OutOfMemoryError" # noqa
+        RuntimeError "cuopt::error_type_t::RuntimeError" # noqa
 
 cdef extern from "cuopt/linear_programming/mip/solver_solution.hpp" namespace "cuopt::linear_programming": # noqa
     ctypedef enum mip_termination_status_t "cuopt::linear_programming::mip_termination_status_t": # noqa
@@ -158,10 +113,12 @@ cdef extern from "cuopt/linear_programming/mip/solver_solution.hpp" namespace "c
         FeasibleFound "cuopt::linear_programming::mip_termination_status_t::FeasibleFound" # noqa
         Infeasible "cuopt::linear_programming::mip_termination_status_t::Infeasible" # noqa
         Unbounded "cuopt::linear_programming::mip_termination_status_t::Unbounded" # noqa
+        TimeLimit "cuopt::linear_programming::mip_termination_status_t::TimeLimit" # noqa
 
 
 cdef extern from "cuopt/linear_programming/pdlp/solver_solution.hpp" namespace "cuopt::linear_programming": # noqa
     ctypedef enum pdlp_termination_status_t "cuopt::linear_programming::pdlp_termination_status_t": # noqa
+        NoTermination "cuopt::linear_programming::pdlp_termination_status_t::NoTermination" # noqa
         NumericalError "cuopt::linear_programming::pdlp_termination_status_t::NumericalError" # noqa
         Optimal "cuopt::linear_programming::pdlp_termination_status_t::Optimal" # noqa
         PrimalInfeasible "cuopt::linear_programming::pdlp_termination_status_t::PrimalInfeasible" # noqa
@@ -197,6 +154,8 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         int iterations_since_last_restart_
         # /PDLP warm start data
         pdlp_termination_status_t termination_status_
+        error_type_t error_status_
+        string error_message_
         double l2_primal_residual_
         double l2_dual_residual_
         double primal_objective_
@@ -208,6 +167,8 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
     cdef cppclass mip_ret_t:
         unique_ptr[device_buffer] solution_
         mip_termination_status_t termination_status_
+        error_type_t error_status_
+        string error_message_
         double objective_
         double mip_gap_
         double solution_bound_

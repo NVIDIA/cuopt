@@ -416,6 +416,7 @@ class enabled_dimensions_t {
   vehicle_fixed_cost_dimension_info_t vehicle_fixed_cost_dim;
 
   objective_cost_t objective_weights;
+  bool is_tsp{false};
 
  private:
   // 32 bits are sufficient to encode all dimensions

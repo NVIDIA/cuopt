@@ -14,36 +14,36 @@
 # limitations under the License.
 
 import numpy as np
-import pytest
 
 import cudf
 
 from cuopt import routing
+from cuopt.routing.vehicle_routing_wrapper import ErrorStatus
 
 
 def test_vehicle_max_times_fail():
-    with pytest.raises(Exception):
-        costs = cudf.DataFrame(
-            {
-                0: [0, 3, 4, 5, 2],
-                1: [1, 0, 3, 2, 7],
-                2: [10, 5, 0, 2, 9],
-                3: [3, 11, 1, 0, 6],
-                4: [5, 3, 8, 6, 0],
-            },
-            dtype=np.float32,
-        )
-        vehicle_num = 4
-        vehicle_max_times = cudf.Series([100, 30, 50, 70], dtype=np.float32)
+    costs = cudf.DataFrame(
+        {
+            0: [0, 3, 4, 5, 2],
+            1: [1, 0, 3, 2, 7],
+            2: [10, 5, 0, 2, 9],
+            3: [3, 11, 1, 0, 6],
+            4: [5, 3, 8, 6, 0],
+        },
+        dtype=np.float32,
+    )
+    vehicle_num = 4
+    vehicle_max_times = cudf.Series([100, 30, 50, 70], dtype=np.float32)
 
-        d = routing.DataModel(costs.shape[0], vehicle_num)
-        d.add_cost_matrix(costs)
-        d.set_vehicle_max_times(vehicle_max_times)
+    d = routing.DataModel(costs.shape[0], vehicle_num)
+    d.add_cost_matrix(costs)
+    d.set_vehicle_max_times(vehicle_max_times)
 
-        s = routing.SolverSettings()
-        s.set_time_limit(1)
+    s = routing.SolverSettings()
+    s.set_time_limit(1)
 
-        routing.Solve(d, s)
+    routing_solution = routing.Solve(d, s)
+    assert routing_solution.get_error_status() == ErrorStatus.ValidationError
 
 
 def test_vehicle_max_times():

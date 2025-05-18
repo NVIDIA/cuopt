@@ -46,7 +46,7 @@ pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu12
 
 ### Conda
 
-cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forge/miniforge)) from the `rapidsai` channel:
+cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forge/miniforge)) from the `nvidia` channel:
 
 For CUDA 11.x:
 ```bash

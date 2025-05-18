@@ -62,6 +62,60 @@ bool string_to_bool(const std::string& value, bool& result)
 }  // namespace
 
 template <typename i_t, typename f_t>
+solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings()
+{
+  // clang-format off
+  // Float parameters
+  float_parameters = {
+    {CUOPT_TIME_LIMIT, &mip_settings.time_limit, 0.0, std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
+    {CUOPT_TIME_LIMIT, &pdlp_settings.time_limit, 0.0, std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
+    {CUOPT_ABSOLUTE_DUAL_TOLERANCE, &pdlp_settings.tolerances.absolute_dual_tolerance, 0.0, 1e-1, 1e-4},
+    {CUOPT_RELATIVE_DUAL_TOLERANCE, &pdlp_settings.tolerances.relative_dual_tolerance, 0.0, 1e-1, 1e-4},
+    {CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, &pdlp_settings.tolerances.absolute_primal_tolerance, 0.0, 1e-1, 1e-4},
+    {CUOPT_RELATIVE_PRIMAL_TOLERANCE, &pdlp_settings.tolerances.relative_primal_tolerance, 0.0, 1e-1, 1e-4},
+    {CUOPT_ABSOLUTE_GAP_TOLERANCE, &pdlp_settings.tolerances.absolute_gap_tolerance, 0.0, 1e-1, 1e-4},
+    {CUOPT_RELATIVE_GAP_TOLERANCE, &pdlp_settings.tolerances.relative_gap_tolerance, 0.0, 1e-1, 1e-4},
+    {CUOPT_MIP_ABSOLUTE_TOLERANCE, &mip_settings.tolerances.absolute_tolerance, 0.0, 1e-1, 1e-4},
+    {CUOPT_MIP_RELATIVE_TOLERANCE, &mip_settings.tolerances.relative_tolerance, 0.0, 1e-1, 1e-4},
+    {CUOPT_MIP_INTEGRALITY_TOLERANCE, &mip_settings.tolerances.integrality_tolerance, 0.0, 1e-1, 1e-5},
+    {CUOPT_MIP_ABSOLUTE_GAP, &mip_settings.tolerances.absolute_mip_gap, 0.0, 1e-1, 1e-10},
+    {CUOPT_MIP_RELATIVE_GAP, &mip_settings.tolerances.relative_mip_gap, 0.0, 1e-1, 1e-4},
+    {CUOPT_PRIMAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.primal_infeasible_tolerance, 0.0, 1e-1, 1e-8},
+    {CUOPT_DUAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.dual_infeasible_tolerance, 0.0, 1e-1, 1e-8}
+   };
+
+  // Int parameters
+  int_parameters = {
+    {CUOPT_ITERATION_LIMIT, &pdlp_settings.iteration_limit, 0, std::numeric_limits<i_t>::max(), std::numeric_limits<i_t>::max()},
+    {CUOPT_PDLP_SOLVER_MODE, reinterpret_cast<int*>(&pdlp_settings.pdlp_solver_mode), CUOPT_PDLP_SOLVER_MODE_STABLE1, CUOPT_PDLP_SOLVER_MODE_FAST1, CUOPT_PDLP_SOLVER_MODE_STABLE2},
+    {CUOPT_METHOD, reinterpret_cast<int*>(&pdlp_settings.method), CUOPT_METHOD_CONCURRENT, CUOPT_METHOD_DUAL_SIMPLEX, CUOPT_METHOD_CONCURRENT},
+    {CUOPT_NUM_CPU_THREADS, &mip_settings.num_cpu_threads, -1, std::numeric_limits<i_t>::max(), -1}
+  };
+
+    // Bool parameters
+  bool_parameters = {
+    {CUOPT_INFEASIBILITY_DETECTION, &pdlp_settings.detect_infeasibility, false},
+    {CUOPT_STRICT_INFEASIBILITY, &pdlp_settings.strict_infeasibility, false},
+    {CUOPT_PER_CONSTRAINT_RESIDUAL, &pdlp_settings.per_constraint_residual, false},
+    {CUOPT_SAVE_BEST_PRIMAL_SO_FAR, &pdlp_settings.save_best_primal_so_far, false},
+    {CUOPT_FIRST_PRIMAL_FEASIBLE, &pdlp_settings.first_primal_feasible, false},
+    {CUOPT_MIP_SCALING, &mip_settings.mip_scaling, true},
+    {CUOPT_MIP_HEURISTICS_ONLY, &mip_settings.heuristics_only, false},
+    {CUOPT_LOG_TO_CONSOLE, &pdlp_settings.log_to_console, true},
+    {CUOPT_LOG_TO_CONSOLE, &mip_settings.log_to_console, true},
+    {CUOPT_CROSSOVER, &pdlp_settings.crossover, false}
+  };
+  // String parameters
+  string_parameters = {
+    {CUOPT_LOG_FILE,  &mip_settings.log_file, ""},
+    {CUOPT_LOG_FILE,  &pdlp_settings.log_file, ""},
+    {CUOPT_SOL_FILE,  &mip_settings.sol_file, ""},
+    {CUOPT_SOL_FILE,  &pdlp_settings.sol_file, ""}
+  };
+  // clang-format on
+}
+
+template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& name,
                                                             const std::string& value)
 {
@@ -71,12 +125,12 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
       i_t value_int;
       if (string_to_int(value, value_int)) {
         if (value_int < param.min_value || value_int > param.max_value) {
-          throw std::invalid_argument("Parameter " + name + " out of range");
+          throw std::invalid_argument("Parameter " + name + " value " + value + " out of range");
         }
         *param.value_ptr = value_int;
         found            = true;
       } else {
-        throw std::invalid_argument("Parameter " + name + " is not an integer");
+        throw std::invalid_argument("Parameter " + name + " value " + value + " is not an integer");
       }
     }
   }
@@ -85,14 +139,13 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
       f_t value_float;
       if (string_to_float<f_t>(value, value_float)) {
         if (value_float < param.min_value || value_float > param.max_value) {
-          throw std::invalid_argument("Parameter " + name + " out of range");
+          throw std::invalid_argument("Parameter " + name + " value " + value + " out of range");
         }
         *param.value_ptr = value_float;
         found            = true;
       } else {
-        throw std::invalid_argument("Parameter " + name + " is not a float");
+        throw std::invalid_argument("Parameter " + name + " value " + value + " is not a float");
       }
-      return;
     }
   }
   for (auto& param : bool_parameters) {
@@ -102,7 +155,8 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
         *param.value_ptr = value_bool;
         found            = true;
       } else {
-        throw std::invalid_argument("Parameter " + name + " must be true or false");
+        throw std::invalid_argument("Parameter " + name + " value " + value +
+                                    " must be true or false");
       }
     }
   }
@@ -207,120 +261,6 @@ std::string solver_settings_t<i_t, f_t>::get_parameter_as_string(const std::stri
   throw std::invalid_argument("Parameter " + name + " not found");
 }
 
-// PDLP Settings Forwarding Implementations
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_optimality_tolerance(f_t eps_optimal)
-{
-  pdlp_settings.set_optimality_tolerance(eps_optimal);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_absolute_dual_tolerance(f_t tol)
-{
-  pdlp_settings.set_absolute_dual_tolerance(tol);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_relative_dual_tolerance(f_t tol)
-{
-  pdlp_settings.set_relative_dual_tolerance(tol);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_absolute_primal_tolerance(f_t tol)
-{
-  pdlp_settings.set_absolute_primal_tolerance(tol);
-  mip_settings.set_absolute_tolerance(tol);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_relative_primal_tolerance(f_t tol)
-{
-  pdlp_settings.set_relative_primal_tolerance(tol);
-  mip_settings.set_relative_tolerance(tol);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_absolute_gap_tolerance(f_t tol)
-{
-  pdlp_settings.set_absolute_gap_tolerance(tol);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_relative_gap_tolerance(f_t tol)
-{
-  pdlp_settings.set_relative_gap_tolerance(tol);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_infeasibility_detection(bool detect)
-{
-  pdlp_settings.set_infeasibility_detection(detect);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_strict_infeasibility(bool strict)
-{
-  pdlp_settings.set_strict_infeasibility(strict);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_primal_infeasible_tolerance(f_t tol)
-{
-  pdlp_settings.set_primal_infeasible_tolerance(tol);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_dual_infeasible_tolerance(f_t tol)
-{
-  pdlp_settings.set_dual_infeasible_tolerance(tol);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_iteration_limit(i_t limit)
-{
-  pdlp_settings.set_iteration_limit(limit);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_time_limit(double limit)
-{
-  pdlp_settings.set_time_limit(limit);
-  mip_settings.set_time_limit(limit);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_pdlp_solver_mode(pdlp_solver_mode_t mode)
-{
-  pdlp_settings.set_pdlp_solver_mode(mode);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_method(method_t method)
-{
-  pdlp_settings.set_method(method);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_crossover(bool crossover)
-{
-  pdlp_settings.set_crossover(crossover);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_log_file(std::string log_file)
-{
-  pdlp_settings.set_log_file(log_file);
-  mip_settings.set_log_file(log_file);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_log_to_console(bool log_to_console)
-{
-  pdlp_settings.set_log_to_console(log_to_console);
-  mip_settings.set_log_to_console(log_to_console);
-}
-
 template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::set_initial_pdlp_primal_solution(const f_t* solution,
                                                                    i_t size,
@@ -380,109 +320,6 @@ void solver_settings_t<i_t, f_t>::set_pdlp_warm_start_data(
                                          iterations_since_last_restart);
 }
 
-// PDLP Getters Implementations
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_absolute_dual_tolerance() const noexcept
-{
-  return pdlp_settings.get_absolute_dual_tolerance();
-}
-
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_relative_dual_tolerance() const noexcept
-{
-  return pdlp_settings.get_relative_dual_tolerance();
-}
-
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_absolute_primal_tolerance() const noexcept
-{
-  return pdlp_settings.get_absolute_primal_tolerance();
-}
-
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_relative_primal_tolerance() const noexcept
-{
-  return pdlp_settings.get_relative_primal_tolerance();
-}
-
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_absolute_gap_tolerance() const noexcept
-{
-  return pdlp_settings.get_absolute_gap_tolerance();
-}
-
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_relative_gap_tolerance() const noexcept
-{
-  return pdlp_settings.get_relative_gap_tolerance();
-}
-
-template <typename i_t, typename f_t>
-bool solver_settings_t<i_t, f_t>::get_infeasibility_detection() const noexcept
-{
-  return pdlp_settings.get_infeasibility_detection();
-}
-
-template <typename i_t, typename f_t>
-bool solver_settings_t<i_t, f_t>::get_strict_infeasibility() const noexcept
-{
-  return pdlp_settings.get_strict_infeasibility();
-}
-
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_primal_infeasible_tolerance() const noexcept
-{
-  return pdlp_settings.get_primal_infeasible_tolerance();
-}
-
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_dual_infeasible_tolerance() const noexcept
-{
-  return pdlp_settings.get_dual_infeasible_tolerance();
-}
-
-template <typename i_t, typename f_t>
-i_t solver_settings_t<i_t, f_t>::get_iteration_limit() const noexcept
-{
-  return pdlp_settings.get_iteration_limit();
-}
-
-template <typename i_t, typename f_t>
-double solver_settings_t<i_t, f_t>::get_time_limit() const noexcept
-{
-  return mip_settings.get_time_limit();
-}
-
-template <typename i_t, typename f_t>
-std::string solver_settings_t<i_t, f_t>::get_log_file() const noexcept
-{
-  return mip_settings.get_log_file();
-}
-
-template <typename i_t, typename f_t>
-bool solver_settings_t<i_t, f_t>::get_log_to_console() const noexcept
-{
-  return mip_settings.get_log_to_console();
-}
-
-template <typename i_t, typename f_t>
-pdlp_solver_mode_t solver_settings_t<i_t, f_t>::get_pdlp_solver_mode() const noexcept
-{
-  return pdlp_settings.get_pdlp_solver_mode();
-}
-
-template <typename i_t, typename f_t>
-method_t solver_settings_t<i_t, f_t>::get_method() const noexcept
-{
-  return pdlp_settings.get_method();
-}
-
-template <typename i_t, typename f_t>
-bool solver_settings_t<i_t, f_t>::get_crossover() const noexcept
-{
-  return pdlp_settings.get_crossover();
-}
-
 template <typename i_t, typename f_t>
 const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_pdlp_primal_solution()
   const
@@ -496,37 +333,6 @@ const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_pdlp_du
   return pdlp_settings.get_initial_dual_solution();
 }
 
-// MIP Settings Implementations
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_absolute_tolerance(f_t tol)
-{
-  mip_settings.set_absolute_tolerance(tol);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_relative_tolerance(f_t tol)
-{
-  mip_settings.set_relative_tolerance(tol);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_integrality_tolerance(f_t tol)
-{
-  mip_settings.set_integrality_tolerance(tol);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_absolute_mip_gap(f_t tol)
-{
-  mip_settings.set_absolute_mip_gap(tol);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_relative_mip_gap(f_t tol)
-{
-  mip_settings.set_relative_mip_gap(tol);
-}
-
 template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::set_initial_mip_solution(const f_t* solution, i_t size)
 {
@@ -534,46 +340,9 @@ void solver_settings_t<i_t, f_t>::set_initial_mip_solution(const f_t* solution, 
 }
 
 template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_mip_incumbent_solution_callback(
-  internals::lp_incumbent_sol_callback_t* callback)
+void solver_settings_t<i_t, f_t>::set_mip_callback(internals::base_solution_callback_t* callback)
 {
-  mip_settings.set_incumbent_solution_callback(callback);
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_mip_scaling(bool mip_scaling)
-{
-  mip_settings.set_mip_scaling(mip_scaling);
-}
-
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_absolute_tolerance() const noexcept
-{
-  return mip_settings.get_absolute_tolerance();
-}
-
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_relative_tolerance() const noexcept
-{
-  return mip_settings.get_relative_tolerance();
-}
-
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_integrality_tolerance() const noexcept
-{
-  return mip_settings.get_integrality_tolerance();
-}
-
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_absolute_mip_gap() const noexcept
-{
-  return mip_settings.get_absolute_mip_gap();
-}
-
-template <typename i_t, typename f_t>
-f_t solver_settings_t<i_t, f_t>::get_relative_mip_gap() const noexcept
-{
-  return mip_settings.get_relative_mip_gap();
+  mip_settings.set_mip_callback(callback);
 }
 
 template <typename i_t, typename f_t>
@@ -583,34 +352,10 @@ const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_mip_sol
 }
 
 template <typename i_t, typename f_t>
-const internals::lp_incumbent_sol_callback_t*
-solver_settings_t<i_t, f_t>::get_mip_incumbent_solution_callback() const
+const std::vector<internals::base_solution_callback_t*>
+solver_settings_t<i_t, f_t>::get_mip_callbacks() const
 {
-  return mip_settings.get_incumbent_solution_callback();
-}
-
-template <typename i_t, typename f_t>
-bool solver_settings_t<i_t, f_t>::get_mip_heuristics_only() const noexcept
-{
-  return mip_settings.get_heuristics_only();
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_mip_heuristics_only(bool heuristics_only)
-{
-  mip_settings.set_heuristics_only(heuristics_only);
-}
-
-template <typename i_t, typename f_t>
-i_t solver_settings_t<i_t, f_t>::get_mip_num_cpu_threads() const noexcept
-{
-  return mip_settings.get_num_cpu_threads();
-}
-
-template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_mip_num_cpu_threads(i_t num_cpu_threads)
-{
-  mip_settings.set_num_cpu_threads(num_cpu_threads);
+  return mip_settings.get_mip_callbacks();
 }
 
 template <typename i_t, typename f_t>
@@ -632,6 +377,31 @@ solver_settings_t<i_t, f_t>::get_pdlp_warm_start_data_view() const noexcept
   return pdlp_settings.get_pdlp_warm_start_data_view();
 }
 
+template <typename i_t, typename f_t>
+const std::vector<parameter_info_t<f_t>>& solver_settings_t<i_t, f_t>::get_float_parameters() const
+{
+  return float_parameters;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<parameter_info_t<i_t>>& solver_settings_t<i_t, f_t>::get_int_parameters() const
+{
+  return int_parameters;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<parameter_info_t<bool>>& solver_settings_t<i_t, f_t>::get_bool_parameters() const
+{
+  return bool_parameters;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<parameter_info_t<std::string>>&
+solver_settings_t<i_t, f_t>::get_string_parameters() const
+{
+  return string_parameters;
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template class solver_settings_t<int, float>;
 template void solver_settings_t<int, float>::set_parameter(const std::string& name, int value);
@@ -640,6 +410,7 @@ template void solver_settings_t<int, float>::set_parameter(const std::string& na
 template int solver_settings_t<int, float>::get_parameter(const std::string& name) const;
 template float solver_settings_t<int, float>::get_parameter(const std::string& name) const;
 template bool solver_settings_t<int, float>::get_parameter(const std::string& name) const;
+template std::string solver_settings_t<int, float>::get_parameter(const std::string& name) const;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
@@ -650,6 +421,7 @@ template void solver_settings_t<int, double>::set_parameter(const std::string& n
 template int solver_settings_t<int, double>::get_parameter(const std::string& name) const;
 template double solver_settings_t<int, double>::get_parameter(const std::string& name) const;
 template bool solver_settings_t<int, double>::get_parameter(const std::string& name) const;
+template std::string solver_settings_t<int, double>::get_parameter(const std::string& name) const;
 #endif
 
 }  // namespace cuopt::linear_programming
