@@ -32,6 +32,8 @@ HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
    libcuopt         - build the cuopt C++ code
+   libmps_parser    - build the libmps_parser C++ code
+   cuopt_mps_parser - build the cuopt_mps_parser python package
    cuopt            - build the cuopt Python package
    cuopt_server     - build the cuopt_server Python package
    cuopt_sh_client  - build cuopt self host client
