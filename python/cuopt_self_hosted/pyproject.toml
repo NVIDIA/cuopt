@@ -28,8 +28,7 @@ readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
     { name = "NVIDIA Corporation" },
 ]
-license = { text = "Apache-2.0" }
-license-files = ["LICENSE"]
+license = "Apache-2.0"
 requires-python = ">=3.10"
 dependencies = [
     "cuopt-mps-parser==25.5.*,>=0.0.0a0",
@@ -61,6 +60,7 @@ cuopt_sh = "cuopt_sh_client.cuopt_sh:main"
 
 [tool.setuptools]
 zip-safe = false
+license-files = ["LICENSE"]
 
 [tool.setuptools.dynamic]
 version = {file = "cuopt_sh_client/VERSION"}
