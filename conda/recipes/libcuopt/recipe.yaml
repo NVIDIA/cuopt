@@ -111,9 +111,9 @@ outputs:
         files:
           - lib/libmps_parser.so
     about:
-      homepage: https://docs.nvidia.com/cuopt/index.html
-      license: MIT
-      summary: MPS parser
+      homepage: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.urls.Homepage }}
+      license: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.license.text }}
+      summary: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.description }}
 
   - package:
       name: libcuopt

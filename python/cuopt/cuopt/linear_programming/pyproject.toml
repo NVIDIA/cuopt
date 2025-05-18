@@ -30,6 +30,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
+[project.urls]
+Homepage = "https://docs.nvidia.com/cuopt/introduction.html"
+Source = "https://github.com/nvidia/cuopt"
 
 [project.optional-dependencies]
 test = [
