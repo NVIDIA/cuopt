@@ -104,7 +104,7 @@ This would be used as the infinity value in the `cuOptCreateProblem <lp-milp-c-a
 PDLP Solver Mode Constants
 --------------------------
 
-These would be used as the PDLP solver mode in the `cuOptCreateSolverSettings <lp-milp-c-api.html#c.cuOptCreateSolverSettings>`_ function.
+These would be used as the PDLP solver mode while setting solver parameters using `cuOptSetParameter <lp-milp-c-api.html#c.cuOptSetParameter>`_.
 
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE1
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE2
@@ -114,7 +114,7 @@ These would be used as the PDLP solver mode in the `cuOptCreateSolverSettings <l
 Method Constants
 ----------------
 
-These would be used as the method in the `cuOptCreateSolverSettings <lp-milp-c-api.html#c.cuOptCreateSolverSettings>`_ function.
+These would be used as the method while setting solver parameters using `cuOptSetParameter <lp-milp-c-api.html#c.cuOptSetParameter>`_.
 
 .. doxygendefine:: CUOPT_METHOD_CONCURRENT
 .. doxygendefine:: CUOPT_METHOD_PDLP
@@ -170,7 +170,7 @@ More details on the parameters can be found in the `LP/MILP settings <../../lp-m
 CLI for LP and MILP
 ===================
 
-The cuOpt CLI is a command-line interface for the cuOpt LP/MILP API. It is a simple interface that allows you to solve LP/MILP problems from the command line. This is CLI is based on C/C++ API.
+The cuOpt CLI is a command-line interface for the cuOpt LP/MILP API. It is a simple interface that allows you to solve LP/MILP problems from the command line. This CLI is based on C/C++ API.
 
 .. literalinclude:: cuopt-cli-help.txt
    :language: shell

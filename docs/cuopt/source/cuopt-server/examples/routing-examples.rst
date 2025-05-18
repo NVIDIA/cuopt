@@ -6,6 +6,9 @@ The following example showcases how to use the ``CuOptServiceSelfHostClient`` to
 
 The OpenAPI specification for the server is available in `open-api spec <../../open-api.html>`_. The example data is structured as per the OpenAPI specification for the server, please refer `OptimizeRoutingData <../../open-api.html#/default/postrequest_cuopt_request_post>`_ under schema section.
 
+Generic Example
+---------------
+
 .. code-block:: python
     :linenos:
 
@@ -291,6 +294,10 @@ To enable HTTPS:
 
 More examples are available in the `Examples Notebooks Repository <https://github.com/NVIDIA/cuopt-examples>`_.
 
+Aborting a Running Job in Thin Client 
+-------------------------------------
+
+Please refer to the `MILP Example on Aborting a Running Job in Thin Client <milp-examples.html#aborting-a-running-job-in-thin-client>`_ for more details.
 
 ========================================
 Routing CLI Examples
@@ -356,6 +363,15 @@ Users can also upload a solution which might have been saved for later runs.
 
    # delete previous saved solutions using follwing command
    cuopt_sh -i $ip -p $port -ds $reqId
+
+
+Aborting a Running Job In CLI
+-----------------------------
+
+Please refer to the `MILP Example <milp-examples.html#aborting-a-running-job-in-cli>`_ for more details.
+
+.. note::
+   Please use solver settings while using .mps files.
 
 To enable HTTPS
 ----------------

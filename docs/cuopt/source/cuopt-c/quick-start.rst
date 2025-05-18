@@ -15,12 +15,16 @@ For CUDA 11.x:
 
 .. code-block:: bash
 
+    # This is deprecated module and not longer used, but share same name for the CLI, so we need to uninstall it first if it exists.
+    pip uninstall cuopt-thin-client
     pip install --extra-index-url=https://pypi.nvidia.com libcuopt-cu11==25.5.*
 
 For CUDA 12.x:
 
 .. code-block:: bash
 
+    # This is deprecated module and not longer used, but share same name for the CLI, so we need to uninstall it first if it exists.
+    pip uninstall cuopt-thin-client
     pip install --extra-index-url=https://pypi.nvidia.com libcuopt-cu12==25.5.*
 
 
@@ -33,13 +37,17 @@ For CUDA 11.x:
 
 .. code-block:: bash
 
+    # This is deprecated module and not longer used, but share same name for the CLI, so we need to uninstall it first if it exists.
+    conda remove cuopt-thin-client
     conda install -c rapidsai -c conda-forge -c nvidia \
         libcuopt=25.5.* python=3.12 cuda-version=11.8
 
 For CUDA 12.x:
 
 .. code-block:: bash
-
+    
+    # This is deprecated module and not longer used, but share same name for the CLI, so we need to uninstall it first if it exists.
+    conda remove cuopt-thin-client
     conda install -c rapidsai -c conda-forge -c nvidia \
         libcuopt=25.5.* python=3.12 cuda-version=12.8
 

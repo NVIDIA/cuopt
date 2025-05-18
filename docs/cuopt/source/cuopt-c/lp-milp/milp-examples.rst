@@ -539,32 +539,34 @@ This example demonstrates how to use the cuOpt CLI to solve an MPS file and how 
 .. code-block:: bash
 
    # Create a MPS file in the current directory
-   echo "* Example 2.1 from N & W
-  * Optimal solution -28
-  * Has 5 nodes
-  NAME          EXAMPLE21
-  ROWS
-   N  OBJ
-   L  C1
-   L  C2
-   L  C3
-  COLUMNS
-     X1        OBJ             -7
-     X1        C1              -1
-     X1        C2               5
-     X1        C3              -2
-     X2        OBJ             -2
-     X2        C1               2
-     X2        C2               1
-     X2        C3              -2  
-  RHS
-     RHS       C1               4
-     RHS       C2              20
-     RHS       C3              -7
-  BOUNDS
-     UP BOUND     X1               10
-     UP BOUND     X2               10
-  ENDATA" > sample.mps
+    echo "* Example 2.1 from N & W
+   * Optimal solution -28
+   * Has 5 nodes
+   NAME          EXAMPLE21
+   ROWS
+    N  OBJ
+    L  C1
+    L  C2
+    L  C3
+   COLUMNS
+     MARK0001  'MARKER'                 'INTORG'
+       X1        OBJ             -7
+       X1        C1              -1
+       X1        C2               5
+       X1        C3              -2
+       X2        OBJ             -2
+       X2        C1               2
+       X2        C2               1
+       X2        C3              -2
+     MARK0001  'MARKER'                 'INTEND'
+   RHS
+       RHS       C1               4
+       RHS       C2              20
+       RHS       C3              -7
+   BOUNDS
+    UP BOUND     X1               10
+    UP BOUND     X2               10
+   ENDATA" > sample.mps
 
    # Solve the MPS file with the additional parameter settings
    cuopt_cli sample.mps --mip-absolute-tolerance 0.0001 --method 0 --time-limit 5

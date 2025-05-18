@@ -21,7 +21,7 @@ In a Vehicle Routing Problem (VRP), enterprise customers may have a fleet that i
 Multiple Input Matrices
 ------------------------------
 
-A cost matrix needs to be a square matrix of some travel metric that is passed to the NVIDIA cuOpt solver. In many variations of the Traveling Salesman Problem (TSP), this includes travel time, distance, or another business cost. A cost matrix is a square matrix that represents the cost of traveling between each two pairs of locations in the problem. ``cost_matrix_data`` can hold any cost matrix; the cost can be travel time, travel distance, dollar cost, or any weighted function of cost. If the cost matrix doesn't use travel time, ``travel time matrix`` should be used so that the cost matrix is used for optimization, while the travel time matrix is used for meeting time constraints. 
+A cost matrix needs to be a square matrix of some travel metric that is passed to the NVIDIA cuOpt solver. In many variations of the Traveling Salesman Problem (TSP), this includes travel time, distance, or another business cost. A cost matrix is a square matrix that represents the cost of traveling between each two pairs of locations in the problem. ``cost matrix`` can hold any cost matrix; the cost can be travel time, travel distance, dollar cost, or any weighted function of cost. If the cost matrix doesn't use travel time, ``travel time matrix`` should be used so that the cost matrix is used for optimization, while the travel time matrix is used for meeting time constraints. 
 
 In the case of a heterogeneous fleet, different vehicle types may have different travel times. To support this, multiple ``cost matrix`` and ``travel time matrix`` can be provided such that each vehicle type has a corresponding matrix.
 

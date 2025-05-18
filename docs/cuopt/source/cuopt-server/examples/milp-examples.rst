@@ -2,11 +2,11 @@
 MILP Python Examples
 ========================================
 
-MILP Example
-############
-
 The major difference between this example and the LP example is that some of the variables are integers, so ``variable_types`` need to be shared. 
 The OpenAPI specification for the server is available in `open-api spec <../../open-api.html>`_. The example data is structured as per the OpenAPI specification for the server, please refer `LPData <../../open-api.html#/default/postrequest_cuopt_request_post>`_ under schema section. LP and MILP share same spec.
+
+Generic Example
+---------------
 
 .. code-block:: python
     :linenos:
@@ -106,12 +106,12 @@ The response would be as follows:
                     "milp_statistics": {
                         "mip_gap": 0.0,
                         "solution_bound": 8500.0,
-                        "presolve_time": 0.019317891,
+                        "presolve_time": 0.007354775,
                         "max_constraint_violation": 0.0,
                         "max_int_violation": 0.0,
                         "max_variable_bound_violation": 0.0,
-                        "num_nodes": 0,
-                        "num_simplex_iterations": 0
+                        "num_nodes": 1999468624,
+                        "num_simplex_iterations": 21951
                     }
                 }
             },
@@ -234,8 +234,8 @@ Incumbent callback response:
                         "max_constraint_violation": 0.0,
                         "max_int_violation": 0.0,
                         "max_variable_bound_violation": 0.0,
-                        "num_nodes": 0,
-                        "num_simplex_iterations": 0
+                        "num_nodes": 1999468624,
+                        "num_simplex_iterations": 21951
                     }
                 }
             },
@@ -252,7 +252,7 @@ They can be of different format as well, please check the documentation.
 
 
 Aborting a Running Job in Thin Client 
-=====================================
+-------------------------------------
 
 .. code-block:: python
    :linenos:
@@ -276,6 +276,9 @@ Aborting a Running Job in Thin Client
 ========================================
 MILP CLI Examples
 ========================================
+
+Generic MILP Example
+---------------------
 
 The only difference between this example and the prior LP example would be the variable types provided in data.
 
@@ -330,7 +333,7 @@ In case the user needs to update solver settings through CLI, the option ``-ss``
    Batch mode is not supported for MILP.
 
 Aborting a Running Job In CLI
-#############################
+-----------------------------
 
 UUID that is returned by the solver while the solver is trying to find a solution so users can come back and check the status or query for results.
 

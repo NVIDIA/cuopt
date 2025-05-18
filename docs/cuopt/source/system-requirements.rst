@@ -53,13 +53,6 @@ System Requirements
        - ARM64
 
    * GPU:
-      - Volta architecture or better (Compute Capability >=7.0)
-
-   * CPU:
-      - 8+ cores
-      - 16+ GB RAM
-
-   * GPU:
       - NVIDIA H100 SXM (compute capability >= 9.0)
 
    * CPU:

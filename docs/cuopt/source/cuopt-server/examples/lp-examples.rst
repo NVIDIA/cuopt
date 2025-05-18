@@ -6,6 +6,18 @@ The following example showcases how to use the ``CuOptServiceSelfHostClient`` to
 
 The OpenAPI specification for the server is available in `open-api spec <../../open-api.html>`_. The example data is structured as per the OpenAPI specification for the server, please refer `LPData <../../open-api.html#/default/postrequest_cuopt_request_post>`_ under schema section. LP and MILP share same spec.
 
+If you want to run server locally, please run the following command in a terminal or tmux session so you can test examples in another terminal.
+
+.. code-block:: bash
+    :linenos:
+
+    export ip="localhost"
+    export port=5000
+    python -m cuopt_server.cuopt_service --ip $ip --port $port
+
+Genric Example With Normal Mode and Batch Mode
+------------------------------------------------
+
 .. code-block:: python
     :linenos:
 
@@ -553,7 +565,7 @@ The ``data`` argument to ``get_LP_solve`` may be a dictionary of the format show
 
 
 Aborting a Running Job in Thin Client 
-=====================================
+-------------------------------------
 
 Please refer to the `MILP Example on Aborting a Running Job in Thin Client <milp-examples.html#aborting-a-running-job-in-thin-client>`_ for more details.
 
@@ -561,6 +573,9 @@ Please refer to the `MILP Example on Aborting a Running Job in Thin Client <milp
 =================================================
 LP CLI Examples
 =================================================
+
+Generic Example
+---------------
 
 The following examples showcase how to use the ``cuopt_sh`` CLI to solve a simple LP problem.
 

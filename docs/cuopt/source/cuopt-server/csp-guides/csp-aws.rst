@@ -51,5 +51,5 @@ Once connected to the VM, generate an identity token. Activate your NVIDIA AI En
 Step 3: Run cuOpt
 ------------------
 
-To run cuOpt, you will need to log in to the NVIDIA Container Registry, pull the cuOpt container, and then run it. To test that it is successfully running, you can run a sample cuOpt request. This process is the same for deploying cuOpt on your own infrastructure. Refer to  `Self-Hosted Service Quickstart Guide <quick-start.html#container-from-nvidia-ngc>`__.
+To run cuOpt, you will need to log in to the NVIDIA Container Registry, pull the cuOpt container, and then run it. To test that it is successfully running, you can run a sample cuOpt request. This process is the same for deploying cuOpt on your own infrastructure. Refer to  `Self-Hosted Service Quickstart Guide </cuopt-server/quick-start.html#container-from-nvidia-ngc>`__.
 
