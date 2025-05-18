@@ -58,6 +58,7 @@ For CUDA 12.x:
 ```bash
 conda install -c rapidsai -c conda-forge -c nvidia \
     cuopt=25.05 python=3.12 cuda-version=12.8
+```
 
 We also provide [nightly Conda packages](https://anaconda.org/rapidsai-nightly) built from the HEAD
 of our latest development branch.
