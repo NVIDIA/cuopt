@@ -15,9 +15,6 @@ Resources
 `Blogs <https://developer.nvidia.com/blog/recent-posts/?products=cuOpt>`_
 ----------------------------------------------------------------------------
 
-`Try cuOpt in API catalog with free credits <https://build.nvidia.com/nvidia/nvidia-cuopt>`_
----------------------------------------------------------------------------------------------
-
 Contact us - cuopt@nvidia.com
----------------------------------
+-----------------------------
 

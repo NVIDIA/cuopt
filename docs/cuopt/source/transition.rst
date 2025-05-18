@@ -2,7 +2,7 @@
 Transition Guide for Change in Features
 ========================================
 
-In addition to the quality improvements,  some new features were added, and some features were deprecated to improve user experience. For any questions, please reach out to the cuOpt team through NGC.
+In addition to the quality improvements,  some new features were added, and some features were deprecated to improve user experience. For any questions, please reach out to the cuOpt team through github issues.
 
 Parameter/option statuses are listed below, they express how each of these options are affected:
 
