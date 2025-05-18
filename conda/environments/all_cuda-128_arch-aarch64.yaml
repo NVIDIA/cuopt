@@ -74,6 +74,7 @@ dependencies:
 - scikit-build-core>=0.10.0
 - scipy
 - sphinx
+- sphinx-copybutton
 - sphinx-design
 - sphinx-markdown-tables
 - sphinx_rtd_theme

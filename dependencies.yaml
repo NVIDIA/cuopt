@@ -843,6 +843,7 @@ dependencies:
           - breathe
           - exhale
           - sphinx
+          - sphinx-copybutton
           - sphinx-markdown-tables
           - sphinx_rtd_theme
           - sphinxcontrib-openapi
