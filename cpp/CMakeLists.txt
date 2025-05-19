@@ -86,11 +86,6 @@ if(DEFINE_BENCHMARK)
   add_definitions(-DBENCHMARK)
 endif(DEFINE_BENCHMARK)
 
-# keep development flag in case we have experimental features
-if(DEFINE_DEVELOPMENT)
-  add_definitions(-DDEVELOPMENT)
-endif(DEFINE_DEVELOPMENT)
-
 if(DEFINE_PDLP_VERBOSE_MODE)
   add_definitions(-DPDLP_VERBOSE_MODE)
 endif(DEFINE_PDLP_VERBOSE_MODE)
