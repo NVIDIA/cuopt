@@ -208,7 +208,7 @@ Copy the code below into a file called ``lp_example.c``:
    }
 
 
-Need to find PATH for cuopt_c.h and libcuopt.so, if you know the path, please add it to these path variables directly. Else, run the following commands to find the path and assign it to the path variables.
+It is necessary to have the path for include and library dirs ready, if you know the paths, please add them to the path variables directly. Otherwise, run the following commands to find the path and assign it to the path variables.
 The following commands are for Linux and might fail in cases where the cuopt library is not installed or there are multiple cuopt libraries in the system.
 
 If you have built it locally, libcuopt.so will be in the build directory ``cpp/build`` and include directoy would be ``cpp/include``.
@@ -423,7 +423,7 @@ Copy the code below into a file called ``lp_example_mps.c``:
    }
 
 
-Need to find PATH for cuopt_c.h and libcuopt.so, if you know the path, please add it to these path variables directly. Else, run the following commands to find the path and assign it to the path variables.
+It is necessary to have the path for include and library dirs ready, if you know the paths, please add them to the path variables directly. Otherwise, run the following commands to find the path and assign it to the path variables.
 The following commands are for Linux and might fail in cases where the cuopt library is not installed or there are multiple cuopt libraries in the system.
 
 If you have built it locally, libcuopt.so will be in the build directory ``cpp/build`` and include directoy would be ``cpp/include``.
