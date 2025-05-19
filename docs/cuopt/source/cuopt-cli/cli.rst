@@ -1,21 +1,5 @@
-CLI for LP and MILP
-===================
-
-The cuopt_cli is a command-line interface for LP/MILP solvers that accepts MPS format files as input models. It provides command-line arguments to control all solver settings and parameters when solving linear and mixed-integer programming problems.
-
-
-To see all available options and their descriptions:
-
-.. code-block:: bash
-
-    cuopt_cli --help
-
-This will display the complete list of command-line arguments and their usage:
-
-.. literalinclude:: cuopt-cli-help.txt
-    :language: shell
-    :linenos:
-
+Examples
+========
 
 Basic Usage
 ###########
@@ -105,7 +89,7 @@ Here's an example of solving a Mixed Integer Programming (MIP) problem using the
    ENDATA" > mip_sample.mps
 
     # Solve the MIP problem with custom parameters
-    cuopt_cli mip_sample.mps --mip-gap 0.01 --time-limit 10
+    cuopt_cli mip_sample.mps --mip-absolute-gap 0.01 --time-limit 10
 
 This should produce output similar to:
 
@@ -154,10 +138,7 @@ You can customize the solver behavior using various command line parameters. Som
     cuopt_cli sample.mps --absolute-primal-tolerance 0.0001 --pdlp-solver-mode 1
 
     # Set time limit and use specific solver method
-    cuopt_cli sample.mps --time-limit 5 --method pdlp
+    cuopt_cli sample.mps --time-limit 5 --method pdlp    
 
-    # Control output verbosity
-    cuopt_cli sample.mps --verbose 2
-
-    # Output the logs to a .log file and solution to a .sol file
-    cuopt_cli mip_sample.mps --log-file mip_sample.log --solution-file mip_sample.sol
+    # Turn off output to console and output the logs to a .log file and solution to a .sol file
+    cuopt_cli mip_sample.mps --log-to-console false --log-file mip_sample.log --solution-file mip_sample.sol

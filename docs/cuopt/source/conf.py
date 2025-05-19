@@ -30,7 +30,7 @@ subprocess.run(["python", "-m", "cuopt_server.cuopt_service", "--help"],
 subprocess.run(["cuopt_sh", "--help"], stdout=open("cuopt-server/client-api/sh-cli-help.txt", "w"))
 
 # Run cuopt_cli help command and save output
-subprocess.run(["cuopt_cli", "--help"], stdout=open("cuopt-c/lp-milp/cuopt-cli-help.txt", "w"))
+subprocess.run(["cuopt_cli", "--help"], stdout=open("cuopt-cli/cuopt-cli-help.txt", "w"))
 
 with open('cuopt_spec.yaml', 'w') as f:
     yaml.dump(get_openapi(

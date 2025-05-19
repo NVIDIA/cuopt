@@ -50,6 +50,16 @@ Server (cuopt-server)
 
    Server Overview <cuopt-server/index.rst>
 
+==================================
+Command Line Interface (cuopt-cli)
+==================================
+.. toctree::
+   :maxdepth: 1
+   :caption: Command Line Interface
+   :name: Command Line Interface
+
+   Command Line Interface Overview <cuopt-cli/index.rst>
+
 
 ===============================
 Third Party Modeling Languages
