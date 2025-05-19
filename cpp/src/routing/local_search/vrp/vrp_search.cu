@@ -39,11 +39,12 @@ __global__ void compute_reverse_distances(typename solution_t<i_t, f_t, REQUEST>
     auto route_id = route.get_id();
     auto n_nodes  = route.get_num_nodes();
 
-    route.reverse_distance[n_nodes] = 0.;
+    route.dimensions.distance_dim.reverse_distance[n_nodes] = 0.;
     for (int i = n_nodes - 1; i >= 0; i--) {
       double dist = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
         route.get_node(i + 1).node_info(), route.get_node(i).node_info(), route.vehicle_info());
-      route.reverse_distance[i] = dist + route.reverse_distance[i + 1];
+      route.dimensions.distance_dim.reverse_distance[i] =
+        dist + route.dimensions.distance_dim.reverse_distance[i + 1];
     }
   }
 }

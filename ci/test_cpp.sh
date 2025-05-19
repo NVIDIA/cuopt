@@ -27,7 +27,7 @@ rapids-dependency-file-generator \
   --file-key test_cpp \
   --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch)" | tee env.yaml
 
-CPP_CHANNEL=$(rapids-download-conda-from-s3 cpp)
+CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
 
 rapids-mamba-retry env create --yes -f env.yaml -n test --channel "${CPP_CHANNEL}"
 
@@ -35,7 +35,6 @@ rapids-mamba-retry env create --yes -f env.yaml -n test --channel "${CPP_CHANNEL
 set +u
 conda activate test
 set -u
-
 
 RAPIDS_TESTS_DIR=${RAPIDS_TESTS_DIR:-"${PWD}/test-results"}/
 mkdir -p "${RAPIDS_TESTS_DIR}"
@@ -52,6 +51,7 @@ nvidia-smi
 
 rapids-logger "Download datasets"
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
+./datasets/mip/download_miplib_test_dataset.sh
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR

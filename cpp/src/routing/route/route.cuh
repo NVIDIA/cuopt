@@ -41,8 +41,7 @@ class route_t {
       infeasibility_cost(sol_handle_->get_stream()),
       objective_cost(sol_handle_->get_stream()),
       n_nodes(sol_handle_->get_stream()),
-      fleet_info_ptr(fleet_info_ptr_),
-      reverse_distance(0, sol_handle_->get_stream())
+      fleet_info_ptr(fleet_info_ptr_)
   {
     raft::common::nvtx::range fun_scope("zero route_t copy_ctr");
     infeasible_cost_t zero_inf;
@@ -66,8 +65,7 @@ class route_t {
       n_nodes(route.n_nodes, route.sol_handle->get_stream()),
       infeasibility_cost(route.infeasibility_cost, route.sol_handle->get_stream()),
       objective_cost(route.objective_cost, route.sol_handle->get_stream()),
-      fleet_info_ptr(route.fleet_info_ptr),
-      reverse_distance(route.reverse_distance, route.sol_handle->get_stream())
+      fleet_info_ptr(route.fleet_info_ptr)
   {
     raft::common::nvtx::range fun_scope("route copy_ctr");
   }
@@ -75,11 +73,7 @@ class route_t {
   route_t& operator=(route_t&& route) = default;
 
   // Make the all buffers factor bigger
-  void resize(i_t new_size)
-  {
-    dimensions.resize(new_size);
-    reverse_distance.resize(new_size, sol_handle->get_stream());
-  }
+  void resize(i_t new_size) { dimensions.resize(new_size); }
 
   // extend for other things later
   i_t max_nodes_per_route() const noexcept { return dimensions.requests.node_info.size(); }
@@ -136,8 +130,7 @@ class route_t {
                               i_t* vehicle_id_,
                               infeasible_cost_t* infeasibility_cost_,
                               objective_cost_t* objective_cost_,
-                              typename fleet_info_t<i_t, f_t>::view_t fleet_info_,
-                              rmm::device_uvector<f_t>& reverse_distance_)
+                              typename fleet_info_t<i_t, f_t>::view_t fleet_info_)
     {
       view_t v;
       v.n_nodes            = num_nodes_;
@@ -146,7 +139,6 @@ class route_t {
       v.infeasibility_cost = infeasibility_cost_;
       v.objective_cost     = objective_cost_;
       v.fleet_info         = fleet_info_;
-      v.reverse_distance   = cuopt::make_span(reverse_distance_);
       return v;
     }
     DI auto& requests() const { return dimensions.requests; }
@@ -251,6 +243,24 @@ class route_t {
       if (!dimensions_info().has_dimension(dim_t::TIME)) { return true; }
       // check last node and see whether it is feasible
       return get_node(*n_nodes).time_dim.forward_feasible(this->vehicle_info());
+    }
+
+    DI void copy_to_tsp_route(bool depot_included)
+    {
+      dimensions.requests.tsp_requests.start = get_node(0).node_info();
+      dimensions.requests.tsp_requests.end   = get_node(*n_nodes).node_info();
+      for (i_t tid = threadIdx.x; tid < *n_nodes; tid += blockDim.x) {
+        if (get_node(tid).node_info().is_depot()) { continue; }
+        dimensions.requests.tsp_requests.pred[get_node(tid).node_info().node()] =
+          get_node(tid - 1).node_info();
+        dimensions.requests.tsp_requests.succ[get_node(tid).node_info().node()] =
+          get_node(tid + 1).node_info();
+      }
+
+      if (depot_included) {
+        dimensions.requests.tsp_requests.pred[0] = get_node(*n_nodes - 1).node_info();
+        dimensions.requests.tsp_requests.succ[0] = get_node(1).node_info();
+      }
     }
 
     // insert a single node to the route
@@ -703,12 +713,8 @@ class route_t {
     static DI view_t create_shared_route(i_t* shmem,
                                          const view_t orig_route,
                                          i_t n_nodes_route,
-                                         i_t new_route_id   = -1,
-                                         i_t new_vehicle_id = -1)
+                                         bool is_tsp = false)
     {
-      if (new_route_id == -1) { new_route_id = *orig_route.route_id; }
-      if (new_vehicle_id == -1) { new_vehicle_id = *orig_route.vehicle_id; }
-
       view_t v;
       v.infeasibility_cost = (infeasible_cost_t*)shmem;
       v.objective_cost     = (objective_cost_t*)&v.infeasibility_cost[1];
@@ -716,7 +722,7 @@ class route_t {
 
       thrust::tie(v.dimensions, sh_ptr) =
         dimensions_route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
-          sh_ptr, orig_route.dimensions_info(), n_nodes_route);
+          sh_ptr, orig_route.dimensions_info(), n_nodes_route, is_tsp);
 
       v.n_nodes    = (i_t*)sh_ptr;
       v.route_id   = (i_t*)&v.n_nodes[1];
@@ -726,8 +732,8 @@ class route_t {
       v.fleet_info = orig_route.fleet_info;
       if (threadIdx.x == 0) {
         *v.n_nodes    = n_nodes_route;
-        *v.route_id   = new_route_id;
-        *v.vehicle_id = new_vehicle_id;
+        *v.route_id   = *orig_route.route_id;
+        *v.vehicle_id = *orig_route.vehicle_id;
       }
       return v;
     }
@@ -841,7 +847,6 @@ class route_t {
     }
 
     typename dimensions_route_t<i_t, f_t, REQUEST>::view_t dimensions;
-    raft::device_span<f_t> reverse_distance;
 
    private:
     i_t* n_nodes{nullptr};
@@ -859,8 +864,7 @@ class route_t {
                                    vehicle_id.data(),
                                    infeasibility_cost.data(),
                                    objective_cost.data(),
-                                   fleet_info_ptr->view(),
-                                   reverse_distance);
+                                   fleet_info_ptr->view());
 
     v.dimensions = dimensions.view();
     return v;
@@ -903,9 +907,6 @@ class route_t {
 
   // fleet info
   const fleet_info_t<i_t, f_t>* fleet_info_ptr;
-  // The info is not updated with the other dimension buffers.
-  // It is only used for cvrp and populated in global memory.
-  rmm::device_uvector<f_t> reverse_distance;
 };
 
 }  // namespace detail

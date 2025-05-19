@@ -25,14 +25,11 @@
 namespace cuopt::mps_parser {
 
 /**
- * @brief Standard form representation of a Linear Program with a twist from the standard form for
- * Quadratic Programs.
+ * @brief A representation of a linear programming (LP) optimization problem
  *
  * @tparam f_t  Data type of the variables and their weights in the equations
  *
- * Standard form representation follows the description from the wiki article here:
- * https://en.wikipedia.org/wiki/Linear_programming#Standard_form. In other words,
- * this structure stores all information used to represent the following LP equation:
+ * A linear programming optimization problem is defined as follows:
  * <pre>
  * Minimize:
  *   dot(c, x)
@@ -50,7 +47,7 @@ namespace cuopt::mps_parser {
  *
  * Objective value can be scaled and offset accordingly:
  * objective_scaling_factor * (dot(c, x) + objective_offset)
- * please refeto to the `set_objective_scaling_factor()` and `set_objective_offset()` method.
+ * please refer to the `set_objective_scaling_factor()` and `set_objective_offset()` methods.
  */
 template <typename i_t, typename f_t>
 class mps_data_model_t {

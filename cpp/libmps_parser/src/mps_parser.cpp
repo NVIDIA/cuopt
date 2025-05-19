@@ -312,6 +312,11 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
   // Faster than C++ std::get_line
   char* c_line   = strtok(buf, "\n");
   bool skip_line = false;
+
+  mps_parser_expects(c_line != nullptr,
+                     error_type_t::ValidationError,
+                     "Error parsing MPS file! No line return found (\"\\n\")");
+
   do {
     std::string_view line(c_line);
     // ignore empty lines and comments

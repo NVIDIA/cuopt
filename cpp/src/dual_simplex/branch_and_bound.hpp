@@ -74,12 +74,4 @@ class branch_and_bound_t {
   std::vector<variable_type_t> var_types;
 };
 
-template <typename i_t, typename f_t>
-i_t branch_and_bound_parallel(const user_problem_t<i_t, f_t>& original_problem,
-                              const simplex_solver_settings_t<i_t, f_t>& settings,
-                              const lp_problem_t<i_t, f_t>& original_lp,
-                              f_t start_time,
-                              const std::vector<f_t>& guess,
-                              mip_solution_t<i_t, f_t>& solution);
-
 }  // namespace cuopt::linear_programming::dual_simplex

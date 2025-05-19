@@ -325,10 +325,6 @@ TEST(optimization_problem_t_DeathTest, test_check_problem_validity)
   // Seting constraint lower bounds
   double constraint_lower_bounds_host[] = {1.0f, 2.0f};
   op_problem.set_constraint_lower_bounds(constraint_lower_bounds_host, 2);
-
-  // Test if assert is thrown when upper constraints bounds are not set
-  EXPECT_DEATH({ custom_problem_t problem(op_problem); }, "");
-
   // Seting constraint upper bounds
   op_problem.set_constraint_upper_bounds(constraint_lower_bounds_host, 2);
 

@@ -13,5 +13,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from cuopt_server import cuopt_amr_service
+from cuopt_server import cuopt_service
 from cuopt_server._version import __git_commit__, __version__

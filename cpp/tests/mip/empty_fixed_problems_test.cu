@@ -54,7 +54,8 @@ static std::pair<mip_termination_status_t, double> test_mps_file(std::string tes
     cuopt::mps_parser::parse_mps<int, double>(path, false);
   handle_.sync_stream();
   mip_solver_settings_t<int, double> settings;
-  settings.set_time_limit(1);
+  settings.time_limit                  = 1;
+  settings.heuristics_only             = true;
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
   return std::make_pair(solution.get_termination_status(), solution.get_objective_value());
 }

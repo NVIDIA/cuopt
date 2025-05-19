@@ -18,6 +18,7 @@
 #pragma once
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/error.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
 #include <rmm/cuda_stream_view.hpp>
@@ -36,7 +37,8 @@ enum class mip_termination_status_t : int8_t {
   Optimal       = CUOPT_TERIMINATION_STATUS_OPTIMAL,
   FeasibleFound = CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND,
   Infeasible    = CUOPT_TERIMINATION_STATUS_INFEASIBLE,
-  Unbounded     = CUOPT_TERIMINATION_STATUS_UNBOUNDED
+  Unbounded     = CUOPT_TERIMINATION_STATUS_UNBOUNDED,
+  TimeLimit     = CUOPT_TERIMINATION_STATUS_TIME_LIMIT,
 };
 
 template <typename i_t, typename f_t>
@@ -58,6 +60,7 @@ class mip_solution_t : public base_solution_t {
                  std::vector<rmm::device_uvector<f_t>> solution_pool = {});
 
   mip_solution_t(mip_termination_status_t termination_status, rmm::cuda_stream_view stream_view);
+  mip_solution_t(const cuopt::logic_error& error_status, rmm::cuda_stream_view stream_view);
 
   bool is_mip() const override { return true; }
   const rmm::device_uvector<f_t>& get_solution() const;
@@ -70,6 +73,7 @@ class mip_solution_t : public base_solution_t {
   mip_termination_status_t get_termination_status() const;
   static std::string get_termination_status_string(mip_termination_status_t termination_status);
   std::string get_termination_status_string() const;
+  const cuopt::logic_error& get_error_status() const;
   f_t get_max_constraint_violation() const;
   f_t get_max_int_violation() const;
   f_t get_max_variable_bound_violation() const;
@@ -88,6 +92,7 @@ class mip_solution_t : public base_solution_t {
   double total_solve_time_;
   double presolve_time_;
   mip_termination_status_t termination_status_;
+  cuopt::logic_error error_status_;
   f_t max_constraint_violation_;
   f_t max_int_violation_;
   f_t max_variable_bound_violation_;

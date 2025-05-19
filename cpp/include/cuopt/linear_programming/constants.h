@@ -30,30 +30,35 @@
 #define CUOPT_INSTANTIATE_INT64  0
 
 /* @brief LP/MIP parameter string constants */
-#define CUOPT_ABSOLUTE_DUAL_TOLERANCE     "AbsoluteDualTolerance"
-#define CUOPT_RELATIVE_DUAL_TOLERANCE     "RelativeDualTolerance"
-#define CUOPT_ABSOLUTE_PRIMAL_TOLERANCE   "AbsolutePrimalTolerance"
-#define CUOPT_RELATIVE_PRIMAL_TOLERANCE   "RelativePrimalTolerance"
-#define CUOPT_ABSOLUTE_GAP_TOLERANCE      "AbsoluteGapTolerance"
-#define CUOPT_RELATIVE_GAP_TOLERANCE      "RelativeGapTolerance"
-#define CUOPT_INFEASIBILITY_DETECTION     "InfeasibilityDetection"
-#define CUOPT_STRICT_INFEASIBILITY        "StrictInfeasibility"
-#define CUOPT_PRIMAL_INFEASIBLE_TOLERANCE "PrimalInfeasibleTolerance"
-#define CUOPT_DUAL_INFEASIBLE_TOLERANCE   "DualInfeasibleTolerance"
-#define CUOPT_ITERATION_LIMIT             "IterationLimit"
-#define CUOPT_TIME_LIMIT                  "TimeLimit"
-#define CUOPT_PDLP_SOLVER_MODE            "PDLPSolverMode"
-#define CUOPT_METHOD                      "Method"
-#define CUOPT_PER_CONSTRAINT_RESIDUAL     "PerConstraintResidual"
-#define CUOPT_SAVE_BEST_PRIMAL_SO_FAR     "SaveBestPrimalSoFar"
-#define CUOPT_FIRST_PRIMAL_FEASIBLE       "FirstPrimalFeasible"
-#define CUOPT_LOG_FILE                    "LogFile"
-#define CUOPT_MIP_ABSOLUTE_TOLERANCE      "MIPAbsoluteTolerance"
-#define CUOPT_MIP_RELATIVE_TOLERANCE      "MIPRelativeTolerance"
-#define CUOPT_MIP_INTEGRALITY_TOLERANCE   "MIPIntegralityTolerance"
-#define CUOPT_MIP_SCALING                 "MIPScaling"
-#define CUOPT_MIP_HEURISTICS_ONLY         "MIPHeuristicsOnly"
-#define CUOPT_NUM_CPU_THREADS             "NumCPUThreads"
+#define CUOPT_ABSOLUTE_DUAL_TOLERANCE     "absolute_dual_tolerance"
+#define CUOPT_RELATIVE_DUAL_TOLERANCE     "relative_dual_tolerance"
+#define CUOPT_ABSOLUTE_PRIMAL_TOLERANCE   "absolute_primal_tolerance"
+#define CUOPT_RELATIVE_PRIMAL_TOLERANCE   "relative_primal_tolerance"
+#define CUOPT_ABSOLUTE_GAP_TOLERANCE      "absolute_gap_tolerance"
+#define CUOPT_RELATIVE_GAP_TOLERANCE      "relative_gap_tolerance"
+#define CUOPT_INFEASIBILITY_DETECTION     "infeasibility_detection"
+#define CUOPT_STRICT_INFEASIBILITY        "strict_infeasibility"
+#define CUOPT_PRIMAL_INFEASIBLE_TOLERANCE "primal_infeasible_tolerance"
+#define CUOPT_DUAL_INFEASIBLE_TOLERANCE   "dual_infeasible_tolerance"
+#define CUOPT_ITERATION_LIMIT             "iteration_limit"
+#define CUOPT_TIME_LIMIT                  "time_limit"
+#define CUOPT_PDLP_SOLVER_MODE            "pdlp_solver_mode"
+#define CUOPT_METHOD                      "method"
+#define CUOPT_PER_CONSTRAINT_RESIDUAL     "per_constraint_residual"
+#define CUOPT_SAVE_BEST_PRIMAL_SO_FAR     "save_best_primal_so_far"
+#define CUOPT_FIRST_PRIMAL_FEASIBLE       "first_primal_feasible"
+#define CUOPT_LOG_FILE                    "log_file"
+#define CUOPT_LOG_TO_CONSOLE              "log_to_console"
+#define CUOPT_CROSSOVER                   "crossover"
+#define CUOPT_MIP_ABSOLUTE_TOLERANCE      "mip_absolute_tolerance"
+#define CUOPT_MIP_RELATIVE_TOLERANCE      "mip_relative_tolerance"
+#define CUOPT_MIP_INTEGRALITY_TOLERANCE   "mip_integrality_tolerance"
+#define CUOPT_MIP_ABSOLUTE_GAP            "mip_absolute_gap"
+#define CUOPT_MIP_RELATIVE_GAP            "mip_relative_gap"
+#define CUOPT_MIP_HEURISTICS_ONLY         "mip_heuristics_only"
+#define CUOPT_MIP_SCALING                 "mip_scaling"
+#define CUOPT_SOL_FILE                    "solution_file"
+#define CUOPT_NUM_CPU_THREADS             "num_cpu_threads"
 
 /* @brief LP/MIP termination status constants */
 #define CUOPT_TERIMINATION_STATUS_NO_TERMINATION   0
@@ -97,5 +102,14 @@
 #define CUOPT_METHOD_CONCURRENT   0
 #define CUOPT_METHOD_PDLP         1
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
+
+/* @brief Status codes constants */
+#define CUOPT_SUCCESS          0
+#define CUOPT_INVALID_ARGUMENT 1
+#define CUOPT_MPS_FILE_ERROR   2
+#define CUOPT_MPS_PARSE_ERROR  3
+#define CUOPT_VALIDATION_ERROR 4
+#define CUOPT_OUT_OF_MEMORY    5
+#define CUOPT_RUNTIME_ERROR    6
 
 #endif  // CUOPT_CONSTANTS_H

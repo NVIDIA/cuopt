@@ -163,7 +163,7 @@ void test_elim_var_solution(std::string test_instance)
   detail::solution_t<int, double> solution_1(standardized_problem);
   // run the problem through pdlp
   auto result_1 = detail::get_relaxed_lp_solution(
-    standardized_problem, solution_1, default_settings.get_absolute_tolerance(), 120.);
+    standardized_problem, solution_1, default_settings.tolerances.absolute_tolerance, 120.);
   solution_1.compute_feasibility();
   // the solution might not be feasible per row as we are getting the result of pdlp
   bool sol_1_feasible = (int)result_1.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
@@ -173,7 +173,7 @@ void test_elim_var_solution(std::string test_instance)
   test_objective_sanity(
     mps_problem, opt_sol_1.get_solution(), opt_sol_1.get_objective_value(), 1e-3);
   test_constraint_sanity_per_row(
-    mps_problem, opt_sol_1.get_solution(), 1e-3, default_settings.get_relative_tolerance());
+    mps_problem, opt_sol_1.get_solution(), 1e-3, default_settings.tolerances.relative_tolerance);
 
   auto fixed_vars = select_k_random(standardized_problem.n_variables - 1, 5);
   for (auto& v : fixed_vars) {
@@ -189,7 +189,7 @@ void test_elim_var_solution(std::string test_instance)
   detail::solution_t<int, double> solution_2(sub_problem);
   // run the problem through pdlp
   auto result_2 = detail::get_relaxed_lp_solution(
-    sub_problem, solution_2, default_settings.get_absolute_tolerance(), 120.);
+    sub_problem, solution_2, default_settings.tolerances.absolute_tolerance, 120.);
   solution_2.compute_feasibility();
   bool sol_2_feasible = (int)result_2.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
   EXPECT_EQ((int)result_2.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
@@ -198,7 +198,7 @@ void test_elim_var_solution(std::string test_instance)
   test_objective_sanity(
     mps_problem, opt_sol_2.get_solution(), opt_sol_2.get_objective_value(), 1e-3);
   test_constraint_sanity_per_row(
-    mps_problem, opt_sol_2.get_solution(), 1e-3, default_settings.get_relative_tolerance());
+    mps_problem, opt_sol_2.get_solution(), 1e-3, default_settings.tolerances.relative_tolerance);
 
   EXPECT_NEAR(opt_sol_1.get_objective_value(), opt_sol_2.get_objective_value(), 1e-1f);
 }

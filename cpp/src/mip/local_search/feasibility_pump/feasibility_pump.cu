@@ -17,6 +17,7 @@
 
 #include "feasibility_pump.cuh"
 
+#include <cuopt/error.hpp>
 #include <mip/mip_constants.hpp>
 #include <mip/problem/host_helper.cuh>
 #include <mip/relaxed_lp/relaxed_lp.cuh>
@@ -26,7 +27,6 @@
 #include <linear_programming/pdlp.cuh>
 
 #include <utilities/copy_helpers.hpp>
-#include <utilities/error.hpp>
 #include <utilities/timer.hpp>
 
 #include <raft/sparse/detail/cusparse_macros.h>
@@ -153,7 +153,7 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
   auto h_variable_lower_bounds = cuopt::host_copy(solution.problem_ptr->variable_lower_bounds,
                                                   solution.handle_ptr->get_stream());
 
-  const f_t int_tol = context.settings.get_integrality_tolerance();
+  const f_t int_tol = context.settings.tolerances.integrality_tolerance;
   constraints_delta_t<i_t, f_t> h_constraints;
   variables_delta_t<i_t, f_t> h_variables;
   h_variables.n_vars = solution.problem_ptr->n_variables;
@@ -215,7 +215,7 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
   // change the precision between 1. and 10-4 depending on the integer ratio
   // the lp tolerance can be pretty high
   const double lp_tolerance =
-    get_tolerance_from_ratio(ratio_of_set_integers, context.settings.get_absolute_tolerance());
+    get_tolerance_from_ratio(ratio_of_set_integers, context.settings.tolerances.absolute_tolerance);
   temp_p.check_problem_representation(true);
   f_t time_limit                 = longer_lp_run ? 5. : 1.;
   time_limit                     = min(time_limit, timer.remaining_time());

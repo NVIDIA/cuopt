@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
 #include <routing/utilities/check_input.hpp>
-#include <utilities/error.hpp>
 
 #include <raft/core/device_mdarray.hpp>
 #include <raft/linalg/transpose.cuh>

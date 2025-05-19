@@ -383,12 +383,6 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_two_opt(
 
   auto constexpr const n_threads = 64;
 
-  // if a single route size is greater than select a random subset of 500 nodes to search
-  constexpr i_t tsp_route_size_threshold = 512;
-  if (sol.problem_ptr->is_tsp && sol.get_num_depot_excluded_orders() > tsp_route_size_threshold) {
-    fill_tsp_random_considered_nodes(sol, move_candidates, rng);
-  }
-
   auto n_blocks = move_candidates.nodes_to_search.n_sampled_nodes;
   cuopt_assert(n_blocks > 0, "n_blocks should be positive");
   cuopt_expects(n_blocks > 0, error_type_t::RuntimeError, "A runtime error occurred!");

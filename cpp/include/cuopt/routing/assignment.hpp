@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cuopt/error.hpp>
 #include <cuopt/routing/routing_structures.hpp>
 #include <fstream>
 #include <rmm/cuda_stream_view.hpp>
@@ -36,6 +37,7 @@ class solution_string_t {
   const static std::string infeasible;
   const static std::string timeout;
   const static std::string empty;
+  const static std::string error;
 };
 
 /*! Routing assignment status */
@@ -43,7 +45,8 @@ enum class solution_status_t {
   SUCCESS = 0, /*!< A feasible solution was found.*/
   INFEASIBLE,  /*!< No feasible solution found for the problem.*/
   TIMEOUT,     /*!< Time limit reached before finding a solution.*/
-  EMPTY        /*!< Solver did not run.*/
+  EMPTY,       /*!< Solver did not run.*/
+  ERROR        /*!< An error occured while running the cuOpt solver.*/
 };
 
 /**
@@ -61,6 +64,13 @@ class assignment_t {
    * @param stream_view Non-owning stream_view object.
    */
   assignment_t(solution_status_t status, rmm::cuda_stream_view stream_view);
+  /**
+   * @brief Constructor.
+   *
+   * @param error_status Error status.
+   * @param stream_view Non-owning stream_view object.
+   */
+  assignment_t(cuopt::logic_error error_status, rmm::cuda_stream_view stream_view);
   /**
    * @brief Constructor.
    *
@@ -207,6 +217,11 @@ class assignment_t {
    */
   std::string get_status_string() const noexcept;
   /**
+   * @brief Returns the error status
+   * @return The error status
+   */
+  cuopt::logic_error get_error_status() const noexcept;
+  /**
    * @brief Set vehicle count to the assignment object
    * @param vehicle_count Vehicle count
    */
@@ -241,6 +256,7 @@ class assignment_t {
   i_t vehicle_count_{0};
   solution_status_t status_{solution_status_t::EMPTY};
   std::string solution_string_;
+  cuopt::logic_error error_status_;
 };
 
 template <typename i_t>

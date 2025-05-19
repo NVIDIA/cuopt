@@ -23,7 +23,6 @@ extern "C" {
 
 int test_int_size();
 int test_float_size();
-void test_version(int* major, int* minor, int* patch);
 cuopt_int_t burglar_problem();
 cuopt_int_t solve_mps_file(const char* filename,
                            double time_limit,

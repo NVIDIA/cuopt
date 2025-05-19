@@ -7,10 +7,11 @@ channels:
 - nvidia
 - nvidia/label/cuda-12.4.0
 dependencies:
+- breathe
 - c-compiler
 - ccache
-- clang-tools=16.0.6
-- clang==16.0.6
+- clang-tools=20.1.4
+- clang==20.1.4
 - cmake>=3.30.4
 - cpp-argparse
 - cuda-crt
@@ -25,6 +26,7 @@ dependencies:
 - cxx-compiler
 - cython>=3.0.3
 - doxygen=1.9.1
+- exhale
 - fastapi
 - folium
 - gcc_linux-64=13.*
@@ -44,7 +46,8 @@ dependencies:
 - matplotlib
 - msgpack-numpy==0.4.8
 - msgpack-python==1.1.0
-- nbsphinx
+- myst-nb
+- myst-parser
 - ninja
 - notebook
 - numba>=0.59.1,<0.61.0a0
@@ -66,20 +69,21 @@ dependencies:
 - rapids-build-backend>=0.3.0,<0.4.0.dev0
 - rapids-dask-dependency==25.4.*
 - rapids-logger==0.1.*,>=0.0.0a0
-- recommonmark
 - requests
 - rmm==25.4.*,>=0.0.0a0
 - scikit-build-core>=0.10.0
 - scipy
 - sphinx
+- sphinx-copybutton
+- sphinx-design
 - sphinx-markdown-tables
 - sphinx_rtd_theme
 - sphinxcontrib-openapi
-- sphinxcontrib-programoutput
-- sphinxcontrib-redoc
 - sphinxcontrib-websupport
 - sysroot_linux-64==2.28
 - uvicorn==0.30.*
 - pip:
+  - nvidia_sphinx_theme
+  - swagger-plugin-for-sphinx
   - veroviz
 name: all_cuda-128_arch-x86_64

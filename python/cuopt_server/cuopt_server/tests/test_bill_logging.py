@@ -21,12 +21,12 @@ import signal
 import pexpect
 import pytest
 
-from cuopt_server import cuopt_amr_service
+from cuopt_server import cuopt_service
 from cuopt_server.tests.utils import utils
 from cuopt_server.tests.utils.utils import RequestClient
 
 # Find where is server script
-server_script = cuopt_amr_service.__file__
+server_script = cuopt_service.__file__
 python_path = shutil.which("python")
 
 

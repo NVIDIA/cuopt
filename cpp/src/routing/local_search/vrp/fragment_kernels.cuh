@@ -119,8 +119,9 @@ DI thrust::pair<double, double> evaluate_fragment(
       route_2.get_node(start_idx_2 + 1).node_info(),
       route_1.get_node(start_idx_1 + frag_size_1 + 1).node_info(),
       route_1.vehicle_info());
-    double frag_dist = route_2.reverse_distance[(start_idx_2 + 1)] -
-                       route_2.reverse_distance[(start_idx_2 + frag_size_2)];
+    double frag_dist =
+      route_2.dimensions.distance_dim.reverse_distance[(start_idx_2 + 1)] -
+      route_2.dimensions.distance_dim.reverse_distance[(start_idx_2 + frag_size_2)];
     obj_delta = sd1_end_frag_2 + frag_dist + sd2_1_end_node_1 - all_forward_1;
   }
 

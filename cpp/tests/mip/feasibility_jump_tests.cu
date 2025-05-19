@@ -1,18 +1,24 @@
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * reserved. SPDX-License-Identifier: Apache-2.0
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
+#include <cuopt/error.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 #include <linear_programming/utilities/problem_checking.cuh>
@@ -21,7 +27,6 @@
 #include <mip/solver_context.cuh>
 #include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
-#include <utilities/error.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/handle.hpp>
@@ -93,9 +98,9 @@ static fj_state_t run_fj(std::string test_instance,
                                                                problem.reverse_constraints,
                                                                true);
 
-  auto settings = mip_solver_settings_t<int, double>{};
-  settings.set_time_limit(30.);
-  auto timer = cuopt::timer_t(30);
+  auto settings       = mip_solver_settings_t<int, double>{};
+  settings.time_limit = 30.;
+  auto timer          = cuopt::timer_t(30);
   detail::mip_solver_t<int, double> solver(problem, settings, scaling, timer);
 
   detail::solution_t<int, double> solution(*solver.context.problem_ptr);
@@ -219,24 +224,22 @@ TEST(mip_solve, feasibility_jump_obj_test)
 {
   std::vector<std::tuple<std::string, double, int>> test_cases = {
     {"50v-10.mps", 7800, 100000},
-    {"minified/fiball.mps", 140, 25000},
-    {"minified/gen-ip054.mps", 7500, 20000},
-    {"minified/sct2.mps", 100, 50000},
-    {"minified/uccase9.mps", 4000000, 50000},
+    {"fiball.mps", 140, 25000},
+    {"gen-ip054.mps", 7500, 20000},
+    {"sct2.mps", 100, 50000},
+    {"uccase9.mps", 4000000, 50000},
     // unstable, prone to failure on slight weight changes
-    //{"minified/drayage-25-23.mps", 300000, 50000},
-    {"minified/tr12-30.mps", 300000, 50000},
-    {"minified/neos-3004026-krka.mps",
-     +std::numeric_limits<double>::infinity(),
-     35000},  // feasibility
+    //{"drayage-25-23.mps", 300000, 50000},
+    {"tr12-30.mps", 300000, 50000},
+    {"neos-3004026-krka.mps", +std::numeric_limits<double>::infinity(), 35000},  // feasibility
     //{"nursesched-medium-hint03.mps", 12000, 50000}, // too large
-    {"minified/ns1208400.mps", 2, 60000},
-    {"minified/gmu-35-50.mps", -2300000, 25000},
-    {"minified/n2seq36q.mps", 158800, 25000},
-    {"minified/seymour1.mps", 440, 50000},
-    {"minified/rmatr200-p5.mps", 7000, 10000},
-    {"minified/cvs16r128-89.mps", -50, 10000},
-    {"minified/thor50dday.mps", 250000, 1000}};
+    {"ns1208400.mps", 2, 60000},
+    {"gmu-35-50.mps", -2300000, 25000},
+    {"n2seq36q.mps", 158800, 25000},
+    {"seymour1.mps", 440, 50000},
+    {"rmatr200-p5.mps", 7000, 10000},
+    {"cvs16r128-89.mps", -50, 10000},
+    {"thor50dday.mps", 250000, 1000}};
 
   for (auto [instance, obj_target, iter_limit] : test_cases) {
     bool result = run_fj_check_objective(instance, iter_limit, obj_target);
@@ -250,16 +253,15 @@ TEST(mip_solve, feasibility_jump_obj_test)
 
 TEST(mip_solve, feasibility_jump_feas_test)
 {
-  for (const auto& instance :
-       {"minified/tr12-30.mps", "minified/sct2.mps", "minified/thor50dday.mps"}) {
+  for (const auto& instance : {"tr12-30.mps", "sct2.mps", "thor50dday.mps"}) {
     run_fj_check_feasible(instance);
   }
 }
 
 TEST(mip_solve, feasibility_jump_obj_runoff_test)
 {
-  for (const auto& instance : {"minrep_inf.mps", "minified/sct2.mps", "minified/uccase9.mps",
-                               /*"minified/buildingenergy.mps"*/}) {
+  for (const auto& instance : {"minrep_inf.mps", "sct2.mps", "uccase9.mps",
+                               /*"buildingenergy.mps"*/}) {
     run_fj_check_no_obj_runoff(instance);
   }
 }

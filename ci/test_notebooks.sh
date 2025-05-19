@@ -37,8 +37,8 @@ set -u
 rapids-print-env
 
 rapids-logger "Downloading artifacts from previous jobs"
-CPP_CHANNEL=$(rapids-download-conda-from-s3 cpp)
-PYTHON_CHANNEL=$(rapids-download-conda-from-s3 python)
+CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
+PYTHON_CHANNEL=$(rapids-download-conda-from-github python)
 
 rapids-mamba-retry install \
   --channel "${CPP_CHANNEL}" \
@@ -62,9 +62,9 @@ trap "EXITCODE=1" ERR
 rapids-logger "Start cuopt-server"
 
 set +e
-#python -c "from cuopt_server.cuopt_amr_service import run_server; run_server()" &
+#python -c "from cuopt_server.cuopt_service import run_server; run_server()" &
 
-python -m cuopt_server.cuopt_amr_service &
+python -m cuopt_server.cuopt_service &
 export SERVER_PID=$!
 sleep "${SERVER_WAIT_DELAY}"
 curl http://0.0.0.0:5000/cuopt/health

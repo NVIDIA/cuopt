@@ -33,6 +33,9 @@ from .validation import (
 
 class DataModel(vehicle_routing_wrapper.DataModel):
     """
+
+    DataModel(n_locations, n_fleet, n_orders: int = -1, session_id=None)
+
     Initialize a Data Model.
 
     Parameters
@@ -95,9 +98,6 @@ class DataModel(vehicle_routing_wrapper.DataModel):
           - If vehicle locations is not set, then by default 0th index
             and column are considered start and end location for
             all vehicles.
-
-        LIMITED:
-            Limited version only supports symmetric matrix.
 
         Parameters
         ----------
@@ -186,9 +186,6 @@ class DataModel(vehicle_routing_wrapper.DataModel):
           - If vehicle locations is not set, then by default 0th index
             and column are considered start and end location for
             all vehicles.
-
-        LIMITED:
-            Limited version only supports symmetric matrix.
 
         Parameters
         ----------
@@ -1407,6 +1404,8 @@ class DataModel(vehicle_routing_wrapper.DataModel):
 
 class SolverSettings(vehicle_routing_wrapper.SolverSettings):
     """
+    SolverSettings()
+
     Initialize a SolverSettings.
     """
 
@@ -1537,11 +1536,6 @@ class SolverSettings(vehicle_routing_wrapper.SolverSettings):
 def Solve(data_model, solver_settings=None):
     """
     Solves the routing problem.
-
-    LIMITED:
-        Limited version only return routes if the number of nodes
-        is less than 1001,
-        else it will return only cost and number of vehicles.
 
     Parameters
     ----------

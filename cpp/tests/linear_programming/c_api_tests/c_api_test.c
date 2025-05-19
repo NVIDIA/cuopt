@@ -74,10 +74,6 @@ int test_float_size() {
   return cuOptGetFloatSize();
 }
 
-void test_version(int *major, int *minor, int *patch) {
-  cuOptGetSemanticVersion(major, minor, patch);
-}
-
 cuopt_int_t test_missing_file() {
   cuOptOptimizationProblem problem = NULL;
   cuOptSolverSettings settings = NULL;
@@ -301,7 +297,6 @@ int solve_mps_file(const char* filename, double time_limit, double iteration_lim
   cuopt_int_t termination_status = -1;
   cuopt_float_t time;
   cuopt_float_t objective_value;
-
   printf("Reading problem from %s\n", filename);
   status = cuOptReadProblem(filename, &problem);
   if (status != CUOPT_SUCCESS) {
@@ -339,7 +334,14 @@ int solve_mps_file(const char* filename, double time_limit, double iteration_lim
   }
   status = cuOptSolve(problem, settings, &solution);
   if (status != CUOPT_SUCCESS) {
-    printf("Error solving problem\n");
+    #define ERROR_BUFFER_SIZE 1024
+    char error_string[ERROR_BUFFER_SIZE];
+    cuopt_int_t error_string_status = cuOptGetErrorString(solution, error_string, ERROR_BUFFER_SIZE);
+    if (error_string_status != CUOPT_SUCCESS) {
+      printf("Error getting error string\n");
+      goto DONE;
+    }
+    printf("Error %d solving problem: %s\n", status, error_string);
     goto DONE;
   }
   status = cuOptGetSolveTime(solution, &time);

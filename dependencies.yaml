@@ -81,34 +81,6 @@ files:
         - cuda_version
         - docs
         - py_version
-  py_build_libcuopt:
-    output: pyproject
-    pyproject_dir: python/libcuopt
-    extras:
-      table: build-system
-    includes:
-      - rapids_build_backend
-  py_rapids_build_libcuopt:
-    output: pyproject
-    pyproject_dir: python/libcuopt
-    extras:
-      table: tool.rapids-build-backend
-      key: requires
-    includes:
-      - build_common
-      - depends_on_libraft_headers
-      - depends_on_librmm
-      - depends_on_rapids_logger
-  py_run_libcuopt:
-    output: pyproject
-    pyproject_dir: python/libcuopt
-    extras:
-      table: project
-    includes:
-      - cuda_wheels
-      - depends_on_libraft_headers
-      - depends_on_librmm
-      - depends_on_rapids_logger
   py_build_cuopt_mps_parser:
     output: pyproject
     pyproject_dir: python/cuopt/cuopt/linear_programming/
@@ -144,6 +116,36 @@ files:
     includes:
       - run_common
       - depends_on_rapids_logger
+  py_build_libcuopt:
+    output: pyproject
+    pyproject_dir: python/libcuopt
+    extras:
+      table: build-system
+    includes:
+      - rapids_build_backend
+  py_rapids_build_libcuopt:
+    output: pyproject
+    pyproject_dir: python/libcuopt
+    extras:
+      table: tool.rapids-build-backend
+      key: requires
+    includes:
+      - build_common
+      - depends_on_libraft_headers
+      - depends_on_librmm
+      - depends_on_rapids_logger
+      - depends_on_mps_parser
+  py_run_libcuopt:
+    output: pyproject
+    pyproject_dir: python/libcuopt
+    extras:
+      table: project
+    includes:
+      - cuda_wheels
+      - depends_on_libraft_headers
+      - depends_on_librmm
+      - depends_on_rapids_logger
+      - depends_on_mps_parser
   py_build_cuopt:
     output: pyproject
     pyproject_dir: python/cuopt
@@ -161,9 +163,9 @@ files:
       - build_common
       - build_python_common
       - depends_on_libcuopt
+      - depends_on_mps_parser
       - depends_on_rapids_logger
       - depends_on_cupy
-      - depends_on_mps_parser
       - depends_on_pylibraft
       - depends_on_rmm
   py_run_cuopt:
@@ -178,7 +180,7 @@ files:
       - depends_on_libcuopt
       - depends_on_mps_parser
       - depends_on_rmm
-      - depends_on_cudf 
+      - depends_on_cudf
       - depends_on_cuvs
       - depends_on_raft_dask
       - depends_on_pylibraft
@@ -378,7 +380,7 @@ dependencies:
     common:
       - output_types: [conda]
         packages:
-          - *numpy        
+          - *numpy
       - output_types: [requirements, pyproject]
         packages:
           - *numpy
@@ -484,7 +486,6 @@ dependencies:
             packages:
               - libcuopt-cu11==25.5.*,>=0.0.0a0
           - {matrix: null, packages: [*libcuopt_unsuffixed]}
-
   depends_on_cuopt:
     common:
       - output_types: conda
@@ -822,8 +823,8 @@ dependencies:
           - pre-commit
       - output_types: conda
         packages:
-          - clang==16.0.6
-          - clang-tools=16.0.6
+          - clang==20.1.4
+          - clang-tools=20.1.4
           - &doxygen doxygen=1.9.1 # pre-commit hook needs a specific version.
   docs:
     common:
@@ -835,22 +836,28 @@ dependencies:
           - make
           - *msgpack_python
           - *msgpack_numpy
-          - nbsphinx
+          - myst-parser
+          - myst-nb
           - numpydoc
           - pyrsistent
-          - recommonmark
+          - breathe
+          - exhale
           - sphinx
+          - sphinx-copybutton
           - sphinx-markdown-tables
           - sphinx_rtd_theme
-          - sphinxcontrib-programoutput
-          - sphinxcontrib-redoc
           - sphinxcontrib-openapi
           - sphinxcontrib-websupport
+          - sphinx-design
+          - pip:
+            - swagger-plugin-for-sphinx
+            - nvidia_sphinx_theme
 
   notebooks:
     common:
       - output_types: [conda, requirements]
         packages:
+          - breathe
           - folium
           - geopandas
           - ipython

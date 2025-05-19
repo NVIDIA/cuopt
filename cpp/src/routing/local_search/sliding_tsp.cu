@@ -20,11 +20,14 @@
 #include "../utilities/cuopt_utils.cuh"
 #include "local_search.cuh"
 
+#include <cub/cub.cuh>
+
 namespace cuopt {
 namespace routing {
 namespace detail {
 
 auto constexpr const max_window_size = 20;
+constexpr int max_n_neighbors        = 128;
 
 template <typename i_t, typename f_t, request_t REQUEST>
 DI thrust::pair<double, double> eval_move(
@@ -35,14 +38,15 @@ DI thrust::pair<double, double> eval_move(
   i_t intra_idx,
   i_t insertion_pos,
   i_t window_size,
+  i_t route_max_window_size,
   bool reverse)
 {
   auto original_window_dist =
     s_route.dimensions.distance_dim.distance_forward[intra_idx + window_size - 1] -
     s_route.dimensions.distance_dim.distance_forward[intra_idx];
-  auto new_window_dist =
-    reverse ? sh_reverse_dist[intra_idx] - sh_reverse_dist[intra_idx + window_size - 1]
-            : original_window_dist;
+  auto new_window_dist = reverse ? sh_reverse_dist[route_max_window_size - 1] -
+                                     sh_reverse_dist[route_max_window_size - window_size]
+                                 : original_window_dist;
 
   auto original_previous_intra_frag_next =
     s_route.dimensions.distance_dim.distance_forward[intra_idx + window_size] -
@@ -127,25 +131,21 @@ __global__ void find_sliding_moves_tsp(
 
   auto route = sol.routes[route_id];
 
+  auto route_max_window_size = min(route.get_num_nodes() - intra_idx, max_window_size);
+
   auto s_route = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
-    (i_t*)shmem, route, route.get_num_nodes());
-  __syncthreads();
+    (i_t*)shmem, route, route.get_num_nodes(), true);
+  auto sh_reverse_dist = raft::device_span<double>(
+    reinterpret_cast<double*>(raft::alignTo(s_route.shared_end_address(), sizeof(double))),
+    route_max_window_size);
   s_route.copy_from(route);
   __syncthreads();
 
-  // reverse and non reverse frag
-  auto sh_reverse_dist = raft::device_span<double>(
-    reinterpret_cast<double*>(raft::alignTo(s_route.shared_end_address(), sizeof(double))),
-    s_route.get_num_nodes() + 1);
-  __syncthreads();
-  if (threadIdx.x == 0) {
-    sh_reverse_dist[s_route.get_num_nodes()] = 0.;
-    for (int i = s_route.get_num_nodes() - 1; i >= 0; i--) {
-      double dist = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(s_route.get_node(i + 1).node_info(),
-                                                                s_route.get_node(i).node_info(),
-                                                                s_route.vehicle_info());
-      sh_reverse_dist[i] = dist + sh_reverse_dist[i + 1];
-    }
+  // reverse and non reverse fragment
+  for (i_t tid = threadIdx.x; tid < route_max_window_size; tid += blockDim.x) {
+    sh_reverse_dist[tid] =
+      route.dimensions.distance_dim
+        .reverse_distance[route.get_num_nodes() - intra_idx - (route_max_window_size - 1) + tid];
   }
   __syncthreads();
 
@@ -155,19 +155,23 @@ __global__ void find_sliding_moves_tsp(
   sliding_tsp_cand_t<i_t> sliding_tsp_cand = is_sliding_tsp_uinitialized_t<i_t>::init_data;
   double cost_delta, selection_delta;
 
-  auto n_reverse_types       = 2;
-  auto n_insertion_pos       = s_route.get_num_nodes();
-  auto route_max_window_size = max_window_size;  // s_route.get_num_nodes();
-  auto total_permut          = route_max_window_size * n_reverse_types *
+  constexpr bool exclude_self_in_neighbors = false;  // for reverse op
+  const int max_neighbors                  = min(max_n_neighbors, sol.get_num_orders());
+  auto nodes_to_consider                   = move_candidates.viables.get_viable_to_pickups(
+    node_info.node(), sol.get_num_requests(), max_neighbors, exclude_self_in_neighbors);
+
+  auto n_reverse_types = 2;
+  auto n_insertion_pos = nodes_to_consider.size();
+  auto total_permut    = route_max_window_size * n_reverse_types *
                       n_insertion_pos;  // forward, backward at every node pos
   for (i_t tid = threadIdx.x; tid < total_permut; tid += blockDim.x) {
-    auto insertion_pos = tid % n_insertion_pos;
+    auto node_choice   = nodes_to_consider[tid % n_insertion_pos];
+    auto insertion_pos = sol.route_node_map.intra_route_idx_per_node[node_choice];
     auto frag_size     = tid / n_insertion_pos;
     auto window_size   = (frag_size % route_max_window_size) + 1;
     auto reverse       = frag_size / route_max_window_size;
 
     cuopt_assert(insertion_pos < s_route.get_num_nodes(), "Wrong insertion pos");
-    // cuopt_assert(window_size <= route_max_window_size, "Wrong window_size");
     cuopt_assert(reverse == 0 || reverse == 1, "Wrong reverse val");
 
     if (intra_idx + window_size > s_route.get_num_nodes()) { continue; }
@@ -191,6 +195,7 @@ __global__ void find_sliding_moves_tsp(
                                                                             intra_idx,
                                                                             insertion_pos,
                                                                             window_size,
+                                                                            route_max_window_size,
                                                                             reverse);
 
     if (cost_delta > -EPSILON) { continue; }
@@ -203,7 +208,6 @@ __global__ void find_sliding_moves_tsp(
       sliding_tsp_cand.selection_delta = selection_delta;
     }
   }
-
   // reduction
   __shared__ int reduction_index;
   __shared__ double shbuf[warp_size * 2];
@@ -267,31 +271,23 @@ __global__ void execute_sliding_moves_tsp(
   auto max_active = sol.get_max_active_nodes_for_all_routes();
   auto route      = sol.routes[route_id];
   auto s_route    = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
-    (i_t*)shmem, route, route.get_num_nodes());
-  __syncthreads();
+    (i_t*)shmem, route, route.get_num_nodes(), true);
   s_route.copy_from(route);
   __syncthreads();
 
-  typename dimensions_route_t<i_t, f_t, REQUEST>::view_t fragment;
-  i_t* dummy;
-  // max_fragment_size-1, because the create shared route adds one more already
-  thrust::tie(fragment, dummy) = dimensions_route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
-    reinterpret_cast<i_t*>(raft::alignTo(s_route.shared_end_address(), sizeof(double))),
-    sol.problem.dimensions_info,
-    max_active - 1);
-  __syncthreads();
+  s_route.copy_to_tsp_route(sol.problem.order_info.depot_included);
 
   __shared__ i_t sh_overlaps;
 
   for (i_t x = 0; x < sampled_nodes_data.size(); ++x) {
     __syncthreads();
 
-    if (threadIdx.x == 0) { sh_overlaps = 0; }
-    __syncthreads();
-
     auto cand = sampled_nodes_data[x];
 
     if (cand.selection_delta == std::numeric_limits<double>::max()) { break; }
+
+    if (threadIdx.x == 0) { sh_overlaps = 0; }
+    __syncthreads();
 
     // add two more nodes
     i_t start = max(cand.window_start - 1, 1);
@@ -313,7 +309,9 @@ __global__ void execute_sliding_moves_tsp(
     cuopt_func_call(
       if (threadIdx.x == 0) { atomicAdd(move_candidates.debug_delta, cand.selection_delta); });
 
-    auto original_node_id        = moved_regions[route_id * max_active + cand.window_start];
+    auto original_node_id = moved_regions[route_id * max_active + cand.window_start];
+    auto original_fragment_end_node_id =
+      moved_regions[route_id * max_active + cand.window_start + cand.window_size - 1];
     auto original_node_insertion = moved_regions[route_id * max_active + cand.insertion_pos];
     cuopt_assert(original_node_id >= 0, "Moved region node id should be positive");
     cuopt_assert(original_node_insertion >= 0, "Moved region node id should be positive");
@@ -322,78 +320,172 @@ __global__ void execute_sliding_moves_tsp(
       route, move_candidates, cand, moved_regions, sol.get_num_orders(), max_active);
     __syncthreads();
 
-    const auto [_, new_window_start] =
-      sol.route_node_map.get_route_id_and_intra_idx(original_node_id);
-
-    const auto [dummy, new_insertion_pos] =
-      sol.route_node_map.get_route_id_and_intra_idx(original_node_insertion);
-    cand.window_start  = new_window_start;
-    cand.insertion_pos = original_node_insertion != 0 ? new_insertion_pos : 0;
-    __syncthreads();
-
-    fragment.parallel_copy_nodes_from(
-      0, s_route, cand.window_start, cand.window_size, cand.reverse);
-    __syncthreads();
-
     if (threadIdx.x == 0) {
-      const int old_start_idx = cand.window_start;
-      auto const window_size  = cand.window_size;
-      cuopt_assert(old_start_idx > 0 && old_start_idx + window_size - 1 < s_route.get_num_nodes(),
-                   "Invalid old start index");
-      // Store
-      const int new_start_idx = cand.insertion_pos;
+      auto original_node_info =
+        NodeInfo<i_t>(original_node_id,
+                      sol.problem.order_info.get_order_location(original_node_id),
+                      node_type_t::DELIVERY);
+      auto original_fragment_end_node_info =
+        NodeInfo<i_t>(original_fragment_end_node_id,
+                      sol.problem.order_info.get_order_location(original_fragment_end_node_id),
+                      node_type_t::DELIVERY);
+      auto original_node_insertion_info =
+        NodeInfo<i_t>(original_node_insertion,
+                      sol.problem.order_info.get_order_location(original_node_insertion),
+                      node_type_t::DELIVERY);
 
-      // In place insertion
-      if (old_start_idx == new_start_idx) {
-        for (int i = 0; i < window_size; ++i)
-          s_route.set_node(i + new_start_idx, fragment.get_node(i));
-      } else {
-        // Left shift
-        for (int i = old_start_idx; (i + window_size) < s_route.get_num_nodes(); ++i) {
-          s_route.set_node(i, s_route.get_node(i + window_size));
-        }
-        // Right shift nodes to leave room for the window insertion
+      auto node_before_fragment = s_route.dimensions.requests.tsp_requests.pred[original_node_id];
+      auto node_after_fragment =
+        s_route.dimensions.requests.tsp_requests.succ[original_fragment_end_node_id];
+      auto fragment_start     = original_node_info;
+      auto fragment_end       = original_fragment_end_node_info;
+      auto node_insertion_pos = original_node_insertion_info;
+      auto node_after_insertion_pos =
+        s_route.dimensions.requests.tsp_requests.succ[original_node_insertion];
 
-        cuopt_assert(new_start_idx >= 0 && new_start_idx < s_route.get_num_nodes(),
-                     "Invalid new start index");
-        for (int i = s_route.get_num_nodes() - 1;
-             i > new_start_idx + ((new_start_idx < old_start_idx) ? window_size : 0);
-             --i) {
-          cuopt_assert(i - window_size >= 0, "Negative index");
-          s_route.set_node(i, s_route.get_node(i - window_size));
-        }
-        // Insert the nodes
+      s_route.dimensions.requests.tsp_requests.succ[node_before_fragment.node()] =
+        node_after_fragment;
+      s_route.dimensions.requests.tsp_requests.pred[node_after_fragment.node()] =
+        node_before_fragment;
 
-        // + 1 because we insert after the node
-        // Handle case where insertion is after initial position of window
-        for (int i = 0; i < window_size; ++i) {
-          s_route.set_node(
-            i + new_start_idx + 1 - ((new_start_idx > old_start_idx) ? window_size : 0),
-            fragment.get_node(i));
+      s_route.dimensions.requests.tsp_requests.succ[node_insertion_pos.node()] = fragment_start;
+      s_route.dimensions.requests.tsp_requests.pred[node_after_insertion_pos.node()] = fragment_end;
+
+      s_route.dimensions.requests.tsp_requests.succ[fragment_end.node()] = node_after_insertion_pos;
+      s_route.dimensions.requests.tsp_requests.pred[fragment_start.node()] = node_insertion_pos;
+
+      if (cand.reverse) {
+        auto start = fragment_start;
+        for (i_t i = 0; i < cand.window_size; ++i) {
+          raft::swapVals(s_route.dimensions.requests.tsp_requests.pred[start.node()],
+                         s_route.dimensions.requests.tsp_requests.succ[start.node()]);
+          start = s_route.dimensions.requests.tsp_requests.pred[start.node()];
         }
+
+        // Connecting node links after reverse
+        if (cand.window_start == cand.insertion_pos + 1) {  // in place
+          s_route.dimensions.requests.tsp_requests.succ[fragment_start.node()] =
+            node_after_fragment;
+          s_route.dimensions.requests.tsp_requests.pred[node_after_fragment.node()] =
+            fragment_start;
+        } else {
+          s_route.dimensions.requests.tsp_requests.succ[fragment_start.node()] =
+            node_after_insertion_pos;
+          s_route.dimensions.requests.tsp_requests.pred[node_after_insertion_pos.node()] =
+            fragment_start;
+        }
+        s_route.dimensions.requests.tsp_requests.pred[fragment_end.node()] = node_insertion_pos;
+        s_route.dimensions.requests.tsp_requests.succ[node_insertion_pos.node()] = fragment_end;
       }
-    }
-    __syncthreads();
-
-    // Update intra_route_idx_per_node
-    for (int i = threadIdx.x + 1; i < s_route.get_num_nodes(); i += blockDim.x) {
-      const auto& node_info = s_route.requests().node_info[i];
-      sol.route_node_map.set_intra_route_idx(node_info, i);
     }
     __syncthreads();
   }
 
   if (threadIdx.x == 0) {
-    // Update info
-    route_t<i_t, f_t, REQUEST>::view_t::compute_forward(s_route);
-    route_t<i_t, f_t, REQUEST>::view_t::compute_backward(s_route);
-    s_route.compute_cost();
+    auto start = s_route.dimensions.requests.tsp_requests.start;
+    for (i_t i = 1; i < s_route.get_num_nodes(); ++i) {
+      start          = s_route.dimensions.requests.tsp_requests.succ[start.node()];
+      auto intra_idx = sol.route_node_map.get_intra_route_idx(start.node());
+      auto node      = route.get_node(intra_idx);
+      s_route.set_node(i, node);
+      sol.route_node_map.set_intra_route_idx(start, i);
+    }
+
     sol.routes_to_copy[route_id]   = 1;
     sol.routes_to_search[route_id] = 1;
   }
   __syncthreads();
 
   route.copy_from(s_route);
+}
+
+template <typename i_t, typename f_t, request_t REQUEST>
+__global__ void fill_reverse_distances_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t sol)
+{
+  auto route             = sol.routes[0];
+  auto n_nodes           = route.get_num_nodes();
+  auto reverse_distances = route.dimensions.distance_dim.reverse_distance;
+  for (i_t tid = blockIdx.x * blockDim.x + threadIdx.x; tid < n_nodes;
+       tid += blockDim.x * gridDim.x) {
+    reverse_distances[tid] =
+      get_arc_of_dimension<i_t, f_t, dim_t::DIST>(route.get_node(n_nodes - tid).node_info(),
+                                                  route.get_node(n_nodes - 1 - tid).node_info(),
+                                                  route.vehicle_info());
+  }
+}
+
+template <typename i_t, typename f_t, request_t REQUEST>
+__global__ void fill_forward_distances_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t sol)
+{
+  auto route             = sol.routes[0];
+  auto n_nodes           = route.get_num_nodes();
+  auto forward_distances = route.dimensions.distance_dim.distance_forward;
+  for (i_t tid = blockIdx.x * blockDim.x + threadIdx.x; tid < n_nodes;
+       tid += blockDim.x * gridDim.x) {
+    forward_distances[tid] = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
+      route.get_node(tid).node_info(), route.get_node(tid + 1).node_info(), route.vehicle_info());
+  }
+}
+
+template <typename i_t, typename f_t, request_t REQUEST>
+void resize_temp_storage(solution_t<i_t, f_t, REQUEST>& sol,
+                         move_candidates_t<i_t, f_t>& move_candidates,
+                         i_t n_nodes,
+                         size_t& temp_storage_bytes)
+{
+  auto distances_ptr = sol.get_route(0).dimensions.distance_dim.distance_forward.data();
+  cub::DeviceScan::ExclusiveSum(static_cast<void*>(nullptr),
+                                temp_storage_bytes,
+                                distances_ptr,
+                                distances_ptr,
+                                n_nodes + 1,
+                                sol.sol_handle->get_stream());
+
+  if (temp_storage_bytes > 0) {
+    move_candidates.temp_storage.resize(temp_storage_bytes, sol.sol_handle->get_stream());
+  }
+}
+
+template <typename i_t, typename f_t, request_t REQUEST, bool reverse>
+void compute_cumulative_distances(solution_t<i_t, f_t, REQUEST>& sol,
+                                  move_candidates_t<i_t, f_t>& move_candidates,
+                                  i_t n_nodes,
+                                  i_t n_threads,
+                                  size_t temp_storage_bytes)
+{
+  auto distances_ptr = reverse ? sol.get_route(0).dimensions.distance_dim.reverse_distance.data()
+                               : sol.get_route(0).dimensions.distance_dim.distance_forward.data();
+  auto n_fill_blocks = (sol.get_num_orders() + n_threads - 1) / n_threads;
+  if (reverse) {
+    fill_reverse_distances_kernel<i_t, f_t, REQUEST>
+      <<<n_fill_blocks, n_threads, 0, sol.sol_handle->get_stream()>>>(sol.view());
+    RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
+  } else {
+    fill_forward_distances_kernel<i_t, f_t, REQUEST>
+      <<<n_fill_blocks, n_threads, 0, sol.sol_handle->get_stream()>>>(sol.view());
+    RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
+  }
+
+  size_t n_temp_storage_bytes = 0;
+  cub::DeviceScan::ExclusiveSum(static_cast<void*>(nullptr),
+                                n_temp_storage_bytes,
+                                distances_ptr,
+                                distances_ptr,
+                                n_nodes + 1,
+                                sol.sol_handle->get_stream());
+
+  if (n_temp_storage_bytes > 0) {
+    cuopt_expects(n_temp_storage_bytes == temp_storage_bytes,
+                  cuopt::error_type_t::RuntimeError,
+                  "Cannot resize when using cuda graphs");
+  }
+
+  cub::DeviceScan::ExclusiveSum(move_candidates.temp_storage.data(),
+                                temp_storage_bytes,
+                                distances_ptr,
+                                distances_ptr,
+                                n_nodes + 1,
+                                sol.sol_handle->get_stream());
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -406,23 +498,25 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
   if (!move_candidates.include_objective) { return false; }
   [[maybe_unused]] double cost_before = 0., cost_after = 0.;
 
-  auto constexpr const n_threads = 64;
+  auto constexpr const n_threads = 128;
 
-  // if a single route size is greater than select a random subset of 500 nodes to search
-  constexpr i_t tsp_route_size_threshold = 512;
-  if (sol.get_num_depot_excluded_orders() > tsp_route_size_threshold) {
-    fill_tsp_random_considered_nodes(sol, move_candidates, rng);
-  }
+  auto shared_route_size = sol.check_routes_can_insert_and_get_sh_size(0);
+  sol.compute_max_active();
+  moved_regions_.resize(sol.get_n_routes() * sol.get_max_active_nodes_for_all_routes(),
+                        sol.sol_handle->get_stream());
+  auto n_nodes              = sol.get_num_orders();
+  size_t temp_storage_bytes = 0;
+  resize_temp_storage<i_t, f_t, REQUEST>(sol, move_candidates, n_nodes, temp_storage_bytes);
+
+  compute_cumulative_distances<i_t, f_t, REQUEST, true>(
+    sol, move_candidates, n_nodes, n_threads, temp_storage_bytes);
 
   auto n_blocks = move_candidates.nodes_to_search.n_sampled_nodes;
   async_fill(
     sampled_tsp_data_, is_sliding_tsp_uinitialized_t<i_t>::init_data, sol.sol_handle->get_stream());
 
-  auto is_tsp = sol.problem_ptr->is_tsp;
-
-  auto shared_route_size = sol.check_routes_can_insert_and_get_sh_size(0);
-  auto sh_size           = raft::alignTo(shared_route_size, sizeof(double)) +
-                 sizeof(double) * sol.get_max_active_nodes_for_all_routes();
+  auto sh_size =
+    raft::alignTo(shared_route_size, sizeof(double)) + max_window_size * sizeof(double);
 
   if (!set_shmem_of_kernel(find_sliding_moves_tsp<i_t, f_t, REQUEST>, sh_size)) { return false; }
 
@@ -434,15 +528,12 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
       cuopt::make_span(locks_));
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 
-  n_moves_found = thrust::count_if(sol.sol_handle->get_thrust_policy(),
+  n_moves_found = thrust::count_if(rmm::exec_policy(sol.sol_handle->get_stream()),
                                    sampled_tsp_data_.begin(),
                                    sampled_tsp_data_.end(),
                                    is_sliding_tsp_initialized_t<i_t>());
   if (!n_moves_found) { return false; }
 
-  sol.compute_max_active();
-  moved_regions_.resize(sol.get_n_routes() * sol.get_max_active_nodes_for_all_routes(),
-                        sol.sol_handle->get_stream());
   async_fill(moved_regions_, 1, sol.sol_handle->get_stream());
 
   set_moved_regions_kernel<i_t, f_t, REQUEST>
@@ -453,18 +544,14 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
   cuopt_func_call(
     move_candidates.debug_delta.set_value_to_zero_async(sol.sol_handle->get_stream()));
   cuopt_func_call(sol.compute_cost());
-  cuopt_func_call(cost_before = is_tsp ? sol.get_total_cost(move_candidates.weights) -
-                                           sol.get_cost(false, move_candidates.weights)
-                                       : sol.get_cost(move_candidates.include_objective,
-                                                      move_candidates.weights));
+  cuopt_func_call(cost_before = sol.get_total_cost(move_candidates.weights) -
+                                sol.get_cost(false, move_candidates.weights));
 
-  auto size_of_frag = dimensions_route_t<i_t, f_t, REQUEST>::get_shared_size(
-    sol.get_max_active_nodes_for_all_routes(), sol.problem_ptr->dimensions_info);
-  sh_size = shared_route_size + size_of_frag;
+  sh_size = shared_route_size;
 
   if (!set_shmem_of_kernel(execute_sliding_moves_tsp<i_t, f_t, REQUEST>, sh_size)) { return false; }
 
-  thrust::sort(sol.sol_handle->get_thrust_policy(),
+  thrust::sort(rmm::exec_policy(sol.sol_handle->get_stream()),
                sampled_tsp_data_.begin(),
                sampled_tsp_data_.end(),
                [] __device__(sliding_tsp_cand_t<i_t> cand1, sliding_tsp_cand_t<i_t> cand2) -> bool {
@@ -479,11 +566,12 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
       cuopt::make_span(moved_regions_));
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 
+  compute_cumulative_distances<i_t, f_t, REQUEST, false>(
+    sol, move_candidates, n_nodes, n_threads, temp_storage_bytes);
+
   cuopt_func_call(sol.compute_cost());
-  cuopt_func_call(
-    cost_after = is_tsp ? sol.get_total_cost(move_candidates.weights) -
-                            sol.get_cost(false, move_candidates.weights)
-                        : sol.get_cost(move_candidates.include_objective, move_candidates.weights));
+  cuopt_func_call(cost_after = sol.get_total_cost(move_candidates.weights) -
+                               sol.get_cost(false, move_candidates.weights));
 
   cuopt_assert(abs((cost_before - cost_after) +
                      move_candidates.debug_delta.value(sol.sol_handle->get_stream()) <

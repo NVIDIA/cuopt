@@ -19,10 +19,10 @@ import pexpect
 import pytest
 import requests
 
-from cuopt_server import cuopt_amr_service
+from cuopt_server import cuopt_service
 
 # Find where is server script
-server_script = cuopt_amr_service.__file__
+server_script = cuopt_service.__file__
 python_path = shutil.which("python")
 
 

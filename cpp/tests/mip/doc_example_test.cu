@@ -96,7 +96,7 @@ void test_mps_file()
   // Create the problem from documentation example
   auto problem = create_doc_example_problem();
 
-  settings.set_time_limit(test_time_limit);
+  settings.time_limit                  = test_time_limit;
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
   EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
 
@@ -113,7 +113,7 @@ void test_mps_file()
   EXPECT_NEAR(37.0, sol_values.element(0, handle_.get_stream()), 0.1);
   EXPECT_NEAR(std::round(sol_values.element(0, handle_.get_stream())),
               sol_values.element(0, handle_.get_stream()),
-              settings.get_integrality_tolerance());  // Check x is integer
+              settings.tolerances.integrality_tolerance);  // Check x is integer
   // y should be approximately 39.5
   EXPECT_NEAR(39.5, sol_values.element(1, handle_.get_stream()), 0.1);
 }

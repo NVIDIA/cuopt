@@ -17,11 +17,11 @@
 
 #pragma once
 
+#include <cuopt/error.hpp>
 #include <linear_programming/utils.cuh>
 #include <mip/presolve/trivial_presolve_helpers.cuh>
 #include <mip/problem/problem.cuh>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/error.hpp>
 
 #include <thrust/count.h>
 #include <thrust/for_each.h>

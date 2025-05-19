@@ -62,6 +62,13 @@ import cudf
 from cudf.core.buffer import as_buffer
 
 
+class ErrorStatus(IntEnum):
+    Success = error_type_t.Success
+    ValidationError = error_type_t.ValidationError
+    OutOfMemoryError = error_type_t.OutOfMemoryError
+    RuntimeError = error_type_t.RuntimeError
+
+
 def type_cast(cudf_obj, np_type, name):
     if isinstance(cudf_obj, cudf.Series):
         cudf_type = cudf_obj.dtype
@@ -846,6 +853,8 @@ def Solve(DataModel data_model, SolverSettings solver_settings):
         get_type_from_int(type_in_int)
         for type_in_int in route_df['type'].to_pandas()]
     route_df['type'] = node_types_string
+    error_status = vr_ret.error_status_
+    error_message = vr_ret.error_message_
 
     return Assignment(
         vehicle_count,
@@ -855,5 +864,7 @@ def Solve(DataModel data_model, SolverSettings solver_settings):
         accepted,
         <solution_status_t> status,
         solver_status_string,
+        <error_type_t> error_status,
+        error_message,
         unserviced_nodes
     )

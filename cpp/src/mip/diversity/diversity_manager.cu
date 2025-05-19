@@ -345,7 +345,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   auto lp_result = get_relaxed_lp_solution(*problem_ptr,
                                            lp_optimal_solution,
                                            lp_state,
-                                           context.settings.get_absolute_tolerance(),
+                                           context.settings.tolerances.absolute_tolerance,
                                            lp_time_limit,
                                            false,
                                            false);
@@ -355,10 +355,12 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     // get lp user objective and pass it to set_new_user_bound
     set_new_user_bound(problem_ptr->get_user_obj_from_solver_obj(lp_result.get_objective_value()));
   } else if (lp_result.get_termination_status() == pdlp_termination_status_t::PrimalInfeasible) {
-    CUOPT_LOG_ERROR("Problem is primal infeasible, continuing anyway!");
+    // PDLP's infeasibility detection isn't an exact method and might be subject to false positives.
+    // Issue a warning, and continue solving.
+    CUOPT_LOG_WARN("PDLP detected primal infeasibility, problem might be infeasible!");
     ls.lp_optimal_exists = false;
   } else if (lp_result.get_termination_status() == pdlp_termination_status_t::DualInfeasible) {
-    CUOPT_LOG_ERROR("PDLP detected dual infeasibility, continuing anyway!");
+    CUOPT_LOG_WARN("PDLP detected dual infeasibility, problem might be unbounded!");
     ls.lp_optimal_exists = false;
   } else if (lp_result.get_termination_status() == pdlp_termination_status_t::TimeLimit) {
     CUOPT_LOG_DEBUG(

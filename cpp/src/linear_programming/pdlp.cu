@@ -14,6 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#include <cuopt/error.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
@@ -21,8 +23,6 @@
 #include <linear_programming/utils.cuh>
 #include <mip/mip_constants.hpp>
 #include "cuopt/linear_programming/pdlp/solver_solution.hpp"
-
-#include <utilities/error.hpp>
 
 #include <raft/common/nvtx.hpp>
 #include <raft/linalg/eltwise.cuh>
@@ -263,9 +263,8 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   const std::chrono::high_resolution_clock::time_point& start_time)
 {
   // Check for time limit
-  if (settings_.get_time_limit().has_value() &&
-      time_limit_reached(start_time, settings_.get_time_limit().value())) {
-    if (settings_.get_save_best_primal_so_far()) {
+  if (time_limit_reached(start_time, settings_.time_limit)) {
+    if (settings_.save_best_primal_so_far) {
 #ifdef PDLP_VERBOSE_MODE
       RAFT_CUDA_TRY(cudaDeviceSynchronize());
       std::cout << "Time Limit reached, returning best primal so far" << std::endl;
@@ -286,8 +285,8 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   }
 
   // Check for iteration limit
-  if (internal_solver_iterations_ >= settings_.get_iteration_limit()) {
-    if (settings_.get_save_best_primal_so_far()) {
+  if (internal_solver_iterations_ >= settings_.iteration_limit) {
+    if (settings_.save_best_primal_so_far) {
 #ifdef PDLP_VERBOSE_MODE
       RAFT_CUDA_TRY(cudaDeviceSynchronize());
       std::cout << "Iteration Limit reached, returning best primal so far" << std::endl;
@@ -310,8 +309,8 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   }
 
   // Check for concurrent limit
-  if (settings_.get_concurrent_halt() != nullptr &&
-      settings_.get_concurrent_halt()->load(std::memory_order_acquire) == 1) {
+  if (settings_.concurrent_halt != nullptr &&
+      settings_.concurrent_halt->load(std::memory_order_acquire) == 1) {
 #ifdef PDLP_VERBOSE_MODE
     RAFT_CUDA_TRY(cudaDeviceSynchronize());
     std::cout << "Concurrent Limit reached, returning current solution" << std::endl;
@@ -582,7 +581,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
 
   // First check for pdlp_termination_reason_t::Optimality and handle the first primal feasible case
 
-  if (settings_.get_first_primal_feasible_encountered()) {
+  if (settings_.first_primal_feasible) {
     // Both primal feasible, return best objective
     if (termination_average == pdlp_termination_status_t::PrimalFeasible &&
         termination_current == pdlp_termination_status_t::PrimalFeasible) {
@@ -718,7 +717,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   // If strict infeasibility, any infeasibility is detected, it is returned
   // Else both are needed
   // (If infeasibility_detection is not set, termination reason cannot be Infeasible)
-  if (settings_.get_strict_infeasibility()) {
+  if (settings_.strict_infeasibility) {
     if (termination_current == pdlp_termination_status_t::PrimalInfeasible ||
         termination_current == pdlp_termination_status_t::DualInfeasible) {
 #ifdef PDLP_VERBOSE_MODE
@@ -788,7 +787,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
 
   // If not infeasible and not pdlp_termination_status_t::Optimal and no error, record best so far
   // is toggle
-  if (settings_.get_save_best_primal_so_far())
+  if (settings_.save_best_primal_so_far)
     record_best_primal_so_far(current_termination_strategy_,
                               average_termination_strategy_,
                               termination_current,

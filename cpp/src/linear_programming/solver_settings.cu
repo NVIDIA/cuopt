@@ -15,14 +15,15 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/logger.hpp>
+#include <math_optimization/solution_writer.hpp>
 #include <mip/mip_constants.hpp>
 #include <mps_parser/utilities/span.hpp>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/exec_policy.hpp>
-#include <utilities/error.hpp>
 
 namespace cuopt::linear_programming {
 
@@ -30,167 +31,31 @@ template <typename i_t, typename f_t>
 pdlp_solver_settings_t<i_t, f_t>::pdlp_solver_settings_t(const pdlp_solver_settings_t& other,
                                                          rmm::cuda_stream_view stream_view)
   : tolerances(other.tolerances),
-    detect_infeasibility_(other.detect_infeasibility_),
-    strict_infeasibility_(other.strict_infeasibility_),
-    iteration_limit_(other.iteration_limit_),
-    time_limit_(other.time_limit_),
-    solver_mode_(other.solver_mode_),
-    log_file_(other.log_file_),
-    per_constraint_residual_(other.per_constraint_residual_),
-    crossover_(other.crossover_),
-    save_best_primal_so_far_(other.save_best_primal_so_far_),
-    first_primal_feasible_(other.first_primal_feasible_),
+    detect_infeasibility(other.detect_infeasibility),
+    strict_infeasibility(other.strict_infeasibility),
+    iteration_limit(other.iteration_limit),
+    time_limit(other.time_limit),
+    pdlp_solver_mode(other.pdlp_solver_mode),
+    log_file(other.log_file),
+    sol_file(other.sol_file),
+    per_constraint_residual(other.per_constraint_residual),
+    crossover(other.crossover),
+    save_best_primal_so_far(other.save_best_primal_so_far),
+    first_primal_feasible(other.first_primal_feasible),
     pdlp_warm_start_data_(other.pdlp_warm_start_data_, stream_view),
-    concurrent_halt_(other.concurrent_halt_)
+    concurrent_halt(other.concurrent_halt)
 {
 }
 
 template <typename i_t, typename f_t>
 void pdlp_solver_settings_t<i_t, f_t>::set_optimality_tolerance(f_t eps_optimal)
 {
-  set_absolute_dual_tolerance(eps_optimal);
-  set_relative_dual_tolerance(eps_optimal);
-  set_absolute_primal_tolerance(eps_optimal);
-  set_relative_primal_tolerance(eps_optimal);
-  set_absolute_gap_tolerance(eps_optimal);
-  set_relative_gap_tolerance(eps_optimal);
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_absolute_dual_tolerance(f_t absolute_dual_tolerance)
-{
-  if (absolute_dual_tolerance < minimal_absolute_tolerance) {
-    CUOPT_LOG_INFO(
-      "Warning: settings the absolute dual tolerance to the minimum allowed value %.0e",
-      minimal_absolute_tolerance);
-    tolerances.absolute_dual_tolerance = minimal_absolute_tolerance;
-  } else {
-    tolerances.absolute_dual_tolerance = absolute_dual_tolerance;
-  }
-}
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_relative_dual_tolerance(f_t relative_dual_tolerance)
-{
-  tolerances.relative_dual_tolerance = relative_dual_tolerance;
-}
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_absolute_primal_tolerance(f_t absolute_primal_tolerance)
-{
-  if (absolute_primal_tolerance < minimal_absolute_tolerance) {
-    CUOPT_LOG_INFO(
-      "Warning: settings the absolute primal tolerance to the minimum allowed value %.0e",
-      minimal_absolute_tolerance);
-    tolerances.absolute_primal_tolerance = minimal_absolute_tolerance;
-  } else {
-    tolerances.absolute_primal_tolerance = absolute_primal_tolerance;
-  }
-}
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_relative_primal_tolerance(f_t relative_primal_tolerance)
-{
-  tolerances.relative_primal_tolerance = relative_primal_tolerance;
-}
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_absolute_gap_tolerance(f_t absolute_gap_tolerance)
-{
-  if (absolute_gap_tolerance < minimal_absolute_tolerance) {
-    CUOPT_LOG_INFO("Warning: settings the absolute gap tolerance to the minimum allowed value %.0e",
-                   minimal_absolute_tolerance);
-    tolerances.absolute_gap_tolerance = minimal_absolute_tolerance;
-  } else {
-    tolerances.absolute_gap_tolerance = absolute_gap_tolerance;
-  }
-}
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_relative_gap_tolerance(f_t relative_gap_tolerance)
-{
-  tolerances.relative_gap_tolerance = relative_gap_tolerance;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_infeasibility_detection(bool detect)
-{
-  detect_infeasibility_ = detect;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_strict_infeasibility(bool strict_infeasibility)
-{
-  strict_infeasibility_ = strict_infeasibility;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_primal_infeasible_tolerance(
-  f_t primal_infeasible_tolerance)
-{
-  tolerances.primal_infeasible_tolerance = primal_infeasible_tolerance;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_dual_infeasible_tolerance(f_t dual_infeasible_tolerance)
-{
-  tolerances.dual_infeasible_tolerance = dual_infeasible_tolerance;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_iteration_limit(i_t iteration_limit)
-{
-  iteration_limit_ = iteration_limit;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_time_limit(double time_limit)
-{
-  time_limit_ = time_limit;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_pdlp_solver_mode(pdlp_solver_mode_t solver_mode)
-{
-  solver_mode_ = solver_mode;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_method(method_t method)
-{
-  method_ = method;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_log_file(std::string log_file)
-{
-  log_file_ = log_file;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_log_to_console(bool log_to_console)
-{
-  log_to_console_ = log_to_console;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_per_constraint_residual(bool per_constraint_residual)
-{
-  per_constraint_residual_ = per_constraint_residual;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_crossover(bool crossover)
-{
-  crossover_ = crossover;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_save_best_primal_so_far(bool save_best_primal_so_far)
-{
-  save_best_primal_so_far_ = save_best_primal_so_far;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_first_primal_feasible_encountered(
-  bool first_primal_feasible)
-{
-  first_primal_feasible_ = first_primal_feasible;
+  tolerances.absolute_dual_tolerance   = eps_optimal;
+  tolerances.relative_dual_tolerance   = eps_optimal;
+  tolerances.absolute_primal_tolerance = eps_optimal;
+  tolerances.relative_primal_tolerance = eps_optimal;
+  tolerances.absolute_gap_tolerance    = eps_optimal;
+  tolerances.relative_gap_tolerance    = eps_optimal;
 }
 
 template <typename i_t, typename f_t>
@@ -454,135 +319,6 @@ void pdlp_solver_settings_t<i_t, f_t>::set_pdlp_warm_start_data(
 }
 
 template <typename i_t, typename f_t>
-void pdlp_solver_settings_t<i_t, f_t>::set_concurrent_halt(
-  std::atomic<i_t>* concurrent_halt) noexcept
-{
-  concurrent_halt_ = concurrent_halt;
-}
-
-template <typename i_t, typename f_t>
-f_t pdlp_solver_settings_t<i_t, f_t>::get_absolute_dual_tolerance() const noexcept
-{
-  return tolerances.absolute_dual_tolerance;
-}
-template <typename i_t, typename f_t>
-f_t pdlp_solver_settings_t<i_t, f_t>::get_relative_dual_tolerance() const noexcept
-{
-  return tolerances.relative_dual_tolerance;
-}
-template <typename i_t, typename f_t>
-f_t pdlp_solver_settings_t<i_t, f_t>::get_absolute_primal_tolerance() const noexcept
-{
-  return tolerances.absolute_primal_tolerance;
-}
-template <typename i_t, typename f_t>
-f_t pdlp_solver_settings_t<i_t, f_t>::get_relative_primal_tolerance() const noexcept
-{
-  return tolerances.relative_primal_tolerance;
-}
-template <typename i_t, typename f_t>
-f_t pdlp_solver_settings_t<i_t, f_t>::get_absolute_gap_tolerance() const noexcept
-{
-  return tolerances.absolute_gap_tolerance;
-}
-template <typename i_t, typename f_t>
-f_t pdlp_solver_settings_t<i_t, f_t>::get_relative_gap_tolerance() const noexcept
-{
-  return tolerances.relative_gap_tolerance;
-}
-
-template <typename i_t, typename f_t>
-bool pdlp_solver_settings_t<i_t, f_t>::get_infeasibility_detection() const noexcept
-{
-  return detect_infeasibility_;
-}
-
-template <typename i_t, typename f_t>
-bool pdlp_solver_settings_t<i_t, f_t>::get_strict_infeasibility() const noexcept
-{
-  return strict_infeasibility_;
-}
-
-template <typename i_t, typename f_t>
-f_t pdlp_solver_settings_t<i_t, f_t>::get_primal_infeasible_tolerance() const noexcept
-{
-  return tolerances.primal_infeasible_tolerance;
-}
-
-template <typename i_t, typename f_t>
-f_t pdlp_solver_settings_t<i_t, f_t>::get_dual_infeasible_tolerance() const noexcept
-{
-  return tolerances.dual_infeasible_tolerance;
-}
-
-template <typename i_t, typename f_t>
-typename pdlp_solver_settings_t<i_t, f_t>::tolerances_t
-pdlp_solver_settings_t<i_t, f_t>::get_tolerances() const noexcept
-{
-  return tolerances;
-}
-
-template <typename i_t, typename f_t>
-i_t pdlp_solver_settings_t<i_t, f_t>::get_iteration_limit() const noexcept
-{
-  return iteration_limit_;
-}
-
-template <typename i_t, typename f_t>
-std::optional<double> pdlp_solver_settings_t<i_t, f_t>::get_time_limit() const noexcept
-{
-  return time_limit_;
-}
-
-template <typename i_t, typename f_t>
-pdlp_solver_mode_t pdlp_solver_settings_t<i_t, f_t>::get_pdlp_solver_mode() const noexcept
-{
-  return solver_mode_;
-}
-
-template <typename i_t, typename f_t>
-method_t pdlp_solver_settings_t<i_t, f_t>::get_method() const noexcept
-{
-  return method_;
-}
-
-template <typename i_t, typename f_t>
-std::string pdlp_solver_settings_t<i_t, f_t>::get_log_file() const noexcept
-{
-  return log_file_;
-}
-
-template <typename i_t, typename f_t>
-bool pdlp_solver_settings_t<i_t, f_t>::get_log_to_console() const noexcept
-{
-  return log_to_console_;
-}
-
-template <typename i_t, typename f_t>
-bool pdlp_solver_settings_t<i_t, f_t>::get_crossover() const noexcept
-{
-  return crossover_;
-}
-
-template <typename i_t, typename f_t>
-bool pdlp_solver_settings_t<i_t, f_t>::get_per_constraint_residual() const noexcept
-{
-  return per_constraint_residual_;
-}
-
-template <typename i_t, typename f_t>
-bool pdlp_solver_settings_t<i_t, f_t>::get_save_best_primal_so_far() const noexcept
-{
-  return save_best_primal_so_far_;
-}
-
-template <typename i_t, typename f_t>
-bool pdlp_solver_settings_t<i_t, f_t>::get_first_primal_feasible_encountered() const noexcept
-{
-  return first_primal_feasible_;
-}
-
-template <typename i_t, typename f_t>
 const rmm::device_uvector<f_t>& pdlp_solver_settings_t<i_t, f_t>::get_initial_primal_solution()
   const
 {
@@ -631,12 +367,6 @@ const pdlp_warm_start_data_view_t<i_t, f_t>&
 pdlp_solver_settings_t<i_t, f_t>::get_pdlp_warm_start_data_view() const noexcept
 {
   return pdlp_warm_start_data_view_;
-}
-
-template <typename i_t, typename f_t>
-std::atomic<i_t>* pdlp_solver_settings_t<i_t, f_t>::get_concurrent_halt() const noexcept
-{
-  return concurrent_halt_;
 }
 
 #if MIP_INSTANTIATE_FLOAT

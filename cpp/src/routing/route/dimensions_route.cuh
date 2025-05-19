@@ -202,12 +202,12 @@ class dimensions_route_t {
     DI NodeInfo<i_t> node_info(i_t idx) const { return requests.node_info[idx]; };
 
     static DI thrust::tuple<view_t, i_t*> create_shared_route(
-      i_t* sh_ptr, const enabled_dimensions_t dimensions_info_, i_t size)
+      i_t* sh_ptr, const enabled_dimensions_t dimensions_info_, i_t size, bool is_tsp = false)
     {
       view_t v;
       v.dimensions_info = dimensions_info_;
       thrust::tie(v.requests, sh_ptr) =
-        std::decay_t<decltype(requests)>::create_shared_route(sh_ptr, size);
+        std::decay_t<decltype(requests)>::create_shared_route(sh_ptr, size, is_tsp);
       loop_over_dimensions(dimensions_info_, [&] __device__(auto I) {
         auto& dim_route                = get_dimension_of<I>(v);
         thrust::tie(dim_route, sh_ptr) = std::decay_t<decltype(dim_route)>::create_shared_route(
@@ -243,7 +243,7 @@ class dimensions_route_t {
 
   void resize(i_t new_size)
   {
-    requests.resize(new_size, sol_handle->get_stream());
+    requests.resize(new_size, dimensions_info.is_tsp, sol_handle->get_stream());
     loop_over_dimensions(dimensions_info, [&](auto I) {
       get_dimension_of<I>(*this).resize(new_size, sol_handle->get_stream());
     });
@@ -257,7 +257,8 @@ class dimensions_route_t {
    */
   HDI static size_t get_shared_size(i_t route_size, enabled_dimensions_t dimensions_info)
   {
-    size_t sz = request_route_t<i_t, f_t, REQUEST>::get_shared_size(route_size);
+    size_t sz =
+      request_route_t<i_t, f_t, REQUEST>::get_shared_size(route_size, dimensions_info.is_tsp);
     loop_over_dimensions(dimensions_info, [&](auto I) {
       sz += route_from_dim<I, i_t, f_t>::get_shared_size(route_size,
                                                          get_dimension_of<I>(dimensions_info));

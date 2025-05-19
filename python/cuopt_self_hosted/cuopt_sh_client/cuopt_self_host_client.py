@@ -29,9 +29,9 @@ import msgpack_numpy
 import numpy as np
 import requests
 import solution
-import solver_settings
 
 from . import _version
+from .thin_client_solver_settings import ThinClientSolverSettings
 
 msgpack_numpy.patch()
 
@@ -161,7 +161,7 @@ def _mps_parse(LP_problem_data, solver_config):
     if type(solver_config) is dict:
         problem_data["solver_config"] = solver_config
     else:
-        problem_data["solver_config"] = solver_settings.toDict(solver_config)
+        problem_data["solver_config"] = solver_config.toDict()
 
     return problem_data
 
@@ -674,7 +674,7 @@ class CuOptServiceSelfHostClient:
     def get_LP_solve(
         self,
         cuopt_data_models,
-        solver_config=solver_settings.SolverSettings(),
+        solver_config=ThinClientSolverSettings(),
         cache=False,
         response_type="obj",
         filepath=False,
@@ -754,7 +754,7 @@ class CuOptServiceSelfHostClient:
             )
 
         if solver_config is None:
-            solver_config = solver_settings.SolverSettings()
+            solver_config = ThinClientSolverSettings()
 
         def read_cuopt_problem_data(cuopt_data_model, filepath):
             if isinstance(cuopt_data_model, dict):

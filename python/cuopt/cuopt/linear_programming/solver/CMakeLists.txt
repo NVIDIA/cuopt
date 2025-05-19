@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set(cython_sources solver_wrapper.pyx)
+set(cython_sources solver_wrapper.pyx solver_parameters.pyx)
 set(linked_libraries cuopt::cuopt cuopt::mps_parser)
 
 rapids_cython_create_modules(SOURCE_FILES "${cython_sources}" LINKED_LIBRARIES "${linked_libraries}" ASSOCIATED_TARGETS cuopt

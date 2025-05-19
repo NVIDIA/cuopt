@@ -44,7 +44,7 @@ pdlp_termination_strategy_t<i_t, f_t>::pdlp_termination_strategy_t(
                                cusparse_view,
                                primal_size,
                                dual_size,
-                               settings.get_infeasibility_detection()},
+                               settings.detect_infeasibility},
     termination_status_{0, stream_view_},
     settings_(settings)
 {
@@ -92,7 +92,7 @@ pdlp_termination_status_t pdlp_termination_strategy_t<i_t, f_t>::evaluate_termin
                                                            combined_bounds,
                                                            objective_coefficients,
                                                            settings_);
-  if (settings_.get_infeasibility_detection()) {
+  if (settings_.detect_infeasibility) {
     infeasibility_information_.compute_infeasibility_information(
       current_pdhg_solver, primal_iterate, dual_iterate);
   }
@@ -259,9 +259,9 @@ void pdlp_termination_strategy_t<i_t, f_t>::check_termination_criteria()
     <<<1, 1, 0, stream_view_>>>(convergence_information_.view(),
                                 infeasibility_information_.view(),
                                 termination_status_.data(),
-                                settings_.get_tolerances(),
-                                settings_.get_infeasibility_detection(),
-                                settings_.get_per_constraint_residual());
+                                settings_.tolerances,
+                                settings_.detect_infeasibility,
+                                settings_.per_constraint_residual);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
@@ -287,7 +287,7 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
   term_stats.total_number_of_attempted_steps = current_pdhg_solver.get_total_pdhg_iterations();
 
   raft::copy(&term_stats.l2_primal_residual,
-             (settings_.get_per_constraint_residual())
+             (settings_.per_constraint_residual)
                ? convergence_information_view.relative_l_inf_primal_residual
                : convergence_information_view.l2_primal_residual,
              1,
@@ -295,7 +295,7 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
   term_stats.l2_relative_primal_residual =
     convergence_information_.get_relative_l2_primal_residual_value();
   raft::copy(&term_stats.l2_dual_residual,
-             (settings_.get_per_constraint_residual())
+             (settings_.per_constraint_residual)
                ? convergence_information_view.relative_l_inf_dual_residual
                : convergence_information_view.l2_dual_residual,
              1,

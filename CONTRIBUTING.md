@@ -30,12 +30,14 @@ Contributions to NVIDIA cuOpt fall into the following categories:
 4. Create a fork of the cuopt repository and check out a branch with a name that
    describes your planned work. For example, `fix-documentation`.
 5. Write code to address the issue or implement the feature.
-6. Add unit tests and unit benchmarks.
+6. Add unit tests. Please refer to `cpp/src/tests` for examples of unit tests on C and C++ using gtest and `python/cuopt/cuopt/tests` for examples of unit tests on Python using pytest.
 7. [Create your pull request](https://github.com/NVIDIA/cuopt/compare). To run continuous integration (CI) tests without requesting review, open a draft pull request.
-8. Verify that CI passes all [status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/about-status-checks).
+8. Check if CI is running, if not please request one of the NVIDIA cuOpt developers to trigger it. This might happen in case you have non-verified (non-sign-off) commits or don't have enough permissions to trigger CI.
+9. Verify that CI passes all [status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/about-status-checks).
    Fix if needed.
-9. Wait for other developers to review your code and update code as needed.
-10. Once reviewed and approved, a NVIDIAcuOpt developer will merge your pull request.
+10. Github will automatically assign a reviewer to your pull request. Please wait for the reviewer to review your code. If the reviewer has any comments, address them in the pull request.
+11. If your PR is not getting reviewed, please ping the reviewers in the PR.
+12. Once reviewed and approved, a NVIDIA cuOpt developer will merge your pull request.
 
 
 Remember, if you are unsure about anything, don't hesitate to comment on issues
@@ -81,7 +83,7 @@ CUDA/GPU Runtime:
 You can obtain CUDA from
 [https://developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads).
 
-### Create the build environment
+### Build NVIDIA cuOpt from source
 
 - Clone the repository:
 
@@ -94,12 +96,13 @@ cd $CUOPT_HOME
 #### Building with a conda environment
 
 **Note:** Using a conda environment is the easiest way to satisfy the library's dependencies.
-Instructions for a minimal build environment without conda are included below.
 
 - Create the conda development environment:
 
+Please install conda if you don't have it already. You can install it from [https://docs.conda.io/en/latest/miniconda.html](https://docs.conda.io/en/latest/miniconda.html)
+
 ```bash
-# create the conda environment (assuming in base `cudf` directory)
+# create the conda environment (assuming in base `cuopt` directory)
 # note: cuOpt currently doesn't support `channel_priority: strict`;
 # use `channel_priority: flexible` instead
 conda env create --name cuopt_dev --file conda/environments/all_cuda-128_arch-x86_64.yaml
@@ -111,10 +114,8 @@ conda activate cuopt_dev
   development environment may also need to be updated if dependency versions or
   pinnings are changed.
 
-### Build NVIDIA cuOpt from source
-
 - A `build.sh` script is provided in `$CUOPT_HOME`. Running the script with no additional arguments
-  will install the `libmps_parser`, `libcuopt` and `cuopt` libraries. By default, the libraries are
+  will install the `libmps_parser`, `libcuopt`, `cuopt_mps_parser`, `cuopt`, `cuopt-server`, `cuopt-sh-client` libraries and build the`documentation`. By default, the libraries are
   installed to the `$CONDA_PREFIX` directory. To install into a different location, set the location
   in `$INSTALL_PREFIX`. Finally, note that the script depends on the `nvcc` executable being on your
   path, or defined in `$CUDACXX`.
@@ -126,7 +127,7 @@ cd $CUOPT_HOME
 # you want to build and install the libcuopt C++ library only,
 # or include the libcuopt and/or cuopt Python libraries:
 
-./build.sh  # libmps_parser, libcuopt and cuopt
+./build.sh  # All the libraries
 ./build.sh libmps_parser  # libmps_parser only
 ./build.sh libmps_parser libcuopt  # libmps_parser and libcuopt only
 ```
@@ -139,7 +140,6 @@ cd $CUOPT_HOME
 
 #### Building for development
 
-To build C++ tests, you can also request that build.sh build the `test` target.
 To build all libraries and tests, simply run
 
 ```bash
@@ -152,6 +152,8 @@ To run the C++ tests, run
 
 ```bash
 cd $CUOPT_HOME/datasets && get_test_data.sh
+cd $CUOPT_HOME/datasets/linear_programming && download_pdlp_test_dataset.sh
+cd $CUOPT_HOME/datasets/mip && download_miplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
 ctest --test-dir ${CUOPT_HOME}/cpp/build  # libcuopt
 ```
@@ -162,6 +164,8 @@ To run python tests, run
 ```bash
 
 cd $CUOPT_HOME/datasets && get_test_data.sh
+cd $CUOPT_HOME/datasets/linear_programming && download_pdlp_test_dataset.sh
+cd $CUOPT_HOME/datasets/mip && download_miplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
 cd $CUOPT_HOME/python
 pytest -v ${CUOPT_HOME}/python/cuopt/cuopt/tests
@@ -206,10 +210,10 @@ causes a runtime delay of several minutes when loading the libcuopt.so library.
 
 Therefore, it is recommended to add device debug symbols only to specific files by setting the `-G`
 compile option locally in your `cpp/CMakeLists.txt` for that file. Here is an example of adding the
-`-G` option to the compile command for `src/copying/copy.cu` source file:
+`-G` option to the compile command for `cpp/src/routing/data_model_view.cu` source file:
 
 ```cmake
-set_source_files_properties(src/copying/copy.cu PROPERTIES COMPILE_OPTIONS "-G")
+set_source_files_properties(src/routing/data_model_view.cu PROPERTIES COMPILE_OPTIONS "-G")
 ```
 
 This will add the device debug symbols for this object file in `libcuopt.so`.  You can then use
@@ -237,7 +241,7 @@ pip install pre-commit
 Then run pre-commit hooks before committing code:
 
 ```bash
-pre-commit run
+pre-commit run --all-files --show-diff-on-failure
 ```
 
 By default, pre-commit runs on staged files (only changes and additions that will be committed).
@@ -245,39 +249,6 @@ To run pre-commit checks on all files, execute:
 
 ```bash
 pre-commit run --all-files
-```
-
-Optionally, you may set up the pre-commit hooks to run automatically when you make a git commit. This can be done by running:
-
-```bash
-pre-commit install
-```
-
-Now code linters and formatters will be run each time you commit changes.
-
-You can skip these checks with `git commit --no-verify` or with the short version `git commit -n`.
-
-cuOpt uses [pre-commit](https://pre-commit.com/) to execute code linters and formatters such as
-[Black](https://black.readthedocs.io/en/stable/), [isort](https://pycqa.github.io/isort/), and
-[flake8](https://flake8.pycqa.org/en/latest/). These tools ensure a consistent code format
-throughout the project. Using pre-commit ensures that linter versions and options are aligned for
-all developers. Additionally, there is a CI check in place to enforce that committed code follows
-our standards.
-
-To use `pre-commit`, install via `conda` or `pip`:
-
-```bash
-conda install -c conda-forge pre-commit
-```
-
-```bash
-pip install pre-commit
-```
-
-Then run pre-commit hooks before committing code:
-
-```bash
-pre-commit run --all-files --show-diff-on-failure
 ```
 
 Optionally, you may set up the pre-commit hooks to run automatically when you make a git commit. This can be done by running:
@@ -332,4 +303,6 @@ You can skip these checks with `git commit --no-verify` or with the short versio
 
     (d) I understand and agree that this project and the contribution are public and that a record of the contribution (including all personal information I submit with it, including my sign-off) is maintained indefinitely and may be redistributed consistent with this project or the open source license(s) involved.
   ```
+
+  
 

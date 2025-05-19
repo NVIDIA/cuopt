@@ -21,6 +21,7 @@ from fastapi import HTTPException
 
 import cudf
 from cuopt import distance_engine, routing
+from cuopt.routing import ErrorStatus
 from cuopt.utilities import (
     InputRuntimeError,
     InputValidationError,
@@ -453,6 +454,21 @@ def prep_optimization_data(optimization_data):
     )
 
 
+def get_solver_exception_type(status, message):
+    msg = f"error_status: {status}, msg: {message}"
+
+    if status == ErrorStatus.Success:
+        return None
+    elif status == ErrorStatus.ValidationError:
+        return InputValidationError(msg)
+    elif status == ErrorStatus.OutOfMemoryError:
+        return OutOfMemoryError(msg)
+    elif status == ErrorStatus.RuntimeError:
+        return InputRuntimeError(msg)
+    else:
+        return RuntimeError(msg)
+
+
 def solve(
     optimization_data: OptimizationDataModel,
 ):
@@ -477,6 +493,11 @@ def solve(
 
         solve_time_start = time.time()
         sol = routing.Solve(data_model, solver_settings)
+        if sol is not None and sol.get_error_status() != ErrorStatus.Success:
+            raise get_solver_exception_type(
+                sol.get_error_status(), sol.get_error_message()
+            )
+
         total_solve_time = time.time() - solve_time_start
 
         valid_solve_status = [0, 1]

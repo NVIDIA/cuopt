@@ -71,6 +71,41 @@ mps_parser::mps_data_model_t<int, double> create_std_lp_problem()
   return problem;
 }
 
+mps_parser::mps_data_model_t<int, double> create_single_var_lp_problem()
+{
+  mps_parser::mps_data_model_t<int, double> problem;
+
+  // Set up constraint matrix in CSR format
+  std::vector<int> offsets         = {0, 1};
+  std::vector<int> indices         = {0};
+  std::vector<double> coefficients = {1.0};
+  problem.set_csr_constraint_matrix(coefficients.data(),
+                                    coefficients.size(),
+                                    indices.data(),
+                                    indices.size(),
+                                    offsets.data(),
+                                    offsets.size());
+
+  // Set constraint bounds
+  std::vector<double> lower_bounds = {0.0};
+  std::vector<double> upper_bounds = {0.0};
+  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
+  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+
+  // Set variable bounds
+  std::vector<double> var_lower = {0.0};
+  std::vector<double> var_upper = {0.0};
+  problem.set_variable_lower_bounds(var_lower.data(), var_lower.size());
+  problem.set_variable_upper_bounds(var_upper.data(), var_upper.size());
+
+  // Set objective coefficients
+  std::vector<double> obj_coeffs = {-0.23};
+  problem.set_objective_coefficients(obj_coeffs.data(), obj_coeffs.size());
+  problem.set_maximize(false);
+
+  return problem;
+}
+
 // Create standard MILP test problem matching Python test
 mps_parser::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
 {
@@ -84,19 +119,51 @@ mps_parser::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
   return problem;
 }
 
-TEST(ServerTest, TestSampleLP)
+// Create standard MILP test problem matching Python test
+mps_parser::mps_data_model_t<int, double> create_single_var_milp_problem(bool maximize)
+{
+  auto problem = create_single_var_lp_problem();
+
+  // Set variable types for MILP
+  std::vector<char> var_types = {'I'};
+  problem.set_variable_types(var_types);
+  problem.set_maximize(maximize);
+
+  return problem;
+}
+
+TEST(LPTest, TestSampleLP)
 {
   raft::handle_t handle;
   auto problem = create_std_lp_problem();
 
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings{};
   settings.set_optimality_tolerance(1e-4);
-  settings.set_time_limit(5);
+  settings.time_limit = 5;
 
   auto result = cuopt::linear_programming::solve_lp(&handle, problem, settings);
 
   EXPECT_EQ(result.get_termination_status(),
             cuopt::linear_programming::pdlp_termination_status_t::Optimal);
+}
+
+TEST(ErrorTest, TestError)
+{
+  raft::handle_t handle;
+  auto problem = create_std_milp_problem(false);
+
+  cuopt::linear_programming::mip_solver_settings_t<int, double> settings{};
+  settings.time_limit = 5;
+  // Set constraint bounds
+  std::vector<double> lower_bounds = {1.0};
+  std::vector<double> upper_bounds = {0.0};
+  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
+  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+
+  auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
+
+  EXPECT_EQ(result.get_termination_status(),
+            cuopt::linear_programming::mip_termination_status_t::NoTermination);
 }
 
 class MILPTestParams
@@ -114,13 +181,34 @@ TEST_P(MILPTestParams, TestSampleMILP)
   auto problem = create_std_milp_problem(maximize);
 
   cuopt::linear_programming::mip_solver_settings_t<int, double> settings{};
-  settings.set_time_limit(5);
-  settings.set_mip_scaling(scaling);
-  settings.set_heuristics_only(heuristics_only);
+  settings.time_limit      = 5;
+  settings.mip_scaling     = scaling;
+  settings.heuristics_only = heuristics_only;
 
   auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
 
   EXPECT_EQ(result.get_termination_status(), expected_termination_status);
+}
+
+TEST_P(MILPTestParams, TestSingleVarMILP)
+{
+  bool maximize                    = std::get<0>(GetParam());
+  bool scaling                     = std::get<1>(GetParam());
+  bool heuristics_only             = std::get<2>(GetParam());
+  auto expected_termination_status = std::get<3>(GetParam());
+
+  raft::handle_t handle;
+  auto problem = create_single_var_milp_problem(maximize);
+
+  cuopt::linear_programming::mip_solver_settings_t<int, double> settings{};
+  settings.time_limit      = 5;
+  settings.mip_scaling     = scaling;
+  settings.heuristics_only = heuristics_only;
+
+  auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
+
+  EXPECT_EQ(result.get_termination_status(),
+            cuopt::linear_programming::mip_termination_status_t::Optimal);
 }
 
 INSTANTIATE_TEST_SUITE_P(

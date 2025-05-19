@@ -15,11 +15,11 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
+
 #include <linear_programming/cusparse_view.hpp>
 #include <linear_programming/utils.cuh>
 #include <mip/mip_constants.hpp>
-
-#include <utilities/error.hpp>
 
 #include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>

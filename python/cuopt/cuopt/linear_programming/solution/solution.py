@@ -156,6 +156,8 @@ class Solution:
         sum_solution_weight=0.0,
         iterations_since_last_restart=0,
         termination_status=0,
+        error_status=0,
+        error_message="",
         primal_residual=0.0,
         dual_residual=0.0,
         primal_objective=0.0,
@@ -194,6 +196,8 @@ class Solution:
             iterations_since_last_restart,
         )
         self._set_termination_status(termination_status)
+        self.error_status = error_status
+        self.error_message = error_message
 
         self.primal_objective = primal_objective
         self.dual_objective = dual_objective
@@ -274,6 +278,18 @@ class Solution:
         Returns the termination reason as per TerminationReason.
         """
         return self.termination_status.name
+
+    def get_error_status(self):
+        """
+        Returns the error status as per ErrorStatus.
+        """
+        return self.error_status
+
+    def get_error_message(self):
+        """
+        Returns the error message as per ErrorMessage.
+        """
+        return self.error_message
 
     def get_solve_time(self):
         """

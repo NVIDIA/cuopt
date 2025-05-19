@@ -79,7 +79,7 @@ void test_bounds_standardization_test(std::string test_instance)
 
   // run the problem through pdlp
   auto result_1 = detail::get_relaxed_lp_solution(
-    standardized_problem, solution_1, default_settings.get_absolute_tolerance(), 120.);
+    standardized_problem, solution_1, default_settings.tolerances.absolute_tolerance, 120.);
   solution_1.compute_feasibility();
   bool sol_1_feasible = (int)result_1.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
   // the problem might not be feasible in terms of per constraint residual
@@ -94,17 +94,17 @@ void test_bounds_standardization_test(std::string test_instance)
   test_constraint_sanity_per_row(problem,
                                  optimization_prob_solution.get_solution(),
                                  1e-3,
-                                 default_settings.get_relative_tolerance());
+                                 default_settings.tolerances.relative_tolerance);
 
   // now do relax the problem before passing it to the problem, so that bounds standardization is
   // not applied
   op_problem.set_problem_category(problem_category_t::LP);
-  auto settings = pdlp_solver_settings_t<int, double>{};
-  settings.set_pdlp_solver_mode(cuopt::linear_programming::pdlp_solver_mode_t::Stable1);
+  auto settings             = pdlp_solver_settings_t<int, double>{};
+  settings.pdlp_solver_mode = cuopt::linear_programming::pdlp_solver_mode_t::Stable1;
   settings.set_optimality_tolerance(1e-4);
-  settings.set_relative_primal_tolerance(1e-6);
-  settings.set_relative_dual_tolerance(1e-6);
-  auto result_2 = solve_lp(op_problem, settings);
+  settings.tolerances.relative_primal_tolerance = 1e-6;
+  settings.tolerances.relative_dual_tolerance   = 1e-6;
+  auto result_2                                 = solve_lp(op_problem, settings);
   EXPECT_NEAR(result_1.get_objective_value(), result_2.get_objective_value(), 1e-2f);
 }
 

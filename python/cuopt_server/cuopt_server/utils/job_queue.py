@@ -60,6 +60,47 @@ class PickleForbidden(Exception):
 msgpack_numpy.patch()
 
 
+def lp_datamodel_compat(data):
+    """
+    Maintain backward compat for some parameters
+    that change names in 25.05. Replace the
+    old parameters with the new names
+    """
+
+    sc = {
+        "solver_mode": "pdlp_solver_mode",
+        "heuristics_only": "mip_heuristics_only",
+    }
+
+    tol = {
+        "integrality_tolerance": "mip_integrality_tolerance",
+        "absolute_mip_gap": "mip_absolute_gap",
+        "relative_mip_gap": "mip_relative_gap",
+    }
+
+    replace = []
+    if "solver_config" in data:
+        s = data["solver_config"]
+        for k, v in sc.items():
+            if k in s:
+                replace.append([k, v, s[k]])
+
+        for r in replace:
+            data["solver_config"][r[1]] = r[2]
+            del data["solver_config"][r[0]]
+
+        replace = []
+        if "tolerances" in s:
+            t = s["tolerances"]
+            for k, v in tol.items():
+                if k in t:
+                    replace.append([k, v, t[k]])
+
+            for r in replace:
+                data["solver_config"]["tolerances"][r[1]] = r[2]
+                del data["solver_config"]["tolerances"][r[0]]
+
+
 def check_client_version(client_vers):
     logging.debug(f"client_vers is {client_vers} in check")
     if os.environ.get("CUOPT_CHECK_CLIENT", True) in ["True", True]:
@@ -1248,7 +1289,7 @@ class SolverBinaryJob:
                         t = SolverLPJob(0, i_data, None, None)
                         t._transform(t.LP_data)
                         i_data = t.get_data()
-
+                        lp_datamodel_compat(i_data)
                         lpdata.append(LPData.parse_obj(i_data))
                     data = lpdata
                 else:
@@ -1258,7 +1299,7 @@ class SolverBinaryJob:
                     t = SolverLPJob(0, data, None, None)
                     t._transform(t.LP_data)
                     data = t.get_data()
-
+                    lp_datamodel_compat(data)
                     data = LPData.parse_obj(data)
             except Exception as e:
                 raise HTTPException(
@@ -1498,7 +1539,7 @@ class SolverBinaryJobPath(SolverBinaryJob):
                         t = SolverLPJob(0, i_data, None, None)
                         t._transform(t.LP_data)
                         i_data = t.get_data()
-
+                        lp_datamodel_compat(i_data)
                         lpdata.append(LPData.parse_obj(i_data))
                     data = lpdata
                 else:
@@ -1508,7 +1549,7 @@ class SolverBinaryJobPath(SolverBinaryJob):
                     t = SolverLPJob(0, data, None, None)
                     t._transform(t.LP_data)
                     data = t.get_data()
-
+                    lp_datamodel_compat(data)
                     data = LPData.parse_obj(data)
             except Exception as e:
                 raise HTTPException(
@@ -1635,7 +1676,10 @@ class SolverBinaryResponse:
                     s = []
                     for r in res:
                         s.append(r["status"])
-                        if "pdlpwarmstart_data" in r["solution"]:
+                        if (
+                            isinstance(r["solution"], dict)
+                            and "pdlpwarmstart_data" in r["solution"]
+                        ):
                             del r["solution"]["pdlpwarmstart_data"]
                     self.status = s
                 else:

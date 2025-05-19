@@ -27,6 +27,7 @@ const std::string solution_string_t::infeasible = "cuOpt solver infeasible solut
 const std::string solution_string_t::timeout =
   "cuOpt solver time limit was reached before finding a feasible solution.";
 const std::string solution_string_t::empty = "cuOpt solver did not run.";
+const std::string solution_string_t::error = "An error occured while running the cuOpt solver.";
 
 template <typename i_t>
 assignment_t<i_t>::assignment_t(solution_status_t status, rmm::cuda_stream_view stream_view)
@@ -38,7 +39,23 @@ assignment_t<i_t>::assignment_t(solution_status_t status, rmm::cuda_stream_view 
     node_types_(0, stream_view),
     unserviced_nodes_(0, stream_view),
     accepted_(0, stream_view),
-    solution_string_(solution_string_t::infeasible)
+    solution_string_(solution_string_t::infeasible),
+    error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
+{
+}
+
+template <typename i_t>
+assignment_t<i_t>::assignment_t(cuopt::logic_error error_status, rmm::cuda_stream_view stream_view)
+  : status_(solution_status_t::ERROR),
+    route_(0, stream_view),
+    arrival_stamp_(0, stream_view),
+    truck_id_(0, stream_view),
+    route_locations_(0, stream_view),
+    node_types_(0, stream_view),
+    unserviced_nodes_(0, stream_view),
+    accepted_(0, stream_view),
+    solution_string_(solution_string_t::error),
+    error_status_(error_status)
 {
 }
 
@@ -66,7 +83,8 @@ assignment_t<i_t>::assignment_t(i_t vehicle_count,
     unserviced_nodes_(std::move(unserviced_nodes)),
     accepted_(std::move(accepted)),
     status_(status),
-    solution_string_(solution_string)
+    solution_string_(solution_string),
+    error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
 }
 
@@ -219,6 +237,12 @@ template <typename i_t>
 solution_status_t assignment_t<i_t>::get_status() const
 {
   return status_;
+}
+
+template <typename i_t>
+cuopt::logic_error assignment_t<i_t>::get_error_status() const noexcept
+{
+  return error_status_;
 }
 
 template <typename i_t>

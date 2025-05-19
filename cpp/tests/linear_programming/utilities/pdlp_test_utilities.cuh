@@ -124,9 +124,9 @@ static void test_constraint_sanity(
     });
   l2_norm_primal_right_hand_side = std::sqrt(l2_norm_primal_right_hand_side);
 
-  EXPECT_TRUE(l2_primal_residual <=
-              solver_settings.get_absolute_primal_tolerance() +
-                solver_settings.get_relative_primal_tolerance() * l2_norm_primal_right_hand_side);
+  EXPECT_TRUE(l2_primal_residual <= solver_settings.tolerances.absolute_primal_tolerance +
+                                      solver_settings.tolerances.relative_primal_tolerance *
+                                        l2_norm_primal_right_hand_side);
 
   // Checking variable bounds
 

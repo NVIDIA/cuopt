@@ -17,8 +17,8 @@
 
 #pragma once
 
+#include <cuopt/error.hpp>
 #include <cuopt/routing/routing_structures.hpp>
-#include <utilities/error.hpp>
 
 #include <raft/core/handle.hpp>
 #include <rmm/device_uvector.hpp>
@@ -42,8 +42,8 @@ class demand_container_t {
   i_t n_dimensions;
   i_t fleet_size;
   i_t order_nodes;
-  demand_container_t(){};
-  ~demand_container_t(){};
+  demand_container_t() {};
+  ~demand_container_t() {};
 };
 
 template <typename i_t, typename f_t>

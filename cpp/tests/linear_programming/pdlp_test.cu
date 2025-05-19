@@ -73,8 +73,8 @@ TEST(pdlp_class, run_double)
   cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
     cuopt::mps_parser::parse_mps<int, double>(path, true);
 
-  auto solver_settings = pdlp_solver_settings_t<int, double>{};
-  solver_settings.set_method(cuopt::linear_programming::method_t::PDLP);
+  auto solver_settings   = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
 
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, op_problem, solver_settings);
@@ -95,13 +95,13 @@ TEST(pdlp_class, run_double_very_low_accuracy)
     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
   // With all 0 afiro with return an error
   // Setting absolute tolerance to the minimal value of 1e-12 will make it work
-  settings.set_absolute_dual_tolerance(0);
-  settings.set_relative_dual_tolerance(0);
-  settings.set_absolute_primal_tolerance(0);
-  settings.set_relative_primal_tolerance(0);
-  settings.set_absolute_gap_tolerance(0);
-  settings.set_relative_gap_tolerance(0);
-  settings.set_method(cuopt::linear_programming::method_t::PDLP);
+  settings.tolerances.absolute_dual_tolerance   = settings.minimal_absolute_tolerance;
+  settings.tolerances.relative_dual_tolerance   = 0.0;
+  settings.tolerances.absolute_primal_tolerance = settings.minimal_absolute_tolerance;
+  settings.tolerances.relative_primal_tolerance = 0.0;
+  settings.tolerances.absolute_gap_tolerance    = settings.minimal_absolute_tolerance;
+  settings.tolerances.relative_gap_tolerance    = 0.0;
+  settings.method                               = cuopt::linear_programming::method_t::PDLP;
 
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
@@ -121,8 +121,8 @@ TEST(pdlp_class, run_double_initial_solution)
   std::fill(inital_primal_sol.begin(), inital_primal_sol.end(), 1.0);
   op_problem.set_initial_primal_solution(inital_primal_sol.data(), inital_primal_sol.size());
 
-  auto solver_settings = pdlp_solver_settings_t<int, double>{};
-  solver_settings.set_method(cuopt::linear_programming::method_t::PDLP);
+  auto solver_settings   = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
 
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, op_problem, solver_settings);
@@ -142,10 +142,10 @@ TEST(pdlp_class, run_iteration_limit)
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
 
-  settings.set_iteration_limit(10);
+  settings.iteration_limit = 10;
   // To make sure it doesn't return before the iteration limit
   settings.set_optimality_tolerance(0);
-  settings.set_method(cuopt::linear_programming::method_t::PDLP);
+  settings.method = cuopt::linear_programming::method_t::PDLP;
 
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT);
@@ -168,10 +168,10 @@ TEST(pdlp_class, run_time_limit)
 
   // 200 ms
   constexpr double time_limit_seconds = 0.2;
-  settings.set_time_limit(time_limit_seconds);
+  settings.time_limit                 = time_limit_seconds;
   // To make sure it doesn't return before the time limit
   settings.set_optimality_tolerance(0);
-  settings.set_method(cuopt::linear_programming::method_t::PDLP);
+  settings.method = cuopt::linear_programming::method_t::PDLP;
 
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
 
@@ -216,9 +216,9 @@ TEST(pdlp_class, run_sub_mittleman)
       cuopt::linear_programming::pdlp_solver_mode_t::Fast1,
     };
     for (auto solver_mode : solver_mode_list) {
-      auto settings = pdlp_solver_settings_t<int, double>{};
-      settings.set_pdlp_solver_mode(solver_mode);
-      settings.set_method(cuopt::linear_programming::method_t::PDLP);
+      auto settings             = pdlp_solver_settings_t<int, double>{};
+      settings.pdlp_solver_mode = solver_mode;
+      settings.method           = cuopt::linear_programming::method_t::PDLP;
       const raft::handle_t handle_{};
       optimization_problem_solution_t<int, double> solution =
         solve_lp(&handle_, op_problem, settings);
@@ -256,11 +256,11 @@ TEST(pdlp_class, initial_solution_test)
 
   auto solver_settings = pdlp_solver_settings_t<int, double>{};
   // We are just testing initial scaling on initial solution scheme so we don't care about solver
-  solver_settings.set_iteration_limit(0);
-  solver_settings.set_method(cuopt::linear_programming::method_t::PDLP);
+  solver_settings.iteration_limit = 0;
+  solver_settings.method          = cuopt::linear_programming::method_t::PDLP;
   // Empty call solve to set the parameters and init the handler since calling pdlp object directly
   // doesn't
-  solver_settings.set_pdlp_solver_mode(cuopt::linear_programming::pdlp_solver_mode_t::Methodical1);
+  solver_settings.pdlp_solver_mode = cuopt::linear_programming::pdlp_solver_mode_t::Methodical1;
   solve_lp(op_problem, solver_settings);
   EXPECT_EQ(cuopt::linear_programming::pdlp_hyper_params::initial_step_size_scaling, 1);
   EXPECT_EQ(cuopt::linear_programming::pdlp_hyper_params::default_l_inf_ruiz_iterations, 5);
@@ -536,10 +536,10 @@ TEST(pdlp_class, initial_primal_weight_step_size_test)
 
   auto solver_settings = pdlp_solver_settings_t<int, double>{};
   // We are just testing initial scaling on initial solution scheme so we don't care about solver
-  solver_settings.set_iteration_limit(0);
-  solver_settings.set_method(cuopt::linear_programming::method_t::PDLP);
+  solver_settings.iteration_limit = 0;
+  solver_settings.method          = cuopt::linear_programming::method_t::PDLP;
   // Select the default/legacy solver with no action upon the initial scaling on initial solution
-  solver_settings.set_pdlp_solver_mode(cuopt::linear_programming::pdlp_solver_mode_t::Methodical1);
+  solver_settings.pdlp_solver_mode = cuopt::linear_programming::pdlp_solver_mode_t::Methodical1;
   EXPECT_FALSE(cuopt::linear_programming::pdlp_hyper_params::update_step_size_on_initial_solution);
   EXPECT_FALSE(
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution);
@@ -666,11 +666,11 @@ TEST(pdlp_class, per_constraint_test)
   auto problem = cuopt::linear_programming::detail::problem_t<int, double>(op_problem);
 
   pdlp_solver_settings_t<int, double> solver_settings;
-  solver_settings.set_relative_primal_tolerance(0);  // Shouldn't matter
-  solver_settings.set_absolute_primal_tolerance(0.1);
-  solver_settings.set_relative_dual_tolerance(0);  // Shoudln't matter
-  solver_settings.set_absolute_dual_tolerance(0.1);
-  solver_settings.set_method(cuopt::linear_programming::method_t::PDLP);
+  solver_settings.tolerances.relative_primal_tolerance = 0;  // Shouldn't matter
+  solver_settings.tolerances.absolute_primal_tolerance = 0.1;
+  solver_settings.tolerances.relative_dual_tolerance   = 0;  // Shoudln't matter
+  solver_settings.tolerances.absolute_dual_tolerance   = 0.1;
+  solver_settings.method                               = cuopt::linear_programming::method_t::PDLP;
 
   // First solve without the per constraint and it should break
   {
@@ -692,7 +692,7 @@ TEST(pdlp_class, per_constraint_test)
     EXPECT_TRUE(termination_average != pdlp_termination_status_t::Optimal);
   }
   {
-    solver_settings.set_per_constraint_residual(true);
+    solver_settings.per_constraint_residual = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
 
     raft::copy(solver.pdhg_solver_.get_primal_solution().data(),
@@ -721,9 +721,9 @@ TEST(pdlp_class, best_primal_so_far_iteration)
 
   auto path            = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
   auto solver_settings = pdlp_solver_settings_t<int, double>{};
-  solver_settings.set_iteration_limit(3000);
-  solver_settings.set_per_constraint_residual(true);
-  solver_settings.set_method(cuopt::linear_programming::method_t::PDLP);
+  solver_settings.iteration_limit         = 3000;
+  solver_settings.per_constraint_residual = true;
+  solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
 
   cuopt::mps_parser::mps_data_model_t<int, double> op_problem1 =
     cuopt::mps_parser::parse_mps<int, double>(path);
@@ -733,7 +733,7 @@ TEST(pdlp_class, best_primal_so_far_iteration)
   optimization_problem_solution_t<int, double> solution1 =
     solve_lp(&handle1, op_problem1, solver_settings);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  solver_settings.set_save_best_primal_so_far(true);
+  solver_settings.save_best_primal_so_far = true;
   optimization_problem_solution_t<int, double> solution2 =
     solve_lp(&handle2, op_problem2, solver_settings);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
@@ -747,12 +747,12 @@ TEST(pdlp_class, best_primal_so_far_time)
   const raft::handle_t handle1{};
   const raft::handle_t handle2{};
 
-  auto path            = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
-  auto solver_settings = pdlp_solver_settings_t<int, double>{};
-  solver_settings.set_time_limit(2);
-  solver_settings.set_per_constraint_residual(true);
-  solver_settings.set_pdlp_solver_mode(cuopt::linear_programming::pdlp_solver_mode_t::Stable1);
-  solver_settings.set_method(cuopt::linear_programming::method_t::PDLP);
+  auto path                  = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
+  auto solver_settings       = pdlp_solver_settings_t<int, double>{};
+  solver_settings.time_limit = 2;
+  solver_settings.per_constraint_residual = true;
+  solver_settings.pdlp_solver_mode        = cuopt::linear_programming::pdlp_solver_mode_t::Stable1;
+  solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
 
   cuopt::mps_parser::mps_data_model_t<int, double> op_problem1 =
     cuopt::mps_parser::parse_mps<int, double>(path);
@@ -762,7 +762,7 @@ TEST(pdlp_class, best_primal_so_far_time)
   optimization_problem_solution_t<int, double> solution1 =
     solve_lp(&handle1, op_problem1, solver_settings);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  solver_settings.set_save_best_primal_so_far(true);
+  solver_settings.save_best_primal_so_far = true;
   optimization_problem_solution_t<int, double> solution2 =
     solve_lp(&handle2, op_problem2, solver_settings);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
@@ -778,10 +778,10 @@ TEST(pdlp_class, first_primal_feasible)
 
   auto path            = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
   auto solver_settings = pdlp_solver_settings_t<int, double>{};
-  solver_settings.set_iteration_limit(1000);
-  solver_settings.set_per_constraint_residual(true);
+  solver_settings.iteration_limit         = 1000;
+  solver_settings.per_constraint_residual = true;
   solver_settings.set_optimality_tolerance(1e-2);
-  solver_settings.set_method(cuopt::linear_programming::method_t::PDLP);
+  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
 
   cuopt::mps_parser::mps_data_model_t<int, double> op_problem1 =
     cuopt::mps_parser::parse_mps<int, double>(path);
@@ -791,7 +791,7 @@ TEST(pdlp_class, first_primal_feasible)
   optimization_problem_solution_t<int, double> solution1 =
     solve_lp(&handle1, op_problem1, solver_settings);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
-  solver_settings.set_first_primal_feasible_encountered(true);
+  solver_settings.first_primal_feasible = true;
   optimization_problem_solution_t<int, double> solution2 =
     solve_lp(&handle2, op_problem2, solver_settings);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
@@ -817,11 +817,11 @@ TEST(pdlp_class, warm_start)
 
     auto path =
       make_path_absolute("linear_programming/" + instance_name + "/" + instance_name + ".mps");
-    auto solver_settings = pdlp_solver_settings_t<int, double>{};
-    solver_settings.set_pdlp_solver_mode(cuopt::linear_programming::pdlp_solver_mode_t::Stable2);
+    auto solver_settings             = pdlp_solver_settings_t<int, double>{};
+    solver_settings.pdlp_solver_mode = cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
     solver_settings.set_optimality_tolerance(1e-2);
-    solver_settings.set_infeasibility_detection(false);
-    solver_settings.set_method(cuopt::linear_programming::method_t::PDLP);
+    solver_settings.detect_infeasibility = false;
+    solver_settings.method               = cuopt::linear_programming::method_t::PDLP;
 
     cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model =
       cuopt::mps_parser::parse_mps<int, double>(path);
@@ -857,7 +857,7 @@ TEST(dual_simplex, afiro)
 {
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
-  settings.set_method(cuopt::linear_programming::method_t::DualSimplex);
+  settings.method = cuopt::linear_programming::method_t::DualSimplex;
 
   const raft::handle_t handle_{};
 

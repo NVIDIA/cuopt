@@ -27,15 +27,16 @@ REPODIR=$(cd $(dirname $0); pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client cpp-mgtests docs -a -b -d -g -v -l= --verbose-pdlp  [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --no-fetch-rapids --skip_l1_tests --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs -a -b -d -g -v -l= --verbose-pdlp  [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --no-fetch-rapids --skip_l1_tests --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
    libcuopt         - build the cuopt C++ code
+   libmps_parser    - build the libmps_parser C++ code
+   cuopt_mps_parser - build the cuopt_mps_parser python package
    cuopt            - build the cuopt Python package
    cuopt_server     - build the cuopt_server Python package
-   cuopt_sh_client     - build cuopt self host client
-   cpp-mgtests      - build libcuopt mnmg tests. Builds MPI communicator, adding MPI as a dependency.
+   cuopt_sh_client  - build cuopt self host client
    docs             - build the docs
  and <flag> is:
    -v               - verbose build mode
@@ -63,11 +64,12 @@ HELP="$0 [<target> ...] [<flag> ...]
  Set env var LIBCUOPT_BUILD_DIR to override libcuopt build dir.
 "
 CUOPT_MPS_PARSER_BUILD_DIR=${REPODIR}/python/cuopt/cuopt/linear_programming/build
-PY_LIBCUOPT_BUILD_DIR=${REPODIR}/python/cuopt/build
+PY_LIBCUOPT_BUILD_DIR=${REPODIR}/python/libcuopt/build
 CUOPT_BUILD_DIR=${REPODIR}/python/cuopt/build
 CUOPT_SERVER_BUILD_DIR=${REPODIR}/python/cuopt_server/build
 CUOPT_SH_CLIENT_BUILD_DIR=${REPODIR}/python/cuopt_self_hosted/build
-BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${LIBMPS_PARSER_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${CUOPT_MPS_PARSER_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR}"
+DOCS_BUILD_DIR=${REPODIR}/docs/cuopt/build
+BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${LIBMPS_PARSER_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${CUOPT_MPS_PARSER_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR} ${DOCS_BUILD_DIR}"
 
 # Set defaults for vars modified by flags to this script
 VERBOSE_FLAG=""
@@ -76,7 +78,6 @@ DEFINE_ASSERT=False
 DEFINE_PDLP_VERBOSE_MODE=False
 INSTALL_TARGET=install
 BUILD_DISABLE_DEPRECATION_WARNING=ON
-BUILD_CPP_MG_TESTS=OFF
 BUILD_L1_TESTS=ON
 BUILD_ALL_GPU_ARCH=0
 BUILD_CI_ONLY=0
@@ -226,9 +227,6 @@ fi
 if hasArg --show_depr_warn; then
     BUILD_DISABLE_DEPRECATION_WARNING=OFF
 fi
-if hasArg cpp-mgtests; then
-    BUILD_CPP_MG_TESTS=ON
-fi
 
 # Append `-DFIND_CUOPT_CPP=ON` to CMAKE_ARGS unless a user specified the option.
 if [[ "${EXTRA_CMAKE_ARGS}" != *"DFIND_CUOPT_CPP"* ]]; then
@@ -311,7 +309,6 @@ if buildAll || hasArg libcuopt; then
           -DDISABLE_DEPRECATION_WARNING=${BUILD_DISABLE_DEPRECATION_WARNING} \
           -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
           -DBUILD_L1_TESTS=${BUILD_L1_TESTS} \
-          -DBUILD_CUOPT_MG_TESTS=${BUILD_CPP_MG_TESTS} \
           -DFETCH_RAPIDS=${FETCH_RAPIDS} \
           ${EXTRA_CMAKE_ARGS} \
           ${REPODIR}/cpp
@@ -349,4 +346,14 @@ fi
 if buildAll || hasArg cuopt_sh_client; then
     cd ${REPODIR}/python/cuopt_self_hosted/
     python ${PYTHON_ARGS_FOR_INSTALL} .
+fi
+
+# Build the docs
+if buildAll || hasArg docs; then
+    cd ${REPODIR}/cpp/doxygen
+    doxygen Doxyfile
+
+    cd ${REPODIR}/docs/cuopt
+    make clean
+    make html
 fi

@@ -16,12 +16,13 @@
  */
 
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
+#include <cuopt/logger.hpp>
 #include <mip/mip_constants.hpp>
 
+#include <limits>
+#include <math_optimization/solution_writer.hpp>
 #include <raft/common/nvtx.hpp>
 #include <raft/util/cudart_utils.hpp>
-
-#include <limits>
 #include <vector>
 
 namespace cuopt::linear_programming {
@@ -54,7 +55,8 @@ mip_solution_t<i_t, f_t>::mip_solution_t(rmm::device_uvector<f_t> solution,
     max_variable_bound_violation_(max_variable_bound_violation),
     num_nodes_(num_nodes),
     num_simplex_iterations_(num_simplex_iterations),
-    solution_pool_(std::move(solution_pool))
+    solution_pool_(std::move(solution_pool)),
+    error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
 }
 
@@ -72,8 +74,32 @@ mip_solution_t<i_t, f_t>::mip_solution_t(mip_termination_status_t termination_st
     max_int_violation_(0),
     max_variable_bound_violation_(0),
     num_nodes_(0),
-    num_simplex_iterations_(0)
+    num_simplex_iterations_(0),
+    error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
+}
+
+template <typename i_t, typename f_t>
+mip_solution_t<i_t, f_t>::mip_solution_t(const cuopt::logic_error& error_status,
+                                         rmm::cuda_stream_view stream_view)
+  : solution_(0, stream_view),
+    objective_(0),
+    mip_gap_(0),
+    solution_bound_(0),
+    total_solve_time_(0),
+    presolve_time_(0),
+    termination_status_(mip_termination_status_t::NoTermination),
+    max_constraint_violation_(0),
+    max_int_violation_(0),
+    max_variable_bound_violation_(0),
+    error_status_(error_status)
+{
+}
+
+template <typename i_t, typename f_t>
+const cuopt::logic_error& mip_solution_t<i_t, f_t>::get_error_status() const
+{
+  return error_status_;
 }
 
 template <typename i_t, typename f_t>
@@ -133,6 +159,7 @@ std::string mip_solution_t<i_t, f_t>::get_termination_status_string(
     case mip_termination_status_t::Optimal: return "Optimal";
     case mip_termination_status_t::FeasibleFound: return "FeasibleFound";
     case mip_termination_status_t::Infeasible: return "Infeasible";
+    case mip_termination_status_t::TimeLimit: return "TimeLimit";
     case mip_termination_status_t::Unbounded:
       return "Unbounded";
       // Do not implement default case to trigger compile time error if new enum is added
@@ -192,27 +219,22 @@ template <typename i_t, typename f_t>
 void mip_solution_t<i_t, f_t>::write_to_sol_file(std::string_view filename,
                                                  rmm::cuda_stream_view stream_view) const
 {
-  raft::common::nvtx::range fun_scope("write final solution to .sol file");
-
-  std::ofstream myfile(filename.data());
-  myfile.precision(std::numeric_limits<f_t>::digits10 + 1);
-
+  std::string status = get_termination_status_string();
+  // Override for no termination
   if (termination_status_ == mip_termination_status_t::NoTermination ||
       termination_status_ == mip_termination_status_t::Infeasible) {
-    myfile << "=infeas=" << std::endl;
-    return;
+    status = "Infeasible";
   }
-  std::vector<f_t> h_solution;
-  h_solution.resize(solution_.size());
-  raft::copy(h_solution.data(), solution_.data(), solution_.size(), stream_view.value());
+
+  double objective_value = get_objective_value();
+  auto& var_names        = get_variable_names();
+  std::vector<f_t> solution;
+  solution.resize(solution_.size());
+  raft::copy(solution.data(), solution_.data(), solution_.size(), stream_view.value());
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
 
-  myfile << "=obj=\t" << get_objective_value() << std::endl;
-  if (!var_names_.empty()) {
-    for (size_t i = 0; i < h_solution.size(); i++) {
-      myfile << var_names_[i] << "\t" << h_solution[i] << std::endl;
-    }
-  }
+  solution_writer_t::write_solution_to_sol_file(
+    std::string(filename), status, objective_value, var_names, solution);
 }
 
 #if MIP_INSTANTIATE_FLOAT

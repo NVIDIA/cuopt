@@ -17,13 +17,13 @@
 
 #pragma once
 
+#include <cuopt/error.hpp>
 #include <cuopt/routing/data_model_view.hpp>
 
 #include <thrust/functional.h>
 #include <thrust/logical.h>
 #include <rmm/device_uvector.hpp>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/error.hpp>
 #include <utilities/macros.cuh>
 #include <vector>
 

@@ -27,4 +27,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from cuopt.linear_programming.internals.internals import LPIncumbentSolCallback
+from cuopt.linear_programming.internals.internals import (
+    GetSolutionCallback,
+    SetSolutionCallback,
+)

@@ -39,12 +39,12 @@ void test_variable_bounds(
   bool result = std::all_of(indices.begin(), indices.end(), [=](int idx) {
     bool res = true;
     if (lower_bound_ptr != nullptr) {
-      res =
-        res && (assignment_ptr[idx] >= lower_bound_ptr[idx] - settings.get_integrality_tolerance());
+      res = res && (assignment_ptr[idx] >=
+                    lower_bound_ptr[idx] - settings.tolerances.integrality_tolerance);
     }
     if (upper_bound_ptr != nullptr) {
-      res =
-        res && (assignment_ptr[idx] <= upper_bound_ptr[idx] + settings.get_integrality_tolerance());
+      res = res && (assignment_ptr[idx] <=
+                    upper_bound_ptr[idx] + settings.tolerances.integrality_tolerance);
     }
     return res;
   });

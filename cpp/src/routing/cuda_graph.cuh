@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-#include <utilities/error.hpp>
+#include <cuopt/error.hpp>
 #include <utilities/macros.cuh>
 
 #include <rmm/cuda_stream_view.hpp>

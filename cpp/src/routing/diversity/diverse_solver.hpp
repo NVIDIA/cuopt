@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -205,6 +205,7 @@ struct solve {
   bool ox_called{false};
 
   timer_t timer;
+  timer_t improvement_timer;
   double reserve_start_time;
   double initial_reserve_threshold;
 
@@ -256,6 +257,7 @@ struct solve {
       f(file_name),
       rng(seed_generator::get_seed()),
       timer(timer_),
+      improvement_timer(timer_),
       perturbation_count(0)
   {
     raft::common::nvtx::range fun_scope("solve ctr");
@@ -377,10 +379,12 @@ struct solve {
                       threshold_index,
                       reserve_population.threshold);
     } else {
+      reserve_population.threshold = 0.99;
       benchmark_print(
-        "Generated only one island, so not updating reserve "
-        "diversity threshold. We should just "
-        "add few more solutions and compute");
+        "Generated only one island, so updating reserve "
+        "diversity threshold to %f. We should just "
+        "add few more solutions and compute\n",
+        reserve_population.threshold);
     }
 
     // Populate best to reserve_population
@@ -394,7 +398,11 @@ struct solve {
       }
     }
     // In case of reserve degeneration refill:
-    if (reserve_population.current_size() < 10) { refill_reserve(target_vehicle_ids_); }
+    if (reserve_population.current_size() < 10) {
+      benchmark_print("Refilling reserve, reserve size: %d\n", reserve_population.current_size());
+      refill_reserve(target_vehicle_ids_);
+      benchmark_print("Reserve size after refill: %d\n", reserve_population.current_size());
+    }
   }
 
   void generate_from_dir(std::string path)
@@ -600,6 +608,7 @@ struct solve {
 
   void run_working_loop()
   {
+    improvement_timer = timer;
     while (!timer.check_time_limit()) {
       recombine_stats.reset();
       benchmark_print("time elapsed: %f \n", timer.elapsed_time());
@@ -613,8 +622,8 @@ struct solve {
       populate_working_population();
 
       // for pure cvrp problems, we add more solutions to the reserve population
-      // this is because it is quicker to find feasible solutions in case of cvrp,
-      // so we can afford to add more solutions to the reserve population
+      // this is because it is quicker to find feasible solutions in case of
+      // cvrp, so we can afford to add more solutions to the reserve population
       // We probably should generalize this for all easy problems
       if (p->is_cvrp()) {
         double time_left       = timer.remaining_time();
@@ -636,7 +645,8 @@ struct solve {
           : std::numeric_limits<double>::max();
       benchmark_call(display_pool(working_population, "Working before: \n"));
 
-      improve_population(working_population, threshold_index);
+      const bool island_generation_mode = false;
+      improve_population(working_population, island_generation_mode, threshold_index);
 
       benchmark_call(display_pool(working_population, "Working after: \n"));
 
@@ -809,13 +819,15 @@ struct solve {
     auto sol_gen_time         = ges_time_fraction * min(timer.get_time_limit() * 0.05, 60.);
     auto const n_islands_size = islands_size;
     double max_island_generation_time;
-    auto pop_size = p->is_cvrp() ? diversity_config_t<int>::population_size<config_t::CVRP>()
-                                 : diversity_config_t<int>::population_size<config_t::DEFAULT>();
+    auto pop_size = p->is_tsp      ? diversity_config_t<int>::population_size<config_t::TSP>()
+                    : p->is_cvrp() ? diversity_config_t<int>::population_size<config_t::CVRP>()
+                                   : diversity_config_t<int>::population_size<config_t::DEFAULT>();
     while (islands_size > 0) {
       if (islands_size == n_islands_size) {
         max_island_generation_time = std::min(timer.get_time_limit(), 2000.);
       } else {
-        max_island_generation_time = std::min(timer.remaining_time() * 0.4, 2000.);
+        auto time_left             = (0.6 * timer.get_time_limit()) - timer.elapsed_time();
+        max_island_generation_time = std::min(std::max(0.0, time_left * 0.4), 2000.);
       }
       // We should at least generate one solution before exiting. When the time
       // limit is too small, we are returning before generating single solution,
@@ -896,7 +908,20 @@ struct solve {
       benchmark_call(display_pool(
         a, std::string("Island: ") + std::to_string(initial_islands.size()) + std::string(" \n")));
 
-      improve_population(a, start_index, false);
+      // Give all the island generation time as some problems might consume
+      // all the time improving the first threshold.
+      double improve_time_limit =
+        max(0.0, max_island_generation_time - island_creation_timer.elapsed_time());
+
+      improvement_timer = timer_t(improve_time_limit);
+      benchmark_print(
+        "Time limit for improvement %f, elapsed time before "
+        "improvement = %f \n",
+        improve_time_limit,
+        timer.elapsed_time());
+
+      const bool island_generation_mode = true;
+      improve_population(a, island_generation_mode, start_index);
       if (timer.check_time_limit()) return;
 
       benchmark_call(display_pool(a,
@@ -946,6 +971,7 @@ struct solve {
   /*! \brief { Improve population by gradually decresing the clearing radius
    * (threshold) and searching with a fixed radius. } */
   void improve_population(population<allocator, solution, problem>& p,
+                          bool island_generation_mode,
                           int start_threshold_index,
                           bool consider_expensive_recombiners = true)
   {
@@ -978,6 +1004,17 @@ struct solve {
       }
 
       start_threshold_index--;
+      if (island_generation_mode) {
+        // In island generation, and if the first threshold is completed, we can
+        // stop improving after 60% of the time limit is used.
+        double improve_time_limit =
+          std::max(0.0, (0.6 * timer.get_time_limit()) - timer.elapsed_time());
+        benchmark_print("Spent time on island generation: %f \n", improvement_timer.elapsed_time());
+        benchmark_print("Improvement time remaining on island generation: %f \n",
+                        improve_time_limit);
+        improvement_timer = timer_t(improve_time_limit);
+        if (improvement_timer.check_time_limit()) { return; }
+      }
       if (timer.check_time_limit()) return;
     }
     benchmark_print("time elapsed: %f \n", timer.elapsed_time());
@@ -1002,7 +1039,7 @@ struct solve {
       double quality_before = p.best_quality();
       while (k-- > 0) {
         fflush(f.file_ptr);
-        if (timer.check_time_limit()) return;
+        if (improvement_timer.check_time_limit()) return;
 
         if (p.current_size() < 2) {
           benchmark_print("Population degenerated \n");
@@ -1031,7 +1068,7 @@ struct solve {
         if (recombine(temp_pair.first, temp_pair.second, guiding, run_expensive_recombiners)) {
           auto& offspring = guiding == false ? temp_pair.first : temp_pair.second;
           if (!feasible_only || offspring.is_feasible()) {
-            lm.improve(offspring, weights, timer.remaining_time(), run_cycle_finder);
+            lm.improve(offspring, weights, improvement_timer.remaining_time(), run_cycle_finder);
             recombine_stats.update_improve_stats(
               offspring.get_cost(weights), cost_first, cost_second);
             working_insertion_index = p.add_solution(timer.elapsed_time(), offspring);

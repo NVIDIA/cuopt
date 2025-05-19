@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include <cuopt/error.hpp>
 #include <linear_programming/pdlp.cuh>
 #include <linear_programming/restart_strategy/pdlp_restart_strategy.cuh>
 #include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
@@ -33,7 +34,6 @@
 
 #include <mps_parser/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/error.hpp>
 
 #include <dual_simplex/crossover.hpp>
 #include <dual_simplex/solve.hpp>
@@ -201,13 +201,13 @@ static void set_Fast1()
 template <typename i_t, typename f_t>
 void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
-  if (settings.get_pdlp_solver_mode() == pdlp_solver_mode_t::Stable2)
+  if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Stable2)
     set_Stable2();
-  else if (settings.get_pdlp_solver_mode() == pdlp_solver_mode_t::Stable1)
+  else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Stable1)
     set_Stable1();
-  else if (settings.get_pdlp_solver_mode() == pdlp_solver_mode_t::Methodical1)
+  else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Methodical1)
     set_Methodical1();
-  else if (settings.get_pdlp_solver_mode() == pdlp_solver_mode_t::Fast1)
+  else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Fast1)
     set_Fast1();
 }
 
@@ -278,10 +278,9 @@ std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t
   auto start_solver = std::chrono::high_resolution_clock::now();
 
   dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-  dual_simplex_settings.time_limit =
-    settings.get_time_limit().value_or(dual_simplex_settings.time_limit);
-  dual_simplex_settings.iteration_limit = settings.get_iteration_limit();
-  dual_simplex_settings.concurrent_halt = settings.get_concurrent_halt();
+  dual_simplex_settings.time_limit      = settings.time_limit;
+  dual_simplex_settings.iteration_limit = settings.iteration_limit;
+  dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
   if (dual_simplex_settings.concurrent_halt != nullptr) {
     // Don't show the dual simplex log in concurrent mode. Show the PDLP log instead
     dual_simplex_settings.log.log = false;
@@ -296,9 +295,9 @@ std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t
 
   CUOPT_LOG_INFO("Dual simplex finished in %.2f seconds", duration.count() / 1000.0);
 
-  if (settings.get_concurrent_halt() != nullptr) {
+  if (settings.concurrent_halt != nullptr) {
     // We finished. Tell PDLP to stop if it is still running.
-    settings.get_concurrent_halt()->store(1, std::memory_order_release);
+    settings.concurrent_halt->store(1, std::memory_order_release);
   }
 
   return {std::move(solution), status, duration.count() / 1000.0};
@@ -338,7 +337,7 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
                    sol.get_solve_time());
   }
 
-  const bool do_crossover = settings.get_crossover();
+  const bool do_crossover = settings.crossover;
   i_t crossover_info      = 0;
   if (do_crossover && sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
     crossover_info = -1;
@@ -347,10 +346,9 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     dual_simplex::lp_solution_t<i_t, f_t> initial_solution(1, 1);
     translate_to_crossover_problem(problem, sol, lp, initial_solution);
     dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-    dual_simplex_settings.time_limit =
-      settings.get_time_limit().value_or(dual_simplex_settings.time_limit);
-    dual_simplex_settings.iteration_limit = settings.get_iteration_limit();
-    dual_simplex_settings.concurrent_halt = settings.get_concurrent_halt();
+    dual_simplex_settings.time_limit      = settings.time_limit;
+    dual_simplex_settings.iteration_limit = settings.iteration_limit;
+    dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
     dual_simplex::lp_solution_t<i_t, f_t> vertex_solution(lp.num_rows, lp.num_cols);
     std::vector<dual_simplex::variable_status_t> vstatus(lp.num_cols);
     dual_simplex::crossover_status_t crossover_status = dual_simplex::crossover(
@@ -399,9 +397,9 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
                                                                    termination_status);
     sol.copy_from(problem.handle_ptr, sol_crossover);
   }
-  if (crossover_info == 0 && settings.get_concurrent_halt() != nullptr) {
+  if (crossover_info == 0 && settings.concurrent_halt != nullptr) {
     // We finished. Tell dual simplex to stop if it is still running.
-    settings.get_concurrent_halt()->store(1, std::memory_order_release);
+    settings.concurrent_halt->store(1, std::memory_order_release);
   }
   return sol;
 }
@@ -434,7 +432,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
 
   // Set the concurrent halt pointer
   global_concurrent_halt.store(0, std::memory_order_release);
-  settings_pdlp.set_concurrent_halt(&global_concurrent_halt);
+  settings_pdlp.concurrent_halt = &global_concurrent_halt;
 
   // Initialize the dual simplex structures before we run PDLP.
   // Otherwise, CUDA API calls to the problem stream may occur in both threads and throw graph
@@ -479,9 +477,27 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   } else if (sol_pdlp.get_termination_status() == pdlp_termination_status_t::Optimal) {
     CUOPT_LOG_INFO("Solved with PDLP");
     return sol_pdlp;
+  } else if (sol_pdlp.get_termination_status() == pdlp_termination_status_t::ConcurrentLimit) {
+    CUOPT_LOG_INFO("Using dual simplex solve info");
+    return sol_dual_simplex;
   } else {
     CUOPT_LOG_INFO("Using PDLP solve info");
     return sol_pdlp;
+  }
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
+  optimization_problem_t<i_t, f_t>& op_problem,
+  detail::problem_t<i_t, f_t>& problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  if (settings.method == method_t::DualSimplex) {
+    return run_dual_simplex(problem, settings);
+  } else if (settings.method == method_t::Concurrent) {
+    return run_concurrent(op_problem, problem, settings);
+  } else {
+    return run_pdlp(problem, settings);
   }
 }
 
@@ -491,45 +507,53 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
                                                    bool problem_checking,
                                                    bool use_pdlp_solver_mode)
 {
-  // Create log stream for file logging and add it to default logger
-  init_logger_t log(settings.get_log_file(), settings.get_log_to_console());
+  try {
+    // Create log stream for file logging and add it to default logger
+    init_logger_t log(settings.log_file, settings.log_to_console);
 #if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
-  cuopt::default_logger().set_pattern("%v");
+    cuopt::default_logger().set_pattern("%v");
 #endif
 
-  // Init libraies before to not include it in solve time
-  // This needs to be called before pdlp is initialized
-  init_handler(op_problem.get_handle_ptr());
+    // Init libraies before to not include it in solve time
+    // This needs to be called before pdlp is initialized
+    init_handler(op_problem.get_handle_ptr());
 
-  raft::common::nvtx::range fun_scope("Running solver");
+    raft::common::nvtx::range fun_scope("Running solver");
 
-  if (problem_checking) {
-    raft::common::nvtx::range fun_scope("Check problem representation");
-    // This is required as user might forget to set some fields
-    problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
-    problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
+    if (problem_checking) {
+      raft::common::nvtx::range fun_scope("Check problem representation");
+      // This is required as user might forget to set some fields
+      problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
+      problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
+    }
+    detail::problem_t<i_t, f_t> problem(op_problem);
+    CUOPT_LOG_INFO(
+      "Solving a problem with %d constraints %d variables (%d integers) and %d nonzeros",
+      problem.n_constraints,
+      problem.n_variables,
+      problem.n_integer_vars,
+      problem.nnz);
+    CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
+                   problem.presolve_data.objective_offset,
+                   problem.presolve_data.objective_scaling_factor);
+
+    // Set the hyper-parameters based on the solver_settings
+    if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
+
+    setup_device_symbols();
+
+    auto sol = solve_lp_with_method(op_problem, problem, settings);
+
+    if (settings.sol_file != "") {
+      CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
+      sol.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
+    }
+
+    return sol;
+  } catch (const cuopt::logic_error& e) {
+    CUOPT_LOG_ERROR("Error in solve_lp: %s", e.what());
+    return optimization_problem_solution_t<i_t, f_t>{e, op_problem.get_handle_ptr()->get_stream()};
   }
-  detail::problem_t<i_t, f_t> problem(op_problem);
-  CUOPT_LOG_INFO("Solving a problem with %d constraints %d variables (%d integers) and %d nonzeros",
-                 problem.n_constraints,
-                 problem.n_variables,
-                 problem.n_integer_vars,
-                 problem.nnz);
-  CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
-                 problem.presolve_data.objective_offset,
-                 problem.presolve_data.objective_scaling_factor);
-
-  // Set the hyper-parameters based on the solver_settings
-  if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
-
-  setup_device_symbols();
-
-  if (settings.get_method() == method_t::DualSimplex)
-    return run_dual_simplex(problem, settings);
-  else if (settings.get_method() == method_t::Concurrent)
-    return run_concurrent(op_problem, problem, settings);
-  else
-    return run_pdlp(problem, settings);
 }
 
 template <typename i_t, typename f_t>

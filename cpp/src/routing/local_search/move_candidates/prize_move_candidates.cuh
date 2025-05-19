@@ -27,8 +27,7 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
-struct __align__(16) prize_cand_t
-{
+struct __align__(16) prize_cand_t {
   HDI prize_cand_t(int pickup_insertion_,
                    int delivery_insertion_,
                    int ejected_node_id_,

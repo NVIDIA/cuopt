@@ -20,111 +20,35 @@ import numpy as np
 import pytest
 
 from cuopt.linear_programming import data_model, solver, solver_settings
-from cuopt.linear_programming.internals import LPIncumbentSolCallback
-from cuopt.linear_programming.solver.solver_wrapper import (
-    LPTerminationStatus,
-    MILPTerminationStatus,
+from cuopt.linear_programming.solver.solver_parameters import (
+    CUOPT_ABSOLUTE_DUAL_TOLERANCE,
+    CUOPT_ABSOLUTE_GAP_TOLERANCE,
+    CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
+    CUOPT_DUAL_INFEASIBLE_TOLERANCE,
+    CUOPT_INFEASIBILITY_DETECTION,
+    CUOPT_ITERATION_LIMIT,
+    CUOPT_METHOD,
+    CUOPT_MIP_HEURISTICS_ONLY,
+    CUOPT_PDLP_SOLVER_MODE,
+    CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
+    CUOPT_RELATIVE_DUAL_TOLERANCE,
+    CUOPT_RELATIVE_GAP_TOLERANCE,
+    CUOPT_RELATIVE_PRIMAL_TOLERANCE,
+    CUOPT_TIME_LIMIT,
 )
-from cuopt.linear_programming.solver_settings import SolverMode
-from cuopt.utilities import InputValidationError
+from cuopt.linear_programming.solver.solver_wrapper import (
+    ErrorStatus,
+    LPTerminationStatus,
+)
+from cuopt.linear_programming.solver_settings import (
+    PDLPSolverMode,
+    SolverMethod,
+)
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:
     RAPIDS_DATASET_ROOT_DIR = os.getcwd()
     RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
-
-
-def validate_variable_bounds(data, settings, solution):
-    integrality_tolerance = settings.get_integrality_tolerance()
-    integrality_tolerance = (
-        integrality_tolerance if integrality_tolerance else 1e-5
-    )
-
-    if len(data.get_variable_lower_bounds() > 0):
-        assert len(solution) == len(data.get_variable_lower_bounds())
-        assert np.all(
-            solution
-            >= (data.get_variable_lower_bounds() - integrality_tolerance)
-        )
-    if len(data.get_variable_upper_bounds() > 0):
-        assert len(solution) == len(data.get_variable_upper_bounds())
-        assert np.all(
-            solution
-            <= (data.get_variable_upper_bounds() + integrality_tolerance)
-        )
-
-
-def validate_constraint_sanity_per_row(
-    data, solution, cost, abs_tolerance, rel_tolerance
-):
-    def combine_finite_abs_bounds(lower, upper):
-        val = 0
-        if np.isfinite(upper):
-            val = max(val, abs(upper))
-        if np.isfinite(lower):
-            val = max(val, abs(lower))
-
-        return val
-
-    def get_violation(value, lower, upper):
-        if value < lower:
-            return lower - value
-        elif value > upper:
-            return value - upper
-        else:
-            return 0
-
-    values = data.get_constraint_matrix_values()
-    offsets = data.get_constraint_matrix_offsets()
-    indices = data.get_constraint_matrix_indices()
-    constraint_lower_bounds = data.get_constraint_lower_bounds()
-    constraint_upper_bounds = data.get_constraint_upper_bounds()
-    residual = np.zeros(len(constraint_lower_bounds))
-
-    for i in range(len(offsets) - 1):
-        for j in range(offsets[i], offsets[i + 1]):
-            residual[i] += values[j] * solution[indices[j]]
-
-    for i in range(len(residual)):
-        tolerance = abs_tolerance + combine_finite_abs_bounds(
-            constraint_lower_bounds[i],
-            constraint_upper_bounds[i] * rel_tolerance,
-        )
-        violation = get_violation(
-            residual[i], constraint_lower_bounds[i], constraint_upper_bounds[i]
-        )
-
-        assert violation <= tolerance
-
-
-def validate_objective_sanity(data, solution, cost, tolerance):
-
-    output = (data.get_objective_coefficients() * solution).sum()
-
-    assert abs(output - cost) <= tolerance
-
-
-def check_solution(data, setting, solution, cost):
-    # check size of the solution matches variable size
-    assert len(solution) == len(data.get_variable_types())
-
-    validate_variable_bounds(data, setting, solution)
-
-    abs_tolerance = setting.get_absolute_primal_tolerance()
-    abs_tolerance = abs_tolerance if abs_tolerance else 1e-4
-
-    rel_tolerance = setting.get_relative_primal_tolerance()
-    rel_tolerance = rel_tolerance if rel_tolerance else 1e-6
-
-    validate_constraint_sanity_per_row(
-        data,
-        solution,
-        cost,
-        abs_tolerance * 1e2,
-        rel_tolerance,
-    )
-
-    validate_objective_sanity(data, solution, cost, 1e-4)
 
 
 def test_solver():
@@ -180,8 +104,8 @@ def test_very_low_tolerance():
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-12)
     # Test with the former/legacy solver_mode
-    settings.set_pdlp_solver_mode(SolverMode.Methodical1)
-    settings.set_infeasibility_detection(False)
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Methodical1)
+    settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
 
     solution = solver.Solve(data_model_obj, settings)
 
@@ -202,9 +126,9 @@ def test_iteration_limit_solver():
 
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(0)
-    settings.set_iteration_limit(1)
+    settings.set_parameter(CUOPT_ITERATION_LIMIT, 1)
     # Setting both to make sure the lowest one is picked
-    settings.set_time_limit(99999999)
+    settings.set_parameter(CUOPT_TIME_LIMIT, 99999999)
 
     solution = solver.Solve(data_model_obj, settings)
     assert (
@@ -226,9 +150,9 @@ def test_time_limit_solver():
     settings.set_optimality_tolerance(0)
     # 200 ms
     time_limit_seconds = 0.2
-    settings.set_time_limit(time_limit_seconds)
+    settings.set_parameter(CUOPT_TIME_LIMIT, time_limit_seconds)
     # Setting both to make sure the lowest one is picked
-    settings.set_iteration_limit(99999999)
+    settings.set_parameter(CUOPT_ITERATION_LIMIT, 99999999)
 
     solution = solver.Solve(data_model_obj, settings)
     assert solution.get_termination_status() == LPTerminationStatus.TimeLimit
@@ -343,43 +267,42 @@ def test_solver_settings():
     tolerance_value = 1e-5
 
     # Setting tolerances
-    settings.set_absolute_dual_tolerance(tolerance_value)
-    settings.set_relative_dual_tolerance(tolerance_value)
-    settings.set_absolute_primal_tolerance(tolerance_value)
-    settings.set_relative_primal_tolerance(tolerance_value)
-    settings.set_absolute_gap_tolerance(tolerance_value)
-    settings.set_relative_gap_tolerance(tolerance_value)
-    settings.set_primal_infeasible_tolerance(tolerance_value)
-    settings.set_dual_infeasible_tolerance(tolerance_value)
+    settings.set_parameter(CUOPT_ABSOLUTE_DUAL_TOLERANCE, tolerance_value)
+    settings.set_parameter(CUOPT_RELATIVE_DUAL_TOLERANCE, tolerance_value)
+    settings.set_parameter(CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, tolerance_value)
+    settings.set_parameter(CUOPT_RELATIVE_PRIMAL_TOLERANCE, tolerance_value)
+    settings.set_parameter(CUOPT_ABSOLUTE_GAP_TOLERANCE, tolerance_value)
+    settings.set_parameter(CUOPT_RELATIVE_GAP_TOLERANCE, tolerance_value)
+    settings.set_parameter(CUOPT_PRIMAL_INFEASIBLE_TOLERANCE, tolerance_value)
+    settings.set_parameter(CUOPT_DUAL_INFEASIBLE_TOLERANCE, tolerance_value)
 
     # Getting and asserting tolerances
-    assert settings.get_absolute_dual_tolerance() == 1e-5
-    assert settings.get_relative_dual_tolerance() == 1e-5
-    assert settings.get_absolute_primal_tolerance() == 1e-5
-    assert settings.get_relative_primal_tolerance() == 1e-5
-    assert settings.get_absolute_gap_tolerance() == 1e-5
-    assert settings.get_relative_gap_tolerance() == 1e-5
-    assert settings.get_primal_infeasible_tolerance() == 1e-5
-    assert settings.get_dual_infeasible_tolerance() == 1e-5
+    assert settings.get_parameter(CUOPT_ABSOLUTE_DUAL_TOLERANCE) == 1e-5
+    assert settings.get_parameter(CUOPT_RELATIVE_DUAL_TOLERANCE) == 1e-5
+    assert settings.get_parameter(CUOPT_ABSOLUTE_PRIMAL_TOLERANCE) == 1e-5
+    assert settings.get_parameter(CUOPT_RELATIVE_PRIMAL_TOLERANCE) == 1e-5
+    assert settings.get_parameter(CUOPT_ABSOLUTE_GAP_TOLERANCE) == 1e-5
+    assert settings.get_parameter(CUOPT_RELATIVE_GAP_TOLERANCE) == 1e-5
+    assert settings.get_parameter(CUOPT_PRIMAL_INFEASIBLE_TOLERANCE) == 1e-5
+    assert settings.get_parameter(CUOPT_DUAL_INFEASIBLE_TOLERANCE) == 1e-5
 
-    assert settings.get_iteration_limit() is None
-    assert settings.get_time_limit() is None
+    assert settings.get_parameter(CUOPT_TIME_LIMIT) == float("inf")
 
-    settings.set_iteration_limit(10)
-    settings.set_time_limit(10.2)
+    settings.set_parameter(CUOPT_ITERATION_LIMIT, 10)
+    settings.set_parameter(CUOPT_TIME_LIMIT, 10.2)
 
-    assert settings.get_iteration_limit() == 10
-    assert settings.get_time_limit() == 10.2
+    assert settings.get_parameter(CUOPT_ITERATION_LIMIT) == 10
+    assert settings.get_parameter(CUOPT_TIME_LIMIT) == 10.2
 
-    settings.set_infeasibility_detection(False)
-    assert not settings.get_infeasibility_detection()
+    settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
+    assert not settings.get_parameter(CUOPT_INFEASIBILITY_DETECTION)
 
-    assert (
-        settings.get_pdlp_solver_mode() == solver_settings.SolverMode.Stable2
+    assert settings.get_parameter(CUOPT_PDLP_SOLVER_MODE) == int(
+        PDLPSolverMode.Stable2
     )
 
-    with pytest.raises(InputValidationError):
-        settings.set_pdlp_solver_mode(10)
+    with pytest.raises(ValueError):
+        settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, 10)
         # Need to trigger a solver since solver_settings input checking is done
         # on the cpp side once Solve is called
         file_path = (
@@ -387,8 +310,10 @@ def test_solver_settings():
         )
         solver.Solve(cuopt_mps_parser.ParseMps(file_path), settings)
 
-    settings.set_pdlp_solver_mode(SolverMode.Methodical1)
-    assert settings.get_pdlp_solver_mode() == SolverMode.Methodical1
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Methodical1)
+    assert settings.get_parameter(CUOPT_PDLP_SOLVER_MODE) == int(
+        PDLPSolverMode.Methodical1
+    )
 
 
 def test_check_data_model_validity():
@@ -396,8 +321,8 @@ def test_check_data_model_validity():
     data_model_obj = data_model.DataModel()
 
     # Test if exception is thrown when A_CSR is not set
-    with pytest.raises(InputValidationError):
-        solver.Solve(data_model_obj)
+    solution = solver.Solve(data_model_obj)
+    assert solution.get_error_status() == ErrorStatus.ValidationError
 
     # Set A_CSR_matrix with np.array
     A_values = np.array([1.0], dtype=np.float64)
@@ -406,16 +331,16 @@ def test_check_data_model_validity():
     data_model_obj.set_csr_constraint_matrix(A_values, A_indices, A_offsets)
 
     # Test if exception is thrown when b is not set
-    with pytest.raises(InputValidationError):
-        solver.Solve(data_model_obj)
+    solution = solver.Solve(data_model_obj)
+    assert solution.get_error_status() == ErrorStatus.ValidationError
 
     # Set b with np.array
     b = np.array([1.0], dtype=np.float64)
     data_model_obj.set_constraint_bounds(b)
 
     # Test if exception is thrown when c is not set
-    with pytest.raises(InputValidationError):
-        solver.Solve(data_model_obj)
+    solution = solver.Solve(data_model_obj)
+    assert solution.get_error_status() == ErrorStatus.ValidationError
 
     # Set c with np.array
     c = np.array([1.0], dtype=np.float64)
@@ -425,15 +350,15 @@ def test_check_data_model_validity():
     data_model_obj.set_maximize(True)
 
     # Test if exception is thrown when maximize is set to true
-    with pytest.raises(InputValidationError):
-        solver.Solve(data_model_obj)
+    solution = solver.Solve(data_model_obj)
+    assert solution.get_error_status() == ErrorStatus.ValidationError
 
     # Set maximize to correct value
     data_model_obj.set_maximize(False)
 
     # Test if exception is thrown when row_type is not set
-    with pytest.raises(InputValidationError):
-        solver.Solve(data_model_obj)
+    solution = solver.Solve(data_model_obj)
+    assert solution.get_error_status() == ErrorStatus.ValidationError
 
     # Set row_type with np.array
     row_type = np.array(["E"])
@@ -590,9 +515,9 @@ def test_warm_start():
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
-    settings.set_pdlp_solver_mode(SolverMode.Stable2)
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
     settings.set_optimality_tolerance(1e-3)
-    settings.set_infeasibility_detection(False)
+    settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
 
     # Solving from scratch until 1e-3
     solution = solver.Solve(data_model_obj, settings)
@@ -622,9 +547,9 @@ def test_warm_start_other_problem():
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
-    settings.set_pdlp_solver_mode(SolverMode.Stable2)
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
     settings.set_optimality_tolerance(1e-1)
-    settings.set_infeasibility_detection(False)
+    settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
     solution = solver.Solve(data_model_obj, settings)
 
     file_path = (
@@ -671,59 +596,12 @@ def test_dual_simplex():
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
-    settings.set_pdlp_solver_mode(SolverMode.DualSimplex)
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.DualSimplex)
 
     solution = solver.Solve(data_model_obj, settings)
 
     assert solution.get_termination_status() == LPTerminationStatus.Optimal
     assert solution.get_primal_objective() == pytest.approx(-464.7531)
-
-
-@pytest.mark.parametrize(
-    "file_name",
-    [
-        ("/mip/swath1.mps"),
-        ("/mip/neos5.mps"),
-    ],
-)
-def test_incumbent_solver_callback(file_name):
-
-    # Callback for incumbent solution
-
-    class CustomLPIncumbentSolCallback(LPIncumbentSolCallback):
-        def __init__(self):
-            super().__init__()
-            self.n_callbacks = 0
-            self.solution = []
-
-        def set_solution(self, solution, solution_cost):
-
-            self.n_callbacks += 1
-            assert len(solution) > 0
-            assert isinstance(solution_cost, float)
-
-            self.solution.append(
-                {"solution": solution.copy_to_host(), "cost": solution_cost}
-            )
-
-    callback = CustomLPIncumbentSolCallback()
-
-    file_path = RAPIDS_DATASET_ROOT_DIR + file_name
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
-
-    settings = solver_settings.SolverSettings()
-    settings.set_time_limit(10)
-    settings.set_mip_incumbent_solution_callback(callback)
-    solution = solver.Solve(data_model_obj, settings)
-
-    assert callback.n_callbacks > 0
-    assert (
-        solution.get_termination_status()
-        == MILPTerminationStatus.FeasibleFound
-    )
-
-    for sol in callback.solution:
-        check_solution(data_model_obj, settings, sol["solution"], sol["cost"])
 
 
 def test_heuristics_only():
@@ -732,15 +610,15 @@ def test_heuristics_only():
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
-    settings.set_mip_heuristics_only(True)
-    settings.set_time_limit(30)
+    settings.set_parameter(CUOPT_MIP_HEURISTICS_ONLY, True)
+    settings.set_parameter(CUOPT_TIME_LIMIT, 30)
 
     solution = solver.Solve(data_model_obj, settings)
 
     lower_bound = solution.get_milp_stats()["solution_bound"]
 
-    settings.set_mip_heuristics_only(False)
-    settings.set_time_limit(30)
+    settings.set_parameter(CUOPT_MIP_HEURISTICS_ONLY, False)
+    settings.set_parameter(CUOPT_TIME_LIMIT, 30)
 
     solution = solver.Solve(data_model_obj, settings)
 
@@ -784,7 +662,7 @@ def test_bound_in_maximization():
 
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-6)
-    settings.set_time_limit(10)
+    settings.set_parameter(CUOPT_TIME_LIMIT, 10)
     solution = solver.Solve(data_model_obj, settings)
 
     upper_bound = solution.get_milp_stats()["solution_bound"]

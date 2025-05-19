@@ -13,4 +13,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .solver_settings import SolverMode, SolverSettings, toDict
+from .solver_settings import PDLPSolverMode, SolverMethod, SolverSettings

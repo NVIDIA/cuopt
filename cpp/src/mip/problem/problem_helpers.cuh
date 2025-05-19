@@ -19,9 +19,10 @@
 
 #include "problem.cuh"
 
+#include <cuopt/error.hpp>
+
 #include <raft/linalg/unary_op.cuh>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/error.hpp>
 
 #include <cuda_runtime_api.h>
 #include <thrust/functional.h>

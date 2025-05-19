@@ -21,7 +21,7 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/logger.hpp>
-#include <cuopt/semantic_version.hpp>
+
 #include <mps_parser/parser.hpp>
 
 #include <memory>
@@ -58,14 +58,6 @@ struct solution_and_stream_view_t {
 int8_t cuOptGetFloatSize() { return sizeof(cuopt_float_t); }
 
 int8_t cuOptGetIntSize() { return sizeof(cuopt_int_t); }
-
-void cuOptGetSemanticVersion(int32_t* major, int32_t* minor, int32_t* patch)
-{
-  if (major == nullptr || minor == nullptr || patch == nullptr) { return; }
-  *major = CUOPT_SEMANTIC_VERSION_MAJOR;
-  *minor = CUOPT_SEMANTIC_VERSION_MINOR;
-  *patch = CUOPT_SEMANTIC_VERSION_PATCH;
-}
 
 cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* problem_ptr)
 {
@@ -591,6 +583,8 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
     solution_and_stream_view->mip_solution_ptr = new mip_solution_t<cuopt_int_t, cuopt_float_t>(
       solve_mip<cuopt_int_t, cuopt_float_t>(*op_problem, mip_settings));
     *solution_ptr = static_cast<cuOptSolution>(solution_and_stream_view);
+    return static_cast<cuopt_int_t>(
+      solution_and_stream_view->mip_solution_ptr->get_error_status().get_error_type());
   } else {
     solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
       static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
@@ -604,8 +598,9 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
       new optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>(
         solve_lp<cuopt_int_t, cuopt_float_t>(*op_problem, pdlp_settings));
     *solution_ptr = static_cast<cuOptSolution>(solution_and_stream_view);
+    return static_cast<cuopt_int_t>(
+      solution_and_stream_view->lp_solution_ptr->get_error_status().get_error_type());
   }
-  return CUOPT_SUCCESS;
 }
 
 void cuOptDestroySolution(cuOptSolution* solution_ptr)
@@ -646,6 +641,41 @@ cuopt_int_t cuOptGetTerminationStatus(cuOptSolution solution, cuopt_int_t* termi
         solution_and_stream_view->lp_solution_ptr)
         ->get_termination_status();
     *termination_status_ptr = static_cast<cuopt_int_t>(termination_status);
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptGetErrorStatus(cuOptSolution solution, cuopt_int_t* error_status_ptr)
+{
+  if (solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (error_status_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  solution_and_stream_view_t* solution_and_stream_view =
+    static_cast<solution_and_stream_view_t*>(solution);
+  if (solution_and_stream_view->is_mip) {
+    *error_status_ptr = static_cast<cuopt_int_t>(
+      solution_and_stream_view->mip_solution_ptr->get_error_status().get_error_type());
+  } else {
+    *error_status_ptr = static_cast<cuopt_int_t>(
+      solution_and_stream_view->lp_solution_ptr->get_error_status().get_error_type());
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptGetErrorString(cuOptSolution solution,
+                                char* error_string_ptr,
+                                cuopt_int_t error_string_size)
+{
+  if (solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (error_string_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  solution_and_stream_view_t* solution_and_stream_view =
+    static_cast<solution_and_stream_view_t*>(solution);
+  if (solution_and_stream_view->is_mip) {
+    std::string error_string =
+      solution_and_stream_view->mip_solution_ptr->get_error_status().what();
+    std::snprintf(error_string_ptr, error_string_size, "%s", error_string.c_str());
+  } else {
+    std::string error_string = solution_and_stream_view->lp_solution_ptr->get_error_status().what();
+    std::snprintf(error_string_ptr, error_string_size, "%s", error_string.c_str());
   }
   return CUOPT_SUCCESS;
 }

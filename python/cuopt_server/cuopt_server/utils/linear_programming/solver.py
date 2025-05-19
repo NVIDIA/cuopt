@@ -20,8 +20,32 @@ import time
 from fastapi import HTTPException
 
 from cuopt import linear_programming
-from cuopt.linear_programming.internals import LPIncumbentSolCallback
+from cuopt.linear_programming.internals import GetSolutionCallback
+from cuopt.linear_programming.solver.solver_parameters import (
+    CUOPT_ABSOLUTE_DUAL_TOLERANCE,
+    CUOPT_ABSOLUTE_GAP_TOLERANCE,
+    CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
+    CUOPT_CROSSOVER,
+    CUOPT_DUAL_INFEASIBLE_TOLERANCE,
+    CUOPT_INFEASIBILITY_DETECTION,
+    CUOPT_ITERATION_LIMIT,
+    CUOPT_LOG_TO_CONSOLE,
+    CUOPT_METHOD,
+    CUOPT_MIP_ABSOLUTE_GAP,
+    CUOPT_MIP_HEURISTICS_ONLY,
+    CUOPT_MIP_INTEGRALITY_TOLERANCE,
+    CUOPT_MIP_RELATIVE_GAP,
+    CUOPT_MIP_SCALING,
+    CUOPT_NUM_CPU_THREADS,
+    CUOPT_PDLP_SOLVER_MODE,
+    CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
+    CUOPT_RELATIVE_DUAL_TOLERANCE,
+    CUOPT_RELATIVE_GAP_TOLERANCE,
+    CUOPT_RELATIVE_PRIMAL_TOLERANCE,
+    CUOPT_TIME_LIMIT,
+)
 from cuopt.linear_programming.solver.solver_wrapper import (
+    ErrorStatus,
     LPTerminationStatus,
     MILPTerminationStatus,
 )
@@ -36,14 +60,18 @@ dep_warning = (
 )
 
 
-class CustomLPIncumbentSolCallback(LPIncumbentSolCallback):
+class CustomGetSolutionCallback(GetSolutionCallback):
     def __init__(self, sender, req_id):
         super().__init__()
         self.req_id = req_id
         self.sender = sender
 
-    def set_solution(self, solution, solution_cost):
-        self.sender(self.req_id, solution.copy_to_host(), solution_cost)
+    def get_solution(self, solution, solution_cost):
+        self.sender(
+            self.req_id,
+            solution.copy_to_host(),
+            solution_cost.copy_to_host()[0],
+        )
 
 
 def warn_on_objectives(solver_config):
@@ -124,14 +152,27 @@ def create_solver(LP_data, warmstart_data):
     if LP_data.solver_config is not None:
         solver_config = LP_data.solver_config
         if solver_config.infeasibility_detection is not None:
-            solver_settings.set_infeasibility_detection(
-                solver_config.infeasibility_detection
+            solver_settings.set_parameter(
+                CUOPT_INFEASIBILITY_DETECTION,
+                solver_config.infeasibility_detection,
             )
-        if solver_config.solver_mode is not None:
-            solver_settings.set_pdlp_solver_mode(
-                linear_programming.solver_settings.SolverMode(
-                    solver_config.solver_mode
-                )
+        if solver_config.pdlp_solver_mode is not None:
+            solver_settings.set_parameter(
+                CUOPT_PDLP_SOLVER_MODE,
+                linear_programming.solver_settings.PDLPSolverMode(
+                    solver_config.pdlp_solver_mode
+                ),
+            )
+        if solver_config.method is not None:
+            solver_settings.set_parameter(
+                CUOPT_METHOD,
+                linear_programming.solver_settings.SolverMethod(
+                    solver_config.method
+                ),
+            )
+        if solver_config.crossover is not None:
+            solver_settings.set_parameter(
+                CUOPT_CROSSOVER, solver_config.crossover
             )
         try:
             lp_time_limit = float(os.environ.get("CUOPT_LP_TIME_LIMIT_SEC"))
@@ -145,7 +186,7 @@ def create_solver(LP_data, warmstart_data):
             time_limit = solver_config.time_limit
         if time_limit is not None:
             logging.debug(f"setting LP time limit to {time_limit}sec")
-            solver_settings.set_time_limit(time_limit)
+            solver_settings.set_parameter(CUOPT_TIME_LIMIT, time_limit)
 
         try:
             lp_iteration_limit = int(
@@ -163,71 +204,100 @@ def create_solver(LP_data, warmstart_data):
             iteration_limit = solver_config.iteration_limit
         if iteration_limit is not None:
             logging.debug(f"setting LP iteration limit to {iteration_limit}")
-            solver_settings.set_iteration_limit(iteration_limit)
+            solver_settings.set_parameter(
+                CUOPT_ITERATION_LIMIT, iteration_limit
+            )
 
         if solver_config.tolerances is not None:
             tolerance = solver_config.tolerances
             if tolerance.optimality is not None:
                 solver_settings.set_optimality_tolerance(tolerance.optimality)
             if tolerance.absolute_dual is not None:
-                solver_settings.set_absolute_dual_tolerance(
-                    tolerance.absolute_dual
+                solver_settings.set_parameter(
+                    CUOPT_ABSOLUTE_DUAL_TOLERANCE, tolerance.absolute_dual
                 )
             if tolerance.absolute_primal is not None:
-                solver_settings.set_absolute_primal_tolerance(
-                    tolerance.absolute_primal
+                solver_settings.set_parameter(
+                    CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, tolerance.absolute_primal
                 )
             if tolerance.absolute_gap is not None:
-                solver_settings.set_absolute_gap_tolerance(
-                    tolerance.absolute_gap
+                solver_settings.set_parameter(
+                    CUOPT_ABSOLUTE_GAP_TOLERANCE, tolerance.absolute_gap
                 )
             if tolerance.relative_dual is not None:
-                solver_settings.set_relative_dual_tolerance(
-                    tolerance.relative_dual
+                solver_settings.set_parameter(
+                    CUOPT_RELATIVE_DUAL_TOLERANCE, tolerance.relative_dual
                 )
             if tolerance.relative_primal is not None:
-                solver_settings.set_relative_primal_tolerance(
-                    tolerance.relative_primal
+                solver_settings.set_parameter(
+                    CUOPT_RELATIVE_PRIMAL_TOLERANCE, tolerance.relative_primal
                 )
             if tolerance.relative_gap is not None:
-                solver_settings.set_relative_gap_tolerance(
-                    tolerance.relative_gap
+                solver_settings.set_parameter(
+                    CUOPT_RELATIVE_GAP_TOLERANCE, tolerance.relative_gap
                 )
             if tolerance.primal_infeasible is not None:
-                solver_settings.set_primal_infeasible_tolerance(
-                    tolerance.primal_infeasible
+                solver_settings.set_parameter(
+                    CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
+                    tolerance.primal_infeasible,
                 )
             if tolerance.dual_infeasible is not None:
-                solver_settings.set_dual_infeasible_tolerance(
-                    tolerance.dual_infeasible
+                solver_settings.set_parameter(
+                    CUOPT_DUAL_INFEASIBLE_TOLERANCE, tolerance.dual_infeasible
                 )
-            if tolerance.integrality_tolerance is not None:
-                solver_settings.set_integrality_tolerance(
-                    tolerance.integrality_tolerance
+            if tolerance.mip_integrality_tolerance is not None:
+                solver_settings.set_parameter(
+                    CUOPT_MIP_INTEGRALITY_TOLERANCE,
+                    tolerance.mip_integrality_tolerance,
                 )
-            if tolerance.absolute_mip_gap is not None:
-                solver_settings.set_absolute_mip_gap(
-                    tolerance.absolute_mip_gap
+            if tolerance.mip_absolute_gap is not None:
+                solver_settings.set_parameter(
+                    CUOPT_MIP_ABSOLUTE_GAP, tolerance.mip_absolute_gap
                 )
-            if tolerance.relative_mip_gap is not None:
-                solver_settings.set_relative_mip_gap(
-                    tolerance.relative_mip_gap
+            if tolerance.mip_relative_gap is not None:
+                solver_settings.set_parameter(
+                    CUOPT_MIP_RELATIVE_GAP, tolerance.mip_relative_gap
                 )
         if warmstart_data is not None:
             solver_settings.set_pdlp_warm_start_data(warmstart_data)
         if solver_config.mip_scaling is not None:
-            solver_settings.set_mip_scaling(solver_config.mip_scaling)
-        if solver_config.heuristics_only is not None:
-            solver_settings.set_mip_heuristics_only(
-                solver_config.heuristics_only
+            solver_settings.set_parameter(
+                CUOPT_MIP_SCALING, solver_config.mip_scaling
+            )
+        if solver_config.mip_heuristics_only is not None:
+            solver_settings.set_parameter(
+                CUOPT_MIP_HEURISTICS_ONLY, solver_config.mip_heuristics_only
             )
         if solver_config.num_cpu_threads is not None:
-            solver_settings.set_mip_num_cpu_threads(
-                solver_config.num_cpu_threads
+            solver_settings.set_parameter(
+                CUOPT_NUM_CPU_THREADS, solver_config.num_cpu_threads
+            )
+        if solver_config.crossover is not None:
+            solver_settings.set_parameter(
+                CUOPT_CROSSOVER, solver_config.crossover
             )
         if solver_config.log_to_console is not None:
-            solver_settings.set_log_to_console(solver_config.log_to_console)
+            solver_settings.set_parameter(
+                CUOPT_LOG_TO_CONSOLE, solver_config.log_to_console
+            )
     return warnings, solver_settings
+
+
+def get_solver_exception_type(status, message):
+    msg = f"error_status: {status}, msg: {message}"
+
+    # TODO change these to enums once we have a clear place
+    # to map them from for both routing and lp
+    if status == ErrorStatus.Success:
+        return None
+    elif status == ErrorStatus.ValidationError:
+        return InputValidationError(msg)
+    elif status == ErrorStatus.OutOfMemoryError:
+        return OutOfMemoryError(msg)
+    elif status == ErrorStatus.RuntimeError:
+        return InputRuntimeError(msg)
+    else:
+        return RuntimeError(msg)
 
 
 def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
@@ -353,11 +423,11 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
             )
             warnings.extend(cswarnings)
             callback = (
-                CustomLPIncumbentSolCallback(intermediate_sender, reqId)
+                CustomGetSolutionCallback(intermediate_sender, reqId)
                 if intermediate_sender is not None
                 else None
             )
-            solver_settings.set_mip_incumbent_solution_callback(callback)
+            solver_settings.set_mip_callback(callback)
             solve_begin_time = time.time()
             sol = linear_programming.Solve(
                 data_model, solver_settings=solver_settings, log_file=log_file
@@ -368,8 +438,22 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
         if is_batch:
             res = []
             for i_sol in sol:
-                res.append(create_solution(i_sol))
-        else:
+                if i_sol is None:
+                    continue
+                if i_sol.get_error_status() != ErrorStatus.Success:
+                    res.append(
+                        {
+                            "status": i_sol.get_error_status(),
+                            "solution": i_sol.get_error_message(),
+                        }
+                    )
+                else:
+                    res.append(create_solution(i_sol))
+        elif sol is not None:
+            if sol.get_error_status() != ErrorStatus.Success:
+                raise get_solver_exception_type(
+                    sol.get_error_status(), sol.get_error_message()
+                )
             res = create_solution(sol)
 
         return notes, warnings, res, total_solve_time

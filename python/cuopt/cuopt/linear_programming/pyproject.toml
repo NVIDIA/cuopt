@@ -30,6 +30,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
+[project.urls]
+Homepage = "https://docs.nvidia.com/cuopt/introduction.html"
+Source = "https://github.com/nvidia/cuopt"
 
 [project.optional-dependencies]
 test = [
@@ -52,7 +55,7 @@ cmake.version = "CMakeLists.txt"
 minimum-version = "build-system.requires"
 ninja.make-fallback = false
 sdist.reproducible = true
-wheel.packages=["data_model", "solver_settings", "solution", "cuopt_mps_parser"]
+wheel.packages=["data_model", "solution", "cuopt_mps_parser"]
 
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
