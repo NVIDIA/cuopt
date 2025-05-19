@@ -18,7 +18,7 @@ This will display the complete list of command-line arguments and their usage:
 
 
 Basic Usage
-##########
+###########
 
 To solve a simple LP problem using cuopt_cli:
 
@@ -70,7 +70,7 @@ This should give you the following output:
 
 
 Mixed Integer Programming Example
-###############################
+#################################
 
 Here's an example of solving a Mixed Integer Programming (MIP) problem using the CLI:
 
@@ -112,7 +112,7 @@ This should produce output similar to:
 .. code-block:: bash
    :caption: Output
 
-  [2025-05-19 11:18:19:229055] [CUOPT] [info  ] Running file mip_sample.mps
+   [2025-05-19 11:18:19:229055] [CUOPT] [info  ] Running file mip_sample.mps
    Solving a problem with 3 constraints 2 variables (2 integers) and 6 nonzeros
    Objective offset 0.000000 scaling_factor 1.000000
    After trivial presolve updated 3 constraints 2 variables
@@ -144,7 +144,7 @@ This should produce output similar to:
 
 
 Using Solver Parameters
-######################
+#######################
 
 You can customize the solver behavior using various command line parameters. Some examples are shown below:
 
