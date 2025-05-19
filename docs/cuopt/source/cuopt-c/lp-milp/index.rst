@@ -11,5 +11,6 @@ This section contains details on the cuOpt LP/MILP C API.
 
    lp-milp-c-api.rst
    ../../lp-milp-settings.rst
+   cli.rst
    lp-example.rst
    milp-examples.rst
