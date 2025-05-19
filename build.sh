@@ -36,7 +36,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    cuopt_mps_parser - build the cuopt_mps_parser python package
    cuopt            - build the cuopt Python package
    cuopt_server     - build the cuopt_server Python package
-   cuopt_sh_client     - build cuopt self host client   
+   cuopt_sh_client  - build cuopt self host client
    docs             - build the docs
  and <flag> is:
    -v               - verbose build mode
