@@ -639,11 +639,14 @@ void problem_t<i_t, f_t>::post_process_assignment(rmm::device_uvector<f_t>& curr
   auto assgn       = make_span(current_assignment);
   auto fixed_assgn = make_span(presolve_data.fixed_var_assignment);
   auto var_map     = make_span(presolve_data.variable_mapping);
-  thrust::for_each(
-    handle_ptr->get_thrust_policy(),
-    thrust::make_counting_iterator<i_t>(0),
-    thrust::make_counting_iterator<i_t>(current_assignment.size()),
-    [fixed_assgn, var_map, assgn] __device__(auto idx) { fixed_assgn[var_map[idx]] = assgn[idx]; });
+  if (current_assignment.size() > 0) {
+    thrust::for_each(handle_ptr->get_thrust_policy(),
+                     thrust::make_counting_iterator<i_t>(0),
+                     thrust::make_counting_iterator<i_t>(current_assignment.size()),
+                     [fixed_assgn, var_map, assgn] __device__(auto idx) {
+                       fixed_assgn[var_map[idx]] = assgn[idx];
+                     });
+  }
   expand_device_copy(
     current_assignment, presolve_data.fixed_var_assignment, handle_ptr->get_stream());
   auto h_assignment = cuopt::host_copy(current_assignment, handle_ptr->get_stream());
