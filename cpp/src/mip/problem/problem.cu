@@ -593,20 +593,24 @@ bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assig
     return false;
   }
 
-  // Map assignment to internal solution using variable mapping
-  rmm::device_uvector<f_t> internal_assignment(assignment, handle_ptr->get_stream());
-
+  // create a temp assignment with the var size after bounds standardization (free vars added)
+  rmm::device_uvector<f_t> temp_assignment(presolve_data.additional_var_used.size(),
+                                           handle_ptr->get_stream());
+  // copy the assignment to the first part(the original variable count) of the temp_assignment
+  raft::copy(
+    temp_assignment.data(), assignment.data(), assignment.size(), handle_ptr->get_stream());
   auto d_additional_var_used =
     cuopt::device_copy(presolve_data.additional_var_used, handle_ptr->get_stream());
   auto d_additional_var_id_per_var =
     cuopt::device_copy(presolve_data.additional_var_id_per_var, handle_ptr->get_stream());
 
+  // handle free var logic by substituting the free vars and their corresponding vars
   thrust::for_each(handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator<i_t>(0),
                    thrust::make_counting_iterator<i_t>(original_problem_ptr->get_n_variables()),
                    [additional_var_used       = d_additional_var_used.data(),
                     additional_var_id_per_var = d_additional_var_id_per_var.data(),
-                    assgn                     = internal_assignment.data()] __device__(auto idx) {
+                    assgn                     = temp_assignment.data()] __device__(auto idx) {
                      if (additional_var_used[idx]) {
                        cuopt_assert(additional_var_id_per_var[idx] != -1,
                                     "additional_var_id_per_var is not set");
@@ -621,7 +625,7 @@ bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assig
   thrust::gather(handle_ptr->get_thrust_policy(),
                  presolve_data.variable_mapping.begin(),
                  presolve_data.variable_mapping.end(),
-                 internal_assignment.begin(),
+                 temp_assignment.begin(),
                  assignment.begin());
   assignment.resize(presolve_data.variable_mapping.size(), handle_ptr->get_stream());
   assignment.shrink_to_fit(handle_ptr->get_stream());
