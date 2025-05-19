@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-#include "../utilities/pdlp_test_utilities.cuh"
+#include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 
 #include <cuopt/linear_programming/solve.hpp>
 #include <linear_programming/utils.cuh>

@@ -161,6 +161,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
   bool better_solution_found = problem_ptr->maximize
                                  ? sol.get_user_objective() > best_feasible_objective
                                  : sol.get_user_objective() < best_feasible_objective;
+  auto user_callbacks        = context.settings.get_mip_callbacks();
   if (better_solution_found && sol.get_feasible()) {
     CUOPT_LOG_DEBUG("Population: Found new best solution %g", sol.get_user_objective());
     best_feasible_objective = sol.get_user_objective();
@@ -168,13 +169,56 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       problem_ptr->branch_and_bound_callback(sol.get_host_assignment());
     }
 
-    auto incumbent_sol_callback = context.settings.get_incumbent_solution_callback();
-    if (incumbent_sol_callback != nullptr) {
-      rmm::device_uvector<f_t> incumbent_assignment(sol.assignment, sol.handle_ptr->get_stream());
-      problem_ptr->post_process_assignment(incumbent_assignment);
+    for (auto callback : user_callbacks) {
+      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
+        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
+        solution_t<i_t, f_t> temp_sol(sol);
+        problem_ptr->post_process_assignment(temp_sol.assignment);
+        rmm::device_uvector<f_t> dummy(0, temp_sol.handle_ptr->get_stream());
+        if (context.settings.mip_scaling) {
+          context.scaling.unscale_solutions(temp_sol.assignment, dummy);
+          // Need to get unscaled problem as well
+          problem_t<i_t, f_t> n_problem(*sol.problem_ptr->original_problem_ptr);
+          temp_sol.problem_ptr = &n_problem;
+          temp_sol.resize_to_original_problem();
+          temp_sol.compute_feasibility();
+          if (!temp_sol.get_feasible()) {
+            CUOPT_LOG_DEBUG("Discard infeasible after unscaling");
+            return;
+          }
+        }
+
+        rmm::device_uvector<f_t> user_objective_vec(1, temp_sol.handle_ptr->get_stream());
+
+        f_t user_objective =
+          temp_sol.problem_ptr->get_user_obj_from_solver_obj(temp_sol.get_objective());
+        user_objective_vec.set_element_async(0, user_objective, temp_sol.handle_ptr->get_stream());
+        CUOPT_LOG_DEBUG("Returning incumbent solution with objective %g", user_objective);
+        get_sol_callback->get_solution(temp_sol.assignment.data(), user_objective_vec.data());
+      }
+    }
+  }
+
+  for (auto callback : user_callbacks) {
+    if (callback->get_type() == internals::base_solution_callback_type::SET_SOLUTION) {
+      auto set_sol_callback = static_cast<internals::set_solution_callback_t*>(callback);
+      rmm::device_uvector<f_t> incumbent_assignment(
+        problem_ptr->original_problem_ptr->get_n_variables(), sol.handle_ptr->get_stream());
       rmm::device_uvector<f_t> dummy(0, sol.handle_ptr->get_stream());
-      if (context.settings.get_mip_scaling()) {
-        context.scaling.unscale_solutions(incumbent_assignment, dummy);
+      solution_t<i_t, f_t> outside_sol(sol);
+      rmm::device_scalar<f_t> d_outside_sol_objective(sol.handle_ptr->get_stream());
+      auto inf = std::numeric_limits<f_t>::infinity();
+      d_outside_sol_objective.set_value_async(inf, sol.handle_ptr->get_stream());
+      set_sol_callback->set_solution(incumbent_assignment.data(), d_outside_sol_objective.data());
+      f_t outside_sol_objective = d_outside_sol_objective.value(sol.handle_ptr->get_stream());
+      // The callback might be called without setting any valid solution or objective which triggers
+      // asserts
+      if (outside_sol_objective == inf) { return; }
+
+      CUOPT_LOG_DEBUG("Injecting external solution with objective %g", outside_sol_objective);
+
+      if (context.settings.mip_scaling) {
+        context.scaling.scale_solutions(incumbent_assignment, dummy);
       }
       f_t user_objective = sol.problem_ptr->get_user_obj_from_solver_obj(sol.get_objective());
       CUOPT_LOG_DEBUG("Returning incumbent solution with objective %g", user_objective);
