@@ -199,14 +199,12 @@ fi
 if hasArg -b; then
     DEFINE_BENCHMARK=true
 fi
-
 if hasArg --verbose-pdlp; then
     DEFINE_PDLP_VERBOSE_MODE=true
 fi
 if hasArg -n; then
     INSTALL_TARGET=""
 fi
-
 if hasArg --allgpuarch; then
     BUILD_ALL_GPU_ARCH=1
 fi
