@@ -208,30 +208,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       rmm::device_uvector<f_t> dummy(0, sol.handle_ptr->get_stream());
       solution_t<i_t, f_t> outside_sol(sol);
       rmm::device_scalar<f_t> d_outside_sol_objective(sol.handle_ptr->get_stream());
-      auto inf = std::numeric_limits<f_t>::infinity();
-      d_outside_sol_objective.set_value_async(inf, sol.handle_ptr->get_stream());
-      set_sol_callback->set_solution(incumbent_assignment.data(), d_outside_sol_objective.data());
-      f_t outside_sol_objective = d_outside_sol_objective.value(sol.handle_ptr->get_stream());
-      // The callback might be called without setting any valid solution or objective which triggers
-      // asserts
-      if (outside_sol_objective == inf) { return; }
-
-      CUOPT_LOG_DEBUG("Injecting external solution with objective %g", outside_sol_objective);
-
-      if (context.settings.mip_scaling) {
-        context.scaling.scale_solutions(incumbent_assignment, dummy);
-      }
-    }
-  }
-
-  for (auto callback : user_callbacks) {
-    if (callback->get_type() == internals::base_solution_callback_type::SET_SOLUTION) {
-      auto set_sol_callback = static_cast<internals::set_solution_callback_t*>(callback);
-      rmm::device_uvector<f_t> incumbent_assignment(
-        problem_ptr->original_problem_ptr->get_n_variables(), sol.handle_ptr->get_stream());
-      rmm::device_uvector<f_t> dummy(0, sol.handle_ptr->get_stream());
-      solution_t<i_t, f_t> outside_sol(sol);
-      rmm::device_scalar<f_t> d_outside_sol_objective(sol.handle_ptr->get_stream());
+      sol.handle_ptr->sync_stream();
       set_sol_callback->set_solution(incumbent_assignment.data(), d_outside_sol_objective.data());
 
       f_t outside_sol_objective = d_outside_sol_objective.value(sol.handle_ptr->get_stream());

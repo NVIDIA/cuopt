@@ -59,7 +59,6 @@ class test_set_solution_callback_t : public cuopt::internals::set_solution_callb
     if (solutions.empty()) { return; }
 
     auto const& [last_assignment, last_cost] = solutions.back();
-
     raft::copy(assignment, last_assignment.data(), last_assignment.size(), stream);
     raft::copy(cost_ptr, &last_cost, 1, stream);
     stream.synchronize();
@@ -134,7 +133,8 @@ void test_incumbent_callback(std::string test_instance)
 
 TEST(mip_solve, incumbent_callback_test)
 {
-  std::vector<std::string> test_instances = {"mip/50v-10.mps", "mip/neos5.mps", "mip/swath1.mps"};
+  std::vector<std::string> test_instances = {
+    "mip/50v-10.mps", "mip/neos5-free-bound.mps", "mip/swath1.mps"};
   for (const auto& test_instance : test_instances) {
     test_incumbent_callback(test_instance);
   }
