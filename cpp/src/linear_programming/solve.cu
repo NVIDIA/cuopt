@@ -256,6 +256,7 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   info.primal_objective      = solution.user_objective;
   info.solve_time            = duration;
   info.number_of_steps_taken = solution.iterations;
+  info.solved_by_pdlp        = false;
 
   auto sol = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
                                                        final_dual_solution,

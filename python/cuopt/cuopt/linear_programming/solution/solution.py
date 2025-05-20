@@ -128,6 +128,8 @@ class Solution:
         Time used for pre-solve
     solve_time: Float64
         Solve time in milliseconds
+    solved_by_pdlp: bool
+        Whether the problem was solved by PDLP or Dual Simplex
     """
 
     def __init__(
@@ -172,6 +174,7 @@ class Solution:
         max_variable_bound_violation=0.0,
         num_nodes=0,
         num_simplex_iterations=0,
+        solved_by_pdlp=None,
     ):
         self.problem_category = problem_category
         self.primal_solution = primal_solution
@@ -202,6 +205,7 @@ class Solution:
         self.primal_objective = primal_objective
         self.dual_objective = dual_objective
         self.solve_time = solve_time
+        self.solved_by_pdlp = solved_by_pdlp
         self.vars = vars
         self.lp_stats = {
             "primal_residual": primal_residual,
@@ -296,6 +300,12 @@ class Solution:
         Returns the engine solve time in seconds as a float64.
         """
         return self.solve_time
+
+    def get_solved_by_pdlp(self):
+        """
+        Returns whether the problem was solved by PDLP or Dual Simplex
+        """
+        return self.solved_by_pdlp
 
     def get_vars(self):
         """

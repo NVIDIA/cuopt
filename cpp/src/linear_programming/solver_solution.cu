@@ -152,37 +152,41 @@ void optimization_problem_solution_t<i_t, f_t>::write_additional_termination_sta
   myfile << "\t\"Additional termination information\" : { " << std::endl;
   myfile << "\t\"Number of steps taken\" : " << termination_stats_.number_of_steps_taken << ","
          << std::endl;
-  myfile << "\t\"Total number of attempted steps\" : "
-         << termination_stats_.total_number_of_attempted_steps << "," << std::endl;
-  myfile << "\t\"Total solve time (ms)\" : " << termination_stats_.solve_time << "," << std::endl;
-
-  myfile << "\t\t\"Convergence measures\" : { " << std::endl;
-  myfile << "\t\t\t\"Absolute primal residual\" : " << termination_stats_.l2_primal_residual << ","
-         << std::endl;
-  myfile << "\t\t\t\"Relative primal residual\" : "
-         << termination_stats_.l2_relative_primal_residual << "," << std::endl;
-  myfile << "\t\t\t\"Absolute dual residual\" : " << termination_stats_.l2_dual_residual << ","
-         << std::endl;
-  myfile << "\t\t\t\"Relative dual residual\" : " << termination_stats_.l2_relative_dual_residual
-         << "," << std::endl;
-  myfile << "\t\t\t\"Primal objective value\" : " << termination_stats_.primal_objective << ","
-         << std::endl;
-  myfile << "\t\t\t\"Dual objective value\" : " << termination_stats_.dual_objective << ","
-         << std::endl;
-  myfile << "\t\t\t\"Gap\" : " << termination_stats_.gap << std::endl;
-  myfile << "\t\t\t\"Relative gap\" : " << termination_stats_.relative_gap << "," << std::endl;
-  myfile << "\t\t}, " << std::endl;
-
-  myfile << "\t\t\"Infeasibility measures\" : {" << std::endl;
-  myfile << "\t\t\t\"Maximum error for the linear constraints and sign constraints\" : "
-         << termination_stats_.max_primal_ray_infeasibility << "," << std::endl;
-  myfile << "\t\t\t\"Objective value for the extreme primal ray\" : "
-         << termination_stats_.primal_ray_linear_objective << "," << std::endl;
-  myfile << "\t\t\t\"Maximum constraint error\" : " << termination_stats_.max_dual_ray_infeasibility
-         << "," << std::endl;
-  myfile << "\t\t\t\"Objective value for the extreme dual ray\" : "
-         << termination_stats_.dual_ray_linear_objective << std::endl;
-  myfile << "\t\t} " << std::endl;
+  if (termination_stats_.solved_by_pdlp) {
+    myfile << "\t\"Total number of attempted steps\" : "
+           << termination_stats_.total_number_of_attempted_steps << "," << std::endl;
+  }
+  myfile << "\t\"Total solve time\" : " << termination_stats_.solve_time;
+  if (termination_stats_.solved_by_pdlp) {
+    myfile << "," << std::endl;
+    myfile << "\t\t\"Convergence measures\" : { " << std::endl;
+    myfile << "\t\t\t\"Absolute primal residual\" : " << termination_stats_.l2_primal_residual
+           << "," << std::endl;
+    myfile << "\t\t\t\"Relative primal residual\" : "
+           << termination_stats_.l2_relative_primal_residual << "," << std::endl;
+    myfile << "\t\t\t\"Absolute dual residual\" : " << termination_stats_.l2_dual_residual << ","
+           << std::endl;
+    myfile << "\t\t\t\"Relative dual residual\" : " << termination_stats_.l2_relative_dual_residual
+           << "," << std::endl;
+    myfile << "\t\t\t\"Primal objective value\" : " << termination_stats_.primal_objective << ","
+           << std::endl;
+    myfile << "\t\t\t\"Dual objective value\" : " << termination_stats_.dual_objective << ","
+           << std::endl;
+    myfile << "\t\t\t\"Gap\" : " << termination_stats_.gap << "," << std::endl;
+    myfile << "\t\t\t\"Relative gap\" : " << termination_stats_.relative_gap << std::endl;
+    myfile << "\t\t}, " << std::endl;
+    myfile << "\t\t\"Infeasibility measures\" : {" << std::endl;
+    myfile << "\t\t\t\"Maximum error for the linear constraints and sign constraints\" : "
+           << termination_stats_.max_primal_ray_infeasibility << "," << std::endl;
+    myfile << "\t\t\t\"Objective value for the extreme primal ray\" : "
+           << termination_stats_.primal_ray_linear_objective << "," << std::endl;
+    myfile << "\t\t\t\"Maximum constraint error\" : "
+           << termination_stats_.max_dual_ray_infeasibility << "," << std::endl;
+    myfile << "\t\t\t\"Objective value for the extreme dual ray\" : "
+           << termination_stats_.dual_ray_linear_objective << std::endl;
+    myfile << "\t\t} " << std::endl;
+  } else
+    myfile << std::endl;
 
   myfile << "\t} " << std::endl;
 }

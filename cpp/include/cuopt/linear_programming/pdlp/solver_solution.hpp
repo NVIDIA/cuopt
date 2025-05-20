@@ -97,6 +97,9 @@ class optimization_problem_solution_t : public base_solution_t {
 
     /** Solve time in seconds */
     double solve_time;
+
+    /** Whether the problem was solved by PDLP or Dual Simplex */
+    bool solved_by_pdlp;
   };
 
   /**

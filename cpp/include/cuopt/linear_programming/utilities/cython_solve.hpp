@@ -70,6 +70,7 @@ struct linear_programming_ret_t {
   double gap_;
   int nb_iterations_;
   double solve_time_;
+  bool solved_by_pdlp_;
 };
 
 struct mip_ret_t {
