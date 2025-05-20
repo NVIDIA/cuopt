@@ -61,7 +61,6 @@ Here's an example of solving a Mixed Integer Programming (MIP) problem using the
 .. code-block:: bash
 
     echo "* Optimal solution -28
-   * Has 5 nodes
    NAME          MIP_SAMPLE
    ROWS
    N  OBJ
@@ -80,7 +79,7 @@ Here's an example of solving a Mixed Integer Programming (MIP) problem using the
       X2        C3              -2
     MARK0001  'MARKER'                 'INTEND'
    RHS
-       RHS       C1               4
+      RHS       C1               4
       RHS       C2              20
       RHS       C3              -7
    BOUNDS

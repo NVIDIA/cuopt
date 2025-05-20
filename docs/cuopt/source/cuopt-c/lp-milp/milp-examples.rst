@@ -451,7 +451,6 @@ Build and run the example
     # Create a MPS file in the current directory
     echo "* Example 2.1 from N & W
    * Optimal solution -28
-   * Has 5 nodes
    NAME          EXAMPLE21
    ROWS
     N  OBJ
