@@ -617,18 +617,18 @@ bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assig
                        // We have two non-negative variables y and z that simulate a free variable
                        // x. If the value of x is negative, we can set z to be something higher than
                        // y. If the value of  x is positive we can set y greater than z
-                       assgn[additional_var_id_per_var[idx]] = assgn[idx] < 0 ? -assgn[idx] : 0.;
+                       assgn[additional_var_id_per_var[idx]] = (assgn[idx] < 0 ? -assgn[idx] : 0.);
                        assgn[idx] += assgn[additional_var_id_per_var[idx]];
                      }
                    });
-
+  assignment.resize(n_variables, handle_ptr->get_stream());
+  assignment.shrink_to_fit(handle_ptr->get_stream());
+  cuopt_assert(presolve_data.variable_mapping.size() == n_variables, "size mismatch");
   thrust::gather(handle_ptr->get_thrust_policy(),
                  presolve_data.variable_mapping.begin(),
                  presolve_data.variable_mapping.end(),
                  temp_assignment.begin(),
                  assignment.begin());
-  assignment.resize(presolve_data.variable_mapping.size(), handle_ptr->get_stream());
-  assignment.shrink_to_fit(handle_ptr->get_stream());
   handle_ptr->sync_stream();
   return true;
 }

@@ -62,6 +62,8 @@ class test_set_solution_callback_t : public cuopt::internals::set_solution_callb
     raft::copy(assignment, last_assignment.data(), last_assignment.size(), stream);
     raft::copy(cost_ptr, &last_cost, 1, stream);
     stream.synchronize();
+    // Erase the last element of solutions after copying it
+    solutions.pop_back();
   }
   std::vector<std::pair<rmm::device_uvector<double>, double>>& solutions;
   int n_calls;
