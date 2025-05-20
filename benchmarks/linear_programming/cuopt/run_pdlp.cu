@@ -102,7 +102,8 @@ static cuopt::linear_programming::pdlp_solver_settings_t<int, double> create_sol
   settings.time_limit      = program.get<double>("--time-limit");
   settings.iteration_limit = program.get<int>("--iteration-limit");
   settings.set_optimality_tolerance(program.get<double>("--optimality-tolerance"));
-  settings.pdlp_solver_mode = string_to_pdlp_solver_mode(program.get<std::string>("--pdlp-solver-mode"));
+  settings.pdlp_solver_mode =
+    string_to_pdlp_solver_mode(program.get<std::string>("--pdlp-solver-mode"));
   settings.method = static_cast<cuopt::linear_programming::method_t>(program.get<int>("--method"));
   settings.crossover = program.get<int>("--crossover");
 
