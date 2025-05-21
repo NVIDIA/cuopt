@@ -127,7 +127,7 @@ class Solution:
         Note: Applicable to only MILP
         Time used for pre-solve
     solve_time: Float64
-        Solve time in milliseconds
+        Solve time in seconds
     solved_by_pdlp: bool
         Whether the problem was solved by PDLP or Dual Simplex
     """
