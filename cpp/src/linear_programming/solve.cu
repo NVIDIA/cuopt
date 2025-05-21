@@ -397,6 +397,7 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
                                                                    info,
                                                                    termination_status);
     sol.copy_from(problem.handle_ptr, sol_crossover);
+    CUOPT_LOG_INFO("Crossover status %s", sol.get_termination_status_string().c_str());
   }
   if (crossover_info == 0 && settings.concurrent_halt != nullptr) {
     // We finished. Tell dual simplex to stop if it is still running.
