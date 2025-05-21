@@ -793,12 +793,6 @@ void problem_t<i_t, f_t>::compute_related_variables(double time_limit)
   i_t related_var_offset = 0;
   auto start_time        = std::chrono::high_resolution_clock::now();
   for (i_t i = 0;; ++i) {
-    auto current_time = std::chrono::high_resolution_clock::now();
-    if (std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count() >
-        time_limit) {
-      CUOPT_LOG_DEBUG("Early exit in computing related variables!");
-      break;
-    }
     i_t slice_size = min(max_slice_size, n_variables - i * max_slice_size);
     if (slice_size <= 0) break;
 
@@ -826,10 +820,14 @@ void problem_t<i_t, f_t>::compute_related_variables(double time_limit)
     i_t related_var_base = related_variables.size();
     related_variables.resize(related_variables.size() + array_size, handle_ptr->get_stream());
 
+    auto current_time = std::chrono::high_resolution_clock::now();
     // if the related variable array would wind up being too large for available memory, abort
     // TODO this used to be 1e9
-    if (related_variables.size() > 1e9) {
-      CUOPT_LOG_DEBUG("Computing the related variable array would use too much memory, aborting\n");
+    if (related_variables.size() > 1e9 ||
+        std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count() >
+          time_limit) {
+      CUOPT_LOG_DEBUG(
+        "Computing the related variable array would use too much memory or time, aborting\n");
       related_variables.resize(0, handle_ptr->get_stream());
       related_variables_offsets.resize(0, handle_ptr->get_stream());
       return;
