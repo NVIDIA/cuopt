@@ -257,6 +257,7 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   info.solve_time            = duration;
   info.number_of_steps_taken = solution.iterations;
 
+  pdlp_termination_status_t termination_status = to_termination_status(status);
   auto sol = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
                                                        final_dual_solution,
                                                        final_reduced_cost,
@@ -264,7 +265,13 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
                                                        problem.var_names,
                                                        problem.row_names,
                                                        info,
-                                                       to_termination_status(status));
+                                                       termination_status);
+
+  if (termination_status != pdlp_termination_status_t::Optimal &&
+      termination_status != pdlp_termination_status_t::TimeLimit &&
+      termination_status != pdlp_termination_status_t::ConcurrentLimit) {
+    CUOPT_LOG_INFO("Dual simplex status %s", sol.get_termination_status_string().c_str());
+  }
 
   problem.handle_ptr->sync_stream();
   return sol;
@@ -295,7 +302,9 @@ std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t
 
   CUOPT_LOG_INFO("Dual simplex finished in %.2f seconds", duration.count() / 1000.0);
 
-  if (settings.concurrent_halt != nullptr) {
+  if (settings.concurrent_halt != nullptr && (status == dual_simplex::lp_status_t::OPTIMAL ||
+                                              status == dual_simplex::lp_status_t::UNBOUNDED ||
+                                              status == dual_simplex::lp_status_t::INFEASIBLE)) {
     // We finished. Tell PDLP to stop if it is still running.
     settings.concurrent_halt->store(1, std::memory_order_release);
   }
@@ -398,7 +407,8 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     sol.copy_from(problem.handle_ptr, sol_crossover);
     CUOPT_LOG_INFO("Crossover status %s", sol.get_termination_status_string().c_str());
   }
-  if (crossover_info == 0 && settings.concurrent_halt != nullptr) {
+  if (settings.concurrent_halt != nullptr && crossover_info == 0 &&
+      sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
     // We finished. Tell dual simplex to stop if it is still running.
     settings.concurrent_halt->store(1, std::memory_order_release);
   }

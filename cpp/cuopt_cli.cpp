@@ -86,6 +86,7 @@ int run_single_file(const std::string& file_path,
 {
   const raft::handle_t handle_{};
   cuopt::linear_programming::solver_settings_t<int, double> settings;
+  cuopt::default_logger().set_pattern("%v");
 
   try {
     for (auto& [key, val] : settings_strings) {

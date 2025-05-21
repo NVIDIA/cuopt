@@ -61,6 +61,7 @@ int8_t cuOptGetIntSize() { return sizeof(cuopt_int_t); }
 
 cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* problem_ptr)
 {
+  cuopt::default_logger().set_pattern("%v");
   problem_and_stream_view_t* problem_and_stream = new problem_and_stream_view_t();
   std::string filename_str(filename);
   bool input_mps_strict = false;
@@ -100,6 +101,7 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
                                const char* variable_types,
                                cuOptOptimizationProblem* problem_ptr)
 {
+  cuopt::default_logger().set_pattern("%v");
   if (problem_ptr == nullptr || objective_coefficients == nullptr ||
       constraint_matrix_row_offsets == nullptr || constraint_matrix_column_indices == nullptr ||
       constraint_matrix_coefficent_values == nullptr || constraint_sense == nullptr ||
@@ -155,6 +157,7 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
                                      const char* variable_types,
                                      cuOptOptimizationProblem* problem_ptr)
 {
+  cuopt::default_logger().set_pattern("%v");
   if (problem_ptr == nullptr || objective_coefficients == nullptr ||
       constraint_matrix_row_offsets == nullptr || constraint_matrix_column_indices == nullptr ||
       constraint_matrix_coefficent_values == nullptr || constraint_lower_bounds == nullptr ||
@@ -431,6 +434,7 @@ cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variab
 
 cuopt_int_t cuOptCreateSolverSettings(cuOptSolverSettings* settings_ptr)
 {
+  cuopt::default_logger().set_pattern("%v");
   if (settings_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   solver_settings_t<cuopt_int_t, cuopt_float_t>* settings =
     new solver_settings_t<cuopt_int_t, cuopt_float_t>();
@@ -492,6 +496,14 @@ cuopt_int_t cuOptSetIntegerParameter(cuOptSolverSettings settings,
     static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
   try {
     solver_settings->set_parameter<cuopt_int_t>(parameter_name, parameter_value);
+  } catch (const std::invalid_argument& e) {
+    // We could be trying to set a boolean parameter. Try that
+    try {
+      bool value = static_cast<bool>(parameter_value);
+      solver_settings->set_parameter<bool>(parameter_name, value);
+    } catch (const std::exception& e) {
+      return CUOPT_INVALID_ARGUMENT;
+    }
   } catch (const std::exception& e) {
     return CUOPT_INVALID_ARGUMENT;
   }
@@ -509,6 +521,14 @@ cuopt_int_t cuOptGetIntegerParameter(cuOptSolverSettings settings,
     static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
   try {
     *parameter_value_ptr = solver_settings->get_parameter<cuopt_int_t>(parameter_name);
+  } catch (const std::invalid_argument& e) {
+    // We could be trying to get a boolean parameter. Try that
+    try {
+      *parameter_value_ptr =
+        static_cast<cuopt_int_t>(solver_settings->get_parameter<bool>(parameter_name));
+    } catch (const std::exception& e) {
+      return CUOPT_INVALID_ARGUMENT;
+    }
   } catch (const std::exception& e) {
     return CUOPT_INVALID_ARGUMENT;
   }
