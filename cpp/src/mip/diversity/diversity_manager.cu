@@ -337,7 +337,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     ls.constraint_prop.bounds_update.probing_cache.probing_cache;
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
-  lp_state_t<i_t, f_t>& lp_state = lp_state_t<i_t, f_t>::get_default_lp_state(*problem_ptr);
+  lp_state_t<i_t, f_t>& lp_state = context.lp_state;
   // resize because some constructor might be called before the presolve
   lp_state.resize(*problem_ptr, problem_ptr->handle_ptr->get_stream());
   auto lp_result = get_relaxed_lp_solution(*problem_ptr,
@@ -546,6 +546,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
                          lp_offspring,
                          lp_offspring.problem_ptr->integer_indices,
                          context.settings.get_tolerances(),
+                         context.lp_state,
                          lp_run_time);
   cuopt_assert(population.test_invariant(), "");
   cuopt_assert(lp_offspring.test_number_all_integer(), "All must be integers after LP");

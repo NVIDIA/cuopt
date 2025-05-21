@@ -51,6 +51,7 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
                             solution_t<i_t, f_t>& solution,
                             const rmm::device_uvector<i_t>& variables_to_fix,
                             typename mip_solver_settings_t<i_t, f_t>::tolerances_t tols,
+                            lp_state_t<i_t, f_t>& lp_state,
                             f_t time_limit                             = 20.,
                             bool return_first_feasible                 = false,
                             bound_presolve_t<i_t, f_t>* bound_presolve = nullptr);
