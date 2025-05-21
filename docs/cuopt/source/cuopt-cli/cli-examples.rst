@@ -39,7 +39,7 @@ This should give you the following output:
 .. code-block:: bash
    :caption: Output
 
-   [2025-05-19 10:09:28:353715] [CUOPT] [info  ] Running file sample.mps
+   Running file sample.mps
    Solving a problem with 2 constraints 2 variables (0 integers) and 4 nonzeros
    Objective offset 0.000000 scaling_factor 1.000000
    Running concurrent
@@ -95,7 +95,7 @@ This should produce output similar to:
 .. code-block:: bash
    :caption: Output
 
-   [2025-05-19 11:18:19:229055] [CUOPT] [info  ] Running file mip_sample.mps
+   Running file mip_sample.mps
    Solving a problem with 3 constraints 2 variables (2 integers) and 6 nonzeros
    Objective offset 0.000000 scaling_factor 1.000000
    After trivial presolve updated 3 constraints 2 variables
@@ -134,10 +134,10 @@ You can customize the solver behavior using various command line parameters. Som
 .. code-block:: bash
 
     # Set absolute primal tolerance and PDLP solver mode
-    cuopt_cli sample.mps --absolute-primal-tolerance 0.0001 --pdlp-solver-mode 1
+    cuopt_cli --absolute-primal-tolerance 0.0001 --pdlp-solver-mode 1 sample.mps
 
     # Set time limit and use specific solver method
-    cuopt_cli sample.mps --time-limit 5 --method pdlp    
+    cuopt_cli --time-limit 5 --method pdlp sample.mps
 
     # Turn off output to console and output the logs to a .log file and solution to a .sol file
-    cuopt_cli mip_sample.mps --log-to-console false --log-file mip_sample.log --solution-file mip_sample.sol
+    cuopt_cli --log-to-console false --log-file mip_sample.log --solution-file mip_sample.sol mip_sample.mps
