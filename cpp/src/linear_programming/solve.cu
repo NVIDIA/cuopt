@@ -521,9 +521,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
   try {
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
-#if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
-    cuopt::default_logger().set_pattern("%v");
-#endif
 
     // Init libraies before to not include it in solve time
     // This needs to be called before pdlp is initialized
