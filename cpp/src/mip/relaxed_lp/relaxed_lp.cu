@@ -135,6 +135,7 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
                             solution_t<i_t, f_t>& solution,
                             const rmm::device_uvector<i_t>& variables_to_fix,
                             typename mip_solver_settings_t<i_t, f_t>::tolerances_t tols,
+                            lp_state_t<i_t, f_t>& lp_state,
                             f_t time_limit,
                             bool return_first_feasible,
                             bound_presolve_t<i_t, f_t>* bound_presolve)
@@ -160,7 +161,6 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
   // if we are on the original problem and fixing the integers, save the state
   // if we are in recombiners and on a smaller problem, don't update the state with integers fixed
   bool save_state      = false;
-  auto& lp_state       = lp_state_t<i_t, f_t>::get_default_lp_state(fixed_problem);
   auto solver_response = get_relaxed_lp_solution(fixed_problem,
                                                  fixed_assignment,
                                                  lp_state,
@@ -197,6 +197,7 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
     solution_t<int, F_TYPE> & solution,                                                       \
     const rmm::device_uvector<int>& variables_to_fix,                                         \
     typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tols,                           \
+    lp_state_t<int, F_TYPE>& lp_state,                                                        \
     F_TYPE time_limit,                                                                        \
     bool return_first_feasible,                                                               \
     bound_presolve_t<int, F_TYPE>* bound_presolve);

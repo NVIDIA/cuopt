@@ -667,6 +667,7 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
                                solution,
                                solution.problem_ptr->integer_indices,
                                context.settings.get_tolerances(),
+                               context.lp_state,
                                lp_verify_time_limit,
                                return_first_feasible,
                                &constraint_prop.bounds_update);

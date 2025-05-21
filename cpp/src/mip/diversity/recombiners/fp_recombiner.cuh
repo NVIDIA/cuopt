@@ -99,7 +99,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
     const bool return_first_feasible = false;
     const bool save_state            = false;
     // every sub problem is different,so it is very hard to find a valid initial solution
-    lp_state_t<i_t, f_t> lp_state = lp_state_t<i_t, f_t>::get_default_lp_state(fixed_problem);
+    lp_state_t<i_t, f_t> lp_state = this->context.lp_state;
     auto solver_response          = get_relaxed_lp_solution(fixed_problem,
                                                    fixed_assignment,
                                                    lp_state,
