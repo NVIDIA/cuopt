@@ -72,6 +72,7 @@ def test_solver():
 
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-2)
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
 
     solution = solver.Solve(data_model_obj, settings)
     assert solution.get_termination_reason() == "Optimal"
@@ -379,9 +380,6 @@ def test_check_data_model_validity():
     solver.Solve(data_model_obj)
 
 
-@pytest.mark.skip(
-    reason="skip until with can pick Method=PDLP on the Python side"
-)  # noqa
 def test_parse_var_names():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
@@ -426,7 +424,9 @@ def test_parse_var_names():
     for i, name in enumerate(data_model_obj.get_variable_names()):
         assert expected_names[i] == name
 
-    solution = solver.Solve(data_model_obj)
+    settings = solver_settings.SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    solution = solver.Solve(data_model_obj, settings)
 
     expected_dict = {
         "X01": 80.00603991232295,
@@ -472,9 +472,6 @@ def test_parse_var_names():
         )
 
 
-@pytest.mark.skip(
-    reason="skip until with can pick Method=PDLP on the Python side"
-)  # noqa
 def test_parser_and_batch_solver():
 
     data_model_list = []
@@ -488,6 +485,7 @@ def test_parser_and_batch_solver():
         data_model_list.append(cuopt_mps_parser.ParseMps(file_path))
 
     settings = solver_settings.SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
     settings.set_optimality_tolerance(1e-4)
 
     # Call BatchSolve
