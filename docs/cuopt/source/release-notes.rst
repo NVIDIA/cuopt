@@ -12,20 +12,20 @@ New Features
 - Added crossover from PDLP to Dual Simplex
 - Added concurrent mode that runs PDLP and Dual Simplex together
 - Added a LP and MILP C API for cuOpt 
-- PDLP enhancements 
+- PDLP: Faster iterations and new more robust default PDLPSolverMode Stable2 
 - Limit minimal absolute tolerance to 1e-12 and NoTermination is now NumericalError 
 
 Breaking Changes
 ----------------
 
-- FIx concurrent LP crashes and limit minimal absolute tolerance are not breaking changes. 
+- Fix concurrent LP crashes. 
 - Limit minimal absolute tolerance to 1e-12 and NoTermination is now NumericalError 
 - Split cuOpt as libcuopt and cuopt wheel 
 
 Improvements
 ------------
 
-- FIx concurrent LP crashes and limit minimal absolute tolerance are not breaking changes.
+- Fix concurrent LP crashes.
 - Hook up MILP Gap parameters and add info about number of nodes explored and simplex iterations, other fixes 
 - FJ bug fixes, tests and improvements 
 - Cleanup solver settings 

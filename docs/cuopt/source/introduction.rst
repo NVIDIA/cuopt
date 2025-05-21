@@ -64,7 +64,7 @@ Maximize objective function:
 
 How cuOpt Solves LP Problem
 ------------------------------
-cuOpt includes an LP solver based on `PDLP <https://arxiv.org/abs/2106.04756>`__, a new First-Order Method (FOM) used to solve LPs at large scale. This implements a gradient descent, enhanced by heuristics, performing massively parallel operations efficiently by leveraging the latest NVIDIA GPUs. In addition to PDLP, cuOpt includes a dual simplex solver that runs on the CPU. Both algorithms can be run concurrently on the GPU and CPU.
+cuOpt includes an LP solver based on `PDLP <https://arxiv.org/abs/2106.04756>`__, a new First-Order Method (FOM) used to solve LPs at large scale. This implements a gradient descent, enhanced by heuristics, performing massively parallel operations efficiently by leveraging the latest NVIDIA GPUs. In addition to PDLP, cuOpt includes a dual simplex solver that runs on the CPU. Both algorithms are run concurrently on the GPU and CPU.
 
 Mixed Integer Linear Programming (MILP)
 =========================================

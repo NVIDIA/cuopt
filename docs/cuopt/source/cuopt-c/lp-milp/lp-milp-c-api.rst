@@ -21,36 +21,7 @@ Status Constants
 .. doxygendefine:: CUOPT_MPS_FILE_ERROR
 .. doxygendefine:: CUOPT_MPS_PARSE_ERROR
 
-Parameter Constants
-------------------- 
 
-These constants would be used as the parameter name in the `cuOptSetParameter <lp-milp-c-api.html#c.cuOptSetParameter>`_ and `cuOptGetParameter <lp-milp-c-api.html#c.cuOptGetParameter>`_ functions. More details on the parameters can be found in the `LP/MILP settings <../../lp-milp-settings.html>`_ section.
-
-.. LP/MIP parameter string constants
-.. doxygendefine:: CUOPT_ABSOLUTE_DUAL_TOLERANCE
-.. doxygendefine:: CUOPT_RELATIVE_DUAL_TOLERANCE
-.. doxygendefine:: CUOPT_ABSOLUTE_PRIMAL_TOLERANCE
-.. doxygendefine:: CUOPT_RELATIVE_PRIMAL_TOLERANCE
-.. doxygendefine:: CUOPT_ABSOLUTE_GAP_TOLERANCE
-.. doxygendefine:: CUOPT_RELATIVE_GAP_TOLERANCE
-.. doxygendefine:: CUOPT_INFEASIBILITY_DETECTION
-.. doxygendefine:: CUOPT_STRICT_INFEASIBILITY
-.. doxygendefine:: CUOPT_PRIMAL_INFEASIBLE_TOLERANCE
-.. doxygendefine:: CUOPT_DUAL_INFEASIBLE_TOLERANCE
-.. doxygendefine:: CUOPT_ITERATION_LIMIT
-.. doxygendefine:: CUOPT_TIME_LIMIT
-.. doxygendefine:: CUOPT_PDLP_SOLVER_MODE
-.. doxygendefine:: CUOPT_METHOD
-.. doxygendefine:: CUOPT_PER_CONSTRAINT_RESIDUAL
-.. doxygendefine:: CUOPT_SAVE_BEST_PRIMAL_SO_FAR
-.. doxygendefine:: CUOPT_FIRST_PRIMAL_FEASIBLE
-.. doxygendefine:: CUOPT_LOG_FILE
-.. doxygendefine:: CUOPT_MIP_ABSOLUTE_TOLERANCE
-.. doxygendefine:: CUOPT_MIP_RELATIVE_TOLERANCE
-.. doxygendefine:: CUOPT_MIP_INTEGRALITY_TOLERANCE
-.. doxygendefine:: CUOPT_MIP_SCALING
-.. doxygendefine:: CUOPT_MIP_HEURISTICS_ONLY
-.. doxygendefine:: CUOPT_NUM_CPU_THREADS
 
 Termination Status Constants
 ----------------------------
@@ -119,6 +90,37 @@ These would be used as the method while setting solver parameters using `cuOptSe
 .. doxygendefine:: CUOPT_METHOD_CONCURRENT
 .. doxygendefine:: CUOPT_METHOD_PDLP
 .. doxygendefine:: CUOPT_METHOD_DUAL_SIMPLEX
+
+Parameter Constants
+------------------- 
+
+These constants would be used as the parameter name in the `cuOptSetParameter <lp-milp-c-api.html#c.cuOptSetParameter>`_ and `cuOptGetParameter <lp-milp-c-api.html#c.cuOptGetParameter>`_ functions. More details on the parameters can be found in the `LP/MILP settings <../../lp-milp-settings.html>`_ section.
+
+.. LP/MIP parameter string constants
+.. doxygendefine:: CUOPT_ABSOLUTE_DUAL_TOLERANCE
+.. doxygendefine:: CUOPT_RELATIVE_DUAL_TOLERANCE
+.. doxygendefine:: CUOPT_ABSOLUTE_PRIMAL_TOLERANCE
+.. doxygendefine:: CUOPT_RELATIVE_PRIMAL_TOLERANCE
+.. doxygendefine:: CUOPT_ABSOLUTE_GAP_TOLERANCE
+.. doxygendefine:: CUOPT_RELATIVE_GAP_TOLERANCE
+.. doxygendefine:: CUOPT_INFEASIBILITY_DETECTION
+.. doxygendefine:: CUOPT_STRICT_INFEASIBILITY
+.. doxygendefine:: CUOPT_PRIMAL_INFEASIBLE_TOLERANCE
+.. doxygendefine:: CUOPT_DUAL_INFEASIBLE_TOLERANCE
+.. doxygendefine:: CUOPT_ITERATION_LIMIT
+.. doxygendefine:: CUOPT_TIME_LIMIT
+.. doxygendefine:: CUOPT_PDLP_SOLVER_MODE
+.. doxygendefine:: CUOPT_METHOD
+.. doxygendefine:: CUOPT_PER_CONSTRAINT_RESIDUAL
+.. doxygendefine:: CUOPT_SAVE_BEST_PRIMAL_SO_FAR
+.. doxygendefine:: CUOPT_FIRST_PRIMAL_FEASIBLE
+.. doxygendefine:: CUOPT_LOG_FILE
+.. doxygendefine:: CUOPT_MIP_ABSOLUTE_TOLERANCE
+.. doxygendefine:: CUOPT_MIP_RELATIVE_TOLERANCE
+.. doxygendefine:: CUOPT_MIP_INTEGRALITY_TOLERANCE
+.. doxygendefine:: CUOPT_MIP_SCALING
+.. doxygendefine:: CUOPT_MIP_HEURISTICS_ONLY
+.. doxygendefine:: CUOPT_NUM_CPU_THREADS
 
 Functions
 ---------
