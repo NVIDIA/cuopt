@@ -198,6 +198,7 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
                            solution,
                            solution.problem_ptr->integer_indices,
                            solution.problem_ptr->tolerances,
+                           context.lp_state,
                            lp_run_time);
   } else {
     return is_feasible;
