@@ -17,5 +17,5 @@ The cuopt_cli is a command-line interface for LP/MILP solvers that accepts MPS f
    :name: Usage
    :titlesonly:
 
-   cli.rst
+   cli-examples.rst
 
