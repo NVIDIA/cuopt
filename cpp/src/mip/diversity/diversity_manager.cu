@@ -147,16 +147,12 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solution(
   if (context.settings.has_initial_solution()) {
     solution_t<i_t, f_t> sol(*problem_ptr);
     auto& init_sol = context.settings.get_initial_solution();
-    if (sol.assignment.size() <= init_sol.size()) {
-      thrust::for_each(
-        sol.handle_ptr->get_thrust_policy(),
-        thrust::make_counting_iterator(0),
-        thrust::make_counting_iterator((int)sol.assignment.size()),
-        [assgn    = make_span(sol.assignment),
-         init_sol = make_span(init_sol),
-         var_map  = make_span(problem_ptr->presolve_data.variable_mapping)] __device__(i_t i) {
-          assgn[i] = init_sol[var_map[i]];
-        });
+    rmm::device_uvector<f_t> init_sol_assignment(init_sol, sol.handle_ptr->get_stream());
+    if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
+      raft::copy(sol.assignment.data(),
+                 init_sol_assignment.data(),
+                 init_sol_assignment.size(),
+                 sol.handle_ptr->get_stream());
       bool is_feasible = sol.compute_feasibility();
       cuopt_func_call(sol.test_variable_bounds(true));
       CUOPT_LOG_INFO("Adding initial solution success! feas %d objective %f excess %f",
@@ -168,8 +164,8 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solution(
     } else {
       CUOPT_LOG_ERROR(
         "Error cannot add the provided initial solution! \
-      Assignment size %lu \
-      initial solution size %lu",
+    Assignment size %lu \
+    initial solution size %lu",
         sol.assignment.size(),
         init_sol.size());
     }
@@ -250,14 +246,16 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   if (termination_criterion_t::NO_UPDATE != term_crit) {
     ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
     trivial_presolve(*problem_ptr);
+    if (!problem_ptr->empty) { check_bounds_sanity(*problem_ptr); }
+  }
+  if (!problem_ptr->empty) {
+    // do the resizing no-matter what, bounds presolve might not change the bounds but initial
+    // trivial presolve might have
+    ls.constraint_prop.bounds_update.resize(*problem_ptr);
+    ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
+      *problem_ptr, ls.constraint_prop.bounds_update);
     check_bounds_sanity(*problem_ptr);
   }
-  // do the resizing no-matter what, bounds presolve might not change the bounds but initial trivial
-  // presolve might have
-  ls.constraint_prop.bounds_update.resize(*problem_ptr);
-  ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
-    *problem_ptr, ls.constraint_prop.bounds_update);
-  check_bounds_sanity(*problem_ptr);
   stats.presolve_time = presolve_timer.elapsed_time();
   return true;
 }

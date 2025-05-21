@@ -593,42 +593,42 @@ bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assig
     return false;
   }
 
-  // Map assignment to internal solution using variable mapping
-  rmm::device_uvector<f_t> internal_assignment(presolve_data.variable_mapping.size(),
-                                               handle_ptr->get_stream());
-  thrust::gather(handle_ptr->get_thrust_policy(),
-                 presolve_data.variable_mapping.begin(),
-                 presolve_data.variable_mapping.end(),
-                 assignment.begin(),
-                 internal_assignment.begin());
-
+  // create a temp assignment with the var size after bounds standardization (free vars added)
+  rmm::device_uvector<f_t> temp_assignment(presolve_data.additional_var_used.size(),
+                                           handle_ptr->get_stream());
+  // copy the assignment to the first part(the original variable count) of the temp_assignment
+  raft::copy(
+    temp_assignment.data(), assignment.data(), assignment.size(), handle_ptr->get_stream());
   auto d_additional_var_used =
     cuopt::device_copy(presolve_data.additional_var_used, handle_ptr->get_stream());
   auto d_additional_var_id_per_var =
     cuopt::device_copy(presolve_data.additional_var_id_per_var, handle_ptr->get_stream());
 
-  thrust::for_each(
-    handle_ptr->get_thrust_policy(),
-    thrust::make_counting_iterator<i_t>(0),
-    thrust::make_counting_iterator<i_t>(presolve_data.variable_mapping.size()),
-    [additional_var_used       = d_additional_var_used.data(),
-     additional_var_id_per_var = d_additional_var_id_per_var.data(),
-     assgn                     = internal_assignment.data()] __device__(auto idx) {
-      if (additional_var_used[idx]) {
-        cuopt_assert(additional_var_id_per_var[idx] != -1, "additional_var_id_per_var is not set");
-        // We have two non-negative variables y and z that simulate a free variable x. If the value
-        // of x is negative, we can set z to be something higher than y. If the value of  x is
-        // positive we can set y greater than z
-        assgn[additional_var_id_per_var[idx]] = assgn[idx] < 0 ? -assgn[idx] : assgn[idx];
-        assgn[idx] += assgn[additional_var_id_per_var[idx]];
-      }
-    });
-  assignment.resize(internal_assignment.size(), handle_ptr->get_stream());
+  // handle free var logic by substituting the free vars and their corresponding vars
+  thrust::for_each(handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator<i_t>(0),
+                   thrust::make_counting_iterator<i_t>(original_problem_ptr->get_n_variables()),
+                   [additional_var_used       = d_additional_var_used.data(),
+                    additional_var_id_per_var = d_additional_var_id_per_var.data(),
+                    assgn                     = temp_assignment.data()] __device__(auto idx) {
+                     if (additional_var_used[idx]) {
+                       cuopt_assert(additional_var_id_per_var[idx] != -1,
+                                    "additional_var_id_per_var is not set");
+                       // We have two non-negative variables y and z that simulate a free variable
+                       // x. If the value of x is negative, we can set z to be something higher than
+                       // y. If the value of  x is positive we can set y greater than z
+                       assgn[additional_var_id_per_var[idx]] = (assgn[idx] < 0 ? -assgn[idx] : 0.);
+                       assgn[idx] += assgn[additional_var_id_per_var[idx]];
+                     }
+                   });
+  assignment.resize(n_variables, handle_ptr->get_stream());
   assignment.shrink_to_fit(handle_ptr->get_stream());
-  raft::copy(assignment.data(),
-             internal_assignment.data(),
-             internal_assignment.size(),
-             handle_ptr->get_stream());
+  cuopt_assert(presolve_data.variable_mapping.size() == n_variables, "size mismatch");
+  thrust::gather(handle_ptr->get_thrust_policy(),
+                 presolve_data.variable_mapping.begin(),
+                 presolve_data.variable_mapping.end(),
+                 temp_assignment.begin(),
+                 assignment.begin());
   handle_ptr->sync_stream();
   return true;
 }
@@ -643,11 +643,14 @@ void problem_t<i_t, f_t>::post_process_assignment(rmm::device_uvector<f_t>& curr
   auto assgn       = make_span(current_assignment);
   auto fixed_assgn = make_span(presolve_data.fixed_var_assignment);
   auto var_map     = make_span(presolve_data.variable_mapping);
-  thrust::for_each(
-    handle_ptr->get_thrust_policy(),
-    thrust::make_counting_iterator<i_t>(0),
-    thrust::make_counting_iterator<i_t>(current_assignment.size()),
-    [fixed_assgn, var_map, assgn] __device__(auto idx) { fixed_assgn[var_map[idx]] = assgn[idx]; });
+  if (current_assignment.size() > 0) {
+    thrust::for_each(handle_ptr->get_thrust_policy(),
+                     thrust::make_counting_iterator<i_t>(0),
+                     thrust::make_counting_iterator<i_t>(current_assignment.size()),
+                     [fixed_assgn, var_map, assgn] __device__(auto idx) {
+                       fixed_assgn[var_map[idx]] = assgn[idx];
+                     });
+  }
   expand_device_copy(
     current_assignment, presolve_data.fixed_var_assignment, handle_ptr->get_stream());
   auto h_assignment = cuopt::host_copy(current_assignment, handle_ptr->get_stream());

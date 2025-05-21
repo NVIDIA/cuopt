@@ -27,7 +27,7 @@ REPODIR=$(cd $(dirname $0); pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs -a -b -d -g -v -l= --verbose-pdlp  [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --no-fetch-rapids --skip_l1_tests --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs -a -b -g -v -l= --verbose-pdlp  [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -43,15 +43,12 @@ HELP="$0 [<target> ...] [<flag> ...]
    -g               - build for debug
    -a               - Enable assertion (by default in debug mode)
    -b               - Build with benchmark settings
-   -d               - Build with under development, non-release modules
    -n               - no install step
-   --no-fetch-rapids  - don't fetch rapids dependencies
    -l=              - log level. Options are: TRACE | DEBUG | INFO | WARN | ERROR | CRITICAL | OFF. Default=INFO
    --verbose-pdlp   - verbose mode for pdlp solver
    --cache-tool=<tool> - pass the build cache tool (eg: ccache, sccache, distcc) that will be used
                       to speedup the build process.
    --cmake-args=\\\"<args>\\\"   - pass arbitrary list of CMake configuration options (escape all quotes in argument)
-   --skip_l1_tests  - Do not build level 1 regression tests
    --allgpuarch     - build for all supported GPU architectures
    --ci-only-arch   - build for volta and ampere only
    --show_depr_warn - show cmake deprecation warnings
@@ -78,7 +75,6 @@ DEFINE_ASSERT=False
 DEFINE_PDLP_VERBOSE_MODE=False
 INSTALL_TARGET=install
 BUILD_DISABLE_DEPRECATION_WARNING=ON
-BUILD_L1_TESTS=ON
 BUILD_ALL_GPU_ARCH=0
 BUILD_CI_ONLY=0
 CACHE_ARGS=""
@@ -203,20 +199,11 @@ fi
 if hasArg -b; then
     DEFINE_BENCHMARK=true
 fi
-if hasArg -d; then
-    DEFINE_DEVELOPMENT=true
-fi
 if hasArg --verbose-pdlp; then
     DEFINE_PDLP_VERBOSE_MODE=true
 fi
 if hasArg -n; then
     INSTALL_TARGET=""
-fi
-if hasArg --no-fetch-rapids; then
-    FETCH_RAPIDS=OFF
-fi
-if hasArg --skip_l1_tests; then
-    BUILD_L1_TESTS=OFF
 fi
 if hasArg --allgpuarch; then
     BUILD_ALL_GPU_ARCH=1
@@ -300,15 +287,13 @@ if buildAll || hasArg libcuopt; then
     mkdir -p ${LIBCUOPT_BUILD_DIR}
     cd ${LIBCUOPT_BUILD_DIR}
     cmake -DDEFINE_ASSERT=${DEFINE_ASSERT} \
-           -DDEFINE_BENCHMARK=${DEFINE_BENCHMARK} \
-           -DDEFINE_DEVELOPMENT=${DEFINE_DEVELOPMENT} \
+          -DDEFINE_BENCHMARK=${DEFINE_BENCHMARK} \
           -DDEFINE_PDLP_VERBOSE_MODE=${DEFINE_PDLP_VERBOSE_MODE} \
           -DLIBCUOPT_LOGGING_LEVEL=${LOGGING_ACTIVE_LEVEL} \
           -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX} \
           -DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES} \
           -DDISABLE_DEPRECATION_WARNING=${BUILD_DISABLE_DEPRECATION_WARNING} \
           -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
-          -DBUILD_L1_TESTS=${BUILD_L1_TESTS} \
           -DFETCH_RAPIDS=${FETCH_RAPIDS} \
           ${EXTRA_CMAKE_ARGS} \
           ${REPODIR}/cpp

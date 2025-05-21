@@ -52,14 +52,16 @@ class test_set_solution_callback_t : public cuopt::internals::set_solution_callb
   // This will check that the we are able to recompute our own solution
   void set_solution(void* data, void* cost) override
   {
+    n_calls++;
     rmm::cuda_stream_view stream{};
-    auto assignment                          = static_cast<double*>(data);
-    auto cost_ptr                            = static_cast<double*>(cost);
+    auto assignment = static_cast<double*>(data);
+    auto cost_ptr   = static_cast<double*>(cost);
+    if (solutions.empty()) { return; }
+
     auto const& [last_assignment, last_cost] = solutions.back();
     raft::copy(assignment, last_assignment.data(), last_assignment.size(), stream);
     raft::copy(cost_ptr, &last_cost, 1, stream);
     stream.synchronize();
-    n_calls++;
   }
   std::vector<std::pair<rmm::device_uvector<double>, double>>& solutions;
   int n_calls;
@@ -74,6 +76,7 @@ class test_get_solution_callback_t : public cuopt::internals::get_solution_callb
   }
   void get_solution(void* data, void* cost) override
   {
+    n_calls++;
     rmm::cuda_stream_view stream{};
     rmm::device_uvector<double> assignment(n_variables, stream);
     raft::copy(assignment.data(), static_cast<double*>(data), n_variables, stream);
@@ -81,7 +84,6 @@ class test_get_solution_callback_t : public cuopt::internals::get_solution_callb
     raft::copy(&h_cost, static_cast<double*>(cost), 1, stream);
     stream.synchronize();
     solutions.push_back(std::make_pair(std::move(assignment), h_cost));
-    n_calls++;
   }
   std::vector<std::pair<rmm::device_uvector<double>, double>>& solutions;
   int n_calls;
@@ -131,7 +133,8 @@ void test_incumbent_callback(std::string test_instance)
 
 TEST(mip_solve, incumbent_callback_test)
 {
-  std::vector<std::string> test_instances = {"mip/50v-10.mps", "mip/neos5.mps", "mip/swath1.mps"};
+  std::vector<std::string> test_instances = {
+    "mip/50v-10.mps", "mip/neos5-free-bound.mps", "mip/swath1.mps"};
   for (const auto& test_instance : test_instances) {
     test_incumbent_callback(test_instance);
   }

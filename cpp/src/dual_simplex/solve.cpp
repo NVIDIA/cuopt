@@ -218,6 +218,16 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
     original_solution.iterations = iter;
   } else {
     // Dual infeasible -> Primal unbounded
+    settings.log.printf("Dual infeasible\n");
+    original_solution.objective = -inf;
+    if (lp.obj_scale == 1.0) {
+      // Objective for unbounded minimization is -inf
+      original_solution.user_objective = -inf;
+    } else {
+      // Objective for unbounded maximization is inf
+      original_solution.user_objective = inf;
+    }
+    original_solution.iterations = iter;
     return lp_status_t::UNBOUNDED;
   }
   return lp_status;
