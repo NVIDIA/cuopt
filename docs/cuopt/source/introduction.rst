@@ -47,9 +47,9 @@ Linear Programming (LP)
 
 **Linear Programming** is a technique for optimizing a linear objective function over a feasible region defined by a set of linear inequality and equality constraints. For example, consider the following system constraints
 
-                          2x + 4 y >= 230
+                          2x + 4y  >= 230
 
-                          3x + 2y  < 190
+                          3x + 2y  <= 190
 
                           x >= 0
 
@@ -75,7 +75,7 @@ For example, consider the following system of constraints:
 
                           2x + 4y  >= 230
 
-                          3x + 2y  < 190
+                          3x + 2y  <= 190
 
                           x >= 0 and x is integer
 
