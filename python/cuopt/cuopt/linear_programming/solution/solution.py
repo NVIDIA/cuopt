@@ -166,6 +166,7 @@ class Solution:
         dual_objective=0.0,
         gap=0.0,
         nb_iterations=0,
+        solved_by_pdlp=None,
         mip_gap=0.0,
         solution_bound=0.0,
         presolve_time=0.0,
@@ -174,7 +175,6 @@ class Solution:
         max_variable_bound_violation=0.0,
         num_nodes=0,
         num_simplex_iterations=0,
-        solved_by_pdlp=None,
     ):
         self.problem_category = problem_category
         self.primal_solution = primal_solution

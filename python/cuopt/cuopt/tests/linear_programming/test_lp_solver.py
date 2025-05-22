@@ -82,7 +82,7 @@ def test_solver():
     assert solution.get_primal_objective() == pytest.approx(0.0)
     assert solution.get_dual_objective() == pytest.approx(0.0)
     assert solution.get_lp_stats()["gap"] == pytest.approx(0.0)
-    assert solution.get_solved_by_pdlp() == True
+    assert solution.get_solved_by_pdlp()
 
 
 def test_parser_and_solver():
@@ -601,7 +601,7 @@ def test_dual_simplex():
 
     assert solution.get_termination_status() == LPTerminationStatus.Optimal
     assert solution.get_primal_objective() == pytest.approx(-464.7531)
-    assert solution.get_solved_by_pdlp() == False
+    assert not solution.get_solved_by_pdlp()
 
 
 def test_heuristics_only():
