@@ -109,7 +109,7 @@ cuOpt supports the following APIs:
 - Python support
    - Routing (TSP, VRP, and PDP)
    - Linear Programming (LP) and Mixed Integer Linear Programming (MILP)
-       - cuOpt includes a Python API that is used as the backend of the cuOpt server. However, we do not provide documentation for the Python API at this time. We suggest users use a third-party modeling language or the cuOpt server to access cuOpt via Python. We anticipate that the Python API will change significantly in the future. Use it at your own risk.
+       - cuOpt includes a Python API that is used as the backend of the cuOpt server. However, we do not provide documentation for the Python API at this time. We suggest using a third-party modeling language or cuOpt server to access cuOpt via Python. We anticipate that the Python API will change significantly in the future. Use it at your own risk.
 - Server support
    - Linear Programming (LP)
    - Mixed Integer Linear Programming (MILP)
