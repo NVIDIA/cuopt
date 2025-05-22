@@ -80,7 +80,7 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(solution_t<i_t, f_t>& 
     delta_vector.begin(),
     [n_points_to_search] __device__(const f_t& x) { return x / (n_points_to_search + 1); });
 
-  f_t best_cost            = std::numeric_limits<f_t>::max();
+  f_t best_cost            = solution.get_quality(fj.cstr_weights, fj.objective_weight);
   bool initial_is_feasible = solution.get_feasible();
   // TODO start from middle and increase the resolution later
   for (i_t i = 1; i <= n_points_to_search; ++i) {
@@ -92,7 +92,7 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(solution_t<i_t, f_t>& 
                        const i_t index) { return point_1_ptr[index] + delta_ptr[index] * i; });
     cuopt_func_call(solution.test_variable_bounds(false));
     bool is_feasible = solution.round_nearest();
-    if (is_feasible) {
+    if (is_feasibility_run && is_feasible) {
       CUOPT_LOG_DEBUG("Feasible found after line segment");
       return true;
     }
