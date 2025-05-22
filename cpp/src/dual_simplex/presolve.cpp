@@ -866,9 +866,11 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     k++;
   }
 
+  k = 0;
   for (const i_t j : presolve_info.removed_variables) {
-    uncrushed_x[j] = presolve_info.removed_values[j];
-    uncrushed_z[j] = presolve_info.removed_reduced_costs[j];
+    uncrushed_x[j] = presolve_info.removed_values[k];
+    uncrushed_z[j] = presolve_info.removed_reduced_costs[k];
+    k++;
   }
 }
 
