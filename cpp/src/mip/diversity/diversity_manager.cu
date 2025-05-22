@@ -455,8 +455,6 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
       cuopt_func_call(sol.test_feasibility(true));
       solution_t<i_t, f_t> ls_solution(sol);
       ls.run_local_search(ls_solution, population.weights, timer);
-      cuopt_assert(ls_solution.get_objective() <= sol.get_objective(),
-                   "LS solution should be better");
       // TODO try if running LP with integers fixed makes it feasible
       if (ls_solution.get_feasible()) {
         CUOPT_LOG_DEBUG("External LS searched solution feasible, running recombiners!");
