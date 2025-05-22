@@ -255,6 +255,8 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
       *problem_ptr, ls.constraint_prop.bounds_update);
     check_bounds_sanity(*problem_ptr);
+  } else {
+    set_new_user_bound(problem_ptr->get_user_obj_from_solver_obj(0));
   }
   stats.presolve_time = presolve_timer.elapsed_time();
   return true;
