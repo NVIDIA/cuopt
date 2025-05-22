@@ -86,7 +86,7 @@ Step 4: Pull the container:
 
     .. code-block:: bash
 
-        docker pull nvcr.io/nvidia/cuopt:25.5.0
+        docker pull nvcr.io/nvidia/cuopt/cuopt:25.5.0
 
 
 The container includes both the Python API and self-hosted server components. To run the container:
