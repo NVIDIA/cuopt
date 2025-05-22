@@ -183,15 +183,15 @@ bool solution_t<i_t, f_t>::get_feasible()
 }
 
 template <typename i_t, typename f_t>
-bool solution_t<i_t, f_t>::get_problem_infeasible()
+bool solution_t<i_t, f_t>::get_problem_fully_reduced()
 {
-  return is_problem_infeasible;
+  return is_problem_fully_reduced;
 }
 
 template <typename i_t, typename f_t>
-void solution_t<i_t, f_t>::set_problem_infeasible()
+void solution_t<i_t, f_t>::set_problem_fully_reduced()
 {
-  is_problem_infeasible = true;
+  is_problem_fully_reduced = true;
 }
 
 template <typename i_t, typename f_t>
@@ -589,6 +589,7 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
     const double optimality_threshold = problem_ptr->tolerances.relative_mip_gap;
     auto term_reason = rel_mip_gap > optimality_threshold ? mip_termination_status_t::FeasibleFound
                                                           : mip_termination_status_t::Optimal;
+    if (is_problem_fully_reduced) { term_reason = mip_termination_status_t::Optimal; }
     return mip_solution_t<i_t, f_t>(std::move(assignment),
                                     problem_ptr->var_names,
                                     h_user_obj,
@@ -603,8 +604,8 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
                                     num_nodes,
                                     num_simplex_iterations);
   } else {
-    return mip_solution_t<i_t, f_t>{is_problem_infeasible ? mip_termination_status_t::Infeasible
-                                                          : mip_termination_status_t::TimeLimit,
+    return mip_solution_t<i_t, f_t>{is_problem_fully_reduced ? mip_termination_status_t::Infeasible
+                                                             : mip_termination_status_t::TimeLimit,
                                     handle_ptr->get_stream()};
   }
 }

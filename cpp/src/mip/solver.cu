@@ -98,6 +98,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (context.problem_ptr->empty) {
     CUOPT_LOG_INFO("Problem fully reduced at trivial presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
+    sol.set_problem_fully_reduced();
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
@@ -108,13 +109,14 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (!presolve_success) {
     CUOPT_LOG_INFO("Presolve is infeasible, returning infeasible solution!");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
-    sol.set_problem_infeasible();
+    sol.set_problem_fully_reduced();
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
   if (context.problem_ptr->empty) {
     CUOPT_LOG_INFO("Problem fully reduced at presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
+    sol.set_problem_fully_reduced();
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
@@ -182,7 +184,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.stats.solution_bound =
         context.problem_ptr->get_user_obj_from_solver_obj(branch_and_bound_solution.lower_bound);
     }
-    if (bb_status == dual_simplex::mip_status_t::INFEASIBLE) { sol.set_problem_infeasible(); }
+    if (bb_status == dual_simplex::mip_status_t::INFEASIBLE) { sol.set_problem_fully_reduced(); }
     context.stats.num_nodes              = branch_and_bound_solution.nodes_explored;
     context.stats.num_simplex_iterations = branch_and_bound_solution.simplex_iterations;
   }
