@@ -117,7 +117,8 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
 {
   lp_status_t lp_status = lp_status_t::UNSET;
   lp_problem_t<i_t, f_t> presolved_lp(1, 1, 1);
-  const i_t ok = presolve(original_lp, settings, presolved_lp);
+  presolve_info_t<i_t, f_t> presolve_info;
+  const i_t ok = presolve(original_lp, settings, presolved_lp, presolve_info);
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
 
   constexpr bool write_out_matlab = false;
@@ -199,11 +200,11 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
       primal_phase2(2, start_time, lp, settings, vstatus, solution, iter);
     }
     if (status == dual::status_t::OPTIMAL) {
-      // Unscale solution
-      for (i_t j = 0; j < original_lp.num_cols; j++) {
-        original_solution.x[j] = solution.x[j] / column_scales[j];
-        original_solution.z[j] = solution.z[j] / column_scales[j];
-      }
+      std::vector<f_t> unscaled_x(lp.num_cols);
+      std::vector<f_t> unscaled_z(lp.num_cols);
+      unscale_solution<i_t, f_t>(column_scales, solution.x, solution.z, unscaled_x, unscaled_z);
+      uncrush_solution(
+        presolve_info, unscaled_x, unscaled_z, original_solution.x, original_solution.z);
       original_solution.y              = solution.y;
       original_solution.objective      = solution.objective;
       original_solution.user_objective = solution.user_objective;
