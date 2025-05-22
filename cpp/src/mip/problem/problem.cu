@@ -572,26 +572,12 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
 template <typename i_t, typename f_t>
 bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assignment)
 {
-  cuopt_assert(assignment.size() == original_problem_ptr->get_n_variables(), "size mismatch");
   auto has_nans = cuopt::linear_programming::detail::has_nans(handle_ptr, assignment);
   if (has_nans) {
-    CUOPT_LOG_DEBUG("Solution discared due to nans");
+    CUOPT_LOG_DEBUG("Solution discarded due to nans");
     return false;
   }
-
-  auto has_integrality_discrepancy = cuopt::linear_programming::detail::has_integrality_discrepancy(
-    handle_ptr, integer_indices, assignment, tolerances.integrality_tolerance);
-  if (has_integrality_discrepancy) {
-    CUOPT_LOG_DEBUG("Solution discared due to integrality discrepancy");
-    return false;
-  }
-
-  auto has_variable_bounds_violation =
-    cuopt::linear_programming::detail::has_variable_bounds_violation(handle_ptr, assignment, this);
-  if (has_variable_bounds_violation) {
-    CUOPT_LOG_DEBUG("Solution discared due to variable bounds violation");
-    return false;
-  }
+  cuopt_assert(assignment.size() == original_problem_ptr->get_n_variables(), "size mismatch");
 
   // create a temp assignment with the var size after bounds standardization (free vars added)
   rmm::device_uvector<f_t> temp_assignment(presolve_data.additional_var_used.size(),
@@ -630,6 +616,20 @@ bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assig
                  temp_assignment.begin(),
                  assignment.begin());
   handle_ptr->sync_stream();
+
+  auto has_integrality_discrepancy = cuopt::linear_programming::detail::has_integrality_discrepancy(
+    handle_ptr, integer_indices, assignment, tolerances.integrality_tolerance);
+  if (has_integrality_discrepancy) {
+    CUOPT_LOG_DEBUG("Solution discarded due to integrality discrepancy");
+    return false;
+  }
+
+  auto has_variable_bounds_violation =
+    cuopt::linear_programming::detail::has_variable_bounds_violation(handle_ptr, assignment, this);
+  if (has_variable_bounds_violation) {
+    CUOPT_LOG_DEBUG("Solution discarded due to variable bounds violation");
+    return false;
+  }
   return true;
 }
 
