@@ -165,7 +165,8 @@ linear_programming_ret_t call_solve_lp(
     solution.get_additional_termination_information().dual_objective,
     solution.get_additional_termination_information().gap,
     solution.get_additional_termination_information().number_of_steps_taken,
-    solution.get_additional_termination_information().solve_time};
+    solution.get_additional_termination_information().solve_time,
+    solution.get_additional_termination_information().solved_by_pdlp};
 
   return lp_ret;
 }

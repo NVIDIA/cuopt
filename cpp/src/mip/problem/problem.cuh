@@ -79,7 +79,7 @@ class problem_t {
   void recompute_auxilliary_data(bool check_representation = true);
   void compute_n_integer_vars();
   void compute_binary_var_table();
-  void compute_related_variables();
+  void compute_related_variables(double time_limit);
   void fix_given_variables(problem_t<i_t, f_t>& original_problem,
                            rmm::device_uvector<f_t>& assignment,
                            const rmm::device_uvector<i_t>& variables_to_fix,
