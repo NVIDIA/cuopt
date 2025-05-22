@@ -896,6 +896,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
                            orig_sol,
                            orig_sol.problem_ptr->integer_indices,
                            context.settings.get_tolerances(),
+                           context.lp_state,
                            lp_run_time_after_feasible,
                            true);
   }

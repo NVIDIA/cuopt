@@ -180,8 +180,8 @@ def create_lp_response(response_dict):
                 solve_time=sol["solver_time"],
                 termination_status=status,
                 primal_solution=np.array(sol["primal_solution"]),
+                reduced_cost=np.array(sol["reduced_cost"]),
                 primal_objective=sol["primal_objective"],
-                dual_objective=sol["dual_objective"],
                 mip_gap=sol["milp_statistics"]["mip_gap"],
                 solution_bound=sol["milp_statistics"]["solution_bound"],
                 presolve_time=sol["milp_statistics"]["presolve_time"],
@@ -192,6 +192,10 @@ def create_lp_response(response_dict):
                 max_variable_bound_violation=sol["milp_statistics"][
                     "max_variable_bound_violation"
                 ],
+                num_nodes=sol["milp_statistics"]["num_nodes"],
+                num_simplex_iterations=sol["milp_statistics"][
+                    "num_simplex_iterations"
+                ],
             )
         else:
             solution_obj = solution.Solution(
@@ -201,12 +205,14 @@ def create_lp_response(response_dict):
                 termination_status=status,
                 primal_solution=np.array(sol["primal_solution"]),
                 dual_solution=np.array(sol["dual_solution"]),
-                reduced_cost=np.array(sol["lp_statistics"]["reduced_cost"]),
+                reduced_cost=np.array(sol["reduced_cost"]),
                 primal_residual=sol["lp_statistics"]["primal_residual"],
                 dual_residual=sol["lp_statistics"]["dual_residual"],
+                gap=sol["lp_statistics"]["gap"],
+                nb_iterations=sol["lp_statistics"]["nb_iterations"],
                 primal_objective=sol["primal_objective"],
                 dual_objective=sol["dual_objective"],
-                gap=sol["lp_statistics"]["gap"],
+                solved_by_pdlp=sol["solved_by_pdlp"],
             )
         return status, solution_obj
 

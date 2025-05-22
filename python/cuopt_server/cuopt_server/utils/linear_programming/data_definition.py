@@ -596,6 +596,12 @@ class SolutionData(StrictModel):
         default=None,
         description=("Returns the engine solve time in seconds"),
     )
+    solved_by_pdlp: bool = Field(
+        default=None,
+        description=(
+            "Returns whether problem was solved by PDLP or Dual Simplex"
+        ),
+    )
     primal_objective: float = Field(
         default=None,
         description=("Primal objective of the LP problem"),

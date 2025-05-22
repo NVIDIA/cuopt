@@ -24,15 +24,23 @@ namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
 class lp_state_t {
-  // this constructor should be used only once by get_default_lp_state
- private:
+ public:
   lp_state_t(problem_t<i_t, f_t>& problem, rmm::cuda_stream_view stream)
     : prev_primal(problem.n_variables, stream), prev_dual(problem.n_constraints, stream)
   {
+    thrust::fill(problem.handle_ptr->get_thrust_policy(),
+                 prev_primal.data(),
+                 prev_primal.data() + problem.n_variables,
+                 0);
+    thrust::fill(problem.handle_ptr->get_thrust_policy(),
+                 prev_dual.data(),
+                 prev_dual.data() + problem.n_constraints,
+                 0);
   }
 
- public:
-  lp_state_t(problem_t<i_t, f_t>& problem) : lp_state_t(get_default_lp_state(problem)) {}
+  lp_state_t(problem_t<i_t, f_t>& problem) : lp_state_t(problem, problem.handle_ptr->get_stream())
+  {
+  }
 
   lp_state_t(const lp_state_t<i_t, f_t>& other)
     : prev_primal(other.prev_primal, other.prev_primal.stream()),
@@ -42,23 +50,6 @@ class lp_state_t {
 
   lp_state_t(lp_state_t<i_t, f_t>&& other) noexcept            = default;
   lp_state_t& operator=(lp_state_t<i_t, f_t>&& other) noexcept = default;
-
-  static lp_state_t<i_t, f_t>& get_default_lp_state(problem_t<i_t, f_t>& problem)
-  {
-    if (!default_lp_state) {
-      default_lp_state.reset(new lp_state_t<i_t, f_t>(problem, problem.handle_ptr->get_stream()));
-      thrust::fill(problem.handle_ptr->get_thrust_policy(),
-                   default_lp_state->prev_primal.data(),
-                   default_lp_state->prev_primal.data() + problem.n_variables,
-                   0);
-      thrust::fill(problem.handle_ptr->get_thrust_policy(),
-                   default_lp_state->prev_dual.data(),
-                   default_lp_state->prev_dual.data() + problem.n_constraints,
-                   0);
-    }
-    if (!root_is_initialized) { root_is_initialized = true; }
-    return *default_lp_state;
-  }
 
   void resize(problem_t<i_t, f_t>& problem, rmm::cuda_stream_view stream)
   {
@@ -79,14 +70,6 @@ class lp_state_t {
   }
   rmm::device_uvector<f_t> prev_primal;
   rmm::device_uvector<f_t> prev_dual;
-  static std::unique_ptr<lp_state_t<i_t, f_t>> default_lp_state;
-  static bool root_is_initialized;
 };
-
-template <typename i_t, typename f_t>
-std::unique_ptr<lp_state_t<i_t, f_t>> lp_state_t<i_t, f_t>::default_lp_state = nullptr;
-
-template <typename i_t, typename f_t>
-bool lp_state_t<i_t, f_t>::root_is_initialized = false;
 
 }  // namespace cuopt::linear_programming::detail

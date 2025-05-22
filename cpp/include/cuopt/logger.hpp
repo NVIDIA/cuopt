@@ -72,7 +72,11 @@ inline rapids_logger::logger& default_logger()
 {
   static rapids_logger::logger logger_ = [] {
     rapids_logger::logger logger_{"CUOPT", {default_sink()}};
+#if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
+    logger_.set_pattern("%v");
+#else
     logger_.set_pattern(default_pattern());
+#endif
     logger_.set_level(default_level());
     logger_.flush_on(rapids_logger::level_enum::info);
 
@@ -90,7 +94,11 @@ inline void reset_default_logger()
 {
   default_logger().sinks().clear();
   default_logger().sinks().push_back(default_sink());
+#if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
+  default_logger().set_pattern("%v");
+#else
   default_logger().set_pattern(default_pattern());
+#endif
   default_logger().set_level(default_level());
   default_logger().flush_on(rapids_logger::level_enum::info);
 }

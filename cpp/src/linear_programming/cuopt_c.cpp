@@ -492,6 +492,14 @@ cuopt_int_t cuOptSetIntegerParameter(cuOptSolverSettings settings,
     static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
   try {
     solver_settings->set_parameter<cuopt_int_t>(parameter_name, parameter_value);
+  } catch (const std::invalid_argument& e) {
+    // We could be trying to set a boolean parameter. Try that
+    try {
+      bool value = static_cast<bool>(parameter_value);
+      solver_settings->set_parameter<bool>(parameter_name, value);
+    } catch (const std::exception& e) {
+      return CUOPT_INVALID_ARGUMENT;
+    }
   } catch (const std::exception& e) {
     return CUOPT_INVALID_ARGUMENT;
   }
@@ -509,6 +517,14 @@ cuopt_int_t cuOptGetIntegerParameter(cuOptSolverSettings settings,
     static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
   try {
     *parameter_value_ptr = solver_settings->get_parameter<cuopt_int_t>(parameter_name);
+  } catch (const std::invalid_argument& e) {
+    // We could be trying to get a boolean parameter. Try that
+    try {
+      *parameter_value_ptr =
+        static_cast<cuopt_int_t>(solver_settings->get_parameter<bool>(parameter_name));
+    } catch (const std::exception& e) {
+      return CUOPT_INVALID_ARGUMENT;
+    }
   } catch (const std::exception& e) {
     return CUOPT_INVALID_ARGUMENT;
   }

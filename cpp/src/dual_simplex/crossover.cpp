@@ -1217,6 +1217,15 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     std::vector<f_t> edge_norms;
     dual::status_t status =
       dual_phase2(2, 0, start_time, lp, settings, vstatus, solution, dual_iter, edge_norms);
+    if (toc(start_time) > settings.time_limit) {
+      settings.log.printf("Time limit exceeded\n");
+      return crossover_status_t::TIME_LIMIT;
+    }
+    if (settings.concurrent_halt != nullptr &&
+        settings.concurrent_halt->load(std::memory_order_acquire) == 1) {
+      settings.log.printf("Concurrent halt\n");
+      return crossover_status_t::CONCURRENT_LIMIT;
+    }
     primal_infeas = primal_infeasibility(lp, settings, vstatus, solution.x);
     dual_infeas   = dual_infeasibility(lp, settings, vstatus, solution.z);
     primal_res    = primal_residual(lp, solution);
@@ -1337,6 +1346,15 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       std::vector<f_t> edge_norms;
       dual::status_t status = dual_phase2(
         2, iter == 0 ? 1 : 0, start_time, lp, settings, vstatus, solution, iter, edge_norms);
+      if (toc(start_time) > settings.time_limit) {
+        settings.log.printf("Time limit exceeded\n");
+        return crossover_status_t::TIME_LIMIT;
+      }
+      if (settings.concurrent_halt != nullptr &&
+          settings.concurrent_halt->load(std::memory_order_acquire) == 1) {
+        settings.log.printf("Concurrent halt\n");
+        return crossover_status_t::CONCURRENT_LIMIT;
+      }
       solution.iterations += iter;
       primal_infeas = primal_infeasibility(lp, settings, vstatus, solution.x);
       dual_infeas   = dual_infeasibility(lp, settings, vstatus, solution.z);
@@ -1345,7 +1363,6 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       if (status != dual::status_t::OPTIMAL) {
         print_crossover_info(lp, settings, vstatus, solution, "Dual phase 2 complete");
       }
-
       primal_feasible = primal_infeas <= primal_tol && primal_res <= primal_tol;
       dual_feasible   = dual_infeas <= dual_tol && dual_res <= dual_tol;
     } else {
@@ -1355,7 +1372,6 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
 
   settings.log.printf("Crossover time %.2f seconds\n", toc(crossover_start));
   settings.log.printf("Total time %.2f seconds\n", toc(start_time));
-  settings.log.printf("\n");
 
   crossover_status_t status = crossover_status_t::NUMERICAL_ISSUES;
   if (dual_feasible) { status = crossover_status_t::DUAL_FEASIBLE; }

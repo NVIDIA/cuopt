@@ -685,7 +685,10 @@ void problem_t<i_t, f_t>::recompute_auxilliary_data(bool check_representation)
 {
   compute_n_integer_vars();
   compute_binary_var_table();
-  compute_related_variables();
+
+  // TODO: speedup compute related variables
+  const double time_limit = 30.;
+  compute_related_variables(time_limit);
   if (check_representation) check_problem_representation(true);
 }
 
@@ -761,7 +764,7 @@ void problem_t<i_t, f_t>::compute_binary_var_table()
 }
 
 template <typename i_t, typename f_t>
-void problem_t<i_t, f_t>::compute_related_variables()
+void problem_t<i_t, f_t>::compute_related_variables(double time_limit)
 {
   auto pb_view = view();
 
@@ -788,6 +791,7 @@ void problem_t<i_t, f_t>::compute_related_variables()
 
   i_t output_offset      = 0;
   i_t related_var_offset = 0;
+  auto start_time        = std::chrono::high_resolution_clock::now();
   for (i_t i = 0;; ++i) {
     i_t slice_size = min(max_slice_size, n_variables - i * max_slice_size);
     if (slice_size <= 0) break;
@@ -816,10 +820,14 @@ void problem_t<i_t, f_t>::compute_related_variables()
     i_t related_var_base = related_variables.size();
     related_variables.resize(related_variables.size() + array_size, handle_ptr->get_stream());
 
+    auto current_time = std::chrono::high_resolution_clock::now();
     // if the related variable array would wind up being too large for available memory, abort
     // TODO this used to be 1e9
-    if (related_variables.size() > 1e9) {
-      CUOPT_LOG_DEBUG("Computing the related variable array would use too much memory, aborting\n");
+    if (related_variables.size() > 1e9 ||
+        std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count() >
+          time_limit) {
+      CUOPT_LOG_DEBUG(
+        "Computing the related variable array would use too much memory or time, aborting\n");
       related_variables.resize(0, handle_ptr->get_stream());
       related_variables_offsets.resize(0, handle_ptr->get_stream());
       return;
