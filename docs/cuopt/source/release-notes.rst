@@ -9,28 +9,25 @@ Release Notes 25.05
 New Features
 ------------
 
-- Added crossover from PDLP to Dual Simplex
 - Added concurrent mode that runs PDLP and Dual Simplex together
+- Added crossover from PDLP to Dual Simplex
 - Added a LP and MILP C API for cuOpt 
 - PDLP: Faster iterations and new more robust default PDLPSolverMode Stable2 
-- Limit minimal absolute tolerance and NoTermination is now NumericalError 
 
 Breaking Changes
 ----------------
 
-- Limit minimal absolute tolerance and NoTermination is now NumericalError 
+- NoTermination is now a NumericalError 
 - Split cuOpt as libcuopt and cuopt wheel 
 
 Improvements
 ------------
 
-- Hook up MILP Gap parameters and add info about number of nodes explored and simplex iterations, other fixes 
+- Hook up MILP Gap parameters and add info about number of nodes explored and simplex iterations
 - FJ bug fixes, tests and improvements 
-- Cleanup solver settings 
-- Allow no time limit on MILP 
+- Allow no time limit in MILP 
 - Refactor routing  
 - Probing cache optimization 
-- Split cuOpt as libcuopt and cuopt wheel 
 - Diversity improvements for routing
 - Enable more compile warnings and faster compile by bypassing rapids fetch 
 - Constraint prop based on load balanced bounds update 

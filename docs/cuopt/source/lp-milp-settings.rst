@@ -9,8 +9,8 @@ Please refer to examples in `C </cuopt-c/lp-milp/>`_ and `Server Thin client </c
 .. note::
    When setting parameters in thin client solver settings, remove ``CUOPT_`` from the parameter name and convert to lowercase. For example, ``CUOPT_TIME_LIMIT`` would be set as ``time_limit``.
 
-Common
--------
+Parameters common to LP/MILP
+----------------------------
 
 We begin by describing parameters common to both the MILP and LP solvers
 
