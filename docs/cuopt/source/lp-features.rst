@@ -78,6 +78,12 @@ Method
 **Dual Simplex**: The simplex method applied to the dual of the linear program. Dual simplex requires the basis factorization of linear program fit into memory. Select this method if your LP is small to medium sized, or if you require a highly accurate basic solution.
 
 
+Crossover
+---------
+
+Crossover allows you to obtain a high-quality basic solution. More details can be found `here <lp-milp-features.html#crossover>`__.
+
+
 Logging Callback
 ----------------
 With logging callback, users can fetch server-side logs for additional debugs and to get details on solver process details. `Examples <cuopt-server/examples/lp-examples.html#logging-callback>`__ are shared on the self-hosted page.
