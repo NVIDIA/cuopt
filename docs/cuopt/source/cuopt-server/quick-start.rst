@@ -86,14 +86,14 @@ Step 4: Pull the container:
 
     .. code-block:: bash
 
-        docker pull nvcr.io/nvidia/cuopt/cuopt:25.5.0
+        docker pull CONTAINER_IMAGE_PATH
 
 
 The container includes both the Python API and self-hosted server components. To run the container:
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvcr.io/nvidia/cuopt/cuopt:25.5.0 /bin/bash -c "python3 -m cuopt_server.cuopt_service"
+    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 <CONTAINER_IMAGE_PATH> /bin/bash -c "python3 -m cuopt_server.cuopt_service"
 
 
 Smoke Test
