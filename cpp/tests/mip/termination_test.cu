@@ -62,6 +62,13 @@ static std::pair<mip_termination_status_t, double> test_mps_file(std::string tes
   return std::make_pair(solution.get_termination_status(), solution.get_objective_value());
 }
 
+TEST(termination_status, trivial_presolve_optimality_test)
+{
+  auto [termination_status, obj_val] = test_mps_file("mip/trivial-presolve-optimality.mps");
+  EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
+  EXPECT_EQ(obj_val, -1);
+}
+
 TEST(termination_status, presolve_optimality_test)
 {
   auto [termination_status, obj_val] = test_mps_file("mip/sudoku.mps");

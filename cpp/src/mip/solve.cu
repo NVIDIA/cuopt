@@ -136,10 +136,10 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
       "please provide a more numerically stable problem.");
   }
 
-  // If the trivial presolve fully reduced the problem:
+  // If the presolve fully reduced the problem:
   if (scaled_problem.empty) {
-    detail::solution_t<i_t, f_t> fixed_assignment_solution(problem);
-    if (fixed_assignment_solution.compute_feasibility()) {
+    CUOPT_LOG_DEBUG("Problem fully reduced at trivial/nontrivial presolve\n");
+    if (!scaled_sol.get_problem_infeasible()) {
       solver.get_solver_stats().solution_bound = scaled_sol.get_user_objective();
     } else {
       scaled_sol.set_problem_infeasible();
