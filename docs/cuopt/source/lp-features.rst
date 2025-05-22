@@ -78,7 +78,7 @@ Method
 Crossover
 ---------
 
-Crossover allows you to obtain a high-quality basic solution. More details can be found `here <lp-milp-features.html#crossover>`__.
+Crossover allows you to obtain a high-quality basic solution. More details can be found `here <lp-milp-settings.html#crossover>`__.
 
 
 Logging Callback
