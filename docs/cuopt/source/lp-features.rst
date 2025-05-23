@@ -23,7 +23,7 @@ Constraints
 
 The constraint matrix is specified in `Compressed Sparse Row (CSR) format  <https://docs.nvidia.com/cuda/cusparse/#compressed-sparse-row-csr>`_.
 
-There are two ways to specify constraints to cuOpt LP solver:
+There are two ways to specify constraints to the LP solver:
 
 1. Using row_type and right-hand side:
 
@@ -50,23 +50,23 @@ Alternatively, previously run solutions can be used to warm start a new request 
 
 PDLP Solver Mode
 ----------------
-Users can control how the solver will operate by using ``solver mode`` under ``solver config``. The mode choice can drastically impact how fast a specific problem will be solved. Users are encouraged to test different modes to see which one fits the best their problem.
+Users can control how the solver will operate by specifying the PDLP solver mode. The mode choice can drastically impact how fast a specific problem will be solved. Users are encouraged to test different modes to see which one fits the best their problem.
 
 
 Method
 ------
 
-**Concurrent**: The default method for solving linear programs. When concurrent is selected, cuOpt runs two solves at the same time: PDLP on the GPU and dual simplex on the CPU. A solution is returned from the solve that finishes first.
+**Concurrent**: The default method for solving linear programs. When concurrent is selected, cuOpt runs two algorithms at the same time: PDLP on the GPU and dual simplex on the CPU. A solution is returned from the algorithm that finishes first.
 
 **PDLP**: Primal-Dual Hybrid Gradient for Linear Program is an algorithm for solving large-scale linear programming problems on the GPU. PDLP does not attempt to any matrix factorizations during the course of the solve. Select this method if your LP is so large that factorization will not fit into memory. By default PDLP solves to low relative tolerance and the solutions it returns do not lie at a vertex of the feasible region. Enable crossover to obtain a highly accurate basic solution from a PDLP solution.
 
-**Dual Simplex**: The simplex method applied to the dual of the linear program. Dual simplex requires the basis factorization of linear program fit into memory. Select this method if your LP is small to medium sized, or if you require a highly accurate basic solution.
+**Dual Simplex**: Dual simplex is the simplex method applied to the dual of the linear program. Dual simplex requires the basis factorization of linear program fit into memory. Select this method if your LP is small to medium sized, or if you require a high-quality basic solution.
 
 
 Crossover
 ---------
 
-Crossover allows you to obtain a high-quality basic solution. More details can be found `here <lp-milp-settings.html#crossover>`__.
+Crossover allows you to obtain a high-quality basic solution from the results of a PDLP solve. More details can be found `here <lp-milp-settings.html#crossover>`__.
 
 
 Logging Callback
@@ -77,7 +77,7 @@ With logging callback, users can fetch server-side logs for additional debugs an
 Infeasibility Detection
 -----------------------
 
-An option under ``solver config`` in API. The PDLP solver includes the option to detect infeasible problems. If the infeasibilty detection is enabled in solver settings, PDLP will abort as soon as it concludes the problem is infeasible.
+The PDLP solver includes the option to detect infeasible problems. If the infeasibilty detection is enabled in solver settings, PDLP will abort as soon as it concludes the problem is infeasible.
 
 .. note::
    Infeasibility detection is always enabled for dual simplex.
