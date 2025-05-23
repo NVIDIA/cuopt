@@ -5,7 +5,7 @@ LP Features
 Availability
 -------------
 
-The LP solver can be accessed in three different ways:
+The LP solver can be accessed in the following ways:
 
 - **C API**: A native C API that provides direct low-level access to cuOpt's LP capabilities, enabling integration into any application or system that can interface with C.
 
