@@ -30,7 +30,7 @@ The VRP generalizes the TSP to solve for the optimal set of routes for a fleet o
 
 
 How cuOpt Solves the Routing Problem
------------------------------------
+-------------------------------------
 
 cuOpt first generates an initial population of solutions, then iteratively improves the population until the time limit is reached, and picks the best solution from the population.
 
@@ -63,7 +63,7 @@ This is a linear program.
 
 
 How cuOpt Solves the Linear Programming Problem
-------------------------------
+------------------------------------------------
 cuOpt includes an LP solver based on `PDLP <https://arxiv.org/abs/2106.04756>`__, a new First-Order Method (FOM) used to solve large-scale LPs. This solver implements gradient descent, enhanced by heuristics, and performing massively parallel operations efficiently by leveraging the latest NVIDIA GPUs. 
 
 In addition to PDLP, cuOpt includes a dual simplex solver that runs on the CPU. Both algorithms can be run concurrently on the GPU and CPU.
