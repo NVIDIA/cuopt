@@ -146,6 +146,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
     solution_t<i_t, f_t> sol(*problem_ptr);
     sol.copy_new_assignment(h_solution_vec);
     sol.compute_feasibility();
+    sol.handle_ptr->sync_stream();
     return_vector.emplace_back(std::move(sol));
   }
   if (external_solution_queue.size() > 0) {
