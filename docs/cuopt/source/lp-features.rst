@@ -8,11 +8,7 @@ Availability
 The LP solver can be accessed in three different ways:
 
 - **Third-Party Modeling Languages**: cuOpt's LP and MILP solver can be called directly from the following third-party modeling languages. 
-   -  SciPy
-   -  PuLP 
-   -  CVXPY
-   -  Pyomo
-   -  AMPL
+   - This is still under development, and will be available soon.
 
 This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
 

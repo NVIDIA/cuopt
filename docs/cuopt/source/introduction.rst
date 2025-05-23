@@ -115,8 +115,4 @@ cuOpt supports the following APIs:
    - Mixed Integer Linear Programming (MILP)
    - Routing (TSP, VRP, and PDP)
 - cuOpt Third-Party Modeling Languages support (LP and MILP)
-   - SciPy
-   - PuLP
-   - CVXPY
-   - Pyomo
-   - AMPL
+   This is still under development, and will be available soon.
