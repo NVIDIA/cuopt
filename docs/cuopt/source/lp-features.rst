@@ -46,7 +46,7 @@ Warm Start
 
 A warm starts allow a user to provide an initial solution to help PDLP converge faster. The initial ``primal`` and ``dual`` solutions can be specified by the user.
 
-Alternatively, previously run solutions can be used to warm start a new request to decrease solve time. `Examples <cuopt-server/lp-examples.html#warm-start>`_ are shared on the self-hosted page.
+Alternatively, previously run solutions can be used to warm start a new solve to decrease solve time. `Examples <cuopt-server/lp-examples.html#warm-start>`_ are shared on the self-hosted page.
 
 PDLP Solver Mode
 ----------------
