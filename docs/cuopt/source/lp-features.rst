@@ -11,7 +11,7 @@ The LP solver can be accessed in the following ways:
 
 - **As a Self-Hosted Service**: cuOpt's LP solver can be deployed as a in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
-All three options provide the same powerful linear optimization capabilities while offering flexibility in deployment and integration approaches.
+All the above options provide the same powerful linear optimization capabilities while offering flexibility in deployment and integration approaches.
 
 Variable Bounds
 ---------------

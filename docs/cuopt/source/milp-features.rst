@@ -11,7 +11,7 @@ The MILP solver can be accessed in the following ways:
 
 - **As a Self-Hosted Service**: cuOpt's MILP solver can be deployed in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
-All three options provide the same powerful mixed-integer linear optimization capabilities while offering flexibility in deployment and integration approaches.
+All the above options provide the same powerful mixed-integer linear optimization capabilities while offering flexibility in deployment and integration approaches.
 
 Variable Bounds
 ---------------
