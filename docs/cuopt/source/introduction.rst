@@ -89,7 +89,7 @@ and suppose we wish to maximize the objective function
 
 This is a mixed integer linear program.
 
-Although MILPs seems similar to a LPs, they are actually much more difficult.
+Although MILPs seems similar to a LPs, they require much more computation to solve.
 
 How cuOpt Solves MILP Problem
 ------------------------------
