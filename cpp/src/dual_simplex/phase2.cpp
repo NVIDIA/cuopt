@@ -35,6 +35,28 @@ namespace cuopt::linear_programming::dual_simplex {
 namespace phase2 {
 
 template <typename i_t, typename f_t>
+f_t l2_dual_residual(const lp_problem_t<i_t, f_t>& lp, const lp_solution_t<i_t, f_t>& solution)
+{
+  std::vector<f_t> dual_residual = solution.z;
+  const i_t n                    = lp.num_cols;
+  // dual_residual <- z - c
+  for (i_t j = 0; j < n; j++) {
+    dual_residual[j] -= lp.objective[j];
+  }
+  // dual_residual <- 1.0*A'*y + 1.0*(z - c)
+  matrix_transpose_vector_multiply(lp.A, 1.0, solution.y, 1.0, dual_residual);
+  return vector_norm2<i_t, f_t>(dual_residual);
+}
+
+template <typename i_t, typename f_t>
+f_t l2_primal_residual(const lp_problem_t<i_t, f_t>& lp, const lp_solution_t<i_t, f_t>& solution)
+{
+  std::vector<f_t> primal_residual = lp.rhs;
+  matrix_vector_multiply(lp.A, 1.0, solution.x, -1.0, primal_residual);
+  return vector_norm2<i_t, f_t>(primal_residual);
+}
+
+template <typename i_t, typename f_t>
 void compute_dual_solution_from_basis(const lp_problem_t<i_t, f_t>& lp,
                                       basis_update_t<i_t, f_t>& ft,
                                       const std::vector<i_t>& basic_list,
@@ -976,6 +998,8 @@ void prepare_optimality(const lp_problem_t<i_t, f_t>& lp,
     }
   }
 
+  sol.l2_primal_residual  = l2_primal_residual(lp, sol);
+  sol.l2_dual_residual    = l2_dual_residual(lp, sol);
   const f_t dual_infeas   = phase2::dual_infeasibility(lp, settings, vstatus, z, 0.0, 0.0);
   const f_t primal_infeas = phase2::primal_infeasibility(lp, settings, vstatus, x);
   if (phase == 1 && iter > 0) {
