@@ -68,7 +68,9 @@ solution_t<i_t, f_t>::solution_t(const solution_t<i_t, f_t>& other)
     h_user_obj(other.h_user_obj),
     h_infeasibility_cost(other.h_infeasibility_cost),
     is_feasible(other.is_feasible),
+    is_problem_fully_reduced(other.is_problem_fully_reduced),
     is_scaled_(other.is_scaled_),
+    post_process_completed(other.post_process_completed),
     lp_state(other.lp_state)
 {
 }
@@ -94,8 +96,10 @@ void solution_t<i_t, f_t>::copy_from(const solution_t<i_t, f_t>& other_sol)
              other_sol.n_feasible_constraints.data(),
              1,
              handle_ptr->get_stream());
-  is_feasible = other_sol.is_feasible;
-  is_scaled_  = other_sol.is_scaled_;
+  is_feasible              = other_sol.is_feasible;
+  is_problem_fully_reduced = other_sol.is_problem_fully_reduced;
+  is_scaled_               = other_sol.is_scaled_;
+  post_process_completed   = other_sol.post_process_completed;
   expand_device_copy(
     lp_state.prev_primal, other_sol.lp_state.prev_primal, handle_ptr->get_stream());
   expand_device_copy(lp_state.prev_dual, other_sol.lp_state.prev_dual, handle_ptr->get_stream());

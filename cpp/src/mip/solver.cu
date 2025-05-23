@@ -96,7 +96,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                 "preprocess_problem should be called before running the solver");
 
   if (context.problem_ptr->empty) {
-    CUOPT_LOG_INFO("Problem fully reduced at trivial presolve");
+    CUOPT_LOG_INFO("Problem fully reduced in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
     context.problem_ptr->post_process_solution(sol);
@@ -107,14 +107,14 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   dm.timer              = timer_;
   bool presolve_success = dm.run_presolve(timer_.remaining_time());
   if (!presolve_success) {
-    CUOPT_LOG_INFO("Presolve is infeasible, returning infeasible solution!");
+    CUOPT_LOG_INFO("Problem proven infeasible in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
   if (context.problem_ptr->empty) {
-    CUOPT_LOG_INFO("Problem fully reduced at presolve");
+    CUOPT_LOG_INFO("Problem full reduced in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
     context.problem_ptr->post_process_solution(sol);
