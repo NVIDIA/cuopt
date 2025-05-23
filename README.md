@@ -22,8 +22,8 @@ Review the [CONTRIBUTING.md](CONTRIBUTING.md) file for information on how to con
 
 ### CUDA/GPU requirements
 
-* CUDA 11.2+
-* NVIDIA driver 450.80.02+
+* CUDA 12.0+
+* NVIDIA driver >= 525.60.13 (Linux) and >= 527.41 (Windows)
 * Volta architecture or better (Compute Capability >=7.0)
 
 ### Pip
@@ -31,12 +31,6 @@ Review the [CONTRIBUTING.md](CONTRIBUTING.md) file for information on how to con
 cuOpt can be installed via `pip` from the NVIDIA Python Package Index.
 Be sure to select the appropriate cuOpt package depending
 on the major version of CUDA available in your environment:
-
-For CUDA 11.x:
-
-```bash
-pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu11
-```
 
 For CUDA 12.x:
 
@@ -48,11 +42,6 @@ pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu12
 
 cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forge/miniforge)) from the `nvidia` channel:
 
-For CUDA 11.x:
-```bash
-conda install -c rapidsai -c conda-forge -c nvidia \
-    cuopt=25.05 python=3.12 cuda-version=11.8
-```
 
 For CUDA 12.x:
 ```bash
