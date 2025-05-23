@@ -48,7 +48,7 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
       const f_t x = scaled.A.x[p];
       sum += x * x;
     }
-    f_t col_norm_j = column_scaling[j] = std::sqrt(sum);
+    f_t col_norm_j = column_scaling[j] = sum > 0 ? std::sqrt(sum) : 1.0;
     max                                = std::max(col_norm_j, max);
   }
   settings.log.printf("Scaling matrix. Maximum column norm %e\n", max);
