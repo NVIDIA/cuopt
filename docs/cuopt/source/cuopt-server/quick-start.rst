@@ -8,12 +8,6 @@ Installation
 pip
 ---
 
-For CUDA 11.x:
-
-.. code-block:: bash
-
-    pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu11==25.5.* cuopt-sh==25.5.*
-
 For CUDA 12.x:
 
 .. code-block:: bash
@@ -25,13 +19,6 @@ Conda
 -----
 
 cuOpt Server can be installed with Conda (via `miniforge <https://github.com/conda-forge/miniforge>`_) from the ``nvidia`` channel:
-
-For CUDA 11.x:
-
-.. code-block:: bash
-
-    conda install -c rapidsai -c conda-forge -c nvidia \
-        cuopt-server=25.5.* cuopt-sh=25.5.* python=3.12 cuda-version=11.8
 
 For CUDA 12.x:
 
