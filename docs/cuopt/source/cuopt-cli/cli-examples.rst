@@ -10,11 +10,11 @@ To solve a simple LP problem using cuopt_cli:
 
     # Create a sample MPS file
     echo "* optimize
-    *  cost = -0.2 * VAR1 + 0.1 * VAR2
-    * subject to
-    *  3 * VAR1 + 4 * VAR2 <= 5.4
-    *  2.7 * VAR1 + 10.1 * VAR2 <= 4.9
-    NAME          SAMPLE
+   *  cost = -0.2 * VAR1 + 0.1 * VAR2
+   * subject to
+   *  3 * VAR1 + 4 * VAR2 <= 5.4
+   *  2.7 * VAR1 + 10.1 * VAR2 <= 4.9
+   NAME          SAMPLE
    ROWS
     N  COST
     L  ROW1
@@ -63,10 +63,10 @@ Here's an example of solving a Mixed Integer Programming (MIP) problem using the
     echo "* Optimal solution -28
    NAME          MIP_SAMPLE
    ROWS
-   N  OBJ
-   L  C1
-   L  C2
-   L  C3
+    N  OBJ
+    L  C1
+    L  C2
+    L  C3
    COLUMNS
     MARK0001  'MARKER'                 'INTORG'
       X1        OBJ             -7
@@ -85,7 +85,7 @@ Here's an example of solving a Mixed Integer Programming (MIP) problem using the
    BOUNDS
     UP BOUND     X1               10
     UP BOUND     X2               10
-   ENDATA" > mip_sample.mps
+  ENDATA" > mip_sample.mps
 
     # Solve the MIP problem with custom parameters
     cuopt_cli mip_sample.mps --mip-absolute-gap 0.01 --time-limit 10
