@@ -11,7 +11,7 @@ New Features
 
 - Added concurrent mode that runs PDLP and Dual Simplex together
 - Added crossover from PDLP to Dual Simplex
-- Added a LP and MILP C API for cuOpt 
+- Added a C API for LP and MILP
 - PDLP: Faster iterations and new more robust default PDLPSolverMode Stable2 
 
 Breaking Changes
@@ -46,7 +46,7 @@ Bug Fixes
 - Improve breaks to allow dimensions at arbitrary places in the route.
 - Free var elimination with a substitute variable for each free variable.
 - Fixed race condition when resetting vehicle IDs in heterogenous mode.
-- cuOpt self-hosted client, some MILPs will not have all fields in ``lp_stats``.
+- cuOpt self-hosted client, some MILPs do not have all fields in ``lp_stats``.
 - Fixed RAPIDS logger usage.
 - Handle LP state more cleanly, per solution.
 - Fixed routing solver intermittent failures.
