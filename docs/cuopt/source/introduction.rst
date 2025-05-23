@@ -62,7 +62,7 @@ and suppose we want to maximize the objective function
 This is a linear program.
 
 
-How cuOpt Solves LP Problem
+How cuOpt Solves the Linear Programming Problem
 ------------------------------
 cuOpt includes an LP solver based on `PDLP <https://arxiv.org/abs/2106.04756>`__, a new First-Order Method (FOM) used to solve large-scale LPs. This solver implements gradient descent, enhanced by heuristics, and performing massively parallel operations efficiently by leveraging the latest NVIDIA GPUs. 
 
@@ -91,8 +91,8 @@ This is a mixed integer linear program.
 
 Although MILPs seems similar to a LPs, they require much more computation to solve.
 
-How cuOpt Solves MILP Problem
-------------------------------
+How cuOpt Solves the Mixed-Integer Linear Programming Problem
+-------------------------------------------------------------
 
 The MILP solver is a hybrid GPU/CPU algorithm. Primal heuristics including local search, feasibility pump, and feasibility jump are performed on the GPU to improve the primal bound. Branch and bound is performed on the CPU to improve the dual bound. Integer feasible solutions are shared between both algorithms. 
 
