@@ -35,6 +35,7 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
+      script: ci/build_cpp.sh
   python-build:
     needs: [cpp-build]
     secrets: inherit
@@ -45,6 +46,7 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
+      script: ci/build_python.sh
   wheel-build-cuopt-mps-parser:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06

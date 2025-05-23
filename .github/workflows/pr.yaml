@@ -97,6 +97,7 @@ jobs:
     with:
       build_type: pull-request
       matrix_filter: map(select((.CUDA_VER | startswith("12"))))
+      script: ci/build_cpp.sh
   conda-cpp-tests:
     needs: [conda-cpp-build, changed-files]
     secrets: inherit
@@ -105,6 +106,7 @@ jobs:
     with:
       build_type: pull-request
       matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
+      script: ci/test_cpp.sh
   conda-python-build:
     needs: conda-cpp-build
     secrets: inherit
@@ -112,6 +114,7 @@ jobs:
     with:
       build_type: pull-request
       matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
+      script: ci/build_python.sh
   conda-python-tests:
     needs: [conda-python-build, changed-files]
     secrets: inherit
@@ -121,6 +124,7 @@ jobs:
       run_codecov: false
       build_type: pull-request
       matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
+      script: ci/test_python.sh
   #docs-build:
   #  needs: checks
   #  secrets: inherit
