@@ -91,6 +91,8 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
     compute_binary_var_table();
     original_ids.resize(n_variables);
     std::iota(original_ids.begin(), original_ids.end(), 0);
+    reverse_original_ids.resize(n_variables);
+    std::iota(reverse_original_ids.begin(), reverse_original_ids.end(), 0);
   }
   compute_transpose_of_problem();
   // Check after modifications
@@ -157,6 +159,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     is_binary_pb(problem_.is_binary_pb),
     presolve_data(problem_.presolve_data, handle_ptr->get_stream()),
     original_ids(problem_.original_ids),
+    reverse_original_ids(problem_.reverse_original_ids),
     reverse_coefficients(problem_.reverse_coefficients, handle_ptr->get_stream()),
     reverse_constraints(problem_.reverse_constraints, handle_ptr->get_stream()),
     reverse_offsets(problem_.reverse_offsets, handle_ptr->get_stream()),
@@ -205,6 +208,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
         ? std::move(presolve_data_t{*problem_.original_problem_ptr, handle_ptr->get_stream()})
         : std::move(presolve_data_t{problem_.presolve_data, handle_ptr->get_stream()})),
     original_ids(problem_.original_ids),
+    reverse_original_ids(problem_.reverse_original_ids),
     reverse_coefficients(
       (!no_deep_copy)
         ? rmm::device_uvector<f_t>(problem_.reverse_coefficients, handle_ptr->get_stream())
@@ -1067,11 +1071,13 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
   // if we are fixing on the original problem, the variable_map is what we want in
   // problem.original_ids but considering the case that we are fixing some variables multiple times,
   // do an assignment from the original_ids of the current problem
-  // TODO if we have more host gather operations, put them in a function
   problem.original_ids.resize(variable_map.size());
+  problem.reverse_original_ids.resize(n_variables);
+  std::fill(problem.reverse_original_ids.begin(), problem.reverse_original_ids.end(), -1);
   auto h_variable_map = cuopt::host_copy(variable_map);
   for (size_t i = 0; i < variable_map.size(); ++i) {
-    problem.original_ids[i] = original_ids[h_variable_map[i]];
+    problem.original_ids[i]                                       = original_ids[h_variable_map[i]];
+    problem.reverse_original_ids[original_ids[h_variable_map[i]]] = i;
   }
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
   return problem;
