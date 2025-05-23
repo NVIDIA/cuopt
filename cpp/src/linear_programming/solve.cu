@@ -255,17 +255,22 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
 
   // Should be filled with more information from dual simplex
   typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t info;
-  info.solved_by_pdlp              = false;
-  info.primal_objective            = solution.user_objective;
-  info.dual_objective              = solution.user_objective;
-  info.gap                         = 0.0;
-  info.relative_gap                = 0.0;
-  info.solve_time                  = duration;
-  info.number_of_steps_taken       = solution.iterations;
-  info.l2_primal_residual          = solution.l2_primal_residual;
-  info.l2_dual_residual            = solution.l2_dual_residual;
-  info.l2_relative_primal_residual = solution.l2_primal_residual / (1.0 + norm_user_objective);
-  info.l2_relative_dual_residual   = solution.l2_dual_residual / (1.0 + norm_rhs);
+  info.solved_by_pdlp                  = false;
+  info.primal_objective                = solution.user_objective;
+  info.dual_objective                  = solution.user_objective;
+  info.gap                             = 0.0;
+  info.relative_gap                    = 0.0;
+  info.solve_time                      = duration;
+  info.number_of_steps_taken           = solution.iterations;
+  info.total_number_of_attempted_steps = solution.iterations;
+  info.l2_primal_residual              = solution.l2_primal_residual;
+  info.l2_dual_residual                = solution.l2_dual_residual;
+  info.l2_relative_primal_residual     = solution.l2_primal_residual / (1.0 + norm_user_objective);
+  info.l2_relative_dual_residual       = solution.l2_dual_residual / (1.0 + norm_rhs);
+  info.max_primal_ray_infeasibility    = 0.0;
+  info.primal_ray_linear_objective     = 0.0;
+  info.max_dual_ray_infeasibility      = 0.0;
+  info.dual_ray_linear_objective       = 0.0;
 
   pdlp_termination_status_t termination_status = to_termination_status(status);
   auto sol = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
