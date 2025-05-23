@@ -46,12 +46,12 @@ Both forms are mathematically equivalent. The choice between them is a matter of
 Incumbent Solution Callback
 ---------------------------
 
-User can provide a callback to receive new integer feasible solutions that improve the objective (called incumbents) while the solver is running. `Incumbent Example <cuopt-server/examples/milp-examples.html#incumbent-solution>`_ is shared on the self-hosted page.
+User can provide a callback to receive new integer feasible solutions that improve the objective (called incumbents) while the solver is running. An `Incumbent Example <cuopt-server/examples/milp-examples.html#incumbent-solution>`_ is shared on the self-hosted page.
 
 Logging Callback
 ----------------
 
-A logging callback allows users to get additional information about how the solve is progressing. `Logging Callback Example <cuopt-server/examples/milp-examples.html#logging-callback>`_ is shared on the self-hosted page.
+A logging callback allows users to get additional information about how the solve is progressing. A `Logging Callback Example <cuopt-server/examples/milp-examples.html#logging-callback>`_ is shared on the self-hosted page.
 
 Time Limit
 --------------
