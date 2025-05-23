@@ -88,7 +88,7 @@ Here's an example of solving a Mixed Integer Programming (MIP) problem using the
    ENDATA" > mip_sample.mps
 
     # Solve the MIP problem with custom parameters
-    cuopt_cli mip_sample.mps --mip-absolute-gap 0.01 --time-limit 10
+    cuopt_cli --mip-absolute-gap 0.01 --time-limit 10 mip_sample.mps
 
 This should produce output similar to:
 
