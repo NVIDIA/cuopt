@@ -29,7 +29,7 @@ To solve a simple LP problem using cuopt_cli:
    RHS
     RHS1      ROW1                5.4
     RHS1      ROW2                4.9
-    ENDATA" > sample.mps
+   ENDATA" > sample.mps
 
     # Solve using default settings
     cuopt_cli sample.mps
@@ -85,7 +85,7 @@ Here's an example of solving a Mixed Integer Programming (MIP) problem using the
    BOUNDS
     UP BOUND     X1               10
     UP BOUND     X2               10
-  ENDATA" > mip_sample.mps
+   ENDATA" > mip_sample.mps
 
     # Solve the MIP problem with custom parameters
     cuopt_cli mip_sample.mps --mip-absolute-gap 0.01 --time-limit 10
