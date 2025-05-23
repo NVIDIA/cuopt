@@ -163,7 +163,6 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                                  ? sol.get_user_objective() > best_feasible_objective
                                  : sol.get_user_objective() < best_feasible_objective;
   auto user_callbacks        = context.settings.get_mip_callbacks();
-
   if (better_solution_found && sol.get_feasible()) {
     CUOPT_LOG_DEBUG("Population: Found new best solution %g", sol.get_user_objective());
     best_feasible_objective = sol.get_user_objective();
@@ -174,19 +173,29 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
     for (auto callback : user_callbacks) {
       if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
         auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-        rmm::device_uvector<f_t> incumbent_assignment(sol.assignment, sol.handle_ptr->get_stream());
-        problem_ptr->post_process_assignment(incumbent_assignment);
-        rmm::device_uvector<f_t> dummy(0, sol.handle_ptr->get_stream());
+        solution_t<i_t, f_t> temp_sol(sol);
+        problem_ptr->post_process_assignment(temp_sol.assignment);
+        rmm::device_uvector<f_t> dummy(0, temp_sol.handle_ptr->get_stream());
         if (context.settings.mip_scaling) {
-          context.scaling.unscale_solutions(incumbent_assignment, dummy);
+          context.scaling.unscale_solutions(temp_sol.assignment, dummy);
+          // Need to get unscaled problem as well
+          problem_t<i_t, f_t> n_problem(*sol.problem_ptr->original_problem_ptr);
+          temp_sol.problem_ptr = &n_problem;
+          temp_sol.resize_to_original_problem();
+          temp_sol.compute_feasibility();
+          if (!temp_sol.get_feasible()) {
+            CUOPT_LOG_DEBUG("Discard infeasible after unscaling");
+            return;
+          }
         }
 
-        rmm::device_uvector<f_t> user_objective_vec(1, sol.handle_ptr->get_stream());
+        rmm::device_uvector<f_t> user_objective_vec(1, temp_sol.handle_ptr->get_stream());
 
-        f_t user_objective = sol.problem_ptr->get_user_obj_from_solver_obj(sol.get_objective());
-        user_objective_vec.set_element_async(0, user_objective, sol.handle_ptr->get_stream());
+        f_t user_objective =
+          temp_sol.problem_ptr->get_user_obj_from_solver_obj(temp_sol.get_objective());
+        user_objective_vec.set_element_async(0, user_objective, temp_sol.handle_ptr->get_stream());
         CUOPT_LOG_DEBUG("Returning incumbent solution with objective %g", user_objective);
-        get_sol_callback->get_solution(incumbent_assignment.data(), user_objective_vec.data());
+        get_sol_callback->get_solution(temp_sol.assignment.data(), user_objective_vec.data());
       }
     }
   }
@@ -199,10 +208,15 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       rmm::device_uvector<f_t> dummy(0, sol.handle_ptr->get_stream());
       solution_t<i_t, f_t> outside_sol(sol);
       rmm::device_scalar<f_t> d_outside_sol_objective(sol.handle_ptr->get_stream());
+      auto inf = std::numeric_limits<f_t>::infinity();
+      d_outside_sol_objective.set_value_async(inf, sol.handle_ptr->get_stream());
+      sol.handle_ptr->sync_stream();
       set_sol_callback->set_solution(incumbent_assignment.data(), d_outside_sol_objective.data());
 
       f_t outside_sol_objective = d_outside_sol_objective.value(sol.handle_ptr->get_stream());
-
+      // The callback might be called without setting any valid solution or objective which triggers
+      // asserts
+      if (outside_sol_objective == inf) { return; }
       CUOPT_LOG_DEBUG("Injecting external solution with objective %g", outside_sol_objective);
 
       if (context.settings.mip_scaling) {
@@ -210,21 +224,19 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       }
       bool is_valid = problem_ptr->pre_process_assignment(incumbent_assignment);
       if (!is_valid) { return; }
-
       cuopt_assert(outside_sol.assignment.size() == incumbent_assignment.size(),
                    "Incumbent assignment size mismatch");
       raft::copy(outside_sol.assignment.data(),
                  incumbent_assignment.data(),
                  incumbent_assignment.size(),
                  sol.handle_ptr->get_stream());
-
       outside_sol.compute_feasibility();
 
-      CUOPT_LOG_DEBUG("Injected solution feasibility =  %d", outside_sol.get_feasible());
+      CUOPT_LOG_DEBUG("Injected solution feasibility =  %d objective = %g",
+                      outside_sol.get_feasible(),
+                      outside_sol.get_user_objective());
 
-      cuopt_assert(std::abs(outside_sol.problem_ptr->get_user_obj_from_solver_obj(
-                              outside_sol.get_objective()) -
-                            outside_sol_objective) <= 1e-6,
+      cuopt_assert(std::abs(outside_sol.get_user_objective() - outside_sol_objective) <= 1e-6,
                    "External solution objective mismatch");
       auto h_outside_sol = outside_sol.get_host_assignment();
       add_external_solution(h_outside_sol, outside_sol.get_objective());

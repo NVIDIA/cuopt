@@ -159,9 +159,6 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
   try {
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
-#if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
-    cuopt::default_logger().set_pattern("%v");
-#endif
     // Init libraies before to not include it in solve time
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
@@ -189,6 +186,11 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
   } catch (const cuopt::logic_error& e) {
     CUOPT_LOG_ERROR("Error in solve_mip: %s", e.what());
     return mip_solution_t<i_t, f_t>{e, op_problem.get_handle_ptr()->get_stream()};
+  } catch (const std::bad_alloc& e) {
+    CUOPT_LOG_ERROR("Error in solve_mip: %s", e.what());
+    return mip_solution_t<i_t, f_t>{
+      cuopt::logic_error("Memory allocation failed", cuopt::error_type_t::RuntimeError),
+      op_problem.get_handle_ptr()->get_stream()};
   }
 }
 

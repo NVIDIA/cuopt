@@ -163,6 +163,7 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         double gap_
         int nb_iterations_
         double solve_time_
+        bool solved_by_pdlp_
 
     cdef cppclass mip_ret_t:
         unique_ptr[device_buffer] solution_

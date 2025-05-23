@@ -170,7 +170,7 @@ html_theme_options = {
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
 html_css_files = ["swagger-nvidia.css"]
-html_extra_path = ["versions1.json"]
+html_extra_path = ["project.json", "versions1.json"]
 
 
 # -- Options for Breathe (Doxygen) ----------------------------------------

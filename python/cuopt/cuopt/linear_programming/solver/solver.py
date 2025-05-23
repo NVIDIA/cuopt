@@ -54,7 +54,7 @@ def Solve(data_model, solver_settings=None, log_file=""):
     --------
     >>> from cuopt import linear_programming
     >>> from cuopt.linear_programming.solver_settings import PDLPSolverMode
-    >>> from cuopt.linear_programming.solver_parameters import *
+    >>> from cuopt.linear_programming.solver.solver_parameters import *
     >>>
     >>> data_model = linear_programming.DataModel()
     >>>
@@ -140,7 +140,7 @@ def BatchSolve(data_model_list, solver_settings=None, log_file=""):
     --------
     >>> from cuopt import linear_programming
     >>> from cuopt.linear_programming.solver_settings import PDLPSolverMode
-    >>> from cuopt.linear_programming.solver_parameters import *
+    >>> from cuopt.linear_programming.solver.solver_parameters import *
     >>> import cuopt_mps_parser
     >>>
     >>> data_models = []

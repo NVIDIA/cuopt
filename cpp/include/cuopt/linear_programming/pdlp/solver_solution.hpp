@@ -62,41 +62,44 @@ class optimization_problem_solution_t : public base_solution_t {
    */
   struct additional_termination_information_t {
     /** Number of pdlp steps taken before termination */
-    i_t number_of_steps_taken;
+    i_t number_of_steps_taken{-1};
     /** Number of pdhg steps taken before termination */
-    i_t total_number_of_attempted_steps;
+    i_t total_number_of_attempted_steps{-1};
     /** L2 norm of the primal residual (absolute primal residual) */
-    f_t l2_primal_residual;
+    f_t l2_primal_residual{std::numeric_limits<f_t>::signaling_NaN()};
     /** L2 norm of the primal residual divided by the L2 norm of the right hand side (b) */
-    f_t l2_relative_primal_residual;
+    f_t l2_relative_primal_residual{std::numeric_limits<f_t>::signaling_NaN()};
     /** L2 norm of the dual residual */
-    f_t l2_dual_residual;
+    f_t l2_dual_residual{std::numeric_limits<f_t>::signaling_NaN()};
     /** L2 norm of the dual residual divided by the L2 norm of the objective coefficient (c) */
-    f_t l2_relative_dual_residual;
+    f_t l2_relative_dual_residual{std::numeric_limits<f_t>::signaling_NaN()};
 
     /** Primal Objective */
-    f_t primal_objective;
+    f_t primal_objective{std::numeric_limits<f_t>::signaling_NaN()};
     /** Dual Objective */
-    f_t dual_objective;
+    f_t dual_objective{std::numeric_limits<f_t>::signaling_NaN()};
 
     /** Gap between primal and dual objective value */
 
-    f_t gap;
+    f_t gap{std::numeric_limits<f_t>::signaling_NaN()};
     /** Gap divided by the absolute sum of the primal and dual objective values */
-    f_t relative_gap;
+    f_t relative_gap{std::numeric_limits<f_t>::signaling_NaN()};
 
     /** Maximum error for the linear constraints and sign constraints */
-    f_t max_primal_ray_infeasibility;
+    f_t max_primal_ray_infeasibility{std::numeric_limits<f_t>::signaling_NaN()};
     /** Objective value for the extreme primal ray */
-    f_t primal_ray_linear_objective;
+    f_t primal_ray_linear_objective{std::numeric_limits<f_t>::signaling_NaN()};
 
     /** Maximum constraint error */
-    f_t max_dual_ray_infeasibility;
+    f_t max_dual_ray_infeasibility{std::numeric_limits<f_t>::signaling_NaN()};
     /** Objective value for the extreme dual ray */
-    f_t dual_ray_linear_objective;
+    f_t dual_ray_linear_objective{std::numeric_limits<f_t>::signaling_NaN()};
 
     /** Solve time in seconds */
-    double solve_time;
+    double solve_time{std::numeric_limits<double>::signaling_NaN()};
+
+    /** Whether the problem was solved by PDLP or Dual Simplex */
+    bool solved_by_pdlp{false};
   };
 
   /**

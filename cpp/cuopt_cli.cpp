@@ -81,6 +81,7 @@ inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_re
  */
 int run_single_file(const std::string& file_path,
                     const std::string& initial_solution_file,
+                    bool solve_relaxation,
                     const std::map<std::string, std::string>& settings_strings)
 {
   const raft::handle_t handle_{};
@@ -131,7 +132,7 @@ int run_single_file(const std::string& file_path,
           initial_solution_file, mps_data_model.get_variable_names());
 
   try {
-    if (is_mip) {
+    if (is_mip && !solve_relaxation) {
       auto& mip_settings = settings.get_mip_settings();
       if (initial_solution.size() > 0) {
         mip_settings.set_initial_solution(initial_solution.data(), initial_solution.size());
@@ -190,6 +191,11 @@ int main(int argc, char* argv[])
   program.add_argument("--initial-solution")
     .help("path to the initial solution .sol file")
     .default_value("");
+
+  program.add_argument("--relaxation")
+    .help("solve the LP relaxation of the MIP")
+    .default_value(false)
+    .implicit_value(true);
 
   std::map<std::string, std::string> arg_name_to_param_name;
   {
@@ -257,8 +263,9 @@ int main(int argc, char* argv[])
   std::string file_name = program.get<std::string>("filename");
 
   const auto initial_solution_file = program.get<std::string>("--initial-solution");
+  const auto solve_relaxation      = program.get<bool>("--relaxation");
 
   auto memory_resource = make_async();
   rmm::mr::set_current_device_resource(memory_resource.get());
-  return run_single_file(file_name, initial_solution_file, settings_strings);
+  return run_single_file(file_name, initial_solution_file, solve_relaxation, settings_strings);
 }

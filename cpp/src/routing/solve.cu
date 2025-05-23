@@ -31,6 +31,11 @@ assignment_t<i_t> solve(data_model_view_t<i_t, f_t> const& data_model,
   } catch (const cuopt::logic_error& e) {
     CUOPT_LOG_ERROR("Error in solve: %s", e.what());
     return assignment_t<i_t>(e, data_model.get_handle_ptr()->get_stream());
+  } catch (const std::bad_alloc& e) {
+    CUOPT_LOG_ERROR("Error in solve: %s", e.what());
+    return assignment_t<i_t>(
+      cuopt::logic_error("Memory allocation failed", cuopt::error_type_t::RuntimeError),
+      data_model.get_handle_ptr()->get_stream());
   }
 }
 

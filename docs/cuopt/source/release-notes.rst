@@ -12,7 +12,7 @@ New Features
 - Added concurrent mode that runs PDLP and Dual Simplex together
 - Added crossover from PDLP to Dual Simplex
 - Added a LP and MILP C API for cuOpt 
-- PDLP enhancements 
+- PDLP: Faster iterations and new more robust default PDLPSolverMode Stable2 
 
 Breaking Changes
 ----------------
@@ -40,6 +40,7 @@ Bug Fixes
 - In the solution, ``termination_status`` should be cast to correct enum.
 - Fixed a bug using vehicle IDs in construct feasible solution algorithm.
 - FP recombiner probing bug fix.
+- Fix concurrent LP crashes.
 - Fix print relative dual residual. 
 - Handle empty problems gracefully.
 - Improve breaks to allow dimensions at arbitrary places in the route.

@@ -16,6 +16,7 @@
  */
 
 #include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/logger.hpp>
 #include <mip/mip_constants.hpp>
 
 namespace cuopt::linear_programming {
@@ -119,7 +120,8 @@ template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& name,
                                                             const std::string& value)
 {
-  bool found = false;
+  bool found  = false;
+  bool output = false;
   for (auto& param : int_parameters) {
     if (param.param_name == name) {
       i_t value_int;
@@ -129,6 +131,10 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
         }
         *param.value_ptr = value_int;
         found            = true;
+        if (!output) {
+          CUOPT_LOG_INFO("Setting parameter %s to %d", name.c_str(), value_int);
+          output = true;
+        }
       } else {
         throw std::invalid_argument("Parameter " + name + " value " + value + " is not an integer");
       }
@@ -143,6 +149,10 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
         }
         *param.value_ptr = value_float;
         found            = true;
+        if (!output) {
+          CUOPT_LOG_INFO("Setting parameter %s to %e", name.c_str(), value_float);
+          output = true;
+        }
       } else {
         throw std::invalid_argument("Parameter " + name + " value " + value + " is not a float");
       }
@@ -154,6 +164,10 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
       if (string_to_bool(value, value_bool)) {
         *param.value_ptr = value_bool;
         found            = true;
+        if (!output) {
+          CUOPT_LOG_INFO("Setting parameter %s to %s", name.c_str(), value_bool ? "true" : "false");
+          output = true;
+        }
       } else {
         throw std::invalid_argument("Parameter " + name + " value " + value +
                                     " must be true or false");
@@ -164,7 +178,11 @@ void solver_settings_t<i_t, f_t>::set_parameter_from_string(const std::string& n
   for (auto& param : string_parameters) {
     if (param.param_name == name) {
       *param.value_ptr = value;
-      found            = true;
+      if (!output) {
+        CUOPT_LOG_INFO("Setting parameter %s to %s", name.c_str(), value.c_str());
+        output = true;
+      }
+      found = true;
     }
   }
   if (!found) { throw std::invalid_argument("Parameter " + name + " not found"); }
@@ -174,7 +192,8 @@ template <typename i_t, typename f_t>
 template <typename T>
 void solver_settings_t<i_t, f_t>::set_parameter(const std::string& name, T value)
 {
-  bool found = false;
+  bool found  = false;
+  bool output = false;
   if constexpr (std::is_same_v<T, i_t>) {
     for (auto& param : int_parameters) {
       if (param.param_name == name) {
@@ -182,7 +201,11 @@ void solver_settings_t<i_t, f_t>::set_parameter(const std::string& name, T value
           throw std::invalid_argument("Parameter " + name + " out of range");
         }
         *param.value_ptr = value;
-        found            = true;
+        if (!output) {
+          CUOPT_LOG_INFO("Setting parameter %s to %d", name.c_str(), value);
+          output = true;
+        }
+        found = true;
       }
     }
   }
@@ -193,7 +216,11 @@ void solver_settings_t<i_t, f_t>::set_parameter(const std::string& name, T value
           throw std::invalid_argument("Parameter " + name + " out of range");
         }
         *param.value_ptr = value;
-        found            = true;
+        if (!output) {
+          CUOPT_LOG_INFO("Setting parameter %s to %e", name.c_str(), value);
+          output = true;
+        }
+        found = true;
       }
     }
   }
@@ -201,7 +228,11 @@ void solver_settings_t<i_t, f_t>::set_parameter(const std::string& name, T value
     for (auto& param : bool_parameters) {
       if (param.param_name == name) {
         *param.value_ptr = value;
-        found            = true;
+        if (!output) {
+          CUOPT_LOG_INFO("Setting parameter %s to %s", name.c_str(), value ? "true" : "false");
+          output = true;
+        }
+        found = true;
       }
     }
   }
@@ -209,7 +240,11 @@ void solver_settings_t<i_t, f_t>::set_parameter(const std::string& name, T value
     for (auto& param : string_parameters) {
       if (param.param_name == name) {
         *param.value_ptr = value;
-        found            = true;
+        if (!output) {
+          CUOPT_LOG_INFO("Setting parameter %s to %s", name.c_str(), value.c_str());
+          output = true;
+        }
+        found = true;
       }
     }
   }
