@@ -111,7 +111,7 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
  *                minimize/maximize  cᵀx + offset
  *                  subject to       A x {=, ≤, ≥} b
  *                                   l ≤ x ≤ u
- *                                   xᵢ ∈ ℤ for some i
+ *                                   x_i integer for some i
  * @endverbatim
  *
  * @param[in] num_constraints The number of constraints
