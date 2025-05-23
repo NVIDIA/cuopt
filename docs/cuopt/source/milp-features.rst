@@ -7,11 +7,6 @@ Availability
 
 The MILP solver can be accessed in the following ways:
 
-- **Third-Party Modeling Languages**: cuOpt's MILP solver can be called directly from the following third-party modeling languages: 
-    - This is still under development, and will be available soon.
-
-This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
-
 - **C API**: A native C API that provides direct low-level access to cuOpt's MILP solver, enabling integration into any application or system that can interface with C.
 
 - **As a Self-Hosted Service**: cuOpt's MILP solver can be deployed in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
@@ -50,16 +45,11 @@ Both forms are mathematically equivalent. The choice between them is a matter of
 
 Incumbent Solution Callback
 ---------------------------
-.. note::
-   The incumbent solution callback is not currently supported in the C API and third-party modeling languages.
 
 User can provide a callback to receive new integer feasible solutions that improve the objective (called incumbents) while the solver is running. `Incumbent Example <cuopt-server/examples/milp-examples.html#incumbent-solution>`_ is shared on the self-hosted page.
 
 Logging Callback
 ----------------
-.. note::
-    The logging callback is not currently supported in the C API and third-party modeling languages.
-
 
 A logging callback allows users to get additional information about how the solve is progressing. `Logging Callback Example <cuopt-server/examples/milp-examples.html#logging-callback>`_ is shared on the self-hosted page.
 

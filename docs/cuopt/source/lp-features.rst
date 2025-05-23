@@ -7,11 +7,6 @@ Availability
 
 The LP solver can be accessed in three different ways:
 
-- **Third-Party Modeling Languages**: cuOpt's LP and MILP solver can be called directly from the following third-party modeling languages. 
-   - This is still under development, and will be available soon.
-
-This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
-
 - **C API**: A native C API that provides direct low-level access to cuOpt's LP capabilities, enabling integration into any application or system that can interface with C.
 
 - **As a Self-Hosted Service**: cuOpt's LP solver can be deployed as a in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
@@ -48,9 +43,6 @@ There are two ways to specify constraints to cuOpt LP solver:
 
 Warm Start
 -----------
-
-.. note::
-   Warm start is not currently supported C API and third-party modeling languages.
 
 A warm starts allow a user to provide an initial solution to help PDLP converge faster. The initial ``primal`` and ``dual`` solutions can be specified by the user.
 
@@ -102,8 +94,5 @@ The user may specify a time limit to the solver. By default the solver runs unti
 
 Batch Mode
 ----------
-
-.. note::
-   Batch mode is not currently supported in the C API and third-party modeling languages. It is only available via cuOpt server.
 
 Users can submit a set of problems which will be solved in a batch. Problems will be solved at the same time in parallel to fully utilize the GPU. Checkout `self-hosted client <cuopt-server/examples/lp-examples.html#batch-mode>`_ example in thin client.
