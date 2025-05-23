@@ -211,12 +211,12 @@ void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t> const& settings)
     set_Fast1();
 }
 
-void setup_device_symbols()
+void setup_device_symbols(rmm::cuda_stream_view stream_view)
 {
   raft::common::nvtx::range fun_scope("Setting device symbol");
-  detail::set_adaptive_step_size_hyper_parameters();
-  detail::set_restart_hyper_parameters();
-  detail::set_pdlp_hyper_parameters();
+  detail::set_adaptive_step_size_hyper_parameters(stream_view);
+  detail::set_restart_hyper_parameters(stream_view);
+  detail::set_pdlp_hyper_parameters(stream_view);
 }
 
 std::atomic<int> global_concurrent_halt;
@@ -549,7 +549,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
 
-    setup_device_symbols();
+    setup_device_symbols(op_problem.get_handle_ptr()->get_stream());
 
     auto sol = solve_lp_with_method(op_problem, problem, settings);
 

@@ -55,12 +55,12 @@ static void init_handler(const raft::handle_t* handle_ptr)
     handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
 }
 
-static void setup_device_symbols()
+static void setup_device_symbols(rmm::cuda_stream_view stream_view)
 {
   raft::common::nvtx::range fun_scope("Setting device symbol");
-  detail::set_adaptive_step_size_hyper_parameters();
-  detail::set_restart_hyper_parameters();
-  detail::set_pdlp_hyper_parameters();
+  detail::set_adaptive_step_size_hyper_parameters(stream_view);
+  detail::set_restart_hyper_parameters(stream_view);
+  detail::set_pdlp_hyper_parameters(stream_view);
 }
 
 template <typename i_t, typename f_t>
@@ -163,7 +163,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     detail::problem_t<i_t, f_t> problem(op_problem);
 
     // this is for PDLP, i think this should be part of pdlp solver
-    setup_device_symbols();
+    setup_device_symbols(op_problem.get_handle_ptr()->get_stream());
 
     auto sol = run_mip(problem, settings);
 

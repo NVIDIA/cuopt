@@ -59,20 +59,32 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
 {
 }
 
-void set_adaptive_step_size_hyper_parameters()
+void set_adaptive_step_size_hyper_parameters(rmm::cuda_stream_view stream_view)
 {
-  RAFT_CUDA_TRY(cudaMemcpyToSymbol(pdlp_hyper_params::default_reduction_exponent,
-                                   &pdlp_hyper_params::host_default_reduction_exponent,
-                                   sizeof(double)));
-  RAFT_CUDA_TRY(cudaMemcpyToSymbol(pdlp_hyper_params::default_growth_exponent,
-                                   &pdlp_hyper_params::host_default_growth_exponent,
-                                   sizeof(double)));
-  RAFT_CUDA_TRY(cudaMemcpyToSymbol(pdlp_hyper_params::primal_distance_smoothing,
-                                   &pdlp_hyper_params::host_primal_distance_smoothing,
-                                   sizeof(double)));
-  RAFT_CUDA_TRY(cudaMemcpyToSymbol(pdlp_hyper_params::dual_distance_smoothing,
-                                   &pdlp_hyper_params::host_dual_distance_smoothing,
-                                   sizeof(double)));
+  RAFT_CUDA_TRY(cudaMemcpyToSymbolAsync(pdlp_hyper_params::default_reduction_exponent,
+                                        &pdlp_hyper_params::host_default_reduction_exponent,
+                                        sizeof(double),
+                                        0,
+                                        cudaMemcpyHostToDevice,
+                                        stream_view));
+  RAFT_CUDA_TRY(cudaMemcpyToSymbolAsync(pdlp_hyper_params::default_growth_exponent,
+                                        &pdlp_hyper_params::host_default_growth_exponent,
+                                        sizeof(double),
+                                        0,
+                                        cudaMemcpyHostToDevice,
+                                        stream_view));
+  RAFT_CUDA_TRY(cudaMemcpyToSymbolAsync(pdlp_hyper_params::primal_distance_smoothing,
+                                        &pdlp_hyper_params::host_primal_distance_smoothing,
+                                        sizeof(double),
+                                        0,
+                                        cudaMemcpyHostToDevice,
+                                        stream_view));
+  RAFT_CUDA_TRY(cudaMemcpyToSymbolAsync(pdlp_hyper_params::dual_distance_smoothing,
+                                        &pdlp_hyper_params::host_dual_distance_smoothing,
+                                        sizeof(double),
+                                        0,
+                                        cudaMemcpyHostToDevice,
+                                        stream_view));
 }
 
 template <typename i_t, typename f_t>
