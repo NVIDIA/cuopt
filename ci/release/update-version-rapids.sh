@@ -43,7 +43,7 @@ sed_runner 's/'"DEPENDENT_LIB_MAJOR_VERSION \"[0-9][0-9]\""'/'"DEPENDENT_LIB_MAJ
 sed_runner 's/'"DEPENDENT_LIB_MINOR_VERSION \"[0-9][0-9]\""'/'"DEPENDENT_LIB_MINOR_VERSION \"${NEXT_MINOR}\""'/g' cpp/CMakeLists.txt
 
 # RTD update
-dependencies='cudf cudf-cu11 cudf-cu12 cuvs cuvs-cu11 cuvs-cu12 libcudf rmm rmm-cu11 rmm-cu12 librmm libraft-headers pylibraft pylibraft-cu11 pylibraft-cu12 raft-dask raft-dask-cu11 raft-dask-cu12 rapids-dask-dependency'
+dependencies='cudf cudf-cu12 cuvs cuvs-cu12 libcudf rmm rmm-cu12 librmm libraft-headers pylibraft pylibraft-cu12 raft-dask rapids-dask-dependency'
 for FILE in conda/environments/*.yaml dependencies.yaml; do
     for dependency in ${dependencies}; do
         sed_runner "s/- ${dependency}==.*/- ${dependency}==${NEXT_SHORT_TAG_PEP440}\.*/g" "${FILE}";

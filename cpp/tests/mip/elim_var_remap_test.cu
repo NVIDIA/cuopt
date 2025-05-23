@@ -53,11 +53,11 @@ void init_handler(const raft::handle_t* handle_ptr)
     handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
 }
 
-void setup_pdlp()
+void setup_pdlp(rmm::cuda_stream_view stream_view)
 {
-  detail::set_adaptive_step_size_hyper_parameters();
-  detail::set_restart_hyper_parameters();
-  detail::set_pdlp_hyper_parameters();
+  detail::set_adaptive_step_size_hyper_parameters(stream_view);
+  detail::set_restart_hyper_parameters(stream_view);
+  detail::set_pdlp_hyper_parameters(stream_view);
 }
 
 std::vector<int> select_k_random(int population_size, int sample_size)
@@ -150,7 +150,7 @@ void test_elim_var_solution(std::string test_instance)
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);
-  setup_pdlp();
+  setup_pdlp(handle_.get_stream());
   init_handler(op_problem.get_handle_ptr());
   // run the problem constructor of MIP, so that we do bounds standardization
   detail::problem_t<int, double> standardized_problem(op_problem);
