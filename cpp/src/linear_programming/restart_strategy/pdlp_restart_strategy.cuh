@@ -37,7 +37,7 @@
 #include <raft/core/device_span.hpp>
 
 namespace cuopt::linear_programming::detail {
-void set_restart_hyper_parameters();
+void set_restart_hyper_parameters(rmm::cuda_stream_view stream_view);
 template <typename i_t, typename f_t>
 class pdlp_restart_strategy_t {
  public:

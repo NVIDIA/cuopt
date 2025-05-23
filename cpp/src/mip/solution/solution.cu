@@ -68,7 +68,9 @@ solution_t<i_t, f_t>::solution_t(const solution_t<i_t, f_t>& other)
     h_user_obj(other.h_user_obj),
     h_infeasibility_cost(other.h_infeasibility_cost),
     is_feasible(other.is_feasible),
+    is_problem_fully_reduced(other.is_problem_fully_reduced),
     is_scaled_(other.is_scaled_),
+    post_process_completed(other.post_process_completed),
     lp_state(other.lp_state)
 {
 }
@@ -94,8 +96,10 @@ void solution_t<i_t, f_t>::copy_from(const solution_t<i_t, f_t>& other_sol)
              other_sol.n_feasible_constraints.data(),
              1,
              handle_ptr->get_stream());
-  is_feasible = other_sol.is_feasible;
-  is_scaled_  = other_sol.is_scaled_;
+  is_feasible              = other_sol.is_feasible;
+  is_problem_fully_reduced = other_sol.is_problem_fully_reduced;
+  is_scaled_               = other_sol.is_scaled_;
+  post_process_completed   = other_sol.post_process_completed;
   expand_device_copy(
     lp_state.prev_primal, other_sol.lp_state.prev_primal, handle_ptr->get_stream());
   expand_device_copy(lp_state.prev_dual, other_sol.lp_state.prev_dual, handle_ptr->get_stream());
@@ -183,15 +187,15 @@ bool solution_t<i_t, f_t>::get_feasible()
 }
 
 template <typename i_t, typename f_t>
-bool solution_t<i_t, f_t>::get_problem_infeasible()
+bool solution_t<i_t, f_t>::get_problem_fully_reduced()
 {
-  return is_problem_infeasible;
+  return is_problem_fully_reduced;
 }
 
 template <typename i_t, typename f_t>
-void solution_t<i_t, f_t>::set_problem_infeasible()
+void solution_t<i_t, f_t>::set_problem_fully_reduced()
 {
-  is_problem_infeasible = true;
+  is_problem_fully_reduced = true;
 }
 
 template <typename i_t, typename f_t>
@@ -267,6 +271,8 @@ void solution_t<i_t, f_t>::set_vars_to_values(
 template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::compute_constraints()
 {
+  if (problem_ptr->n_constraints == 0) { return; }
+
   i_t TPB = 64;
   compute_constraint_values<i_t, f_t>
     <<<problem_ptr->n_constraints, TPB, 0, handle_ptr->get_stream()>>>(view());
@@ -587,6 +593,7 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
     const double optimality_threshold = problem_ptr->tolerances.relative_mip_gap;
     auto term_reason = rel_mip_gap > optimality_threshold ? mip_termination_status_t::FeasibleFound
                                                           : mip_termination_status_t::Optimal;
+    if (is_problem_fully_reduced) { term_reason = mip_termination_status_t::Optimal; }
     return mip_solution_t<i_t, f_t>(std::move(assignment),
                                     problem_ptr->var_names,
                                     h_user_obj,
@@ -601,8 +608,8 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
                                     num_nodes,
                                     num_simplex_iterations);
   } else {
-    return mip_solution_t<i_t, f_t>{is_problem_infeasible ? mip_termination_status_t::Infeasible
-                                                          : mip_termination_status_t::TimeLimit,
+    return mip_solution_t<i_t, f_t>{is_problem_fully_reduced ? mip_termination_status_t::Infeasible
+                                                             : mip_termination_status_t::TimeLimit,
                                     handle_ptr->get_stream()};
   }
 }
