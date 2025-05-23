@@ -73,3 +73,8 @@ add_subdirectory(data_model)
 if(DEFINED cython_lib_dir)
   rapids_cython_add_rpath_entries(TARGET mps_parser PATHS "${cython_lib_dir}")
 endif()
+set(rpaths
+  "$ORIGIN/../lib64"
+  "$ORIGIN/../../rapids_logger/lib64"
+)
+set_property(TARGET mps_parser PROPERTY INSTALL_RPATH ${rpaths} APPEND)
