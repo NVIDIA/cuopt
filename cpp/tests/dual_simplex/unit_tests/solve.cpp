@@ -175,4 +175,91 @@ TEST(dual_simplex, burglar)
   EXPECT_NEAR(solution[5], 1, 1e-6);
 }
 
+TEST(dual_simplex, empty_columns)
+{
+  // Same as burglar problem above but with an empty column inserted
+  constexpr int num_items     = 9;
+  constexpr double max_weight = 102;
+
+  std::vector<double> value({15, 100, 90, 0, 60, 40, 15, 10, 1});
+  std::vector<double> weight({2, 20, 20, 0, 30, 40, 30, 60, 10});
+
+  // maximize  sum_i value[i] * take[i]
+  //           sum_i weight[i] * take[i] <= max_weight
+  //           take[i] binary for all i
+
+  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem;
+  constexpr int m  = 1;
+  constexpr int n  = num_items;
+  constexpr int nz = num_items - 1;
+
+  user_problem.num_rows = m;
+  user_problem.num_cols = n;
+  user_problem.objective.resize(n);
+  for (int j = 0; j < num_items; ++j) {
+    user_problem.objective[j] = -value[j];
+  }
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start.resize(n + 1);
+  int nnz = 0;
+  for (int j = 0; j < num_items; ++j) {
+    user_problem.A.col_start[j] = nnz;
+    if (weight[j] > 0) {
+      user_problem.A.i[nnz] = 0;
+      user_problem.A.x[nnz] = weight[j];
+      nnz++;
+    }
+  }
+  user_problem.A.col_start[n] = nnz;
+  user_problem.rhs.resize(m);
+  user_problem.rhs[0] = max_weight;
+  user_problem.row_sense.resize(m);
+  user_problem.row_sense[0] = 'L';
+  user_problem.lower.resize(n);
+  user_problem.upper.resize(n);
+  for (int j = 0; j < num_items; ++j) {
+    user_problem.lower[j] = 0.0;
+    user_problem.upper[j] = 1.0;
+  }
+  user_problem.num_range_rows = 0;
+  user_problem.problem_name   = "burglar";
+  user_problem.row_names.resize(m);
+  user_problem.row_names[0] = "weight restriction";
+  user_problem.col_names.resize(n);
+  for (int j = 0; j < num_items; ++j) {
+    user_problem.col_names[j] = "x";
+  }
+  user_problem.obj_constant = 0.0;
+  user_problem.var_types.resize(n);
+  for (int j = 0; j < num_items; ++j) {
+    user_problem.var_types[j] =
+      cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS;
+  }
+
+  cuopt::linear_programming::dual_simplex::simplex_solver_settings_t<int, double> settings;
+
+  cuopt::linear_programming::dual_simplex::lp_solution_t<int, double> solution(
+    user_problem.num_rows, user_problem.num_cols);
+  EXPECT_EQ((cuopt::linear_programming::dual_simplex::solve_linear_program(
+              user_problem, settings, solution)),
+            cuopt::linear_programming::dual_simplex::lp_status_t::OPTIMAL);
+  double objective = 0.0;
+  for (int j = 0; j < num_items; ++j) {
+    objective += value[j] * solution.x[j];
+  }
+  EXPECT_NEAR(objective, 295, 1e-6);
+  EXPECT_NEAR(solution.x[0], 1, 1e-6);
+  EXPECT_NEAR(solution.x[1], 1, 1e-6);
+  EXPECT_NEAR(solution.x[2], 1, 1e-6);
+  EXPECT_NEAR(solution.x[3], 0, 1e-6);
+  EXPECT_NEAR(solution.x[4], 1, 1e-6);
+  EXPECT_NEAR(solution.x[5], 0.75, 1e-6);
+  EXPECT_NEAR(solution.x[6], 0, 1e-6);
+  EXPECT_NEAR(solution.x[7], 0, 1e-6);
+  EXPECT_NEAR(solution.x[8], 0, 1e-6);
+}
+
 }  // namespace cuopt::linear_programming::dual_simplex::test

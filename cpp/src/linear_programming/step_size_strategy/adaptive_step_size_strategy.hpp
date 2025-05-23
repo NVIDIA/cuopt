@@ -33,7 +33,7 @@
 #include <thrust/system/cuda/memory_resource.h>
 
 namespace cuopt::linear_programming::detail {
-void set_adaptive_step_size_hyper_parameters();
+void set_adaptive_step_size_hyper_parameters(rmm::cuda_stream_view stream_view);
 template <typename i_t, typename f_t>
 class adaptive_step_size_strategy_t {
  public:

@@ -19,7 +19,7 @@ files:
   all:
     output: conda
     matrix:
-      cuda: ["11.8", "12.8"]
+      cuda: ["12.8"]
       arch: [x86_64, aarch64]
     includes:
       - build_common
@@ -286,18 +286,6 @@ dependencies:
         matrices:
           - matrix:
               arch: x86_64
-              cuda: "11.8"
-            packages:
-              - gcc_linux-64=11.*
-              - sysroot_linux-64==2.28
-          - matrix:
-              arch: aarch64
-              cuda: "11.8"
-            packages:
-              - gcc_linux-aarch64=11.*
-              - sysroot_linux-aarch64==2.28
-          - matrix:
-              arch: x86_64
               cuda: "12.*"
             packages:
               - gcc_linux-64=13.*
@@ -314,16 +302,6 @@ dependencies:
               cuda: "12.*"
             packages:
               - cuda-nvcc
-          - matrix:
-              arch: x86_64
-              cuda: "11.8"
-            packages:
-              - nvcc_linux-64=11.8
-          - matrix:
-              arch: aarch64
-              cuda: "11.8"
-            packages:
-              - nvcc_linux-aarch64=11.8
   build_cpp:
     common:
       - output_types: conda
@@ -344,14 +322,6 @@ dependencies:
               cuda: "12.*"
             packages:
               - cuda-sanitizer-api
-          - matrix:
-              cuda: "11.8"
-            packages:
-              - cuda-sanitizer-api=11.8.86
-          - matrix:
-              cuda: "11.5"
-            packages:
-              - cuda-sanitizer-api=11.5.114
           - matrix:
             packages:
   build_wheels:
@@ -405,14 +375,9 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - cupy-cuda12x
-          - matrix:
-              cuda: "11.*"
-              cuda_suffixed: "true"
-            packages:
-              - cupy-cuda11x>=12.0.0
           - matrix: null
             packages:
-              - cupy-cuda11x>=12.0.0
+              - cupy-cuda12x
 
   test_python_cuopt_server:
     common:
@@ -480,11 +445,6 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - libcuopt-cu12==25.5.*,>=0.0.0a0
-          - matrix:
-              cuda: "11.*"
-              cuda_suffixed: "true"
-            packages:
-              - libcuopt-cu11==25.5.*,>=0.0.0a0
           - {matrix: null, packages: [*libcuopt_unsuffixed]}
   depends_on_cuopt:
     common:
@@ -504,11 +464,6 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - cuopt-cu12==25.5.*,>=0.0.0a0
-          - matrix:
-              cuda: "11.*"
-              cuda_suffixed: "true"
-            packages:
-              - cuopt-cu11==25.5.*,>=0.0.0a0
           - {matrix: null, packages: [*cuopt_unsuffixed]}
   depends_on_mps_parser:
     common:
@@ -543,11 +498,6 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - librmm-cu12==25.4.*,>=0.0.0a0
-          - matrix:
-              cuda: "11.*"
-              cuda_suffixed: "true"
-            packages:
-              - librmm-cu11==25.4.*,>=0.0.0a0
           - {matrix: null, packages: [*librmm_unsuffixed]}
   depends_on_cupy:
     common:
@@ -584,11 +534,6 @@ dependencies:
             packages:
               - rmm-cu12==25.4.*,>=0.0.0a0
           - matrix:
-              cuda: "11.*"
-              cuda_suffixed: "true"
-            packages:
-              - rmm-cu11==25.4.*,>=0.0.0a0
-          - matrix:
             packages:
               - *rmm_unsuffixed
 
@@ -609,11 +554,6 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - cudf-cu12==25.4.*,>=0.0.0a0
-          - matrix:
-              cuda: "11.*"
-              cuda_suffixed: "true"
-            packages:
-              - cudf-cu11==25.4.*,>=0.0.0a0
           - matrix:
             packages:
               - *cudf_unsuffixed
@@ -636,11 +576,6 @@ dependencies:
             packages:
               - cuvs-cu12==25.4.*,>=0.0.0a0
           - matrix:
-              cuda: "11.*"
-              cuda_suffixed: "true"
-            packages:
-              - cuvs-cu11==25.4.*,>=0.0.0a0
-          - matrix:
             packages:
               - *cuvs_unsuffixed
 
@@ -661,11 +596,6 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - raft-dask-cu12==25.4.*,>=0.0.0a0
-          - matrix:
-              cuda: "11.*"
-              cuda_suffixed: "true"
-            packages:
-              - raft-dask-cu11==25.4.*,>=0.0.0a0
           - matrix:
             packages:
               - *raft_dask_unsuffixed
@@ -688,33 +618,12 @@ dependencies:
             packages:
               - pylibraft-cu12==25.4.*,>=0.0.0a0
           - matrix:
-              cuda: "11.*"
-              cuda_suffixed: "true"
-            packages:
-              - pylibraft-cu11==25.4.*,>=0.0.0a0
-          - matrix:
             packages:
               - *pylibraft_unsuffixed
   cuda_version:
     specific:
       - output_types: conda
         matrices:
-          - matrix:
-              cuda: "11.2"
-            packages:
-              - cuda-version=11.2
-          - matrix:
-              cuda: "11.4"
-            packages:
-              - cuda-version=11.4
-          - matrix:
-              cuda: "11.5"
-            packages:
-              - cuda-version=11.5
-          - matrix:
-              cuda: "11.8"
-            packages:
-              - cuda-version=11.8
           - matrix:
               cuda: "12.0"
             packages:
@@ -756,29 +665,6 @@ dependencies:
               - cuda-nvvm
               - cuda-crt
               - pynvjitlink=0.5.0
-          - matrix:
-              cuda: "11.8"
-            packages:
-              - cudatoolkit
-              - cuda-nvtx=11.8
-          - matrix:
-              cuda: "11.5"
-            packages:
-              - cudatoolkit
-              - cuda-nvtx=11.5
-          - matrix:
-              cuda: "11.4"
-            packages:
-              - cudatoolkit
-              - &cudanvtx114 cuda-nvtx=11.4
-          - matrix:
-              cuda: "11.2"
-            packages:
-              - cudatoolkit
-                # The NVIDIA channel doesn't publish pkgs older than 11.4 for
-                # these libs, so 11.2 uses 11.4 packages (the oldest
-                # available).
-              - *cudanvtx114
 
   cuda_wheels:
     specific:
@@ -793,15 +679,6 @@ dependencies:
               - nvidia-cusparse-cu12
               - nvidia-cusolver-cu12
               - nvidia-nvtx-cu12
-          - matrix:
-              cuda: "11.*"
-              use_cuda_wheels: "true"
-            packages:
-              - nvidia-cublas-cu11
-              - nvidia-curand-cu11
-              - nvidia-cusparse-cu11
-              - nvidia-cusolver-cu11
-              - nvidia-nvtx-cu11
           # if use_cuda_wheels=false is provided, do not add dependencies on any CUDA wheels
           # (e.g. for DLFW and pip devcontainers)
           - matrix:
