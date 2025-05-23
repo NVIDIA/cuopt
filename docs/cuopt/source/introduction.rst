@@ -29,7 +29,7 @@ For example, the TSP has several applications in planning and logistics, where a
 The VRP generalizes the TSP to solve for the optimal set of routes for a fleet of vehicles in order to deliver to a given set of customers. The PDP adds the possibility of two different types of services, namely pickup or delivery, whereas in VRP all customers require the same service be performed at a customer location.
 
 
-How cuOpt Solves Routing Problem
+How cuOpt Solves the Routing Problem
 -----------------------------------
 
 cuOpt first generates an initial population of solutions, then iteratively improves the population until the time limit is reached, and picks the best solution from the population.
@@ -38,7 +38,7 @@ cuOpt first generates an initial population of solutions, then iteratively impro
 The Necessity for Heuristics
 ------------------------------
 
-Given the time and computational resources required for brute-force enumeration, obtaining the exact optimal solution is not realistic at all. However, there are well-studied heuristics that yield near-optimal solutions for very large problems within a reasonable time, and NVIDIA cuOpt focuses on using these heuristics.
+Given the time and computational resources required for brute-force enumeration, obtaining the exact optimal solution is not realistic. However, there are well-studied heuristics that yield near-optimal solutions for very large problems within a reasonable time, and NVIDIA cuOpt focuses on using these heuristics.
 
 
 
@@ -64,12 +64,14 @@ This is a linear program.
 
 How cuOpt Solves LP Problem
 ------------------------------
-cuOpt includes an LP solver based on `PDLP <https://arxiv.org/abs/2106.04756>`__, a new First-Order Method (FOM) used to solve large-scale LPs. This solver implements gradient descent, enhanced by heuristics, and performing massively parallel operations efficiently by leveraging the latest NVIDIA GPUs. In addition to PDLP, cuOpt includes a dual simplex solver that runs on the CPU. Both algorithms can be run concurrently on the GPU and CPU.
+cuOpt includes an LP solver based on `PDLP <https://arxiv.org/abs/2106.04756>`__, a new First-Order Method (FOM) used to solve large-scale LPs. This solver implements gradient descent, enhanced by heuristics, and performing massively parallel operations efficiently by leveraging the latest NVIDIA GPUs. 
+
+In addition to PDLP, cuOpt includes a dual simplex solver that runs on the CPU. Both algorithms can be run concurrently on the GPU and CPU.
 
 Mixed Integer Linear Programming (MILP)
 =========================================
 
-A **Mixed Integer Linear Program** is a variant of a Linear Program, where some of the variables are restricted to take on only integer values, while other variables can vary continuously. NVIDIA cuOpt uses a hybrid GPU/CPU method: running primal heuristics on the GPU and improving the dual bound on the CPU.
+A **Mixed Integer Linear Program** is a variant of a Linear Program where some of the variables are restricted to take on only integer values, while other variables can vary continuously. NVIDIA cuOpt uses a hybrid GPU/CPU method: running primal heuristics on the GPU and improving the dual bound on the CPU.
 
 For example, consider the following system of constraints:
 
