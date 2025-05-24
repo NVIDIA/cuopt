@@ -34,15 +34,15 @@ void lb_probing_cache_t<i_t, f_t>::update_bounds_with_selected(
 {
   i_t n_bounds_updated = 0;
   for (const auto& [var_idx, bound] : cache_entry.var_to_cached_bound_map) {
-    i_t original_var_idx = reverse_original_ids[var_idx];
+    i_t var_idx_in_current_problem = reverse_original_ids[var_idx];
     // -1 means that variable was fixed and doesn't exists in the current problem
-    if (original_var_idx == -1) { continue; }
-    if (host_bounds[2 * original_var_idx] < bound.lb) {
-      host_bounds[2 * original_var_idx] = bound.lb;
+    if (var_idx_in_current_problem == -1) { continue; }
+    if (host_bounds[2 * var_idx_in_current_problem] < bound.lb) {
+      host_bounds[2 * var_idx_in_current_problem] = bound.lb;
       n_bounds_updated++;
     }
-    if (host_bounds[2 * original_var_idx + 1] > bound.ub) {
-      host_bounds[2 * original_var_idx + 1] = bound.ub;
+    if (host_bounds[2 * var_idx_in_current_problem + 1] > bound.ub) {
+      host_bounds[2 * var_idx_in_current_problem + 1] = bound.ub;
       n_bounds_updated++;
     }
   }
@@ -57,11 +57,11 @@ i_t lb_probing_cache_t<i_t, f_t>::check_number_of_conflicting_vars(
 {
   i_t n_conflicting_var = 0;
   for (const auto& [var_idx, bound] : cache_entry.var_to_cached_bound_map) {
-    i_t original_var_idx = reverse_original_ids[var_idx];
+    i_t var_idx_in_current_problem = reverse_original_ids[var_idx];
     // -1 means that variable was fixed and doesn't exists in the current problem
-    if (original_var_idx == -1) { continue; }
-    if (host_bounds[2 * original_var_idx] - integrality_tolerance > bound.ub ||
-        host_bounds[2 * original_var_idx + 1] < bound.lb - integrality_tolerance) {
+    if (var_idx_in_current_problem == -1) { continue; }
+    if (host_bounds[2 * var_idx_in_current_problem] - integrality_tolerance > bound.ub ||
+        host_bounds[2 * var_idx_in_current_problem + 1] < bound.lb - integrality_tolerance) {
       ++n_conflicting_var;
     }
   }

@@ -89,10 +89,6 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
     is_binary_variable.resize(n_variables, handle_ptr->get_stream());
     compute_n_integer_vars();
     compute_binary_var_table();
-    original_ids.resize(n_variables);
-    std::iota(original_ids.begin(), original_ids.end(), 0);
-    reverse_original_ids.resize(n_variables);
-    std::iota(reverse_original_ids.begin(), reverse_original_ids.end(), 0);
   }
   compute_transpose_of_problem();
   // Check after modifications
@@ -1072,11 +1068,13 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
   // problem.original_ids but considering the case that we are fixing some variables multiple times,
   // do an assignment from the original_ids of the current problem
   problem.original_ids.resize(variable_map.size());
-  problem.reverse_original_ids.resize(n_variables);
   std::fill(problem.reverse_original_ids.begin(), problem.reverse_original_ids.end(), -1);
   auto h_variable_map = cuopt::host_copy(variable_map);
   for (size_t i = 0; i < variable_map.size(); ++i) {
-    problem.original_ids[i]                                       = original_ids[h_variable_map[i]];
+    cuopt_assert(h_variable_map[i] < original_ids.size(), "Variable index out of bounds");
+    problem.original_ids[i] = original_ids[h_variable_map[i]];
+    cuopt_assert(original_ids[h_variable_map[i]] < reverse_original_ids.size(),
+                 "Variable index out of bounds");
     problem.reverse_original_ids[original_ids[h_variable_map[i]]] = i;
   }
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
@@ -1307,6 +1305,10 @@ void problem_t<i_t, f_t>::preprocess_problem()
                              0.);
   integer_indices.resize(n_variables, handle_ptr->get_stream());
   is_binary_variable.resize(n_variables, handle_ptr->get_stream());
+  original_ids.resize(n_variables);
+  std::iota(original_ids.begin(), original_ids.end(), 0);
+  reverse_original_ids.resize(n_variables);
+  std::iota(reverse_original_ids.begin(), reverse_original_ids.end(), 0);
   compute_n_integer_vars();
   compute_binary_var_table();
   check_problem_representation(true);
