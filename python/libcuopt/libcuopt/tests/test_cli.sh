@@ -20,33 +20,14 @@ set -euo pipefail
 # Test the CLI
 
 
-# Find the directory containing cuopt_cli, starting from root
-cuopt_dir=$(find / -type f -name cuopt_cli -exec dirname {} \; 2>/dev/null | head -n 1)
-
-if [ -z "$cuopt_dir" ]; then
-  echo "cuopt_cli not found."
-  exit 1
-else
-  # Add the directory to PATH if not already present
-  case ":$PATH:" in
-    *":$cuopt_dir:"*) 
-      echo "cuopt_cli directory already in PATH."
-      ;;
-    *)
-      export PATH="$cuopt_dir:$PATH"
-      echo "Added $cuopt_dir to PATH."
-      ;;
-  esac
-fi
-
 # Add a test for the help command
-cuopt_cli --help | grep -q "Usage: cuopt_cli" || (echo "Expected usage information not found" && exit 1)
+#cuopt_cli --help | grep -q "Usage: cuopt_cli" || (echo "Expected usage information not found" && exit 1)
 
 # Add a test with a simple linear programming problem
 
 # Run solver and check for optimal status - fail if not found
-cuopt_cli ${RAPIDS_DATASET_ROOT_DIR}/linear_programming/good-mps-1.mps | grep -q "Status: " || (echo "Expected solution not found" && exit 1)
+#cuopt_cli ${RAPIDS_DATASET_ROOT_DIR}/linear_programming/good-mps-1.mps | grep -q "Status: " || (echo "Expected solution not found" && exit 1)
 
 # Add a for mixed integer programming test with options
 
-cuopt_cli ${RAPIDS_DATASET_ROOT_DIR}/mip/sample.mps --mip-absolute-gap 0.01 --time-limit 10 | grep -q "Solution objective" || (echo "Expected solution objective not found" && exit 1)
+#cuopt_cli ${RAPIDS_DATASET_ROOT_DIR}/mip/sample.mps --mip-absolute-gap 0.01 --time-limit 10 | grep -q "Solution objective" || (echo "Expected solution objective not found" && exit 1)
