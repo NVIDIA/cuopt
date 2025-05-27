@@ -17,8 +17,11 @@
 
 set -euo pipefail
 
-# Test the CLI
+# Add cuopt_cli path to PATh variable
+export PATH="$(pyenv root)/versions/$(pyenv version-name)/bin:$PATH"
 
+
+# Test the CLI
 
 # Add a test for the help command
 cuopt_cli --help | grep -q "Usage: cuopt_cli" || (echo "Expected usage information not found" && exit 1)
