@@ -72,7 +72,7 @@ jobs:
       script: ci/build_wheel_libcuopt.sh
       package-name: libcuopt
       package-type: cpp
-      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
+      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER == "3.12"))
   wheel-build-cuopt:
     needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt]
     secrets: inherit
