@@ -27,26 +27,30 @@
 extern "C" {
 #endif
 
-/* @brief A ``cuOptOptimizationProblem`` object contains a representation of
+/**
+ * @brief A ``cuOptOptimizationProblem`` object contains a representation of
  * an LP or MIP. It is created by ``cuOptCreateProblem`` or ``cuOptCreateRangedProblem``.
  * It is passed to ``cuOptSolve``. It should be destroyed using ``cuOptDestroyProblem``.
  */
 typedef void* cuOptOptimizationProblem;
 
-/* @brief A ``cuOptSolverSettings`` object contains parameter settings and other information
+/**
+ * @brief A ``cuOptSolverSettings`` object contains parameter settings and other information
  * for an LP or MIP solve. It is created by ``cuOptCreateSolverSettings``. It is passed to
  * ``cuOptSolve``. It should be destroyed using ``cuOptDestroySolverSettings``.
  */
 typedef void* cuOptSolverSettings;
 
-/* @brief A ``cuOptSolution`` object contains the solution to an LP or MIP. It is created by
+/**
+ * @brief A ``cuOptSolution`` object contains the solution to an LP or MIP. It is created by
  * ``cuOptSolve``. It should be destroyed using ``cuOptDestroySolution``.
  */
 typedef void* cuOptSolution;
 
 #if CUOPT_INSTANTIATE_FLOAT
 
-/* @brief The type of the floating point number used by the solver. Use ``cuOptGetFloatSize``
+/**
+ * @brief The type of the floating point number used by the solver. Use ``cuOptGetFloatSize``
  * to get the number of bytes in the floating point type.
  */
 typedef float cuopt_float_t;
@@ -54,27 +58,31 @@ typedef float cuopt_float_t;
 #endif
 
 #if CUOPT_INSTANTIATE_DOUBLE
-/* @brief The type of the floating point number used by the solver. Use ``cuOptGetFloatSize``
+/**
+ * @brief The type of the floating point number used by the solver. Use ``cuOptGetFloatSize``
  * to get the size of the floating point type.
  */
 typedef double cuopt_float_t;
 #endif
 
 #if CUOPT_INSTANTIATE_INT32
-/* @brief The type of the integer number used by the solver. Use ``cuOptGetIntSize``
+/**
+ * @brief The type of the integer number used by the solver. Use ``cuOptGetIntSize``
  * to get the size of the integer type.
  */
 typedef int32_t cuopt_int_t;
 #endif
 
 #if CUOPT_INSTANTIATE_INT64
-/* @brief The type of the integer number used by the solver. Use ``cuOptGetIntSize``
+/**
+ * @brief The type of the integer number used by the solver. Use ``cuOptGetIntSize``
  * to get the size of the integer type.
  */
 typedef int64_t cuopt_int_t;
 #endif
 
-/* @brief Get the size of the float type.
+/**
+ * @brief Get the size of the float type.
  *
  * @return The size in bytes of the float type.
  */
@@ -85,7 +93,8 @@ int8_t cuOptGetFloatSize();
  */
 int8_t cuOptGetIntSize();
 
-/* @brief Read an optimization problem from an MPS file.
+/**
+ * @brief Read an optimization problem from an MPS file.
  *
  * @param[in] filename - The path to the MPS file.
  *
@@ -102,7 +111,7 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
  *                minimize/maximize  cᵀx + offset
  *                  subject to       A x {=, ≤, ≥} b
  *                                   l ≤ x ≤ u
- *                                   xᵢ ∈ ℤ for some i
+ *                                   x_i integer for some i
  * @endverbatim
  *
  * @param[in] num_constraints The number of constraints

@@ -8,12 +8,6 @@ Installation
 pip
 ---
 
-For CUDA 11.x:
-
-.. code-block:: bash
-
-    pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu11==25.5.* cuopt-sh==25.5.*
-
 For CUDA 12.x:
 
 .. code-block:: bash
@@ -25,13 +19,6 @@ Conda
 -----
 
 cuOpt Server can be installed with Conda (via `miniforge <https://github.com/conda-forge/miniforge>`_) from the ``nvidia`` channel:
-
-For CUDA 11.x:
-
-.. code-block:: bash
-
-    conda install -c rapidsai -c conda-forge -c nvidia \
-        cuopt-server=25.5.* cuopt-sh=25.5.* python=3.12 cuda-version=11.8
 
 For CUDA 12.x:
 
@@ -86,15 +73,19 @@ Step 4: Pull the container:
 
     .. code-block:: bash
 
-        docker pull nvcr.io/nvidia/cuopt:25.5.0
+        docker pull CONTAINER_IMAGE_PATH
 
 
 The container includes both the Python API and self-hosted server components. To run the container:
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvcr.io/nvidia/cuopt/cuopt:25.5.0 /bin/bash -c "python3 -m cuopt_server.cuopt_service"
+    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 <CONTAINER_IMAGE_PATH> /bin/bash -c "python3 -m cuopt_server.cuopt_service"
 
+Brev
+----
+
+NVIDIA cuOpt can be tested with `Brev Launchable <https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ>`_ with `example notebooks <https://github.com/NVIDIA/cuopt-examples/>`_. For more details, please refer to the `Brev documentation <https://docs.nvidia.com/brev/latest/>`_.
 
 Smoke Test
 ----------

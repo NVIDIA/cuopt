@@ -3,28 +3,135 @@ cuOpt LP/MILP C API Reference
 
 This section contains the cuOpt LP/MILP C API reference.
 
-Types
------
+Integer and Floating-Point Types
+---------------------------------
 
-.. doxygentypedef:: cuOptOptimizationProblem
-.. doxygentypedef:: cuOptSolverSettings
-.. doxygentypedef:: cuOptSolution
-.. doxygentypedef:: cuopt_float_t
+cuOpt may be built with 32 or 64 bit integer and floating-point types. The C API uses a `typedef` for floating point and integer types to abstract the size of these types.
+
 .. doxygentypedef:: cuopt_int_t
+.. doxygentypedef:: cuopt_float_t
 
-Status Constants
-----------------
+You may use the following functions to determine the number of bytes used to represent these types in your build
 
-.. Status code constants
+.. doxygenfunction:: cuOptGetIntSize
+.. doxygenfunction:: cuOptGetFloatSize
+
+Status Codes
+------------
+
+Every function in the C API returns a status code that indicates success or failure. The following status codes are defined
+
 .. doxygendefine:: CUOPT_SUCCESS
 .. doxygendefine:: CUOPT_INVALID_ARGUMENT
 .. doxygendefine:: CUOPT_MPS_FILE_ERROR
 .. doxygendefine:: CUOPT_MPS_PARSE_ERROR
 
+Optimization Problem
+--------------------
+
+An optimization problem is represented via a `cuOptOptimizationProblem`
+
+.. doxygentypedef:: cuOptOptimizationProblem
+
+Optimization problems can be created via three different functions
+
+.. doxygenfunction:: cuOptReadProblem
+.. doxygenfunction:: cuOptCreateProblem
+.. doxygenfunction:: cuOptCreateRangedProblem
+
+A optimization problem must be destroyed with the following function
+
+.. doxygenfunction:: cuOptDestroyProblem
+
+Certain constants are needed to define an optimization problem. These constants are described below.
+
+Objective Sense Constants
+-------------------------
+
+These constants are used to define the objective sense in the `cuOptCreateProblem <lp-milp-c-api.html#c.cuOptCreateProblem>`_ and `cuOptCreateRangedProblem <lp-milp-c-api.html#c.cuOptCreateRangedProblem>`_ functions.
+
+.. doxygendefine:: CUOPT_MINIMIZE
+.. doxygendefine:: CUOPT_MAXIMIZE
+
+Constraint Sense Constants
+--------------------------
+
+These constants are used to define the constraint sense in the `cuOptCreateProblem <lp-milp-c-api.html#c.cuOptCreateProblem>`_ and `cuOptCreateRangedProblem <lp-milp-c-api.html#c.cuOptCreateRangedProblem>`_ functions.
+
+.. doxygendefine:: CUOPT_LESS_THAN
+.. doxygendefine:: CUOPT_GREATER_THAN
+.. doxygendefine:: CUOPT_EQUAL
+
+Variable Type Constants
+-----------------------
+
+These constants are used to define the the variable type in the `cuOptCreateProblem <lp-milp-c-api.html#c.cuOptCreateProblem>`_ and `cuOptCreateRangedProblem <lp-milp-c-api.html#c.cuOptCreateRangedProblem>`_ functions.
+
+.. doxygendefine:: CUOPT_CONTINUOUS
+.. doxygendefine:: CUOPT_INTEGER
+
+Infinity Constant
+-----------------
+
+This constant may be used to represent infinity in the `cuOptCreateProblem <lp-milp-c-api.html#c.cuOptCreateProblem>`_ and `cuOptCreateRangedProblem <lp-milp-c-api.html#c.cuOptCreateRangedProblem>`_ functions.
+
+.. doxygendefine:: CUOPT_INFINITY
+
+Querying an optimization problem
+--------------------------------
+
+The following functions may be used to get information about an `cuOptimizationProblem`
+
+.. doxygenfunction:: cuOptGetNumConstraints
+.. doxygenfunction:: cuOptGetNumVariables
+.. doxygenfunction:: cuOptGetObjectiveSense
+.. doxygenfunction:: cuOptGetObjectiveOffset
+.. doxygenfunction:: cuOptGetObjectiveCoefficients
+.. doxygenfunction:: cuOptGetNumNonZeros
+.. doxygenfunction:: cuOptGetConstraintMatrix
+.. doxygenfunction:: cuOptGetConstraintSense
+.. doxygenfunction:: cuOptGetConstraintRightHandSide
+.. doxygenfunction:: cuOptGetConstraintLowerBounds
+.. doxygenfunction:: cuOptGetConstraintUpperBounds
+.. doxygenfunction:: cuOptGetVariableLowerBounds
+.. doxygenfunction:: cuOptGetVariableUpperBounds
+.. doxygenfunction:: cuOptGetVariableTypes
+.. doxygenfunction:: cuOptIsMIP
+
+
+Solver Settings
+---------------
+
+Settings are used to configure the LP/MIP solvers. All settings are stored in a `cuOptSolverSettings` object.
+
+
+.. doxygentypedef:: cuOptSolverSettings
+
+A `cuOptSolverSettings` object is created with `cuOptCreateSolverSettings`
+
+.. doxygenfunction:: cuOptCreateSolverSettings
+
+When you are done with a solve you should destroy a `cuOptSolverSettings` object with
+
+.. doxygenfunction:: cuOptDestroySolverSettings
+
+
+Setting Parameters
+------------------
+The following functions are used to set and get parameters. You can find more details on the available parameters in the `LP/MILP settings <../../lp-milp-settings.html>`_ section.
+
+.. doxygenfunction:: cuOptSetParameter
+.. doxygenfunction:: cuOptGetParameter
+.. doxygenfunction:: cuOptSetIntegerParameter
+.. doxygenfunction:: cuOptGetIntegerParameter
+.. doxygenfunction:: cuOptSetFloatParameter
+.. doxygenfunction:: cuOptGetFloatParameter
+
+
 Parameter Constants
 ------------------- 
 
-These constants would be used as the parameter name in the `cuOptSetParameter <lp-milp-c-api.html#c.cuOptSetParameter>`_ and `cuOptGetParameter <lp-milp-c-api.html#c.cuOptGetParameter>`_ functions. More details on the parameters can be found in the `LP/MILP settings <../../lp-milp-settings.html>`_ section.
+These constants are used as the parameter name in the `cuOptSetParameter <lp-milp-c-api.html#c.cuOptSetParameter>`_ , `cuOptGetParameter <lp-milp-c-api.html#c.cuOptGetParameter>`_ and similar functions. More details on the parameters can be found in the `LP/MILP settings <../../lp-milp-settings.html>`_ section.
 
 .. LP/MIP parameter string constants
 .. doxygendefine:: CUOPT_ABSOLUTE_DUAL_TOLERANCE
@@ -52,10 +159,60 @@ These constants would be used as the parameter name in the `cuOptSetParameter <l
 .. doxygendefine:: CUOPT_MIP_HEURISTICS_ONLY
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
 
+PDLP Solver Mode Constants
+--------------------------
+
+These constants are used to configure `CUOPT_PDLP_SOLVER_MODE` via `cuOptSetIntegerParameter <lp-milp-c-api.html#c.cuOptSetIntegerParameter>`_.
+
+.. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE1
+.. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE2
+.. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_METHODICAL1
+.. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_FAST1
+
+Method Constants
+----------------
+
+These constants are used to configure `CUOPT_METHOD` via `cuOptSetIntegerParameter <lp-milp-c-api.html#c.cuOptSetIntegerParameter>`_.
+
+.. doxygendefine:: CUOPT_METHOD_CONCURRENT
+.. doxygendefine:: CUOPT_METHOD_PDLP
+.. doxygendefine:: CUOPT_METHOD_DUAL_SIMPLEX
+
+
+Solving an LP or MIP
+--------------------
+
+LP and MIP solves are performed by calling the `cuOptSolve` function
+
+.. doxygenfunction:: cuOptSolve
+
+
+Solution
+--------
+
+The output of a solve is a `cuOptSolution` object. 
+
+.. doxygentypedef:: cuOptSolution
+
+The following functions may be used to access information from a `cuOptSolution`
+
+.. doxygenfunction:: cuOptGetTerminationStatus
+.. doxygenfunction:: cuOptGetPrimalSolution
+.. doxygenfunction:: cuOptGetObjectiveValue
+.. doxygenfunction:: cuOptGetSolveTime
+.. doxygenfunction:: cuOptGetMIPGap
+.. doxygenfunction:: cuOptGetSolutionBound
+.. doxygenfunction:: cuOptGetDualSolution
+.. doxygenfunction:: cuOptGetReducedCosts
+
+When you are finished with a `cuOptSolution` object you should destory it with
+
+.. doxygenfunction:: cuOptDestroySolution
+
 Termination Status Constants
 ----------------------------
 
-These constants would be used as the termination status in the `cuOptGetTerminationStatus <lp-milp-c-api.html#c.cuOptGetTerminationStatus>`_ function.
+These constants define the termination status received from the `cuOptGetTerminationStatus <lp-milp-c-api.html#c.cuOptGetTerminationStatus>`_ function.
 
 .. LP/MIP termination status constants
 .. doxygendefine:: CUOPT_TERIMINATION_STATUS_NO_TERMINATION
@@ -68,111 +225,3 @@ These constants would be used as the termination status in the `cuOptGetTerminat
 .. doxygendefine:: CUOPT_TERIMINATION_STATUS_PRIMAL_FEASIBLE
 .. doxygendefine:: CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND
 .. doxygendefine:: CUOPT_TERIMINATION_STATUS_CONCURRENT_LIMIT
-
-Objective Sense Constants
--------------------------
-
-These would be used as the objective sense in the `cuOptCreateProblem <lp-milp-c-api.html#c.cuOptCreateProblem>`_ and `cuOptCreateRangedProblem <lp-milp-c-api.html#c.cuOptCreateRangedProblem>`_ functions.
-
-.. doxygendefine:: CUOPT_MINIMIZE
-.. doxygendefine:: CUOPT_MAXIMIZE
-
-Constraint Sense Constants
---------------------------
-
-These would be used as the constraint sense in the `cuOptCreateProblem <lp-milp-c-api.html#c.cuOptCreateProblem>`_ and `cuOptCreateRangedProblem <lp-milp-c-api.html#c.cuOptCreateRangedProblem>`_ functions.
-
-.. doxygendefine:: CUOPT_LESS_THAN
-.. doxygendefine:: CUOPT_GREATER_THAN
-.. doxygendefine:: CUOPT_EQUAL
-
-Variable Type Constants
------------------------
-
-These would be used as the variable type in the `cuOptCreateProblem <lp-milp-c-api.html#c.cuOptCreateProblem>`_ and `cuOptCreateRangedProblem <lp-milp-c-api.html#c.cuOptCreateRangedProblem>`_ functions.
-
-.. doxygendefine:: CUOPT_CONTINUOUS
-.. doxygendefine:: CUOPT_INTEGER
-
-Infinity Constant
------------------
-
-This would be used as the infinity value in the `cuOptCreateProblem <lp-milp-c-api.html#c.cuOptCreateProblem>`_ and `cuOptCreateRangedProblem <lp-milp-c-api.html#c.cuOptCreateRangedProblem>`_ functions.
-
-.. doxygendefine:: CUOPT_INFINITY
-
-PDLP Solver Mode Constants
---------------------------
-
-These would be used as the PDLP solver mode while setting solver parameters using `cuOptSetParameter <lp-milp-c-api.html#c.cuOptSetParameter>`_.
-
-.. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE1
-.. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE2
-.. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_METHODICAL1
-.. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_FAST1
-
-Method Constants
-----------------
-
-These would be used as the method while setting solver parameters using `cuOptSetParameter <lp-milp-c-api.html#c.cuOptSetParameter>`_.
-
-.. doxygendefine:: CUOPT_METHOD_CONCURRENT
-.. doxygendefine:: CUOPT_METHOD_PDLP
-.. doxygendefine:: CUOPT_METHOD_DUAL_SIMPLEX
-
-Functions
----------
-
-.. cuopt_c.h functions
-.. doxygenfunction:: cuOptGetFloatSize
-.. doxygenfunction:: cuOptGetIntSize
-.. doxygenfunction:: cuOptReadProblem
-.. doxygenfunction:: cuOptCreateProblem
-.. doxygenfunction:: cuOptCreateRangedProblem
-.. doxygenfunction:: cuOptDestroyProblem
-.. doxygenfunction:: cuOptGetNumConstraints
-.. doxygenfunction:: cuOptGetNumVariables
-.. doxygenfunction:: cuOptGetObjectiveSense
-.. doxygenfunction:: cuOptGetObjectiveOffset
-.. doxygenfunction:: cuOptGetObjectiveCoefficients
-.. doxygenfunction:: cuOptGetNumNonZeros
-.. doxygenfunction:: cuOptGetConstraintMatrix
-.. doxygenfunction:: cuOptGetConstraintSense
-.. doxygenfunction:: cuOptGetConstraintRightHandSide
-.. doxygenfunction:: cuOptGetConstraintLowerBounds
-.. doxygenfunction:: cuOptGetConstraintUpperBounds
-.. doxygenfunction:: cuOptGetVariableLowerBounds
-.. doxygenfunction:: cuOptGetVariableUpperBounds
-.. doxygenfunction:: cuOptGetVariableTypes
-.. doxygenfunction:: cuOptCreateSolverSettings
-.. doxygenfunction:: cuOptDestroySolverSettings
-
-More details on the parameters can be found in the `LP/MILP settings <../../lp-milp-settings.html>`_ section.
-
-.. doxygenfunction:: cuOptSetParameter
-.. doxygenfunction:: cuOptGetParameter
-.. doxygenfunction:: cuOptSetIntegerParameter
-.. doxygenfunction:: cuOptGetIntegerParameter
-.. doxygenfunction:: cuOptSetFloatParameter
-.. doxygenfunction:: cuOptGetFloatParameter
-.. doxygenfunction:: cuOptIsMIP
-.. doxygenfunction:: cuOptSolve
-.. doxygenfunction:: cuOptDestroySolution
-.. doxygenfunction:: cuOptGetTerminationStatus
-.. doxygenfunction:: cuOptGetPrimalSolution
-.. doxygenfunction:: cuOptGetObjectiveValue
-.. doxygenfunction:: cuOptGetSolveTime
-.. doxygenfunction:: cuOptGetMIPGap
-.. doxygenfunction:: cuOptGetSolutionBound
-.. doxygenfunction:: cuOptGetDualSolution
-.. doxygenfunction:: cuOptGetReducedCosts
-
-CLI for LP and MILP
-===================
-
-The cuOpt CLI is a command-line interface for the cuOpt LP/MILP API. It is a simple interface that allows you to solve LP/MILP problems from the command line. This CLI is based on C/C++ API.
-
-.. literalinclude:: cuopt-cli-help.txt
-   :language: shell
-   :linenos:
-

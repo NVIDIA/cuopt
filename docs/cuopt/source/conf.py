@@ -30,7 +30,7 @@ subprocess.run(["python", "-m", "cuopt_server.cuopt_service", "--help"],
 subprocess.run(["cuopt_sh", "--help"], stdout=open("cuopt-server/client-api/sh-cli-help.txt", "w"))
 
 # Run cuopt_cli help command and save output
-subprocess.run(["cuopt_cli", "--help"], stdout=open("cuopt-c/lp-milp/cuopt-cli-help.txt", "w"))
+subprocess.run(["cuopt_cli", "--help"], stdout=open("cuopt-cli/cuopt-cli-help.txt", "w"))
 
 with open('cuopt_spec.yaml', 'w') as f:
     yaml.dump(get_openapi(
@@ -146,6 +146,10 @@ autosectionlabel_prefix_document = True
 html_theme_options = {
     'collapse_navigation': False,
     'navigation_depth': 6,
+     "switcher": {
+        "json_url": "../versions1.json",
+        "version_match": release,
+    },
     'extra_head': [  # Adding Adobe Analytics
         '''
     <script src="https://assets.adobedtm.com/5d4962a43b79/c1061d2c5e7b/launch-191c2462b890.min.js" ></script>
@@ -159,11 +163,15 @@ html_theme_options = {
     "show_nav_level": 2
 }
 
+
+
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
 html_css_files = ["swagger-nvidia.css"]
+html_extra_path = ["project.json", "versions1.json"]
+
 
 # -- Options for Breathe (Doxygen) ----------------------------------------
 breathe_projects = {

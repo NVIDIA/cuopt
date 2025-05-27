@@ -3,25 +3,20 @@ MILP Features
 ====================
 
 Availability
-------------------------------
+------------
 
-NVIDIA cuOpt MILP is available in 3 different ways:
+The MILP solver can be accessed in the following ways:
 
-- **Third-Party Modeling Languages**: cuOpt's LP and MILP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
+- **C API**: A native C API that provides direct low-level access to cuOpt's MILP solver, enabling integration into any application or system that can interface with C.
 
-  Currently supported solvers:
-   - SciPy
-   - PuLP 
-   - CVXPY
-   - Pyomo
-   - AMPL
+- **As a Self-Hosted Service**: cuOpt's MILP solver can be deployed in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
-- **C API**: A native C API that provides direct low-level access to cuOpt's MILP capabilities, enabling integration into any application or system that can interface with C.
+Each option provide the same powerful mixed-integer linear optimization capabilities while offering flexibility in deployment and integration.
 
-- **As a Self-Hosted Service**: cuOpt MILP can be deployed in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
+Variable Bounds
+---------------
 
-All three options provide the same powerful mixed integer linear programming optimization capabilities while offering flexibility in deployment and integration approaches.
-
+Lower and upper bounds can be applied to each variable. If no variable bounds are specified, the default bounds are ``[-inf,+inf]``.
 
 Constraints
 -----------
@@ -40,28 +35,23 @@ There are two ways to specify constraints in cuOpt MILP:
 
 2. Using constraint bounds:
 
-   Alternatively, constraints can be specified as double-sided inequalities:
+   Alternatively, constraints can be specified as two-sided inequalities:
 
    lb <= A*x <= ub
 
-   where lb and ub are vectors of lower and upper bounds respectively. This form allows specifying both bounds in a single constraint.
+   where lb and ub are vectors of lower and upper bounds respectively. This form allows specifying both bounds of a single constraint.
 
 Both forms are mathematically equivalent. The choice between them is a matter of convenience depending on your problem formulation.
 
 Incumbent Solution Callback
 ---------------------------
-.. note::
-    Incumbent solution callback is not supported C API and third-party modeling languages.
 
-User can provide a callback to receive new integer feasible solutions that improve the objective (called incumbents) while the solver is running. `Incumbent Example <cuopt-server/examples/milp-examples.html#incumbent-solution>`_ is shared on the self-hosted page.
+User can provide a callback to receive new integer feasible solutions that improve the objective (called incumbents) while the solver is running. An `Incumbent Example <cuopt-server/examples/milp-examples.html#incumbent-solution>`_ is shared on the self-hosted page.
 
 Logging Callback
 ----------------
-.. note::
-    Logging callback is not supported C API and third-party modeling languages.
 
-
-A logging callback allows users to get additional information about how the solve is progressing. `Logging Callback Example <cuopt-server/examples/milp-examples.html#logging-callback>`_ is shared on the self-hosted page.
+A logging callback allows users to get additional information about how the solve is progressing. A `Logging Callback Example <cuopt-server/examples/milp-examples.html#logging-callback>`_ is shared on the self-hosted page.
 
 Time Limit
 --------------
@@ -70,9 +60,4 @@ The user may specify a time limit to the solver. By default the solver runs unti
 
 .. note::
 
-  Note that time_limit applies only to solve time inside the LP solver. This does not include time for ``network transfer``, ``validation of input``, and other operations that occur outside the solver. The overhead associated with these operations are usually quite small compared to the solve time
-
-Variable Bounds
----------------
-
-Lower and upper bounds can be applied to each variable. If no variable bounds are specified, the default bounds will be ``[-inf,+inf]``.
+  Note that time_limit applies only to solve time inside the LP solver. This does not include time for network transfer, validation of input, and other operations that occur outside the solver. The overhead associated with these operations are usually small compared to the solve time.

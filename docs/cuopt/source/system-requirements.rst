@@ -21,11 +21,11 @@ System Requirements
       - 100+ GB free space
 
    * CUDA:
-      - 11.2+
+      - 12.0+
 
    * NVIDIA drivers:
-      - 450.80.02+
-
+      - 525.60.13+ (linux)
+      - 527.41+ (windows)
    * OS:
       - Linux distributions with glibc>=2.28 (released in August 2018):
          * Arch Linux (minimum version 2018-08-02)
@@ -37,10 +37,6 @@ System Requirements
          * Windows 11 with WSL2
 
    * CUDA & NVIDIA Driver combinations:
-      - CUDA 11.2 with Driver 470.42.01+
-      - CUDA 11.4 with Driver 470.42.01+
-      - CUDA 11.5 with Driver 495.29.05+
-      - CUDA 11.8 with Driver 520.61.05+
       - CUDA 12.0 with Driver 525.60.13+
       - CUDA 12.2 with Driver 535.86.10+
       - CUDA 12.5 with Driver 555.42.06+

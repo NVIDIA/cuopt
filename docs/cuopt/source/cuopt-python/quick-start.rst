@@ -10,12 +10,6 @@ Installation
 pip
 ---
 
-For CUDA 11.x:
-
-.. code-block:: bash
-
-    pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu11==25.5.*
-
 For CUDA 12.x:
 
 .. code-block:: bash
@@ -27,13 +21,6 @@ Conda
 -----
 
 NVIDIA cuOpt can be installed with Conda (via `miniforge <https://github.com/conda-forge/miniforge>`_) from the ``nvidia`` channel:
-
-For CUDA 11.x:
-
-.. code-block:: bash
-
-    conda install -c rapidsai -c conda-forge -c nvidia \
-        cuopt=25.5.* python=3.12 cuda-version=11.8
 
 For CUDA 12.x:
 
@@ -63,6 +50,11 @@ This will start an interactive session with cuOpt pre-installed and ready to use
 .. note::
    Make sure you have the NVIDIA Container Toolkit installed on your system to enable GPU support in containers. See the `installation guide <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html>`_ for details.
 
+
+Brev
+----
+
+NVIDIA cuOpt can be tested with `Brev Launchable <https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ>`_ with `example notebooks <https://github.com/NVIDIA/cuopt-examples/>`_. For more details, please refer to the `Brev documentation <https://docs.nvidia.com/brev/latest/>`_.
 
 Smoke Test
 ----------
