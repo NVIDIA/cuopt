@@ -1472,7 +1472,7 @@ def run_server(
     abort_queue,
     abort_list,
     jobs_marked_done,
-    ip="0.0.0.0",
+    ip="127.0.0.1",
     port=5000,
     log_level="debug",
     log_file="",

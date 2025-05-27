@@ -118,7 +118,7 @@ if __name__ == "__main__":
     # Allow defaults to be overridden from the environment.
     # Commandline arguments have the highest precedence.
     # These values all have commandline analogs below.
-    ip = os.environ.get("CUOPT_SERVER_IP", "0.0.0.0")
+    ip = os.environ.get("CUOPT_SERVER_IP", "127.0.0.1")
     port = os.environ.get("CUOPT_SERVER_PORT", 5000)
     log_level = os.environ.get("CUOPT_SERVER_LOG_LEVEL", "debug")
     log_file = os.environ.get("CUOPT_SERVER_LOG_FILE", "")
