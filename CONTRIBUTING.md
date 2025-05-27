@@ -71,17 +71,29 @@ for a minimal build of NVIDIA cuOpt without using conda are also listed below.
 
 Compilers:
 
-* `gcc` version 11.4+
-* `nvcc` version 11.8+
-* `cmake` version 3.29.6+
+These will be installed while creating the conda environment
+
+* `gcc` version 13.0+
+* `nvcc` version 12.8+
+* `cmake` version 3.30.4+
 
 CUDA/GPU Runtime:
 
-* CUDA 11.4+
+* CUDA 12.8
 * Volta architecture or better ([Compute Capability](https://docs.nvidia.com/deploy/cuda-compatibility/) >=7.0)
 
-You can obtain CUDA from
-[https://developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads).
+Python:
+
+* Python >=3.10.x, <= 3.12.x
+
+OS:
+
+* Only Linux is supported
+
+Architecture:
+
+* x86_64 (64-bit)
+* aarch64 (64-bit)
 
 ### Build NVIDIA cuOpt from source
 

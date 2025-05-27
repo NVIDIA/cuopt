@@ -6,20 +6,24 @@ NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed 
 
 For the latest stable version ensure you are on the `main` branch.
 
-## Build from Source
+## Supported APIs
 
-Please see our [guide for building cuOpt from source](CONTRIBUTING.md#build-nvidia-cuopt-from-source)
+cuOpt supports the following APIs:
 
-## Contributing Guide
+- C API support
+    - Linear Programming (LP)
+    - Mixed Integer Linear Programming (MILP)
+- C++ API support
+    - cuOpt is written in C++ and includes a native C++ API. However, we do not provide documentation for the C++ API at this time. We anticipate that the C++ API will change significantly in the future. Use it at your own risk.
+- Python support
+    - Routing (TSP, VRP, and PDP)
+    - Linear Programming (LP) and Mixed Integer Linear Programming (MILP)
+        - cuOpt includes a Python API that is used as the backend of the cuOpt server. However, we do not provide documentation for the Python API at this time. We suggest using cuOpt server to access cuOpt via Python. We anticipate that the Python API will change significantly in the future. Use it at your own risk.
+- Server support
+    - Linear Programming (LP)
+    - Mixed Integer Linear Programming (MILP)
+    - Routing (TSP, VRP, and PDP)
 
-Review the [CONTRIBUTING.md](CONTRIBUTING.md) file for information on how to contribute code and issues to the project.
-
-## Resources
-
-- [cuopt (Python) documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
-- [libcuopt (C++/CUDA) documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
-- [Examples and Notebooks](https://github.com/NVIDIA/cuopt-examples)
-- [Test cuopt with Brev](https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ): Examples notebooks are pulled and hosted on [Brev](https://docs.nvidia.com/brev/latest/).
 
 ## Installation
 
@@ -28,6 +32,16 @@ Review the [CONTRIBUTING.md](CONTRIBUTING.md) file for information on how to con
 * CUDA 12.0+
 * NVIDIA driver >= 525.60.13 (Linux) and >= 527.41 (Windows)
 * Volta architecture or better (Compute Capability >=7.0)
+
+### Python requirements
+
+* Python >=3.10.x, <= 3.12.x
+
+### OS requirements
+
+* Only Linux is supported and Windows via WSL2
+* x86_64 (64-bit)
+* aarch64 (64-bit)
 
 ### Pip
 
@@ -52,7 +66,31 @@ conda install -c rapidsai -c conda-forge -c nvidia \
     cuopt=25.05 python=3.12 cuda-version=12.8
 ```
 
+### Container 
+
+Users can pull the cuOpt container from the NVIDIA container registry
+
 We also provide [nightly Conda packages](https://anaconda.org/rapidsai-nightly) built from the HEAD
 of our latest development branch.
 
-Note: cuOpt is supported only on Linux, and with Python versions 3.10 and later.
+```bash
+docker pull nvidia/cuopt:25.5.0-cuda12.8-py312 
+```
+More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub)
+
+
+## Build from Source and Test
+
+Please see our [guide for building cuOpt from source](CONTRIBUTING.md#setting-up-your-build-environment)
+
+## Contributing Guide
+
+Review the [CONTRIBUTING.md](CONTRIBUTING.md) file for information on how to contribute code and issues to the project.
+
+## Resources
+
+- [libcuopt (C) documentation](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-c/index.html)
+- [cuopt (Python) documentation](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/index.html)
+- [cuopt (Server) documentation](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/index.html)
+- [Examples and Notebooks](https://github.com/NVIDIA/cuopt-examples)
+- [Test cuopt with Brev](https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ): Examples notebooks are pulled and hosted on [Brev](https://docs.nvidia.com/brev/latest/).
