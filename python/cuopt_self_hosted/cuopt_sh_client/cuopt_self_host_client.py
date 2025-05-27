@@ -296,7 +296,7 @@ class CuOptServiceSelfHostClient:
     # Initialize the CuOptServiceSelfHostClient
     def __init__(
         self,
-        ip: str = "0.0.0.0",
+        ip: str = "127.0.0.1",
         port: str = "5000",
         use_https: bool = False,
         self_signed_cert="",
