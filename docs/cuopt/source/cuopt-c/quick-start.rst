@@ -13,6 +13,9 @@ pip
 
 For CUDA 12.x:
 
+This wheel is python wrapper around the C++ library and eases installation and access to libcuopt. This also help in pip environment to load libraries dynamically while using python SDK.
+
+
 .. code-block:: bash
 
     # This is deprecated module and not longer used, but share same name for the CLI, so we need to uninstall it first if it exists.
