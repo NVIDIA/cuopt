@@ -1,5 +1,7 @@
 # cuOpt - GPU accelerated Optimization Engine
 
+[![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
+
 NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer programming (MIP), linear programming (LP), and vehicle routing problems (VRP). It enables near real-time solutions for large-scale challenges with millions of variables and constraints, offering easy integration into existing solvers and seamless deployment across hybrid and multi-cloud environments.
 
 For the latest stable version ensure you are on the `main` branch.
