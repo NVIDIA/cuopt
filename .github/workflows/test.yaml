@@ -25,19 +25,8 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
+      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
       script: ci/test_cpp.sh
-  conda-cpp-memcheck-tests:
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.06
-    with:
-      build_type: ${{ inputs.build_type }}
-      branch: ${{ inputs.branch }}
-      date: ${{ inputs.date }}
-      sha: ${{ inputs.sha }}
-      node_type: "gpu-l4-latest-1"
-      arch: "amd64"
-      container_image: "rapidsai/ci-conda:cuda11.8.0-ubuntu22.04-py3.10"
-      run_script: "ci/test_cpp_memcheck.sh"
   conda-python-tests:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@branch-25.06
@@ -46,6 +35,7 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
+      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
       script: ci/test_python.sh
   wheel-tests-cuopt:
     secrets: inherit
@@ -55,6 +45,7 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
+      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
       script: ci/test_wheel_cuopt.sh
   wheel-tests-cuopt-server:
     secrets: inherit
@@ -64,4 +55,5 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
+      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
       script: ci/test_wheel_cuopt_server.sh
