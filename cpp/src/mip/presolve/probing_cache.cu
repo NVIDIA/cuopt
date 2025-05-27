@@ -33,12 +33,16 @@ i_t probing_cache_t<i_t, f_t>::check_number_of_conflicting_vars(
   const std::vector<f_t>& host_lb,
   const std::vector<f_t>& host_ub,
   const cache_entry_t<i_t, f_t>& cache_entry,
-  f_t integrality_tolerance)
+  f_t integrality_tolerance,
+  const std::vector<i_t>& reverse_original_ids)
 {
   i_t n_conflicting_var = 0;
   for (const auto& [var_idx, bound] : cache_entry.var_to_cached_bound_map) {
-    if (host_lb[var_idx] - integrality_tolerance > bound.ub ||
-        host_ub[var_idx] < bound.lb - integrality_tolerance) {
+    i_t var_idx_in_current_problem = reverse_original_ids[var_idx];
+    // -1 means that variable was fixed and doesn't exists in the current problem
+    if (var_idx_in_current_problem == -1) { continue; }
+    if (host_lb[var_idx_in_current_problem] - integrality_tolerance > bound.ub ||
+        host_ub[var_idx_in_current_problem] < bound.lb - integrality_tolerance) {
       ++n_conflicting_var;
     }
   }
@@ -47,16 +51,22 @@ i_t probing_cache_t<i_t, f_t>::check_number_of_conflicting_vars(
 
 template <typename i_t, typename f_t>
 void probing_cache_t<i_t, f_t>::update_bounds_with_selected(
-  std::vector<f_t>& host_lb, std::vector<f_t>& host_ub, const cache_entry_t<i_t, f_t>& cache_entry)
+  std::vector<f_t>& host_lb,
+  std::vector<f_t>& host_ub,
+  const cache_entry_t<i_t, f_t>& cache_entry,
+  const std::vector<i_t>& reverse_original_ids)
 {
   i_t n_bounds_updated = 0;
   for (const auto& [var_idx, bound] : cache_entry.var_to_cached_bound_map) {
-    if (host_lb[var_idx] < bound.lb) {
-      host_lb[var_idx] = bound.lb;
+    i_t var_idx_in_current_problem = reverse_original_ids[var_idx];
+    // -1 means that variable was fixed and doesn't exists in the current problem
+    if (var_idx_in_current_problem == -1) { continue; }
+    if (host_lb[var_idx_in_current_problem] < bound.lb) {
+      host_lb[var_idx_in_current_problem] = bound.lb;
       n_bounds_updated++;
     }
-    if (host_ub[var_idx] > bound.ub) {
-      host_ub[var_idx] = bound.ub;
+    if (host_ub[var_idx_in_current_problem] > bound.ub) {
+      host_ub[var_idx_in_current_problem] = bound.ub;
       n_bounds_updated++;
     }
   }
@@ -87,11 +97,15 @@ f_t probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(problem_t<i_t, f_t
   i_t n_conflicting_vars = 0;
   // first probe found some interval
   if (hit_interval_for_first_probe != -1) {
-    n_conflicting_vars = check_number_of_conflicting_vars(
-      host_lb, host_ub, cache_row[hit_interval_for_first_probe], integrality_tolerance);
+    n_conflicting_vars = check_number_of_conflicting_vars(host_lb,
+                                                          host_ub,
+                                                          cache_row[hit_interval_for_first_probe],
+                                                          integrality_tolerance,
+                                                          problem.reverse_original_ids);
     if (n_conflicting_vars == 0) {
       CUOPT_LOG_TRACE("No conflicting vars, returning first probe");
-      update_bounds_with_selected(host_lb, host_ub, cache_row[hit_interval_for_first_probe]);
+      update_bounds_with_selected(
+        host_lb, host_ub, cache_row[hit_interval_for_first_probe], problem.reverse_original_ids);
       return first_probe;
     }
   }
@@ -104,9 +118,13 @@ f_t probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(problem_t<i_t, f_t
                   n_conflicting_vars);
   // check for the other side, if it the interval includes second_probe return that, if not return
   // cutoff point second probe has a hit but it is not the same as first probe
-  i_t other_interval_idx             = 1 - hit_interval_for_first_probe;
-  i_t n_conflicting_vars_other_probe = check_number_of_conflicting_vars(
-    host_lb, host_ub, cache_row[other_interval_idx], integrality_tolerance);
+  i_t other_interval_idx = 1 - hit_interval_for_first_probe;
+  i_t n_conflicting_vars_other_probe =
+    check_number_of_conflicting_vars(host_lb,
+                                     host_ub,
+                                     cache_row[other_interval_idx],
+                                     integrality_tolerance,
+                                     problem.reverse_original_ids);
 
   if (n_conflicting_vars_other_probe < n_conflicting_vars) {
     CUOPT_LOG_DEBUG(
@@ -115,7 +133,8 @@ f_t probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(problem_t<i_t, f_t
       var_id,
       first_probe,
       n_conflicting_vars_other_probe);
-    update_bounds_with_selected(host_lb, host_ub, cache_row[other_interval_idx]);
+    update_bounds_with_selected(
+      host_lb, host_ub, cache_row[other_interval_idx], problem.reverse_original_ids);
     if (other_interval_idx == hit_interval_for_second_probe) {
       CUOPT_LOG_DEBUG("Better value on second probe val %f", second_probe);
       return second_probe;
@@ -125,14 +144,15 @@ f_t probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(problem_t<i_t, f_t
       return cache_row[other_interval_idx].val_interval.val;
     }
   }
-  update_bounds_with_selected(host_lb, host_ub, cache_row[hit_interval_for_first_probe]);
+  update_bounds_with_selected(
+    host_lb, host_ub, cache_row[hit_interval_for_first_probe], problem.reverse_original_ids);
   return first_probe;
 }
 
 template <typename i_t, typename f_t>
-bool probing_cache_t<i_t, f_t>::contains(i_t var_id)
+bool probing_cache_t<i_t, f_t>::contains(problem_t<i_t, f_t>& problem, i_t var_id)
 {
-  return probing_cache.count(var_id) > 0;
+  return probing_cache.count(problem.original_ids[var_id]) > 0;
 }
 
 template <typename i_t, typename f_t>

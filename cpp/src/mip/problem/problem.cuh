@@ -213,6 +213,8 @@ class problem_t {
   // this vector refers to the problem after any presolve or preprocessing
   // it is to have correct access to the parent problem when we fix some variables
   std::vector<i_t> original_ids;
+  // reverse original ids
+  std::vector<i_t> reverse_original_ids;
 
   // reverse CSR matrix
   rmm::device_uvector<f_t> reverse_coefficients;
