@@ -27,7 +27,7 @@ For CUDA 12.x:
 .. code-block:: bash
 
     conda install -c rapidsai -c conda-forge -c nvidia \
-        cuopt=25.5.* python=3.12 cuda-version=12.8
+        cuopt=25.05.* python=3.12 cuda-version=12.8
 
 
 Container
@@ -43,7 +43,7 @@ The container includes both the Python API and self-hosted server components. To
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm nvidia/cuopt:25.5.0
+    docker run --gpus all -it --rm nvidia/cuopt:25.5.0-cuda12.8-py312 
 
 This will start an interactive session with cuOpt pre-installed and ready to use.
 

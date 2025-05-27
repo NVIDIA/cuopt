@@ -104,15 +104,15 @@ Supported APIs
 cuOpt supports the following APIs:
 
 - C API support
-   - Linear Programming (LP)
-   - Mixed Integer Linear Programming (MILP)
+   - `Linear Programming (LP) <cuopt-c/quick-start.html>`_
+   - `Mixed Integer Linear Programming (MILP) <cuopt-c/quick-start.html>`_
 - C++ API support
    - cuOpt is written in C++ and includes a native C++ API. However, we do not provide documentation for the C++ API at this time. We anticipate that the C++ API will change significantly in the future. Use it at your own risk.
 - Python support
-   - Routing (TSP, VRP, and PDP)
-   - Linear Programming (LP) and Mixed Integer Linear Programming (MILP)
+   - `Routing (TSP, VRP, and PDP) <cuopt-python/quick-start.html>`_
+   - `Linear Programming (LP) and Mixed Integer Linear Programming (MILP) 
        - cuOpt includes a Python API that is used as the backend of the cuOpt server. However, we do not provide documentation for the Python API at this time. We suggest using cuOpt server to access cuOpt via Python. We anticipate that the Python API will change significantly in the future. Use it at your own risk.
 - Server support
-   - Linear Programming (LP)
-   - Mixed Integer Linear Programming (MILP)
-   - Routing (TSP, VRP, and PDP)
+   - `Linear Programming (LP) <cuopt-server/quick-start.html>`_
+   - `Mixed Integer Linear Programming (MILP) <cuopt-server/quick-start.html>`_
+   - `Routing (TSP, VRP, and PDP) <cuopt-server/quick-start.html>`_

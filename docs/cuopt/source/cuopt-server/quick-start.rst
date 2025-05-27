@@ -12,7 +12,7 @@ For CUDA 12.x:
 
 .. code-block:: bash
 
-    pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.5.* cuopt-sh==25.5.*
+    pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.05.* cuopt-sh-client==25.05.*
 
 
 Conda
@@ -25,7 +25,7 @@ For CUDA 12.x:
 .. code-block:: bash
 
     conda install -c rapidsai -c conda-forge -c nvidia \
-        cuopt-server=25.5.* cuopt-sh=25.5.* python=3.12 cuda-version=12.8
+        cuopt-server=25.05.* cuopt-sh-client=25.05.* python=3.12 cuda-version=12.8
 
 
 Container from Docker Hub
@@ -35,13 +35,13 @@ NVIDIA cuOpt is also available as a container from Docker Hub:
 
 .. code-block:: bash
 
-    docker pull nvidia/cuopt:25.5.0
+    docker pull nvidia/cuopt:25.5.0-cuda12.8-py312
 
 The container includes both the Python API and self-hosted server components. To run the container:
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:25.5.0 /bin/bash -c "python3 -m cuopt_server.cuopt_service"
+    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:25.5.0-cuda12.8-py312 /bin/bash -c "python3 -m cuopt_server.cuopt_service"
 
 .. note::
    Make sure you have the NVIDIA Container Toolkit installed on your system to enable GPU support in containers. See the `installation guide <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html>`_ for details.

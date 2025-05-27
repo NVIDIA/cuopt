@@ -35,7 +35,7 @@ For CUDA 12.x:
     # This is deprecated module and not longer used, but share same name for the CLI, so we need to uninstall it first if it exists.
     conda remove cuopt-thin-client
     conda install -c rapidsai -c conda-forge -c nvidia \
-        libcuopt=25.5.* python=3.12 cuda-version=12.8
+        libcuopt=25.05.* python=3.12 cuda-version=12.8
 
 
 Please visit examples under each section to learn how to use the cuOpt C API.
