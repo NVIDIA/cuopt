@@ -26,9 +26,16 @@ namespace cuopt::linear_programming::dual_simplex {
 template <typename i_t, typename f_t>
 class lp_solution_t {
  public:
-  lp_solution_t(i_t m, i_t n) : x(n), y(m), z(n)
+  lp_solution_t(i_t m, i_t n)
+    : x(n),
+      y(m),
+      z(n),
+      objective(std::numeric_limits<f_t>::quiet_NaN()),
+      user_objective(std::numeric_limits<f_t>::quiet_NaN()),
+      iterations(0),
+      l2_primal_residual(std::numeric_limits<f_t>::quiet_NaN()),
+      l2_dual_residual(std::numeric_limits<f_t>::quiet_NaN())
   {
-    objective = std::numeric_limits<f_t>::quiet_NaN();
   }
 
   void resize(i_t m, i_t n)
@@ -47,6 +54,8 @@ class lp_solution_t {
   f_t objective;
   f_t user_objective;
   i_t iterations;
+  f_t l2_primal_residual;
+  f_t l2_dual_residual;
 };
 
 template <typename i_t, typename f_t>

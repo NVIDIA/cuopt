@@ -205,10 +205,12 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
       unscale_solution<i_t, f_t>(column_scales, solution.x, solution.z, unscaled_x, unscaled_z);
       uncrush_solution(
         presolve_info, unscaled_x, unscaled_z, original_solution.x, original_solution.z);
-      original_solution.y              = solution.y;
-      original_solution.objective      = solution.objective;
-      original_solution.user_objective = solution.user_objective;
-      lp_status                        = lp_status_t::OPTIMAL;
+      original_solution.y                  = solution.y;
+      original_solution.objective          = solution.objective;
+      original_solution.user_objective     = solution.user_objective;
+      original_solution.l2_primal_residual = solution.l2_primal_residual;
+      original_solution.l2_dual_residual   = solution.l2_dual_residual;
+      lp_status                            = lp_status_t::OPTIMAL;
     }
     if (status == dual::status_t::DUAL_UNBOUNDED) { lp_status = lp_status_t::INFEASIBLE; }
     if (status == dual::status_t::TIME_LIMIT) { lp_status = lp_status_t::TIME_LIMIT; }
@@ -251,10 +253,12 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
     original_lp, start_time, settings, lp_solution, vstatus, edge_norms);
   uncrush_primal_solution(user_problem, original_lp, lp_solution.x, solution.x);
   uncrush_primal_solution(user_problem, original_lp, lp_solution.z, solution.z);
-  solution.y              = lp_solution.y;
-  solution.objective      = lp_solution.objective;
-  solution.user_objective = lp_solution.user_objective;
-  solution.iterations     = lp_solution.iterations;
+  solution.y                  = lp_solution.y;
+  solution.objective          = lp_solution.objective;
+  solution.user_objective     = lp_solution.user_objective;
+  solution.iterations         = lp_solution.iterations;
+  solution.l2_primal_residual = lp_solution.l2_primal_residual;
+  solution.l2_dual_residual   = lp_solution.l2_dual_residual;
   return status;
 }
 

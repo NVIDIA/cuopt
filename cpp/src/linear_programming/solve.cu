@@ -226,7 +226,9 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   detail::problem_t<i_t, f_t>& problem,
   const dual_simplex::lp_solution_t<i_t, f_t>& solution,
   dual_simplex::lp_status_t status,
-  f_t duration)
+  f_t duration,
+  f_t norm_user_objective,
+  f_t norm_rhs)
 {
   auto to_termination_status = [](dual_simplex::lp_status_t status) {
     switch (status) {
@@ -253,10 +255,22 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
 
   // Should be filled with more information from dual simplex
   typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t info;
-  info.primal_objective      = solution.user_objective;
-  info.solve_time            = duration;
-  info.number_of_steps_taken = solution.iterations;
-  info.solved_by_pdlp        = false;
+  info.solved_by_pdlp                  = false;
+  info.primal_objective                = solution.user_objective;
+  info.dual_objective                  = solution.user_objective;
+  info.gap                             = 0.0;
+  info.relative_gap                    = 0.0;
+  info.solve_time                      = duration;
+  info.number_of_steps_taken           = solution.iterations;
+  info.total_number_of_attempted_steps = solution.iterations;
+  info.l2_primal_residual              = solution.l2_primal_residual;
+  info.l2_dual_residual                = solution.l2_dual_residual;
+  info.l2_relative_primal_residual     = solution.l2_primal_residual / (1.0 + norm_user_objective);
+  info.l2_relative_dual_residual       = solution.l2_dual_residual / (1.0 + norm_rhs);
+  info.max_primal_ray_infeasibility    = 0.0;
+  info.primal_ray_linear_objective     = 0.0;
+  info.max_dual_ray_infeasibility      = 0.0;
+  info.dual_ray_linear_objective       = 0.0;
 
   pdlp_termination_status_t termination_status = to_termination_status(status);
   auto sol = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
@@ -279,11 +293,14 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
 }
 
 template <typename i_t, typename f_t>
-std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t> run_dual_simplex(
-  dual_simplex::user_problem_t<i_t, f_t>& user_problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings)
+std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>
+run_dual_simplex(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
+                 pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
   auto start_solver = std::chrono::high_resolution_clock::now();
+
+  f_t norm_user_objective = dual_simplex::vector_norm2<i_t, f_t>(user_problem.objective);
+  f_t norm_rhs            = dual_simplex::vector_norm2<i_t, f_t>(user_problem.rhs);
 
   dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
   dual_simplex_settings.time_limit      = settings.time_limit;
@@ -310,7 +327,7 @@ std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t
     settings.concurrent_halt->store(1, std::memory_order_release);
   }
 
-  return {std::move(solution), status, duration.count() / 1000.0};
+  return {std::move(solution), status, duration.count() / 1000.0, norm_user_objective, norm_rhs};
 }
 
 template <typename i_t, typename f_t>
@@ -324,7 +341,9 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
                                   std::get<1>(sol_dual_simplex),
-                                  std::get<2>(sol_dual_simplex));
+                                  std::get<2>(sol_dual_simplex),
+                                  std::get<3>(sol_dual_simplex),
+                                  std::get<4>(sol_dual_simplex));
 }
 
 template <typename i_t, typename f_t>
@@ -421,11 +440,12 @@ void run_dual_simplex_thread(
   dual_simplex::user_problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   std::unique_ptr<
-    std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t>>& sol_ptr)
+    std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>&
+    sol_ptr)
 {
   // We will return the solution from the thread as a unique_ptr
   sol_ptr = std::make_unique<
-    std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t>>(
+    std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>(
     run_dual_simplex(problem, settings));
 }
 
@@ -452,7 +472,8 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
     cuopt_problem_to_simplex_problem<i_t, f_t>(problem);
   // Create a thread for dual simplex
-  std::unique_ptr<std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t>>
+  std::unique_ptr<
+    std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
     sol_dual_simplex_ptr;
   std::thread dual_simplex_thread(run_dual_simplex_thread<i_t, f_t>,
                                   std::ref(dual_simplex_problem),
@@ -469,7 +490,9 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   auto sol_dual_simplex = convert_dual_simplex_sol(problem,
                                                    std::get<0>(*sol_dual_simplex_ptr),
                                                    std::get<1>(*sol_dual_simplex_ptr),
-                                                   std::get<2>(*sol_dual_simplex_ptr));
+                                                   std::get<2>(*sol_dual_simplex_ptr),
+                                                   std::get<3>(*sol_dual_simplex_ptr),
+                                                   std::get<4>(*sol_dual_simplex_ptr));
 
   f_t end_time = dual_simplex::toc(start_time);
   CUOPT_LOG_INFO("Concurrent time:  %.3fs", end_time);
