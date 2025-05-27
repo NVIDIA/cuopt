@@ -6,6 +6,9 @@ Resources
 `Sample Notebooks <https://github.com/NVIDIA/cuopt-examples/>`_
 ----------------------------------------------------------------------------------
 
+`Test cuopt with Brev <https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ>`_
+------------------------------------------------------------------------------------------------------------------------
+
 `File a Bug <https://github.com/NVIDIA/cuopt/issues>`_
 -----------------------------------------------------------------
 

@@ -5,7 +5,7 @@ MILP C API Examples
 Example With Data
 -----------------
 
-This example demonstrates how to use the cuOpt solver in C to solve a MILP problem. More details on the API can be found in `C API <lp-milp-c-api.html>`_.
+This example demonstrates how to use the MILP solver in C. More details on the API can be found in `C API <lp-milp-c-api.html>`_.
 
 Copy the code below into a file called ``milp_example.c``:
 
@@ -212,7 +212,7 @@ Copy the code below into a file called ``milp_example.c``:
    }
 
 
-Need to find PATH for cuopt_c.h and libcuopt.so, if you know the path, please add it to these path variables directly. Else, run the following commands to find the path and assign it to the path variables.
+It is necessary to have the path for include and library dirs ready, if you know the paths, please add them to the path variables directly. Otherwise, run the following commands to find the path and assign it to the path variables.
 The following commands are for Linux and might fail in cases where the cuopt library is not installed or there are multiple cuopt libraries in the system.
 
 If you have built it locally, libcuopt.so will be in the build directory ``cpp/build`` and include directoy would be ``cpp/include``.
@@ -432,7 +432,7 @@ Copy the code below into a file called ``milp_example_mps.c``:
    }
 
 
-Need to find PATH for cuopt_c.h and libcuopt.so, if you know the path, please add it to these path variables directly. Else, run the following commands to find the path and assign it to the path variables.
+It is necessary to have the path for include and library dirs ready, if you know the paths, please add them to the path variables directly. Otherwise, run the following commands to find the path and assign it to the path variables.
 The following commands are for Linux and might fail in cases where the cuopt library is not installed or there are multiple cuopt libraries in the system.
 
 If you have built it locally, libcuopt.so will be in the build directory ``cpp/build`` and include directoy would be ``cpp/include``.
@@ -451,7 +451,6 @@ Build and run the example
     # Create a MPS file in the current directory
     echo "* Example 2.1 from N & W
    * Optimal solution -28
-   * Has 5 nodes
    NAME          EXAMPLE21
    ROWS
     N  OBJ
@@ -530,78 +529,3 @@ You should see the following output:
    x2 = 0.000000
 
    Solver completed successfully!
-
-Example for CLI with MPS file
-------------------------------
-
-This example demonstrates how to use the cuOpt CLI to solve an MPS file and how to set the parameters for the solver.
-
-.. code-block:: bash
-
-   # Create a MPS file in the current directory
-    echo "* Example 2.1 from N & W
-   * Optimal solution -28
-   * Has 5 nodes
-   NAME          EXAMPLE21
-   ROWS
-    N  OBJ
-    L  C1
-    L  C2
-    L  C3
-   COLUMNS
-     MARK0001  'MARKER'                 'INTORG'
-       X1        OBJ             -7
-       X1        C1              -1
-       X1        C2               5
-       X1        C3              -2
-       X2        OBJ             -2
-       X2        C1               2
-       X2        C2               1
-       X2        C3              -2
-     MARK0001  'MARKER'                 'INTEND'
-   RHS
-       RHS       C1               4
-       RHS       C2              20
-       RHS       C3              -7
-   BOUNDS
-    UP BOUND     X1               10
-    UP BOUND     X2               10
-   ENDATA" > sample.mps
-
-   # Solve the MPS file with the additional parameter settings
-   cuopt_cli sample.mps --mip-absolute-tolerance 0.0001 --method 0 --time-limit 5
-
-This should give you the following output:
-
-.. code-block:: bash
-   :caption: Output
-
-   [2025-05-17 15:29:35:484327] [CUOPT] [info  ] Running file sample.mps
-   Solving a problem with 3 constraints 2 variables (2 integers) and 6 nonzeros
-   Objective offset 0.000000 scaling_factor 1.000000
-   After trivial presolve updated 3 constraints 2 variables
-   Running presolve!
-   After trivial presolve updated 3 constraints 2 variables
-   Solving LP root relaxation
-   Scaling matrix. Maximum column norm 1.225464e+00
-   Dual Simplex Phase 1
-   Dual feasible solution found.
-   Dual Simplex Phase 2
-    Iter     Objective   Primal Infeas  Perturb  Time
-       1 -3.04000000e+01 7.57868205e+00 0.00e+00 0.00
-
-   Root relaxation solution found in 3 iterations and 0.00s
-   Root relaxation objective -3.01818182e+01
-
-   Strong branching on 2 fractional variables
-   | Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   |    Time 
-           0        1                +inf  -3.018182e+01      1   0.0e+00       -        0.00
-   B       3        1       -2.700000e+01  -2.980000e+01      2   6.7e-01     10.4%      0.00
-   B&B added a solution to population, solution queue size 0 with objective -27
-   B       4        0       -2.800000e+01  -2.980000e+01      2   7.5e-01      6.4%      0.00
-   B&B added a solution to population, solution queue size 1 with objective -28
-   Explored 4 nodes in 0.00s.
-   Absolute Gap 0.000000e+00 Objective -2.8000000000000004e+01 Lower Bound -2.8000000000000004e+01
-   Optimal solution found.
-   Consuming B&B solutions, solution queue size 2
-   Solution objective: -28.000000 , relative_mip_gap 0.000000 solution_bound -28.000000 presolve_time 0.026420 total_solve_time 0.000000 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 4 simplex_iterations

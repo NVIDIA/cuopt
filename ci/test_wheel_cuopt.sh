@@ -49,4 +49,13 @@ cd ./datasets
 ./get_test_data.sh --solomon
 ./get_test_data.sh --tsp
 cd -
+
+RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
+export RAPIDS_DATASET_ROOT_DIR
+
+# Run CLI tests
+timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
+
+# Run Python tests
 RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt/cuopt/tests/
+

@@ -58,6 +58,7 @@ target_link_libraries(cuopt_cli PRIVATE argparse)
 
 set(rpaths
   "$ORIGIN/../lib64"
+  "$ORIGIN/../../rapids_logger/lib64"
   "$ORIGIN/../../nvidia/cublas/lib"
   "$ORIGIN/../../nvidia/curand/lib"
   "$ORIGIN/../../nvidia/cusolver/lib"
