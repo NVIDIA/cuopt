@@ -234,7 +234,8 @@ This will add the device debug symbols for this object file in `libcuopt.so`.  Y
 ## Adding dependencies
 
 Please refer to [dependencies.yaml](dependencies.yaml) file for details on how to add new dependencies.
-Add any new dependencies in the `dependencies.yaml` file. It takes care of conda, requirements (pip based dependencies) and pyproject.Please don't try to add dependencies directly to environment.yaml files under `conda/environments` directory and pyproject.toml files under `python` directories.
+Add any new dependencies in the `dependencies.yaml` file. It takes care of conda, requirements (pip based dependencies) and pyproject. 
+Please don't try to add dependencies directly to environment.yaml files under `conda/environments` directory and pyproject.toml files under `python` directories.
 
 ## Code Formatting
 
