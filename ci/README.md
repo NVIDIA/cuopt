@@ -2,7 +2,7 @@
 
 This directory contains the scripts for the CI pipeline.
 
-CI builds are triggered by `pr.yaml`, `build.yaml` and `test.yaml` files in in `.github/workflows` directory. And these scripts are use from those workflows to build and test the code.
+CI builds are triggered by `pr.yaml`, `build.yaml` and `test.yaml` files in the `.github/workflows` directory. And these scripts are used from those workflows to build and test the code.
 
 cuOpt is packaged in following ways:
 
@@ -10,13 +10,13 @@ cuOpt is packaged in following ways:
 
 ### Build
 
-The scripts for building the PIP packages are named as `build_wheel_<package_name>.sh`. For Example, `build_wheel_cuopt.sh` is used to build the PIP package for cuOpt.
+The scripts for building the PIP packages are named as `build_wheel_<package_name>.sh`. For example, `build_wheel_cuopt.sh` is used to build the PIP package for cuOpt.
 
 Please refer to existing scripts for more details and how you can add a new script for a new package.
 
 ### Test
 
-The scripts for testing the PIP packages are named as `test_wheel_<package_name>.sh`. For Example, `test_wheel_cuopt.sh` is used to test the PIP package for cuOpt.
+The scripts for testing the PIP packages are named as `test_wheel_<package_name>.sh`. For example, `test_wheel_cuopt.sh` is used to test the PIP package for cuOpt.
 
 Please refer to existing scripts for more details and how you can add a new script for a new package.
 
@@ -24,17 +24,17 @@ Please refer to existing scripts for more details and how you can add a new scri
 
 ### Build
 
-For conda package,
+For Conda package,
 
 - all cpp libraries are built under one script called `build_cpp.sh`.
 - all python bindings are built under one script called `build_python.sh`.
 
-So if if there are new cpp libraries or python bindings, you need to add them to the respective scripts.
+So if there are new cpp libraries or python bindings, you need to add them to the respective scripts.
 
 
 ### Test
 
-Similarly, for conda package,
+Similarly, for Conda package,
 
 - all cpp libraries are tested under one script called `test_cpp.sh`.
 - all python bindings are tested under one script called `test_python.sh`.

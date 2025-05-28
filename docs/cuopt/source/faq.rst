@@ -47,7 +47,7 @@ General FAQ
 
     Yes, please refer to `system requirements <system-requirements.html>`_ for GPU specifications. You can acquire a cloud instance with a supported GPU and launch cuOpt; alternatively, you can launch it in your local machine if it meets the requirements.
 
-.. dropdown:: Does cuOpt use multiple GPUs/multi-GPUs/multi gpus?
+.. dropdown:: Does cuOpt use multiple GPUs/multi-GPUs/multi GPUs?
 
     #. Yes, in cuOpt self-hosted server, a solver process per GPU can be configured to run multiple solvers. Requests are accepted in a round-robin queue. More details are available in `server api <cuopt-server/server-api/server-cli.html>`_.
     #. There is no support for leveraging multiple GPUs to solve a single problem or oversubscribing a single GPU for multiple solvers.

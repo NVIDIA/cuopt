@@ -15,8 +15,7 @@ As part of `NVIDIA AI Enterprise <https://www.nvidia.com/en-us/data-center/produ
    Check out this `FAQ <https://forums.developer.nvidia.com/t/nvidia-nim-faq/300317>`__ for more information about the NVIDIA Developer Program. 
 
 
-Core engine is built on C++ and all the APIs are built on top of it as wrappers. For example, cuOpt python API uses cython to wrap the C++ core engine and provide a Python interface.
-Similarly, other interfaces wrap different layers to communicate with the core engine.
+The core engine is built on C++ and all the APIs are built on top of it as wrappers. For example, cuOpt Python API uses Cython to wrap the C++ core engine and provide a Python interface. Similarly, other interfaces wrap different layers to communicate with the core engine.
 
 Routing (TSP, VRP, and PDP)
 =============================
@@ -121,7 +120,7 @@ cuOpt supports the following APIs:
    - `Routing (TSP, VRP, and PDP) - Server <cuopt-server/quick-start.html>`_
 
 ==================================
-INSTALLATION OPTIONS
+Installation Options
 ==================================
 
 NVIDIA cuOpt is available in several formats to suit different deployment needs:

@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
 
-NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer programming (MIP), linear programming (LP), and vehicle routing problems (VRP). It enables near real-time solutions for large-scale challenges with millions of variables and constraints, offering 
+NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer linear programming (MILP), linear programming (LP), and vehicle routing problems (VRP). It enables near real-time solutions for large-scale challenges with millions of variables and constraints, offering 
 easy integration into existing solvers and seamless deployment across hybrid and multi-cloud environments.
 
 Core engine is written in C++ which is wrapped into C API, Python API and Server API.
@@ -60,7 +60,7 @@ on the major version of CUDA available in your environment:
 For CUDA 12.x:
 
 ```bash
-pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.5 cuopt-sh-client==25.5 nvidia-cuda-runtime-cu12==12.8.0
+pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.5 cuopt-sh-client==25.5 nvidia-cuda-runtime-cu12==12.8.*
 ```
 
 ### Conda
@@ -82,14 +82,14 @@ of our latest development branch.
 
 ### Container 
 
-Users can pull the cuOpt container from the NVIDIA container registry
+Users can pull the cuOpt container from the NVIDIA container registry.
 
 ```bash
 docker pull nvidia/cuopt:25.5.0-cuda12.8-py312 
 ```
-More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub)
+More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub).
 
-Users who are using cuOpt for quick testing or research can use the cuOpt container. Or users who are planning to pluging cuOpt as a service in their workflow can quickly start with the cuOpt container. But users are required to build security layers around the service to safeguard the service from untrusted users.
+Users who are using cuOpt for quick testing or research can use the cuOpt container. Alternatively, users who are planning to plug cuOpt as a service in their workflow can quickly start with the cuOpt container. But users are required to build security layers around the service to safeguard the service from untrusted users.
 
 ## Build from Source and Test
 

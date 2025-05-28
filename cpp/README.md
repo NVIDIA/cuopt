@@ -2,9 +2,9 @@
 
 This directory contains the C++ modules for the cuOpt project.
 
-Please refer to [CMakeLists.txt](CMakeLists.txt) file for details on how to add new modules and tests.
+Please refer to the [CMakeLists.txt](CMakeLists.txt) file for details on how to add new modules and tests.
 
-Most of the dependencies are defined in the [dependencies.yaml](../dependencies.yaml) file. Please refer to different sections in the [dependencies.yaml](../dependencies.yaml) file for more details. But some of the dependencies are defined in [thirdparty modules](cmake/thirdparty/) in case where source code is needed to build, for example, `cccl` and `rmm`.
+Most of the dependencies are defined in the [dependencies.yaml](../dependencies.yaml) file. Please refer to different sections in the [dependencies.yaml](../dependencies.yaml) file for more details. However, some of the dependencies are defined in [thirdparty modules](cmake/thirdparty/) in case where source code is needed to build, for example, `cccl` and `rmm`.
 
 
 ## Include Structure
