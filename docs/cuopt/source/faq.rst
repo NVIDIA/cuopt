@@ -81,6 +81,19 @@ General FAQ
 
    #. The complete round-trip solve time might be more than what was set.
 
+.. dropdown:: Why am I getting "libcuopt.so: cannot open shared object file: No such file or directory" error?
+
+   This error indicates that the cuOpt shared library is not found. Please check the following:
+
+   - The cuOpt is installed 
+   - Use ``find / -name libcuopt.so`` to search for the library path from root directory. You might need to run this command as root user.
+   - If the library is found, please add it to the ``LD_LIBRARY_PATH`` environment variable as shown below:
+
+   .. code-block:: bash
+
+       export LD_LIBRARY_PATH=/path/to/cuopt/lib:$LD_LIBRARY_PATH
+
+   - If the library is not found, it means it is not yet installed. Please check the cuOpt installation guide for more details.
 
 .. dropdown:: Is there a way to make cuOpt also account for other overheads in the same time limit provided?
 
