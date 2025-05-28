@@ -107,18 +107,18 @@ Supported APIs
 cuOpt supports the following APIs:
 
 - C API support
-   - `Linear Programming (LP) <cuopt-c/quick-start.html>`_
-   - `Mixed Integer Linear Programming (MILP) <cuopt-c/quick-start.html>`_
+   - `Linear Programming (LP) - C <cuopt-c/quick-start.html>`_
+   - `Mixed Integer Linear Programming (MILP) - C <cuopt-c/quick-start.html>`_
 - C++ API support
    - cuOpt is written in C++ and includes a native C++ API. However, we do not provide documentation for the C++ API at this time. We anticipate that the C++ API will change significantly in the future. Use it at your own risk.
 - Python support
-   - `Routing (TSP, VRP, and PDP) <cuopt-python/quick-start.html>`_
-   - `Linear Programming (LP) and Mixed Integer Linear Programming (MILP) 
+   - `Routing (TSP, VRP, and PDP) - Python <cuopt-python/quick-start.html>`_
+   - Linear Programming (LP) and Mixed Integer Linear Programming (MILP) 
        - cuOpt includes a Python API that is used as the backend of the cuOpt server. However, we do not provide documentation for the Python API at this time. We suggest using cuOpt server to access cuOpt via Python. We anticipate that the Python API will change significantly in the future. Use it at your own risk.
 - Server support
-   - `Linear Programming (LP) <cuopt-server/quick-start.html>`_
-   - `Mixed Integer Linear Programming (MILP) <cuopt-server/quick-start.html>`_
-   - `Routing (TSP, VRP, and PDP) <cuopt-server/quick-start.html>`_
+   - `Linear Programming (LP) - Server <cuopt-server/quick-start.html>`_
+   - `Mixed Integer Linear Programming (MILP) - Server <cuopt-server/quick-start.html>`_
+   - `Routing (TSP, VRP, and PDP) - Server <cuopt-server/quick-start.html>`_
 
 ==================================
 INSTALLATION OPTIONS
@@ -127,19 +127,19 @@ INSTALLATION OPTIONS
 NVIDIA cuOpt is available in several formats to suit different deployment needs:
 
 Source Code
-----------
+===========
 For users who want to customize cuOpt or contribute to its development, the source code is available on `GitHub <https://github.com/NVIDIA/cuopt>`_. Building from source allows maximum flexibility but requires setting up the build environment.
 
 Pip Wheels
-----------
+==========
 For Python users with existing pip-based workflows, cuOpt can be installed directly via pip from the NVIDIA Python Package Index. This is the simplest installation method for most users.
 
 Conda Packages
--------------
+===============
 Available from the NVIDIA channel, conda packages provide a convenient way to manage cuOpt and its dependencies in conda environments. This is ideal for users who prefer conda-based workflow management.
 
 Containers
----------
+===========
 NVIDIA provides ready-to-use containers with cuOpt pre-installed, available from:
 
 - Docker Hub (``nvidia/cuopt``)
