@@ -15,6 +15,9 @@ As part of `NVIDIA AI Enterprise <https://www.nvidia.com/en-us/data-center/produ
    Check out this `FAQ <https://forums.developer.nvidia.com/t/nvidia-nim-faq/300317>`__ for more information about the NVIDIA Developer Program. 
 
 
+Core engine is built on C++ and all the APIs are built on top of it as wrappers. For example, cuOpt python API uses cython to wrap the C++ core engine and provide a Python interface.
+Similarly, other interfaces wrap different layers to communicate with the core engine.
+
 Routing (TSP, VRP, and PDP)
 =============================
 
@@ -116,3 +119,32 @@ cuOpt supports the following APIs:
    - `Linear Programming (LP) <cuopt-server/quick-start.html>`_
    - `Mixed Integer Linear Programming (MILP) <cuopt-server/quick-start.html>`_
    - `Routing (TSP, VRP, and PDP) <cuopt-server/quick-start.html>`_
+
+==================================
+INSTALLATION OPTIONS
+==================================
+
+NVIDIA cuOpt is available in several formats to suit different deployment needs:
+
+Source Code
+----------
+For users who want to customize cuOpt or contribute to its development, the source code is available on `GitHub <https://github.com/NVIDIA/cuopt>`_. Building from source allows maximum flexibility but requires setting up the build environment.
+
+Pip Wheels
+----------
+For Python users with existing pip-based workflows, cuOpt can be installed directly via pip from the NVIDIA Python Package Index. This is the simplest installation method for most users.
+
+Conda Packages
+-------------
+Available from the NVIDIA channel, conda packages provide a convenient way to manage cuOpt and its dependencies in conda environments. This is ideal for users who prefer conda-based workflow management.
+
+Containers
+---------
+NVIDIA provides ready-to-use containers with cuOpt pre-installed, available from:
+
+- Docker Hub (``nvidia/cuopt``)
+- NVIDIA NGC (for NVIDIA AI Enterprise subscribers)
+
+Containers offer a consistent, isolated environment and are particularly useful for cloud deployments or microservices architectures.
+
+For detailed installation instructions for each option, please refer to the respective quickstart guides in the documentation.
