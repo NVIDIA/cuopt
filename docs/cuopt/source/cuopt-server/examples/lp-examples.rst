@@ -662,7 +662,7 @@ To use a previous solution as the initial/warm start solution for a new request 
    # Please update these values if the server is running on a different IP address or port
    export ip="localhost"
    export port=5000
-   reqId=$(cuopt_sh -t LP data.json -i $ip -p $port -k | sed "s/'/\"/g" | jq -r '.reqId')
+   reqId=$(cuopt_sh -t LP data.json -i $ip -p $port -k | sed "s/'/\"/g" | sed 's/False/false/g' | jq -r '.reqId')
 
    cuopt_sh data.json -t LP -i $ip -p $port -wid $reqId
 
