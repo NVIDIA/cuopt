@@ -2,6 +2,8 @@
 System Requirements
 ===================
 
+Dependencies are installed automatically when using the pip and conda installation methods. But users would still need to make sure the system meets the minimum requirements.
+
 .. dropdown:: Minimum Requirements
 
    * System Architecture:
@@ -22,6 +24,9 @@ System Requirements
 
    * CUDA:
       - 12.0+
+
+   * Python:
+      - >= 3.10.* and <= 3.12.*
 
    * NVIDIA drivers:
       - 525.60.13+ (linux)
@@ -91,4 +96,4 @@ Thin-client for Self-Hosted
    - x86-64
    - ARM64
 
-* Python > 3.10.x
+* Python >= 3.10.x <= 3.12.x

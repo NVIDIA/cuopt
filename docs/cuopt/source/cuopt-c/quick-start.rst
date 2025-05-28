@@ -20,7 +20,7 @@ This wheel is python wrapper around the C++ library and eases installation and a
 
     # This is deprecated module and not longer used, but share same name for the CLI, so we need to uninstall it first if it exists.
     pip uninstall cuopt-thin-client
-    pip install --extra-index-url=https://pypi.nvidia.com libcuopt-cu12==25.5.*
+    pip install --extra-index-url=https://pypi.nvidia.com libcuopt-cu12==25.5.* nvidia-cuda-runtime-cu12==12.8.0
 
 
 Conda

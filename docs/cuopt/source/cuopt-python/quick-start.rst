@@ -43,7 +43,7 @@ The container includes both the Python API and self-hosted server components. To
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm nvidia/cuopt:25.5.0-cuda12.8-py312 
+    docker run --gpus all -it --rm nvidia/cuopt:25.5.0-cuda12.8-py312 nvidia-cuda-runtime-cu12==12.8.0
 
 This will start an interactive session with cuOpt pre-installed and ready to use.
 
