@@ -43,7 +43,7 @@ The container includes both the Python API and self-hosted server components. To
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm nvidia/cuopt:25.5.0-cuda12.8-py312 nvidia-cuda-runtime-cu12==12.8.0
+    docker run --gpus all -it --rm nvidia/cuopt:25.5.0-cuda12.8-py312 
 
 This will start an interactive session with cuOpt pre-installed and ready to use.
 
@@ -51,10 +51,10 @@ This will start an interactive session with cuOpt pre-installed and ready to use
    Make sure you have the NVIDIA Container Toolkit installed on your system to enable GPU support in containers. See the `installation guide <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html>`_ for details.
 
 
-Brev
-----
+NVIDIA Launchable
+-------------------
 
-NVIDIA cuOpt can be tested with `Brev Launchable <https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ>`_ with `example notebooks <https://github.com/NVIDIA/cuopt-examples/>`_. For more details, please refer to the `Brev documentation <https://docs.nvidia.com/brev/latest/>`_.
+NVIDIA cuOpt can be tested with `NVIDIA Launchable <https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ>`_ with `example notebooks <https://github.com/NVIDIA/cuopt-examples/>`_. For more details, please refer to the `NVIDIA Launchable documentation <https://docs.nvidia.com/brev/latest/>`_.
 
 Smoke Test
 ----------

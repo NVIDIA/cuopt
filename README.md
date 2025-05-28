@@ -105,4 +105,4 @@ Review the [CONTRIBUTING.md](CONTRIBUTING.md) file for information on how to con
 - [cuopt (Python) documentation](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/index.html)
 - [cuopt (Server) documentation](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/index.html)
 - [Examples and Notebooks](https://github.com/NVIDIA/cuopt-examples)
-- [Test cuopt with Brev](https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ): Examples notebooks are pulled and hosted on [Brev](https://docs.nvidia.com/brev/latest/).
+- [Test cuopt with NVIDIA Launchable](https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ): Examples notebooks are pulled and hosted on [NVIDIA Launchable](https://docs.nvidia.com/brev/latest/).
