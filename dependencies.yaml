@@ -463,7 +463,7 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - cuopt-cu12==25.05.*
+              - cuopt-cu12==25.5.*
           - {matrix: null, packages: [*cuopt_unsuffixed]}
   depends_on_mps_parser:
     common:
