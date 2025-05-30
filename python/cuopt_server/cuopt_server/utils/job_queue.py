@@ -104,7 +104,7 @@ def lp_datamodel_compat(data):
 def check_client_version(client_vers):
     logging.debug(f"client_vers is {client_vers} in check")
     if os.environ.get("CUOPT_CHECK_CLIENT", True) in ["True", True]:
-        major, minor, _ = __version__.split(".")
+        major, minor, *rest = __version__.split(".")
         matches = False
         if client_vers == "custom":
             return []
