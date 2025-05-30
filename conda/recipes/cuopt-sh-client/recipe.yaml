@@ -31,9 +31,6 @@ requirements:
     - msgpack-python =1.0.8
     - python
     - requests
-  ignore_run_exports:
-    by_name:
-      - python_abi
 
 tests:
   - python:
