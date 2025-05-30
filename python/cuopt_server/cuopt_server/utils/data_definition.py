@@ -343,7 +343,7 @@ HealthResponse = {
             "application/json": {
                 "examples": {
                     "Healthy response": {
-                        "value": {"status": "RUNNING", "version": "25.05"}
+                        "value": {"status": "RUNNING", "version": "25.08"}
                     }
                 }
             }

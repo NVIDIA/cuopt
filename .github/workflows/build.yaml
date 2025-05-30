@@ -28,7 +28,7 @@ concurrency:
 jobs:
   cpp-build:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@branch-25.08
     with:
       matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       build_type: ${{ inputs.build_type || 'branch' }}
@@ -39,7 +39,7 @@ jobs:
   python-build:
     needs: [cpp-build]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@branch-25.08
     with:
       matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER == "3.12"))
       build_type: ${{ inputs.build_type || 'branch' }}
@@ -49,7 +49,7 @@ jobs:
       script: ci/build_python.sh
   wheel-build-cuopt-mps-parser:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -63,7 +63,7 @@ jobs:
   wheel-build-libcuopt:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -76,7 +76,7 @@ jobs:
   wheel-build-cuopt:
     needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
       matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
       build_type: ${{ inputs.build_type || 'branch' }}
@@ -89,7 +89,7 @@ jobs:
   wheel-build-cuopt-server:
     needs: wheel-build-cuopt
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
       matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
       build_type: ${{ inputs.build_type || 'branch' }}
@@ -103,7 +103,7 @@ jobs:
   #  if: inputs.build_type == 'nightly' || github.ref_type == 'branch'
   #  needs: [python-build]
   #  secrets: inherit
-  #  uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.06
+  #  uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.08
   #  with:
   #    build_type: ${{ inputs.build_type || 'branch' }}
   #    node_type: "gpu-l4-latest-1"
@@ -116,7 +116,7 @@ jobs:
   wheel-build-cuopt-sh-client:
     needs: wheel-build-cuopt
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}

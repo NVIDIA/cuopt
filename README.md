@@ -60,7 +60,7 @@ on the major version of CUDA available in your environment:
 For CUDA 12.x:
 
 ```bash
-pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.5 cuopt-sh-client==25.5 nvidia-cuda-runtime-cu12==12.8.*
+pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.8.* cuopt-sh-client==25.8.* nvidia-cuda-runtime-cu12==12.8.*
 ```
 
 ### Conda
@@ -74,7 +74,7 @@ Users who are used to conda env based workflows would benefit with conda package
 For CUDA 12.x:
 ```bash
 conda install -c rapidsai -c conda-forge -c nvidia \
-    cuopt-server=25.05 cuopt-sh-client=25.05 python=3.12 cuda-version=12.8
+    cuopt-server=25.08 cuopt-sh-client=25.08 python=3.12 cuda-version=12.8
 ```
 
 We also provide [nightly Conda packages](https://anaconda.org/rapidsai-nightly) built from the HEAD
@@ -85,7 +85,7 @@ of our latest development branch.
 Users can pull the cuOpt container from the NVIDIA container registry.
 
 ```bash
-docker pull nvidia/cuopt:25.5.0-cuda12.8-py312 
+docker pull nvidia/cuopt:25.8.0-cuda12.8-py312 
 ```
 More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub).
 

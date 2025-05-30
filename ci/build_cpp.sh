@@ -32,7 +32,7 @@ sccache --zero-stats
 
 RAPIDS_PACKAGE_VERSION=$(rapids-generate-version)
 export RAPIDS_PACKAGE_VERSION
-export DEPENDENT_PACKAGE_VERSION="25.04"
+export DEPENDENT_PACKAGE_VERSION="25.08"
 
 # populates `RATTLER_CHANNELS` array and `RATTLER_ARGS` array
 source rapids-rattler-channel-string

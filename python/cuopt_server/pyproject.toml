@@ -32,7 +32,7 @@ authors = [
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
-    "cuopt==25.5.*,>=0.0.0a0",
+    "cuopt==25.8.*,>=0.0.0a0",
     "fastapi",
     "httpx",
     "jsonref==1.1.0",
