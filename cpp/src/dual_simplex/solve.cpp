@@ -115,6 +115,7 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
                                           std::vector<variable_status_t>& vstatus,
                                           std::vector<f_t>& edge_norms)
 {
+  raft::common::nvtx::range scope("solve_linear_program_advanced");
   lp_status_t lp_status = lp_status_t::UNSET;
   lp_problem_t<i_t, f_t> presolved_lp(1, 1, 1);
   presolve_info_t<i_t, f_t> presolve_info;
@@ -241,6 +242,7 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
                                  const simplex_solver_settings_t<i_t, f_t>& settings,
                                  lp_solution_t<i_t, f_t>& solution)
 {
+  raft::common::nvtx::range scope("solve_linear_program");
   f_t start_time = tic();
   lp_problem_t<i_t, f_t> original_lp(1, 1, 1);
   std::vector<i_t> new_slacks;
@@ -267,6 +269,7 @@ i_t solve(const user_problem_t<i_t, f_t>& problem,
           const simplex_solver_settings_t<i_t, f_t>& settings,
           std::vector<f_t>& primal_solution)
 {
+  raft::common::nvtx::range scope("solve");
   i_t status;
   if (is_mip(problem) && !settings.relaxation) {
     branch_and_bound_t branch_and_bound(problem, settings);
@@ -305,6 +308,7 @@ i_t solve_mip_with_guess(const user_problem_t<i_t, f_t>& problem,
                          const std::vector<f_t>& guess,
                          mip_solution_t<i_t, f_t>& solution)
 {
+  raft::common::nvtx::range scope("solve_mip_with_guess");
   i_t status;
   if (is_mip(problem)) {
     branch_and_bound_t branch_and_bound(problem, settings);

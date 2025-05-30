@@ -389,6 +389,7 @@ template <typename i_t, typename f_t>
 std::tuple<problem_t<i_t, f_t>, rmm::device_uvector<f_t>, rmm::device_uvector<i_t>>
 solution_t<i_t, f_t>::fix_variables(const rmm::device_uvector<i_t>& variable_indices)
 {
+  raft::common::nvtx::range scope("fix_variables");
   rmm::device_uvector<f_t> new_assignment(assignment, handle_ptr->get_stream());
   rmm::device_uvector<i_t> variable_map(assignment.size(), handle_ptr->get_stream());
 
@@ -408,6 +409,7 @@ template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::unfix_variables(rmm::device_uvector<f_t>& fixed_assignment,
                                            const rmm::device_uvector<i_t>& variable_map)
 {
+  raft::common::nvtx::range scope("unfix_variables");
   f_t* fixed_assignment_ptr   = fixed_assignment.data();
   f_t* assignment_ptr         = assignment.data();
   const i_t* variable_map_ptr = variable_map.data();

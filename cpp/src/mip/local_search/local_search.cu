@@ -38,17 +38,10 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
     fj_sol_on_lp_opt(context.problem_ptr->n_variables,
                      context.problem_ptr->handle_ptr->get_stream()),
     fj(context),
-    // fj_tree(fj),
     constraint_prop(context),
     lb_constraint_prop(context),
     line_segment_search(fj),
-    fp(context,
-       fj,
-       // fj_tree,
-       constraint_prop,
-       lb_constraint_prop,
-       line_segment_search,
-       lp_optimal_solution_),
+    fp(context, fj, constraint_prop, lb_constraint_prop, line_segment_search, lp_optimal_solution_),
     rng(cuopt::seed_generator::get_seed())
 {
 }
@@ -344,7 +337,7 @@ bool local_search_t<i_t, f_t>::generate_solution(solution_t<i_t, f_t>& solution,
                                                  bool& early_exit,
                                                  f_t time_limit)
 {
-  raft::common::nvtx::range fun_scope("LS FP Loop");
+  raft::common::nvtx::range fun_scope("generate_solution");
 
   timer_t timer(time_limit);
   auto n_vars         = solution.problem_ptr->n_variables;

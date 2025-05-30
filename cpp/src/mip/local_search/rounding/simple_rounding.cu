@@ -36,6 +36,7 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
 {
+  raft::common::nvtx::range scope("check_brute_force_rounding");
   i_t TPB        = 128;
   i_t n_integers = solution.compute_number_of_integers();
   CUOPT_LOG_TRACE("before rounding n_integers %d total n_integers %d",
@@ -68,11 +69,13 @@ bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
                                                                 cuopt::make_span(var_map),
                                                                 cuopt::make_span(constraint_buf),
                                                                 best_config.data());
+    RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
     if (best_config.value(solution.handle_ptr->get_stream()) != -1) {
       CUOPT_LOG_DEBUG("Feasible found during brute force rounding!");
       // apply the feasible rounding
       apply_feasible_rounding_kernel<i_t, f_t><<<1, TPB, 0, solution.handle_ptr->get_stream()>>>(
         solution.view(), n_integers_to_round, cuopt::make_span(var_map), best_config.data());
+      RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
       solution.handle_ptr->sync_stream();
       bool feas = solution.compute_feasibility();
       cuopt_assert(feas, "Solution must be feasible!");
@@ -85,6 +88,7 @@ bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
 template <typename i_t, typename f_t>
 void invoke_round_nearest(solution_t<i_t, f_t>& solution)
 {
+  raft::common::nvtx::range scope("invoke_round_nearest");
   i_t TPB                     = 128;
   bool brute_force_found_feas = check_brute_force_rounding(solution);
   if (brute_force_found_feas) { return; }
@@ -92,11 +96,13 @@ void invoke_round_nearest(solution_t<i_t, f_t>& solution)
   nearest_rounding_kernel<i_t, f_t><<<n_blocks, TPB, 0, solution.handle_ptr->get_stream()>>>(
     solution.view(), cuopt::seed_generator::get_seed());
   RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
+  solution.handle_ptr->sync_stream();
 }
 
 template <typename i_t, typename f_t>
 void invoke_random_round_nearest(solution_t<i_t, f_t>& solution, i_t n_target_random_rounds)
 {
+  raft::common::nvtx::range fun_scope("invoke_random_round_nearest");
   i_t TPB        = 128;
   i_t n_blocks   = (solution.problem_ptr->n_variables + TPB - 1) / TPB;
   i_t n_integers = solution.compute_number_of_integers();
@@ -106,6 +112,7 @@ void invoke_random_round_nearest(solution_t<i_t, f_t>& solution, i_t n_target_ra
   rmm::device_scalar<i_t> n_randomly_rounded(0, solution.handle_ptr->get_stream());
   random_nearest_rounding_kernel<i_t, f_t><<<n_blocks, TPB, 0, solution.handle_ptr->get_stream()>>>(
     solution.view(), cuopt::seed_generator::get_seed(), n_randomly_rounded.data());
+  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
   i_t h_n_random_rounds = n_randomly_rounded.value(solution.handle_ptr->get_stream());
   CUOPT_LOG_TRACE("Randomly rounded integers %d", h_n_random_rounds);
   i_t additional_roundings_needed = n_target_random_rounds - h_n_random_rounds;
@@ -125,12 +132,14 @@ void invoke_random_round_nearest(solution_t<i_t, f_t>& solution, i_t n_target_ra
                                                        shuffled_indices.data(),
                                                        n_randomly_rounded.data(),
                                                        additional_roundings_needed);
+    RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
     h_n_random_rounds = n_randomly_rounded.value(solution.handle_ptr->get_stream());
     CUOPT_LOG_TRACE("Randomly rounded integers, after adding close integers too %d",
                     h_n_random_rounds);
   }
   solution.round_nearest();
   RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
+  solution.handle_ptr->sync_stream();
 }
 
 template <typename i_t, typename f_t>
