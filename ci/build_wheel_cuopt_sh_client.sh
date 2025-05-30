@@ -17,10 +17,10 @@
 
 set -euo pipefail
 
+source rapids-init-pip
+
 package_dir="python/cuopt_self_hosted"
 
 ci/build_wheel.sh cuopt_sh_client ${package_dir}
 cp "${package_dir}/dist"/* "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}/"
 ci/validate_wheel.sh "${package_dir}" "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}"
-
-RAPIDS_PY_WHEEL_NAME="cuopt_sh_client" rapids-upload-wheels-to-s3 python "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}"
