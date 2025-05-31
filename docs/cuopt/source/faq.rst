@@ -13,7 +13,7 @@ General FAQ
 
 .. dropdown:: How to get a NVAIE license?
 
-    Please refer to `NVIDIA NVAIE <https://www.nvidia.com/en-us/technologies/ai-enterprise/nvaie/>`_ for more information.
+    Please refer to `NVIDIA NVAIE <https://www.nvidia.com/en-us/data-center/products/ai-enterprise/>`_ for more information.
 
 .. dropdown:: How to access NGC registry?
 

@@ -37,7 +37,7 @@ NVIDIA cuOpt is also available as a container from Docker Hub:
 
 .. code-block:: bash
 
-    docker pull nvidia/cuopt:25.5.0
+    docker pull nvidia/cuopt:25.5.0-cuda12.8-py312
 
 The container includes both the Python API and self-hosted server components. To run the container:
 

@@ -5,7 +5,7 @@
 NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer linear programming (MILP), linear programming (LP), and vehicle routing problems (VRP). It enables near real-time solutions for large-scale challenges with millions of variables and constraints, offering 
 easy integration into existing solvers and seamless deployment across hybrid and multi-cloud environments.
 
-Core engine is written in C++ which is wrapped into C API, Python API and Server API.
+The core engine is written in C++ and wrapped with a C API, Python API and Server API.
 
 For the latest stable version ensure you are on the `main` branch.
 
@@ -60,7 +60,7 @@ on the major version of CUDA available in your environment:
 For CUDA 12.x:
 
 ```bash
-pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.5 cuopt-sh-client==25.5 nvidia-cuda-runtime-cu12==12.8.*
+pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.5.* cuopt-sh-client==25.5.* nvidia-cuda-runtime-cu12==12.8.*
 ```
 
 ### Conda
