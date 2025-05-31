@@ -21,6 +21,7 @@
 #include <linear_programming/cusparse_view.hpp>
 #include <linear_programming/pdhg.hpp>
 #include <linear_programming/saddle_point.hpp>
+#include <linear_programming/spmv.cuh>
 
 #include <raft/core/handle.hpp>
 
@@ -78,9 +79,11 @@ class adaptive_step_size_strategy_t {
   void set_valid_step_size(i_t);
 
  private:
-  void compute_interaction_and_movement(rmm::device_uvector<f_t>& tmp_primal,
+  void compute_interaction_and_movement(rmm::device_uvector<f_t>& potential_next_dual_solution,
+                                        rmm::device_uvector<f_t>& tmp_primal,
                                         cusparse_view_t<i_t, f_t>& cusparse_view,
-                                        saddle_point_state_t<i_t, f_t>& current_saddle_point_state);
+                                        saddle_point_state_t<i_t, f_t>& current_saddle_point_state,
+                                        spmv_t<i_t, f_t>& spmv);
 
   // Stream pool to run different step size computation in parallel
   // Because we already have the main stream, we just need 2 extra streams from this

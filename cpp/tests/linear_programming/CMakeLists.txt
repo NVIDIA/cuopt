@@ -22,6 +22,10 @@ ConfigureTest(PDLP_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_test.cu
 )
 
+ConfigureTest(SPMV_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/spmv_test.cu
+)
+
 # ##################################################################################################
 # - C API Tests----------------------------------------------------------------------
 # The C API tests require a separate library to be linked against. So we don't use the ConfigureTest macro.

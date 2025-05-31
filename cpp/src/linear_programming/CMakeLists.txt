@@ -19,6 +19,7 @@ set(LP_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/cython_solve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/problem_checking.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solve.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/spmv.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdlp.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdhg.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu

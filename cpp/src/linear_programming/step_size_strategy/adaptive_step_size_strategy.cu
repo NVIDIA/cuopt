@@ -16,6 +16,7 @@
  */
 
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <linear_programming/pdhg_functors.cuh>
 #include <linear_programming/pdlp_constants.hpp>
 #include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <mip/mip_constants.hpp>
@@ -211,9 +212,11 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_step_sizes(
     graph.start_capture(total_pdlp_iterations);
 
     // compute numerator and deminator of n_lim
-    compute_interaction_and_movement(pdhg_solver.get_primal_tmp_resource(),
+    compute_interaction_and_movement(pdhg_solver.get_potential_next_dual_solution(),
+                                     pdhg_solver.get_primal_tmp_resource(),
                                      pdhg_solver.get_cusparse_view(),
-                                     pdhg_solver.get_saddle_point_state());
+                                     pdhg_solver.get_saddle_point_state(),
+                                     pdhg_solver.spmv);
     // Compute n_lim, n_next and decide if step size is valid
     compute_step_sizes_from_movement_and_interaction<i_t, f_t>
       <<<1, 1, 0, stream_view_>>>(this->view(),
@@ -229,9 +232,11 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_step_sizes(
 
 template <typename i_t, typename f_t>
 void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
+  rmm::device_uvector<f_t>& potential_next_dual_solution,
   rmm::device_uvector<f_t>& tmp_primal,
   cusparse_view_t<i_t, f_t>& cusparse_view,
-  saddle_point_state_t<i_t, f_t>& current_saddle_point_state)
+  saddle_point_state_t<i_t, f_t>& current_saddle_point_state,
+  spmv_t<i_t, f_t>& spmv)
 {
   // QP would need this:
   // if iszero(problem.objective_matrix)
@@ -274,6 +279,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
   // Compute A_t @ (y' - y) = A_t @ y' - 1 * current_AtY
 
   // First compute Ay' to be reused as Ay in next PDHG iteration (if found step size if valid)
+#if 0
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -294,6 +300,12 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
     current_saddle_point_state.get_primal_size(),
     raft::sub_op(),
     stream_view_);
+#endif
+
+  spmv.ATy(stream_view_,
+           make_span(potential_next_dual_solution),
+           make_span(current_saddle_point_state.get_next_AtY()),
+           next_step_size_t<i_t, f_t>{current_saddle_point_state.get_current_AtY(), tmp_primal});
 
   // compute interaction (x'-x) . (A(y'-y))
   RAFT_CUBLAS_TRY(

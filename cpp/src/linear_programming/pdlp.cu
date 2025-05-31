@@ -1078,6 +1078,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
     CUOPT_LOG_INFO(
       "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
   }
+  pdhg_solver_.spmv.setup(op_problem_scaled_);
   while (true) {
     bool is_major_iteration = ((total_pdlp_iterations_ % pdlp_hyper_params::major_iteration == 0) &&
                                (total_pdlp_iterations_ > 0)) ||

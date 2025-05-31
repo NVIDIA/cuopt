@@ -108,7 +108,7 @@ message("-- Building with logging level = ${LIBCUOPT_LOGGING_LEVEL}")
 message("-- Building for GPU_ARCHS = ${CMAKE_CUDA_ARCHITECTURES}")
 
 # make the flags global in order to propagate flags to test cmake files
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extended-lambda")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extended-lambda ")
 if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8.0)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -static-global-template-stub=false")
 endif()
@@ -170,6 +170,12 @@ add_subdirectory(src)
 add_library(cuopt SHARED
   ${CUOPT_SRC_FILES}
 )
+
+#set_source_files_properties(src/linear_programming/step_size_strategy/adaptive_step_size_strategy.cu  PROPERTIES COMPILE_OPTIONS "--fmad=false")
+#set_source_files_properties(src/linear_programming/step_size_strategy/adaptive_step_size_strategy.cu  PROPERTIES COMPILE_OPTIONS "--fmad=false")
+#set_source_files_properties(src/linear_programming/pdlp.cu  PROPERTIES COMPILE_OPTIONS "--fmad=false")
+#set_source_files_properties(src/linear_programming/pdhg.cu  PROPERTIES COMPILE_OPTIONS "--fmad=false")
+#set_source_files_properties(src/linear_programming/spmv.cu  PROPERTIES COMPILE_OPTIONS "--fmad=false")
 
 set_target_properties(cuopt
   PROPERTIES BUILD_RPATH "\$ORIGIN"
@@ -345,4 +351,6 @@ if(BUILD_BENCHMARKS)
     cuopt
     OpenMP::OpenMP_CXX
   )
+  add_executable(run_benchmark ../benchmarks/linear_programming/cuopt/run_benchmark.cu)
+  target_link_libraries(run_benchmark cuopt ${CMAKE_CURRENT_BINARY_DIR}/libcuopt.so)
 endif()

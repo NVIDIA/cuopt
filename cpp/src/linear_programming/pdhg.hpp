@@ -18,6 +18,7 @@
 #pragma once
 #include <linear_programming/cusparse_view.hpp>
 #include <linear_programming/saddle_point.hpp>
+#include <linear_programming/spmv.cuh>
 #include <linear_programming/utilities/ping_pong_graph.cuh>
 #include <mip/problem/problem.cuh>
 
@@ -53,6 +54,7 @@ class pdhg_solver_t {
   void update_solution(cusparse_view_t<i_t, f_t>& current_op_problem_evaluation_cusparse_view_);
 
   i_t total_pdhg_iterations_;
+  spmv_t<i_t, f_t> spmv;
 
  private:
   void compute_next_primal_dual_solution(rmm::device_scalar<f_t>& primal_step_size,
@@ -64,7 +66,7 @@ class pdhg_solver_t {
 
   void compute_primal_projection_with_gradient(rmm::device_scalar<f_t>& primal_step_size);
   void compute_primal_projection(rmm::device_scalar<f_t>& primal_step_size);
-  void compute_At_y();
+  void compute_At_y(rmm::device_scalar<f_t>& primal_step_size);
 
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
