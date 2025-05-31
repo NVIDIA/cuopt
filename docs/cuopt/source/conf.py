@@ -106,7 +106,7 @@ source_suffix = {
 master_doc = "index"
 
 # General information about the project.
-project = "cuopt"
+project = "NVIDIA cuOpt"
 copyright = f"2021-{datetime.datetime.today().year}, NVIDIA Corporation"
 author = "NVIDIA Corporation"
 
