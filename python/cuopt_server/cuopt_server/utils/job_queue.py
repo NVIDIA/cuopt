@@ -109,7 +109,7 @@ def check_client_version(client_vers):
         if client_vers == "custom":
             return []
         cv = client_vers.split(".")
-        if len(cv) != 3:
+        if len(cv) < 2:
             logging.warn("Client version missing or bad format")
             return [
                 f"Client version missing or not the current format. "
@@ -118,7 +118,7 @@ def check_client_version(client_vers):
                 "if this is a custom client."
             ]
         else:
-            cmajor, cminor, _ = cv
+            cmajor, cminor = cv[:2]
             matches = (cmajor, cminor) == (major, minor)
         if not matches:
             logging.warn(f"Client version {cmajor}.{cminor} does not match")
