@@ -37,6 +37,8 @@ class init_logger_t {
       // TODO save the defaul sink and restore it
       cuopt::default_logger().sinks().push_back(
         std::make_shared<rapids_logger::basic_file_sink_mt>(log_file, true));
+      cuopt::default_logger().set_pattern("%v");
+      cuopt::default_logger().flush_on(rapids_logger::level_enum::info);
     }
   }
   ~init_logger_t() { cuopt::reset_default_logger(); }
