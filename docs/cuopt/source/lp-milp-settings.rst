@@ -41,6 +41,17 @@ Log File
 
 Note: the default value is ``""`` and no log file is written.
 
+Solution File
+^^^^^^^^^^^^^
+``CUOPT_SOL_FILE`` controls the name of a file where cuOpt should write the solution.
+
+Note: the default value is ``""`` and no solution file is written.
+
+User Problem File
+^^^^^^^^^^^^^^^^
+``CUOPT_USER_PROBLEM_FILE`` controls the name of a file where cuOpt should write the user problem.
+
+Note: the default value is ``""`` and no user problem file is written.
 
 Num CPU Threads
 ^^^^^^^^^^^^^^^
