@@ -59,6 +59,7 @@
 #define CUOPT_MIP_SCALING                 "mip_scaling"
 #define CUOPT_SOL_FILE                    "solution_file"
 #define CUOPT_NUM_CPU_THREADS             "num_cpu_threads"
+#define CUOPT_USER_PROBLEM_FILE           "user_problem_file"
 
 /* @brief LP/MIP termination status constants */
 #define CUOPT_TERIMINATION_STATUS_NO_TERMINATION   0

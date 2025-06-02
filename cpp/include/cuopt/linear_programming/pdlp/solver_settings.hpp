@@ -200,6 +200,7 @@ class pdlp_solver_settings_t {
   bool log_to_console{true};
   std::string log_file{""};
   std::string sol_file{""};
+  std::string user_problem_file{""};
   bool per_constraint_residual{false};
   bool crossover{false};
   bool save_best_primal_so_far{false};

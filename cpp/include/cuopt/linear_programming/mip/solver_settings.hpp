@@ -92,6 +92,7 @@ class mip_solver_settings_t {
   bool log_to_console  = true;
   std::string log_file;
   std::string sol_file;
+  std::string user_problem_file;
 
   /** Initial primal solution */
   std::shared_ptr<rmm::device_uvector<f_t>> initial_solution_;
