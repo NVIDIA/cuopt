@@ -60,7 +60,7 @@ on the major version of CUDA available in your environment:
 For CUDA 12.x:
 
 ```bash
-pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.5 cuopt-sh-client==25.5 nvidia-cuda-runtime-cu12==12.8.*
+pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.5.* cuopt-sh-client==25.5.* nvidia-cuda-runtime-cu12==12.8.*
 ```
 
 ### Conda

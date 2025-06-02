@@ -40,9 +40,6 @@ requirements:
     - pandas>=2
     - python
     - uvicorn ${{ uvicorn_version }}
-  ignore_run_exports:
-    by_name:
-      - python_abi
 
 tests:
   - python:
