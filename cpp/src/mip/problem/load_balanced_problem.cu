@@ -215,6 +215,7 @@ void create_constraint_graph(const raft::handle_t* handle_ptr,
   // copy adjacency lists and vertex properties
   constraint_data_copy<i_t, f_t><<<reorg_ids.size(), 256, 0, handle_ptr->get_stream()>>>(
     make_span(reorg_ids), make_span(offsets), make_span(coeff), make_span(edge), bounds, pb.view());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream());
 
   if (debug) {
     rmm::device_scalar<i_t> errors(0, handle_ptr->get_stream());
@@ -226,6 +227,7 @@ void create_constraint_graph(const raft::handle_t* handle_ptr,
                                                                bounds,
                                                                pb.view(),
                                                                errors.data());
+    RAFT_CHECK_CUDA(handle_ptr->get_stream());
     i_t error_count = errors.value(handle_ptr->get_stream());
     if (error_count != 0) { std::cerr << "adjacency list copy mismatch\n"; }
   }
@@ -262,6 +264,7 @@ void create_variable_graph(const raft::handle_t* handle_ptr,
                                                              bounds,
                                                              make_span(types),
                                                              pb.view());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream());
 
   if (debug) {
     rmm::device_scalar<i_t> errors(0, handle_ptr->get_stream());
@@ -274,6 +277,7 @@ void create_variable_graph(const raft::handle_t* handle_ptr,
                                                                make_span(types),
                                                                pb.view(),
                                                                errors.data());
+    RAFT_CHECK_CUDA(handle_ptr->get_stream());
     i_t error_count = errors.value(handle_ptr->get_stream());
     if (error_count != 0) { std::cerr << "adjacency list copy mismatch\n"; }
   }

@@ -275,6 +275,7 @@ termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t
                                                                    const raft::handle_t* handle_ptr,
                                                                    timer_t timer)
 {
+  raft::common::nvtx::range scope("bound_update_loop");
   termination_criterion_t criteria = termination_criterion_t::ITERATION_LIMIT;
   skip_0                           = false;
   skip_1                           = false;

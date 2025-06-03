@@ -321,6 +321,7 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(
   f_t& repaired_obj,
   std::vector<f_t>& repaired_solution) const
 {
+  raft::common::nvtx::range scope("repair_solution");
   bool feasible = false;
   repaired_obj  = std::numeric_limits<f_t>::quiet_NaN();
   i_t n         = original_lp.num_cols;
@@ -399,6 +400,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
 template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solution)
 {
+  raft::common::nvtx::range scope("solve_branch_and_bound");
   mip_status_t status = mip_status_t::UNSET;
   mip_solution_t<i_t, f_t> incumbent(original_lp.num_cols);
   if (guess.size() != 0) {

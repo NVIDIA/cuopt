@@ -397,7 +397,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
   climber->best_l1_distance.set_value_to_zero_async(climber_stream);
   climber->weighted_violation_score.set_value_to_zero_async(climber_stream);
   init_lhs_and_violation<i_t, f_t><<<256, 256, 0, climber_stream.value()>>>(view);
-
+  RAFT_CHECK_CUDA(climber_stream);
   // initialize the best_objective values according to the initial assignment
   f_t best_obj = compute_objective_from_vec<i_t, f_t>(
     climber->incumbent_assignment, pb_ptr->objective_coefficients, climber_stream);
@@ -508,6 +508,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
     load_balancing_init_cstr_bounds_csr<i_t, f_t><<<4096, 128, 0, climber_stream.value()>>>(
       view, view.row_size_nonbin_prefix_sum, view.work_id_to_nonbin_var_idx);
 
+  RAFT_CHECK_CUDA(climber_stream);
   cuopt_assert(
     pb_ptr->binary_indices.size() + pb_ptr->nonbinary_indices.size() == pb_ptr->n_variables,
     "invalid variable indices total");
@@ -542,6 +543,7 @@ template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::load_balancing_score_update(const rmm::cuda_stream_view& stream,
                                                  i_t climber_idx)
 {
+  raft::common::nvtx::range scope("load_balancing_score_update");
   auto [grid_load_balancing_prepare, blocks_load_balancing_prepare] =
     load_balancing_prepare_launch_dims;
   auto [grid_load_balancing_binary, blocks_load_balancing_binary] =
@@ -573,6 +575,7 @@ void fj_t<i_t, f_t>::load_balancing_score_update(const rmm::cuda_stream_view& st
                                                      blocks_load_balancing_binary,
                                                      0,
                                                      data.load_balancing_bin_stream.view()>>>(v);
+    RAFT_CHECK_CUDA(data.load_balancing_bin_stream);
     data.load_balancing_bin_finished_event.record(data.load_balancing_bin_stream.view());
   }
   if (pb_ptr->nonbinary_indices.size() > 0) {
@@ -582,10 +585,12 @@ void fj_t<i_t, f_t>::load_balancing_score_update(const rmm::cuda_stream_view& st
          blocks_load_balancing_mtm_compute_candidates,
          0,
          data.load_balancing_nonbin_stream.view()>>>(v);
+    RAFT_CHECK_CUDA(data.load_balancing_nonbin_stream);
     load_balancing_mtm_compute_scores<i_t, f_t><<<grid_load_balancing_mtm_compute_scores,
                                                   blocks_load_balancing_mtm_compute_scores,
                                                   0,
                                                   data.load_balancing_nonbin_stream.view()>>>(v);
+    RAFT_CHECK_CUDA(data.load_balancing_nonbin_stream);
     data.load_balancing_nonbin_finished_event.record(data.load_balancing_nonbin_stream.view());
   }
 
@@ -767,11 +772,13 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
   }
 
   if (use_graph) cudaGraphLaunch(graph_instance, climber_stream);
+  climber_stream.synchronize();
 }
 
 template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::refresh_lhs_and_violation(const rmm::cuda_stream_view& stream, i_t climber_idx)
 {
+  raft::common::nvtx::range scope("refresh_lhs_and_violation");
   auto& data = *climbers[climber_idx];
   auto v     = data.view();
 
@@ -779,6 +786,7 @@ void fj_t<i_t, f_t>::refresh_lhs_and_violation(const rmm::cuda_stream_view& stre
   data.violation_score.set_value_to_zero_async(stream);
   data.weighted_violation_score.set_value_to_zero_async(stream);
   init_lhs_and_violation<i_t, f_t><<<4096, 256, 0, stream>>>(v);
+  RAFT_CHECK_CUDA(stream);
 }
 
 template <typename i_t, typename f_t>
@@ -855,6 +863,7 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
       i_t iterations = data.iterations.value(climber_stream);
       // make sure we have the current incumbent saved (e.g. in the case of a timeout)
       update_best_solution_kernel<i_t, f_t><<<1, blocks_resetmoves, 0, climber_stream>>>(v);
+      RAFT_CHECK_CUDA(climber_stream);
       // check feasibility with the relative tolerance rather than the violation score
       raft::copy(solution.assignment.data(),
                  data.best_assignment.data(),

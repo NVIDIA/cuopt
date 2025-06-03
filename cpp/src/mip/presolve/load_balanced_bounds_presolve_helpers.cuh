@@ -94,6 +94,7 @@ i_t create_heavy_item_block_segments(rmm::cuda_stream_view stream,
                                      const std::vector<i_t>& bin_offsets,
                                      rmm::device_uvector<i_t> const& offsets)
 {
+  raft::common::nvtx::range scope("create_heavy_item_block_segments");
   // TODO : assert that bin_offsets.back() == offsets.size() - 1
   auto heavy_id_beg   = bin_offsets[ceil_log_2(heavy_degree_cutoff)];
   auto n_items        = offsets.size() - 1;
@@ -167,15 +168,18 @@ void calc_activity_heavy_cnst(managed_stream_pool& streams,
           heavy_degree_cutoff,
           view,
           tmp_cnst_act);
+      RAFT_CHECK_CUDA(heavy_cnst_stream);
       auto num_heavy_cnst = cnst_bin_offsets.back() - heavy_cnst_beg_id;
       if (erase_inf_cnst) {
         finalize_calc_act_kernel<true, i_t, f_t, f_t2>
           <<<num_heavy_cnst, 32, 0, heavy_cnst_stream>>>(
             heavy_cnst_beg_id, make_span(heavy_cnst_block_segments), tmp_cnst_act, view);
+        RAFT_CHECK_CUDA(heavy_cnst_stream);
       } else {
         finalize_calc_act_kernel<false, i_t, f_t, f_t2>
           <<<num_heavy_cnst, 32, 0, heavy_cnst_stream>>>(
             heavy_cnst_beg_id, make_span(heavy_cnst_block_segments), tmp_cnst_act, view);
+        RAFT_CHECK_CUDA(heavy_cnst_stream);
       }
     }
   }
@@ -201,9 +205,11 @@ void calc_activity_per_block(managed_stream_pool& streams,
       if (erase_inf_cnst) {
         lb_calc_act_block_kernel<true, i_t, f_t, f_t2, block_dim>
           <<<block_count, block_dim, 0, block_stream>>>(cnst_id_beg, view);
+        RAFT_CHECK_CUDA(block_stream);
       } else {
         lb_calc_act_block_kernel<false, i_t, f_t, f_t2, block_dim>
           <<<block_count, block_dim, 0, block_stream>>>(cnst_id_beg, view);
+        RAFT_CHECK_CUDA(block_stream);
       }
     }
   }
@@ -260,9 +266,11 @@ void calc_activity_sub_warp(managed_stream_pool& streams,
       if (erase_inf_cnst) {
         lb_calc_act_sub_warp_kernel<true, i_t, f_t, f_t2, block_dim, threads_per_constraint>
           <<<block_count, block_dim, 0, sub_warp_thread>>>(cnst_id_beg, cnst_id_end, view);
+        RAFT_CHECK_CUDA(sub_warp_thread);
       } else {
         lb_calc_act_sub_warp_kernel<false, i_t, f_t, f_t2, block_dim, threads_per_constraint>
           <<<block_count, block_dim, 0, sub_warp_thread>>>(cnst_id_beg, cnst_id_end, view);
+        RAFT_CHECK_CUDA(sub_warp_thread);
       }
     }
   }
@@ -303,10 +311,12 @@ void calc_activity_sub_warp(managed_stream_pool& streams,
         lb_calc_act_sub_warp_kernel<true, i_t, f_t, f_t2, block_dim>
           <<<block_count, block_dim, 0, sub_warp_stream>>>(
             view, make_span(warp_cnst_offsets), make_span(warp_cnst_id_offsets));
+        RAFT_CHECK_CUDA(sub_warp_stream);
       } else {
         lb_calc_act_sub_warp_kernel<false, i_t, f_t, f_t2, block_dim>
           <<<block_count, block_dim, 0, sub_warp_stream>>>(
             view, make_span(warp_cnst_offsets), make_span(warp_cnst_id_offsets));
+        RAFT_CHECK_CUDA(sub_warp_stream);
       }
     }
   }
@@ -385,9 +395,11 @@ void upd_bounds_heavy_vars(managed_stream_pool& streams,
           heavy_degree_cutoff,
           view,
           tmp_vars_bnd);
+      RAFT_CHECK_CUDA(heavy_vars_stream);
       auto num_heavy_vars = vars_bin_offsets.back() - heavy_vars_beg_id;
       finalize_upd_bnd_kernel<i_t, f_t, f_t2><<<num_heavy_vars, 32, 0, heavy_vars_stream>>>(
         heavy_vars_beg_id, make_span(heavy_vars_block_segments), tmp_vars_bnd, view);
+      RAFT_CHECK_CUDA(heavy_vars_stream);
     }
   }
 }
@@ -414,9 +426,11 @@ void upd_bounds_heavy_vars(managed_stream_pool& streams,
           heavy_degree_cutoff,
           view,
           tmp_vars_bnd);
+      RAFT_CHECK_CUDA(heavy_vars_stream);
       auto num_heavy_vars = vars_bin_offsets.back() - heavy_vars_beg_id;
       finalize_upd_bnd_kernel<i_t, f_t, f_t2><<<num_heavy_vars, 32, 0, heavy_vars_stream>>>(
         heavy_vars_beg_id, make_span(heavy_vars_block_segments), tmp_vars_bnd, view);
+      RAFT_CHECK_CUDA(heavy_vars_stream);
     }
   }
 }
@@ -439,6 +453,7 @@ void upd_bounds_per_block(managed_stream_pool& streams,
     if (!dry_run) {
       lb_upd_bnd_block_kernel<i_t, f_t, f_t2, block_dim>
         <<<block_count, block_dim, 0, block_stream>>>(vars_id_beg, view);
+      RAFT_CHECK_CUDA(block_stream);
     }
   }
 }
@@ -486,6 +501,7 @@ void upd_bounds_sub_warp(managed_stream_pool& streams,
     if (!dry_run) {
       lb_upd_bnd_sub_warp_kernel<i_t, f_t, f_t2, block_dim, threads_per_variable>
         <<<block_count, block_dim, 0, sub_warp_stream>>>(vars_id_beg, vars_id_end, view);
+      RAFT_CHECK_CUDA(sub_warp_stream);
     }
   }
 }
@@ -507,6 +523,7 @@ void upd_bounds_sub_warp(managed_stream_pool& streams,
       lb_upd_bnd_sub_warp_kernel<i_t, f_t, f_t2, block_dim>
         <<<block_count, block_dim, 0, sub_warp_stream>>>(
           view, make_span(warp_vars_offsets), make_span(warp_vars_id_offsets));
+      RAFT_CHECK_CUDA(sub_warp_stream);
     }
   }
 }

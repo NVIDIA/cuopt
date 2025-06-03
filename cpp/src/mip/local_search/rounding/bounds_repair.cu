@@ -67,6 +67,7 @@ void bounds_repair_t<i_t, f_t>::reset()
 template <typename i_t, typename f_t>
 f_t bounds_repair_t<i_t, f_t>::get_ii_violation(problem_t<i_t, f_t>& problem)
 {
+  raft::common::nvtx::range scope("get_ii_violation");
   bound_presolve.calculate_activity_on_problem_bounds(problem);
   // calculate the violation and mark of violated constraints
   thrust::for_each(
@@ -125,6 +126,7 @@ i_t bounds_repair_t<i_t, f_t>::compute_best_shift(problem_t<i_t, f_t>& problem,
                                                   problem_t<i_t, f_t>& original_problem,
                                                   i_t curr_cstr)
 {
+  raft::common::nvtx::range scope("compute_best_shift");
   // for each variable in the constraint, compute the best shift value.
   // if the shift value doesn't change the violation at all, set it to 0
   i_t cstr_offset      = problem.offsets.element(curr_cstr, handle_ptr->get_stream());
@@ -256,6 +258,7 @@ __global__ void compute_damages_kernel(typename problem_t<i_t, f_t>::view_t prob
 template <typename i_t, typename f_t>
 void bounds_repair_t<i_t, f_t>::compute_damages(problem_t<i_t, f_t>& problem, i_t n_candidates)
 {
+  raft::common::nvtx::range scope("compute_damages");
   CUOPT_LOG_TRACE("Bounds repair: Computing damanges!");
   // TODO check performance, we can apply load balancing here
   const i_t TPB = 256;
@@ -292,6 +295,7 @@ i_t bounds_repair_t<i_t, f_t>::find_cutoff_index(const candidates_t<i_t, f_t>& c
                                                  f_t best_damage,
                                                  i_t n_candidates)
 {
+  raft::common::nvtx::range scope("find_cutoff_index");
   auto iterator = thrust::make_zip_iterator(
     thrust::make_tuple(candidates.cstr_delta.data(), candidates.damage.data()));
   auto out_iter = thrust::partition_point(
@@ -387,6 +391,7 @@ bool bounds_repair_t<i_t, f_t>::repair_problem(problem_t<i_t, f_t>& problem,
                                                timer_t timer_,
                                                const raft::handle_t* handle_ptr_)
 {
+  raft::common::nvtx::range scope("repair_problem");
   CUOPT_LOG_DEBUG("Running bounds repair");
   handle_ptr = handle_ptr_;
   timer      = timer_;

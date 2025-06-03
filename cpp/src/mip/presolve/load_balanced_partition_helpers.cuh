@@ -203,14 +203,15 @@ void bin_vertices(rmm::device_uvector<i_t>& reorg_vertices,
   unsigned blocks           = ((vertex_end - vertex_begin) + BLOCK_SIZE - 1) / BLOCK_SIZE;
   count_bin_sizes<i_t><<<blocks, BLOCK_SIZE, 0, stream>>>(
     bin_count.data(), offsets, vertex_begin, vertex_end, active_bitmap);
-
+  RAFT_CHECK_CUDA(stream);
   exclusive_scan<<<1, 1, 0, stream>>>(bin_count.data(), bin_count_offsets.data());
-
+  RAFT_CHECK_CUDA(stream);
   i_t vertex_count = bin_count.back_element(stream);
   reorg_vertices.resize(vertex_count, stream);
 
   create_vertex_bins<i_t><<<blocks, BLOCK_SIZE, 0, stream>>>(
     reorg_vertices.data(), bin_count.data(), offsets, vertex_begin, vertex_end, active_bitmap);
+  RAFT_CHECK_CUDA(stream);
 }
 
 template <typename i_t>
