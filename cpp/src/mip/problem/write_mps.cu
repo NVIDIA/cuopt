@@ -146,7 +146,7 @@ void problem_t<i_t, f_t>::write_as_mps(const std::string& path)
         h_var_ub[j] == std::numeric_limits<f_t>::infinity()) {
       mps_file << " FR BOUND1    " << col_name << "\n";
     } else {
-      if (h_var_lb[j] != 0.0) {
+      if (h_var_lb[j] != 0.0 || h_obj_coeffs[j] == 0.0) {
         if (h_var_lb[j] == -std::numeric_limits<f_t>::infinity()) {
           mps_file << " MI BOUND1    " << col_name << "\n";
         } else {
