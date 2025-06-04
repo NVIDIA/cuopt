@@ -157,7 +157,7 @@ These constants are used as the parameter name in the `cuOptSetParameter <lp-mil
 .. doxygendefine:: CUOPT_MIP_INTEGRALITY_TOLERANCE
 .. doxygendefine:: CUOPT_MIP_SCALING
 .. doxygendefine:: CUOPT_MIP_HEURISTICS_ONLY
-.. doxygendefine:: CUOPT_SOL_FILE
+.. doxygendefine:: CUOPT_SOLUTION_FILE
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
 .. doxygendefine:: CUOPT_USER_PROBLEM_FILE
 
