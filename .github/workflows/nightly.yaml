@@ -23,11 +23,15 @@ jobs:
           export DATE=$(date +%F)
           export SHA=$(gh api -q '.commit.sha' "repos/nvidia/cuopt/branches/${CUOPT_BRANCH}")
 
-          gh workflow run build.yaml \
+          RUN_ID=$(gh workflow run build.yaml \
             -f branch=${CUOPT_BRANCH} \
             -f sha=${SHA} \
             -f date=${DATE} \
-            -f build_type=nightly
+            -f build_type=nightly \
+            --json databaseId --jq '.databaseId')
+
+          # Wait for workflow to complete
+          gh run watch $RUN_ID
 
   trigger-test:
     runs-on: ubuntu-latest
