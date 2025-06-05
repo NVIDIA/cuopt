@@ -135,7 +135,7 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
 # memchecking
 elseif(CMAKE_CUDA_LINEINFO)
   message(STATUS "Enabling line info")
-  #list(APPEND CUOPT_CUDA_FLAGS -lineinfo)
+  list(APPEND CUOPT_CUDA_FLAGS -lineinfo)
   set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -lineinfo")
 endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
