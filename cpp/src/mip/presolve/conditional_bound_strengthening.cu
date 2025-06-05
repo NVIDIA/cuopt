@@ -629,7 +629,7 @@ __global__ void update_constraint_bounds_kernel(typename problem_t<i_t, f_t>::vi
 }
 
 template <typename i_t>
-struct len_from_offset : public thrust::unary_function<thrust::tuple<i_t, i_t>, i_t> {
+struct len_from_offset {
   __host__ __device__ i_t operator()(const thrust::tuple<i_t, i_t> val) const
   {
     return thrust::get<1>(val) - thrust::get<0>(val);

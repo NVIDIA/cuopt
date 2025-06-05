@@ -15,7 +15,7 @@
 
 cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
 
-set(cuopt_version 25.05.00)
+set(cuopt_version 25.08.00)
 
 include(../../../../cmake/rapids_config.cmake)
 

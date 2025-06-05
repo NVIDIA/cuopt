@@ -474,7 +474,7 @@ termination_criterion_t load_balanced_bounds_presolve_t<i_t, f_t>::bound_update_
 }
 
 template <typename i_t, typename f_t, typename f_t2>
-struct detect_infeas_t : public thrust::unary_function<thrust::tuple<f_t, f_t, f_t2>, i_t> {
+struct detect_infeas_t {
   __device__ __forceinline__ i_t operator()(thrust::tuple<f_t, f_t, i_t, i_t, f_t2> t) const
   {
     auto cnst_lb    = thrust::get<0>(t);

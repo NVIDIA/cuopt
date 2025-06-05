@@ -14,7 +14,7 @@ For CUDA 12.x:
 
 .. code-block:: bash
 
-    pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu12==25.5.* nvidia-cuda-runtime-cu12==12.8.*
+    pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu12==25.8.* nvidia-cuda-runtime-cu12==12.8.*
 
 
 Conda
@@ -27,7 +27,7 @@ For CUDA 12.x:
 .. code-block:: bash
 
     conda install -c rapidsai -c conda-forge -c nvidia \
-        cuopt=25.05.* python=3.12 cuda-version=12.8
+        cuopt=25.08.* python=3.12 cuda-version=12.8
 
 
 Container
@@ -37,13 +37,13 @@ NVIDIA cuOpt is also available as a container from Docker Hub:
 
 .. code-block:: bash
 
-    docker pull nvidia/cuopt:25.5.0-cuda12.8-py312
+    docker pull nvidia/cuopt:25.8.0-cuda12.8-py312
 
 The container includes both the Python API and self-hosted server components. To run the container:
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm nvidia/cuopt:25.5.0-cuda12.8-py312 
+    docker run --gpus all -it --rm nvidia/cuopt:25.8.0-cuda12.8-py312 
 
 This will start an interactive session with cuOpt pre-installed and ready to use.
 

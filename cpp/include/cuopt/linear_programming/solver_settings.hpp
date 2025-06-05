@@ -28,7 +28,9 @@
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
+
 #include <optional>
+#include <vector>
 
 namespace cuopt::linear_programming {
 

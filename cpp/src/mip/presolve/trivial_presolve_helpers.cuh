@@ -24,7 +24,7 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t>
-struct non_zero_degree_t : thrust::unary_function<i_t, i_t> {
+struct non_zero_degree_t {
   raft::device_span<i_t> offsets;
   non_zero_degree_t(raft::device_span<i_t> offsets_) : offsets(offsets_) {}
   __device__ i_t operator()(i_t i) { return offsets[i] != offsets[i + 1]; }
@@ -162,12 +162,12 @@ struct unused_var_obj_offset_t {
 };
 
 template <typename i_t>
-struct sub_t : thrust::unary_function<i_t, i_t> {
+struct sub_t {
   __device__ i_t operator()(i_t i) const { return i - 1; }
 };
 
 template <typename i_t>
-struct apply_renumbering_t : thrust::unary_function<i_t, i_t> {
+struct apply_renumbering_t {
   raft::device_span<i_t> gather_map;
   apply_renumbering_t(raft::device_span<i_t> gather_map_) : gather_map(gather_map_) {}
   __device__ i_t operator()(i_t i) { return gather_map[i]; }

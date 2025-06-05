@@ -23,6 +23,8 @@
 #include <raft/core/device_span.hpp>
 #include <rmm/device_uvector.hpp>
 
+#include <vector>
+
 namespace cuopt::linear_programming {
 
 // Forward declare solver_settings_t for friend class

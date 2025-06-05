@@ -137,6 +137,7 @@ outputs:
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
         - cuda-version =${{ cuda_version }}
         - rapids-logger =0.1
+        - librmm =${{ dep_minor_version }}
         - if: cuda_major == "11"
           then: cudatoolkit
           else:

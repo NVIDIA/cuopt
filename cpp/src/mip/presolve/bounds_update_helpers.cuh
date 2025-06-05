@@ -263,15 +263,19 @@ __device__ void update_bounds(typename problem_t<i_t, f_t>::view_t pb,
   }
   __syncthreads();
   if (var_changed_0) {
-    thrust::get<0>(bnd_0) = BlockReduce(temp_storage).Reduce(thrust::get<0>(bnd_0), cub::Max());
+    thrust::get<0>(bnd_0) =
+      BlockReduce(temp_storage).Reduce(thrust::get<0>(bnd_0), cuda::maximum());
     __syncthreads();
-    thrust::get<1>(bnd_0) = BlockReduce(temp_storage).Reduce(thrust::get<1>(bnd_0), cub::Min());
+    thrust::get<1>(bnd_0) =
+      BlockReduce(temp_storage).Reduce(thrust::get<1>(bnd_0), cuda::minimum());
     __syncthreads();
   }
   if (var_changed_1) {
-    thrust::get<0>(bnd_1) = BlockReduce(temp_storage).Reduce(thrust::get<0>(bnd_1), cub::Max());
+    thrust::get<0>(bnd_1) =
+      BlockReduce(temp_storage).Reduce(thrust::get<0>(bnd_1), cuda::maximum());
     __syncthreads();
-    thrust::get<1>(bnd_1) = BlockReduce(temp_storage).Reduce(thrust::get<1>(bnd_1), cub::Min());
+    thrust::get<1>(bnd_1) =
+      BlockReduce(temp_storage).Reduce(thrust::get<1>(bnd_1), cuda::minimum());
   }
   __shared__ bool changed_0, changed_1;
   if (threadIdx.x == 0) {
@@ -312,9 +316,9 @@ __device__ void update_bounds(typename problem_t<i_t, f_t>::view_t pb,
     bnd          = update_bounds_per_cnst(pb, a, cnst_idx, cnst_lb, cnst_ub, upd, bnd, old_bnd);
   }
 
-  thrust::get<0>(bnd) = BlockReduce(temp_storage).Reduce(thrust::get<0>(bnd), cub::Max());
+  thrust::get<0>(bnd) = BlockReduce(temp_storage).Reduce(thrust::get<0>(bnd), cuda::maximum());
   __syncthreads();
-  thrust::get<1>(bnd) = BlockReduce(temp_storage).Reduce(thrust::get<1>(bnd), cub::Min());
+  thrust::get<1>(bnd) = BlockReduce(temp_storage).Reduce(thrust::get<1>(bnd), cuda::minimum());
   __shared__ bool changed;
   if (threadIdx.x == 0) { changed = write_updated_bounds(pb, var_idx, is_int, upd, bnd, old_bnd); }
   __syncthreads();

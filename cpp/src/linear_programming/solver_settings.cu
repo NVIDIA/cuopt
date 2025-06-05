@@ -22,8 +22,13 @@
 #include <math_optimization/solution_writer.hpp>
 #include <mip/mip_constants.hpp>
 #include <mps_parser/utilities/span.hpp>
+
 #include <raft/util/cudart_utils.hpp>
+
+#include <thrust/scatter.h>
 #include <rmm/exec_policy.hpp>
+
+#include <thrust/scatter.h>
 
 namespace cuopt::linear_programming {
 
