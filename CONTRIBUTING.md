@@ -64,18 +64,9 @@ source and contribute to its development. Other operating systems may be compati
 currently tested.
 
 Building NVIDIA cuOpt with the provided conda environment is recommended for users who wish to enable all
-library features. The following instructions are for building with a conda environment. Dependencies
-for a minimal build of NVIDIA cuOpt without using conda are also listed below.
+library features. The following instructions are for building with a conda environment.
 
 ### General requirements
-
-Compilers:
-
-These will be installed while creating the Conda environment
-
-* `gcc` version 13.0+
-* `nvcc` version 12.8+
-* `cmake` version 3.30.4+
 
 CUDA/GPU Runtime:
 
@@ -107,11 +98,13 @@ cd $CUOPT_HOME
 
 #### Building with a conda environment
 
-**Note:** Using a conda environment is the easiest way to satisfy the library's dependencies.
+**Note:** Building from source without conda is very difficult. We highly recommend that users build cuOpt inside a conda environment
 
 - Create the conda development environment:
 
-Please install conda if you don't have it already. You can install it from [https://docs.conda.io/en/latest/miniconda.html](https://docs.conda.io/en/latest/miniconda.html)
+Please install conda if you don't have it already. You can install [miniforge](https://conda-forge.org/download/) or [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux)
+
+**Note:** We recommend using [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) as the package manager for the conda environment. Mamba is faster and more efficient than conda. And it's the default package manager for miniforge. If you are using mamba just replace `conda` with `mamba` in the following commands.
 
 ```bash
 # create the conda environment (assuming in base `cuopt` directory)
