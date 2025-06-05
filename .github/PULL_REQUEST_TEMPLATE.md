@@ -23,6 +23,8 @@ Note: The pull request title will be included in the CHANGELOG.
    - [ ] New or existing tests cover these changes
    - [ ] Added tests
    - [ ] Created an issue to follow-up
+   - [ ] NA
 - Documentation
    - [ ] The documentation is up to date with these changes
    - [ ] Added new documentation 
+   - [ ] NA
