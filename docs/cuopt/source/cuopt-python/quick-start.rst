@@ -17,6 +17,10 @@ For CUDA 12.x:
     pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu12==25.5.* nvidia-cuda-runtime-cu12==12.8.*
 
 
+.. note::
+   For development wheels which are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/`. 
+
+
 Conda
 -----
 
@@ -28,6 +32,9 @@ For CUDA 12.x:
 
     conda install -c rapidsai -c conda-forge -c nvidia \
         cuopt=25.05.* python=3.12 cuda-version=12.8
+
+.. note::
+   For development wheels which are available as nightlies, please update `-c rapidsai` to `-c rapidsai-nightly`.
 
 
 Container
