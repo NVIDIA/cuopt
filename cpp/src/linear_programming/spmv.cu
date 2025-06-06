@@ -50,6 +50,10 @@ spmv_t<i_t, f_t>::spmv_t(problem_t<i_t, f_t>& problem_, bool debug)
     warp_cnst_id_offsets(0, problem_.handle_ptr->get_stream()),
     warp_vars_offsets(0, problem_.handle_ptr->get_stream()),
     warp_vars_id_offsets(0, problem_.handle_ptr->get_stream()),
+    block_cnst_offsets(0, problem_.handle_ptr->get_stream()),
+    block_cnst_id_offsets(0, problem_.handle_ptr->get_stream()),
+    block_vars_offsets(0, problem_.handle_ptr->get_stream()),
+    block_vars_id_offsets(0, problem_.handle_ptr->get_stream()),
     cnst_binner(handle_ptr),
     vars_binner(handle_ptr)
 {
@@ -58,11 +62,11 @@ spmv_t<i_t, f_t>::spmv_t(problem_t<i_t, f_t>& problem_, bool debug)
 template <typename i_t, typename f_t>
 void spmv_t<i_t, f_t>::setup(problem_t<i_t, f_t>& problem_, bool debug)
 {
-  //std::cerr<<"set up begin\n";
+  // std::cerr<<"set up begin\n";
   pb = &problem_;
   setup_lb_problem(problem_, debug);
   setup_lb_meta();
-  //std::cerr<<"set up done\n";
+  // std::cerr<<"set up done\n";
 }
 
 template <typename i_t, typename f_t>
@@ -128,7 +132,7 @@ void spmv_t<i_t, f_t>::setup_lb_problem(problem_t<i_t, f_t>& problem_, bool debu
   vars_bin_offsets = dist_vars.bin_offsets_;
 
   handle_ptr->sync_stream();
-  //std::cerr<<"lb setup\n";
+  // std::cerr<<"lb setup\n";
 }
 
 template <typename i_t, typename f_t>
@@ -137,7 +141,7 @@ void spmv_t<i_t, f_t>::setup_lb_meta()
   auto stream = handle_ptr->get_stream();
   stream.synchronize();
 
-  //std::cerr<<"cnst create_heavy_item_block_segments\n";
+  // std::cerr<<"cnst create_heavy_item_block_segments\n";
   num_blocks_heavy_cnst = create_heavy_item_block_segments(stream,
                                                            heavy_cnst_vertex_ids,
                                                            heavy_cnst_pseudo_block_ids,
@@ -147,7 +151,7 @@ void spmv_t<i_t, f_t>::setup_lb_meta()
                                                            offsets);
 
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-  //std::cerr<<"vars create_heavy_item_block_segments\n";
+  // std::cerr<<"vars create_heavy_item_block_segments\n";
   num_blocks_heavy_vars = create_heavy_item_block_segments(stream,
                                                            heavy_vars_vertex_ids,
                                                            heavy_vars_pseudo_block_ids,
@@ -160,29 +164,33 @@ void spmv_t<i_t, f_t>::setup_lb_meta()
   tmp_aty.resize(num_blocks_heavy_vars, stream);
 
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-  //std::cerr<<"cnst block_meta\n";
+  // std::cerr<<"cnst block_meta\n";
   i_t w_t_r = 4;
   std::tie(cnst_sub_warp_count, cnst_med_block_count, cnst_heavy_beg_id) =
     block_meta(stream,
                warp_cnst_offsets,
                warp_cnst_id_offsets,
+               block_cnst_offsets,
+               block_cnst_id_offsets,
                cnst_bin_offsets,
                w_t_r,
                heavy_degree_cutoff,
                true);
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-  //std::cerr<<"vars block_meta\n";
+  // std::cerr<<"vars block_meta\n";
   std::tie(vars_sub_warp_count, vars_med_block_count, vars_heavy_beg_id) =
     block_meta(stream,
                warp_vars_offsets,
                warp_vars_id_offsets,
+               block_vars_offsets,
+               block_vars_id_offsets,
                vars_bin_offsets,
                w_t_r,
                heavy_degree_cutoff,
                true);
 
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-  //std::cerr<<"lb meta setup\n";
+  // std::cerr<<"lb meta setup\n";
 }
 
 template <typename i_t, typename f_t>

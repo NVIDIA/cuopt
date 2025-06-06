@@ -48,7 +48,7 @@ struct dual_projection_t {
     //   printf("kernel idx oob\n");
     // }
     // maybe not needed
-    output[idx]          = Ax_i;
+    // output[idx]          = Ax_i;
     f_t next             = dual_[idx] - (*scalar_ * Ax_i);
     f_t low              = next + *scalar_ * lower_[idx];
     f_t up               = next + *scalar_ * upper_[idx];

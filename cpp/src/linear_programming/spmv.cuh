@@ -110,12 +110,16 @@ class spmv_t {
   i_t cnst_med_block_count;
   rmm::device_uvector<i_t> warp_cnst_offsets;
   rmm::device_uvector<i_t> warp_cnst_id_offsets;
+  rmm::device_uvector<i_t> block_cnst_offsets;
+  rmm::device_uvector<i_t> block_cnst_id_offsets;
 
   i_t vars_heavy_beg_id;
   i_t vars_sub_warp_count;
   i_t vars_med_block_count;
   rmm::device_uvector<i_t> warp_vars_offsets;
   rmm::device_uvector<i_t> warp_vars_id_offsets;
+  rmm::device_uvector<i_t> block_vars_offsets;
+  rmm::device_uvector<i_t> block_vars_id_offsets;
 
   // binning
   std::vector<i_t> cnst_bin_offsets;
@@ -133,10 +137,11 @@ void spmv_t<i_t, f_t>::Ax(rmm::cuda_stream_view stream,
                           functor_t functor)
 {
   raft::common::nvtx::range scope("ax");
-  //std::cerr<<"spmv_call\n";
-  //std::cerr<<"cnst_sub_warp_count "<<cnst_sub_warp_count<<"\n";
-  //std::cerr<<"warp_cnst_id_offsets.back() "<<warp_cnst_id_offsets.back_element(stream)<<"\n";
-  //std::cerr<<"cnst_med_block_count "<<cnst_med_block_count<<"\n";
+  // std::cerr<<"spmv_call\n";
+  // std::cerr<<"cnst_sub_warp_count "<<cnst_sub_warp_count<<"\n";
+  // std::cerr<<"warp_cnst_id_offsets.back() "<<warp_cnst_id_offsets.back_element(stream)<<"\n";
+  // std::cerr<<"cnst_med_block_count "<<cnst_med_block_count<<"\n";
+  std::cout << "num_blocks_heavy_cnst " << num_blocks_heavy_cnst << "\n";
   spmv_call(stream,
             get_A_view(),
             input,
@@ -150,11 +155,13 @@ void spmv_t<i_t, f_t>::Ax(rmm::cuda_stream_view stream,
             heavy_degree_cutoff,
             warp_cnst_offsets,
             warp_cnst_id_offsets,
+            block_cnst_offsets,
+            block_cnst_id_offsets,
             heavy_cnst_vertex_ids,
             heavy_cnst_pseudo_block_ids,
             heavy_cnst_block_segments,
             functor);
-  //std::cerr<<"spmv_call done\n";
+  // std::cerr<<"spmv_call done\n";
 }
 
 template <typename i_t, typename f_t>
@@ -165,6 +172,7 @@ void spmv_t<i_t, f_t>::ATy(rmm::cuda_stream_view stream,
                            functor_t functor)
 {
   raft::common::nvtx::range scope("aty");
+  std::cout << "num_blocks_heavy_vars " << num_blocks_heavy_vars << "\n";
   spmv_call(stream,
             get_AT_view(),
             input,
@@ -178,6 +186,8 @@ void spmv_t<i_t, f_t>::ATy(rmm::cuda_stream_view stream,
             heavy_degree_cutoff,
             warp_vars_offsets,
             warp_vars_id_offsets,
+            block_vars_offsets,
+            block_vars_id_offsets,
             heavy_vars_vertex_ids,
             heavy_vars_pseudo_block_ids,
             heavy_vars_block_segments,

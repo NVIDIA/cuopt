@@ -68,7 +68,8 @@ __device__ __forceinline__ void get_sub_warp_bin(i_t* id_warp_beg,
                                                  i_t* id_range_end,
                                                  i_t* t_p_v,
                                                  raft::device_span<const i_t> warp_offsets,
-                                                 raft::device_span<const i_t> bin_offsets)
+                                                 raft::device_span<const i_t> bin_offsets,
+                                                 i_t sub_warp_count)
 {
   i_t warp_id = (blockDim.x * blockIdx.x + threadIdx.x) / 32;
   i_t lane_id = threadIdx.x & 31;
@@ -77,7 +78,7 @@ __device__ __forceinline__ void get_sub_warp_bin(i_t* id_warp_beg,
   unsigned int m  = __ballot_sync(0xffffffff, pred);
   i_t seg         = 31 - __clz(m);
   i_t it_per_warp = (1 << (5 - seg));  // item per warp = 32/(2^seg)
-  if (5 - seg < 0) {
+  if ((5 - seg < 0) || (warp_id >= sub_warp_count)) {
     *t_p_v = 0;
     return;
   }
@@ -162,11 +163,12 @@ __device__ void call_spmv_sub_warp(view_t view,
                                    raft::device_span<f_t> output,
                                    raft::device_span<const i_t> warp_item_offsets,
                                    raft::device_span<const i_t> warp_item_id_offsets,
+                                   i_t sub_warp_count,
                                    functor_t functor)
 {
   i_t id_warp_beg, id_range_end, t_p_v;
   get_sub_warp_bin<i_t>(
-    &id_warp_beg, &id_range_end, &t_p_v, warp_item_offsets, warp_item_id_offsets);
+    &id_warp_beg, &id_range_end, &t_p_v, warp_item_offsets, warp_item_id_offsets, sub_warp_count);
 
   if (t_p_v == 1) {
     spmv_sub_warp<i_t, f_t, BDIM, 1>(id_warp_beg, id_range_end, view, input, output, functor);
@@ -178,8 +180,8 @@ __device__ void call_spmv_sub_warp(view_t view,
     spmv_sub_warp<i_t, f_t, BDIM, 8>(id_warp_beg, id_range_end, view, input, output, functor);
   } else if (t_p_v == 16) {
     spmv_sub_warp<i_t, f_t, BDIM, 16>(id_warp_beg, id_range_end, view, input, output, functor);
-  } else if (t_p_v == 32) {
-    spmv_warp<i_t, f_t, BDIM>(id_warp_beg, id_range_end, view, input, output, functor);
+    //} else if (t_p_v == 32) {
+    //  spmv_warp<i_t, f_t, BDIM>(id_warp_beg, id_range_end, view, input, output, functor);
   }
 }
 
@@ -230,16 +232,93 @@ __device__ void call_spmv_heavy(view_t view,
 }
 
 template <typename i_t, typename f_t, i_t BDIM, typename view_t, typename functor_t>
+__device__ void spmv_block_64(i_t prior_blocks_in_seg,
+                              i_t id_beg_seg,
+                              i_t id_end_seg,
+                              view_t view,
+                              raft::device_span<f_t> input,
+                              raft::device_span<f_t> output,
+                              functor_t functor)
+{
+  using warp_reduce = cub::WarpReduce<f_t>;
+  __shared__ typename warp_reduce::TempStorage temp_storage[BDIM / raft::WarpSize];
+  __shared__ f_t tmp_out[BDIM / raft::WarpSize];
+
+  i_t p_block_id               = threadIdx.x / 64;
+  i_t warp_id                  = threadIdx.x / 32;
+  constexpr i_t warps_per_row  = 64 / 2;
+  constexpr i_t rows_per_block = 256 / 64;
+  i_t row_id                   = id_beg_seg + prior_blocks_in_seg * rows_per_block + p_block_id;
+  i_t p_id                     = -1;
+  i_t item_idx;
+  // if (threadIdx.x % 32 == 0) {
+  //   printf("row_id %d warp_id %d id_end_seg %d\n", row_id, warp_id, id_end_seg);
+  // }
+
+  if (row_id < id_end_seg) {
+    p_id             = threadIdx.x % (64);
+    item_idx         = view.reorg_ids[row_id];
+    i_t item_off_beg = view.offsets[row_id];
+    i_t item_off_end = view.offsets[row_id + 1];
+
+    // if (threadIdx.x % 32 == 0) {
+    //   printf("item_idx %d row_id %d warp_id %d id_end_seg %d deg %d\n", item_idx, row_id,
+    //   warp_id, id_end_seg, item_off_end - item_off_beg);
+    // }
+
+    auto out = spmv<i_t, f_t, 64>(view, input, p_id, item_off_beg, item_off_end);
+
+    out = warp_reduce(temp_storage[warp_id]).Sum(out);
+    if (threadIdx.x % 32 == 0) {
+      // printf("warp_id %d tmp_out %f\n", warp_id, out);
+      tmp_out[warp_id] = out;
+    }
+  }
+  __syncthreads();
+
+  if ((p_id == 0) && (row_id < id_end_seg)) {
+    functor(item_idx, tmp_out[warp_id] + tmp_out[warp_id + 1], output);
+  }
+}
+
+template <typename i_t, typename f_t, i_t BDIM, typename view_t, typename functor_t>
+__device__ void spmv_block(i_t prior_blocks_in_seg,
+                           i_t id_beg_seg,
+                           view_t view,
+                           raft::device_span<f_t> input,
+                           raft::device_span<f_t> output,
+                           functor_t functor)
+{
+  typedef cub::BlockReduce<f_t, BDIM> BlockReduce;
+  __shared__ typename BlockReduce::TempStorage temp_storage;
+
+  i_t row_id = id_beg_seg + prior_blocks_in_seg;
+
+  i_t item_idx     = view.reorg_ids[row_id];
+  i_t item_off_beg = view.offsets[row_id];
+  i_t item_off_end = view.offsets[row_id + 1];
+
+  auto out = spmv<i_t, f_t, BDIM>(view, input, threadIdx.x, item_off_beg, item_off_end);
+
+  out = BlockReduce(temp_storage).Sum(out);
+
+  if (threadIdx.x == 0) { functor(item_idx, out, output); }
+}
+
+template <typename i_t, typename f_t, i_t BDIM, typename view_t, typename functor_t>
 __global__ void spmv_kernel(view_t view,
                             raft::device_span<f_t> input,
                             raft::device_span<f_t> output,
                             raft::device_span<f_t> tmp_out,
+                            i_t sub_warp_count,
                             i_t sub_warp_blocks_end,
                             i_t med_blocks_end,
                             i_t heavy_vertex_beg,
                             i_t heavy_work_per_block,
                             raft::device_span<const i_t> warp_item_offsets,
                             raft::device_span<const i_t> warp_item_id_offsets,
+                            raft::device_span<const i_t> block_item_offsets,
+                            raft::device_span<const i_t> block_item_id_offsets,
                             raft::device_span<const i_t> heavy_items_vertex_ids,
                             raft::device_span<const i_t> heavy_items_pseudo_block_ids,
                             functor_t functor)
@@ -247,11 +326,20 @@ __global__ void spmv_kernel(view_t view,
   if (blockIdx.x < sub_warp_blocks_end) {
     // sub warps
     call_spmv_sub_warp<i_t, f_t, BDIM>(
-      view, input, output, warp_item_offsets, warp_item_id_offsets, functor);
-  } else if (blockIdx.x < med_blocks_end) {
-    // medium blocks
+      view, input, output, warp_item_offsets, warp_item_id_offsets, sub_warp_count, functor);
+  } else if (blockIdx.x < block_item_offsets[1]) {
+    // medium blocks - 64 threads per row
+    spmv_block_64<i_t, f_t, BDIM>(blockIdx.x - block_item_offsets[0],  // pseudo block id
+                                  block_item_id_offsets[0],            // beginning of segment
+                                  block_item_id_offsets[1],            // end of segment
+                                  view,
+                                  input,
+                                  output,
+                                  functor);
+  } else if (blockIdx.x < block_item_offsets[2]) {
+    // medium blocks - 256 (BDIM) threads per row
     spmv_block<i_t, f_t, BDIM>(
-      blockIdx.x - sub_warp_blocks_end + warp_item_id_offsets.back(), view, input, output, functor);
+      blockIdx.x - block_item_offsets[1], block_item_id_offsets[1], view, input, output, functor);
   } else {
     // heavy
     i_t id_block = blockIdx.x - med_blocks_end;
