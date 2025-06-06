@@ -8,7 +8,9 @@ AMPL Support
 --------------------------
 
 AMPL can be used with near zero code changes to switch to cuOpt as a solver to solve linear and quadratic programming problems.
+
 .. note::
+
    AMPL is a commercial solver and requires a license to use. AMPL hasn't made a new release with cuOpt support yet.
 
 --------------------------

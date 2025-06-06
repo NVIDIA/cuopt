@@ -30,7 +30,7 @@ For CUDA 12.x:
         cuopt-server=25.05.* cuopt-sh-client=25.05.* python=3.12 cuda-version=12.8
 
 .. note::
-   For development wheels which are available as nightlies, please update `-c rapidsai` to `-c rapidsai-nightly`.
+   For development conda packages which are available as nightlies, please update `-c rapidsai` to `-c rapidsai-nightly`.
 
 
 Container from Docker Hub
