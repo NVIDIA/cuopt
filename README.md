@@ -74,7 +74,7 @@ Users who are used to conda env based workflows would benefit with conda package
 For CUDA 12.x:
 ```bash
 conda install -c rapidsai -c conda-forge -c nvidia \
-    cuopt-server=25.05 cuopt-sh-client=25.05 python=3.12 cuda-version=12.8
+    cuopt-server=25.05.* cuopt-sh-client=25.05.* python=3.12 cuda-version=12.8
 ```
 
 We also provide [nightly Conda packages](https://anaconda.org/rapidsai-nightly) built from the HEAD
@@ -85,8 +85,11 @@ of our latest development branch.
 Users can pull the cuOpt container from the NVIDIA container registry.
 
 ```bash
-docker pull nvidia/cuopt:25.5.0-cuda12.8-py312 
+docker pull nvidia/cuopt:latest-cuda12.8-py312 
 ```
+
+Note: The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.8-py312`` tag. For example, to use cuOpt 25.5.0, you can use the ``25.5.0-cuda12.8-py312`` tag. Please refer to `cuOpt dockerhub page <https://hub.docker.com/r/nvidia/cuopt>`_ for the list of available tags.
+
 More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub).
 
 Users who are using cuOpt for quick testing or research can use the cuOpt container. Alternatively, users who are planning to plug cuOpt as a service in their workflow can quickly start with the cuOpt container. But users are required to build security layers around the service to safeguard the service from untrusted users.

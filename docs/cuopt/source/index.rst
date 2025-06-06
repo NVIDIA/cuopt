@@ -60,6 +60,16 @@ Command Line Interface (cuopt-cli)
 
    Command Line Interface Overview <cuopt-cli/index.rst>
 
+========================================
+Third Party Solvers
+========================================
+.. toctree::
+   :maxdepth: 4
+   :caption: Third Party Solvers
+   :name: Third Party Solvers
+
+   thirdparty_solvers/index.rst 
+
 =============
 Resources
 =============
