@@ -65,10 +65,10 @@ Third Party Solvers
 ========================================
 .. toctree::
    :maxdepth: 4
-   :caption: Third Party Solvers
-   :name: Third Party Solvers
+   :caption: Third Party Modeling Languages
+   :name: Third Party Modeling Languages
 
-   thirdparty_solvers/index.rst 
+   thirdparty_modeling_languages/index.rst 
 
 =============
 Resources
