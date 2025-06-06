@@ -65,8 +65,6 @@ pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.5.* 
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
 
-Nightly packages are availble on 
-
 ### Conda
 
 cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forge/miniforge)) from the `nvidia` channel:
