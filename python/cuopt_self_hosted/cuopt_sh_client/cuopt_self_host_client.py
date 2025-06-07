@@ -659,7 +659,7 @@ class CuOptServiceSelfHostClient:
             Delete the solution when it is returned. Defaults to True.
         """
         if filepath and cuopt_problem_json_data.startswith("/"):
-            log.warn(
+            log.warning(
                 "Path of the data file on the server was specified, "
                 "but an absolute path was given. "
                 "Best practice is to specify the relative path of a "
@@ -782,7 +782,7 @@ class CuOptServiceSelfHostClient:
                 cuopt_data_model = _mps_parse(cuopt_data_model, solver_config)
 
             elif filepath and cuopt_data_model.startswith("/"):
-                log.warn(
+                log.warning(
                     "Path of the data file on the server was specified, "
                     "but an absolute path was given. "
                     "Best practice is to specify the relative path of a "
@@ -904,7 +904,7 @@ class CuOptServiceSelfHostClient:
                 pass
 
         except requests.exceptions.HTTPError as e:
-            log.warn(f"Deletion of solution {id} failed")
+            log.warning(f"Deletion of solution {id} failed")
             log.debug(str(e))
             err, _ = self._handle_request_exception(response)
             raise ValueError(err)
