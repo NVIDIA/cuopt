@@ -23,15 +23,35 @@ jobs:
           export DATE=$(date +%F)
           export SHA=$(gh api -q '.commit.sha' "repos/nvidia/cuopt/branches/${CUOPT_BRANCH}")
 
-          RUN_ID=$(gh workflow run build.yaml \
-            -f branch=${CUOPT_BRANCH} \
-            -f sha=${SHA} \
-            -f date=${DATE} \
-            -f build_type=nightly \
-            --json databaseId --jq '.databaseId')
+          gh workflow run build.yaml \
+            -f branch="${CUOPT_BRANCH}" \
+            -f sha="${SHA}" \
+            -f date="${DATE}" \
+            -f build_type=nightly
 
-          # Wait for workflow to complete
-          gh run watch $RUN_ID
+          # Wait a short bit for the workflow to register (optional)
+          sleep 3
+
+          # Get the latest run ID for this workflow on this branch
+          RUN_ID=$(gh run list --workflow=build.yaml --branch="${CUOPT_BRANCH}" --json databaseId --limit 1 | jq -r '.[0].databaseId')
+
+          STATUS=$(gh run view $RUN_ID --json status,conclusion --jq '.status')
+          CONCLUSION=$(gh run view $RUN_ID --json status,conclusion --jq '.conclusion')
+
+          while [[ "$STATUS" != "completed" || "$CONCLUSION" == "null" ]]; do
+            echo "Status: $STATUS, Conclusion: $CONCLUSION — waiting 10 seconds..."
+            sleep 10
+            STATUS=$(gh run view $RUN_ID --json status,conclusion --jq '.status')
+            CONCLUSION=$(gh run view $RUN_ID --json status,conclusion --jq '.conclusion')
+          done
+
+          echo "Workflow run finished with conclusion: $CONCLUSION"
+
+          if [[ "$CONCLUSION" != "success" ]]; then
+            echo "Build did not succeed"
+            exit 1
+          fi
+
 
   trigger-test:
     runs-on: ubuntu-latest
