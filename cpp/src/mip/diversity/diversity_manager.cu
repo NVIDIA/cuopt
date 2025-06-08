@@ -246,7 +246,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   if (termination_criterion_t::NO_UPDATE != term_crit) {
     ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
     trivial_presolve(*problem_ptr);
-    if (!problem_ptr->empty) { check_bounds_sanity(*problem_ptr); }
+    if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   }
   if (!problem_ptr->empty) {
     // do the resizing no-matter what, bounds presolve might not change the bounds but initial
@@ -254,7 +254,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     ls.constraint_prop.bounds_update.resize(*problem_ptr);
     ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
       *problem_ptr, ls.constraint_prop.bounds_update);
-    check_bounds_sanity(*problem_ptr);
+    if (!check_bounds_sanity(*problem_ptr)) { return false; }
   }
   stats.presolve_time = presolve_timer.elapsed_time();
   return true;
