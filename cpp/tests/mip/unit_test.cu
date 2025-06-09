@@ -163,7 +163,7 @@ TEST(ErrorTest, TestError)
   auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
 
   EXPECT_EQ(result.get_termination_status(),
-            cuopt::linear_programming::mip_termination_status_t::Infeasible);
+            cuopt::linear_programming::mip_termination_status_t::NoTermination);
 }
 
 class MILPTestParams

@@ -320,21 +320,31 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
 
   // Presolve reductions might trivially solve the problem to optimality/infeasibility.
   // In this case, it is exptected that the problem fields are empty.
-  cuopt_assert(!offsets.is_empty(), "A_offsets must never be empty.");
+  cuopt_expects(
+    !offsets.is_empty(), error_type_t::ValidationError, "A_offsets must never be empty.");
   if (check_transposed) {
-    cuopt_assert(!reverse_offsets.is_empty(), "A_offsets must never be empty.");
+    cuopt_expects(
+      !reverse_offsets.is_empty(), error_type_t::ValidationError, "A_offsets must never be empty.");
   }
   if (!empty) {
     // Check for empty fields
-    cuopt_assert(!coefficients.is_empty(), "A_values must be set before calling the solver.");
-    cuopt_assert(!variables.is_empty(), "A_indices must be set before calling the solver.");
+    cuopt_expects(!coefficients.is_empty(),
+                  error_type_t::ValidationError,
+                  "A_values must be set before calling the solver.");
+    cuopt_expects(!variables.is_empty(),
+                  error_type_t::ValidationError,
+                  "A_indices must be set before calling the solver.");
     if (check_transposed) {
-      cuopt_assert(!reverse_coefficients.is_empty(),
-                   "A_values must be set before calling the solver.");
-      cuopt_assert(!reverse_constraints.is_empty(),
-                   "A_indices must be set before calling the solver.");
+      cuopt_expects(!reverse_coefficients.is_empty(),
+                    error_type_t::ValidationError,
+                    "A_values must be set before calling the solver.");
+      cuopt_expects(!reverse_constraints.is_empty(),
+                    error_type_t::ValidationError,
+                    "A_indices must be set before calling the solver.");
     }
-    cuopt_assert(!objective_coefficients.is_empty(), "c must be set before calling the solver.");
+    cuopt_expects(!objective_coefficients.is_empty(),
+                  error_type_t::ValidationError,
+                  "c must be set before calling the solver.");
   }
 
   // Check CSR validity
@@ -348,47 +358,58 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                              handle_ptr,
                              n_constraints,
                              n_variables);
-    cuopt_assert(check_transpose_validity(this->coefficients,
-                                          this->offsets,
-                                          this->variables,
-                                          this->reverse_coefficients,
-                                          this->reverse_offsets,
-                                          this->reverse_constraints,
-                                          handle_ptr),
-                 "Tranpose invalide");
+    cuopt_expects(check_transpose_validity(this->coefficients,
+                                           this->offsets,
+                                           this->variables,
+                                           this->reverse_coefficients,
+                                           this->reverse_offsets,
+                                           this->reverse_constraints,
+                                           handle_ptr),
+                  error_type_t::ValidationError,
+                  "Tranpose invalide");
   }
 
   // Check variable bounds are set and with the correct size
   if (!empty) {
-    cuopt_assert(!variable_lower_bounds.is_empty() && !variable_upper_bounds.is_empty(),
-                 "Variable lower bounds and variable upper bounds must be set.");
+    cuopt_expects(!variable_lower_bounds.is_empty() && !variable_upper_bounds.is_empty(),
+                  error_type_t::ValidationError,
+                  "Variable lower bounds and variable upper bounds must be set.");
   }
-  cuopt_assert(variable_lower_bounds.size() == objective_coefficients.size(),
-               "Sizes for vectors related to the variables are not the same.");
-  cuopt_assert(variable_upper_bounds.size() == objective_coefficients.size(),
-               "Sizes for vectors related to the variables are not the same");
-  cuopt_assert(variable_upper_bounds.size() == (std::size_t)n_variables,
-               "Sizes for vectors related to the variables are not the same.");
-  cuopt_assert(variable_types.size() == (std::size_t)n_variables,
-               "Sizes for vectors related to the variables are not the same.");
+  cuopt_expects(variable_lower_bounds.size() == objective_coefficients.size(),
+                error_type_t::ValidationError,
+                "Sizes for vectors related to the variables are not the same.");
+  cuopt_expects(variable_upper_bounds.size() == objective_coefficients.size(),
+                error_type_t::ValidationError,
+                "Sizes for vectors related to the variables are not the same");
+  cuopt_expects(variable_upper_bounds.size() == (std::size_t)n_variables,
+                error_type_t::ValidationError,
+                "Sizes for vectors related to the variables are not the same.");
+  cuopt_expects(variable_types.size() == (std::size_t)n_variables,
+                error_type_t::ValidationError,
+                "Sizes for vectors related to the variables are not the same.");
   // Check constraints bounds sizes
   if (!empty) {
-    cuopt_assert(!constraint_lower_bounds.is_empty() && !constraint_upper_bounds.is_empty(),
-                 "Constraints lower bounds and constraints upper bounds must be set.");
+    cuopt_expects(!constraint_lower_bounds.is_empty() && !constraint_upper_bounds.is_empty(),
+                  error_type_t::ValidationError,
+                  "Constraints lower bounds and constraints upper bounds must be set.");
   }
-  cuopt_assert(constraint_lower_bounds.size() == constraint_upper_bounds.size(),
-               "Sizes for vectors related to the constraints are not the same.");
-  cuopt_assert(constraint_lower_bounds.size() == (size_t)n_constraints,
-               "Sizes for vectors related to the constraints are not the same.");
-  cuopt_assert((offsets.size() - 1) == constraint_lower_bounds.size(),
-               "Sizes for vectors related to the constraints are not the same.");
+  cuopt_expects(constraint_lower_bounds.size() == constraint_upper_bounds.size(),
+                error_type_t::ValidationError,
+                "Sizes for vectors related to the constraints are not the same.");
+  cuopt_expects(constraint_lower_bounds.size() == (size_t)n_constraints,
+                error_type_t::ValidationError,
+                "Sizes for vectors related to the constraints are not the same.");
+  cuopt_expects((offsets.size() - 1) == constraint_lower_bounds.size(),
+                error_type_t::ValidationError,
+                "Sizes for vectors related to the constraints are not the same.");
 
   // Check combined bounds
-  cuopt_assert(combined_bounds.size() == (size_t)n_constraints,
-               "Sizes for vectors related to the constraints are not the same.");
+  cuopt_expects(combined_bounds.size() == (size_t)n_constraints,
+                error_type_t::ValidationError,
+                "Sizes for vectors related to the constraints are not the same.");
 
   // Check the validity of bounds
-  cuopt_assert(
+  cuopt_expects(
     thrust::all_of(handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator<i_t>(0),
                    thrust::make_counting_iterator<i_t>(n_variables),
@@ -396,8 +417,9 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                     variable_upper_bounds = variable_upper_bounds.data()] __device__(i_t idx) {
                      return variable_lower_bounds[idx] <= variable_upper_bounds[idx];
                    }),
+    error_type_t::ValidationError,
     "Variable bounds are invalid");
-  cuopt_assert(
+  cuopt_expects(
     thrust::all_of(handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator<i_t>(0),
                    thrust::make_counting_iterator<i_t>(n_constraints),
@@ -405,45 +427,57 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                     constraint_upper_bounds = constraint_upper_bounds.data()] __device__(i_t idx) {
                      return constraint_lower_bounds[idx] <= constraint_upper_bounds[idx];
                    }),
+    error_type_t::ValidationError,
     "Constraints bounds are invalid");
 
   if (check_mip_related_data) {
-    cuopt_assert(n_integer_vars == integer_indices.size(), "incorrect integer indices structure");
-    cuopt_assert(is_binary_variable.size() == n_variables, "incorrect binary variable table size");
+    cuopt_expects(static_cast<size_t>(n_integer_vars) == integer_indices.size(),
+                  error_type_t::ValidationError,
+                  "incorrect integer indices structure");
+    cuopt_expects(is_binary_variable.size() == static_cast<size_t>(n_variables),
+                  error_type_t::ValidationError,
+                  "incorrect binary variable table size");
 
-    cuopt_assert(thrust::is_sorted(
-                   handle_ptr->get_thrust_policy(), binary_indices.begin(), binary_indices.end()),
-                 "binary indices are not sorted");
-    cuopt_assert(
+    cuopt_expects(thrust::is_sorted(
+                    handle_ptr->get_thrust_policy(), binary_indices.begin(), binary_indices.end()),
+                  error_type_t::ValidationError,
+                  "binary indices are not sorted");
+    cuopt_expects(
       thrust::is_sorted(
         handle_ptr->get_thrust_policy(), nonbinary_indices.begin(), nonbinary_indices.end()),
+      error_type_t::ValidationError,
       "nonbinary indices are not sorted");
-    cuopt_assert(thrust::is_sorted(
-                   handle_ptr->get_thrust_policy(), integer_indices.begin(), integer_indices.end()),
-                 "integer indices are not sorted");
+    cuopt_expects(
+      thrust::is_sorted(
+        handle_ptr->get_thrust_policy(), integer_indices.begin(), integer_indices.end()),
+      error_type_t::ValidationError,
+      "integer indices are not sorted");
     // check precomputed helpers
-    cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
-                                integer_indices.cbegin(),
-                                integer_indices.cend(),
-                                [types = variable_types.data()] __device__(i_t idx) {
-                                  return types[idx] == var_t::INTEGER;
-                                }),
-                 "The integer indices table contains references to non-integer variables.");
-    cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
-                                binary_indices.cbegin(),
-                                binary_indices.cend(),
-                                [bin_table = is_binary_variable.data()] __device__(i_t idx) {
-                                  return bin_table[idx];
-                                }),
-                 "The binary indices table contains references to non-binary variables.");
-    cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
-                                nonbinary_indices.cbegin(),
-                                nonbinary_indices.cend(),
-                                [bin_table = is_binary_variable.data()] __device__(i_t idx) {
-                                  return !bin_table[idx];
-                                }),
-                 "The non-binary indices table contains references to binary variables.");
-    cuopt_assert(
+    cuopt_expects(thrust::all_of(handle_ptr->get_thrust_policy(),
+                                 integer_indices.cbegin(),
+                                 integer_indices.cend(),
+                                 [types = variable_types.data()] __device__(i_t idx) {
+                                   return types[idx] == var_t::INTEGER;
+                                 }),
+                  error_type_t::ValidationError,
+                  "The integer indices table contains references to non-integer variables.");
+    cuopt_expects(thrust::all_of(handle_ptr->get_thrust_policy(),
+                                 binary_indices.cbegin(),
+                                 binary_indices.cend(),
+                                 [bin_table = is_binary_variable.data()] __device__(i_t idx) {
+                                   return bin_table[idx];
+                                 }),
+                  error_type_t::ValidationError,
+                  "The binary indices table contains references to non-binary variables.");
+    cuopt_expects(thrust::all_of(handle_ptr->get_thrust_policy(),
+                                 nonbinary_indices.cbegin(),
+                                 nonbinary_indices.cend(),
+                                 [bin_table = is_binary_variable.data()] __device__(i_t idx) {
+                                   return !bin_table[idx];
+                                 }),
+                  error_type_t::ValidationError,
+                  "The non-binary indices table contains references to binary variables.");
+    cuopt_expects(
       thrust::all_of(
         handle_ptr->get_thrust_policy(),
         thrust::make_counting_iterator<i_t>(0),
@@ -475,8 +509,9 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
           }
           return true;
         }),
+      error_type_t::ValidationError,
       "Some variables aren't referenced in the appropriate indice tables");
-    cuopt_assert(
+    cuopt_expects(
       thrust::all_of(
         handle_ptr->get_thrust_policy(),
         thrust::make_counting_iterator<i_t>(0),
@@ -508,8 +543,9 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
           }
           return true;
         }),
+      error_type_t::ValidationError,
       "Some variables aren't referenced in the appropriate indice tables");
-    cuopt_assert(
+    cuopt_expects(
       thrust::all_of(
         handle_ptr->get_thrust_policy(),
         thrust::make_counting_iterator<i_t>(0),
@@ -541,8 +577,9 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
           }
           return true;
         }),
+      error_type_t::ValidationError,
       "Some variables aren't referenced in the appropriate indice tables");
-    cuopt_assert(
+    cuopt_expects(
       thrust::all_of(
         handle_ptr->get_thrust_policy(),
         thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(0),
@@ -558,13 +595,15 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
           return pred == (types[idx] != var_t::CONTINUOUS && v.integer_equal(lb[idx], 0.) &&
                           v.integer_equal(ub[idx], 1.));
         }),
+      error_type_t::ValidationError,
       "The binary variable table is incorrect.");
     if (!empty) {
-      cuopt_assert(is_binary_pb == (n_variables == thrust::count(handle_ptr->get_thrust_policy(),
-                                                                 is_binary_variable.begin(),
-                                                                 is_binary_variable.end(),
-                                                                 1)),
-                   "is_binary_pb is incorrectly set");
+      cuopt_expects(is_binary_pb == (n_variables == thrust::count(handle_ptr->get_thrust_policy(),
+                                                                  is_binary_variable.begin(),
+                                                                  is_binary_variable.end(),
+                                                                  1)),
+                    error_type_t::ValidationError,
+                    "is_binary_pb is incorrectly set");
     }
   }
 }
