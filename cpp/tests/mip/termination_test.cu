@@ -45,9 +45,8 @@
 
 namespace cuopt::linear_programming::test {
 
-static std::tuple<mip_termination_status_t, double, double> test_mps_file(std::string test_instance,
-                                                                         bool heuristics_only = true,
-                                                                         double time_limit    = 10)
+static std::tuple<mip_termination_status_t, double, double> test_mps_file(
+  std::string test_instance, bool heuristics_only = true, double time_limit = 10)
 {
   const raft::handle_t handle_{};
 
@@ -60,8 +59,8 @@ static std::tuple<mip_termination_status_t, double, double> test_mps_file(std::s
   settings.heuristics_only             = heuristics_only;
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
   return std::make_tuple(solution.get_termination_status(),
-                        solution.get_objective_value(),
-                        solution.get_solution_bound());
+                         solution.get_objective_value(),
+                         solution.get_solution_bound());
 }
 
 TEST(termination_status, trivial_presolve_optimality_test)
