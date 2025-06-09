@@ -110,7 +110,7 @@ def check_client_version(client_vers):
             return []
         cv = client_vers.split(".")
         if len(cv) < 2:
-            logging.warn("Client version missing or bad format")
+            logging.warning("Client version missing or bad format")
             return [
                 f"Client version missing or not the current format. "
                 f"Please upgrade your cuOpt client to '{major}.{minor}', "
@@ -121,7 +121,7 @@ def check_client_version(client_vers):
             cmajor, cminor = cv[:2]
             matches = (cmajor, cminor) == (major, minor)
         if not matches:
-            logging.warn(f"Client version {cmajor}.{cminor} does not match")
+            logging.warning(f"Client version {cmajor}.{cminor} does not match")
             return [
                 f"Client version is '{cmajor}.{cminor}' but server "
                 f"version is '{major}.{minor}'. Please use a matching client."
@@ -569,7 +569,7 @@ class BaseResult:
         # we know when the list has reached empty again
         # we can send the sentinel value
         if self.is_done():
-            logging.warn("Incumbent added after job marked done!")
+            logging.warning("Incumbent added after job marked done!")
         sol["solution"] = sol["solution"].tolist()
         self.incumbents.append(sol)
 
@@ -636,7 +636,7 @@ class BinaryJobResult(BaseResult):
 
         # might as well make sure these match
         if rtype != self.rtype:
-            logging.warn(
+            logging.warning(
                 "in set_data_size_and_type result mime_type "
                 f"does not match, updating {rtype} {self.rtype}"
             )
@@ -872,7 +872,7 @@ class SolverJob(SolverBaseJob):
                 )
             logging.debug(
                 message(
-                    "feature check succeeeded for tier '%s', "
+                    "feature check succeeded for tier '%s', "
                     % request_filter.get_tier()
                 )
             )
@@ -1445,7 +1445,7 @@ class SolverBinaryJobPath(SolverBinaryJob):
                 "Pickle data format is deprecated. "
                 "Use zlib, msgpack, or plain JSON"
             )
-            logging.warn("pickle data is deprecated")
+            logging.warning("pickle data is deprecated")
             logging.debug("pickle data")
         else:
             raise ValueError(
@@ -1763,8 +1763,8 @@ class SolverBinaryResponse:
             res.set_result(exception_handler(e))
 
 
-# TOOD: ExitJob is meant for the solver, Shutdown and
-# CudaUnhealty are meant for the result thread
+# TODO: ExitJob is meant for the solver, Shutdown and
+# CudaUnhealthy are meant for the result thread
 # Probably should be in different class hierarchies.
 # The latter two probably ought to be SolveResponses
 class ExitJob:
