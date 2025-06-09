@@ -54,7 +54,7 @@ Bug Fixes
 - Gracefully exit when the problem is infeasible after presolve.
 - Fixed bug on dual resizing.
 - Fix occasional incorrect solution bound on maximization problems
-- Fix data initialization in create depot node for max travel time feature
+- Fix inversion of constraint bounds in conditional bounds presolve
 - Pdlp fix batch cuda graph
 - Fix obj constant on max. Fix undefined memory access at root
 - Allow long client version in service version check, this fixes the issue in case version is of the format 25.05.00.dev0
