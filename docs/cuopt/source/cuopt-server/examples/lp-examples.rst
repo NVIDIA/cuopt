@@ -521,17 +521,17 @@ Use a datamodel generated from mps file as input; this yields a solution object 
 
     # Check found objective value
     print("Objective Value:")
-    print(solution_obj["primal_objective"])
+    print(solution_obj.get_primal_objective())
 
     # Check the MPS parse time
     print(f"Mps Parse time: {parse_time:.3f} sec")
 
     # Check network time (client call - solve time)
-    network_time = network_time - (solution_obj["solver_time"])
+    network_time = network_time - (solution_obj.get_solve_time())
     print(f"Network time: {network_time:.3f} sec")
 
     # Check solver time
-    solve_time = solution_obj["solver_time"]
+    solve_time = solution_obj.get_solve_time()
     print(f"Engine Solve time: {solve_time:.3f} sec")
 
     # Check the total end to end time (mps parsing + network + solve time)
@@ -540,7 +540,7 @@ Use a datamodel generated from mps file as input; this yields a solution object 
 
     # Print the found decision variables
     print("Variables Values:")
-    print(solution_obj["vars"])
+    print(solution_obj.get_vars())
 
 
 The response would be as follows:
