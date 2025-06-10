@@ -13,11 +13,51 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from cuopt.linear_programming.solver.solver_wrapper import (
-    LPTerminationStatus,
-    MILPTerminationStatus,
-    ProblemCategory,
-)
+from enum import IntEnum
+
+
+# TODO: Remove this once we have a way to not include main cuOpt
+# libs in in thin client
+class ProblemCategory(IntEnum):
+    """
+    Problem category enum
+    """
+
+    LP = 0
+    MIP = 1
+    IP = 2
+
+
+# TODO: Remove this once we have a way to not include main cuOpt
+# libs in in thin client
+class LPTerminationStatus(IntEnum):
+    """
+    LP termination status enum
+    """
+
+    NoTermination = 0
+    NumericalError = 6
+    Optimal = 1
+    PrimalInfeasible = 2
+    DualInfeasible = 3
+    IterationLimit = 4
+    TimeLimit = 5
+    PrimalFeasible = 7
+
+
+# TODO: Remove this once we have a way to not include main cuOpt
+# libs in in thin client
+class MILPTerminationStatus(IntEnum):
+    """
+    MILP termination status enum
+    """
+
+    NoTermination = 0
+    Optimal = 1
+    FeasibleFound = 8
+    Infeasible = 2
+    Unbounded = 3
+    TimeLimit = 5
 
 
 class PDLPWarmStartData:
