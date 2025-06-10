@@ -110,6 +110,30 @@ while [[ $# -gt 0 ]]; do
             RELAXATION=true
             shift
             ;;
+        --heuristics-only)
+            HEURISTICS_ONLY=true
+            shift
+            ;;
+        --write-log-file)
+            WRITE_LOG_FILE="$2"
+            shift 2
+            ;;
+        --num-cpu-threads)
+            NUM_CPU_THREADS="$2"
+            shift 2
+            ;;
+        --batch-num)
+            BATCH_NUM="$2"
+            shift 2
+            ;;
+        --n-batches)
+            N_BATCHES="$2"
+            shift 2
+            ;;
+        --log-to-console)
+            LOG_TO_CONSOLE="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1"
             echo "Usage: $0 --path MPS_DIR --ngpus GPU_COUNT --time-limit TIME_LIMIT --output-dir OUTPUT_DIR --relaxation"
@@ -129,6 +153,12 @@ GPU_COUNT=${GPU_COUNT:-1}
 TIME_LIMIT=${TIME_LIMIT:-360}
 OUTPUT_DIR=${OUTPUT_DIR:-.}
 RELAXATION=${RELAXATION:-false}
+HEURISTICS_ONLY=${HEURISTICS_ONLY:-false}
+WRITE_LOG_FILE=${WRITE_LOG_FILE:-false}
+NUM_CPU_THREADS=${NUM_CPU_THREADS:-1}
+BATCH_NUM=${BATCH_NUM:-0}
+N_BATCHES=${N_BATCHES:-1}
+LOG_TO_CONSOLE=${LOG_TO_CONSOLE:-true}
 
 # Determine GPU list
 if [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
@@ -143,6 +173,21 @@ GPU_COUNT=${#GPU_LIST[@]}
 
 # Gather all mps files into an array
 mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps)
+
+# Calculate batch size and start/end indices
+batch_size=$(( (${#mps_files[@]} + N_BATCHES - 1) / N_BATCHES ))
+start_idx=$((BATCH_NUM * batch_size))
+end_idx=$((start_idx + batch_size))
+
+# Ensure end_idx doesn't exceed array length
+if ((end_idx > ${#mps_files[@]})); then
+    end_idx=${#mps_files[@]}
+fi
+
+# Extract subset of files for this batch
+mps_files=("${mps_files[@]:$start_idx:$((end_idx-start_idx))}")
+
+
 file_count=${#mps_files[@]}
 
 # Initialize the index file for locking mechanism
@@ -184,11 +229,26 @@ worker() {
 
         mps_file="${mps_files[my_index]}"
         echo "GPU $gpu_id processing $my_index"
-        if [ "$RELAXATION" = true ]; then
-            CUDA_VISIBLE_DEVICES=$gpu_id cuopt_cli "$mps_file" --time-limit $TIME_LIMIT --log-file "$OUTPUT_DIR/$(basename "${mps_file%.mps}").log" --log-to-console=false --relaxation
-        else
-            CUDA_VISIBLE_DEVICES=$gpu_id cuopt_cli "$mps_file" --time-limit $TIME_LIMIT --log-file "$OUTPUT_DIR/$(basename "${mps_file%.mps}").log" --log-to-console=false
+
+        # Build arguments string
+        args=""      
+        if [ -n "$NUM_CPU_THREADS" ]; then
+            args="$args --num-cpu-threads $NUM_CPU_THREADS"
         fi
+        if [ -n "$HEURISTICS_ONLY" ]; then
+            args="$args --heuristics-only $HEURISTICS_ONLY"
+        fi
+        if [ -n "$WRITE_LOG_FILE" ]; then
+            args="$args --log-file $OUTPUT_DIR/$(basename "${mps_file%.mps}").log"
+        fi
+        if [ -n "$RELAXATION" ]; then
+            args="$args --relaxation"
+        fi
+        if [ -n "$LOG_TO_CONSOLE" ]; then
+            args="$args --log-to-console $LOG_TO_CONSOLE"
+        fi
+
+        CUDA_VISIBLE_DEVICES=$gpu_id cuopt_cli "$mps_file" --time-limit $TIME_LIMIT $args
     done
 }
 
