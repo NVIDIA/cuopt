@@ -247,7 +247,7 @@ __device__ void spmv_block_64(i_t prior_blocks_in_seg,
   i_t p_block_id               = threadIdx.x / 64;
   i_t warp_id                  = threadIdx.x / 32;
   constexpr i_t warps_per_row  = 64 / 2;
-  constexpr i_t rows_per_block = 256 / 64;
+  constexpr i_t rows_per_block = BDIM / 64;
   i_t row_id                   = id_beg_seg + prior_blocks_in_seg * rows_per_block + p_block_id;
   i_t p_id                     = -1;
   i_t item_idx;
@@ -340,18 +340,41 @@ __global__ void spmv_kernel(view_t view,
     // medium blocks - 256 (BDIM) threads per row
     spmv_block<i_t, f_t, BDIM>(
       blockIdx.x - block_item_offsets[1], block_item_id_offsets[1], view, input, output, functor);
-  } else {
-    // heavy
-    i_t id_block = blockIdx.x - med_blocks_end;
-    call_spmv_heavy<i_t, f_t, BDIM>(view,
-                                    input,
-                                    tmp_out,
-                                    id_block,
-                                    heavy_vertex_beg,
-                                    heavy_work_per_block,
-                                    heavy_items_vertex_ids,
-                                    heavy_items_pseudo_block_ids);
+    //} else {
+    //  // heavy
+    //  i_t id_block = blockIdx.x - med_blocks_end;
+    //  call_spmv_heavy<i_t, f_t, BDIM>(view,
+    //                                  input,
+    //                                  tmp_out,
+    //                                  id_block,
+    //                                  heavy_vertex_beg,
+    //                                  heavy_work_per_block,
+    //                                  heavy_items_vertex_ids,
+    //                                  heavy_items_pseudo_block_ids);
   }
+}
+
+template <typename i_t, typename f_t, i_t BDIM, typename view_t>
+__global__ void spmv_heavy_kernel(i_t id_range_beg,
+                                  raft::device_span<const i_t> ids,
+                                  raft::device_span<const i_t> pseudo_block_ids,
+                                  i_t work_per_block,
+                                  view_t view,
+                                  raft::device_span<f_t> input,
+                                  raft::device_span<f_t> tmp_out)
+{
+  auto idx             = ids[blockIdx.x] + id_range_beg;
+  auto pseudo_block_id = pseudo_block_ids[blockIdx.x];
+  i_t item_off_beg     = view.offsets[idx] + work_per_block * pseudo_block_id;
+  i_t item_off_end     = min(item_off_beg + work_per_block, view.offsets[idx + 1]);
+
+  typedef cub::BlockReduce<f_t, BDIM> BlockReduce;
+  __shared__ typename BlockReduce::TempStorage temp_storage;
+
+  auto out = spmv<i_t, f_t, BDIM>(view, input, threadIdx.x, item_off_beg, item_off_end);
+  out      = BlockReduce(temp_storage).Sum(out);
+
+  if (threadIdx.x == 0) { tmp_out[blockIdx.x] = out; }
 }
 
 }  // namespace cuopt::linear_programming::detail

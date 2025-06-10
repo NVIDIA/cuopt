@@ -168,15 +168,15 @@ void create_graph(const raft::handle_t* handle_ptr,
 }
 
 template <typename i_t>
-i_t create_heavy_item_block_segments(rmm::cuda_stream_view stream,
-                                     rmm::device_uvector<i_t>& vertex_id,
-                                     rmm::device_uvector<i_t>& pseudo_block_id,
-                                     rmm::device_uvector<i_t>& item_block_segments,
-                                     const i_t heavy_degree_cutoff,
-                                     const std::vector<i_t>& bin_offsets,
-                                     rmm::device_uvector<i_t> const& offsets)
+std::tuple<i_t, i_t> create_heavy_item_block_segments(rmm::cuda_stream_view stream,
+                                                      rmm::device_uvector<i_t>& vertex_id,
+                                                      rmm::device_uvector<i_t>& pseudo_block_id,
+                                                      rmm::device_uvector<i_t>& item_block_segments,
+                                                      const i_t heavy_degree_cutoff,
+                                                      const std::vector<i_t>& bin_offsets,
+                                                      rmm::device_uvector<i_t> const& offsets)
 {
-  auto heavy_id_beg   = bin_offsets[std::log2(heavy_degree_cutoff)];
+  auto heavy_id_beg   = bin_offsets[std::log2(heavy_degree_cutoff) + 1];
   auto n_items        = offsets.size() - 1;
   auto heavy_id_count = n_items - heavy_id_beg;
   item_block_segments.resize(1 + heavy_id_count, stream);
@@ -236,19 +236,20 @@ i_t create_heavy_item_block_segments(rmm::cuda_stream_view stream,
   }
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
   // Total number of blocks that have to be launched
-  return num_blocks;
+  return std::make_tuple(num_blocks, heavy_id_beg);
 }
 
 template <typename i_t>
-std::tuple<i_t, i_t, i_t> block_meta(rmm::cuda_stream_view stream,
-                                     rmm::device_uvector<i_t>& d_warp_offsets,
-                                     rmm::device_uvector<i_t>& d_warp_id_offsets,
-                                     rmm::device_uvector<i_t>& d_block_offsets,
-                                     rmm::device_uvector<i_t>& d_block_id_offsets,
-                                     const std::vector<i_t>& bin_offsets,
-                                     i_t w_t_r,
-                                     i_t heavy_w_cut_off,
-                                     bool debug = false)
+std::tuple<i_t, i_t> block_meta(rmm::cuda_stream_view stream,
+                                i_t heavy_id_beg,
+                                rmm::device_uvector<i_t>& d_warp_offsets,
+                                rmm::device_uvector<i_t>& d_warp_id_offsets,
+                                rmm::device_uvector<i_t>& d_block_offsets,
+                                rmm::device_uvector<i_t>& d_block_id_offsets,
+                                const std::vector<i_t>& bin_offsets,
+                                i_t w_t_r,
+                                i_t heavy_w_cut_off,
+                                bool debug = false)
 {
   i_t block_size = 256;
 
@@ -270,7 +271,7 @@ std::tuple<i_t, i_t, i_t> block_meta(rmm::cuda_stream_view stream,
     warp_offsets.push_back(warp_count + warp_offsets.back());
   }
 
-  if (true) {
+  if (false) {
     std::cout << "warp_offsets and id offsets\n";
     for (size_t i = 0; i < warp_offsets.size(); ++i) {
       std::cout << i << "\t";
@@ -302,12 +303,12 @@ std::tuple<i_t, i_t, i_t> block_meta(rmm::cuda_stream_view stream,
                                         block_size / 64));
 
   //[512, heavy_degree_cutoff/2]
-  block_id_offsets.push_back(bin_offsets[std::log2(heavy_w_cut_off)]);
-  block_offsets.push_back(block_offsets.back() + bin_offsets[std::log2(heavy_w_cut_off)] -
+  // auto heavy_id_beg = bin_offsets[std::log2(heavy_w_cut_off) + 1];
+  block_id_offsets.push_back(heavy_id_beg);
+  block_offsets.push_back(block_offsets.back() + heavy_id_beg -
                           bin_offsets[std::log2(16 * 2 * w_t_r) + 3]);
-  auto heavy_id_beg = bin_offsets[std::log2(heavy_w_cut_off)];
 
-  if (true) {
+  if (false) {
     std::cout << "block_offsets\n";
     for (size_t i = 0; i < block_offsets.size(); ++i) {
       std::cout << i << " " << block_offsets[i] << "\n";
@@ -328,7 +329,7 @@ std::tuple<i_t, i_t, i_t> block_meta(rmm::cuda_stream_view stream,
   expand_device_copy(d_warp_id_offsets, warp_id_offsets, stream);
   expand_device_copy(d_block_offsets, block_offsets, stream);
   expand_device_copy(d_block_id_offsets, block_id_offsets, stream);
-  return std::make_tuple(num_sub_warps, block_offsets.back(), heavy_id_beg);
+  return std::make_tuple(num_sub_warps, block_offsets.back());
 }
 
 }  // namespace cuopt::linear_programming::detail

@@ -35,6 +35,7 @@ template <typename i_t,
           typename view_t,
           typename functor_t = identity_functor<i_t, f_t>>
 void spmv_call(rmm::cuda_stream_view stream,
+               rmm::cuda_stream_view heavy_stream,
                view_t view,
                raft::device_span<f_t> input,
                raft::device_span<f_t> output,
@@ -57,25 +58,34 @@ void spmv_call(rmm::cuda_stream_view stream,
   constexpr i_t block_size = 256;
   i_t num_sub_warp_blocks  = raft::ceildiv(item_sub_warp_count * raft::WarpSize, block_size);
   spmv_kernel<i_t, f_t, block_size>
-    <<<item_blocks_count + heavy_block_count, block_size, 0, stream>>>(
-      view,
-      input,
-      output,
-      tmp_out,
-      item_sub_warp_count,
-      num_sub_warp_blocks,
-      item_blocks_count,
-      heavy_items_beg_id,
-      heavy_work_per_block,
-      make_span(warp_item_offsets),
-      make_span(warp_item_id_offsets),
-      make_span(block_item_offsets),
-      make_span(block_item_id_offsets),
-      make_span(heavy_items_vertex_ids),
-      make_span(heavy_items_pseudo_block_ids),
-      functor);
+    <<<item_blocks_count, block_size, 0, stream>>>(view,
+                                                   input,
+                                                   output,
+                                                   tmp_out,
+                                                   item_sub_warp_count,
+                                                   num_sub_warp_blocks,
+                                                   item_blocks_count,
+                                                   heavy_items_beg_id,
+                                                   heavy_work_per_block,
+                                                   make_span(warp_item_offsets),
+                                                   make_span(warp_item_id_offsets),
+                                                   make_span(block_item_offsets),
+                                                   make_span(block_item_id_offsets),
+                                                   make_span(heavy_items_vertex_ids),
+                                                   make_span(heavy_items_pseudo_block_ids),
+                                                   functor);
   if (heavy_block_count != 0) {
-    finalize_spmv_kernel<i_t, f_t><<<num_heavy_items, 32, 0, stream>>>(
+    constexpr i_t heavy_block_size = 640;
+    spmv_heavy_kernel<i_t, f_t, heavy_block_size>
+      <<<heavy_block_count, heavy_block_size, 0, heavy_stream>>>(
+        heavy_items_beg_id,
+        make_span(heavy_items_vertex_ids),
+        make_span(heavy_items_pseudo_block_ids),
+        heavy_work_per_block,
+        view,
+        input,
+        tmp_out);
+    finalize_spmv_kernel<i_t, f_t, view_t, functor_t><<<num_heavy_items, 32, 0, heavy_stream>>>(
       heavy_items_beg_id, make_span(heavy_items_block_segments), tmp_out, view, output, functor);
   }
 }

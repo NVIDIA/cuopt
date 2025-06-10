@@ -17,6 +17,7 @@
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
+#include <utilities/event_handler.cuh>
 
 #include <utilities/macros.cuh>
 
@@ -69,6 +70,11 @@ class spmv_t {
   static constexpr i_t heavy_degree_cutoff = 16 * 1024;
   problem_t<i_t, f_t>* pb;
   const raft::handle_t* handle_ptr;
+  rmm::cuda_stream heavy_stream;
+  event_handler_t ax_done;
+  event_handler_t aty_done;
+  event_handler_t fork_cnst_heavy_stream;
+  event_handler_t fork_vars_heavy_stream;
 
   i_t n_variables;
   i_t n_constraints;
@@ -141,8 +147,15 @@ void spmv_t<i_t, f_t>::Ax(rmm::cuda_stream_view stream,
   // std::cerr<<"cnst_sub_warp_count "<<cnst_sub_warp_count<<"\n";
   // std::cerr<<"warp_cnst_id_offsets.back() "<<warp_cnst_id_offsets.back_element(stream)<<"\n";
   // std::cerr<<"cnst_med_block_count "<<cnst_med_block_count<<"\n";
-  std::cout << "num_blocks_heavy_cnst " << num_blocks_heavy_cnst << "\n";
+  // std::cout << "num_blocks_heavy_cnst " << num_blocks_heavy_cnst << "\n";
+  if (num_blocks_heavy_cnst != 0) {
+    // cudaEventRecord(fork_cnst_heavy_stream, stream);
+    // cudaStreamWaitEvent(heavy_stream, fork_cnst_heavy_stream);
+    fork_cnst_heavy_stream.record(stream);
+    fork_cnst_heavy_stream.stream_wait(heavy_stream);
+  }
   spmv_call(stream,
+            heavy_stream,
             get_A_view(),
             input,
             output,
@@ -161,6 +174,12 @@ void spmv_t<i_t, f_t>::Ax(rmm::cuda_stream_view stream,
             heavy_cnst_pseudo_block_ids,
             heavy_cnst_block_segments,
             functor);
+  if (num_blocks_heavy_cnst != 0) {
+    // cudaEventRecord(ax_done, heavy_stream);
+    // cudaStreamWaitEvent(stream, ax_done);
+    ax_done.record(heavy_stream);
+    ax_done.stream_wait(stream);
+  }
   // std::cerr<<"spmv_call done\n";
 }
 
@@ -172,8 +191,15 @@ void spmv_t<i_t, f_t>::ATy(rmm::cuda_stream_view stream,
                            functor_t functor)
 {
   raft::common::nvtx::range scope("aty");
-  std::cout << "num_blocks_heavy_vars " << num_blocks_heavy_vars << "\n";
+  // std::cout << "num_blocks_heavy_vars " << num_blocks_heavy_vars << "\n";
+  if (num_blocks_heavy_vars != 0) {
+    // cudaEventRecord(fork_vars_heavy_stream, stream);
+    // cudaStreamWaitEvent(heavy_stream, fork_vars_heavy_stream);
+    fork_vars_heavy_stream.record(stream);
+    fork_vars_heavy_stream.stream_wait(heavy_stream);
+  }
   spmv_call(stream,
+            heavy_stream,
             get_AT_view(),
             input,
             output,
@@ -192,6 +218,12 @@ void spmv_t<i_t, f_t>::ATy(rmm::cuda_stream_view stream,
             heavy_vars_pseudo_block_ids,
             heavy_vars_block_segments,
             functor);
+  if (num_blocks_heavy_vars != 0) {
+    // cudaEventRecord(aty_done, heavy_stream);
+    // cudaStreamWaitEvent(stream, aty_done);
+    aty_done.record(heavy_stream);
+    aty_done.stream_wait(stream);
+  }
 }
 
 }  // namespace cuopt::linear_programming::detail

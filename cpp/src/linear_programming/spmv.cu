@@ -142,52 +142,61 @@ void spmv_t<i_t, f_t>::setup_lb_meta()
   stream.synchronize();
 
   // std::cerr<<"cnst create_heavy_item_block_segments\n";
-  num_blocks_heavy_cnst = create_heavy_item_block_segments(stream,
-                                                           heavy_cnst_vertex_ids,
-                                                           heavy_cnst_pseudo_block_ids,
-                                                           heavy_cnst_block_segments,
-                                                           heavy_degree_cutoff,
-                                                           cnst_bin_offsets,
-                                                           offsets);
+  std::tie(num_blocks_heavy_cnst, cnst_heavy_beg_id) =
+    create_heavy_item_block_segments(stream,
+                                     heavy_cnst_vertex_ids,
+                                     heavy_cnst_pseudo_block_ids,
+                                     heavy_cnst_block_segments,
+                                     heavy_degree_cutoff,
+                                     cnst_bin_offsets,
+                                     offsets);
 
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
   // std::cerr<<"vars create_heavy_item_block_segments\n";
-  num_blocks_heavy_vars = create_heavy_item_block_segments(stream,
-                                                           heavy_vars_vertex_ids,
-                                                           heavy_vars_pseudo_block_ids,
-                                                           heavy_vars_block_segments,
-                                                           heavy_degree_cutoff,
-                                                           vars_bin_offsets,
-                                                           reverse_offsets);
+  std::tie(num_blocks_heavy_vars, vars_heavy_beg_id) =
+    create_heavy_item_block_segments(stream,
+                                     heavy_vars_vertex_ids,
+                                     heavy_vars_pseudo_block_ids,
+                                     heavy_vars_block_segments,
+                                     heavy_degree_cutoff,
+                                     vars_bin_offsets,
+                                     reverse_offsets);
+  if (num_blocks_heavy_cnst && num_blocks_heavy_vars) {
+    std::cout << "2 heavy\n";
+  } else if (num_blocks_heavy_cnst) {
+    std::cout << "1 cnst heavy\n";
+  } else if (num_blocks_heavy_vars) {
+    std::cout << "1 vars heavy\n";
+  }
 
   tmp_ax.resize(num_blocks_heavy_cnst, stream);
   tmp_aty.resize(num_blocks_heavy_vars, stream);
 
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
   // std::cerr<<"cnst block_meta\n";
-  i_t w_t_r = 4;
-  std::tie(cnst_sub_warp_count, cnst_med_block_count, cnst_heavy_beg_id) =
-    block_meta(stream,
-               warp_cnst_offsets,
-               warp_cnst_id_offsets,
-               block_cnst_offsets,
-               block_cnst_id_offsets,
-               cnst_bin_offsets,
-               w_t_r,
-               heavy_degree_cutoff,
-               true);
+  i_t w_t_r                                           = 4;
+  std::tie(cnst_sub_warp_count, cnst_med_block_count) = block_meta(stream,
+                                                                   cnst_heavy_beg_id,
+                                                                   warp_cnst_offsets,
+                                                                   warp_cnst_id_offsets,
+                                                                   block_cnst_offsets,
+                                                                   block_cnst_id_offsets,
+                                                                   cnst_bin_offsets,
+                                                                   w_t_r,
+                                                                   heavy_degree_cutoff,
+                                                                   true);
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
   // std::cerr<<"vars block_meta\n";
-  std::tie(vars_sub_warp_count, vars_med_block_count, vars_heavy_beg_id) =
-    block_meta(stream,
-               warp_vars_offsets,
-               warp_vars_id_offsets,
-               block_vars_offsets,
-               block_vars_id_offsets,
-               vars_bin_offsets,
-               w_t_r,
-               heavy_degree_cutoff,
-               true);
+  std::tie(vars_sub_warp_count, vars_med_block_count) = block_meta(stream,
+                                                                   vars_heavy_beg_id,
+                                                                   warp_vars_offsets,
+                                                                   warp_vars_id_offsets,
+                                                                   block_vars_offsets,
+                                                                   block_vars_id_offsets,
+                                                                   vars_bin_offsets,
+                                                                   w_t_r,
+                                                                   heavy_degree_cutoff,
+                                                                   true);
 
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
   // std::cerr<<"lb meta setup\n";
