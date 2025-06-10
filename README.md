@@ -9,8 +9,6 @@ The core engine is written in C++ and wrapped with a C API, Python API and Serve
 
 For the latest stable version ensure you are on the `main` branch.
 
-This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) project.
-
 ## Supported APIs
 
 cuOpt supports the following APIs:
@@ -28,6 +26,8 @@ cuOpt supports the following APIs:
     - Linear Programming (LP)
     - Mixed Integer Linear Programming (MILP)
     - Routing (TSP, VRP, and PDP)
+ 
+This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) project.
 
 ## Installation
 
