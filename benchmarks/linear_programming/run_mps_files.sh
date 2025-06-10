@@ -149,7 +149,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 --path MPS_DIR --ngpus GPU_COUNT --time-limit TIME_LIMIT --output-dir OUTPUT_DIR --relaxation"
+            print_help
             exit 1
             ;;
     esac
@@ -157,7 +157,7 @@ done
 # Set defaults and validate required arguments
 if [[ -z "$MPS_DIR" ]]; then
     echo "Missing required argument: --path MPS_DIR"
-    echo "Usage: $0 --path MPS_DIR [--ngpus GPU_COUNT] [--time-limit TIME_LIMIT] [--output-dir OUTPUT_DIR] [--relaxation]"
+    print_help
     exit 1
 fi
 
