@@ -27,6 +27,13 @@
 #   --ngpus       : Number of GPUs to use (default: 1)
 #   --time-limit  : Time limit in seconds for each problem (default: 360)
 #   --output-dir  : Directory to store output log files (default: current directory)
+#   --relaxation  : Run relaxation instead of solving the MIP
+#   --heuristics-only : Run heuristics only
+#   --write-log-file : Write log file
+#   --num-cpu-threads : Number of CPU threads to use
+#   --batch-num : Batch number
+#   --n-batches : Number of batches
+#   --log-to-console : Log to console
 #
 # Examples:
 #   # Run all MPS files in /data/lp using 2 GPUs with 1 hour time limit
@@ -61,6 +68,12 @@ Optional Arguments:
     --time-limit N      Time limit in seconds for each problem (default: 360)
     --output-dir PATH   Directory to store output log files (default: current directory)
     --relaxation       Run relaxation instead of solving the MIP
+    --heuristics-only  Run heuristics only
+    --write-log-file   Write log file
+    --num-cpu-threads  Number of CPU threads to use
+    --batch-num        Batch number
+    --n-batches        Number of batches
+    --log-to-console   Log to console
     -h, --help         Show this help message and exit
 
 Examples:
