@@ -167,7 +167,7 @@ if [ "$doservertest" -eq 1 ]; then
     requestid=$(echo "$cli_test" | tail -1)
     requestid=$(echo ${requestid#cuopt_sh } | sed "s/-p $CUOPT_SERVER_PORT//g" | tr -d "'" | tr -d " ")
     run_cli_test "'status': 1" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT $requestid -k
-    run_cli_test "'status': 1" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/good_lp.json -wid $requestid
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/good_lp.json -wid $requestid
 
     # Success, larger problem, result comes back in results dir
     run_cli_test "'result_file': 'data.result'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/service_data_200r.json -o data.result
