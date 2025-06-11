@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 class ThinClientSolution:
     """
     A container of LP solver output
@@ -307,9 +308,9 @@ class ThinClientSolution:
         """
         Returns one of the problem category from ProblemCategory
 
-        LP 
+        LP
         MIP
-        IP 
+        IP
         """
 
         return self.problem_category

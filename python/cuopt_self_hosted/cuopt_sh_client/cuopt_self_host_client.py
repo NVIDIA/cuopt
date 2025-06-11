@@ -31,8 +31,8 @@ import requests
 import solution
 
 from . import _version
-from .thin_client_solver_settings import ThinClientSolverSettings
 from .thin_client_solution import ThinClientSolution
+from .thin_client_solver_settings import ThinClientSolverSettings
 
 msgpack_numpy.patch()
 
