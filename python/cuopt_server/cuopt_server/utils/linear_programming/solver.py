@@ -44,7 +44,11 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_RELATIVE_PRIMAL_TOLERANCE,
     CUOPT_TIME_LIMIT,
 )
-from cuopt.linear_programming.solver.solver_wrapper import ErrorStatus
+from cuopt.linear_programming.solver.solver_wrapper import (
+    ErrorStatus,
+    LPTerminationStatus,
+    MILPTerminationStatus,
+)
 from cuopt.utilities import (
     InputRuntimeError,
     InputValidationError,
@@ -333,10 +337,11 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
         solution = {}
         status = sol.get_termination_status()
         if status in (
-            "Optimal",
-            "IterationLimit",
-            "TimeLimit",
-            "FeasibleFound",
+            LPTerminationStatus.Optimal,
+            LPTerminationStatus.IterationLimit,
+            LPTerminationStatus.TimeLimit,
+            MILPTerminationStatus.Optimal,
+            MILPTerminationStatus.FeasibleFound,
         ):
 
             primal_solution = get_if_attribute_is_valid_else_none(
@@ -390,7 +395,7 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
             "status": status,
             "solution": solution,
         }
-        notes.append(sol.get_termination_status())
+        notes.append(sol.get_termination_reason())
         return res
 
     try:

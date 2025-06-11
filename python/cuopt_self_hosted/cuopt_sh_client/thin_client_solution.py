@@ -13,65 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from cuopt.linear_programming.solver.solver_wrapper import (
-    LPTerminationStatus,
-    MILPTerminationStatus,
-    ProblemCategory,
-)
-
-
-class PDLPWarmStartData:
-    def __init__(
-        self,
-        current_primal_solution,
-        current_dual_solution,
-        initial_primal_average,
-        initial_dual_average,
-        current_ATY,
-        sum_primal_solutions,
-        sum_dual_solutions,
-        last_restart_duality_gap_primal_solution,
-        last_restart_duality_gap_dual_solution,
-        initial_primal_weight,
-        initial_step_size,
-        total_pdlp_iterations,
-        total_pdhg_iterations,
-        last_candidate_kkt_score,
-        last_restart_kkt_score,
-        sum_solution_weight,
-        iterations_since_last_restart,
-    ):
-        self.current_primal_solution = current_primal_solution
-        self.current_dual_solution = current_dual_solution
-        self.initial_primal_average = initial_primal_average
-        self.initial_dual_average = initial_dual_average
-        self.current_ATY = current_ATY
-        self.sum_primal_solutions = sum_primal_solutions
-        self.sum_dual_solutions = sum_dual_solutions
-        self.last_restart_duality_gap_primal_solution = (
-            last_restart_duality_gap_primal_solution
-        )
-        self.last_restart_duality_gap_dual_solution = (
-            last_restart_duality_gap_dual_solution
-        )
-        self.initial_primal_weight = initial_primal_weight
-        self.initial_step_size = initial_step_size
-        self.total_pdlp_iterations = total_pdlp_iterations
-        self.total_pdhg_iterations = total_pdhg_iterations
-        self.last_candidate_kkt_score = last_candidate_kkt_score
-        self.last_restart_kkt_score = last_restart_kkt_score
-        self.sum_solution_weight = sum_solution_weight
-        self.iterations_since_last_restart = iterations_since_last_restart
-
-
-class Solution:
+class ThinClientSolution:
     """
     A container of LP solver output
 
     Parameters
     ----------
-    problem_category : int
-        Whether it is a LP-0, MIP-1 or IP-2 solution
+    problem_category : str
+        Whether it is a LP, MIP or IP solution
     vars : Dict[str, float64]
         Dictionary mapping each variable (name) to its value.
     primal_solution : numpy.array
@@ -83,8 +32,8 @@ class Solution:
         Note: Applicable to only LP
         The reduced cost.
         It contains the dual multipliers for the linear constraints.
-    termination_status: Integer
-        Termination status value.
+    termination_status: str
+        Termination status .
     primal_residual: Float64
         L2 norm of the primal residual: measurement of the primal infeasibility
     dual_residual: Float64
@@ -140,24 +89,7 @@ class Solution:
         primal_solution=None,
         dual_solution=None,
         reduced_cost=None,
-        current_primal_solution=None,
-        current_dual_solution=None,
-        initial_primal_average=None,
-        initial_dual_average=None,
-        current_ATY=None,
-        sum_primal_solutions=None,
-        sum_dual_solutions=None,
-        last_restart_duality_gap_primal_solution=None,
-        last_restart_duality_gap_dual_solution=None,
-        initial_primal_weight=0.0,
-        initial_step_size=0.0,
-        total_pdlp_iterations=0,
-        total_pdhg_iterations=0,
-        last_candidate_kkt_score=0.0,
-        last_restart_kkt_score=0.0,
-        sum_solution_weight=0.0,
-        iterations_since_last_restart=0,
-        termination_status=0,
+        termination_status="Error",
         error_status=0,
         error_message="",
         primal_residual=0.0,
@@ -179,26 +111,7 @@ class Solution:
         self.problem_category = problem_category
         self.primal_solution = primal_solution
         self.dual_solution = dual_solution
-        self.pdlp_warm_start_data = PDLPWarmStartData(
-            current_primal_solution,
-            current_dual_solution,
-            initial_primal_average,
-            initial_dual_average,
-            current_ATY,
-            sum_primal_solutions,
-            sum_dual_solutions,
-            last_restart_duality_gap_primal_solution,
-            last_restart_duality_gap_dual_solution,
-            initial_primal_weight,
-            initial_step_size,
-            total_pdlp_iterations,
-            total_pdhg_iterations,
-            last_candidate_kkt_score,
-            last_restart_kkt_score,
-            sum_solution_weight,
-            iterations_since_last_restart,
-        )
-        self._set_termination_status(termination_status)
+        self.termination_status = termination_status
         self.error_status = error_status
         self.error_message = error_message
 
@@ -224,12 +137,6 @@ class Solution:
             "num_nodes": num_nodes,
             "num_simplex_iterations": num_simplex_iterations,
         }
-
-    def _set_termination_status(self, ts):
-        if self.problem_category == ProblemCategory.LP:
-            self.termination_status = LPTerminationStatus(ts)
-        else:
-            self.termination_status = MILPTerminationStatus(ts)
 
     def raise_if_milp_solution(self, function_name):
         if self.problem_category in (ProblemCategory.MIP, ProblemCategory.IP):
@@ -273,15 +180,9 @@ class Solution:
 
     def get_termination_status(self):
         """
-        Returns the termination status as per TerminationReason.
+        Returns the termination status.
         """
         return self.termination_status
-
-    def get_termination_reason(self):
-        """
-        Returns the termination reason as per TerminationReason.
-        """
-        return self.termination_status.name
 
     def get_error_status(self):
         """
@@ -406,9 +307,9 @@ class Solution:
         """
         Returns one of the problem category from ProblemCategory
 
-        LP  - 0
-        MIP - 1
-        IP  - 2
+        LP 
+        MIP
+        IP 
         """
 
         return self.problem_category

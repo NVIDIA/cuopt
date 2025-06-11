@@ -27,3 +27,5 @@ from .thin_client_solver_settings import (
     SolverMethod,
     ThinClientSolverSettings,
 )
+
+from .thin_client_solution import ThinClientSolution
