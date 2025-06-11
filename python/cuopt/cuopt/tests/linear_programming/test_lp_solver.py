@@ -77,7 +77,7 @@ def test_solver():
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
 
     solution = solver.Solve(data_model_obj, settings)
-    assert solution.get_termination_status() == "Optimal"
+    assert solution.get_termination_reason() == "Optimal"
     assert solution.get_primal_solution()[0] == pytest.approx(0.0)
     assert solution.get_lp_stats()["primal_residual"] == pytest.approx(0.0)
     assert solution.get_lp_stats()["dual_residual"] == pytest.approx(0.0)
@@ -95,7 +95,7 @@ def test_parser_and_solver():
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-2)
     solution = solver.Solve(data_model_obj, settings)
-    assert solution.get_termination_status() == "Optimal"
+    assert solution.get_termination_reason() == "Optimal"
 
 
 def test_very_low_tolerance():
@@ -115,9 +115,7 @@ def test_very_low_tolerance():
 
     expected_time = 69
 
-    assert (
-        solution.get_termination_status() == LPTerminationStatus.Optimal.name
-    )
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
     assert solution.get_primal_objective() == pytest.approx(-464.7531)
     # Rougly up to 5 times slower on V100
     assert solution.get_solve_time() <= expected_time * 5
@@ -138,8 +136,7 @@ def test_iteration_limit_solver():
 
     solution = solver.Solve(data_model_obj, settings)
     assert (
-        solution.get_termination_status()
-        == LPTerminationStatus.IterationLimit.name
+        solution.get_termination_status() == LPTerminationStatus.IterationLimit
     )
     # Check we don't return empty (all 0) solution
     assert solution.get_primal_objective() != 0.0
@@ -162,9 +159,7 @@ def test_time_limit_solver():
     settings.set_parameter(CUOPT_ITERATION_LIMIT, 99999999)
 
     solution = solver.Solve(data_model_obj, settings)
-    assert (
-        solution.get_termination_status() == LPTerminationStatus.TimeLimit.name
-    )
+    assert solution.get_termination_status() == LPTerminationStatus.TimeLimit
     # Check that around 200 ms has passed with some tolerance
     assert solution.get_solve_time() <= (time_limit_seconds * 10) * 1000
     # Not all 0
@@ -606,9 +601,7 @@ def test_dual_simplex():
 
     solution = solver.Solve(data_model_obj, settings)
 
-    assert (
-        solution.get_termination_status() == LPTerminationStatus.Optimal.name
-    )
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
     assert solution.get_primal_objective() == pytest.approx(-464.7531)
     assert not solution.get_solved_by_pdlp()
 
@@ -702,9 +695,7 @@ def test_write_files():
 
     solution = solver.Solve(afiro, settings)
 
-    assert (
-        solution.get_termination_status() == LPTerminationStatus.Optimal.name
-    )
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
     assert solution.get_primal_objective() == pytest.approx(-464.7531)
 
     assert os.path.isfile("afiro.sol")
