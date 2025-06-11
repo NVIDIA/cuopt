@@ -515,8 +515,7 @@ Use a datamodel generated from mps file as input; this yields a solution object 
     solution_obj = solution["response"]["solver_response"]["solution"]
 
     # Check Termination Reason
-    # For more detail on termination reasons: checkout `Solution.get_termination_reason()`
-    print("Termination Reason: (1 is Optimal)")
+    print("Termination Reason: ")
     print(solution_status)
 
     # Check found objective value

@@ -13,52 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from enum import IntEnum
-
-
-# TODO: Remove this once we have a way to not include main cuOpt
-# libs in in thin client
-class ProblemCategory(IntEnum):
-    """
-    Problem category enum
-    """
-
-    LP = 0
-    MIP = 1
-    IP = 2
-
-
-# TODO: Remove this once we have a way to not include main cuOpt
-# libs in in thin client
-class LPTerminationStatus(IntEnum):
-    """
-    LP termination status enum
-    """
-
-    NoTermination = 0
-    NumericalError = 6
-    Optimal = 1
-    PrimalInfeasible = 2
-    DualInfeasible = 3
-    IterationLimit = 4
-    TimeLimit = 5
-    PrimalFeasible = 7
-
-
-# TODO: Remove this once we have a way to not include main cuOpt
-# libs in in thin client
-class MILPTerminationStatus(IntEnum):
-    """
-    MILP termination status enum
-    """
-
-    NoTermination = 0
-    Optimal = 1
-    FeasibleFound = 8
-    Infeasible = 2
-    Unbounded = 3
-    TimeLimit = 5
-
 
 class PDLPWarmStartData:
     def __init__(
@@ -110,7 +64,7 @@ class Solution:
 
     Parameters
     ----------
-    problem_category : int
+    problem_category : str
         Whether it is a LP-0, MIP-1 or IP-2 solution
     vars : Dict[str, float64]
         Dictionary mapping each variable (name) to its value.
@@ -123,8 +77,8 @@ class Solution:
         Note: Applicable to only LP
         The reduced cost.
         It contains the dual multipliers for the linear constraints.
-    termination_status: Integer
-        Termination status value.
+    termination_status: str
+        Termination status.
     primal_residual: Float64
         L2 norm of the primal residual: measurement of the primal infeasibility
     dual_residual: Float64
@@ -197,7 +151,7 @@ class Solution:
         last_restart_kkt_score=0.0,
         sum_solution_weight=0.0,
         iterations_since_last_restart=0,
-        termination_status=0,
+        termination_status="Error",
         error_status=0,
         error_message="",
         primal_residual=0.0,
@@ -238,7 +192,7 @@ class Solution:
             sum_solution_weight,
             iterations_since_last_restart,
         )
-        self._set_termination_status(termination_status)
+        self.termination_status = termination_status
         self.error_status = error_status
         self.error_message = error_message
 
@@ -265,20 +219,14 @@ class Solution:
             "num_simplex_iterations": num_simplex_iterations,
         }
 
-    def _set_termination_status(self, ts):
-        if self.problem_category == ProblemCategory.LP:
-            self.termination_status = LPTerminationStatus(ts)
-        else:
-            self.termination_status = MILPTerminationStatus(ts)
-
     def raise_if_milp_solution(self, function_name):
-        if self.problem_category in (ProblemCategory.MIP, ProblemCategory.IP):
+        if self.problem_category in ("MIP", "IP"):
             raise AttributeError(
                 f"Attribute {function_name} is not supported for milp solution"
             )
 
     def raise_if_lp_solution(self, function_name):
-        if self.problem_category == ProblemCategory.LP:
+        if self.problem_category == "LP":
             raise AttributeError(
                 f"Attribute {function_name} is not supported for lp solution"
             )
@@ -313,15 +261,9 @@ class Solution:
 
     def get_termination_status(self):
         """
-        Returns the termination status as per TerminationReason.
+        Returns the termination status.
         """
         return self.termination_status
-
-    def get_termination_reason(self):
-        """
-        Returns the termination reason as per TerminationReason.
-        """
-        return self.termination_status.name
 
     def get_error_status(self):
         """
@@ -446,9 +388,9 @@ class Solution:
         """
         Returns one of the problem category from ProblemCategory
 
-        LP  - 0
-        MIP - 1
-        IP  - 2
+        LP
+        MIP
+        IP
         """
 
         return self.problem_category

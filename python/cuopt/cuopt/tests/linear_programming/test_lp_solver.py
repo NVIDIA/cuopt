@@ -77,7 +77,7 @@ def test_solver():
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
 
     solution = solver.Solve(data_model_obj, settings)
-    assert solution.get_termination_reason() == "Optimal"
+    assert solution.get_termination_status() == "Optimal"
     assert solution.get_primal_solution()[0] == pytest.approx(0.0)
     assert solution.get_lp_stats()["primal_residual"] == pytest.approx(0.0)
     assert solution.get_lp_stats()["dual_residual"] == pytest.approx(0.0)
@@ -95,7 +95,7 @@ def test_parser_and_solver():
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-2)
     solution = solver.Solve(data_model_obj, settings)
-    assert solution.get_termination_reason() == "Optimal"
+    assert solution.get_termination_status() == "Optimal"
 
 
 def test_very_low_tolerance():
