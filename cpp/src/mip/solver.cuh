@@ -16,10 +16,10 @@
  */
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
+#include <cuopt/linear_programming/mip/solver_stats.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 #include <mip/problem/problem.cuh>
 #include <mip/solver_context.cuh>
-#include <mip/solver_stats.cuh>
 #include <utilities/timer.hpp>
 #pragma once
 

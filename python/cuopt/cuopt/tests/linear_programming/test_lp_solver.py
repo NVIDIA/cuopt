@@ -161,7 +161,7 @@ def test_time_limit_solver():
     solution = solver.Solve(data_model_obj, settings)
     assert solution.get_termination_status() == LPTerminationStatus.TimeLimit
     # Check that around 200 ms has passed with some tolerance
-    assert solution.get_solve_time() <= (time_limit_seconds * 10) * 1000
+    assert solution.get_solve_time() <= (time_limit_seconds * 10)
     # Not all 0
     assert solution.get_primal_objective() != 0.0
     assert np.any(solution.get_primal_solution())
