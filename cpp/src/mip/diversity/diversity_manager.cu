@@ -351,7 +351,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   ls.lp_optimal_exists = true;
   if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
     // get lp user objective and pass it to set_new_user_bound
-    set_new_user_bound(problem_ptr->get_user_obj_from_solver_obj(lp_result.get_objective_value()));
+    set_new_user_bound(lp_result.get_objective_value());
   } else if (lp_result.get_termination_status() == pdlp_termination_status_t::PrimalInfeasible) {
     // PDLP's infeasibility detection isn't an exact method and might be subject to false positives.
     // Issue a warning, and continue solving.

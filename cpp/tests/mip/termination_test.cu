@@ -45,9 +45,8 @@
 
 namespace cuopt::linear_programming::test {
 
-static std::pair<mip_termination_status_t, double> test_mps_file(std::string test_instance,
-                                                                 bool heuristics_only = true,
-                                                                 double time_limit    = 10)
+static std::tuple<mip_termination_status_t, double, double> test_mps_file(
+  std::string test_instance, bool heuristics_only = true, double time_limit = 10)
 {
   const raft::handle_t handle_{};
 
@@ -59,58 +58,69 @@ static std::pair<mip_termination_status_t, double> test_mps_file(std::string tes
   settings.time_limit                  = time_limit;
   settings.heuristics_only             = heuristics_only;
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
-  return std::make_pair(solution.get_termination_status(), solution.get_objective_value());
+  return std::make_tuple(solution.get_termination_status(),
+                         solution.get_objective_value(),
+                         solution.get_solution_bound());
 }
 
 TEST(termination_status, trivial_presolve_optimality_test)
 {
-  auto [termination_status, obj_val] = test_mps_file("mip/trivial-presolve-optimality.mps");
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/trivial-presolve-optimality.mps");
   EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
   EXPECT_EQ(obj_val, -1);
 }
 
 TEST(termination_status, presolve_optimality_test)
 {
-  auto [termination_status, obj_val] = test_mps_file("mip/sudoku.mps");
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/sudoku.mps");
   EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
   EXPECT_EQ(obj_val, 0);
 }
 
 TEST(termination_status, presolve_infeasible_test)
 {
-  auto [termination_status, obj_val] = test_mps_file("mip/presolve-infeasible.mps");
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/presolve-infeasible.mps");
   EXPECT_EQ(termination_status, mip_termination_status_t::Infeasible);
 }
 
 TEST(termination_status, feasible_found_test)
 {
-  auto [termination_status, obj_val] = test_mps_file("mip/gen-ip054.mps");
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/gen-ip054.mps");
   EXPECT_EQ(termination_status, mip_termination_status_t::FeasibleFound);
 }
 
 TEST(termination_status, timeout_test)
 {
-  auto [termination_status, obj_val] = test_mps_file("mip/stein9inf.mps");
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/stein9inf.mps");
   EXPECT_EQ(termination_status, mip_termination_status_t::TimeLimit);
 }
 
 TEST(termination_status, optimality_test)
 {
-  auto [termination_status, obj_val] = test_mps_file("mip/bb_optimality.mps", false);
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/bb_optimality.mps", false);
   EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
   EXPECT_EQ(obj_val, 2);
+}
+
+// Ensure the lower bound on maximization problems when BB times out has the right sign
+TEST(termination_status, lower_bound_bb_timeout)
+{
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/cod105_max.mps", false, 0.5);
+  EXPECT_EQ(termination_status, mip_termination_status_t::FeasibleFound);
+  EXPECT_EQ(obj_val, 12);
+  EXPECT_GE(lb, obj_val);
 }
 
 TEST(termination_status, bb_infeasible_test)
 {
   // First, check that presolve doesn't reduce the problem to infeasibility
   {
-    auto [termination_status, obj_val] = test_mps_file("mip/stein9inf.mps", true, 1);
+    auto [termination_status, obj_val, lb] = test_mps_file("mip/stein9inf.mps", true, 1);
     EXPECT_EQ(termination_status, mip_termination_status_t::TimeLimit);
   }
   // Ensure that B&B proves the MIP infeasible
   {
-    auto [termination_status, obj_val] = test_mps_file("mip/stein9inf.mps", false, 30);
+    auto [termination_status, obj_val, lb] = test_mps_file("mip/stein9inf.mps", false, 30);
     EXPECT_EQ(termination_status, mip_termination_status_t::Infeasible);
   }
 }

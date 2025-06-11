@@ -118,9 +118,9 @@ def test_sample_lp(cuoptproc):  # noqa
 @pytest.mark.parametrize(
     "maximize, scaling, expected_status, heuristics_only",
     [
-        (True, True, MILPTerminationStatus.FeasibleFound, True),
+        (True, True, MILPTerminationStatus.Optimal, True),
         (False, True, MILPTerminationStatus.Optimal, False),
-        (True, False, MILPTerminationStatus.FeasibleFound, True),
+        (True, False, MILPTerminationStatus.Optimal, True),
         (False, False, MILPTerminationStatus.Optimal, False),
     ],
 )

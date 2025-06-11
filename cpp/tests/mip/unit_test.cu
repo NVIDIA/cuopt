@@ -215,12 +215,11 @@ INSTANTIATE_TEST_SUITE_P(
   MILPTests,
   MILPTestParams,
   testing::Values(
-    std::make_tuple(
-      true, true, true, cuopt::linear_programming::mip_termination_status_t::FeasibleFound),
+    std::make_tuple(true, true, true, cuopt::linear_programming::mip_termination_status_t::Optimal),
     std::make_tuple(
       false, true, false, cuopt::linear_programming::mip_termination_status_t::Optimal),
     std::make_tuple(
-      true, false, true, cuopt::linear_programming::mip_termination_status_t::FeasibleFound),
+      true, false, true, cuopt::linear_programming::mip_termination_status_t::Optimal),
     std::make_tuple(
       false, false, false, cuopt::linear_programming::mip_termination_status_t::Optimal)));
 

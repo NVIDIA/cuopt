@@ -26,6 +26,8 @@ cuOpt supports the following APIs:
     - Linear Programming (LP)
     - Mixed Integer Linear Programming (MILP)
     - Routing (TSP, VRP, and PDP)
+ 
+This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) project.
 
 ## Installation
 

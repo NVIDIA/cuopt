@@ -388,7 +388,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                "Sizes for vectors related to the constraints are not the same.");
 
   // Check the validity of bounds
-  cuopt_assert(
+  cuopt_expects(
     thrust::all_of(handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator<i_t>(0),
                    thrust::make_counting_iterator<i_t>(n_variables),
@@ -396,8 +396,9 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                     variable_upper_bounds = variable_upper_bounds.data()] __device__(i_t idx) {
                      return variable_lower_bounds[idx] <= variable_upper_bounds[idx];
                    }),
+    error_type_t::ValidationError,
     "Variable bounds are invalid");
-  cuopt_assert(
+  cuopt_expects(
     thrust::all_of(handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator<i_t>(0),
                    thrust::make_counting_iterator<i_t>(n_constraints),
@@ -405,6 +406,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                     constraint_upper_bounds = constraint_upper_bounds.data()] __device__(i_t idx) {
                      return constraint_lower_bounds[idx] <= constraint_upper_bounds[idx];
                    }),
+    error_type_t::ValidationError,
     "Constraints bounds are invalid");
 
   if (check_mip_related_data) {

@@ -358,7 +358,7 @@ void bound_presolve_t<i_t, f_t>::calc_and_set_updated_constraint_bounds(problem_
                     min_act = make_span(upd.min_activity),
                     max_act = make_span(upd.max_activity),
                     cnst_lb = make_span(pb.constraint_lower_bounds),
-                    cnst_ub = make_span(pb.constraint_upper_bounds)] __device__(i_t idx) -> i_t {
+                    cnst_ub = make_span(pb.constraint_upper_bounds)] __device__(i_t idx) {
                      auto min_a    = min_act[idx];
                      auto max_a    = max_act[idx];
                      auto c_lb     = cnst_lb[idx];

@@ -63,7 +63,7 @@ if __name__ == "__main__":
         # extract GPU id number from each line (looks like "GPU 0: ..."
         gpu_ids = [s.split(" ")[1][0:-1] for s in gpu_string]
 
-        # if for some reson the parse failed (nvidia-smi output changed)
+        # if for some reason the parse failed (nvidia-smi output changed)
         gpu_ids = [s for s in gpu_ids if s.isnumeric()]
     except Exception:
         gpu_string = None
@@ -391,7 +391,7 @@ if __name__ == "__main__":
         else:
             if gpu_count < 1:
                 gpu_count = 1
-                logging.warn("GPU count cannot be less than 1")
+                logging.warning("GPU count cannot be less than 1")
             if gpu_count < len(gpu_ids):
                 gpu_ids = gpu_ids[0:gpu_count]
 
