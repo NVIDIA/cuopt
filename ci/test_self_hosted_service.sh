@@ -166,7 +166,7 @@ if [ "$doservertest" -eq 1 ]; then
     run_cli_test "Check for status with the following command" cuopt_sh -s -c "$CLIENT_CERT" -p "$CUOPT_SERVER_PORT" -pt 0 ../../datasets/cuopt_service_data/good_lp.json -k
     requestid=$(echo "$cli_test" | tail -1)
     requestid=$(echo ${requestid#cuopt_sh } | sed "s/-p $CUOPT_SERVER_PORT//g" | tr -d "'" | tr -d " ")
-    run_cli_test "'status': 1" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT $requestid -k
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT $requestid -k
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/good_lp.json -wid $requestid
 
     # Success, larger problem, result comes back in results dir
