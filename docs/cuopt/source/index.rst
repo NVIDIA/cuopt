@@ -60,6 +60,16 @@ Command Line Interface (cuopt-cli)
 
    Command Line Interface Overview <cuopt-cli/index.rst>
 
+========================================
+Third-Party Modeling Languages
+========================================
+.. toctree::
+   :maxdepth: 4
+   :caption: Third-Party Modeling Languages
+   :name: Third-Party Modeling Languages
+
+   thirdparty_modeling_languages/index.rst 
+
 =============
 Resources
 =============

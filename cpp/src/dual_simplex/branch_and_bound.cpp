@@ -463,8 +463,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     global_variables::mutex_upper.unlock();
     // We should be done here
     uncrush_primal_solution(original_problem, original_lp, incumbent.x, solution.x);
-    solution.objective   = incumbent.objective;
-    solution.lower_bound = lower_bound;
+    solution.objective          = incumbent.objective;
+    solution.lower_bound        = lower_bound;
+    solution.nodes_explored     = 0;
+    solution.simplex_iterations = root_relax_soln.iterations;
     settings.log.printf("Optimal solution found at root node. Objective %.16e. Time %.2f.\n",
                         compute_user_objective(original_lp, root_objective),
                         toc(start_time));

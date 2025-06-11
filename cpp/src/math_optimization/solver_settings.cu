@@ -110,8 +110,10 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
   string_parameters = {
     {CUOPT_LOG_FILE,  &mip_settings.log_file, ""},
     {CUOPT_LOG_FILE,  &pdlp_settings.log_file, ""},
-    {CUOPT_SOL_FILE,  &mip_settings.sol_file, ""},
-    {CUOPT_SOL_FILE,  &pdlp_settings.sol_file, ""}
+    {CUOPT_SOLUTION_FILE,  &mip_settings.sol_file, ""},
+    {CUOPT_SOLUTION_FILE,  &pdlp_settings.sol_file, ""},
+    {CUOPT_USER_PROBLEM_FILE, &mip_settings.user_problem_file, ""},
+    {CUOPT_USER_PROBLEM_FILE, &pdlp_settings.user_problem_file, ""}
   };
   // clang-format on
 }

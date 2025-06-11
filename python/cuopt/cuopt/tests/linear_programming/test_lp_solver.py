@@ -34,7 +34,9 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_RELATIVE_DUAL_TOLERANCE,
     CUOPT_RELATIVE_GAP_TOLERANCE,
     CUOPT_RELATIVE_PRIMAL_TOLERANCE,
+    CUOPT_SOLUTION_FILE,
     CUOPT_TIME_LIMIT,
+    CUOPT_USER_PROBLEM_FILE,
 )
 from cuopt.linear_programming.solver.solver_wrapper import (
     ErrorStatus,
@@ -668,3 +670,39 @@ def test_bound_in_maximization():
     upper_bound = solution.get_milp_stats()["solution_bound"]
     assert upper_bound == pytest.approx(280, 1e-6)
     assert solution.get_primal_objective() == pytest.approx(280, 1e-6)
+
+
+def test_write_files():
+
+    file_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
+    )
+    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
+
+    settings = solver_settings.SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.DualSimplex)
+    settings.set_parameter(CUOPT_USER_PROBLEM_FILE, "afiro_out.mps")
+
+    solver.Solve(data_model_obj, settings)
+
+    assert os.path.isfile("afiro_out.mps")
+
+    afiro = cuopt_mps_parser.ParseMps("afiro_out.mps")
+    os.remove("afiro_out.mps")
+
+    settings.set_parameter(CUOPT_USER_PROBLEM_FILE, "")
+    settings.set_parameter(CUOPT_SOLUTION_FILE, "afiro.sol")
+
+    solution = solver.Solve(afiro, settings)
+
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
+    assert solution.get_primal_objective() == pytest.approx(-464.7531)
+
+    assert os.path.isfile("afiro.sol")
+
+    with open("afiro.sol") as f:
+        for line in f:
+            if "X01" in line:
+                assert float(line.split()[-1]) == pytest.approx(80)
+
+    os.remove("afiro.sol")

@@ -118,6 +118,10 @@ cuOpt supports the following APIs:
    - `Linear Programming (LP) - Server <cuopt-server/quick-start.html>`_
    - `Mixed Integer Linear Programming (MILP) - Server <cuopt-server/quick-start.html>`_
    - `Routing (TSP, VRP, and PDP) - Server <cuopt-server/quick-start.html>`_
+- Third-party modeling languages
+   - `AMPL <https://www.ampl.com/>`_
+   - `PuLP <https://pypi.org/project/PuLP/>`_
+
 
 ==================================
 Installation Options

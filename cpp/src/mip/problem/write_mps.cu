@@ -54,6 +54,8 @@ void problem_t<i_t, f_t>::write_as_mps(const std::string& path)
   // NAME section
   mps_file << "NAME          " << original_problem_ptr->get_problem_name() << "\n";
 
+  if (maximize) { mps_file << "OBJSENSE\n MAXIMIZE\n"; }
+
   // ROWS section
   mps_file << "ROWS\n";
   mps_file << " N  " << (objective_name.empty() ? "OBJ" : objective_name) << "\n";
@@ -86,7 +88,7 @@ void problem_t<i_t, f_t>::write_as_mps(const std::string& path)
     // Write objective coefficient if non-zero
     if (h_obj_coeffs[j] != 0.0) {
       mps_file << "    " << col_name << " " << (objective_name.empty() ? "OBJ" : objective_name)
-               << " " << h_obj_coeffs[j] << "\n";
+               << " " << (maximize ? -h_obj_coeffs[j] : h_obj_coeffs[j]) << "\n";
     }
 
     // Write constraint coefficients
@@ -146,7 +148,7 @@ void problem_t<i_t, f_t>::write_as_mps(const std::string& path)
         h_var_ub[j] == std::numeric_limits<f_t>::infinity()) {
       mps_file << " FR BOUND1    " << col_name << "\n";
     } else {
-      if (h_var_lb[j] != 0.0) {
+      if (h_var_lb[j] != 0.0 || h_obj_coeffs[j] == 0.0 || h_var_types[j] != var_t::CONTINUOUS) {
         if (h_var_lb[j] == -std::numeric_limits<f_t>::infinity()) {
           mps_file << " MI BOUND1    " << col_name << "\n";
         } else {
