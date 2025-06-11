@@ -54,7 +54,7 @@ def test_warmstart(cuoptproc):  # noqa
     )
     assert res.status_code == 200
     response = res.json()["response"]["solver_response"]
-    assert response["status"] == 1
+    assert response["status"] == "Optimal"
     solve_1_iter = response["solution"]["lp_statistics"]["nb_iterations"]
 
     settings.set_optimality_tolerance(1e-3)
