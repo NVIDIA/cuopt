@@ -28,7 +28,6 @@ import msgpack
 import msgpack_numpy
 import numpy as np
 import requests
-import solution
 
 from . import _version
 from .thin_client_solution import ThinClientSolution

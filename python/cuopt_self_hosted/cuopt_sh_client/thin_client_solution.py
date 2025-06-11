@@ -140,13 +140,13 @@ class ThinClientSolution:
         }
 
     def raise_if_milp_solution(self, function_name):
-        if self.problem_category in (ProblemCategory.MIP, ProblemCategory.IP):
+        if self.problem_category in ("MIP", "IP"):
             raise AttributeError(
                 f"Attribute {function_name} is not supported for milp solution"
             )
 
     def raise_if_lp_solution(self, function_name):
-        if self.problem_category == ProblemCategory.LP:
+        if self.problem_category == "LP":
             raise AttributeError(
                 f"Attribute {function_name} is not supported for lp solution"
             )
