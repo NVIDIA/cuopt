@@ -115,9 +115,9 @@ Normal mode response:
     {
         "response": {
             "solver_response": {
-                "status": 1,
+                "status": "Optimal",
                 "solution": {
-                    "problem_category": 0,
+                    "problem_category": "LP",
                     "primal_solution": [
                         1.8,
                         0.0
@@ -159,9 +159,9 @@ Batch mode response:
         "response": {
             "solver_response": [
                 {
-                    "status": 1,
+                    "status": "Optimal",
                     "solution": {
-                        "problem_category": 0,
+                        "problem_category": "LP",
                         "primal_solution": [
                             1.8,
                             0.0
@@ -188,9 +188,9 @@ Batch mode response:
                     }
                 },
                 {
-                    "status": 1,
+                    "status": "Optimal",
                     "solution": {
-                        "problem_category": 0,
+                        "problem_category": "LP",
                         "primal_solution": [
                             1.8,
                             0.0
@@ -294,9 +294,9 @@ The response would be as follows:
     {
         "response": {
             "solver_response": {
-                "status": 1,
+                "status": "Optimal",
                 "solution": {
-                    "problem_category": 0,
+                    "problem_category": "LP",
                     "primal_solution": [
                         1.8,
                         0.0
@@ -388,9 +388,9 @@ The response is:
     {
         "response": {
             "solver_response": {
-                "status": 1,
+                "status": "Optimal",
                 "solution": {
-                    "problem_category": 0,
+                    "problem_category": "LP",
                     "primal_solution": [
                         1.8,
                         0.0
@@ -624,9 +624,9 @@ Response is as follows:
     {
         "response": {
             "solver_response": {
-                "status": 1,
+                "status": "Optimal",
                 "solution": {
-                    "problem_category": 0,
+                    "problem_category": "LP",
                     "primal_solution": [1.8, 0.0],
                     "dual_solution": [-0.06666666666666668, 0.0],
                     "primal_objective": -0.36000000000000004,
