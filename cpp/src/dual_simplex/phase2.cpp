@@ -1359,7 +1359,7 @@ dual::status_t dual_phase2(i_t phase,
                                                    nonbasic_entering_index);
     } else if (bound_flip_ratio) {
       f_t bfrt_start = tic();
-#if 0
+#if 1
       f_t slope = direction == 1 ? (lp.lower[leaving_index] - x[leaving_index])
                              : (x[leaving_index] - lp.upper[leaving_index]);
       bound_flipping_ratio_test_t<i_t, f_t> bfrt(settings, start_time, m, n, slope, lp.lower, lp.upper, vstatus, nonbasic_list, z, delta_z);

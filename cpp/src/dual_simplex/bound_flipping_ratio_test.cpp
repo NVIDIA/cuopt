@@ -34,7 +34,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_breakpoints(std::vector<i_t>&
   const f_t dual_tol     = settings_.dual_tol / 10;
 
   i_t idx = 0;
-  while (idx == 0 && pivot_tol > 1e-12) {
     for (i_t k = 0; k < n - m; ++k) {
       const i_t j = nonbasic_list_[k];
       if (vstatus_[j] == variable_status_t::NONBASIC_FIXED) { continue; }
@@ -51,8 +50,6 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_breakpoints(std::vector<i_t>&
         idx++;
       }
     }
-    pivot_tol /= 10;
-  }
   return idx;
 }
 
@@ -198,7 +195,7 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
   auto compare = [zero_tol, &current_ratios, &current_indicies, &delta_z, &nonbasic_list](
                    const i_t& a, const i_t& b) {
     return (current_ratios[a] > current_ratios[b]) ||
-           (std::abs(current_ratios[a] - current_ratios[b]) < zero_tol &&
+           (current_ratios[b] - current_ratios[a] < zero_tol &&
             std::abs(delta_z[nonbasic_list[current_indicies[a]]]) >
               std::abs(delta_z[nonbasic_list[current_indicies[b]]]));
   };
