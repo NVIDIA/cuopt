@@ -111,16 +111,16 @@ if [ "$doservertest" -eq 1 ]; then
     run_cli_test "'status': 0" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f cuopt_problem_data.json
 
     # Success, small LP problem with pure JSON
-    run_cli_test "'status': 1" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/cuopt_service_data/good_lp.json
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/cuopt_service_data/good_lp.json
 
     # Success, small MILP problem with pure JSON which returns a solution with Optimal status
-    run_cli_test "'status': 1" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT -t LP ../../datasets/mixed_integer_programming/milp_data.json
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT -t LP ../../datasets/mixed_integer_programming/milp_data.json
 
     # Succes, small LP problem with mps. Data will be transformed to JSON
-    run_cli_test "'status': 1" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.mps
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.mps
 
     # Succes, small Batch LP problem with mps. Data will be transformed to JSON
-    run_cli_test "'status': 1" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.mps ../../datasets/linear_programming/good-mps-1.mps
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.mps ../../datasets/linear_programming/good-mps-1.mps
 
     # Error, local file mode is not allowed with mps
     run_cli_test "Cannot use local file mode with MPS data" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP -f good-mps-1.mps
@@ -166,8 +166,8 @@ if [ "$doservertest" -eq 1 ]; then
     run_cli_test "Check for status with the following command" cuopt_sh -s -c "$CLIENT_CERT" -p "$CUOPT_SERVER_PORT" -pt 0 ../../datasets/cuopt_service_data/good_lp.json -k
     requestid=$(echo "$cli_test" | tail -1)
     requestid=$(echo ${requestid#cuopt_sh } | sed "s/-p $CUOPT_SERVER_PORT//g" | tr -d "'" | tr -d " ")
-    run_cli_test "'status': 1" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT $requestid -k
-    run_cli_test "'status': 1" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/good_lp.json -wid $requestid
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT $requestid -k
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/good_lp.json -wid $requestid
 
     # Success, larger problem, result comes back in results dir
     run_cli_test "'result_file': 'data.result'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/service_data_200r.json -o data.result

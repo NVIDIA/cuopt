@@ -32,7 +32,7 @@ def validate_lp_result(
     expected_termination_status,
 ):
     sol = res["solution"]
-    assert sol["problem_category"] == ProblemCategory.LP
+    assert sol["problem_category"] == ProblemCategory.LP.name
     assert res["status"] == expected_termination_status
     assert len(sol["lp_statistics"]) > 1
 
@@ -45,7 +45,10 @@ def validate_milp_result(
     expected_termination_status,
 ):
     sol = res["solution"]
-    assert sol["problem_category"] in (ProblemCategory.MIP, ProblemCategory.IP)
+    assert sol["problem_category"] in (
+        ProblemCategory.MIP.name,
+        ProblemCategory.IP.name,
+    )
     assert res["status"] == expected_termination_status
     assert len(sol["milp_statistics"].keys()) > 0
 
@@ -111,17 +114,18 @@ def test_sample_lp(cuoptproc):  # noqa
 
     print(res.json())
     validate_lp_result(
-        res.json()["response"]["solver_response"], LPTerminationStatus.Optimal
+        res.json()["response"]["solver_response"],
+        LPTerminationStatus.Optimal.name,
     )
 
 
 @pytest.mark.parametrize(
     "maximize, scaling, expected_status, heuristics_only",
     [
-        (True, True, MILPTerminationStatus.Optimal, True),
-        (False, True, MILPTerminationStatus.Optimal, False),
-        (True, False, MILPTerminationStatus.Optimal, True),
-        (False, False, MILPTerminationStatus.Optimal, False),
+        (True, True, MILPTerminationStatus.Optimal.name, True),
+        (False, True, MILPTerminationStatus.Optimal.name, False),
+        (True, False, MILPTerminationStatus.Optimal.name, True),
+        (False, False, MILPTerminationStatus.Optimal.name, False),
     ],
 )
 def test_sample_milp(

@@ -370,7 +370,7 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
             milp_stats = get_if_attribute_is_valid_else_none(
                 sol.get_milp_stats
             )
-            solution["problem_category"] = sol.get_problem_category()
+            solution["problem_category"] = sol.get_problem_category().name
             solution["primal_solution"] = primal_solution
             solution["dual_solution"] = dual_solution
             solution["primal_objective"] = get_if_attribute_is_valid_else_none(
@@ -392,7 +392,7 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
             )
 
         res = {
-            "status": status,
+            "status": status.name,
             "solution": solution,
         }
         notes.append(sol.get_termination_reason())

@@ -86,9 +86,9 @@ The response would be as follows:
     {
         "response": {
             "solver_response": {
-                "status": 1,
+                "status": "Optimal",
                 "solution": {
-                    "problem_category": 1,
+                    "problem_category": "MIP",
                     "primal_solution": [
                         0.0,
                         5000.0
@@ -210,9 +210,9 @@ Incumbent callback response:
     {
         "response": {
             "solver_response": {
-                "status": 1,
+                "status": "Optimal",
                 "solution": {
-                    "problem_category": 1,
+                    "problem_category": "MIP",
                     "primal_solution": [
                         0.0,
                         5000.0

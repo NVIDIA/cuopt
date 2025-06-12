@@ -28,9 +28,9 @@ import msgpack
 import msgpack_numpy
 import numpy as np
 import requests
-import solution
 
 from . import _version
+from .thin_client_solution import ThinClientSolution
 from .thin_client_solver_settings import ThinClientSolverSettings
 
 msgpack_numpy.patch()
@@ -173,8 +173,8 @@ def create_lp_response(response_dict):
         problem_category = sol["problem_category"]
 
         # MILP
-        if problem_category in [1, 2]:
-            solution_obj = solution.Solution(
+        if problem_category in ["MIP", "IP"]:
+            solution_obj = ThinClientSolution(
                 problem_category,
                 sol["vars"],
                 solve_time=sol["solver_time"],
@@ -198,7 +198,7 @@ def create_lp_response(response_dict):
                 ],
             )
         else:
-            solution_obj = solution.Solution(
+            solution_obj = ThinClientSolution(
                 problem_category,
                 sol["vars"],
                 solve_time=sol["solver_time"],
@@ -716,7 +716,7 @@ class CuOptServiceSelfHostClient:
             See the LP documentation for details on solver settings.
         response_type : str
             Choose "dict" if response should be returned as a dictionary or
-            "obj" for Solution object. Defaults to "obj"
+            "obj" for ThinClientSolution object. Defaults to "obj"
         filepath : boolean
             Indicates that cuopt_problem_json_data
             is the relative path of a cuopt data file under the server's
@@ -750,7 +750,7 @@ class CuOptServiceSelfHostClient:
             a list of strings. The LP solver will not return any
             incumbent solutions. Default is None.
 
-        Returns: dict or Solution object.
+        Returns: dict or ThinClientSolution object.
         """
 
         if incumbent_callback is not None and not callable(incumbent_callback):
@@ -923,7 +923,7 @@ class CuOptServiceSelfHostClient:
             containing the key 'reqId' where the value is the uuid.
         response_type: str
             For LP problem choose "dict" if response should be returned
-            as a dictionary or "obj" for Solution object.
+            as a dictionary or "obj" for ThinClientSolution object.
             Defaults to "obj".
             For VRP problem, response_type is ignored and always
             returns a dict.
