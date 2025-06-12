@@ -306,9 +306,10 @@ if(Doxygen_FOUND)
 endif()
 
 
+
 add_executable(cuopt_cli cuopt_cli.cpp)
 target_compile_options(cuopt_cli
-  PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+  PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS} -g -O0>"
   "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
 )
 
