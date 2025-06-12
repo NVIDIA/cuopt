@@ -18,6 +18,8 @@
 
 set -euo pipefail
 
+source rapids-init-pip
+
 package_dir="python/cuopt/cuopt/linear_programming"
 
 export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNINGS=ON"
@@ -35,5 +37,3 @@ ci/build_wheel.sh cuopt_mps_parser ${package_dir}
 python -m auditwheel repair -w "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}" ${package_dir}/dist/*
 
 ci/validate_wheel.sh "${package_dir}" "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}"
-
-RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-upload-wheels-to-s3 python "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}"
