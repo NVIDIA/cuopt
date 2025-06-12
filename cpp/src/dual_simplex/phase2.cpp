@@ -17,6 +17,7 @@
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/basis_updates.hpp>
+#include <dual_simplex/bound_flipping_ratio_test.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/phase1.hpp>
 #include <dual_simplex/phase2.hpp>
@@ -428,7 +429,7 @@ i_t bound_flipping_ratio_test(const lp_problem_t<i_t, f_t>& lp,
       const f_t delta_slope = std::abs(delta_z[j]) * interval;
 #ifdef BOUND_FLIP_DEBUG
       if (slope - delta_slope > 0) {
-        log.printf(
+        settings.log.printf(
           "Bound flip %d slope change %e prev slope %e slope %e. curr step "
           "length %e\n",
           j,
@@ -1234,6 +1235,7 @@ dual::status_t dual_phase2(i_t phase,
   std::vector<f_t> delta_z(n);
   std::vector<f_t> delta_x(n);
   const i_t start_iter = iter;
+  f_t bfrt_time        = 0;
   while (iter < iter_limit) {
     // Pricing
     i_t direction;
@@ -1356,6 +1358,41 @@ dual::status_t dual_phase2(i_t phase,
                                                    step_length,
                                                    nonbasic_entering_index);
     } else if (bound_flip_ratio) {
+      f_t bfrt_start = tic();
+#if 1
+      f_t slope = direction == 1 ? (lp.lower[leaving_index] - x[leaving_index])
+                             : (x[leaving_index] - lp.upper[leaving_index]);
+      bound_flipping_ratio_test_t<i_t, f_t> bfrt(settings, start_time, m, n, slope, lp.lower, lp.upper, vstatus, nonbasic_list, z, delta_z);
+      entering_index = bfrt.compute_step_length(step_length, nonbasic_entering_index);
+      if constexpr (0)
+      {
+        f_t shadow_step_length;
+        i_t shadow_nonbasic_entering_index;
+        i_t shadow_entering_index = phase2::bound_flipping_ratio_test(lp,
+                                                         settings,
+                                                         start_time,
+                                                         vstatus,
+                                                         nonbasic_list,
+                                                         x,
+                                                         z,
+                                                         delta_z,
+                                                         direction,
+                                                         leaving_index,
+                                                         shadow_step_length,
+                                                         shadow_nonbasic_entering_index);
+        if (shadow_nonbasic_entering_index != nonbasic_entering_index)
+        {
+          settings.log.printf(
+            "step diff %e shadow step length %e step length %e shadow nonbasic entering %d "
+            "nonbasic entering %d\n",
+            step_length - shadow_step_length,
+            shadow_step_length,
+            step_length,
+            shadow_nonbasic_entering_index,
+            nonbasic_entering_index);
+        }
+      }
+#else
       entering_index = phase2::bound_flipping_ratio_test(lp,
                                                          settings,
                                                          start_time,
@@ -1368,6 +1405,8 @@ dual::status_t dual_phase2(i_t phase,
                                                          leaving_index,
                                                          step_length,
                                                          nonbasic_entering_index);
+#endif
+      bfrt_time += toc(bfrt_start);
     } else {
       entering_index = phase2::phase2_ratio_test(
         lp, settings, vstatus, nonbasic_list, z, delta_z, step_length, nonbasic_entering_index);
@@ -1603,11 +1642,12 @@ dual::status_t dual_phase2(i_t phase,
       if (phase == 1 && iter == 1) {
         settings.log.printf(" Iter     Objective   Primal Infeas  Perturb  Time\n");
       }
-      settings.log.printf("%5d %+.8e %.8e %.2e %.2f\n",
+      settings.log.printf("%5d %+.16e %.8e %.2e %.2e %.2f\n",
                           iter,
                           compute_user_objective(lp, obj),
                           primal_infeasibility,
                           sum_perturb,
+                          step_length,
                           now);
     }
 
@@ -1624,6 +1664,7 @@ dual::status_t dual_phase2(i_t phase,
     }
   }
   if (iter >= iter_limit) { status = dual::status_t::ITERATION_LIMIT; }
+  settings.log.printf("BFRT time %e\n", bfrt_time);
   return status;
 }
 
