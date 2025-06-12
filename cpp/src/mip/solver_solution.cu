@@ -32,29 +32,21 @@ mip_solution_t<i_t, f_t>::mip_solution_t(rmm::device_uvector<f_t> solution,
                                          std::vector<std::string> var_names,
                                          f_t objective,
                                          f_t mip_gap,
-                                         f_t solution_bound,
-                                         double total_solve_time,
-                                         double presolve_time,
                                          mip_termination_status_t termination_status,
                                          f_t max_constraint_violation,
                                          f_t max_int_violation,
                                          f_t max_variable_bound_violation,
-                                         i_t num_nodes,
-                                         i_t num_simplex_iterations,
+                                         solver_stats_t<i_t, f_t> stats,
                                          std::vector<rmm::device_uvector<f_t>> solution_pool)
   : solution_(std::move(solution)),
     var_names_(std::move(var_names)),
     objective_(objective),
     mip_gap_(mip_gap),
-    solution_bound_(solution_bound),
-    total_solve_time_(total_solve_time),
-    presolve_time_(presolve_time),
     termination_status_(termination_status),
     max_constraint_violation_(max_constraint_violation),
     max_int_violation_(max_int_violation),
     max_variable_bound_violation_(max_variable_bound_violation),
-    num_nodes_(num_nodes),
-    num_simplex_iterations_(num_simplex_iterations),
+    stats_(stats),
     solution_pool_(std::move(solution_pool)),
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
@@ -62,19 +54,16 @@ mip_solution_t<i_t, f_t>::mip_solution_t(rmm::device_uvector<f_t> solution,
 
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t>::mip_solution_t(mip_termination_status_t termination_status,
+                                         solver_stats_t<i_t, f_t> stats,
                                          rmm::cuda_stream_view stream_view)
   : solution_(0, stream_view),
     objective_(0),
     mip_gap_(0),
-    solution_bound_(0),
-    total_solve_time_(0),
-    presolve_time_(0),
     termination_status_(termination_status),
     max_constraint_violation_(0),
     max_int_violation_(0),
     max_variable_bound_violation_(0),
-    num_nodes_(0),
-    num_simplex_iterations_(0),
+    stats_(stats),
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
 }
@@ -85,9 +74,6 @@ mip_solution_t<i_t, f_t>::mip_solution_t(const cuopt::logic_error& error_status,
   : solution_(0, stream_view),
     objective_(0),
     mip_gap_(0),
-    solution_bound_(0),
-    total_solve_time_(0),
-    presolve_time_(0),
     termination_status_(mip_termination_status_t::NoTermination),
     max_constraint_violation_(0),
     max_int_violation_(0),
@@ -129,19 +115,19 @@ f_t mip_solution_t<i_t, f_t>::get_mip_gap() const
 template <typename i_t, typename f_t>
 f_t mip_solution_t<i_t, f_t>::get_solution_bound() const
 {
-  return solution_bound_;
+  return stats_.solution_bound;
 }
 
 template <typename i_t, typename f_t>
 double mip_solution_t<i_t, f_t>::get_total_solve_time() const
 {
-  return total_solve_time_;
+  return stats_.total_solve_time;
 }
 
 template <typename i_t, typename f_t>
 double mip_solution_t<i_t, f_t>::get_presolve_time() const
 {
-  return presolve_time_;
+  return stats_.presolve_time;
 }
 
 template <typename i_t, typename f_t>
@@ -194,13 +180,13 @@ f_t mip_solution_t<i_t, f_t>::get_max_variable_bound_violation() const
 template <typename i_t, typename f_t>
 i_t mip_solution_t<i_t, f_t>::get_num_nodes() const
 {
-  return num_nodes_;
+  return stats_.num_nodes;
 }
 
 template <typename i_t, typename f_t>
 i_t mip_solution_t<i_t, f_t>::get_num_simplex_iterations() const
 {
-  return num_simplex_iterations_;
+  return stats_.num_simplex_iterations;
 }
 
 template <typename i_t, typename f_t>

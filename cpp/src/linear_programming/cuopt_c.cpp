@@ -763,7 +763,7 @@ cuopt_int_t cuOptGetSolveTime(cuOptSolution solution, cuopt_float_t* solve_time_
     optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* optimization_problem_solution =
       static_cast<optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>*>(
         solution_and_stream_view->lp_solution_ptr);
-    *solve_time_ptr = (optimization_problem_solution->get_solve_time() / 1000.0);
+    *solve_time_ptr = (optimization_problem_solution->get_solve_time());
   }
   return CUOPT_SUCCESS;
 }

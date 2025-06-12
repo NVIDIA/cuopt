@@ -598,18 +598,15 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
                                     problem_ptr->var_names,
                                     h_user_obj,
                                     rel_mip_gap,
-                                    solution_bound,
-                                    total_solve_time,
-                                    presolve_time,
                                     term_reason,
                                     max_constraint_violation,
                                     max_int_violation,
                                     max_variable_bound_violation,
-                                    num_nodes,
-                                    num_simplex_iterations);
+                                    stats);
   } else {
     return mip_solution_t<i_t, f_t>{is_problem_fully_reduced ? mip_termination_status_t::Infeasible
                                                              : mip_termination_status_t::TimeLimit,
+                                    stats,
                                     handle_ptr->get_stream()};
   }
 }
