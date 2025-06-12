@@ -249,16 +249,6 @@ class ThinClientSolution:
         """
         return self.reduced_cost
 
-    def get_pdlp_warm_start_data(self):
-        """
-        Note: Applicable to only LP
-
-        Allows to retrieve the warm start data from the PDLP solver.
-
-        See `SolverSettings.set_pdlp_warm_start_data` for more details.
-        """
-        return self.pdlp_warm_start_data
-
     def get_milp_stats(self):
         """
         Note: Applicable to only MILP
