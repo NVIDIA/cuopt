@@ -459,13 +459,15 @@ i_t find_dependent_rows(lp_problem_t<i_t, f_t>& problem,
 
 template <typename i_t, typename f_t>
 i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
-                            std::vector<i_t>& equality_rows,
+                            const std::vector<i_t>& range_rows,
+                            const std::vector<i_t>& equality_rows,
                             std::vector<i_t>& new_slacks)
 {
   const i_t n        = problem.num_cols;
   const i_t m        = problem.num_rows;
-  const i_t num_cols = n + equality_rows.size();
-  const i_t nnz      = problem.A.col_start[n] + equality_rows.size();
+  const i_t num_artificial_vars = equality_rows.size() - range_rows.size();
+  const i_t num_cols = n + num_artificial_vars;
+  i_t nnz      = problem.A.col_start[n] + num_artificial_vars;
   problem.A.col_start.resize(num_cols + 1);
   problem.A.i.resize(nnz);
   problem.A.x.resize(nnz);
@@ -473,9 +475,17 @@ i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
   problem.upper.resize(num_cols);
   problem.objective.resize(num_cols);
 
+  std::vector<bool> is_range_row(problem.num_rows, false);
+  for (i_t i : range_rows) {
+    is_range_row[i] = true;
+  }
+
   i_t p = problem.A.col_start[n];
   i_t j = n;
   for (i_t i : equality_rows) {
+    if (is_range_row[i]) {
+      continue;
+    }
     // Add an artifical variable z to the equation a_i^T x == b
     // This now becomes a_i^T x + z == b,   0 <= z =< 0
     problem.A.col_start[j] = p;
@@ -491,8 +501,8 @@ i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
   problem.A.col_start[num_cols] = p;
   assert(j == num_cols);
   assert(p == nnz);
-  constexpr bool verbose = false;
-  if (verbose) { printf("Added %d artificial variables\n", num_cols - n); }
+  constexpr bool verbose = true;
+  if (verbose) { printf("Added %d artificial variables\n", num_artificial_vars); }
   problem.A.n      = num_cols;
   problem.num_cols = num_cols;
   return 0;
@@ -550,7 +560,7 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   if (verbose) { printf("Constraints < %d = %d > %d\n", less_rows, equal_rows, greater_rows); }
 
   if (user_problem.num_range_rows > 0) {
-    if (verbose) { printf("Problem has %d range rows\n", user_problem.num_range_rows); }
+    if (1 || verbose) { printf("Problem has %d range rows\n", user_problem.num_range_rows); }
     convert_range_rows(
       user_problem, row_sense, problem, less_rows, equal_rows, greater_rows, new_slacks);
   }
@@ -579,7 +589,7 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   }
 
   // Add artifical variables
-  add_artifical_variables(problem, equality_rows, new_slacks);
+  add_artifical_variables(problem, user_problem.range_rows, equality_rows, new_slacks);
 }
 
 template <typename i_t, typename f_t>
