@@ -15,10 +15,11 @@
  * limitations under the License.
  */
 
+#include <cuopt/linear_programming/mip/solver_stats.hpp>
+
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <mip/problem/problem.cuh>
 #include <mip/relaxed_lp/lp_state.cuh>
-#include <mip/solver_stats.cuh>
 
 #pragma once
 
