@@ -1,3 +1,4 @@
+#!/bin/bash
 # SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -86,7 +87,7 @@ ALL_DATASET_DATA="${TSP_DATASET_DATA} ${CVRP_DATASET_DATA} ${ACVRP_DATASET_DATA}
 NUMARGS=$#
 ARGS=$*
 function hasArg {
-    (( ${NUMARGS} != 0 )) && (echo " ${ARGS} " | grep -q " $1 ")
+    (( NUMARGS != 0 )) && (echo " ${ARGS} " | grep -q " $1 ")
 }
 
 if hasArg -h || hasArg --help; then
@@ -111,7 +112,9 @@ else
   DATASET_DATA="${ALL_DATASET_DATA}"
 fi
 
+# shellcheck disable=SC2207
 URLS=($(echo "$DATASET_DATA"|awk '{if (NR%4 == 3) print $0}'))  # extract 3rd fields to a bash array
+# shellcheck disable=SC2207
 DESTDIRS=($(echo "$DATASET_DATA"|awk '{if (NR%4 == 0) print $0}'))  # extract 4th fields to a bash array
 
 echo Downloading ...
@@ -121,7 +124,7 @@ rm -rf tmp
 mkdir tmp
 cd tmp
 # Loop through URLs with error handling
-for url in ${URLS[*]}; do
+for url in "${URLS[@]}"; do
     # Try up to 3 times with continue option
     wget -4 --tries=3 --continue --progress=dot:mega --retry-connrefused "${url}" || {
         echo "Failed to download: ${url}"
@@ -132,10 +135,10 @@ cd ..
 
 # Setup the destination dirs, removing any existing ones first!
 for index in ${!DESTDIRS[*]}; do
-    rm -rf ${DESTDIRS[$index]}
+    rm -rf "${DESTDIRS[$index]}"
 done
 for index in ${!DESTDIRS[*]}; do
-    mkdir -p ${DESTDIRS[$index]}
+    mkdir -p "${DESTDIRS[$index]}"
 done
 
 # Iterate over the arrays and untar the nth tarfile to the nth dest directory.
@@ -144,18 +147,18 @@ echo Decompressing ...
 set +e  # Disable exit on error for the entire script
 
 for index in ${!DESTDIRS[*]}; do
-    tfname=$(basename ${URLS[$index]})
+    tfname=$(basename "${URLS[$index]}")
 
-    if file --mime-type "tmp/${tfname}" | grep -q gzip$; then 
-        tar xvzf tmp/${tfname} -C ${DESTDIRS[$index]} || true
-    elif file --mime-type "tmp/${tfname}" | grep -q zip$; then 
-        unzip tmp/${tfname} -d ${DESTDIRS[$index]} || true
+    if file --mime-type "tmp/${tfname}" | grep -q gzip$; then
+        tar xvzf tmp/"${tfname}" -C "${DESTDIRS[$index]}" || true
+    elif file --mime-type "tmp/${tfname}" | grep -q zip$; then
+        unzip tmp/"${tfname}" -d "${DESTDIRS[$index]}" || true
     else
-        tar xvf tmp/${tfname} -C ${DESTDIRS[$index]} || true
+        tar xvf tmp/"${tfname}" -C "${DESTDIRS[$index]}" || true
     fi
 
-    if ls ${DESTDIRS[$index]}/*.gz >/dev/null 2>&1; then
-        gzip -d ${DESTDIRS[$index]}/* || true
+    if ls "${DESTDIRS[$index]}"/*.gz >/dev/null 2>&1; then
+        gzip -d "${DESTDIRS[$index]}"/* || true
     fi
 done
 
