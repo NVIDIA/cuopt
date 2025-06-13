@@ -263,6 +263,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
 {
+  raft::common::nvtx::range fun_scope("generate_quick_feasible_solution");
   solution_t<i_t, f_t> solution(*problem_ptr);
   // min 1 second, max 10 seconds
   const f_t generate_fast_solution_time = min(10., max(1., timer.remaining_time() / 20.));

@@ -387,6 +387,7 @@ void lb_constraint_prop_t<i_t, f_t>::sort_by_implied_slack_consumption(
       make_span(implied_slack_consumption_per_var),
       problem_ii,
       context.settings.get_tolerances());
+  RAFT_CHECK_CUDA(original_problem.handle_ptr->get_stream());
   thrust::sort_by_key(original_problem.handle_ptr->get_thrust_policy(),
                       implied_slack_consumption_per_var.begin(),
                       implied_slack_consumption_per_var.end(),

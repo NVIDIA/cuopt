@@ -140,6 +140,7 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
                             bool return_first_feasible,
                             bound_presolve_t<i_t, f_t>* bound_presolve)
 {
+  raft::common::nvtx::range scope("run_lp_with_vars_fixed");
   // if we are fixing all vars, there is no lp to be run
   if (variables_to_fix.size() == (size_t)op_problem.n_variables) { return true; }
   auto [fixed_problem, fixed_assignment, variable_map] = solution.fix_variables(variables_to_fix);

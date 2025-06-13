@@ -76,6 +76,7 @@ f_t lb_probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(problem_t<i_t, 
                                                                  f_t second_probe,
                                                                  f_t integrality_tolerance)
 {
+  raft::common::nvtx::range fun_scope("get_least_conflicting_rounding");
   i_t var_id      = problem.original_ids[var_id_on_problem];
   auto& cache_row = probing_cache[var_id];
 
@@ -252,6 +253,7 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
   load_balanced_bounds_presolve_t<i_t, f_t>& bound_presolve,
   load_balanced_problem_t<i_t, f_t>& problem)
 {
+  raft::common::nvtx::range fun_scope("compute_prioritized_integer_indices");
   // sort the variables according to the min slack they have across constraints
   // we also need to consider the variable range
   // the priority is computed as the var_range * min_slack
@@ -294,6 +296,7 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
       make_span(different_coefficient),
       make_span(max_excess_per_var),
       make_span(max_n_violated_per_constraint));
+  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream());
   auto iterator = thrust::make_zip_iterator(thrust::make_tuple(
     max_n_violated_per_constraint.begin(), max_excess_per_var.begin(), min_slack_per_var.begin()));
   // sort the vars
@@ -321,6 +324,7 @@ void compute_probing_cache(load_balanced_bounds_presolve_t<i_t, f_t>& bound_pres
                            load_balanced_problem_t<i_t, f_t>& problem,
                            timer_t timer)
 {
+  raft::common::nvtx::range fun_scope("compute_probing_cache");
   // we dont want to compute the probing cache for all variables for time and computation resources
   auto priority_indices = compute_prioritized_integer_indices(bound_presolve, problem);
   // std::cout<<"priority_indices\n";

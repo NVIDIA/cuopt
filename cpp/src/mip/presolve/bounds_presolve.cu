@@ -102,6 +102,7 @@ void bound_presolve_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
 template <typename i_t, typename f_t>
 void bound_presolve_t<i_t, f_t>::calculate_activity(problem_t<i_t, f_t>& pb)
 {
+  raft::common::nvtx::range scope("calculate_activity");
   cuopt_assert(pb.n_variables == upd.lb.size(), "bounds array size inconsistent");
   cuopt_assert(pb.n_variables == upd.ub.size(), "bounds array size inconsistent");
   cuopt_assert(pb.n_constraints == upd.min_activity.size(), "activity array size inconsistent");
@@ -110,6 +111,8 @@ void bound_presolve_t<i_t, f_t>::calculate_activity(problem_t<i_t, f_t>& pb)
   constexpr auto n_threads = 256;
   calc_activity_kernel<i_t, f_t, n_threads>
     <<<pb.n_constraints, n_threads, 0, pb.handle_ptr->get_stream()>>>(pb.view(), upd.view());
+  RAFT_CHECK_CUDA(pb.handle_ptr->get_stream());
+  pb.handle_ptr->sync_stream();
 }
 
 template <typename i_t, typename f_t>
@@ -179,6 +182,7 @@ template <typename i_t, typename f_t>
 termination_criterion_t bound_presolve_t<i_t, f_t>::bound_update_loop(problem_t<i_t, f_t>& pb,
                                                                       timer_t timer)
 {
+  raft::common::nvtx::range scope("bound_update_loop");
   termination_criterion_t criteria = termination_criterion_t::ITERATION_LIMIT;
 
   i_t iter;
@@ -300,6 +304,7 @@ termination_criterion_t bound_presolve_t<i_t, f_t>::solve(problem_t<i_t, f_t>& p
 template <typename i_t, typename f_t>
 bool bound_presolve_t<i_t, f_t>::calculate_infeasible_redundant_constraints(problem_t<i_t, f_t>& pb)
 {
+  raft::common::nvtx::range scope("calculate_infeasible_redundant_constraints");
   auto detect_iter = thrust::make_transform_iterator(
     thrust::make_zip_iterator(thrust::make_tuple(upd.min_activity.begin(),
                                                  upd.max_activity.begin(),

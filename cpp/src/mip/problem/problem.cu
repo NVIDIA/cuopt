@@ -768,6 +768,7 @@ void problem_t<i_t, f_t>::compute_binary_var_table()
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_related_variables(double time_limit)
 {
+  raft::common::nvtx::range scope("compute_related_variables");
   auto pb_view = view();
 
   handle_ptr->sync_stream();
@@ -811,6 +812,7 @@ void problem_t<i_t, f_t>::compute_related_variables(double time_limit)
     thrust::fill(handle_ptr->get_thrust_policy(), varmap.begin(), varmap.end(), 0);
     compute_related_vars_unique<i_t, f_t><<<1024, 128, 0, handle_ptr->get_stream()>>>(
       pb_view, slice_begin, slice_end, make_span(varmap));
+    RAFT_CHECK_CUDA(handle_ptr->get_stream());
 
     // prefix sum to generate offsets
     thrust::inclusive_scan(handle_ptr->get_thrust_policy(),
@@ -1025,6 +1027,7 @@ void problem_t<i_t, f_t>::fix_given_variables(problem_t<i_t, f_t>& original_prob
                                               const rmm::device_uvector<i_t>& variables_to_fix,
                                               const raft::handle_t* handle_ptr)
 {
+  raft::common::nvtx::range scope("fix_given_variables");
   i_t TPB = 64;
   fix_given_variables_kernel<i_t, f_t><<<n_constraints, TPB, 0, handle_ptr->get_stream()>>>(
     original_problem.view(),
@@ -1032,6 +1035,7 @@ void problem_t<i_t, f_t>::fix_given_variables(problem_t<i_t, f_t>& original_prob
     raft::device_span<f_t>{assignment.data(), assignment.size()},
     raft::device_span<i_t>{const_cast<i_t*>(variables_to_fix.data()), variables_to_fix.size()});
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  handle_ptr->sync_stream();
 }
 
 template <typename i_t, typename f_t>
@@ -1089,6 +1093,7 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
                                                  rmm::device_uvector<i_t>& variable_map,
                                                  const raft::handle_t* handle_ptr)
 {
+  raft::common::nvtx::range scope("remove_given_variables");
   thrust::fill(handle_ptr->get_thrust_policy(), offsets.begin(), offsets.end(), 0);
   cuopt_assert(assignment.size() == n_variables, "Variable size mismatch");
   cuopt_assert(variable_map.size() < n_variables, "Too many variables to fix");
@@ -1252,6 +1257,7 @@ template <typename i_t, typename f_t>
 void compute_csr(const std::vector<std::vector<std::pair<i_t, f_t>>>& variable_constraint_map,
                  problem_t<i_t, f_t>& pb)
 {
+  raft::common::nvtx::range scope("compute_csr");
   auto handle_ptr = pb.handle_ptr;
   std::vector<std::vector<i_t>> vars_per_constraint(pb.n_constraints);
   std::vector<std::vector<f_t>> coefficient_per_constraint(pb.n_constraints);

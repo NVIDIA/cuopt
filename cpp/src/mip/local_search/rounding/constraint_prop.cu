@@ -185,6 +185,7 @@ void constraint_prop_t<i_t, f_t>::sort_by_implied_slack_consumption(solution_t<i
       make_span(implied_slack_consumption_per_var),
       problem_ii,
       context.settings.get_tolerances());
+  RAFT_CHECK_CUDA(sol.handle_ptr->get_stream());
   thrust::sort_by_key(sol.handle_ptr->get_thrust_policy(),
                       implied_slack_consumption_per_var.begin(),
                       implied_slack_consumption_per_var.end(),
@@ -733,6 +734,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
   timer_t& timer,
   std::optional<std::vector<thrust::pair<f_t, f_t>>> probing_candidates)
 {
+  raft::common::nvtx::range scope("find_integer");
   using crit_t             = termination_criterion_t;
   auto& unset_integer_vars = unset_vars;
   std::mt19937 rng(cuopt::seed_generator::get_seed());

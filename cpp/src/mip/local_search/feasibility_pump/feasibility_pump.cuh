@@ -140,8 +140,6 @@ class feasibility_pump_t {
   void reset();
   void resize_vectors(problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr);
   void save_best_excess_solution(solution_t<i_t, f_t>& solution);
-  bool random_round_with_fj(solution_t<i_t, f_t>& solution, timer_t& round_timer);
-  bool round_multiple_points(solution_t<i_t, f_t>& solution);
   void relax_general_integers(solution_t<i_t, f_t>& solution);
   void revert_relaxation(solution_t<i_t, f_t>& solution);
   bool test_fj_feasible(solution_t<i_t, f_t>& solution, f_t time_limit);

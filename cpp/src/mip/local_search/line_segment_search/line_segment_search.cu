@@ -55,6 +55,7 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(solution_t<i_t, f_t>& 
                                                           bool is_feasibility_run,
                                                           cuopt::timer_t& timer)
 {
+  raft::common::nvtx::range scope("search_line_segment");
   CUOPT_LOG_DEBUG("Running line segment search");
   cuopt_assert(point_1.size() == point_2.size(), "size mismatch");
   cuopt_assert(point_1.size() == solution.assignment.size(), "size mismatch");
@@ -136,7 +137,9 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(solution_t<i_t, f_t>& 
              best_assignment.data(),
              solution.assignment.size(),
              solution.handle_ptr->get_stream());
-  return solution.compute_feasibility();
+  bool is_feasible = solution.compute_feasibility();
+  solution.handle_ptr->sync_stream();
+  return is_feasible;
 }
 
 #if MIP_INSTANTIATE_FLOAT

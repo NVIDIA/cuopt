@@ -320,6 +320,7 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::normalize_weights()
 {
+  raft::common::nvtx::range fun_scope("normalize_weights");
   CUOPT_LOG_DEBUG("Normalizing weights");
 
   rmm::device_scalar<f_t> l2_norm(problem_ptr->handle_ptr->get_stream());

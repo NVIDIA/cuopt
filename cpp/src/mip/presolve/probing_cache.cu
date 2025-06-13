@@ -295,6 +295,7 @@ template <typename i_t, typename f_t>
 inline std::vector<i_t> compute_prioritized_integer_indices(
   bound_presolve_t<i_t, f_t>& bound_presolve, problem_t<i_t, f_t>& problem)
 {
+  raft::common::nvtx::range scope("compute_prioritized_integer_indices");
   // sort the variables according to the min slack they have across constraints
   // we also need to consider the variable range
   // the priority is computed as the var_range * min_slack
@@ -337,6 +338,7 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
       make_span(different_coefficient),
       make_span(max_excess_per_var),
       make_span(max_n_violated_per_constraint));
+  RAFT_CHECK_CUDA(problem.handle_ptr->get_stream());
   auto iterator = thrust::make_zip_iterator(thrust::make_tuple(
     max_n_violated_per_constraint.begin(), max_excess_per_var.begin(), min_slack_per_var.begin()));
   // sort the vars
@@ -372,6 +374,7 @@ void compute_cache_for_var(i_t var_idx,
                            std::atomic<size_t>& n_of_cached_probings,
                            i_t device_id)
 {
+  raft::common::nvtx::range scope("compute_cache_for_var");
   RAFT_CUDA_TRY(cudaSetDevice(device_id));
   // test if we need per thread handle
   raft::handle_t handle{};
@@ -467,6 +470,7 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,
                            timer_t timer)
 {
+  raft::common::nvtx::range scope("compute_probing_cache");
   // we dont want to compute the probing cache for all variables for time and computation resources
   auto priority_indices = compute_prioritized_integer_indices(bound_presolve, problem);
   CUOPT_LOG_DEBUG("Computing probing cache");
