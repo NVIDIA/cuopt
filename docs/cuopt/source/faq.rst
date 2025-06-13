@@ -8,13 +8,12 @@ General FAQ
 .. dropdown:: Where can I find cuOpt container images?
 
     There are two options:
-    - Nvidia docker hub (https://hub.docker.com/r/nvidia/)
-    - Nvidia NGC registry (https://catalog.ngc.nvidia.com/orgs/nvidia/teams/cuopt/containers/cuopt/tags) with NVAIE license.
-
+    - NVIDIA docker hub (https://hub.docker.com/r/nvidia/)
+    - NVIDIA NGC registry (https://catalog.ngc.nvidia.com/orgs/nvidia/teams/cuopt/containers/cuopt/tags) with NVAIE license.
 
 .. dropdown:: How to get a NVAIE license?
 
-    Please refer to `NVIDIA NVAIE <https://www.nvidia.com/en-us/technologies/ai-enterprise/nvaie/>`_ for more information.
+    Please refer to `NVIDIA NVAIE <https://www.nvidia.com/en-us/data-center/products/ai-enterprise/>`_ for more information.
 
 .. dropdown:: How to access NGC registry?
 
@@ -44,14 +43,13 @@ General FAQ
 
         docker pull <COPIED_IMAGE_TAG>
 
-
 .. dropdown:: Do I need a GPU to use cuOpt?
 
     Yes, please refer to `system requirements <system-requirements.html>`_ for GPU specifications. You can acquire a cloud instance with a supported GPU and launch cuOpt; alternatively, you can launch it in your local machine if it meets the requirements.
 
-.. dropdown:: Does cuOpt use multiple GPUs?
+.. dropdown:: Does cuOpt use multiple GPUs/multi-GPUs/multi GPUs?
 
-    #. Yes, in cuOpt self-hosted server, a solver process per GPU can be configured to run multiple solvers. Requests are accepted in a round-robin queue. More details are available in `server api <cuopt-server/server-api.html>`_.
+    #. Yes, in cuOpt self-hosted server, a solver process per GPU can be configured to run multiple solvers. Requests are accepted in a round-robin queue. More details are available in `server api <cuopt-server/server-api/server-cli.html>`_.
     #. There is no support for leveraging multiple GPUs to solve a single problem or oversubscribing a single GPU for multiple solvers.
 
 .. dropdown:: The cuOpt Service is not starting: Issue with port?
@@ -79,10 +77,23 @@ General FAQ
 
 .. dropdown:: Why is NVIDIA cuOpt running longer than the supplied time limit?
 
-   #. The time limit supplied governs the run time of the solver only, but there are other overheads such as ``network delay``, ``etl``, ``validation`` or ``solver being busy with other requests``.
+   #. The time limit supplied governs the run time of the solver only, but there are other overheads such as network delay, ETL, validation or the solver being busy with other requests.
 
    #. The complete round-trip solve time might be more than what was set.
 
+.. dropdown:: Why am I getting "libcuopt.so: cannot open shared object file: No such file or directory" error?
+
+   This error indicates that the cuOpt shared library is not found. Please check the following:
+
+   - The cuOpt is installed 
+   - Use ``find / -name libcuopt.so`` to search for the library path from root directory. You might need to run this command as root user.
+   - If the library is found, please add it to the ``LD_LIBRARY_PATH`` environment variable as shown below:
+
+   .. code-block:: bash
+
+       export LD_LIBRARY_PATH=/path/to/cuopt/lib:$LD_LIBRARY_PATH
+
+   - If the library is not found, it means it is not yet installed. Please check the cuOpt installation guide for more details.
 
 .. dropdown:: Is there a way to make cuOpt also account for other overheads in the same time limit provided?
 
@@ -337,25 +348,24 @@ Linear Programming FAQs
 
     - Hardware: If using self-hosted, you should use a recent server-grade GPU. We recommend H100 SXM (not the PCIE version).
     - Tolerance: The set tolerance usually has a massive impact on performance. Try the lowest possible value using ``set_optimality_tolerance`` until you have reached your lowest possible acceptable accuracy.
-    - PDLP Solver mode: PDLP solver mode will change the way PDLP internally optimizes the problem. The mode choice made using ``set_pdlp_solver_mode`` can drastically impact how fast a specific problem will be solved. You should test the different modes to see which one fits your problem best.
-    - Infeasibility detection: By default, the solver will try to detect infeasible problems which takes time. If you know your problem is feasible, use ``set_infeasibility_detection`` to make solving faster.
+    - PDLP Solver mode: PDLP solver mode will change the way PDLP internally optimizes the problem. The mode choice can drastically impact how fast a specific problem will be solved. You should test the different modes to see which one fits your problem best.
     - Batch mode: In case you know upfront that you need to solve multiple LP problems, instead of solving them sequentially, you should use the batch mode which can solve multiple LPs in parallel.
 
 .. dropdown:: What solver mode should I choose?
     
     We cannot predict up-front which solver mode will work best for a particular problem. The only way to know is to test. Once you know a solver mode is good on a class of problems, it should also be good on other similar problems.
 
-.. dropdown:: What threshold should I use?
+.. dropdown:: What tolerance should I use?
 
-    The choice entirely depends on the level of accuracy you need for your problem. A higher threshold will always result in a faster result. In general, 1e-2 is low accuracy, 1e-4 regular, 1e-6 high, 1e-8 very high.
+    The choice entirely depends on the level of accuracy you need for your problem. A looser tolerance will always result in a faster result. For PDLP, 1e-2 relative tolerance is low accuracy, 1e-4 is regular, 1e-6 is high, and 1e-8 is very high.
 
 .. dropdown:: What are the limitations of the LP solver?
 
-    #. There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MILP or LP, except the restrictions due to the number of bits in integer and the amount of memory in the CPU and GPU.
+    #. There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MILP or LP, except the restrictions due to the number of bits in an integer and the amount of memory in the CPU and GPU.
     
     Depending on these factors, the problems that can be solved can vary, for example:
 
-    - On a H100 SXM with 80GB memory, these are few examples of the problems that can be solved:
+    - On a H100 SXM with 80GB memory, here are few examples of the problems that can be solved:
         - 10M rows/constraints, 10M columns/variables, and 2B non-zeros in the constraint matrix.    
         - 74.5M rows/constraints, 74.5M columns/variables, and 1.49B non-zeros in the constraint matrix.
     
@@ -369,7 +379,7 @@ Mixed Integer Linear Programming FAQs
     Depending on these factors, the problems that can be solved can vary, for example:
 
     - On a H100 SXM with 80GB memory, this is the biggest dataset that was tested:
-        - Number of non-zeros/coefficient matrix size supported - 27 million (dataset: miplib2017).
+        - 27 million non-zeros coefficients on a problem from MIPLIB2017.
 
 Container FAQs
 ------------------------------

@@ -54,24 +54,41 @@ namespace cg = cooperative_groups;
 
 namespace cuopt::linear_programming::detail {
 
-void set_restart_hyper_parameters()
+void set_restart_hyper_parameters(rmm::cuda_stream_view stream_view)
 {
-  RAFT_CUDA_TRY(cudaMemcpyToSymbol(pdlp_hyper_params::default_primal_weight_update_smoothing,
-                                   &pdlp_hyper_params::host_default_primal_weight_update_smoothing,
-                                   sizeof(double)));
   RAFT_CUDA_TRY(
-    cudaMemcpyToSymbol(pdlp_hyper_params::default_sufficient_reduction_for_restart,
-                       &pdlp_hyper_params::host_default_sufficient_reduction_for_restart,
-                       sizeof(double)));
-  RAFT_CUDA_TRY(cudaMemcpyToSymbol(pdlp_hyper_params::default_necessary_reduction_for_restart,
-                                   &pdlp_hyper_params::host_default_necessary_reduction_for_restart,
-                                   sizeof(double)));
-  RAFT_CUDA_TRY(cudaMemcpyToSymbol(pdlp_hyper_params::primal_distance_smoothing,
-                                   &pdlp_hyper_params::host_primal_distance_smoothing,
-                                   sizeof(double)));
-  RAFT_CUDA_TRY(cudaMemcpyToSymbol(pdlp_hyper_params::dual_distance_smoothing,
-                                   &pdlp_hyper_params::host_dual_distance_smoothing,
-                                   sizeof(double)));
+    cudaMemcpyToSymbolAsync(pdlp_hyper_params::default_primal_weight_update_smoothing,
+                            &pdlp_hyper_params::host_default_primal_weight_update_smoothing,
+                            sizeof(double),
+                            0,
+                            cudaMemcpyHostToDevice,
+                            stream_view));
+  RAFT_CUDA_TRY(
+    cudaMemcpyToSymbolAsync(pdlp_hyper_params::default_sufficient_reduction_for_restart,
+                            &pdlp_hyper_params::host_default_sufficient_reduction_for_restart,
+                            sizeof(double),
+                            0,
+                            cudaMemcpyHostToDevice,
+                            stream_view));
+  RAFT_CUDA_TRY(
+    cudaMemcpyToSymbolAsync(pdlp_hyper_params::default_necessary_reduction_for_restart,
+                            &pdlp_hyper_params::host_default_necessary_reduction_for_restart,
+                            sizeof(double),
+                            0,
+                            cudaMemcpyHostToDevice,
+                            stream_view));
+  RAFT_CUDA_TRY(cudaMemcpyToSymbolAsync(pdlp_hyper_params::primal_distance_smoothing,
+                                        &pdlp_hyper_params::host_primal_distance_smoothing,
+                                        sizeof(double),
+                                        0,
+                                        cudaMemcpyHostToDevice,
+                                        stream_view));
+  RAFT_CUDA_TRY(cudaMemcpyToSymbolAsync(pdlp_hyper_params::dual_distance_smoothing,
+                                        &pdlp_hyper_params::host_dual_distance_smoothing,
+                                        sizeof(double),
+                                        0,
+                                        cudaMemcpyHostToDevice,
+                                        stream_view));
 }
 
 template <typename i_t, typename f_t, int BLOCK_SIZE>

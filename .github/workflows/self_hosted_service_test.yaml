@@ -44,9 +44,9 @@ jobs:
     runs-on: linux-amd64-gpu-l4-latest-1
     strategy:
       matrix:
-        ctk: ["11.8.0"]
-        linux_ver: ["ubuntu20.04"]
-        py_ver: ["3.10"]
+        ctk: ["12.8.0"]
+        linux_ver: ["ubuntu24.04"]
+        py_ver: ["3.12"]
     container:
       image: "rapidsai/citestwheel:cuda${{ matrix.ctk }}-${{ matrix.linux_ver}}-py${{ matrix.py_ver }}"
       options: "--network-alias cuopt-service"

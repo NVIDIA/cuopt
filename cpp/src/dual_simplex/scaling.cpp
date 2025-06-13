@@ -48,7 +48,7 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
       const f_t x = scaled.A.x[p];
       sum += x * x;
     }
-    f_t col_norm_j = column_scaling[j] = std::sqrt(sum);
+    f_t col_norm_j = column_scaling[j] = sum > 0 ? std::sqrt(sum) : 1.0;
     max                                = std::max(col_norm_j, max);
   }
   settings.log.printf("Scaling matrix. Maximum column norm %e\n", max);
@@ -76,12 +76,34 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
   return 0;
 }
 
+template <typename i_t, typename f_t>
+void unscale_solution(const std::vector<f_t>& column_scaling,
+                      const std::vector<f_t>& scaled_x,
+                      const std::vector<f_t>& scaled_z,
+                      std::vector<f_t>& unscaled_x,
+                      std::vector<f_t>& unscaled_z)
+{
+  const i_t n = scaled_x.size();
+  unscaled_x.resize(n);
+  unscaled_z.resize(n);
+  for (i_t j = 0; j < n; ++j) {
+    unscaled_x[j] = scaled_x[j] / column_scaling[j];
+    unscaled_z[j] = scaled_z[j] / column_scaling[j];
+  }
+}
+
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
 template int column_scaling<int, double>(const lp_problem_t<int, double>& unscaled,
                                          const simplex_solver_settings_t<int, double>& settings,
                                          lp_problem_t<int, double>& scaled,
                                          std::vector<double>& column_scaling);
+
+template void unscale_solution<int, double>(const std::vector<double>& column_scaling,
+                                            const std::vector<double>& scaled_x,
+                                            const std::vector<double>& scaled_z,
+                                            std::vector<double>& unscaled_x,
+                                            std::vector<double>& unscaled_z);
 
 #endif
 

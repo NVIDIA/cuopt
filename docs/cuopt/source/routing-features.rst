@@ -5,7 +5,7 @@ Routing Features
 Availability
 ------------------------------
 
-NVIDIA cuOpt Routing is available in two forms:
+The Routing solver is available in two forms:
 
 - **As a Self-Hosted Service**: cuOpt Routing can be deployed as a service in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems. For more information, see :doc:`cuopt-server/quick-start`.
 

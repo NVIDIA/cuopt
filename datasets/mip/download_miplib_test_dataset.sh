@@ -34,6 +34,7 @@ INSTANCES=(
     "stein9inf"
     "neos5"
     "swath1"
+    "enlight_hard"
 )
 
 BASE_URL="https://miplib.zib.de/WebData/instances"

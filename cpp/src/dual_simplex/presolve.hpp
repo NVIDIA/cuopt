@@ -50,6 +50,18 @@ struct lp_problem_t {
 };
 
 template <typename i_t, typename f_t>
+struct presolve_info_t {
+  // indices of variables in the original problem that remain in the presolved problem
+  std::vector<i_t> remaining_variables;
+  // indicies of variables in the original problem that have been removed in the presolved problem
+  std::vector<i_t> removed_variables;
+  // values of the removed variables
+  std::vector<f_t> removed_values;
+  // values of the removed reduced costs
+  std::vector<f_t> removed_reduced_costs;
+};
+
+template <typename i_t, typename f_t>
 void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
                           lp_problem_t<i_t, f_t>& problem,
                           std::vector<i_t>& new_slacks);
@@ -70,7 +82,8 @@ void convert_user_lp_with_guess(const user_problem_t<i_t, f_t>& user_problem,
 template <typename i_t, typename f_t>
 i_t presolve(const lp_problem_t<i_t, f_t>& original,
              const simplex_solver_settings_t<i_t, f_t>& settings,
-             lp_problem_t<i_t, f_t>& presolved);
+             lp_problem_t<i_t, f_t>& presolved,
+             presolve_info_t<i_t, f_t>& presolve_info);
 
 template <typename i_t, typename f_t>
 void crush_primal_solution(const user_problem_t<i_t, f_t>& user_problem,
@@ -101,5 +114,12 @@ void uncrush_primal_solution(const user_problem_t<i_t, f_t>& user_problem,
                              const lp_problem_t<i_t, f_t>& problem,
                              const std::vector<f_t>& solution,
                              std::vector<f_t>& user_solution);
+
+template <typename i_t, typename f_t>
+void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
+                      const std::vector<f_t>& crushed_x,
+                      const std::vector<f_t>& crushed_z,
+                      std::vector<f_t>& uncrushed_x,
+                      std::vector<f_t>& uncrushed_z);
 
 }  // namespace cuopt::linear_programming::dual_simplex

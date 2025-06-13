@@ -24,7 +24,9 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
-i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem, i_t& num_empty_cols)
+i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
+                      i_t& num_empty_cols,
+                      presolve_info_t<i_t, f_t>& presolve_info)
 {
   constexpr bool verbose = false;
   if (verbose) { printf("Removing %d empty columns\n", num_empty_cols); }
@@ -35,15 +37,22 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem, i_t& num_empty_cols)
   // sum_{k != j} c_k * x_k + c_j * l_j if c_j > 0
   // or
   // sum_{k != j} c_k * x_k + c_j * u_j if c_j < 0
+  presolve_info.removed_variables.reserve(num_empty_cols);
+  presolve_info.removed_values.reserve(num_empty_cols);
+  presolve_info.removed_reduced_costs.reserve(num_empty_cols);
   std::vector<i_t> col_marker(problem.num_cols);
   i_t new_cols = 0;
   for (i_t j = 0; j < problem.num_cols; ++j) {
     if ((problem.A.col_start[j + 1] - problem.A.col_start[j]) == 0) {
       col_marker[j] = 1;
+      presolve_info.removed_variables.push_back(j);
+      presolve_info.removed_reduced_costs.push_back(problem.objective[j]);
       if (problem.objective[j] >= 0) {
+        presolve_info.removed_values.push_back(problem.lower[j]);
         problem.obj_constant += problem.objective[j] * problem.lower[j];
         assert(problem.lower[j] > -inf);
       } else {
+        presolve_info.removed_values.push_back(problem.upper[j]);
         problem.obj_constant += problem.objective[j] * problem.upper[j];
         assert(problem.upper[j] < inf);
       }
@@ -52,6 +61,7 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem, i_t& num_empty_cols)
       new_cols++;
     }
   }
+  presolve_info.remaining_variables.reserve(new_cols);
 
   problem.A.remove_columns(col_marker);
   // Clean up objective, lower, upper, and col_names
@@ -66,6 +76,7 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem, i_t& num_empty_cols)
       objective[new_j] = problem.objective[j];
       lower[new_j]     = problem.lower[j];
       upper[new_j]     = problem.upper[j];
+      presolve_info.remaining_variables.push_back(j);
       new_j++;
     } else {
       num_empty_cols--;
@@ -574,7 +585,8 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
 template <typename i_t, typename f_t>
 i_t presolve(const lp_problem_t<i_t, f_t>& original,
              const simplex_solver_settings_t<i_t, f_t>& settings,
-             lp_problem_t<i_t, f_t>& problem)
+             lp_problem_t<i_t, f_t>& problem,
+             presolve_info_t<i_t, f_t>& presolve_info)
 {
   problem = original;
   std::vector<char> row_sense(problem.num_rows, '=');
@@ -595,6 +607,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     }
   }
   if (num_empty_rows > 0) {
+    settings.log.printf("Presolve removing %d empty rows\n", num_empty_rows);
     i_t i = remove_empty_rows(problem, row_sense, num_empty_rows);
     if (i != 0) { return -1; }
   }
@@ -606,7 +619,10 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
       if ((problem.A.col_start[j + 1] - problem.A.col_start[j]) == 0) { num_empty_cols++; }
     }
   }
-  if (num_empty_cols > 0) { remove_empty_cols(problem, num_empty_cols); }
+  if (num_empty_cols > 0) {
+    settings.log.printf("Presolve removing %d empty cols\n", num_empty_cols);
+    remove_empty_cols(problem, num_empty_cols, presolve_info);
+  }
 
   // Check for dependent rows
   constexpr bool check_dependent_rows = false;
@@ -826,6 +842,38 @@ void uncrush_primal_solution(const user_problem_t<i_t, f_t>& user_problem,
   std::copy(solution.begin(), solution.begin() + user_problem.num_cols, user_solution.data());
 }
 
+template <typename i_t, typename f_t>
+void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
+                      const std::vector<f_t>& crushed_x,
+                      const std::vector<f_t>& crushed_z,
+                      std::vector<f_t>& uncrushed_x,
+                      std::vector<f_t>& uncrushed_z)
+{
+  if (presolve_info.removed_variables.size() == 0) {
+    uncrushed_x = crushed_x;
+    uncrushed_z = crushed_z;
+    return;
+  }
+
+  const i_t n = presolve_info.removed_variables.size() + presolve_info.remaining_variables.size();
+  uncrushed_x.resize(n);
+  uncrushed_z.resize(n);
+
+  i_t k = 0;
+  for (const i_t j : presolve_info.remaining_variables) {
+    uncrushed_x[j] = crushed_x[k];
+    uncrushed_z[j] = crushed_z[k];
+    k++;
+  }
+
+  k = 0;
+  for (const i_t j : presolve_info.removed_variables) {
+    uncrushed_x[j] = presolve_info.removed_values[k];
+    uncrushed_z[j] = presolve_info.removed_reduced_costs[k];
+    k++;
+  }
+}
+
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
 template void convert_user_problem<int, double>(const user_problem_t<int, double>& user_problem,
@@ -841,7 +889,9 @@ template void convert_user_lp_with_guess<int, double>(
 
 template int presolve<int, double>(const lp_problem_t<int, double>& original,
                                    const simplex_solver_settings_t<int, double>& settings,
-                                   lp_problem_t<int, double>& presolved);
+                                   lp_problem_t<int, double>& presolved,
+                                   presolve_info_t<int, double>& presolve_info);
+
 template void crush_primal_solution<int, double>(const user_problem_t<int, double>& user_problem,
                                                  const lp_problem_t<int, double>& problem,
                                                  const std::vector<double>& user_solution,
@@ -853,6 +903,11 @@ template void uncrush_primal_solution<int, double>(const user_problem_t<int, dou
                                                    const std::vector<double>& solution,
                                                    std::vector<double>& user_solution);
 
+template void uncrush_solution<int, double>(const presolve_info_t<int, double>& presolve_info,
+                                            const std::vector<double>& crushed_x,
+                                            const std::vector<double>& crushed_z,
+                                            std::vector<double>& uncrushed_x,
+                                            std::vector<double>& uncrushed_z);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

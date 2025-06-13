@@ -38,7 +38,7 @@
 #include "linear_programming/termination_strategy/convergence_information.hpp"
 
 namespace cuopt::linear_programming::detail {
-void set_pdlp_hyper_parameters();
+void set_pdlp_hyper_parameters(rmm::cuda_stream_view stream_view);
 /**
  * @brief Solver for an optimization problem (Currently only linear program) to be solved,
  * pdlp_parameters and pdlp_internal_state

@@ -25,11 +25,11 @@
 #include "recombiners/recombiner_stats.hpp"
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
+#include <cuopt/linear_programming/mip/solver_stats.hpp>
 
 #include <mip/local_search/local_search.cuh>
 #include <mip/solution/solution.cuh>
 #include <mip/solver.cuh>
-#include <mip/solver_stats.cuh>
 #include <utilities/timer.hpp>
 
 namespace cuopt::linear_programming::detail {

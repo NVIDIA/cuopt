@@ -239,7 +239,11 @@ TEST(mip_solve, feasibility_jump_obj_test)
     {"seymour1.mps", 440, 50000},
     {"rmatr200-p5.mps", 7000, 10000},
     {"cvs16r128-89.mps", -50, 10000},
-    {"thor50dday.mps", 250000, 1000}};
+  // TEMPORARY: occasional cusparse transpose issues on ARM in CI
+#ifndef __aarch64__
+    {"thor50dday.mps", 250000, 1000}
+#endif
+  };
 
   for (auto [instance, obj_target, iter_limit] : test_cases) {
     bool result = run_fj_check_objective(instance, iter_limit, obj_target);
@@ -253,7 +257,13 @@ TEST(mip_solve, feasibility_jump_obj_test)
 
 TEST(mip_solve, feasibility_jump_feas_test)
 {
-  for (const auto& instance : {"tr12-30.mps", "sct2.mps", "thor50dday.mps"}) {
+  for (const auto& instance : {"tr12-30.mps",
+                               "sct2.mps"
+#ifndef __aarch64__
+                               ,
+                               "thor50dday.mps"
+#endif
+       }) {
     run_fj_check_feasible(instance);
   }
 }

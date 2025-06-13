@@ -7,18 +7,19 @@ notebooks/         @nvidia/cuopt-infra-codeowners
 docs/              @nvidia/cuopt-infra-codeowners
 
 #infra code owners
-**/CMakeLists.txt  @nvidia/cuopt-infra-codeowners
-**/cmake/          @nvidia/cuopt-infra-codeowners
+**/CMakeLists.txt  @nvidia/cuopt-infra-codeowners @nvidia/cuopt-ci-codeowners
+**/cmake/          @nvidia/cuopt-infra-codeowners @nvidia/cuopt-ci-codeowners
 container-builder/ @nvidia/cuopt-infra-codeowners
 
 #CI code owners
+.flake8                  @nvidia/cuopt-ci-codeowners
 /.github/                @nvidia/cuopt-ci-codeowners
 /ci/                     @nvidia/cuopt-ci-codeowners
 /.pre-commit-config.yaml @nvidia/cuopt-ci-codeowners
 
 #packaging code owners
-/.devcontainer/    @nvidia/cuopt-infra-codeowners
-/conda/            @nvidia/cuopt-infra-codeowners
-/dependencies.yaml @nvidia/cuopt-infra-codeowners
-/build.sh          @nvidia/cuopt-infra-codeowners
-pyproject.toml     @nvidia/cuopt-infra-codeowners
+/.devcontainer/    @nvidia/cuopt-ci-codeowners
+/conda/            @nvidia/cuopt-ci-codeowners
+/dependencies.yaml @nvidia/cuopt-ci-codeowners
+/build.sh          @nvidia/cuopt-ci-codeowners
+pyproject.toml     @nvidia/cuopt-ci-codeowners

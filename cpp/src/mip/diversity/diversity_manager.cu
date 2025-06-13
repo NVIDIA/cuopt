@@ -246,7 +246,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   if (termination_criterion_t::NO_UPDATE != term_crit) {
     ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
     trivial_presolve(*problem_ptr);
-    if (!problem_ptr->empty) { check_bounds_sanity(*problem_ptr); }
+    if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   }
   if (!problem_ptr->empty) {
     // do the resizing no-matter what, bounds presolve might not change the bounds but initial
@@ -254,7 +254,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     ls.constraint_prop.bounds_update.resize(*problem_ptr);
     ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
       *problem_ptr, ls.constraint_prop.bounds_update);
-    check_bounds_sanity(*problem_ptr);
+    if (!check_bounds_sanity(*problem_ptr)) { return false; }
   }
   stats.presolve_time = presolve_timer.elapsed_time();
   return true;
@@ -351,7 +351,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   ls.lp_optimal_exists = true;
   if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
     // get lp user objective and pass it to set_new_user_bound
-    set_new_user_bound(problem_ptr->get_user_obj_from_solver_obj(lp_result.get_objective_value()));
+    set_new_user_bound(lp_result.get_objective_value());
   } else if (lp_result.get_termination_status() == pdlp_termination_status_t::PrimalInfeasible) {
     // PDLP's infeasibility detection isn't an exact method and might be subject to false positives.
     // Issue a warning, and continue solving.

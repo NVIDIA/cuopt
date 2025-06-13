@@ -9,8 +9,8 @@ Please refer to examples in `C </cuopt-c/lp-milp/>`_ and `Server Thin client </c
 .. note::
    When setting parameters in thin client solver settings, remove ``CUOPT_`` from the parameter name and convert to lowercase. For example, ``CUOPT_TIME_LIMIT`` would be set as ``time_limit``.
 
-Common
--------
+Parameters common to LP/MILP
+----------------------------
 
 We begin by describing parameters common to both the MILP and LP solvers
 
@@ -41,6 +41,17 @@ Log File
 
 Note: the default value is ``""`` and no log file is written.
 
+Solution File
+^^^^^^^^^^^^^
+``CUOPT_SOL_FILE`` controls the name of a file where cuOpt should write the solution.
+
+Note: the default value is ``""`` and no solution file is written.
+
+User Problem File
+^^^^^^^^^^^^^^^^^
+``CUOPT_USER_PROBLEM_FILE`` controls the name of a file where cuOpt should write the user problem.
+
+Note: the default value is ``""`` and no user problem file is written.
 
 Num CPU Threads
 ^^^^^^^^^^^^^^^

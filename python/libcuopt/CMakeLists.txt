@@ -15,7 +15,7 @@
 
 cmake_minimum_required(VERSION 3.30.4 FATAL_ERROR)
 
-set(cuopt_version 25.05.00)
+set(cuopt_version 25.08.00)
 
 include(../../cmake/rapids_config.cmake)
 include(rapids-cuda)
@@ -42,7 +42,7 @@ include(FetchContent)
 FetchContent_Declare(
   argparse
   GIT_REPOSITORY https://github.com/p-ranav/argparse.git
-  GIT_TAG v2.9
+  GIT_TAG v3.2
 )
 FetchContent_MakeAvailable(argparse)
 
@@ -58,6 +58,8 @@ target_link_libraries(cuopt_cli PRIVATE argparse)
 
 set(rpaths
   "$ORIGIN/../lib64"
+  "$ORIGIN/../../rapids_logger/lib64"
+  "$ORIGIN/../../librmm/lib64"
   "$ORIGIN/../../nvidia/cublas/lib"
   "$ORIGIN/../../nvidia/curand/lib"
   "$ORIGIN/../../nvidia/cusolver/lib"

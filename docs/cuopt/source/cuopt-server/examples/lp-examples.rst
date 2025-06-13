@@ -115,9 +115,9 @@ Normal mode response:
     {
         "response": {
             "solver_response": {
-                "status": 1,
+                "status": "Optimal",
                 "solution": {
-                    "problem_category": 0,
+                    "problem_category": "LP",
                     "primal_solution": [
                         1.8,
                         0.0
@@ -159,9 +159,9 @@ Batch mode response:
         "response": {
             "solver_response": [
                 {
-                    "status": 1,
+                    "status": "Optimal",
                     "solution": {
-                        "problem_category": 0,
+                        "problem_category": "LP",
                         "primal_solution": [
                             1.8,
                             0.0
@@ -188,9 +188,9 @@ Batch mode response:
                     }
                 },
                 {
-                    "status": 1,
+                    "status": "Optimal",
                     "solution": {
-                        "problem_category": 0,
+                        "problem_category": "LP",
                         "primal_solution": [
                             1.8,
                             0.0
@@ -294,9 +294,9 @@ The response would be as follows:
     {
         "response": {
             "solver_response": {
-                "status": 1,
+                "status": "Optimal",
                 "solution": {
-                    "problem_category": 0,
+                    "problem_category": "LP",
                     "primal_solution": [
                         1.8,
                         0.0
@@ -388,9 +388,9 @@ The response is:
     {
         "response": {
             "solver_response": {
-                "status": 1,
+                "status": "Optimal",
                 "solution": {
-                    "problem_category": 0,
+                    "problem_category": "LP",
                     "primal_solution": [
                         1.8,
                         0.0
@@ -515,23 +515,22 @@ Use a datamodel generated from mps file as input; this yields a solution object 
     solution_obj = solution["response"]["solver_response"]["solution"]
 
     # Check Termination Reason
-    # For more detail on termination reasons: checkout `Solution.get_termination_reason()`
-    print("Termination Reason: (1 is Optimal)")
+    print("Termination Reason: ")
     print(solution_status)
 
     # Check found objective value
     print("Objective Value:")
-    print(solution_obj["primal_objective"])
+    print(solution_obj.get_primal_objective())
 
     # Check the MPS parse time
     print(f"Mps Parse time: {parse_time:.3f} sec")
 
     # Check network time (client call - solve time)
-    network_time = network_time - (solution_obj["solver_time"])
+    network_time = network_time - (solution_obj.get_solve_time())
     print(f"Network time: {network_time:.3f} sec")
 
     # Check solver time
-    solve_time = solution_obj["solver_time"]
+    solve_time = solution_obj.get_solve_time()
     print(f"Engine Solve time: {solve_time:.3f} sec")
 
     # Check the total end to end time (mps parsing + network + solve time)
@@ -540,7 +539,7 @@ Use a datamodel generated from mps file as input; this yields a solution object 
 
     # Print the found decision variables
     print("Variables Values:")
-    print(solution_obj["vars"])
+    print(solution_obj.get_vars())
 
 
 The response would be as follows:
@@ -625,9 +624,9 @@ Response is as follows:
     {
         "response": {
             "solver_response": {
-                "status": 1,
+                "status": "Optimal",
                 "solution": {
-                    "problem_category": 0,
+                    "problem_category": "LP",
                     "primal_solution": [1.8, 0.0],
                     "dual_solution": [-0.06666666666666668, 0.0],
                     "primal_objective": -0.36000000000000004,
@@ -662,7 +661,7 @@ To use a previous solution as the initial/warm start solution for a new request 
    # Please update these values if the server is running on a different IP address or port
    export ip="localhost"
    export port=5000
-   reqId=$(cuopt_sh -t LP data.json -i $ip -p $port -k | sed "s/'/\"/g" | jq -r '.reqId')
+   reqId=$(cuopt_sh -t LP data.json -i $ip -p $port -k | sed "s/'/\"/g" | sed 's/False/false/g' | jq -r '.reqId')
 
    cuopt_sh data.json -t LP -i $ip -p $port -wid $reqId
 

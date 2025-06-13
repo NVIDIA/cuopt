@@ -64,24 +64,27 @@ source and contribute to its development. Other operating systems may be compati
 currently tested.
 
 Building NVIDIA cuOpt with the provided conda environment is recommended for users who wish to enable all
-library features. The following instructions are for building with a conda environment. Dependencies
-for a minimal build of NVIDIA cuOpt without using conda are also listed below.
+library features. The following instructions are for building with a conda environment.
 
 ### General requirements
 
-Compilers:
-
-* `gcc` version 11.4+
-* `nvcc` version 11.8+
-* `cmake` version 3.29.6+
-
 CUDA/GPU Runtime:
 
-* CUDA 11.4+
+* CUDA 12.8
 * Volta architecture or better ([Compute Capability](https://docs.nvidia.com/deploy/cuda-compatibility/) >=7.0)
 
-You can obtain CUDA from
-[https://developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads).
+Python:
+
+* Python >=3.10.x, <= 3.12.x
+
+OS:
+
+* Only Linux is supported
+
+Architecture:
+
+* x86_64 (64-bit)
+* aarch64 (64-bit)
 
 ### Build NVIDIA cuOpt from source
 
@@ -95,11 +98,13 @@ cd $CUOPT_HOME
 
 #### Building with a conda environment
 
-**Note:** Using a conda environment is the easiest way to satisfy the library's dependencies.
+**Note:** Building from source without conda is very difficult. We highly recommend that users build cuOpt inside a conda environment
 
 - Create the conda development environment:
 
-Please install conda if you don't have it already. You can install it from [https://docs.conda.io/en/latest/miniconda.html](https://docs.conda.io/en/latest/miniconda.html)
+Please install conda if you don't have it already. You can install [miniforge](https://conda-forge.org/download/) or [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux)
+
+**Note:** We recommend using [mamba](https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html) as the package manager for the conda environment. Mamba is faster and more efficient than conda. And it's the default package manager for miniforge. If you are using mamba just replace `conda` with `mamba` in the following commands.
 
 ```bash
 # create the conda environment (assuming in base `cuopt` directory)
@@ -152,8 +157,8 @@ To run the C++ tests, run
 
 ```bash
 cd $CUOPT_HOME/datasets && get_test_data.sh
-cd $CUOPT_HOME/datasets/linear_programming && download_pdlp_test_dataset.sh
-cd $CUOPT_HOME/datasets/mip && download_miplib_test_dataset.sh
+cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
+datasets/mip/download_miplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
 ctest --test-dir ${CUOPT_HOME}/cpp/build  # libcuopt
 ```
@@ -164,8 +169,8 @@ To run python tests, run
 ```bash
 
 cd $CUOPT_HOME/datasets && get_test_data.sh
-cd $CUOPT_HOME/datasets/linear_programming && download_pdlp_test_dataset.sh
-cd $CUOPT_HOME/datasets/mip && download_miplib_test_dataset.sh
+cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
+datasets/mip/download_miplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
 cd $CUOPT_HOME/python
 pytest -v ${CUOPT_HOME}/python/cuopt/cuopt/tests
@@ -218,6 +223,12 @@ set_source_files_properties(src/routing/data_model_view.cu PROPERTIES COMPILE_OP
 
 This will add the device debug symbols for this object file in `libcuopt.so`.  You can then use
 `cuda-dbg` to debug into the kernels in that source file.
+
+## Adding dependencies
+
+Please refer to the [dependencies.yaml](dependencies.yaml) file for details on how to add new dependencies.
+Add any new dependencies in the `dependencies.yaml` file. It takes care of conda, requirements (pip based dependencies) and pyproject. 
+Please don't try to add dependencies directly to environment.yaml files under `conda/environments` directory and pyproject.toml files under `python` directories.
 
 ## Code Formatting
 
@@ -303,6 +314,5 @@ You can skip these checks with `git commit --no-verify` or with the short versio
 
     (d) I understand and agree that this project and the contribution are public and that a record of the contribution (including all personal information I submit with it, including my sign-off) is maintained indefinitely and may be redistributed consistent with this project or the open source license(s) involved.
   ```
-
   
 

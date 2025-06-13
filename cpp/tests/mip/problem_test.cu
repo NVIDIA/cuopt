@@ -33,6 +33,7 @@
 #include <thrust/for_each.h>
 #include <thrust/gather.h>
 #include <thrust/generate.h>
+#include <thrust/host_vector.h>
 #include <thrust/random.h>
 #include <thrust/sequence.h>
 #include <thrust/shuffle.h>

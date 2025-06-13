@@ -117,7 +117,8 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
 {
   lp_status_t lp_status = lp_status_t::UNSET;
   lp_problem_t<i_t, f_t> presolved_lp(1, 1, 1);
-  const i_t ok = presolve(original_lp, settings, presolved_lp);
+  presolve_info_t<i_t, f_t> presolve_info;
+  const i_t ok = presolve(original_lp, settings, presolved_lp, presolve_info);
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
 
   constexpr bool write_out_matlab = false;
@@ -199,15 +200,17 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
       primal_phase2(2, start_time, lp, settings, vstatus, solution, iter);
     }
     if (status == dual::status_t::OPTIMAL) {
-      // Unscale solution
-      for (i_t j = 0; j < original_lp.num_cols; j++) {
-        original_solution.x[j] = solution.x[j] / column_scales[j];
-        original_solution.z[j] = solution.z[j] / column_scales[j];
-      }
-      original_solution.y              = solution.y;
-      original_solution.objective      = solution.objective;
-      original_solution.user_objective = solution.user_objective;
-      lp_status                        = lp_status_t::OPTIMAL;
+      std::vector<f_t> unscaled_x(lp.num_cols);
+      std::vector<f_t> unscaled_z(lp.num_cols);
+      unscale_solution<i_t, f_t>(column_scales, solution.x, solution.z, unscaled_x, unscaled_z);
+      uncrush_solution(
+        presolve_info, unscaled_x, unscaled_z, original_solution.x, original_solution.z);
+      original_solution.y                  = solution.y;
+      original_solution.objective          = solution.objective;
+      original_solution.user_objective     = solution.user_objective;
+      original_solution.l2_primal_residual = solution.l2_primal_residual;
+      original_solution.l2_dual_residual   = solution.l2_dual_residual;
+      lp_status                            = lp_status_t::OPTIMAL;
     }
     if (status == dual::status_t::DUAL_UNBOUNDED) { lp_status = lp_status_t::INFEASIBLE; }
     if (status == dual::status_t::TIME_LIMIT) { lp_status = lp_status_t::TIME_LIMIT; }
@@ -250,10 +253,12 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
     original_lp, start_time, settings, lp_solution, vstatus, edge_norms);
   uncrush_primal_solution(user_problem, original_lp, lp_solution.x, solution.x);
   uncrush_primal_solution(user_problem, original_lp, lp_solution.z, solution.z);
-  solution.y              = lp_solution.y;
-  solution.objective      = lp_solution.objective;
-  solution.user_objective = lp_solution.user_objective;
-  solution.iterations     = lp_solution.iterations;
+  solution.y                  = lp_solution.y;
+  solution.objective          = lp_solution.objective;
+  solution.user_objective     = lp_solution.user_objective;
+  solution.iterations         = lp_solution.iterations;
+  solution.l2_primal_residual = lp_solution.l2_primal_residual;
+  solution.l2_dual_residual   = lp_solution.l2_dual_residual;
   return status;
 }
 

@@ -26,14 +26,11 @@ requirements:
   host:
     - pip
     - python =${{ py_version }}
-    - setuptools
+    - setuptools>=61.0.0
   run:
     - msgpack-python =1.0.8
     - python
     - requests
-  ignore_run_exports:
-    by_name:
-      - python_abi
 
 tests:
   - python:

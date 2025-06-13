@@ -102,7 +102,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: nvcr.io/j9mrpofbmtxd/test/cuopt:25.05
+          tags: nvcr.io/j9mrpofbmtxd/test/cuopt:25.08
           file: ci/build-service.Dockerfile
           build-args: |
             nspect_id="NSPECT-LZ5P-VOVE"
@@ -110,11 +110,11 @@ jobs:
 
       - name: Push image to prod env
         run: |
-            docker tag nvcr.io/j9mrpofbmtxd/test/cuopt:25.05 nvcr.io/0616513341838337/cuopt:nightly
-            docker tag nvcr.io/j9mrpofbmtxd/test/cuopt:25.05 nvcr.io/0616513341838337/cuopt:25.05
+            docker tag nvcr.io/j9mrpofbmtxd/test/cuopt:25.08 nvcr.io/0616513341838337/cuopt:nightly
+            docker tag nvcr.io/j9mrpofbmtxd/test/cuopt:25.08 nvcr.io/0616513341838337/cuopt:25.08
 
             docker push nvcr.io/0616513341838337/cuopt:nightly
-            docker push nvcr.io/0616513341838337/cuopt:25.05
+            docker push nvcr.io/0616513341838337/cuopt:25.08
 
   managed-service-nightly-arm:
     name: Managed service nightly build for ARM architecture 
@@ -186,7 +186,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: nvcr.io/j9mrpofbmtxd/test/cuopt:25.05.arm
+          tags: nvcr.io/j9mrpofbmtxd/test/cuopt:25.08.arm
           file: ci/build-service.Dockerfile
           build-args: |
             nspect_id="NSPECT-LZ5P-VOVE"
@@ -194,8 +194,8 @@ jobs:
 
       - name: Push image to prod env
         run: |
-            docker tag nvcr.io/j9mrpofbmtxd/test/cuopt:25.05.arm nvcr.io/0616513341838337/cuopt:nightly.arm
-            docker tag nvcr.io/j9mrpofbmtxd/test/cuopt:25.05.arm nvcr.io/0616513341838337/cuopt:25.05.arm
+            docker tag nvcr.io/j9mrpofbmtxd/test/cuopt:25.08.arm nvcr.io/0616513341838337/cuopt:nightly.arm
+            docker tag nvcr.io/j9mrpofbmtxd/test/cuopt:25.08.arm nvcr.io/0616513341838337/cuopt:25.08.arm
 
             docker push nvcr.io/0616513341838337/cuopt:nightly.arm
-            docker push nvcr.io/0616513341838337/cuopt:25.05.arm
+            docker push nvcr.io/0616513341838337/cuopt:25.08.arm

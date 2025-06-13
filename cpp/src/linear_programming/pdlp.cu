@@ -41,11 +41,14 @@
 
 namespace cuopt::linear_programming::detail {
 
-void set_pdlp_hyper_parameters()
+void set_pdlp_hyper_parameters(rmm::cuda_stream_view stream_view)
 {
-  RAFT_CUDA_TRY(cudaMemcpyToSymbol(pdlp_hyper_params::primal_importance,
-                                   &pdlp_hyper_params::host_primal_importance,
-                                   sizeof(double)));
+  RAFT_CUDA_TRY(cudaMemcpyToSymbolAsync(pdlp_hyper_params::primal_importance,
+                                        &pdlp_hyper_params::host_primal_importance,
+                                        sizeof(double),
+                                        0,
+                                        cudaMemcpyHostToDevice,
+                                        stream_view));
 }
 
 template <typename i_t, typename f_t>

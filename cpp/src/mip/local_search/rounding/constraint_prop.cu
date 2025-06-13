@@ -593,7 +593,8 @@ std::vector<thrust::pair<i_t, f_t>> constraint_prop_t<i_t, f_t>::generate_bulk_r
                  "Probing value must be an integer");
     f_t val_to_round = first_probe;
     // check probing cache if some implied bounds exists
-    if (use_probing_cache && bounds_update.probing_cache.contains(unset_var_idx)) {
+    if (use_probing_cache &&
+        bounds_update.probing_cache.contains(*sol.problem_ptr, unset_var_idx)) {
       // check if there are any conflicting bounds
       val_to_round =
         bounds_update.probing_cache.get_least_conflicting_rounding(*sol.problem_ptr,

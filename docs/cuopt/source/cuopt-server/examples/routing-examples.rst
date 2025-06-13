@@ -338,7 +338,7 @@ To use a previous solution as an initial solution for a new request ID, you are 
    cuopt_sh data.json -i $ip -p $port -id $reqId
 
    # delete previous saved solutions using follwing command
-   cuopt_sh $ip $port -d $reqId
+   cuopt_sh -i $ip -p $port -d $reqId
 
 
 Uploading a Solution

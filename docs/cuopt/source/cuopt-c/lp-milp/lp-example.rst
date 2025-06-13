@@ -5,7 +5,7 @@ LP C API Examples
 Example With Data
 -----------------
 
-This example demonstrates how to use the cuOpt linear programming solver in C. More details on the API can be found in `C API <lp-milp-c-api.html>`_.
+This example demonstrates how to use the LP solver in C. More details on the API can be found in `C API <lp-milp-c-api.html>`_.
 
 Copy the code below into a file called ``lp_example.c``:
 
@@ -208,7 +208,7 @@ Copy the code below into a file called ``lp_example.c``:
    }
 
 
-Need to find PATH for cuopt_c.h and libcuopt.so, if you know the path, please add it to these path variables directly. Else, run the following commands to find the path and assign it to the path variables.
+It is necessary to have the path for include and library dirs ready, if you know the paths, please add them to the path variables directly. Otherwise, run the following commands to find the path and assign it to the path variables.
 The following commands are for Linux and might fail in cases where the cuopt library is not installed or there are multiple cuopt libraries in the system.
 
 If you have built it locally, libcuopt.so will be in the build directory ``cpp/build`` and include directoy would be ``cpp/include``.
@@ -423,7 +423,7 @@ Copy the code below into a file called ``lp_example_mps.c``:
    }
 
 
-Need to find PATH for cuopt_c.h and libcuopt.so, if you know the path, please add it to these path variables directly. Else, run the following commands to find the path and assign it to the path variables.
+It is necessary to have the path for include and library dirs ready, if you know the paths, please add them to the path variables directly. Otherwise, run the following commands to find the path and assign it to the path variables.
 The following commands are for Linux and might fail in cases where the cuopt library is not installed or there are multiple cuopt libraries in the system.
 
 If you have built it locally, libcuopt.so will be in the build directory ``cpp/build`` and include directoy would be ``cpp/include``.
@@ -494,53 +494,3 @@ You should see the following output:
    x2 = 0.000000
 
    Solver completed successfully!
-
-
-Example for CLI with MPS file
-------------------------------
-
-This example demonstrates how to use the cuOpt CLI to solve an MPS file and how to set the parameters for the solver.
-
-.. code-block:: bash
-
-   echo "* optimize
-   *  cost = -0.2 * VAR1 + 0.1 * VAR2
-   * subject to
-   *  3 * VAR1 + 4 * VAR2 <= 5.4
-   *  2.7 * VAR1 + 10.1 * VAR2 <= 4.9
-   NAME   good-1
-   ROWS
-    N  COST
-    L  ROW1
-    L  ROW2
-   COLUMNS
-      VAR1      COST      -0.2
-      VAR1      ROW1      3              ROW2      2.7  
-      VAR2      COST      0.1
-      VAR2      ROW1      4              ROW2      10.1
-   RHS
-      RHS1      ROW1      5.4            ROW2      4.9
-   ENDATA" > sample.mps
-
-   # Solve the MPS file with the additional parameter settings
-   cuopt_cli sample.mps --absolute-primal-tolerance 0.0001 --pdlp-solver-mode 1 --time-limit 5
-
-
-This should give you the following output:
-
-.. code-block:: bash
-   :caption: Output
-
-   [2025-05-17 15:22:16:143587] [CUOPT] [info  ] Running file sample.mps
-   Solving a problem with 2 constraints 2 variables (0 integers) and 4 nonzeros
-   Objective offset 0.000000 scaling_factor 1.000000
-   Running concurrent
-
-   Dual simplex finished in 0.00 seconds
-      Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time
-         0 +0.00000000e+00 +0.00000000e+00  0.00e+00   0.00e+00     2.00e-01   0.011s
-   PDLP finished
-   Concurrent time:  0.012s
-   Solved with dual simplex
-   Status: Optimal   Objective: -3.60000000e-01  Iterations: 1  Time: 0.012s
-
