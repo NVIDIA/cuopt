@@ -53,7 +53,17 @@ template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t, f_t>& problem_)
 {
   // Mark the problem as empty if the op_problem has an empty matrix.
-  if (problem_.get_constraint_matrix_values().is_empty()) { empty = true; }
+  if (problem_.get_constraint_matrix_values().is_empty()) {
+    cuopt_assert(problem_.get_constraint_matrix_indices().is_empty(),
+                 "Problem is empty but constraint matrix indices are not empty.");
+    cuopt_assert(problem_.get_constraint_matrix_offsets().size() == 1,
+                 "Problem is empty but constraint matrix offsets are not empty.");
+    cuopt_assert(problem_.get_constraint_lower_bounds().is_empty(),
+                 "Problem is empty but constraint lower bounds are not empty.");
+    cuopt_assert(problem_.get_constraint_upper_bounds().is_empty(),
+                 "Problem is empty but constraint upper bounds are not empty.");
+    empty = true;
+  }
 
   // Set variables bounds to default if not set and constraints bounds if user has set a row type
   set_bounds_if_not_set(*this);
@@ -63,6 +73,7 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
   check_problem_representation(false, false);
   // If maximization problem, convert the problem
   if (maximize) convert_to_maximization_problem(*this);
+
   const bool is_mip = original_problem_ptr->get_problem_category() != problem_category_t::LP;
   if (is_mip) {
     // Resize what is needed for MIP
@@ -74,6 +85,7 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
     compute_n_integer_vars();
     compute_binary_var_table();
   }
+
   compute_transpose_of_problem();
   // Check after modifications
   check_problem_representation(true, is_mip);
@@ -272,6 +284,17 @@ void problem_t<i_t, f_t>::compute_transpose_of_problem()
   reverse_offsets.resize(n_variables + 1, handle_ptr->get_stream());
   reverse_constraints.resize(nnz, handle_ptr->get_stream());
   reverse_coefficients.resize(nnz, handle_ptr->get_stream());
+
+  // Special case if A is empty
+  // as cuSparse had a bug up until 12.9 causing cusparseCsr2cscEx2 to return incorrect results
+  // for empty matrices (CUSPARSE-2319)
+  // In this case, construct it manually
+  if (reverse_coefficients.is_empty()) {
+    thrust::fill(
+      handle_ptr->get_thrust_policy(), reverse_offsets.begin(), reverse_offsets.end(), 0);
+    return;
+  }
+
   raft::sparse::linalg::csr_transpose(*handle_ptr,
                                       offsets.data(),
                                       variables.data(),
@@ -302,12 +325,12 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
 {
   raft::common::nvtx::range scope("check_problem_representation");
 
-  // Presolve reductions might trivially solve the problem to optimality/infeasibility.
-  // In this case, it is exptected that the problem fields are empty.
   cuopt_assert(!offsets.is_empty(), "A_offsets must never be empty.");
   if (check_transposed) {
     cuopt_assert(!reverse_offsets.is_empty(), "A_offsets must never be empty.");
   }
+  // Presolve reductions might trivially solve the problem to optimality/infeasibility.
+  // In this case, it is exptected that the problem fields are empty.
   if (!empty) {
     // Check for empty fields
     cuopt_assert(!coefficients.is_empty(), "A_values must be set before calling the solver.");
@@ -318,8 +341,9 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
       cuopt_assert(!reverse_constraints.is_empty(),
                    "A_indices must be set before calling the solver.");
     }
-    cuopt_assert(!objective_coefficients.is_empty(), "c must be set before calling the solver.");
   }
+  cuopt_assert(objective_coefficients.size() == n_variables,
+               "objective_coefficients size mismatch");
 
   // Check CSR validity
   check_csr_representation(
@@ -681,6 +705,7 @@ void problem_t<i_t, f_t>::recompute_auxilliary_data(bool check_representation)
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_n_integer_vars()
 {
+  cuopt_assert(n_variables == variable_types.size(), "size mismatch");
   integer_indices.resize(n_variables, handle_ptr->get_stream());
   auto end =
     thrust::copy_if(handle_ptr->get_thrust_policy(),

@@ -138,6 +138,7 @@ static void convert_to_maximization_problem(detail::problem_t<i_t, f_t>& op_prob
   // negating objective coeffs
   op_problem.presolve_data.objective_scaling_factor =
     -op_problem.presolve_data.objective_scaling_factor;
+  op_problem.presolve_data.objective_offset = -op_problem.presolve_data.objective_offset;
 }
 
 /*
