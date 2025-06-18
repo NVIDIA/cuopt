@@ -31,6 +31,14 @@ i_t basis_update_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs, std::vector<f
 }
 
 template <typename i_t, typename f_t>
+i_t basis_update_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
+                                      sparse_vector_t<i_t, f_t>& solution) const
+{
+  sparse_vector_t<i_t, f_t> Lsol(rhs.n, 0);
+  return b_solve(rhs, solution, Lsol);
+}
+
+template <typename i_t, typename f_t>
 i_t basis_update_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
                                       std::vector<f_t>& solution,
                                       std::vector<f_t>& Lsol) const
@@ -44,6 +52,33 @@ i_t basis_update_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
   // B*x = b
   // P*B*x = P*b = b'
   permute_vector(row_permutation_, rhs, solution);
+
+  // L*U*x = b'
+  // Solve for v such that L*v = b'
+  l_solve(solution);
+  Lsol = solution;
+
+  // Solve for x such that U*x = v
+  u_solve(solution);
+  return 0;
+}
+
+template <typename i_t, typename f_t>
+i_t basis_update_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
+                                      sparse_vector_t<i_t, f_t>& solution,
+                                      sparse_vector_t<i_t, f_t>& Lsol) const
+{
+  const i_t m = L0_.m;
+  assert(row_permutation_.size() == m);
+  assert(rhs.n == m);
+  assert(solution.n == m);
+  assert(Lsol.n == m);
+
+  // P*B = L*U
+  // B*x = b
+  // P*B*x = P*b = b'
+  solution = rhs;
+  solution.inverse_permute_vector(inverse_row_permutation_);
 
   // L*U*x = b'
   // Solve for v such that L*v = b'
@@ -87,6 +122,114 @@ i_t basis_update_t<i_t, f_t>::b_transpose_solve(const std::vector<f_t>& rhs,
   return 0;
 }
 
+template <typename i_t, typename f_t>
+i_t basis_update_t<i_t, f_t>::b_transpose_solve(const sparse_vector_t<i_t, f_t>& rhs,
+                                                sparse_vector_t<i_t, f_t>& solution) const
+{
+  // Observe that
+  // P*B = L*U
+  // B'*P' = U'*L'
+  // We want to solve
+  // B'*y = c
+  // Let y = P'*w
+  // B'*y = B'*P'*w = U'*L'*w = c
+  // 1. Solve U'*r = c for r
+  // 2. Solve L'*w = r for w
+  // 3. Compute y = P'*w
+
+  const i_t m = L0_.m;
+  assert(rhs.n == m);
+  assert(solution.n == m);
+
+  // Solve for r such that U'*r = c
+  // Actually Q*U'*Q'*r = c
+  sparse_vector_t<i_t, f_t> r = rhs;
+  u_transpose_solve(r);
+
+#ifdef CHECK_U_TRANSPOSE_SOLVE
+  std::vector<f_t> residual;
+  rhs.to_dense(residual);
+  std::vector<f_t> r_dense;
+  r.to_dense(r_dense);
+  std::vector<f_t> product(m);
+  // Q * U' * Q' * r_dense - c
+
+  std::vector<f_t> r_dense_permuted(m);
+  inverse_permute_vector(col_permutation_, r_dense, r_dense_permuted);
+
+  // product = U' * Q' * r_dense
+  matrix_transpose_vector_multiply(U_, 1.0, r_dense_permuted, 0.0, product);
+  std::vector<f_t> product_permuted(m);
+  permute_vector(col_permutation_, product, product_permuted);
+  // residual = product_permuted - c
+  for (i_t k = 0; k < m; ++k) {
+    residual[k] -= product_permuted[k];
+  }
+
+  const f_t Ut_error = vector_norm_inf<i_t, f_t>(residual);
+  if (Ut_error > 1e-6) {
+    printf("|| U' * r - c || %e\n", Ut_error);
+    for (i_t k = 0; k < m; ++k) {
+      if (std::abs(residual[k]) > 1e-6) {
+        printf("%d residual %e\n", k, residual[k]);
+      }
+    }
+    printf("rhs nz %d\n", rhs.i.size());
+  }
+#endif
+
+  // Solve for w such that L'*w = r
+  l_transpose_solve(r);
+
+
+  // y = P'*w
+  r.inverse_permute_vector(row_permutation_, solution);
+
+#ifdef CHECK_PERMUTATION
+  std::vector<f_t> r_dense2;
+  r.to_dense(r_dense2);
+  std::vector<f_t> solution_dense_permuted(m);
+  permute_vector(inverse_row_permutation_, r_dense2, solution_dense_permuted);
+  std::vector<f_t> solution_dense;
+  solution.to_dense(solution_dense);
+  bool found_error = false;
+  for (i_t k = 0; k < m; ++k) {
+    if (std::abs(solution_dense[k] - solution_dense_permuted[k]) > 1e-6) {
+      printf("B transpose inverse permutation error %d %e %e\n", k, solution_dense[k], solution_dense_permuted[k]);
+      found_error = true;
+    }
+  }
+  if (found_error) {
+    for (i_t k = 0; k < m; ++k) {
+      printf("%d (sparse -> permuted -> dense) %e (sparse -> dense -> permuted)%e\n", k, solution_dense[k], solution_dense_permuted[k]);
+    }
+    for (i_t k = 0; k < solution.i.size(); ++k)
+    {
+      printf("%d solution sparse %d %e\n", k, solution.i[k], solution.x[k]);
+    }
+    for (i_t k = 0; k < m; ++k) {
+      if (solution_dense[k] != 0.0) {
+        printf("%d solution dense %e\n", k, solution_dense[k]);
+      }
+    }
+    for (i_t k = 0; k < m; ++k) {
+      printf("inv permutation %d %d\n", k, inverse_row_permutation_[k]);
+    }
+    for (i_t k = 0; k < m; ++k) {
+      if (r_dense2[k] != 0.0) {
+        printf("%d r dense %e\n", k, r_dense2[k]);
+      }
+    }
+    for (i_t k = 0; k < m; ++k) {
+      if (solution_dense_permuted[k] != 0.0) {
+        printf("%d solution dense permuted %e\n", k, solution_dense_permuted[k]);
+      }
+    }
+  }
+#endif
+  return 0;
+}
+
 // Solve for x such that L*x = b
 template <typename i_t, typename f_t>
 i_t basis_update_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
@@ -101,7 +244,6 @@ i_t basis_update_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
 #endif
   // First solve
   // L0*x0 = b
-  // TODO: Handle a sparse rhs
   dual_simplex::lower_triangular_solve(L0_, rhs);
 #ifdef CHECK_LOWER_SOLVE
   {
@@ -129,6 +271,100 @@ i_t basis_update_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
   return 0;
 }
 
+template <typename i_t, typename f_t>
+i_t basis_update_t<i_t, f_t>::l_solve(sparse_vector_t<i_t, f_t>& rhs) const
+{
+  // L = L0 * R1^{-1} * R2^{-1} * ... * Rk^{-1}
+  //
+  // where Ri = I + e_r d^T
+
+  // First solve
+  // L0*x0 = b
+  csc_matrix_t<i_t, f_t> B(1, 1, 1);
+  rhs.to_csc(B);
+  const i_t m = L0_.m;
+  i_t top = sparse_triangle_solve<i_t, f_t, true>(B, 0, std::nullopt, xi_workspace_, L0_, x_workspace_.data());
+  solve_to_sparse_vector(top, rhs); // Uses xi_workspace_ and x_workspace_ to fill rhs
+
+#ifdef CHECK_L_SOLVE
+  std::vector<f_t> residual(m, 0.0);
+  const i_t col_start = B.col_start[0];
+  const i_t col_end   = B.col_start[1];
+  for (i_t p = col_start; p < col_end; ++p) {
+    residual[B.i[p]] = B.x[p];
+  }
+
+  std::vector<f_t> x0;
+  rhs.to_dense(x0);
+  matrix_vector_multiply(L0_, 1.0, x0, -1.0, residual);
+  const f_t L0_solve_error = vector_norm_inf<i_t, f_t>(residual);
+  if (L0_solve_error > 1e-10) {
+    printf("L0 solve error %e\n", L0_solve_error);
+  }
+#endif
+
+
+
+
+  // then solve R1^{-1}*x1 = x0     ->  x1 = R1*x0
+  // then solve R2^{-1}*x2 = x1     ->  x2 = R2*x1
+  // until we get to
+  // Rk^{-1}*x = xk-1               -> x = Rk*xk-1
+  // Rk = (I + e_rk dk^T)
+  // x = Rk*xk-1 = xk-1 + erk (dk^T xk-1)
+
+#ifdef CHECK_MULTIPLY
+  std::vector<f_t> multiply;
+  rhs.to_dense(multiply);
+#endif
+
+  i_t nz = scatter_into_workspace(rhs);
+
+  for (i_t k = 0; k < num_updates_; ++k) {
+    const i_t r = pivot_indices_[k];
+    f_t dot             = 0.0;
+    const i_t col_start = S_.col_start[k];
+    const i_t col_end   = S_.col_start[k + 1];
+    for (i_t p = col_start; p < col_end; ++p) {
+      if (xi_workspace_[S_.i[p]]) {
+        dot += S_.x[p] * x_workspace_[S_.i[p]];
+      }
+    }
+    if (!xi_workspace_[r]) {
+      xi_workspace_[r] = 1;
+      xi_workspace_[m + nz] = r;
+      nz++;
+    }
+    x_workspace_[r] += dot;
+
+#ifdef CHECK_MULTIPLY
+    f_t dot2 = 0.0;
+    for (i_t p = col_start; p < col_end; ++p) {
+      dot2 += S_.x[p] * multiply[S_.i[p]];
+    }
+    multiply[r] += dot2;
+#endif
+  }
+
+  // Gather the solution into rhs
+  gather_into_sparse_vector(nz, rhs);
+
+  rhs.sort();
+
+#ifdef CHECK_MULTIPLY
+  std::vector<f_t> rhs_dense;
+  rhs.to_dense(rhs_dense);
+  for (i_t k = 0; k < m; ++k) {
+    if (std::abs(rhs_dense[k] - multiply[k]) > 1e-10) {
+      printf("l_solve rhs dense/multiply error %d %e %e\n", k, rhs_dense[k], multiply[k]);
+    }
+  }
+#endif
+
+  return 0;
+}
+
+
 // Solve for y such that L'*y = c
 template <typename i_t, typename f_t>
 i_t basis_update_t<i_t, f_t>::l_transpose_solve(std::vector<f_t>& rhs) const
@@ -150,6 +386,157 @@ i_t basis_update_t<i_t, f_t>::l_transpose_solve(std::vector<f_t>& rhs) const
   // L0'*y = c
   // TODO: handle a sparse rhs
   dual_simplex::lower_triangular_transpose_solve(L0_, rhs);
+  return 0;
+}
+
+template <typename i_t, typename f_t>
+i_t basis_update_t<i_t, f_t>::scatter_into_workspace(const sparse_vector_t<i_t, f_t>& in) const
+{
+  const i_t m = L0_.m;
+  // scatter pattern into xi_workspace_
+  i_t nz = in.i.size();
+  for (i_t k = 0; k < nz; ++k) {
+    const i_t i = in.i[k];
+    xi_workspace_[i] = 1;
+    xi_workspace_[m + k]   = i;
+  }
+  // scatter values into x_workspace_
+  for (i_t k = 0; k < nz; ++k) {
+    x_workspace_[in.i[k]] = in.x[k];
+  }
+  return nz;
+}
+
+template <typename i_t, typename f_t>
+void basis_update_t<i_t, f_t>::gather_into_sparse_vector(i_t nz, sparse_vector_t<i_t, f_t>& out) const
+{
+  const i_t m = L0_.m;
+  out.i.clear();
+  out.x.clear();
+  out.i.resize(nz);
+  out.x.resize(nz);
+  for (i_t k = 0; k < nz; ++k) {
+    const i_t i = xi_workspace_[m + k];
+    out.i[k] = i;
+    out.x[k] = x_workspace_[i];
+    xi_workspace_[m + k] = 0;
+    xi_workspace_[i] = 0;
+    x_workspace_[i] = 0.0;
+  }
+}
+
+template <typename i_t, typename f_t>
+void basis_update_t<i_t, f_t>::solve_to_sparse_vector(i_t top, sparse_vector_t<i_t, f_t>& out) const
+{
+  const i_t m = L0_.m;
+  out.n = m;
+  out.i.clear();
+  out.x.clear();
+  const i_t nz = m - top;
+  out.x.resize(nz);
+  out.i.resize(nz);
+  i_t k = 0;
+  for (i_t p = top; p < m; ++p) {
+    const i_t i = xi_workspace_[p];
+    out.i[k] = i;
+    out.x[k] = x_workspace_[i];
+    x_workspace_[i] = 0.0;
+    xi_workspace_[p] = 0;
+    k++;
+  }
+}
+
+template <typename i_t, typename f_t>
+i_t basis_update_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& rhs) const
+{
+  // L = L0*R1^{-1}* ... * Rk^{-1}
+  // L' = Rk^{-T} * Rk-1^{-T} * ... * R2^{-T} * R1^{-T} * L0^T
+  // L'*y = c
+  // Rk^{-T} * Rk-1^{-T} * ... * R2^{-T} * R1^{-T} * L0^T * y = c
+  // L0^T * y = cprime = R1^1 * ... * Rk^T * c
+  const i_t m = L0_.m;
+
+  i_t nz = 0;
+
+#ifdef CHECK_UPDATES
+  std::vector<f_t> multiply;
+  rhs.to_dense(multiply);
+  for (i_t k = 0; k < 2*m; ++k) {
+    if (xi_workspace_[k]) {
+      printf("xi workspace %d %d\n", k, xi_workspace_[k]);
+    }
+  }
+#endif
+
+  if (num_updates_ > 0) {
+    nz = scatter_into_workspace(rhs);
+  }
+
+  for (i_t k = num_updates_ - 1; k >= 0; --k) {
+    const i_t r = pivot_indices_[k];
+    assert(r < m);
+    const i_t col_start = S_.col_start[k];
+    const i_t col_end   = S_.col_start[k + 1];
+    if (xi_workspace_[r]) {
+      for (i_t p = col_start; p < col_end; ++p) {
+        // rhs.x[S_.i[p]] += rhs.x[r] * S_.x[p];
+        if (!xi_workspace_[S_.i[p]]) {
+          xi_workspace_[S_.i[p]] = 1;
+          xi_workspace_[m + nz] = S_.i[p];
+          nz++;
+        }
+        x_workspace_[S_.i[p]] += x_workspace_[r] * S_.x[p];
+      }
+    }
+#ifdef CHECK_UPDATES
+    for (i_t p = col_start; p < col_end; ++p) {
+      multiply[S_.i[p]] += multiply[r] * S_.x[p];
+    }
+#endif
+  }
+
+  // Gather into rhs
+  if (num_updates_ > 0) {
+    gather_into_sparse_vector(nz, rhs);
+
+    rhs.sort();
+
+#ifdef CHECK_UPDATES
+  std::vector<f_t> rhs_dense;
+  rhs.to_dense(rhs_dense);
+  for (i_t k = 0; k < m; ++k)
+  {
+    if (std::abs(rhs_dense[k] - multiply[k]) > 1e-6) {
+      printf("rhs dense/multiply error %d %e %e\n", k, rhs_dense[k], multiply[k]);
+    }
+  }
+#endif
+  }
+
+  // L0^T * y = cprime
+  csc_matrix_t<i_t, f_t> Cprime(1, 1, 1);
+  rhs.to_csc(Cprime);
+
+#ifdef CHECK_LOWER_TRANSPOSE_SOLVE
+  std::vector<f_t> cprime_dense;
+  rhs.to_dense(cprime_dense);
+#endif
+
+  i_t top = sparse_triangle_solve<i_t, f_t, false>(Cprime, 0, std::nullopt, xi_workspace_, L0_transpose_, x_workspace_.data());
+  solve_to_sparse_vector(top, rhs); // Uses xi_workspace_ and x_workspace_ to fill rhs
+
+#ifdef CHECK_LOWER_TRANSPOSE_SOLVE
+  std::vector<f_t> y_dense;
+  rhs.to_dense(y_dense);
+
+  std::vector<f_t> residual = cprime_dense;
+  matrix_transpose_vector_multiply(L0_, 1.0, y_dense, -1.0, residual);
+  const f_t L0_solve_error = vector_norm_inf<i_t, f_t>(residual);
+  if (L0_solve_error > 1e-6) {
+    printf("L0 solve error %e\n", L0_solve_error);
+  }
+
+#endif
   return 0;
 }
 
@@ -205,6 +592,29 @@ i_t basis_update_t<i_t, f_t>::u_solve(std::vector<f_t>& x) const
   return 0;
 }
 
+template <typename i_t, typename f_t>
+i_t basis_update_t<i_t, f_t>::u_solve(sparse_vector_t<i_t, f_t>& rhs) const
+{
+  // Solve Q*U*Q'*x = b
+  // Multiplying by Q' we have U*Q'*x = Q'*b = bprime
+  // Let y = Q'*x so U*y = bprime
+  // 1. Compute bprime = Q'*b
+  // 2. Solve for y such that U*y = bprime
+  // 3. Compute Q*y = x
+  const i_t m = U_.m;
+  sparse_vector_t<i_t, f_t> bprime(m, 0);
+  rhs.inverse_permute_vector(col_permutation_, bprime);
+
+  csc_matrix_t<i_t, f_t> Bprime(1, 1, 1);
+  bprime.to_csc(Bprime);
+  i_t top = sparse_triangle_solve<i_t, f_t, false>(Bprime, 0, std::nullopt, xi_workspace_, U_, x_workspace_.data());
+  solve_to_sparse_vector(top, rhs); // Uses xi_workspace_ and x_workspace_ to fill rhs
+
+  rhs.inverse_permute_vector(inverse_col_permutation_);
+
+  return 0;
+}
+
 // x = U'(q,q)\b
 template <typename i_t, typename f_t>
 i_t basis_update_t<i_t, f_t>::u_transpose_solve(std::vector<f_t>& x) const
@@ -220,6 +630,104 @@ i_t basis_update_t<i_t, f_t>::u_transpose_solve(std::vector<f_t>& x) const
   inverse_permute_vector(col_permutation_, x, bprime);
   dual_simplex::upper_triangular_transpose_solve(U_, bprime);
   permute_vector(col_permutation_, bprime, x);
+  return 0;
+}
+
+template <typename i_t, typename f_t>
+i_t basis_update_t<i_t, f_t>::u_transpose_solve(sparse_vector_t<i_t, f_t>& rhs) const
+{
+  // Solve Q*U'*Q'*x = b
+  // Multiplying by Q' we have U'*Q'*x = Q'*b = bprime
+  // Let y = Q'*x so U'*y = bprime
+  // 1. Compute bprime = Q'*b
+  // 2. Solve for y such that U'*y = bprime
+  // 3. Compute Q*y = x
+  const i_t m = U_.m;
+  sparse_vector_t<i_t, f_t> bprime(1, 0);
+#ifdef CHECK_PERMUTATION
+  std::vector<f_t> rhs_dense(m);
+  rhs.to_dense(rhs_dense);
+#endif
+  rhs.inverse_permute_vector(col_permutation_, bprime);
+#ifdef CHECK_PERMUTATION
+  std::vector<f_t> bprime_dense;
+  bprime.to_dense(bprime_dense);
+  std::vector<f_t> rhs_dense_permuted(m);
+  inverse_permute_vector(col_permutation_, rhs_dense, rhs_dense_permuted);
+  for (i_t k = 0; k < m; ++k) {
+    if (std::abs(bprime_dense[k] - rhs_dense_permuted[k]) > 1e-6) {
+      printf("u_transpose inverse permutation error %d %e %e\n", k, bprime_dense[k], rhs_dense_permuted[k]);
+    }
+  }
+#endif
+
+#ifdef CHECK_WORKSPACE
+  for (i_t k = 0; k < 2*m; ++k) {
+    if (xi_workspace_[k]) {
+      printf("before Utranspose m %d solve xi workspace %d %d\n", m, k, xi_workspace_[k]);
+    }
+  }
+#endif
+
+
+  // U'*y = bprime
+  csc_matrix_t<i_t, f_t> Bprime(1, 1, 1);
+  bprime.to_csc(Bprime);
+  i_t top = sparse_triangle_solve<i_t, f_t, true>(Bprime, 0, std::nullopt, xi_workspace_, U_transpose_, x_workspace_.data());
+  solve_to_sparse_vector(top, rhs); // Uses xi_workspace_ and x_workspace_ to fill rhs
+
+#ifdef CHECK_WORKSPACE
+  for (i_t k = 0; k < 2*m; ++k) {
+    if (xi_workspace_[k]) {
+      printf("after Utranspose m %d top %d solve xi workspace %d %d\n", m, top, k, xi_workspace_[k]);
+    }
+  }
+#endif
+
+#ifdef CHECK_PERMUTATION
+  std::vector<f_t> rhs_dense2;
+  rhs.to_dense(rhs_dense2);
+#endif
+
+    // Q*y = x
+  rhs.inverse_permute_vector(inverse_col_permutation_);
+#ifdef CHECK_PERMUTATION
+  rhs.to_dense(rhs_dense_permuted);
+  std::vector<f_t> rhs_dense_permuted2(m);
+  permute_vector(col_permutation_, rhs_dense2, rhs_dense_permuted2);
+  bool found_error = false;
+  for (i_t k = 0; k < m; ++k) {
+    if (std::abs(rhs_dense_permuted[k] - rhs_dense_permuted2[k]) > 1e-6) {
+      printf("u_transpose2 permutation error %d %e %e\n", k, rhs_dense_permuted[k], rhs_dense_permuted2[k]);
+      found_error = true;
+    }
+  }
+  if (found_error) {
+    for (i_t k = 0; k < m; ++k) {
+      printf("%d (sparse -> permuted -> dense) %e (sparse -> dense -> permuted)%e\n", k, rhs_dense_permuted[k], rhs_dense_permuted2[k]);
+    }
+    for (i_t k = 0; k < rhs.i.size(); ++k) {
+      printf("%d rhs sparse %d %e\n", k, rhs.i[k], rhs.x[k]);
+    }
+    for (i_t k = 0; k < m; ++k) {
+      if (rhs_dense_permuted[k] != 0.0) {
+        printf("%d rhs dense permuted %e\n", k, rhs_dense_permuted[k]);
+      }
+    }
+    for (i_t k = 0; k < m; ++k) {
+      if (rhs_dense2[k] != 0.0) {
+        printf("%d rhs dense2 %e\n", k, rhs_dense2[k]);
+      }
+    }
+    printf("col permutation %d rhs dense 2 %d rhs dense permuted %d\n", col_permutation_.size(), rhs_dense2.size(), rhs_dense_permuted.size());
+    for (i_t k = 0; k < col_permutation_.size(); ++k) {
+      printf("%d col permutation %d\n", k, col_permutation_[k]);
+    }
+    for (i_t k = 0; k < m; ++k) {
+      printf("%d col permutation inverse %d\n", k, inverse_col_permutation_[k]);
+    }
+  }
+#endif
   return 0;
 }
 
@@ -334,6 +842,7 @@ i_t basis_update_t<i_t, f_t>::update_upper(const std::vector<i_t>& ind,
   U_.col_start[n] = new_nz;
 
   // Check to ensure that U remains upper triangular
+#ifdef CHECK_UPPER_TRIANGULAR
   for (i_t k = 0; k < n; ++k) {
     const i_t col_start = U_.col_start[k];
     const i_t col_end   = U_.col_start[k + 1];
@@ -341,6 +850,10 @@ i_t basis_update_t<i_t, f_t>::update_upper(const std::vector<i_t>& ind,
       assert(U_.i[p] <= k);
     }
   }
+#endif
+
+  // Update U transpose
+  U_.transpose(U_transpose_);
 
   return 0;
 }

@@ -152,7 +152,7 @@ i_t depth_first_search(i_t j,
     }
     done   = 1;  // Node j is done if no unvisited neighbors
     i_t p2 = (jnew < 0) ? 0 : UNFLIP(G.col_start[jnew + 1]);
-    for (i_t p = pstack[head]; p < p2; ++p) {  // Examin all neighbors of j
+    for (i_t p = pstack[head]; p < p2; ++p) {  // Examine all neighbors of j
       i_t i = G.i[p];                          // Consider neighbor i
       if (MARKED(G.col_start, i)) {
         continue;  // skip visited node i
@@ -163,8 +163,10 @@ i_t depth_first_search(i_t j,
       break;             // break to start dfs at node i
     }
     if (done) {
-      head--;         // remove j from the recursion stack
-      xi[--top] = j;  // and place it the output stack
+      pstack[head] = 0;  // restore pstack so it can be used again in other routines
+      xi[head] = 0;      // restore xi so it can be used again in other routines
+      head--;            // remove j from the recursion stack
+      xi[--top] = j;     // and place it the output stack
     }
   }
   return top;
@@ -244,6 +246,13 @@ template int sparse_triangle_solve<int, double, true>(const csc_matrix_t<int, do
                                                       std::vector<int>& xi,
                                                       csc_matrix_t<int, double>& G,
                                                       double* x);
+
+template int sparse_triangle_solve<int, double, false>(const csc_matrix_t<int, double>& B,
+                                                        int col,
+                                                        const std::optional<std::vector<int>>& pinv,
+                                                        std::vector<int>& xi,
+                                                        csc_matrix_t<int, double>& G,
+                                                        double* x);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

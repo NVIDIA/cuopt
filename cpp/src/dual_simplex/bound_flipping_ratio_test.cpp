@@ -34,6 +34,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_breakpoints(std::vector<i_t>&
   const f_t dual_tol     = settings_.dual_tol / 10;
 
   i_t idx = 0;
+  while (idx == 0 && pivot_tol >= 1e-12) {
     for (i_t k = 0; k < n - m; ++k) {
       const i_t j = nonbasic_list_[k];
       if (vstatus_[j] == variable_status_t::NONBASIC_FIXED) { continue; }
@@ -50,6 +51,8 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_breakpoints(std::vector<i_t>&
         idx++;
       }
     }
+    pivot_tol /= 10;
+  }
   return idx;
 }
 
@@ -131,12 +134,13 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
     0, num_breakpoints, indicies, ratios, slope, step_length, nonbasic_entering, entering_index);
   bool continue_search = k_idx >= 0 && num_breakpoints > 1 && slope > 0.0;
   if (!continue_search) {
-    if constexpr (verbose) {
+    if constexpr (0) {
       settings_.log.printf(
-        "BFRT stopping. No bound flips. Step length %e Nonbasic entering %d Entering %d.\n",
+        "BFRT stopping. No bound flips. Step length %e Nonbasic entering %d Entering %d pivot %e\n",
         step_length,
         nonbasic_entering,
-        entering_index);
+        entering_index,
+        std::abs(delta_z_[entering_index]));
     }
     return entering_index;
   }
@@ -157,11 +161,12 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   heap_passes(
     indicies, ratios, num_breakpoints - 1, slope, step_length, nonbasic_entering, entering_index);
 
-  if constexpr (verbose) {
-    settings_.log.printf("BFRT step length %e entering index %d non basic entering %d\n",
+  if constexpr (0) {
+    settings_.log.printf("BFRT step length %e entering index %d non basic entering %d pivot %e\n",
                          step_length,
                          entering_index,
-                         nonbasic_entering);
+                         nonbasic_entering,
+                         std::abs(delta_z_[entering_index]));
   }
   return entering_index;
 }

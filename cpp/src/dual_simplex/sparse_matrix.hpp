@@ -23,8 +23,10 @@
 #include <cassert>
 #include <cstdio>
 #include <vector>
+#include <algorithm>
 
 namespace cuopt::linear_programming::dual_simplex {
+
 
 template <typename i_t, typename f_t>
 class csr_matrix_t;  // Forward declaration of CSR matrix needed to define CSC matrix
@@ -106,6 +108,189 @@ class csr_matrix_t {
   std::vector<f_t> x;          // numerical valuse, size nz_max
 
   static_assert(std::is_signed_v<i_t>);
+};
+
+
+template <typename i_t, typename f_t>
+class sparse_vector_t {
+ public:
+  sparse_vector_t(i_t n, i_t nz) : n(n), i(nz), x(nz) {}
+  sparse_vector_t(const std::vector<f_t>& in) : n(in.size())
+  {
+    i_t nz = 0;
+    for (i_t k = 0; k < n; ++k) {
+      if (in[k] != 0) {
+        i.push_back(k);
+        x.push_back(in[k]);
+      }
+    }
+  }
+  sparse_vector_t(const csc_matrix_t<i_t, f_t>& A, i_t col)
+  {
+    const i_t col_start = A.col_start[col];
+    const i_t col_end = A.col_start[col + 1];
+    n = A.n;
+    const i_t nz = col_end - col_start;
+    i.reserve(nz);
+    x.reserve(nz);
+    for (i_t k = col_start; k < col_end; ++k) {
+      i.push_back(A.i[k]);
+      x.push_back(A.x[k]);
+    }
+  }
+
+  void to_csc(csc_matrix_t<i_t, f_t>& A) const
+  {
+    A.m = n;
+    A.n = 1;
+    A.nz_max = i.size();
+    A.col_start.clear();
+    A.col_start.resize(2);
+    A.col_start[0] = 0;
+    A.col_start[1] = i.size();
+    A.i = i;
+    A.x = x;
+  }
+
+  void to_dense(std::vector<f_t>& x_dense) const
+  {
+    x_dense.clear();
+    x_dense.resize(n, 0.0);
+    const i_t nz = i.size();
+    for (i_t k = 0; k < nz; ++k) {
+      x_dense[i[k]] = x[k];
+    }
+  }
+
+  void scatter(std::vector<f_t>& x_dense) const
+  {
+    // Assumes x_dense is already cleared
+    const i_t nz = i.size();
+    for (i_t k = 0; k < nz; ++k) {
+      x_dense[i[k]] += x[k];
+    }
+  }
+
+  void inverse_permute_vector(const std::vector<i_t>& p)
+  {
+    assert(p.size() == n);
+    i_t nz = i.size();
+    std::vector<i_t> i_perm(nz);
+    for (i_t k = 0; k < nz; ++k) {
+      i_perm[k] = p[i[k]];
+    }
+    i = i_perm;
+  }
+
+  void inverse_permute_vector(const std::vector<i_t>& p, sparse_vector_t<i_t, f_t>& y) const
+  {
+    i_t m = p.size();
+    assert(n == m);
+    i_t nz = i.size();
+    y.n = n;
+    y.x = x;
+    std::vector<i_t> i_perm(nz);
+    for (i_t k = 0; k < nz; ++k) {
+      i_perm[k] = p[i[k]];
+    }
+    y.i = i_perm;
+  }
+
+  f_t sparse_dot(const csc_matrix_t<i_t, f_t>& Y, i_t y_col) const
+  {
+    const i_t col_start = Y.col_start[y_col];
+    const i_t col_end = Y.col_start[y_col + 1];
+    const i_t ny = col_end - col_start;
+    const i_t nx = i.size();
+    f_t dot = 0.0;
+    for (i_t h = 0, k = col_start; h < nx && k < col_end; ) {
+      const i_t p = i[h];
+      const i_t q = Y.i[k];
+      if (p == q) {
+        dot += Y.x[k] * x[h];
+        h++;
+        k++;
+      } else if (p < q) {
+        h++;
+      } else if (q < p) {
+        k++;
+      }
+    }
+    return dot;
+  }
+
+  void sort()
+  {
+    if (i.size() < 2) {
+      return;
+    }
+    // If the number of nonzeros is large, use a O(n) bucket sort
+    if (i.size() > 0.3 *n)
+    {
+      std::vector<f_t> bucket(n, 0.0);
+      const i_t nz = i.size();
+      for (i_t k = 0; k < nz; ++k)
+      {
+        bucket[i[k]] = x[k];
+      }
+      i.clear();
+      i.reserve(nz);
+      x.clear();
+      x.reserve(nz);
+      for (i_t k = 0; k < n; ++k)
+      {
+        if (bucket[k] != 0.0)
+        {
+          i.push_back(k);
+          x.push_back(bucket[k]);
+        }
+      }
+    }
+    else
+    {
+      // Use a n log n sort
+      const i_t nz = i.size();
+      std::vector<i_t> i_sorted(nz);
+      std::vector<f_t> x_sorted(nz);
+      std::vector<i_t> perm(nz);
+      for (i_t k = 0; k < nz; ++k)
+      {
+        perm[k] = k;
+      }
+      std::vector<i_t>& iunsorted = i;
+      std::sort(perm.begin(), perm.end(), [&iunsorted](i_t a, i_t b) { return iunsorted[a] < iunsorted[b]; });
+      for (i_t k = 0; k < nz; ++k)
+      {
+        i_sorted[k] = i[perm[k]];
+        x_sorted[k] = x[perm[k]];
+      }
+      i = i_sorted;
+      x = x_sorted;
+    }
+
+    // Check
+#ifdef CHECK_SORT
+  for (i_t k = 0; k < i.size() - 1; ++k) {
+    if (i[k] > i[k + 1]) {
+      printf("Sort error %d %d\n", i[k], i[k + 1]);
+    }
+  }
+#endif
+  }
+
+  f_t norm2_squared() const
+  {
+    f_t dot = 0.0;
+    const i_t nz = i.size();
+    for (i_t k = 0; k < nz; ++k) {
+      dot += x[k] * x[k];
+    }
+    return dot;
+  }
+
+  i_t n;
+  std::vector<i_t> i;
+  std::vector<f_t> x;
 };
 
 template <typename i_t>
