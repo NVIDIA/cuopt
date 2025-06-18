@@ -284,11 +284,9 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
     solver_settings->set_parameter(CUOPT_METHOD, CUOPT_METHOD_PDLP);
   }
 
-  // Use a default stream instead of a non-blocking to avoid invalid operations while some CUDA
-  // Graph might be capturing in another stream
 #pragma omp parallel for num_threads(max_thread)
   for (std::size_t i = 0; i < size; ++i)
-    list[i] = std::move(call_solve(data_models[i], solver_settings, cudaStreamDefault));
+    list[i] = std::move(call_solve(data_models[i], solver_settings, cudaStreamNonBlocking));
 
   auto end      = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
