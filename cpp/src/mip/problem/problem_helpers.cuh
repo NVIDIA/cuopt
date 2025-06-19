@@ -279,6 +279,23 @@ static bool check_constraint_bounds_sanity(const detail::problem_t<i_t, f_t>& pr
 }
 
 template <typename i_t, typename f_t>
+static void round_bounds(detail::problem_t<i_t, f_t>& problem)
+{
+  // round bounds to integer for integer variables
+  thrust::for_each(problem.handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(problem.n_variables),
+                   [lb    = make_span(problem.variable_lower_bounds),
+                    ub    = make_span(problem.variable_upper_bounds),
+                    types = make_span(problem.variable_types)] __device__(i_t index) {
+                     if (types[index] == var_t::INTEGER) {
+                       lb[index] = ceil(lb[index]);
+                       ub[index] = floor(ub[index]);
+                     }
+                   });
+}
+
+template <typename i_t, typename f_t>
 static bool check_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
 {
   return check_var_bounds_sanity<i_t, f_t>(problem) &&
