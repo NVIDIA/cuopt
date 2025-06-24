@@ -77,17 +77,17 @@ class cusparse_view_t {
   // cusparse view of At * Y computation
   cusparseDnVecDescr_t
     current_AtY;  // Only used at very first iteration and after each restart to average
-  cusparseDnVecDescr_t next_AtY;  // Next value is swaped out with current after each valid PDHG
+  cusparseDnVecDescr_t next_AtY;  // Next value is swapped out with current after each valid PDHG
                                   // step to save the first AtY SpMV in compute next primal
   cusparseDnVecDescr_t potential_next_dual_solution;
 
-  // cusparse view of auxillirary space needed for some spmv computations
+  // cusparse view of auxiliary space needed for some spmv computations
   cusparseDnVecDescr_t tmp_primal;
   cusparseDnVecDescr_t tmp_dual;
 
   // reuse buffers for cusparse spmv
-  rmm::device_uvector<uint8_t> buffer_non_transpose;
-  rmm::device_uvector<uint8_t> buffer_transpose;
+  rmm::device_uvector<f_t> buffer_non_transpose;
+  rmm::device_uvector<f_t> buffer_transpose;
 
   // Ref to the A_T found in either
   // Initial problem, we use it to have an unscaled A_T
