@@ -39,8 +39,8 @@ struct recombine_stats {
 
   void update_improve_stats(double cost_new, double cost_first, double cost_second)
   {
-    if (cost_new < (min(cost_first, cost_second) - OBJECTIVE_EPSILON)) ++better_than_both;
-    if (cost_new < (max(cost_first, cost_second) - OBJECTIVE_EPSILON)) ++better_than_one;
+    if (cost_new < (std::min(cost_first, cost_second) - OBJECTIVE_EPSILON)) ++better_than_both;
+    if (cost_new < (std::max(cost_first, cost_second) - OBJECTIVE_EPSILON)) ++better_than_one;
   }
 
   void add_attempt() { ++attempts; }

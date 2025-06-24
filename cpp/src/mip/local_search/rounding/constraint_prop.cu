@@ -826,7 +826,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
       generate_bulk_rounding_vector(sol, orig_sol, host_vars_to_set, probing_candidates);
     probe(sol, orig_sol.problem_ptr, var_val_pairs, &set_count, unset_integer_vars);
     if (!repair_tried && rounding_ii && !timeout_happened) {
-      timer_t repair_timer{min(timer.remaining_time() / 5, timer.elapsed_time() / 3)};
+      timer_t repair_timer{std::min(timer.remaining_time() / 5, timer.elapsed_time() / 3)};
       save_bounds(sol);
       // update bounds and run repair procedure
       bool bounds_repaired =

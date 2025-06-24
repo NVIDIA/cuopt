@@ -113,7 +113,7 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(solution_t<i_t, f_t>& 
     fj.settings.mode            = fj_mode_t::GREEDY_DESCENT;
     fj.settings.update_weights  = false;
     fj.settings.feasibility_run = is_feasibility_run;
-    fj.settings.time_limit      = min(0.5, timer.remaining_time());
+    fj.settings.time_limit      = std::min(0.5, timer.remaining_time());
     is_feasible                 = fj.solve(solution);
     if (is_feasibility_run) {
       if (is_feasible) {

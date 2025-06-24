@@ -256,7 +256,7 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
         if (REQUEST == request_t::PDP && (node_stack.top().from_idx == node_stack.route_length ||
                                           node_stack.template is_stack_top_insertion<REQUEST>())) {
           time_between =
-            node_stack.get_dim_from_delivery<dim_t::TIME>(node_stack.top().intra_idx + 1);
+            node_stack.template get_dim_from_delivery<dim_t::TIME>(node_stack.top().intra_idx + 1);
 
           from_node = node_stack.delivery_node;
 
@@ -265,9 +265,9 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
                          node_stack.s_route.get_node(node_stack.top().intra_idx + 1)),
                        "dim buffer mismatch");
         } else {
-          time_between = node_stack.get_dim_between<dim_t::TIME>(node_stack.top().from_idx,
-                                                                 node_stack.top().intra_idx + 1);
-          from_node    = node_stack.s_route.get_node(node_stack.top().from_idx);
+          time_between = node_stack.template get_dim_between<dim_t::TIME>(
+            node_stack.top().from_idx, node_stack.top().intra_idx + 1);
+          from_node = node_stack.s_route.get_node(node_stack.top().from_idx);
           copy_forward_data(from_node, node_stack.top());
           cuopt_assert(node_stack.check_dim_between(
                          node_stack.top().from_idx,
@@ -624,7 +624,8 @@ __global__ void execute_lexico_move(
       request_locations = request_id_t<REQUEST>(pickup_insert_idx);
     }
     // insert request
-    s_route.insert_request<REQUEST>(request_locations, request_node, solution.route_node_map, true);
+    s_route.template insert_request<REQUEST>(
+      request_locations, request_node, solution.route_node_map, true);
     i_t n_ejections_executed = 0;
     for (i_t i = 0; i < sequence_size; ++i) {
       bool eject = true;

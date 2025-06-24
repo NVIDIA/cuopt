@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include <cuopt/linear_programming/constants.h>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 

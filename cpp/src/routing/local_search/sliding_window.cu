@@ -746,7 +746,8 @@ __global__ void kernel_perform_sliding_window(
   // All permutations of windows (size 2 to max_permutation_intra) are tryed along the whole route
   // Insertion with the lowest cost is recorded globally
 
-  found_sliding_solution_t<i_t> found_sliding_solution = is_sliding_uinitialized_t<i_t>::init_data;
+  found_sliding_solution_t<i_t> found_sliding_solution =
+    is_sliding_uinitialized_t<i_t>::init_data();
 
   const double excess_limit =
     s_route.get_weighted_excess(move_candidates.weights) * ls_excess_multiplier_route;
@@ -1047,7 +1048,7 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_window(
 
   sliding_cuda_graph.start_capture(solution.sol_handle->get_stream());
   async_fill(found_sliding_solution_data_,
-             is_sliding_uinitialized_t<i_t>::init_data,
+             is_sliding_uinitialized_t<i_t>::init_data(),
              solution.sol_handle->get_stream());
   async_fill(locks_, 0, solution.sol_handle->get_stream());
   // So that it only trigger in debug
@@ -1064,7 +1065,7 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_window(
     return false;
   }
   int ideal_blocks    = 4 * solution.sol_handle->get_num_sms();
-  int blocks_per_node = max(ideal_blocks / move_candidates.nodes_to_search.n_sampled_nodes, 1);
+  int blocks_per_node = std::max(ideal_blocks / move_candidates.nodes_to_search.n_sampled_nodes, 1);
 
   auto n_blocks = move_candidates.nodes_to_search.n_sampled_nodes * blocks_per_node;
   cuopt_assert(n_blocks > 0, "n_blocks should be positive");

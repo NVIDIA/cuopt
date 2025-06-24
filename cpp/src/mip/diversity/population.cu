@@ -65,7 +65,7 @@ template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::initialize_population()
 {
   var_threshold =
-    max(problem_ptr->n_variables - var_threshold, (problem_ptr->n_variables / 10) * 8);
+    std::max(problem_ptr->n_variables - var_threshold, (problem_ptr->n_variables / 10) * 8);
   initial_threshold_ratio = (f_t)var_threshold / problem_ptr->n_variables;
   solutions.reserve(max_solutions);
   indices.reserve(max_solutions);
@@ -378,7 +378,7 @@ void population_t<i_t, f_t>::compute_new_weights()
       infeasibility_importance *= weight_increase_ratio;
     }
 
-    infeasibility_importance = min(max_infeasibility_weight, infeasibility_importance);
+    infeasibility_importance = std::min(max_infeasibility_weight, infeasibility_importance);
     thrust::for_each(best_sol.handle_ptr->get_thrust_policy(),
                      thrust::counting_iterator(0),
                      thrust::counting_iterator(0) + weights.cstr_weights.size(),
@@ -394,7 +394,7 @@ void population_t<i_t, f_t>::compute_new_weights()
   } else {
     CUOPT_LOG_DEBUG("Decreasing weights!");
     infeasibility_importance *= weight_decrease_ratio;
-    infeasibility_importance = max(min_infeasibility_weight, infeasibility_importance);
+    infeasibility_importance = std::max(min_infeasibility_weight, infeasibility_importance);
 
     thrust::for_each(
       best_sol.handle_ptr->get_thrust_policy(),
@@ -535,7 +535,7 @@ template <typename i_t>
 i_t get_max_var_threshold(i_t n_vars)
 {
   if (n_vars < 50) {
-    return max(1, n_vars - 1);
+    return std::max(1, n_vars - 1);
   } else if (n_vars < 80) {
     return n_vars - 2;
   } else if (n_vars < 200) {
@@ -559,7 +559,7 @@ void population_t<i_t, f_t>::halve_the_population()
   size_t max_var_threshold      = get_max_var_threshold(problem_ptr->n_integer_vars);
   while (current_size() > max_solutions / 2) {
     clear_except_best_feasible();
-    var_threshold = max(var_threshold * 0.97, 0.5 * problem_ptr->n_integer_vars);
+    var_threshold = std::max(var_threshold * 0.97, 0.5 * problem_ptr->n_integer_vars);
     for (auto& sol : sol_vec) {
       add_solution(solution_t<i_t, f_t>(sol));
     }
@@ -569,9 +569,9 @@ void population_t<i_t, f_t>::halve_the_population()
   // if we removed too many decrease the diversity a little
   while (current_size() < max_solutions / 4) {
     clear_except_best_feasible();
-    var_threshold =
-      min(max_var_threshold,
-          min((size_t)(var_threshold * 0.97), (size_t)(0.995 * problem_ptr->n_integer_vars)));
+    var_threshold = std::min(
+      max_var_threshold,
+      std::min((size_t)(var_threshold * 0.97), (size_t)(0.995 * problem_ptr->n_integer_vars)));
     for (auto& sol : sol_vec) {
       add_solution(solution_t<i_t, f_t>(sol));
     }
