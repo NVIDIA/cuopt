@@ -94,6 +94,13 @@ int8_t cuOptGetFloatSize();
 int8_t cuOptGetIntSize();
 
 /**
+ * @brief Get the version of the library.
+ *
+ * @return The version of the library.
+ */
+const char* cuOptGetVersion();
+
+/**
  * @brief Read an optimization problem from an MPS file.
  *
  * @param[in] filename - The path to the MPS file.

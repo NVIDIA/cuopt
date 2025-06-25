@@ -24,6 +24,8 @@
 
 #include <mps_parser/parser.hpp>
 
+#include <cuopt/version_config.hpp>
+
 #include <memory>
 #include <string>
 
@@ -58,6 +60,18 @@ struct solution_and_stream_view_t {
 int8_t cuOptGetFloatSize() { return sizeof(cuopt_float_t); }
 
 int8_t cuOptGetIntSize() { return sizeof(cuopt_int_t); }
+
+const char* cuOptGetVersion()
+{
+  static char version[64];
+  std::snprintf(version,
+                sizeof(version),
+                "cuOpt %d.%d.%d",
+                CUOPT_VERSION_MAJOR,
+                CUOPT_VERSION_MINOR,
+                CUOPT_VERSION_PATCH);
+  return version;
+}
 
 cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* problem_ptr)
 {
@@ -797,7 +811,10 @@ cuopt_int_t cuOptGetSolutionBound(cuOptSolution solution, cuopt_float_t* solutio
         solution_and_stream_view->mip_solution_ptr);
     *solution_bound_ptr = mip_solution->get_solution_bound();
   } else {
-    return CUOPT_INVALID_ARGUMENT;
+    optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* optimization_problem_solution =
+      static_cast<optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>*>(
+        solution_and_stream_view->lp_solution_ptr);
+    *solution_bound_ptr = optimization_problem_solution->get_dual_objective_value();
   }
   return CUOPT_SUCCESS;
 }
