@@ -71,6 +71,6 @@ EXCLUDE_ARGS=(
 ci/build_wheel.sh libcuopt ${package_dir}
 
 mkdir -p final_dist
-python -m auditwheel repair --no-strip "${EXCLUDE_ARGS[@]}" -w "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}" ${package_dir}/dist/*
+python -m auditwheel repair "${EXCLUDE_ARGS[@]}" -w "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}" ${package_dir}/dist/*
 
 ci/validate_wheel.sh ${package_dir} "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}"

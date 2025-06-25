@@ -17,6 +17,8 @@
 
 set -euo pipefail
 
+rapids-logger "Running CLI tests"
+
 # Add cuopt_cli path to PATH variable
 if command -v pyenv &> /dev/null; then
     PATH="$(pyenv root)/versions/$(pyenv version-name)/bin:$PATH"
@@ -37,3 +39,5 @@ cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/linear_programming/good-mps-1.mps | grep 
 # Add a for mixed integer programming test with options
 
 cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/mip/sample.mps --mip-absolute-gap 0.01 --time-limit 10 | grep -q "Solution objective" || (echo "Expected solution objective not found" && exit 1)
+
+rapids-logger "CLI tests completed"
