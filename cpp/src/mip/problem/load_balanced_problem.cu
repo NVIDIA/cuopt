@@ -282,9 +282,11 @@ void create_variable_graph(const raft::handle_t* handle_ptr,
 template <typename i_t>
 void compact_bins(std::vector<i_t>& bins, i_t num_items)
 {
-  auto found_last_bin  = std::lower_bound(bins.begin(), bins.end(), num_items) - bins.begin();
-  auto max_degree_cnst = 2 << (found_last_bin - 3);
-  if (max_degree_cnst > 256) { found_last_bin = 10; }
+  auto found_last_bin = std::lower_bound(bins.begin(), bins.end(), num_items) - bins.begin();
+  if (found_last_bin >= 3) {
+    auto max_degree_cnst = 2 << (found_last_bin - 3);
+    if (max_degree_cnst > 256) { found_last_bin = 10; }
+  }
   // bins[0:found_last_bin-1] = 0;
   for (int i = 2; i <= found_last_bin - 1; ++i) {
     bins[i] = bins[1];

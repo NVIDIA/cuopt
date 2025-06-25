@@ -28,14 +28,11 @@ Conda
 
 NVIDIA cuOpt can be installed with Conda (via `miniforge <https://github.com/conda-forge/miniforge>`_) from the ``nvidia`` channel:
 
-For CUDA 12.x:
-
 .. code-block:: bash
-    
+
     # This is a deprecated module and no longer used, but it shares the same name for the CLI, so we need to uninstall it first if it exists.
     conda remove cuopt-thin-client
-    conda install -c rapidsai -c conda-forge -c nvidia \
-        libcuopt=25.08.* python=3.12 cuda-version=12.8
+    conda install -c rapidsai -c conda-forge -c nvidia libcuopt=25.08.*
 
 
 Please visit examples under each section to learn how to use the cuOpt C API.
