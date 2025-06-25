@@ -307,7 +307,6 @@ endif()
 
 
 
-list(APPEND CUOPT_CXX_FLAGS -g -O0)
 add_executable(cuopt_cli cuopt_cli.cpp)
 target_compile_options(cuopt_cli
   PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
