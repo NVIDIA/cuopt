@@ -17,10 +17,11 @@
 
 set -euo pipefail
 
-# Add cuopt_cli path to PATh variable
-PATH="$(pyenv root)/versions/$(pyenv version-name)/bin:$PATH"
-export PATH
-
+# Add cuopt_cli path to PATH variable
+if command -v pyenv &> /dev/null; then
+    PATH="$(pyenv root)/versions/$(pyenv version-name)/bin:$PATH"
+    export PATH
+fi
 
 # Test the CLI
 
