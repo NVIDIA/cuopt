@@ -36,25 +36,43 @@ namespace cuopt::linear_programming::dual_simplex {
 namespace phase2 {
 
 template <typename i_t, typename f_t>
-f_t l2_dual_residual(const lp_problem_t<i_t, f_t>& lp, const lp_solution_t<i_t, f_t>& solution)
+void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
+                     const sparse_vector_t<i_t, f_t>& delta_y,
+                     i_t leaving_index,
+                     i_t direction,
+                     std::vector<i_t>& nonbasic_mark,
+                     std::vector<i_t>& delta_z_mark,
+                     std::vector<i_t>& delta_z_indices,
+                     std::vector<f_t>& delta_z)
 {
-  std::vector<f_t> dual_residual = solution.z;
-  const i_t n                    = lp.num_cols;
-  // dual_residual <- z - c
-  for (i_t j = 0; j < n; j++) {
-    dual_residual[j] -= lp.objective[j];
+  // delta_zN = - N'*delta_y
+  const i_t nz_delta_y = delta_y.i.size();
+  for (i_t k = 0; k < nz_delta_y; k++)
+  {
+    const i_t i = delta_y.i[k];
+    const f_t delta_y_i = delta_y.x[k];
+    if (std::abs(delta_y_i) < 1e-13) {
+      continue;
+    }
+    const i_t row_start = A_transpose.col_start[i];
+    const i_t row_end = A_transpose.col_start[i + 1];
+    for (i_t p = row_start; p < row_end; ++p)
+    {
+      const i_t j = A_transpose.i[p];
+      if (nonbasic_mark[j] >= 0)
+      {
+        delta_z[j] -= delta_y_i * A_transpose.x[p];
+        if (!delta_z_mark[j])
+        {
+          delta_z_mark[j] = 1;
+          delta_z_indices.push_back(j);
+        }
+      }
+    }
   }
-  // dual_residual <- 1.0*A'*y + 1.0*(z - c)
-  matrix_transpose_vector_multiply(lp.A, 1.0, solution.y, 1.0, dual_residual);
-  return vector_norm2<i_t, f_t>(dual_residual);
-}
 
-template <typename i_t, typename f_t>
-f_t l2_primal_residual(const lp_problem_t<i_t, f_t>& lp, const lp_solution_t<i_t, f_t>& solution)
-{
-  std::vector<f_t> primal_residual = lp.rhs;
-  matrix_vector_multiply(lp.A, 1.0, solution.x, -1.0, primal_residual);
-  return vector_norm2<i_t, f_t>(primal_residual);
+  // delta_zB = sigma*ei
+  delta_z[leaving_index] = direction;
 }
 
 template <typename i_t, typename f_t>
@@ -89,55 +107,55 @@ void compute_reduced_cost_update(const lp_problem_t<i_t, f_t>& lp,
   }
 }
 
+
 template <typename i_t, typename f_t>
-void compute_reduced_cost_update(const lp_problem_t<i_t, f_t>& lp,
-                                 const csc_matrix_t<i_t, f_t>& Atranspose,
-                                 const std::vector<i_t>& basic_list,
-                                 const std::vector<i_t>& nonbasic_list,
-                                 const sparse_vector_t<i_t, f_t>& delta_y,
-                                 i_t leaving_index,
-                                 i_t direction,
-                                 std::vector<i_t>& nonbasic,
-                                 std::vector<f_t>& delta_z)
+void clear_delta_z(i_t entering_index,
+                   i_t leaving_index,
+                   std::vector<i_t>& delta_z_mark,
+                   std::vector<i_t>& delta_z_indices,
+                   std::vector<f_t>& delta_z)
 {
-  const i_t m = lp.num_rows;
-  const i_t n = lp.num_cols;
-
-  // delta_zB = sigma*ei,    O(m)
-  for (i_t k = 0; k < m; k++) {
-    const i_t j = basic_list[k];
-    delta_z[j]  = 0;
+  for (i_t k = 0; k < delta_z_indices.size(); k++)
+  {
+    const i_t j = delta_z_indices[k];
+    delta_z[j] = 0.0;
+    delta_z_mark[j] = 0;
   }
-  delta_z[leaving_index] = direction;
-
-
-  // Mark the nonbasic variables O(n - m)
-  for (i_t k = 0; k < n - m; k++) {
-    const i_t j = nonbasic_list[k];
-    nonbasic[j] = 1;
-  }
-
-  // delta_zN = - N'*delta_y
-  //          = - sum_{k : delta_y[k] != 0} delta_y[k] * Atranspose(:, nonbasic_list[k])
-  const i_t nz_dy = delta_y.i.size();
-  for (i_t k = 0; k < nz_dy; k++) {
-    const i_t i = delta_y.i[k];
-    const i_t row_start = Atranspose.col_start[i];
-    const i_t row_end   = Atranspose.col_start[i + 1];
-    for (i_t p = row_start; p < row_end; ++p) {
-      const i_t j = Atranspose.i[p];
-      if (nonbasic[j]) {
-        delta_z[j] -= delta_y.x[i] * Atranspose.x[p];
-      }
-    }
-  }
-
+  delta_z[entering_index] = 0.0;
+  delta_z[leaving_index] = 0.0;
+  delta_z_indices.clear();
 }
+
+
+
+template <typename i_t, typename f_t>
+f_t l2_dual_residual(const lp_problem_t<i_t, f_t>& lp, const lp_solution_t<i_t, f_t>& solution)
+{
+  std::vector<f_t> dual_residual = solution.z;
+  const i_t n                    = lp.num_cols;
+  // dual_residual <- z - c
+  for (i_t j = 0; j < n; j++) {
+    dual_residual[j] -= lp.objective[j];
+  }
+  // dual_residual <- 1.0*A'*y + 1.0*(z - c)
+  matrix_transpose_vector_multiply(lp.A, 1.0, solution.y, 1.0, dual_residual);
+  return vector_norm2<i_t, f_t>(dual_residual);
+}
+
+template <typename i_t, typename f_t>
+f_t l2_primal_residual(const lp_problem_t<i_t, f_t>& lp, const lp_solution_t<i_t, f_t>& solution)
+{
+  std::vector<f_t> primal_residual = lp.rhs;
+  matrix_vector_multiply(lp.A, 1.0, solution.x, -1.0, primal_residual);
+  return vector_norm2<i_t, f_t>(primal_residual);
+}
+
+
 
 
 template <typename i_t, typename f_t>
 void compute_dual_solution_from_basis(const lp_problem_t<i_t, f_t>& lp,
-                                      basis_update_t<i_t, f_t>& ft,
+                                      basis_update_mpf_t<i_t, f_t>& ft,
                                       const std::vector<i_t>& basic_list,
                                       const std::vector<i_t>& nonbasic_list,
                                       std::vector<f_t>& y,
@@ -540,29 +558,31 @@ i_t bound_flipping_ratio_test(const lp_problem_t<i_t, f_t>& lp,
 template <typename i_t, typename f_t>
 i_t flip_bounds(const lp_problem_t<i_t, f_t>& lp,
                 const simplex_solver_settings_t<i_t, f_t>& settings,
+                const std::vector<bool>& bounded_variables,
                 const std::vector<f_t>& objective,
                 const std::vector<f_t>& z,
+                const std::vector<i_t>& delta_z_indices,
                 const std::vector<i_t>& nonbasic_list,
                 i_t entering_index,
                 std::vector<variable_status_t>& vstatus,
                 std::vector<f_t>& delta_x,
-                std::vector<f_t>& atilde)
+                std::vector<i_t>& mark,
+                std::vector<f_t>& atilde,
+                std::vector<i_t>& atilde_index)
 {
-  f_t delta_obj = 0;
+  //f_t delta_obj = 0;
   i_t num_flipped = 0;
-  for (i_t j : nonbasic_list) {
+  for (i_t j : delta_z_indices) {
     if (j == entering_index) { continue; }
-    const bool bounded =
-      (lp.lower[j] > -inf) && (lp.upper[j] < inf) && (lp.lower[j] != lp.upper[j]);
-    if (!bounded) { continue; }
+    if (!bounded_variables[j]) { continue; }
     // x_j is now a nonbasic bounded variable that will not enter the basis this
     // iteration
     const f_t dual_tol =
       settings.dual_tol;  // lower to 1e-7 or less will cause 25fv47 and d2q06c to cycle
     if (vstatus[j] == variable_status_t::NONBASIC_LOWER && z[j] < -dual_tol) {
       const f_t delta = lp.upper[j] - lp.lower[j];
-      scatter_dense(lp.A, j, -delta, atilde);
-      delta_obj += delta * objective[j];
+      scatter_dense(lp.A, j, -delta, atilde, mark, atilde_index);
+      //delta_obj += delta * objective[j];
       delta_x[j] += delta;
       vstatus[j] = variable_status_t::NONBASIC_UPPER;
 #ifdef BOUND_FLIP_DEBUG
@@ -572,8 +592,8 @@ i_t flip_bounds(const lp_problem_t<i_t, f_t>& lp,
       num_flipped++;
     } else if (vstatus[j] == variable_status_t::NONBASIC_UPPER && z[j] > dual_tol) {
       const f_t delta = lp.lower[j] - lp.upper[j];
-      scatter_dense(lp.A, j, -delta, atilde);
-      delta_obj += delta * objective[j];
+      scatter_dense(lp.A, j, -delta, atilde, mark, atilde_index);
+      //delta_obj += delta * objective[j];
       delta_x[j] += delta;
       vstatus[j] = variable_status_t::NONBASIC_LOWER;
 #ifdef BOUND_FLIP_DEBUG
@@ -591,7 +611,7 @@ i_t initialize_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
                                    const simplex_solver_settings_t<i_t, f_t>& settings,
                                    const f_t start_time,
                                    const std::vector<i_t>& basic_list,
-                                  basis_update_t<i_t, f_t>& ft,
+                                   basis_update_mpf_t<i_t, f_t>& ft,
                                    std::vector<f_t>& delta_y_steepest_edge)
 {
   // TODO: Skip this initialization when starting from a slack basis
@@ -642,20 +662,23 @@ i_t initialize_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
 
   settings.log.printf("Found %d singleton rows in %.2fs\n", num_singleton_rows, toc(start_singleton_rows));
 
-  ft.compute_transposes();
+  //ft.compute_transposes();
 #endif
 
   f_t last_log = tic();
   for (i_t k = 0; k < m; ++k) {
-    //std::vector<f_t> ei(m);
+#if 0
+    std::vector<f_t> ei(m);
+    ei[k]       = -1.0;
+    std::vector<f_t> dy(m, 0.0);
+#else
     sparse_vector_t<i_t, f_t> sparse_ei(m, 1);
     sparse_ei.x[0] = -1.0;
     sparse_ei.i[0] = k;
-    //std::vector<f_t> dy(m, 0.0);
+#endif
     const i_t j = basic_list[k];
-    //ei[k]       = -1.0;
     f_t init = -1.0;
-    if (1 && row_degree[mapping[k]] == 1) {
+    if (row_degree[mapping[k]] == 1) {
       const i_t u = mapping[k];
       //settings.log.printf("Singleton row %d u %d\n", k, u);
       const f_t alpha = coeff[k];
@@ -687,15 +710,17 @@ i_t initialize_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
       }
 #endif
     } else {
-      //ft.b_transpose_solve(ei, dy);
-      //init = vector_norm2_squared<i_t, f_t>(dy);
+#if COMPARE_WITH_DENSE
+      ft.b_transpose_solve(ei, dy);
+      init = vector_norm2_squared<i_t, f_t>(dy);
+#else
       sparse_vector_t<i_t, f_t> sparse_dy(m, 0);
       ft.b_transpose_solve(sparse_ei, sparse_dy);
-      //settings.log.printf("Steepest edge norm %d nz %d\n", k, sparse_dy.x.size());
       f_t my_init = 0.0;
       for (i_t p = 0; p < sparse_dy.x.size(); ++p) {
         my_init += sparse_dy.x[p] * sparse_dy.x[p];
       }
+#endif
 #if COMPARE_WITH_DENSE
       if (std::abs(init - my_init) > 1e-12) {
         settings.log.printf("Singleton row %d error %.16e init %.16e my_init %.16e\n", k, std::abs(init - my_init), init, my_init);
@@ -726,24 +751,28 @@ i_t initialize_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
 template <typename i_t, typename f_t>
 i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settings,
                                const std::vector<i_t>& basic_list,
-                               const basis_update_t<i_t, f_t>& ft,
+                               const basis_update_mpf_t<i_t, f_t>& ft,
                                i_t direction,
-                               const std::vector<f_t>& delta_y,
-                               const std::vector<f_t>& scaled_delta_xB,
+                               const sparse_vector_t<i_t, f_t>& delta_y_sparse,
+                               f_t dy_norm_squared,
+                               const sparse_vector_t<i_t, f_t>& scaled_delta_xB,
                                i_t basic_leaving_index,
                                i_t entering_index,
+                               std::vector<f_t>& v,
                                std::vector<f_t>& delta_y_steepest_edge)
 {
-  i_t m = delta_y.size();
+  i_t m = basic_list.size();
 
-  sparse_vector_t<i_t, f_t> delta_y_sparse(delta_y);
+  //sparse_vector_t<i_t, f_t> delta_y_sparse(delta_y);
   const i_t delta_y_nz = delta_y_sparse.i.size();
+  sparse_vector_t<i_t, f_t> v_sparse(m, 0);
 
-  std::vector<f_t> v(m, 0.0);
   if (delta_y_nz > 0.25 * m)
   {
     // B^T delta_y = - direction * e_basic_leaving_index
     // We want B v =  - B^{-T} e_basic_leaving_index
+    std::vector<f_t> delta_y;
+    delta_y_sparse.to_dense(delta_y);
     ft.b_solve(delta_y, v);
     // if direction = -1 we need to scale v
     if (direction == -1) {
@@ -754,7 +783,6 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
   }
   else
   {
-    sparse_vector_t<i_t, f_t> v_sparse(m, 0);
     ft.b_solve(delta_y_sparse, v_sparse);
     if (direction == -1) {
       for (i_t k = 0; k < v_sparse.i.size(); ++k) {
@@ -764,7 +792,7 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
     v_sparse.scatter(v);
   }
 
-  const f_t dy_norm_squared      = vector_norm2_squared<i_t, f_t>(delta_y);
+  //const f_t dy_norm_squared      = delta_y_sparse.norm2_squared();
   const i_t leaving_index        = basic_list[basic_leaving_index];
   const f_t prev_dy_norm_squared = delta_y_steepest_edge[leaving_index];
 #ifdef STEEPEST_EDGE_DEBUG
@@ -781,17 +809,27 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
 
   // B*w = A(:, leaving_index)
   // B*scaled_delta_xB = -A(:, leaving_index) so w = -scaled_delta_xB
-  const f_t wr = -scaled_delta_xB[basic_leaving_index];
+  f_t scale;
+  const i_t scaled_delta_xB_nz = scaled_delta_xB.i.size();
+  for (i_t h = 0; h < scaled_delta_xB_nz; ++h) {
+    const i_t k = scaled_delta_xB.i[h];
+    if (k == basic_leaving_index) {
+      scale = scaled_delta_xB.x[h];
+      break;
+    }
+  }
+  const f_t wr = -scale;
+  //const f_t wr = -scaled_delta_xB.x[basic_leaving_index];
   if (wr == 0) { return -1; }
   const f_t omegar = dy_norm_squared / (wr * wr);
-
-  for (i_t k = 0; k < m; ++k) {
+  for (i_t h = 0; h < scaled_delta_xB_nz; ++h) {
+    const i_t k = scaled_delta_xB.i[h];
     const i_t j = basic_list[k];
     if (k == basic_leaving_index) {
-      const f_t w_squared      = scaled_delta_xB[k] * scaled_delta_xB[k];
+      const f_t w_squared      = scaled_delta_xB.x[h] * scaled_delta_xB.x[h];
       delta_y_steepest_edge[j] = (1.0 / w_squared) * dy_norm_squared;
     } else {
-      const f_t wk = -scaled_delta_xB[k];
+      const f_t wk = -scaled_delta_xB.x[h];
       f_t new_val  = delta_y_steepest_edge[j] + wk * (2.0 * v[k] / wr + wk * omegar);
       new_val      = std::max(new_val, 1e-4);
 #ifdef STEEPEST_EDGE_DEBUG
@@ -812,6 +850,11 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
     }
   }
 
+  const i_t v_nz = v_sparse.i.size();
+  for (i_t k = 0; k < v_nz; ++k) {
+    v[v_sparse.i[k]] = 0.0;
+  }
+
   return 0;
 }
 
@@ -819,18 +862,18 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
 template <typename i_t, typename f_t>
 i_t compute_steepest_edge_norm_entering(const simplex_solver_settings_t<i_t, f_t>& setttings,
                                         i_t m,
-                                        const basis_update_t<i_t, f_t>& ft,
+                                        const basis_update_mpf_t<i_t, f_t>& ft,
                                         i_t basic_leaving_index,
                                         i_t entering_index,
                                         std::vector<f_t>& steepest_edge_norms)
 {
-#ifdef CHECK_HYPERSPARSE
+#if 0
   std::vector<f_t> es(m);
   es[basic_leaving_index] = -1.0;
   std::vector<f_t> delta_ys(m);
   ft.b_transpose_solve(es, delta_ys);
   steepest_edge_norms[entering_index] = vector_norm2_squared<i_t, f_t>(delta_ys);
-#endif
+#else
 
   sparse_vector_t<i_t, f_t> es_sparse(m, 1);
   es_sparse.i[0] = basic_leaving_index;
@@ -838,6 +881,7 @@ i_t compute_steepest_edge_norm_entering(const simplex_solver_settings_t<i_t, f_t
   sparse_vector_t<i_t, f_t> delta_ys_sparse(m, 0);
   ft.b_transpose_solve(es_sparse, delta_ys_sparse);
   steepest_edge_norms[entering_index] = delta_ys_sparse.norm2_squared();
+#endif
 
 #ifdef STEEPEST_EDGE_DEBUG
   settings.log.printf("Steepest edge norm %e for entering j %d at i %d\n",
@@ -851,7 +895,7 @@ i_t compute_steepest_edge_norm_entering(const simplex_solver_settings_t<i_t, f_t
 template <typename i_t, typename f_t>
 i_t check_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settings,
                               const std::vector<i_t>& basic_list,
-                              const basis_update_t<i_t, f_t>& ft,
+                              const basis_update_mpf_t<i_t, f_t>& ft,
                               const std::vector<f_t>& delta_y_steepest_edge)
 {
   const i_t m = basic_list.size();
@@ -875,6 +919,7 @@ i_t check_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& setting
 template <typename i_t, typename f_t>
 i_t compute_perturbation(const lp_problem_t<i_t, f_t>& lp,
                          const simplex_solver_settings_t<i_t, f_t>& settings,
+                         const std::vector<i_t>& delta_z_indices,
                          std::vector<f_t>& z,
                          std::vector<f_t>& objective,
                          f_t& sum_perturb)
@@ -884,7 +929,9 @@ i_t compute_perturbation(const lp_problem_t<i_t, f_t>& lp,
   const f_t tight_tol = settings.tight_tol;
   i_t num_perturb     = 0;
   sum_perturb         = 0.0;
-  for (i_t j = 0; j < n; ++j) {
+  //for (i_t j = 0; j < n; ++j) {
+  for (i_t k = 0; k < delta_z_indices.size(); ++k) {
+    const i_t j = delta_z_indices[k];
     if (lp.upper[j] == inf && lp.lower[j] > -inf && z[j] < -tight_tol) {
       const f_t violation = -z[j];
       z[j] += violation;  // z[j] <- 0
@@ -1167,7 +1214,7 @@ void set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
 template <typename i_t, typename f_t>
 void prepare_optimality(const lp_problem_t<i_t, f_t>& lp,
                         const simplex_solver_settings_t<i_t, f_t>& settings,
-                        basis_update_t<i_t, f_t>& ft,
+                        basis_update_mpf_t<i_t, f_t>& ft,
                         const std::vector<f_t>& objective,
                         const std::vector<i_t>& basic_list,
                         const std::vector<i_t>& nonbasic_list,
@@ -1205,6 +1252,9 @@ void prepare_optimality(const lp_problem_t<i_t, f_t>& lp,
         z            = unperturbed_z;
         y            = unperturbed_y;
         perturbation = 0.0;
+      }
+      else {
+        settings.log.printf("Failed to remove perturbation of %.2e.\n", perturbation);
       }
     }
   }
@@ -1304,7 +1354,7 @@ dual::status_t dual_phase2(i_t phase,
   if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
   assert(q.size() == m);
   reorder_basic_list(q, basic_list);
-  basis_update_t ft(L, U, p);
+  basis_update_mpf_t<i_t, f_t> ft(L, U, p, settings.refactor_frequency);
 
   std::vector<f_t> c_basic(m);
   for (i_t k = 0; k < m; ++k) {
@@ -1442,10 +1492,51 @@ dual::status_t dual_phase2(i_t phase,
 
   const i_t iter_limit = settings.iteration_limit;
   std::vector<f_t> delta_y(m, 0.0);
-  std::vector<f_t> delta_z(n);
-  std::vector<f_t> delta_x(n);
+  std::vector<f_t> delta_z(n, 0.0);
+  std::vector<f_t> delta_x(n, 0.0);
+  std::vector<f_t> delta_x_flip(n, 0.0);
+  std::vector<f_t> atilde(m, 0.0);
+  std::vector<i_t> atilde_mark(m, 0);
+  std::vector<i_t> atilde_index;
+  std::vector<i_t> nonbasic_mark(n, -1);
+  std::vector<i_t> delta_z_mark(n, 0);
+  std::vector<i_t> delta_z_indices;
+  std::vector<f_t> v(m, 0.0);
+
+
+  for (i_t k = 0; k < n - m; k++) {
+    nonbasic_mark[nonbasic_list[k]] = k;
+  }
+
+  std::vector<bool> bounded_variables(n, false);
+  for (i_t j = 0; j < n; j++) {
+    const bool bounded =
+      (lp.lower[j] > -inf) && (lp.upper[j] < inf) && (lp.lower[j] != lp.upper[j]);
+    bounded_variables[j] = bounded;
+  }
+
+
+  csc_matrix_t<i_t, f_t> A_transpose(1, 1, 0);
+  lp.A.transpose(A_transpose);
+
+  f_t obj = compute_objective(lp, x);
+  settings.log.printf("Initial objective %e\n", obj);
+
   const i_t start_iter = iter;
+
   f_t bfrt_time        = 0;
+  f_t pricing_time     = 0;
+  f_t btran_time       = 0;
+  f_t ftran_time       = 0;
+  f_t flip_time        = 0;
+  f_t delta_z_time     = 0;
+  f_t se_norms_time    = 0;
+  f_t se_entering_time = 0;
+  f_t lu_update_time = 0;
+  f_t perturb_time   = 0;
+  f_t vector_time    = 0;
+  f_t objective_time = 0;
+
   while (iter < iter_limit) {
     // Pricing
     i_t direction;
@@ -1453,6 +1544,7 @@ dual::status_t dual_phase2(i_t phase,
     f_t primal_infeasibility;
     i_t leaving_index = -1;
     f_t max_val;
+    f_t price_start_time = tic();
     if (settings.use_steepest_edge_pricing) {
       leaving_index = phase2::steepest_edge_pricing(lp,
                                                     settings,
@@ -1468,6 +1560,7 @@ dual::status_t dual_phase2(i_t phase,
       leaving_index = phase2::phase2_pricing(
         lp, settings, x, basic_list, direction, basic_leaving_index, primal_infeasibility);
     }
+    pricing_time += toc(price_start_time);
     if (leaving_index == -1) {
       phase2::prepare_optimality(lp,
                                  settings,
@@ -1490,19 +1583,43 @@ dual::status_t dual_phase2(i_t phase,
 
     // BTran
     // TODO: replace with sparse solve.
-    std::vector<f_t> delta_y(m);
-#ifdef CHECK_HYPERSPARSE
+    //std::vector<f_t> delta_y(m);
+    f_t btran_start_time = tic();
+#if 0
     std::vector<f_t> ei(m, 0.0);
     ei[basic_leaving_index] = -direction;
     // BT*delta_y = -delta_zB = -sigma*ei
-    ft.b_transpose_solve(ei, delta_y);
-#endif
+    std::vector<f_t> UTsol;
+    ft.b_transpose_solve(ei, delta_y, UTsol);
+
+    if (ei[basic_leaving_index] != 1.0)
+    {
+      // Need to flip the sign of UTsol
+      for (i_t k = 0; k < m; ++k)
+      {
+        UTsol[k] *= -1.0;
+      }
+    }
+#else
     sparse_vector_t<i_t, f_t> ei_sparse(m, 1);
     ei_sparse.i[0] = basic_leaving_index;
     ei_sparse.x[0] = -direction;
     sparse_vector_t<i_t, f_t> delta_y_sparse(m, 0);
-    ft.b_transpose_solve(ei_sparse, delta_y_sparse);
-#ifdef CHECK_HYPERSPARSE
+    sparse_vector_t<i_t, f_t> UTsol_sparse(m, 0);
+    ft.b_transpose_solve(ei_sparse, delta_y_sparse, UTsol_sparse);
+    f_t b_transpose_solve_density = delta_y_sparse.i.size() / static_cast<f_t>(m);
+
+    if (direction != -1)
+    {
+      for (i_t k = 0; k < UTsol_sparse.x.size(); ++k)
+      {
+        UTsol_sparse.x[k] *= -1.0;
+      }
+    }
+    //std::vector<f_t> UTsol;
+    //UTsol_sparse.to_dense(UTsol);
+#endif
+#if 0
     std::vector<f_t> delta_y_sparse_vector_check(m);
     delta_y_sparse.to_dense(delta_y_sparse_vector_check);
     f_t error_check = 0.0;
@@ -1527,10 +1644,9 @@ dual::status_t dual_phase2(i_t phase,
       }
     }
 #endif
-    delta_y_sparse.scatter(delta_y);
-
+#if 1
     const f_t steepest_edge_norm_check = delta_y_sparse.norm2_squared();
-#ifdef CHECK_HYPERSPARSE
+#else
     f_t steepest_edge_norm_check = vector_norm2_squared<i_t, f_t>(delta_y);
 #endif
     if (delta_y_steepest_edge[leaving_index] <
@@ -1548,36 +1664,80 @@ dual::status_t dual_phase2(i_t phase,
       continue;
     }
 
+#if 0
+    // Only scatter after possible continue
+    delta_y_sparse.scatter(delta_y);
+#endif
+
+    btran_time += toc(btran_start_time);
+
 #ifdef COMPUTE_BTRANSPOSE_RESIDUAL
     {
       std::vector<f_t> res(m);
       b_transpose_multiply(lp, basic_list, delta_y, res);
-      for (Int k = 0; k < m; k++) {
+      f_t max_err = 0.0;
+      for (i_t k = 0; k < m; k++) {
         const f_t err = std::abs(res[k] - ei[k]);
         if (err > 1e-4) { settings.log.printf("BT err %d %e\n", k, err); }
-        assert(err < 1e-4);
+        max_err = std::max(max_err, err);
       }
+      printf("BTranspose multiply error %e\n", max_err);
     }
 #endif
 
-    // delta_zB = sigma*ei
-    for (i_t k = 0; k < m; k++) {
-      const i_t j = basic_list[k];
-      delta_z[j]  = 0;
-    }
-    delta_z[leaving_index] = direction;
-    // delta_zN = -N'*delta_y
-    for (i_t k = 0; k < n - m; k++) {
-      const i_t j = nonbasic_list[k];
-      // z_j <- -A(:, j)'*delta_y
-      const i_t col_start = lp.A.col_start[j];
-      const i_t col_end   = lp.A.col_start[j + 1];
-      f_t dot             = 0.0;
-      for (i_t p = col_start; p < col_end; ++p) {
-        dot += lp.A.x[p] * delta_y[lp.A.i[p]];
+    f_t delta_z_start_time = tic();
+
+    const f_t delta_y_nz_percentage = delta_y_sparse.i.size() / static_cast<f_t>(m) * 100.0;
+    //printf("delta y nz percentage %.2f\n", delta_y_nz_percentage);
+
+    if (delta_y_nz_percentage <= 30.0) {
+      phase2::compute_delta_z(A_transpose,
+                              delta_y_sparse,
+                              leaving_index,
+                              direction,
+                              nonbasic_mark,
+                              delta_z_mark,
+                              delta_z_indices,
+                              delta_z);
+    } else {
+      // delta_zB = sigma*ei
+      delta_y_sparse.to_dense(delta_y);
+      for (i_t k = 0; k < m; k++) {
+        const i_t j = basic_list[k];
+        delta_z[j]  = 0;
       }
-      delta_z[j] = -dot;
+      delta_z[leaving_index] = direction;
+      // delta_zN = -N'*delta_y
+      for (i_t k = 0; k < n - m; k++) {
+        const i_t j = nonbasic_list[k];
+        // z_j <- -A(:, j)'*delta_y
+        const i_t col_start = lp.A.col_start[j];
+        const i_t col_end   = lp.A.col_start[j + 1];
+        f_t dot             = 0.0;
+        for (i_t p = col_start; p < col_end; ++p) {
+          dot += lp.A.x[p] * delta_y[lp.A.i[p]];
+        }
+        delta_z[j] = -dot;
+        if (delta_z[j] != 0.0) {
+          delta_z_indices.push_back(j);
+          delta_z_mark[j] = 1;
+        }
+      }
     }
+
+#if 0
+    f_t error_check = 0.0;
+    for (i_t k = 0; k < n; ++k) {
+      if (std::abs(delta_z[k] - delta_z_check[k]) > 1e-6) {
+        settings.log.printf("delta_z error %d %e %e\n", k, delta_z[k], delta_z_check[k]);
+      }
+      error_check = std::max(error_check, std::abs(delta_z[k] - delta_z_check[k]));
+    }
+    if (error_check > 1e-6) {
+      settings.log.printf("delta_z error %e\n", error_check);
+    }
+#endif
+    delta_z_time += toc(delta_z_start_time);
 
 #ifdef COMPUTE_DUAL_RESIDUAL
     std::vector<f_t> dual_residual = delta_z;
@@ -1608,7 +1768,7 @@ dual::status_t dual_phase2(i_t phase,
 #if 1
       f_t slope = direction == 1 ? (lp.lower[leaving_index] - x[leaving_index])
                              : (x[leaving_index] - lp.upper[leaving_index]);
-      bound_flipping_ratio_test_t<i_t, f_t> bfrt(settings, start_time, m, n, slope, lp.lower, lp.upper, vstatus, nonbasic_list, z, delta_z);
+      bound_flipping_ratio_test_t<i_t, f_t> bfrt(settings, start_time, m, n, slope, lp.lower, lp.upper, bounded_variables, vstatus, nonbasic_list, z, delta_z, delta_z_indices, nonbasic_mark);
       entering_index = bfrt.compute_step_length(step_length, nonbasic_entering_index);
       if constexpr (0)
       {
@@ -1687,6 +1847,8 @@ dual::status_t dual_phase2(i_t phase,
       settings.log.printf("Dual infeasibility %e\n", dual_infeas);
       const f_t primal_inf = phase2::primal_infeasibility(lp, settings, vstatus, x);
       settings.log.printf("Primal infeasibility %e\n", primal_inf);
+      settings.log.printf("Updates %d\n", ft.num_updates());
+      settings.log.printf("Steepest edge %e\n", max_val);
       if (dual_infeas > settings.dual_tol) {
         settings.log.printf(
           "Numerical issues encountered. No entering variable found with large infeasibility.\n");
@@ -1695,16 +1857,35 @@ dual::status_t dual_phase2(i_t phase,
       return dual::status_t::DUAL_UNBOUNDED;
     }
 
+
+    f_t vector_y_z_start_time = tic();
     // Update dual variables
+
+
+  #if 1
+    const i_t delta_y_nz = delta_y_sparse.i.size();
+    for (i_t k = 0; k < delta_y_nz; ++k) {
+      const i_t i = delta_y_sparse.i[k];
+      y[i] += step_length * delta_y_sparse.x[k];
+    }
+    const i_t delta_z_nz = delta_z_indices.size();
+    for (i_t k = 0; k < delta_z_nz; ++k) {
+      const i_t j = delta_z_indices[k];
+      z[j] += step_length * delta_z[j];
+    }
+    z[leaving_index] += step_length * delta_z[leaving_index];
+  #else
+
     // y <- y + steplength * delta_y
     for (i_t i = 0; i < m; ++i) {
       y[i] += step_length * delta_y[i];
     }
-
     // z <- z + steplength * delta_z
     for (i_t j = 0; j < n; ++j) {
       z[j] += step_length * delta_z[j];
     }
+#endif
+    vector_time += toc(vector_y_z_start_time);
 
 #ifdef COMPUTE_DUAL_RESIDUAL
     dual_res1 = z;
@@ -1718,13 +1899,36 @@ dual::status_t dual_phase2(i_t phase,
     }
 #endif
 
+    f_t flip_start_time = tic();
     // Update primal variable
-    std::vector<f_t> atilde(m);
-    std::vector<f_t> delta_x_flip(n);
+
     const i_t num_flipped = phase2::flip_bounds(
-      lp, settings, objective, z, nonbasic_list, entering_index, vstatus, delta_x_flip, atilde);
+      lp, settings, bounded_variables, objective, z, delta_z_indices, nonbasic_list, entering_index, vstatus, delta_x_flip, atilde_mark, atilde, atilde_index);
+
+    flip_time += toc(flip_start_time);
+
+
+    f_t ftran_start_time = tic();
 
     if (num_flipped > 0) {
+      //settings.log.printf("Flipped %6d bounds. Dz nz %.2f Atilde nz %6d  %.2f %\n", num_flipped, static_cast<f_t>(delta_z_indices.size()) / static_cast<f_t>(n -m) * 100.0, atilde_index.size(), static_cast<f_t>(atilde_index.size()) / static_cast<f_t>(m) * 100.0);
+#if 1
+      // B*delta_xB_0 = atilde
+      sparse_vector_t<i_t, f_t> atilde_sparse(m, atilde_index.size());
+      for (i_t k = 0; k < atilde_index.size(); ++k)
+      {
+        atilde_sparse.i[k] = atilde_index[k];
+        atilde_sparse.x[k] = atilde[atilde_index[k]];
+      }
+      sparse_vector_t<i_t, f_t> delta_xB_0_sparse(m, 0);
+      ft.b_solve(atilde_sparse, delta_xB_0_sparse);
+      const i_t delta_xB_0_nz = delta_xB_0_sparse.i.size();
+      for (i_t k = 0; k < delta_xB_0_nz; ++k)
+      {
+        const i_t j = basic_list[delta_xB_0_sparse.i[k]];
+        x[j] += delta_xB_0_sparse.x[k];
+      }
+#else
       // B*delta_xB_0 = atilde
       std::vector<f_t> delta_xB_0(m);
       ft.b_solve(atilde, delta_xB_0);
@@ -1732,10 +1936,33 @@ dual::status_t dual_phase2(i_t phase,
         const i_t j = basic_list[k];
         x[j] += delta_xB_0[k];
       }
+#endif
+
+
+
+#if 1
+      for (i_t j : delta_z_indices) {
+        x[j] += delta_x_flip[j];
+        delta_x_flip[j] = 0.0;
+      }
+#else
       for (i_t k = 0; k < n - m; ++k) {
         const i_t j = nonbasic_list[k];
         x[j] += delta_x_flip[j];
       }
+#endif
+
+      // Clear atilde
+      for (i_t k = 0; k < atilde_index.size(); ++k)
+      {
+        atilde[atilde_index[k]] = 0.0;
+      }
+      // Clear atilde_mark
+      for (i_t k = 0; k < atilde_mark.size(); ++k)
+      {
+        atilde_mark[k] = 0;
+      }
+      atilde_index.clear();
     }
 
     f_t delta_x_leaving;
@@ -1748,7 +1975,10 @@ dual::status_t dual_phase2(i_t phase,
     std::vector<f_t> scaled_delta_xB(m);
     const i_t col_nz = lp.A.col_start[entering_index + 1] - lp.A.col_start[entering_index];
     std::vector<f_t> utilde(m);
-    if (col_nz > 0.25 * m)
+    sparse_vector_t<i_t, f_t> utilde_sparse(m, 0);
+    f_t b_solve_density = 1.0;
+    sparse_vector_t<i_t, f_t> scaled_delta_xB_sparse(m, 0);
+    if (0 && col_nz > 0.30 * m)
     {
       std::fill(rhs.begin(), rhs.end(), 0.0);
       lp.A.load_a_column(entering_index, rhs);
@@ -1760,8 +1990,6 @@ dual::status_t dual_phase2(i_t phase,
     else
     {
       sparse_vector_t<i_t, f_t> rhs_sparse(lp.A, entering_index);
-      sparse_vector_t<i_t, f_t> scaled_delta_xB_sparse(m, 0);
-      sparse_vector_t<i_t, f_t> utilde_sparse(m, 0);
       ft.b_solve(rhs_sparse, scaled_delta_xB_sparse, utilde_sparse);
       const i_t xB_nz = scaled_delta_xB_sparse.i.size();
       for (i_t k = 0; k < xB_nz; ++k)
@@ -1770,12 +1998,13 @@ dual::status_t dual_phase2(i_t phase,
       }
       scaled_delta_xB_sparse.to_dense(scaled_delta_xB);
       utilde_sparse.to_dense(utilde);
-#ifdef CHECK_B_SOLVE
+      b_solve_density = static_cast<f_t>(xB_nz) / static_cast<f_t>(m);
+#if 0
       rhs_sparse.to_dense(rhs);
 #endif
     }
 
-#ifdef CHECK_B_SOLVE
+#if 0
     {
       std::vector<f_t> residual_B(m);
       b_multiply(lp, basic_list, scaled_delta_xB, residual_B);
@@ -1788,11 +2017,36 @@ dual::status_t dual_phase2(i_t phase,
         }
         err_max = std::max(err_max, err);
       }
-      assert(err_max < 1e-4);
+      if (err_max > 1e-6)
+      {
+        printf("B multiply error %e\n", err_max);
+      }
     }
 #endif
 
-    f_t primal_step_length = delta_x_leaving / scaled_delta_xB[basic_leaving_index];
+    ftran_time += toc(ftran_start_time);
+
+    f_t delta_x_change_start_time = tic();
+
+#if 1
+  f_t scale;
+  const i_t scaled_delta_xB_nz = scaled_delta_xB_sparse.i.size();
+  for (i_t k = 0; k < scaled_delta_xB_nz; ++k) {
+    if (scaled_delta_xB_sparse.i[k] == basic_leaving_index) {
+      scale = scaled_delta_xB_sparse.x[k];
+      break;
+    }
+  }
+  f_t primal_step_length = delta_x_leaving / scale;
+  for (i_t k = 0; k < scaled_delta_xB_nz; ++k) {
+    const i_t j = basic_list[scaled_delta_xB_sparse.i[k]];
+    delta_x[j]  = primal_step_length * scaled_delta_xB_sparse.x[k];
+  }
+  delta_x[leaving_index] = delta_x_leaving;
+  delta_x[entering_index] = primal_step_length;
+#else
+   f_t primal_step_length = delta_x_leaving / scaled_delta_xB[basic_leaving_index];
+   std::vector<f_t> delta_x(n, 0.0);
     for (i_t k = 0; k < m; ++k) {
       const i_t j = basic_list[k];
       delta_x[j]  = primal_step_length * scaled_delta_xB[k];
@@ -1803,21 +2057,28 @@ dual::status_t dual_phase2(i_t phase,
       delta_x[j]  = 0.0;
     }
     delta_x[entering_index] = primal_step_length;
+#endif
+    vector_time += toc(delta_x_change_start_time);
 
-#ifdef COMPUTE_PRIMAL_STEP_RESIDUAL
+#if 0
+    std::vector<f_t> residual(m);
     matrix_vector_multiply(lp.A, 1.0, delta_x, 1.0, residual);
-    f_t primal_step_err = vector_norm_inf(residual);
+    f_t primal_step_err = vector_norm_inf<i_t, f_t>(residual);
     if (primal_step_err > 1e-4) { settings.log.printf("|| A * dx || %e\n", primal_step_err); }
 #endif
 
+
+    f_t steepest_edge_norms_start_time = tic();
     const i_t steepest_edge_status = phase2::update_steepest_edge_norms(settings,
                                                                         basic_list,
                                                                         ft,
                                                                         direction,
-                                                                        delta_y,
-                                                                        scaled_delta_xB,
+                                                                        delta_y_sparse,
+                                                                        steepest_edge_norm_check,
+                                                                        scaled_delta_xB_sparse,
                                                                         basic_leaving_index,
                                                                         entering_index,
+                                                                        v,
                                                                         delta_y_steepest_edge);
 #ifdef STEEPEST_EDGE_DEBUG
     if (steepest_edge_status == -1) {
@@ -1829,10 +2090,28 @@ dual::status_t dual_phase2(i_t phase,
 #endif
     assert(steepest_edge_status == 0);
 
+    se_norms_time += toc(steepest_edge_norms_start_time);
+
+    f_t vector_x_start_time = tic();
     // x <- x + delta_x
-    for (i_t j = 0; j < n; ++j) {
-      x[j] += delta_x[j];
-    }
+#if 1
+
+  //std::vector<f_t> x_check = x;
+  for (i_t k = 0; k < scaled_delta_xB_nz; ++k) {
+    const i_t j = basic_list[scaled_delta_xB_sparse.i[k]];
+    x[j] += delta_x[j];
+  }
+  // Leaving index already included above
+  x[entering_index] += delta_x[entering_index];
+#else
+
+  for (i_t j = 0; j < n; ++j) {
+    x[j] += delta_x[j];
+  }
+
+#endif
+    vector_time += toc(vector_x_start_time);
+
 #ifdef COMPUTE_PRIMAL_RESIDUAL
     residual = lp.rhs;
     matrix_vector_multiply(lp.A, 1.0, x, -1.0, residual);
@@ -1842,8 +2121,38 @@ dual::status_t dual_phase2(i_t phase,
     }
 #endif
 
+
+    f_t objective_start_time = tic();
+#if 1
+    for (i_t k = 0; k < scaled_delta_xB_nz; ++k) {
+      const i_t j = basic_list[scaled_delta_xB_sparse.i[k]];
+      obj += delta_x[j] * lp.objective[j];
+    }
+    // Leaving index already included above
+    obj += delta_x[entering_index] * lp.objective[entering_index];
+
+    //const f_t obj_check  = compute_objective(lp, x);
+    //if (std::abs(obj - obj_check) > 1e-5) {
+    //  settings.log.printf("Objective error %e: %e %e\n", std::abs(obj - obj_check), obj, obj_check);
+    //}
+#endif
+    objective_time += toc(objective_start_time);
+
+    // Clear delta_x
+    for (i_t k = 0; k < scaled_delta_xB_nz; ++k) {
+      const i_t j = basic_list[scaled_delta_xB_sparse.i[k]];
+      delta_x[j] = 0.0;
+    }
+    // Leaving index already included above
+    delta_x[entering_index] = 0.0;
+    scaled_delta_xB_sparse.i.clear();
+    scaled_delta_xB_sparse.x.clear();
+
+
+    f_t perturb_start_time = tic();
     f_t sum_perturb = 0.0;
-    phase2::compute_perturbation(lp, settings, z, objective, sum_perturb);
+    phase2::compute_perturbation(lp, settings, delta_z_indices, z, objective, sum_perturb);
+    perturb_time += toc(perturb_start_time);
 
     // Update basis
     vstatus[entering_index] = variable_status_t::BASIC;
@@ -1854,24 +2163,43 @@ dual::status_t dual_phase2(i_t phase,
     }
     basic_list[basic_leaving_index]        = entering_index;
     nonbasic_list[nonbasic_entering_index] = leaving_index;
+    nonbasic_mark[entering_index] = -1;
+    nonbasic_mark[leaving_index] = nonbasic_entering_index;
 
+    f_t lu_update_start_time = tic();
     // Refactor or Update
     bool should_refactor = ft.num_updates() > settings.refactor_frequency;
     if (!should_refactor) {
-      i_t recommend_refactor = ft.update(utilde, basic_leaving_index);
-#ifdef CHECK_FT
+      i_t recommend_refactor = ft.update(utilde_sparse, UTsol_sparse, basic_leaving_index);
+      //i_t recommend_refactor = ft.update(utilde, UTsol, basic_leaving_index);
+#ifdef CHECK_UPDATE
       {
-        csc_matrix_t Btest(m, m, 1);
+        csc_matrix_t<i_t, f_t> Btest(m, m, 1);
         ft.multiply_lu(Btest);
         {
-          csc_matrix_t B(m, m, 1);
-          form_b(lp, basic_list, B);
-          csc_matrix_t Diff(m, m, 1);
+          csc_matrix_t<i_t, f_t> B(m, m, 1);
+          form_b(lp.A, basic_list, B);
+          csc_matrix_t<i_t, f_t> Diff(m, m, 1);
           add(Btest, B, 1.0, -1.0, Diff);
           const f_t err = Diff.norm1();
           if (err > settings.primal_tol) {
             settings.log.printf("|| B - L*U || %e\n", Diff.norm1());
           }
+          if (err > settings.primal_tol)
+          {
+            for (i_t j = 0; j < m; ++j)
+            {
+              for (i_t p = Diff.col_start[j]; p < Diff.col_start[j + 1]; ++p)
+              {
+                const i_t i = Diff.i[p];
+                if (Diff.x[p] != 0.0)
+                {
+                  settings.log.printf("Diff %d %d %e\n", j, i, Diff.x[p]);
+                }
+              }
+            }
+          }
+          settings.log.printf("basic leaving index %d\n", basic_leaving_index);
           assert(err < settings.primal_tol);
         }
       }
@@ -1892,8 +2220,12 @@ dual::status_t dual_phase2(i_t phase,
       ft.reset(L, U, p);
     }
 
+    lu_update_time += toc(lu_update_start_time);
+
+    f_t steepest_edge_entering_start_time = tic();
     phase2::compute_steepest_edge_norm_entering(
       settings, m, ft, basic_leaving_index, entering_index, delta_y_steepest_edge);
+    se_entering_time += toc(steepest_edge_entering_start_time);
 
 #ifdef STEEPEST_EDGE_DEBUG
     if (iter < 100 || iter % 100 == 0))
@@ -1904,25 +2236,33 @@ dual::status_t dual_phase2(i_t phase,
 
     iter++;
 
+#if 1
     // Clear delta_y
-    const i_t nz_dy = delta_y_sparse.i.size();
-    for (i_t k = 0; k < nz_dy; ++k) {
-      delta_y[delta_y_sparse.i[k]] = 0.0;
-    }
+    //const i_t nz_dy = delta_y_sparse.i.size();
+    //for (i_t k = 0; k < nz_dy; ++k) {
+    // delta_y[delta_y_sparse.i[k]] = 0.0;
+    //}
 
-    const f_t obj = compute_objective(lp, x);
+    // Clear delta_z
+    phase2::clear_delta_z(entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
+
+
+#endif
+
     f_t now       = toc(start_time);
     if ((iter - start_iter) < settings.first_iteration_log ||
         (iter % settings.iteration_log_frequency) == 0) {
       if (phase == 1 && iter == 1) {
         settings.log.printf(" Iter     Objective   Primal Infeas  Perturb  Time\n");
       }
-      settings.log.printf("%5d %+.16e %.8e %.2e %.2e %.2f\n",
+      settings.log.printf("%5d %+.16e %.8e %.2e %.2e %.2f %.2f %.2f\n",
                           iter,
                           compute_user_objective(lp, obj),
                           primal_infeasibility,
                           sum_perturb,
                           step_length,
+                          b_solve_density * 100.0,
+                          b_transpose_solve_density * 100.0,
                           now);
     }
 
@@ -1939,7 +2279,19 @@ dual::status_t dual_phase2(i_t phase,
     }
   }
   if (iter >= iter_limit) { status = dual::status_t::ITERATION_LIMIT; }
-  settings.log.printf("BFRT time %e\n", bfrt_time);
+  settings.log.printf("BFRT time       %.2f\n", bfrt_time);
+  settings.log.printf("Pricing time    %.2f\n", pricing_time);
+  settings.log.printf("BTran time      %.2f\n", btran_time);
+  settings.log.printf("FTran time      %.2f\n", ftran_time);
+  settings.log.printf("Flip time       %.2f\n", flip_time);
+  settings.log.printf("Delta_z time    %.2f\n", delta_z_time);
+  settings.log.printf("LU update time  %.2f\n", lu_update_time);
+  settings.log.printf("SE norms time   %.2f\n", se_norms_time);
+  settings.log.printf("SE enter time   %.2f\n", se_entering_time);
+  settings.log.printf("Perturb time    %.2f\n", perturb_time);
+  settings.log.printf("Vector time     %.2f\n", vector_time);
+  settings.log.printf("Objective time  %.2f\n", objective_time);
+  settings.log.printf("Sum             %.2f\n", bfrt_time + pricing_time + btran_time + ftran_time + flip_time + delta_z_time + lu_update_time + se_norms_time + se_entering_time + perturb_time + vector_time + objective_time);
   return status;
 }
 

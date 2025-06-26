@@ -360,6 +360,24 @@ void scatter_dense(const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, std::vecto
   }
 }
 
+// x <- x + alpha * A(:, j)
+template <typename i_t, typename f_t>
+void scatter_dense(const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, std::vector<f_t>& x, std::vector<i_t>& mark, std::vector<i_t>& indices)
+{
+  const i_t col_start = A.col_start[j];
+  const i_t col_end   = A.col_start[j + 1];
+  for (i_t p = col_start; p < col_end; ++p) {
+    const i_t i  = A.i[p];
+    const f_t ax = A.x[p];
+    x[i] += alpha * ax;
+    if (!mark[i])
+    {
+      mark[i] = 1;
+      indices.push_back(i);
+    }
+  }
+}
+
 // Compute C = A*B where C is m x n, A is m x k, and B = k x n
 // Do this by computing C(:, j) = A*B(:, j) = sum (i=1 to k) A(:, k)*B(i, j)
 template <typename i_t, typename f_t>
@@ -694,6 +712,13 @@ template void scatter_dense<int, double>(const csc_matrix_t<int, double>& A,
                                          int j,
                                          double alpha,
                                          std::vector<double>& x);
+
+template void scatter_dense<int, double>(const csc_matrix_t<int, double>& A,
+                                         int j,
+                                         double alpha,
+                                         std::vector<double>& x,
+                                         std::vector<int>& mark,
+                                         std::vector<int>& indices);
 
 template int multiply<int, double>(const csc_matrix_t<int, double>& A,
                                    const csc_matrix_t<int, double>& B,

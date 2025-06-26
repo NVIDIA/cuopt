@@ -35,8 +35,11 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_breakpoints(std::vector<i_t>&
 
   i_t idx = 0;
   while (idx == 0 && pivot_tol >= 1e-12) {
-    for (i_t k = 0; k < n - m; ++k) {
-      const i_t j = nonbasic_list_[k];
+    //for (i_t k = 0; k < n - m; ++k) {
+    //  const i_t j = nonbasic_list_[k];
+    for (i_t h = 0; h < delta_z_indices_.size(); ++h) {
+      const i_t j = delta_z_indices_[h];
+      const i_t k = nonbasic_mark_[j];
       if (vstatus_[j] == variable_status_t::NONBASIC_FIXED) { continue; }
       if (vstatus_[j] == variable_status_t::NONBASIC_LOWER && delta_z_[j] < -pivot_tol) {
         indicies[idx] = k;
@@ -92,7 +95,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::single_pass(i_t start,
   const i_t j = entering_index = nonbasic_list_[nonbasic_entering];
 
   constexpr bool verbose = false;
-  if (lower_[j] > -inf && upper_[j] < inf && lower_[j] != upper_[j]) {
+  if (bounded_variables_[j]) {
     const f_t interval    = upper_[j] - lower_[j];
     const f_t delta_slope = std::abs(delta_z_[j]) * interval;
     if constexpr (verbose) {
@@ -112,13 +115,14 @@ template <typename i_t, typename f_t>
 i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
                                                                i_t& nonbasic_entering)
 {
-  i_t m                  = m_;
-  i_t n                  = n_;
+  const i_t m                  = m_;
+  const i_t n                  = n_;
+  const i_t nz                 = delta_z_indices_.size();
   constexpr bool verbose = false;
 
   // Compute the initial set of breakpoints
-  std::vector<i_t> indicies(n - m);
-  std::vector<f_t> ratios(n - m);
+  std::vector<i_t> indicies(nz);
+  std::vector<f_t> ratios(nz);
   i_t num_breakpoints = compute_breakpoints(indicies, ratios);
   if constexpr (verbose) { settings_.log.printf("Initial breakpoints %d\n", num_breakpoints); }
   if (num_breakpoints == 0) {
@@ -217,7 +221,7 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
     const i_t j = entering_index = nonbasic_list_[nonbasic_entering];
     step_length                  = current_ratios[heap_index];
 
-    if (lower_[j] > -inf && upper_[j] < inf && lower_[j] != upper_[j]) {
+    if (bounded_variables_[j]) {
       // We have a bounded variable
       const f_t interval    = upper_[j] - lower_[j];
       const f_t delta_slope = std::abs(delta_z_[j]) * interval;

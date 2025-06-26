@@ -144,7 +144,6 @@ class sparse_vector_t {
     A.m = n;
     A.n = 1;
     A.nz_max = i.size();
-    A.col_start.clear();
     A.col_start.resize(2);
     A.col_start[0] = 0;
     A.col_start[1] = i.size();
@@ -315,6 +314,9 @@ i_t scatter(const csc_matrix_t<i_t, f_t>& A,
 // x <- x + alpha * A(:, j)
 template <typename i_t, typename f_t>
 void scatter_dense(const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, std::vector<f_t>& x);
+
+template <typename i_t, typename f_t>
+void scatter_dense(const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, std::vector<f_t>& x, std::vector<i_t>& mark, std::vector<i_t>& indices);
 
 // Compute C = A*B where C is m x n, A is m x k, and B = k x n
 // Do this by computing C(:, j) = A*B(:, j) = sum (i=1 to k) A(:, k)*B(i, j)

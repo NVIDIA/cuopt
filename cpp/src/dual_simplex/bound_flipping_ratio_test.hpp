@@ -33,10 +33,13 @@ class bound_flipping_ratio_test_t {
                               f_t initial_slope,
                               const std::vector<f_t>& lower,
                               const std::vector<f_t>& upper,
+                              const std::vector<bool>& bounded_variables,
                               const std::vector<variable_status_t>& vstatus,
                               const std::vector<i_t>& nonbasic_list,
-                              std::vector<f_t>& z,
-                              std::vector<f_t>& delta_z)
+                              const std::vector<f_t>& z,
+                              const std::vector<f_t>& delta_z,
+                              const std::vector<i_t>& delta_z_indices,
+                              const std::vector<i_t>& nonbasic_mark)
     : settings_(settings),
       start_time_(start_time),
       m_(m),
@@ -44,10 +47,13 @@ class bound_flipping_ratio_test_t {
       slope_(initial_slope),
       lower_(lower),
       upper_(upper),
+      bounded_variables_(bounded_variables),
       vstatus_(vstatus),
       nonbasic_list_(nonbasic_list),
       z_(z),
-      delta_z_(delta_z)
+      delta_z_(delta_z),
+      delta_z_indices_(delta_z_indices),
+      nonbasic_mark_(nonbasic_mark)
   {
   }
 
@@ -73,10 +79,13 @@ class bound_flipping_ratio_test_t {
 
   const std::vector<f_t>& lower_;
   const std::vector<f_t>& upper_;
+  const std::vector<bool>& bounded_variables_;
   const std::vector<i_t>& nonbasic_list_;
   const std::vector<variable_status_t>& vstatus_;
   const std::vector<f_t>& z_;
   const std::vector<f_t>& delta_z_;
+  const std::vector<i_t>& delta_z_indices_;
+  const std::vector<i_t>& nonbasic_mark_;
 
   const simplex_solver_settings_t<i_t, f_t>& settings_;
 
