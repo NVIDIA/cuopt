@@ -19,11 +19,12 @@
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mip/problem/problem.cuh>
+#include <mps_parser/parser.hpp>
 #include <utilities/copy_helpers.hpp>
 
 namespace cuopt::linear_programming::test {
 
-void test_variable_bounds(
+static void test_variable_bounds(
   const cuopt::mps_parser::mps_data_model_t<int, double>& problem,
   const rmm::device_uvector<double>& solution,
   const cuopt::linear_programming::mip_solver_settings_t<int, double> settings)
@@ -52,7 +53,7 @@ void test_variable_bounds(
 }
 
 template <typename f_t>
-double combine_finite_abs_bounds(f_t lower, f_t upper)
+static double combine_finite_abs_bounds(f_t lower, f_t upper)
 {
   f_t val = f_t(0);
   if (isfinite(upper)) { val = raft::max<f_t>(val, raft::abs(upper)); }
@@ -75,7 +76,7 @@ struct violation {
   }
 };
 
-void test_constraint_sanity_per_row(
+static void test_constraint_sanity_per_row(
   const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
   const rmm::device_uvector<double>& solution,
   double abs_tolerance,
@@ -108,6 +109,24 @@ void test_constraint_sanity_per_row(
     double viol = functor(residual[i], constraint_lower_bounds[i], constraint_upper_bounds[i]);
     EXPECT_LE(viol, tolerance);
   }
+}
+
+static std::tuple<mip_termination_status_t, double, double> test_mps_file(
+  std::string test_instance, double time_limit = 1, bool heuristics_only = true)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute(test_instance);
+  cuopt::mps_parser::mps_data_model_t<int, double> problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  handle_.sync_stream();
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit                  = time_limit;
+  settings.heuristics_only             = heuristics_only;
+  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
+  return std::make_tuple(solution.get_termination_status(),
+                         solution.get_objective_value(),
+                         solution.get_solution_bound());
 }
 
 }  // namespace cuopt::linear_programming::test
