@@ -175,20 +175,18 @@ fj_t<i_t, f_t>::climber_data_t::view_t fj_t<i_t, f_t>::climber_data_t::view()
   v.jump_move_delta             = make_span(jump_move_delta);
   v.jump_move_delta_check       = make_span(jump_move_delta_check);
   v.jump_move_score_check       = make_span(jump_move_score_check);
-  v.move_last_update            = raft::make_mdspan<i_t, i_t>(
-    move_last_update.data(),
-    raft::make_extents<i_t>((i_t)FJ_MOVE_SIZE, (i_t)fj.pb_ptr->n_variables));
-  v.move_delta = raft::make_mdspan<f_t, i_t>(
-    move_delta.data(), raft::make_extents<i_t>((i_t)FJ_MOVE_SIZE, (i_t)fj.pb_ptr->n_variables));
-  v.move_score = raft::make_mdspan<move_score_t, i_t>(
-    move_score.data(), raft::make_extents<i_t>((i_t)FJ_MOVE_SIZE, (i_t)fj.pb_ptr->n_variables));
-  v.tabu_nodec_until                  = make_span(tabu_nodec_until);
-  v.tabu_noinc_until                  = make_span(tabu_noinc_until);
-  v.tabu_lastdec                      = make_span(tabu_lastdec);
-  v.tabu_lastinc                      = make_span(tabu_lastinc);
-  v.jump_candidates                   = make_span(jump_candidates);
-  v.jump_candidate_count              = make_span(jump_candidate_count);
-  v.jump_locks                        = make_span(jump_locks);
+  const raft::extents<i_t, (i_t)FJ_MOVE_SIZE, raft::dynamic_extent> move_extents(
+    (i_t)FJ_MOVE_SIZE, (i_t)fj.pb_ptr->n_variables);
+  v.move_last_update     = raft::make_mdspan<i_t, i_t>(move_last_update.data(), move_extents);
+  v.move_delta           = raft::make_mdspan<f_t, i_t>(move_delta.data(), move_extents);
+  v.move_score           = raft::make_mdspan<move_score_t, i_t>(move_score.data(), move_extents);
+  v.tabu_nodec_until     = make_span(tabu_nodec_until);
+  v.tabu_noinc_until     = make_span(tabu_noinc_until);
+  v.tabu_lastdec         = make_span(tabu_lastdec);
+  v.tabu_lastinc         = make_span(tabu_lastinc);
+  v.jump_candidates      = make_span(jump_candidates);
+  v.jump_candidate_count = make_span(jump_candidate_count);
+  v.jump_locks           = make_span(jump_locks);
   v.candidate_arrived_workids         = make_span(candidate_arrived_workids);
   v.grid_score_buf                    = make_span(grid_score_buf);
   v.grid_delta_buf                    = make_span(grid_delta_buf);
