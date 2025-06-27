@@ -81,13 +81,15 @@ def solve_LP_sync(
     intermediate_sender=None,
     solver_logging=False,
 ):
+    timestamps = {}
     from cuopt_server.utils.linear_programming.data_validation import (
         validate_LP_data,
     )
     from cuopt_server.utils.linear_programming.solver import solve as LP_solve
 
     begin_time = time.time()
-
+    timestamps["data_validation_started"] = begin_time
+    
     if type(LP_data) is list:
         for i_data in LP_data:
             validate_LP_data(i_data)
@@ -95,6 +97,9 @@ def solve_LP_sync(
         validate_LP_data(LP_data)
 
     etl_end_time = time.time()
+    timestamps["data_validation_finished"] = etl_end_time
+    timestamps["call_lp_solve"] = etl_end_time
+    
     logging.debug(f"etl_time {etl_end_time - begin_time}")
 
     if not validation_only:
@@ -105,7 +110,7 @@ def solve_LP_sync(
             logging.info(f"Writing logs to {log_file}")
         else:
             log_file = ""
-        notes, addl_warnings, res, total_solve_time = LP_solve(
+        notes, addl_warnings, res, total_solve_time, lp_time_stamps = LP_solve(
             LP_data, reqId, intermediate_sender, warmstart_data, log_file
         )
         warnings.extend(addl_warnings)
@@ -113,15 +118,19 @@ def solve_LP_sync(
         res = {"status": 0, "solution": {}}
         notes = ["Input is valid"]
         total_solve_time = 0
+    now = time.time()
+    timestamps |= lp_time_stamps
+    timestamps["lp_solve_finished"] = now
 
-    solve_time = time.time() - etl_end_time
+    solve_time = now - etl_end_time
     solver_response = {"solver_response": res}
     etl_time = etl_end_time - begin_time
 
     full_response = make_response(
         solver_response, warnings, notes, reqId, total_solve_time
     )
-    return full_response, etl_time, solve_time
+    timestamps["full_response_built"] = time.time()
+    return full_response, etl_time, solve_time, timestamps
 
 
 def populate_optimization_data(
@@ -466,7 +475,7 @@ def process_async_solve(
                 success = False
                 etl = slv = 0
                 called_job_solve = time.time()
-                ans, etl, slv = job.solve(send_solution)
+                ans, etl, slv, timestamps = job.solve(send_solution)
                 success = True
             except (RequestValidationError, ValidationError) as e:
                 ans = validation_exception_handler(e)
@@ -484,6 +493,7 @@ def process_async_solve(
             times |= {"solver_received": solver_received,
                       "called_job_solve": called_job_solve,
                       "finished_job_solve": finished_job_solve}
+            times |= timestamps
             results_queue.put(
                 SolverBinaryResponse(
                     job.id,

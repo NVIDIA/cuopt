@@ -807,7 +807,7 @@ class SolverBaseJob:
         self.initial_etl_time = t
 
     def solve(self, intermediate_sender):
-        return None, self.initial_etl_time, 0
+        return None, self.initial_etl_time, 0, {}
 
     def get_result_mime_type(self):
         return mime_json
@@ -904,7 +904,7 @@ class SolverJob(SolverBaseJob):
         )
 
         logging.debug(f"etl_time {etl}, solve_time {slv}")
-        return ans, self.initial_etl_time + etl, slv
+        return ans, self.initial_etl_time + etl, slv, {}
 
 
 class SolverLPJob(SolverBaseJob):
@@ -1085,7 +1085,7 @@ class SolverLPJob(SolverBaseJob):
         from cuopt_server.utils.solver import solve_LP_sync
 
         self._load_data()
-        ans, etl, slv = solve_LP_sync(
+        ans, etl, slv, timestamps = solve_LP_sync(
             self.get_data(),
             self.warmstart_data,
             warnings=self.warnings,
@@ -1097,7 +1097,7 @@ class SolverLPJob(SolverBaseJob):
             solver_logging=self.return_solver_logs(),
         )
         logging.debug(f"etl_time {etl}, solve_time {slv}")
-        return ans, self.initial_etl_time + etl, slv
+        return ans, self.initial_etl_time + etl, slv, timestamps
 
 
 def deserialize(ctype, buf):

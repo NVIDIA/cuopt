@@ -302,7 +302,8 @@ def get_solver_exception_type(status, message):
 
 def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
     notes = []
-
+    timestamps = {}
+    
     def get_if_attribute_is_valid_else_none(attr):
         try:
             return attr()
@@ -418,6 +419,7 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
                 data_model_list, solver_settings
             )
         else:
+            timestamps["create_data_model_started"] = time.time()
             warnings, data_model = create_data_model(LP_data)
             cswarnings, solver_settings = create_solver(
                 LP_data, warmstart_data
@@ -430,10 +432,14 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
             )
             solver_settings.set_mip_callback(callback)
             solve_begin_time = time.time()
+            timestamps["create_data_model_finished"] = solve_begin_time
+            timestamps["linear_programming.solve_started"] = solve_begin_time
             sol = linear_programming.Solve(
                 data_model, solver_settings=solver_settings, log_file=log_file
             )
-            total_solve_time = time.time() - solve_begin_time
+            now = time.time()
+            timestamps["linear_programming.solve_finished"] = now
+            total_solve_time = now - solve_begin_time
 
         res = None
         if is_batch:
@@ -455,9 +461,11 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
                 raise get_solver_exception_type(
                     sol.get_error_status(), sol.get_error_message()
                 )
+            timestamps["create_solution_started"] = time.time()
             res = create_solution(sol)
+            timestamps["create_solution_finished"] = time.time()
 
-        return notes, warnings, res, total_solve_time
+        return notes, warnings, res, total_solve_time, timestamps
 
     except (InputValidationError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))
