@@ -187,12 +187,51 @@ class basis_update_mpf_t {
       U0_transpose_(1, 1, 1),
       L0_transpose_(1, 1, 1),
       refactor_frequency_(refactor_frequency),
-      B_(Linit.m, 1, 0)
+      B_(Linit.m, 1, 0),
+      total_sparse_L_transpose_(0),
+      total_dense_L_transpose_(0),
+      total_sparse_L_(0),
+      total_dense_L_(0),
+      total_sparse_U_transpose_(0),
+      total_dense_U_transpose_(0),
+      total_sparse_U_(0),
+      total_dense_U_(0),
+      hypersparse_threshold_(0.05)
   {
     inverse_permutation(row_permutation_, inverse_row_permutation_);
     clear();
     compute_transposes();
+    reset_stas();
   }
+
+  void print_stats() const
+  {
+    i_t total_L_transpose_calls = total_sparse_L_transpose_ + total_dense_L_transpose_;
+    i_t total_U_transpose_calls = total_sparse_U_transpose_ + total_dense_U_transpose_;
+    i_t total_L_calls = total_sparse_L_ + total_dense_L_;
+    i_t total_U_calls = total_sparse_U_ + total_dense_U_;
+    printf("sparse L transpose  %8d %8.2f\n", total_sparse_L_transpose_, 100.0 * total_sparse_L_transpose_ / total_L_transpose_calls);
+    printf("dense  L transpose  %8d %8.2f\n", total_dense_L_transpose_, 100.0 * total_dense_L_transpose_ / total_L_transpose_calls);
+    printf("sparse U transpose  %8d %8.2f\n", total_sparse_U_transpose_, 100.0 * total_sparse_U_transpose_ / total_U_transpose_calls);
+    printf("dense  U transpose  %8d %8.2f\n", total_dense_U_transpose_, 100.0 * total_dense_U_transpose_ / total_U_transpose_calls);
+    printf("sparse L            %8d %8.2f\n", total_sparse_L_, 100.0 * total_sparse_L_ / total_L_calls);
+    printf("dense  L            %8d %8.2f\n", total_dense_L_, 100.0 * total_dense_L_ / total_L_calls);
+    printf("sparse U            %8d %8.2f\n", total_sparse_U_, 100.0 * total_sparse_U_ / total_U_calls);
+    printf("dense  U            %8d %8.2f\n", total_dense_U_, 100.0 * total_dense_U_ / total_U_calls);
+  }
+
+  void reset_stas()
+  {
+    num_calls_L_ = 0;
+    num_calls_U_ = 0;
+    num_calls_L_transpose_ = 0;
+    num_calls_U_transpose_ = 0;
+    sum_L_ = 0.0;
+    sum_U_ = 0.0;
+    sum_L_transpose_ = 0.0;
+    sum_U_transpose_ = 0.0;
+  }
+
 
   i_t reset(const csc_matrix_t<i_t, f_t>& Linit,
             const csc_matrix_t<i_t, f_t>& Uinit,
@@ -205,7 +244,18 @@ class basis_update_mpf_t {
     inverse_permutation(row_permutation_, inverse_row_permutation_);
     clear();
     compute_transposes();
+    reset_stas();
     return 0;
+  }
+
+  f_t estimate_solution_density(f_t rhs_nz, f_t sum, i_t& num_calls, bool &use_hypersparse) const
+  {
+    num_calls++;
+    const f_t average_growth = std::max(1.0, sum / static_cast<f_t>(num_calls));
+    const f_t predicted_nz = rhs_nz * average_growth;
+    const f_t predicted_density = predicted_nz / static_cast<f_t>(L0_.m);
+    use_hypersparse = predicted_density < hypersparse_threshold_;
+    return predicted_nz;
   }
 
   // Solves for x such that B*x = b, where B is the basis matrix
@@ -321,9 +371,27 @@ class basis_update_mpf_t {
   mutable csc_matrix_t<i_t, f_t> U0_transpose_; // Needed for sparse solves
   mutable csc_matrix_t<i_t, f_t> L0_transpose_; // Needed for sparse solves
   mutable csc_matrix_t<i_t, f_t> B_; // Needed for sparse solves
+
+  mutable i_t total_sparse_L_transpose_;
+  mutable i_t total_dense_L_transpose_;
+  mutable i_t total_sparse_L_;
+  mutable i_t total_dense_L_;
+  mutable i_t total_sparse_U_transpose_;
+  mutable i_t total_dense_U_transpose_;
+  mutable i_t total_sparse_U_;
+  mutable i_t total_dense_U_;
+
+  mutable i_t num_calls_L_;
+  mutable i_t num_calls_U_;
+  mutable i_t num_calls_L_transpose_;
+  mutable i_t num_calls_U_transpose_;
+
+  mutable f_t sum_L_;
+  mutable f_t sum_U_;
+  mutable f_t sum_L_transpose_;
+  mutable f_t sum_U_transpose_;
+
+  f_t hypersparse_threshold_;
 };
-
-
-
 
 }  // namespace cuopt::linear_programming::dual_simplex

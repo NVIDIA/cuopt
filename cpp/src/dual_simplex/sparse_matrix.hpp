@@ -115,15 +115,9 @@ template <typename i_t, typename f_t>
 class sparse_vector_t {
  public:
   sparse_vector_t(i_t n, i_t nz) : n(n), i(nz), x(nz) {}
-  sparse_vector_t(const std::vector<f_t>& in) : n(in.size())
+  sparse_vector_t(const std::vector<f_t>& in)
   {
-    i_t nz = 0;
-    for (i_t k = 0; k < n; ++k) {
-      if (in[k] != 0) {
-        i.push_back(k);
-        x.push_back(in[k]);
-      }
-    }
+    from_dense(in);
   }
   sparse_vector_t(const csc_matrix_t<i_t, f_t>& A, i_t col)
   {
@@ -136,6 +130,21 @@ class sparse_vector_t {
     for (i_t k = col_start; k < col_end; ++k) {
       i.push_back(A.i[k]);
       x.push_back(A.x[k]);
+    }
+  }
+
+  void from_dense(const std::vector<f_t>& in)
+  {
+    i.clear();
+    x.clear();
+    n = in.size();
+    i.reserve(n);
+    x.reserve(n);
+    for (i_t k = 0; k < n; ++k) {
+      if (in[k] != 0) {
+        i.push_back(k);
+        x.push_back(in[k]);
+      }
     }
   }
 

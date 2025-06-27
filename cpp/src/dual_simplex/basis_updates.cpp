@@ -1273,9 +1273,22 @@ template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::b_transpose_solve(const sparse_vector_t<i_t, f_t>& rhs, sparse_vector_t<i_t, f_t>& solution, sparse_vector_t<i_t, f_t>& UTsol) const
 {
   // Solve for r such that U'*r = c
-  solution = rhs;
-  u_transpose_solve(solution);
+
+  bool use_hypersparse = false;
+  const f_t input_size = static_cast<f_t>(rhs.i.size());
+  estimate_solution_density(input_size, sum_U_transpose_, num_calls_U_transpose_, use_hypersparse);
+  if (use_hypersparse) {
+    solution = rhs;
+    u_transpose_solve(solution);
+  }
+  else {
+    std::vector<f_t> solution_dense;
+    rhs.to_dense(solution_dense);
+    u_transpose_solve(solution_dense);
+    solution.from_dense(solution_dense);
+  }
   UTsol = solution;
+  sum_U_transpose_ += static_cast<f_t>(solution.i.size()) / input_size;
 
 #ifdef CHECK_U_TRANSPOSE_SOLVE
   std::vector<f_t> UTsol_dense;
@@ -1295,7 +1308,18 @@ i_t basis_update_mpf_t<i_t, f_t>::b_transpose_solve(const sparse_vector_t<i_t, f
   std::vector<f_t> r_dense;
   solution.to_dense(r_dense);
 #endif
-  l_transpose_solve(solution);
+  const f_t rhs_size = static_cast<f_t>(solution.i.size());
+  estimate_solution_density(rhs_size, sum_L_transpose_, num_calls_L_transpose_, use_hypersparse);
+  if (use_hypersparse) {
+    l_transpose_solve(solution);
+  }
+  else {
+    std::vector<f_t> solution_dense;
+    solution.to_dense(solution_dense);
+    l_transpose_solve(solution_dense);
+    solution.from_dense(solution_dense);
+  }
+  sum_L_transpose_ += static_cast<f_t>(solution.i.size()) / rhs_size;
 
 #ifdef CHECK_L_TRANSPOSE_SOLVE
   std::vector<f_t> solution_dense;
@@ -1326,6 +1350,7 @@ i_t basis_update_mpf_t<i_t, f_t>::b_transpose_solve(const sparse_vector_t<i_t, f
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::u_transpose_solve(std::vector<f_t>& rhs) const
 {
+  total_dense_U_transpose_++;
   dual_simplex::upper_triangular_transpose_solve(U0_, rhs);
   return 0;
 }
@@ -1333,6 +1358,7 @@ i_t basis_update_mpf_t<i_t, f_t>::u_transpose_solve(std::vector<f_t>& rhs) const
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::u_transpose_solve(sparse_vector_t<i_t, f_t>& rhs) const
 {
+  total_sparse_U_transpose_++;
   const i_t m = L0_.m;
   // U0'*x = y
   // Solve U0'*x0 = y
@@ -1346,6 +1372,7 @@ i_t basis_update_mpf_t<i_t, f_t>::u_transpose_solve(sparse_vector_t<i_t, f_t>& r
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(std::vector<f_t>& rhs) const
 {
+  total_dense_L_transpose_++;
   // L = L0 * T0 * T1 * ... * T_{num_updates_ - 1}
   // L' = T_{num_updates_ - 1}^T * T_{num_updates_ - 2}^T * ... * T0^T * L0^T
   // L'*x = b
@@ -1386,6 +1413,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(std::vector<f_t>& rhs) const
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& rhs) const
 {
+  total_sparse_L_transpose_++;
   const i_t m = L0_.m;
   // L'*x = b
   // L0^T * x = T_0^-T * T_1^-T * ... * T_{num_updates_ - 1}^-T * b = b'
@@ -1469,7 +1497,6 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& r
   // sort the indices and place into a sparse column
   std::sort(xi_workspace_.begin() + m, xi_workspace_.begin() + m + nz, std::less<i_t>());
 
-  //csc_matrix_t<i_t, f_t> B(m, 1, nz);
   B_.m = m;
   B_.n = 1;
   B_.col_start.resize(2);
@@ -1601,8 +1628,21 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs, 
   std::vector<f_t> l_solve_rhs;
   solution.to_dense(l_solve_rhs);
 #endif
-  l_solve(solution);
+
+  bool use_hypersparse;
+  const f_t input_size = static_cast<f_t>(rhs.i.size());
+  estimate_solution_density(input_size, sum_L_, num_calls_L_, use_hypersparse);
+  if (use_hypersparse) {
+    l_solve(solution);
+  }
+  else {
+    std::vector<f_t> solution_dense;
+    solution.to_dense(solution_dense);
+    l_solve(solution_dense);
+    solution.from_dense(solution_dense);
+  }
   Lsol = solution;
+  sum_L_ += static_cast<f_t>(solution.i.size()) / input_size;
 
 #ifdef CHECK_L_SOLVE
   std::vector<f_t> l_solve_dense;
@@ -1625,7 +1665,19 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs, 
   std::vector<f_t> rhs_dense;
   solution.to_dense(rhs_dense);
 #endif
-  u_solve(solution);
+
+  const f_t rhs_size = static_cast<f_t>(solution.i.size());
+  estimate_solution_density(rhs_size, sum_U_, num_calls_U_, use_hypersparse);
+  if (use_hypersparse) {
+    u_solve(solution);
+  }
+  else {
+    std::vector<f_t> solution_dense;
+    solution.to_dense(solution_dense);
+    u_solve(solution_dense);
+    solution.from_dense(solution_dense);
+  }
+  sum_U_ += static_cast<f_t>(solution.i.size()) / rhs_size;
 
 #ifdef CHECK_U_SOLVE
   std::vector<f_t> solution_dense;
@@ -1646,6 +1698,7 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs, 
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::u_solve(std::vector<f_t>& rhs) const
 {
+  total_dense_U_++;
   const i_t m = L0_.m;
   // U*x = y
   dual_simplex::upper_triangular_solve(U0_, rhs);
@@ -1655,6 +1708,7 @@ i_t basis_update_mpf_t<i_t, f_t>::u_solve(std::vector<f_t>& rhs) const
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::u_solve(sparse_vector_t<i_t, f_t>& rhs) const
 {
+  total_sparse_U_++;
   const i_t m = L0_.m;
   // U*x = y
 
@@ -1670,6 +1724,7 @@ i_t basis_update_mpf_t<i_t, f_t>::u_solve(sparse_vector_t<i_t, f_t>& rhs) const
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
 {
+  total_dense_L_++;
   const i_t m = L0_.m;
   // L*x = y
   // L0 * T0 * T1 * ... * T_{num_updates_ - 1} * x = y
@@ -1732,6 +1787,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::l_solve(sparse_vector_t<i_t, f_t>& rhs) const
 {
+  total_sparse_L_++;
   const i_t m = L0_.m;
   // L*x = y
   // L0 * T0 * T1 * ... * T_{num_updates_ - 1} * x = y
@@ -1783,9 +1839,6 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(sparse_vector_t<i_t, f_t>& rhs) const
 
   return 0;
 }
-
-
-
 
 // Takes in utilde such that L*utilde = abar, where abar is the column to add to the basis
 // and etilde such that U'*etilde = e_leaving
