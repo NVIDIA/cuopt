@@ -100,7 +100,9 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
 }
 
 template <typename i_t, typename f_t>
-problem_t<i_t, f_t>::problem_t(const optimization_problem_t<i_t, f_t>& problem_)
+problem_t<i_t, f_t>::problem_t(
+  const optimization_problem_t<i_t, f_t>& problem_,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_)
   : original_problem_ptr(&problem_),
     handle_ptr(problem_.get_handle_ptr()),
     n_variables(problem_.get_n_variables()),
@@ -136,7 +138,8 @@ problem_t<i_t, f_t>::problem_t(const optimization_problem_t<i_t, f_t>& problem_)
     related_variables_offsets(n_variables, problem_.get_handle_ptr()->get_stream()),
     var_names(problem_.get_variable_names()),
     row_names(problem_.get_row_names()),
-    objective_name(problem_.get_objective_name())
+    objective_name(problem_.get_objective_name()),
+    tolerances(tolerances_)
 {
   op_problem_cstr_body(problem_);
   branch_and_bound_callback = nullptr;
