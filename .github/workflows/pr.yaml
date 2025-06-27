@@ -43,7 +43,7 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
       # build for amd64 architecture only with CUDA 12 and latest Python
-      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER == "3.12" and .ARCH == "amd64"))
+      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER == "3.13" and .ARCH == "amd64"))
       package-type: cpp
       package-name: libcuopt
       build_type: pull-request

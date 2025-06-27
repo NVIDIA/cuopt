@@ -93,6 +93,6 @@ ci/validate_wheel.sh ${package_dir} "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}"
 
 rapids-logger "Testing with with auditwheel repaired wheel"
 
-#pip install --force-reinstall /tmp/wheelhouse/libcuopt_cu12-25.8.0-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+pip install --force-reinstall /tmp/wheelhouse/libcuopt_cu12-25.8.0-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
 
 cuopt_cli --help
