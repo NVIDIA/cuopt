@@ -78,7 +78,7 @@ python/libcuopt/build/py3-none-linux_x86_64/cuopt-cpp/cuopt_cli --help
 
 rapids-logger "Testing with with installed cuopt_cli "
 
-pip install --force-reinstall ./repo/python/libcuopt/dist/libcuopt_cu12-25.8.0-py3-none-linux_x86_64.whl
+pip install --force-reinstall python/libcuopt/dist/libcuopt_cu12-25.8.0-py3-none-linux_x86_64.whl
 
 cuopt_cli --help
 

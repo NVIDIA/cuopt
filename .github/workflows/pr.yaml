@@ -42,8 +42,8 @@ jobs:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
-      # build for every combination of arch and CUDA version, but only for the latest Python
-      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER == "3.12"))
+      # build for amd64 architecture only with CUDA 12 and latest Python
+      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER == "3.12" and .ARCH == "amd64"))
       package-type: cpp
       package-name: libcuopt
       build_type: pull-request
