@@ -70,7 +70,27 @@ EXCLUDE_ARGS=(
 
 ci/build_wheel.sh libcuopt ${package_dir}
 
+rapids-logger "Testing cuopt_cli before auditwheel repair"
+
+rapids-logger "Testing with raw cuopt_cli before install"
+
+python/libcuopt/build/py3-none-linux_x86_64/cuopt-cpp/cuopt_cli --help
+
+rapids-logger "Testing with with installed cuopt_cli "
+
+pip install --force-reinstall ./repo/python/libcuopt/dist/libcuopt_cu12-25.8.0-py3-none-linux_x86_64.whl
+
+cuopt_cli --help
+
+rapids-logger "Testing cuopt_cli completed"
+
 mkdir -p final_dist
 python -m auditwheel repair "${EXCLUDE_ARGS[@]}" -w "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}" ${package_dir}/dist/*
 
 ci/validate_wheel.sh ${package_dir} "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}"
+
+rapids-logger "Testing with with auditwheel repaired wheel"
+
+pip install --force-reinstall /tmp/wheelhouse/libcuopt_cu12-25.8.0-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+
+cuopt_cli --help

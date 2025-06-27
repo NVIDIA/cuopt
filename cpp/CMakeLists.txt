@@ -75,7 +75,7 @@ set(CUOPT_CXX_FLAGS "")
 set(CUOPT_CUDA_FLAGS "")
 
 if(CMAKE_COMPILER_IS_GNUCXX)
-  list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations -Wl,--no-gc-sections -Wl,--export-dynamic)
+  list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations)
 endif(CMAKE_COMPILER_IS_GNUCXX)
 
 if(DEFINE_ASSERT)
