@@ -259,7 +259,7 @@ def mark_all_jobs_done(status_code, msg):
     logging.info("All jobs marked complete")
 
 
-def get_solution_for_id(id, delete=True):
+def get_solution_for_id(id, delete=True, timestamps=False):
     with results_lock:
         if id in saved_results:
             # If we have a binary result and the caller can't handle
@@ -269,8 +269,12 @@ def get_solution_for_id(id, delete=True):
                 s = saved_results[id]
                 if delete:
                     del saved_results[id]
-                return s.wait() + (mime_type,)
+                if timestamps:
+                    return s.wait(timeout=10) + (mime_type, s.get_timestamps())
+                return s.wait(timeout=10) + (mime_type,)
             else:
+                if timestamps:
+                    return None, None, mime_type, {}
                 return None, None, mime_type
         raise HTTPException(status_code=404, detail=f"job {id} does not exist")
 
@@ -478,7 +482,11 @@ class BaseResult:
         self.aborted = False
         self.rtype = rtype
         self.incumbents = []
+        self.timestamps = {}
 
+    def get_timestamps(self):
+        return self.timestamps
+        
     def get_mime_type(self):
         return self.rtype
 
@@ -725,7 +733,8 @@ class BinaryJobResult(BaseResult):
         return self.done.is_set()
 
     def _wait(self, timeout=None):
-        return self.done.wait(timeout)
+        #logging.debug(f"calling wait with timeout {timeout}")
+        return self.done.wait(timeout=timeout)
 
 
 class NVCFJobResult(BinaryJobResult):
@@ -1157,6 +1166,8 @@ class SolverBinaryJob:
         solver_logs=False,
     ):
 
+        self.timestamps = {}
+        
         # This class is a wrapper object around a real job. The actual
         # job type and contents are not determined until the job reaches
         # the solver and the data is loaded.  Here, we just have an unread
@@ -1201,6 +1212,12 @@ class SolverBinaryJob:
         self.init_sols = init_sols
         self.warmstart_data = warmstart_data
 
+    def add_timestamps(self, t):
+        self.timestamps |= t
+
+    def get_timestamps(self):
+        return self.timestamps
+        
     def delete_data(self):
         # This is for cases where we skip a job on cancelation
         # In this case for shared memory use, we need
@@ -1626,6 +1643,7 @@ class SolverBinaryResponse:
         reqid="",
         action="",
         validator_enabled=False,
+        times = {}
     ):
         self.id = id
         self.ans = ans
@@ -1642,7 +1660,9 @@ class SolverBinaryResponse:
         self.status = -1
         self.action = action
         self.validator_enabled = validator_enabled
+        self.timestamps = times
 
+        self.timestamps["response_init_started"] = time.time()
         def data_to_byte(data, result_mime_type):
             # Write data to a byte array based on result mime type
             # Note that notes and warnings are serialized here before
@@ -1689,14 +1709,18 @@ class SolverBinaryResponse:
                         pdlpwarmstart_data = res["solution"].pop(
                             "pdlpwarmstart_data"
                         )
+                self.ans["timestamps"] = self.timestamps
             else:
                 res = {}
 
+
+            self.timestamps["compress_result_started"] = time.time()
             d = data_to_byte(self.ans, result_mime_type)
             if pdlpwarmstart_data:
                 self.pdlpwarmstart_data = data_to_byte(
                     pdlpwarmstart_data, mime_msgpack
                 )
+            self.timestamps["compress_result_finished"] = time.time()
 
             # Save the warnings and notes so we can return them
             # in the case of a file result because we do not
@@ -1729,11 +1753,13 @@ class SolverBinaryResponse:
                 )
             else:
                 self.ans = d
-
+        self.timestamps["response_init_finished"] = time.time()
+        
     def get_nvcf_ids(self):
         return self.ncaid, self.reqid
 
     def process(self, abort_list):
+        self.timestamps["response_process_started"] = time.time()
         try:
             with results_lock:
                 # If we have a result for something that is no longer in
@@ -1758,6 +1784,8 @@ class SolverBinaryResponse:
                 # anyone waiting on the result
                 res.set_result(self.ans)
                 res.set_warmstart_data(self.pdlpwarmstart_data)
+                self.timestamps["response_process_finished"] = time.time()
+                res.timestamps = self.timestamps
             abort_list.delete(self.id)
         except Exception as e:
             res.set_result(exception_handler(e))

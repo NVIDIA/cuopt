@@ -744,12 +744,12 @@ def getsolutionbody(id, accept, delete, warmstart=False):
                 f"supported values are {[mime_json, mime_msgpack, mime_zlib]}",
             )
 
-        result, file_result, mime_type = None, None, None
+        result, file_result, mime_type, timestamps = None, None, None, None
         if warmstart:
             result, mime_type = get_warmstart_data_for_id(id)
         else:
-            result, file_result, mime_type = get_solution_for_id(
-                id, delete=delete
+            result, file_result, mime_type, timestamps = get_solution_for_id(
+                id, delete=delete, timestamps=True
             )
         if accept in mime_wild:
             accept = mime_type if mime_type else mime_json
@@ -762,6 +762,9 @@ def getsolutionbody(id, accept, delete, warmstart=False):
             # job is not done yet
             result = {"reqId": id}
             mime_type = None
+        logging.debug(f"{mime_type} {type(result)}")
+        if timestamps:
+            timestamps["result_found"] = time.time()
 
         r = None
         if mime_type and (
@@ -774,25 +777,34 @@ def getsolutionbody(id, accept, delete, warmstart=False):
             else:
                 d = result
             try:
-                if accept in [mime_type] + mime_wild:
+                if accept in [mime_type] + mime_wild and not timestamps:
                     logging.debug(f"job_result returning {mime_type}")
                     r = Response(content=d, media_type=mime_type)
                 elif mime_type == mime_json:
                     logging.debug("job_result decode result as json")
+                    timestamps["extra_decode_started"] = time.time()
                     result = json.loads(d)
+                    timestampsp["extra_decode_finished"] = time.time()
                 elif mime_type == mime_zlib:
                     logging.debug(
                         "job_result decode result as zlib compressed json"
                     )
+                    timestamps["extra_decode_started"] = time.time()                    
                     result = json.loads(zlib.decompress(d))
+                    timestamps["extra_decode_finished"] = time.time()                    
                 else:
                     logging.debug("job_result decode result as msgpack")
+                    timestamps["extra_decode_started"] = time.time()                    
                     result = msgpack.loads(d, strict_map_key=False)
+                    timestamps["extra_decode_finished"] = time.time()                    
             finally:
                 if delete and s:
                     s.unlink()
         if not r:
+            if isinstance(result, dict) and "timestamps" in result:
+                result["timestamps"] |= timestamps
             # A JSONResponse holding an error will be returned here
+            logging.debug("calling encode")            
             r = encode(result, accept, job_result=True)
         return r
 
@@ -984,6 +996,7 @@ async def postrequest(
     ),
     content_length: int = Header(),
 ):
+    request_received = time.time()
     if app_exit.is_set():
         raise HTTPException(status_code=500, detail="cuOpt is shutting down")
 
@@ -1080,7 +1093,8 @@ async def postrequest(
         # do we need to track outstanding requests and memory consumption?
         # should this be governed by an optional env var?
         now = time.time()
-
+        started_transfer = now
+        
         # Get the content_type and data from the cache if reqId is set
         # If shared memory is enabled, reqId will name the shared memory
         # segment holding the data and data_bytes will be None
@@ -1143,7 +1157,8 @@ async def postrequest(
                     detail=f"Warmstart data for id '{warmstartId}' not found",
                 )
 
-        logging.debug(f"time to receive data {time.time() - now}")
+        finished_transfer = time.time()
+        logging.debug(f"time to receive data {finished_transfer - now}")
 
         if file_path:
             job = SolverBinaryJobPath(
@@ -1173,7 +1188,9 @@ async def postrequest(
                 solver_logs=solver_logs,
             )
 
+        started_waiting = time.time()
         result, file_result = wait_for_job(r, job, 0)
+        finished_waiting = time.time()
 
         if file_result is not None:
             result = file_result
@@ -1182,7 +1199,18 @@ async def postrequest(
         # Result equal to None means job is still running
         if result is None:
             result = {"reqId": id}
-
+            job.add_timestamps({"request_received": request_received,
+                                  "started_transfer": started_transfer,
+                                  "finished_transfer": finished_transfer,
+                                  "started_waiting": started_waiting,
+                                  "finished_waiting": finished_waiting})
+        else:
+            result.timestamps |= {"request_received": request_received,
+                                  "started_transfer": started_transfer,
+                                  "finished_transfer": finished_transfer,
+                                  "started_waiting": started_waiting,
+                                  "finished_waiting": finished_waiting}
+        
         # TODO do we need a better indicator of a shm result?
         r = None
         if isinstance(result, str):

@@ -435,7 +435,8 @@ class CuOptServiceSelfHostClient:
         complete = False
         reqId = None
         done = threading.Event()
-
+        first_time = True
+        
         def poll_for_logs(reqId, logging_callback, done):
             while not done.is_set():
                 self._get_logs(reqId, logging_callback)
@@ -503,8 +504,10 @@ class CuOptServiceSelfHostClient:
                         raise TimeoutError(json.dumps(response))
                     else:
                         break
-
-                time.sleep(self.polling_interval)
+                if first_time:
+                    first_time = False
+                else:
+                    time.sleep(self.polling_interval)
                 reqId = response["reqId"]
                 try:
                     log.debug(f"GET {self.solution_url}/{reqId}")

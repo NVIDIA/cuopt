@@ -425,6 +425,7 @@ def process_async_solve(
                 logging.info(
                     f"solver with {os.getpid()} received job {job_id(job)}"
                 )
+                solver_received = time.time()
             except queue.Empty:
                 cuda_count += 1
                 if cuda_count >= cuda_log_threshold:
@@ -460,9 +461,11 @@ def process_async_solve(
                 logging.error("solver process exiting")
                 break
 
+            called_job_solve = time.time()
             try:
                 success = False
                 etl = slv = 0
+                called_job_solve = time.time()
                 ans, etl, slv = job.solve(send_solution)
                 success = True
             except (RequestValidationError, ValidationError) as e:
@@ -471,10 +474,16 @@ def process_async_solve(
                 ans = http_exception_handler(e)
             except Exception as e:
                 ans = exception_handler(e)
+            finished_job_solve = time.time()                
             logging.info(
                 f"solver sending response for job {job.id} success {success}"
             )
             abort_list.update(job.id)
+            sent_result = time.time()
+            times = job.get_timestamps()
+            times |= {"solver_received": solver_received,
+                      "called_job_solve": called_job_solve,
+                      "finished_job_solve": finished_job_solve}
             results_queue.put(
                 SolverBinaryResponse(
                     job.id,
@@ -491,6 +500,7 @@ def process_async_solve(
                     # the webserver in the result
                     job.get_action(),
                     job.is_validator_enabled(),
+                    times
                 )
             )
             logging.info("solver waiting on job queue")
