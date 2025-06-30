@@ -66,7 +66,7 @@ class pdhg_solver_t {
 
   void compute_primal_projection_with_gradient(rmm::device_scalar<f_t>& primal_step_size);
   void compute_primal_projection(rmm::device_scalar<f_t>& primal_step_size);
-  void compute_At_y(rmm::device_scalar<f_t>& primal_step_size);
+  void compute_At_y_primal_projection_with_gradient(rmm::device_scalar<f_t>& primal_step_size);
 
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
@@ -100,6 +100,8 @@ class pdhg_solver_t {
   // Needed for faster graph launch
   // Passing the host value each time would require updating the graph each time
   rmm::device_scalar<i_t> d_total_pdhg_iterations_;
+
+  bool use_custom_spmv;
 };
 
 }  // namespace cuopt::linear_programming::detail

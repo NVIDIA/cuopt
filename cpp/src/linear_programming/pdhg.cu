@@ -61,7 +61,8 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(raft::handle_t const* handle_ptr,
     graph_all{stream_view_},
     graph_prim_proj_gradient_dual{stream_view_},
     d_total_pdhg_iterations_{0, stream_view_},
-    spmv{op_problem_scaled}
+    spmv{op_problem_scaled},
+    use_custom_spmv(true)
 {
 }
 
@@ -85,19 +86,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_dual_solution(rmm::device_scalar<f_t>
   // x+delta_x
   // Done in previous function
 
-#if 0
   // K(x'+delta_x)
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
-                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                       reusable_device_scalar_value_1_.data(),  // 1
-                                       cusparse_view_.A,
-                                       cusparse_view_.tmp_primal,
-                                       reusable_device_scalar_value_0_.data(),  // 1
-                                       cusparse_view_.dual_gradient,
-                                       CUSPARSE_SPMV_CSR_ALG2,
-                                       (f_t*)cusparse_view_.buffer_non_transpose.data(),
-                                       stream_view_));
 
   // y - (sigma*dual_gradient)
   // max(min(0, sigma*constraint_upper+primal_product), sigma*constraint_lower+primal_product)
@@ -107,57 +96,74 @@ void pdhg_solver_t<i_t, f_t>::compute_next_dual_solution(rmm::device_scalar<f_t>
   // positive.
 
   // All is fused in a single call to limit number of read / write in memory
-  cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
-                          current_saddle_point_state_.get_dual_gradient().data(),
-                          problem_ptr->constraint_lower_bounds.data(),
-                          problem_ptr->constraint_upper_bounds.data()),
-    thrust::make_zip_iterator(potential_next_dual_solution_.data(),
-                              current_saddle_point_state_.get_delta_dual().data()),
-    dual_size_h_,
-    dual_projection<f_t>(dual_step_size.data()),
-    stream_view_);
-#else
-  spmv.Ax(stream_view_,
-          make_span(tmp_primal_),
-          make_span(current_saddle_point_state_.get_dual_gradient()),
-          dual_projection_t<i_t, f_t>{dual_step_size,
-                                      current_saddle_point_state_.get_dual_solution(),
-                                      problem_ptr->constraint_lower_bounds,
-                                      problem_ptr->constraint_upper_bounds,
-                                      potential_next_dual_solution_,
-                                      current_saddle_point_state_.get_delta_dual()});
-#endif
+  if (use_custom_spmv) {
+    spmv.Ax(stream_view_,
+            make_span(tmp_primal_),
+            make_span(current_saddle_point_state_.get_dual_gradient()),
+            dual_projection_t<i_t, f_t>{dual_step_size,
+                                        current_saddle_point_state_.get_dual_solution(),
+                                        problem_ptr->constraint_lower_bounds,
+                                        problem_ptr->constraint_upper_bounds,
+                                        potential_next_dual_solution_,
+                                        current_saddle_point_state_.get_delta_dual()});
+  } else {
+    RAFT_CUSPARSE_TRY(
+      raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                         reusable_device_scalar_value_1_.data(),  // 1
+                                         cusparse_view_.A,
+                                         cusparse_view_.tmp_primal,
+                                         reusable_device_scalar_value_0_.data(),  // 1
+                                         cusparse_view_.dual_gradient,
+                                         CUSPARSE_SPMV_CSR_ALG2,
+                                         (f_t*)cusparse_view_.buffer_non_transpose.data(),
+                                         stream_view_));
+
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
+                            current_saddle_point_state_.get_dual_gradient().data(),
+                            problem_ptr->constraint_lower_bounds.data(),
+                            problem_ptr->constraint_upper_bounds.data()),
+      thrust::make_zip_iterator(potential_next_dual_solution_.data(),
+                                current_saddle_point_state_.get_delta_dual().data()),
+      dual_size_h_,
+      dual_projection<f_t>(dual_step_size.data()),
+      stream_view_);
+  }
 }
 
 template <typename i_t, typename f_t>
-void pdhg_solver_t<i_t, f_t>::compute_At_y(rmm::device_scalar<f_t>& primal_step_size)
+void pdhg_solver_t<i_t, f_t>::compute_At_y_primal_projection_with_gradient(
+  rmm::device_scalar<f_t>& primal_step_size)
 {
   // A_t @ y
 
-#if 0
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
-                                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                                       reusable_device_scalar_value_1_.data(),
-                                                       cusparse_view_.A_T,
-                                                       cusparse_view_.dual_solution,
-                                                       reusable_device_scalar_value_0_.data(),
-                                                       cusparse_view_.current_AtY,
-                                                       CUSPARSE_SPMV_CSR_ALG2,
-                                                       (f_t*)cusparse_view_.buffer_transpose.data(),
-                                                       stream_view_));
-#endif
-  spmv.ATy(stream_view_,
-           make_span(current_saddle_point_state_.get_dual_solution()),
-           make_span(current_saddle_point_state_.get_current_AtY()),
-           primal_projection_t<i_t, f_t>{primal_step_size,
-                                         current_saddle_point_state_.get_primal_solution(),
-                                         problem_ptr->objective_coefficients,
-                                         problem_ptr->variable_lower_bounds,
-                                         problem_ptr->variable_upper_bounds,
-                                         current_saddle_point_state_.get_delta_primal(),
-                                         tmp_primal_,
-                                         potential_next_primal_solution_});
+  if (use_custom_spmv) {
+    spmv.ATy(stream_view_,
+             make_span(current_saddle_point_state_.get_dual_solution()),
+             make_span(current_saddle_point_state_.get_current_AtY()),
+             primal_projection_t<i_t, f_t>{primal_step_size,
+                                           current_saddle_point_state_.get_primal_solution(),
+                                           problem_ptr->objective_coefficients,
+                                           problem_ptr->variable_lower_bounds,
+                                           problem_ptr->variable_upper_bounds,
+                                           current_saddle_point_state_.get_delta_primal(),
+                                           tmp_primal_,
+                                           potential_next_primal_solution_});
+  } else {
+    RAFT_CUSPARSE_TRY(
+      raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                         reusable_device_scalar_value_1_.data(),
+                                         cusparse_view_.A_T,
+                                         cusparse_view_.dual_solution,
+                                         reusable_device_scalar_value_0_.data(),
+                                         cusparse_view_.current_AtY,
+                                         CUSPARSE_SPMV_CSR_ALG2,
+                                         (f_t*)cusparse_view_.buffer_transpose.data(),
+                                         stream_view_));
+    compute_primal_projection_with_gradient(primal_step_size);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -220,8 +226,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution(
       graph_all.start_capture(total_pdlp_iterations);
       // First compute only A_t @ y, needed later in adaptative step size
       // Compute fused primal gradient with projection
-      compute_At_y(primal_step_size);
-      // compute_primal_projection_with_gradient(primal_step_size);
+      compute_At_y_primal_projection_with_gradient(primal_step_size);
       //  Compute next dual solution
       compute_next_dual_solution(dual_step_size);
       graph_all.end_capture(total_pdlp_iterations);
