@@ -118,9 +118,9 @@ i_t guided_ejection_search_t<i_t, f_t, REQUEST>::try_multiple_insert(i_t n_inser
     if constexpr (squeeze_mode) {
       size_t move_blocks = solution_ptr->get_num_requests();
       extract_best_per_route<i_t, f_t, REQUEST>
-        <<<move_blocks, TPB, sh_size, stream>>>(solution_ptr->view(),
-                                                cuopt::make_span(best_squeeze_per_cand),
-                                                cuopt::make_span(best_squeeze_per_route));
+        <<<move_blocks, TPB, 0, stream>>>(solution_ptr->view(),
+                                          cuopt::make_span(best_squeeze_per_cand),
+                                          cuopt::make_span(best_squeeze_per_route));
       RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
     }
 

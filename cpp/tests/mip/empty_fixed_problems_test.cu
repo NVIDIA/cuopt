@@ -79,4 +79,18 @@ TEST(mip_solve, empty_problem_test)
   EXPECT_NEAR(obj_val, 81, 1e-5);
 }
 
+TEST(mip_solve, empty_problem_with_objective_test)
+{
+  auto [termination_status, obj_val] = test_mps_file("mip/empty-problem-objective-vars.mps");
+  EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
+  EXPECT_NEAR(obj_val, -2, 1e-5);
+}
+
+TEST(mip_solve, empty_max_problem_with_objective_test)
+{
+  auto [termination_status, obj_val] = test_mps_file("mip/empty-max-problem-objective-vars.mps");
+  EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
+  EXPECT_NEAR(obj_val, 11, 1e-5);
+}
+
 }  // namespace cuopt::linear_programming::test

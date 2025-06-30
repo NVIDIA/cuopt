@@ -130,23 +130,25 @@ TEST(docs, user_problem_file)
   // Create the problem from documentation example
   auto problem = create_doc_example_problem();
 
-  EXPECT_FALSE(std::filesystem::exists("user_problem.mps"));
+  const auto user_problem_path = std::filesystem::temp_directory_path() / "user_problem.mps";
+  EXPECT_FALSE(std::filesystem::exists(user_problem_path));
 
   settings.time_limit        = test_time_limit;
-  settings.user_problem_file = "user_problem.mps";
+  settings.user_problem_file = user_problem_path;
   EXPECT_EQ(solve_mip(&handle_, problem, settings).get_termination_status(),
             mip_termination_status_t::Optimal);
 
-  EXPECT_TRUE(std::filesystem::exists("user_problem.mps"));
+  EXPECT_TRUE(std::filesystem::exists(user_problem_path));
 
   cuopt::mps_parser::mps_data_model_t<int, double> problem2 =
-    cuopt::mps_parser::parse_mps<int, double>("user_problem.mps", false);
+    cuopt::mps_parser::parse_mps<int, double>(user_problem_path, false);
 
   EXPECT_EQ(problem2.get_n_variables(), problem.get_n_variables());
   EXPECT_EQ(problem2.get_n_constraints(), problem.get_n_constraints());
   EXPECT_EQ(problem2.get_nnz(), problem.get_nnz());
 
-  settings.user_problem_file           = "user_problem2.mps";
+  const auto user_problem_path2 = std::filesystem::temp_directory_path() / "user_problem2.mps";
+  settings.user_problem_file    = user_problem_path2;
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem2, settings);
   EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
 

@@ -83,6 +83,15 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
   // if the input problem is empty: early exit
   if (problem.empty) {
     detail::solution_t<i_t, f_t> solution(problem);
+    problem.preprocess_problem();
+    thrust::for_each(problem.handle_ptr->get_thrust_policy(),
+                     thrust::make_counting_iterator(0),
+                     thrust::make_counting_iterator(problem.n_variables),
+                     [sol = solution.assignment.data(), pb = problem.view()] __device__(i_t index) {
+                       sol[index] = pb.objective_coefficients[index] > 0
+                                      ? pb.variable_lower_bounds[index]
+                                      : pb.variable_upper_bounds[index];
+                     });
     problem.post_process_solution(solution);
     solution.compute_objective();  // just to ensure h_user_obj is set
     auto stats           = solver_stats_t<i_t, f_t>{};

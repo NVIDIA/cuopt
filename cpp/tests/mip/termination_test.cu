@@ -70,6 +70,13 @@ TEST(termination_status, trivial_presolve_optimality_test)
   EXPECT_EQ(obj_val, -1);
 }
 
+TEST(termination_status, trivial_presolve_no_obj_vars_test)
+{
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/trivial-presolve-no-obj-vars.mps");
+  EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
+  EXPECT_EQ(obj_val, 0);
+}
+
 TEST(termination_status, presolve_optimality_test)
 {
   auto [termination_status, obj_val, lb] = test_mps_file("mip/sudoku.mps");
