@@ -663,6 +663,18 @@ cuopt_int_t cuOptGetSolutionBound(cuOptSolution solution, cuopt_float_t* solutio
  */
 cuopt_int_t cuOptGetDualSolution(cuOptSolution solution, cuopt_float_t* dual_solution_ptr);
 
+/** @brief Get the dual objective value of an optimization problem.
+ *
+ * @param[in] solution - The solution object.
+ *
+ * @param[in, out] dual_objective_value_ptr - A pointer to a cuopt_float_t that will contain the
+ * dual objective value.
+ *
+ * @return A status code indicating success or failure.
+ */
+cuopt_int_t cuOptGetDualObjectiveValue(cuOptSolution solution,
+                                       cuopt_float_t* dual_objective_value_ptr);
+
 /** @brief Get the reduced costs of an optimization problem.
  *
  * @param[in] solution - The solution object.

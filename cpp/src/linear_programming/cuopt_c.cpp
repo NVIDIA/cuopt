@@ -842,6 +842,24 @@ cuopt_int_t cuOptGetDualSolution(cuOptSolution solution, cuopt_float_t* dual_sol
   }
 }
 
+cuopt_int_t cuOptGetDualObjectiveValue(cuOptSolution solution,
+                                       cuopt_float_t* dual_objective_value_ptr)
+{
+  if (solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (dual_objective_value_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  solution_and_stream_view_t* solution_and_stream_view =
+    static_cast<solution_and_stream_view_t*>(solution);
+  if (solution_and_stream_view->is_mip) {
+    return CUOPT_INVALID_ARGUMENT;
+  } else {
+    optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* optimization_problem_solution =
+      static_cast<optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>*>(
+        solution_and_stream_view->lp_solution_ptr);
+    *dual_objective_value_ptr = optimization_problem_solution->get_dual_objective_value();
+    return CUOPT_SUCCESS;
+  }
+}
+
 cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_cost_ptr)
 {
   if (solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
