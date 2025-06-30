@@ -147,8 +147,8 @@ void run_instance(const std::filesystem::path& filename,
     return;
   }
 
-  //if (file_generation) {
-  //  std::cout << "Generating file" << std::endl;
+  // if (file_generation) {
+  //   std::cout << "Generating file" << std::endl;
 
   //  std::string output_file =
   //    std::filesystem::current_path().string() + "/" + problem_name + "_solution.txt";
@@ -220,16 +220,16 @@ int main(int argc, char* argv[])
 
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
-  //settings.set_absolute_dual_tolerance(tolerance);
-  //settings.set_relative_dual_tolerance(tolerance);
-  //settings.set_absolute_primal_tolerance(tolerance);
-  //settings.set_relative_primal_tolerance(tolerance);
-  //settings.set_absolute_gap_tolerance(tolerance);
+  // settings.set_absolute_dual_tolerance(tolerance);
+  // settings.set_relative_dual_tolerance(tolerance);
+  // settings.set_absolute_primal_tolerance(tolerance);
+  // settings.set_relative_primal_tolerance(tolerance);
+  // settings.set_absolute_gap_tolerance(tolerance);
   settings.set_optimality_tolerance(tolerance);
-  //settings.set_infeasibility_detection(false);
-  //settings.iteration_limit = 1000;
+  // settings.set_infeasibility_detection(false);
+  // settings.iteration_limit = 1000;
   settings.time_limit = 3600;
-  //settings.method = cuopt::linear_programming::method_t::PDLP;
+  // settings.method = cuopt::linear_programming::method_t::PDLP;
 
   // Single instance solve
   if (filename.extension() == ".mps")  // Direct mps path

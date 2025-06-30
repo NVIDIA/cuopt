@@ -13,6 +13,8 @@
 #pragma once
 
 #include <thrust/iterator/tabulate_output_iterator.h>
+#include <cub/block/block_reduce.cuh>
+#include <cub/warp/warp_reduce.cuh>
 #include <raft/core/device_span.hpp>
 #include <raft/core/handle.hpp>
 #include <rmm/device_uvector.hpp>

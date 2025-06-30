@@ -21,7 +21,7 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t>
-struct calc_blocks_per_item_t : public thrust::unary_function<i_t, i_t> {
+struct calc_blocks_per_item_t {
   calc_blocks_per_item_t(raft::device_span<const i_t> offsets_, i_t work_per_block_)
     : offsets(offsets_), work_per_block(work_per_block_)
   {
@@ -36,7 +36,7 @@ struct calc_blocks_per_item_t : public thrust::unary_function<i_t, i_t> {
 };
 
 template <typename i_t>
-struct heavy_vertex_meta_t : public thrust::unary_function<i_t, i_t> {
+struct heavy_vertex_meta_t {
   heavy_vertex_meta_t(raft::device_span<const i_t> offsets_,
                       raft::device_span<i_t> vertex_id_,
                       raft::device_span<i_t> pseudo_block_id_)
@@ -50,14 +50,8 @@ struct heavy_vertex_meta_t : public thrust::unary_function<i_t, i_t> {
 
   __device__ __forceinline__ void operator()(i_t id) const
   {
-    // if (offsets[id] >= vertex_id.size()) {
-    //   printf("vid oob id %d offsets[%d] = %d\n", id, id, offsets[id]);
-    // }
     vertex_id[offsets[id]] = id;
     if (id != 0) {
-      // if (offsets[id] >= pseudo_block_id.size()) {
-      //   printf("pbid oob id %d offsets[%d] = %d\n", id, id, offsets[id]);
-      // }
       pseudo_block_id[offsets[id]] = offsets[id - 1] - offsets[id] + 1;
     } else {
       pseudo_block_id[offsets[0]] = 0;
@@ -189,7 +183,6 @@ std::tuple<i_t, i_t> create_heavy_item_block_segments(rmm::cuda_stream_view stre
 
   // Inclusive scan so that each block can determine which item it belongs to
   item_block_segments.set_element_to_zero_async(0, stream);
-  // std::cerr<<"inclusive_scan 0\n";
   thrust::inclusive_scan(rmm::exec_policy(stream),
                          calc_blocks_per_vertex_iter,
                          calc_blocks_per_vertex_iter + heavy_id_count,
@@ -200,34 +193,17 @@ std::tuple<i_t, i_t> create_heavy_item_block_segments(rmm::cuda_stream_view stre
     pseudo_block_id.resize(num_blocks, stream);
     thrust::fill(rmm::exec_policy(stream), vertex_id.begin(), vertex_id.end(), i_t{-1});
     thrust::fill(rmm::exec_policy(stream), pseudo_block_id.begin(), pseudo_block_id.end(), i_t{1});
-    //{
-    // std::cerr<<"\nitem_block_segments\n";
-    //  auto seg = host_copy(item_block_segments);
-    //  for (size_t i = 0; i < item_block_segments.size(); ++i) {
-    //    std::cout<<"("<<i<<") "<<seg[i]<<"\t";
-    //  }
-    // std::cerr<<"\n heavy_id_count "<<heavy_id_count<<"\n";
-    //}
-    // std::cerr<<"\n\n";
-    // std::cerr<<"for_each\n";
-    // std::cerr<<"vertex_id size "<<vertex_id.size()<<"\n";
-    // std::cerr<<"item_block_segments size "<<item_block_segments.size()<<"\n";
-    // std::cerr<<"pseudo_block_id size "<<pseudo_block_id.size()<<"\n";
     thrust::for_each(
       rmm::exec_policy(stream),
       thrust::make_counting_iterator<i_t>(0),
       thrust::make_counting_iterator<i_t>(item_block_segments.size() - 1),
       heavy_vertex_meta_t<i_t>{
         make_span(item_block_segments), make_span(vertex_id), make_span(pseudo_block_id)});
-    // RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-    // std::cerr<<"inclusive_scan 1\n";
     thrust::inclusive_scan(rmm::exec_policy(stream),
                            vertex_id.begin(),
                            vertex_id.end(),
                            vertex_id.begin(),
                            thrust::maximum<i_t>{});
-    // RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-    // std::cerr<<"inclusive_scan 2\n";
     thrust::inclusive_scan(rmm::exec_policy(stream),
                            pseudo_block_id.begin(),
                            pseudo_block_id.end(),
@@ -264,27 +240,11 @@ std::tuple<i_t, i_t> block_meta(rmm::cuda_stream_view stream,
 
   // start with non-zero vertices
   warp_offsets.push_back(0);
-  warp_id_offsets[0] = bin_offsets[1];
+  warp_id_offsets[0] = bin_offsets[0];
   for (i_t t_p_v = 1; t_p_v <= 16; t_p_v *= 2) {
     auto num_items  = warp_id_offsets[std::log2(t_p_v) + 1] - warp_id_offsets[std::log2(t_p_v)];
     auto warp_count = raft::ceildiv<i_t>(num_items * t_p_v, raft::WarpSize);
     warp_offsets.push_back(warp_count + warp_offsets.back());
-  }
-
-  if (false) {
-    std::cout << "warp_offsets and id offsets\n";
-    for (size_t i = 0; i < warp_offsets.size(); ++i) {
-      std::cout << i << "\t";
-    }
-    std::cout << "\n";
-    for (size_t i = 0; i < warp_offsets.size(); ++i) {
-      std::cout << warp_offsets[i] << "\t";
-    }
-    std::cout << "\n";
-    for (size_t i = 0; i < warp_id_offsets.size(); ++i) {
-      std::cout << warp_id_offsets[i] << "\t";
-    }
-    std::cout << "\n";
   }
 
   auto num_sub_warps       = warp_offsets.back();
@@ -303,28 +263,10 @@ std::tuple<i_t, i_t> block_meta(rmm::cuda_stream_view stream,
                                         block_size / 64));
 
   //[512, heavy_degree_cutoff/2]
-  // auto heavy_id_beg = bin_offsets[std::log2(heavy_w_cut_off) + 1];
   block_id_offsets.push_back(heavy_id_beg);
   block_offsets.push_back(block_offsets.back() + heavy_id_beg -
                           bin_offsets[std::log2(16 * 2 * w_t_r) + 3]);
 
-  if (false) {
-    std::cout << "block_offsets\n";
-    for (size_t i = 0; i < block_offsets.size(); ++i) {
-      std::cout << i << " " << block_offsets[i] << "\n";
-    }
-    std::cout << "\n\n";
-    std::cout << "block_id_offsets\n";
-    for (size_t i = 0; i < block_id_offsets.size(); ++i) {
-      std::cout << i << " " << block_id_offsets[i] << "\n";
-    }
-    std::cout << "\n\n";
-
-    std::cout << "heavy_id_beg " << heavy_id_beg << "\n";
-  }
-
-  // auto num_medium_blocks = num_sub_warp_blocks +
-  //                          heavy_id_beg - warp_id_offsets.back();
   expand_device_copy(d_warp_offsets, warp_offsets, stream);
   expand_device_copy(d_warp_id_offsets, warp_id_offsets, stream);
   expand_device_copy(d_block_offsets, block_offsets, stream);

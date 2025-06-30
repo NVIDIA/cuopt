@@ -1037,6 +1037,8 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
       (initial_dual_.size() != 0) ? std::make_optional(&initial_dual_) : std::nullopt);
   }
 
+  pdhg_solver_.spmv.setup(op_problem_scaled_);
+
   // Project initial primal solution
   if (pdlp_hyper_params::project_initial_primal) {
     raft::linalg::ternaryOp(pdhg_solver_.get_primal_solution().data(),
@@ -1078,7 +1080,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
     CUOPT_LOG_INFO(
       "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
   }
-  pdhg_solver_.spmv.setup(op_problem_scaled_);
   while (true) {
     bool is_major_iteration = ((total_pdlp_iterations_ % pdlp_hyper_params::major_iteration == 0) &&
                                (total_pdlp_iterations_ > 0)) ||

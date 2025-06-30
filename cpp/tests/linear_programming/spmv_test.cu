@@ -59,18 +59,18 @@ namespace cuopt::linear_programming::test {
 
 constexpr int bench_iter_count = 100;
 
-struct timeit{
+struct timeit {
   cudaEvent_t beg, end;
-  float *milliseconds;
+  float* milliseconds;
   rmm::cuda_stream_view stream;
-  timeit(float *ms, rmm::cuda_stream_view stream_) :
-  milliseconds(ms),
-  stream(stream_){
+  timeit(float* ms, rmm::cuda_stream_view stream_) : milliseconds(ms), stream(stream_)
+  {
     cudaEventCreate(&beg);
     cudaEventCreate(&end);
     cudaEventRecord(beg, stream);
   }
-  ~timeit() {
+  ~timeit()
+  {
     cudaEventRecord(end, stream);
     cudaEventSynchronize(end);
     *milliseconds = 0;
@@ -217,10 +217,10 @@ void test_spmv_functor(std::string path)
 
 template <typename cusp_view_t>
 std::pair<std::vector<double>, float> cusparse_call_ax(const raft::handle_t* handle_ptr,
-                                     detail::problem_t<int, double>& problem,
-                                     cusp_view_t& view,
-                                     rmm::device_uvector<double>& x,
-                                     rmm::device_uvector<double>& ax)
+                                                       detail::problem_t<int, double>& problem,
+                                                       cusp_view_t& view,
+                                                       rmm::device_uvector<double>& x,
+                                                       rmm::device_uvector<double>& ax)
 {
   cusparseDnVecDescr_t cusp_x;
   cusparseDnVecDescr_t cusp_ax;
@@ -239,16 +239,16 @@ std::pair<std::vector<double>, float> cusparse_call_ax(const raft::handle_t* han
   RAFT_CUDA_TRY(cudaStreamSynchronize(handle_ptr->get_stream()));
   cudaEventRecord(beg, handle_ptr->get_stream());
   for (size_t i = 0; i < bench_iter_count; ++i) {
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr->get_cusparse_handle(),
-                                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                                       sc_1.data(),  // 1
-                                                       view.A,
-                                                       cusp_x,
-                                                       sc_0.data(),  // 0
-                                                       cusp_ax,
-                                                       CUSPARSE_SPMV_CSR_ALG2,
-                                                       (double*)view.buffer_non_transpose.data(),
-                                                       handle_ptr->get_stream()));
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr->get_cusparse_handle(),
+                                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                         sc_1.data(),  // 1
+                                                         view.A,
+                                                         cusp_x,
+                                                         sc_0.data(),  // 0
+                                                         cusp_ax,
+                                                         CUSPARSE_SPMV_CSR_ALG2,
+                                                         (double*)view.buffer_non_transpose.data(),
+                                                         handle_ptr->get_stream()));
   }
   cudaEventRecord(end, handle_ptr->get_stream());
   cudaEventSynchronize(end);
@@ -259,10 +259,10 @@ std::pair<std::vector<double>, float> cusparse_call_ax(const raft::handle_t* han
 
 template <typename cusp_view_t>
 std::pair<std::vector<double>, float> cusparse_call_aty(const raft::handle_t* handle_ptr,
-                                      detail::problem_t<int, double>& problem,
-                                      cusp_view_t& view,
-                                      rmm::device_uvector<double>& y,
-                                      rmm::device_uvector<double>& aty)
+                                                        detail::problem_t<int, double>& problem,
+                                                        cusp_view_t& view,
+                                                        rmm::device_uvector<double>& y,
+                                                        rmm::device_uvector<double>& aty)
 {
   cusparseDnVecDescr_t cusp_y;
   cusparseDnVecDescr_t cusp_aty;
@@ -281,16 +281,16 @@ std::pair<std::vector<double>, float> cusparse_call_aty(const raft::handle_t* ha
   RAFT_CUDA_TRY(cudaStreamSynchronize(handle_ptr->get_stream()));
   cudaEventRecord(beg, handle_ptr->get_stream());
   for (size_t i = 0; i < bench_iter_count; ++i) {
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr->get_cusparse_handle(),
-                                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                                       sc_1.data(),  // 1
-                                                       view.A_T,
-                                                       cusp_y,
-                                                       sc_0.data(),  // 0
-                                                       cusp_aty,
-                                                       CUSPARSE_SPMV_CSR_ALG2,
-                                                       (double*)view.buffer_non_transpose.data(),
-                                                       handle_ptr->get_stream()));
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr->get_cusparse_handle(),
+                                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                         sc_1.data(),  // 1
+                                                         view.A_T,
+                                                         cusp_y,
+                                                         sc_0.data(),  // 0
+                                                         cusp_aty,
+                                                         CUSPARSE_SPMV_CSR_ALG2,
+                                                         (double*)view.buffer_non_transpose.data(),
+                                                         handle_ptr->get_stream()));
   }
   cudaEventRecord(end, handle_ptr->get_stream());
   cudaEventSynchronize(end);
@@ -363,37 +363,38 @@ void test_spmv_functor(std::string path)
     thrust::fill(handle_.get_thrust_policy(), cusp_ax.begin(), cusp_ax.end(), 0);
     thrust::fill(handle_.get_thrust_policy(), ax.begin(), ax.end(), 0);
 
-    std::cerr<<"call cusp ax\n";
+    std::cerr << "call cusp ax\n";
     auto [gld_res, gld_time] =
-    cusparse_call_ax(&handle_, problem, pdhg_solver.get_cusparse_view(), x, cusp_ax);
+      cusparse_call_ax(&handle_, problem, pdhg_solver.get_cusparse_view(), x, cusp_ax);
 
     float ax_time;
     {
-      std::cerr<<"call cust ax\n";
+      std::cerr << "call cust ax\n";
       cudaEvent_t beg, end;
       cudaEventCreate(&beg);
       cudaEventCreate(&end);
 
-      //RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+      // RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
       cudaEventRecord(beg, handle_.get_stream());
       for (size_t i = 0; i < bench_iter_count; ++i) {
-        spmv.Ax(
-          handle_.get_stream(),
-          make_span(x),
-          make_span(ax),
-          [] __device__(int idx, double x, raft::device_span<double> output) { output[idx] = 2 * x; });
+        spmv.Ax(handle_.get_stream(),
+                make_span(x),
+                make_span(ax),
+                [] __device__(int idx, double x, raft::device_span<double> output) {
+                  output[idx] = 2 * x;
+                });
       }
-      //RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+      // RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
       cudaEventRecord(end, handle_.get_stream());
       cudaEventSynchronize(end);
       ax_time = 0;
       cudaEventElapsedTime(&ax_time, beg, end);
       RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     }
-    std::cerr<<"call host_copy\n";
+    std::cerr << "call host_copy\n";
     auto ref_res = host_copy(ax);
 
-    std::cout<<"speedup "<<gld_time/ax_time<<"\n";
+    std::cout << "speedup " << gld_time / ax_time << "\n";
     test_eq(&handle_, ref_res, gld_res, 1e-5);
   }
   {
@@ -419,17 +420,18 @@ void test_spmv_functor(std::string path)
       cudaEventCreate(&beg);
       cudaEventCreate(&end);
 
-      //RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+      // RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
       cudaEventRecord(beg, handle_.get_stream());
       for (size_t i = 0; i < bench_iter_count; ++i) {
-        spmv.ATy(
-          handle_.get_stream(),
-          make_span(x),
-          make_span(ax),
-          [p_0 = param_0.data(), p_1 = param_1.data()] __device__(
-            int idx, double x, raft::device_span<double> output) { output[idx] = (*p_0 - *p_1) * x; });
+        spmv.ATy(handle_.get_stream(),
+                 make_span(x),
+                 make_span(ax),
+                 [p_0 = param_0.data(), p_1 = param_1.data()] __device__(
+                   int idx, double x, raft::device_span<double> output) {
+                   output[idx] = (*p_0 - *p_1) * x;
+                 });
       }
-      //RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
+      // RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
       cudaEventRecord(end, handle_.get_stream());
       cudaEventSynchronize(end);
       aty_time = 0;
@@ -437,18 +439,18 @@ void test_spmv_functor(std::string path)
     }
     auto ref_res = host_copy(ax);
 
-    std::cout<<"speedup "<<gld_time/aty_time<<"\n";
+    std::cout << "speedup " << gld_time / aty_time << "\n";
     test_eq(&handle_, ref_res, gld_res, 1e-5);
   }
 }
 
 TEST(mip_solve, test_lb)
 {
-  //std::string mps_folder_path, curr_file;
-  //std::cin >> mps_folder_path;
-  //std::cin >> curr_file;
-  //std::cout << "\n\nrun_file " << curr_file << " ";
-  //auto file = mps_folder_path + "/" + curr_file;
+  // std::string mps_folder_path, curr_file;
+  // std::cin >> mps_folder_path;
+  // std::cin >> curr_file;
+  // std::cout << "\n\nrun_file " << curr_file << " ";
+  // auto file = mps_folder_path + "/" + curr_file;
 
   std::string file;
   std::cin >> file;
