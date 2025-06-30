@@ -32,7 +32,9 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 class pdhg_solver_t {
  public:
-  pdhg_solver_t(raft::handle_t const* handle_ptr, problem_t<i_t, f_t>& op_problem);
+  pdhg_solver_t(raft::handle_t const* handle_ptr,
+                problem_t<i_t, f_t>& op_problem,
+                bool use_custom_spmv = true);
 
   saddle_point_state_t<i_t, f_t>& get_saddle_point_state();
   cusparse_view_t<i_t, f_t>& get_cusparse_view();
@@ -101,7 +103,7 @@ class pdhg_solver_t {
   // Passing the host value each time would require updating the graph each time
   rmm::device_scalar<i_t> d_total_pdhg_iterations_;
 
-  bool use_custom_spmv;
+  bool use_custom_spmv_;
 };
 
 }  // namespace cuopt::linear_programming::detail

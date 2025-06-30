@@ -36,7 +36,8 @@ namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
 pdhg_solver_t<i_t, f_t>::pdhg_solver_t(raft::handle_t const* handle_ptr,
-                                       problem_t<i_t, f_t>& op_problem_scaled)
+                                       problem_t<i_t, f_t>& op_problem_scaled,
+                                       bool use_custom_spmv)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     problem_ptr(&op_problem_scaled),
@@ -62,7 +63,7 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(raft::handle_t const* handle_ptr,
     graph_prim_proj_gradient_dual{stream_view_},
     d_total_pdhg_iterations_{0, stream_view_},
     spmv{op_problem_scaled},
-    use_custom_spmv(true)
+    use_custom_spmv_(use_custom_spmv)
 {
 }
 
@@ -96,7 +97,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_dual_solution(rmm::device_scalar<f_t>
   // positive.
 
   // All is fused in a single call to limit number of read / write in memory
-  if (use_custom_spmv) {
+  if (use_custom_spmv_) {
     spmv.Ax(stream_view_,
             make_span(tmp_primal_),
             make_span(current_saddle_point_state_.get_dual_gradient()),
@@ -138,7 +139,7 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y_primal_projection_with_gradient(
 {
   // A_t @ y
 
-  if (use_custom_spmv) {
+  if (use_custom_spmv_) {
     spmv.ATy(stream_view_,
              make_span(current_saddle_point_state_.get_dual_solution()),
              make_span(current_saddle_point_state_.get_current_AtY()),
