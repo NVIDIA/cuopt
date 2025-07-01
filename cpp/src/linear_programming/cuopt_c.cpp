@@ -811,10 +811,7 @@ cuopt_int_t cuOptGetSolutionBound(cuOptSolution solution, cuopt_float_t* solutio
         solution_and_stream_view->mip_solution_ptr);
     *solution_bound_ptr = mip_solution->get_solution_bound();
   } else {
-    optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* optimization_problem_solution =
-      static_cast<optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>*>(
-        solution_and_stream_view->lp_solution_ptr);
-    *solution_bound_ptr = optimization_problem_solution->get_dual_objective_value();
+    return CUOPT_INVALID_ARGUMENT;
   }
   return CUOPT_SUCCESS;
 }
