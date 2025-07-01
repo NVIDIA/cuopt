@@ -43,7 +43,7 @@ enum class mip_termination_status_t : int8_t {
 };
 
 template <typename i_t, typename f_t>
-class mip_solution_t : public base_solution_t {
+class mip_solution_t {
  public:
   mip_solution_t(rmm::device_uvector<f_t> solution,
                  std::vector<std::string> var_names,
@@ -61,7 +61,6 @@ class mip_solution_t : public base_solution_t {
                  rmm::cuda_stream_view stream_view);
   mip_solution_t(const cuopt::logic_error& error_status, rmm::cuda_stream_view stream_view);
 
-  bool is_mip() const override { return true; }
   const rmm::device_uvector<f_t>& get_solution() const;
   rmm::device_uvector<f_t>& get_solution();
   f_t get_objective_value() const;
@@ -76,8 +75,6 @@ class mip_solution_t : public base_solution_t {
   f_t get_max_constraint_violation() const;
   f_t get_max_int_violation() const;
   f_t get_max_variable_bound_violation() const;
-  i_t get_num_nodes() const;
-  i_t get_num_simplex_iterations() const;
   const std::vector<std::string>& get_variable_names() const;
   const std::vector<rmm::device_uvector<f_t>>& get_solution_pool() const;
   void write_to_sol_file(std::string_view filename, rmm::cuda_stream_view stream_view) const;

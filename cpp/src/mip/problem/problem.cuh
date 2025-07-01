@@ -92,7 +92,6 @@ class problem_t {
   void preprocess_problem();
   bool pre_process_assignment(rmm::device_uvector<f_t>& assignment);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment);
-  bool pre_process_assignment(rmm::device_uvector<f_t>& assignment);
   void post_process_solution(solution_t<i_t, f_t>& solution);
   void compute_transpose_of_problem();
   f_t get_user_obj_from_solver_obj(f_t solver_obj);
