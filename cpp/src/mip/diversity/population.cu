@@ -183,10 +183,10 @@ template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
 {
   bool better_solution_found = is_better_than_best_feasible(sol);
+  auto user_callbacks        = context.settings.get_mip_callbacks();
   if (better_solution_found) {
-    if (context.settings.get_benchmark_info_ptr() != nullptr) {
-      context.settings.get_benchmark_info_ptr()->last_improvement_of_best_feasible =
-        timer.elapsed_time();
+    if (context.settings.benchmark_info_ptr != nullptr) {
+      context.settings.benchmark_info_ptr->last_improvement_of_best_feasible = timer.elapsed_time();
     }
     CUOPT_LOG_DEBUG("Population: Found new best solution %g", sol.get_user_objective());
     best_feasible_objective = sol.get_user_objective();

@@ -416,7 +416,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
 
   // initialize the best_objective values according to the initial assignment
   f_t best_obj = compute_objective_from_vec<i_t, f_t>(
-    climber->incumbent_assignment, pb_ptr->objective_coefficients, pb_ptr->handle_ptr);
+    climber->incumbent_assignment, pb_ptr->objective_coefficients, climber_stream);
   if (climber->violated_constraints.set_size.value(climber_stream) == 0 &&
       (settings.mode != fj_mode_t::ROUNDING || fractional_var_count == 0)) {
     climber->best_excess.set_value_to_zero_async(climber_stream);

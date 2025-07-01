@@ -371,21 +371,17 @@ const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_pdlp_du
 }
 
 template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_initial_mip_solution(const f_t* solution, i_t size)
+void solver_settings_t<i_t, f_t>::add_initial_mip_solution(const f_t* solution,
+                                                           i_t size,
+                                                           rmm::cuda_stream_view stream)
 {
-  mip_settings.set_initial_solution(solution, size);
+  mip_settings.add_initial_solution(solution, size, stream);
 }
 
 template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::set_mip_callback(internals::base_solution_callback_t* callback)
 {
   mip_settings.set_mip_callback(callback);
-}
-
-template <typename i_t, typename f_t>
-const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_mip_solution() const
-{
-  return mip_settings.get_initial_solution();
 }
 
 template <typename i_t, typename f_t>

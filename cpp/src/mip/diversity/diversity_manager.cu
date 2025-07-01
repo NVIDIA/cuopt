@@ -183,8 +183,8 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   std::vector<solution_t<i_t, f_t>>& initial_sol_vector)
 {
-  if (context.settings.has_initial_solutions()) {
-    for (const auto& init_sol : context.settings.get_initial_solutions()) {
+  if (context.settings.initial_solutions.size() > 0) {
+    for (const auto& init_sol : context.settings.initial_solutions) {
       solution_t<i_t, f_t> sol(*problem_ptr);
       rmm::device_uvector<f_t> init_sol_assignment(*init_sol, sol.handle_ptr->get_stream());
       if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
@@ -405,7 +405,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   lp_state.resize(*problem_ptr, problem_ptr->handle_ptr->get_stream());
   relaxed_lp_settings_t lp_settings;
   lp_settings.time_limit            = lp_time_limit;
-  lp_settings.tolerance             = context.settings.get_absolute_tolerance();
+  lp_settings.tolerance             = context.settings.tolerances.absolute_tolerance;
   lp_settings.return_first_feasible = false;
   lp_settings.save_state            = true;
   if (!fj_only_run) {
@@ -435,8 +435,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   if (check_b_b_preemption()) { return population.best_feasible(); }
   // generate a population with 5 solutions(FP+FJ)
   generate_initial_solutions();
-  if (context.settings.get_benchmark_info_ptr() != nullptr) {
-    context.settings.get_benchmark_info_ptr()->objective_of_initial_population =
+  if (context.settings.benchmark_info_ptr != nullptr) {
+    context.settings.benchmark_info_ptr->objective_of_initial_population =
       population.best_feasible().get_user_objective();
   }
 
@@ -611,7 +611,7 @@ void diversity_manager_t<i_t, f_t>::check_better_than_both(solution_t<i_t, f_t>&
     better_than_both = offspring.get_feasible();
   }
   if (offspring.get_feasible() && better_than_both) {
-    context.settings.get_benchmark_info_ptr()->last_improvement_after_recombination =
+    context.settings.benchmark_info_ptr->last_improvement_after_recombination =
       timer.elapsed_time();
   }
 }
@@ -671,7 +671,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   lp_run_time                     = min(lp_run_time, timer.remaining_time());
   relaxed_lp_settings_t lp_settings;
   lp_settings.time_limit              = lp_run_time;
-  lp_settings.tolerance               = context.settings.get_absolute_tolerance();
+  lp_settings.tolerance               = context.settings.tolerances.absolute_tolerance;
   lp_settings.return_first_feasible   = false;
   lp_settings.save_state              = true;
   lp_settings.per_constraint_residual = true;
@@ -694,7 +694,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
                  population.best_feasible().get_quality(population.weights),
                  offspring_qual,
                  recombine_stats.get_last_recombiner_time());
-  if (context.settings.get_benchmark_info_ptr() != nullptr) {
+  if (context.settings.benchmark_info_ptr != nullptr) {
     check_better_than_both(offspring, sol1, sol2);
     check_better_than_both(lp_offspring, sol1, sol2);
   }

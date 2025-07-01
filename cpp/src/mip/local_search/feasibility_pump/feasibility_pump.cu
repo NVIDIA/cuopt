@@ -153,7 +153,7 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
   auto h_variable_lower_bounds = cuopt::host_copy(solution.problem_ptr->variable_lower_bounds,
                                                   solution.handle_ptr->get_stream());
   auto h_last_projection = cuopt::host_copy(last_projection, solution.handle_ptr->get_stream());
-  const f_t int_tol      = context.settings.get_integrality_tolerance();
+  const f_t int_tol      = context.settings.tolerances.integrality_tolerance;
   constraints_delta_t<i_t, f_t> h_constraints;
   variables_delta_t<i_t, f_t> h_variables;
   h_variables.n_vars = solution.problem_ptr->n_variables;

@@ -75,6 +75,8 @@ class mip_solution_t {
   f_t get_max_constraint_violation() const;
   f_t get_max_int_violation() const;
   f_t get_max_variable_bound_violation() const;
+  i_t get_num_nodes() const;
+  i_t get_num_simplex_iterations() const;
   const std::vector<std::string>& get_variable_names() const;
   const std::vector<rmm::device_uvector<f_t>>& get_solution_pool() const;
   void write_to_sol_file(std::string_view filename, rmm::cuda_stream_view stream_view) const;

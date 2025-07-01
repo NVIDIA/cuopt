@@ -50,17 +50,13 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
 {
   raft::common::nvtx::range fun_scope("get_relaxed_lp_solution");
   pdlp_solver_settings_t<i_t, f_t> pdlp_settings{};
-  pdlp_settings.set_infeasibility_detection(settings.check_infeasibility);
+  pdlp_settings.detect_infeasibility = settings.check_infeasibility;
   pdlp_settings.set_optimality_tolerance(settings.tolerance);
-  pdlp_settings.set_relative_primal_tolerance(settings.tolerance / 100.);
-  pdlp_settings.set_relative_dual_tolerance(settings.tolerance / 100.);
-  pdlp_settings.set_time_limit(settings.time_limit);
-  if (settings.per_constraint_residual || settings.return_first_feasible) {
-    pdlp_settings.set_per_constraint_residual(true);
-  }
-  // settings.set_save_best_primal_so_far(true);
-  // currently disable first primal setting as it is not supported without per constraint mode
-  pdlp_settings.set_first_primal_feasible_encountered(settings.return_first_feasible);
+  pdlp_settings.tolerances.relative_primal_tolerance = settings.tolerance / 100.;
+  pdlp_settings.tolerances.relative_dual_tolerance   = settings.tolerance / 100.;
+  pdlp_settings.time_limit                           = settings.time_limit;
+  if (settings.return_first_feasible) { pdlp_settings.per_constraint_residual = true; }
+  pdlp_settings.first_primal_feasible = settings.return_first_feasible;
   pdlp_solver_t<i_t, f_t> lp_solver(op_problem, pdlp_settings);
   if (settings.save_state) {
     i_t prev_size = lp_state.prev_dual.size();
@@ -159,7 +155,8 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
   // if we are on the original problem and fixing the integers, save the state
   // if we are in recombiners and on a smaller problem, don't update the state with integers fixed
   CUOPT_LOG_TRACE("save_state %d", settings.save_state);
-  auto& lp_state = lp_state_t<i_t, f_t>::get_default_lp_state(fixed_problem);
+  // FIXME: use default LP state in the context
+  auto lp_state = lp_state_t<i_t, f_t>(fixed_problem, fixed_problem.handle_ptr->get_stream());
   auto solver_response =
     get_relaxed_lp_solution(fixed_problem, fixed_assignment, lp_state, settings);
   // unfix the assignment on given result no matter if it is feasible
