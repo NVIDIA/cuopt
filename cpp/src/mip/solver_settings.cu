@@ -23,17 +23,14 @@
 namespace cuopt::linear_programming {
 
 template <typename i_t, typename f_t>
-void mip_solver_settings_t<i_t, f_t>::set_initial_solution(const f_t* initial_solution,
+void mip_solver_settings_t<i_t, f_t>::add_initial_solution(const f_t* initial_solution,
                                                            i_t size,
                                                            rmm::cuda_stream_view stream)
 {
   cuopt_expects(
     initial_solution != nullptr, error_type_t::ValidationError, "initial_solution cannot be null");
-  if (!initial_solution_) {
-    initial_solution_ = std::make_shared<rmm::device_uvector<f_t>>(size, stream);
-  }
-
-  raft::copy(initial_solution_.get()->data(), initial_solution, size, stream);
+  initial_solutions_.emplace_back(std::make_shared<rmm::device_uvector<f_t>>(size, stream));
+  raft::copy(initial_solutions_.back()->data(), initial_solution, size, stream);
 }
 
 template <typename i_t, typename f_t>
@@ -44,16 +41,19 @@ void mip_solver_settings_t<i_t, f_t>::set_mip_callback(
 }
 
 template <typename i_t, typename f_t>
-rmm::device_uvector<f_t>& mip_solver_settings_t<i_t, f_t>::get_initial_solution() const
+const std::vector<std::shared_ptr<rmm::device_uvector<f_t>>>&
+mip_solver_settings_t<i_t, f_t>::get_initial_solutions() const
 {
-  if (!initial_solution_) { throw std::runtime_error("Initial solution has not been set"); }
-  return *initial_solution_;
+  if (initial_solutions_.size() == 0) {
+    throw std::runtime_error("Initial solution has not been set");
+  }
+  return initial_solutions_;
 }
 
 template <typename i_t, typename f_t>
-bool mip_solver_settings_t<i_t, f_t>::has_initial_solution() const
+bool mip_solver_settings_t<i_t, f_t>::has_initial_solutions() const
 {
-  return initial_solution_.get() != nullptr;
+  return initial_solutions_.size() > 0;
 }
 
 template <typename i_t, typename f_t>
@@ -68,6 +68,12 @@ typename mip_solver_settings_t<i_t, f_t>::tolerances_t
 mip_solver_settings_t<i_t, f_t>::get_tolerances() const noexcept
 {
   return tolerances;
+}
+
+template <typename i_t, typename f_t>
+benchmark_info_t* mip_solver_settings_t<i_t, f_t>::get_benchmark_info_ptr() const noexcept
+{
+  return benchmark_info_ptr_;
 }
 
 // Explicit template instantiations for common types

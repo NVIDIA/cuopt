@@ -310,7 +310,7 @@ bool solution_t<i_t, f_t>::compute_feasibility()
   compute_infeasibility();
   compute_number_of_integers();
   i_t h_n_feas_constraints = n_feasible_constraints.value(handle_ptr->get_stream());
-  is_feasible              = h_n_feas_constraints == problem_ptr->n_constraints;
+  is_feasible = h_n_feas_constraints == problem_ptr->n_constraints && test_number_all_integer();
   CUOPT_LOG_TRACE("is_feasible %d n_feasible_cstr %d all_cstr %d",
                   is_feasible,
                   h_n_feas_constraints,

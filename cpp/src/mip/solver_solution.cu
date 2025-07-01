@@ -37,6 +37,8 @@ mip_solution_t<i_t, f_t>::mip_solution_t(rmm::device_uvector<f_t> solution,
                                          f_t max_int_violation,
                                          f_t max_variable_bound_violation,
                                          solver_stats_t<i_t, f_t> stats,
+                                         i_t num_nodes,
+                                         i_t num_simplex_iterations,
                                          std::vector<rmm::device_uvector<f_t>> solution_pool)
   : solution_(std::move(solution)),
     var_names_(std::move(var_names)),
@@ -187,12 +189,6 @@ template <typename i_t, typename f_t>
 i_t mip_solution_t<i_t, f_t>::get_num_simplex_iterations() const
 {
   return stats_.num_simplex_iterations;
-}
-
-template <typename i_t, typename f_t>
-const std::vector<std::string>& mip_solution_t<i_t, f_t>::get_variable_names() const
-{
-  return var_names_;
 }
 
 template <typename i_t, typename f_t>

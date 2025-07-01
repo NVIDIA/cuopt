@@ -92,10 +92,16 @@ class problem_t {
   void preprocess_problem();
   bool pre_process_assignment(rmm::device_uvector<f_t>& assignment);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment);
+  bool pre_process_assignment(rmm::device_uvector<f_t>& assignment);
   void post_process_solution(solution_t<i_t, f_t>& solution);
   void compute_transpose_of_problem();
   f_t get_user_obj_from_solver_obj(f_t solver_obj);
-
+  void compute_integer_fixed_problem();
+  void fill_integer_fixed_problem(rmm::device_uvector<f_t>& assignment,
+                                  const raft::handle_t* handle_ptr);
+  void copy_rhs_from_problem(const raft::handle_t* handle_ptr);
+  rmm::device_uvector<f_t> get_fixed_assignment_from_integer_fixed_problem(
+    const rmm::device_uvector<f_t>& assignment);
   bool is_integer(f_t val) const;
   bool integer_equal(f_t val1, f_t val2) const;
 
@@ -194,6 +200,8 @@ class problem_t {
 
   const optimization_problem_t<i_t, f_t>* original_problem_ptr;
   const raft::handle_t* handle_ptr;
+  std::shared_ptr<problem_t<i_t, f_t>> integer_fixed_problem = nullptr;
+  rmm::device_uvector<i_t> integer_fixed_variable_map;
 
   std::function<void(const std::vector<f_t>&)> branch_and_bound_callback;
 
