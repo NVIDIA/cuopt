@@ -28,7 +28,7 @@
 #   --time-limit  : Time limit in seconds for each problem (default: 360)
 #   --output-dir  : Directory to store output log files (default: current directory)
 #   --relaxation  : Run relaxation instead of solving the MIP
-#   --heuristics-only : Run heuristics only
+#   --mip-heuristics-only : Run mip heuristics only
 #   --write-log-file : Write log file
 #   --num-cpu-threads : Number of CPU threads to use
 #   --batch-num : Batch number
@@ -68,7 +68,7 @@ Optional Arguments:
     --time-limit N      Time limit in seconds for each problem (default: 360)
     --output-dir PATH   Directory to store output log files (default: current directory)
     --relaxation       Run relaxation instead of solving the MIP
-    --heuristics-only  Run heuristics only
+    --mip-heuristics-only  Run mip heuristics only
     --write-log-file   Write log file
     --num-cpu-threads  Number of CPU threads to use
     --batch-num        Batch number
@@ -123,8 +123,8 @@ while [[ $# -gt 0 ]]; do
             RELAXATION=true
             shift
             ;;
-        --heuristics-only)
-            HEURISTICS_ONLY=true
+        --mip-heuristics-only)
+            MIP_HEURISTICS_ONLY=true
             shift
             ;;
         --write-log-file)
@@ -166,7 +166,7 @@ GPU_COUNT=${GPU_COUNT:-1}
 TIME_LIMIT=${TIME_LIMIT:-360}
 OUTPUT_DIR=${OUTPUT_DIR:-.}
 RELAXATION=${RELAXATION:-false}
-HEURISTICS_ONLY=${HEURISTICS_ONLY:-false}
+MIP_HEURISTICS_ONLY=${MIP_HEURISTICS_ONLY:-false}
 WRITE_LOG_FILE=${WRITE_LOG_FILE:-false}
 NUM_CPU_THREADS=${NUM_CPU_THREADS:-1}
 BATCH_NUM=${BATCH_NUM:-0}
@@ -248,8 +248,8 @@ worker() {
         if [ -n "$NUM_CPU_THREADS" ]; then
             args="$args --num-cpu-threads $NUM_CPU_THREADS"
         fi
-        if [ -n "$HEURISTICS_ONLY" ]; then
-            args="$args --heuristics-only $HEURISTICS_ONLY"
+        if [ -n "$MIP_HEURISTICS_ONLY" ]; then
+            args="$args --mip-heuristics-only $MIP_HEURISTICS_ONLY"
         fi
         if [ -n "$WRITE_LOG_FILE" ]; then
             args="$args --log-file $OUTPUT_DIR/$(basename "${mps_file%.mps}").log"
