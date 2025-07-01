@@ -777,6 +777,11 @@ void problem_t<i_t, f_t>::compute_binary_var_table()
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_related_variables(double time_limit)
 {
+  if (n_variables == 0) {
+    related_variables.resize(0, handle_ptr->get_stream());
+    related_variables_offsets.resize(0, handle_ptr->get_stream());
+    return;
+  }
   auto pb_view = view();
 
   handle_ptr->sync_stream();
