@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -24,7 +25,7 @@ class solution_reader_t {
  public:
   std::unordered_map<std::string, double> data_map;
 
-  bool readFromCsv(const std::string& filepath)
+  bool read_from_sol(const std::string& filepath)
   {
     std::ifstream file(filepath);
     if (!file.is_open()) {
@@ -33,13 +34,14 @@ class solution_reader_t {
     }
 
     std::string line;
+    // read the objective
+    std::getline(file, line);
     while (std::getline(file, line)) {
       std::stringstream ss(line);
       std::string var_name;
       std::string value_str;
-
       // Read var_name
-      if (!std::getline(ss, var_name, ',')) continue;
+      if (!std::getline(ss, var_name, '\t')) continue;
       // Read value
       if (!std::getline(ss, value_str)) continue;
 
