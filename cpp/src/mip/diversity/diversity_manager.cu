@@ -22,6 +22,8 @@
 #include <mip/presolve/probing_cache.cuh>
 #include <mip/presolve/trivial_presolve.cuh>
 
+#include <utilities/scope_guard.hpp>
+
 #include "cuda_profiler_api.h"
 
 namespace cuopt::linear_programming::detail {
@@ -308,6 +310,10 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   constexpr f_t max_time_on_lp        = 30;
   const f_t lp_time_limit             = min(max_time_on_lp, time_limit * time_ratio_on_init_lp);
 
+  // to automatically compute the solving time on scope exit
+  auto timer_raii_guard =
+    cuopt::scope_guard([&]() { stats.total_solve_time = timer.elapsed_time(); });
+
   // after every change to the problem, we should resize all the relevant vars
   // we need to encapsulate that to prevent repetitions
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
@@ -371,12 +377,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   if (check_b_b_preemption()) { return population.best_feasible(); }
   // generate a population with 5 solutions(FP+FJ)
   generate_initial_solutions();
-  if (timer.check_time_limit()) {
-    stats.total_solve_time = timer.elapsed_time();
-    return population.best_feasible();
-  }
+  if (timer.check_time_limit()) { return population.best_feasible(); }
   main_loop();
-  stats.total_solve_time = timer.elapsed_time();
   return population.best_feasible();
 };
 
