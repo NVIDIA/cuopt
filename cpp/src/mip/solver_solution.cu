@@ -190,6 +190,12 @@ i_t mip_solution_t<i_t, f_t>::get_num_simplex_iterations() const
 }
 
 template <typename i_t, typename f_t>
+const std::vector<std::string>& mip_solution_t<i_t, f_t>::get_variable_names() const
+{
+  return var_names_;
+}
+
+template <typename i_t, typename f_t>
 const std::vector<rmm::device_uvector<f_t>>& mip_solution_t<i_t, f_t>::get_solution_pool() const
 {
   return solution_pool_;

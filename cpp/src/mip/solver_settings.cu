@@ -47,6 +47,13 @@ mip_solver_settings_t<i_t, f_t>::get_mip_callbacks() const
   return mip_callbacks_;
 }
 
+template <typename i_t, typename f_t>
+typename mip_solver_settings_t<i_t, f_t>::tolerances_t
+mip_solver_settings_t<i_t, f_t>::get_tolerances() const noexcept
+{
+  return tolerances;
+}
+
 // Explicit template instantiations for common types
 #if MIP_INSTANTIATE_FLOAT
 template class mip_solver_settings_t<int, float>;
