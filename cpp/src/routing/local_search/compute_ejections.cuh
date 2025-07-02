@@ -56,7 +56,7 @@ DI void compute_temp_route(typename route_t<i_t, f_t, REQUEST>::view_t& temp_rou
   if (intra_idx == -1) { intra_idx = find_intra_idx<i_t, f_t, REQUEST>(route, request_id.id()); }
   __syncthreads();
   // copies the fixed route data (i.e tw values, demand, node_id etc.)
-  temp_route.copy_route_data_after_ejection<REQUEST>(route, intra_idx, true);
+  temp_route.template copy_route_data_after_ejection<REQUEST>(route, intra_idx, true);
   __syncthreads();
   temp_route.copy_backward_data(route, intra_idx + 1, n_nodes_route + 1, intra_idx);
   __syncthreads();
@@ -110,7 +110,8 @@ DI void compute_temp_route(typename route_t<i_t, f_t, REQUEST>::view_t& temp_rou
   }
   // copies the fixed route data (i.e tw values, demand, node_id etc.)
   __syncthreads();
-  temp_route.copy_route_data_after_ejection<REQUEST>(route, intra_idx, delivery_intra_idx, true);
+  temp_route.template copy_route_data_after_ejection<REQUEST>(
+    route, intra_idx, delivery_intra_idx, true);
   __syncthreads();
   if (threadIdx.x == 0) {
     auto prev_node = temp_route.get_node(intra_idx - 1);

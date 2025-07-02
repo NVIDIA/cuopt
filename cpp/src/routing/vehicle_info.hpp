@@ -30,7 +30,7 @@ template <typename f_t, bool is_device = true>
 struct VehicleInfo {
   constexpr bool has_time_matrix() const { return matrices.extent[1] > 1; }
 
-  bool operator==(VehicleInfo<f_t, is_device> const& rhs)
+  bool operator==(VehicleInfo<f_t, is_device> const& rhs) const
   {
     return drop_return_trip == rhs.drop_return_trip && skip_first_trip == rhs.skip_first_trip &&
            type == rhs.type && order_service_times == rhs.order_service_times &&
