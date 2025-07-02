@@ -76,7 +76,7 @@ static fj_state_t run_fj(std::string test_instance,
   const raft::handle_t handle_{};
   std::cout << "Running: " << test_instance << std::endl;
 
-  auto path = "datasets/mip/" + test_instance;
+  auto path = cuopt::test::get_rapids_dataset_root_dir() + ("/mip/" + test_instance);
   cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
     cuopt::mps_parser::parse_mps<int, double>(path, false);
   handle_.sync_stream();
