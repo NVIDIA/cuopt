@@ -661,14 +661,9 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   solution_t<i_t, f_t> lp_offspring(offspring);
   cuopt_assert(population.test_invariant(), "");
   cuopt_assert(lp_offspring.test_number_all_integer(), "All must be integers before LP");
-  // bool close_objective_to_parents =
-  //   (lp_offspring.get_objective() - best_of_parents) / max(1., abs(best_of_parents)) <
-  //   diversity_config_t::close_to_parents_ratio;
-  bool close_objective_to_parents = true;
-  f_t lp_run_time                 = offspring.get_feasible() && close_objective_to_parents
-                                      ? diversity_config_t::lp_run_time_if_feasible
-                                      : diversity_config_t::lp_run_time_if_infeasible;
-  lp_run_time                     = min(lp_run_time, timer.remaining_time());
+  f_t lp_run_time = offspring.get_feasible() ? diversity_config_t::lp_run_time_if_feasible
+                                             : diversity_config_t::lp_run_time_if_infeasible;
+  lp_run_time     = min(lp_run_time, timer.remaining_time());
   relaxed_lp_settings_t lp_settings;
   lp_settings.time_limit              = lp_run_time;
   lp_settings.tolerance               = context.settings.tolerances.absolute_tolerance;

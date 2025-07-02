@@ -51,7 +51,7 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 struct detect_infeas_redun_t {
   __device__ __forceinline__ thrust::tuple<i_t, i_t> operator()(
-    thrust::tuple<f_t, f_t, f_t, f_t, i_t> t) const
+    thrust::tuple<f_t, f_t, f_t, f_t> t) const
   {
     auto min_act = thrust::get<0>(t);
     auto max_act = thrust::get<1>(t);
@@ -63,13 +63,7 @@ struct detect_infeas_redun_t {
                                                 cnst_ub,
                                                 tolerances.absolute_tolerance,
                                                 tolerances.relative_tolerance);
-    if (infeas) {
-      CUOPT_LOG_TRACE("infeasible constraint %d infeasibile amount upper %f lower %f\n",
-                      thrust::get<4>(t),
-                      (min_act - (cnst_ub)),
-                      (cnst_lb)-max_act);
-    }
-    auto redund = check_redundancy<i_t, f_t>(min_act,
+    auto redund  = check_redundancy<i_t, f_t>(min_act,
                                              max_act,
                                              cnst_lb,
                                              cnst_ub,
@@ -310,8 +304,7 @@ bool bound_presolve_t<i_t, f_t>::calculate_infeasible_redundant_constraints(prob
     thrust::make_zip_iterator(thrust::make_tuple(upd.min_activity.begin(),
                                                  upd.max_activity.begin(),
                                                  pb.constraint_lower_bounds.begin(),
-                                                 pb.constraint_upper_bounds.begin(),
-                                                 thrust::counting_iterator<i_t>(0))),
+                                                 pb.constraint_upper_bounds.begin())),
     detect_infeas_redun_t<i_t, f_t>{pb.tolerances});
 
   thrust::tie(infeas_constraints_count, redund_constraints_count) =

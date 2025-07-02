@@ -163,13 +163,6 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
                       this->remaining_indices.data() + n_different_vars,
                       g);
     }
-    // we need to include objective variables in the subproblem
-    // fill 40% of the subproblem with objective variables
-    // if 40% cannot be filled with objective variables among the different variables
-    // and it is lower than 20%, get the objective variables from the common part to fill the
-    // remaining 20%
-    // ------
-    // count the number of objective vars
     i_t n_vars_from_guiding = a.problem_ptr->n_integer_vars - n_vars_from_other;
     CUOPT_LOG_DEBUG(
       "n_vars_from_guiding %d n_vars_from_other %d", n_vars_from_guiding, n_vars_from_other);
