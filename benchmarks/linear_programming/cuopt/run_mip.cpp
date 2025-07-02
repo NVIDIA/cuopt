@@ -331,7 +331,7 @@ int main(int argc, char* argv[])
 
   program.add_argument("--log-to-console")
     .help("log to console (t/f)")
-    .default_value(std::string("f"));
+    .default_value(std::string("t"));
 
   program.add_argument("--time-limit")
     .help("time limit")
