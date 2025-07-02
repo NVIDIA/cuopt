@@ -24,6 +24,9 @@ source rapids-configure-sccache
 source rapids-date-string
 source rapids-init-pip
 
+# Update the version to accomdate nightly and release changes for the wheel name
+rapids-generate-version > ./VERSION
+
 cd "${package_dir}"
 
 sccache --zero-stats
