@@ -67,12 +67,14 @@ jobs:
         id: compute-matrix
         run: |
           MATRIX=$(cat <<EOF
-          arch: [amd64, arm64]
-          cuda_ver: [12.8.0]
-          python_ver: [3.12.11]
+          {
+            "arch": ["amd64", "arm64"],
+            "cuda_ver": ["12.8.0"],
+            "python_ver": ["3.12.11"]
+          }
           EOF
           )
-          echo "MATRIX=${MATRIX}" >> $GITHUB_OUTPUT
+          echo "MATRIX=$MATRIX" >> $GITHUB_OUTPUT
 
       - name: Install gha-tools
         run: |
