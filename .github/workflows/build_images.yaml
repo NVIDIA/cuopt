@@ -60,6 +60,10 @@ jobs:
           registry: "nvcr.io"
           username: "$oauthtoken"
           password: ${{ secrets.CUOPT_NGC_DOCKER_KEY }}
+      - name: Set up Docker Context for Buildx
+        id: buildx-context
+        run: |
+          docker context create builders
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
@@ -80,7 +84,7 @@ jobs:
           build-args: |
             CUDA_VER=${{ inputs.CUDA_VER }}
             PYTHON_VER=${{ inputs.PYTHON_VER }}
-            CUOPT_VER=${{ inputs.CUOPT_VER }}
+            CUOPT_VER=${{ "25.08.0a43" }}
           tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ inputs.CUDA_VER }}-${{ matrix.PYTHON_VER }}-${{ matrix.ARCH }}
 
       - name: Push image to NGC
