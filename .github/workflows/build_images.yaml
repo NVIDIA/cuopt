@@ -38,7 +38,7 @@ jobs:
   build:
     strategy:
       matrix:
-        ARCH: ${{ fromJSON(inputs.ARCHES) }}
+        ARCH: ${{ inputs.ARCHES }}
         CUDA_VER: ["${{ inputs.CUDA_VER }}"]
         PYTHON_VER: ["${{ inputs.PYTHON_VER }}"]
         CUOPT_VER: ["${{ inputs.CUOPT_VER }}"]
