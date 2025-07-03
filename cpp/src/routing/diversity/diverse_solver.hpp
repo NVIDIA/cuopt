@@ -1167,8 +1167,10 @@ struct solve {
       }
 
       case recombiner_t::IX: {
+        auto skip_adding_nodes_to_a = true;
+        lm.equalize_routes_and_nodes(a, b, weights, skip_adding_nodes_to_a);
         success = inversion.recombine(a, b);
-        if (success) recombine_stats.add_success();
+        if (success) { recombine_stats.add_success(); }
         break;
       }
 
