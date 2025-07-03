@@ -206,7 +206,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh workflow run build_test_publish_images.yml \
+          gh workflow run build_test_publish_images.yml --repo NVIDIA/cuopt \
+            --ref add_nightly_container_support \
             -f branch=${{ inputs.branch }} \
             -f sha=${{ inputs.sha }} \
             -f date=${{ inputs.date }} \
