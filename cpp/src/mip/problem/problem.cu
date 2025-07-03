@@ -133,7 +133,8 @@ problem_t<i_t, f_t>::problem_t(const optimization_problem_t<i_t, f_t>& problem_)
     related_variables_offsets(n_variables, problem_.get_handle_ptr()->get_stream()),
     var_names(problem_.get_variable_names()),
     row_names(problem_.get_row_names()),
-    objective_name(problem_.get_objective_name())
+    objective_name(problem_.get_objective_name()),
+    lp_state(*this, problem_.get_handle_ptr()->get_stream())
 {
   op_problem_cstr_body(problem_);
   branch_and_bound_callback = nullptr;
@@ -181,7 +182,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     row_names(problem_.row_names),
     objective_name(problem_.objective_name),
     is_scaled_(problem_.is_scaled_),
-    preprocess_called(problem_.preprocess_called)
+    preprocess_called(problem_.preprocess_called),
+    lp_state(problem_.lp_state)
 {
 }
 
@@ -277,7 +279,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     row_names(problem_.row_names),
     objective_name(problem_.objective_name),
     is_scaled_(problem_.is_scaled_),
-    preprocess_called(problem_.preprocess_called)
+    preprocess_called(problem_.preprocess_called),
+    lp_state(problem_.lp_state)
 {
 }
 
@@ -1279,6 +1282,7 @@ void problem_t<i_t, f_t>::compute_integer_fixed_problem()
   integer_fixed_problem = std::make_shared<problem_t<i_t, f_t>>(get_problem_after_fixing_vars(
     assignment, integer_indices, integer_fixed_variable_map, handle_ptr));
   integer_fixed_problem->check_problem_representation(true);
+  integer_fixed_problem->lp_state.resize(*integer_fixed_problem, handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>

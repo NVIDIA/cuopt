@@ -155,8 +155,7 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
   // if we are on the original problem and fixing the integers, save the state
   // if we are in recombiners and on a smaller problem, don't update the state with integers fixed
   CUOPT_LOG_TRACE("save_state %d", settings.save_state);
-  // FIXME: use default LP state in the context
-  auto lp_state = lp_state_t<i_t, f_t>(fixed_problem, fixed_problem.handle_ptr->get_stream());
+  auto& lp_state = fixed_problem.lp_state;
   auto solver_response =
     get_relaxed_lp_solution(fixed_problem, fixed_assignment, lp_state, settings);
   // unfix the assignment on given result no matter if it is feasible

@@ -20,16 +20,17 @@
 // THIS IS LIKELY THE INNER-MOST INCLUDE
 // FOR COMPILE TIME, WE SHOULD KEEP THE INCLUDES ON THIS HEADER MINIMAL
 
+#include "host_helper.cuh"
 #include "presolve_data.cuh"
+
+#include <mip/logger.hpp>
+#include <mip/relaxed_lp/lp_state.cuh>
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
-#include "host_helper.cuh"
 
 #include <utilities/macros.cuh>
-
-#include <mip/logger.hpp>
 
 #include <raft/core/nvtx.hpp>
 #include <raft/random/rng_device.cuh>
@@ -261,6 +262,12 @@ class problem_t {
   std::string objective_name;
   bool is_scaled_{false};
   bool preprocess_called{false};
+  // this LP state keeps the warm start data of some solution of
+  // 1. Original problem: it is unchanged and part of it is used
+  // to warm start slightly modified problems.
+  // 2. Integer fixed problem: this is useful as the problem structure
+  // is always the same and only the RHS changes. Using this helps in warm start.
+  lp_state_t<i_t, f_t> lp_state;
 };
 
 }  // namespace linear_programming::detail
