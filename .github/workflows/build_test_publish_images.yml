@@ -16,7 +16,7 @@
 name: Build, Test and Publish cuopt images
   
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       branch:
         type: string
