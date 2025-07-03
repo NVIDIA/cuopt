@@ -129,10 +129,10 @@ jobs:
       - name: Create multiarch manifest
         shell: bash
         env:
-          CUOPT_VER: ${{ steps.compute-cuopt-ver.outputs.CUOPT_VER }}
+          CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
           CUDA_VER: ${{ matrix.cuda_ver }}
           PYTHON_VER: ${{ matrix.python_ver }}
-          IMAGE_TAG_PREFIX: ${{ steps.compute-cuopt-ver.outputs.IMAGE_TAG_PREFIX }}
+          IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
           ARCH: ${{ matrix.arch }}
 
         run: ci/docker/create_multiarch_manifest.sh
