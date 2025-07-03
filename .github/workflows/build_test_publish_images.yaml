@@ -114,7 +114,6 @@ jobs:
   build-cuopt-multiarch-manifest:
     name: Build cuopt multiarch manifest
     needs: build-images
-    secrets: inherit
     strategy:
       matrix:
         cuda_ver: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
@@ -143,5 +142,4 @@ jobs:
           CUDA_VER: ${{ matrix.cuda_ver }}
           PYTHON_VER: ${{ matrix.python_ver }}
           IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
-
         run: ci/docker/create_multiarch_manifest.sh
