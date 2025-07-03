@@ -76,7 +76,7 @@ jobs:
       - name: Build image and push to DockerHub and NGC
         uses: docker/build-push-action@v6
         with:
-          context: context
+          context: builders
           file: ./ci/docker/Dockerfile
           target: cuopt
           push: true
