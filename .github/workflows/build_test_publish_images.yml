@@ -99,7 +99,7 @@ jobs:
     needs: compute-matrix
     strategy:
       matrix: ${{ fromJson(needs.compute-matrix.outputs.MATRIX) }}
-    uses: ./.github/workflows/build-images.yaml
+    uses: ./.github/workflows/build_images.yaml
     with:
       ARCHES: ${{ matrix.arch }}
       CUDA_VER: ${{ matrix.cuda_ver }}
