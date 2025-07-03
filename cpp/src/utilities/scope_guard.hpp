@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights
  * reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,24 +17,24 @@
 
 #pragma once
 
-#include "../../solution/solution.cuh"
-#include "../guided_ejection_search.cuh"
+#include <utility>
 
 namespace cuopt {
-namespace routing {
-namespace detail {
 
-struct p_val_seq_t {
-  __host__ __device__ p_val_seq_t(uint16_t p_v, uint16_t s_s) : p_val(p_v), sequence_size(s_s) {}
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-  uint p_val         : 16;
-  uint sequence_size : 16;
-#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-  uint sequence_size : 16;
-  uint p_val         : 16;
-#endif
+template <typename Func>
+class scope_guard {
+ public:
+  explicit scope_guard(Func cleanup) : cleanup_(std::move(cleanup)) {}
+
+  ~scope_guard() { cleanup_(); }
+
+  scope_guard(const scope_guard&)            = delete;
+  scope_guard& operator=(const scope_guard&) = delete;
+  scope_guard(scope_guard&&)                 = delete;
+  scope_guard& operator=(scope_guard&&)      = delete;
+
+ private:
+  Func cleanup_;
 };
 
-}  // namespace detail
-}  // namespace routing
 }  // namespace cuopt

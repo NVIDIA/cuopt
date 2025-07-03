@@ -16,6 +16,8 @@
  */
 #pragma once
 
+#include <string>
+
 #include <stdarg.h>
 #include <stdexcept>
 
