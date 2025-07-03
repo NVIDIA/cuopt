@@ -67,16 +67,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
-          # Using the built-in config from NVIDIA's self-hosted runners means that 'docker build'
-          # will use NVIDIA's self-hosted DockerHub pull-through cache, which should mean faster builds,
-          # fewer network failures, and fewer rate-limiting issues
-          buildkitd-config: /etc/buildkit/buildkitd.toml
           driver: docker
           endpoint: builders
       - name: Build image and push to DockerHub and NGC
         uses: docker/build-push-action@v6
         with:
-          context: builders
+          context: context
           file: ./ci/docker/Dockerfile
           target: cuopt
           push: true
