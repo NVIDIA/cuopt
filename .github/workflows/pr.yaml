@@ -12,9 +12,10 @@ concurrency:
 jobs:
   build-images:
     uses: ./.github/workflows/build_test_publish_images.yaml
+    secrets: inherit
     with:
       branch: "branch-25.08"
       sha: "e0dc603"
-      date: "2025-07-02"
+      date: "2025-07-03"
       build_type: "nightly"
     

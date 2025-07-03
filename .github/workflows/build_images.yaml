@@ -52,11 +52,6 @@ jobs:
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.GPUCIBOT_DOCKERHUB_USER }}
-          password: ${{ secrets.GPUCIBOT_DOCKERHUB_TOKEN }}
-      - name: Login to DockerHub
-        uses: docker/login-action@v3
-        with:
           username: ${{ secrets.CUOPT_DOCKERHUB_USERNAME }}
           password: ${{ secrets.CUOPT_DOCKERHUB_TOKEN }}
       - name: Login to NGC
