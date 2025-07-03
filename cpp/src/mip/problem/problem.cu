@@ -809,7 +809,7 @@ void problem_t<i_t, f_t>::compute_related_variables(double time_limit)
   i_t related_var_offset = 0;
   auto start_time        = std::chrono::high_resolution_clock::now();
   for (i_t i = 0;; ++i) {
-    i_t slice_size = min(max_slice_size, n_variables - i * max_slice_size);
+    i_t slice_size = std::min(max_slice_size, n_variables - i * max_slice_size);
     if (slice_size <= 0) break;
 
     i_t slice_begin = i * max_slice_size;

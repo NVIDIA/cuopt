@@ -194,7 +194,7 @@ struct inversion {
     }
     int routes_number             = 0;
     int total_length              = 0;
-    const int max_inverted_routes = max(1, min((int)different_routes.size() / 2, 5));
+    const int max_inverted_routes = std::max(1, std::min((int)different_routes.size() / 2, 5));
     while (total_length < 60 && routes_number < max_inverted_routes &&
            different_routes.size() > 0) {
       size_t initial_id            = next_random() % (different_routes.size());

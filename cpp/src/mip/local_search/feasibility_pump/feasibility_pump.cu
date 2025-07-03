@@ -218,7 +218,7 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
     get_tolerance_from_ratio(ratio_of_set_integers, context.settings.tolerances.absolute_tolerance);
   temp_p.check_problem_representation(true);
   f_t time_limit                 = longer_lp_run ? 5. : 1.;
-  time_limit                     = min(time_limit, timer.remaining_time());
+  time_limit                     = std::min(time_limit, timer.remaining_time());
   static f_t lp_time             = 0;
   static i_t n_calls             = 0;
   f_t old_remaining              = timer.remaining_time();
@@ -336,13 +336,13 @@ bool feasibility_pump_t<i_t, f_t>::round_multiple_points(solution_t<i_t, f_t>& s
 {
   n_fj_single_descents     = 0;
   const f_t max_time_limit = last_lp_time * 0.1;
-  timer_t round_timer{min(max_time_limit, timer.remaining_time())};
+  timer_t round_timer{std::min(max_time_limit, timer.remaining_time())};
   bool is_feasible = random_round_with_fj(solution, round_timer);
   if (is_feasible) {
     CUOPT_LOG_DEBUG("Feasible found after random round with fj");
     return true;
   }
-  timer_t line_segment_timer{min(1., timer.remaining_time())};
+  timer_t line_segment_timer{std::min(1., timer.remaining_time())};
   i_t n_points_to_search  = n_fj_single_descents;
   bool is_feasibility_run = true;
   // create a copy, because assignment is changing within kernel and we want a separate point_1
@@ -379,8 +379,8 @@ bool feasibility_pump_t<i_t, f_t>::round(solution_t<i_t, f_t>& solution)
 {
   bool result;
   CUOPT_LOG_DEBUG("Rounding the point");
-  timer_t bounds_prop_timer(min(2., timer.remaining_time()));
-  const f_t lp_run_time_after_feasible = min(3., timer.remaining_time() / 20.);
+  timer_t bounds_prop_timer(std::min(2., timer.remaining_time()));
+  const f_t lp_run_time_after_feasible = std::min(3., timer.remaining_time() / 20.);
   result = lb_constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
   cuopt_func_call(solution.test_variable_bounds(true));
   // copy the last rounding
@@ -409,7 +409,7 @@ bool feasibility_pump_t<i_t, f_t>::run_fj_cycle_escape(solution_t<i_t, f_t>& sol
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.n_of_minimums_for_exit = 5000;
-  fj.settings.time_limit             = min(3., timer.remaining_time());
+  fj.settings.time_limit             = std::min(3., timer.remaining_time());
   fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
   is_feasible                        = fj.solve(solution);
   // if FJ didn't change the solution, take last incumbent solution
@@ -432,7 +432,7 @@ bool feasibility_pump_t<i_t, f_t>::test_fj_feasible(solution_t<i_t, f_t>& soluti
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.n_of_minimums_for_exit = 5000;
-  fj.settings.time_limit             = min(time_limit, timer.remaining_time());
+  fj.settings.time_limit             = std::min(time_limit, timer.remaining_time());
   fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
   cuopt_func_call(solution.test_variable_bounds(true));
   is_feasible = fj.solve(solution);

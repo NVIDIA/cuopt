@@ -398,7 +398,7 @@ struct relative_residual_t {
 
     // Used for best primal so far, count how many constraints are violated
     if (abs_.has_value() && nb_violated_constraints_.has_value()) {
-      if (residual >= abs_.value() + rel_ * rhs) atomicAdd(nb_violated_constraints_.value(), 1);
+      if (residual >= *abs_ + rel_ * rhs) atomicAdd(*nb_violated_constraints_, 1);
     }
     return residual - rel_ * rhs;
   }
