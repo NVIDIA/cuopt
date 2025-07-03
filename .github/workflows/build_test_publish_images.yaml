@@ -104,8 +104,8 @@ jobs:
       ARCHES: ${{ matrix.arch }}
       CUDA_VER: ${{ matrix.cuda_ver }}
       PYTHON_VER: ${{ matrix.python_ver }}
-      CUOPT_VER: ${{ steps.compute-cuopt-ver.outputs.CUOPT_VER }}
-      IMAGE_TAG_PREFIX: ${{ steps.compute-cuopt-ver.outputs.IMAGE_TAG_PREFIX }}
+      CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
+      IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
 
   build-cuopt-multiarch-manifest:
     name: Build cuopt multiarch manifest
