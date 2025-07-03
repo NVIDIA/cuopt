@@ -114,6 +114,11 @@ jobs:
   build-cuopt-multiarch-manifest:
     name: Build cuopt multiarch manifest
     needs: build-images
+    secrets: inherit
+    strategy:
+      matrix:
+        cuda_ver: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
+        python_ver: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).python_ver }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code repo
@@ -124,12 +129,13 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.CUOPT_DOCKERHUB_USERNAME }}
-          password: ${{ secrets.CUOPT_DOCKERHUB_PASSWORD }}
+          password: ${{ secrets.CUOPT_DOCKERHUB_TOKEN }}
       - name: Login to NGC
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.CUOPT_NGC_USERNAME }}
-          password: ${{ secrets.CUOPT_NGC_PASSWORD }}
+          registry: "nvcr.io"
+          username: "$oauthtoken"
+          password: ${{ secrets.CUOPT_NGC_DOCKER_KEY }}
       - name: Create multiarch manifest
         shell: bash
         env:
@@ -137,6 +143,5 @@ jobs:
           CUDA_VER: ${{ matrix.cuda_ver }}
           PYTHON_VER: ${{ matrix.python_ver }}
           IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
-          ARCH: ${{ matrix.arch }}
 
         run: ci/docker/create_multiarch_manifest.sh
