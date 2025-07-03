@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   build-images:
-    uses: ./.github/workflows/build_test_publish_images.yml
+    uses: ./.github/workflows/build_test_publish_images.yaml
     runs-on: ubuntu-latest
     with:
       branch: "branch-25.08"
