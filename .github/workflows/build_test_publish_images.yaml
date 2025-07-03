@@ -66,7 +66,7 @@ jobs:
       - name: Compute matrix
         id: compute-matrix
         run: |
-          MATRIX=$(cat <<EOF
+          MATRIX=$(jq -c '.' <<EOF
           {
             "arch": ["amd64", "arm64"],
             "cuda_ver": ["12.8.0"],
