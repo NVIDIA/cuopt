@@ -54,6 +54,10 @@ jobs:
         with:
           username: ${{ secrets.CUOPT_DOCKERHUB_USERNAME }}
           password: ${{ secrets.CUOPT_DOCKERHUB_TOKEN }}
+      - name: Copy License and Version files
+        run: |
+          cp ./LICENSE ./ci/docker/context/LICENSE
+          cp ./VERSION ./ci/docker/context/VERSION
       - name: Login to NGC
         uses: docker/login-action@v3
         with:
