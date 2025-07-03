@@ -11,21 +11,11 @@ concurrency:
 
 jobs:
   build-images:
+    uses: ./.github/workflows/build_test_publish_images.yml
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code repo
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ inputs.sha }}
-          fetch-depth: 0 # unshallow fetch for setuptools-scm
-          persist-credentials: false
-      - name: build service
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh workflow run build_test_publish_images.yml --repo NVIDIA/cuopt \
-            --ref add_nightly_container_support \
-            -f branch="branch-25.08" \
-            -f sha="e0dc603" \
-            -f date="2025-07-02" \
-            -f build_type="nightly"
+    with:
+      branch: "branch-25.08"
+      sha: "e0dc603"
+      date: "2025-07-02"
+      build_type: "nightly"
+    
