@@ -68,11 +68,11 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           driver: docker
-          endpoint: builders
+          endpoint: context
       - name: Build image and push to DockerHub and NGC
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: context
           file: ./ci/docker/Dockerfile
           push: true
           pull: true
