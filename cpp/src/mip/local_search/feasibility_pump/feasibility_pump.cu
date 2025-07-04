@@ -222,7 +222,7 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
     get_tolerance_from_ratio(ratio_of_set_integers, context.settings.tolerances.absolute_tolerance);
   temp_p.check_problem_representation(true);
   f_t time_limit     = longer_lp_run ? 5. : 1.;
-  time_limit         = min(time_limit, timer.remaining_time());
+  time_limit         = std::min(time_limit, timer.remaining_time());
   static f_t lp_time = 0;
   static i_t n_calls = 0;
   f_t old_remaining  = timer.remaining_time();
@@ -260,7 +260,7 @@ bool feasibility_pump_t<i_t, f_t>::round(solution_t<i_t, f_t>& solution)
 {
   bool result;
   CUOPT_LOG_DEBUG("Rounding the point");
-  timer_t bounds_prop_timer(min(2., timer.remaining_time()));
+  timer_t bounds_prop_timer(std::min(2., timer.remaining_time()));
   const f_t lp_run_time_after_feasible = min(3., timer.remaining_time() / 20.);
   result = constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
   cuopt_func_call(solution.test_variable_bounds(true));
@@ -290,7 +290,7 @@ bool feasibility_pump_t<i_t, f_t>::run_fj_cycle_escape(solution_t<i_t, f_t>& sol
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.n_of_minimums_for_exit = 5000;
-  fj.settings.time_limit             = min(3., timer.remaining_time());
+  fj.settings.time_limit             = std::min(3., timer.remaining_time());
   fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
   is_feasible                        = fj.solve(solution);
   // if FJ didn't change the solution, take last incumbent solution
@@ -313,7 +313,7 @@ bool feasibility_pump_t<i_t, f_t>::test_fj_feasible(solution_t<i_t, f_t>& soluti
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.n_of_minimums_for_exit = 5000;
-  fj.settings.time_limit             = min(time_limit, timer.remaining_time());
+  fj.settings.time_limit             = std::min(time_limit, timer.remaining_time());
   fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
   cuopt_func_call(solution.test_variable_bounds(true));
   is_feasible = fj.solve(solution);

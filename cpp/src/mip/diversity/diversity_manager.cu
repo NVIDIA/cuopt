@@ -22,6 +22,8 @@
 #include "diversity_config.hpp"
 #include "diversity_manager.cuh"
 
+#include <utilities/scope_guard.hpp>
+
 #include "cuda_profiler_api.h"
 
 constexpr bool from_dir    = false;
@@ -110,7 +112,7 @@ bool diversity_manager_t<i_t, f_t>::regenerate_solutions()
   const i_t min_size = 2;
   while (population.current_size() <= min_size && (current_step == 0 || counter < 5)) {
     CUOPT_LOG_DEBUG("Trying to regenerate solution, pop size %d\n", population.current_size());
-    time_limit = min(time_limit, timer.remaining_time());
+    time_limit = std::min(time_limit, timer.remaining_time());
     ls.fj.randomize_weights(problem_ptr->handle_ptr);
     population.add_solution(generate_solution(time_limit));
     if (timer.check_time_limit()) { return false; }
@@ -129,18 +131,18 @@ std::vector<solution_t<i_t, f_t>> diversity_manager_t<i_t, f_t>::generate_more_s
 {
   std::vector<solution_t<i_t, f_t>> solutions;
   timer_t total_time_to_generate = timer_t(timer.remaining_time() / 5.);
-  f_t time_limit                 = min(60., total_time_to_generate.remaining_time());
-  f_t ls_limit                   = min(5., timer.remaining_time() / 20.);
+  f_t time_limit                 = std::min(60., total_time_to_generate.remaining_time());
+  f_t ls_limit                   = std::min(5., timer.remaining_time() / 20.);
   const i_t n_sols_to_generate   = 3;
   for (i_t i = 0; i < n_sols_to_generate; ++i) {
     CUOPT_LOG_DEBUG("Trying to generate more solutions");
-    time_limit = min(time_limit, timer.remaining_time());
+    time_limit = std::min(time_limit, timer.remaining_time());
     ls.fj.randomize_weights(problem_ptr->handle_ptr);
     auto sol = generate_solution(time_limit);
     population.run_solution_callbacks(sol);
     solutions.emplace_back(solution_t<i_t, f_t>(sol));
     if (total_time_to_generate.check_time_limit()) { return solutions; }
-    timer_t timer(min(ls_limit, timer.remaining_time()));
+    timer_t timer(std::min(ls_limit, timer.remaining_time()));
     ls.run_local_search(sol, population.weights, timer);
     population.run_solution_callbacks(sol);
     solutions.emplace_back(std::move(sol));
@@ -226,7 +228,7 @@ void diversity_manager_t<i_t, f_t>::generate_initial_solutions()
   const f_t generation_time_limit =
     diversity_config_t::generation_time_limit_ratio * timer.get_time_limit();
   const f_t max_island_gen_time = diversity_config_t::max_island_gen_time;
-  f_t total_island_gen_time     = min(generation_time_limit, max_island_gen_time);
+  f_t total_island_gen_time     = std::min(generation_time_limit, max_island_gen_time);
   timer_t gen_timer(total_island_gen_time);
   f_t sol_time_limit = gen_timer.remaining_time();
   for (i_t i = 0; i < maximum_island_size && !skip_initial_island_generation; ++i) {
@@ -309,7 +311,7 @@ void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
   solution_t<i_t, f_t> solution(*problem_ptr);
   // min 1 second, max 10 seconds
   const f_t generate_fast_solution_time =
-    min(diversity_config_t::max_fast_sol_time, max(1., timer.remaining_time() / 20.));
+    std::min(diversity_config_t::max_fast_sol_time, std::max(1., timer.remaining_time() / 20.));
   timer_t sol_timer(generate_fast_solution_time);
   // do very short LP run to get somewhere close to the optimal point
   ls.generate_fast_solution(solution, sol_timer);
@@ -363,10 +365,13 @@ void diversity_manager_t<i_t, f_t>::run_fj_alone(solution_t<i_t, f_t>& solution)
 template <typename i_t, typename f_t>
 solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 {
-  population.timer     = timer;
-  const f_t time_limit = timer.remaining_time();
-  const f_t lp_time_limit =
-    min(diversity_config_t::max_time_on_lp, time_limit * diversity_config_t::time_ratio_on_init_lp);
+  population.timer        = timer;
+  const f_t time_limit    = timer.remaining_time();
+  const f_t lp_time_limit = std::min(diversity_config_t::max_time_on_lp,
+                                     time_limit * diversity_config_t::time_ratio_on_init_lp);
+  // to automatically compute the solving time on scope exit
+  auto timer_raii_guard =
+    cuopt::scope_guard([&]() { stats.total_solve_time = timer.elapsed_time(); });
   // after every change to the problem, we should resize all the relevant vars
   // we need to encapsulate that to prevent repetitions
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
@@ -389,7 +394,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   if (!from_dir) { generate_quick_feasible_solution(); }
   constexpr f_t time_ratio_of_probing_cache = diversity_config_t::time_ratio_of_probing_cache;
   constexpr f_t max_time_on_probing         = diversity_config_t::max_time_on_probing;
-  f_t time_for_probing_cache = min(max_time_on_probing, time_limit * time_ratio_of_probing_cache);
+  f_t time_for_probing_cache =
+    std::min(max_time_on_probing, time_limit * time_ratio_of_probing_cache);
   timer_t probing_timer{time_for_probing_cache};
   if (check_b_b_preemption()) { return population.best_feasible(); }
   if (!fj_only_run) {
@@ -445,12 +451,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     return population.best_feasible();
   }
 
-  if (timer.check_time_limit()) {
-    stats.total_solve_time = timer.elapsed_time();
-    return population.best_feasible();
-  }
+  if (timer.check_time_limit()) { return population.best_feasible(); }
   main_loop();
-  stats.total_solve_time = timer.elapsed_time();
   return population.best_feasible();
 };
 
@@ -663,7 +665,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   cuopt_assert(lp_offspring.test_number_all_integer(), "All must be integers before LP");
   f_t lp_run_time = offspring.get_feasible() ? diversity_config_t::lp_run_time_if_feasible
                                              : diversity_config_t::lp_run_time_if_infeasible;
-  lp_run_time     = min(lp_run_time, timer.remaining_time());
+  lp_run_time     = std::min(lp_run_time, timer.remaining_time());
   relaxed_lp_settings_t lp_settings;
   lp_settings.time_limit              = lp_run_time;
   lp_settings.tolerance               = context.settings.tolerances.absolute_tolerance;
@@ -681,7 +683,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   cuopt_assert(lp_offspring.test_number_all_integer(), "All must be integers after LP");
   f_t lp_qual = lp_offspring.get_quality(population.weights);
   CUOPT_LOG_DEBUG("After LP offspring sol cost:feas %f : %d", lp_qual, lp_offspring.get_feasible());
-  f_t offspring_qual = min(offspring.get_quality(population.weights), lp_qual);
+  f_t offspring_qual = std::min(offspring.get_quality(population.weights), lp_qual);
   recombine_stats.update_improve_stats(
     offspring_qual, sol1.get_quality(population.weights), sol2.get_quality(population.weights));
   add_mab_reward(recombine_stats.get_last_attempt(),

@@ -231,7 +231,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::guided_ejection_search_loop(i_
     cuopt_assert(K > 0, "number of routes should be positive!");
     i_t N           = solution_ptr->get_num_requests();
     i_t cM          = N * N / K;
-    iteration_limit = min(iteration_limit, cM);
+    iteration_limit = std::min(iteration_limit, cM);
   }
 
   i_t const n_max_multiple_insertions =
@@ -240,7 +240,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::guided_ejection_search_loop(i_
 
   const bool depot_included = solution_ptr->problem_ptr->order_info.depot_included_;
 
-  min_ep_size = min(EP.size(), min_ep_size);
+  min_ep_size = std::min(EP.size(), min_ep_size);
 
   while (EP.size() > desired_ep_size) {
     solution_ptr->global_runtime_checks(false, true, "ges_while_loop_begin");

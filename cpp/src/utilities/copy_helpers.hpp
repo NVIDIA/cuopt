@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -171,6 +171,16 @@ inline auto device_copy(std::vector<bool> const& host_vec, rmm::cuda_stream_view
                     cuda::std::identity());
 
   return device_vec;
+}
+
+template <typename T>
+void print(std::string_view const name, std::vector<T> const& container)
+{
+  std::cout << name << "=[";
+  for (auto const& item : container) {
+    std::cout << item << ",";
+  }
+  std::cout << "]\n";
 }
 
 template <typename T>

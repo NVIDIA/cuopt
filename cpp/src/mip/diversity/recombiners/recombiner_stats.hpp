@@ -40,11 +40,11 @@ struct recombine_stats {
   bool update_improve_stats(double cost_new, double cost_first, double cost_second)
   {
     bool is_better_than_both = false;
-    if (cost_new < (min(cost_first, cost_second) - OBJECTIVE_EPSILON)) {
+    if (cost_new < (std::min(cost_first, cost_second) - OBJECTIVE_EPSILON)) {
       ++better_than_both;
       is_better_than_both = true;
     }
-    if (cost_new < (max(cost_first, cost_second) - OBJECTIVE_EPSILON)) ++better_than_one;
+    if (cost_new < (std::max(cost_first, cost_second) - OBJECTIVE_EPSILON)) ++better_than_one;
     return is_better_than_both;
   }
 

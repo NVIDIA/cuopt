@@ -920,7 +920,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
       sol, orig_sol.problem_ptr, var_probe_vals, &set_count, unset_integer_vars, probing_config);
     if (!(n_failed_repair_iterations >= max_n_failed_repair_iterations) && rounding_ii &&
         !timeout_happened) {
-      timer_t repair_timer{min(timer.remaining_time() / 5, timer.elapsed_time() / 3)};
+      timer_t repair_timer{std::min(timer.remaining_time() / 5, timer.elapsed_time() / 3)};
       save_bounds(sol);
       // update bounds and run repair procedure
       bool bounds_repaired =

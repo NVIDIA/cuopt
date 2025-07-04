@@ -96,7 +96,8 @@ __global__ void brute_force_lexico_kernel(
       __syncthreads();
       if (threadIdx.x == 0) {
         request_id_t<REQUEST> request_locations(pickup_idx, delivery_idx);
-        s_route.insert_request<REQUEST>(request_locations, request_node, s_route_node_map, true);
+        s_route.template insert_request<REQUEST>(
+          request_locations, request_node, s_route_node_map, true);
         sequence_t<2 * b_k_max> sequence_including_delivery;
         i_t counter      = 0;
         bool pd_feasible = true;

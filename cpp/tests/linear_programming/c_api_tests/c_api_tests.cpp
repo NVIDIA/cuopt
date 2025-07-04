@@ -79,6 +79,19 @@ TEST(c_api, iteration_limit)
   EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT);
 }
 
+TEST(c_api, solve_time_bb_preemption)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string filename                    = rapidsDatasetRootDir + "/mip/" + "bb_optimality.mps";
+  int termination_status;
+  double solve_time = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_EQ(solve_mps_file(filename.c_str(), 5, CUOPT_INFINITY, &termination_status, &solve_time),
+            CUOPT_SUCCESS);
+  EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_GT(solve_time, 0);  // solve time should not be equal to 0, even on very simple instances
+                             // solved by B&B before the diversity solver has time to run
+}
+
 TEST(c_api, bad_parameter_name) { EXPECT_EQ(test_bad_parameter_name(), CUOPT_INVALID_ARGUMENT); }
 
 TEST(c_api, burglar) { EXPECT_EQ(burglar_problem(), CUOPT_SUCCESS); }

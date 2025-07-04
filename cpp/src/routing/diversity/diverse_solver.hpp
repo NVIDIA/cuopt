@@ -84,8 +84,8 @@ struct recombine_stats {
 
   void update_improve_stats(double cost_new, double cost_first, double cost_second)
   {
-    if (cost_new < (min(cost_first, cost_second) - MOVE_EPSILON)) ++better_than_both;
-    if (cost_new < (max(cost_first, cost_second) - MOVE_EPSILON)) ++better_than_one;
+    if (cost_new < (std::min(cost_first, cost_second) - MOVE_EPSILON)) ++better_than_both;
+    if (cost_new < (std::max(cost_first, cost_second) - MOVE_EPSILON)) ++better_than_one;
   }
 
   void add_attempt() { ++attempts; }
@@ -419,8 +419,8 @@ struct solve {
     benchmark_print("%d solutions loaded to reserve with %f diversity\n",
                     (int)reserve_population.current_size(),
                     reserve_population.threshold);
-    const int n_best_solutions    = min(5, (int)reserve_population.current_size());
-    const int n_sampled_solutions = min(27, (int)reserve_population.current_size());
+    const int n_best_solutions    = std::min(5, (int)reserve_population.current_size());
+    const int n_sampled_solutions = std::min(27, (int)reserve_population.current_size());
     auto best_solutions           = reserve_population.get_n_best(n_best_solutions);
     auto sampled_solutions        = reserve_population.get_n_random(n_sampled_solutions, false);
     benchmark_print("%d solutions selected\n", n_sampled_solutions);
@@ -618,7 +618,7 @@ struct solve {
       constexpr bool use_average = false;
       int threshold_index = p->is_cvrp() ? 1 : find_initial_diversity(working_vector, use_average);
       working_population.threshold = diversity_levels[threshold_index];
-      if (!p->is_cvrp()) { threshold_index = min(4, max(2, threshold_index)); }
+      if (!p->is_cvrp()) { threshold_index = std::min(4, std::max(2, threshold_index)); }
       populate_working_population();
 
       // for pure cvrp problems, we add more solutions to the reserve population
@@ -627,7 +627,7 @@ struct solve {
       // We probably should generalize this for all easy problems
       if (p->is_cvrp()) {
         double time_left       = timer.remaining_time();
-        double single_gen_time = min(time_left * 0.05, 20.) * ges_time_fraction;
+        double single_gen_time = std::min(time_left * 0.05, 20.) * ges_time_fraction;
         // add five or so solutions to reserve
         for (int i = 0; i < 5; ++i) {
           g.generate_solution(
@@ -729,7 +729,7 @@ struct solve {
 
     // TODO check refill reserve times
     double time_left       = timer.remaining_time();
-    double single_gen_time = min(time_left * 0.05, 20.) * ges_time_fraction;
+    double single_gen_time = std::min(time_left * 0.05, 20.) * ges_time_fraction;
     sols_num               = std::min<int>(
       sols_num, (int)reserve_population.max_solutions - (int)reserve_population.current_size());
     for (int i = 0; i < sols_num; ++i) {
@@ -814,9 +814,9 @@ struct solve {
      * 5 islands x 3 per island), and if all of these take the entire allocated
      * time
      */
-    auto first_sol_gen_time   = min(timer.get_time_limit() * 0.3,
-                                  300.);  // Upper limit of 5 mins (targetted for 15 min runs)
-    auto sol_gen_time         = ges_time_fraction * min(timer.get_time_limit() * 0.05, 60.);
+    auto first_sol_gen_time   = std::min(timer.get_time_limit() * 0.3,
+                                       300.);  // Upper limit of 5 mins (targetted for 15 min runs)
+    auto sol_gen_time         = ges_time_fraction * std::min(timer.get_time_limit() * 0.05, 60.);
     auto const n_islands_size = islands_size;
     double max_island_generation_time;
     auto pop_size = p->is_tsp      ? diversity_config_t<int>::population_size<config_t::TSP>()
@@ -911,7 +911,7 @@ struct solve {
       // Give all the island generation time as some problems might consume
       // all the time improving the first threshold.
       double improve_time_limit =
-        max(0.0, max_island_generation_time - island_creation_timer.elapsed_time());
+        std::max(0.0, max_island_generation_time - island_creation_timer.elapsed_time());
 
       improvement_timer = timer_t(improve_time_limit);
       benchmark_print(
@@ -980,8 +980,9 @@ struct solve {
 
     while (start_threshold_index >= 0) {
       // Lowering the threshold does not require updating the population
-      int valid_start_threshold_index = min(start_threshold_index, (int)step_lengths.size() - 1);
-      p.threshold                     = diversity_levels[valid_start_threshold_index];
+      int valid_start_threshold_index =
+        std::min(start_threshold_index, (int)step_lengths.size() - 1);
+      p.threshold = diversity_levels[valid_start_threshold_index];
       benchmark_print("time elapsed: %f \n", timer.elapsed_time());
       benchmark_print("Improvement steps: %d\n", step_lengths[valid_start_threshold_index]);
       p.add_solutions_to_island(timer.elapsed_time(), reserve_population);
@@ -1166,8 +1167,10 @@ struct solve {
       }
 
       case recombiner_t::IX: {
+        auto skip_adding_nodes_to_a = true;
+        lm.equalize_routes_and_nodes(a, b, weights, skip_adding_nodes_to_a);
         success = inversion.recombine(a, b);
-        if (success) recombine_stats.add_success();
+        if (success) { recombine_stats.add_success(); }
         break;
       }
 

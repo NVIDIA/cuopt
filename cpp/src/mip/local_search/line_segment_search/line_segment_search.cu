@@ -177,7 +177,7 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(
       fj.settings.mode            = fj_mode_t::ROUNDING;
       fj.settings.update_weights  = false;
       fj.settings.feasibility_run = is_feasibility_run;
-      fj.settings.time_limit      = min(0.1, timer.remaining_time());
+      fj.settings.time_limit      = std::min(0.1, timer.remaining_time());
       is_feasible                 = fj.solve(solution);
     }
     cuopt_func_call(solution.test_number_all_integer());
@@ -216,10 +216,10 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(
     fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT;
     fj.settings.n_of_minimums_for_exit = 50;
     fj.settings.iteration_limit =
-      max(20 * fj.settings.n_of_minimums_for_exit, solution.problem_ptr->n_constraints / 50);
+      std::max(20 * fj.settings.n_of_minimums_for_exit, solution.problem_ptr->n_constraints / 50);
     fj.settings.update_weights  = false;
     fj.settings.feasibility_run = is_feasibility_run;
-    fj.settings.time_limit      = min(1., timer.remaining_time());
+    fj.settings.time_limit      = std::min(1., timer.remaining_time());
     is_feasible                 = fj.solve(solution);
     if (is_feasibility_run) {
       if (is_feasible) {
