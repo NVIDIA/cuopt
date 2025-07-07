@@ -97,23 +97,24 @@ jobs:
             IMAGE_TAG_PREFIX="$CUOPT_VER"
           fi
           echo "IMAGE_TAG_PREFIX=$IMAGE_TAG_PREFIX" >> $GITHUB_OUTPUT
-  build-images:
-    name: Build images for ${inputs.arch} architecture 
-    needs: compute-matrix
-    secrets: inherit
-    strategy:
-      matrix: ${{ fromJson(needs.compute-matrix.outputs.MATRIX) }}
-    uses: ./.github/workflows/build_images.yaml
-    with:
-      ARCHES: ${{ matrix.arch }}
-      CUDA_VER: ${{ matrix.cuda_ver }}
-      PYTHON_VER: ${{ matrix.python_ver }}
-      CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
-      IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
+  #build-images:
+    #name: Build images for ${inputs.arch} architecture 
+    #needs: compute-matrix
+    #secrets: inherit
+    #strategy:
+      #matrix: ${{ fromJson(needs.compute-matrix.outputs.MATRIX) }}
+    #uses: ./.github/workflows/build_images.yaml
+    #with:
+      #ARCHES: ${{ matrix.arch }}
+      #CUDA_VER: ${{ matrix.cuda_ver }}
+      #PYTHON_VER: ${{ matrix.python_ver }}
+      #CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
+      #IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
 
   build-cuopt-multiarch-manifest:
     name: Build cuopt multiarch manifest
-    needs: [compute-matrix, build-images]
+    #needs: [compute-matrix, build-images]
+    needs: compute-matrix
     strategy:
       matrix:
         CUDA_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
@@ -147,4 +148,5 @@ jobs:
           CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
           PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
           IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
+          BUILD_TYPE: ${{ inputs.build_type }}
         run: bash ci/docker/create_multiarch_manifest.sh
