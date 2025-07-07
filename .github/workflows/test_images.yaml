@@ -45,13 +45,14 @@ jobs:
 
           echo "CUDA_SHORT=$CUDA_SHORT" >> $GITHUB_OUTPUT
           echo "PYTHON_SHORT=$PYTHON_SHORT" >> $GITHUB_OUTPUT
-          echo ARCH is ${{ inputs.ARCH }}
+          echo "ARCH is ${{ inputs.ARCH }}"
 
   test:
     runs-on: "linux-${{ inputs.ARCH }}-gpu-a100-latest-1"
     needs: prepare
     container:
       image: "nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ needs.prepare.outputs.CUDA_SHORT }}-py${{ needs.prepare.outputs.PYTHON_SHORT }}"
+      options: --user cuopt:cuopt
     steps:
       - name: Checkout code repo
         uses: actions/checkout@v4
