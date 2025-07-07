@@ -89,12 +89,12 @@ jobs:
             CUDA_VER=${{ inputs.CUDA_VER }}
             PYTHON_VER=${{ inputs.PYTHON_VER }}
             CUOPT_VER=25.8.0a43
-          tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
+          tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
 
       - name: Push image to NGC
         run: |
-            docker tag nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }} nvcr.io/nvstaging/nvaie/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
-            docker push nvcr.io/nvstaging/nvaie/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
+            docker tag nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }} nvcr.io/nvstaging/nvaie/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
+            docker push nvcr.io/nvstaging/nvaie/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
 
 
         

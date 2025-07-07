@@ -116,8 +116,8 @@ jobs:
     needs: [compute-matrix, build-images]
     strategy:
       matrix:
-        cuda_ver: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
-        python_ver: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).python_ver }}
+        CUDA_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
+        PYTHON_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).python_ver }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code repo
@@ -138,8 +138,8 @@ jobs:
       - name: Trim CUDA and Python versions
         id: trim
         run: |
-          echo "CUDA_SHORT=$(echo '${{ inputs.CUDA_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
-          echo "PYTHON_SHORT=$(echo '${{ inputs.PYTHON_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "CUDA_SHORT=$(echo '${{ matrix.CUDA_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "PYTHON_SHORT=$(echo '${{ matrix.PYTHON_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
       - name: Create multiarch manifest
         shell: bash
         env:
