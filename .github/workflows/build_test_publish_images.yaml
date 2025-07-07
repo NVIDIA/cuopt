@@ -142,4 +142,4 @@ jobs:
           CUDA_VER: ${{ matrix.cuda_ver }}
           PYTHON_VER: ${{ matrix.python_ver }}
           IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
-        run: ci/docker/create_multiarch_manifest.sh
+        run: bash ci/docker/create_multiarch_manifest.sh
