@@ -48,7 +48,8 @@ struct adapted_modifier_t {
 
   void equalize_routes_and_nodes(adapted_sol_t<i_t, f_t, REQUEST>& sol_a,
                                  adapted_sol_t<i_t, f_t, REQUEST>& sol_b,
-                                 costs final_weight);
+                                 costs final_weight,
+                                 bool skip_adding_nodes_to_a = false);
 
   void insert_infeasible_nodes(adapted_sol_t<i_t, f_t, REQUEST>& sol, costs& weights);
 
