@@ -63,6 +63,10 @@ jobs:
           su cuopt
           export RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
           bash python/libcuopt/libcuopt/tests/test_cli.sh
+      - name: Install pytest
+        run: |
+          su cuopt
+          pip install pytest
       - name: Test cuopt
         run: |
           su cuopt
