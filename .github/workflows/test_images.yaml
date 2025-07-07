@@ -49,7 +49,7 @@ jobs:
   test:
     strategy:
       matrix:
-        ARCH: ${{ fromJSON(inputs.ARCHES) }}
+        ARCH: ${{ fromJson(inputs.ARCHES) }}
       fail-fast: false
     runs-on: "linux-${{ matrix.ARCH }}-gpu-a100-latest-1"
     needs: prepare
