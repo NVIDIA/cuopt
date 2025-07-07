@@ -113,7 +113,7 @@ jobs:
 
   build-cuopt-multiarch-manifest:
     name: Build cuopt multiarch manifest
-    needs: compute-matrix, build-images
+    needs: [compute-matrix, build-images]
     strategy:
       matrix:
         cuda_ver: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
