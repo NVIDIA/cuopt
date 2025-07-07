@@ -160,10 +160,10 @@ jobs:
       matrix:
         CUDA_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
         PYTHON_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).python_ver }}
-        ARCHES: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).arch }}
+        ARCH: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).arch }}
     uses: ./.github/workflows/test_images.yaml
     with:
-      ARCHES: ${{ matrix.arch }}
-      CUDA_VER: ${{ matrix.cuda_ver }}
-      PYTHON_VER: ${{ matrix.python_ver }}
+      ARCH: ${{ matrix.ARCH }}
+      CUDA_VER: ${{ matrix.CUDA_VER }}
+      PYTHON_VER: ${{ matrix.PYTHON_VER }}
       IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
