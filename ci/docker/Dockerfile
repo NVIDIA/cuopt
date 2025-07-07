@@ -115,3 +115,7 @@ ENV PYTHONPATH="/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/site-packages:/
 
 COPY --from=cuda-libs /usr/local/cuda/lib64/libnvrtc* /usr/local/cuda/lib64/
 COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
+
+ENV CUOPT_SERVER_PORT=8000
+
+ENTRYPOINT ["python", "-m", "cuopt_server.cuopts_service"]

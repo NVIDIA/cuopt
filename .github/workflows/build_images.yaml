@@ -41,7 +41,6 @@ jobs:
         ARCH: ["${{ inputs.ARCHES }}"]
         CUDA_VER: ["${{ inputs.CUDA_VER }}"]
         PYTHON_VER: ["${{ inputs.PYTHON_VER }}"]
-        CUOPT_VER: ["${{ inputs.CUOPT_VER }}"]
       fail-fast: false
     runs-on: "linux-${{ matrix.ARCH }}-cpu4"
     steps:

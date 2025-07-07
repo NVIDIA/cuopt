@@ -98,7 +98,7 @@ jobs:
           fi
           echo "IMAGE_TAG_PREFIX=$IMAGE_TAG_PREFIX" >> $GITHUB_OUTPUT
   build-images:
-    name: Build images for ${inputs.arch} architecture 
+    name: Build images
     needs: compute-matrix
     secrets: inherit
     strategy:
@@ -149,3 +149,18 @@ jobs:
           IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
           BUILD_TYPE: ${{ inputs.build_type }}
         run: bash ci/docker/create_multiarch_manifest.sh
+
+  test-images:
+    name: Test images for ${inputs.arch} architecture 
+    needs: build-cuopt-multiarch-manifest
+    strategy:
+      matrix:
+        CUDA_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
+        PYTHON_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).python_ver }}
+        ARCHES: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).arch }}
+    uses: ./.github/workflows/test_images.yaml
+    with:
+      ARCHES: ${{ matrix.arch }}
+      CUDA_VER: ${{ matrix.cuda_ver }}
+      PYTHON_VER: ${{ matrix.python_ver }}
+      IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}

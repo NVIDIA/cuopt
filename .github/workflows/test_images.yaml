@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+
+name: Test images
+
+on:
+  workflow_call:
+    inputs:
+      ARCHES:
+        required: true
+        type: string
+      CUDA_VER:
+        required: true
+        type: string
+      PYTHON_VER:
+        required: true
+        type: string
+      IMAGE_TAG_PREFIX:
+        required: true
+        type: string
+
+
+jobs:
+
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
+      PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
+    steps:
+      - name: Trim versions
+        id: trim
+        run: |
+          CUDA_SHORT=$(echo "${{ inputs.CUDA_VER }}" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')
+          PYTHON_SHORT=$(echo "${{ inputs.PYTHON_VER }}" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')
+
+          echo "CUDA_SHORT=$CUDA_SHORT" >> $GITHUB_OUTPUT
+          echo "PYTHON_SHORT=$PYTHON_SHORT" >> $GITHUB_OUTPUT
+
+  test:
+    strategy:
+      matrix:
+        ARCH: ["${{ inputs.ARCHES }}"]
+      fail-fast: false
+    runs-on: "linux-${{ matrix.ARCH }}-gpu-a100-latest-1"
+    needs: prepare
+    container:
+      image: "nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ needs.prepare.outputs.CUDA_SHORT }}-py${{ needs.prepare.outputs.PYTHON_SHORT }}"
+      command: ["/bin/bash", "-c"]
+    steps:
+      - name: Checkout code repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Test CLI
+        run: |
+          export RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
+          bash python/libcuopt/libcuopt/tests/test_cli.sh
+      - name: Test cuopt
+        run: |
+          export RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
+          # Test Vehicle Routing
+          python -m pytest python/cuopt/cuopt/tests/routing/test_vehicle_routing.py
+
+          # Test Linear Programming
+          python -m pytest python/cuopt/cuopt/tests/linear_programming/test_lp_solver.py::test_solver
+      - name: Test cuopt server
+        run: |
+          # Test cuopt server
+          python -m pytest python/cuopt_server/cuopt_server/tests/test_server.py
