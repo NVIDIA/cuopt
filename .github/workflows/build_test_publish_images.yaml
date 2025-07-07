@@ -113,11 +113,11 @@ jobs:
 
   build-cuopt-multiarch-manifest:
     name: Build cuopt multiarch manifest
-    #needs: build-images
+    needs: compute-matrix
     strategy:
       matrix:
-        cuda_ver: ${{ needs.compute-matrix.outputs.MATRIX.cuda_ver }}
-        python_ver: ${{ needs.compute-matrix.outputs.MATRIX.python_ver }}
+        cuda_ver: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
+        python_ver: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).python_ver }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code repo
