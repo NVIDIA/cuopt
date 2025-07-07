@@ -15,7 +15,7 @@ name: Test images
 on:
   workflow_call:
     inputs:
-      ARCHES:
+      ARCH:
         required: true
         type: string
       CUDA_VER:
@@ -45,13 +45,10 @@ jobs:
 
           echo "CUDA_SHORT=$CUDA_SHORT" >> $GITHUB_OUTPUT
           echo "PYTHON_SHORT=$PYTHON_SHORT" >> $GITHUB_OUTPUT
+          echo ARCH is ${{ inputs.ARCH }}
 
   test:
-    strategy:
-      matrix:
-        ARCH: ["${{ inputs.ARCHES }}"]
-      fail-fast: false
-    runs-on: "linux-${{ matrix.ARCH }}-gpu-a100-latest-1"
+    runs-on: "linux-${{ inputs.ARCH }}-gpu-a100-latest-1"
     needs: prepare
     container:
       image: "nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ needs.prepare.outputs.CUDA_SHORT }}-py${{ needs.prepare.outputs.PYTHON_SHORT }}"
