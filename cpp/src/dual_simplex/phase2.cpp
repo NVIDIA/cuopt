@@ -26,6 +26,7 @@
 #include <dual_simplex/tic_toc.hpp>
 
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <iterator>
 #include <limits>
@@ -34,6 +35,278 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 namespace phase2 {
+
+
+// Computes vectors farkas_y, farkas_zl, farkas_zu that satisfy
+//
+// A'*farkas_y + farkas_zl - farkas_zu ~= 0
+// farkas_zl, farkas_zu >= 0,
+// b'*farkas_y + l'*farkas_zl - u'*farkas_zu = farkas_constant > 0
+//
+// This is a Farkas certificate for the infeasibility of the primal problem
+//
+// A*x = b, l <= x <= u
+template <typename i_t, typename f_t>
+void compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
+                                const simplex_solver_settings_t<i_t, f_t>& settings,
+                                const std::vector<variable_status_t>& vstatus,
+                                const std::vector<f_t>& x,
+                                const std::vector<f_t>& y,
+                                const std::vector<f_t>& z,
+                                const std::vector<f_t>& delta_y,
+                                const std::vector<f_t>& delta_z,
+                                i_t direction,
+                                i_t leaving_index,
+                                f_t obj_val,
+                                std::vector<f_t>& farkas_y,
+                                std::vector<f_t>& farkas_zl,
+                                std::vector<f_t>& farkas_zu,
+                                f_t& farkas_constant)
+{
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+
+  std::vector<f_t> original_residual = z;
+  matrix_transpose_vector_multiply(lp.A, 1.0, y, 1.0, original_residual);
+  for (i_t j = 0; j < n; ++j)
+  {
+    original_residual[j] -= lp.objective[j];
+  }
+  const f_t original_residual_norm = vector_norm2<i_t, f_t>(original_residual);
+  printf("|| A'*y + z - c || = %e\n", original_residual_norm);
+
+
+  std::vector<f_t> zl(n);
+  std::vector<f_t> zu(n);
+  for (i_t j = 0; j < n; ++j)
+  {
+    zl[j] = std::max(0.0, z[j]);
+    zu[j] = -std::min(0.0, z[j]);
+  }
+
+  original_residual = zl;
+  matrix_transpose_vector_multiply(lp.A, 1.0, y, 1.0, original_residual);
+  for (i_t j = 0; j < n; ++j)
+  {
+    original_residual[j] -= (zu[j] + lp.objective[j]);
+  }
+  const f_t original_residual_2 = vector_norm2<i_t, f_t>(original_residual);
+  printf("|| A'*y + zl - zu - c || = %e\n", original_residual_2);
+
+
+  std::vector<f_t> y_bar = y;
+  for (i_t i = 0; i < m; ++i)
+  {
+    y_bar[i] = y[i] + delta_y[i];
+  }
+  original_residual = z;
+  matrix_transpose_vector_multiply(lp.A, 1.0, y_bar, 1.0, original_residual);
+  for (i_t j = 0; j < n; ++j)
+  {
+    original_residual[j] += (delta_z[j] - lp.objective[j]);
+  }
+  const f_t original_residual_3 = vector_norm2<i_t, f_t>(original_residual);
+  printf("|| A'*(y + delta_y) + (z + delta_z) - c || = %e\n", original_residual_3);
+
+
+
+  farkas_y.resize(m);
+  farkas_zl.resize(n);
+  farkas_zu.resize(n);
+
+  f_t gamma = 0.0;
+  for (i_t j = 0; j < n; ++j)
+  {
+    const f_t cj = lp.objective[j];
+    const f_t lower = lp.lower[j];
+    const f_t upper = lp.upper[j];
+    if (lower > -inf)
+    {
+      gamma -= lower * std::min(0.0, cj);
+    }
+    if (upper < inf)
+    {
+      gamma -= upper * std::max(0.0, cj);
+    }
+  }
+  printf("gamma = %e\n", gamma);
+
+  const f_t threshold = 1.0;
+  const f_t positive_threshold = std::max(-gamma, 0.0) + threshold;
+  printf("positive_threshold = %e\n", positive_threshold);
+
+  // We need to increase the dual objective to positive threshold
+  f_t alpha = threshold;
+  const f_t infeas = (direction == 1) ? (lp.lower[leaving_index] - x[leaving_index]) : (x[leaving_index] - lp.upper[leaving_index]);
+  // We need the new objective to be at least positive_threshold
+  // positive_threshold = obj_val+ alpha * infeas
+  // infeas > 0, alpha > 0, positive_threshold > 0
+  printf("infeas = %e\n", infeas);
+  printf("obj_val = %e\n", obj_val);
+  alpha = std::max(threshold,(positive_threshold - obj_val) / infeas);
+  printf("alpha = %e\n", alpha);
+
+  // farkas_y = y + alpha * delta_y
+  for (i_t i = 0; i < m; ++i)
+  {
+    farkas_y[i] = y[i] + alpha * delta_y[i];
+  }
+  // farkas_zl = z + alpha * delta_z  - c-
+  for (i_t j = 0; j < n; ++j)
+  {
+    const f_t cj = lp.objective[j];
+    const f_t z_j = z[j];
+    const f_t delta_z_j = delta_z[j];
+    farkas_zl[j] = std::max(0.0, z_j) + alpha * std::max(0.0, delta_z_j) + -std::min(0.0, cj);
+  }
+
+  // farkas_zu = z + alpha * delta_z + c+
+  for (i_t j = 0; j < n; ++j)
+  {
+    const f_t cj = lp.objective[j];
+    const f_t z_j = z[j];
+    const f_t delta_z_j = delta_z[j];
+    farkas_zu[j] = -std::min(0.0, z_j) - alpha * std::min(0.0, delta_z_j) + std::max(0.0, cj);
+  }
+
+  // farkas_constant = b'*farkas_y + l'*farkas_zl - u'*farkas_zu
+  farkas_constant = 0.0;
+  for (i_t i = 0; i < m; ++i)
+  {
+    farkas_constant += lp.rhs[i] * farkas_y[i];
+  }
+  for (i_t j = 0; j < n; ++j)
+  {
+    const f_t lower = lp.lower[j];
+    const f_t upper = lp.upper[j];
+    if (lower > -inf)
+    {
+      farkas_constant += lower * farkas_zl[j];
+    }
+    if (upper < inf)
+    {
+      farkas_constant -= upper * farkas_zu[j];
+    }
+  }
+
+
+  // Verify that the Farkas certificate is valid
+  std::vector<f_t> residual = farkas_zl;
+  matrix_transpose_vector_multiply(lp.A, 1.0, farkas_y, 1.0, residual);
+  for (i_t j = 0; j < n; ++j)
+  {
+    residual[j] -= farkas_zu[j];
+  }
+  const f_t residual_norm = vector_norm2<i_t, f_t>(residual);
+
+  f_t zl_min = 0.0;
+  for (i_t j = 0; j < n; ++j)
+  {
+    zl_min = std::min(zl_min, farkas_zl[j]);
+  }
+  printf("farkas_zl_min = %e\n", zl_min);
+  f_t zu_min = 0.0;
+  for (i_t j = 0; j < n; ++j)
+  {
+    zu_min = std::min(zu_min, farkas_zu[j]);
+  }
+  printf("farkas_zu_min = %e\n", zu_min);
+
+  printf("|| A'*farkas_y + farkas_zl - farkas_zu || = %e\n", residual_norm);
+  printf("b'*farkas_y + l'*farkas_zl - u'*farkas_zu = %e\n", farkas_constant);
+}
+
+
+
+
+template <typename i_t, typename f_t>
+void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
+                          const simplex_solver_settings_t<i_t, f_t>& settings,
+                          const std::vector<variable_status_t>& vstatus,
+                          std::vector<f_t>& objective)
+{
+
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+  f_t max_abs_obj_coeff = 0.0;
+  for (i_t j = 0; j < n; ++j)
+  {
+    max_abs_obj_coeff = std::max(max_abs_obj_coeff, std::abs(lp.objective[j]));
+  }
+
+  const f_t dual_tol = settings.dual_tol;
+
+  std::srand(static_cast<unsigned int>(std::time(nullptr)));
+
+  objective.resize(n);
+  f_t sum_perturb = 0.0;
+  i_t num_perturb = 0;
+  for (i_t j = 0; j < n; ++j)
+  {
+    f_t obj = objective[j] = lp.objective[j];
+
+    const f_t lower = lp.lower[j];
+    const f_t upper = lp.upper[j];
+    if (vstatus[j] == variable_status_t::NONBASIC_FIXED ||
+        vstatus[j] == variable_status_t::NONBASIC_FREE || lower == upper ||
+        lower == -inf && upper == inf) {
+      continue;
+    }
+
+    const f_t rand_val = static_cast<f_t>(std::rand() / (RAND_MAX + 1.0));
+    const f_t perturb = (1e-5 * std::abs(obj) + 1e-7 * max_abs_obj_coeff + 10 * dual_tol) * (1.0 + rand_val);
+
+    if (vstatus[j] == variable_status_t::NONBASIC_LOWER || lower > -inf && upper < inf && obj > 0)
+    {
+      objective[j] = obj + perturb;
+      sum_perturb += perturb;
+      num_perturb++;
+    } else if (vstatus[j] == variable_status_t::NONBASIC_UPPER || lower > -inf && upper < inf && obj < 0)
+    {
+      objective[j] = obj - perturb;
+      sum_perturb += perturb;
+      num_perturb++;
+    }
+  }
+
+  settings.log.printf("Applied initial perturbation of %e to %d/%d objective coefficients\n", sum_perturb, num_perturb, n);
+}
+
+
+
+template <typename i_t, typename f_t>
+bool use_transpose_for_delta_z(const lp_problem_t<i_t, f_t>& lp,
+                          const csc_matrix_t<i_t, f_t>& A_transpose,
+                          const sparse_vector_t<i_t, f_t>& delta_y,
+                          const std::vector<i_t>& nonbasic_list)
+{
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+  const i_t nz_delta_y = delta_y.i.size();
+  f_t transpose_ops = 0;
+  for (i_t k = 0; k < nz_delta_y; k++)
+  {
+    const i_t i = delta_y.i[k];
+    const f_t delta_y_i = delta_y.x[k];
+    if (std::abs(delta_y_i) < 1e-12) {
+      continue;
+    }
+    const i_t row_start = A_transpose.col_start[i];
+    const i_t row_end = A_transpose.col_start[i + 1];
+    transpose_ops += row_end - row_start;
+  }
+
+  f_t regular_ops = 0;
+   for (i_t k = 0; k < n - m; k++) {
+    const i_t j = nonbasic_list[k];
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    regular_ops += col_end - col_start;
+   }
+
+  const bool use_transpose = transpose_ops < regular_ops;
+  return use_transpose;
+}
 
 template <typename i_t, typename f_t>
 void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
@@ -197,6 +470,217 @@ void compute_dual_solution_from_basis(const lp_problem_t<i_t, f_t>& lp,
     z[basic_list[k]] = 0.0;
   }
 }
+
+template <typename i_t, typename f_t>
+f_t compute_initial_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
+                                           const simplex_solver_settings_t<i_t, f_t>& settings,
+                                           const std::vector<i_t>& basic_list,
+                                           const std::vector<f_t>& x,
+                                           std::vector<f_t>& squared_infeasibilities,
+                                           std::vector<i_t>& infeasibility_indices)
+{
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+  squared_infeasibilities.resize(n, 0.0);
+  infeasibility_indices.reserve(n);
+  infeasibility_indices.clear();
+  f_t primal_inf = 0.0;
+  for (i_t k = 0; k < m; ++k) {
+    const i_t j = basic_list[k];
+    const f_t lower_infeas = lp.lower[j] - x[j];
+    const f_t upper_infeas = x[j] - lp.upper[j];
+    const f_t infeas = std::max(lower_infeas, upper_infeas);
+    if (infeas > settings.primal_tol) {
+      const f_t square_infeas = infeas * infeas;
+      squared_infeasibilities[j] = square_infeas;
+      infeasibility_indices.push_back(j);
+      primal_inf += square_infeas;
+    }
+  }
+  return primal_inf;
+}
+
+template <typename i_t, typename f_t>
+void update_single_primal_infeasibility(const std::vector<f_t>& lower,
+                                        const std::vector<f_t>& upper,
+                                        const std::vector<f_t>& x,
+                                        f_t primal_tol,
+                                        std::vector<f_t>& squared_infeasibilities,
+                                        std::vector<i_t>& infeasibility_indices,
+                                        i_t j,
+                                        f_t& primal_inf)
+{
+  const f_t now_feasible = std::numeric_limits<f_t>::denorm_min();
+  const f_t old_val = squared_infeasibilities[j];
+  // x_j < l_j - epsilon => -x_j + l_j > epsilon
+  const f_t lower_infeas = lower[j] - x[j];
+  // x_j > u_j + epsilon => x_j - u_j > epsilon
+  const f_t upper_infeas = x[j] - upper[j];
+  const f_t infeas = std::max(lower_infeas, upper_infeas);
+  const f_t new_val = infeas * infeas;
+  if (infeas > primal_tol) {
+    primal_inf = std::max(0.0, primal_inf + (new_val - old_val));
+    // We are infeasible w.r.t the tolerance
+    if (old_val == 0.0) {
+      //printf("New infeasibility %d %e\n", j, infeas);
+      // This is a new infeasibility
+      // We need to add it to the list
+      infeasibility_indices.push_back(j);
+    } else {
+      //printf("Already infeasible %d %e\n", j, infeas);
+    }
+    squared_infeasibilities[j] = new_val;
+  } else {
+    // We are feasible w.r.t the tolerance
+    if (old_val != 0.0) {
+      // We were previously infeasible,
+      primal_inf = std::max(0.0, primal_inf - old_val);
+      //printf("Now feasible %d %e\n", j, infeas);
+      squared_infeasibilities[j] = now_feasible;
+    } else {
+      //printf("Still feasible %d %e\n", j, infeas);
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+void update_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
+                                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                                   const std::vector<i_t>& basic_list,
+                                   const std::vector<f_t>& x,
+                                   i_t entering_index,
+                                   i_t leaving_index,
+                                   std::vector<i_t>& basic_change_list,
+                                   std::vector<f_t>& squared_infeasibilities,
+                                   std::vector<i_t>& infeasibility_indices,
+                                   f_t& primal_inf)
+{
+  const f_t now_feasible = std::numeric_limits<f_t>::denorm_min();
+  const f_t primal_tol = settings.primal_tol;
+  const i_t nz = basic_change_list.size();
+  for (i_t k = 0; k < nz; ++k) {
+    const i_t j = basic_list[basic_change_list[k]];
+    // The change list will contain the leaving variable,
+    // But not the entering variable.
+
+    if (j == leaving_index) {
+      // Force the leaving variable to be feasible
+      const f_t old_val = squared_infeasibilities[j];
+      squared_infeasibilities[j] = now_feasible;
+      primal_inf = std::max(0.0, primal_inf - old_val);
+      continue;
+    }
+    update_single_primal_infeasibility(lp.lower,
+                                       lp.upper,
+                                       x,
+                                       primal_tol,
+                                       squared_infeasibilities,
+                                       infeasibility_indices,
+                                       j,
+                                       primal_inf);
+  }
+
+  // Update the entering variable
+  update_single_primal_infeasibility(lp.lower,
+                                     lp.upper,
+                                     x,
+                                     primal_tol,
+                                     squared_infeasibilities,
+                                     infeasibility_indices,
+                                     entering_index,
+                                     primal_inf);
+}
+
+template <typename i_t, typename f_t>
+void clean_up_infeasibilities(std::vector<f_t>& squared_infeasibilities,
+                              std::vector<i_t>& infeasibility_indices)
+{
+  const f_t now_feasible = std::numeric_limits<f_t>::denorm_min();
+  bool needs_clean_up = false;
+  for (i_t k = 0; k < infeasibility_indices.size(); ++k) {
+    const i_t j = infeasibility_indices[k];
+    const f_t squared_infeas = squared_infeasibilities[j];
+    if (squared_infeas == now_feasible) {
+      needs_clean_up = true;
+    }
+  }
+
+   if (needs_clean_up) {
+    for (i_t k = 0; k < infeasibility_indices.size(); ++k) {
+      const i_t j = infeasibility_indices[k];
+      const f_t squared_infeas = squared_infeasibilities[j];
+      if (squared_infeas == now_feasible) {
+        // Set to the last element
+        const i_t sz = infeasibility_indices.size();
+        infeasibility_indices[k] = infeasibility_indices[sz - 1];
+        infeasibility_indices.pop_back();
+        squared_infeasibilities[j] = 0.0;
+        i_t new_j = infeasibility_indices[k];
+        if (squared_infeasibilities[new_j] == now_feasible) {
+          k--;
+        }
+      }
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+i_t steepest_edge_pricing_with_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
+                                               const simplex_solver_settings_t<i_t, f_t>& settings,
+                                               const std::vector<f_t>& x,
+                                               const std::vector<f_t>& dy_steepest_edge,
+                                               const std::vector<i_t>& basic_mark,
+                                               std::vector<f_t>& squared_infeasibilities,
+                                               std::vector<i_t>& infeasibility_indices,
+                                               i_t& direction,
+                                               i_t& basic_leaving,
+                                               f_t& max_val)
+{
+  const f_t now_feasible = std::numeric_limits<f_t>::denorm_min();
+  max_val = 0.0;
+  i_t leaving_index = -1;
+  bool needs_clean_up = false;
+  const i_t nz = infeasibility_indices.size();
+  for (i_t k = 0; k < nz; ++k) {
+    const i_t j = infeasibility_indices[k];
+    const f_t squared_infeas = squared_infeasibilities[j];
+#if 0
+    if (squared_infeas == now_feasible)
+    {
+      needs_clean_up = true;
+      continue;
+    }
+#endif
+    const f_t val = squared_infeas / dy_steepest_edge[j];
+    if (val > max_val || val == max_val && j > leaving_index) {
+      max_val = val;
+      leaving_index = j;
+      const f_t lower_infeas = lp.lower[j] - x[j];
+      const f_t upper_infeas = x[j] - lp.upper[j];
+      direction = lower_infeas >= upper_infeas ? 1 : -1;
+    }
+  }
+#if 0
+  if (needs_clean_up) {
+    for (i_t k = 0; k < infeasibility_indices.size(); ++k) {
+      const i_t j = infeasibility_indices[k];
+      const f_t squared_infeas = squared_infeasibilities[j];
+      if (squared_infeas == now_feasible) {
+        // Set to the last element
+        const i_t sz = infeasibility_indices.size();
+        infeasibility_indices[k] = infeasibility_indices[sz - 1];
+        infeasibility_indices.pop_back();
+        squared_infeasibilities[j] = 0.0;
+      }
+    }
+  }
+#endif
+
+  basic_leaving = leaving_index >= 0 ? basic_mark[leaving_index] : -1;
+  return leaving_index;
+}
+
+
 
 template <typename i_t, typename f_t>
 i_t steepest_edge_pricing(const lp_problem_t<i_t, f_t>& lp,
@@ -1499,13 +1983,19 @@ dual::status_t dual_phase2(i_t phase,
   std::vector<i_t> atilde_mark(m, 0);
   std::vector<i_t> atilde_index;
   std::vector<i_t> nonbasic_mark(n, -1);
+  std::vector<i_t> basic_mark(n, -1);
   std::vector<i_t> delta_z_mark(n, 0);
   std::vector<i_t> delta_z_indices;
   std::vector<f_t> v(m, 0.0);
-
+  std::vector<f_t> squared_infeasibilities;
+  std::vector<i_t> infeasibility_indices;
 
   for (i_t k = 0; k < n - m; k++) {
     nonbasic_mark[nonbasic_list[k]] = k;
+  }
+
+  for (i_t k = 0; k < m; k++) {
+    basic_mark[basic_list[k]] = k;
   }
 
   std::vector<bool> bounded_variables(n, false);
@@ -1515,9 +2005,13 @@ dual::status_t dual_phase2(i_t phase,
     bounded_variables[j] = bounded;
   }
 
+  f_t primal_infeasibility = phase2::compute_initial_primal_infeasibilities(
+    lp, settings, basic_list, x, squared_infeasibilities, infeasibility_indices);
+
 
   csc_matrix_t<i_t, f_t> A_transpose(1, 1, 0);
   lp.A.transpose(A_transpose);
+
 
   f_t obj = compute_objective(lp, x);
   settings.log.printf("Initial objective %e\n", obj);
@@ -1542,25 +2036,59 @@ dual::status_t dual_phase2(i_t phase,
   f_t perturb_time   = 0;
   f_t vector_time    = 0;
   f_t objective_time = 0;
+  f_t update_infeasibility_time = 0;
+  bool restart_steepest_edge = true;
 
   while (iter < iter_limit) {
     // Pricing
-    i_t direction;
-    i_t basic_leaving_index;
-    f_t primal_infeasibility;
+    i_t direction = 0;
+    i_t basic_leaving_index = -1;
     i_t leaving_index = -1;
     f_t max_val;
     f_t price_start_time = tic();
     if (settings.use_steepest_edge_pricing) {
-      leaving_index = phase2::steepest_edge_pricing(lp,
+#if 0
+      i_t direction_junk = 0;
+      i_t leaving_index_junk = -1;
+      f_t max_val_junk = 0.0;
+      f_t primal_inf_junk = 0;
+      i_t basic_leaving_index_junk = -1;
+      leaving_index_junk = phase2::steepest_edge_pricing(lp,
                                                     settings,
                                                     x,
                                                     delta_y_steepest_edge,
                                                     basic_list,
-                                                    direction,
-                                                    basic_leaving_index,
-                                                    primal_infeasibility,
-                                                    max_val);
+                                                    direction_junk,
+                                                    basic_leaving_index_junk,
+                                                    primal_inf_junk,
+                                                    max_val_junk);
+#else
+      leaving_index = phase2::steepest_edge_pricing_with_infeasibilities(lp,
+                                                                         settings,
+                                                                         x,
+                                                                         delta_y_steepest_edge,
+                                                                         basic_mark,
+                                                                         squared_infeasibilities,
+                                                                         infeasibility_indices,
+                                                                         direction,
+                                                                         basic_leaving_index,
+                                                                         max_val);
+#endif
+#if 0
+      if (leaving_index != leaving_index_junk || basic_leaving_index != basic_leaving_index_junk || max_val != max_val_junk || direction != direction_junk) {
+        printf("Leaving index %d %d Basic leaving index %d %d max_val %e %e\n", leaving_index, leaving_index_junk, basic_leaving_index, basic_leaving_index_junk, max_val, max_val_junk);
+        printf("Direction %d %d\n", direction, direction_junk);
+
+        if (leaving_index >= 0 && leaving_index_junk >= 0) {
+          printf("Squared infeasibilities %d %e %d %e\n", leaving_index, squared_infeasibilities[leaving_index] / delta_y_steepest_edge[leaving_index], leaving_index_junk, squared_infeasibilities[leaving_index_junk] / delta_y_steepest_edge[leaving_index_junk]);
+        }
+        else
+        {
+          printf("Trying to print bad stuff\n");
+        }
+      }
+     // printf("Leaving index %d\n", leaving_index);
+#endif
     } else {
       // Max infeasibility pricing
       leaving_index = phase2::phase2_pricing(
@@ -1588,14 +2116,14 @@ dual::status_t dual_phase2(i_t phase,
     }
 
     // BTran
-    //std::vector<f_t> delta_y(m);
+    // BT*delta_y = -delta_zB = -sigma*ei
     f_t btran_start_time = tic();
     sparse_vector_t<i_t, f_t> delta_y_sparse(m, 0);
     sparse_vector_t<i_t, f_t> UTsol_sparse(m, 0);
     if (0) {
       std::vector<f_t> ei(m, 0.0);
       ei[basic_leaving_index] = -direction;
-      // BT*delta_y = -delta_zB = -sigma*ei
+
       std::vector<f_t> UTsol;
       ft.b_transpose_solve(ei, delta_y, UTsol);
 
@@ -1615,9 +2143,11 @@ dual::status_t dual_phase2(i_t phase,
       ei_sparse.i[0] = basic_leaving_index;
       ei_sparse.x[0] = -direction;
       ft.b_transpose_solve(ei_sparse, delta_y_sparse, UTsol_sparse);
-      b_transpose_solve_density = delta_y_sparse.i.size() / static_cast<f_t>(m);
 
       if (direction != -1) {
+        // We solved BT*delta_y = -sigma*ei, but for the update we need
+        // UT*etilde = ei. So we need to flip the sign of the solution
+        // in the case that sigma == 1.
         for (i_t k = 0; k < UTsol_sparse.x.size(); ++k) {
           UTsol_sparse.x[k] *= -1.0;
         }
@@ -1654,7 +2184,7 @@ dual::status_t dual_phase2(i_t phase,
 #else
     f_t steepest_edge_norm_check = vector_norm2_squared<i_t, f_t>(delta_y);
 #endif
-    if (delta_y_steepest_edge[leaving_index] <
+    if (restart_steepest_edge && delta_y_steepest_edge[leaving_index] <
         settings.steepest_edge_ratio * steepest_edge_norm_check) {
       constexpr bool verbose = false;
       if (verbose) {
@@ -1687,8 +2217,21 @@ dual::status_t dual_phase2(i_t phase,
 
     f_t delta_z_start_time = tic();
 
-    const f_t delta_y_nz_percentage = delta_y_sparse.i.size() / static_cast<f_t>(m) * 100.0;
-    if (delta_y_nz_percentage <= 30.0) {
+    i_t delta_y_nz0 = 0;
+    const i_t nz_delta_y = delta_y_sparse.i.size();
+    for (i_t k = 0; k < nz_delta_y; k++) {
+      if (std::abs(delta_y_sparse.x[k]) > 1e-12) {
+        delta_y_nz0++;
+      }
+    }
+    const f_t dy_percent = static_cast<f_t>(delta_y_nz0) / static_cast<f_t>(nz_delta_y) * 100.0;
+    if (dy_percent < 10.0) {
+      //settings.log.printf("delta_y_nz0 %d nz_delta_y %d percentage %.1f\n", delta_y_nz0, nz_delta_y, dy_percent);
+    }
+    const f_t delta_y_nz_percentage = delta_y_nz0 / static_cast<f_t>(m) * 100.0;
+    //const bool use_transpose = phase2::use_transpose_for_delta_z(lp, A_transpose, delta_y_sparse, nonbasic_list);
+    const bool use_transpose = delta_y_nz_percentage <= 30.0;
+    if (use_transpose) {
       sparse_delta_z++;
       phase2::compute_delta_z(A_transpose,
                               delta_y_sparse,
@@ -1820,8 +2363,97 @@ dual::status_t dual_phase2(i_t phase,
     if (entering_index == -2) { return dual::status_t::TIME_LIMIT; }
     if (entering_index == -3) { return dual::status_t::CONCURRENT_LIMIT; }
     if (entering_index == -1) {
-      if (primal_infeasibility > settings.primal_tol &&
-          max_val < 2e-8) {
+      settings.log.printf("No entering variable found.\n");
+      settings.log.printf("Scaled steepest edge %e\n", max_val);
+
+
+      f_t primal_inf_check = 0.0;
+      i_t num_infeasible = 0;
+      primal_infeasibility = 0.0;
+      for (i_t k = 0; k < m; ++k) {
+        const i_t j = basic_list[k];
+        const f_t lower_infeas = lp.lower[j] - x[j];
+        const f_t upper_infeas = x[j] - lp.upper[j];
+        const f_t infeas = std::max(lower_infeas, upper_infeas);
+        if (infeas > settings.primal_tol) {
+          //printf("%5d Basic infeasibility %5d %e. x %e lo %e up %e\n", num_infeasible, j, infeas, x[j], lp.lower[j], lp.upper[j]);
+          primal_inf_check += infeas;
+          num_infeasible++;
+          primal_infeasibility += infeas * infeas;
+          squared_infeasibilities[j] = infeas * infeas;
+        }
+      }
+
+      for (i_t k = 0; k < m; ++k)
+      {
+        const i_t j = basic_list[k];
+        delta_y_steepest_edge[j] = 1.0;
+      }
+
+      restart_steepest_edge = false;
+
+      settings.log.printf("Primal infeasibility %e Num infeasible %d\n", primal_inf_check, num_infeasible);
+      f_t perturbation = 0.0;
+      for (i_t j = 0; j < n; ++j) {
+        perturbation += std::abs(lp.objective[j] - objective[j]);
+      }
+
+      if (perturbation > 1e-6 && phase == 2) {
+        // Try to remove perturbation
+        std::vector<f_t> unperturbed_y(m);
+        std::vector<f_t> unperturbed_z(n);
+        phase2::compute_dual_solution_from_basis(
+          lp, ft, basic_list, nonbasic_list, unperturbed_y, unperturbed_z);
+        {
+          const f_t dual_infeas = phase2::dual_infeasibility(
+            lp, settings, vstatus, unperturbed_z, settings.tight_tol, settings.dual_tol);
+          if (dual_infeas <= settings.dual_tol) {
+            settings.log.printf("Removed perturbation of %.2e.\n", perturbation);
+            z            = unperturbed_z;
+            y            = unperturbed_y;
+            perturbation = 0.0;
+            objective = lp.objective;
+
+            f_t obj_val = 0.0;
+            for (i_t j = 0; j < n; ++j)
+            {
+              obj_val += objective[j] * x[j];
+            }
+
+            constexpr bool use_farkas = false;
+
+            if constexpr (use_farkas) {
+              std::vector<f_t> farkas_y;
+              std::vector<f_t> farkas_zl;
+              std::vector<f_t> farkas_zu;
+              f_t farkas_constant;
+              std::vector<f_t> my_delta_y;
+              delta_y_sparse.to_dense(my_delta_y);
+              phase2::compute_farkas_certificate(lp,
+                                                 settings,
+                                                 vstatus,
+                                                 x,
+                                                 y,
+                                                 z,
+                                                 my_delta_y,
+                                                 delta_z,
+                                                 direction,
+                                                 leaving_index,
+                                                 obj_val,
+                                                 farkas_y,
+                                                 farkas_zl,
+                                                 farkas_zu,
+                                                 farkas_constant);
+            }
+            settings.log.printf("Continuing with perturbation removed and steepest edge norms reset\n");
+            continue;
+          } else {
+            settings.log.printf("Failed to remove perturbation of %.2e.\n", perturbation);
+          }
+        }
+      }
+
+      if (max_val < 2e-8) {
         // We could be done
         settings.log.printf("Exiting due to small primal infeasibility se %e\n", max_val);
         phase2::prepare_optimality(lp,
@@ -1907,6 +2539,7 @@ dual::status_t dual_phase2(i_t phase,
 
     flip_time += toc(flip_start_time);
 
+    sparse_vector_t<i_t, f_t> delta_xB_0_sparse(m, 0);
 
     f_t ftran_start_time = tic();
 
@@ -1920,7 +2553,6 @@ dual::status_t dual_phase2(i_t phase,
           atilde_sparse.i[k] = atilde_index[k];
           atilde_sparse.x[k] = atilde[atilde_index[k]];
         }
-        sparse_vector_t<i_t, f_t> delta_xB_0_sparse(m, 0);
         ft.b_solve(atilde_sparse, delta_xB_0_sparse);
         const i_t delta_xB_0_nz = delta_xB_0_sparse.i.size();
         for (i_t k = 0; k < delta_xB_0_nz; ++k) {
@@ -2139,6 +2771,70 @@ dual::status_t dual_phase2(i_t phase,
 #endif
     objective_time += toc(objective_start_time);
 
+#if 1
+    f_t update_infeasibility_start_time = tic();
+    // Update primal infeasibilities
+    phase2::update_primal_infeasibilities(lp,
+                                          settings,
+                                          basic_list,
+                                          x,
+                                          entering_index,
+                                          leaving_index,
+                                          delta_xB_0_sparse.i,
+                                          squared_infeasibilities,
+                                          infeasibility_indices,
+                                          primal_infeasibility);
+    phase2::update_primal_infeasibilities(lp,
+                                          settings,
+                                          basic_list,
+                                          x,
+                                          entering_index,
+                                          leaving_index,
+                                          scaled_delta_xB_sparse.i,
+                                          squared_infeasibilities,
+                                          infeasibility_indices,
+                                          primal_infeasibility);
+
+    if (primal_infeasibility < 0.0) {
+      settings.log.printf("!!!!! Negative primal infeasibility %e\n", primal_infeasibility);
+    }
+
+    phase2::clean_up_infeasibilities(squared_infeasibilities, infeasibility_indices);
+#endif
+
+#if CHECK_PRIMAL_INFEASIBILITIES
+    // Check primal infeasibilities
+    {
+      for (i_t k = 0; k < m; ++k)
+      {
+        const i_t j = basic_list[k];
+        const f_t lower_infeas = lp.lower[j] - x[j];
+        const f_t upper_infeas = x[j] - lp.upper[j];
+        const f_t infeas = std::max(lower_infeas, upper_infeas);
+        if (infeas > settings.primal_tol) {
+          const f_t square_infeas = infeas * infeas;
+          if (square_infeas != squared_infeasibilities[j]) {
+            settings.log.printf("Primal infeasibility mismatch %d %e != %e\n", j, square_infeas, squared_infeasibilities[j]);
+          }
+          bool found = false;
+          for (i_t h = 0; h < infeasibility_indices.size(); ++h) {
+            if (infeasibility_indices[h] == j) {
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            settings.log.printf("Infeasibility index not found %d\n", j);
+          }
+        }
+      }
+    }
+#endif
+
+#if 1
+    update_infeasibility_time += toc(update_infeasibility_start_time);
+#endif
+
     // Clear delta_x
     for (i_t k = 0; k < scaled_delta_xB_nz; ++k) {
       const i_t j = basic_list[scaled_delta_xB_sparse.i[k]];
@@ -2166,6 +2862,8 @@ dual::status_t dual_phase2(i_t phase,
     nonbasic_list[nonbasic_entering_index] = leaving_index;
     nonbasic_mark[entering_index] = -1;
     nonbasic_mark[leaving_index] = nonbasic_entering_index;
+    basic_mark[leaving_index] = -1;
+    basic_mark[entering_index] = basic_leaving_index;
 
     f_t lu_update_start_time = tic();
     // Refactor or Update
@@ -2219,6 +2917,16 @@ dual::status_t dual_phase2(i_t phase,
       }
       reorder_basic_list(q, basic_list);
       ft.reset(L, U, p);
+      for (i_t k = 0; k < n; k++) {
+        basic_mark[k]    = -1;
+        nonbasic_mark[k] = -1;
+      }
+      for (i_t k = 0; k < m; k++) {
+        basic_mark[basic_list[k]] = k;
+      }
+      for (i_t k = 0; k < n - m; k++) {
+        nonbasic_mark[nonbasic_list[k]] = k;
+      }
     }
 
     lu_update_time += toc(lu_update_start_time);
@@ -2233,6 +2941,19 @@ dual::status_t dual_phase2(i_t phase,
         {
             phase2::check_steepest_edge_norms(settings, basic_list, ft, delta_y_steepest_edge);
         }
+#endif
+
+#if 0
+    for (i_t k = 0; k < m; k++) {
+      if (basic_mark[basic_list[k]] != k) {
+        printf("Basic mark %d %d\n", basic_list[k], k);
+      }
+    }
+    for (i_t k = 0; k < n - m; k++) {
+      if (nonbasic_mark[nonbasic_list[k]] != k) {
+        printf("Nonbasic mark %d %d\n", nonbasic_list[k], k);
+      }
+    }
 #endif
 
     iter++;
@@ -2256,14 +2977,13 @@ dual::status_t dual_phase2(i_t phase,
       if (phase == 1 && iter == 1) {
         settings.log.printf(" Iter     Objective   Primal Infeas  Perturb  Time\n");
       }
-      settings.log.printf("%5d %+.16e %.8e %.2e %.2e %.2f %.2f %.2f\n",
+      settings.log.printf("%5d %+.16e %8d %.8e %.2e %.2e %.2f\n",
                           iter,
                           compute_user_objective(lp, obj),
+                          infeasibility_indices.size(),
                           primal_infeasibility,
                           sum_perturb,
                           step_length,
-                          b_solve_density * 100.0,
-                          b_transpose_solve_density * 100.0,
                           now);
     }
 
@@ -2282,25 +3002,26 @@ dual::status_t dual_phase2(i_t phase,
   if (iter >= iter_limit) { status = dual::status_t::ITERATION_LIMIT; }
 
   if (phase == 2) {
-    settings.log.printf("BFRT time       %.2f\n", bfrt_time);
-    settings.log.printf("Pricing time    %.2f\n", pricing_time);
-    settings.log.printf("BTran time      %.2f\n", btran_time);
-    settings.log.printf("FTran time      %.2f\n", ftran_time);
-    settings.log.printf("Flip time       %.2f\n", flip_time);
-    settings.log.printf("Delta_z time    %.2f\n", delta_z_time);
-    settings.log.printf("LU update time  %.2f\n", lu_update_time);
-    settings.log.printf("SE norms time   %.2f\n", se_norms_time);
-    settings.log.printf("SE enter time   %.2f\n", se_entering_time);
-    settings.log.printf("Perturb time    %.2f\n", perturb_time);
-    settings.log.printf("Vector time     %.2f\n", vector_time);
-    settings.log.printf("Objective time  %.2f\n", objective_time);
-    settings.log.printf("Sum             %.2f\n",
-                        bfrt_time + pricing_time + btran_time + ftran_time + flip_time +
+    const f_t total_time = bfrt_time + pricing_time + btran_time + ftran_time + flip_time +
                           delta_z_time + lu_update_time + se_norms_time + se_entering_time +
-                          perturb_time + vector_time + objective_time);
+                          perturb_time + vector_time + objective_time + update_infeasibility_time;
+    settings.log.printf("BFRT time       %.2f %4.1f%\n", bfrt_time, 100.0 * bfrt_time / total_time);
+    settings.log.printf("Pricing time    %.2f %4.1f%\n", pricing_time, 100.0 * pricing_time / total_time);
+    settings.log.printf("BTran time      %.2f %4.1f%\n", btran_time, 100.0 * btran_time / total_time);
+    settings.log.printf("FTran time      %.2f %4.1f%\n", ftran_time, 100.0 * ftran_time / total_time);
+    settings.log.printf("Flip time       %.2f %4.1f%\n", flip_time, 100.0 * flip_time / total_time);
+    settings.log.printf("Delta_z time    %.2f %4.1f%\n", delta_z_time, 100.0 * delta_z_time / total_time);
+    settings.log.printf("LU update time  %.2f %4.1f%\n", lu_update_time, 100.0 * lu_update_time / total_time);
+    settings.log.printf("SE norms time   %.2f %4.1f%\n", se_norms_time, 100.0 * se_norms_time / total_time);
+    settings.log.printf("SE enter time   %.2f %4.1f%\n", se_entering_time, 100.0 * se_entering_time / total_time);
+    settings.log.printf("Perturb time    %.2f %4.1f%\n", perturb_time, 100.0 * perturb_time / total_time);
+    settings.log.printf("Vector time     %.2f %4.1f%\n", vector_time, 100.0 * vector_time / total_time);
+    settings.log.printf("Objective time  %.2f %4.1f%\n", objective_time, 100.0 * objective_time / total_time);
+    settings.log.printf("Inf update time %.2f %4.1f%\n", update_infeasibility_time, 100.0 * update_infeasibility_time / total_time);
+    settings.log.printf("Sum             %.2f\n", total_time);
 
-    settings.log.printf("Sparse delta_z %8d %8.2f\n", sparse_delta_z, 100.0 * sparse_delta_z / (sparse_delta_z + dense_delta_z));
-    settings.log.printf("Dense delta_z  %8d %8.2f\n", dense_delta_z, 100.0 * dense_delta_z / (sparse_delta_z + dense_delta_z));
+    settings.log.printf("Sparse delta_z %8d %8.2f%\n", sparse_delta_z, 100.0 * sparse_delta_z / (sparse_delta_z + dense_delta_z));
+    settings.log.printf("Dense delta_z  %8d %8.2f%\n", dense_delta_z, 100.0 * dense_delta_z / (sparse_delta_z + dense_delta_z));
     ft.print_stats();
   }
   return status;

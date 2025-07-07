@@ -20,6 +20,7 @@
 #include <dual_simplex/tic_toc.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -158,14 +159,30 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
       slope);
   }
 
+
+
   // Continue the search using a heap to order the breakpoints
   ratios[k_idx]   = ratios[num_breakpoints - 1];
   indicies[k_idx] = indicies[num_breakpoints - 1];
 
+  constexpr bool use_bucket_pass = false;
+
+  if (use_bucket_pass)
+  {
+    f_t max_ratio = 0.0;
+    for (i_t k = 0; k < num_breakpoints - 1; ++k) {
+      if (ratios[k] > max_ratio) { max_ratio = ratios[k]; }
+    }
+    settings_.log.printf(
+      "Starting heap passes. %d breakpoints max ratio %e\n", num_breakpoints - 1, max_ratio);
+    bucket_pass(
+      indicies, ratios, num_breakpoints - 1, slope, step_length, nonbasic_entering, entering_index);
+  }
+
   heap_passes(
     indicies, ratios, num_breakpoints - 1, slope, step_length, nonbasic_entering, entering_index);
 
-  if constexpr (0) {
+  if constexpr (verbose) {
     settings_.log.printf("BFRT step length %e entering index %d non basic entering %d pivot %e\n",
                          step_length,
                          entering_index,
@@ -255,6 +272,62 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
     }
   }
 }
+
+template <typename i_t, typename f_t>
+void bound_flipping_ratio_test_t<i_t, f_t>::bucket_pass(const std::vector<i_t>& current_indicies,
+                                                        const std::vector<f_t>& current_ratios,
+                                                        i_t num_breakpoints,
+                                                        f_t& slope,
+                                                        f_t& step_length,
+                                                        i_t& nonbasic_entering,
+                                                        i_t& entering_index)
+{
+  const f_t dual_tol                    = settings_.dual_tol;
+  const f_t zero_tol                    = settings_.zero_tol;
+  const std::vector<f_t>& delta_z       = delta_z_;
+  const std::vector<i_t>& nonbasic_list = nonbasic_list_;
+  const i_t N                           = num_breakpoints;
+
+  const i_t K = 400; // 0, -16, -15, ...., 0, 1, ...., 400 - 18 = 382
+  std::vector<f_t> buckets(K, 0.0);
+  std::vector<i_t> bucket_count(K, 0);
+  for (i_t k = 0; k < N; ++k) {
+    const i_t idx = current_indicies[k];
+    const f_t ratio = current_ratios[k];
+    const f_t min_exponent = -16.0;
+    const f_t max_exponent = 382.0;
+    const f_t exponent = std::max(min_exponent, std::min(max_exponent, std::log10(ratio)));
+    const i_t bucket_idx = ratio == 0.0 ? 0 : static_cast<i_t>(exponent - min_exponent + 1);
+    //settings_.log.printf("Ratio %e exponent %e bucket_idx %d\n", ratio, exponent, bucket_idx);
+    const i_t j = nonbasic_list[idx];
+    const f_t interval = upper_[j] - lower_[j];
+    const f_t delta_slope = std::abs(delta_z_[j]) * interval;
+    buckets[bucket_idx] += delta_slope;
+    bucket_count[bucket_idx]++;
+  }
+
+  std::vector<f_t> cumulative_sum(K, 0.0);
+  cumulative_sum[0] = buckets[0];
+  if (cumulative_sum[0] > slope) {
+    settings_.log.printf("Bucket 0. Count in bucket %d. Slope %e. Cumulative sum %e. Bucket value %e\n", bucket_count[0], slope, cumulative_sum[0], buckets[0]);
+    return;
+  }
+  i_t k;
+  bool exceeded = false;
+  for (k = 1; k < K; ++k) {
+    cumulative_sum[k] = cumulative_sum[k - 1] + buckets[k];
+    if (cumulative_sum[k] > slope) {
+      exceeded = true;
+      break;
+    }
+  }
+
+  if (exceeded) {
+    settings_.log.printf("Value in bucket %d. Count in buckets %d. Slope %e. Cumulative sum %e. Next sum %e Bucket value %e\n", k, bucket_count[k], slope, cumulative_sum[k-1], cumulative_sum[k], buckets[k-1]);
+  }
+
+}
+
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 

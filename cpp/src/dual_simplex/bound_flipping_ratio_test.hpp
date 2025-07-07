@@ -77,6 +77,14 @@ class bound_flipping_ratio_test_t {
                    i_t& nonbasic_entering,
                    i_t& entering_index);
 
+  void bucket_pass(const std::vector<i_t>& current_indicies,
+                   const std::vector<f_t>& current_ratios,
+                   i_t num_breakpoints,
+                   f_t& slope,
+                   f_t& step_length,
+                   i_t& nonbasic_entering,
+                   i_t& entering_index);
+
   const std::vector<f_t>& lower_;
   const std::vector<f_t>& upper_;
   const std::vector<bool>& bounded_variables_;

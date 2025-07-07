@@ -123,7 +123,7 @@ class sparse_vector_t {
   {
     const i_t col_start = A.col_start[col];
     const i_t col_end = A.col_start[col + 1];
-    n = A.n;
+    n = A.m;
     const i_t nz = col_end - col_start;
     i.reserve(nz);
     x.reserve(nz);

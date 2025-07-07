@@ -380,7 +380,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   : original_problem(user_problem), settings(solver_settings), original_lp(1, 1, 1)
 {
   start_time = tic();
-  convert_user_problem(original_problem, original_lp, new_slacks);
+  convert_user_problem(original_problem, settings, original_lp, new_slacks);
   full_variable_types(original_problem, original_lp, var_types);
 
   global_variables::mutex_upper.lock();
