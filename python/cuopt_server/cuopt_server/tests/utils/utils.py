@@ -319,23 +319,19 @@ def cuoptproc(request):
     server_script = cuopt_server.cuopt_service.__file__
 
     # Determine the correct site-packages directory for PYTHONPATH
-    if '/home/cuopt/' in server_script:
-        cuopt_site_packages = os.path.dirname(os.path.dirname(server_script))
-        # Add user's local site-packages directory for psutil
-        user_site_packages = site.getusersitepackages()
-        # Also check if there's a .local/lib/python*/site-packages directory
-        home_dir = os.path.expanduser("~")
-        # Try to find the correct Python version
-        import sys
-        python_version = f"python{sys.version_info.major}.{sys.version_info.minor}"
-        local_site_packages = os.path.join(home_dir, ".local", "lib", python_version, "site-packages")
-        if os.path.exists(local_site_packages):
-            pythonpath = f"{cuopt_site_packages}:{user_site_packages}:{local_site_packages}"
-        else:
-            pythonpath = f"{cuopt_site_packages}:{user_site_packages}"
+    user_site_packages = site.getusersitepackages()
+    home_dir = os.path.expanduser("~")
+    # Try to find the correct Python version
+    import sys
+    python_version = f"python{sys.version_info.major}.{sys.version_info.minor}"
+    local_site_packages = os.path.join(home_dir, ".local", "lib", python_version, "site-packages")
+    
+    cuopt_site_packages = os.path.dirname(os.path.dirname(server_script))
+    # Always add user's local site-packages directory for psutil
+    if os.path.exists(local_site_packages):
+        pythonpath = f"{cuopt_site_packages}:{user_site_packages}:{local_site_packages}"
     else:
-        cuopt_site_packages = os.path.dirname(os.path.dirname(server_script))
-        pythonpath = cuopt_site_packages
+        pythonpath = f"{cuopt_site_packages}:{user_site_packages}"
     
     env = os.environ.copy()
     env.update({
@@ -349,7 +345,7 @@ def cuoptproc(request):
     print(f"Python path: {python_path}")
     print(f"Server script: {server_script}")
     print(f"User site packages: {user_site_packages}")
-    print(f"Local site packages: {local_site_packages if 'local_site_packages' in locals() else 'Not found'}")
+    print(f"Local site packages: {local_site_packages if os.path.exists(local_site_packages) else 'Not found'}")
     
     # Test if psutil can be imported in the target environment
     test_env = env.copy()
