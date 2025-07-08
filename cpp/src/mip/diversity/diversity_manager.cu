@@ -71,8 +71,8 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                             context.problem_ptr->handle_ptr),
     rng(cuopt::seed_generator::get_seed()),
     stats(context.stats),
-    mab_arm_stats_(recombiner_enum_t::SIZE),
-    mab_rng_(cuopt::seed_generator::get_seed())
+    mab_recombiner(recombiner_enum_t::SIZE, cuopt::seed_generator::get_seed(), "recombiner"),
+    mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), "ls")
 {
   // Read configuration ID from environment variable
   int max_config = -1;
@@ -101,6 +101,21 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     run_only_bp_recombiner = config_id == 1;
     run_only_fp_recombiner = config_id == 2;
   }
+}
+
+template <typename i_t, typename f_t>
+void diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
+                                                     const weight_t<i_t, f_t>& weights,
+                                                     timer_t& timer,
+                                                     ls_config_t<i_t, f_t>& ls_config)
+{
+  i_t ls_mab_option = mab_ls.select_mab_option();
+  mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
+  std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
+  ls.run_local_search(solution, weights, timer, ls_config);
+  mab_ls_config_t<i_t, f_t>::last_ls_time =
+    std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count();
+  mab_ls_config_t<i_t, f_t>::last_ls_mab_option = ls_mab_option;
 }
 
 // There should be at least 3 solutions in the population
@@ -143,7 +158,8 @@ std::vector<solution_t<i_t, f_t>> diversity_manager_t<i_t, f_t>::generate_more_s
     solutions.emplace_back(solution_t<i_t, f_t>(sol));
     if (total_time_to_generate.check_time_limit()) { return solutions; }
     timer_t timer(std::min(ls_limit, timer.remaining_time()));
-    ls.run_local_search(sol, population.weights, timer);
+    ls_config_t<i_t, f_t> ls_config;
+    ls.run_local_search(sol, population.weights, timer, ls_config);
     population.run_solution_callbacks(sol);
     solutions.emplace_back(std::move(sol));
     if (total_time_to_generate.check_time_limit()) { return solutions; }
@@ -255,7 +271,8 @@ void diversity_manager_t<i_t, f_t>::generate_initial_solutions()
     population.run_solution_callbacks(initial_sol_vector.back());
     // run ls on the generated solutions
     solution_t<i_t, f_t> searched_sol(initial_sol_vector.back());
-    ls.run_local_search(searched_sol, population.weights, gen_timer);
+    ls_config_t<i_t, f_t> ls_config;
+    ls.run_local_search(searched_sol, population.weights, gen_timer, ls_config);
     population.run_solution_callbacks(searched_sol);
     initial_sol_vector.emplace_back(std::move(searched_sol));
     average_fj_weights(i);
@@ -320,7 +337,8 @@ void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
     initial_sol_vector.emplace_back(std::move(solution));
     problem_ptr->handle_ptr->sync_stream();
     solution_t<i_t, f_t> searched_sol(initial_sol_vector.back());
-    ls.run_local_search(searched_sol, population.weights, sol_timer);
+    ls_config_t<i_t, f_t> ls_config;
+    ls.run_local_search(searched_sol, population.weights, sol_timer, ls_config);
     population.run_solution_callbacks(searched_sol);
     initial_sol_vector.emplace_back(std::move(searched_sol));
     auto& feas_sol = initial_sol_vector.back().get_feasible()
@@ -531,7 +549,8 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
       population.add_solution(std::move(solution_t<i_t, f_t>(sol)));
       cuopt_func_call(sol.test_feasibility(true));
       solution_t<i_t, f_t> ls_solution(sol);
-      ls.run_local_search(ls_solution, population.weights, timer);
+      ls_config_t<i_t, f_t> ls_config;
+      ls.run_local_search(ls_solution, population.weights, timer, ls_config);
       if (timer.check_time_limit()) { return; }
       // TODO try if running LP with integers fixed makes it feasible
       if (ls_solution.get_feasible()) {
@@ -629,17 +648,17 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
                   sol1.get_feasible(),
                   sol2.get_quality(population.weights),
                   sol2.get_feasible());
-  double best_of_parents            = min(sol1.get_objective(), sol2.get_objective());
+  double best_objective_of_parents  = std::min(sol1.get_objective(), sol2.get_objective());
   bool at_least_one_parent_feasible = sol1.get_feasible() || sol2.get_feasible();
   // randomly choose among 3 recombiners
   auto [offspring, success] = recombine(sol1, sol2);
   if (!success) {
     // add the attempt
-    add_mab_reward(recombine_stats.get_last_attempt(),
-                   std::numeric_limits<double>::lowest(),
-                   std::numeric_limits<double>::lowest(),
-                   std::numeric_limits<double>::max(),
-                   0.0);
+    mab_recombiner.add_mab_reward(recombine_stats.get_last_attempt(),
+                                  std::numeric_limits<double>::lowest(),
+                                  std::numeric_limits<double>::lowest(),
+                                  std::numeric_limits<double>::max(),
+                                  0.0);
     return std::make_pair(solution_t<i_t, f_t>(sol1), solution_t<i_t, f_t>(sol2));
   }
   cuopt_assert(population.test_invariant(), "");
@@ -649,15 +668,16 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
                   offspring.get_feasible());
   cuopt_assert(offspring.test_number_all_integer(), "All must be integers before LS");
   bool feasibility_before = offspring.get_feasible();
-  ls.run_local_search(
-    offspring, population.weights, timer, best_of_parents, at_least_one_parent_feasible);
+  ls_config_t<i_t, f_t> ls_config;
+  ls_config.best_objective_of_parents    = best_objective_of_parents;
+  ls_config.at_least_one_parent_feasible = at_least_one_parent_feasible;
+  this->run_local_search(offspring, population.weights, timer, ls_config);
   cuopt_assert(offspring.test_number_all_integer(), "All must be integers after LS");
   cuopt_assert(population.test_invariant(), "");
 
   CUOPT_LOG_DEBUG("After LS offspring sol cost:feas %f : %d",
                   offspring.get_quality(population.weights),
                   offspring.get_feasible());
-  offspring.compute_feasibility();
   cuopt_assert(population.test_invariant(), "");
   // run LP with the vars
   solution_t<i_t, f_t> lp_offspring(offspring);
@@ -686,11 +706,18 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   f_t offspring_qual = std::min(offspring.get_quality(population.weights), lp_qual);
   recombine_stats.update_improve_stats(
     offspring_qual, sol1.get_quality(population.weights), sol2.get_quality(population.weights));
-  add_mab_reward(recombine_stats.get_last_attempt(),
-                 min(sol1.get_quality(population.weights), sol2.get_quality(population.weights)),
-                 population.best_feasible().get_quality(population.weights),
-                 offspring_qual,
-                 recombine_stats.get_last_recombiner_time());
+  f_t best_quality_of_parents =
+    min(sol1.get_quality(population.weights), sol2.get_quality(population.weights));
+  mab_recombiner.add_mab_reward(recombine_stats.get_last_attempt(),
+                                best_quality_of_parents,
+                                population.best_feasible().get_quality(population.weights),
+                                offspring_qual,
+                                recombine_stats.get_last_recombiner_time());
+  mab_ls.add_mab_reward(mab_ls_config_t<i_t, f_t>::last_ls_mab_option,
+                        best_quality_of_parents,
+                        population.best_feasible().get_quality(population.weights),
+                        offspring_qual,
+                        mab_ls_config_t<i_t, f_t>::last_ls_time);
   if (context.settings.benchmark_info_ptr != nullptr) {
     check_better_than_both(offspring, sol1, sol2);
     check_better_than_both(lp_offspring, sol1, sol2);
@@ -710,7 +737,7 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
   } else if (run_only_fp_recombiner) {
     recombiner = recombiner_enum_t::FP;
   } else {
-    recombiner = select_mab_recombiner();
+    recombiner = mab_recombiner.select_mab_option();
   }
   recombine_stats.add_attempt((recombiner_enum_t)recombiner);
   recombine_stats.start_recombiner_time();
@@ -729,165 +756,6 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
     recombine_stats.stop_recombiner_time();
     if (success) { recombine_stats.add_success(); }
     return std::make_pair(sol, success);
-  }
-}
-
-template <typename i_t, typename f_t>
-recombiner_enum_t diversity_manager_t<i_t, f_t>::select_mab_recombiner()
-{
-  if (recombiner_enum_t::SIZE == 0) {
-    CUOPT_LOG_ERROR("select_mab_recombiner called with no recombiners defined.");
-    cuopt_expects(false, error_type_t::RuntimeError, "No recombiners available to select in MAB.");
-  }
-
-  mab_total_steps_++;
-
-  // Phase 1: Initial exploration - ensure each arm is tried at least once
-  for (int i = 0; i < static_cast<int>(recombiner_enum_t::SIZE); ++i) {
-    if (mab_arm_stats_[i].num_pulls == 0) {
-      CUOPT_LOG_DEBUG("MAB Initial Pull: Arm " + std::to_string(i));
-      return static_cast<recombiner_enum_t>(i);
-    }
-  }
-
-  if (use_ucb_) {
-    // Phase 2: UCB Action Selection
-    return select_ucb_arm();
-  } else {
-    // Fallback to epsilon-greedy if desired
-    return select_epsilon_greedy_arm();
-  }
-}
-
-// UCB arm selection with confidence bounds
-template <typename i_t, typename f_t>
-recombiner_enum_t diversity_manager_t<i_t, f_t>::select_ucb_arm()
-{
-  double max_ucb_value = -std::numeric_limits<double>::infinity();
-  std::vector<recombiner_enum_t> best_arms;
-
-  for (int i = 0; i < static_cast<int>(recombiner_enum_t::SIZE); ++i) {
-    // Calculate UCB value: Q(a) + sqrt(2*ln(t)/N(a))
-    double confidence_bound = std::sqrt((2.0 * std::log(mab_total_steps_)) /
-                                        static_cast<double>(mab_arm_stats_[i].num_pulls));
-    double ucb_value        = mab_arm_stats_[i].q_value + confidence_bound;
-
-    CUOPT_LOG_DEBUG(
-      "MAB UCB: Arm " + std::to_string(i) + ", Q=" + std::to_string(mab_arm_stats_[i].q_value) +
-      ", CB=" + std::to_string(confidence_bound) + ", UCB=" + std::to_string(ucb_value));
-
-    constexpr double tolerance = 1e-9;
-    if (ucb_value > max_ucb_value + tolerance) {
-      max_ucb_value = ucb_value;
-      best_arms.clear();
-      best_arms.push_back(static_cast<recombiner_enum_t>(i));
-    } else if (std::abs(ucb_value - max_ucb_value) < tolerance) {
-      best_arms.push_back(static_cast<recombiner_enum_t>(i));
-    }
-  }
-
-  if (!best_arms.empty()) {
-    std::uniform_int_distribution<int> dist_tie(0, best_arms.size() - 1);
-    recombiner_enum_t chosen_arm = best_arms[dist_tie(mab_rng_)];
-    CUOPT_LOG_DEBUG("MAB UCB Selected: Arm " + std::to_string(static_cast<int>(chosen_arm)) +
-                    " (UCB Value: " + std::to_string(max_ucb_value) + ")");
-    return chosen_arm;
-  } else {
-    CUOPT_LOG_ERROR("MAB UCB: No best arm found, falling back to random.");
-    std::uniform_int_distribution<int> dist_arm(0, recombiner_enum_t::SIZE - 1);
-    return static_cast<recombiner_enum_t>(dist_arm(mab_rng_));
-  }
-}
-
-// Fallback epsilon-greedy method (preserved for compatibility)
-template <typename i_t, typename f_t>
-recombiner_enum_t diversity_manager_t<i_t, f_t>::select_epsilon_greedy_arm()
-{
-  std::uniform_real_distribution<double> dist_epsilon(0.0, 1.0);
-  if (dist_epsilon(mab_rng_) < mab_epsilon_) {
-    // Explore: Choose a random arm
-    std::uniform_int_distribution<int> dist_arm(0, recombiner_enum_t::SIZE - 1);
-    recombiner_enum_t random_arm = static_cast<recombiner_enum_t>(dist_arm(mab_rng_));
-    CUOPT_LOG_DEBUG("MAB Explore: Arm " + std::to_string(static_cast<int>(random_arm)));
-    return random_arm;
-  } else {
-    // Exploit: Choose the arm with the highest Q value
-    double max_q_value = -std::numeric_limits<double>::infinity();
-    std::vector<recombiner_enum_t> best_arms;
-
-    for (int i = 0; i < static_cast<int>(recombiner_enum_t::SIZE); ++i) {
-      constexpr double tolerance = 1e-9;
-      if (mab_arm_stats_[i].q_value > max_q_value + tolerance) {
-        max_q_value = mab_arm_stats_[i].q_value;
-        best_arms.clear();
-        best_arms.push_back(static_cast<recombiner_enum_t>(i));
-      } else if (std::abs(mab_arm_stats_[i].q_value - max_q_value) < tolerance) {
-        best_arms.push_back(static_cast<recombiner_enum_t>(i));
-      }
-    }
-
-    if (!best_arms.empty()) {
-      std::uniform_int_distribution<int> dist_tie(0, best_arms.size() - 1);
-      recombiner_enum_t chosen_arm = best_arms[dist_tie(mab_rng_)];
-      CUOPT_LOG_DEBUG("MAB Exploit: Arm " + std::to_string(static_cast<int>(chosen_arm)) +
-                      " (Q Value: " + std::to_string(max_q_value) + ")");
-      return chosen_arm;
-    }
-  }
-
-  // Fallback
-  std::uniform_int_distribution<int> dist_arm(0, recombiner_enum_t::SIZE - 1);
-  return static_cast<recombiner_enum_t>(dist_arm(mab_rng_));
-}
-
-template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::add_mab_reward(recombiner_enum_t recombiner_id,
-                                                   double best_of_parents_quality,
-                                                   double best_feasible_quality,
-                                                   double offspring_quality,
-                                                   double recombination_time_in_miliseconds)
-{
-  int id_val                          = static_cast<int>(recombiner_id);
-  double epsilon                      = max(1e-6, 1e-4 * fabs(best_feasible_quality));
-  bool is_better_than_best_feasible   = offspring_quality + epsilon < best_feasible_quality;
-  bool is_better_than_best_of_parents = offspring_quality + epsilon < best_of_parents_quality;
-  if (id_val >= 0 && id_val < static_cast<int>(mab_arm_stats_.size())) {
-    // Calculate reward based on your existing logic
-    double reward = 0.0;
-    if (is_better_than_best_feasible) {
-      reward = 8.0;
-    } else if (is_better_than_best_of_parents) {
-      double factor;
-      if (fabs(offspring_quality - best_feasible_quality) / (fabs(best_feasible_quality) + 1.0) >
-          1.0) {
-        factor = 1 / 3;
-      } else if (fabs(offspring_quality - best_feasible_quality) /
-                   (fabs(best_feasible_quality) + 1.0) >
-                 0.2) {
-        factor = 1 / 2;
-      } else {
-        factor = 1;
-      }
-      reward = factor * (max(0.1, 4.0 - (recombination_time_in_miliseconds / 2000)));
-    }
-
-    // Update statistics
-    mab_arm_stats_[id_val].num_pulls++;
-    mab_arm_stats_[id_val].last_reward = reward;
-
-    // Exponential recency-weighted average update: Q_new = Q_old + α(R - Q_old)
-    double prediction_error = reward - mab_arm_stats_[id_val].q_value;
-    mab_arm_stats_[id_val].q_value += mab_alpha_ * prediction_error;
-
-    CUOPT_LOG_DEBUG(
-      "MAB Reward Update: Arm " + std::to_string(id_val) + ", Reward: " + std::to_string(reward) +
-      ", is_better_than_best_of_parents: " + (is_better_than_best_of_parents ? "Yes" : "No") +
-      ", Better than best: " + (is_better_than_best_feasible ? "Yes" : "No") +
-      ", Pulls: " + std::to_string(mab_arm_stats_[id_val].num_pulls) +
-      ", Q Value: " + std::to_string(mab_arm_stats_[id_val].q_value));
-  } else {
-    CUOPT_LOG_ERROR("MAB: Attempted to add reward for invalid recombiner_id: " +
-                    std::to_string(id_val));
   }
 }
 

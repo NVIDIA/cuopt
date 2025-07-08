@@ -119,6 +119,8 @@ class recombiner_t {
     for (auto var : vec_remaining_indices) {
       if (vec_objective_coeffs[var] != 0) { objective_indices_in_subproblem.push_back(var); }
     }
+    // needed for set_difference
+    std::sort(objective_indices_in_subproblem.begin(), objective_indices_in_subproblem.end());
     CUOPT_LOG_DEBUG("n_objective_vars in different vars %d n_objective_vars %d",
                     objective_indices_in_subproblem.size(),
                     objective_indices.size());
@@ -143,6 +145,7 @@ class recombiner_t {
                vec_remaining_indices.data(),
                vec_remaining_indices.size(),
                a.handle_ptr->get_stream());
+
     return vec_remaining_indices.size();
   }
 
