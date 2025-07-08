@@ -62,4 +62,4 @@ jobs:
           apt-get install -y file
       - name: Test cuopt
         run: |
-          su cuopt -c "bash ./ci/docker/test_docker.sh"
+          bash ./ci/docker/test_docker.sh
