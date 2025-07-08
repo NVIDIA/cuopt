@@ -15,6 +15,7 @@
 
 import os
 import shutil
+import sys
 import time
 from subprocess import Popen
 from typing import Dict, List, Optional
@@ -310,7 +311,13 @@ def cuoptproc(request):
         "CUOPT_SERVER_PORT": "5555",
         "CUOPT_SERVER_LOG_LEVEL": "debug",
     }
-    cuoptmain = Popen([python_path, server_script], env=env)
+    cuoptmain = Popen(
+        [python_path, server_script],
+        env=env,
+        stderr=sys.stderr,
+        stdout=sys.stdout,
+    )
+
     spinup_wait()
 
     def shutdown():

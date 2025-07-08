@@ -59,7 +59,7 @@ jobs:
           fetch-depth: 0
       - name: Install dependencies
         run: |
-          apt-get install -y file
+          pip install --user psutil
       - name: Install pytest
         run: |
           su cuopt
@@ -88,9 +88,14 @@ jobs:
           python -m site
           python -c "import psutil; print(psutil.__version__)"
 
-          python -m cuopt_server.cuopt_service &
+          python -m cuopt_server.cuopt_service -p 5555 &
           sleep 10
           pkill -f cuopt_server.cuopt_service
+          
+          # Debug Popen directly
+          echo "=== Debugging Popen ==="
+          python debug_popen.py
+          
           python -m pytest python/cuopt_server/cuopt_server/tests/test_server.py
       - name: Download test data
         run: |
