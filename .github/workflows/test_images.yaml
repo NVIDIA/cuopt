@@ -63,6 +63,7 @@ jobs:
       - name: Install pytest
         run: |
           su cuopt
+          export HOME=/home/cuopt
           pip install --user pytest
       - name: Test CLI
         run: |
