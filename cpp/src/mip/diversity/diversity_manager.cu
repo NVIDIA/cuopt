@@ -710,12 +710,12 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
     min(sol1.get_quality(population.weights), sol2.get_quality(population.weights));
   mab_recombiner.add_mab_reward(recombine_stats.get_last_attempt(),
                                 best_quality_of_parents,
-                                population.best_feasible().get_quality(population.weights),
+                                population.best().get_quality(population.weights),
                                 offspring_qual,
                                 recombine_stats.get_last_recombiner_time());
   mab_ls.add_mab_reward(mab_ls_config_t<i_t, f_t>::last_ls_mab_option,
                         best_quality_of_parents,
-                        population.best_feasible().get_quality(population.weights),
+                        population.best().get_quality(population.weights),
                         offspring_qual,
                         mab_ls_config_t<i_t, f_t>::last_ls_time);
   if (context.settings.benchmark_info_ptr != nullptr) {
