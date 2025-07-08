@@ -17,6 +17,7 @@ import os
 import shutil
 import sys
 import time
+import subprocess
 from subprocess import Popen
 from typing import Dict, List, Optional
 
@@ -298,9 +299,14 @@ def spinup_wait():
         try:
             result = client.get("/cuopt/health")
             break
-        except Exception:
+        except Exception as e:
+            print(f"Attempt {count}: Failed to connect to server: {e}")
             time.sleep(1)
-    assert result.status_code == 200
+    
+    if result is None:
+        raise AssertionError("Server failed to start within 30 seconds")
+    
+    assert result.status_code == 200, f"Server health check failed with status {result.status_code}"
 
 
 @pytest.fixture(scope="session")
@@ -308,21 +314,64 @@ def cuoptproc(request):
     global cuoptmain
     import os
     import cuopt_server.cuopt_service
+    import site
 
     server_script = cuopt_server.cuopt_service.__file__
 
     # Determine the correct site-packages directory for PYTHONPATH
     if '/home/cuopt/' in server_script:
         cuopt_site_packages = os.path.dirname(os.path.dirname(server_script))
+        # Add user's local site-packages directory for psutil
+        user_site_packages = site.getusersitepackages()
+        # Also check if there's a .local/lib/python*/site-packages directory
+        home_dir = os.path.expanduser("~")
+        # Try to find the correct Python version
+        import sys
+        python_version = f"python{sys.version_info.major}.{sys.version_info.minor}"
+        local_site_packages = os.path.join(home_dir, ".local", "lib", python_version, "site-packages")
+        if os.path.exists(local_site_packages):
+            pythonpath = f"{cuopt_site_packages}:{user_site_packages}:{local_site_packages}"
+        else:
+            pythonpath = f"{cuopt_site_packages}:{user_site_packages}"
     else:
         cuopt_site_packages = os.path.dirname(os.path.dirname(server_script))
+        pythonpath = cuopt_site_packages
+    
     env = os.environ.copy()
     env.update({
         "CUOPT_SERVER_IP": "0.0.0.0",
         "CUOPT_SERVER_PORT": "5555",
         "CUOPT_SERVER_LOG_LEVEL": "debug",
-        "PYTHONPATH": cuopt_site_packages,
+        "PYTHONPATH": pythonpath,
     })
+    
+    print(f"Starting cuopt service with PYTHONPATH: {pythonpath}")
+    print(f"Python path: {python_path}")
+    print(f"Server script: {server_script}")
+    print(f"User site packages: {user_site_packages}")
+    print(f"Local site packages: {local_site_packages if 'local_site_packages' in locals() else 'Not found'}")
+    
+    # Test if psutil can be imported in the target environment
+    test_env = env.copy()
+    test_env['PYTHONPATH'] = pythonpath
+    try:
+        result = subprocess.run([python_path, '-c', 'import psutil; print("psutil import successful")'], 
+                              env=test_env, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            print("psutil import test passed")
+        else:
+            print(f"psutil import test failed: {result.stderr}")
+            # Try to install psutil if it's not found
+            print("Attempting to install psutil...")
+            install_result = subprocess.run([python_path, '-m', 'pip', 'install', '--user', 'psutil'], 
+                                          env=test_env, capture_output=True, text=True, timeout=30)
+            if install_result.returncode == 0:
+                print("psutil installation successful")
+            else:
+                print(f"psutil installation failed: {install_result.stderr}")
+    except Exception as e:
+        print(f"psutil import test exception: {e}")
+    
     cuoptmain = Popen(
         [python_path, server_script],
         env=env,
