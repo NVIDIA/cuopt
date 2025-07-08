@@ -14,9 +14,10 @@
 # limitations under the License.
 
 import os
+import signal
 import shutil
 import time
-from subprocess import Popen
+from subprocess import Popen, TimeoutExpired
 from typing import Dict, List, Optional
 
 import pytest
@@ -288,6 +289,31 @@ server_module = "cuopt_server.cuopt_service"
 python_path = shutil.which("python")
 
 
+def cleanup_cuopt_process():
+    """Clean up the cuopt process if it's still running"""
+    global cuoptmain
+    if cuoptmain and cuoptmain.poll() is None:
+        print("Cleaning up cuopt service...")
+        cuoptmain.terminate()
+        try:
+            cuoptmain.wait(timeout=5)
+        except TimeoutExpired:
+            print("Force killing cuopt service...")
+            cuoptmain.kill()
+            cuoptmain.wait()
+
+
+def signal_handler(signum, frame):
+    """Handle interrupt signals to ensure cleanup"""
+    cleanup_cuopt_process()
+    exit(1)
+
+
+# Register signal handlers for cleanup
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+
 def spinup_wait():
     client = RequestClient()
     count = 0
@@ -318,7 +344,7 @@ def cuoptproc(request):
     spinup_wait()
 
     def shutdown():
-        cuoptmain.wait()
+        cleanup_cuopt_process()
 
     request.addfinalizer(shutdown)
 

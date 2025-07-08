@@ -19,9 +19,9 @@
 su cuopt -c "pip install --user pytest"
 
 # Download test data
-su cuopt -c "bash datasets/linear_programming/download_pdlp_test_dataset.sh"
-su cuopt -c "bash datasets/mip/download_miplib_test_dataset.sh"
-su cuopt -c "cd datasets && ./get_test_data.sh --solomon && ./get_test_data.sh --tsp && cd -"
+bash datasets/linear_programming/download_pdlp_test_dataset.sh
+bash datasets/mip/download_miplib_test_dataset.sh
+cd datasets && ./get_test_data.sh --solomon && ./get_test_data.sh --tsp && cd -
 
 # Test CLI
 echo "Testing CLI"
