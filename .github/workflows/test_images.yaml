@@ -57,6 +57,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          apt-get install -y file
       - name: Install pytest
         run: |
           su cuopt
@@ -88,7 +91,7 @@ jobs:
           python -m cuopt_server.cuopt_service &
           sleep 10
           pkill -f cuopt_server.cuopt_service
-          #python -m pytest python/cuopt_server/cuopt_server/tests/test_server.py
+          python -m pytest python/cuopt_server/cuopt_server/tests/test_server.py
       - name: Download test data
         run: |
           su cuopt
