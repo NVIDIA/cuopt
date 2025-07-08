@@ -282,7 +282,9 @@ def cuopt_service_sync(
 # Fixture and client to allow full cuopt service
 # to run as a separate process for multiple tests
 cuoptmain = None
-server_script = cuopt_service.__file__
+# Use module name instead of file path to ensure we use the installed package
+server_script = "-m"
+server_module = "cuopt_server.cuopt_service"
 python_path = shutil.which("python")
 
 
@@ -311,8 +313,8 @@ def cuoptproc(request):
         "CUOPT_SERVER_LOG_LEVEL": "debug",
     }
     print(f"Starting cuopt service with PYTHONPATH: {python_path}")
-    print(f"Server script: {server_script}")
-    cuoptmain = Popen([python_path, server_script], env=env)
+    print(f"Server module: {server_module}")
+    cuoptmain = Popen([python_path, server_script, server_module], env=env)
     spinup_wait()
 
     def shutdown():
