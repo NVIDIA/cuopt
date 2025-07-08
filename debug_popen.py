@@ -30,17 +30,24 @@ print(f'python_path: {python_path}')
 print(f'server_script: {server_script}')
 print(f'sys.executable: {sys.executable}')
 
-# Get the user's site-packages directory
-user_site_packages = site.getusersitepackages()
-print(f'user_site_packages: {user_site_packages}')
+# Determine the correct site-packages directory
+if '/home/cuopt/' in server_script:
+    # In GitHub Actions environment, the server script is in cuopt user's site-packages
+    # Extract the site-packages directory from the server script path
+    cuopt_site_packages = os.path.dirname(os.path.dirname(server_script))
+    print(f'Detected cuopt user environment, using: {cuopt_site_packages}')
+else:
+    # In local development environment, use the current environment's site-packages
+    cuopt_site_packages = os.path.dirname(os.path.dirname(server_script))
+    print(f'Using current environment site-packages: {cuopt_site_packages}')
 
-# Set up environment with PYTHONPATH to include user site-packages
+# Set up environment with PYTHONPATH to include the correct site-packages
 env = os.environ.copy()
 env.update({
     'CUOPT_SERVER_IP': '0.0.0.0',
     'CUOPT_SERVER_PORT': '5555',
     'CUOPT_SERVER_LOG_LEVEL': 'debug',
-    'PYTHONPATH': user_site_packages,
+    'PYTHONPATH': cuopt_site_packages,
 })
 
 print(f'Environment: {env}')
