@@ -96,9 +96,18 @@ int8_t cuOptGetIntSize();
 /**
  * @brief Get the version of the library.
  *
- * @return The version of the library.
+ * @param[out] version_major - A pointer to a cuopt_int_t that will contain the major version
+ * number.
+ * @param[out] version_minor - A pointer to a cuopt_int_t that will contain the minor version
+ * number.
+ * @param[out] version_patch - A pointer to a cuopt_int_t that will contain the patch version
+ * number.
+ *
+ * @return A status code indicating success or failure.
  */
-const char* cuOptGetVersion();
+cuopt_int_t cuOptGetVersion(cuopt_int_t* version_major,
+                            cuopt_int_t* version_minor,
+                            cuopt_int_t* version_patch);
 
 /**
  * @brief Read an optimization problem from an MPS file.

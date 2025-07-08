@@ -61,16 +61,17 @@ int8_t cuOptGetFloatSize() { return sizeof(cuopt_float_t); }
 
 int8_t cuOptGetIntSize() { return sizeof(cuopt_int_t); }
 
-const char* cuOptGetVersion()
+cuopt_int_t cuOptGetVersion(cuopt_int_t* version_major,
+                            cuopt_int_t* version_minor,
+                            cuopt_int_t* version_patch)
 {
-  static char version[64];
-  std::snprintf(version,
-                sizeof(version),
-                "cuOpt %d.%d.%d",
-                CUOPT_VERSION_MAJOR,
-                CUOPT_VERSION_MINOR,
-                CUOPT_VERSION_PATCH);
-  return version;
+  if (version_major == nullptr || version_minor == nullptr || version_patch == nullptr) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  *version_major = CUOPT_VERSION_MAJOR;
+  *version_minor = CUOPT_VERSION_MINOR;
+  *version_patch = CUOPT_VERSION_PATCH;
+  return CUOPT_SUCCESS;
 }
 
 cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* problem_ptr)
