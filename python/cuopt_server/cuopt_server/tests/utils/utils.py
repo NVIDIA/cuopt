@@ -313,10 +313,8 @@ def spinup_wait():
 def cuoptproc(request):
     global cuoptmain
     import os
-    import cuopt_server.cuopt_service
     import site
 
-    server_script = cuopt_server.cuopt_service.__file__
 
     # Determine the correct site-packages directory for PYTHONPATH
     user_site_packages = site.getusersitepackages()
