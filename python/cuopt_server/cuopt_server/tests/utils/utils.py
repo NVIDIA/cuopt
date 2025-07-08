@@ -310,6 +310,8 @@ def cuoptproc(request):
         "CUOPT_SERVER_PORT": "5555",
         "CUOPT_SERVER_LOG_LEVEL": "debug",
     }
+    print(f"Starting cuopt service with PYTHONPATH: {python_path}")
+    print(f"Server script: {server_script}")
     cuoptmain = Popen([python_path, server_script], env=env)
     spinup_wait()
 
