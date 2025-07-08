@@ -306,11 +306,23 @@ def spinup_wait():
 @pytest.fixture(scope="session")
 def cuoptproc(request):
     global cuoptmain
-    env = {
+    import os
+    import cuopt_server.cuopt_service
+
+    server_script = cuopt_server.cuopt_service.__file__
+
+    # Determine the correct site-packages directory for PYTHONPATH
+    if '/home/cuopt/' in server_script:
+        cuopt_site_packages = os.path.dirname(os.path.dirname(server_script))
+    else:
+        cuopt_site_packages = os.path.dirname(os.path.dirname(server_script))
+    env = os.environ.copy()
+    env.update({
         "CUOPT_SERVER_IP": "0.0.0.0",
         "CUOPT_SERVER_PORT": "5555",
         "CUOPT_SERVER_LOG_LEVEL": "debug",
-    }
+        "PYTHONPATH": cuopt_site_packages,
+    })
     cuoptmain = Popen(
         [python_path, server_script],
         env=env,
