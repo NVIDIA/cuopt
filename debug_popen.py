@@ -19,6 +19,8 @@
 import subprocess
 import shutil
 import sys
+import os
+import site
 import cuopt_server.cuopt_service
 
 python_path = shutil.which('python')
@@ -28,11 +30,18 @@ print(f'python_path: {python_path}')
 print(f'server_script: {server_script}')
 print(f'sys.executable: {sys.executable}')
 
-env = {
+# Get the user's site-packages directory
+user_site_packages = site.getusersitepackages()
+print(f'user_site_packages: {user_site_packages}')
+
+# Set up environment with PYTHONPATH to include user site-packages
+env = os.environ.copy()
+env.update({
     'CUOPT_SERVER_IP': '0.0.0.0',
     'CUOPT_SERVER_PORT': '5555',
     'CUOPT_SERVER_LOG_LEVEL': 'debug',
-}
+    'PYTHONPATH': user_site_packages,
+})
 
 print(f'Environment: {env}')
 
