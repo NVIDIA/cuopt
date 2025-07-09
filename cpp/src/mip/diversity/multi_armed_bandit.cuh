@@ -26,7 +26,7 @@
 namespace cuopt::linear_programming::detail {
 
 constexpr double recombiner_alpha = 0.05;
-constexpr double ls_alpha         = 0.01;
+constexpr double ls_alpha         = 0.03;
 
 template <typename i_t, typename f_t>
 struct mab_ls_config_t {
@@ -62,7 +62,7 @@ i_t mab_ls_config_t<i_t, f_t>::last_ls_mab_option = 0;
 struct ls_work_normalized_reward_t {
   int option_id;
   static constexpr double reward_per_option[mab_ls_config_t<int, double>::n_of_configs] = {
-    0.5, 0.3, 0.2, 0.1};
+    0.5, 0.25, 0.125, 0.05};
   ls_work_normalized_reward_t(int option_id) : option_id(option_id) {}
 
   double operator()(double factor) const { return factor * reward_per_option[option_id]; }
@@ -87,9 +87,9 @@ struct mab_t {
   mab_t(int n_arms, int seed, double alpha, std::string bandit_name);
   // Enhanced statistics structure for UCB with exponential recency weighting
   struct mab_arm_stats_t {
-    int num_pulls      = 0;     // Number of times this arm was selected
-    double q_value     = 0.02;  // Exponential recency-weighted average estimate
-    double last_reward = 0.0;   // Last reward received (for debugging)
+    int num_pulls      = 0;    // Number of times this arm was selected
+    double q_value     = 0.5;  // Exponential recency-weighted average estimate
+    double last_reward = 0.0;  // Last reward received (for debugging)
   };
   std::vector<mab_arm_stats_t> mab_arm_stats_;
   double mab_epsilon_ = 0.15;   // Probability of exploration in Epsilon-Greedy.
