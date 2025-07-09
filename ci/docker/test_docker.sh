@@ -21,20 +21,25 @@ set -euo pipefail
 su cuopt -c "pip install --user pytest pexpect"
 
 # Download test data
-bash datasets/linear_programming/download_pdlp_test_dataset.sh
-bash datasets/mip/download_miplib_test_dataset.sh
+#bash datasets/linear_programming/download_pdlp_test_dataset.sh
+#bash datasets/mip/download_miplib_test_dataset.sh
+#cd datasets && ./get_test_data.sh --solomon && ./get_test_data.sh --tsp && cd -
+
 ln -sf "$(pwd)" /home/cuopt/cuopt
 
 
 
 # Test CLI
-echo "Testing CLI"
-su - cuopt -c "cd cuopte && export RAPIDS_DATASET_ROOT_DIR=$(realpath datasets) && bash python/libcuopt/libcuopt/tests/test_cli.sh"
+echo "----------------- CLI TEST START ---------------"
+su - cuopt -c "cd cuopt && export PATH=$PATH:/home/cuopt/.local/bin && export RAPIDS_DATASET_ROOT_DIR=$(realpath datasets) && bash python/libcuopt/libcuopt/tests/test_cli.sh"
+echo "----------------- CLI TEST END ---------------"
 
 # Test cuopt
-echo "Testing cuopt"
+echo "----------------- CUOPT TEST START ---------------"
 su - cuopt -c "cd cuopt && RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt/cuopt/tests/"
+echo "----------------- CUOPT TEST END ---------------"
 
 # Test cuopt server
-echo "Testing cuopt server"
-su - cuopt -c "cd cuopt && RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt_server/cuopt_server/tests/test_server.py"
+echo "----------------- CUOPT SERVER TEST START ---------------"
+su - cuopt -c "cd cuopt && RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt_server/cuopt_server/tests/"
+echo "----------------- CUOPT SERVER TEST END ---------------"
