@@ -19,10 +19,14 @@
 
 #include <mip/local_search/local_search.cuh>
 
+#include <algorithm>
 #include <random>
 #include <vector>
 
 namespace cuopt::linear_programming::detail {
+
+constexpr double recombiner_alpha = 0.05;
+constexpr double ls_alpha         = 0.01;
 
 template <typename i_t, typename f_t>
 struct mab_ls_config_t {
@@ -43,23 +47,49 @@ struct mab_ls_config_t {
       ls_config.ls_method    = ls_method_t::FJ_ANNEALING;
       ls_config.n_local_mins = ls_local_mins[lm_id];
     }
+    mab_ls_config_t<i_t, f_t>::last_lm_config     = lm_id;
+    mab_ls_config_t<i_t, f_t>::last_ls_mab_option = config_id;
   }
-  static f_t last_ls_time;
+  static i_t last_lm_config;
   static i_t last_ls_mab_option;
 };
 
 template <typename i_t, typename f_t>
-f_t mab_ls_config_t<i_t, f_t>::last_ls_time = 0.0;
+i_t mab_ls_config_t<i_t, f_t>::last_lm_config = 0;
 template <typename i_t, typename f_t>
 i_t mab_ls_config_t<i_t, f_t>::last_ls_mab_option = 0;
 
+struct ls_work_normalized_reward_t {
+  int option_id;
+  static constexpr double reward_per_option[mab_ls_config_t<int, double>::n_of_configs] = {
+    0.5, 0.3, 0.2, 0.1};
+  ls_work_normalized_reward_t(int option_id) : option_id(option_id) {}
+
+  double operator()(double factor) const { return factor * reward_per_option[option_id]; }
+};
+
+struct recombiner_work_normalized_reward_t {
+  double time_in_miliseconds;
+  recombiner_work_normalized_reward_t(double time_in_miliseconds)
+    : time_in_miliseconds(time_in_miliseconds)
+  {
+  }
+
+  double operator()(double factor) const
+  {
+    // normal recombiners take 2 seconds
+    // FIXME: adjust the 4000ms with recombiner config value
+    return factor * (std::max(0.1, 1.0 - (time_in_miliseconds / 4000)));
+  }
+};
+
 struct mab_t {
-  mab_t(int n_arms, int seed, std::string bandit_name);
+  mab_t(int n_arms, int seed, double alpha, std::string bandit_name);
   // Enhanced statistics structure for UCB with exponential recency weighting
   struct mab_arm_stats_t {
-    int num_pulls      = 0;    // Number of times this arm was selected
-    double q_value     = 0.5;  // Exponential recency-weighted average estimate
-    double last_reward = 0.0;  // Last reward received (for debugging)
+    int num_pulls      = 0;     // Number of times this arm was selected
+    double q_value     = 0.02;  // Exponential recency-weighted average estimate
+    double last_reward = 0.0;   // Last reward received (for debugging)
   };
   std::vector<mab_arm_stats_t> mab_arm_stats_;
   double mab_epsilon_ = 0.15;   // Probability of exploration in Epsilon-Greedy.
@@ -71,11 +101,12 @@ struct mab_t {
 
   // --- MAB Helper Methods ---
   int select_mab_option();
-  void add_mab_reward(int recombiner_id,
+  template <typename Func>
+  void add_mab_reward(int option_id,
                       double best_of_parents_quality,
                       double best_feasible_quality,
                       double offspring_quality,
-                      double recombination_time_in_miliseconds);
+                      Func work_normalized_reward);
   int select_ucb_arm();
   int select_epsilon_greedy_arm();
 };

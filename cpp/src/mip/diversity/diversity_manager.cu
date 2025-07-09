@@ -71,8 +71,9 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                             context.problem_ptr->handle_ptr),
     rng(cuopt::seed_generator::get_seed()),
     stats(context.stats),
-    mab_recombiner(recombiner_enum_t::SIZE, cuopt::seed_generator::get_seed(), "recombiner"),
-    mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), "ls")
+    mab_recombiner(
+      recombiner_enum_t::SIZE, cuopt::seed_generator::get_seed(), recombiner_alpha, "recombiner"),
+    mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), ls_alpha, "ls")
 {
   // Read configuration ID from environment variable
   int max_config = -1;
@@ -111,11 +112,7 @@ void diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solut
 {
   i_t ls_mab_option = mab_ls.select_mab_option();
   mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
-  std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
   ls.run_local_search(solution, weights, timer, ls_config);
-  mab_ls_config_t<i_t, f_t>::last_ls_time =
-    std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time).count();
-  mab_ls_config_t<i_t, f_t>::last_ls_mab_option = ls_mab_option;
 }
 
 // There should be at least 3 solutions in the population
@@ -658,7 +655,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
                                   std::numeric_limits<double>::lowest(),
                                   std::numeric_limits<double>::lowest(),
                                   std::numeric_limits<double>::max(),
-                                  0.0);
+                                  recombiner_work_normalized_reward_t(0.0));
     return std::make_pair(solution_t<i_t, f_t>(sol1), solution_t<i_t, f_t>(sol2));
   }
   cuopt_assert(population.test_invariant(), "");
@@ -708,16 +705,17 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
     offspring_qual, sol1.get_quality(population.weights), sol2.get_quality(population.weights));
   f_t best_quality_of_parents =
     min(sol1.get_quality(population.weights), sol2.get_quality(population.weights));
-  mab_recombiner.add_mab_reward(recombine_stats.get_last_attempt(),
-                                best_quality_of_parents,
-                                population.best().get_quality(population.weights),
-                                offspring_qual,
-                                recombine_stats.get_last_recombiner_time());
+  mab_recombiner.add_mab_reward(
+    recombine_stats.get_last_attempt(),
+    best_quality_of_parents,
+    population.best().get_quality(population.weights),
+    offspring_qual,
+    recombiner_work_normalized_reward_t(recombine_stats.get_last_recombiner_time()));
   mab_ls.add_mab_reward(mab_ls_config_t<i_t, f_t>::last_ls_mab_option,
                         best_quality_of_parents,
                         population.best().get_quality(population.weights),
                         offspring_qual,
-                        mab_ls_config_t<i_t, f_t>::last_ls_time);
+                        ls_work_normalized_reward_t(mab_ls_config_t<i_t, f_t>::last_lm_config));
   if (context.settings.benchmark_info_ptr != nullptr) {
     check_better_than_both(offspring, sol1, sol2);
     check_better_than_both(lp_offspring, sol1, sol2);
