@@ -274,18 +274,18 @@ void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
     CUOPT_LOG_DEBUG("Best solution is infeasible, adjusting weights");
     // if not the case, adjust the weights such that the best is feasible
     f_t weighted_violation_of_best = best().get_quality(weights) - best().get_objective();
-    CUOPT_LOG_INFO("weighted_violation_of_best %f quality %f objective %f\n",
-                   weighted_violation_of_best,
-                   best().get_quality(weights),
-                   best().get_objective());
+    CUOPT_LOG_DEBUG("weighted_violation_of_best %f quality %f objective %f\n",
+                    weighted_violation_of_best,
+                    best().get_quality(weights),
+                    best().get_objective());
     cuopt_assert(weighted_violation_of_best > 1e-10, "Weighted violation of best is not positive");
     // fixme
     weighted_violation_of_best = max(weighted_violation_of_best, 1e-10);
     f_t quality_difference     = best_feasible().get_quality(weights) - best().get_quality(weights);
-    CUOPT_LOG_INFO("quality_difference %f best_feasible_quality %f best_quality %f",
-                   quality_difference,
-                   best_feasible().get_quality(weights),
-                   best().get_quality(weights));
+    CUOPT_LOG_DEBUG("quality_difference %f best_feasible_quality %f best_quality %f",
+                    quality_difference,
+                    best_feasible().get_quality(weights),
+                    best().get_quality(weights));
     if (quality_difference < 1e-10) { return; }
     // make the current best infeasible 10% worse than feasible
     f_t increase_ratio = (quality_difference * 1.1) / weighted_violation_of_best;
