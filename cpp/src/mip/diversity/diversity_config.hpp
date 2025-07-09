@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
+ * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights
  * reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,6 +39,7 @@ struct diversity_config_t {
   static constexpr double lp_run_time_if_feasible            = 15.;
   static constexpr double lp_run_time_if_infeasible          = 1;
   static constexpr double close_to_parents_ratio             = 0.1;
+  static constexpr bool halve_population                     = false;
 };
 
 }  // namespace cuopt::linear_programming::detail

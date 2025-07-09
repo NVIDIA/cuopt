@@ -108,27 +108,13 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
   fj_settings.feasibility_run = false;
   fj.set_fj_settings(fj_settings);
   fj.copy_weights(weights, solution.handle_ptr);
-  // cuopt_func_call(bool is_feasible_before_search = solution.get_feasible());
   bool is_feas;
   i_t rd = std::uniform_int_distribution(0, 1)(rng);
   if (rd == 0 && lp_optimal_exists) {
     is_feas = run_fj_line_segment(solution, timer);
-    // cuopt_assert(!is_feasible_before_search || is_feas,
-    //              "Line segment search should not change feasibility");
   } else {
-    // solution_t<i_t, f_t> solution_before_annealing(solution);
-    // bool is_feasible_before_annealing = solution.get_feasible();
     is_feas = run_fj_annealing(solution, timer, baseline_objective);
-    // we should remove this logic once, FJ is fixed
-    // if (is_feasible_before_annealing && !solution.get_feasible()) {
-    //   solution.copy_from(solution_before_annealing);
-    //   solution.handle_ptr->sync_stream();
-    // }
-    // cuopt_func_call(bool is_feasible_after_annealing = solution.get_feasible());
-    // cuopt_assert(!is_feasible_before_search || is_feasible_after_annealing,
-    //              "Annealing should not change feasibility");
   }
-  // TODO add a test for the quality improvement too
   return is_feas;
 }
 

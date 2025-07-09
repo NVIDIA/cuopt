@@ -565,8 +565,8 @@ void diversity_manager_t<i_t, f_t>::main_loop()
     if (timer.check_time_limit()) { break; }
     diversity_step();
     if (timer.check_time_limit()) { break; }
-    bool halve_population = false;
-    if (halve_population) {
+
+    if (diversity_config_t::halve_population) {
       population.adjust_threshold(timer);
       i_t prev_threshold = population.var_threshold;
       population.halve_the_population();
@@ -604,7 +604,7 @@ void diversity_manager_t<i_t, f_t>::check_better_than_both(solution_t<i_t, f_t>&
   bool better_than_both = false;
   if (sol1.get_feasible() && sol2.get_feasible()) {
     better_than_both = offspring.get_objective() <
-                       (min(sol1.get_objective(), sol2.get_objective()) - OBJECTIVE_EPSILON);
+                       (std::min(sol1.get_objective(), sol2.get_objective()) - OBJECTIVE_EPSILON);
   } else if (sol1.get_feasible()) {
     better_than_both = offspring.get_objective() < (sol1.get_objective() - OBJECTIVE_EPSILON);
   } else if (sol2.get_feasible()) {
@@ -629,7 +629,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
                   sol1.get_feasible(),
                   sol2.get_quality(population.weights),
                   sol2.get_feasible());
-  double best_of_parents            = min(sol1.get_objective(), sol2.get_objective());
+  double best_of_parents            = std::min(sol1.get_objective(), sol2.get_objective());
   bool at_least_one_parent_feasible = sol1.get_feasible() || sol2.get_feasible();
   // randomly choose among 3 recombiners
   auto [offspring, success] = recombine(sol1, sol2);
@@ -686,11 +686,12 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   f_t offspring_qual = std::min(offspring.get_quality(population.weights), lp_qual);
   recombine_stats.update_improve_stats(
     offspring_qual, sol1.get_quality(population.weights), sol2.get_quality(population.weights));
-  add_mab_reward(recombine_stats.get_last_attempt(),
-                 min(sol1.get_quality(population.weights), sol2.get_quality(population.weights)),
-                 population.best_feasible().get_quality(population.weights),
-                 offspring_qual,
-                 recombine_stats.get_last_recombiner_time());
+  add_mab_reward(
+    recombine_stats.get_last_attempt(),
+    std::min(sol1.get_quality(population.weights), sol2.get_quality(population.weights)),
+    population.best_feasible().get_quality(population.weights),
+    offspring_qual,
+    recombine_stats.get_last_recombiner_time());
   if (context.settings.benchmark_info_ptr != nullptr) {
     check_better_than_both(offspring, sol1, sol2);
     check_better_than_both(lp_offspring, sol1, sol2);
@@ -848,7 +849,7 @@ void diversity_manager_t<i_t, f_t>::add_mab_reward(recombiner_enum_t recombiner_
                                                    double recombination_time_in_miliseconds)
 {
   int id_val                          = static_cast<int>(recombiner_id);
-  double epsilon                      = max(1e-6, 1e-4 * fabs(best_feasible_quality));
+  double epsilon                      = std::max(1e-6, 1e-4 * std::abs(best_feasible_quality));
   bool is_better_than_best_feasible   = offspring_quality + epsilon < best_feasible_quality;
   bool is_better_than_best_of_parents = offspring_quality + epsilon < best_of_parents_quality;
   if (id_val >= 0 && id_val < static_cast<int>(mab_arm_stats_.size())) {
@@ -858,17 +859,18 @@ void diversity_manager_t<i_t, f_t>::add_mab_reward(recombiner_enum_t recombiner_
       reward = 8.0;
     } else if (is_better_than_best_of_parents) {
       double factor;
-      if (fabs(offspring_quality - best_feasible_quality) / (fabs(best_feasible_quality) + 1.0) >
+      if (std::abs(offspring_quality - best_feasible_quality) /
+            (std::abs(best_feasible_quality) + 1.0) >
           1.0) {
         factor = 1 / 3;
-      } else if (fabs(offspring_quality - best_feasible_quality) /
-                   (fabs(best_feasible_quality) + 1.0) >
+      } else if (std::abs(offspring_quality - best_feasible_quality) /
+                   (std::abs(best_feasible_quality) + 1.0) >
                  0.2) {
         factor = 1 / 2;
       } else {
         factor = 1;
       }
-      reward = factor * (max(0.1, 4.0 - (recombination_time_in_miliseconds / 2000)));
+      reward = factor * (std::max(0.1, 4.0 - (recombination_time_in_miliseconds / 2000)));
     }
 
     // Update statistics

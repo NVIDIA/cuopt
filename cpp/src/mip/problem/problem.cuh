@@ -29,6 +29,8 @@
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
+#include "host_helper.cuh"
+#include "problem_fixing.cuh"
 
 #include <utilities/macros.cuh>
 
@@ -268,6 +270,7 @@ class problem_t {
   // 2. Integer fixed problem: this is useful as the problem structure
   // is always the same and only the RHS changes. Using this helps in warm start.
   lp_state_t<i_t, f_t> lp_state;
+  problem_fixing_helpers_t<i_t, f_t> fixing_helpers;
 };
 
 }  // namespace linear_programming::detail
