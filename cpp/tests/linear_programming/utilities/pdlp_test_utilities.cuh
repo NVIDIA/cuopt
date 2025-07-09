@@ -32,7 +32,7 @@
 namespace cuopt::linear_programming::test {
 constexpr double tolerance = 1e-6f;
 
-std::string make_path_absolute(const std::string& file)
+static std::string make_path_absolute(const std::string& file)
 {
   std::string rel_file{};
   // assume relative paths are relative to RAPIDS_DATASET_ROOT_DIR

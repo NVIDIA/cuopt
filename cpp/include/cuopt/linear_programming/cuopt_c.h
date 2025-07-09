@@ -94,6 +94,22 @@ int8_t cuOptGetFloatSize();
 int8_t cuOptGetIntSize();
 
 /**
+ * @brief Get the version of the library.
+ *
+ * @param[out] version_major - A pointer to a cuopt_int_t that will contain the major version
+ * number.
+ * @param[out] version_minor - A pointer to a cuopt_int_t that will contain the minor version
+ * number.
+ * @param[out] version_patch - A pointer to a cuopt_int_t that will contain the patch version
+ * number.
+ *
+ * @return A status code indicating success or failure.
+ */
+cuopt_int_t cuOptGetVersion(cuopt_int_t* version_major,
+                            cuopt_int_t* version_minor,
+                            cuopt_int_t* version_patch);
+
+/**
  * @brief Read an optimization problem from an MPS file.
  *
  * @param[in] filename - The path to the MPS file.
@@ -655,6 +671,18 @@ cuopt_int_t cuOptGetSolutionBound(cuOptSolution solution, cuopt_float_t* solutio
  * @return A status code indicating success or failure.
  */
 cuopt_int_t cuOptGetDualSolution(cuOptSolution solution, cuopt_float_t* dual_solution_ptr);
+
+/** @brief Get the dual objective value of an optimization problem.
+ *
+ * @param[in] solution - The solution object.
+ *
+ * @param[in, out] dual_objective_value_ptr - A pointer to a cuopt_float_t that will contain the
+ * dual objective value.
+ *
+ * @return A status code indicating success or failure.
+ */
+cuopt_int_t cuOptGetDualObjectiveValue(cuOptSolution solution,
+                                       cuopt_float_t* dual_objective_value_ptr);
 
 /** @brief Get the reduced costs of an optimization problem.
  *

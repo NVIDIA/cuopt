@@ -96,14 +96,14 @@ template <typename i_t, typename f_t>
 f_t compute_user_objective(const lp_problem_t<i_t, f_t>& lp, const std::vector<f_t>& x)
 {
   const f_t obj      = compute_objective(lp, x);
-  const f_t user_obj = obj * lp.obj_scale + lp.obj_constant;
+  const f_t user_obj = compute_user_objective(lp, obj);
   return user_obj;
 }
 
 template <typename i_t, typename f_t>
 f_t compute_user_objective(const lp_problem_t<i_t, f_t>& lp, f_t obj)
 {
-  const f_t user_obj = obj * lp.obj_scale + lp.obj_constant;
+  const f_t user_obj = lp.obj_scale * (obj + lp.obj_constant);
   return user_obj;
 }
 
