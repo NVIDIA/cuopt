@@ -31,7 +31,9 @@ su cuopt -c "export RAPIDS_DATASET_ROOT_DIR=$(realpath datasets) && bash python/
 echo "Testing cuopt"
 su cuopt -c "RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt/cuopt/tests/routing/test_vehicle_routing.py"
 su cuopt -c "RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt/cuopt/tests/linear_programming/test_lp_solver.py::test_solver"
+su cuopt -c "RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt/cuopt/tests/"
 
 # Test cuopt server
 echo "Testing cuopt server"
 su cuopt -c "RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt_server/cuopt_server/tests/test_server.py"
+su cuopt -c "RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt_server/cuopt_server/tests/"

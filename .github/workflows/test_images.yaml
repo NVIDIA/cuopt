@@ -59,7 +59,7 @@ jobs:
           fetch-depth: 0
       - name: Install dependencies
         run: |
-          apt-get install -y file
+          apt-get install -y file bzip2 gcc
       - name: Test cuopt
         run: |
           bash ./ci/docker/test_docker.sh
