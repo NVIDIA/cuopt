@@ -67,19 +67,26 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
 
   // Set variables bounds to default if not set and constraints bounds if user has set a row type
   set_bounds_if_not_set(*this);
+
+  const bool is_mip = original_problem_ptr->get_problem_category() != problem_category_t::LP;
+  if (is_mip) {
+    variable_types =
+      rmm::device_uvector<var_t>(problem_.get_variable_types(), handle_ptr->get_stream());
+    // round bounds to integer for integer variables, note: do this before checking sanity
+    round_bounds(*this);
+  }
+
   // check bounds sanity before, so that we can throw exceptions before going into asserts
   check_bounds_sanity(*this);
+
   // Check before any modifications
   check_problem_representation(false, false);
   // If maximization problem, convert the problem
   if (maximize) convert_to_maximization_problem(*this);
 
-  const bool is_mip = original_problem_ptr->get_problem_category() != problem_category_t::LP;
   if (is_mip) {
     // Resize what is needed for MIP
     raft::common::nvtx::range scope("trivial_presolve");
-    variable_types =
-      rmm::device_uvector<var_t>(problem_.get_variable_types(), handle_ptr->get_stream());
     integer_indices.resize(n_variables, handle_ptr->get_stream());
     is_binary_variable.resize(n_variables, handle_ptr->get_stream());
     compute_n_integer_vars();
@@ -93,7 +100,9 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
 }
 
 template <typename i_t, typename f_t>
-problem_t<i_t, f_t>::problem_t(const optimization_problem_t<i_t, f_t>& problem_)
+problem_t<i_t, f_t>::problem_t(
+  const optimization_problem_t<i_t, f_t>& problem_,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_)
   : original_problem_ptr(&problem_),
     handle_ptr(problem_.get_handle_ptr()),
     n_variables(problem_.get_n_variables()),
@@ -129,7 +138,8 @@ problem_t<i_t, f_t>::problem_t(const optimization_problem_t<i_t, f_t>& problem_)
     related_variables_offsets(n_variables, problem_.get_handle_ptr()->get_stream()),
     var_names(problem_.get_variable_names()),
     row_names(problem_.get_row_names()),
-    objective_name(problem_.get_objective_name())
+    objective_name(problem_.get_objective_name()),
+    tolerances(tolerances_)
 {
   op_problem_cstr_body(problem_);
   branch_and_bound_callback = nullptr;
@@ -1430,7 +1440,7 @@ void problem_t<i_t, f_t>::get_host_user_problem(
 template <typename i_t, typename f_t>
 f_t problem_t<i_t, f_t>::get_user_obj_from_solver_obj(f_t solver_obj)
 {
-  return solver_obj * presolve_data.objective_scaling_factor + presolve_data.objective_offset;
+  return presolve_data.objective_scaling_factor * (solver_obj + presolve_data.objective_offset);
 }
 
 #if MIP_INSTANTIATE_FLOAT

@@ -566,6 +566,7 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
   if (output_feasible) {
     // TODO we can streamline these info in class
     f_t rel_mip_gap                  = compute_rel_mip_gap(h_user_obj, stats.solution_bound);
+    f_t abs_mip_gap                  = fabs(h_user_obj - stats.solution_bound);
     f_t solution_bound               = stats.solution_bound;
     f_t max_constraint_violation     = compute_max_constraint_violation();
     f_t max_int_violation            = compute_max_int_violation();
@@ -590,9 +591,11 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
       max_variable_bound_violation,
       num_nodes,
       num_simplex_iterations);
-    const double optimality_threshold = problem_ptr->tolerances.relative_mip_gap;
-    auto term_reason = rel_mip_gap > optimality_threshold ? mip_termination_status_t::FeasibleFound
-                                                          : mip_termination_status_t::Optimal;
+
+    const bool not_optimal = rel_mip_gap > problem_ptr->tolerances.relative_mip_gap &&
+                             abs_mip_gap > problem_ptr->tolerances.absolute_mip_gap;
+    auto term_reason =
+      not_optimal ? mip_termination_status_t::FeasibleFound : mip_termination_status_t::Optimal;
     if (is_problem_fully_reduced) { term_reason = mip_termination_status_t::Optimal; }
     return mip_solution_t<i_t, f_t>(std::move(assignment),
                                     problem_ptr->var_names,

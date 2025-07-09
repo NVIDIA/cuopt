@@ -169,7 +169,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
 
     // have solve, problem, solution, utils etc. in common dir
-    detail::problem_t<i_t, f_t> problem(op_problem);
+    detail::problem_t<i_t, f_t> problem(op_problem, settings.get_tolerances());
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       problem.write_as_mps(settings.user_problem_file);

@@ -54,7 +54,8 @@ constexpr bool USE_REL_TOLERANCE   = true;
 template <typename i_t, typename f_t>
 class problem_t {
  public:
-  problem_t(const optimization_problem_t<i_t, f_t>& problem);
+  problem_t(const optimization_problem_t<i_t, f_t>& problem,
+            const typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_ = {});
   problem_t() = delete;
   // copy constructor
   problem_t(const problem_t<i_t, f_t>& problem);
