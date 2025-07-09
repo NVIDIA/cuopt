@@ -50,8 +50,7 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
     early_exit_primal_generation(false),
     timer(0)
 {
-  best_feasible_objective =
-    problem_ptr->maximize ? -std::numeric_limits<f_t>::max() : std::numeric_limits<f_t>::max();
+  best_feasible_objective = std::numeric_limits<f_t>::max();
 }
 
 template <typename i_t, typename f_t>
@@ -174,8 +173,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
 template <typename i_t, typename f_t>
 bool population_t<i_t, f_t>::is_better_than_best_feasible(solution_t<i_t, f_t>& sol)
 {
-  bool obj_better = problem_ptr->maximize ? sol.get_user_objective() > best_feasible_objective
-                                          : sol.get_user_objective() < best_feasible_objective;
+  bool obj_better = sol.get_objective() + OBJECTIVE_EPSILON < best_feasible_objective;
   return obj_better && sol.get_feasible();
 }
 
@@ -189,7 +187,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       context.settings.benchmark_info_ptr->last_improvement_of_best_feasible = timer.elapsed_time();
     }
     CUOPT_LOG_DEBUG("Population: Found new best solution %g", sol.get_user_objective());
-    best_feasible_objective = sol.get_user_objective();
+    best_feasible_objective = sol.get_objective();
     if (problem_ptr->branch_and_bound_callback != nullptr) {
       problem_ptr->branch_and_bound_callback(sol.get_host_assignment());
     }
