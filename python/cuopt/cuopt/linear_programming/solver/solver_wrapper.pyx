@@ -305,7 +305,7 @@ cdef set_solver_setting(
     cdef uintptr_t callback_ptr = 0
     if mip:
         if data_model_obj is not None and data_model_obj.get_initial_primal_solution().shape[0] != 0:  # noqa
-            c_solver_settings.set_initial_mip_solution(
+            c_solver_settings.add_initial_mip_solution(
                 <const double *> c_initial_primal_solution,
                 data_model_obj.get_initial_primal_solution().shape[0]
             )
