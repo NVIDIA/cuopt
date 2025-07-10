@@ -87,7 +87,7 @@ jobs:
           build-args: |
             CUDA_VER=${{ inputs.CUDA_VER }}
             PYTHON_VER=${{ inputs.PYTHON_VER }}
-            CUOPT_VER=${{ inputs.CUOPT_VER }}
+            CUOPT_VER=25.8.0a43
           tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
 
       - name: Push image to NGC

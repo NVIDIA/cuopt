@@ -108,10 +108,14 @@ FROM install-env AS cuopt-final
 
 ARG PYTHON_SHORT_VER
 
-ENV PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/home/cuopt/.local/lib/python3.12/site-packages/libcuopt/bin/:/home/cuopt/.local/bin:$PATH"
-ENV LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/home/cuopt/.local/lib/python3.12/site-packages/libcuopt/lib/:/home/cuopt/.local/lib/python3.12/site-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"
-# Make pip packages accessible to all users
-ENV PYTHONPATH="/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/site-packages:/usr/local/lib/python${PYTHON_SHORT_VER}/site-packages:${PYTHONPATH:-}"
+# Set environment variables in .bashrc for all future shells
+RUN echo 'export PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/home/cuopt/.local/lib/python3.12/site-packages/libcuopt/bin/:/home/cuopt/.local/bin:$PATH"' >> /home/cuopt/.bashrc && \
+    echo 'export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/home/cuopt/.local/lib/python3.12/site-packages/libcuopt/lib/:/home/cuopt/.local/lib/python3.12/site-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"' >> /home/cuopt/.bashrc && \
+    echo 'export PYTHONPATH="/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/site-packages:/usr/local/lib/python${PYTHON_SHORT_VER}/site-packages:${PYTHONPATH:-}"' >> /home/cuopt/.bashrc
+
+
+# Create a .bash_profile that sources .bashrc if it exists
+RUN echo 'if [ -f ~/.bashrc ]; then . ~/.bashrc; fi' > /home/cuopt/.bash_profile
 
 COPY --from=cuda-libs /usr/local/cuda/lib64/libnvrtc* /usr/local/cuda/lib64/
 COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/

@@ -98,63 +98,62 @@ jobs:
           fi
           echo "IMAGE_TAG_PREFIX=$IMAGE_TAG_PREFIX" >> $GITHUB_OUTPUT
 
-  #build-images:
-    #name: Build images
-    #needs: compute-matrix
-    #secrets: inherit
-    #strategy:
-      #matrix: ${{ fromJson(needs.compute-matrix.outputs.MATRIX) }}
-    #uses: ./.github/workflows/build_images.yaml
-    #with:
-      #ARCHES: ${{ matrix.arch }}
-      #CUDA_VER: ${{ matrix.cuda_ver }}
-      #PYTHON_VER: ${{ matrix.python_ver }}
-      #CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
-      #IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
+  build-images:
+    name: Build images
+    needs: compute-matrix
+    secrets: inherit
+    strategy:
+      matrix: ${{ fromJson(needs.compute-matrix.outputs.MATRIX) }}
+    uses: ./.github/workflows/build_images.yaml
+    with:
+      ARCHES: ${{ matrix.arch }}
+      CUDA_VER: ${{ matrix.cuda_ver }}
+      PYTHON_VER: ${{ matrix.python_ver }}
+      CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
+      IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
 
-  #build-cuopt-multiarch-manifest:
-    #name: Build cuopt multiarch manifest
-    #needs: build-images
-    #strategy:
-      #matrix:
-        #CUDA_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
-        #PYTHON_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).python_ver }}
-    #runs-on: ubuntu-latest
-    #steps:
-      #- name: Checkout code repo
-        #uses: actions/checkout@v4
-        #with:
-          #fetch-depth: 0 
-      #- name: Login to DockerHub
-        #uses: docker/login-action@v3
-        #with:
-          #username: ${{ secrets.CUOPT_DOCKERHUB_USERNAME }}
-          #password: ${{ secrets.CUOPT_DOCKERHUB_TOKEN }}
-      #- name: Login to NGC
-        #uses: docker/login-action@v3
-        #with:
-          #registry: "nvcr.io"
-          #username: "$oauthtoken"
-          #password: ${{ secrets.CUOPT_NGC_DOCKER_KEY }}
-      #- name: Trim CUDA and Python versions
-        #id: trim
-        #run: |
-          #echo "CUDA_SHORT=$(echo '${{ matrix.CUDA_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
-          #echo "PYTHON_SHORT=$(echo '${{ matrix.PYTHON_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
-      #- name: Create multiarch manifest
-        #shell: bash
-        #env:
-          #CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
-          #CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
-          #PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
-          #IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
-          #BUILD_TYPE: ${{ inputs.build_type }}
-        #run: bash ci/docker/create_multiarch_manifest.sh
+  build-cuopt-multiarch-manifest:
+    name: Build cuopt multiarch manifest
+    needs: build-images
+    strategy:
+      matrix:
+        CUDA_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
+        PYTHON_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).python_ver }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.CUOPT_DOCKERHUB_USERNAME }}
+          password: ${{ secrets.CUOPT_DOCKERHUB_TOKEN }}
+      - name: Login to NGC
+        uses: docker/login-action@v3
+        with:
+          registry: "nvcr.io"
+          username: "$oauthtoken"
+          password: ${{ secrets.CUOPT_NGC_DOCKER_KEY }}
+      - name: Trim CUDA and Python versions
+        id: trim
+        run: |
+          echo "CUDA_SHORT=$(echo '${{ matrix.CUDA_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "PYTHON_SHORT=$(echo '${{ matrix.PYTHON_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+      - name: Create multiarch manifest
+        shell: bash
+        env:
+          CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
+          CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
+          PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
+          IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
+          BUILD_TYPE: ${{ inputs.build_type }}
+        run: bash ci/docker/create_multiarch_manifest.sh
 
   test-images:
     name: Test images
-    #needs: build-cuopt-multiarch-manifest
-    needs: compute-matrix
+    needs: build-cuopt-multiarch-manifest
     secrets: inherit
     strategy:
       matrix:
