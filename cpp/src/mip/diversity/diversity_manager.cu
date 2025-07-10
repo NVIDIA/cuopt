@@ -419,9 +419,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
       get_relaxed_lp_solution(*problem_ptr, lp_optimal_solution, lp_state, lp_settings);
     ls.lp_optimal_exists = true;
     if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
-      // get lp user objective and pass it to set_new_user_bound
-      set_new_user_bound(
-        problem_ptr->get_user_obj_from_solver_obj(lp_result.get_objective_value()));
+      set_new_user_bound(lp_result.get_objective_value());
     } else if (lp_result.get_termination_status() == pdlp_termination_status_t::PrimalInfeasible) {
       CUOPT_LOG_ERROR("Problem is primal infeasible, continuing anyway!");
       ls.lp_optimal_exists = false;
