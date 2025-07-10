@@ -19,32 +19,44 @@ set -euo pipefail
 
 chsh -s /bin/bash cuopt
 
-
 # Install dependencies
-su cuopt -c "pip install --user pytest pexpect"
+apt-get install -y file bzip2 gcc
 
 # Download test data
 bash datasets/linear_programming/download_pdlp_test_dataset.sh
 bash datasets/mip/download_miplib_test_dataset.sh
 cd datasets && ./get_test_data.sh --solomon && ./get_test_data.sh --tsp && cd -
 
+# Create symlink to cuopt
 ln -sf "$(pwd)" /home/cuopt/cuopt
 
+# Set permissions since the repo is mounted on root
 chmod -R a+w $(pwd)
 
-# Test CLI
+# Login as cuopt user
+su - cuopt
+
+cd cuopt
+
+# Install test dependencies
+pip install --user pytest pexpect
+
+# Set environment variables
+export PATH=$PATH:/home/cuopt/.local/bin
+
+export RAPIDS_DATASET_ROOT_DIR=$(realpath datasets)
+
 echo "----------------- CLI TEST START ---------------"
-su - cuopt -c "cd cuopt && export PATH=$PATH:/home/cuopt/.local/bin && export RAPIDS_DATASET_ROOT_DIR=$(realpath datasets) && bash python/libcuopt/libcuopt/tests/test_cli.sh"
+bash python/libcuopt/libcuopt/tests/test_cli.sh
 echo "----------------- CLI TEST END ---------------"
 
-# Test cuopt
 echo "----------------- CUOPT TEST START ---------------"
-# Testing routing and linear programming seperate since running them together will cause the test to fail
-su - cuopt -c "cd cuopt && RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt/cuopt/tests/linear_programming/test_lp_solver.py::test_solver"
-su - cuopt -c "cd cuopt && RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt/cuopt/tests/routing"
+# Install test dependencies
+python -m pytest python/cuopt/cuopt/tests/linear_programming
+python -m pytest python/cuopt/cuopt/tests/routing
 echo "----------------- CUOPT TEST END ---------------"
 
-# Test cuopt server
 echo "----------------- CUOPT SERVER TEST START ---------------"
-su - cuopt -c "cd cuopt && RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt_server/cuopt_server/tests/"
+# Install test dependencies
+python -m pytest python/cuopt_server/cuopt_server/tests/
 echo "----------------- CUOPT SERVER TEST END ---------------"
