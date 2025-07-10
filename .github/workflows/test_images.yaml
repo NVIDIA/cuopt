@@ -59,4 +59,4 @@ jobs:
           fetch-depth: 0
       - name: Test cuopt
         run: |
-          bash ./ci/docker/test_docker.sh
+          bash ./ci/docker/test_image.sh
