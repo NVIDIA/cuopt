@@ -173,7 +173,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
 template <typename i_t, typename f_t>
 bool population_t<i_t, f_t>::is_better_than_best_feasible(solution_t<i_t, f_t>& sol)
 {
-  bool obj_better = sol.get_objective() + OBJECTIVE_EPSILON < best_feasible_objective;
+  bool obj_better = sol.get_objective() < best_feasible_objective;
   return obj_better && sol.get_feasible();
 }
 
