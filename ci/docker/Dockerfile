@@ -122,4 +122,4 @@ COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
 
 ENV CUOPT_SERVER_PORT=8000
 
-ENTRYPOINT ["python", "-m", "cuopt_server.cuopts_service"]
+ENTRYPOINT ["python", "-m", "cuopt_server.cuopt_service"]

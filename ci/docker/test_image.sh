@@ -33,30 +33,20 @@ ln -sf "$(pwd)" /home/cuopt/cuopt
 # Set permissions since the repo is mounted on root
 chmod -R a+w $(pwd)
 
-# Login as cuopt user
-su - cuopt
+# If this script is being run as root, use 'su - cuopt -c "<command>"' to run each command as cuopt.
 
-cd cuopt
-
-# Install test dependencies
-pip install --user pytest pexpect
-
-# Set environment variables
-export PATH=$PATH:/home/cuopt/.local/bin
-
-export RAPIDS_DATASET_ROOT_DIR=$(realpath datasets)
-
-echo "----------------- CLI TEST START ---------------"
-bash python/libcuopt/libcuopt/tests/test_cli.sh
-echo "----------------- CLI TEST END ---------------"
-
-echo "----------------- CUOPT TEST START ---------------"
-# Install test dependencies
-python -m pytest python/cuopt/cuopt/tests/linear_programming
-python -m pytest python/cuopt/cuopt/tests/routing
-echo "----------------- CUOPT TEST END ---------------"
-
-echo "----------------- CUOPT SERVER TEST START ---------------"
-# Install test dependencies
-python -m pytest python/cuopt_server/cuopt_server/tests/
-echo "----------------- CUOPT SERVER TEST END ---------------"
+# Change to cuopt home directory and then to cuopt repo
+su - cuopt -c "cd ~/cuopt && \
+  pip install --user pytest pexpect && \
+  export PATH=\$PATH:/home/cuopt/.local/bin && \
+  export RAPIDS_DATASET_ROOT_DIR=\$(realpath datasets) && \
+  echo '----------------- CLI TEST START ---------------' && \
+  bash python/libcuopt/libcuopt/tests/test_cli.sh && \
+  echo '----------------- CLI TEST END ---------------' && \
+  echo '----------------- CUOPT TEST START ---------------' && \
+  python -m pytest python/cuopt/cuopt/tests/linear_programming && \
+  python -m pytest python/cuopt/cuopt/tests/routing && \
+  echo '----------------- CUOPT TEST END ---------------' && \
+  echo '----------------- CUOPT SERVER TEST START ---------------' && \
+  python -m pytest python/cuopt_server/cuopt_server/tests/ && \
+  echo '----------------- CUOPT SERVER TEST END ---------------'"
