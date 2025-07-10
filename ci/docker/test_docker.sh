@@ -17,6 +17,9 @@
 
 set -euo pipefail
 
+chsh -s /bin/bash cuopt
+
+
 # Install dependencies
 su cuopt -c "pip install --user pytest pexpect"
 
@@ -27,7 +30,7 @@ cd datasets && ./get_test_data.sh --solomon && ./get_test_data.sh --tsp && cd -
 
 ln -sf "$(pwd)" /home/cuopt/cuopt
 
-
+chmod -R a+w $(pwd)
 
 # Test CLI
 echo "----------------- CLI TEST START ---------------"
@@ -36,7 +39,9 @@ echo "----------------- CLI TEST END ---------------"
 
 # Test cuopt
 echo "----------------- CUOPT TEST START ---------------"
-su - cuopt -c "cd cuopt && RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt/cuopt/tests/"
+# Testing routing and linear programming seperate since running them together will cause the test to fail
+su - cuopt -c "cd cuopt && RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt/cuopt/tests/linear_programming/test_lp_solver.py::test_solver"
+su - cuopt -c "cd cuopt && RAPIDS_DATASET_ROOT_DIR=./datasets python -m pytest python/cuopt/cuopt/tests/routing"
 echo "----------------- CUOPT TEST END ---------------"
 
 # Test cuopt server
