@@ -126,7 +126,7 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
       }
     }
     if (better_cost_than_parents || better_feasibility_than_parents) {
-      CUOPT_LOG_INFO("Offspring is feasible or better than both parents");
+      CUOPT_LOG_DEBUG("Offspring is feasible or better than both parents");
       return std::make_pair(offspring, true);
     }
     return std::make_pair(offspring, !same_as_parents);

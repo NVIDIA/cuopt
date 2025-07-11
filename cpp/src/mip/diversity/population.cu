@@ -187,7 +187,6 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       context.settings.benchmark_info_ptr->last_improvement_of_best_feasible = timer.elapsed_time();
     }
     CUOPT_LOG_DEBUG("Population: Found new best solution %g", sol.get_user_objective());
-    best_feasible_objective = sol.get_objective();
     if (problem_ptr->branch_and_bound_callback != nullptr) {
       problem_ptr->branch_and_bound_callback(sol.get_host_assignment());
     }
@@ -220,6 +219,11 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
         get_sol_callback->get_solution(temp_sol.assignment.data(), user_objective_vec.data());
       }
     }
+    // save the best objective here, because we might not have been able to return the solution to
+    // the user because of the unscaling that causes infeasibility.
+    // This prevents an issue of repaired, or a fully feasible solution being reported in the call
+    // back in next run.
+    best_feasible_objective = sol.get_objective();
   }
 
   for (auto callback : user_callbacks) {

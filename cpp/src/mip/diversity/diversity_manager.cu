@@ -524,10 +524,13 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
   raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
   if (solutions.size() > 0) {
     CUOPT_LOG_INFO("Running recombiners on B&B solutions with size %lu", solutions.size());
+    // add all solutions because time limit might have been consumed and we might have exited before
+    for (auto& sol : solutions) {
+      cuopt_func_call(sol.test_feasibility(true));
+      population.add_solution(std::move(solution_t<i_t, f_t>(sol)));
+    }
     for (auto& sol : solutions) {
       if (timer.check_time_limit()) { return; }
-      population.add_solution(std::move(solution_t<i_t, f_t>(sol)));
-      cuopt_func_call(sol.test_feasibility(true));
       solution_t<i_t, f_t> ls_solution(sol);
       ls.run_local_search(ls_solution, population.weights, timer);
       if (timer.check_time_limit()) { return; }
