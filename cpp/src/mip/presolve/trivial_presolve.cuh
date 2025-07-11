@@ -234,7 +234,6 @@ void update_from_csr(problem_t<i_t, f_t>& pb)
 
   //  update objective_offset
   pb.presolve_data.objective_offset +=
-    pb.presolve_data.objective_scaling_factor *
     thrust::transform_reduce(handle_ptr->get_thrust_policy(),
                              thrust::counting_iterator<i_t>(0),
                              thrust::counting_iterator<i_t>(pb.n_variables),
