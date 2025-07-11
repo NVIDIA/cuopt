@@ -1,4 +1,4 @@
-#!/bin/bash
+ !/bin/bash
 
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -31,7 +31,7 @@ cd datasets && ./get_test_data.sh --solomon && ./get_test_data.sh --tsp && cd -
 ln -sf "$(pwd)" /home/cuopt/cuopt
 
 # Set permissions since the repo is mounted on root
-chmod -R a+w $(pwd)
+chmod -R a+w "$(pwd)"
 
 # If this script is being run as root, use 'su - cuopt -c "<command>"' to run each command as cuopt.
 
