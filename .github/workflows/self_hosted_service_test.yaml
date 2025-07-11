@@ -1,0 +1,94 @@
+name: Test self-hosted service on local-setup
+
+on:
+  workflow_call:
+    inputs:
+      repo:
+        type: string
+      branch:
+        type: string
+      date:
+        type: string
+      sha:
+        type: string
+      build_type:
+        required: true
+        type: string
+      script:
+        required: true
+        type: string
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  actions: read
+  checks: none
+  contents: read
+  deployments: none
+  discussions: none
+  id-token: write
+  issues: none
+  packages: read
+  pages: none
+  pull-requests: read
+  repository-projects: none
+  security-events: none
+  statuses: none
+
+
+jobs:
+  cuopt-service:
+    name: self hosted service test
+    runs-on: linux-amd64-gpu-l4-latest-1
+    strategy:
+      matrix:
+        ctk: ["12.8.0"]
+        linux_ver: ["ubuntu24.04"]
+        py_ver: ["3.12"]
+    container:
+      image: "rapidsai/citestwheel:cuda${{ matrix.ctk }}-${{ matrix.linux_ver}}-py${{ matrix.py_ver }}"
+      options: "--network-alias cuopt-service"
+      env:
+        NVIDIA_VISIBLE_DEVICES: ${{ env.NVIDIA_VISIBLE_DEVICES }} # GPU jobs must set this container env variable
+        RAPIDS_BUILD_TYPE: ${{ inputs.build_type }}
+        CUOPT_CLIENT_ID: ${{ secrets.CUOPT_PRD_TEST_CLIENT_ID }}
+        CUOPT_CLIENT_SECRET: ${{ secrets.CUOPT_PRD_TEST_SECRET }}
+        CUOPT_FUNCTION_ID: ${{ secrets.CUOPT_PRD_TEST_FUNCTION_ID }}
+        GH_TOKEN: ${{ github.token }}
+      ports:
+        - "8000:8000"
+      volumes:
+        - /tmp/asset_dir/:/tmp/asset_dir/
+        - /tmp/response_dir/:/tmp/response_dir/
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v1-node16
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-duration-seconds: 14400 # 4h
+      - name: Run nvidia-smi to make sure GPU is working
+        run: nvidia-smi
+
+      - name: Install private index credentials in cibuildwheel container
+        run: printf 'machine pypi.k8s.rapids.ai\n\tlogin cibuildwheel\n\tpassword ${{ secrets.RAPIDSAI_PYPI_CI_PASSWORD }}\n' > ~/.netrc
+
+      - name: checkout code repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0 # unshallow fetch for setuptools-scm
+          persist-credentials: false
+
+      - name: Standardize repository information
+        uses: rapidsai/shared-actions/rapids-github-info@main
+        with:
+          repo: ${{ inputs.repo }}
+          branch: ${{ inputs.branch }}
+          date: ${{ inputs.date }}
+          sha: ${{ inputs.sha }}
+
+      - name: Run tests
+        run: ${{ inputs.script }}
