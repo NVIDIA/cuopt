@@ -291,12 +291,10 @@ def cleanup_cuopt_process():
     """Clean up the cuopt process if it's still running"""
     global cuoptmain
     if cuoptmain and cuoptmain.poll() is None:
-        print("Cleaning up cuopt service...")
         cuoptmain.terminate()
         try:
             cuoptmain.wait(timeout=5)
         except TimeoutExpired:
-            print("Force killing cuopt service...")
             cuoptmain.kill()
             cuoptmain.wait()
 
@@ -336,8 +334,6 @@ def cuoptproc(request):
         "CUOPT_SERVER_PORT": "5555",
         "CUOPT_SERVER_LOG_LEVEL": "debug",
     }
-    print(f"Starting cuopt service with PYTHONPATH: {python_path}")
-    print(f"Server module: {server_module}")
     cuoptmain = Popen([python_path, server_script, server_module], env=env)
     spinup_wait()
 
