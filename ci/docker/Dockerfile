@@ -27,6 +27,7 @@ FROM nvidia/cuda:${CUDA_VER}-base-ubuntu22.04 AS python-env
 ARG CUDA_VER
 ARG CUOPT_VER
 ARG PYTHON_VER
+ARG PYTHON_SHORT_VER
 
 RUN apt-get update && apt-get install -y \
     wget \
@@ -71,7 +72,7 @@ RUN apt-get purge -y \
 
 RUN ln -sf /usr/local/bin/python3 /usr/local/bin/python
 RUN groupadd -r cuopt && useradd -r -g cuopt cuopt
-RUN chown -R cuopt:cuopt /usr/local/lib/python3.12/site-packages
+RUN chown -R cuopt:cuopt /usr/local/lib/python${PYTHON_SHORT_VER}/site-packages
 USER cuopt
 
 FROM python-env AS install-env
@@ -80,6 +81,7 @@ WORKDIR /home/cuopt
 
 ARG cuda-suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1)
 ARG CUOPT_VERSION
+ARG PYTHON_SHORT_VER
 
 ENV PIP_EXTRA_INDEX_URL="https://pypi.nvidia.com https://pypi.anaconda.org/rapidsai-wheels-nightly/simple"
 
@@ -109,8 +111,8 @@ FROM install-env AS cuopt-final
 ARG PYTHON_SHORT_VER
 
 # Set environment variables in .bashrc for all future shells
-RUN echo 'export PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/home/cuopt/.local/lib/python3.12/site-packages/libcuopt/bin/:/home/cuopt/.local/bin:$PATH"' >> /home/cuopt/.bashrc && \
-    echo 'export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/home/cuopt/.local/lib/python3.12/site-packages/libcuopt/lib/:/home/cuopt/.local/lib/python3.12/site-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"' >> /home/cuopt/.bashrc && \
+RUN echo 'export PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/site-packages/libcuopt/bin/:/home/cuopt/.local/bin:$PATH"' >> /home/cuopt/.bashrc && \
+    echo 'export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/site-packages/libcuopt/lib/:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/site-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"' >> /home/cuopt/.bashrc && \
     echo 'export PYTHONPATH="/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/site-packages:/usr/local/lib/python${PYTHON_SHORT_VER}/site-packages:${PYTHONPATH:-}"' >> /home/cuopt/.bashrc
 
 
