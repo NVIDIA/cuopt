@@ -111,7 +111,7 @@ void diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solut
                                                      ls_config_t<i_t, f_t>& ls_config)
 {
   i_t ls_mab_option = mab_ls.select_mab_option();
-  // mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
+  mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
   ls.run_local_search(solution, weights, timer, ls_config);
 }
 
