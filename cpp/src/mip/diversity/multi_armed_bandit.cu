@@ -150,7 +150,7 @@ void mab_t::add_mab_reward(int option_id,
     // Calculate reward based on your existing logic
     double reward = 0.0;
     if (is_better_than_best_feasible) {
-      reward = 1.0;
+      reward = 8.0;
     } else if (is_better_than_best_of_parents) {
       double factor;
       if (fabs(offspring_quality - best_feasible_quality) / (fabs(best_feasible_quality) + 1.0) >

@@ -62,7 +62,7 @@ i_t mab_ls_config_t<i_t, f_t>::last_ls_mab_option = 0;
 struct ls_work_normalized_reward_t {
   int option_id;
   static constexpr double reward_per_option[mab_ls_config_t<int, double>::n_of_configs] = {
-    0.5, 0.25, 0.125, 0.05};
+    2, 1, 0.5, 0.25};
   ls_work_normalized_reward_t(int option_id) : option_id(option_id) {}
 
   double operator()(double factor) const { return factor * reward_per_option[option_id]; }
@@ -77,9 +77,8 @@ struct recombiner_work_normalized_reward_t {
 
   double operator()(double factor) const
   {
-    // normal recombiners take 2 seconds
-    // FIXME: adjust the 4000ms with recombiner config value
-    return factor * (std::max(0.1, 1.0 - (time_in_miliseconds / 4000)));
+    // normal recombiners take 2000 ms
+    return factor * (std::max(0.1, 4.0 - (time_in_miliseconds / 2000)));
   }
 };
 
