@@ -96,8 +96,8 @@ set(LIBCUOPT_LOGGING_LEVEL
   CACHE STRING "Choose the logging level."
 )
 set_property(
-  CACHE LIBCUOPT_LOGGING_LEVEL PROPERTY STRINGS "OFF" "CRITICAL" "ERROR"  "WARN" "INFO" "DEBUG" "TRACE" 
-                                       
+  CACHE LIBCUOPT_LOGGING_LEVEL PROPERTY STRINGS "TRACE" "DEBUG" "INFO" "WARN" "ERROR" "CRITICAL"
+                                       "OFF"
 )
 message(VERBOSE "CUOPT: LIBCUOPT_LOGGING_LEVEL = '${LIBCUOPT_LOGGING_LEVEL}'.")
 
