@@ -212,7 +212,6 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(
     cuopt_func_call(solution.test_variable_bounds(false));
     // do the search here
     fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
-    fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT;
     fj.settings.n_of_minimums_for_exit = settings.n_local_min;
     fj.settings.iteration_limit        = settings.iteration_limit;
     fj.settings.update_weights         = false;

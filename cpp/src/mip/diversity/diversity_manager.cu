@@ -370,7 +370,6 @@ void diversity_manager_t<i_t, f_t>::run_fj_alone(solution_t<i_t, f_t>& solution)
   ls.fj.settings.n_of_minimums_for_exit = 20000 * 1000;
   ls.fj.settings.update_weights         = true;
   ls.fj.settings.feasibility_run        = false;
-  ls.fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
   ls.fj.settings.time_limit             = timer.remaining_time();
   ls.fj.solve(solution);
   CUOPT_LOG_INFO("FJ alone finished!");
@@ -671,7 +670,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   this->run_local_search(offspring, population.weights, timer, ls_config);
   cuopt_assert(offspring.test_number_all_integer(), "All must be integers after LS");
   cuopt_assert(population.test_invariant(), "");
-
+  offspring.compute_feasibility();
   CUOPT_LOG_DEBUG("After LS offspring sol cost:feas %f : %d",
                   offspring.get_quality(population.weights),
                   offspring.get_feasible());
@@ -713,7 +712,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
     recombiner_work_normalized_reward_t(recombine_stats.get_last_recombiner_time()));
   mab_ls.add_mab_reward(mab_ls_config_t<i_t, f_t>::last_ls_mab_option,
                         best_quality_of_parents,
-                        population.best().get_quality(population.weights),
+                        population.best_feasible().get_quality(population.weights),
                         offspring_qual,
                         ls_work_normalized_reward_t(mab_ls_config_t<i_t, f_t>::last_lm_config));
   if (context.settings.benchmark_info_ptr != nullptr) {
