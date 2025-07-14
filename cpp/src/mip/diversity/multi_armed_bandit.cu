@@ -62,10 +62,10 @@ int mab_t::select_ucb_arm()
   std::vector<int> best_arms;
 
   for (int i = 0; i < static_cast<int>(mab_arm_stats_.size()); ++i) {
-    // Calculate UCB value: Q(a) + sqrt(ln(t)/N(a))
-    double confidence_bound =
-      std::sqrt((std::log(mab_total_steps_)) / static_cast<double>(mab_arm_stats_[i].num_pulls));
-    double ucb_value = mab_arm_stats_[i].q_value + confidence_bound;
+    // Calculate UCB value: Q(a) + 2*sqrt(ln(t)/N(a))
+    double confidence_bound = std::sqrt((2.0 * std::log(mab_total_steps_)) /
+                                        static_cast<double>(mab_arm_stats_[i].num_pulls));
+    double ucb_value        = mab_arm_stats_[i].q_value + confidence_bound;
 
     CUOPT_LOG_DEBUG("MAB " + bandit_name + ": UCB: Arm " + std::to_string(i) +
                     ", Q=" + std::to_string(mab_arm_stats_[i].q_value) + ", CB=" +
@@ -152,14 +152,14 @@ void mab_t::add_mab_reward(int option_id,
     if (is_better_than_best_feasible) {
       reward = 8.0;
     } else if (is_better_than_best_of_parents) {
-      double factor;
+      double factor = 0.;
       if (fabs(offspring_quality - best_feasible_quality) / (fabs(best_feasible_quality) + 1.0) >
           1.0) {
-        factor = 1. / 3;
+        // factor = 1. / 3;
       } else if (fabs(offspring_quality - best_feasible_quality) /
                    (fabs(best_feasible_quality) + 1.0) >
                  0.2) {
-        factor = 1. / 2;
+        // factor = 1. / 2;
       } else {
         factor = 1.;
       }

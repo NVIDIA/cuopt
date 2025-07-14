@@ -156,7 +156,7 @@ std::vector<solution_t<i_t, f_t>> diversity_manager_t<i_t, f_t>::generate_more_s
     if (total_time_to_generate.check_time_limit()) { return solutions; }
     timer_t timer(std::min(ls_limit, timer.remaining_time()));
     ls_config_t<i_t, f_t> ls_config;
-    ls.run_local_search(sol, population.weights, timer, ls_config);
+    run_local_search(sol, population.weights, timer, ls_config);
     population.run_solution_callbacks(sol);
     solutions.emplace_back(std::move(sol));
     if (total_time_to_generate.check_time_limit()) { return solutions; }
@@ -269,7 +269,7 @@ void diversity_manager_t<i_t, f_t>::generate_initial_solutions()
     // run ls on the generated solutions
     solution_t<i_t, f_t> searched_sol(initial_sol_vector.back());
     ls_config_t<i_t, f_t> ls_config;
-    ls.run_local_search(searched_sol, population.weights, gen_timer, ls_config);
+    run_local_search(searched_sol, population.weights, gen_timer, ls_config);
     population.run_solution_callbacks(searched_sol);
     initial_sol_vector.emplace_back(std::move(searched_sol));
     average_fj_weights(i);
@@ -335,7 +335,7 @@ void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
     problem_ptr->handle_ptr->sync_stream();
     solution_t<i_t, f_t> searched_sol(initial_sol_vector.back());
     ls_config_t<i_t, f_t> ls_config;
-    ls.run_local_search(searched_sol, population.weights, sol_timer, ls_config);
+    run_local_search(searched_sol, population.weights, sol_timer, ls_config);
     population.run_solution_callbacks(searched_sol);
     initial_sol_vector.emplace_back(std::move(searched_sol));
     auto& feas_sol = initial_sol_vector.back().get_feasible()
@@ -547,7 +547,7 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
       cuopt_func_call(sol.test_feasibility(true));
       solution_t<i_t, f_t> ls_solution(sol);
       ls_config_t<i_t, f_t> ls_config;
-      ls.run_local_search(ls_solution, population.weights, timer, ls_config);
+      run_local_search(ls_solution, population.weights, timer, ls_config);
       if (timer.check_time_limit()) { return; }
       // TODO try if running LP with integers fixed makes it feasible
       if (ls_solution.get_feasible()) {

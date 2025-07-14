@@ -110,11 +110,11 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
   bool is_feas;
   i_t rd = std::uniform_int_distribution(0, 1)(rng);
   if (ls_config.ls_method == ls_method_t::FJ_LINE_SEGMENT) {
-    rd = 0;
+    rd = ls_method_t::FJ_LINE_SEGMENT;
   } else if (ls_config.ls_method == ls_method_t::FJ_ANNEALING) {
-    rd = 1;
+    rd = ls_method_t::FJ_ANNEALING;
   }
-  if (rd == 0 && lp_optimal_exists) {
+  if (rd == ls_method_t::FJ_LINE_SEGMENT && lp_optimal_exists) {
     is_feas = run_fj_line_segment(solution, timer, ls_config);
   } else {
     is_feas = run_fj_annealing(solution, timer, ls_config);

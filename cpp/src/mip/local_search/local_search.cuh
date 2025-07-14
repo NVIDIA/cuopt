@@ -25,7 +25,7 @@
 
 namespace cuopt::linear_programming::detail {
 
-enum class ls_method_t { FJ_ANNEALING, FJ_LINE_SEGMENT, RANDOM };
+enum ls_method_t { FJ_ANNEALING = 0, FJ_LINE_SEGMENT, RANDOM };
 
 template <typename i_t, typename f_t>
 struct ls_config_t {
