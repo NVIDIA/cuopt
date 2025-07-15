@@ -81,7 +81,7 @@ python -m pip install \
     "$(echo ./dist/cvxpy*.whl)[CUOPT,testing]"
 
 rapids-logger "running 'cvxpy' tests"
-python -m pytest \
+timeout 3m python -m pytest \
     --error-for-skips \
     -k "TestCUOPT" \
     ./cvxpy/tests/test_conic_solvers.py
