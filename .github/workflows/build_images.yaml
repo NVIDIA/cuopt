@@ -24,13 +24,16 @@ on:
       CUDA_VER:
         required: true
         type: string
-      PYTHON_VER:
-        required: true
-        type: string
       CUOPT_VER:
         required: true
         type: string
       IMAGE_TAG_PREFIX:
+        required: true
+        type: string
+      LINUX_VER:
+        required: true  
+        type: string
+      PYTHON_VER:
         required: true
         type: string
 
@@ -41,6 +44,7 @@ jobs:
         ARCH: ["${{ inputs.ARCHES }}"]
         CUDA_VER: ["${{ inputs.CUDA_VER }}"]
         PYTHON_VER: ["${{ inputs.PYTHON_VER }}"]
+        LINUX_VER: ["${{ inputs.LINUX_VER }}"]
       fail-fast: false
     runs-on: "linux-${{ matrix.ARCH }}-cpu4"
     steps:
@@ -86,8 +90,9 @@ jobs:
           pull: true
           build-args: |
             CUDA_VER=${{ inputs.CUDA_VER }}
-            PYTHON_VER=${{ inputs.PYTHON_VER }}
+            PYTHON_SHORT_VER=${{ steps.trim.outputs.PYTHON_SHORT }}
             CUOPT_VER=${{ inputs.CUOPT_VER }}
+            LINUX_VER=${{ inputs.LINUX_VER }}
           tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
 
       - name: Push image to NGC

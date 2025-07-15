@@ -14,92 +14,64 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG CUDA_VER=12.8.0
-ARG CUOPT_VER=25.8.0
-ARG PYTHON_VER=3.12.11
-ARG PYTHON_SHORT_VER=3.12
+ARG CUDA_VER=unset
+ARG CUOPT_VER=unset
+ARG PYTHON_SHORT_VER=unset
+ARG LINUX_VER=unset
 
-FROM nvidia/cuda:${CUDA_VER}-runtime-ubuntu22.04 AS cuda-libs
+FROM nvidia/cuda:${CUDA_VER}-runtime-ubuntu${LINUX_VER} AS cuda-libs
 
 # Install cuOpt
-FROM nvidia/cuda:${CUDA_VER}-base-ubuntu22.04 AS python-env
+FROM nvidia/cuda:${CUDA_VER}-base-ubuntu${LINUX_VER} AS python-env
 
 ARG CUDA_VER
 ARG CUOPT_VER
-ARG PYTHON_VER
 ARG PYTHON_SHORT_VER
 
-RUN apt-get update && apt-get install -y \
-    wget \
-    git \
-    gcc \
-    build-essential \
-    zlib1g-dev \
-    libncurses5-dev \
-    libgdbm-dev \
-    libnss3-dev \
-    libssl-dev \
-    libreadline-dev \
-    libffi-dev \
-    libsqlite3-dev \
-    libbz2-dev \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get install -y --no-install-recommends \
+        wget \
+        python${PYTHON_SHORT_VER} \
+        python${PYTHON_SHORT_VER}-dev \
+        python${PYTHON_SHORT_VER}-venv \
+    && rm -rf /var/lib/apt/lists/* && \
+    python${PYTHON_SHORT_VER} -m ensurepip --upgrade && \
+    python${PYTHON_SHORT_VER} -m pip install --upgrade pip
 
-RUN wget https://www.python.org/ftp/python/${PYTHON_VER}/Python-${PYTHON_VER}.tgz \
-    && tar xzf Python-${PYTHON_VER}.tgz \
-    && cd Python-${PYTHON_VER} \
-    && ./configure --enable-optimizations \
-    && make -j$(nproc) \
-    && make install \
-    && cd .. \
-    && rm -rf Python-${PYTHON_VER} Python-${PYTHON_VER}.tgz \
-    && python3 -m pip install --upgrade pip
+ENV DEBIAN_FRONTEND=""
 
-RUN apt-get purge -y \
-    build-essential \
-    zlib1g-dev \
-    libncurses5-dev \
-    libgdbm-dev \
-    libnss3-dev \
-    libssl-dev \
-    libreadline-dev \
-    libffi-dev \
-    libsqlite3-dev \
-    libbz2-dev \
-    && apt-get autoremove -y \
-    && apt-get clean
+RUN ln -sf /usr/bin/python${PYTHON_SHORT_VER} /usr/bin/python && \
+    groupadd -r cuopt && useradd -r -g cuopt cuopt && \
+    chown -R cuopt:cuopt /usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages
 
-RUN ln -sf /usr/local/bin/python3 /usr/local/bin/python
-RUN groupadd -r cuopt && useradd -r -g cuopt cuopt
-RUN chown -R cuopt:cuopt /usr/local/lib/python${PYTHON_SHORT_VER}/site-packages
 USER cuopt
 
 FROM python-env AS install-env
 
 WORKDIR /home/cuopt
 
-ARG cuda-suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1)
-ARG CUOPT_VERSION
+ARG CUOPT_VER
 ARG PYTHON_SHORT_VER
 
-ENV PIP_EXTRA_INDEX_URL="https://pypi.nvidia.com https://pypi.anaconda.org/rapidsai-wheels-nightly/simple"
-
-SHELL ["/bin/bash", "-c"]
-RUN if [[ "${CUDA_VER}" =~ ^12\. ]]; then \
-        cuda_suffix="cu12"; \
-        python -m pip install nvidia-cuda-runtime-cu12==$(echo ${CUDA_VER} | cut -d'.' -f1-2).*; \
-    fi && \
-    python -m pip install --user --no-cache-dir cuopt-server-${cuda_suffix}==${CUOPT_VER} cuopt-sh-client==${CUOPT_VER} && \
+RUN cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
+    cuda_major_minor=$(echo ${CUDA_VER} | cut -d'.' -f1-2) && \
+    python -m pip install \
+      --extra-index-url https://pypi.nvidia.com \
+      --extra-index-url https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \
+      --user \
+      --no-cache-dir \
+      "cuopt-server-${cuda_suffix}==${CUOPT_VER}" \
+      "cuopt-sh-client==${CUOPT_VER}" \
+      "nvidia-cuda-runtime-${cuda_suffix}==${cuda_major_minor}.*" && \
     python -m pip list
-
 USER root
 
-RUN apt-get purge -y gcc git \
-    && apt-get update \
-    && apt-get install -y unzip \
-    && apt-get autoremove -y \
-    && apt-get clean
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 USER cuopt
 
@@ -111,9 +83,9 @@ FROM install-env AS cuopt-final
 ARG PYTHON_SHORT_VER
 
 # Set environment variables in .bashrc for all future shells
-RUN echo 'export PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/site-packages/libcuopt/bin/:/home/cuopt/.local/bin:$PATH"' >> /home/cuopt/.bashrc && \
-    echo 'export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/site-packages/libcuopt/lib/:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/site-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"' >> /home/cuopt/.bashrc && \
-    echo 'export PYTHONPATH="/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/site-packages:/usr/local/lib/python${PYTHON_SHORT_VER}/site-packages:${PYTHONPATH:-}"' >> /home/cuopt/.bashrc
+RUN echo 'export PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/bin/:/home/cuopt/.local/bin:$PATH"' >> /home/cuopt/.bashrc && \
+    echo 'export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/lib/:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"' >> /home/cuopt/.bashrc && \
+    echo 'export PYTHONPATH="/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages:${PYTHONPATH:-}"' >> /home/cuopt/.bashrc
 
 
 # Create a .bash_profile that sources .bashrc if it exists

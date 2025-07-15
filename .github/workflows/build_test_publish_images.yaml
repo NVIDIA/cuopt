@@ -70,7 +70,8 @@ jobs:
           {
             "arch": ["amd64", "arm64"],
             "cuda_ver": ["12.8.0"],
-            "python_ver": ["3.12.11"]
+            "python_ver": ["3.12.11"],
+            "linux_ver": ["22.04"]
           }
           EOF
           )
@@ -108,9 +109,10 @@ jobs:
     with:
       ARCHES: ${{ matrix.arch }}
       CUDA_VER: ${{ matrix.cuda_ver }}
-      PYTHON_VER: ${{ matrix.python_ver }}
       CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
       IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
+      LINUX_VER: ${{ matrix.linux_ver }}
+      PYTHON_VER: ${{ matrix.python_ver }}
 
   build-cuopt-multiarch-manifest:
     name: Build cuopt multiarch manifest
