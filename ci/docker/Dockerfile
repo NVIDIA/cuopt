@@ -44,7 +44,8 @@ RUN apt-get update && \
 ENV DEBIAN_FRONTEND=""
 
 RUN ln -sf /usr/bin/python${PYTHON_SHORT_VER} /usr/bin/python && \
-    groupadd -r cuopt && useradd -r -g cuopt cuopt && \
+    groupadd -r cuopt && \
+    useradd -r -g cuopt cuopt && \
     chown -R cuopt:cuopt /usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages
 
 USER cuopt
