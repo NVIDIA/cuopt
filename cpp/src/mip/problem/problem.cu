@@ -47,8 +47,6 @@
 
 #include <unordered_set>
 
-#include <cuda_profiler_api.h>
-
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
