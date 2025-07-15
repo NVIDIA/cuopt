@@ -20,8 +20,10 @@ set -euo pipefail
 chsh -s /bin/bash cuopt
 
 # Install dependencies
-apt-get install -y --no-install-recommends file bzip2 gcc
-
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file bzip2 gcc
+apt-get clean
+rm -rf /var/lib/apt/lists/*
 # Download test data
 bash datasets/linear_programming/download_pdlp_test_dataset.sh
 bash datasets/mip/download_miplib_test_dataset.sh
