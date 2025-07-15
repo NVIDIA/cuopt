@@ -10,6 +10,12 @@ AMPL Support
 AMPL can be used with near zero code changes: simply switch to cuOpt as a solver to solve linear and mixed-integer programming problems. Please refer to the `AMPL documentation <https://www.ampl.com/>`_ for more information. Also, see the example notebook in the `colab <https://colab.research.google.com/drive/1eEQik_pae4g_tJQ61QJFlO1fFBXazpBr?usp=sharing>`_.
 
 --------------------------
+GAMS and GAMSPy Support
+--------------------------
+
+GAMS and GAMSPy models can be used with near zero code changes: simply switch to cuOpt as a solver to solve linear and mixed-integer programming problems. Please refer to the `GAMS cuOpt link repository <https://github.com/GAMS-dev/cuoptlink-builder>`_ for more information. Also, see the example notebook in the `cuopt-examples <https://github.com/NVIDIA/cuopt-examples>`_ repository.
+
+--------------------------
 PuLP Support
 --------------------------
 
