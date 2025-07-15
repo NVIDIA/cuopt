@@ -185,31 +185,29 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   std::vector<solution_t<i_t, f_t>>& initial_sol_vector)
 {
-  if (context.settings.initial_solutions.size() > 0) {
-    for (const auto& init_sol : context.settings.initial_solutions) {
-      solution_t<i_t, f_t> sol(*problem_ptr);
-      rmm::device_uvector<f_t> init_sol_assignment(*init_sol, sol.handle_ptr->get_stream());
-      if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
-        raft::copy(sol.assignment.data(),
-                   init_sol_assignment.data(),
-                   init_sol_assignment.size(),
-                   sol.handle_ptr->get_stream());
-        bool is_feasible = sol.compute_feasibility();
-        cuopt_func_call(sol.test_variable_bounds(true));
-        CUOPT_LOG_INFO("Adding initial solution success! feas %d objective %f excess %f",
-                       is_feasible,
-                       sol.get_objective(),
-                       sol.get_total_excess());
-        population.run_solution_callbacks(sol);
-        initial_sol_vector.emplace_back(std::move(sol));
-      } else {
-        CUOPT_LOG_ERROR(
-          "Error cannot add the provided initial solution! \
-      Assignment size %lu \
-      initial solution size %lu",
-          sol.assignment.size(),
-          init_sol->size());
-      }
+  for (const auto& init_sol : context.settings.initial_solutions) {
+    solution_t<i_t, f_t> sol(*problem_ptr);
+    rmm::device_uvector<f_t> init_sol_assignment(*init_sol, sol.handle_ptr->get_stream());
+    if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
+      raft::copy(sol.assignment.data(),
+                 init_sol_assignment.data(),
+                 init_sol_assignment.size(),
+                 sol.handle_ptr->get_stream());
+      bool is_feasible = sol.compute_feasibility();
+      cuopt_func_call(sol.test_variable_bounds(true));
+      CUOPT_LOG_INFO("Adding initial solution success! feas %d objective %f excess %f",
+                     is_feasible,
+                     sol.get_objective(),
+                     sol.get_total_excess());
+      population.run_solution_callbacks(sol);
+      initial_sol_vector.emplace_back(std::move(sol));
+    } else {
+      CUOPT_LOG_ERROR(
+        "Error cannot add the provided initial solution! \
+    Assignment size %lu \
+    initial solution size %lu",
+        sol.assignment.size(),
+        init_sol->size());
     }
   }
 }
@@ -863,13 +861,13 @@ void diversity_manager_t<i_t, f_t>::add_mab_reward(recombiner_enum_t recombiner_
       if (std::abs(offspring_quality - best_feasible_quality) /
             (std::abs(best_feasible_quality) + 1.0) >
           1.0) {
-        factor = 1 / 3;
+        factor = 0.;
       } else if (std::abs(offspring_quality - best_feasible_quality) /
                    (std::abs(best_feasible_quality) + 1.0) >
                  0.2) {
-        factor = 1 / 2;
+        factor = 0.;
       } else {
-        factor = 1;
+        factor = 1.;
       }
       reward = factor * (std::max(0.1, 4.0 - (recombination_time_in_miliseconds / 2000)));
     }

@@ -28,10 +28,12 @@
 
 namespace cuopt::linear_programming::detail {
 
-constexpr double weight_increase_ratio    = 2.;
-constexpr double weight_decrease_ratio    = 0.9;
-constexpr double max_infeasibility_weight = 1e12;
-constexpr double min_infeasibility_weight = 1.;
+constexpr double weight_increase_ratio       = 2.;
+constexpr double weight_decrease_ratio       = 0.9;
+constexpr double max_infeasibility_weight    = 1e12;
+constexpr double min_infeasibility_weight    = 1.;
+constexpr double infeasibility_balance_ratio = 1.1;
+constexpr double halving_skip_ratio          = 0.75;
 
 template <typename i_t, typename f_t>
 population_t<i_t, f_t>::population_t(std::string const& name_,
@@ -292,7 +294,8 @@ void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
                     best().get_quality(weights));
     if (quality_difference < 1e-10) { return; }
     // make the current best infeasible 10% worse than feasible
-    f_t increase_ratio = (quality_difference * 1.1) / weighted_violation_of_best;
+    f_t increase_ratio =
+      (quality_difference * infeasibility_balance_ratio) / weighted_violation_of_best;
     infeasibility_importance *= (1 + increase_ratio);
     infeasibility_importance = min(max_infeasibility_weight, infeasibility_importance);
     normalize_weights();
@@ -593,7 +596,7 @@ void population_t<i_t, f_t>::halve_the_population()
 {
   raft::common::nvtx::range fun_scope("halve_the_population");
   // try 3/4 here
-  if (current_size() <= (max_solutions * 3) / 4) { return; }
+  if (current_size() <= (max_solutions * halving_skip_ratio)) { return; }
   CUOPT_LOG_DEBUG("Halving the population, current size: %lu", current_size());
   // put population into a vector
   auto sol_vec                  = population_to_vector();
@@ -646,7 +649,6 @@ void population_t<i_t, f_t>::adjust_threshold(cuopt::timer_t timer)
 {
   double time_ratio = (timer.elapsed_time() - population_start_time) /
                       (timer.get_time_limit() - population_start_time);
-  // time_ratio *= time_ratio;
   var_threshold =
     initial_threshold +
     time_ratio * (get_max_var_threshold(problem_ptr->n_integer_vars) - initial_threshold);
