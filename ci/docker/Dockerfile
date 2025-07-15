@@ -29,11 +29,15 @@ ARG CUOPT_VER
 ARG PYTHON_SHORT_VER
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# gcc is required for building psutils
 RUN apt-get update && \
     apt-get install -y --no-install-recommends software-properties-common && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get install -y --no-install-recommends \
         wget \
+        build-essential \
+        gcc \
         python${PYTHON_SHORT_VER} \
         python${PYTHON_SHORT_VER}-dev \
         python${PYTHON_SHORT_VER}-venv \
