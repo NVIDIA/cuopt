@@ -104,14 +104,15 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
   }
 }
 
+// this function is to specialize the local search with config from diversity manager
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
                                                      const weight_t<i_t, f_t>& weights,
                                                      timer_t& timer,
                                                      ls_config_t<i_t, f_t>& ls_config)
 {
-  i_t ls_mab_option = mab_ls.select_mab_option();
-  mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
+  // i_t ls_mab_option = mab_ls.select_mab_option();
+  // mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
   ls.run_local_search(solution, weights, timer, ls_config);
 }
 
