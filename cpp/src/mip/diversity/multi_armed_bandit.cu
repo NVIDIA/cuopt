@@ -153,14 +153,8 @@ void mab_t::add_mab_reward(int option_id,
       reward = 8.0;
     } else if (is_better_than_best_of_parents) {
       double factor = 0.;
-      if (fabs(offspring_quality - best_feasible_quality) / (fabs(best_feasible_quality) + 1.0) >
-          1.0) {
-        // factor = 1. / 3;
-      } else if (fabs(offspring_quality - best_feasible_quality) /
-                   (fabs(best_feasible_quality) + 1.0) >
-                 0.2) {
-        // factor = 1. / 2;
-      } else {
+      if (fabs(offspring_quality - best_feasible_quality) / (fabs(best_feasible_quality) + 1.0) <
+          0.2) {
         factor = 1.;
       }
       reward = work_normalized_reward(factor);
