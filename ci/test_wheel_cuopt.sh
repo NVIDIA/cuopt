@@ -59,4 +59,29 @@ timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 # Run Python tests
 RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt/cuopt/tests/
 
-timeout 3m ./ci/external/cvxpy_smoketest.sh
+# run cvxpy integration tests
+rapids-logger "building 'cvxpy' from source"
+git clone -b cuopt_solver https://github.com/tmckayus/cvxpy
+pushd ./cvxpy || exit 1
+python -m build \
+    --wheel \
+    --outdir dist \
+    .
+
+# NOTE: installing cvxpy[CUOPT] alongside CI artifacts is helpful to catch dependency conflicts
+rapids-logger "installing 'cvxpy' with cuopt"
+CUOPT_SH_CLIENT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_sh_client" rapids-download-wheels-from-github python)
+python -m pip install \
+    --extra-index-url=https://pypi.nvidia.com \
+    "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
+    "${CUOPT_SH_CLIENT_WHEELHOUSE}"/cuopt_sh_client*.whl \
+    "${CUOPT_WHEELHOUSE}"/cuopt*.whl \
+    "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl \
+    'pytest-error-for-skips>=2.0.2' \
+    "$(echo ./dist/cvxpy*.whl)[CUOPT,testing]"
+
+rapids-logger "running 'cvxpy' tests"
+python -m pytest \
+    --error-for-skips \
+    -k "TestCUOPT" \
+    ./cvxpy/tests/test_conic_solvers.py
