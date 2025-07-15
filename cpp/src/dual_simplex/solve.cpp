@@ -252,8 +252,8 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
   lp_status_t status = solve_linear_program_advanced(
     original_lp, start_time, settings, lp_solution, vstatus, edge_norms);
   uncrush_primal_solution(user_problem, original_lp, lp_solution.x, solution.x);
-  uncrush_primal_solution(user_problem, original_lp, lp_solution.z, solution.z);
-  solution.y                  = lp_solution.y;
+  uncrush_dual_solution(
+    user_problem, original_lp, lp_solution.y, lp_solution.z, solution.y, solution.z);
   solution.objective          = lp_solution.objective;
   solution.user_objective     = lp_solution.user_objective;
   solution.iterations         = lp_solution.iterations;
