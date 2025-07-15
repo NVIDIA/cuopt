@@ -88,10 +88,11 @@ class solver_settings_t {
   const rmm::device_uvector<f_t>& get_initial_pdlp_dual_solution() const;
 
   // MIP Settings
-  void set_initial_mip_solution(const f_t* initial_solution, i_t size);
+  void add_initial_mip_solution(const f_t* initial_solution,
+                                i_t size,
+                                rmm::cuda_stream_view stream = rmm::cuda_stream_default);
   void set_mip_callback(internals::base_solution_callback_t* callback = nullptr);
 
-  const rmm::device_uvector<f_t>& get_initial_mip_solution() const;
   const pdlp_warm_start_data_view_t<i_t, f_t>& get_pdlp_warm_start_data_view() const noexcept;
   const std::vector<internals::base_solution_callback_t*> get_mip_callbacks() const;
 

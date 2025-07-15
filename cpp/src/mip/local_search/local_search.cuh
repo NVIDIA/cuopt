@@ -41,8 +41,12 @@ class local_search_t {
                           timer_t timer);
   bool run_local_search(solution_t<i_t, f_t>& solution,
                         const weight_t<i_t, f_t>& weights,
-                        timer_t timer);
-  bool run_fj_annealing(solution_t<i_t, f_t>& solution, timer_t timer);
+                        timer_t timer,
+                        f_t baseline_objective            = std::numeric_limits<f_t>::lowest(),
+                        bool at_least_one_parent_feasible = true);
+  bool run_fj_annealing(solution_t<i_t, f_t>& solution,
+                        timer_t timer,
+                        f_t baseline_objective = std::numeric_limits<f_t>::lowest());
   bool run_fj_line_segment(solution_t<i_t, f_t>& solution, timer_t timer);
   bool run_fj_on_zero(solution_t<i_t, f_t>& solution, timer_t timer);
   bool check_fj_on_lp_optimal(solution_t<i_t, f_t>& solution, bool perturb, timer_t timer);

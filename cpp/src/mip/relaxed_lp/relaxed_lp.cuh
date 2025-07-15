@@ -26,34 +26,35 @@
 
 namespace cuopt::linear_programming::detail {
 
+struct relaxed_lp_settings_t {
+  double tolerance             = 1e-4;
+  double time_limit            = 1.0;
+  bool check_infeasibility     = true;
+  bool return_first_feasible   = false;
+  bool save_state              = true;
+  bool per_constraint_residual = false;
+};
+
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   problem_t<i_t, f_t>& op_problem,
   solution_t<i_t, f_t>& solution,
-  f_t tolerance,
-  f_t time_limit             = 20.,
-  bool check_infeasibility   = true,
-  bool return_first_feasible = false);
+  const relaxed_lp_settings_t& settings);
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   problem_t<i_t, f_t>& op_problem,
   rmm::device_uvector<f_t>& assignment,
   lp_state_t<i_t, f_t>& lp_state,
-  f_t tolerance,
-  f_t time_limit             = 20.,
-  bool check_infeasibility   = true,
-  bool return_first_feasible = false,
-  bool save_state            = true);
+  const relaxed_lp_settings_t& settings);
 
 template <typename i_t, typename f_t>
 bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
                             solution_t<i_t, f_t>& solution,
                             const rmm::device_uvector<i_t>& variables_to_fix,
-                            typename mip_solver_settings_t<i_t, f_t>::tolerances_t tols,
-                            lp_state_t<i_t, f_t>& lp_state,
-                            f_t time_limit                             = 20.,
-                            bool return_first_feasible                 = false,
-                            bound_presolve_t<i_t, f_t>* bound_presolve = nullptr);
+                            relaxed_lp_settings_t& settings,
+                            bound_presolve_t<i_t, f_t>* bound_presolve = nullptr,
+                            bool check_fixed_assignment_feasibility    = false,
+                            bool use_integer_fixed_problem             = false);
 
 }  // namespace cuopt::linear_programming::detail

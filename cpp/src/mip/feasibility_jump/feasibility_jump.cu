@@ -30,6 +30,7 @@
 #include <raft/random/rng.cuh>
 
 #include <thrust/copy.h>
+#include <thrust/count.h>
 #include <thrust/logical.h>
 #include <thrust/sort.h>
 #include <cub/cub.cuh>
@@ -158,7 +159,6 @@ fj_t<i_t, f_t>::climber_data_t::view_t fj_t<i_t, f_t>::climber_data_t::view()
   v.iteration_related_variables = iteration_related_variables.view();
   v.constraints_changed         = make_span(constraints_changed);
   v.best_assignment             = make_span(best_assignment);
-  v.farthest_l1_sol             = make_span(farthest_l1_sol);
   v.incumbent_assignment        = make_span(incumbent_assignment);
   v.cstr_weights                = make_span(fj.cstr_weights);
   v.cstr_left_weights           = make_span(fj.cstr_left_weights);
@@ -196,6 +196,9 @@ fj_t<i_t, f_t>::climber_data_t::view_t fj_t<i_t, f_t>::climber_data_t::view()
   v.work_id_to_bin_var_idx            = make_span(fj.work_id_to_bin_var_idx);
   v.work_id_to_nonbin_var_idx         = make_span(fj.work_id_to_nonbin_var_idx);
   v.work_ids_for_related_vars         = make_span(fj.work_ids_for_related_vars);
+  v.fractional_variables              = fractional_variables.view();
+  v.saved_best_fractional_count       = saved_best_fractional_count.data();
+  v.handle_fractionals_only           = handle_fractionals_only.data();
   v.selected_var                      = selected_var.data();
   v.violation_score                   = violation_score.data();
   v.weighted_violation_score          = weighted_violation_score.data();
@@ -203,7 +206,6 @@ fj_t<i_t, f_t>::climber_data_t::view_t fj_t<i_t, f_t>::climber_data_t::view()
   v.local_minimums_reached            = local_minimums_reached.data();
   v.iterations                        = iterations.data();
   v.best_excess                       = best_excess.data();
-  v.best_l1_distance                  = best_l1_distance.data();
   v.best_objective                    = best_objective.data();
   v.saved_solution_objective          = saved_solution_objective.data();
   v.incumbent_quality                 = incumbent_quality.data();
@@ -218,6 +220,7 @@ fj_t<i_t, f_t>::climber_data_t::view_t fj_t<i_t, f_t>::climber_data_t::view()
   v.break_condition                   = break_condition.data();
   v.temp_break_condition              = temp_break_condition.data();
   v.best_jump_idx                     = best_jump_idx.data();
+  v.small_move_tabu                   = small_move_tabu.data();
   v.stop_threshold                    = fj.stop_threshold;
   v.iterations_until_feasible_counter = iterations_until_feasible_counter.data();
   v.full_refresh_iteration            = full_refresh_iteration.data();
@@ -256,6 +259,7 @@ void fj_t<i_t, f_t>::climber_data_t::clear_sets(const rmm::cuda_stream_view& str
   violated_constraints.clear(stream);
   candidate_variables.clear(stream);
   iteration_related_variables.clear(stream);
+  fractional_variables.clear(stream);
 }
 
 template <typename i_t, typename f_t>
@@ -363,9 +367,10 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
     thrust::counting_iterator<i_t>(0),
     thrust::counting_iterator<i_t>(pb_ptr->n_variables),
     [pb                   = pb_ptr->view(),
+     mode                 = settings.mode,
      incumbent_assignment = climber->incumbent_assignment.data()] __device__(i_t var_idx) {
       // round if integer
-      if (pb.is_integer_var(var_idx)) {
+      if (mode != fj_mode_t::ROUNDING && pb.is_integer_var(var_idx)) {
         incumbent_assignment[var_idx] = round(incumbent_assignment[var_idx]);
       }
       // clamp to bounds
@@ -373,6 +378,20 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
         max(pb.variable_lower_bounds[var_idx],
             min(pb.variable_upper_bounds[var_idx], incumbent_assignment[var_idx]));
     });
+
+  thrust::for_each(
+    rmm::exec_policy(climber_stream),
+    thrust::make_counting_iterator<i_t>(0),
+    thrust::make_counting_iterator<i_t>(pb_ptr->n_variables),
+    [v = view] __device__(i_t var_idx) {
+      if (v.pb.is_integer_var(var_idx) && !v.pb.is_integer(v.incumbent_assignment[var_idx]))
+        v.fractional_variables.insert(var_idx);
+    });
+
+  i_t fractional_var_count = climber->fractional_variables.set_size.value(climber_stream);
+  climber->saved_best_fractional_count.set_value_async(fractional_var_count, climber_stream);
+  climber->handle_fractionals_only.set_value_to_zero_async(climber_stream);
+  CUOPT_LOG_TRACE("fractional_var_count = %d\n", fractional_var_count);
 
   objective_vars.resize(pb_ptr->n_variables, climber_stream);
   auto end = thrust::copy_if(rmm::exec_policy(climber_stream),
@@ -392,14 +411,14 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
   climber->best_objective.set_value_async(inf, climber_stream);
   climber->saved_solution_objective.set_value_async(inf, climber_stream);
   climber->violation_score.set_value_to_zero_async(climber_stream);
-  climber->best_l1_distance.set_value_to_zero_async(climber_stream);
   climber->weighted_violation_score.set_value_to_zero_async(climber_stream);
   init_lhs_and_violation<i_t, f_t><<<256, 256, 0, climber_stream.value()>>>(view);
 
   // initialize the best_objective values according to the initial assignment
   f_t best_obj = compute_objective_from_vec<i_t, f_t>(
     climber->incumbent_assignment, pb_ptr->objective_coefficients, climber_stream);
-  if (climber->violated_constraints.set_size.value(climber_stream) == 0) {
+  if (climber->violated_constraints.set_size.value(climber_stream) == 0 &&
+      (settings.mode != fj_mode_t::ROUNDING || fractional_var_count == 0)) {
     climber->best_excess.set_value_to_zero_async(climber_stream);
     climber->best_objective.set_value_async(best_obj, climber_stream);
     climber->saved_solution_objective.set_value_async(best_obj, climber_stream);
@@ -421,6 +440,9 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
   climber->iterations.set_value_to_zero_async(climber_stream);
   climber->full_refresh_iteration.set_value_to_zero_async(climber_stream);
   climber->iterations_until_feasible_counter.set_value_to_zero_async(climber_stream);
+  climber->small_move_tabu.set_value_to_zero_async(climber_stream);
+
+  climber_stream.synchronize();
 
   climber_stream.synchronize();
 
@@ -615,10 +637,14 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
   // ensure an updated copy of the settings is used device-side
   raft::copy(v.settings, &settings, 1, climber_stream);
 
-  bool is_binary_pb       = pb_ptr->n_variables == thrust::count(handle_ptr->get_thrust_policy(),
+  bool is_binary_pb = pb_ptr->n_variables == thrust::count(handle_ptr->get_thrust_policy(),
                                                            pb_ptr->is_binary_variable.begin(),
                                                            pb_ptr->is_binary_variable.end(),
                                                            1);
+  // if we're in rounding mode, do not treat the problem as a purely binary one
+  // as it breaks assumptions in the binary_pb codepath
+  if (settings.mode == fj_mode_t::ROUNDING) { is_binary_pb = false; }
+
   bool use_load_balancing = false;
   if (settings.load_balancing_mode == fj_load_balancing_mode_t::ALWAYS_OFF) {
     use_load_balancing = false;
@@ -628,6 +654,8 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
     use_load_balancing =
       pb_ptr->n_variables > settings.parameters.load_balancing_codepath_min_varcount;
   }
+  // Load-balanced codepath not updated yet to handle rounding mode
+  if (settings.mode == fj_mode_t::ROUNDING) { use_load_balancing = false; }
 
   cudaGraph_t graph;
   void* kernel_args[]            = {&v};
@@ -768,6 +796,24 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
 }
 
 template <typename i_t, typename f_t>
+void fj_t<i_t, f_t>::round_remaining_fractionals(solution_t<i_t, f_t>& solution, i_t climber_idx)
+{
+  auto& data = *climbers[climber_idx];
+
+  auto climber_stream = data.stream.view();
+  if (climber_idx == 0) climber_stream = handle_ptr->get_stream();
+
+  bool handle_fractionals_only = true;
+  data.handle_fractionals_only.set_value_async(handle_fractionals_only, climber_stream);
+  data.break_condition.set_value_to_zero_async(climber_stream);
+  data.temp_break_condition.set_value_to_zero_async(climber_stream);
+  climber_stream.synchronize();
+
+  //  Run the fractional move selection and assignment update kernels until all have been rounded
+  host_loop(solution, climber_idx);
+}
+
+template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::refresh_lhs_and_violation(const rmm::cuda_stream_view& stream, i_t climber_idx)
 {
   auto& data = *climbers[climber_idx];
@@ -894,11 +940,15 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
                   same_sol,
                   max_cstr_weight.value(climber_stream));
 #endif
-  CUOPT_LOG_TRACE("EXIT step %d, best objective %f best_excess %f, feas %d",
+  CUOPT_LOG_DEBUG("EXIT FJ step %d, best objective %f best_excess %f, feas %d, local mins %d",
                   data.iterations.value(climber_stream),
                   solution.get_user_objective(),
                   solution.get_total_excess(),
-                  solution.get_feasible());
+                  solution.get_feasible(),
+                  data.local_minimums_reached.value(climber_stream));
+
+  CUOPT_LOG_TRACE("best fractional count %d",
+                  data.saved_best_fractional_count.value(climber_stream));
 
   return steps;
 }
@@ -942,7 +992,6 @@ void fj_t<i_t, f_t>::resize_vectors(const raft::handle_t* handle_ptr)
   climbers[0]->constraints_changed.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
   climbers[0]->violated_constraints.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
   climbers[0]->best_assignment.resize(pb_ptr->n_variables, handle_ptr->get_stream());
-  climbers[0]->farthest_l1_sol.resize(pb_ptr->n_variables, handle_ptr->get_stream());
   climbers[0]->incumbent_assignment.resize(pb_ptr->n_variables, handle_ptr->get_stream());
   climbers[0]->incumbent_lhs.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
   climbers[0]->incumbent_lhs_sumcomp.resize(pb_ptr->n_constraints, handle_ptr->get_stream());
@@ -990,12 +1039,24 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
   timer_t timer(settings.time_limit);
   handle_ptr = const_cast<raft::handle_t*>(solution.handle_ptr);
   pb_ptr     = solution.problem_ptr;
-  cuopt_func_call(solution.test_variable_bounds(true));
-  cuopt_assert(solution.test_number_all_integer(), "All integers must be rounded");
+  if (settings.mode != fj_mode_t::ROUNDING) {
+    cuopt_func_call(solution.test_variable_bounds(true));
+    cuopt_assert(solution.test_number_all_integer(), "All integers must be rounded");
+  }
   pb_ptr->check_problem_representation(true);
   resize_vectors(solution.handle_ptr);
 
   bool is_initial_feasible = solution.compute_feasibility();
+  // if we're in rounding mode, split the time/iteration limit between the first and second stage
+  cuopt_assert(settings.parameters.rounding_second_stage_split >= 0 &&
+                 settings.parameters.rounding_second_stage_split <= 1,
+               "rounding_second_stage_split must be between 0 and 1");
+  if (settings.mode == fj_mode_t::ROUNDING) {
+    settings.time_limit =
+      settings.time_limit * (1 - settings.parameters.rounding_second_stage_split);
+    settings.iteration_limit =
+      settings.iteration_limit * (1 - settings.parameters.rounding_second_stage_split);
+  }
 
   // TODO only call this when the size is different
   device_init(handle_ptr->get_stream());
@@ -1024,9 +1085,35 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
 
   f_t effort_rate = (f_t)iterations / timer.elapsed_time();
 
+  // If we're in rounding mode and some fractionals remain: round them all
+  // limit = total_limit * second_stage_split
+  if (settings.mode == fj_mode_t::ROUNDING &&
+      climbers[0]->fractional_variables.set_size.value(handle_ptr->get_stream()) > 0) {
+    settings.time_limit = settings.time_limit * settings.parameters.rounding_second_stage_split;
+    settings.iteration_limit =
+      settings.iteration_limit * settings.parameters.rounding_second_stage_split;
+
+    round_remaining_fractionals(solution);
+    // if time limit exceeded: round all remaining fractionals if any by nearest rounding.
+    if (climbers[0]->fractional_variables.set_size.value(handle_ptr->get_stream()) > 0) {
+      solution.round_nearest();
+    }
+  }
+
   CUOPT_LOG_TRACE("GPU solver took %g", timer.elapsed_time());
   CUOPT_LOG_TRACE("limit reached, effort rate %g steps/secm %d steps", effort_rate, iterations);
   reset_cuda_graph();
+  i_t n_integer_vars = thrust::count_if(
+    handle_ptr->get_thrust_policy(),
+    solution.problem_ptr->integer_indices.begin(),
+    solution.problem_ptr->integer_indices.end(),
+    [pb             = solution.problem_ptr->view(),
+     assignment_ptr = solution.assignment.data()] __device__(i_t idx) -> bool {
+      if (!pb.is_integer(assignment_ptr[idx])) {
+        DEVICE_LOG_ERROR("variable %d is not integer, value %g\n", idx, assignment_ptr[idx]);
+      }
+      return pb.is_integer(assignment_ptr[idx]);
+    });
   cuopt_assert(solution.test_number_all_integer(), "All integers must be rounded");
   bool is_new_feasible = solution.compute_feasibility();
 

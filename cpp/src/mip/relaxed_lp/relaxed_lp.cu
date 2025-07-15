@@ -33,20 +33,12 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(problem_t<i_t, f_t>& op_problem,
-                                                                  solution_t<i_t, f_t>& solution,
-                                                                  f_t tolerance,
-                                                                  f_t time_limit,
-                                                                  bool check_infeasibility,
-                                                                  bool return_first_feasible)
+optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
+  problem_t<i_t, f_t>& op_problem,
+  solution_t<i_t, f_t>& solution,
+  const relaxed_lp_settings_t& settings)
 {
-  return get_relaxed_lp_solution(op_problem,
-                                 solution.assignment,
-                                 solution.lp_state,
-                                 tolerance,
-                                 time_limit,
-                                 check_infeasibility,
-                                 return_first_feasible);
+  return get_relaxed_lp_solution(op_problem, solution.assignment, solution.lp_state, settings);
 }
 
 template <typename i_t, typename f_t>
@@ -54,37 +46,28 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   problem_t<i_t, f_t>& op_problem,
   rmm::device_uvector<f_t>& assignment,
   lp_state_t<i_t, f_t>& lp_state,
-  f_t tolerance,
-  f_t time_limit,
-  bool check_infeasibility,
-  bool return_first_feasible,
-  bool save_state)
+  const relaxed_lp_settings_t& settings)
 {
   raft::common::nvtx::range fun_scope("get_relaxed_lp_solution");
-  pdlp_solver_settings_t<i_t, f_t> settings{};
-  settings.detect_infeasibility = check_infeasibility;
-  settings.set_optimality_tolerance(tolerance);
-  settings.tolerances.relative_primal_tolerance = tolerance / 100.;
-  settings.tolerances.relative_dual_tolerance   = tolerance / 100.;
-  settings.time_limit                           = time_limit;
-  if (return_first_feasible) { settings.per_constraint_residual = true; }
-  // settings.set_save_best_primal_so_far(true);
-  // currently disable first primal setting as it is not supported without per constraint mode
-  settings.first_primal_feasible = return_first_feasible;
-  pdlp_solver_t<i_t, f_t> lp_solver(op_problem, settings);
-  if (save_state) {
+  pdlp_solver_settings_t<i_t, f_t> pdlp_settings{};
+  pdlp_settings.detect_infeasibility = settings.check_infeasibility;
+  pdlp_settings.set_optimality_tolerance(settings.tolerance);
+  pdlp_settings.tolerances.relative_primal_tolerance = settings.tolerance / 100.;
+  pdlp_settings.tolerances.relative_dual_tolerance   = settings.tolerance / 100.;
+  pdlp_settings.time_limit                           = settings.time_limit;
+  if (settings.return_first_feasible) { pdlp_settings.per_constraint_residual = true; }
+  pdlp_settings.first_primal_feasible = settings.return_first_feasible;
+  pdlp_solver_t<i_t, f_t> lp_solver(op_problem, pdlp_settings);
+  if (settings.save_state) {
     i_t prev_size = lp_state.prev_dual.size();
     CUOPT_LOG_DEBUG(
       "setting initial primal solution of size %d dual size %d problem vars %d cstrs %d",
-      lp_state.prev_primal.size(),
+      assignment.size(),
       lp_state.prev_dual.size(),
       op_problem.n_variables,
       op_problem.n_constraints);
     lp_state.resize(op_problem, op_problem.handle_ptr->get_stream());
-    raft::copy(lp_state.prev_primal.data(),
-               assignment.data(),
-               assignment.size(),
-               op_problem.handle_ptr->get_stream());
+    clamp_within_var_bounds(assignment, &op_problem, op_problem.handle_ptr);
     // The previous dual sometimes contain invalid values w.r.t current problem
     // Adjust better dual values when we use warm start
     thrust::tabulate(op_problem.handle_ptr->get_thrust_policy(),
@@ -95,7 +78,7 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
                        if (!isfinite(x) || i >= prev_size) { return 0.0; }
                        return x;
                      });
-    lp_solver.set_initial_primal_solution(lp_state.prev_primal);
+    lp_solver.set_initial_primal_solution(assignment);
     lp_solver.set_initial_dual_solution(lp_state.prev_dual);
   }
   CUOPT_LOG_DEBUG(
@@ -108,7 +91,7 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   auto solver_response = lp_solver.run_solver(start_time);
 
   if (solver_response.get_primal_solution().size() != 0 &&
-      solver_response.get_dual_solution().size() != 0 && save_state) {
+      solver_response.get_dual_solution().size() != 0 && settings.save_state) {
     CUOPT_LOG_DEBUG("saving initial primal solution of size %d", lp_state.prev_primal.size());
     lp_state.set_state(solver_response.get_primal_solution(), solver_response.get_dual_solution());
   }
@@ -129,24 +112,36 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   return solver_response;
 }
 
-// returns true if the problem is inevitablyinfeasible
+// Run LP with variables fixed to specific values
 template <typename i_t, typename f_t>
 bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
+                            problem_t<i_t, f_t>& fixed_problem,
                             solution_t<i_t, f_t>& solution,
-                            const rmm::device_uvector<i_t>& variables_to_fix,
-                            typename mip_solver_settings_t<i_t, f_t>::tolerances_t tols,
-                            lp_state_t<i_t, f_t>& lp_state,
-                            f_t time_limit,
-                            bool return_first_feasible,
-                            bound_presolve_t<i_t, f_t>* bound_presolve)
+                            rmm::device_uvector<f_t>& fixed_assignment,
+                            rmm::device_uvector<i_t>& variable_map,
+                            relaxed_lp_settings_t& settings,
+                            bound_presolve_t<i_t, f_t>* bound_presolve,
+                            bool check_fixed_assignment_feasibility)
 {
-  // if we are fixing all vars, there is no lp to be run
-  if (variables_to_fix.size() == (size_t)op_problem.n_variables) { return true; }
-  auto [fixed_problem, fixed_assignment, variable_map] = solution.fix_variables(variables_to_fix);
+  if (check_fixed_assignment_feasibility) {
+    solution_t<i_t, f_t> temp_solution(fixed_problem);
+    raft::copy(temp_solution.assignment.data(),
+               fixed_assignment.data(),
+               fixed_assignment.size(),
+               fixed_problem.handle_ptr->get_stream());
+    bool temp_solution_feasible = temp_solution.compute_feasibility();
+    if (!temp_solution_feasible) {
+      CUOPT_LOG_DEBUG(
+        "Infeasible solution detected with fixed vars LP. Sol excess %f fixed sol excess %f",
+        solution.get_total_excess(),
+        temp_solution.get_total_excess());
+      settings.time_limit = 1;
+    }
+  }
   if (bound_presolve != nullptr) {
     bound_presolve->resize(fixed_problem);
     // run bounds prop to quickly discover inevitably infeasible
-    bound_presolve->settings.time_limit = (time_limit / 10);
+    bound_presolve->settings.time_limit = (settings.time_limit / 10);
     auto term_crit                      = bound_presolve->solve(fixed_problem);
     bound_presolve->settings            = {};
     if (bound_presolve->infeas_constraints_count > 0) {
@@ -157,50 +152,73 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
     }
   }
   fixed_problem.check_problem_representation(true);
-  const bool check_feas = false;
   // if we are on the original problem and fixing the integers, save the state
   // if we are in recombiners and on a smaller problem, don't update the state with integers fixed
-  bool save_state      = false;
-  auto solver_response = get_relaxed_lp_solution(fixed_problem,
-                                                 fixed_assignment,
-                                                 lp_state,
-                                                 tols.absolute_tolerance,
-                                                 time_limit,
-                                                 check_feas,
-                                                 return_first_feasible,
-                                                 save_state);
+  CUOPT_LOG_TRACE("save_state %d", settings.save_state);
+  auto& lp_state = fixed_problem.lp_state;
+  auto solver_response =
+    get_relaxed_lp_solution(fixed_problem, fixed_assignment, lp_state, settings);
   // unfix the assignment on given result no matter if it is feasible
   solution.unfix_variables(fixed_assignment, variable_map);
   if (bound_presolve != nullptr) { bound_presolve->resize(op_problem); }
   return false;
 }
 
+// returns true if the problem is inevitably infeasible
+template <typename i_t, typename f_t>
+bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
+                            solution_t<i_t, f_t>& solution,
+                            const rmm::device_uvector<i_t>& variables_to_fix,
+                            relaxed_lp_settings_t& settings,
+                            bound_presolve_t<i_t, f_t>* bound_presolve,
+                            bool check_fixed_assignment_feasibility,
+                            bool use_integer_fixed_problem)
+{
+  // if we are fixing all vars, there is no lp to be run
+  if (variables_to_fix.size() == (size_t)op_problem.n_variables) { return true; }
+  if (use_integer_fixed_problem) {
+    op_problem.fill_integer_fixed_problem(solution.assignment, op_problem.handle_ptr);
+    auto fixed_assignment =
+      op_problem.get_fixed_assignment_from_integer_fixed_problem(solution.assignment);
+    return run_lp_with_vars_fixed(op_problem,
+                                  *op_problem.integer_fixed_problem,
+                                  solution,
+                                  fixed_assignment,
+                                  op_problem.integer_fixed_variable_map,
+                                  settings,
+                                  bound_presolve,
+                                  check_fixed_assignment_feasibility);
+  } else {
+    auto [fixed_problem, fixed_assignment, variable_map] = solution.fix_variables(variables_to_fix);
+    return run_lp_with_vars_fixed(op_problem,
+                                  fixed_problem,
+                                  solution,
+                                  fixed_assignment,
+                                  variable_map,
+                                  settings,
+                                  bound_presolve,
+                                  check_fixed_assignment_feasibility);
+  }
+}
+
 #define INSTANTIATE(F_TYPE)                                                                   \
   template optimization_problem_solution_t<int, F_TYPE> get_relaxed_lp_solution<int, F_TYPE>( \
     problem_t<int, F_TYPE> & op_problem,                                                      \
     solution_t<int, F_TYPE> & solution,                                                       \
-    F_TYPE tolerance,                                                                         \
-    F_TYPE time_limit,                                                                        \
-    bool check_infeasibility,                                                                 \
-    bool return_first_feasible);                                                              \
+    const relaxed_lp_settings_t& settings);                                                   \
   template optimization_problem_solution_t<int, F_TYPE> get_relaxed_lp_solution<int, F_TYPE>( \
     problem_t<int, F_TYPE> & op_problem,                                                      \
     rmm::device_uvector<F_TYPE> & assignment,                                                 \
     lp_state_t<int, F_TYPE> & lp_state,                                                       \
-    F_TYPE tolerance,                                                                         \
-    F_TYPE time_limit,                                                                        \
-    bool check_infeasibility,                                                                 \
-    bool return_first_feasible,                                                               \
-    bool save_state);                                                                         \
+    const relaxed_lp_settings_t& settings);                                                   \
   template bool run_lp_with_vars_fixed<int, F_TYPE>(                                          \
     problem_t<int, F_TYPE> & op_problem,                                                      \
     solution_t<int, F_TYPE> & solution,                                                       \
     const rmm::device_uvector<int>& variables_to_fix,                                         \
-    typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tols,                           \
-    lp_state_t<int, F_TYPE>& lp_state,                                                        \
-    F_TYPE time_limit,                                                                        \
-    bool return_first_feasible,                                                               \
-    bound_presolve_t<int, F_TYPE>* bound_presolve);
+    relaxed_lp_settings_t& settings,                                                          \
+    bound_presolve_t<int, F_TYPE>* bound_presolve,                                            \
+    bool check_fixed_assignment_feasibility,                                                  \
+    bool use_integer_fixed_problem);
 
 #if MIP_INSTANTIATE_FLOAT
 INSTANTIATE(float)

@@ -161,9 +161,11 @@ void test_elim_var_solution(std::string test_instance)
   mip_solver_settings_t<int, double> default_settings{};
 
   detail::solution_t<int, double> solution_1(standardized_problem);
+  detail::relaxed_lp_settings_t lp_settings;
+  lp_settings.time_limit = 120.;
+  lp_settings.tolerance  = default_settings.tolerances.absolute_tolerance;
   // run the problem through pdlp
-  auto result_1 = detail::get_relaxed_lp_solution(
-    standardized_problem, solution_1, default_settings.tolerances.absolute_tolerance, 120.);
+  auto result_1 = detail::get_relaxed_lp_solution(standardized_problem, solution_1, lp_settings);
   solution_1.compute_feasibility();
   // the solution might not be feasible per row as we are getting the result of pdlp
   bool sol_1_feasible = (int)result_1.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
@@ -187,9 +189,11 @@ void test_elim_var_solution(std::string test_instance)
   trivial_presolve(sub_problem);
 
   detail::solution_t<int, double> solution_2(sub_problem);
+  detail::relaxed_lp_settings_t lp_settings_2;
+  lp_settings_2.time_limit = 120.;
+  lp_settings_2.tolerance  = default_settings.tolerances.absolute_tolerance;
   // run the problem through pdlp
-  auto result_2 = detail::get_relaxed_lp_solution(
-    sub_problem, solution_2, default_settings.tolerances.absolute_tolerance, 120.);
+  auto result_2 = detail::get_relaxed_lp_solution(sub_problem, solution_2, lp_settings_2);
   solution_2.compute_feasibility();
   bool sol_2_feasible = (int)result_2.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
   EXPECT_EQ((int)result_2.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
