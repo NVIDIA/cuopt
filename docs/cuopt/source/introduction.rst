@@ -120,6 +120,7 @@ cuOpt supports the following APIs:
    - `Routing (TSP, VRP, and PDP) - Server <cuopt-server/quick-start.html>`_
 - Third-party modeling languages
    - `AMPL <https://www.ampl.com/>`_
+   - `GAMS <https://www.gams.com/>`_
    - `PuLP <https://pypi.org/project/PuLP/>`_
 
 
