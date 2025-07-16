@@ -147,7 +147,7 @@ bool nodes_to_search_t<i_t, f_t>::sample_nodes_to_search(
   }
   cuopt_assert(n_sampled_nodes > 0, "There must be at least one operator!");
   cuopt_assert(curr_n_nodes_to_search > 0, "There must be at least one operator!");
-  n_sampled_nodes = min(n_sampled_nodes, curr_n_nodes_to_search);
+  n_sampled_nodes = std::min(n_sampled_nodes, curr_n_nodes_to_search);
   h_sampled_nodes.clear();
   for (i_t i = 0; i < n_sampled_nodes; ++i) {
     std::uniform_int_distribution<i_t> rng_dist(0, h_nodes_to_search.size() - 1);

@@ -35,96 +35,219 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
                           const raft::handle_t* handle_ptr)
     : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr),
       constraint_prop(constraint_prop_),
-      rng(cuopt::seed_generator::get_seed())
+      rng(cuopt::seed_generator::get_seed()),
+      vars_to_fix(n_vars, handle_ptr->get_stream())
   {
   }
 
-  std::pair<solution_t<i_t, f_t>, bool> recombine(solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b)
+  void get_probing_values_for_infeasible(
+    solution_t<i_t, f_t>& guiding,
+    solution_t<i_t, f_t>& other,
+    solution_t<i_t, f_t>& offspring,
+    rmm::device_uvector<thrust::pair<f_t, f_t>>& probing_values,
+    i_t n_vars_from_other)
+  {
+    auto guiding_view   = guiding.view();
+    auto other_view     = other.view();
+    auto offspring_view = offspring.view();
+    const f_t int_tol   = guiding.problem_ptr->tolerances.integrality_tolerance;
+    // this is to give two possibilities to round in case of conflict
+    thrust::for_each(
+      guiding.handle_ptr->get_thrust_policy(),
+      thrust::make_counting_iterator(0),
+      thrust::make_counting_iterator(guiding.problem_ptr->n_variables),
+      [guiding_view, other_view, probing_values = probing_values.data()] __device__(i_t idx) {
+        f_t guiding_val = guiding_view.assignment[idx];
+        f_t other_val   = other_view.assignment[idx];
+        cuopt_assert(guiding_view.problem.check_variable_within_bounds(idx, guiding_val), "");
+        cuopt_assert(other_view.problem.check_variable_within_bounds(idx, other_val), "");
+        probing_values[idx] = thrust::make_pair(guiding_val, other_val);
+      });
+    // populate remaining N integers randomly/average from each solution
+    thrust::for_each(
+      guiding.handle_ptr->get_thrust_policy(),
+      this->remaining_indices.data(),
+      this->remaining_indices.data() + n_vars_from_other,
+      [guiding_view,
+       other_view,
+       offspring_view,
+       int_tol,
+       probing_values = probing_values.data(),
+       seed           = cuopt::seed_generator::get_seed()] __device__(i_t idx) {
+        f_t guiding_val = guiding_view.assignment[idx];
+        f_t other_val   = other_view.assignment[idx];
+        cuopt_assert(guiding_view.problem.check_variable_within_bounds(idx, guiding_val), "");
+        cuopt_assert(other_view.problem.check_variable_within_bounds(idx, other_val), "");
+        f_t avg_val = (other_val + guiding_val) / 2;
+        if (guiding_view.problem.is_integer_var(idx)) {
+          raft::random::PCGenerator rng(seed, idx, 0);
+          if (rng.next_u32() % 2) { cuda::std::swap(other_val, guiding_val); }
+          cuopt_assert(is_integer<f_t>(other_val, int_tol), "The value must be integer");
+          f_t second_val      = round(avg_val) == other_val ? guiding_val : round(avg_val);
+          probing_values[idx] = thrust::make_pair(other_val, second_val);
+          // assign some floating value, so that they can be rounded by bounds prop
+          f_t lb = guiding_view.problem.variable_lower_bounds[idx];
+          f_t ub = guiding_view.problem.variable_upper_bounds[idx];
+          if (integer_equal<f_t>(lb, ub, int_tol)) {
+            cuopt_assert(false, "The var values must be different in A and B!");
+          } else if (isfinite(lb)) {
+            offspring_view.assignment[idx] = lb + 0.1;
+          } else {
+            offspring_view.assignment[idx] = ub - 0.1;
+          }
+        } else {
+          // if the var is continuous, take the average
+          offspring_view.assignment[idx] = avg_val;
+        }
+      });
+  }
+
+  void get_probing_values_for_feasible(solution_t<i_t, f_t>& guiding,
+                                       solution_t<i_t, f_t>& other,
+                                       solution_t<i_t, f_t>& offspring,
+                                       rmm::device_uvector<thrust::pair<f_t, f_t>>& probing_values,
+                                       i_t n_vars_from_other,
+                                       rmm::device_uvector<i_t>& variable_map)
+  {
+    cuopt_assert(n_vars_from_other == offspring.problem_ptr->n_integer_vars,
+                 "The number of vars from other should match!");
+    auto guiding_view   = guiding.view();
+    auto other_view     = other.view();
+    auto offspring_view = offspring.view();
+    const f_t int_tol   = guiding.problem_ptr->tolerances.integrality_tolerance;
+    thrust::for_each(
+      guiding.handle_ptr->get_thrust_policy(),
+      thrust::make_counting_iterator(0lu),
+      thrust::make_counting_iterator(variable_map.size()),
+      [guiding_view,
+       other_view,
+       offspring_view,
+       int_tol,
+       probing_values = make_span(probing_values),
+       variable_map   = make_span(variable_map)] __device__(size_t idx) {
+        f_t other_val   = other_view.assignment[variable_map[idx]];
+        f_t guiding_val = guiding_view.assignment[variable_map[idx]];
+        cuopt_assert(other_view.problem.check_variable_within_bounds(variable_map[idx], other_val),
+                     "");
+        cuopt_assert(
+          guiding_view.problem.check_variable_within_bounds(variable_map[idx], guiding_val), "");
+        f_t avg_val                    = (other_val + guiding_val) / 2;
+        probing_values[idx]            = thrust::make_pair(guiding_val, other_val);
+        offspring_view.assignment[idx] = avg_val;
+      });
+  }
+
+  std::pair<solution_t<i_t, f_t>, bool> recombine(solution_t<i_t, f_t>& a,
+                                                  solution_t<i_t, f_t>& b,
+                                                  const weight_t<i_t, f_t>& weights)
   {
     raft::common::nvtx::range fun_scope("bound_prop_recombiner");
-    // copy the solution from A
-    solution_t<i_t, f_t> offspring(a);
+    auto& guiding_solution = a.get_feasible() ? a : b;
+    auto& other_solution   = a.get_feasible() ? b : a;
+    // copy the solution from guiding
+    solution_t<i_t, f_t> offspring(guiding_solution);
     // find same values and populate it to offspring
-    this->assign_same_integer_values(a, b, offspring);
-    i_t remaining_variables = this->n_remaining.value(a.handle_ptr->get_stream());
-    // // from the remaining integers, populate randomly.
-    CUOPT_LOG_DEBUG("n_vars from A/B %d remaining_variables %d",
-                    a.problem_ptr->n_variables - remaining_variables,
-                    remaining_variables);
+    i_t n_different_vars = this->assign_same_integer_values(a, b, offspring);
+    CUOPT_LOG_DEBUG("BP rec: Number of different variables %d MAX_VARS %d",
+                    n_different_vars,
+                    bp_recombiner_config_t::max_n_of_vars_from_other);
+    i_t n_vars_from_other  = n_different_vars;
+    i_t fixed_from_guiding = 0;
+    i_t fixed_from_other   = 0;
+    if (n_different_vars > (i_t)bp_recombiner_config_t::max_n_of_vars_from_other) {
+      fixed_from_guiding = n_vars_from_other - bp_recombiner_config_t::max_n_of_vars_from_other;
+      n_vars_from_other  = bp_recombiner_config_t::max_n_of_vars_from_other;
+      thrust::default_random_engine g{(unsigned int)cuopt::seed_generator::get_seed()};
+      thrust::shuffle(a.handle_ptr->get_thrust_policy(),
+                      this->remaining_indices.data(),
+                      this->remaining_indices.data() + n_different_vars,
+                      g);
+    }
+    i_t n_vars_from_guiding = a.problem_ptr->n_integer_vars - n_vars_from_other;
+    CUOPT_LOG_DEBUG(
+      "n_vars_from_guiding %d n_vars_from_other %d", n_vars_from_guiding, n_vars_from_other);
     // if either all integers are from A(meaning all are common) or all integers are from B(meaning
     // all are different), return
-    if (a.problem_ptr->n_integer_vars - remaining_variables == 0 || remaining_variables == 0) {
+    if (n_vars_from_guiding == 0 || n_vars_from_other == 0) {
+      CUOPT_LOG_DEBUG("Returning false because all vars are common or different");
       return std::make_pair(offspring, false);
     }
 
     cuopt_assert(a.problem_ptr == b.problem_ptr,
                  "The two solutions should not refer to different problems");
-    auto a_view         = a.view();
-    auto b_view         = b.view();
-    auto offspring_view = offspring.view();
-    const f_t int_tol   = a.problem_ptr->tolerances.integrality_tolerance;
+    const f_t lp_run_time_after_feasible = bp_recombiner_config_t::lp_after_bounds_prop_time_limit;
+    constraint_prop.max_n_failed_repair_iterations = bp_recombiner_config_t::n_repair_iterations;
     rmm::device_uvector<thrust::pair<f_t, f_t>> probing_values(a.problem_ptr->n_variables,
                                                                a.handle_ptr->get_stream());
-    // this is to give two possibilities to round in case of conflict
-    thrust::for_each(a.handle_ptr->get_thrust_policy(),
-                     thrust::make_counting_iterator(0),
-                     thrust::make_counting_iterator(a.problem_ptr->n_variables),
-                     [a_view, b_view, probing_values = probing_values.data()] __device__(i_t idx) {
-                       f_t a_val = a_view.assignment[idx];
-                       f_t b_val = b_view.assignment[idx];
-                       cuopt_assert(a_view.problem.check_variable_within_bounds(idx, a_val), "");
-                       cuopt_assert(b_view.problem.check_variable_within_bounds(idx, b_val), "");
-                       probing_values[idx] = thrust::make_pair(a_val, b_val);
-                     });
-    // populate remaining N integers randomly/average from each solution
-    thrust::for_each(a.handle_ptr->get_thrust_policy(),
-                     this->remaining_indices.data(),
-                     this->remaining_indices.data() + remaining_variables,
-                     [a_view,
-                      b_view,
-                      offspring_view,
-                      int_tol,
-                      probing_values = probing_values.data(),
-                      seed           = cuopt::seed_generator::get_seed()] __device__(i_t idx) {
-                       raft::random::PCGenerator rng(seed, idx, 0);
-                       f_t a_val = a_view.assignment[idx];
-                       f_t b_val = b_view.assignment[idx];
-                       cuopt_assert(a_view.problem.check_variable_within_bounds(idx, a_val), "");
-                       cuopt_assert(b_view.problem.check_variable_within_bounds(idx, b_val), "");
-                       f_t avg_val = (b_val + a_val) / 2;
-                       if (a_view.problem.is_integer_var(idx)) {
-                         const bool rnd = rng.next_u32() % 2;
-                         // if the var is integer, populate probing vals
-                         f_t first_val = rnd ? b_val : a_val;
-                         cuopt_assert(is_integer<f_t>(first_val, int_tol),
-                                      "The value must be integer");
-                         // TODO check the rounding direction and var bounds
-                         probing_values[idx] = thrust::make_pair(first_val, round(avg_val));
-                         // assign some floating value, so that they can be rounded by bounds prop
-                         f_t lb = a_view.problem.variable_lower_bounds[idx];
-                         f_t ub = a_view.problem.variable_upper_bounds[idx];
-                         if (integer_equal<f_t>(lb, ub, int_tol)) {
-                           cuopt_assert(false, "The var values must be different in A and B!");
-                         } else if (isfinite(lb)) {
-                           offspring_view.assignment[idx] = lb + 0.1;
-                         } else {
-                           offspring_view.assignment[idx] = ub - 0.1;
-                         }
-                       } else {
-                         // if the var is continuous, take the average
-                         offspring_view.assignment[idx] = avg_val;
-                       }
-                     });
-    const f_t lp_run_time_after_feasible = 2.;
-    timer_t timer(2.);
-    auto h_probing_values = host_copy(probing_values);
-    constraint_prop.apply_round(offspring, lp_run_time_after_feasible, timer, h_probing_values);
+    probing_config_t<i_t, f_t> probing_config(a.problem_ptr->n_variables, a.handle_ptr);
+    if (guiding_solution.get_feasible()) {
+      this->compute_vars_to_fix(offspring, vars_to_fix, n_vars_from_other, n_vars_from_guiding);
+      auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
+      timer_t timer(bp_recombiner_config_t::bounds_prop_time_limit);
+      rmm::device_uvector<f_t> old_assignment(offspring.assignment,
+                                              offspring.handle_ptr->get_stream());
+      offspring.handle_ptr->sync_stream();
+      offspring.assignment  = std::move(fixed_assignment);
+      offspring.problem_ptr = &fixed_problem;
+      cuopt_func_call(offspring.test_variable_bounds(false));
+      get_probing_values_for_feasible(guiding_solution,
+                                      other_solution,
+                                      offspring,
+                                      probing_values,
+                                      n_vars_from_other,
+                                      variable_map);
+      probing_config.probing_values         = host_copy(probing_values);
+      probing_config.n_of_fixed_from_first  = fixed_from_guiding;
+      probing_config.n_of_fixed_from_second = fixed_from_other;
+      probing_config.use_balanced_probing   = true;
+      constraint_prop.single_rounding_only  = true;
+      constraint_prop.apply_round(offspring, lp_run_time_after_feasible, timer, probing_config);
+      constraint_prop.single_rounding_only = false;
+      cuopt_func_call(bool feasible_after_bounds_prop = offspring.get_feasible());
+      offspring.handle_ptr->sync_stream();
+      offspring.problem_ptr = a.problem_ptr;
+      fixed_assignment      = std::move(offspring.assignment);
+      offspring.assignment  = std::move(old_assignment);
+      offspring.handle_ptr->sync_stream();
+      offspring.unfix_variables(fixed_assignment, variable_map);
+      cuopt_func_call(bool feasible_after_unfix = offspring.get_feasible());
+      cuopt_assert(feasible_after_unfix == feasible_after_bounds_prop,
+                   "Feasible after unfix should be same as feasible after bounds prop!");
+      a.handle_ptr->sync_stream();
+    } else {
+      timer_t timer(bp_recombiner_config_t::bounds_prop_time_limit);
+      get_probing_values_for_infeasible(
+        guiding_solution, other_solution, offspring, probing_values, n_vars_from_other);
+      probing_config.probing_values = host_copy(probing_values);
+      constraint_prop.apply_round(offspring, lp_run_time_after_feasible, timer, probing_config);
+    }
+    constraint_prop.max_n_failed_repair_iterations = 1;
     cuopt_func_call(offspring.test_number_all_integer());
-    offspring.compute_feasibility();
-    bool same_as_parents = this->check_if_offspring_is_same_as_parents(offspring, a, b);
+    bool better_cost_than_parents =
+      offspring.get_quality(weights) <
+      std::min(other_solution.get_quality(weights), guiding_solution.get_quality(weights));
+    bool better_feasibility_than_parents = offspring.get_feasible() &&
+                                           !other_solution.get_feasible() &&
+                                           !guiding_solution.get_feasible();
+
+    bool same_as_parents =
+      this->check_if_offspring_is_same_as_parents(offspring, guiding_solution, other_solution);
+    // adjust the max_n_of_vars_from_other
+    if (n_different_vars > (i_t)bp_recombiner_config_t::max_n_of_vars_from_other) {
+      if (same_as_parents) {
+        bp_recombiner_config_t::increase_max_n_of_vars_from_other();
+      } else {
+        bp_recombiner_config_t::decrease_max_n_of_vars_from_other();
+      }
+    }
+    if (better_cost_than_parents || better_feasibility_than_parents) {
+      CUOPT_LOG_DEBUG("Offspring is feasible or better than both parents");
+      return std::make_pair(offspring, true);
+    }
     return std::make_pair(offspring, !same_as_parents);
   }
 
+  rmm::device_uvector<i_t> vars_to_fix;
   constraint_prop_t<i_t, f_t>& constraint_prop;
   thrust::default_random_engine rng;
 };

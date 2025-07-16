@@ -25,7 +25,7 @@ namespace routing {
 namespace detail {
 
 struct p_val_seq_t {
-  __device__ p_val_seq_t(uint16_t p_v, uint16_t s_s) : p_val(p_v), sequence_size(s_s) {}
+  __host__ __device__ p_val_seq_t(uint16_t p_v, uint16_t s_s) : p_val(p_v), sequence_size(s_s) {}
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   uint p_val         : 16;
   uint sequence_size : 16;

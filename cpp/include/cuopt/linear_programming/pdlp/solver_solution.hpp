@@ -215,6 +215,12 @@ class optimization_problem_solution_t : public base_solution_t {
   f_t get_objective_value() const;
 
   /**
+   * @brief Returns the dual objective value of the solution as a `f_t`.
+   * @return objective value of the dual problem
+   */
+  f_t get_dual_objective_value() const;
+
+  /**
    * @brief Returns the solution for the values of the primal variables as a vector of `f_t`.
    *
    * @return rmm::device_uvector<i_t> The device memory container for the primal solution.

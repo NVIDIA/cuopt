@@ -229,8 +229,9 @@ d_mdarray_t<f_t> generate_matrices(raft::handle_t const& handle,
 {
   constexpr f_t asymmetry_scalar = 0.01;
   dim3 n_threads(32, 32);
-  dim3 n_blocks(min((params.n_locations + n_threads.x - 1) / n_threads.x, CUDA_MAX_BLOCKS_2D),
-                min((params.n_locations + n_threads.y - 1) / n_threads.y, CUDA_MAX_BLOCKS_2D));
+  dim3 n_blocks(
+    std::min((params.n_locations + n_threads.x - 1) / n_threads.x, (unsigned)CUDA_MAX_BLOCKS_2D),
+    std::min((params.n_locations + n_threads.y - 1) / n_threads.y, (unsigned)CUDA_MAX_BLOCKS_2D));
 
   rmm::device_uvector<f_t> cost_matrix(params.n_locations * params.n_locations,
                                        handle.get_stream());

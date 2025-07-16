@@ -152,8 +152,8 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
                                                   solution.handle_ptr->get_stream());
   auto h_variable_lower_bounds = cuopt::host_copy(solution.problem_ptr->variable_lower_bounds,
                                                   solution.handle_ptr->get_stream());
-
-  const f_t int_tol = context.settings.tolerances.integrality_tolerance;
+  auto h_last_projection = cuopt::host_copy(last_projection, solution.handle_ptr->get_stream());
+  const f_t int_tol      = context.settings.tolerances.integrality_tolerance;
   constraints_delta_t<i_t, f_t> h_constraints;
   variables_delta_t<i_t, f_t> h_variables;
   h_variables.n_vars = solution.problem_ptr->n_variables;
@@ -182,7 +182,11 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
         obj_weight,
         var_t::CONTINUOUS);
       obj_coefficients.push_back(obj_weight);
-      h_assignment.push_back(0.);
+      f_t dist_val = abs(h_assignment[i] - h_last_projection[i]);
+      // if it is out of bounds, because of the approximation issues,or init issues
+      // the first projection doesn't have a value
+      if (!isfinite(dist_val)) { dist_val = 0; }
+      h_assignment.push_back(dist_val);
       std::vector<i_t> constr_indices{var_id, i};
       // d_j - x_j >= -val(x_j)
       std::vector<f_t> constr_coeffs_1{1, -1};
@@ -217,15 +221,17 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
   const double lp_tolerance =
     get_tolerance_from_ratio(ratio_of_set_integers, context.settings.tolerances.absolute_tolerance);
   temp_p.check_problem_representation(true);
-  f_t time_limit                 = longer_lp_run ? 5. : 1.;
-  time_limit                     = min(time_limit, timer.remaining_time());
-  static f_t lp_time             = 0;
-  static i_t n_calls             = 0;
-  f_t old_remaining              = timer.remaining_time();
-  const bool check_infeasibility = false;
+  f_t time_limit     = longer_lp_run ? 5. : 1.;
+  time_limit         = std::min(time_limit, timer.remaining_time());
+  static f_t lp_time = 0;
+  static i_t n_calls = 0;
+  f_t old_remaining  = timer.remaining_time();
   cuopt_func_call(solution.test_variable_bounds(false));
-  auto solver_response =
-    get_relaxed_lp_solution(temp_p, solution, f_t(lp_tolerance), time_limit, check_infeasibility);
+  relaxed_lp_settings_t lp_settings;
+  lp_settings.time_limit          = time_limit;
+  lp_settings.tolerance           = lp_tolerance;
+  lp_settings.check_infeasibility = false;
+  auto solver_response            = get_relaxed_lp_solution(temp_p, solution, lp_settings);
   cuopt_func_call(solution.test_variable_bounds(false));
   last_lp_time = old_remaining - timer.remaining_time();
   lp_time += last_lp_time;
@@ -248,140 +254,15 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
   return true;
 }
 
-template <typename i_t, typename f_t>
-bool feasibility_pump_t<i_t, f_t>::random_round_with_fj(solution_t<i_t, f_t>& solution,
-                                                        timer_t& round_timer)
-{
-  const i_t n_tries = 200;
-  bool is_feasible  = false;
-  rmm::device_uvector<f_t> original_assign(solution.assignment, solution.handle_ptr->get_stream());
-  rmm::device_uvector<f_t> best_rounding(solution.assignment, solution.handle_ptr->get_stream());
-  f_t best_fj_qual = std::numeric_limits<f_t>::max();
-  i_t i;
-  for (i = 0; i < n_tries; ++i) {
-    if (round_timer.check_time_limit()) { break; }
-    CUOPT_LOG_DEBUG("Trying random with FJ");
-    is_feasible = solution.round_nearest();
-    if (is_feasible) {
-      CUOPT_LOG_DEBUG("Feasible found after random round");
-      return true;
-    }
-    // run fj_single descent
-    fj.settings.mode = fj_mode_t::GREEDY_DESCENT;
-    // fj.settings.n_of_minimums_for_exit = 1;
-    fj.settings.update_weights  = false;
-    fj.settings.feasibility_run = true;
-    fj.settings.time_limit      = round_timer.remaining_time();
-    i_t original_sync_period    = fj.settings.parameters.sync_period;
-    // iterations_per_graph is 10
-    fj.settings.parameters.sync_period = 500;
-    is_feasible                        = fj.solve(solution);
-    fj.settings.parameters.sync_period = original_sync_period;
-    cuopt_assert(solution.test_number_all_integer(), "All integers must be rounded");
-    if (is_feasible) {
-      CUOPT_LOG_DEBUG("Feasible found after random round FJ run");
-      return true;
-    }
-    f_t current_qual = solution.get_quality(fj.cstr_weights, fj.objective_weight);
-    if (current_qual < best_fj_qual) {
-      CUOPT_LOG_DEBUG("Updating best quality of roundings %f", current_qual);
-      best_fj_qual = current_qual;
-      raft::copy(best_rounding.data(),
-                 solution.assignment.data(),
-                 solution.assignment.size(),
-                 solution.handle_ptr->get_stream());
-    }
-    raft::copy(solution.assignment.data(),
-               original_assign.data(),
-               solution.assignment.size(),
-               solution.handle_ptr->get_stream());
-  }
-  n_fj_single_descents                       = i;
-  const i_t min_sols_to_run_fj               = 1;
-  const i_t non_improving_local_minima_count = 200;
-  // if at least 5 solutions are explored, run longer fj
-  if (i >= min_sols_to_run_fj) {
-    // run longer fj on best sol
-    raft::copy(solution.assignment.data(),
-               best_rounding.data(),
-               solution.assignment.size(),
-               solution.handle_ptr->get_stream());
-    rmm::device_uvector<f_t> original_weights(fj.cstr_weights, solution.handle_ptr->get_stream());
-    fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
-    fj.settings.update_weights         = true;
-    fj.settings.feasibility_run        = true;
-    fj.settings.time_limit             = 0.5;
-    fj.settings.n_of_minimums_for_exit = non_improving_local_minima_count;
-    is_feasible                        = fj.solve(solution);
-    // restore the weights
-    raft::copy(fj.cstr_weights.data(),
-               original_weights.data(),
-               fj.cstr_weights.size(),
-               solution.handle_ptr->get_stream());
-  }
-  if (is_feasible) {
-    CUOPT_LOG_DEBUG("Feasible found after %d minima FJ run", non_improving_local_minima_count);
-    return true;
-  }
-  raft::copy(solution.assignment.data(),
-             original_assign.data(),
-             solution.assignment.size(),
-             solution.handle_ptr->get_stream());
-  solution.handle_ptr->sync_stream();
-  return is_feasible;
-}
-
-template <typename i_t, typename f_t>
-bool feasibility_pump_t<i_t, f_t>::round_multiple_points(solution_t<i_t, f_t>& solution)
-{
-  n_fj_single_descents     = 0;
-  const f_t max_time_limit = last_lp_time * 0.1;
-  timer_t round_timer{min(max_time_limit, timer.remaining_time())};
-  bool is_feasible = random_round_with_fj(solution, round_timer);
-  if (is_feasible) {
-    CUOPT_LOG_DEBUG("Feasible found after random round with fj");
-    return true;
-  }
-  timer_t line_segment_timer{min(1., timer.remaining_time())};
-  i_t n_points_to_search  = n_fj_single_descents;
-  bool is_feasibility_run = true;
-  // create a copy, because assignment is changing within kernel and we want a separate point_1
-  rmm::device_uvector<f_t> starting_point(solution.assignment, solution.handle_ptr->get_stream());
-  is_feasible = line_segment_search.search_line_segment(solution,
-                                                        starting_point,
-                                                        lp_optimal_solution,
-                                                        n_points_to_search,
-                                                        is_feasibility_run,
-                                                        line_segment_timer);
-  if (is_feasible) {
-    CUOPT_LOG_DEBUG("Feasible found after line segment");
-    return true;
-  }
-  // lns.config.run_lp_and_loop = false;
-  // timer_t lns_timer(min(last_lp_time * 0.1, timer.remaining_time()));
-  // is_feasible = lns.do_lns(solution, lns_timer);
-  // if (is_feasible) {
-  //   CUOPT_LOG_DEBUG("Feasible found after inevitable feasibility");
-  //   return true;
-  // }
-  // TODO add the solution with the min distance to the population, if population is given
-  is_feasible = solution.round_nearest();
-  if (is_feasible) {
-    CUOPT_LOG_DEBUG("Feasible found after nearest rounding");
-    return true;
-  }
-  return is_feasible;
-}
-
 // round will use inevitable infeasibility while propagating the bounds
 template <typename i_t, typename f_t>
 bool feasibility_pump_t<i_t, f_t>::round(solution_t<i_t, f_t>& solution)
 {
   bool result;
   CUOPT_LOG_DEBUG("Rounding the point");
-  timer_t bounds_prop_timer(min(2., timer.remaining_time()));
-  const f_t lp_run_time_after_feasible = min(3., timer.remaining_time() / 20.);
-  result = lb_constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
+  timer_t bounds_prop_timer(std::min(2., timer.remaining_time()));
+  const f_t lp_run_time_after_feasible = std::min(3., timer.remaining_time() / 20.);
+  result = constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
   cuopt_func_call(solution.test_variable_bounds(true));
   // copy the last rounding
   raft::copy(last_rounding.data(),
@@ -409,7 +290,7 @@ bool feasibility_pump_t<i_t, f_t>::run_fj_cycle_escape(solution_t<i_t, f_t>& sol
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.n_of_minimums_for_exit = 5000;
-  fj.settings.time_limit             = min(3., timer.remaining_time());
+  fj.settings.time_limit             = std::min(3., timer.remaining_time());
   fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
   is_feasible                        = fj.solve(solution);
   // if FJ didn't change the solution, take last incumbent solution
@@ -432,7 +313,7 @@ bool feasibility_pump_t<i_t, f_t>::test_fj_feasible(solution_t<i_t, f_t>& soluti
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.n_of_minimums_for_exit = 5000;
-  fj.settings.time_limit             = min(time_limit, timer.remaining_time());
+  fj.settings.time_limit             = std::min(time_limit, timer.remaining_time());
   fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
   cuopt_func_call(solution.test_variable_bounds(true));
   is_feasible = fj.solve(solution);
@@ -490,7 +371,7 @@ bool feasibility_pump_t<i_t, f_t>::restart_fp(solution_t<i_t, f_t>& solution)
                     fj.cstr_weights.begin(),
                     [] __device__(f_t val) {
                       constexpr f_t weight_divisor = 10.;
-                      return max(f_t(10.), std::round(val / weight_divisor));
+                      return std::max(f_t(10.), std::round(val / weight_divisor));
                     });
   return is_feasible;
 }
@@ -661,15 +542,16 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
       // if the solution is almost on polytope
       else if (last_distances[0] < distance_to_check_for_feasible) {
         // run the linear projection with full precision to check if it actually is feasible
-        const bool return_first_feasible = true;
-        const f_t lp_verify_time_limit   = 5.;
+        const f_t lp_verify_time_limit = 5.;
+        relaxed_lp_settings_t lp_settings;
+        lp_settings.time_limit            = lp_verify_time_limit;
+        lp_settings.tolerance             = solution.problem_ptr->tolerances.absolute_tolerance;
+        lp_settings.return_first_feasible = true;
+        lp_settings.save_state            = true;
         run_lp_with_vars_fixed(*solution.problem_ptr,
                                solution,
                                solution.problem_ptr->integer_indices,
-                               context.settings.get_tolerances(),
-                               context.lp_state,
-                               lp_verify_time_limit,
-                               return_first_feasible,
+                               lp_settings,
                                &constraint_prop.bounds_update);
         is_feasible = solution.get_feasible();
         n_integers  = solution.compute_number_of_integers();

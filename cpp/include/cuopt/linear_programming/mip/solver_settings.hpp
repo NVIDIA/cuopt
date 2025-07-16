@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include <cuopt/linear_programming/constants.h>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
@@ -26,6 +28,12 @@
 #include <vector>
 
 namespace cuopt::linear_programming {
+
+struct benchmark_info_t {
+  double last_improvement_of_best_feasible    = 0;
+  double last_improvement_after_recombination = 0;
+  double objective_of_initial_population      = std::numeric_limits<double>::max();
+};
 
 // Forward declare solver_settings_t for friend class
 template <typename i_t, typename f_t>
@@ -42,25 +50,18 @@ class mip_solver_settings_t {
   void set_mip_callback(internals::base_solution_callback_t* callback = nullptr);
 
   /**
-   * @brief Set an primal solution.
+   * @brief Add an primal solution.
    *
-   * @note Default value is all 0 or the LP optimal point.
+   * @note This function can be called multiple times to add more solutions.
    *
-   * @param[in] initial_solution Device or host memory pointer to a floating
-   * point array of size size. cuOpt copies this data. Copy happens on the
-   * stream of the raft:handler passed to the problem.
+   * @param[in] initial_solution Device or host memory pointer to a floating point array of
+   * size size.
+   * cuOpt copies this data. Copy happens on the stream of the raft:handler passed to the problem.
    * @param size Size of the initial_solution array.
    */
-  void set_initial_solution(const f_t* initial_solution,
+  void add_initial_solution(const f_t* initial_solution,
                             i_t size,
                             rmm::cuda_stream_view stream = rmm::cuda_stream_default);
-
-  /**
-   * @brief Get the initial solution.
-   *
-   * @return Initial solution as a rmm::device_uvector<f_t>
-   */
-  rmm::device_uvector<f_t>& get_initial_solution() const;
 
   /**
    * @brief Get the callback for the user solution
@@ -68,8 +69,6 @@ class mip_solver_settings_t {
    * @return callback pointer
    */
   const std::vector<internals::base_solution_callback_t*> get_mip_callbacks() const;
-
-  bool has_initial_solution() const;
 
   struct tolerances_t {
     f_t presolve_absolute_tolerance = 1.0e-6;
@@ -97,9 +96,11 @@ class mip_solver_settings_t {
   std::string sol_file;
   std::string user_problem_file;
 
-  /** Initial primal solution */
-  std::shared_ptr<rmm::device_uvector<f_t>> initial_solution_;
+  /** Initial primal solutions */
+  std::vector<std::shared_ptr<rmm::device_uvector<f_t>>> initial_solutions;
   bool mip_scaling = true;
+  // this is for extracting info from different places of the solver during benchmarks
+  benchmark_info_t* benchmark_info_ptr = nullptr;
 
  private:
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;

@@ -18,6 +18,9 @@
 #pragma once
 
 #include <utilities/macros.cuh>
+
+#include <cuopt/linear_programming/optimization_problem.hpp>
+
 #include <vector>
 
 namespace cuopt::linear_programming::detail {

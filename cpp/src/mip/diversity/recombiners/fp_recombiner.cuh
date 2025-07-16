@@ -26,8 +26,6 @@
 #include <utilities/seed_generator.cuh>
 
 #include <thrust/partition.h>
-#include <thrust/set_operations.h>
-#include <thrust/sort.h>
 
 namespace cuopt::linear_programming::detail {
 
@@ -44,70 +42,57 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
   {
   }
 
-  std::pair<solution_t<i_t, f_t>, bool> recombine(solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b)
+  std::pair<solution_t<i_t, f_t>, bool> recombine(solution_t<i_t, f_t>& a,
+                                                  solution_t<i_t, f_t>& b,
+                                                  const weight_t<i_t, f_t>& weights)
   {
     raft::common::nvtx::range fun_scope("FP recombiner");
-
+    auto& guiding_solution = a.get_feasible() ? a : b;
+    auto& other_solution   = a.get_feasible() ? b : a;
     // copy the solution from A
-    solution_t<i_t, f_t> offspring(a);
+    solution_t<i_t, f_t> offspring(guiding_solution);
     // find same values and populate it to offspring
-    this->assign_same_integer_values(a, b, offspring);
-    const i_t n_remaining_vars = this->n_remaining.value(a.handle_ptr->get_stream());
-    // partition to get only integer uncommon
-    auto iter                  = thrust::stable_partition(a.handle_ptr->get_thrust_policy(),
-                                         this->remaining_indices.begin(),
-                                         this->remaining_indices.begin() + n_remaining_vars,
-                                         [a_view = a.view()] __device__(i_t idx) {
-                                           if (a_view.problem.is_integer_var(idx)) { return true; }
-                                           return false;
-                                         });
-    i_t h_n_remaining_integers = iter - this->remaining_indices.begin();
-    i_t n_common_integers      = a.problem_ptr->n_integer_vars - h_n_remaining_integers;
-    if (h_n_remaining_integers == 0 || n_common_integers == 0) {
-      CUOPT_LOG_DEBUG("All integers are common or different in FP recombiner, returning A!");
+    i_t n_different_vars =
+      this->assign_same_integer_values(guiding_solution, other_solution, offspring);
+    CUOPT_LOG_DEBUG("FP rec: Number of different variables %d MAX_VARS %d",
+                    n_different_vars,
+                    fp_recombiner_config_t::max_n_of_vars_from_other);
+    i_t n_vars_from_other = n_different_vars;
+    if (n_vars_from_other > (i_t)fp_recombiner_config_t::max_n_of_vars_from_other) {
+      n_vars_from_other = fp_recombiner_config_t::max_n_of_vars_from_other;
+      thrust::default_random_engine g{(unsigned int)cuopt::seed_generator::get_seed()};
+      thrust::shuffle(a.handle_ptr->get_thrust_policy(),
+                      this->remaining_indices.data(),
+                      this->remaining_indices.data() + n_different_vars,
+                      g);
+    }
+    i_t n_vars_from_guiding = a.problem_ptr->n_integer_vars - n_vars_from_other;
+    if (n_vars_from_other == 0 || n_vars_from_guiding == 0) {
+      CUOPT_LOG_DEBUG("Returning false because all vars are common or different");
       return std::make_pair(offspring, false);
     }
-    CUOPT_LOG_DEBUG("n_integer_vars from A/B %d n_integer_vars from B %d",
-                    n_common_integers,
-                    h_n_remaining_integers);
-    vars_to_fix.resize(n_common_integers, a.handle_ptr->get_stream());
-    // set difference needs two sorted arrays
-    thrust::sort(a.handle_ptr->get_thrust_policy(),
-                 this->remaining_indices.data(),
-                 this->remaining_indices.data() + h_n_remaining_integers);
-    cuopt_assert((thrust::is_sorted(a.handle_ptr->get_thrust_policy(),
-                                    a.problem_ptr->integer_indices.begin(),
-                                    a.problem_ptr->integer_indices.end())),
-                 "vars_to_fix should be sorted!");
-    // get the variables to fix (common variables)
-    iter = thrust::set_difference(a.handle_ptr->get_thrust_policy(),
-                                  a.problem_ptr->integer_indices.begin(),
-                                  a.problem_ptr->integer_indices.end(),
-                                  this->remaining_indices.data(),
-                                  this->remaining_indices.data() + h_n_remaining_integers,
-                                  vars_to_fix.begin());
-    cuopt_assert(iter - vars_to_fix.begin() == n_common_integers, "The size should match!");
-    cuopt_assert((thrust::is_sorted(a.handle_ptr->get_thrust_policy(),
-                                    vars_to_fix.data(),
-                                    vars_to_fix.data() + n_common_integers)),
-                 "vars_to_fix should be sorted!");
-    const f_t tolerance                                  = 1e-2;
-    const f_t lp_time                                    = 0.5;
+    CUOPT_LOG_DEBUG(
+      "n_vars_from_guiding %d n_vars_from_other %d", n_vars_from_guiding, n_vars_from_other);
+    this->compute_vars_to_fix(offspring, vars_to_fix, n_vars_from_other, n_vars_from_guiding);
     auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
     fixed_problem.check_problem_representation(true);
-    const bool check_feas            = false;
-    const bool return_first_feasible = false;
-    const bool save_state            = false;
-    // every sub problem is different,so it is very hard to find a valid initial solution
-    lp_state_t<i_t, f_t> lp_state = this->context.lp_state;
-    auto solver_response          = get_relaxed_lp_solution(fixed_problem,
-                                                   fixed_assignment,
-                                                   lp_state,
-                                                   tolerance,
-                                                   lp_time,
-                                                   check_feas,
-                                                   return_first_feasible,
-                                                   save_state);
+    if (!guiding_solution.get_feasible() && !other_solution.get_feasible()) {
+      relaxed_lp_settings_t lp_settings;
+      lp_settings.time_limit = fp_recombiner_config_t::infeasibility_detection_time_limit;
+      lp_settings.tolerance  = fixed_problem.tolerances.absolute_tolerance;
+      lp_settings.return_first_feasible = true;
+      lp_settings.save_state            = true;
+      lp_settings.check_infeasibility   = true;
+      // run lp with infeasibility detection on
+      auto lp_response =
+        get_relaxed_lp_solution(fixed_problem, fixed_assignment, offspring.lp_state, lp_settings);
+      if (lp_response.get_termination_status() == pdlp_termination_status_t::PrimalInfeasible ||
+          lp_response.get_termination_status() == pdlp_termination_status_t::DualInfeasible ||
+          lp_response.get_termination_status() == pdlp_termination_status_t::TimeLimit) {
+        CUOPT_LOG_DEBUG("FP recombiner failed because LP found infeasible!");
+        return std::make_pair(offspring, false);
+      }
+    }
     // brute force rounding threshold is 8
     const bool run_fp = fixed_problem.n_integer_vars > 8;
     if (run_fp) {
@@ -117,15 +102,16 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
                                               offspring.handle_ptr->get_stream());
       offspring.handle_ptr->sync_stream();
       offspring.assignment = std::move(fixed_assignment);
-      offspring.lp_state   = std::move(lp_state);
       cuopt_func_call(offspring.test_variable_bounds(false));
-      timer_t timer((f_t)2.);
+      timer_t timer(fp_recombiner_config_t::fp_time_limit);
       fp.timer = timer;
       fp.cycle_queue.reset(offspring);
       fp.reset();
       fp.resize_vectors(*offspring.problem_ptr, offspring.handle_ptr);
-      bool is_feasible = fp.run_single_fp_descent(offspring);
-      if (is_feasible) { CUOPT_LOG_DEBUG("FP after recombiner, found feasible!"); }
+      fp.config.alpha                 = fp_recombiner_config_t::alpha;
+      fp.config.alpha_decrease_factor = fp_recombiner_config_t::alpha_decrease_factor;
+      bool is_feasible                = fp.run_single_fp_descent(offspring);
+      if (is_feasible) { CUOPT_LOG_DEBUG("FP recombiner found feasible!"); }
       CUOPT_LOG_DEBUG("FP completed after recombiner!");
       offspring.handle_ptr->sync_stream();
       offspring.problem_ptr = orig_problem_ptr;
@@ -139,6 +125,24 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
     cuopt_assert(offspring.test_number_all_integer(), "All must be integers after offspring");
     offspring.compute_feasibility();
     bool same_as_parents = this->check_if_offspring_is_same_as_parents(offspring, a, b);
+    // adjust the max_n_of_vars_from_other
+    if (n_different_vars > (i_t)fp_recombiner_config_t::max_n_of_vars_from_other) {
+      if (same_as_parents) {
+        fp_recombiner_config_t::increase_max_n_of_vars_from_other();
+      } else {
+        fp_recombiner_config_t::decrease_max_n_of_vars_from_other();
+      }
+    }
+    bool better_cost_than_parents =
+      offspring.get_quality(weights) <
+      std::min(other_solution.get_quality(weights), guiding_solution.get_quality(weights));
+    bool better_feasibility_than_parents = offspring.get_feasible() &&
+                                           !other_solution.get_feasible() &&
+                                           !guiding_solution.get_feasible();
+    if (better_cost_than_parents || better_feasibility_than_parents) {
+      CUOPT_LOG_DEBUG("Offspring is feasible or better than both parents");
+      return std::make_pair(offspring, true);
+    }
     return std::make_pair(offspring, !same_as_parents);
   }
   rmm::device_uvector<i_t> vars_to_fix;

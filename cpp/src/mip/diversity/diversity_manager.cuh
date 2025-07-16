@@ -43,6 +43,7 @@ class diversity_manager_t {
   solution_t<i_t, f_t> generate_solution(f_t time_limit, bool random_start = true);
   // generates initial solutions
   void generate_initial_solutions();
+  void run_fj_alone(solution_t<i_t, f_t>& solution);
   // main loop of diversity improvements
   void main_loop();
   // randomly chooses a recombiner and returns the offspring
@@ -54,7 +55,7 @@ class diversity_manager_t {
   void average_fj_weights(i_t i);
   void diversity_step();
   std::vector<solution_t<i_t, f_t>> generate_more_solutions();
-  void add_user_given_solution(std::vector<solution_t<i_t, f_t>>& initial_sol_vector);
+  void add_user_given_solutions(std::vector<solution_t<i_t, f_t>>& initial_sol_vector);
   population_t<i_t, f_t>* get_population_pointer() { return &population; }
   void recombine_and_ls_with_all(std::vector<solution_t<i_t, f_t>>& solutions);
   void recombine_and_ls_with_all(solution_t<i_t, f_t>& solution);
@@ -63,6 +64,9 @@ class diversity_manager_t {
   void set_new_user_bound(f_t new_user_bound);
   void generate_quick_feasible_solution();
   bool check_b_b_preemption();
+  void check_better_than_both(solution_t<i_t, f_t>& offspring,
+                              solution_t<i_t, f_t>& sol1,
+                              solution_t<i_t, f_t>& sol2);
 
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;
@@ -78,6 +82,32 @@ class diversity_manager_t {
   i_t current_step{0};
   solver_stats_t<i_t, f_t>& stats;
   std::vector<solution_t<i_t, f_t>> initial_sol_vector;
+
+  // Enhanced statistics structure for UCB with exponential recency weighting
+  struct mab_arm_stats_t {
+    int num_pulls      = 0;    // Number of times this arm was selected
+    double q_value     = 0.5;  // Exponential recency-weighted average estimate
+    double last_reward = 0.0;  // Last reward received (for debugging)
+  };
+  std::vector<mab_arm_stats_t> mab_arm_stats_;
+  double mab_epsilon_ = 0.15;   // Probability of exploration in Epsilon-Greedy.
+  std::mt19937 mab_rng_;        // RNG dedicated to MAB decisions.
+  double mab_alpha_    = 0.05;  // Step size for exponential recency weighting
+  int mab_total_steps_ = 0;     // Total number of action selections (for UCB)
+  bool use_ucb_        = true;  // Flag to enable UCB vs epsilon-greedy
+
+  // --- MAB Helper Methods ---
+  recombiner_enum_t select_mab_recombiner();
+  void add_mab_reward(recombiner_enum_t recombiner_id,
+                      double best_of_parents_quality,
+                      double best_feasible_quality,
+                      double offspring_quality,
+                      double recombination_time_in_miliseconds);
+  recombiner_enum_t select_ucb_arm();
+  recombiner_enum_t select_epsilon_greedy_arm();
+  bool run_only_ls_recombiner{false};
+  bool run_only_bp_recombiner{false};
+  bool run_only_fp_recombiner{false};
 };
 
 }  // namespace cuopt::linear_programming::detail
