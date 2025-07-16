@@ -18,5 +18,5 @@ COLUMNS
 RHS
     RHS1      ROW1      5.4            ROW2      4.9
 BOUNDS
- PL bnd       VAR1
+ PL bnd       VAR1   
 ENDATA
