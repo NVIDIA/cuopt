@@ -11,7 +11,7 @@ The LP solver can be accessed in the following ways:
 
   Supported modeling languages:
    -  AMPL
-   -  PuLP 
+   -  PuLP
 
 - **C API**: A native C API that provides direct low-level access to cuOpt's LP capabilities, enabling integration into any application or system that can interface with C.
 

@@ -12,28 +12,28 @@ New Features
 - Added concurrent mode that runs PDLP and Dual Simplex together
 - Added crossover from PDLP to Dual Simplex
 - Added a C API for LP and MILP
-- PDLP: Faster iterations and new more robust default PDLPSolverMode Stable2 
+- PDLP: Faster iterations and new more robust default PDLPSolverMode Stable2
 - Added support for writing out mps file containing user problem. Useful for debugging
 
 Breaking Changes
 ----------------
 
-- NoTermination is now a NumericalError 
-- Split cuOpt as libcuopt and cuopt wheel 
+- NoTermination is now a NumericalError
+- Split cuOpt as libcuopt and cuopt wheel
 
 Improvements
 ------------
 
 - Hook up MILP Gap parameters and add info about number of nodes explored and simplex iterations
-- FJ bug fixes, tests and improvements 
-- Allow no time limit in MILP 
-- Refactor routing  
-- Probing cache optimization 
+- FJ bug fixes, tests and improvements
+- Allow no time limit in MILP
+- Refactor routing
+- Probing cache optimization
 - Diversity improvements for routing
-- Enable more compile warnings and faster compile by bypassing rapids fetch 
-- Constraint prop based on load balanced bounds update 
-- Logger file handling and bug fixes on MILP 
-- Add shellcheck to pre-commit and fix warnings 
+- Enable more compile warnings and faster compile by bypassing rapids fetch
+- Constraint prop based on load balanced bounds update
+- Logger file handling and bug fixes on MILP
+- Add shellcheck to pre-commit and fix warnings
 
 Bug Fixes
 ---------
@@ -42,7 +42,7 @@ Bug Fixes
 - Fixed a bug using vehicle IDs in construct feasible solution algorithm.
 - FP recombiner probing bug fix.
 - Fix concurrent LP crashes.
-- Fix print relative dual residual. 
+- Fix print relative dual residual.
 - Handle empty problems gracefully.
 - Improve breaks to allow dimensions at arbitrary places in the route.
 - Free var elimination with a substitute variable for each free variable.

@@ -3,7 +3,7 @@
 * subject to
 *  3 * VAR1 + 4 * VAR2 <= 5.4
 *  2.7 * VAR1 + 10.1 * VAR2 <= 4.9
-NAME   
+NAME
 ROWS
  N  COST
  L  ROW1

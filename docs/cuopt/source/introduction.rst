@@ -12,7 +12,7 @@ As part of `NVIDIA AI Enterprise <https://www.nvidia.com/en-us/data-center/produ
    NVAIE support is extended to only cuOpt Routing service API. LP and MILP are not supported as part of it, they are just add-ons.
 
 .. note::
-   Check out this `FAQ <https://forums.developer.nvidia.com/t/nvidia-nim-faq/300317>`__ for more information about the NVIDIA Developer Program. 
+   Check out this `FAQ <https://forums.developer.nvidia.com/t/nvidia-nim-faq/300317>`__ for more information about the NVIDIA Developer Program.
 
 
 The core engine is built on C++ and all the APIs are built on top of it as wrappers. For example, cuOpt Python API uses Cython to wrap the C++ core engine and provide a Python interface. Similarly, other interfaces wrap different layers to communicate with the core engine.
@@ -20,11 +20,11 @@ The core engine is built on C++ and all the APIs are built on top of it as wrapp
 Routing (TSP, VRP, and PDP)
 =============================
 
-The **Vehicle Routing Problem (VRP)** and **Pickup and Delivery Problems (PDP)** are derived from the **Traveling Salesperson Problem (TSP)**, which is one of the most studied problems in operations research and, more generally, in computer science. 
+The **Vehicle Routing Problem (VRP)** and **Pickup and Delivery Problems (PDP)** are derived from the **Traveling Salesperson Problem (TSP)**, which is one of the most studied problems in operations research and, more generally, in computer science.
 
-TSP asks the following question: 
+TSP asks the following question:
 
-  -  Given a list of destinations and a matrix of distances between each pair of destinations, what is the shortest possible route that visits each destination exactly one time and returns to the original location? 
+  -  Given a list of destinations and a matrix of distances between each pair of destinations, what is the shortest possible route that visits each destination exactly one time and returns to the original location?
 
 For example, the TSP has several applications in planning and logistics, where a good solution can save significant travel time and fuel costs in the transportation and delivery of goods. VRP and PDP are essentially extensions of TSP with additional complexity.
 
@@ -66,7 +66,7 @@ This is a linear program.
 
 How cuOpt Solves the Linear Programming Problem
 ------------------------------------------------
-cuOpt includes an LP solver based on `PDLP <https://arxiv.org/abs/2106.04756>`__, a new First-Order Method (FOM) used to solve large-scale LPs. This solver implements gradient descent, enhanced by heuristics, and performing massively parallel operations efficiently by leveraging the latest NVIDIA GPUs. 
+cuOpt includes an LP solver based on `PDLP <https://arxiv.org/abs/2106.04756>`__, a new First-Order Method (FOM) used to solve large-scale LPs. This solver implements gradient descent, enhanced by heuristics, and performing massively parallel operations efficiently by leveraging the latest NVIDIA GPUs.
 
 In addition to PDLP, cuOpt includes a dual simplex solver that runs on the CPU. Both algorithms can be run concurrently on the GPU and CPU.
 
@@ -85,7 +85,7 @@ For example, consider the following system of constraints:
 
                           y >= 0 and y is continuous,
 
-and suppose we wish to maximize the objective function 
+and suppose we wish to maximize the objective function
 
                           f(x,y) = 5x + 3y.
 
@@ -96,7 +96,7 @@ Although MILPs seems similar to a LPs, they require much more computation to sol
 How cuOpt Solves the Mixed-Integer Linear Programming Problem
 -------------------------------------------------------------
 
-The MILP solver is a hybrid GPU/CPU algorithm. Primal heuristics including local search, feasibility pump, and feasibility jump are performed on the GPU to improve the primal bound. Branch and bound is performed on the CPU to improve the dual bound. Integer feasible solutions are shared between both algorithms. 
+The MILP solver is a hybrid GPU/CPU algorithm. Primal heuristics including local search, feasibility pump, and feasibility jump are performed on the GPU to improve the primal bound. Branch and bound is performed on the CPU to improve the dual bound. Integer feasible solutions are shared between both algorithms.
 
 
 =============================
@@ -112,7 +112,7 @@ cuOpt supports the following APIs:
    - cuOpt is written in C++ and includes a native C++ API. However, we do not provide documentation for the C++ API at this time. We anticipate that the C++ API will change significantly in the future. Use it at your own risk.
 - Python support
    - `Routing (TSP, VRP, and PDP) - Python <cuopt-python/quick-start.html>`_
-   - Linear Programming (LP) and Mixed Integer Linear Programming (MILP) 
+   - Linear Programming (LP) and Mixed Integer Linear Programming (MILP)
        - cuOpt includes a Python API that is used as the backend of the cuOpt server. However, we do not provide documentation for the Python API at this time. We suggest using cuOpt server to access cuOpt via Python. We anticipate that the Python API will change significantly in the future. Use it at your own risk.
 - Server support
    - `Linear Programming (LP) - Server <cuopt-server/quick-start.html>`_
