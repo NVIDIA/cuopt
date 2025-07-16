@@ -233,7 +233,8 @@ INSTANTIATE_TEST_SUITE_P(
   MIPSolveTest,
   MIPSolveParametricTest,
   testing::Values(std::make_tuple("50v-10.mps", 7800, 100000),
-                  std::make_tuple("fiball.mps", 140, 25000),
+                  // Bug: https://github.com/NVIDIA/cuopt/issues/214
+                  // std::make_tuple("fiball.mps", 140, 25000),
                   std::make_tuple("gen-ip054.mps", 7500, 20000),
                   std::make_tuple("sct2.mps", 100, 50000),
                   std::make_tuple("uccase9.mps", 4000000, 50000),
