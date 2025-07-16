@@ -21,7 +21,11 @@ repos:
         files: \.(mps|json|yaml|yml|txt)$
         exclude: ^datasets/.*\.(mps|json)$
       - id: trailing-whitespace
+        files: \.(mps|json|yaml|yml|txt)$
+        exclude: ^datasets/.*\.(mps|json)$
       - id: check-builtin-literals
+        files: \.(mps|json|yaml|yml|txt)$
+        exclude: ^datasets/.*\.(mps|json)$
       - id: check-executables-have-shebangs
       - id: check-json
       - id: check-yaml
