@@ -63,9 +63,8 @@ RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capt
 rapids-logger "building 'cvxpy' from source"
 git clone -b cuopt_solver https://github.com/tmckayus/cvxpy
 pushd ./cvxpy || exit 1
-python -m build \
-    --wheel \
-    --outdir dist \
+pip wheel \
+    -w dist \
     .
 
 # NOTE: installing cvxpy[CUOPT] alongside CI artifacts is helpful to catch dependency conflicts
