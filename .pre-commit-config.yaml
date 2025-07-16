@@ -24,8 +24,6 @@ repos:
         files: \.(mps|json|yaml|yml|txt)$
         exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$
       - id: check-builtin-literals
-        files: \.(mps|json|yaml|yml|txt)$
-        exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$
       - id: check-executables-have-shebangs
       - id: check-json
       - id: check-yaml
