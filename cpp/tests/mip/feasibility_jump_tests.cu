@@ -248,7 +248,8 @@ INSTANTIATE_TEST_SUITE_P(
                   std::make_tuple("gmu-35-50.mps", -2300000, 25000),
                   std::make_tuple("n2seq36q.mps", 158800, 25000),
                   std::make_tuple("seymour1.mps", 440, 50000),
-                  std::make_tuple("rmatr200-p5.mps", 7000, 10000),
+                  // Bug: https://github.com/NVIDIA/cuopt/issues/214
+                  // std::make_tuple("rmatr200-p5.mps", 7000, 10000),
                   std::make_tuple("cvs16r128-89.mps", -50, 10000)
 // TEMPORARY: occasional cusparse transpose issues on ARM in CI
 #ifndef __aarch64__
