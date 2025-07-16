@@ -73,7 +73,8 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     stats(context.stats),
     mab_recombiner(
       recombiner_enum_t::SIZE, cuopt::seed_generator::get_seed(), recombiner_alpha, "recombiner"),
-    mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), ls_alpha, "ls")
+    mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), ls_alpha, "ls"),
+    assignment_hash_map(*context.problem_ptr)
 {
   // Read configuration ID from environment variable
   int max_config = -1;
@@ -106,14 +107,17 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
 
 // this function is to specialize the local search with config from diversity manager
 template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
+bool diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
                                                      const weight_t<i_t, f_t>& weights,
                                                      timer_t& timer,
                                                      ls_config_t<i_t, f_t>& ls_config)
 {
   // i_t ls_mab_option = mab_ls.select_mab_option();
   // mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
+  assignment_hash_map.insert(solution);
+  if (assignment_hash_map.check_skip_solution(solution, 1)) { return false; }
   ls.run_local_search(solution, weights, timer, ls_config);
+  return true;
 }
 
 // There should be at least 3 solutions in the population
@@ -668,7 +672,16 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   ls_config_t<i_t, f_t> ls_config;
   ls_config.best_objective_of_parents    = best_objective_of_parents;
   ls_config.at_least_one_parent_feasible = at_least_one_parent_feasible;
-  this->run_local_search(offspring, population.weights, timer, ls_config);
+  success = this->run_local_search(offspring, population.weights, timer, ls_config);
+  if (!success) {
+    // add the attempt
+    mab_recombiner.add_mab_reward(recombine_stats.get_last_attempt(),
+                                  std::numeric_limits<double>::lowest(),
+                                  std::numeric_limits<double>::lowest(),
+                                  std::numeric_limits<double>::max(),
+                                  recombiner_work_normalized_reward_t(0.0));
+    return std::make_pair(solution_t<i_t, f_t>(sol1), solution_t<i_t, f_t>(sol2));
+  }
   cuopt_assert(offspring.test_number_all_integer(), "All must be integers after LS");
   cuopt_assert(population.test_invariant(), "");
   offspring.compute_feasibility();

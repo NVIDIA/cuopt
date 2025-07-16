@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include "assignment_hash_map.cuh"
 #include "multi_armed_bandit.cuh"
 #include "population.cuh"
 
@@ -68,7 +69,7 @@ class diversity_manager_t {
   void check_better_than_both(solution_t<i_t, f_t>& offspring,
                               solution_t<i_t, f_t>& sol1,
                               solution_t<i_t, f_t>& sol2);
-  void run_local_search(solution_t<i_t, f_t>& solution,
+  bool run_local_search(solution_t<i_t, f_t>& solution,
                         const weight_t<i_t, f_t>& weights,
                         timer_t& timer,
                         ls_config_t<i_t, f_t>& ls_config);
@@ -89,6 +90,7 @@ class diversity_manager_t {
   std::vector<solution_t<i_t, f_t>> initial_sol_vector;
   mab_t mab_recombiner;
   mab_t mab_ls;
+  assignment_hash_map_t<i_t, f_t> assignment_hash_map;
 
   bool run_only_ls_recombiner{false};
   bool run_only_bp_recombiner{false};
