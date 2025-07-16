@@ -94,7 +94,7 @@ repos:
           (?x)
               [.](cmake|cpp|cu|cuh|h|hpp|sh|pxd|py|pyx)$|
               CMakeLists[.]txt$|
-              meta[.]yaml$
+              recipe[.]yaml$
         exclude: |
           (?x)^(
             ^cpp/tests/utilities/cxxopts.hpp
