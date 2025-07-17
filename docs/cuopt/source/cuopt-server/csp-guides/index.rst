@@ -10,5 +10,5 @@ This section contains guides on how to use the cuOpt server in different cloud p
    :name: CSP Guides Overview
    :titlesonly:
 
-   csp-azure.rst 
+   csp-azure.rst
    csp-aws.rst

@@ -65,7 +65,7 @@ Copy the code below into a file called ``milp_example.c``:
      cuopt_int_t num_variables = 2;
      cuopt_int_t num_constraints = 2;
      cuopt_int_t nnz = 4;
-  
+
      // CSR format constraint matrix
      // https://docs.nvidia.com/nvpl/latest/sparse/storage_format/sparse_matrix.html#compressed-sparse-row-csr
      // From the constraints:
@@ -74,33 +74,33 @@ Copy the code below into a file called ``milp_example.c``:
      cuopt_int_t row_offsets[] = {0, 2, 4};
      cuopt_int_t column_indices[] = {0, 1, 0, 1};
      cuopt_float_t values[] = {3.0, 4.0, 2.7, 10.1};
-  
+
      // Objective coefficients
      // From the objective function: minimize 0.2*x1 + 0.1*x2
      // -0.2 is the coefficient of x1
      // 0.1 is the coefficient of x2
      cuopt_float_t objective_coefficients[] = {-0.2, 0.1};
-  
+
      // Constraint bounds
      // From the constraints:
      // 3.0*x1 + 4.0*x2 <= 5.4
      // 2.7*x1 + 10.1*x2 <= 4.9
      cuopt_float_t constraint_upper_bounds[] = {5.4, 4.9};
      cuopt_float_t constraint_lower_bounds[] = {-CUOPT_INFINITY, -CUOPT_INFINITY};
-  
+
      // Variable bounds
      // From the constraints:
      // x1, x2 >= 0
      cuopt_float_t var_lower_bounds[] = {0.0, 0.0};
      cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY};
-  
+
      // Variable types (continuous)
      // From the constraints:
      // x1, x2 >= 0
      // x1 is integer
      // x2 is continuous
      char variable_types[] = {CUOPT_INTEGER, CUOPT_CONTINUOUS};
-  
+
      cuopt_int_t status;
      cuopt_float_t time;
      cuopt_int_t termination_status;
@@ -201,7 +201,7 @@ Copy the code below into a file called ``milp_example.c``:
    int main() {
      // Run the test
      cuopt_int_t status = test_simple_milp();
-    
+
      if (status == CUOPT_SUCCESS) {
        printf("\nTest completed successfully!\n");
        return 0;
@@ -223,7 +223,7 @@ If you have built it locally, libcuopt.so will be in the build directory ``cpp/b
    INCLUDE_PATH=$(find / -name "cuopt_c.h" -path "*/linear_programming/*" -printf "%h\n" | sed 's/\/linear_programming//' 2>/dev/null)
    # Find the libcuopt library and assign to LIBCUOPT_LIBRARY_PATH
    LIBCUOPT_LIBRARY_PATH=$(find / -name "libcuopt.so" 2>/dev/null)
-   
+
 
 Build and run the example
 
@@ -267,7 +267,7 @@ You should see the following output:
    Solve time: 0.000000 seconds
    Objective value: -0.200000
 
-   Solution: 
+   Solution:
    x1 = 1.000000
    x2 = 0.000000
 
@@ -421,7 +421,7 @@ Copy the code below into a file called ``milp_example_mps.c``:
 
      // Run the solver
      cuopt_int_t status = solve_mps_file(argv[1]);
-    
+
      if (status == CUOPT_SUCCESS) {
        printf("\nSolver completed successfully!\n");
        return 0;
@@ -505,7 +505,7 @@ You should see the following output:
    Root relaxation objective -3.01818182e+01
 
    Strong branching on 2 fractional variables
-   | Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   |    Time 
+   | Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   |    Time
            0        1                +inf  -3.018182e+01      1   0.0e+00       -        0.00
    B       3        1       -2.700000e+01  -2.980000e+01      2   6.7e-01     10.4%      0.00
    B&B added a solution to population, solution queue size 0 with objective -27
@@ -524,7 +524,7 @@ You should see the following output:
    Solve time: 0.000000 seconds
    Objective value: -28.000000
 
-   Solution: 
+   Solution:
    x1 = 4.000000
    x2 = 0.000000
 

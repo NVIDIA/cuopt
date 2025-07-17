@@ -2,7 +2,7 @@
 MILP Python Examples
 ========================================
 
-The major difference between this example and the LP example is that some of the variables are integers, so ``variable_types`` need to be shared. 
+The major difference between this example and the LP example is that some of the variables are integers, so ``variable_types`` need to be shared.
 The OpenAPI specification for the server is available in `open-api spec <../../open-api.html>`_. The example data is structured as per the OpenAPI specification for the server, please refer `LPData <../../open-api.html#/default/postrequest_cuopt_request_post>`_ under schema section. LP and MILP share same spec.
 
 Generic Example
@@ -53,7 +53,7 @@ Generic Example
     )
 
     def repoll(solution, repoll_tries):
-        # If solver is still busy solving, the job will be assigned a request id and response is sent back in the 
+        # If solver is still busy solving, the job will be assigned a request id and response is sent back in the
         # following format {"reqId": <REQUEST-ID>}.
         # Solver needs to be re-polled for response using this <REQUEST-ID>.
 
@@ -70,7 +70,7 @@ Generic Example
         return solution
 
     solution = cuopt_service_client.get_LP_solve(data, response_type="dict")
-    
+
     # Number of repoll requests to be carried out for a successful response
     repoll_tries = 500
 
@@ -182,7 +182,7 @@ The incumbent solution can be retrieved using a callback function as follows:
     solution = cuopt_service_client.get_LP_solve(
         data, incumbent_callback=callback, response_type="dict", logging_callback=log_callback
     )
-    
+
     print(json.dumps(solution, indent=4))
 
 Log the callback response:
@@ -251,7 +251,7 @@ The ``data`` argument to ``get_LP_solve`` may be a dictionary of the format show
 They can be of different format as well, please check the documentation.
 
 
-Aborting a Running Job in Thin Client 
+Aborting a Running Job in Thin Client
 -------------------------------------
 
 .. code-block:: python
