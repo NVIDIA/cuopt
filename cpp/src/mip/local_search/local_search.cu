@@ -41,7 +41,7 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
     // fj_tree(fj),
     constraint_prop(context),
     lb_constraint_prop(context),
-    line_segment_search(fj),
+    line_segment_search(fj, constraint_prop),
     fp(context,
        fj,
        // fj_tree,
@@ -85,38 +85,36 @@ void local_search_t<i_t, f_t>::generate_fast_solution(solution_t<i_t, f_t>& solu
 template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
                                                 const weight_t<i_t, f_t>& weights,
-                                                timer_t timer)
+                                                timer_t timer,
+                                                f_t baseline_objective,
+                                                bool at_least_one_parent_feasible)
 {
   raft::common::nvtx::range fun_scope("local search");
   fj_settings_t fj_settings;
   if (timer.check_time_limit()) return false;
   // adjust these time limits
-  fj_settings.time_limit      = timer.remaining_time();
+  if (!solution.get_feasible()) {
+    if (at_least_one_parent_feasible) {
+      fj_settings.time_limit = 1.;
+      timer                  = timer_t(1.);
+    } else {
+      fj_settings.time_limit = 0.5;
+      timer                  = timer_t(0.5);
+    }
+  } else {
+    fj_settings.time_limit = timer.remaining_time();
+  }
   fj_settings.update_weights  = false;
   fj_settings.feasibility_run = false;
   fj.set_fj_settings(fj_settings);
   fj.copy_weights(weights, solution.handle_ptr);
-  cuopt_func_call(bool is_feasible_before_search = solution.get_feasible());
   bool is_feas;
   i_t rd = std::uniform_int_distribution(0, 1)(rng);
   if (rd == 0 && lp_optimal_exists) {
     is_feas = run_fj_line_segment(solution, timer);
-    cuopt_assert(!is_feasible_before_search || is_feas,
-                 "Line segment search should not change feasibility");
   } else {
-    solution_t<i_t, f_t> solution_before_annealing(solution);
-    bool is_feasible_before_annealing = solution.get_feasible();
-    is_feas                           = run_fj_annealing(solution, timer);
-    // we should remove this logic once, FJ is fixed
-    if (is_feasible_before_annealing && !solution.get_feasible()) {
-      solution.copy_from(solution_before_annealing);
-      solution.handle_ptr->sync_stream();
-    }
-    cuopt_func_call(bool is_feasible_after_annealing = solution.get_feasible());
-    cuopt_assert(!is_feasible_before_search || is_feasible_after_annealing,
-                 "Annealing should not change feasibility");
+    is_feas = run_fj_annealing(solution, timer, baseline_objective);
   }
-  // TODO add a test for the quality improvement too
   return is_feas;
 }
 
@@ -141,18 +139,23 @@ bool local_search_t<i_t, f_t>::run_fj_until_timer(solution_t<i_t, f_t>& solution
 
 // SIMULATED ANNEALING not fully implemented yet, placeholder
 template <typename i_t, typename f_t>
-bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution, timer_t timer)
+bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution,
+                                                timer_t timer,
+                                                f_t baseline_objective)
 {
   auto prev_settings = fj.settings;
 
   // run in FEASIBLE_FIRST to priorize feasibility-improving moves
-  fj.settings.n_of_minimums_for_exit = 50;
+  fj.settings.n_of_minimums_for_exit = 250;
   fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
   fj.settings.candidate_selection    = fj_candidate_selection_t::FEASIBLE_FIRST;
-  fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
-  fj.settings.time_limit             = std::min(10., timer.remaining_time());
+  fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT;
+  fj.settings.iteration_limit =
+    max(20 * fj.settings.n_of_minimums_for_exit, solution.problem_ptr->n_constraints / 50);
+  fj.settings.time_limit                                = std::min(10., timer.remaining_time());
   fj.settings.parameters.allow_infeasibility_iterations = 100;
   fj.settings.update_weights                            = 1;
+  fj.settings.baseline_objective_for_longer_run         = baseline_objective;
   fj.solve(solution);
   bool is_feasible = solution.compute_feasibility();
 
@@ -194,12 +197,11 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
     constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
   if (!is_feasible) {
     const f_t lp_run_time = 2.;
-    run_lp_with_vars_fixed(*solution.problem_ptr,
-                           solution,
-                           solution.problem_ptr->integer_indices,
-                           solution.problem_ptr->tolerances,
-                           context.lp_state,
-                           lp_run_time);
+    relaxed_lp_settings_t lp_settings;
+    lp_settings.time_limit = lp_run_time;
+    lp_settings.tolerance  = solution.problem_ptr->tolerances.absolute_tolerance;
+    run_lp_with_vars_fixed(
+      *solution.problem_ptr, solution, solution.problem_ptr->integer_indices, lp_settings);
   } else {
     return is_feasible;
   }

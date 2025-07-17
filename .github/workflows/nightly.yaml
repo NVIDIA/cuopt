@@ -75,5 +75,3 @@ jobs:
             -f sha=${SHA} \
             -f date=${DATE} \
             -f build_type=nightly
-
-

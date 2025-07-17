@@ -46,5 +46,5 @@ list(PREPEND
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump_kernels.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solution/solution.cu)
 
-set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} 
+set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES}
   ${MIP_SRC_FILES} PARENT_SCOPE)

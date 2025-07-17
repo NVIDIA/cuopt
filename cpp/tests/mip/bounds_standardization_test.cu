@@ -76,10 +76,12 @@ void test_bounds_standardization_test(std::string test_instance)
   detail::solution_t<int, double> solution_1(standardized_problem);
 
   mip_solver_settings_t<int, double> default_settings{};
+  detail::relaxed_lp_settings_t lp_settings;
+  lp_settings.time_limit = 120.;
+  lp_settings.tolerance  = default_settings.tolerances.absolute_tolerance;
 
   // run the problem through pdlp
-  auto result_1 = detail::get_relaxed_lp_solution(
-    standardized_problem, solution_1, default_settings.tolerances.absolute_tolerance, 120.);
+  auto result_1 = detail::get_relaxed_lp_solution(standardized_problem, solution_1, lp_settings);
   solution_1.compute_feasibility();
   bool sol_1_feasible = (int)result_1.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
   // the problem might not be feasible in terms of per constraint residual

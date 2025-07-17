@@ -1,7 +1,7 @@
 # C++ example using Routing APIs
 
-This C++ example demonstrates using Routing APIs to construct a 
-data model and pass it to the cuOpt solver for optimization and 
+This C++ example demonstrates using Routing APIs to construct a
+data model and pass it to the cuOpt solver for optimization and
 get back the routing solution.
 
 

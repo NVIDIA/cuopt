@@ -66,7 +66,7 @@ General FAQ
 
 
      2. Try to locate the process that is using port 5000 and stop it if possible. A tool like ``netstat`` run as the root user can help identify ports mapped to processes, and ``docker ps -a`` will show running containers.
-    
+
      3. Alternatively, use port mapping to launch cuOpt on a different port such as 5001 (note the omission of ``–network=host`` flag):
 
      4. If running locally, you can also use ``ps -aux | grep cuopt_server`` to find the process and kill it.
@@ -85,7 +85,7 @@ General FAQ
 
    This error indicates that the cuOpt shared library is not found. Please check the following:
 
-   - The cuOpt is installed 
+   - The cuOpt is installed
    - Use ``find / -name libcuopt.so`` to search for the library path from root directory. You might need to run this command as root user.
    - If the library is found, please add it to the ``LD_LIBRARY_PATH`` environment variable as shown below:
 
@@ -107,18 +107,18 @@ General FAQ
 
 .. dropdown::  The cuOpt service is not responding: What to check?
 
-   1. cuOpt microservice health check on the cuOpt host. 
-   
+   1. cuOpt microservice health check on the cuOpt host.
+
    Perform a health-check locally on the host running cuOpt:
 
      .. code-block:: bash
 
         curl -s -o /dev/null -w '%{http_code}\\n' localhost:5000/cuopt/health 200
 
-   
+
     If this command returns 200, cuOpt is running and listening on the specified port.
 
-   
+
     If this command returns something other than 200, check the following:
 
        -  Check that a cuOpt container is running with ``docker -ps``.
@@ -127,7 +127,7 @@ General FAQ
        -  Restart cuOpt and see if that corrects the problem.
 
    2. cuOpt microservice health-check from a remote host.
-   
+
    If you are trying to reach cuOpt from a remote host, run the health check from the remote host and specify the IP address of the cuOpt host, for example:
 
       .. code-block:: bash
@@ -230,7 +230,7 @@ Routing FAQ
 
 .. dropdown:: How to get partially feasible solutions to infeasible problems?
 
-    Use Prize collection, which associates each task with a prize and the solver will maximize the prize collected. This allows cuOpt to prioritize some tasks over others. 
+    Use Prize collection, which associates each task with a prize and the solver will maximize the prize collected. This allows cuOpt to prioritize some tasks over others.
 
 .. dropdown:: What is a dimension mismatch error?
 
@@ -257,7 +257,7 @@ Routing FAQ
 
 .. dropdown:: Do we need to normalize the data when creating a time window matrix?
 
-    The units can be whatever the customer wants them to be: minutes, seconds, milliseconds, hours, and so on. It is the user's responsibility to normalize the data across the complete problem, so all time-related constraints use the same unit. For example, if the travel time matrix is given in minutes, we want to make sure time windows and service times are also given in minutes. 
+    The units can be whatever the customer wants them to be: minutes, seconds, milliseconds, hours, and so on. It is the user's responsibility to normalize the data across the complete problem, so all time-related constraints use the same unit. For example, if the travel time matrix is given in minutes, we want to make sure time windows and service times are also given in minutes.
 
 .. dropdown:: Is there a way to prevent vehicles from traveling along the same path in a waypoint graph, or is there a way to prevent more than one vehicle from visiting a location, or even that a location is only visited one time by a single vehicle?
 
@@ -265,7 +265,7 @@ Routing FAQ
 
 .. dropdown:: Travel time deviation: When using the same dataset, the travel time varies by a couple of seconds in different runs, but the distance remains the same. How can travel time deviate in multiple runs on the same data and distance remains constant?
 
-    This is because travel time is not part of the objective, so we could have two solutions that are equivalent when picking the best solution. You can include total travel time (includes wait time) as part of the objective. 
+    This is because travel time is not part of the objective, so we could have two solutions that are equivalent when picking the best solution. You can include total travel time (includes wait time) as part of the objective.
 
 .. dropdown:: There is no path between two locations, how do I input this information to the solver?
 
@@ -305,7 +305,7 @@ Routing FAQ
 .. dropdown:: What are the limitations of the routing solver?
 
     #. The routing solver capabilities are based on few factors:
-    
+
     - The available GPU memory
     - The size of the problem
         - Number of locations
@@ -321,7 +321,7 @@ Routing FAQ
     Depending on these factors, the problems that can be solved can vary, for example:
 
     - On a H100 SXM with 80GB memory, the maximum number of locations that routing solver can handle is 10,000.
-    
+
     At the same time, depending on complexity, the solver might be able to handle more or less than 10,000 locations.
 
 Linear Programming FAQs
@@ -332,7 +332,7 @@ Linear Programming FAQs
     The batch mode allows solving many LPs in parallel to try to fully utilize the GPU when LP problems are too small. Using H100 SXM, the problem should be of at least 1K elements, and giving more than 100 LPs will usually not increase performance.
 
 .. dropdown:: Can the solver run on dense problems?
-    
+
     Yes, but we usually see great results on very large and sparse problems.
 
 .. dropdown:: How large can the problem be?
@@ -352,7 +352,7 @@ Linear Programming FAQs
     - Batch mode: In case you know upfront that you need to solve multiple LP problems, instead of solving them sequentially, you should use the batch mode which can solve multiple LPs in parallel.
 
 .. dropdown:: What solver mode should I choose?
-    
+
     We cannot predict up-front which solver mode will work best for a particular problem. The only way to know is to test. Once you know a solver mode is good on a class of problems, it should also be good on other similar problems.
 
 .. dropdown:: What tolerance should I use?
@@ -362,20 +362,20 @@ Linear Programming FAQs
 .. dropdown:: What are the limitations of the LP solver?
 
     #. There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MILP or LP, except the restrictions due to the number of bits in an integer and the amount of memory in the CPU and GPU.
-    
+
     Depending on these factors, the problems that can be solved can vary, for example:
 
     - On a H100 SXM with 80GB memory, here are few examples of the problems that can be solved:
-        - 10M rows/constraints, 10M columns/variables, and 2B non-zeros in the constraint matrix.    
+        - 10M rows/constraints, 10M columns/variables, and 2B non-zeros in the constraint matrix.
         - 74.5M rows/constraints, 74.5M columns/variables, and 1.49B non-zeros in the constraint matrix.
-    
+
 Mixed Integer Linear Programming FAQs
 --------------------------------------
 
 .. dropdown:: What are the limitations of the MILP solver?
 
     #. There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MILP or LP, except the restrictions due to the number of bits in integer and the amount of memory in the CPU and GPU.
-    
+
     Depending on these factors, the problems that can be solved can vary, for example:
 
     - On a H100 SXM with 80GB memory, this is the biggest dataset that was tested:

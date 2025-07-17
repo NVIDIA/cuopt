@@ -3,7 +3,7 @@
 Documentation dependencies are installed while installing the Conda environment, please refer to the [Build and Test](../../CONTRIBUTING.md#building-with-a-conda-environment) for more details. Assuming you have set-up the Conda environment, you can build the documentation along with all the cuOpt libraries by running:
 
 ```bash
-./build.sh 
+./build.sh
 ```
 
 In subsequent runs where there are no changes to the cuOpt libraries, documentation can be built by running:
