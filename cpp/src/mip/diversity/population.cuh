@@ -63,6 +63,7 @@ class population_t {
   solution_t<i_t, f_t>& solution_at_index(i_t idx) { return solutions[indices[idx].first].second; }
   // initializes the population lazily. after presolve and var removals
   void initialize_population();
+  bool is_better_than_best_feasible(solution_t<i_t, f_t>& sol);
 
   void allocate_solutions();
 
@@ -141,6 +142,10 @@ class population_t {
 
   void run_solution_callbacks(solution_t<i_t, f_t>& sol);
 
+  void adjust_weights_according_to_best_feasible();
+
+  void start_threshold_adjustment();
+
   // does some consistency tests
   bool test_invariant();
 
@@ -150,8 +155,8 @@ class population_t {
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;
   i_t var_threshold;
-  f_t initial_threshold_ratio;
-  f_t diversity_start_time;
+  i_t initial_threshold;
+  double population_start_time;
   // the normalization target for the infeasibility
   // this is used to cover the importance of the weights
   f_t infeasibility_importance = 100.;
@@ -166,6 +171,7 @@ class population_t {
   bool early_exit_primal_generation = false;
   f_t best_feasible_objective       = std::numeric_limits<f_t>::max();
   bool preempt_heuristic_solver_    = false;
+  cuopt::timer_t timer;
 };
 
 }  // namespace cuopt::linear_programming::detail

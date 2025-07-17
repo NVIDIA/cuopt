@@ -23,45 +23,6 @@
 
 namespace cuopt::linear_programming::detail {
 
-// TODO replace this kernel with actually removing the variables from the assignment
-template <typename i_t, typename f_t>
-__global__ void fix_given_variables_kernel(const typename problem_t<i_t, f_t>::view_t problem,
-                                           typename problem_t<i_t, f_t>::view_t new_problem,
-                                           raft::device_span<f_t> assignment,
-                                           raft::device_span<i_t> vars_to_fix)
-{
-  // use a threadblock for each constraint
-  // loop over variables sequentially (assuming fixations occur with few variables)
-  i_t c                  = blockIdx.x;
-  const f_t int_tol      = problem.tolerances.integrality_tolerance;
-  f_t th_total_reduction = 0.;
-  for (i_t v_idx = 0; v_idx < vars_to_fix.size(); ++v_idx) {
-    i_t var_to_fix                  = vars_to_fix[v_idx];
-    f_t var_val                     = assignment[var_to_fix];
-    auto [offset_begin, offset_end] = problem.range_for_constraint(c);
-    for (i_t i = threadIdx.x + offset_begin; i < offset_end; i += blockDim.x) {
-      i_t v = problem.variables[i];
-      // search for var
-      if (v == var_to_fix) {
-        f_t coeff    = problem.coefficients[i];
-        f_t curr_val = floor(var_val + int_tol) * coeff;
-        // there should be only one var that is contained within the constraint
-        th_total_reduction += curr_val;
-      }
-    }
-    // wait until the var is fixed if any, so that at a time single var modifies the constraint
-    __syncthreads();
-  }
-  __shared__ f_t shmem[raft::WarpSize];
-  f_t total_reduction = raft::blockReduce(th_total_reduction, (char*)shmem);
-  // the new problem constraint values are not initialized, so we are basically initializng them
-  // here even if the total_reduction is zero, do the initiailizrion here
-  if (threadIdx.x == 0) {
-    new_problem.constraint_lower_bounds[c] = problem.constraint_lower_bounds[c] - total_reduction;
-    new_problem.constraint_upper_bounds[c] = problem.constraint_upper_bounds[c] - total_reduction;
-  }
-}
-
 template <typename i_t, typename f_t>
 __global__ void compute_new_offsets(const typename problem_t<i_t, f_t>::view_t orig_problem,
                                     typename problem_t<i_t, f_t>::view_t new_problem,

@@ -310,6 +310,12 @@ f_t optimization_problem_solution_t<i_t, f_t>::get_objective_value() const
 }
 
 template <typename i_t, typename f_t>
+f_t optimization_problem_solution_t<i_t, f_t>::get_dual_objective_value() const
+{
+  return termination_stats_.dual_objective;
+}
+
+template <typename i_t, typename f_t>
 rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_primal_solution()
 {
   return primal_solution_;

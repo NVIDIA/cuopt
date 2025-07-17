@@ -31,7 +31,7 @@ Generic Example
     )
 
     def repoll(solution, repoll_tries):
-        # If solver is still busy solving, the job will be assigned a request id and response is sent back in the 
+        # If solver is still busy solving, the job will be assigned a request id and response is sent back in the
         # following format {"reqId": <REQUEST-ID>}.
         # Solver needs to be re-polled for response using this <REQUEST-ID>.
 
@@ -133,7 +133,7 @@ Previously run solutions or uploaded solutions can be used as the initial soluti
         timeout_exception=False
     )
 
-    # Get initial solution 
+    # Get initial solution
     # Set delete_solution to false so it can be used in next request
     initial_solution = cuopt_service_client.get_optimized_routes(
         data, delete_solution=False
@@ -288,13 +288,13 @@ To enable HTTPS:
      openssl req -newkey rsa:2048 -nodes -keyout server.key -subj "/C=CN/ST=GD/L=SZ/O=Acme, Inc./CN=*.example.com" -out server.csr
      openssl x509 -req -extfile <(printf "subjectAltName=DNS:example.com,DNS:www.example.com") -days 365 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt
 
- 
+
   ``server.crt`` and ``server.key`` are meant for server, ``ca.crt`` is meant for client.
 
 
 More examples are available in the `Examples Notebooks Repository <https://github.com/NVIDIA/cuopt-examples>`_.
 
-Aborting a Running Job in Thin Client 
+Aborting a Running Job in Thin Client
 -------------------------------------
 
 Please refer to the `MILP Example on Aborting a Running Job in Thin Client <milp-examples.html#aborting-a-running-job-in-thin-client>`_ for more details.
@@ -377,7 +377,7 @@ To enable HTTPS
 ----------------
 
 * In the case of the server using public certificates, simply enable https.
-  
+
   .. code-block:: shell
 
    cuopt_sh data.json -s -i $ip -p $port

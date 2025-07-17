@@ -44,7 +44,7 @@ constexpr auto get_default()
   if constexpr (::cuda::std::is_same_v<output_t, double>) {
     return std::numeric_limits<double>::max();
   } else {
-    return output_t::init_data;
+    return output_t::init_data();
   }
 }
 

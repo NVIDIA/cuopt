@@ -56,7 +56,8 @@ DI void execute_insert(typename solution_t<i_t, f_t, REQUEST>::view_t& view,
                  "Pickup should be smaller than delivery");
   }
 
-  route_to_modify.insert_request<REQUEST>(request_location, request_node, view.route_node_map);
+  route_to_modify.template insert_request<REQUEST>(
+    request_location, request_node, view.route_node_map);
 
   route_t<i_t, f_t, REQUEST>::view_t::compute_forward(route_to_modify);
   route_t<i_t, f_t, REQUEST>::view_t::compute_backward(route_to_modify);

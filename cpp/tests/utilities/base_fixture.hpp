@@ -104,7 +104,7 @@ inline auto parse_test_options(int argc, char** argv)
       "rmm_mode", "RMM allocation mode", cxxopts::value<std::string>()->default_value("pool"));
 
     return options.parse(argc, argv);
-  } catch (const cxxopts::OptionException& e) {
+  } catch (const std::exception& e) {
     cuopt_assert(false, "Error parsing command line options");
   }
 

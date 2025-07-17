@@ -135,7 +135,7 @@ int run_single_file(const std::string& file_path,
     if (is_mip && !solve_relaxation) {
       auto& mip_settings = settings.get_mip_settings();
       if (initial_solution.size() > 0) {
-        mip_settings.set_initial_solution(initial_solution.data(), initial_solution.size());
+        mip_settings.add_initial_solution(initial_solution.data(), initial_solution.size());
       }
       auto solution = cuopt::linear_programming::solve_mip(op_problem, mip_settings);
     } else {
@@ -177,9 +177,9 @@ std::string param_name_to_arg_name(const std::string& input)
 int main(int argc, char* argv[])
 {
   // Get the version string from the version_config.hpp file
-  const auto version_string = std::string("cuOpt ") + std::to_string(CUOPT_VERSION_MAJOR) + "." +
-                              std::to_string(CUOPT_VERSION_MINOR) + "." +
-                              std::to_string(CUOPT_VERSION_PATCH);
+  const std::string version_string = std::string("cuOpt ") + std::to_string(CUOPT_VERSION_MAJOR) +
+                                     "." + std::to_string(CUOPT_VERSION_MINOR) + "." +
+                                     std::to_string(CUOPT_VERSION_PATCH);
 
   // Create the argument parser
   argparse::ArgumentParser program("cuopt_cli", version_string);

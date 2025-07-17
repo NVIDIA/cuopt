@@ -284,7 +284,7 @@ nitpick_ignore = [
     ("py:obj",   "cuopt.routing.DataModel.add_order_precedence"),
     ("py:obj",   "cuopt_sh_client.SolverMethod.denominator"),
     ("py:obj",   "cuopt_sh_client.SolverMethod.imag"),
-    ("py:obj",   "cuopt_sh_client.SolverMethod.numerator"), 
+    ("py:obj",   "cuopt_sh_client.SolverMethod.numerator"),
     ("py:obj",   "cuopt_sh_client.SolverMethod.real"),
     ("py:obj",   "cuopt_sh_client.SolverMethod.as_integer_ratio"),
     ("py:obj",   "cuopt_sh_client.SolverMethod.bit_count"),

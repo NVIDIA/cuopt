@@ -79,7 +79,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_ABSOLUTE_TOLERANCE, &mip_settings.tolerances.absolute_tolerance, 0.0, 1e-1, 1e-4},
     {CUOPT_MIP_RELATIVE_TOLERANCE, &mip_settings.tolerances.relative_tolerance, 0.0, 1e-1, 1e-4},
     {CUOPT_MIP_INTEGRALITY_TOLERANCE, &mip_settings.tolerances.integrality_tolerance, 0.0, 1e-1, 1e-5},
-    {CUOPT_MIP_ABSOLUTE_GAP, &mip_settings.tolerances.absolute_mip_gap, 0.0, 1e-1, 1e-10},
+    {CUOPT_MIP_ABSOLUTE_GAP, &mip_settings.tolerances.absolute_mip_gap, 0.0, CUOPT_INFINITY, 1e-10},
     {CUOPT_MIP_RELATIVE_GAP, &mip_settings.tolerances.relative_mip_gap, 0.0, 1e-1, 1e-4},
     {CUOPT_PRIMAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.primal_infeasible_tolerance, 0.0, 1e-1, 1e-8},
     {CUOPT_DUAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.dual_infeasible_tolerance, 0.0, 1e-1, 1e-8}
@@ -371,21 +371,17 @@ const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_pdlp_du
 }
 
 template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_initial_mip_solution(const f_t* solution, i_t size)
+void solver_settings_t<i_t, f_t>::add_initial_mip_solution(const f_t* solution,
+                                                           i_t size,
+                                                           rmm::cuda_stream_view stream)
 {
-  mip_settings.set_initial_solution(solution, size);
+  mip_settings.add_initial_solution(solution, size, stream);
 }
 
 template <typename i_t, typename f_t>
 void solver_settings_t<i_t, f_t>::set_mip_callback(internals::base_solution_callback_t* callback)
 {
   mip_settings.set_mip_callback(callback);
-}
-
-template <typename i_t, typename f_t>
-const rmm::device_uvector<f_t>& solver_settings_t<i_t, f_t>::get_initial_mip_solution() const
-{
-  return mip_settings.get_initial_solution();
 }
 
 template <typename i_t, typename f_t>

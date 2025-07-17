@@ -234,7 +234,6 @@ void update_from_csr(problem_t<i_t, f_t>& pb)
 
   //  update objective_offset
   pb.presolve_data.objective_offset +=
-    pb.presolve_data.objective_scaling_factor *
     thrust::transform_reduce(handle_ptr->get_thrust_policy(),
                              thrust::counting_iterator<i_t>(0),
                              thrust::counting_iterator<i_t>(pb.n_variables),
@@ -278,9 +277,10 @@ void update_from_csr(problem_t<i_t, f_t>& pb)
 
   pb.n_constraints = updated_n_cnst;
   pb.n_variables   = updated_n_vars;
-  CUOPT_LOG_INFO("After trivial presolve updated number of %d constraints %d variables",
+  CUOPT_LOG_INFO("After trivial presolve updated %d constraints %d variables. Objective offset %f",
                  updated_n_cnst,
-                 updated_n_vars);
+                 updated_n_vars,
+                 pb.presolve_data.objective_offset);
   // check successive cnst in coo increases by atmost 1
   // update csr offset
   pb.offsets.resize(pb.n_constraints + 1, handle_ptr->get_stream());

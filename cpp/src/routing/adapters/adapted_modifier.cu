@@ -127,7 +127,8 @@ template <typename i_t, typename f_t, request_t REQUEST>
 void adapted_modifier_t<i_t, f_t, REQUEST>::equalize_routes_and_nodes(
   adapted_sol_t<i_t, f_t, REQUEST>& sol_a,
   adapted_sol_t<i_t, f_t, REQUEST>& sol_b,
-  costs final_weight)
+  costs final_weight,
+  bool skip_adding_nodes_to_a)
 {
   raft::common::nvtx::range fun_scope("equalize_routes_and_nodes");
 
@@ -153,7 +154,7 @@ void adapted_modifier_t<i_t, f_t, REQUEST>::equalize_routes_and_nodes(
     }
   }
 
-  if (sol_a.sol.get_n_routes() > sol_b.sol.get_n_routes()) {
+  if (!skip_adding_nodes_to_a && sol_a.sol.get_n_routes() > sol_b.sol.get_n_routes()) {
     auto removed_nodes = sol_a.priority_remove_diff_routes(sol_b);
     missing_in_a.insert(missing_in_a.end(), removed_nodes.begin(), removed_nodes.end());
   } else if (sol_b.sol.get_n_routes() > sol_a.sol.get_n_routes()) {
@@ -164,7 +165,9 @@ void adapted_modifier_t<i_t, f_t, REQUEST>::equalize_routes_and_nodes(
   // If there are no mutually exclusive requests, take an early exit
   if (missing_in_a.empty() && missing_in_b.empty()) { return; }
 
-  add_selected_unserviced_requests(sol_a, missing_in_a, final_weight);
+  if (!skip_adding_nodes_to_a) {
+    add_selected_unserviced_requests(sol_a, missing_in_a, final_weight);
+  }
   add_selected_unserviced_requests(sol_b, missing_in_b, final_weight);
 }
 

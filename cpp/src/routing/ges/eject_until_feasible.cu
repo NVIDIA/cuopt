@@ -27,14 +27,6 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
-template <typename i_t = int, typename f_t = float>
-__device__ inline i_t get_lane_id()
-{
-  i_t id;
-  asm("mov.s32 %0, %laneid;" : "=r"(id));
-  return id;
-}
-
 template <typename T, typename i_t = int, typename f_t = float>
 __device__ inline T shfl_sync(T val,
                               i_t srcLane,
@@ -49,8 +41,8 @@ DI void weighted_random_warp_reduce(raft::random::PCGenerator& rng, T& weight, i
 {
 #pragma unroll
   for (i_t offset = raft::WarpSize / 2; offset > 0; offset /= 2) {
-    T tmp_weight = shfl_sync(weight, get_lane_id() + offset);
-    i_t tmp_idx  = shfl_sync(idx, get_lane_id() + offset);
+    T tmp_weight = shfl_sync(weight, raft::laneId() + offset);
+    i_t tmp_idx  = shfl_sync(idx, raft::laneId() + offset);
     T sum        = (tmp_weight + weight);
     weight       = sum;
     if (sum != 0) {

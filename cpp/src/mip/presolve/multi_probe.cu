@@ -92,6 +92,8 @@ void multi_probe_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
 {
   upd_0.resize(problem);
   upd_1.resize(problem);
+  host_lb.resize(problem.n_variables);
+  host_ub.resize(problem.n_variables);
 }
 
 template <typename i_t, typename f_t>
@@ -316,6 +318,30 @@ termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t
 }
 
 template <typename i_t, typename f_t>
+void multi_probe_t<i_t, f_t>::update_device_bounds(const raft::handle_t* handle_ptr)
+{
+  cuopt_assert(upd_0.lb.size() == host_lb.size(), "size of variable lower bound mismatch");
+  raft::copy(upd_0.lb.data(), host_lb.data(), upd_0.lb.size(), handle_ptr->get_stream());
+  cuopt_assert(upd_0.ub.size() == host_ub.size(), "size of variable upper bound mismatch");
+  raft::copy(upd_0.ub.data(), host_ub.data(), upd_0.ub.size(), handle_ptr->get_stream());
+  cuopt_assert(upd_1.lb.size() == host_lb.size(), "size of variable lower bound mismatch");
+  raft::copy(upd_1.lb.data(), host_lb.data(), upd_1.lb.size(), handle_ptr->get_stream());
+  cuopt_assert(upd_1.ub.size() == host_ub.size(), "size of variable upper bound mismatch");
+  raft::copy(upd_1.ub.data(), host_ub.data(), upd_1.ub.size(), handle_ptr->get_stream());
+}
+
+template <typename i_t, typename f_t>
+void multi_probe_t<i_t, f_t>::update_host_bounds(const raft::handle_t* handle_ptr,
+                                                 const raft::device_span<f_t> variable_lb,
+                                                 const raft::device_span<f_t> variable_ub)
+{
+  cuopt_assert(variable_lb.size() == host_lb.size(), "size of variable lower bound mismatch");
+  raft::copy(host_lb.data(), variable_lb.data(), variable_lb.size(), handle_ptr->get_stream());
+  cuopt_assert(variable_ub.size() == host_ub.size(), "size of variable upper bound mismatch");
+  raft::copy(host_ub.data(), variable_ub.data(), variable_ub.size(), handle_ptr->get_stream());
+}
+
+template <typename i_t, typename f_t>
 void multi_probe_t<i_t, f_t>::copy_problem_into_probing_buffers(problem_t<i_t, f_t>& pb,
                                                                 const raft::handle_t* handle_ptr)
 {
@@ -354,12 +380,16 @@ termination_criterion_t multi_probe_t<i_t, f_t>::solve_for_interval(
 template <typename i_t, typename f_t>
 termination_criterion_t multi_probe_t<i_t, f_t>::solve(
   problem_t<i_t, f_t>& pb,
-  const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals)
+  const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals,
+  bool use_host_bounds)
 {
   timer_t timer(settings.time_limit);
   auto& handle_ptr = pb.handle_ptr;
-
-  copy_problem_into_probing_buffers(pb, handle_ptr);
+  if (use_host_bounds) {
+    update_device_bounds(handle_ptr);
+  } else {
+    copy_problem_into_probing_buffers(pb, handle_ptr);
+  }
   set_bounds(var_probe_vals, handle_ptr);
 
   return bound_update_loop(pb, handle_ptr, timer);
