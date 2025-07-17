@@ -38,6 +38,7 @@ ConfigureTest(DOC_EXAMPLE_TEST
 )
 ConfigureTest(UNIT_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_test.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/integer_with_real_bounds.cu
 )
 ConfigureTest(EMPTY_FIXED_PROBLEMS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/empty_fixed_problems_test.cu

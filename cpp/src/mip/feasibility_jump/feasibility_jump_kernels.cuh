@@ -96,7 +96,7 @@ __global__ void update_changed_constraints_kernel(
 template <typename i_t, typename f_t>
 __global__ void update_best_solution_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj);
 
-enum MTMMoveType { FJ_MTM_VIOLATED, FJ_MTM_SATISFIED };
+enum MTMMoveType { FJ_MTM_VIOLATED, FJ_MTM_SATISFIED, FJ_MTM_ALL };
 
 template <typename i_t,
           typename f_t,

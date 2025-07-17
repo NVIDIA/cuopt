@@ -748,7 +748,7 @@ struct OX {
     if (S.routes.size() == 1) { i = next_random() % (genome_A.size() - 1); }
     int j = i + 1 + (next_random() % (3 * max_route_len));
     if ((size_t)j >= genome_A.size() - 1) {
-      j = i + next_random() % max(1, (((int)genome_A.size() - 1 - i) / 2));
+      j = i + next_random() % std::max(1, (((int)genome_A.size() - 1 - i) / 2));
     }
 
     for (int k = i; k <= j; k++) {

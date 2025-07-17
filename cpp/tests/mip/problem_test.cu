@@ -90,6 +90,14 @@ lp::optimization_problem_t<i_t, f_t> create_problem(raft::handle_t const* h, i_t
                     variable_upper_bounds.begin(),
                     thrust::plus<f_t>{});
 
+  // Make sure that upper bound is at least 1.0 greater than lower bound for integer variables
+  for (size_t i = 0; i < variable_lower_bounds.size(); i++) {
+    if (variable_types[i] == var_t::INTEGER) {
+      variable_lower_bounds[i] = ceil(variable_lower_bounds[i]);
+      variable_upper_bounds[i] = std::max(variable_upper_bounds[i], variable_lower_bounds[i] + 1.1);
+    }
+  }
+
   // constraint_lower_bounds & constraint_upper_bounds
   auto constraint_lower_bounds = rand_vec<i_t, f_t>(n_cnst, 0, 5);
   auto constraint_upper_bounds = rand_vec<i_t, f_t>(n_cnst, 0, 5);
@@ -155,10 +163,17 @@ void set_equal_var_bounds(optimization_problem_t<i_t, f_t>& problem,
              problem.get_handle_ptr()->get_stream());
   auto lb = make_span(v_lb);
   auto ub = make_span(v_ub);
+  auto vt = make_span(problem.get_variable_types());
   thrust::for_each(problem.get_handle_ptr()->get_thrust_policy(),
                    sel_vars.begin(),
                    sel_vars.end(),
-                   [lb, ub] __device__(auto v) { lb[v] = ub[v]; });
+                   [lb, ub, vt] __device__(auto v) {
+                     if (vt[v] == var_t::INTEGER) {
+                       lb[v] = ub[v] = ceil(ub[v]);
+                     } else {
+                       lb[v] = ub[v];
+                     }
+                   });
 }
 
 template <typename i_t, typename f_t>
@@ -183,7 +198,9 @@ void test_equal_val_bounds(i_t n_cnst, i_t n_var)
   set_equal_var_bounds<i_t, f_t>(op_problem, selected_vars);
 
   dtl::problem_t<i_t, f_t> problem(op_problem);
+
   problem.preprocess_problem();
+
   detail::trivial_presolve(problem);
 
   EXPECT_EQ(selected_vars.size() + problem.n_variables, n_var);
@@ -270,6 +287,7 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
   }
 }
 
+#ifdef ASSERT_MODE
 // Special setup since this is a "killing" test (because of assert)
 TEST(optimization_problem_t_DeathTest, test_check_problem_validity)
 {
@@ -378,5 +396,6 @@ TEST(optimization_problem_t_DeathTest, test_check_problem_validity)
   // Check that it does assert
   EXPECT_DEATH({ problem2.check_problem_representation(true, false); }, "");
 }
+#endif
 
 }  // namespace cuopt::linear_programming::test

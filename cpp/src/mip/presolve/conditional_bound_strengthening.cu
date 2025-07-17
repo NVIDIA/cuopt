@@ -657,7 +657,7 @@ void conditional_bound_strengthening_t<i_t, f_t>::solve(problem_t<i_t, f_t>& pro
 
   if (n_blocks == 0) { return; }
   int max_row_size = get_max_row_size(problem.offsets, problem.handle_ptr->get_stream());
-  max_row_size     = min(TPB, max_row_size);
+  max_row_size     = std::min(TPB, max_row_size);
   size_t sh_size =
     raft::alignTo(5 * sizeof(f_t) + sizeof(i_t) + sizeof(var_t), sizeof(i_t)) * max_row_size;
 

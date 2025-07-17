@@ -21,6 +21,7 @@
 
 #include <cuopt/error.hpp>
 
+#include <mip/logger.cuh>
 #include <raft/linalg/unary_op.cuh>
 #include <utilities/copy_helpers.hpp>
 
@@ -138,6 +139,9 @@ static void convert_to_maximization_problem(detail::problem_t<i_t, f_t>& op_prob
   // negating objective coeffs
   op_problem.presolve_data.objective_scaling_factor =
     -op_problem.presolve_data.objective_scaling_factor;
+
+  // Negate objective offset
+  op_problem.presolve_data.objective_offset = -op_problem.presolve_data.objective_offset;
 }
 
 /*
@@ -176,6 +180,8 @@ __global__ void kernel_check_transpose_validity(raft::device_span<const f_t> coe
     __syncthreads();
     // Would want to assert there but no easy way to gtest it, so moved it to the host
     if (!shared_found) {
+      DEVICE_LOG_DEBUG(
+        "For cstr %d, var %d, value %f was not found in the transpose", constraint_id, col, value);
       *failed = true;
       return;
     }
@@ -275,6 +281,23 @@ static bool check_constraint_bounds_sanity(const detail::problem_t<i_t, f_t>& pr
                      return (lb[index] > ub[index] + tolerance);
                    });
   return !crossing_bounds_detected;
+}
+
+template <typename i_t, typename f_t>
+static void round_bounds(detail::problem_t<i_t, f_t>& problem)
+{
+  // round bounds to integer for integer variables
+  thrust::for_each(problem.handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(problem.n_variables),
+                   [lb    = make_span(problem.variable_lower_bounds),
+                    ub    = make_span(problem.variable_upper_bounds),
+                    types = make_span(problem.variable_types)] __device__(i_t index) {
+                     if (types[index] == var_t::INTEGER) {
+                       lb[index] = ceil(lb[index]);
+                       ub[index] = floor(ub[index]);
+                     }
+                   });
 }
 
 template <typename i_t, typename f_t>

@@ -92,18 +92,17 @@ void write_to_output_file(const std::string& out_dir,
 
 inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_resource>(); }
 
-// reads a solution from an input file. The input file needs to be csv formatted
-// var_name,val
-std::vector<double> read_solution_from_file(const std::string file_path,
-                                            const std::vector<std::string>& var_names)
+void read_single_solution_from_path(const std::string& path,
+                                    const std::vector<std::string>& var_names,
+                                    std::vector<std::vector<double>>& solutions)
 {
   solution_reader_t reader;
-  bool success = reader.readFromCsv(file_path);
+  bool success = reader.read_from_sol(path);
   if (!success) {
-    CUOPT_LOG_INFO("Initial solution reading error!");
-    exit(-1);
+    CUOPT_LOG_ERROR("Initial solution reading error!");
   } else {
-    CUOPT_LOG_INFO("Success reading csv! Number of var vals %lu", reader.data_map.size());
+    CUOPT_LOG_INFO(
+      "Success reading file %s Number of var vals %lu", path.c_str(), reader.data_map.size());
   }
   std::vector<double> assignment;
   for (auto name : var_names) {
@@ -112,20 +111,42 @@ std::vector<double> read_solution_from_file(const std::string file_path,
     if ((it != reader.data_map.end())) {
       val = it->second;
     } else {
-      CUOPT_LOG_INFO("Variable %s has no input value ", name.c_str());
+      CUOPT_LOG_TRACE("Variable %s has no input value ", name.c_str());
       val = 0.;
     }
     assignment.push_back(val);
   }
-  CUOPT_LOG_INFO("Adding a solution with size %lu ", assignment.size());
-  return assignment;
+  if (assignment.size() > 0) {
+    CUOPT_LOG_INFO("Adding a solution with size %lu ", assignment.size());
+    solutions.push_back(assignment);
+  }
+}
+
+// reads a solution from an input file. The input file needs to be csv formatted
+// var_name,val
+std::vector<std::vector<double>> read_solution_from_dir(const std::string file_path,
+                                                        const std::string& mps_file_name,
+                                                        const std::vector<std::string>& var_names)
+{
+  std::vector<std::vector<double>> initial_solutions;
+  std::string mps_file_name_no_ext = mps_file_name.substr(0, mps_file_name.find_last_of("."));
+  // check if a directory with the given mps file exists
+  std::string initial_solution_dir = file_path + "/" + mps_file_name_no_ext;
+  if (std::filesystem::exists(initial_solution_dir)) {
+    for (const auto& entry : std::filesystem::directory_iterator(initial_solution_dir)) {
+      read_single_solution_from_path(entry.path(), var_names, initial_solutions);
+    }
+  } else {
+    read_single_solution_from_path(file_path, var_names, initial_solutions);
+  }
+  return initial_solutions;
 }
 
 int run_single_file(std::string file_path,
                     int device,
                     int batch_id,
                     std::string out_dir,
-                    std::optional<std::string> input_file_dir,
+                    std::optional<std::string> initial_solution_dir,
                     bool heuristics_only,
                     int num_cpu_threads,
                     bool write_log_file,
@@ -163,23 +184,36 @@ int run_single_file(std::string file_path,
     CUOPT_LOG_ERROR("Parsing MPS failed exiting!");
     return -1;
   }
-  if (input_file_dir.has_value()) {
-    auto initial_solution =
-      read_solution_from_file(input_file_dir.value(), mps_data_model.get_variable_names());
-    settings.set_initial_solution(initial_solution.data(), initial_solution.size());
-    test_constraint_sanity(mps_data_model,
-                           initial_solution,
-                           settings.tolerances.absolute_tolerance,
-                           settings.tolerances.relative_tolerance,
-                           settings.tolerances.integrality_tolerance);
+  if (initial_solution_dir.has_value()) {
+    auto initial_solutions = read_solution_from_dir(
+      initial_solution_dir.value(), base_filename, mps_data_model.get_variable_names());
+    for (auto& initial_solution : initial_solutions) {
+      bool feasible_variables =
+        test_constraint_and_variable_sanity(mps_data_model,
+                                            initial_solution,
+                                            settings.tolerances.absolute_tolerance,
+                                            settings.tolerances.relative_tolerance,
+                                            settings.tolerances.integrality_tolerance);
+      if (feasible_variables) {
+        settings.add_initial_solution(
+          initial_solution.data(), initial_solution.size(), handle_.get_stream());
+      }
+    }
   }
 
   settings.time_limit      = time_limit;
   settings.heuristics_only = heuristics_only;
   settings.num_cpu_threads = num_cpu_threads;
   settings.log_to_console  = log_to_console;
-  auto start_run_solver    = std::chrono::high_resolution_clock::now();
+  cuopt::linear_programming::benchmark_info_t benchmark_info;
+  settings.benchmark_info_ptr = &benchmark_info;
+  auto start_run_solver       = std::chrono::high_resolution_clock::now();
   auto solution = cuopt::linear_programming::solve_mip(&handle_, mps_data_model, settings);
+  CUOPT_LOG_INFO(
+    "first obj: %f last improvement of best feasible: %f last improvement after recombination: %f",
+    benchmark_info.objective_of_initial_population,
+    benchmark_info.last_improvement_of_best_feasible,
+    benchmark_info.last_improvement_after_recombination);
   // solution.write_to_sol_file(base_filename + ".sol", handle_.get_stream());
   std::chrono::milliseconds duration;
   auto end = std::chrono::high_resolution_clock::now();
@@ -199,7 +233,9 @@ int run_single_file(std::string file_path,
   std::stringstream ss;
   int decimal_places = 2;
   ss << std::fixed << std::setprecision(decimal_places) << base_filename << "," << sol_found << ","
-     << obj_val << "\n";
+     << obj_val << "," << benchmark_info.objective_of_initial_population << ","
+     << benchmark_info.last_improvement_of_best_feasible << ","
+     << benchmark_info.last_improvement_after_recombination << "\n";
   write_to_output_file(out_dir, base_filename, device, batch_id, ss.str());
   CUOPT_LOG_INFO("Results written to the file %s", base_filename.c_str());
   return sol_found;

@@ -20,7 +20,7 @@ A clear and concise description of what you expected to happen.
  - Environment location: [Bare-metal, Docker, Cloud(specify cloud provider)]
  - Method of cuOpt install: [conda, Docker, or from source]
    - If method of install is [Docker], provide `docker pull` & `docker run` commands used
- 
+
 
 **Additional context**
 Add any other context about the problem here.

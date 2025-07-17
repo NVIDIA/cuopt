@@ -216,7 +216,7 @@ bool solution_t<i_t, f_t, REQUEST>::remove_nodes(const std::vector<NodeInfo<>>& 
   rmm::device_scalar<i_t> empty_route_produced(sol_handle->get_stream());
   raft::copy(temp_nodes.data(), nodes_to_eject.data(), n_nodes_to_eject, sol_handle->get_stream());
   compute_max_active();
-  size_t sh_size = max(get_temp_route_shared_size(), n_routes * sizeof(i_t));
+  size_t sh_size = std::max(get_temp_route_shared_size(), n_routes * sizeof(i_t));
   bool is_set    = set_shmem_of_kernel(remove_nodes_kernel<i_t, f_t, REQUEST>, sh_size);
   cuopt_assert(is_set, "Not enough shared memory on device for remove_nodes!");
   cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
@@ -529,7 +529,7 @@ void solution_t<i_t, f_t, REQUEST>::copy_device_solution(solution_t<i_t, f_t, RE
 
   n_routes = src_sol.n_routes;
 
-  const auto common_max_size = max(src_sol.max_nodes_per_route, max_nodes_per_route);
+  const auto common_max_size = std::max(src_sol.max_nodes_per_route, max_nodes_per_route);
   resize_routes(common_max_size);
   const i_t TPB       = 256;
   const auto n_blocks = n_routes;

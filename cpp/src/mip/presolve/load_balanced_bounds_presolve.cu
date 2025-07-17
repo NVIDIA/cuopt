@@ -30,7 +30,6 @@
 #include <utilities/device_utils.cuh>
 
 #include <cub/cub.cuh>
-#include <nvtx3/nvtx3.hpp>
 #include <raft/common/nvtx.hpp>
 #include "load_balanced_bounds_presolve.cuh"
 #include "load_balanced_bounds_presolve_helpers.cuh"

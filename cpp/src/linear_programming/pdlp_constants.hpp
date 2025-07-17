@@ -20,13 +20,13 @@
 #include <raft/util/cuda_utils.cuh>
 
 namespace cuopt::linear_programming::detail {
-constexpr int block_size = 128;
+inline constexpr int block_size = 128;
 
 // When using APIs that handle variable stride sizes these are used to express that we assume that
 // the data accessed has a contigous layout in memory for both solutions
 // {
-constexpr int primal_stride = 1;
-constexpr int dual_stride   = 1;
+inline constexpr int primal_stride = 1;
+inline constexpr int dual_stride   = 1;
 // }
 
 // #define PDLP_DEBUG_MODE
@@ -34,18 +34,18 @@ constexpr int dual_stride   = 1;
 // Value used to determine what we see as too small (the value) or too large (1/value) values when
 // computing the new primal weight during the restart.
 template <typename f_t>
-constexpr f_t safe_guard_for_extreme_values_in_primal_weight_computation = 1.0e-10;
+inline constexpr f_t safe_guard_for_extreme_values_in_primal_weight_computation = 1.0e-10;
 // }
 
 // used to detect divergence in the movement as should trigger a numerical_error
 template <typename f_t>
-constexpr f_t divergent_movement = f_t{};
+inline constexpr f_t divergent_movement = f_t{};
 
 template <>
-constexpr float divergent_movement<float> = 1.0e20f;
+inline constexpr float divergent_movement<float> = 1.0e20f;
 
 template <>
-constexpr double divergent_movement<double> = 1.0e100;
+inline constexpr double divergent_movement<double> = 1.0e100;
 
 // }
 
