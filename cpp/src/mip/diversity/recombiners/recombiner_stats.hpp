@@ -37,10 +37,15 @@ struct recombine_stats {
 
   void add_success() { ++success; }
 
-  void update_improve_stats(double cost_new, double cost_first, double cost_second)
+  bool update_improve_stats(double cost_new, double cost_first, double cost_second)
   {
-    if (cost_new < (std::min(cost_first, cost_second) - OBJECTIVE_EPSILON)) ++better_than_both;
+    bool is_better_than_both = false;
+    if (cost_new < (std::min(cost_first, cost_second) - OBJECTIVE_EPSILON)) {
+      ++better_than_both;
+      is_better_than_both = true;
+    }
     if (cost_new < (std::max(cost_first, cost_second) - OBJECTIVE_EPSILON)) ++better_than_one;
+    return is_better_than_both;
   }
 
   void add_attempt() { ++attempts; }
@@ -67,6 +72,21 @@ struct all_recombine_stats {
 
   // enum of the last attempted recombiner
   std::optional<recombiner_enum_t> last_attempt;
+  double last_recombiner_time;
+  std::chrono::high_resolution_clock::time_point last_recombiner_start_time;
+
+  void start_recombiner_time()
+  {
+    last_recombiner_start_time = std::chrono::high_resolution_clock::now();
+  }
+  void stop_recombiner_time()
+  {
+    last_recombiner_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::high_resolution_clock::now() - last_recombiner_start_time)
+                             .count();
+  }
+
+  double get_last_recombiner_time() { return last_recombiner_time; }
 
   void reset()
   {
@@ -76,6 +96,8 @@ struct all_recombine_stats {
     last_attempt.reset();
   }
 
+  recombiner_enum_t get_last_attempt() { return last_attempt.value(); }
+
   void add_attempt(recombiner_enum_t r)
   {
     last_attempt = r;
@@ -84,9 +106,9 @@ struct all_recombine_stats {
 
   void add_success() { stats[static_cast<int>(last_attempt.value())].add_success(); }
 
-  void update_improve_stats(double cost_new, double cost_first, double cost_second)
+  bool update_improve_stats(double cost_new, double cost_first, double cost_second)
   {
-    stats[static_cast<int>(last_attempt.value())].update_improve_stats(
+    return stats[static_cast<int>(last_attempt.value())].update_improve_stats(
       cost_new, cost_first, cost_second);
   }
 

@@ -20,6 +20,7 @@
 #include <thrust/for_each.h>
 #include <linear_programming/utils.cuh>
 #include <mip/mip_constants.hpp>
+#include <mip/utils.cuh>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/seed_generator.cuh>
 
@@ -27,10 +28,12 @@
 
 namespace cuopt::linear_programming::detail {
 
-constexpr double weight_increase_ratio    = 2.;
-constexpr double weight_decrease_ratio    = 0.9;
-constexpr double max_infeasibility_weight = 10000000.;
-constexpr double min_infeasibility_weight = 1.;
+constexpr double weight_increase_ratio       = 2.;
+constexpr double weight_decrease_ratio       = 0.9;
+constexpr double max_infeasibility_weight    = 1e12;
+constexpr double min_infeasibility_weight    = 1.;
+constexpr double infeasibility_balance_ratio = 1.1;
+constexpr double halving_skip_ratio          = 0.75;
 
 template <typename i_t, typename f_t>
 population_t<i_t, f_t>::population_t(std::string const& name_,
@@ -46,10 +49,10 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
     infeasibility_importance(infeasibility_weight_),
     weights(0, context.problem_ptr->handle_ptr),
     rng(cuopt::seed_generator::get_seed()),
-    early_exit_primal_generation(false)
+    early_exit_primal_generation(false),
+    timer(0)
 {
-  best_feasible_objective =
-    problem_ptr->maximize ? -std::numeric_limits<f_t>::max() : std::numeric_limits<f_t>::max();
+  best_feasible_objective = std::numeric_limits<f_t>::max();
 }
 
 template <typename i_t, typename f_t>
@@ -66,7 +69,6 @@ void population_t<i_t, f_t>::initialize_population()
 {
   var_threshold =
     std::max(problem_ptr->n_variables - var_threshold, (problem_ptr->n_variables / 10) * 8);
-  initial_threshold_ratio = (f_t)var_threshold / problem_ptr->n_variables;
   solutions.reserve(max_solutions);
   indices.reserve(max_solutions);
   // indices[0] always points to solutions[0] - a special place for feasible solution
@@ -85,7 +87,7 @@ std::pair<solution_t<i_t, f_t>, solution_t<i_t, f_t>> population_t<i_t, f_t>::ge
 {
   raft::common::nvtx::range fun_scope("get_two_random");
   cuopt_assert(indices.size() > 2, "There should be enough solutions");
-  size_t add = (size_t)(!solutions[0].first || solutions[indices[1].first].second.get_feasible());
+  size_t add = (size_t)(!solutions[0].first);
   size_t i   = add + std::uniform_int_distribution<size_t>(0, (indices.size() - 2))(rng);
   size_t j   = add + std::uniform_int_distribution<size_t>(0, (indices.size() - 3))(rng);
   if (tournament) {
@@ -97,6 +99,19 @@ std::pair<solution_t<i_t, f_t>, solution_t<i_t, f_t>> population_t<i_t, f_t>::ge
   if (j >= i) j++;
   auto first_solution  = solutions[indices[i].first].second;
   auto second_solution = solutions[indices[j].first].second;
+  // if best feasible and best are the same, take the second index instead of best
+  if (i == 0 && j == 1) {
+    bool same =
+      check_integer_equal_on_indices(first_solution.problem_ptr->integer_indices,
+                                     first_solution.assignment,
+                                     second_solution.assignment,
+                                     first_solution.problem_ptr->tolerances.integrality_tolerance,
+                                     first_solution.handle_ptr);
+    if (same) {
+      auto new_sol    = solutions[indices[2].first].second;
+      second_solution = std::move(new_sol);
+    }
+  }
   cuopt_assert(test_invariant(), "Population invariant doesn't hold");
   return std::make_pair(std::move(first_solution), std::move(second_solution));
 }
@@ -158,15 +173,22 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
 }
 
 template <typename i_t, typename f_t>
+bool population_t<i_t, f_t>::is_better_than_best_feasible(solution_t<i_t, f_t>& sol)
+{
+  bool obj_better = sol.get_objective() < best_feasible_objective;
+  return obj_better && sol.get_feasible();
+}
+
+template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
 {
-  bool better_solution_found = problem_ptr->maximize
-                                 ? sol.get_user_objective() > best_feasible_objective
-                                 : sol.get_user_objective() < best_feasible_objective;
+  bool better_solution_found = is_better_than_best_feasible(sol);
   auto user_callbacks        = context.settings.get_mip_callbacks();
-  if (better_solution_found && sol.get_feasible()) {
+  if (better_solution_found) {
+    if (context.settings.benchmark_info_ptr != nullptr) {
+      context.settings.benchmark_info_ptr->last_improvement_of_best_feasible = timer.elapsed_time();
+    }
     CUOPT_LOG_DEBUG("Population: Found new best solution %g", sol.get_user_objective());
-    best_feasible_objective = sol.get_user_objective();
     if (problem_ptr->branch_and_bound_callback != nullptr) {
       problem_ptr->branch_and_bound_callback(sol.get_host_assignment());
     }
@@ -199,6 +221,11 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
         get_sol_callback->get_solution(temp_sol.assignment.data(), user_objective_vec.data());
       }
     }
+    // save the best objective here, because we might not have been able to return the solution to
+    // the user because of the unscaling that causes infeasibility.
+    // This prevents an issue of repaired, or a fully feasible solution being reported in the call
+    // back in next run.
+    best_feasible_objective = sol.get_objective();
   }
 
   for (auto callback : user_callbacks) {
@@ -242,6 +269,38 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       auto h_outside_sol = outside_sol.get_host_assignment();
       add_external_solution(h_outside_sol, outside_sol.get_objective());
     }
+  }
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
+{
+  // check if the best in population still the best feasible
+  if (!best().get_feasible()) {
+    CUOPT_LOG_DEBUG("Best solution is infeasible, adjusting weights");
+    // if not the case, adjust the weights such that the best is feasible
+    f_t weighted_violation_of_best = best().get_quality(weights) - best().get_objective();
+    CUOPT_LOG_DEBUG("weighted_violation_of_best %f quality %f objective %f\n",
+                    weighted_violation_of_best,
+                    best().get_quality(weights),
+                    best().get_objective());
+    cuopt_assert(weighted_violation_of_best > 1e-10, "Weighted violation of best is not positive");
+    // fixme
+    weighted_violation_of_best = max(weighted_violation_of_best, 1e-10);
+    f_t quality_difference     = best_feasible().get_quality(weights) - best().get_quality(weights);
+    CUOPT_LOG_DEBUG("quality_difference %f best_feasible_quality %f best_quality %f",
+                    quality_difference,
+                    best_feasible().get_quality(weights),
+                    best().get_quality(weights));
+    if (quality_difference < 1e-10) { return; }
+    // make the current best infeasible 10% worse than feasible
+    f_t increase_ratio =
+      (quality_difference * infeasibility_balance_ratio) / weighted_violation_of_best;
+    infeasibility_importance *= (1 + increase_ratio);
+    infeasibility_importance = min(max_infeasibility_weight, infeasibility_importance);
+    normalize_weights();
+    update_qualities();
+    cuopt_assert(test_invariant(), "Population invariant doesn't hold");
   }
 }
 
@@ -409,17 +468,6 @@ void population_t<i_t, f_t>::compute_new_weights()
 }
 
 template <typename i_t, typename f_t>
-void population_t<i_t, f_t>::adjust_threshold(cuopt::timer_t timer)
-{
-  const double max_diversity_threshold = 0.99;
-  double time_ratio =
-    (timer.elapsed_time() - diversity_start_time) / (timer.get_time_limit() - diversity_start_time);
-  f_t threshold_ratio =
-    initial_threshold_ratio + time_ratio * (max_diversity_threshold - initial_threshold_ratio);
-  var_threshold = threshold_ratio * problem_ptr->n_variables;
-}
-
-template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::update_qualities()
 {
   if (indices.size() == 1) return;
@@ -439,9 +487,6 @@ void population_t<i_t, f_t>::update_weights()
 {
   raft::common::nvtx::range fun_scope("adjust_weight_changes");
   CUOPT_LOG_DEBUG("Changing the weights");
-  // TODO activate this if we have a reserve and a diverse initial population
-  // by adding new solutions at every diversity step, it doesn't make sense to add
-  // adjust_threshold(timer);
   compute_new_weights();
   normalize_weights();
   update_qualities();
@@ -550,7 +595,8 @@ template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::halve_the_population()
 {
   raft::common::nvtx::range fun_scope("halve_the_population");
-  if (current_size() <= max_solutions / 2) { return; }
+  // try 3/4 here
+  if (current_size() <= (max_solutions * halving_skip_ratio)) { return; }
   CUOPT_LOG_DEBUG("Halving the population, current size: %lu", current_size());
   // put population into a vector
   auto sol_vec                  = population_to_vector();
@@ -571,7 +617,7 @@ void population_t<i_t, f_t>::halve_the_population()
     clear_except_best_feasible();
     var_threshold = std::min(
       max_var_threshold,
-      std::min((size_t)(var_threshold * 0.97), (size_t)(0.995 * problem_ptr->n_integer_vars)));
+      std::min((size_t)(var_threshold * 1.02), (size_t)(0.995 * problem_ptr->n_integer_vars)));
     for (auto& sol : sol_vec) {
       add_solution(solution_t<i_t, f_t>(sol));
     }
@@ -589,6 +635,23 @@ size_t population_t<i_t, f_t>::find_free_solution_index()
 
   cuopt_assert(test_invariant(), "Population invariant doesn't hold");
   return std::numeric_limits<size_t>::max();
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::start_threshold_adjustment()
+{
+  population_start_time = timer.elapsed_time();
+  initial_threshold     = var_threshold;
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::adjust_threshold(cuopt::timer_t timer)
+{
+  double time_ratio = (timer.elapsed_time() - population_start_time) /
+                      (timer.get_time_limit() - population_start_time);
+  var_threshold =
+    initial_threshold +
+    time_ratio * (get_max_var_threshold(problem_ptr->n_integer_vars) - initial_threshold);
 }
 
 template <typename i_t, typename f_t>
@@ -682,11 +745,12 @@ void population_t<i_t, f_t>::print()
     if (index.first == 0 && solutions[0].first) {
       CUOPT_LOG_DEBUG(" Best feasible: %f", solutions[index.first].second.get_user_objective());
     }
-    CUOPT_LOG_DEBUG("%d :  %f\t%f\t%f",
+    CUOPT_LOG_DEBUG("%d :  %f\t%f\t%f\t%d",
                     i,
                     index.second,
                     solutions[index.first].second.get_total_excess(),
-                    solutions[index.first].second.get_user_objective());
+                    solutions[index.first].second.get_user_objective(),
+                    solutions[index.first].second.get_feasible());
     i++;
   }
   CUOPT_LOG_DEBUG(" -------------- ");

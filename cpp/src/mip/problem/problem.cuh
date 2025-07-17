@@ -20,16 +20,19 @@
 // THIS IS LIKELY THE INNER-MOST INCLUDE
 // FOR COMPILE TIME, WE SHOULD KEEP THE INCLUDES ON THIS HEADER MINIMAL
 
+#include "host_helper.cuh"
 #include "presolve_data.cuh"
+
+#include <mip/logger.hpp>
+#include <mip/relaxed_lp/lp_state.cuh>
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 #include "host_helper.cuh"
+#include "problem_fixing.cuh"
 
 #include <utilities/macros.cuh>
-
-#include <mip/logger.hpp>
 
 #include <raft/core/nvtx.hpp>
 #include <raft/random/rng_device.cuh>
@@ -96,7 +99,12 @@ class problem_t {
   void post_process_solution(solution_t<i_t, f_t>& solution);
   void compute_transpose_of_problem();
   f_t get_user_obj_from_solver_obj(f_t solver_obj);
-
+  void compute_integer_fixed_problem();
+  void fill_integer_fixed_problem(rmm::device_uvector<f_t>& assignment,
+                                  const raft::handle_t* handle_ptr);
+  void copy_rhs_from_problem(const raft::handle_t* handle_ptr);
+  rmm::device_uvector<f_t> get_fixed_assignment_from_integer_fixed_problem(
+    const rmm::device_uvector<f_t>& assignment);
   bool is_integer(f_t val) const;
   bool integer_equal(f_t val1, f_t val2) const;
 
@@ -195,6 +203,8 @@ class problem_t {
 
   const optimization_problem_t<i_t, f_t>* original_problem_ptr;
   const raft::handle_t* handle_ptr;
+  std::shared_ptr<problem_t<i_t, f_t>> integer_fixed_problem = nullptr;
+  rmm::device_uvector<i_t> integer_fixed_variable_map;
 
   std::function<void(const std::vector<f_t>&)> branch_and_bound_callback;
 
@@ -255,6 +265,13 @@ class problem_t {
   std::string objective_name;
   bool is_scaled_{false};
   bool preprocess_called{false};
+  // this LP state keeps the warm start data of some solution of
+  // 1. Original problem: it is unchanged and part of it is used
+  // to warm start slightly modified problems.
+  // 2. Integer fixed problem: this is useful as the problem structure
+  // is always the same and only the RHS changes. Using this helps in warm start.
+  lp_state_t<i_t, f_t> lp_state;
+  problem_fixing_helpers_t<i_t, f_t> fixing_helpers;
 };
 
 }  // namespace linear_programming::detail
