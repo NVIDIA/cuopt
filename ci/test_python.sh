@@ -67,6 +67,9 @@ EXITCODE=0
 trap "EXITCODE=1" ERR
 set +e
 
+rapids-logger "Test cuopt_cli"
+timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
+
 rapids-logger "pytest cuopt"
 pushd python/cuopt/cuopt
 timeout 30m pytest \

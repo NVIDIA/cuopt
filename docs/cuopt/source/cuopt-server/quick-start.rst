@@ -12,20 +12,22 @@ For CUDA 12.x:
 
 .. code-block:: bash
 
-    pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.5.* cuopt-sh-client==25.5.* nvidia-cuda-runtime-cu12==12.8.*
+    pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.8.* cuopt-sh-client==25.8.* nvidia-cuda-runtime-cu12==12.8.*
 
+.. note::
+   For development wheels which are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/`.
 
 Conda
 -----
 
-cuOpt Server can be installed with Conda (via `miniforge <https://github.com/conda-forge/miniforge>`_) from the ``nvidia`` channel:
-
-For CUDA 12.x:
+cuOpt Server can be installed with Conda (via `miniforge <https://github.com/conda-forge/miniforge>`_ from the ``nvidia`` channel:
 
 .. code-block:: bash
 
-    conda install -c rapidsai -c conda-forge -c nvidia \
-        cuopt-server=25.05.* cuopt-sh-client=25.05.* python=3.12 cuda-version=12.8
+    conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=25.08.* cuopt-sh-client=25.08.*
+
+.. note::
+   For development conda packages which are available as nightlies, please update `-c rapidsai` to `-c rapidsai-nightly`.
 
 
 Container from Docker Hub
@@ -35,13 +37,16 @@ NVIDIA cuOpt is also available as a container from Docker Hub:
 
 .. code-block:: bash
 
-    docker pull nvidia/cuopt:25.5.0-cuda12.8-py312
+    docker pull nvidia/cuopt:latest-cuda12.8-py312
+
+.. note::
+   The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.8-py312`` tag. For example, to use cuOpt 25.5.0, you can use the ``25.5.0-cuda12.8-py312`` tag. Please refer to `cuOpt dockerhub page <https://hub.docker.com/r/nvidia/cuopt>`_ for the list of available tags.
 
 The container includes both the Python API and self-hosted server components. To run the container:
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:25.5.0-cuda12.8-py312 /bin/bash -c "python3 -m cuopt_server.cuopt_service"
+    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cuda12.8-py312 /bin/bash -c "python3 -m cuopt_server.cuopt_service"
 
 .. note::
    Make sure you have the NVIDIA Container Toolkit installed on your system to enable GPU support in containers. See the `installation guide <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html>`_ for details.
@@ -60,7 +65,7 @@ Step 3: Access NGC registry:
 
 Step 4: Pull the container:
 
-* Go to the container section for cuOpt and copy the pull tag for the latest image. 
+* Go to the container section for cuOpt and copy the pull tag for the latest image.
 * Log into the nvcr.io container registry in your cluster setup, using the NGC API key as shown below.
 
     .. code-block:: bash
@@ -106,7 +111,7 @@ Install jq and curl for basic HTTP requests and parsing JSON responses
 
     sudo apt install jq curl
 
-Run the server and test 
+Run the server and test
 
 .. code-block:: bash
 
@@ -157,7 +162,7 @@ Run the server and test
         RESPONSE=$(curl --location "http://${SERVER_IP}:${SERVER_PORT}/cuopt/solution/${REQID}" \
             --header 'Content-Type: application/json' \
             --header "CLIENT-VERSION: custom")
-        
+
         if echo "$RESPONSE" | jq -e 'has("response")' > /dev/null 2>&1; then
             echo "Got solution response:"
             echo "$RESPONSE" | jq '.' 2>/dev/null || echo "$RESPONSE"
@@ -166,12 +171,12 @@ Run the server and test
             echo "Response status:"
             echo "$RESPONSE" | jq '.' 2>/dev/null || echo "$RESPONSE"
         fi
-        
+
         if [ $i -eq 5 ]; then
             echo "Error: Timed out waiting for solution"
             exit 1
         fi
-        
+
         echo "Waiting for solution..."
         sleep 1
     done
@@ -198,7 +203,7 @@ Example Response:
                     "0": {
                         "task_id": [
                             "Depot",
-                            "0", 
+                            "0",
                             "Depot"
                         ],
                         "arrival_stamp": [
@@ -227,4 +232,4 @@ Example Response:
             "total_solve_time": 0.10999655723571777
         },
         "reqId": "afea72c2-6c76-45ce-bcf7-0d55049f32e4"
-    }    
+    }

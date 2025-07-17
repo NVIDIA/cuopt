@@ -17,9 +17,11 @@
 
 set -euo pipefail
 
-# Add cuopt_cli path to PATh variable
-export PATH="$(pyenv root)/versions/$(pyenv version-name)/bin:$PATH"
-
+# Add cuopt_cli path to PATH variable
+if command -v pyenv &> /dev/null; then
+    PATH="$(pyenv root)/versions/$(pyenv version-name)/bin:$PATH"
+    export PATH
+fi
 
 # Test the CLI
 
@@ -30,8 +32,8 @@ cuopt_cli --help | grep -q "Usage: cuopt_cli" || (echo "Expected usage informati
 
 # Run solver and check for optimal status - fail if not found
 
-cuopt_cli ${RAPIDS_DATASET_ROOT_DIR}/linear_programming/good-mps-1.mps | grep -q "Status: " || (echo "Expected solution not found" && exit 1)
+cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/linear_programming/good-mps-1.mps | grep -q "Status: " || (echo "Expected solution not found" && exit 1)
 
 # Add a for mixed integer programming test with options
 
-cuopt_cli ${RAPIDS_DATASET_ROOT_DIR}/mip/sample.mps --mip-absolute-gap 0.01 --time-limit 10 | grep -q "Solution objective" || (echo "Expected solution objective not found" && exit 1)
+cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/mip/sample.mps --mip-absolute-gap 0.01 --time-limit 10 | grep -q "Solution objective" || (echo "Expected solution objective not found" && exit 1)

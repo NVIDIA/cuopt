@@ -43,7 +43,7 @@ cdef extern from "cuopt/error.hpp" namespace "cuopt": # noqa
         Success "cuopt::error_type_t::Success" # noqa
         ValidationError "cuopt::error_type_t::ValidationError" # noqa
         OutOfMemoryError "cuopt::error_type_t::OutOfMemoryError" # noqa
-        RuntimeError "cuopt::error_type_t::RuntimeError" # noqa        
+        RuntimeError "cuopt::error_type_t::RuntimeError" # noqa
 
 cdef extern from "cuopt/routing/routing_structures.hpp" namespace "cuopt::routing": # noqa
     ctypedef enum objective_t "cuopt::routing::objective_t":

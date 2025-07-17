@@ -866,18 +866,18 @@ def create_from_file_tsp(file_path):
             if data_section:
                 node_list.append(line.split())
 
-    df = cudf.DataFrame(columns=["vertex", "xcord", "ycord"])
+    data = {
+        "vertex": [],
+        "xcord": [],
+        "ycord": [],
+    }
 
     for item in node_list:
-        row = {
-            "vertex": int(item[0]) - 1,
-            "xcord": float(item[1]),
-            "ycord": float(item[2]),
-        }
-        df = cudf.concat(
-            [df, cudf.DataFrame(row)],
-            ignore_index=True,
-        )
+        data["vertex"].append(int(item[0]) - 1)
+        data["xcord"].append(float(item[1]))
+        data["ycord"].append(float(item[2]))
+
+    df = cudf.DataFrame(data)
 
     return df
 
@@ -915,6 +915,8 @@ def create_from_file(file_path, is_pdp=False):
         ]
     )
 
+    rows = []
+
     for item in node_list:
         row = {
             "vertex": int(item[0]),
@@ -928,10 +930,9 @@ def create_from_file(file_path, is_pdp=False):
         if is_pdp:
             row["pickup_index"] = int(item[7])
             row["delivery_index"] = int(item[8])
-        df = cudf.concat(
-            [df, cudf.DataFrame(row)],
-            ignore_index=True,
-        )
+        rows.append(row)
+
+    df = cudf.DataFrame(rows)
 
     return df, vehicle_capacity, vehicle_num
 
@@ -946,17 +947,6 @@ def create_from_yaml_file(file_path):
         except yaml.YAMLError as exc:
             print(exc)
             return None
-        df = cudf.DataFrame(
-            columns=[
-                "vertex",
-                "xcord",
-                "ycord",
-                "demand",
-                "earliest_time",
-                "latest_time",
-                "service_time",
-            ]
-        )
         vehicle_capacity = yaml_dict["vehicle_capacity"]
         vehicle_num = int(yaml_dict["n_vehicles"])
         loc_coord = yaml_dict["location_coordinates"]
@@ -966,25 +956,26 @@ def create_from_yaml_file(file_path):
         l_t = yaml_dict["time_win_latest"]
         s_t = yaml_dict["time_win_service"]
         num_loc = len(loc_coord)
+        data = {
+            "vertex": [],
+            "xcord": [],
+            "ycord": [],
+            "demand": [],
+            "earliest_time": [],
+            "latest_time": [],
+            "service_time": [],
+        }
         for idx in range(num_loc):
             loc = loc_coord[idx]
-            df = cudf.concat(
-                [
-                    df,
-                    cudf.DataFrame(
-                        {
-                            "vertex": int(vertexes[idx]),
-                            "xcord": float(loc[0]),
-                            "ycord": float(loc[1]),
-                            "demand": int(orders[idx]),
-                            "earliest_time": int(e_t[idx]),
-                            "latest_time": int(l_t[idx]),
-                            "service_time": int(s_t[idx]),
-                        }
-                    ),
-                ],
-                ignore_index=True,
-            )
+            data["vertex"].append(int(vertexes[idx]))
+            data["xcord"].append(float(loc[0]))
+            data["ycord"].append(float(loc[1]))
+            data["demand"].append(int(orders[idx]))
+            data["earliest_time"].append(int(e_t[idx]))
+            data["latest_time"].append(int(l_t[idx]))
+            data["service_time"].append(int(s_t[idx]))
+
+        df = cudf.DataFrame(data)
 
     return df, vehicle_capacity, vehicle_num
 

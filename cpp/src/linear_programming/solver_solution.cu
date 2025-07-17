@@ -124,6 +124,12 @@ template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::copy_from(
   const raft::handle_t* handle_ptr, const optimization_problem_solution_t<i_t, f_t>& other)
 {
+  // Resize to make sure they are of same size
+  primal_solution_.resize(other.primal_solution_.size(), handle_ptr->get_stream());
+  dual_solution_.resize(other.dual_solution_.size(), handle_ptr->get_stream());
+  reduced_cost_.resize(other.reduced_cost_.size(), handle_ptr->get_stream());
+
+  // Copy the data
   raft::copy(primal_solution_.data(),
              other.primal_solution_.data(),
              primal_solution_.size(),
@@ -301,6 +307,12 @@ template <typename i_t, typename f_t>
 f_t optimization_problem_solution_t<i_t, f_t>::get_objective_value() const
 {
   return termination_stats_.primal_objective;
+}
+
+template <typename i_t, typename f_t>
+f_t optimization_problem_solution_t<i_t, f_t>::get_dual_objective_value() const
+{
+  return termination_stats_.dual_objective;
 }
 
 template <typename i_t, typename f_t>

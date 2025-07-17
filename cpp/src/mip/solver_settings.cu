@@ -23,17 +23,14 @@
 namespace cuopt::linear_programming {
 
 template <typename i_t, typename f_t>
-void mip_solver_settings_t<i_t, f_t>::set_initial_solution(const f_t* initial_solution,
+void mip_solver_settings_t<i_t, f_t>::add_initial_solution(const f_t* initial_solution,
                                                            i_t size,
                                                            rmm::cuda_stream_view stream)
 {
   cuopt_expects(
     initial_solution != nullptr, error_type_t::ValidationError, "initial_solution cannot be null");
-  if (!initial_solution_) {
-    initial_solution_ = std::make_shared<rmm::device_uvector<f_t>>(size, stream);
-  }
-
-  raft::copy(initial_solution_.get()->data(), initial_solution, size, stream);
+  initial_solutions.emplace_back(std::make_shared<rmm::device_uvector<f_t>>(size, stream));
+  raft::copy(initial_solutions.back()->data(), initial_solution, size, stream);
 }
 
 template <typename i_t, typename f_t>
@@ -41,19 +38,6 @@ void mip_solver_settings_t<i_t, f_t>::set_mip_callback(
   internals::base_solution_callback_t* callback)
 {
   mip_callbacks_.push_back(callback);
-}
-
-template <typename i_t, typename f_t>
-rmm::device_uvector<f_t>& mip_solver_settings_t<i_t, f_t>::get_initial_solution() const
-{
-  if (!initial_solution_) { throw std::runtime_error("Initial solution has not been set"); }
-  return *initial_solution_;
-}
-
-template <typename i_t, typename f_t>
-bool mip_solver_settings_t<i_t, f_t>::has_initial_solution() const
-{
-  return initial_solution_.get() != nullptr;
 }
 
 template <typename i_t, typename f_t>

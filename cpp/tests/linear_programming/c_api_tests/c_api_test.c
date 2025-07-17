@@ -287,7 +287,7 @@ DONE:
   return status;
 }
 
-int solve_mps_file(const char* filename, double time_limit, double iteration_limit, int* termination_status_ptr)
+int solve_mps_file(const char* filename, double time_limit, double iteration_limit, int* termination_status_ptr, double* solve_time_ptr, int method)
 {
   cuOptOptimizationProblem problem = NULL;
   cuOptSolverSettings settings = NULL;
@@ -313,7 +313,7 @@ int solve_mps_file(const char* filename, double time_limit, double iteration_lim
     printf("Error creating solver settings\n");
     goto DONE;
   }
-  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, CUOPT_METHOD_DUAL_SIMPLEX);
+  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, method);
   if (status != CUOPT_SUCCESS) {
     printf("Error setting method\n");
     goto DONE;
@@ -345,6 +345,7 @@ int solve_mps_file(const char* filename, double time_limit, double iteration_lim
     goto DONE;
   }
   status = cuOptGetSolveTime(solution, &time);
+  if (solve_time_ptr) *solve_time_ptr = time;
   if (status != CUOPT_SUCCESS) {
     printf("Error getting solve time\n");
     goto DONE;

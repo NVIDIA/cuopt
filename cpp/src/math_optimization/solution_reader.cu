@@ -17,12 +17,15 @@
 
 #include "solution_reader.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <optional>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+
 namespace cuopt::linear_programming {
 
 /**

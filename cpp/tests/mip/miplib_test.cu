@@ -40,7 +40,7 @@ struct result_map_t {
   double cost;
 };
 
-void test_mps_file(result_map_t test_instance)
+void test_miplib_file(result_map_t test_instance)
 {
   const raft::handle_t handle_{};
 
@@ -71,7 +71,7 @@ TEST(mip_solve, run_small_tests)
   std::vector<result_map_t> test_instances = {
     {"mip/50v-10.mps", 11311031.}, {"mip/neos5.mps", 15.}, {"mip/swath1.mps", 1300.}};
   for (const auto& test_instance : test_instances) {
-    test_mps_file(test_instance);
+    test_miplib_file(test_instance);
   }
 }
 

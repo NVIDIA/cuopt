@@ -370,18 +370,16 @@ void inline my_l2_weighted_norm(const rmm::device_uvector<f_t>& input_vector,
 {
   auto fin_op  = [] __device__(f_t in) { return raft::sqrt(in); };
   auto main_op = [weight] __device__(f_t in, i_t _) { return in * in * weight; };
-  raft::linalg::reduce<f_t, f_t, i_t>(result.data(),
-                                      input_vector.data(),
-                                      (i_t)input_vector.size(),
-                                      1,
-                                      f_t(0.0),
-                                      true,
-                                      true,
-                                      stream,
-                                      false,
-                                      main_op,
-                                      raft::Sum<f_t>(),
-                                      fin_op);
+  raft::linalg::reduce<true, true, f_t, f_t, i_t>(result.data(),
+                                                  input_vector.data(),
+                                                  (i_t)input_vector.size(),
+                                                  1,
+                                                  f_t(0.0),
+                                                  stream,
+                                                  false,
+                                                  main_op,
+                                                  raft::Sum<f_t>(),
+                                                  fin_op);
 }
 
 template <typename f_t>
@@ -400,7 +398,7 @@ struct relative_residual_t {
 
     // Used for best primal so far, count how many constraints are violated
     if (abs_.has_value() && nb_violated_constraints_.has_value()) {
-      if (residual >= abs_.value() + rel_ * rhs) atomicAdd(nb_violated_constraints_.value(), 1);
+      if (residual >= *abs_ + rel_ * rhs) atomicAdd(*nb_violated_constraints_, 1);
     }
     return residual - rel_ * rhs;
   }

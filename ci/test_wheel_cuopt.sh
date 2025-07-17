@@ -52,6 +52,7 @@ cd -
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 
+# Please enable this once ISSUE https://github.com/NVIDIA/cuopt/issues/94 is fixed
 # Run CLI tests
 timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 

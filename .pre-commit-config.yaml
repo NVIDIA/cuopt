@@ -14,6 +14,19 @@
 # limitations under the License.
 
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 'v5.0.0'
+    hooks:
+      - id: end-of-file-fixer
+        files: \.(mps|json|yaml|yml|txt)$
+        exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$
+      - id: trailing-whitespace
+        files: \.(mps|json|yaml|yml|txt)$
+        exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$
+      - id: check-builtin-literals
+      - id: check-executables-have-shebangs
+      - id: check-json
+      - id: check-yaml
   - repo: https://github.com/PyCQA/isort
     rev: 5.12.0
     hooks:
@@ -54,15 +67,6 @@ repos:
             docs|
             notebooks
           )
-  - repo: https://github.com/rapidsai/pre-commit-hooks
-    rev: v0.6.0
-    hooks:
-      - id: verify-copyright
-        files: |
-          (?x)
-              [.](cmake|cpp|cu|cuh|h|hpp|sh|pxd|py|pyx)$|
-              CMakeLists[.]txt$|
-              meta[.]yaml$
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v20.1.4
     hooks:
@@ -80,7 +84,20 @@ repos:
     hooks:
       - id: shellcheck
         args: ["--severity=warning"]
-        files: ^ci/
+  - repo: https://github.com/rapidsai/pre-commit-hooks
+    rev: v0.6.0
+    hooks:
+      - id: verify-copyright
+        files: |
+          (?x)
+              [.](cmake|cpp|cu|cuh|h|hpp|sh|pxd|py|pyx)$|
+              CMakeLists[.]txt$|
+              recipe[.]yaml$
+        exclude: |
+          (?x)^(
+            ^cpp/tests/utilities/cxxopts.hpp
+          )
+
 
 default_language_version:
       python: python3

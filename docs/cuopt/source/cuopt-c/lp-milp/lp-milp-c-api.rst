@@ -129,7 +129,7 @@ The following functions are used to set and get parameters. You can find more de
 
 
 Parameter Constants
-------------------- 
+-------------------
 
 These constants are used as the parameter name in the `cuOptSetParameter <lp-milp-c-api.html#c.cuOptSetParameter>`_ , `cuOptGetParameter <lp-milp-c-api.html#c.cuOptGetParameter>`_ and similar functions. More details on the parameters can be found in the `LP/MILP settings <../../lp-milp-settings.html>`_ section.
 
@@ -157,7 +157,9 @@ These constants are used as the parameter name in the `cuOptSetParameter <lp-mil
 .. doxygendefine:: CUOPT_MIP_INTEGRALITY_TOLERANCE
 .. doxygendefine:: CUOPT_MIP_SCALING
 .. doxygendefine:: CUOPT_MIP_HEURISTICS_ONLY
+.. doxygendefine:: CUOPT_SOLUTION_FILE
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
+.. doxygendefine:: CUOPT_USER_PROBLEM_FILE
 
 PDLP Solver Mode Constants
 --------------------------
@@ -190,7 +192,7 @@ LP and MIP solves are performed by calling the `cuOptSolve` function
 Solution
 --------
 
-The output of a solve is a `cuOptSolution` object. 
+The output of a solve is a `cuOptSolution` object.
 
 .. doxygentypedef:: cuOptSolution
 

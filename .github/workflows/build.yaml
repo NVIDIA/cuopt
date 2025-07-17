@@ -28,7 +28,7 @@ concurrency:
 jobs:
   cpp-build:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@branch-25.08
     with:
       matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       build_type: ${{ inputs.build_type || 'branch' }}
@@ -39,7 +39,7 @@ jobs:
   python-build:
     needs: [cpp-build]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@branch-25.08
     with:
       matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
       build_type: ${{ inputs.build_type || 'branch' }}
@@ -47,23 +47,43 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/build_python.sh
+  upload-conda:
+    needs: [cpp-build, python-build]
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/conda-upload-packages.yaml@branch-25.08
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
   wheel-build-cuopt-mps-parser:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
       script: ci/build_wheel_cuopt_mps_parser.sh
-      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
+      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       package-name: cuopt_mps_parser
       package-type: python
       append-cuda-suffix: false
+  wheel-publish-cuopt-mps-parser:
+    needs: wheel-build-cuopt-mps-parser
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@branch-25.08
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      package-name: cuopt_mps_parser
+      package-type: python
   wheel-build-libcuopt:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -73,12 +93,23 @@ jobs:
       package-name: libcuopt
       package-type: cpp
       matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER == "3.12"))
+  wheel-publish-libcuopt:
+    needs: wheel-build-libcuopt
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@branch-25.08
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      package-name: libcuopt
+      package-type: cpp
   wheel-build-cuopt:
     needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
-      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
+      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
@@ -86,12 +117,23 @@ jobs:
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
+  wheel-publish-cuopt:
+    needs: wheel-build-cuopt
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@branch-25.08
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      package-name: cuopt
+      package-type: python
   wheel-build-cuopt-server:
     needs: wheel-build-cuopt
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
-      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
+      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
@@ -99,11 +141,22 @@ jobs:
       script: ci/build_wheel_cuopt_server.sh
       package-name: cuopt_server
       package-type: python
+  wheel-publish-cuopt-server:
+    needs: wheel-build-cuopt-server
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@branch-25.08
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      package-name: cuopt_server
+      package-type: python
   #docs-build:
   #  if: inputs.build_type == 'nightly' || github.ref_type == 'branch'
   #  needs: [python-build]
   #  secrets: inherit
-  #  uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.06
+  #  uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.08
   #  with:
   #    build_type: ${{ inputs.build_type || 'branch' }}
   #    node_type: "gpu-l4-latest-1"
@@ -116,17 +169,28 @@ jobs:
   wheel-build-cuopt-sh-client:
     needs: wheel-build-cuopt
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.06
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
       script: ci/build_wheel_cuopt_sh_client.sh
-      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
+      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       package-name: cuopt_sh_client
       package-type: python
       append-cuda-suffix: false
+  wheel-publish-cuopt-sh-client:
+    needs: wheel-build-cuopt-sh-client
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@branch-25.08
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      package-name: cuopt_sh_client
+      package-type: python
   service-container:
     if: inputs.build_type == 'nightly'
     needs: [wheel-build-cuopt, wheel-build-cuopt-server]

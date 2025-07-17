@@ -1,4 +1,4 @@
-# Conda Recipes and Environment 
+# Conda Recipes and Environment
 
 This directory contains the conda recipes for the cuOpt packages which are used to build the conda packages in CI.
 

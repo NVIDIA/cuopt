@@ -23,6 +23,7 @@
 #include <utilities/seed_generator.cuh>
 
 #include <raft/random/rng_device.cuh>
+#include <raft/util/cuda_dev_essentials.cuh>
 
 #include <cuda_fp16.h>
 #include <thrust/reduce.h>
@@ -62,20 +63,13 @@ __device__ inline T shfl(T val, i_t srcLane, i_t width = warp_size, uint mask = 
 {
   return __shfl_sync(mask, val, srcLane, width);
 }
-template <typename i_t = int, typename f_t = float>
-__device__ inline i_t lane_id()
-{
-  i_t id;
-  asm("mov.s32 %0, %laneid;" : "=r"(id));
-  return id;
-}
 
 template <typename T, typename i_t = int, typename f_t = float>
 __device__ inline T warp_reduce(T val)
 {
 #pragma unroll
   for (i_t i = warp_size / 2; i > 0; i >>= 1) {
-    T tmp = shfl(val, lane_id() + i);
+    T tmp = shfl(val, raft::laneId() + i);
     val   = min(val, tmp);
   }
   return val;
@@ -86,7 +80,7 @@ template <typename T, typename i_t = int>
 __device__ inline void block_reduce(T val, T* shmem, const i_t size = blockDim.x)
 {
   i_t nWarps = (size + warp_size - 1) / warp_size;
-  i_t lid    = lane_id();
+  i_t lid    = raft::laneId();
   i_t wid    = threadIdx.x / warp_size;
   T warp_min = warp_reduce<T>(val);
   if (lid == 0) shmem[wid] = warp_min;
@@ -107,9 +101,9 @@ __inline__ __device__ void warp_reduce_ranked(val1_t& val1, val2_t& val2, i_t& i
 {
 #pragma unroll
   for (i_t offset = warp_size / 2; offset > 0; offset /= 2) {
-    val1_t tmp_val1 = shfl(val1, lane_id() + offset);
-    val2_t tmp_val2 = shfl(val2, lane_id() + offset);
-    i_t tmp_idx     = shfl(idx, lane_id() + offset);
+    val1_t tmp_val1 = shfl(val1, raft::laneId() + offset);
+    val2_t tmp_val2 = shfl(val2, raft::laneId() + offset);
+    i_t tmp_idx     = shfl(idx, raft::laneId() + offset);
     if (tmp_val1 < val1 || (tmp_val1 == val1 && tmp_val2 > val2)) {
       val1 = tmp_val1;
       val2 = tmp_val2;
@@ -123,8 +117,8 @@ __inline__ __device__ void warp_reduce_ranked(T& val, i_t& idx)
 {
 #pragma unroll
   for (i_t offset = warp_size / 2; offset > 0; offset /= 2) {
-    T tmpVal   = shfl(val, lane_id() + offset);
-    i_t tmpIdx = shfl(idx, lane_id() + offset);
+    T tmpVal   = shfl(val, raft::laneId() + offset);
+    i_t tmpIdx = shfl(idx, raft::laneId() + offset);
     if (tmpVal < val) {
       val = tmpVal;
       idx = tmpIdx;
@@ -140,7 +134,7 @@ __inline__ __device__ void block_reduce_ranked(T& val, i_t& idx, T* shbuf, i_t* 
   i_t wid      = threadIdx.x / warp_size;
   i_t nWarps   = (blockDim.x + warp_size - 1) / warp_size;
   warp_reduce_ranked(val, idx);  // Each warp performs partial reduction
-  i_t lane = lane_id();
+  i_t lane = raft::laneId();
   if (lane == 0) {
     values[wid]  = val;  // Write reduced value to shared memory
     indices[wid] = idx;  // Write reduced value to shared memory
@@ -174,7 +168,7 @@ __inline__ __device__ void block_reduce_ranked(__half& val, i_t& idx, __half* sh
   i_t wid        = threadIdx.x / warp_size;
   i_t nWarps     = (blockDim.x + warp_size - 1) / warp_size;
   warp_reduce_ranked(val, idx);  // Each warp performs partial reduction
-  i_t lane = lane_id();
+  i_t lane = raft::laneId();
   if (lane == 0) {
     values[wid]  = val;  // Write reduced value to shared memory
     indices[wid] = idx;  // Write reduced value to shared memory

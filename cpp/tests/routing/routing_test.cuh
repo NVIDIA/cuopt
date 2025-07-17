@@ -576,7 +576,7 @@ class base_test_t {
         double order_latest = next_is_break_order
                                 ? break_latest_h[(break_dim + 1) * n_vehicles + id]
                                 : (next_is_depot ? depot_latest : latest_time_h[new_order]);
-        double curr_wait    = max(0.0, order_earliest - order_arrival);
+        double curr_wait    = std::max(0.0, order_earliest - order_arrival);
         order_arrival += curr_wait;
 
         arrival_stamp.push_back(order_arrival);

@@ -347,15 +347,29 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
 }
 
 template <typename i_t, typename f_t>
+static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
+  detail::problem_t<i_t, f_t>& problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  const std::chrono::high_resolution_clock::time_point& start_time)
+{
+  if (problem.n_constraints == 0) {
+    CUOPT_LOG_INFO("No constraints in the problem: PDLP can't be run, use Dual Simplex instead.");
+    return optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::NumericalError,
+                                                     problem.handle_ptr->get_stream()};
+  }
+  detail::pdlp_solver_t<i_t, f_t> solver(problem, settings);
+  return solver.run_solver(start_time);
+}
+
+template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& problem,
                                                    pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
   auto start_solver = std::chrono::high_resolution_clock::now();
   f_t start_time    = dual_simplex::tic();
-  detail::pdlp_solver_t<i_t, f_t> solver(problem, settings);
-  auto sol      = solver.run_solver(start_solver);  // Passing it for time limit
-  auto end      = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
+  auto sol          = run_pdlp_solver(problem, settings, start_solver);
+  auto end          = std::chrono::high_resolution_clock::now();
+  auto duration     = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
   sol.set_solve_time(duration.count() / 1000.0);
   CUOPT_LOG_INFO("PDLP finished");
   if (sol.get_termination_status() != pdlp_termination_status_t::ConcurrentLimit) {
@@ -568,6 +582,11 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
     CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
                    problem.presolve_data.objective_offset,
                    problem.presolve_data.objective_scaling_factor);
+
+    if (settings.user_problem_file != "") {
+      CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
+      problem.write_as_mps(settings.user_problem_file);
+    }
 
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }

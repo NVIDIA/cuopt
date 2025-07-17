@@ -129,7 +129,7 @@ __global__ void find_two_opt_moves(typename solution_t<i_t, f_t, REQUEST>::view_
     __syncthreads();
   }
 
-  two_opt_cand_t<i_t> two_opt_cand = is_two_opt_uinitialized_t<i_t>::init_data;
+  two_opt_cand_t<i_t> two_opt_cand = is_two_opt_uinitialized_t<i_t>::init_data();
   double cost_delta, selection_delta;
   auto nodes = route.get_num_nodes() - intra_idx;
   auto first = intra_idx;
@@ -390,8 +390,9 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_two_opt(
   if (sol.problem_ptr->is_cvrp_intra()) {
     sampled_nodes_data_.resize(sol.get_n_routes() * sol.get_num_orders(),
                                sol.sol_handle->get_stream());
-    async_fill(
-      sampled_nodes_data_, is_two_opt_uinitialized_t<i_t>::init_data, sol.sol_handle->get_stream());
+    async_fill(sampled_nodes_data_,
+               is_two_opt_uinitialized_t<i_t>::init_data(),
+               sol.sol_handle->get_stream());
   } else {
     two_opt_cand_data_.resize(sol.get_n_routes(), sol.sol_handle->get_stream());
     async_fill(locks_, 0, sol.sol_handle->get_stream());

@@ -66,7 +66,9 @@ cdef extern from "cuopt/linear_programming/constants.h": # noqa
     cdef const char* c_CUOPT_MIP_RELATIVE_GAP "CUOPT_MIP_RELATIVE_GAP" # noqa
     cdef const char* c_CUOPT_MIP_HEURISTICS_ONLY "CUOPT_MIP_HEURISTICS_ONLY" # noqa
     cdef const char* c_CUOPT_MIP_SCALING "CUOPT_MIP_SCALING" # noqa
+    cdef const char* c_CUOPT_SOLUTION_FILE "CUOPT_SOLUTION_FILE" # noqa
     cdef const char* c_CUOPT_NUM_CPU_THREADS "CUOPT_NUM_CPU_THREADS" # noqa
+    cdef const char* c_CUOPT_USER_PROBLEM_FILE "CUOPT_USER_PROBLEM_FILE" # noqa
 
 
 # Create Python string constants from C string literals
@@ -97,4 +99,6 @@ CUOPT_MIP_ABSOLUTE_GAP = c_CUOPT_MIP_ABSOLUTE_GAP.decode('utf-8') # noqa
 CUOPT_MIP_RELATIVE_GAP = c_CUOPT_MIP_RELATIVE_GAP.decode('utf-8') # noqa
 CUOPT_MIP_HEURISTICS_ONLY = c_CUOPT_MIP_HEURISTICS_ONLY.decode('utf-8') # noqa
 CUOPT_MIP_SCALING = c_CUOPT_MIP_SCALING.decode('utf-8') # noqa
+CUOPT_SOLUTION_FILE = c_CUOPT_SOLUTION_FILE.decode('utf-8') # noqa
 CUOPT_NUM_CPU_THREADS = c_CUOPT_NUM_CPU_THREADS.decode('utf-8') # noqa
+CUOPT_USER_PROBLEM_FILE = c_CUOPT_USER_PROBLEM_FILE.decode('utf-8') # noqa

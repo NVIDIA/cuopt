@@ -26,7 +26,7 @@ requirements:
   host:
     - pip
     - python =${{ py_version }}
-    - setuptools
+    - setuptools>=61.0.0
   run:
     - msgpack-python =1.0.8
     - python
