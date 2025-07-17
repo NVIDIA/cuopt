@@ -74,10 +74,13 @@ class diversity_manager_t {
                         timer_t& timer,
                         ls_config_t<i_t, f_t>& ls_config);
 
+  void set_simplex_solution(const std::vector<f_t>& solution, f_t objective);
+
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;
   population_t<i_t, f_t> population;
   rmm::device_uvector<f_t> lp_optimal_solution;
+  bool simplex_solution_exists{false};
   local_search_t<i_t, f_t> ls;
   cuopt::timer_t timer;
   bound_prop_recombiner_t<i_t, f_t> bound_prop_recombiner;
@@ -91,6 +94,8 @@ class diversity_manager_t {
   mab_t mab_recombiner;
   mab_t mab_ls;
   assignment_hash_map_t<i_t, f_t> assignment_hash_map;
+  // mutex for the simplex solution update
+  std::mutex relaxed_solution_mutex;
 
   bool run_only_ls_recombiner{false};
   bool run_only_bp_recombiner{false};

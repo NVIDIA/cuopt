@@ -115,7 +115,8 @@ bool diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solut
   // i_t ls_mab_option = mab_ls.select_mab_option();
   // mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
   assignment_hash_map.insert(solution);
-  if (assignment_hash_map.check_skip_solution(solution, 1)) { return false; }
+  constexpr i_t skip_solutions_threshold = 3;
+  if (assignment_hash_map.check_skip_solution(solution, skip_solutions_threshold)) { return false; }
   ls.run_local_search(solution, weights, timer, ls_config);
   return true;
 }
@@ -428,14 +429,33 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   lp_state_t<i_t, f_t>& lp_state = problem_ptr->lp_state;
   // resize because some constructor might be called before the presolve
   lp_state.resize(*problem_ptr, problem_ptr->handle_ptr->get_stream());
-  relaxed_lp_settings_t lp_settings;
-  lp_settings.time_limit            = lp_time_limit;
-  lp_settings.tolerance             = context.settings.tolerances.absolute_tolerance;
-  lp_settings.return_first_feasible = false;
-  lp_settings.save_state            = true;
-  if (!fj_only_run) {
+  bool bb_thread_solution_exists = false;
+  {
+    std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
+    bb_thread_solution_exists = simplex_solution_exists;
+  }  // Mutex is unlocked here
+  if (bb_thread_solution_exists) {
+    ls.lp_optimal_exists = true;
+  } else if (!fj_only_run) {
+    relaxed_lp_settings_t lp_settings;
+    lp_settings.time_limit            = lp_time_limit;
+    lp_settings.tolerance             = context.settings.tolerances.absolute_tolerance;
+    lp_settings.return_first_feasible = false;
+    lp_settings.save_state            = true;
+    rmm::device_uvector<f_t> lp_optimal_solution_copy(lp_optimal_solution.size(),
+                                                      problem_ptr->handle_ptr->get_stream());
     auto lp_result =
-      get_relaxed_lp_solution(*problem_ptr, lp_optimal_solution, lp_state, lp_settings);
+      get_relaxed_lp_solution(*problem_ptr, lp_optimal_solution_copy, lp_state, lp_settings);
+    {
+      std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
+      if (!simplex_solution_exists) {
+        raft::copy(lp_optimal_solution.data(),
+                   lp_optimal_solution_copy.data(),
+                   lp_optimal_solution.size(),
+                   problem_ptr->handle_ptr->get_stream());
+      }
+    }
+    problem_ptr->handle_ptr->sync_stream();
     ls.lp_optimal_exists = true;
     if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
       // get lp user objective and pass it to set_new_user_bound
@@ -768,6 +788,19 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
     if (success) { recombine_stats.add_success(); }
     return std::make_pair(sol, success);
   }
+}
+
+template <typename i_t, typename f_t>
+void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>& solution,
+                                                         f_t objective)
+{
+  CUOPT_LOG_DEBUG("Setting simplex solution with objective %f", objective);
+  std::lock_guard<std::mutex> lock(relaxed_solution_mutex);
+  simplex_solution_exists = true;
+  raft::copy(
+    lp_optimal_solution.data(), solution.data(), solution.size(), context.handle_ptr->get_stream());
+  set_new_user_bound(objective);
+  context.handle_ptr->sync_stream();
 }
 
 #if MIP_INSTANTIATE_FLOAT

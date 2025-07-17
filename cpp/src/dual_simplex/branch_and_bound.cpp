@@ -446,6 +446,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     settings.log.printf("Hit time limit\n");
     return mip_status_t::TIME_LIMIT;
   }
+  if (settings.solution_callback != nullptr) {
+    std::vector<f_t> original_x;
+    uncrush_primal_solution(original_problem, original_lp, root_relax_soln.x, original_x);
+    settings.set_simplex_solution_callback(original_x, root_relax_soln.objective);
+  }
   set_uninitialized_steepest_edge_norms(original_lp.num_cols, edge_norms);
 
   std::vector<i_t> fractional;
