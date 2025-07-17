@@ -798,6 +798,7 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
 {
   CUOPT_LOG_DEBUG("Setting simplex solution with objective %f", objective);
   std::lock_guard<std::mutex> lock(relaxed_solution_mutex);
+  RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
   simplex_solution_exists = true;
   global_concurrent_halt.store(1, std::memory_order_release);
   // it is safe to use lp_optimal_solution while executing the copy operation
