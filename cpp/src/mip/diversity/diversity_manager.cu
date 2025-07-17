@@ -419,7 +419,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   timer_t probing_timer{time_for_probing_cache};
   if (check_b_b_preemption()) { return population.best_feasible(); }
   if (!fj_only_run) {
-    compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
+    // compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
   }
   // careful, assign the correct probing cache
   ls.lb_constraint_prop.bounds_update.probing_cache.probing_cache =
@@ -442,6 +442,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     lp_settings.tolerance             = context.settings.tolerances.absolute_tolerance;
     lp_settings.return_first_feasible = false;
     lp_settings.save_state            = true;
+    lp_settings.concurrent_halt       = &global_concurrent_halt;
     rmm::device_uvector<f_t> lp_optimal_solution_copy(lp_optimal_solution.size(),
                                                       problem_ptr->handle_ptr->get_stream());
     auto lp_result =
@@ -797,6 +798,9 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
   CUOPT_LOG_DEBUG("Setting simplex solution with objective %f", objective);
   std::lock_guard<std::mutex> lock(relaxed_solution_mutex);
   simplex_solution_exists = true;
+  global_concurrent_halt.store(1, std::memory_order_release);
+  // it is safe to use lp_optimal_solution while executing the copy operation
+  // the operations are ordered as long as they are on the same stream
   raft::copy(
     lp_optimal_solution.data(), solution.data(), solution.size(), context.handle_ptr->get_stream());
   set_new_user_bound(objective);

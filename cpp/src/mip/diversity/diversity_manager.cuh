@@ -96,6 +96,8 @@ class diversity_manager_t {
   assignment_hash_map_t<i_t, f_t> assignment_hash_map;
   // mutex for the simplex solution update
   std::mutex relaxed_solution_mutex;
+  // atomic for signalling pdlp to stop
+  std::atomic<int> global_concurrent_halt{0};
 
   bool run_only_ls_recombiner{false};
   bool run_only_bp_recombiner{false};
