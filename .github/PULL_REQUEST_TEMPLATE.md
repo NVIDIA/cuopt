@@ -19,12 +19,12 @@ Note: The pull request title will be included in the CHANGELOG.
 ## Checklist
 
 - [ ] I am familiar with the [Contributing Guidelines](https://github.com/NVIDIA/cuopt/blob/HEAD/CONTRIBUTING.md).
-- Testing 
+- Testing
    - [ ] New or existing tests cover these changes
    - [ ] Added tests
    - [ ] Created an issue to follow-up
    - [ ] NA
 - Documentation
    - [ ] The documentation is up to date with these changes
-   - [ ] Added new documentation 
+   - [ ] Added new documentation
    - [ ] NA

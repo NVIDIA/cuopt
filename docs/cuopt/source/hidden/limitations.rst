@@ -6,7 +6,7 @@ Routing
 =======
 
 #. Number of tasks:
-    - For ``H100`` : ``Tasks <= 15000`` per solve request. 
+    - For ``H100`` : ``Tasks <= 15000`` per solve request.
     - For ``A100`` : ``Tasks <= 10000`` per solve request.
 
 .. note::
@@ -30,7 +30,7 @@ Linear Programming
 
 -  For ``H100``,
    - 10M rows/constraints 10M columns/variables and 2B non-zeros in the constraint matrix
-   - 74.5M rows/constraints 74.5M columns/variables and 1.49B non-zeros in the constraint matrix 
+   - 74.5M rows/constraints 74.5M columns/variables and 1.49B non-zeros in the constraint matrix
 
 Mixed Integer Linear Programming
 ================================
