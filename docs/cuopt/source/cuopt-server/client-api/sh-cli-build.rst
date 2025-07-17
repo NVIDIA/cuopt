@@ -28,7 +28,7 @@ Here we are sharing current directory as both data and result directory.
 
    ip="0.0.0.0"
    port=5000
-   python -m cuopt_server.cuopt_service -d="$PWD" -r="$PWD" -i="$ip" -p="$port"   
+   python -m cuopt_server.cuopt_service -d="$PWD" -r="$PWD" -i="$ip" -p="$port"
 
 Example with JSON data as a direct string:
 
@@ -38,7 +38,7 @@ Example with JSON data as a direct string:
     ip="0.0.0.0"
     port=5000
 
-    curl --location "http://$ip:$port/cuopt/request" --header 'Content-Type: application/json' -d '{                                                                                 
+    curl --location "http://$ip:$port/cuopt/request" --header 'Content-Type: application/json' -d '{
         "cost_matrix_data": {"data": {"0": [[0, 1], [1, 0]]}},
         "task_data": {"task_locations": [1], "demand": [[1]], "task_time_windows": [[0, 10]], "service_times": [1]},
         "fleet_data": {"vehicle_locations":[[0, 0]], "capacities": [[2]], "vehicle_time_windows":[[0, 20]] },
@@ -83,7 +83,7 @@ Polling for Request Status:
 The cuOpt service employs an asynchronous interface for invocation and result retrieval.
 When you make an invocation request, the system will submit your problem to the solver and return a request id.
 
-Users can poll the request id for status with the help of ``/cuopt/request/{request-id}`` endpoint. 
+Users can poll the request id for status with the help of ``/cuopt/request/{request-id}`` endpoint.
 
 .. code-block:: bash
    :linenos:
