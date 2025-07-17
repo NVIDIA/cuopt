@@ -42,7 +42,8 @@ class multi_probe_t {
 
   termination_criterion_t solve(
     problem_t<i_t, f_t>& pb,
-    const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals);
+    const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals,
+    bool use_host_bounds = false);
 
   termination_criterion_t solve_for_interval(
     problem_t<i_t, f_t>& pb,
@@ -70,10 +71,15 @@ class multi_probe_t {
     const raft::handle_t* handle_ptr);
   void constraint_stats(problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
   void copy_problem_into_probing_buffers(problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
-
+  void update_host_bounds(const raft::handle_t* handle_ptr,
+                          const raft::device_span<f_t> variable_lb,
+                          const raft::device_span<f_t> variable_ub);
+  void update_device_bounds(const raft::handle_t* handle_ptr);
   mip_solver_context_t<i_t, f_t>& context;
   bounds_update_data_t<i_t, f_t> upd_0;
   bounds_update_data_t<i_t, f_t> upd_1;
+  std::vector<f_t> host_lb;
+  std::vector<f_t> host_ub;
   bool skip_0;
   bool skip_1;
   settings_t settings;
