@@ -113,10 +113,8 @@ void problem_checking_t<i_t, f_t>::check_initial_solution_representation(
   const optimization_problem_t<i_t, f_t>& op_problem,
   const mip_solver_settings_t<i_t, f_t>& settings)
 {
-  if (settings.initial_solutions.size() > 0) {
-    for (const auto& initial_solution : settings.initial_solutions) {
-      check_initial_primal_representation(op_problem, *initial_solution);
-    }
+  for (const auto& initial_solution : settings.initial_solutions) {
+    check_initial_primal_representation(op_problem, *initial_solution);
   }
 }
 

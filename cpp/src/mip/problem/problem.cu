@@ -69,20 +69,25 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
 
   // Set variables bounds to default if not set and constraints bounds if user has set a row type
   set_bounds_if_not_set(*this);
-  // Check before any modifications
-  // Don't check MIP related data as it is not yet initialized
-  check_problem_representation(false, false);
+
+  const bool is_mip = original_problem_ptr->get_problem_category() != problem_category_t::LP;
+  if (is_mip) {
+    variable_types =
+      rmm::device_uvector<var_t>(problem_.get_variable_types(), handle_ptr->get_stream());
+    // round bounds to integer for integer variables, note: do this before checking sanity
+    round_bounds(*this);
+  }
+
+  // check bounds sanity before, so that we can throw exceptions before going into asserts
   check_bounds_sanity(*this);
+
   // Check before any modifications
   check_problem_representation(false, false);
   // If maximization problem, convert the problem
   if (maximize) convert_to_maximization_problem(*this);
-  const bool is_mip = original_problem_ptr->get_problem_category() != problem_category_t::LP;
   if (is_mip) {
     // Resize what is needed for MIP
     raft::common::nvtx::range scope("trivial_presolve");
-    variable_types =
-      rmm::device_uvector<var_t>(problem_.get_variable_types(), handle_ptr->get_stream());
     integer_indices.resize(n_variables, handle_ptr->get_stream());
     is_binary_variable.resize(n_variables, handle_ptr->get_stream());
     compute_n_integer_vars();
@@ -96,10 +101,13 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
 }
 
 template <typename i_t, typename f_t>
-problem_t<i_t, f_t>::problem_t(const optimization_problem_t<i_t, f_t>& problem_)
+problem_t<i_t, f_t>::problem_t(
+  const optimization_problem_t<i_t, f_t>& problem_,
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_)
   : original_problem_ptr(&problem_),
     handle_ptr(problem_.get_handle_ptr()),
     integer_fixed_variable_map(problem_.get_n_variables(), problem_.get_handle_ptr()->get_stream()),
+    tolerances(tolerances_),
     n_variables(problem_.get_n_variables()),
     n_constraints(problem_.get_n_constraints()),
     n_binary_vars(0),
@@ -134,7 +142,8 @@ problem_t<i_t, f_t>::problem_t(const optimization_problem_t<i_t, f_t>& problem_)
     var_names(problem_.get_variable_names()),
     row_names(problem_.get_row_names()),
     objective_name(problem_.get_objective_name()),
-    lp_state(*this, problem_.get_handle_ptr()->get_stream())
+    lp_state(*this, problem_.get_handle_ptr()->get_stream()),
+    fixing_helpers(n_constraints, n_variables, handle_ptr)
 {
   op_problem_cstr_body(problem_);
   branch_and_bound_callback = nullptr;
@@ -183,7 +192,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     objective_name(problem_.objective_name),
     is_scaled_(problem_.is_scaled_),
     preprocess_called(problem_.preprocess_called),
-    lp_state(problem_.lp_state)
+    lp_state(problem_.lp_state),
+    fixing_helpers(problem_.fixing_helpers, handle_ptr)
 {
 }
 
@@ -280,7 +290,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     objective_name(problem_.objective_name),
     is_scaled_(problem_.is_scaled_),
     preprocess_called(problem_.preprocess_called),
-    lp_state(problem_.lp_state)
+    lp_state(problem_.lp_state),
+    fixing_helpers(problem_.fixing_helpers, handle_ptr)
 {
 }
 
@@ -1049,19 +1060,22 @@ void problem_t<i_t, f_t>::fix_given_variables(problem_t<i_t, f_t>& original_prob
                                               const rmm::device_uvector<i_t>& variables_to_fix,
                                               const raft::handle_t* handle_ptr)
 {
-  rmm::device_uvector<f_t> reduction_in_rhs(n_constraints, handle_ptr->get_stream());
-  thrust::fill(
-    handle_ptr->get_thrust_policy(), reduction_in_rhs.begin(), reduction_in_rhs.end(), 0);
-  rmm::device_uvector<i_t> variable_fix_mask(original_problem.n_variables,
-                                             handle_ptr->get_stream());
-  thrust::fill(
-    handle_ptr->get_thrust_policy(), variable_fix_mask.begin(), variable_fix_mask.end(), 0);
+  fixing_helpers.reduction_in_rhs.resize(n_constraints, handle_ptr->get_stream());
+  fixing_helpers.variable_fix_mask.resize(original_problem.n_variables, handle_ptr->get_stream());
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               fixing_helpers.reduction_in_rhs.begin(),
+               fixing_helpers.reduction_in_rhs.end(),
+               0);
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               fixing_helpers.variable_fix_mask.begin(),
+               fixing_helpers.variable_fix_mask.end(),
+               0);
+
   thrust::for_each(handle_ptr->get_thrust_policy(),
                    variables_to_fix.begin(),
                    variables_to_fix.end(),
-                   [variable_fix_mask = make_span(variable_fix_mask)] __device__(i_t x) {
-                     variable_fix_mask[x] = 1;
-                   });
+                   [variable_fix_mask = make_span(fixing_helpers.variable_fix_mask)] __device__(
+                     i_t x) { variable_fix_mask[x] = 1; });
   const i_t num_segments = original_problem.n_constraints;
   f_t initial_value{0.};
 
@@ -1069,7 +1083,7 @@ void problem_t<i_t, f_t>::fix_given_variables(problem_t<i_t, f_t>& original_prob
     thrust::make_counting_iterator(0),
     [coefficients      = make_span(original_problem.coefficients),
      variables         = make_span(original_problem.variables),
-     variable_fix_mask = make_span(variable_fix_mask),
+     variable_fix_mask = make_span(fixing_helpers.variable_fix_mask),
      assignment        = make_span(assignment),
      int_tol = original_problem.tolerances.integrality_tolerance] __device__(i_t idx) -> f_t {
       i_t var_idx = variables[idx];
@@ -1086,7 +1100,7 @@ void problem_t<i_t, f_t>::fix_given_variables(problem_t<i_t, f_t>& original_prob
   cub::DeviceSegmentedReduce::Reduce(d_temp_storage,
                                      temp_storage_bytes,
                                      input_transform_it,
-                                     reduction_in_rhs.data(),
+                                     fixing_helpers.reduction_in_rhs.data(),
                                      num_segments,
                                      original_problem.offsets.data(),
                                      original_problem.offsets.data() + 1,
@@ -1101,7 +1115,7 @@ void problem_t<i_t, f_t>::fix_given_variables(problem_t<i_t, f_t>& original_prob
   cub::DeviceSegmentedReduce::Reduce(d_temp_storage,
                                      temp_storage_bytes,
                                      input_transform_it,
-                                     reduction_in_rhs.data(),
+                                     fixing_helpers.reduction_in_rhs.data(),
                                      num_segments,
                                      original_problem.offsets.data(),
                                      original_problem.offsets.data() + 1,
@@ -1117,7 +1131,7 @@ void problem_t<i_t, f_t>::fix_given_variables(problem_t<i_t, f_t>& original_prob
      upper_bounds          = make_span(constraint_upper_bounds),
      original_lower_bounds = make_span(original_problem.constraint_lower_bounds),
      original_upper_bounds = make_span(original_problem.constraint_upper_bounds),
-     reduction_in_rhs      = make_span(reduction_in_rhs)] __device__(i_t cstr_idx) {
+     reduction_in_rhs      = make_span(fixing_helpers.reduction_in_rhs)] __device__(i_t cstr_idx) {
       lower_bounds[cstr_idx] = original_lower_bounds[cstr_idx] - reduction_in_rhs[cstr_idx];
       upper_bounds[cstr_idx] = original_upper_bounds[cstr_idx] - reduction_in_rhs[cstr_idx];
     });
@@ -1573,7 +1587,7 @@ void problem_t<i_t, f_t>::get_host_user_problem(
 template <typename i_t, typename f_t>
 f_t problem_t<i_t, f_t>::get_user_obj_from_solver_obj(f_t solver_obj)
 {
-  return solver_obj * presolve_data.objective_scaling_factor + presolve_data.objective_offset;
+  return presolve_data.objective_scaling_factor * (solver_obj + presolve_data.objective_offset);
 }
 
 #if MIP_INSTANTIATE_FLOAT

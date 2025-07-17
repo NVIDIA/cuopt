@@ -80,7 +80,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
         cuopt_assert(other_view.problem.check_variable_within_bounds(idx, other_val), "");
         f_t avg_val = (other_val + guiding_val) / 2;
         if (guiding_view.problem.is_integer_var(idx)) {
-          raft::random::PCGenerator rng(seed, 0, 0);
+          raft::random::PCGenerator rng(seed, idx, 0);
           if (rng.next_u32() % 2) { cuda::std::swap(other_val, guiding_val); }
           cuopt_assert(is_integer<f_t>(other_val, int_tol), "The value must be integer");
           f_t second_val      = round(avg_val) == other_val ? guiding_val : round(avg_val);
@@ -241,7 +241,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
       }
     }
     if (better_cost_than_parents || better_feasibility_than_parents) {
-      CUOPT_LOG_INFO("Offspring is feasible or better than both parents");
+      CUOPT_LOG_DEBUG("Offspring is feasible or better than both parents");
       return std::make_pair(offspring, true);
     }
     return std::make_pair(offspring, !same_as_parents);

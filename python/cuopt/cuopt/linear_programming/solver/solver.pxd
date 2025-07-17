@@ -84,7 +84,7 @@ cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt
         ) except +
 
         # MIP settings
-        void set_initial_mip_solution(
+        void add_initial_mip_solution(
             const f_t* initial_solution,
             i_t size
         ) except +

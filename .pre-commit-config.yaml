@@ -63,6 +63,10 @@ repos:
               [.](cmake|cpp|cu|cuh|h|hpp|sh|pxd|py|pyx)$|
               CMakeLists[.]txt$|
               meta[.]yaml$
+        exclude: |
+          (?x)^(
+            ^cpp/tests/utilities/cxxopts.hpp
+          )
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v20.1.4
     hooks:

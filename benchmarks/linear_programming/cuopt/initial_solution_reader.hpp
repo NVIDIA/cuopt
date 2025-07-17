@@ -40,10 +40,8 @@ class solution_reader_t {
       std::stringstream ss(line);
       std::string var_name;
       std::string value_str;
-      // Read var_name
-      if (!std::getline(ss, var_name, '\t')) continue;
-      // Read value
-      if (!std::getline(ss, value_str)) continue;
+      ss >> var_name >> value_str;
+      if (var_name == "=obj=") continue;
 
       try {
         double value       = std::stod(value_str);

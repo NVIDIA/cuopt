@@ -60,8 +60,6 @@ mip_solver_t<i_t, f_t>::mip_solver_t(const problem_t<i_t, f_t>& op_problem,
     timer_(timer)
 {
   init_handler(op_problem.handle_ptr);
-
-  context.problem_ptr->tolerances = solver_settings.get_tolerances();
 }
 
 template <typename i_t, typename f_t>

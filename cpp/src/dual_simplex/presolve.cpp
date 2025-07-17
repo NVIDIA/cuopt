@@ -843,6 +843,30 @@ void uncrush_primal_solution(const user_problem_t<i_t, f_t>& user_problem,
 }
 
 template <typename i_t, typename f_t>
+void uncrush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
+                           const lp_problem_t<i_t, f_t>& problem,
+                           const std::vector<f_t>& y,
+                           const std::vector<f_t>& z,
+                           std::vector<f_t>& user_y,
+                           std::vector<f_t>& user_z)
+{
+  // Reduced costs are uncrushed just like the primal solution
+  uncrush_primal_solution(user_problem, problem, z, user_z);
+
+  // Adjust the sign of the dual variables y
+  // We should have A^T y + z = c
+  // In convert_user_problem, we converted >= to <=, so we need to adjust the sign of the dual
+  // variables
+  for (i_t i = 0; i < user_problem.num_rows; i++) {
+    if (user_problem.row_sense[i] == 'G') {
+      user_y[i] = -y[i];
+    } else {
+      user_y[i] = y[i];
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
 void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
                       const std::vector<f_t>& crushed_x,
                       const std::vector<f_t>& crushed_z,
@@ -902,6 +926,13 @@ template void uncrush_primal_solution<int, double>(const user_problem_t<int, dou
                                                    const lp_problem_t<int, double>& problem,
                                                    const std::vector<double>& solution,
                                                    std::vector<double>& user_solution);
+
+template void uncrush_dual_solution<int, double>(const user_problem_t<int, double>& user_problem,
+                                                 const lp_problem_t<int, double>& problem,
+                                                 const std::vector<double>& y,
+                                                 const std::vector<double>& z,
+                                                 std::vector<double>& user_y,
+                                                 std::vector<double>& user_z);
 
 template void uncrush_solution<int, double>(const presolve_info_t<int, double>& presolve_info,
                                             const std::vector<double>& crushed_x,

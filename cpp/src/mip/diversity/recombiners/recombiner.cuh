@@ -145,7 +145,6 @@ class recombiner_t {
                vec_remaining_indices.data(),
                vec_remaining_indices.size(),
                a.handle_ptr->get_stream());
-
     return vec_remaining_indices.size();
   }
 

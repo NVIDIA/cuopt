@@ -28,10 +28,12 @@
 
 namespace cuopt::linear_programming::detail {
 
-constexpr double weight_increase_ratio    = 2.;
-constexpr double weight_decrease_ratio    = 0.9;
-constexpr double max_infeasibility_weight = 1e12;
-constexpr double min_infeasibility_weight = 1.;
+constexpr double weight_increase_ratio       = 2.;
+constexpr double weight_decrease_ratio       = 0.9;
+constexpr double max_infeasibility_weight    = 1e12;
+constexpr double min_infeasibility_weight    = 1.;
+constexpr double infeasibility_balance_ratio = 1.1;
+constexpr double halving_skip_ratio          = 0.75;
 
 template <typename i_t, typename f_t>
 population_t<i_t, f_t>::population_t(std::string const& name_,
@@ -50,8 +52,7 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
     early_exit_primal_generation(false),
     timer(0)
 {
-  best_feasible_objective =
-    problem_ptr->maximize ? -std::numeric_limits<f_t>::max() : std::numeric_limits<f_t>::max();
+  best_feasible_objective = std::numeric_limits<f_t>::max();
 }
 
 template <typename i_t, typename f_t>
@@ -174,8 +175,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
 template <typename i_t, typename f_t>
 bool population_t<i_t, f_t>::is_better_than_best_feasible(solution_t<i_t, f_t>& sol)
 {
-  bool obj_better = problem_ptr->maximize ? sol.get_user_objective() > best_feasible_objective
-                                          : sol.get_user_objective() < best_feasible_objective;
+  bool obj_better = sol.get_objective() < best_feasible_objective;
   return obj_better && sol.get_feasible();
 }
 
@@ -189,7 +189,6 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       context.settings.benchmark_info_ptr->last_improvement_of_best_feasible = timer.elapsed_time();
     }
     CUOPT_LOG_DEBUG("Population: Found new best solution %g", sol.get_user_objective());
-    best_feasible_objective = sol.get_user_objective();
     if (problem_ptr->branch_and_bound_callback != nullptr) {
       problem_ptr->branch_and_bound_callback(sol.get_host_assignment());
     }
@@ -222,6 +221,11 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
         get_sol_callback->get_solution(temp_sol.assignment.data(), user_objective_vec.data());
       }
     }
+    // save the best objective here, because we might not have been able to return the solution to
+    // the user because of the unscaling that causes infeasibility.
+    // This prevents an issue of repaired, or a fully feasible solution being reported in the call
+    // back in next run.
+    best_feasible_objective = sol.get_objective();
   }
 
   for (auto callback : user_callbacks) {
@@ -290,7 +294,8 @@ void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
                     best().get_quality(weights));
     if (quality_difference < 1e-10) { return; }
     // make the current best infeasible 10% worse than feasible
-    f_t increase_ratio = (quality_difference * 1.1) / weighted_violation_of_best;
+    f_t increase_ratio =
+      (quality_difference * infeasibility_balance_ratio) / weighted_violation_of_best;
     infeasibility_importance *= (1 + increase_ratio);
     infeasibility_importance = min(max_infeasibility_weight, infeasibility_importance);
     normalize_weights();
@@ -591,7 +596,7 @@ void population_t<i_t, f_t>::halve_the_population()
 {
   raft::common::nvtx::range fun_scope("halve_the_population");
   // try 3/4 here
-  if (current_size() <= (max_solutions * 3) / 4) { return; }
+  if (current_size() <= (max_solutions * halving_skip_ratio)) { return; }
   CUOPT_LOG_DEBUG("Halving the population, current size: %lu", current_size());
   // put population into a vector
   auto sol_vec                  = population_to_vector();
@@ -644,7 +649,6 @@ void population_t<i_t, f_t>::adjust_threshold(cuopt::timer_t timer)
 {
   double time_ratio = (timer.elapsed_time() - population_start_time) /
                       (timer.get_time_limit() - population_start_time);
-  // time_ratio *= time_ratio;
   var_threshold =
     initial_threshold +
     time_ratio * (get_max_var_threshold(problem_ptr->n_integer_vars) - initial_threshold);

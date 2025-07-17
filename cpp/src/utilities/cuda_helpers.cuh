@@ -27,6 +27,10 @@
 
 namespace cuopt {
 
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 700)
+#error "cuOpt is only supported on Volta and newer architectures"
+#endif
+
 /** helper macro for device inlined functions */
 #define DI  inline __device__
 #define HDI inline __host__ __device__

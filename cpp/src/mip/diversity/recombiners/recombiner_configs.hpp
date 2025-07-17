@@ -32,15 +32,15 @@ struct bp_recombiner_config_t {
   static constexpr double n_var_ratio_decrease_factor = 0.99;
   static void increase_max_n_of_vars_from_other()
   {
-    max_n_of_vars_from_other =
-      min(size_t(max_n_of_vars_from_other * n_var_ratio_increase_factor), max_different_var_limit);
+    max_n_of_vars_from_other = std::min(
+      size_t(max_n_of_vars_from_other * n_var_ratio_increase_factor), max_different_var_limit);
     CUOPT_LOG_DEBUG("Increased max_n_of_vars_from_other in BP recombiner to %lu",
                     max_n_of_vars_from_other);
   }
   static void decrease_max_n_of_vars_from_other()
   {
-    max_n_of_vars_from_other =
-      max(size_t(max_n_of_vars_from_other * n_var_ratio_decrease_factor), min_different_var_limit);
+    max_n_of_vars_from_other = std::max(
+      size_t(max_n_of_vars_from_other * n_var_ratio_decrease_factor), min_different_var_limit);
     CUOPT_LOG_DEBUG("Decreased max_n_of_vars_from_other in BP recombiner to %lu",
                     max_n_of_vars_from_other);
   }
@@ -60,15 +60,15 @@ struct ls_recombiner_config_t {
   static constexpr double n_var_ratio_decrease_factor = 0.99;
   static void increase_max_n_of_vars_from_other()
   {
-    max_n_of_vars_from_other =
-      min(size_t(max_n_of_vars_from_other * n_var_ratio_increase_factor), max_different_var_limit);
+    max_n_of_vars_from_other = std::min(
+      size_t(max_n_of_vars_from_other * n_var_ratio_increase_factor), max_different_var_limit);
     CUOPT_LOG_DEBUG("Increased max_n_of_vars_from_other in LS recombiner to %lu",
                     max_n_of_vars_from_other);
   }
   static void decrease_max_n_of_vars_from_other()
   {
-    max_n_of_vars_from_other =
-      max(size_t(max_n_of_vars_from_other * n_var_ratio_decrease_factor), min_different_var_limit);
+    max_n_of_vars_from_other = std::max(
+      size_t(max_n_of_vars_from_other * n_var_ratio_decrease_factor), min_different_var_limit);
     CUOPT_LOG_DEBUG("Decreased max_n_of_vars_from_other in LS recombiner to %lu",
                     max_n_of_vars_from_other);
   }
@@ -87,15 +87,15 @@ struct fp_recombiner_config_t {
   static constexpr double n_var_ratio_decrease_factor = 0.99;
   static void increase_max_n_of_vars_from_other()
   {
-    max_n_of_vars_from_other =
-      min(size_t(max_n_of_vars_from_other * n_var_ratio_increase_factor), max_different_var_limit);
+    max_n_of_vars_from_other = std::min(
+      size_t(max_n_of_vars_from_other * n_var_ratio_increase_factor), max_different_var_limit);
     CUOPT_LOG_DEBUG("Increased max_n_of_vars_from_other in FP recombiner to %lu",
                     max_n_of_vars_from_other);
   }
   static void decrease_max_n_of_vars_from_other()
   {
-    max_n_of_vars_from_other =
-      max(size_t(max_n_of_vars_from_other * n_var_ratio_decrease_factor), min_different_var_limit);
+    max_n_of_vars_from_other = std::max(
+      size_t(max_n_of_vars_from_other * n_var_ratio_decrease_factor), min_different_var_limit);
     CUOPT_LOG_DEBUG("Decreased max_n_of_vars_from_other in FP recombiner to %lu",
                     max_n_of_vars_from_other);
   }

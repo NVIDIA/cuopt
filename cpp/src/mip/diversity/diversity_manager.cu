@@ -204,31 +204,29 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   std::vector<solution_t<i_t, f_t>>& initial_sol_vector)
 {
-  if (context.settings.initial_solutions.size() > 0) {
-    for (const auto& init_sol : context.settings.initial_solutions) {
-      solution_t<i_t, f_t> sol(*problem_ptr);
-      rmm::device_uvector<f_t> init_sol_assignment(*init_sol, sol.handle_ptr->get_stream());
-      if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
-        raft::copy(sol.assignment.data(),
-                   init_sol_assignment.data(),
-                   init_sol_assignment.size(),
-                   sol.handle_ptr->get_stream());
-        bool is_feasible = sol.compute_feasibility();
-        cuopt_func_call(sol.test_variable_bounds(true));
-        CUOPT_LOG_INFO("Adding initial solution success! feas %d objective %f excess %f",
-                       is_feasible,
-                       sol.get_objective(),
-                       sol.get_total_excess());
-        population.run_solution_callbacks(sol);
-        initial_sol_vector.emplace_back(std::move(sol));
-      } else {
-        CUOPT_LOG_ERROR(
-          "Error cannot add the provided initial solution! \
-      Assignment size %lu \
-      initial solution size %lu",
-          sol.assignment.size(),
-          init_sol->size());
-      }
+  for (const auto& init_sol : context.settings.initial_solutions) {
+    solution_t<i_t, f_t> sol(*problem_ptr);
+    rmm::device_uvector<f_t> init_sol_assignment(*init_sol, sol.handle_ptr->get_stream());
+    if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
+      raft::copy(sol.assignment.data(),
+                 init_sol_assignment.data(),
+                 init_sol_assignment.size(),
+                 sol.handle_ptr->get_stream());
+      bool is_feasible = sol.compute_feasibility();
+      cuopt_func_call(sol.test_variable_bounds(true));
+      CUOPT_LOG_INFO("Adding initial solution success! feas %d objective %f excess %f",
+                     is_feasible,
+                     sol.get_objective(),
+                     sol.get_total_excess());
+      population.run_solution_callbacks(sol);
+      initial_sol_vector.emplace_back(std::move(sol));
+    } else {
+      CUOPT_LOG_ERROR(
+        "Error cannot add the provided initial solution! \
+    Assignment size %lu \
+    initial solution size %lu",
+        sol.assignment.size(),
+        init_sol->size());
     }
   }
 }
@@ -419,7 +417,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   timer_t probing_timer{time_for_probing_cache};
   if (check_b_b_preemption()) { return population.best_feasible(); }
   if (!fj_only_run) {
-    // compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
+    compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
   }
   // careful, assign the correct probing cache
   ls.lb_constraint_prop.bounds_update.probing_cache.probing_cache =
@@ -566,10 +564,13 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
   raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
   if (solutions.size() > 0) {
     CUOPT_LOG_INFO("Running recombiners on B&B solutions with size %lu", solutions.size());
+    // add all solutions because time limit might have been consumed and we might have exited before
+    for (auto& sol : solutions) {
+      cuopt_func_call(sol.test_feasibility(true));
+      population.add_solution(std::move(solution_t<i_t, f_t>(sol)));
+    }
     for (auto& sol : solutions) {
       if (timer.check_time_limit()) { return; }
-      population.add_solution(std::move(solution_t<i_t, f_t>(sol)));
-      cuopt_func_call(sol.test_feasibility(true));
       solution_t<i_t, f_t> ls_solution(sol);
       ls_config_t<i_t, f_t> ls_config;
       run_local_search(ls_solution, population.weights, timer, ls_config);
@@ -606,8 +607,8 @@ void diversity_manager_t<i_t, f_t>::main_loop()
     if (timer.check_time_limit()) { break; }
     diversity_step();
     if (timer.check_time_limit()) { break; }
-    bool halve_population = false;
-    if (halve_population) {
+
+    if (diversity_config_t::halve_population) {
       population.adjust_threshold(timer);
       i_t prev_threshold = population.var_threshold;
       population.halve_the_population();
@@ -645,7 +646,7 @@ void diversity_manager_t<i_t, f_t>::check_better_than_both(solution_t<i_t, f_t>&
   bool better_than_both = false;
   if (sol1.get_feasible() && sol2.get_feasible()) {
     better_than_both = offspring.get_objective() <
-                       (min(sol1.get_objective(), sol2.get_objective()) - OBJECTIVE_EPSILON);
+                       (std::min(sol1.get_objective(), sol2.get_objective()) - OBJECTIVE_EPSILON);
   } else if (sol1.get_feasible()) {
     better_than_both = offspring.get_objective() < (sol1.get_objective() - OBJECTIVE_EPSILON);
   } else if (sol2.get_feasible()) {
@@ -738,7 +739,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   recombine_stats.update_improve_stats(
     offspring_qual, sol1.get_quality(population.weights), sol2.get_quality(population.weights));
   f_t best_quality_of_parents =
-    min(sol1.get_quality(population.weights), sol2.get_quality(population.weights));
+    std::min(sol1.get_quality(population.weights), sol2.get_quality(population.weights));
   mab_recombiner.add_mab_reward(
     recombine_stats.get_last_attempt(),
     best_quality_of_parents,
