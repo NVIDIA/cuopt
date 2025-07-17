@@ -25,11 +25,6 @@ LP Supporting Classes
     :undoc-members:
     :no-inherited-members:
 
-.. autoclass:: solution.solution.PDLPWarmStartData
-    :members:
-    :undoc-members:
-    :no-inherited-members:
-
 .. autoclass:: data_model.DataModel
     :members:
     :undoc-members:
@@ -38,10 +33,9 @@ LP Supporting Classes
     :members:
     :undoc-members:
 
-.. autoclass:: solution.Solution
+.. autoclass:: cuopt_sh_client.ThinClientSolution
     :members:
     :undoc-members:
-
 
 Self-Hosted Client CLI
 ----------------------

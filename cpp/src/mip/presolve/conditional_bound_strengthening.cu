@@ -629,7 +629,7 @@ __global__ void update_constraint_bounds_kernel(typename problem_t<i_t, f_t>::vi
 }
 
 template <typename i_t>
-struct len_from_offset : public thrust::unary_function<thrust::tuple<i_t, i_t>, i_t> {
+struct len_from_offset {
   __host__ __device__ i_t operator()(const thrust::tuple<i_t, i_t> val) const
   {
     return thrust::get<1>(val) - thrust::get<0>(val);
@@ -657,7 +657,7 @@ void conditional_bound_strengthening_t<i_t, f_t>::solve(problem_t<i_t, f_t>& pro
 
   if (n_blocks == 0) { return; }
   int max_row_size = get_max_row_size(problem.offsets, problem.handle_ptr->get_stream());
-  max_row_size     = min(TPB, max_row_size);
+  max_row_size     = std::min(TPB, max_row_size);
   size_t sh_size =
     raft::alignTo(5 * sizeof(f_t) + sizeof(i_t) + sizeof(var_t), sizeof(i_t)) * max_row_size;
 

@@ -29,7 +29,7 @@ CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
 
 version=$(rapids-generate-version)
 export RAPIDS_PACKAGE_VERSION=${version}
-export DEPENDENT_PACKAGE_VERSION="25.04"
+export DEPENDENT_PACKAGE_VERSION="25.08"
 echo "${version}" > VERSION
 
 git_commit=$(git rev-parse HEAD)
@@ -90,5 +90,3 @@ rattler-build build --recipe conda/recipes/cuopt-sh-client \
 # remove build_cache directory to avoid uploading the entire source tree
 # tracked in https://github.com/prefix-dev/rattler-build/issues/1424
 rm -rf "$RAPIDS_CONDA_BLD_OUTPUT_DIR"/build_cache
-
-rapids-upload-conda-to-s3 python

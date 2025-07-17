@@ -21,6 +21,7 @@
 
 #include <cuopt/error.hpp>
 
+#include <mip/logger.cuh>
 #include <raft/linalg/unary_op.cuh>
 #include <utilities/copy_helpers.hpp>
 
@@ -138,6 +139,9 @@ static void convert_to_maximization_problem(detail::problem_t<i_t, f_t>& op_prob
   // negating objective coeffs
   op_problem.presolve_data.objective_scaling_factor =
     -op_problem.presolve_data.objective_scaling_factor;
+
+  // Negate objective offset
+  op_problem.presolve_data.objective_offset = -op_problem.presolve_data.objective_offset;
 }
 
 /*
@@ -176,6 +180,8 @@ __global__ void kernel_check_transpose_validity(raft::device_span<const f_t> coe
     __syncthreads();
     // Would want to assert there but no easy way to gtest it, so moved it to the host
     if (!shared_found) {
+      DEVICE_LOG_DEBUG(
+        "For cstr %d, var %d, value %f was not found in the transpose", constraint_id, col, value);
       *failed = true;
       return;
     }
@@ -248,42 +254,57 @@ static void check_csr_representation([[maybe_unused]] const rmm::device_uvector<
 }
 
 template <typename i_t, typename f_t>
-static void check_var_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
+static bool check_var_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
 {
   bool crossing_bounds_detected =
     thrust::any_of(problem.handle_ptr->get_thrust_policy(),
                    thrust::counting_iterator(0),
                    thrust::counting_iterator((i_t)problem.variable_lower_bounds.size()),
-                   [lb = make_span(problem.variable_lower_bounds),
-                    ub = make_span(problem.variable_upper_bounds)] __device__(i_t index) {
-                     return lb[index] > ub[index];
+                   [tolerance = problem.tolerances.presolve_absolute_tolerance,
+                    lb        = make_span(problem.variable_lower_bounds),
+                    ub        = make_span(problem.variable_upper_bounds)] __device__(i_t index) {
+                     return (lb[index] > ub[index] + tolerance);
                    });
-  cuopt_expects(!crossing_bounds_detected,
-                error_type_t::ValidationError,
-                "There shouldn't be any crossing bounds in variable bounds.");
+  return !crossing_bounds_detected;
 }
 
 template <typename i_t, typename f_t>
-static void check_constraint_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
+static bool check_constraint_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
 {
   bool crossing_bounds_detected =
     thrust::any_of(problem.handle_ptr->get_thrust_policy(),
                    thrust::counting_iterator(0),
                    thrust::counting_iterator((i_t)problem.constraint_lower_bounds.size()),
-                   [lb = make_span(problem.constraint_lower_bounds),
-                    ub = make_span(problem.constraint_upper_bounds)] __device__(i_t index) {
-                     return lb[index] > ub[index];
+                   [tolerance = problem.tolerances.presolve_absolute_tolerance,
+                    lb        = make_span(problem.constraint_lower_bounds),
+                    ub        = make_span(problem.constraint_upper_bounds)] __device__(i_t index) {
+                     return (lb[index] > ub[index] + tolerance);
                    });
-  cuopt_expects(!crossing_bounds_detected,
-                error_type_t::ValidationError,
-                "There shouldn't be any crossing bounds in constraints bounds.");
+  return !crossing_bounds_detected;
 }
 
 template <typename i_t, typename f_t>
-static void check_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
+static void round_bounds(detail::problem_t<i_t, f_t>& problem)
 {
-  check_var_bounds_sanity<i_t, f_t>(problem);
-  check_constraint_bounds_sanity<i_t, f_t>(problem);
+  // round bounds to integer for integer variables
+  thrust::for_each(problem.handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(problem.n_variables),
+                   [lb    = make_span(problem.variable_lower_bounds),
+                    ub    = make_span(problem.variable_upper_bounds),
+                    types = make_span(problem.variable_types)] __device__(i_t index) {
+                     if (types[index] == var_t::INTEGER) {
+                       lb[index] = ceil(lb[index]);
+                       ub[index] = floor(ub[index]);
+                     }
+                   });
+}
+
+template <typename i_t, typename f_t>
+static bool check_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
+{
+  return check_var_bounds_sanity<i_t, f_t>(problem) &&
+         check_constraint_bounds_sanity<i_t, f_t>(problem);
 }
 
 }  // namespace cuopt::linear_programming::detail

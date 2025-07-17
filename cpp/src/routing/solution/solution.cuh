@@ -349,7 +349,7 @@ class solution_t {
       max_active_nodes_for_all_routes(sol_handle_->get_stream()),
       temp_nodes(problem_.get_num_orders(), sol_handle_->get_stream()),
       temp_stack_counter(sol_handle_->get_stream()),
-      temp_int_vector(max(problem_.get_num_orders(), problem_.get_fleet_size()),
+      temp_int_vector(std::max(problem_.get_num_orders(), problem_.get_fleet_size()),
                       sol_handle_->get_stream())
   {
     raft::common::nvtx::range fun_scope("solution_t");

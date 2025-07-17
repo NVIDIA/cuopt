@@ -381,7 +381,7 @@ def start_compute_waypoint_sequence_no_matrix_call(locations):
 
     with pytest.raises(InputValidationError):
         w_matrix.compute_waypoint_sequence(
-            locations, cudf.DataFrame({"location": 0})
+            locations, cudf.DataFrame({"location": [0]})
         )
 
 
@@ -498,7 +498,7 @@ def start_target_locations_validity():
 
     with pytest.raises(InputValidationError):
         w_matrix.compute_waypoint_sequence(
-            target_locations, cudf.DataFrame({"location": 0})
+            target_locations, cudf.DataFrame({"location": [0]})
         )
 
     with pytest.raises(InputValidationError):
@@ -512,7 +512,7 @@ def start_target_locations_validity():
 
     with pytest.raises(InputValidationError):
         w_matrix.compute_waypoint_sequence(
-            target_locations, cudf.DataFrame({"location": 0})
+            target_locations, cudf.DataFrame({"location": [0]})
         )
 
     with pytest.raises(InputValidationError):

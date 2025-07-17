@@ -27,7 +27,14 @@ cuopt_int_t burglar_problem();
 cuopt_int_t solve_mps_file(const char* filename,
                            double time_limit,
                            double iteration_limit,
-                           cuopt_int_t* termination_status);
+                           cuopt_int_t* termination_status,
+#ifdef __cplusplus
+                           cuopt_float_t* solve_time = 0,
+                           cuopt_int_t method        = CUOPT_METHOD_DUAL_SIMPLEX);
+#else
+                           cuopt_float_t* solve_time,
+                           cuopt_int_t method);
+#endif
 cuopt_int_t test_missing_file();
 cuopt_int_t test_infeasible_problem();
 cuopt_int_t test_bad_parameter_name();

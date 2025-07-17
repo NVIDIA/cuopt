@@ -5,4 +5,4 @@ fastapi_version:
   - ">=0.104.1"
 
 uvicorn_version:
-  - "0.30.*"
+  - "0.34.*"

@@ -23,6 +23,9 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
+class problem_t;
+
+template <typename i_t, typename f_t>
 class lp_state_t {
  public:
   lp_state_t(problem_t<i_t, f_t>& problem, rmm::cuda_stream_view stream)

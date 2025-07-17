@@ -19,6 +19,7 @@
 #include <linear_programming/pdlp_constants.hpp>
 #include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <mip/mip_constants.hpp>
+#include <utilities/unique_pinned_ptr.hpp>
 
 #include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -48,7 +49,6 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
     stream_view_(handle_ptr_->get_stream()),
     primal_weight_(primal_weight),
     step_size_(step_size),
-    valid_step_size_(1),
     interaction_{stream_view_},
     movement_{stream_view_},
     norm_squared_delta_primal_{stream_view_},
@@ -57,6 +57,7 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
     reusable_device_scalar_value_0_{f_t(0.0), stream_view_},
     graph(stream_view_)
 {
+  valid_step_size_ = make_unique_cuda_host_pinned<i_t>();
 }
 
 void set_adaptive_step_size_hyper_parameters(rmm::cuda_stream_view stream_view)
@@ -189,13 +190,13 @@ __global__ void compute_step_sizes_from_movement_and_interaction(
 template <typename i_t, typename f_t>
 i_t adaptive_step_size_strategy_t<i_t, f_t>::get_valid_step_size() const
 {
-  return valid_step_size_[0];
+  return *valid_step_size_;
 }
 
 template <typename i_t, typename f_t>
 void adaptive_step_size_strategy_t<i_t, f_t>::set_valid_step_size(i_t valid)
 {
-  valid_step_size_[0] = valid;
+  *valid_step_size_ = valid;
 }
 
 template <typename i_t, typename f_t>
@@ -374,7 +375,7 @@ adaptive_step_size_strategy_t<i_t, f_t>::view()
 
   v.primal_weight   = primal_weight_->data();
   v.step_size       = step_size_->data();
-  v.valid_step_size = thrust::raw_pointer_cast(valid_step_size_.data());
+  v.valid_step_size = valid_step_size_.get();
 
   v.interaction = interaction_.data();
   v.movement    = movement_.data();

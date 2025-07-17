@@ -880,7 +880,7 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
           &set_count,
           unset_integer_vars);
     if (!repair_tried && rounding_ii && !timeout_happened) {
-      timer_t repair_timer{min(timer.remaining_time() / 5, timer.elapsed_time() / 3)};
+      timer_t repair_timer{std::min(timer.remaining_time() / 5, timer.elapsed_time() / 3)};
       save_bounds(problem, assignment, orig_sol.handle_ptr);
       // update bounds and run repair procedure
       // infeasible cnst_slack invalid
@@ -951,13 +951,13 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
 
   // if the constraint is not ii, run LP
   if (lb_bounds_update.infeas_constraints_count == 0 && !timeout_happened) {
-    run_lp_with_vars_fixed(*orig_sol.problem_ptr,
-                           orig_sol,
-                           orig_sol.problem_ptr->integer_indices,
-                           context.settings.get_tolerances(),
-                           context.lp_state,
-                           lp_run_time_after_feasible,
-                           true);
+    relaxed_lp_settings_t lp_settings;
+    lp_settings.time_limit            = lp_run_time_after_feasible;
+    lp_settings.tolerance             = orig_sol.problem_ptr->tolerances.absolute_tolerance;
+    lp_settings.save_state            = false;
+    lp_settings.return_first_feasible = true;
+    run_lp_with_vars_fixed(
+      *orig_sol.problem_ptr, orig_sol, orig_sol.problem_ptr->integer_indices, lp_settings);
   }
   bool res_feasible = orig_sol.compute_feasibility();
   return res_feasible;

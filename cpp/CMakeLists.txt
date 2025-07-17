@@ -29,7 +29,7 @@ rapids_cuda_init_architectures(CUOPT)
 
 project(
   CUOPT
-  VERSION 25.05.00
+  VERSION 25.08.00
   LANGUAGES CXX CUDA C
 )
 
@@ -39,7 +39,7 @@ if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_LESS 12.0.0)
 endif()
 
 set(DEPENDENT_LIB_MAJOR_VERSION "25")
-set(DEPENDENT_LIB_MINOR_VERSION "04")
+set(DEPENDENT_LIB_MINOR_VERSION "08")
 
 rapids_cmake_write_version_file(include/cuopt/version_config.hpp)
 # ##################################################################################################
@@ -97,11 +97,8 @@ set(LIBCUOPT_LOGGING_LEVEL
 )
 set_property(
   CACHE LIBCUOPT_LOGGING_LEVEL PROPERTY STRINGS "TRACE" "DEBUG" "INFO" "WARN" "ERROR" "CRITICAL"
-                                       "OFF"
-)
+                                       "OFF")
 message(VERBOSE "CUOPT: LIBCUOPT_LOGGING_LEVEL = '${LIBCUOPT_LOGGING_LEVEL}'.")
-
-#add_compile_definitions(CUOPT_LOG_ACTIVE_LEVEL=CUOPT_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL})
 
 message("-- Building with logging level = ${LIBCUOPT_LOGGING_LEVEL}")
 
@@ -306,6 +303,8 @@ if(Doxygen_FOUND)
 endif()
 
 
+
+list(APPEND CUOPT_CXX_FLAGS -g -O0)
 add_executable(cuopt_cli cuopt_cli.cpp)
 target_compile_options(cuopt_cli
   PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
@@ -313,7 +312,7 @@ target_compile_options(cuopt_cli
 )
 
 target_include_directories(cuopt_cli
-  PRIVATE  
+  PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
   PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -328,7 +327,7 @@ target_link_libraries(cuopt_cli
 )
 set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
-# FIXME:: Is this the right way? 
+# FIXME:: Is this the right way?
 install(TARGETS cuopt_cli
   DESTINATION ${CMAKE_INSTALL_BINDIR})
 

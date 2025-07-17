@@ -152,7 +152,7 @@ __global__ void find_sliding_moves_tsp(
   const double excess_limit =
     s_route.get_weighted_excess(move_candidates.weights) * ls_excess_multiplier_route;
 
-  sliding_tsp_cand_t<i_t> sliding_tsp_cand = is_sliding_tsp_uinitialized_t<i_t>::init_data;
+  sliding_tsp_cand_t<i_t> sliding_tsp_cand = is_sliding_tsp_uinitialized_t<i_t>::init_data();
   double cost_delta, selection_delta;
 
   constexpr bool exclude_self_in_neighbors = false;  // for reverse op
@@ -512,8 +512,9 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
     sol, move_candidates, n_nodes, n_threads, temp_storage_bytes);
 
   auto n_blocks = move_candidates.nodes_to_search.n_sampled_nodes;
-  async_fill(
-    sampled_tsp_data_, is_sliding_tsp_uinitialized_t<i_t>::init_data, sol.sol_handle->get_stream());
+  async_fill(sampled_tsp_data_,
+             is_sliding_tsp_uinitialized_t<i_t>::init_data(),
+             sol.sol_handle->get_stream());
 
   auto sh_size =
     raft::alignTo(shared_route_size, sizeof(double)) + max_window_size * sizeof(double);

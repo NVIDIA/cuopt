@@ -254,7 +254,7 @@ __global__ void apply_objective_scaling_and_offset(f_t* objective,
 {
   if (threadIdx.x + blockIdx.x * blockDim.x > 0) { return; }
 
-  *objective = (objective_scaling_factor * *objective) + objective_offset;
+  *objective = objective_scaling_factor * (*objective + objective_offset);
 }
 
 template <typename i_t, typename f_t>

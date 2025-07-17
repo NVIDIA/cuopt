@@ -51,8 +51,10 @@ struct found_sliding_solution_t {
 
 template <typename i_t>
 struct is_sliding_uinitialized_t {
-  static constexpr found_sliding_solution_t<i_t> init_data{
-    std::numeric_limits<double>::max(), -1, -1, -1, -1};
+  static constexpr found_sliding_solution_t<i_t> init_data()
+  {
+    return {std::numeric_limits<double>::max(), -1, -1, -1, -1};
+  }
 
   __device__ bool operator()(const found_sliding_solution_t<i_t>& x)
   {
@@ -73,7 +75,10 @@ struct two_opt_cand_t {
   i_t first;
   i_t second;
   double selection_delta;
-  static constexpr two_opt_cand_t<i_t> init_data{-1, -1, std::numeric_limits<double>::max()};
+  static constexpr two_opt_cand_t<i_t> init_data()
+  {
+    return two_opt_cand_t<i_t>{-1, -1, std::numeric_limits<double>::max()};
+  }
   constexpr bool operator!=(const two_opt_cand_t<i_t>& cand) const
   {
     return this->selection_delta != cand.selection_delta;
@@ -82,7 +87,10 @@ struct two_opt_cand_t {
 
 template <typename i_t>
 struct is_two_opt_uinitialized_t {
-  static constexpr two_opt_cand_t<i_t> init_data{-1, -1, std::numeric_limits<double>::max()};
+  static constexpr two_opt_cand_t<i_t> init_data()
+  {
+    return two_opt_cand_t<i_t>{-1, -1, std::numeric_limits<double>::max()};
+  }
 
   __device__ bool operator()(const two_opt_cand_t<i_t>& x)
   {

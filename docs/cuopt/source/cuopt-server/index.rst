@@ -1,7 +1,7 @@
 Server
 ======
 
-NVIDIA cuOpt server is a REST API server that is built for the purpose of providing language agnostic access to the cuOpt optimization engine. Users can build their own clients in any language that supports HTTP requests or use cuopt-sh-client, a lightweight Python client, to communicate with the server. 
+NVIDIA cuOpt server is a REST API server that is built for the purpose of providing language agnostic access to the cuOpt optimization engine. Users can build their own clients in any language that supports HTTP requests or use cuopt-sh-client, a lightweight Python client, to communicate with the server.
 
 .. image:: images/cuOpt-self-hosted.png
   :width: 500

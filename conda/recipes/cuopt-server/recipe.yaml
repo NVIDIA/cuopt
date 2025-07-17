@@ -29,6 +29,7 @@ requirements:
     - pip
     - python =${{ py_version }}
     - rapids-build-backend >=0.3.0,<0.4.0.dev0
+    - setuptools>=61.0.0
   run:
     - cuopt =${{ version }}
     - fastapi >=0.104.1

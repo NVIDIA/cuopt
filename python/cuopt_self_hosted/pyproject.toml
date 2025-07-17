@@ -31,7 +31,7 @@ authors = [
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
-    "cuopt-mps-parser==25.5.*,>=0.0.0a0",
+    "cuopt-mps-parser==25.8.*,>=0.0.0a0",
     "msgpack-numpy==0.4.8",
     "msgpack==1.1.0",
     "requests",
@@ -41,6 +41,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
 ]
 

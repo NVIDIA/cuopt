@@ -715,7 +715,7 @@ lp_zlib_example_data = 'x\x01\x8dR\xd1j\xc4 \x10|\xcfW\x88\xcf%$\xd7\x94\xd2\xfe
 managed_lp_example_data = {
     "action": "cuOpt_LP",
     "data": lp_example_data,
-    "client_version": "25.05",
+    "client_version": "25.08",
 }
 
 # cut and pasted from actual run of LP example data.

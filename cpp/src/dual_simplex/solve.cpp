@@ -96,14 +96,14 @@ template <typename i_t, typename f_t>
 f_t compute_user_objective(const lp_problem_t<i_t, f_t>& lp, const std::vector<f_t>& x)
 {
   const f_t obj      = compute_objective(lp, x);
-  const f_t user_obj = obj * lp.obj_scale + lp.obj_constant;
+  const f_t user_obj = compute_user_objective(lp, obj);
   return user_obj;
 }
 
 template <typename i_t, typename f_t>
 f_t compute_user_objective(const lp_problem_t<i_t, f_t>& lp, f_t obj)
 {
-  const f_t user_obj = obj * lp.obj_scale + lp.obj_constant;
+  const f_t user_obj = lp.obj_scale * (obj + lp.obj_constant);
   return user_obj;
 }
 
@@ -252,8 +252,8 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
   lp_status_t status = solve_linear_program_advanced(
     original_lp, start_time, settings, lp_solution, vstatus, edge_norms);
   uncrush_primal_solution(user_problem, original_lp, lp_solution.x, solution.x);
-  uncrush_primal_solution(user_problem, original_lp, lp_solution.z, solution.z);
-  solution.y                  = lp_solution.y;
+  uncrush_dual_solution(
+    user_problem, original_lp, lp_solution.y, lp_solution.z, solution.y, solution.z);
   solution.objective          = lp_solution.objective;
   solution.user_objective     = lp_solution.user_objective;
   solution.iterations         = lp_solution.iterations;
