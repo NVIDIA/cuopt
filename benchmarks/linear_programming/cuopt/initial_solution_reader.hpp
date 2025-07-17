@@ -34,8 +34,6 @@ class solution_reader_t {
     }
 
     std::string line;
-    // read the objective
-    std::getline(file, line);
     while (std::getline(file, line)) {
       std::stringstream ss(line);
       std::string var_name;

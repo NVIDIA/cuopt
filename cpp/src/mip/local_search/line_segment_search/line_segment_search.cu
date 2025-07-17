@@ -288,13 +288,13 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(solution_t<i_t, f_t>& 
                     point_2.data() + solution.problem_ptr->n_variables,
                     point_1.data(),
                     delta_vector.begin(),
-                    [] __device__(const f_t& a, const f_t& b) { return a - b; });
+                    [] __device__(const f_t a, const f_t b) { return a - b; });
 
   thrust::transform(solution.handle_ptr->get_thrust_policy(),
                     delta_vector.begin(),
                     delta_vector.end(),
                     delta_vector.begin(),
-                    [n_points = settings.n_points_to_search] __device__(const f_t& x) {
+                    [n_points = settings.n_points_to_search] __device__(const f_t x) {
                       return x / (n_points + 1);
                     });
   return search_line_segment(solution, point_1, point_2, delta_vector, is_feasibility_run, timer);
