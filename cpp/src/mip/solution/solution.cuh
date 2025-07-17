@@ -19,10 +19,10 @@
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
+#include <cuopt/linear_programming/mip/solver_stats.hpp>
 #include <mip/diversity/weights.cuh>
 #include <mip/problem/problem.cuh>
 #include <mip/relaxed_lp/lp_state.cuh>
-#include <mip/solver_stats.cuh>
 
 #include <raft/util/cuda_dev_essentials.cuh>
 #include <rmm/device_scalar.hpp>

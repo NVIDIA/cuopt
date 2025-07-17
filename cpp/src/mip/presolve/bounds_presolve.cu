@@ -20,7 +20,9 @@
 
 #include <thrust/count.h>
 #include <thrust/extrema.h>
+#include <thrust/functional.h>
 #include <thrust/iterator/zip_iterator.h>
+#include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/device_utils.cuh>
@@ -350,18 +352,29 @@ void bound_presolve_t<i_t, f_t>::calc_and_set_updated_constraint_bounds(problem_
 {
   calculate_activity_on_problem_bounds(pb);
 
-  thrust::transform(pb.handle_ptr->get_thrust_policy(),
-                    upd.max_activity.begin(),
-                    upd.max_activity.end(),
-                    pb.constraint_upper_bounds.begin(),
-                    pb.constraint_upper_bounds.begin(),
-                    thrust::minimum<f_t>());
-  thrust::transform(pb.handle_ptr->get_thrust_policy(),
-                    upd.min_activity.begin(),
-                    upd.min_activity.end(),
-                    pb.constraint_lower_bounds.begin(),
-                    pb.constraint_lower_bounds.begin(),
-                    thrust::maximum<f_t>());
+  thrust::for_each(pb.handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(pb.n_constraints),
+                   [pb      = pb.view(),
+                    min_act = make_span(upd.min_activity),
+                    max_act = make_span(upd.max_activity),
+                    cnst_lb = make_span(pb.constraint_lower_bounds),
+                    cnst_ub = make_span(pb.constraint_upper_bounds)] __device__(i_t idx) {
+                     auto min_a    = min_act[idx];
+                     auto max_a    = max_act[idx];
+                     auto c_lb     = cnst_lb[idx];
+                     auto c_ub     = cnst_ub[idx];
+                     auto new_c_lb = max(c_lb, min_a);
+                     auto new_c_ub = min(c_ub, max_a);
+                     i_t infeas    = check_infeasibility<i_t, f_t>(
+                       min_a, max_a, new_c_lb, new_c_ub, pb.tolerances.presolve_absolute_tolerance);
+                     if (!infeas && (new_c_lb > new_c_ub)) {
+                       new_c_lb = (new_c_lb + new_c_ub) / 2;
+                       new_c_ub = new_c_lb;
+                     }
+                     cnst_lb[idx] = new_c_lb;
+                     cnst_ub[idx] = new_c_ub;
+                   });
 }
 
 #if MIP_INSTANTIATE_FLOAT

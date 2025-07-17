@@ -13,6 +13,7 @@ New Features
 - Added crossover from PDLP to Dual Simplex
 - Added a C API for LP and MILP
 - PDLP: Faster iterations and new more robust default PDLPSolverMode Stable2 
+- Added support for writing out mps file containing user problem. Useful for debugging
 
 Breaking Changes
 ----------------
@@ -52,7 +53,11 @@ Bug Fixes
 - Fixed routing solver intermittent failures.
 - Gracefully exit when the problem is infeasible after presolve.
 - Fixed bug on dual resizing.
-
+- Fix occasional incorrect solution bound on maximization problems
+- Fix inversion of constraint bounds in conditional bounds presolve
+- Pdlp fix batch cuda graph
+- Fix obj constant on max. Fix undefined memory access at root
+- Allow long client version in service version check, this fixes the issue in case version is of the format 25.05.00.dev0
 
 Documentation
 -------------

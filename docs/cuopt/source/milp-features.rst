@@ -7,6 +7,12 @@ Availability
 
 The MILP solver can be accessed in the following ways:
 
+- **Third-Party Modeling Languages**: cuOpt's LP and MILP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
+
+  Currently supported solvers:
+   - AMPL
+   - PuLP 
+
 - **C API**: A native C API that provides direct low-level access to cuOpt's MILP solver, enabling integration into any application or system that can interface with C.
 
 - **As a Self-Hosted Service**: cuOpt's MILP solver can be deployed in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.

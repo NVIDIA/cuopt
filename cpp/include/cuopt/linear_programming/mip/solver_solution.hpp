@@ -19,6 +19,7 @@
 
 #include <cuopt/linear_programming/constants.h>
 #include <cuopt/error.hpp>
+#include <cuopt/linear_programming/mip/solver_stats.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
 #include <rmm/cuda_stream_view.hpp>
@@ -48,18 +49,16 @@ class mip_solution_t : public base_solution_t {
                  std::vector<std::string> var_names,
                  f_t objective,
                  f_t mip_gap,
-                 f_t solution_bound,
-                 double total_solve_time,
-                 double presolve_time,
                  mip_termination_status_t termination_status,
                  f_t max_constraint_violation,
                  f_t max_int_violation,
                  f_t max_variable_bound_violation,
-                 i_t num_nodes,
-                 i_t num_simplex_iterations,
+                 solver_stats_t<i_t, f_t> stats,
                  std::vector<rmm::device_uvector<f_t>> solution_pool = {});
 
-  mip_solution_t(mip_termination_status_t termination_status, rmm::cuda_stream_view stream_view);
+  mip_solution_t(mip_termination_status_t termination_status,
+                 solver_stats_t<i_t, f_t> stats,
+                 rmm::cuda_stream_view stream_view);
   mip_solution_t(const cuopt::logic_error& error_status, rmm::cuda_stream_view stream_view);
 
   bool is_mip() const override { return true; }
@@ -88,16 +87,12 @@ class mip_solution_t : public base_solution_t {
   std::vector<std::string> var_names_;
   f_t objective_;
   f_t mip_gap_;
-  f_t solution_bound_;
-  double total_solve_time_;
-  double presolve_time_;
   mip_termination_status_t termination_status_;
   cuopt::logic_error error_status_;
   f_t max_constraint_violation_;
   f_t max_int_violation_;
   f_t max_variable_bound_violation_;
-  i_t num_nodes_;
-  i_t num_simplex_iterations_;
+  solver_stats_t<i_t, f_t> stats_;
   std::vector<rmm::device_uvector<f_t>> solution_pool_;
 };
 

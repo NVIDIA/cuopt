@@ -38,15 +38,37 @@ TEST(c_api, afiro)
   EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
 }
 
-TEST(c_api, time_limit)
+// Test both LP and MIP codepaths
+class TimeLimitTestFixture : public ::testing::TestWithParam<std::tuple<std::string, double, int>> {
+};
+TEST_P(TimeLimitTestFixture, time_limit)
 {
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  std::string filename = rapidsDatasetRootDir + "/linear_programming/" + "afiro_original.mps";
+  std::string filename                    = rapidsDatasetRootDir + std::get<0>(GetParam());
+  double target_solve_time                = std::get<1>(GetParam());
+  int method                              = std::get<2>(GetParam());
   int termination_status;
-  EXPECT_EQ(solve_mps_file(filename.c_str(), 1e-6, CUOPT_INFINITY, &termination_status),
+  double solve_time = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_EQ(solve_mps_file(filename.c_str(),
+                           target_solve_time,
+                           CUOPT_INFINITY,
+                           &termination_status,
+                           &solve_time,
+                           method),
             CUOPT_SUCCESS);
   EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_TIME_LIMIT);
+  EXPECT_NEAR(solve_time, target_solve_time, 0.1);
 }
+INSTANTIATE_TEST_SUITE_P(
+  c_api,
+  TimeLimitTestFixture,
+  ::testing::Values(
+    std::make_tuple("/linear_programming/square41/square41.mps",
+                    5,
+                    CUOPT_METHOD_DUAL_SIMPLEX),  // LP, Dual Simplex
+    std::make_tuple("/linear_programming/square41/square41.mps", 5, CUOPT_METHOD_PDLP),  // LP, PDLP
+    std::make_tuple("/mip/enlight_hard.mps", 5, CUOPT_METHOD_DUAL_SIMPLEX)               // MIP
+    ));
 
 TEST(c_api, iteration_limit)
 {

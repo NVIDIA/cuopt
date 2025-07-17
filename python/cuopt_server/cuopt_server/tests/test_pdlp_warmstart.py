@@ -54,7 +54,7 @@ def test_warmstart(cuoptproc):  # noqa
     )
     assert res.status_code == 200
     response = res.json()["response"]["solver_response"]
-    assert response["status"] == 1
+    assert response["status"] == "Optimal"
     solve_1_iter = response["solution"]["lp_statistics"]["nb_iterations"]
 
     settings.set_optimality_tolerance(1e-3)
@@ -69,7 +69,7 @@ def test_warmstart(cuoptproc):  # noqa
     assert res.status_code == 200
     response = res.json()["response"]["solver_response"]
     reqId = res.json()["reqId"]
-    assert response["status"] == 1
+    assert response["status"] == "Optimal"
     solve_2_iter = response["solution"]["lp_statistics"]["nb_iterations"]
 
     res = client.get(
@@ -90,7 +90,7 @@ def test_warmstart(cuoptproc):  # noqa
     )
     assert res.status_code == 200
     response = res.json()["response"]["solver_response"]
-    assert response["status"] == 1
+    assert response["status"] == "Optimal"
     solve_3_iter = response["solution"]["lp_statistics"]["nb_iterations"]
 
     assert solve_3_iter + solve_2_iter == solve_1_iter

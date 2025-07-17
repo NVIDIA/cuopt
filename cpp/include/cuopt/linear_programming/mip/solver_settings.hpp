@@ -70,11 +70,12 @@ class mip_solver_settings_t {
   bool has_initial_solution() const;
 
   struct tolerances_t {
-    f_t absolute_tolerance    = 1.0e-4;
-    f_t relative_tolerance    = 1.0e-6;
-    f_t integrality_tolerance = 1.0e-5;
-    f_t absolute_mip_gap      = 1.0e-10;
-    f_t relative_mip_gap      = 1.0e-4;
+    f_t presolve_absolute_tolerance = 1.0e-6;
+    f_t absolute_tolerance          = 1.0e-4;
+    f_t relative_tolerance          = 1.0e-6;
+    f_t integrality_tolerance       = 1.0e-5;
+    f_t absolute_mip_gap            = 1.0e-10;
+    f_t relative_mip_gap            = 1.0e-4;
   };
 
   /**
