@@ -23,7 +23,7 @@ To solve a simple LP problem using cuopt_cli:
     VAR1      COST                -0.2
     VAR1      ROW1                3.0
     VAR1      ROW2                2.7
-    VAR2      COST                0.1  
+    VAR2      COST                0.1
     VAR2      ROW1                4.0
     VAR2      ROW2               10.1
    RHS
@@ -113,7 +113,7 @@ This should produce output similar to:
    Root relaxation objective -3.01818182e+01
 
    Strong branching on 2 fractional variables
-   | Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   |    Time 
+   | Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   |    Time
          0        1                +inf  -3.018182e+01      1   0.0e+00       -        0.00
    B       3        1       -2.700000e+01  -2.980000e+01      2   6.7e-01     10.4%      0.00
    B&B added a solution to population, solution queue size 0 with objective -27

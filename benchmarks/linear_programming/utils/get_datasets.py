@@ -155,11 +155,11 @@ MittelmannInstances = {
             "netlib"
         ],
         "dlr1" : [
-            "http://plato.asu.edu/ftp/lptestset/dlr1.mps.bz2", 
+            "http://plato.asu.edu/ftp/lptestset/dlr1.mps.bz2",
             "mps"
         ],
         "dlr2" : [
-            "http://plato.asu.edu/ftp/lptestset/dlr2.mps.bz2", 
+            "http://plato.asu.edu/ftp/lptestset/dlr2.mps.bz2",
             "mps"
         ],
         "energy1" : ["", "mps"], # Kept secret by Mittlemman
