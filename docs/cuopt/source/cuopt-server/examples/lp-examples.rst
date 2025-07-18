@@ -64,9 +64,9 @@ Genric Example With Normal Mode and Batch Mode
 
     # Number of repoll requests to be carried out for a successful response
     repoll_tries = 500
-    
+
     def repoll(solution, repoll_tries):
-        # If solver is still busy solving, the job will be assigned a request id and response is sent back in the 
+        # If solver is still busy solving, the job will be assigned a request id and response is sent back in the
         # following format {"reqId": <REQUEST-ID>}.
         # Solver needs to be re-polled for response using this <REQUEST-ID>.
 
@@ -104,12 +104,12 @@ Genric Example With Normal Mode and Batch Mode
 
     print("---------- Batch mode -----------------  \n", json.dumps(solution, indent=4))
 
-  
+
 The response would be as follows:
 
 Normal mode response:
 
-.. code-block:: json 
+.. code-block:: json
     :linenos:
 
     {
@@ -282,13 +282,13 @@ Previously run solutions can be saved and be used as warm start for new requests
     )
 
     print(json.dumps(solution, indent=4))
-    
+
     # Delete saved solution if not required to save space
     cuopt_service_client.delete(initial_solution["reqId"])
 
 The response would be as follows:
 
-.. code-block:: json 
+.. code-block:: json
     :linenos:
 
     {
@@ -372,12 +372,12 @@ An example on using .mps files as input is shown below:
     )
 
     ss = ThinClientSolverSettings()
- 
+
     ss.set_parameter("time_limit", 5)
     ss.set_optimality_tolerance(0.00001)
- 
+
     solution = cuopt_service_client.get_LP_solve(data, solver_config=ss, response_type="dict")
- 
+
     print(json.dumps(solution, indent=4))
 
 The response is:
@@ -428,7 +428,7 @@ The response is:
 Generate Datamodel from MPS Parser
 ----------------------------------
 
-Use a datamodel generated from mps file as input; this yields a solution object in response. For more details please refer to `LP/MILP parameters <../../lp-milp-settings.html>`_. 
+Use a datamodel generated from mps file as input; this yields a solution object in response. For more details please refer to `LP/MILP parameters <../../lp-milp-settings.html>`_.
 
 .. code-block:: python
     :linenos:
@@ -563,7 +563,7 @@ Example with DataModel is available in the `Examples Notebooks Repository <https
 The ``data`` argument to ``get_LP_solve`` may be a dictionary of the format shown in `LP Open-API spec <../../open-api.html#operation/postrequest_cuopt_request_post>`_. More details on the response can be found under the responses schema `request and solution API spec <../../open-api.html#/default/getrequest_cuopt_request__id__get>`_.
 
 
-Aborting a Running Job in Thin Client 
+Aborting a Running Job in Thin Client
 -------------------------------------
 
 Please refer to the `MILP Example on Aborting a Running Job in Thin Client <milp-examples.html#aborting-a-running-job-in-thin-client>`_ for more details.

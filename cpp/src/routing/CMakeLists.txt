@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set(ROUTING_SRC_FILES 
+set(ROUTING_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/compute_insertions.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/ges/squeeze.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/sliding_window.cu

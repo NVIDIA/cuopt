@@ -21,7 +21,7 @@ In a Vehicle Routing Problem (VRP), enterprise customers may have a fleet that i
 Multiple Input Matrices
 ------------------------------
 
-A cost matrix needs to be a square matrix of some travel metric that is passed to the NVIDIA cuOpt solver. In many variations of the Traveling Salesman Problem (TSP), this includes travel time, distance, or another business cost. A cost matrix is a square matrix that represents the cost of traveling between each two pairs of locations in the problem. ``cost matrix`` can hold any cost matrix; the cost can be travel time, travel distance, dollar cost, or any weighted function of cost. If the cost matrix doesn't use travel time, ``travel time matrix`` should be used so that the cost matrix is used for optimization, while the travel time matrix is used for meeting time constraints. 
+A cost matrix needs to be a square matrix of some travel metric that is passed to the NVIDIA cuOpt solver. In many variations of the Traveling Salesman Problem (TSP), this includes travel time, distance, or another business cost. A cost matrix is a square matrix that represents the cost of traveling between each two pairs of locations in the problem. ``cost matrix`` can hold any cost matrix; the cost can be travel time, travel distance, dollar cost, or any weighted function of cost. If the cost matrix doesn't use travel time, ``travel time matrix`` should be used so that the cost matrix is used for optimization, while the travel time matrix is used for meeting time constraints.
 
 In the case of a heterogeneous fleet, different vehicle types may have different travel times. To support this, multiple ``cost matrix`` and ``travel time matrix`` can be provided such that each vehicle type has a corresponding matrix.
 
@@ -80,7 +80,7 @@ Some use cases may include picking up an order from one location and delivering 
 Precise Time Limits
 ------------------------------
 
-It is recommended to use the default time limit (which is ``10 + number_of_nodes/6``) seconds. If the time limit is set to X seconds, then solver continues to run for X seconds even when there is no improvement in the solution quality. 
+It is recommended to use the default time limit (which is ``10 + number_of_nodes/6``) seconds. If the time limit is set to X seconds, then solver continues to run for X seconds even when there is no improvement in the solution quality.
 
 .. note::
 
@@ -105,15 +105,15 @@ Fixed Cost per Vehicle
 -----------------------
 Vehicles can have different fixed costs associated with them. This helps in scenarios where a single vehicle with a higher cost can be avoided if it can be done with two or more vehicles with lesser costs. This would be dependent on the objective function.
 
-Mapping Orders to Vehicles, and Vehicles to Orders 
+Mapping Orders to Vehicles, and Vehicles to Orders
 ---------------------------------------------------
-By default, cuOpt will assign orders to vehicles based on the optimal routes. However, in some cases, it makes sense to assign specific orders to specific vehicles, or, conversely, specific vehicles to specific orders. 
+By default, cuOpt will assign orders to vehicles based on the optimal routes. However, in some cases, it makes sense to assign specific orders to specific vehicles, or, conversely, specific vehicles to specific orders.
 
--  ``order vehicle match`` allows assigning orders to vehicles. For example, a food distribution center wants to make shipments to grocery stores around the city. Say the fleet consists of refrigerated trucks, such that they can carry frozen food, and vans, which cannot. In this case, we want to assign the orders that contain frozen food to the trucks (rather than just any vehicle). 
+-  ``order vehicle match`` allows assigning orders to vehicles. For example, a food distribution center wants to make shipments to grocery stores around the city. Say the fleet consists of refrigerated trucks, such that they can carry frozen food, and vans, which cannot. In this case, we want to assign the orders that contain frozen food to the trucks (rather than just any vehicle).
 
 -  ``vehicle order match`` allows assigning vehicles to orders. For example, a maintenance company can have many employees (technicians) who can fulfil various tasks. When a customer requests a service, the company may dispatch any available technician to fulfill their request. However, if a customers request a service that only one technician can fulfill, those orders can be assigned to this one technician.
 
-In cases where a set of orders need to be assigned to a set of vehicles, either constraint can be used as long as the mapping is done correctly. 
+In cases where a set of orders need to be assigned to a set of vehicles, either constraint can be used as long as the mapping is done correctly.
 
 Initial Solution
 ----------------
