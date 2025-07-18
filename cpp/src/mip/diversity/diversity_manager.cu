@@ -795,6 +795,11 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
                                                          f_t objective)
 {
   CUOPT_LOG_DEBUG("Setting simplex solution with objective %f", objective);
+  using sol_t = solution_t<i_t, f_t>;
+  cuopt_func_call(sol_t new_sol(*problem_ptr));
+  cuopt_func_call(new_sol.copy_new_assignment(solution));
+  cuopt_func_call(new_sol.compute_feasibility());
+  cuopt_assert(integer_equal(new_sol.get_user_objective(), objective, 1e-3), "Objective mismatch");
   std::lock_guard<std::mutex> lock(relaxed_solution_mutex);
   RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
   simplex_solution_exists = true;
