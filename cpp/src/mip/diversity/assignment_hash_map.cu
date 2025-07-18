@@ -31,7 +31,8 @@ namespace detail {
 struct combine_hash {
   DI size_t operator()(size_t hash_1, size_t hash_2)
   {
-    hash_1 ^= hash_2 + 0x9e3779b9 + (hash_1 << 6) + (hash_1 >> 2);
+    const std::size_t magic_constant = 0x9e3779b97f4a7c15;
+    hash_1 ^= hash_2 + magic_constant + (hash_1 << 12) + (hash_1 >> 4);
     return hash_1;
   }
 };
@@ -68,7 +69,8 @@ template <typename i_t, typename f_t>
 assignment_hash_map_t<i_t, f_t>::assignment_hash_map_t(const problem_t<i_t, f_t>& problem)
   : reduction_buffer(problem.n_variables, problem.handle_ptr->get_stream()),
     integer_assignment(problem.n_integer_vars, problem.handle_ptr->get_stream()),
-    hash_sum(problem.handle_ptr->get_stream())
+    hash_sum(problem.handle_ptr->get_stream()),
+    temp_storage(0, problem.handle_ptr->get_stream())
 {
 }
 
@@ -81,7 +83,7 @@ void assignment_hash_map_t<i_t, f_t>::fill_integer_assignment(solution_t<i_t, f_
                  solution.problem_ptr->integer_indices.begin(),
                  solution.problem_ptr->integer_indices.end(),
                  solution.assignment.begin(),
-                 integer_assignment.begin());
+                 reinterpret_cast<double*>(integer_assignment.data()));
 }
 
 template <typename i_t, typename f_t>
@@ -94,10 +96,43 @@ size_t assignment_hash_map_t<i_t, f_t>::hash_solution(solution_t<i_t, f_t>& solu
   hash_solution_kernel<i_t, f_t, TPB>
     <<<(integer_assignment.size() + TPB - 1) / TPB, TPB, 0, solution.handle_ptr->get_stream()>>>(
       cuopt::make_span(integer_assignment), cuopt::make_span(reduction_buffer));
-  reduce_hash_kernel<i_t, f_t, TPB><<<1, TPB, 0, solution.handle_ptr->get_stream()>>>(
-    make_span(reduction_buffer), hash_sum.data());
-  size_t hash_value = hash_sum.value(solution.handle_ptr->get_stream());
-  return hash_value;
+  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  // Get the number of blocks used in the hash_solution_kernel
+  int num_blocks = (integer_assignment.size() + TPB - 1) / TPB;
+
+  // If we have more than one block, perform a device-wide reduction using CUB
+  if (num_blocks > 1) {
+    // Determine temporary device storage requirements
+    void* d_temp_storage      = nullptr;
+    size_t temp_storage_bytes = 0;
+    cub::DeviceReduce::Reduce(d_temp_storage,
+                              temp_storage_bytes,
+                              reduction_buffer.data(),
+                              hash_sum.data(),
+                              num_blocks,
+                              combine_hash(),
+                              0,
+                              solution.handle_ptr->get_stream());
+
+    // Allocate temporary storage
+    temp_storage.resize(temp_storage_bytes, solution.handle_ptr->get_stream());
+    d_temp_storage = temp_storage.data();
+
+    // Run reduction
+    cub::DeviceReduce::Reduce(d_temp_storage,
+                              temp_storage_bytes,
+                              reduction_buffer.data(),
+                              hash_sum.data(),
+                              num_blocks,
+                              combine_hash(),
+                              0,
+                              solution.handle_ptr->get_stream());
+
+    // Return early since we've already computed the hash sum
+    return hash_sum.value(solution.handle_ptr->get_stream());
+  } else {
+    return reduction_buffer.element(0, solution.handle_ptr->get_stream());
+  }
 }
 
 template <typename i_t, typename f_t>

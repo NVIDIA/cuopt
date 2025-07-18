@@ -37,6 +37,7 @@ class assignment_hash_map_t {
   rmm::device_uvector<size_t> reduction_buffer;
   rmm::device_uvector<size_t> integer_assignment;
   rmm::device_scalar<size_t> hash_sum;
+  rmm::device_buffer temp_storage;
 };
 
 }  // namespace detail
