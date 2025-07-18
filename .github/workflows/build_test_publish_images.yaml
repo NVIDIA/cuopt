@@ -14,7 +14,7 @@
 # limitations under the License.
 
 name: Build, Test and Publish cuopt images
-  
+
 on:
   workflow_call:
     inputs:
@@ -126,7 +126,7 @@ jobs:
       - name: Checkout code repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 
+          fetch-depth: 0
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:

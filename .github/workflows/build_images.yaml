@@ -31,7 +31,7 @@ on:
         required: true
         type: string
       LINUX_VER:
-        required: true  
+        required: true
         type: string
       PYTHON_VER:
         required: true
@@ -101,4 +101,4 @@ jobs:
             docker push nvcr.io/nvstaging/nvaie/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
 
 
-        
+
