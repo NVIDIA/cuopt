@@ -31,7 +31,7 @@
 #   --mip-heuristics-only : Run mip heuristics only
 #   --write-log-file : Write log file
 #   --num-cpu-threads : Number of CPU threads to use
-#   --batch-num : Batch number
+#   --batch-num : Batch number.  This allows to split the work across multiple batches uniformly when resources are limited.
 #   --n-batches : Number of batches
 #   --log-to-console : Log to console
 #
@@ -44,6 +44,9 @@
 #
 #   # Run with custom output directory
 #   ./run_mps_files.sh --path /data/lp --output-dir ~/results/lp_benchmark
+#
+#   # Run with batch number
+#   ./run_mps_files.sh --path /data/lp --ngpus 2 --time-limit 3600 --batch-num 0 --n-batches 2
 #
 # Notes:
 #   - Files are distributed dynamically across available GPUs for load balancing
@@ -120,6 +123,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --relaxation)
+            echo "Running relaxation"
             RELAXATION=true
             shift
             ;;
@@ -248,16 +252,16 @@ worker() {
         if [ -n "$NUM_CPU_THREADS" ]; then
             args="$args --num-cpu-threads $NUM_CPU_THREADS"
         fi
-        if [ -n "$MIP_HEURISTICS_ONLY" ]; then
-            args="$args --mip-heuristics-only $MIP_HEURISTICS_ONLY"
+        if [ "$MIP_HEURISTICS_ONLY" = true ]; then
+            args="$args --mip-heuristics-only true"
         fi
-        if [ -n "$WRITE_LOG_FILE" ]; then
+        if [ "$WRITE_LOG_FILE" = true ]; then
             args="$args --log-file $OUTPUT_DIR/$(basename "${mps_file%.mps}").log"
         fi
-        if [ -n "$RELAXATION" ]; then
+        if [ "$RELAXATION" = true ]; then
             args="$args --relaxation"
         fi
-        if [ -n "$LOG_TO_CONSOLE" ]; then
+        if [ "$LOG_TO_CONSOLE" = true ]; then
             args="$args --log-to-console $LOG_TO_CONSOLE"
         fi
 
