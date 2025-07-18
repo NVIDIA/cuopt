@@ -19,7 +19,12 @@ client = RequestClient()
 
 
 def test_health(cuoptproc):  # noqa
+    # Normal health check
     response = client.get("/cuopt/health")
+    assert response.status_code == 200
+
+    # health check with root path
+    response = client.get("/")
     assert response.status_code == 200
 
 

@@ -150,6 +150,11 @@ async def request_exception_handler(request, exc):
 
 
 @app.get(
+    "/",
+    description="To ping if server is running",
+    responses=HealthResponse,
+)
+@app.get(
     "/cuopt/health",
     description="To ping if server is running",
     responses=HealthResponse,
