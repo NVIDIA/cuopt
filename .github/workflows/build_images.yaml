@@ -99,6 +99,3 @@ jobs:
         run: |
             docker tag nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }} nvcr.io/nvstaging/nvaie/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
             docker push nvcr.io/nvstaging/nvaie/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
-
-
-
