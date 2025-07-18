@@ -79,6 +79,7 @@ assignment_hash_map_t<i_t, f_t>::assignment_hash_map_t(const problem_t<i_t, f_t>
 template <typename i_t, typename f_t>
 void assignment_hash_map_t<i_t, f_t>::fill_integer_assignment(solution_t<i_t, f_t>& solution)
 {
+  static_assert(sizeof(f_t) == sizeof(size_t), "f_t must be double precision");
   thrust::gather(solution.handle_ptr->get_thrust_policy(),
                  solution.problem_ptr->integer_indices.begin(),
                  solution.problem_ptr->integer_indices.end(),
