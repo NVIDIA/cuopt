@@ -1,1 +1,0 @@
-Add all the files and data for the buildx context to this folder like entrypoint script, and others.
