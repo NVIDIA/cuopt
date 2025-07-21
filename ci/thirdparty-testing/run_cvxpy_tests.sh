@@ -17,7 +17,7 @@
 set -e -u -o pipefail
 
 echo "building 'cvxpy' from source"
-git clone -b cuopt_solver https://github.com/tmckayus/cvxpy
+git clone -b cuopt_solver https://github.com/cvxpy/cvxpy.git
 pushd ./cvxpy || exit 1
 pip wheel \
     -w dist \
@@ -36,4 +36,4 @@ echo "running 'cvxpy' tests"
 timeout 3m python -m pytest \
     --error-for-skips \
     -k "TestCUOPT" \
-    ./cvxpy/tests/test_conic_solvers.py
+    ./tests/test_conic_solvers.py
