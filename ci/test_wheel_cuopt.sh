@@ -31,17 +31,19 @@ LIBCUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" r
 # update pip constraints.txt to ensure all future 'pip install' (including those in ci/thirdparty-testing)
 # use these wheels for cuopt packages
 cat > "${PIP_CONSTRAINT}" <<EOF
-cuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${CUOPT_WHEELHOUSE}/cuopt_${RAPIDS_PY_CUDA_SUFFIX}_*.whl)
-cuopt-mps-parser @ file://$(echo ${CUOPT_MPS_PARSER_WHEELHOUSE}/cuopt_mps_parser_*.whl)
-cuopt-sh-client @ file://$(echo ${CUOPT_SH_CLIENT_WHEELHOUSE}/cuopt_sh_client_*.whl)
-cuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${LIBCUOPT_WHEELHOUSE}/cuopt_${RAPIDS_PY_CUDA_SUFFIX}_*.whl)
+cuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${CUOPT_WHEELHOUSE}/cuopt_${RAPIDS_PY_CUDA_SUFFIX}-*.whl)
+cuopt-mps-parser @ file://$(echo ${CUOPT_MPS_PARSER_WHEELHOUSE}/cuopt_mps_parser-*.whl)
+cuopt-sh-client @ file://$(echo ${CUOPT_SH_CLIENT_WHEELHOUSE}/cuopt_sh_client-*.whl)
+libcuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${LIBCUOPT_WHEELHOUSE}/libcuopt_${RAPIDS_PY_CUDA_SUFFIX}-*.whl)
 EOF
 
 # echo to expand wildcard before adding `[extra]` requires for pip
 rapids-pip-retry install \
     --extra-index-url=https://pypi.nvidia.com \
+    --constraint "${PIP_CONSTRAINT}" \
     "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
     "$(echo "${CUOPT_WHEELHOUSE}"/cuopt*.whl)[test]" \
+    "${CUOPT_SH_CLIENT_WHEELHOUSE}"/cuopt_sh_client*.whl \
     "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl
 
 python -c "import cuopt"
