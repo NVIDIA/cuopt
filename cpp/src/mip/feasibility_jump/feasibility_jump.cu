@@ -842,9 +842,6 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
   f_t obj = -std::numeric_limits<f_t>::infinity();
   data.incumbent_quality.set_value_async(obj, handle_ptr->get_stream());
 
-  cuopt_assert((settings.termination & fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT) ||
-                 (settings.termination & fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT),
-               "invalid termination criteria");
   data.incumbent_quality.set_value_async(obj, handle_ptr->get_stream());
 
   timer_t timer(settings.time_limit);
@@ -853,14 +850,7 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
   for (steps = 0; steps < std::numeric_limits<i_t>::max(); steps += iterations_per_graph) {
     // to actualize time limit
     handle_ptr->sync_stream();
-    if ((settings.termination & fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT) &&
-        timer.check_time_limit()) {
-      limit_reached = true;
-    }
-    if ((settings.termination & fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT) &&
-        steps >= settings.iteration_limit) {
-      limit_reached = true;
-    }
+    if (timer.check_time_limit() || steps >= settings.iteration_limit) { limit_reached = true; }
 
 #if !FJ_SINGLE_STEP
     if (steps % 500 == 0)
