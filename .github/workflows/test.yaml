@@ -40,7 +40,6 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       script: ci/test_cpp.sh
   conda-python-tests:
     secrets: inherit
@@ -51,7 +50,6 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       script: ci/test_python.sh
   wheel-tests-cuopt:
     secrets: inherit
@@ -61,7 +59,6 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       script: ci/test_wheel_cuopt.sh
   wheel-tests-cuopt-server:
     secrets: inherit
@@ -71,5 +68,4 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       script: ci/test_wheel_cuopt_server.sh
