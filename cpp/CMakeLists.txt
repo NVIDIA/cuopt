@@ -312,7 +312,7 @@ target_compile_options(cuopt_cli
 )
 
 target_include_directories(cuopt_cli
-  PRIVATE  
+  PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
   PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -327,7 +327,7 @@ target_link_libraries(cuopt_cli
 )
 set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
-# FIXME:: Is this the right way? 
+# FIXME:: Is this the right way?
 install(TARGETS cuopt_cli
   DESTINATION ${CMAKE_INSTALL_BINDIR})
 

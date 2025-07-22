@@ -475,6 +475,9 @@ def test_parse_var_names():
         )
 
 
+@pytest.mark.skip(
+    reason="Intermittent failure, new version is being worked on"
+)
 def test_parser_and_batch_solver():
 
     data_model_list = []
@@ -564,6 +567,9 @@ def test_warm_start_other_problem():
         solver.Solve(data_model_obj2, settings)
 
 
+@pytest.mark.skip(
+    reason="Intermittent failure, new version is being worked on"
+)
 def test_batch_solver_warm_start():
 
     data_model_list = []

@@ -1,5 +1,5 @@
 name: Build Managed service docker, deploy and test
-  
+
 on:
   workflow_dispatch:
     inputs:
@@ -33,7 +33,7 @@ permissions:
 
 jobs:
   managed-service-nightly-amd:
-    name: Managed service nightly build for AMD64 architecture 
+    name: Managed service nightly build for AMD64 architecture
     env:
       GH_TOKEN: ${{ github.token }}
       RAPIDS_BUILD_TYPE: ${{ inputs.build_type }}
@@ -117,7 +117,7 @@ jobs:
             docker push nvcr.io/0616513341838337/cuopt:25.08
 
   managed-service-nightly-arm:
-    name: Managed service nightly build for ARM architecture 
+    name: Managed service nightly build for ARM architecture
     env:
       GH_TOKEN: ${{ github.token }}
       RAPIDS_BUILD_TYPE: ${{ inputs.build_type }}
