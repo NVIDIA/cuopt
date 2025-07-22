@@ -12,4 +12,4 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "cuopt-server.selectorLabels" . | nindent 4 }} 
+    {{- include "cuopt-server.selectorLabels" . | nindent 4 }}
