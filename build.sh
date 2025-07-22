@@ -268,8 +268,8 @@ if  [ ${BUILD_ALL_GPU_ARCH} -eq 1 ]; then
     echo "Building for *ALL* supported GPU architectures..."
 else
     if [ ${BUILD_CI_ONLY} -eq 1 ]; then
-            CUOPT_CMAKE_CUDA_ARCHITECTURES="RAPIDS"
-            echo "Building for Volta, Ampere and Hopper architectures..."
+        CUOPT_CMAKE_CUDA_ARCHITECTURES="RAPIDS"
+        echo "Building for Volta, Ampere and Hopper architectures..."
     else
         CUOPT_CMAKE_CUDA_ARCHITECTURES="NATIVE"
         echo "Building for the architecture of the GPU in the system..."
