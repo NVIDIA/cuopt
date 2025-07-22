@@ -61,6 +61,7 @@ jobs:
         run: |
           cp ./LICENSE ./ci/docker/context/LICENSE
           cp ./VERSION ./ci/docker/context/VERSION
+          cp ./thirdparty/THIRD_PARTY_LICENSES ./ci/docker/context/THIRD_PARTY_LICENSES
       - name: Login to NGC
         uses: docker/login-action@v3
         with:

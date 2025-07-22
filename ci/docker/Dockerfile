@@ -76,6 +76,7 @@ RUN cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
 
 COPY ./LICENSE /home/cuopt/LICENSE
 COPY ./VERSION /home/cuopt/VERSION
+COPY ./THIRD_PARTY_LICENSES /home/cuopt/THIRD_PARTY_LICENSES
 
 FROM install-env AS cuopt-final 
 
