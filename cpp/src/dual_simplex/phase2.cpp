@@ -73,7 +73,7 @@ void compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
     original_residual[j] -= lp.objective[j];
   }
   const f_t original_residual_norm = vector_norm2<i_t, f_t>(original_residual);
-  printf("|| A'*y + z - c || = %e\n", original_residual_norm);
+  settings.log.printf("|| A'*y + z - c || = %e\n", original_residual_norm);
 
 
   std::vector<f_t> zl(n);
@@ -91,10 +91,14 @@ void compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
     original_residual[j] -= (zu[j] + lp.objective[j]);
   }
   const f_t original_residual_2 = vector_norm2<i_t, f_t>(original_residual);
-  printf("|| A'*y + zl - zu - c || = %e\n", original_residual_2);
+  settings.log.printf("|| A'*y + zl - zu - c || = %e\n", original_residual_2);
 
 
-  std::vector<f_t> y_bar = y;
+  std::vector<f_t> search_dir_residual = delta_z;
+  matrix_transpose_vector_multiply(lp.A, 1.0, delta_y, 1.0, search_dir_residual);
+  settings.log.printf("|| A'*delta_y + delta_z || = %e\n", vector_norm2<i_t, f_t>(search_dir_residual));
+
+  std::vector<f_t> y_bar(m);
   for (i_t i = 0; i < m; ++i)
   {
     y_bar[i] = y[i] + delta_y[i];
@@ -106,7 +110,7 @@ void compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
     original_residual[j] += (delta_z[j] - lp.objective[j]);
   }
   const f_t original_residual_3 = vector_norm2<i_t, f_t>(original_residual);
-  printf("|| A'*(y + delta_y) + (z + delta_z) - c || = %e\n", original_residual_3);
+  settings.log.printf("|| A'*(y + delta_y) + (z + delta_z) - c || = %e\n", original_residual_3);
 
 
 
@@ -141,15 +145,22 @@ void compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
   // We need the new objective to be at least positive_threshold
   // positive_threshold = obj_val+ alpha * infeas
   // infeas > 0, alpha > 0, positive_threshold > 0
+  printf("direction = %d\n", direction);
+  printf("lower %e x %e upper %d\n", lp.lower[leaving_index], x[leaving_index], lp.upper[leaving_index]);
   printf("infeas = %e\n", infeas);
   printf("obj_val = %e\n", obj_val);
   alpha = std::max(threshold,(positive_threshold - obj_val) / infeas);
   printf("alpha = %e\n", alpha);
 
+  std::vector<f_t> y_prime(m);
+  std::vector<f_t> zl_prime(n);
+  std::vector<f_t> zu_prime(n);
+
   // farkas_y = y + alpha * delta_y
   for (i_t i = 0; i < m; ++i)
   {
     farkas_y[i] = y[i] + alpha * delta_y[i];
+    y_prime[i] = y[i] + alpha * delta_y[i];
   }
   // farkas_zl = z + alpha * delta_z  - c-
   for (i_t j = 0; j < n; ++j)
@@ -158,6 +169,7 @@ void compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
     const f_t z_j = z[j];
     const f_t delta_z_j = delta_z[j];
     farkas_zl[j] = std::max(0.0, z_j) + alpha * std::max(0.0, delta_z_j) + -std::min(0.0, cj);
+    zl_prime[j] = zl[j] + alpha * std::max(0.0, delta_z_j);
   }
 
   // farkas_zu = z + alpha * delta_z + c+
@@ -167,14 +179,22 @@ void compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
     const f_t z_j = z[j];
     const f_t delta_z_j = delta_z[j];
     farkas_zu[j] = -std::min(0.0, z_j) - alpha * std::min(0.0, delta_z_j) + std::max(0.0, cj);
+    zu_prime[j] = zu[j] + alpha * (-std::min(0.0, delta_z_j));
   }
 
   // farkas_constant = b'*farkas_y + l'*farkas_zl - u'*farkas_zu
   farkas_constant = 0.0;
+  f_t test_constant = 0.0;
+  f_t test_3 = 0.0;
   for (i_t i = 0; i < m; ++i)
   {
     farkas_constant += lp.rhs[i] * farkas_y[i];
+    test_constant += lp.rhs[i] * y_prime[i];
+    test_3 += lp.rhs[i] * delta_y[i];
   }
+  printf("b'*delta_y = %e\n", test_3);
+  printf("|| b || %e\n", vector_norm_inf<i_t, f_t>(lp.rhs));
+  printf("|| delta y || %e\n", vector_norm_inf<i_t, f_t>(delta_y));
   for (i_t j = 0; j < n; ++j)
   {
     const f_t lower = lp.lower[j];
@@ -182,10 +202,16 @@ void compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
     if (lower > -inf)
     {
       farkas_constant += lower * farkas_zl[j];
+      test_constant += lower * zl_prime[j];
+      const f_t delta_z_l_j = std::max(delta_z[j], 0.0);
+      test_3 += lower * delta_z_l_j;
     }
     if (upper < inf)
     {
       farkas_constant -= upper * farkas_zu[j];
+      test_constant -= upper * zu_prime[j];
+      const f_t delta_z_u_j = -std::min(delta_z[j], 0.0);
+      test_3 -= upper * delta_z_u_j;
     }
   }
 
@@ -204,16 +230,21 @@ void compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
   {
     zl_min = std::min(zl_min, farkas_zl[j]);
   }
-  printf("farkas_zl_min = %e\n", zl_min);
+  settings.log.printf("farkas_zl_min = %e\n", zl_min);
   f_t zu_min = 0.0;
   for (i_t j = 0; j < n; ++j)
   {
     zu_min = std::min(zu_min, farkas_zu[j]);
   }
-  printf("farkas_zu_min = %e\n", zu_min);
+  settings.log.printf("farkas_zu_min = %e\n", zu_min);
 
-  printf("|| A'*farkas_y + farkas_zl - farkas_zu || = %e\n", residual_norm);
-  printf("b'*farkas_y + l'*farkas_zl - u'*farkas_zu = %e\n", farkas_constant);
+  settings.log.printf("|| A'*farkas_y + farkas_zl - farkas_zu || = %e\n", residual_norm);
+  settings.log.printf("b'*farkas_y + l'*farkas_zl - u'*farkas_zu = %e\n", farkas_constant);
+
+  if (residual_norm < 1e-6 && farkas_constant > 0.0 && zl_min >= 0.0 && zu_min >= 0.0)
+  {
+    settings.log.printf("Farkas certificate of infeasibility constructed\n");
+  }
 }
 
 
@@ -324,7 +355,7 @@ void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
   {
     const i_t i = delta_y.i[k];
     const f_t delta_y_i = delta_y.x[k];
-    if (std::abs(delta_y_i) < 1e-12) {
+    if (0 && std::abs(delta_y_i) < 1e-12) {
       continue;
     }
     const i_t row_start = A_transpose.col_start[i];
@@ -355,6 +386,8 @@ void compute_reduced_cost_update(const lp_problem_t<i_t, f_t>& lp,
                                  const std::vector<f_t>& delta_y,
                                  i_t leaving_index,
                                  i_t direction,
+                                 std::vector<i_t>& delta_z_mark,
+                                 std::vector<i_t>& delta_z_indices,
                                  std::vector<f_t>& delta_z)
 {
   const i_t m = lp.num_rows;
@@ -377,6 +410,11 @@ void compute_reduced_cost_update(const lp_problem_t<i_t, f_t>& lp,
       dot += lp.A.x[p] * delta_y[lp.A.i[p]];
     }
     delta_z[j] = -dot;
+    if (dot != 0.0)
+    {
+      delta_z_indices.push_back(j);
+      delta_z_mark[j] = 1;
+    }
   }
 }
 
@@ -394,7 +432,7 @@ void clear_delta_z(i_t entering_index,
     delta_z[j] = 0.0;
     delta_z_mark[j] = 0;
   }
-  delta_z[entering_index] = 0.0;
+  if (entering_index != -1) { delta_z[entering_index] = 0.0; }
   delta_z[leaving_index] = 0.0;
   delta_z_indices.clear();
 }
@@ -469,6 +507,57 @@ void compute_dual_solution_from_basis(const lp_problem_t<i_t, f_t>& lp,
   for (i_t k = 0; k < m; ++k) {
     z[basic_list[k]] = 0.0;
   }
+}
+
+template <typename i_t, typename f_t>
+i_t compute_primal_solution_from_basis(const lp_problem_t<i_t, f_t>& lp,
+                                        basis_update_mpf_t<i_t, f_t>& ft,
+                                        const std::vector<i_t>& basic_list,
+                                        const std::vector<i_t>& nonbasic_list,
+                                        const std::vector<variable_status_t>& vstatus,
+                                        std::vector<f_t>& x)
+{
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+  std::vector<f_t> rhs = lp.rhs;
+
+  for (i_t k = 0; k < n - m; ++k)
+  {
+    const i_t j = nonbasic_list[k];
+    if (vstatus[j] == variable_status_t::NONBASIC_LOWER || vstatus[j] == variable_status_t::NONBASIC_FIXED)
+    {
+      x[j] = lp.lower[j];
+    }
+    else if (vstatus[j] == variable_status_t::NONBASIC_UPPER)
+    {
+      x[j] = lp.upper[j];
+    }
+    else if (vstatus[j] == variable_status_t::NONBASIC_FREE)
+    {
+      x[j] = 0.0;
+    }
+  }
+
+  // rhs = b - sum_{j : x_j = l_j} A(:, j) l(j) - sum_{j : x_j = u_j} A(:, j) *
+  // u(j)
+  for (i_t k = 0; k < n - m; ++k) {
+    const i_t j         = nonbasic_list[k];
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    const f_t xj        = x[j];
+    for (i_t p = col_start; p < col_end; ++p) {
+      rhs[lp.A.i[p]] -= xj * lp.A.x[p];
+    }
+  }
+
+  std::vector<f_t> xB(m);
+  ft.b_solve(rhs, xB);
+
+  for (i_t k = 0; k < m; ++k) {
+    const i_t j = basic_list[k];
+    x[j]        = xB[k];
+  }
+  return 0;
 }
 
 template <typename i_t, typename f_t>
@@ -2245,39 +2334,42 @@ dual::status_t dual_phase2(i_t phase,
       dense_delta_z++;
       // delta_zB = sigma*ei
       delta_y_sparse.to_dense(delta_y);
-      for (i_t k = 0; k < m; k++) {
-        const i_t j = basic_list[k];
-        delta_z[j]  = 0;
-      }
-      delta_z[leaving_index] = direction;
-      // delta_zN = -N'*delta_y
-      for (i_t k = 0; k < n - m; k++) {
-        const i_t j = nonbasic_list[k];
-        // z_j <- -A(:, j)'*delta_y
-        const i_t col_start = lp.A.col_start[j];
-        const i_t col_end   = lp.A.col_start[j + 1];
-        f_t dot             = 0.0;
-        for (i_t p = col_start; p < col_end; ++p) {
-          dot += lp.A.x[p] * delta_y[lp.A.i[p]];
-        }
-        delta_z[j] = -dot;
-        if (delta_z[j] != 0.0) {
-          delta_z_indices.push_back(j);
-          delta_z_mark[j] = 1;
-        }
-      }
+      phase2::compute_reduced_cost_update(lp,
+                                          basic_list,
+                                          nonbasic_list,
+                                          delta_y,
+                                          leaving_index,
+                                          direction,
+                                          delta_z_mark,
+                                          delta_z_indices,
+                                          delta_z);
     }
 
 #if 0
-    f_t error_check = 0.0;
-    for (i_t k = 0; k < n; ++k) {
-      if (std::abs(delta_z[k] - delta_z_check[k]) > 1e-6) {
-        settings.log.printf("delta_z error %d %e %e\n", k, delta_z[k], delta_z_check[k]);
+    if (use_transpose)
+    {
+      delta_y_sparse.to_dense(delta_y);
+      std::vector<f_t> delta_z_check(n);
+      std::vector<i_t> delta_z_mark_check(n, 0);
+      std::vector<i_t> delta_z_indices_check  ;
+       phase2::compute_reduced_cost_update(lp,
+                                          basic_list,
+                                          nonbasic_list,
+                                          delta_y,
+                                          leaving_index,
+                                          direction,
+                                          delta_z_mark_check,
+                                          delta_z_indices_check,
+                                          delta_z_check);
+      f_t error_check = 0.0;
+      for (i_t k = 0; k < n; ++k) {
+        const f_t diff = std::abs(delta_z[k] - delta_z_check[k]);
+        if (diff > 1e-6) {
+          settings.log.printf("delta_z error %d transpose %e no transpose %e diff %e\n", k, delta_z[k], delta_z_check[k], diff);
+        }
+        error_check = std::max(error_check, diff);
       }
-      error_check = std::max(error_check, std::abs(delta_z[k] - delta_z_check[k]));
-    }
-    if (error_check > 1e-6) {
-      settings.log.printf("delta_z error %e\n", error_check);
+      if (error_check > 1e-6) { settings.log.printf("delta_z error %e\n", error_check); }
     }
 #endif
     delta_z_time += toc(delta_z_start_time);
@@ -2287,7 +2379,7 @@ dual::status_t dual_phase2(i_t phase,
     // || A'*delta_y + delta_z ||_inf
     matrix_transpose_vector_multiply(lp.A, 1.0, delta_y, 1.0, dual_residual);
     f_t dual_residual_norm = vector_norm_inf<i_t, f_t>(dual_residual);
-    settings.log.printf("|| A'*dy - dz || %e\n", dual_residual_norm);
+    settings.log.printf("|| A'*dy - dz || %e use transpose %d\n", dual_residual_norm, use_transpose);
 #endif
 
     // Ratio test
@@ -2363,12 +2455,13 @@ dual::status_t dual_phase2(i_t phase,
     if (entering_index == -2) { return dual::status_t::TIME_LIMIT; }
     if (entering_index == -3) { return dual::status_t::CONCURRENT_LIMIT; }
     if (entering_index == -1) {
-      settings.log.printf("No entering variable found.\n");
-      settings.log.printf("Scaled steepest edge %e\n", max_val);
+      settings.log.printf("No entering variable found. Iter %d\n", iter);
+      settings.log.printf("Scaled infeasibility %e\n", max_val);
 
 
       f_t primal_inf_check = 0.0;
       i_t num_infeasible = 0;
+      f_t max_primal_infeas = 0.0;
       primal_infeasibility = 0.0;
       for (i_t k = 0; k < m; ++k) {
         const i_t j = basic_list[k];
@@ -2376,29 +2469,28 @@ dual::status_t dual_phase2(i_t phase,
         const f_t upper_infeas = x[j] - lp.upper[j];
         const f_t infeas = std::max(lower_infeas, upper_infeas);
         if (infeas > settings.primal_tol) {
-          //printf("%5d Basic infeasibility %5d %e. x %e lo %e up %e\n", num_infeasible, j, infeas, x[j], lp.lower[j], lp.upper[j]);
           primal_inf_check += infeas;
           num_infeasible++;
           primal_infeasibility += infeas * infeas;
           squared_infeasibilities[j] = infeas * infeas;
+          max_primal_infeas = std::max(max_primal_infeas, infeas);
         }
       }
 
-      for (i_t k = 0; k < m; ++k)
+      for (i_t j = 0; j < n; ++j)
       {
-        const i_t j = basic_list[k];
         delta_y_steepest_edge[j] = 1.0;
       }
 
       restart_steepest_edge = false;
-
-      settings.log.printf("Primal infeasibility %e Num infeasible %d\n", primal_inf_check, num_infeasible);
+      settings.log.printf("Max Primal infeasibility %e Sum Primal infeasibility %e Num infeasible %d\n", max_primal_infeas, primal_inf_check, num_infeasible);
       f_t perturbation = 0.0;
       for (i_t j = 0; j < n; ++j) {
         perturbation += std::abs(lp.objective[j] - objective[j]);
       }
+      settings.log.printf("Perturbation %e\n", perturbation);
 
-      if (perturbation > 1e-6 && phase == 2) {
+      if (perturbation > 0.0 && phase == 2) {
         // Try to remove perturbation
         std::vector<f_t> unperturbed_y(m);
         std::vector<f_t> unperturbed_z(n);
@@ -2412,15 +2504,58 @@ dual::status_t dual_phase2(i_t phase,
             z            = unperturbed_z;
             y            = unperturbed_y;
             perturbation = 0.0;
+
+            std::vector<f_t> unperturbed_x(n);
+            phase2::compute_primal_solution_from_basis(lp, ft, basic_list, nonbasic_list, vstatus, unperturbed_x);
+            x = unperturbed_x;
+            primal_infeasibility = phase2::compute_initial_primal_infeasibilities(
+              lp, settings, basic_list, x, squared_infeasibilities, infeasibility_indices);
+            settings.log.printf("Updated primal infeasibility: %e\n", primal_infeasibility);
+
             objective = lp.objective;
 
-            f_t obj_val = 0.0;
+            obj = 0.0;
             for (i_t j = 0; j < n; ++j)
             {
-              obj_val += objective[j] * x[j];
+              obj += objective[j] * x[j];
             }
 
-            constexpr bool use_farkas = false;
+            if (dual_infeas <= settings.dual_tol && primal_infeasibility <= settings.primal_tol)
+            {
+              phase2::prepare_optimality(lp,
+                                         settings,
+                                         ft,
+                                         objective,
+                                         basic_list,
+                                         nonbasic_list,
+                                         vstatus,
+                                         phase,
+                                         start_time,
+                                         max_val,
+                                         iter,
+                                         x,
+                                         y,
+                                         z,
+                                         sol);
+              status = dual::status_t::OPTIMAL;
+              break;
+            }
+
+
+            settings.log.printf("Continuing with perturbation removed and steepest edge norms reset\n");
+             // Clear delta_z
+            phase2::clear_delta_z(entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
+            continue;
+          } else {
+            settings.log.printf("Failed to remove perturbation of %.2e.\n", perturbation);
+          }
+        }
+      }
+
+      if (perturbation == 0.0 && phase == 2)
+      {
+
+            constexpr bool use_farkas = true;
 
             if constexpr (use_farkas) {
               std::vector<f_t> farkas_y;
@@ -2429,6 +2564,13 @@ dual::status_t dual_phase2(i_t phase,
               f_t farkas_constant;
               std::vector<f_t> my_delta_y;
               delta_y_sparse.to_dense(my_delta_y);
+
+
+              f_t obj_val = 0.0;
+              for (i_t j = 0; j < n; ++j)
+              {
+               obj_val += objective[j] * x[j];
+              }
               phase2::compute_farkas_certificate(lp,
                                                  settings,
                                                  vstatus,
@@ -2445,12 +2587,6 @@ dual::status_t dual_phase2(i_t phase,
                                                  farkas_zu,
                                                  farkas_constant);
             }
-            settings.log.printf("Continuing with perturbation removed and steepest edge norms reset\n");
-            continue;
-          } else {
-            settings.log.printf("Failed to remove perturbation of %.2e.\n", perturbation);
-          }
-        }
       }
 
       if (max_val < 2e-8) {
