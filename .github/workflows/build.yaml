@@ -104,7 +104,7 @@ jobs:
       script: ci/build_wheel_libcuopt.sh
       package-name: libcuopt
       package-type: cpp
-      matrix_filter: map(select(.PY_VER == "3.13"))
+      matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
   wheel-publish-libcuopt:
     needs: wheel-build-libcuopt
     secrets: inherit
