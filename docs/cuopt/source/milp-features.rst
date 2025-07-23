@@ -11,6 +11,7 @@ The MILP solver can be accessed in the following ways:
 
   Currently supported solvers:
    - AMPL
+   - GAMS
    - PuLP
 
 - **C API**: A native C API that provides direct low-level access to cuOpt's MILP solver, enabling integration into any application or system that can interface with C.

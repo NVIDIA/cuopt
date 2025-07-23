@@ -136,7 +136,6 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(
   solution_t<i_t, f_t>& solution,
   const rmm::device_uvector<f_t>& point_1,
   const rmm::device_uvector<f_t>& point_2,
-  i_t n_points_to_search,
   const rmm::device_uvector<f_t>& delta_vector,
   bool is_feasibility_run,
   cuopt::timer_t& timer)
@@ -157,7 +156,7 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(
   }
   f_t best_feasible_cost   = std::numeric_limits<f_t>::max();
   bool initial_is_feasible = solution.get_feasible();
-  middle_first_iterator_t it(n_points_to_search);
+  middle_first_iterator_t it(settings.n_points_to_search);
   int i;
   while (it.next(i)) {
     // make it one indexed
@@ -213,14 +212,12 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(
     cuopt_func_call(solution.test_variable_bounds(false));
     // do the search here
     fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
-    fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT;
-    fj.settings.n_of_minimums_for_exit = 50;
-    fj.settings.iteration_limit =
-      std::max(20 * fj.settings.n_of_minimums_for_exit, solution.problem_ptr->n_constraints / 50);
-    fj.settings.update_weights  = false;
-    fj.settings.feasibility_run = is_feasibility_run;
-    fj.settings.time_limit      = std::min(1., timer.remaining_time());
-    is_feasible                 = fj.solve(solution);
+    fj.settings.n_of_minimums_for_exit = settings.n_local_min;
+    fj.settings.iteration_limit        = settings.iteration_limit;
+    fj.settings.update_weights         = false;
+    fj.settings.feasibility_run        = is_feasibility_run;
+    fj.settings.time_limit             = std::min(1., timer.remaining_time());
+    is_feasible                        = fj.solve(solution);
     if (is_feasibility_run) {
       if (is_feasible) {
         CUOPT_LOG_DEBUG("Line segment found feasible");
@@ -275,7 +272,6 @@ template <typename i_t, typename f_t>
 bool line_segment_search_t<i_t, f_t>::search_line_segment(solution_t<i_t, f_t>& solution,
                                                           const rmm::device_uvector<f_t>& point_1,
                                                           const rmm::device_uvector<f_t>& point_2,
-                                                          i_t n_points_to_search,
                                                           bool is_feasibility_run,
                                                           cuopt::timer_t& timer)
 {
@@ -294,14 +290,14 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(solution_t<i_t, f_t>& 
                     delta_vector.begin(),
                     [] __device__(const f_t a, const f_t b) { return a - b; });
 
-  thrust::transform(
-    solution.handle_ptr->get_thrust_policy(),
-    delta_vector.begin(),
-    delta_vector.end(),
-    delta_vector.begin(),
-    [n_points_to_search] __device__(const f_t x) { return x / (n_points_to_search + 1); });
-  return search_line_segment(
-    solution, point_1, point_2, n_points_to_search, delta_vector, is_feasibility_run, timer);
+  thrust::transform(solution.handle_ptr->get_thrust_policy(),
+                    delta_vector.begin(),
+                    delta_vector.end(),
+                    delta_vector.begin(),
+                    [n_points = settings.n_points_to_search] __device__(const f_t x) {
+                      return x / (n_points + 1);
+                    });
+  return search_line_segment(solution, point_1, point_2, delta_vector, is_feasibility_run, timer);
 }
 
 #if MIP_INSTANTIATE_FLOAT
