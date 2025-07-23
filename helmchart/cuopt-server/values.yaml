@@ -83,6 +83,8 @@ command:
   - python
   - -m
   - cuopt_server.cuopt_service
+  - -p
+  - "5000"
 
 # Environment variables
 env: []
