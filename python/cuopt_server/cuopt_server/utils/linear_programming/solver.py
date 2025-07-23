@@ -212,36 +212,76 @@ def create_solver(LP_data, warmstart_data):
             tolerance = solver_config.tolerances
             if tolerance.optimality is not None:
                 solver_settings.set_optimality_tolerance(tolerance.optimality)
-            if tolerance.absolute_dual is not None:
+            if tolerance.absolute_dual_tolerance is not None:
+                solver_settings.set_parameter(
+                    CUOPT_ABSOLUTE_DUAL_TOLERANCE,
+                    tolerance.absolute_dual_tolerance,
+                )
+            elif tolerance.absolute_dual is not None:
                 solver_settings.set_parameter(
                     CUOPT_ABSOLUTE_DUAL_TOLERANCE, tolerance.absolute_dual
                 )
-            if tolerance.absolute_primal is not None:
+            if tolerance.absolute_primal_tolerance is not None:
+                solver_settings.set_parameter(
+                    CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
+                    tolerance.absolute_primal_tolerance,
+                )
+            elif tolerance.absolute_primal is not None:
                 solver_settings.set_parameter(
                     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, tolerance.absolute_primal
                 )
-            if tolerance.absolute_gap is not None:
+            if tolerance.absolute_gap_tolerance is not None:
+                solver_settings.set_parameter(
+                    CUOPT_ABSOLUTE_GAP_TOLERANCE,
+                    tolerance.absolute_gap_tolerance,
+                )
+            elif tolerance.absolute_gap is not None:
                 solver_settings.set_parameter(
                     CUOPT_ABSOLUTE_GAP_TOLERANCE, tolerance.absolute_gap
                 )
-            if tolerance.relative_dual is not None:
+            if tolerance.relative_dual_tolerance is not None:
+                solver_settings.set_parameter(
+                    CUOPT_RELATIVE_DUAL_TOLERANCE,
+                    tolerance.relative_dual_tolerance,
+                )
+            elif tolerance.relative_dual is not None:
                 solver_settings.set_parameter(
                     CUOPT_RELATIVE_DUAL_TOLERANCE, tolerance.relative_dual
                 )
-            if tolerance.relative_primal is not None:
+            if tolerance.relative_primal_tolerance is not None:
+                solver_settings.set_parameter(
+                    CUOPT_RELATIVE_PRIMAL_TOLERANCE,
+                    tolerance.relative_primal_tolerance,
+                )
+            elif tolerance.relative_primal is not None:
                 solver_settings.set_parameter(
                     CUOPT_RELATIVE_PRIMAL_TOLERANCE, tolerance.relative_primal
                 )
-            if tolerance.relative_gap is not None:
+            if tolerance.relative_gap_tolerance is not None:
+                solver_settings.set_parameter(
+                    CUOPT_RELATIVE_GAP_TOLERANCE,
+                    tolerance.relative_gap_tolerance,
+                )
+            elif tolerance.relative_gap is not None:
                 solver_settings.set_parameter(
                     CUOPT_RELATIVE_GAP_TOLERANCE, tolerance.relative_gap
                 )
-            if tolerance.primal_infeasible is not None:
+            if tolerance.primal_infeasible_tolerance is not None:
+                solver_settings.set_parameter(
+                    CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
+                    tolerance.primal_infeasible_tolerance,
+                )
+            elif tolerance.primal_infeasible is not None:
                 solver_settings.set_parameter(
                     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
                     tolerance.primal_infeasible,
                 )
-            if tolerance.dual_infeasible is not None:
+            if tolerance.dual_infeasible_tolerance is not None:
+                solver_settings.set_parameter(
+                    CUOPT_DUAL_INFEASIBLE_TOLERANCE,
+                    tolerance.dual_infeasible_tolerance,
+                )
+            elif tolerance.dual_infeasible is not None:
                 solver_settings.set_parameter(
                     CUOPT_DUAL_INFEASIBLE_TOLERANCE, tolerance.dual_infeasible
                 )
@@ -250,13 +290,26 @@ def create_solver(LP_data, warmstart_data):
                     CUOPT_MIP_INTEGRALITY_TOLERANCE,
                     tolerance.mip_integrality_tolerance,
                 )
+            elif tolerance.integrality_tolerance is not None:
+                solver_settings.set_parameter(
+                    CUOPT_MIP_INTEGRALITY_TOLERANCE,
+                    tolerance.integrality_tolerance,
+                )
             if tolerance.mip_absolute_gap is not None:
                 solver_settings.set_parameter(
                     CUOPT_MIP_ABSOLUTE_GAP, tolerance.mip_absolute_gap
                 )
+            elif tolerance.absolute_mip_gap is not None:
+                solver_settings.set_parameter(
+                    CUOPT_MIP_ABSOLUTE_GAP, tolerance.absolute_mip_gap
+                )
             if tolerance.mip_relative_gap is not None:
                 solver_settings.set_parameter(
                     CUOPT_MIP_RELATIVE_GAP, tolerance.mip_relative_gap
+                )
+            elif tolerance.relative_mip_gap is not None:
+                solver_settings.set_parameter(
+                    CUOPT_MIP_RELATIVE_GAP, tolerance.relative_mip_gap
                 )
         if warmstart_data is not None:
             solver_settings.set_pdlp_warm_start_data(warmstart_data)
