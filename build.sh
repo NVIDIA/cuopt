@@ -358,5 +358,5 @@ if buildAll || hasArg docs; then
 
     cd "${REPODIR}"/docs/cuopt
     make clean
-    make html
+    make html linkcheck
 fi
