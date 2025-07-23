@@ -51,7 +51,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   optimization_problem_t<i_t, f_t>& op_problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings = pdlp_solver_settings_t<i_t, f_t>{},
   bool problem_checking                            = true,
-  bool use_pdlp_solver_mode                        = true);
+  bool use_pdlp_solver_mode                        = true,
+  bool is_batch_mode                               = false);
 
 /**
  * @brief Linear programming solve function.
