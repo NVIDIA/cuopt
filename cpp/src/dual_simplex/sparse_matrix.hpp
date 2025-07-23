@@ -296,6 +296,25 @@ class sparse_vector_t {
     return dot;
   }
 
+  void negate()
+  {
+    const i_t nz = x.size();
+    for (i_t k = 0; k < nz; ++k) {
+      x[k] *= -1.0;
+    }
+  }
+
+  f_t find_coefficient(i_t index) const
+  {
+    const i_t nz = i.size();
+    for (i_t k = 0; k < nz; ++k) {
+      if (i[k] == index) {
+        return x[k];
+      }
+    }
+    return std::numeric_limits<f_t>::quiet_NaN();
+  }
+
   i_t n;
   std::vector<i_t> i;
   std::vector<f_t> x;
