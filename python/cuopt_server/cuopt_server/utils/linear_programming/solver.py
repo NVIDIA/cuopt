@@ -27,8 +27,10 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
     CUOPT_CROSSOVER,
     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
+    CUOPT_FIRST_PRIMAL_FEASIBLE,
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_ITERATION_LIMIT,
+    CUOPT_LOG_FILE,
     CUOPT_LOG_TO_CONSOLE,
     CUOPT_METHOD,
     CUOPT_MIP_ABSOLUTE_GAP,
@@ -38,11 +40,16 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_MIP_SCALING,
     CUOPT_NUM_CPU_THREADS,
     CUOPT_PDLP_SOLVER_MODE,
+    CUOPT_PER_CONSTRAINT_RESIDUAL,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
     CUOPT_RELATIVE_DUAL_TOLERANCE,
     CUOPT_RELATIVE_GAP_TOLERANCE,
     CUOPT_RELATIVE_PRIMAL_TOLERANCE,
+    CUOPT_SAVE_BEST_PRIMAL_SO_FAR,
+    CUOPT_SOLUTION_FILE,
+    CUOPT_STRICT_INFEASIBILITY,
     CUOPT_TIME_LIMIT,
+    CUOPT_USER_PROBLEM_FILE,
 )
 from cuopt.linear_programming.solver.solver_wrapper import (
     ErrorStatus,
@@ -156,7 +163,14 @@ def create_solver(LP_data, warmstart_data):
                 CUOPT_INFEASIBILITY_DETECTION,
                 solver_config.infeasibility_detection,
             )
-        if solver_config.pdlp_solver_mode is not None:
+        if solver_config.solver_mode is not None:
+            solver_settings.set_parameter(
+                CUOPT_PDLP_SOLVER_MODE,
+                linear_programming.solver_settings.PDLPSolverMode(
+                    solver_config.solver_mode
+                ),
+            )
+        elif solver_config.pdlp_solver_mode is not None:
             solver_settings.set_parameter(
                 CUOPT_PDLP_SOLVER_MODE,
                 linear_programming.solver_settings.PDLPSolverMode(
@@ -317,7 +331,11 @@ def create_solver(LP_data, warmstart_data):
             solver_settings.set_parameter(
                 CUOPT_MIP_SCALING, solver_config.mip_scaling
             )
-        if solver_config.mip_heuristics_only is not None:
+        if solver_config.heuristics_only is not None:
+            solver_settings.set_parameter(
+                CUOPT_MIP_HEURISTICS_ONLY, solver_config.heuristics_only
+            )
+        elif solver_config.mip_heuristics_only is not None:
             solver_settings.set_parameter(
                 CUOPT_MIP_HEURISTICS_ONLY, solver_config.mip_heuristics_only
             )
@@ -333,6 +351,38 @@ def create_solver(LP_data, warmstart_data):
             solver_settings.set_parameter(
                 CUOPT_LOG_TO_CONSOLE, solver_config.log_to_console
             )
+        if solver_config.strict_infeasibility is not None:
+            solver_settings.set_parameter(
+                CUOPT_STRICT_INFEASIBILITY, solver_config.strict_infeasibility
+            )
+        if solver_config.user_problem_file != "":
+            solver_settings.set_parameter(
+                CUOPT_USER_PROBLEM_FILE, solver_config.user_problem_file
+            )
+        if solver_config.per_constraint_residual is not None:
+            solver_settings.set_parameter(
+                CUOPT_PER_CONSTRAINT_RESIDUAL,
+                solver_config.per_constraint_residual,
+            )
+        if solver_config.save_best_primal_so_far is not None:
+            solver_settings.set_parameter(
+                CUOPT_SAVE_BEST_PRIMAL_SO_FAR,
+                solver_config.save_best_primal_so_far,
+            )
+        if solver_config.first_primal_feasible is not None:
+            solver_settings.set_parameter(
+                CUOPT_FIRST_PRIMAL_FEASIBLE,
+                solver_config.first_primal_feasible,
+            )
+        if solver_config.log_file != "":
+            solver_settings.set_parameter(
+                CUOPT_LOG_FILE, solver_config.log_file
+            )
+        if solver_config.solution_file != "":
+            solver_settings.set_parameter(
+                CUOPT_SOLUTION_FILE, solver_config.solution_file
+            )
+
     return warnings, solver_settings
 
 
