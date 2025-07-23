@@ -86,8 +86,8 @@ class cusparse_view_t {
   cusparseDnVecDescr_t tmp_dual;
 
   // reuse buffers for cusparse spmv
-  rmm::device_uvector<f_t> buffer_non_transpose;
-  rmm::device_uvector<f_t> buffer_transpose;
+  rmm::device_uvector<uint8_t> buffer_non_transpose;
+  rmm::device_uvector<uint8_t> buffer_transpose;
 
   // Ref to the A_T found in either
   // Initial problem, we use it to have an unscaled A_T
