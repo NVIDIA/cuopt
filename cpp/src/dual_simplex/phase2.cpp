@@ -2103,7 +2103,6 @@ void prepare_optimality(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Primal infeasibility (abs): %.2e\n", primal_infeas);
       settings.log.printf("Dual infeasibility (abs):   %.2e\n", dual_infeas);
       settings.log.printf("Perturbation:               %.2e\n", perturbation);
-      settings.log.printf("Max steepest edge norm:     %.2e\n", max_val);
     } else {
       settings.log.printf("\n");
       settings.log.printf(
@@ -2341,7 +2340,7 @@ dual::status_t dual_phase2(i_t phase,
                         vector_norm2<i_t, f_t>(delta_y_steepest_edge));
   }
 
-  if (phase == 2) { settings.log.printf(" Iter     Objective   Primal Infeas  Perturb  Time\n"); }
+  if (phase == 2) { settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.     Perturb  Time\n"); }
 
   const i_t iter_limit = settings.iteration_limit;
   std::vector<f_t> delta_y(m, 0.0);
@@ -2372,8 +2371,6 @@ dual::status_t dual_phase2(i_t phase,
   lp.A.transpose(A_transpose);
 
   f_t obj = compute_objective(lp, x);
-  settings.log.printf("Initial objective %e\n", obj);
-
   const i_t start_iter = iter;
 
   i_t sparse_delta_z = 0;
@@ -2447,20 +2444,6 @@ dual::status_t dual_phase2(i_t phase,
       delta_y_steepest_edge[leaving_index] = steepest_edge_norm_check;
       continue;
     }
-
-#ifdef COMPUTE_BTRANSPOSE_RESIDUAL
-    {
-      std::vector<f_t> res(m);
-      b_transpose_multiply(lp, basic_list, delta_y, res);
-      f_t max_err = 0.0;
-      for (i_t k = 0; k < m; k++) {
-        const f_t err = std::abs(res[k] - ei[k]);
-        if (err > 1e-4) { settings.log.printf("BT err %d %e\n", k, err); }
-        max_err = std::max(max_err, err);
-      }
-      printf("BTranspose multiply error %e\n", max_err);
-    }
-#endif
 
     timers.start_timer();
     i_t delta_y_nz0 = 0;
@@ -2817,7 +2800,7 @@ dual::status_t dual_phase2(i_t phase,
     phase2::compute_perturbation(lp, settings, delta_z_indices, z, objective, sum_perturb);
     timers.perturb_time += timers.stop_timer();
 
-    // Update basis
+    // Update basis information
     vstatus[entering_index] = variable_status_t::BASIC;
     if (lp.lower[leaving_index] != lp.upper[leaving_index]) {
       vstatus[leaving_index] = static_cast<variable_status_t>(-direction);
@@ -2832,7 +2815,7 @@ dual::status_t dual_phase2(i_t phase,
     basic_mark[entering_index] = basic_leaving_index;
 
     timers.start_timer();
-    // Refactor or Update
+    // Refactor or update the basis factorization
     bool should_refactor = ft.num_updates() > settings.refactor_frequency;
     if (!should_refactor) {
       i_t recommend_refactor = ft.update(utilde_sparse, UTsol_sparse, basic_leaving_index);
@@ -2875,29 +2858,23 @@ dual::status_t dual_phase2(i_t phase,
 
     iter++;
 
-    // Clear delta_y
-    //const i_t nz_dy = delta_y_sparse.i.size();
-    //for (i_t k = 0; k < nz_dy; ++k) {
-    // delta_y[delta_y_sparse.i[k]] = 0.0;
-    //}
-
+    // TODO(CMM): Do we also need to clear delta_y?
     // Clear delta_z
     phase2::clear_delta_z(entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
 
 
-    f_t now       = toc(start_time);
+    f_t now = toc(start_time);
     if ((iter - start_iter) < settings.first_iteration_log ||
         (iter % settings.iteration_log_frequency) == 0) {
       if (phase == 1 && iter == 1) {
-        settings.log.printf(" Iter     Objective   Primal Infeas  Perturb  Time\n");
+        settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.     Perturb  Time\n");
       }
-      settings.log.printf("%5d %+.16e %8d %.8e %.2e %.2e %.2f\n",
+      settings.log.printf("%5d %+.16e %7d %.8e %.2e %.2f\n",
                           iter,
                           compute_user_objective(lp, obj),
                           infeasibility_indices.size(),
                           primal_infeasibility,
                           sum_perturb,
-                          step_length,
                           now);
     }
 
@@ -2917,9 +2894,12 @@ dual::status_t dual_phase2(i_t phase,
 
   if (phase == 2) {
     timers.print_timers(settings);
-    settings.log.printf("Sparse delta_z %8d %8.2f%\n", sparse_delta_z, 100.0 * sparse_delta_z / (sparse_delta_z + dense_delta_z));
-    settings.log.printf("Dense delta_z  %8d %8.2f%\n", dense_delta_z, 100.0 * dense_delta_z / (sparse_delta_z + dense_delta_z));
-    ft.print_stats();
+    constexpr bool print_stats = false;
+    if constexpr (print_stats) {
+      settings.log.printf("Sparse delta_z %8d %8.2f%\n", sparse_delta_z, 100.0 * sparse_delta_z / (sparse_delta_z + dense_delta_z));
+      settings.log.printf("Dense delta_z  %8d %8.2f%\n", dense_delta_z, 100.0 * dense_delta_z / (sparse_delta_z + dense_delta_z));
+      ft.print_stats();
+    }
   }
   return status;
 }
