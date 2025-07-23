@@ -1,5 +1,6 @@
 import cuopt.linear_programming.data_model as data_model
 import cuopt.linear_programming.solver as solver
+import cuopt.linear_programming.solver_settings as solver_settings
 
 import enum
 import numpy as np
@@ -206,6 +207,7 @@ class Constraint:
     def __init__(self, expr, sense, rhs, name=''):
         self.vindex_coeff_dict = {}
         nz = len(expr.getVars())
+        self.vars = expr.vars
         for i in range(nz):
             v_idx = expr.vars[i].index
             v_coeff = expr.coefficients[i]
@@ -222,6 +224,12 @@ class Constraint:
     def getCoefficient(self, var):
         v_idx = var.index
         return vindex_coeff_dict[v_idx]
+    @property
+    def Slack(self):
+        lhs = 0.0
+        for var in self.vars:
+            lhs += var.Value * self.vindex_coeff_dict[var.index]
+        return self.RHS - lhs
 
 # The sense of a problem is either minimize or maximize
 MINIMIZE = 0
@@ -242,6 +250,7 @@ class Problem:
         self.ObjCon = 0.0
         self.Status = -1
         self.IsMIP = False
+        self.Settings = solver_settings.SolverSettings()
 
         self.rhs = None
         self.row_sense = None
@@ -265,7 +274,7 @@ class Problem:
         match constr:
             case Constraint():
                 constr.index = n
-                constr.cname = name
+                constr.CName = name
                 self.constrs.append(constr)
             case _:
                 raise ValueError("addConstraint requires a Constraint object")
@@ -311,6 +320,25 @@ class Problem:
         nnz = 0
         for constr in self.constrs:
             nnz += len(constr.vindex_coeff_dict)
+        return nnz
+
+    def post_solve(self, solution):
+        self.Status = solution.get_termination_status()
+        self.SolveTime = solution.get_solve_time()
+
+        if solution.problem_category == 0:
+            self.SolutionStats = solution.get_lp_stats()
+        else:
+            self.SolutionStats = solution.get_milp_stats()
+
+        primal_sol = solution.get_primal_solution()
+        reduced_cost = solution.get_reduced_cost()
+        if len(primal_sol) > 0:
+            for var in self.vars:
+                var.Value = primal_sol[var.index]
+                if not self.IsMIP:
+                    var.RC =  reduced_cost[var.index]
+        self.ObjVal = self.Obj.getValue()
 
     def optimize(self):
         # iterate through the constraints and construct the constraint matrix and the rhs
@@ -349,10 +377,8 @@ class Problem:
         dm.set_variable_upper_bounds(np.array(self.upper_bound))
         dm.set_variable_types(np.array(self.var_type))
 
-        # Initialize  solver_settings
-
         # Call Solver
-        solution = solver.Solve(dm)
+        solution = solver.Solve(dm, self.Settings)
 
         # Post Solve
-        return solution
+        self.post_solve(solution)
