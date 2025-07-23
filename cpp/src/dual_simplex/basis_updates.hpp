@@ -18,6 +18,7 @@
 #pragma once
 
 #include <dual_simplex/sparse_matrix.hpp>
+#include <dual_simplex/sparse_vector.hpp>
 #include <dual_simplex/types.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {
