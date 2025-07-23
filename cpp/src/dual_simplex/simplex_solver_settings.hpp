@@ -87,7 +87,7 @@ struct simplex_solver_settings_t {
   f_t cut_off;               // If the dual objective is greater than the cutoff we stop
   f_t
     steepest_edge_ratio;  // the ratio of computed steepest edge mismatch from updated steepest edge
-  f_t steepest_edge_primal_tol;    // Primal tolerance divided by steepest edge norm
+  f_t steepest_edge_primal_tol;  // Primal tolerance divided by steepest edge norm
   f_t hypersparse_threshold;
   bool use_steepest_edge_pricing;  // true if using steepest edge pricing, false if using max
                                    // infeasibility pricing

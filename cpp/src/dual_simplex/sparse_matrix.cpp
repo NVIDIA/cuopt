@@ -362,7 +362,12 @@ void scatter_dense(const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, std::vecto
 
 // x <- x + alpha * A(:, j)
 template <typename i_t, typename f_t>
-void scatter_dense(const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, std::vector<f_t>& x, std::vector<i_t>& mark, std::vector<i_t>& indices)
+void scatter_dense(const csc_matrix_t<i_t, f_t>& A,
+                   i_t j,
+                   f_t alpha,
+                   std::vector<f_t>& x,
+                   std::vector<i_t>& mark,
+                   std::vector<i_t>& indices)
 {
   const i_t col_start = A.col_start[j];
   const i_t col_end   = A.col_start[j + 1];
@@ -370,8 +375,7 @@ void scatter_dense(const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, std::vecto
     const i_t i  = A.i[p];
     const f_t ax = A.x[p];
     x[i] += alpha * ax;
-    if (!mark[i])
-    {
+    if (!mark[i]) {
       mark[i] = 1;
       indices.push_back(i);
     }

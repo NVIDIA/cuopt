@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 #include <dual_simplex/sparse_vector.hpp>
 
 #include <algorithm>
@@ -103,7 +102,7 @@ void sparse_vector_t<i_t, f_t>::inverse_permute_vector(const std::vector<i_t>& p
 
 template <typename i_t, typename f_t>
 void sparse_vector_t<i_t, f_t>::inverse_permute_vector(const std::vector<i_t>& p,
-                                             sparse_vector_t<i_t, f_t>& y) const
+                                                       sparse_vector_t<i_t, f_t>& y) const
 {
   i_t m = p.size();
   assert(n == m);
@@ -219,7 +218,6 @@ f_t sparse_vector_t<i_t, f_t>::find_coefficient(i_t index) const
   }
   return std::numeric_limits<f_t>::quiet_NaN();
 }
-
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template class sparse_vector_t<int, double>;

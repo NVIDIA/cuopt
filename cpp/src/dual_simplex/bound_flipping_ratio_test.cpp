@@ -36,8 +36,8 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_breakpoints(std::vector<i_t>&
 
   i_t idx = 0;
   while (idx == 0 && pivot_tol >= 1e-12) {
-    //for (i_t k = 0; k < n - m; ++k) {
-    //  const i_t j = nonbasic_list_[k];
+    // for (i_t k = 0; k < n - m; ++k) {
+    //   const i_t j = nonbasic_list_[k];
     for (i_t h = 0; h < delta_z_indices_.size(); ++h) {
       const i_t j = delta_z_indices_[h];
       const i_t k = nonbasic_mark_[j];
@@ -116,9 +116,9 @@ template <typename i_t, typename f_t>
 i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
                                                                i_t& nonbasic_entering)
 {
-  const i_t m                  = m_;
-  const i_t n                  = n_;
-  const i_t nz                 = delta_z_indices_.size();
+  const i_t m            = m_;
+  const i_t n            = n_;
+  const i_t nz           = delta_z_indices_.size();
   constexpr bool verbose = false;
 
   // Compute the initial set of breakpoints
@@ -159,16 +159,13 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
       slope);
   }
 
-
-
   // Continue the search using a heap to order the breakpoints
   ratios[k_idx]   = ratios[num_breakpoints - 1];
   indicies[k_idx] = indicies[num_breakpoints - 1];
 
   constexpr bool use_bucket_pass = false;
 
-  if (use_bucket_pass)
-  {
+  if (use_bucket_pass) {
     f_t max_ratio = 0.0;
     for (i_t k = 0; k < num_breakpoints - 1; ++k) {
       if (ratios[k] > max_ratio) { max_ratio = ratios[k]; }
@@ -288,19 +285,19 @@ void bound_flipping_ratio_test_t<i_t, f_t>::bucket_pass(const std::vector<i_t>& 
   const std::vector<i_t>& nonbasic_list = nonbasic_list_;
   const i_t N                           = num_breakpoints;
 
-  const i_t K = 400; // 0, -16, -15, ...., 0, 1, ...., 400 - 18 = 382
+  const i_t K = 400;  // 0, -16, -15, ...., 0, 1, ...., 400 - 18 = 382
   std::vector<f_t> buckets(K, 0.0);
   std::vector<i_t> bucket_count(K, 0);
   for (i_t k = 0; k < N; ++k) {
-    const i_t idx = current_indicies[k];
-    const f_t ratio = current_ratios[k];
+    const i_t idx          = current_indicies[k];
+    const f_t ratio        = current_ratios[k];
     const f_t min_exponent = -16.0;
     const f_t max_exponent = 382.0;
-    const f_t exponent = std::max(min_exponent, std::min(max_exponent, std::log10(ratio)));
-    const i_t bucket_idx = ratio == 0.0 ? 0 : static_cast<i_t>(exponent - min_exponent + 1);
-    //settings_.log.printf("Ratio %e exponent %e bucket_idx %d\n", ratio, exponent, bucket_idx);
-    const i_t j = nonbasic_list[idx];
-    const f_t interval = upper_[j] - lower_[j];
+    const f_t exponent     = std::max(min_exponent, std::min(max_exponent, std::log10(ratio)));
+    const i_t bucket_idx   = ratio == 0.0 ? 0 : static_cast<i_t>(exponent - min_exponent + 1);
+    // settings_.log.printf("Ratio %e exponent %e bucket_idx %d\n", ratio, exponent, bucket_idx);
+    const i_t j           = nonbasic_list[idx];
+    const f_t interval    = upper_[j] - lower_[j];
     const f_t delta_slope = std::abs(delta_z_[j]) * interval;
     buckets[bucket_idx] += delta_slope;
     bucket_count[bucket_idx]++;
@@ -309,7 +306,12 @@ void bound_flipping_ratio_test_t<i_t, f_t>::bucket_pass(const std::vector<i_t>& 
   std::vector<f_t> cumulative_sum(K, 0.0);
   cumulative_sum[0] = buckets[0];
   if (cumulative_sum[0] > slope) {
-    settings_.log.printf("Bucket 0. Count in bucket %d. Slope %e. Cumulative sum %e. Bucket value %e\n", bucket_count[0], slope, cumulative_sum[0], buckets[0]);
+    settings_.log.printf(
+      "Bucket 0. Count in bucket %d. Slope %e. Cumulative sum %e. Bucket value %e\n",
+      bucket_count[0],
+      slope,
+      cumulative_sum[0],
+      buckets[0]);
     return;
   }
   i_t k;
@@ -323,11 +325,17 @@ void bound_flipping_ratio_test_t<i_t, f_t>::bucket_pass(const std::vector<i_t>& 
   }
 
   if (exceeded) {
-    settings_.log.printf("Value in bucket %d. Count in buckets %d. Slope %e. Cumulative sum %e. Next sum %e Bucket value %e\n", k, bucket_count[k], slope, cumulative_sum[k-1], cumulative_sum[k], buckets[k-1]);
+    settings_.log.printf(
+      "Value in bucket %d. Count in buckets %d. Slope %e. Cumulative sum %e. Next sum %e Bucket "
+      "value %e\n",
+      k,
+      bucket_count[k],
+      slope,
+      cumulative_sum[k - 1],
+      cumulative_sum[k],
+      buckets[k - 1]);
   }
-
 }
-
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 

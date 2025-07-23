@@ -164,7 +164,7 @@ i_t depth_first_search(i_t j,
     }
     if (done) {
       pstack[head] = 0;  // restore pstack so it can be used again in other routines
-      xi[head] = 0;      // restore xi so it can be used again in other routines
+      xi[head]     = 0;  // restore xi so it can be used again in other routines
       head--;            // remove j from the recursion stack
       xi[--top] = j;     // and place it the output stack
     }
@@ -248,11 +248,11 @@ template int sparse_triangle_solve<int, double, true>(const csc_matrix_t<int, do
                                                       double* x);
 
 template int sparse_triangle_solve<int, double, false>(const csc_matrix_t<int, double>& B,
-                                                        int col,
-                                                        const std::optional<std::vector<int>>& pinv,
-                                                        std::vector<int>& xi,
-                                                        csc_matrix_t<int, double>& G,
-                                                        double* x);
+                                                       int col,
+                                                       const std::optional<std::vector<int>>& pinv,
+                                                       std::vector<int>& xi,
+                                                       csc_matrix_t<int, double>& G,
+                                                       double* x);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

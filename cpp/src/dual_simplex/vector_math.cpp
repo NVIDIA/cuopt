@@ -68,14 +68,10 @@ f_t dot(const std::vector<f_t>& x, const std::vector<f_t>& y)
 }
 
 template <typename i_t, typename f_t>
-f_t sparse_dot(i_t const *xind,
-               f_t const *xval,
-               i_t nx,
-               i_t const *yind,
-               i_t ny,
-               f_t const *y_scatter_val)
+f_t sparse_dot(
+  i_t const* xind, f_t const* xval, i_t nx, i_t const* yind, i_t ny, f_t const* y_scatter_val)
 {
-  f_t dot      = 0.0;
+  f_t dot = 0.0;
   for (i_t i = 0, j = 0; i < nx && j < ny;) {
     const i_t p = xind[i];
     const i_t q = yind[j];
@@ -92,16 +88,10 @@ f_t sparse_dot(i_t const *xind,
   return dot;
 }
 
-
 template <typename i_t, typename f_t>
-f_t sparse_dot(i_t *xind,
-               f_t *xval,
-               i_t nx,
-               i_t *yind,
-               f_t *yval,
-               i_t ny)
+f_t sparse_dot(i_t* xind, f_t* xval, i_t nx, i_t* yind, f_t* yval, i_t ny)
 {
-  f_t dot      = 0.0;
+  f_t dot = 0.0;
   for (i_t i = 0, j = 0; i < nx && j < ny;) {
     const i_t p = xind[i];
     const i_t q = yind[j];
@@ -197,19 +187,15 @@ template double sparse_dot<int, double>(const std::vector<int>& xind,
                                         const std::vector<int>& yind,
                                         const std::vector<double>& yval);
 
-template double sparse_dot<int, double>(int const *xind,
-                                        double const *xval,
+template double sparse_dot<int, double>(int const* xind,
+                                        double const* xval,
                                         int nx,
-                                        int const *yind,
+                                        int const* yind,
                                         int ny,
-                                        double const *y_scatter_val);
+                                        double const* y_scatter_val);
 
-template double sparse_dot<int, double>(int *xind,
-                                        double *xval,
-                                        int nx,
-                                        int *yind,
-                                        double *yval,
-                                        int ny);
+template double sparse_dot<int, double>(
+  int* xind, double* xval, int nx, int* yind, double* yval, int ny);
 
 template int permute_vector<int, double>(const std::vector<int>& p,
                                          const std::vector<double>& b,

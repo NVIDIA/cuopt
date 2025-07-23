@@ -37,7 +37,7 @@ class basis_update_t {
       S_(Linit.m, 1, 0),
       col_permutation_(Linit.m),
       inverse_col_permutation_(Linit.m),
-      xi_workspace_(2*Linit.m, 0),
+      xi_workspace_(2 * Linit.m, 0),
       x_workspace_(Linit.m, 0.0),
       U_transpose_(1, 1, 1),
       L0_transpose_(1, 1, 1)
@@ -82,7 +82,8 @@ class basis_update_t {
   // Solves for y such that B'*y = c, where B is the basis matrix
   i_t b_transpose_solve(const std::vector<f_t>& rhs, std::vector<f_t>& solution) const;
 
-  i_t b_transpose_solve(const sparse_vector_t<i_t, f_t>& rhs, sparse_vector_t<i_t, f_t>& solution) const;
+  i_t b_transpose_solve(const sparse_vector_t<i_t, f_t>& rhs,
+                        sparse_vector_t<i_t, f_t>& solution) const;
 
   // Solve for x such that L*x = y
   i_t l_solve(std::vector<f_t>& rhs) const;
@@ -153,29 +154,29 @@ class basis_update_t {
   i_t scatter_into_workspace(const sparse_vector_t<i_t, f_t>& in) const;
   void gather_into_sparse_vector(i_t nz, sparse_vector_t<i_t, f_t>& out) const;
 
-  i_t num_updates_;                   // Number of rank-1 updates to L0
-  mutable csc_matrix_t<i_t, f_t> L0_;         // Sparse lower triangular matrix from initial factorization
-  mutable csc_matrix_t<i_t, f_t> U_;          // Sparse upper triangular matrix. Is modified by updates
-  std::vector<i_t> row_permutation_;  // Row permutation from initial factorization L*U = P*B
-  std::vector<i_t> inverse_row_permutation_;  // Inverse row permutation from initial factorization L*U = P*B
-  std::vector<i_t> pivot_indices_;    // indicies for rank-1 updates to L
-  csc_matrix_t<i_t, f_t> S_;          // stores the pivot elements for rank-1 updates to L
-  std::vector<i_t> col_permutation_;  // symmetric permuation q used in U(q, q) represents Q
+  i_t num_updates_;                    // Number of rank-1 updates to L0
+  mutable csc_matrix_t<i_t, f_t> L0_;  // Sparse lower triangular matrix from initial factorization
+  mutable csc_matrix_t<i_t, f_t> U_;   // Sparse upper triangular matrix. Is modified by updates
+  std::vector<i_t> row_permutation_;   // Row permutation from initial factorization L*U = P*B
+  std::vector<i_t>
+    inverse_row_permutation_;       // Inverse row permutation from initial factorization L*U = P*B
+  std::vector<i_t> pivot_indices_;  // indicies for rank-1 updates to L
+  csc_matrix_t<i_t, f_t> S_;        // stores the pivot elements for rank-1 updates to L
+  std::vector<i_t> col_permutation_;          // symmetric permuation q used in U(q, q) represents Q
   std::vector<i_t> inverse_col_permutation_;  // inverse permutation represents Q'
   mutable std::vector<i_t> xi_workspace_;
   mutable std::vector<f_t> x_workspace_;
-  mutable csc_matrix_t<i_t, f_t> U_transpose_; // Needed for sparse solves
-  mutable csc_matrix_t<i_t, f_t> L0_transpose_; // Needed for sparse solves
+  mutable csc_matrix_t<i_t, f_t> U_transpose_;   // Needed for sparse solves
+  mutable csc_matrix_t<i_t, f_t> L0_transpose_;  // Needed for sparse solves
 };
-
 
 template <typename i_t, typename f_t>
 class basis_update_mpf_t {
  public:
   basis_update_mpf_t(const csc_matrix_t<i_t, f_t>& Linit,
-                 const csc_matrix_t<i_t, f_t>& Uinit,
-                 const std::vector<i_t>& p,
-                 const i_t refactor_frequency)
+                     const csc_matrix_t<i_t, f_t>& Uinit,
+                     const std::vector<i_t>& p,
+                     const i_t refactor_frequency)
     : L0_(Linit),
       U0_(Uinit),
       row_permutation_(p),
@@ -183,7 +184,7 @@ class basis_update_mpf_t {
       S_(Linit.m, 1, 0),
       col_permutation_(Linit.m),
       inverse_col_permutation_(Linit.m),
-      xi_workspace_(2*Linit.m, 0),
+      xi_workspace_(2 * Linit.m, 0),
       x_workspace_(Linit.m, 0.0),
       U0_transpose_(1, 1, 1),
       L0_transpose_(1, 1, 1),
@@ -209,8 +210,9 @@ class basis_update_mpf_t {
   {
     i_t total_L_transpose_calls = total_sparse_L_transpose_ + total_dense_L_transpose_;
     i_t total_U_transpose_calls = total_sparse_U_transpose_ + total_dense_U_transpose_;
-    i_t total_L_calls = total_sparse_L_ + total_dense_L_;
-    i_t total_U_calls = total_sparse_U_ + total_dense_U_;
+    i_t total_L_calls           = total_sparse_L_ + total_dense_L_;
+    i_t total_U_calls           = total_sparse_U_ + total_dense_U_;
+    // clang-format off
     printf("sparse L transpose  %8d %8.2f%\n", total_sparse_L_transpose_, 100.0 * total_sparse_L_transpose_ / total_L_transpose_calls);
     printf("dense  L transpose  %8d %8.2f%\n", total_dense_L_transpose_, 100.0 * total_dense_L_transpose_ / total_L_transpose_calls);
     printf("sparse U transpose  %8d %8.2f%\n", total_sparse_U_transpose_, 100.0 * total_sparse_U_transpose_ / total_U_transpose_calls);
@@ -219,27 +221,27 @@ class basis_update_mpf_t {
     printf("dense  L            %8d %8.2f%\n", total_dense_L_, 100.0 * total_dense_L_ / total_L_calls);
     printf("sparse U            %8d %8.2f%\n", total_sparse_U_, 100.0 * total_sparse_U_ / total_U_calls);
     printf("dense  U            %8d %8.2f%\n", total_dense_U_, 100.0 * total_dense_U_ / total_U_calls);
+    // clang-format on
   }
 
   void reset_stas()
   {
-    num_calls_L_ = 0;
-    num_calls_U_ = 0;
+    num_calls_L_           = 0;
+    num_calls_U_           = 0;
     num_calls_L_transpose_ = 0;
     num_calls_U_transpose_ = 0;
-    sum_L_ = 0.0;
-    sum_U_ = 0.0;
-    sum_L_transpose_ = 0.0;
-    sum_U_transpose_ = 0.0;
+    sum_L_                 = 0.0;
+    sum_U_                 = 0.0;
+    sum_L_transpose_       = 0.0;
+    sum_U_transpose_       = 0.0;
   }
-
 
   i_t reset(const csc_matrix_t<i_t, f_t>& Linit,
             const csc_matrix_t<i_t, f_t>& Uinit,
             const std::vector<i_t>& p)
   {
     L0_ = Linit;
-    U0_  = Uinit;
+    U0_ = Uinit;
     assert(p.size() == Linit.m);
     row_permutation_ = p;
     inverse_permutation(row_permutation_, inverse_row_permutation_);
@@ -249,13 +251,13 @@ class basis_update_mpf_t {
     return 0;
   }
 
-  f_t estimate_solution_density(f_t rhs_nz, f_t sum, i_t& num_calls, bool &use_hypersparse) const
+  f_t estimate_solution_density(f_t rhs_nz, f_t sum, i_t& num_calls, bool& use_hypersparse) const
   {
     num_calls++;
-    const f_t average_growth = std::max(1.0, sum / static_cast<f_t>(num_calls));
-    const f_t predicted_nz = rhs_nz * average_growth;
+    const f_t average_growth    = std::max(1.0, sum / static_cast<f_t>(num_calls));
+    const f_t predicted_nz      = rhs_nz * average_growth;
     const f_t predicted_density = predicted_nz / static_cast<f_t>(L0_.m);
-    use_hypersparse = predicted_density < hypersparse_threshold_;
+    use_hypersparse             = predicted_density < hypersparse_threshold_;
     return predicted_nz;
   }
 
@@ -271,9 +273,14 @@ class basis_update_mpf_t {
 
   // Solves for y such that B'*y = c, where B is the basis matrix
   i_t b_transpose_solve(const std::vector<f_t>& rhs, std::vector<f_t>& solution) const;
-  i_t b_transpose_solve(const sparse_vector_t<i_t, f_t>& rhs, sparse_vector_t<i_t, f_t>& solution) const;
-  i_t b_transpose_solve(const std::vector<f_t>& rhs, std::vector<f_t>& solution, std::vector<f_t>& UTsol) const;
-  i_t b_transpose_solve(const sparse_vector_t<i_t, f_t>& rhs, sparse_vector_t<i_t, f_t>& solution, sparse_vector_t<i_t, f_t>& UTsol) const;
+  i_t b_transpose_solve(const sparse_vector_t<i_t, f_t>& rhs,
+                        sparse_vector_t<i_t, f_t>& solution) const;
+  i_t b_transpose_solve(const std::vector<f_t>& rhs,
+                        std::vector<f_t>& solution,
+                        std::vector<f_t>& UTsol) const;
+  i_t b_transpose_solve(const sparse_vector_t<i_t, f_t>& rhs,
+                        sparse_vector_t<i_t, f_t>& solution,
+                        sparse_vector_t<i_t, f_t>& UTsol) const;
   // Solve for x such that L*x = y
   i_t l_solve(std::vector<f_t>& rhs) const;
 
@@ -304,8 +311,9 @@ class basis_update_mpf_t {
 
   // Replace the column B(:, leaving_index) with the vector abar. Pass in utilde such that L*utilde
   // = abar
-  i_t update(const sparse_vector_t<i_t, f_t>& utilde, sparse_vector_t<i_t, f_t>& etilde, i_t leaving_index);
-
+  i_t update(const sparse_vector_t<i_t, f_t>& utilde,
+             sparse_vector_t<i_t, f_t>& etilde,
+             i_t leaving_index);
 
   i_t num_updates() const { return num_updates_; }
 
@@ -356,22 +364,23 @@ class basis_update_mpf_t {
   void l_multiply(std::vector<f_t>& inout) const;
   void l_transpose_multiply(std::vector<f_t>& inout) const;
 
-  i_t num_updates_;                   // Number of rank-1 updates to L0
+  i_t num_updates_;                    // Number of rank-1 updates to L0
   i_t refactor_frequency_;             // Average updates before refactoring
-  mutable csc_matrix_t<i_t, f_t> L0_;         // Sparse lower triangular matrix from initial factorization
-  mutable csc_matrix_t<i_t, f_t> U0_;          // Sparse upper triangular matrix from initial factorization
-  std::vector<i_t> row_permutation_;  // Row permutation from initial factorization L*U = P*B
-  std::vector<i_t> inverse_row_permutation_;  // Inverse row permutation from initial factorization L*U = P*B
-  std::vector<i_t> pivot_indices_;    // indicies for rank-1 updates to L
-  csc_matrix_t<i_t, f_t> S_;          // stores information about the rank-1 updates to L
-  std::vector<f_t> mu_values_;        // stores information about the rank-1 updates to L
-  std::vector<i_t> col_permutation_;  // symmetric permuation q used in U(q, q) represents Q
+  mutable csc_matrix_t<i_t, f_t> L0_;  // Sparse lower triangular matrix from initial factorization
+  mutable csc_matrix_t<i_t, f_t> U0_;  // Sparse upper triangular matrix from initial factorization
+  std::vector<i_t> row_permutation_;   // Row permutation from initial factorization L*U = P*B
+  std::vector<i_t>
+    inverse_row_permutation_;       // Inverse row permutation from initial factorization L*U = P*B
+  std::vector<i_t> pivot_indices_;  // indicies for rank-1 updates to L
+  csc_matrix_t<i_t, f_t> S_;        // stores information about the rank-1 updates to L
+  std::vector<f_t> mu_values_;      // stores information about the rank-1 updates to L
+  std::vector<i_t> col_permutation_;          // symmetric permuation q used in U(q, q) represents Q
   std::vector<i_t> inverse_col_permutation_;  // inverse permutation represents Q'
   mutable std::vector<i_t> xi_workspace_;
   mutable std::vector<f_t> x_workspace_;
-  mutable csc_matrix_t<i_t, f_t> U0_transpose_; // Needed for sparse solves
-  mutable csc_matrix_t<i_t, f_t> L0_transpose_; // Needed for sparse solves
-  mutable csc_matrix_t<i_t, f_t> B_; // Needed for sparse solves
+  mutable csc_matrix_t<i_t, f_t> U0_transpose_;  // Needed for sparse solves
+  mutable csc_matrix_t<i_t, f_t> L0_transpose_;  // Needed for sparse solves
+  mutable csc_matrix_t<i_t, f_t> B_;             // Needed for sparse solves
 
   mutable i_t total_sparse_L_transpose_;
   mutable i_t total_dense_L_transpose_;

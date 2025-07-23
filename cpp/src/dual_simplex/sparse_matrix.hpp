@@ -20,13 +20,12 @@
 #include <dual_simplex/types.hpp>
 #include <dual_simplex/vector_math.hpp>
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <vector>
-#include <algorithm>
 
 namespace cuopt::linear_programming::dual_simplex {
-
 
 template <typename i_t, typename f_t>
 class csr_matrix_t;  // Forward declaration of CSR matrix needed to define CSC matrix
@@ -110,7 +109,6 @@ class csr_matrix_t {
   static_assert(std::is_signed_v<i_t>);
 };
 
-
 template <typename i_t>
 void cumulative_sum(std::vector<i_t>& inout, std::vector<i_t>& output);
 
@@ -135,7 +133,12 @@ template <typename i_t, typename f_t>
 void scatter_dense(const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, std::vector<f_t>& x);
 
 template <typename i_t, typename f_t>
-void scatter_dense(const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, std::vector<f_t>& x, std::vector<i_t>& mark, std::vector<i_t>& indices);
+void scatter_dense(const csc_matrix_t<i_t, f_t>& A,
+                   i_t j,
+                   f_t alpha,
+                   std::vector<f_t>& x,
+                   std::vector<i_t>& mark,
+                   std::vector<i_t>& indices);
 
 // Compute C = A*B where C is m x n, A is m x k, and B = k x n
 // Do this by computing C(:, j) = A*B(:, j) = sum (i=1 to k) A(:, k)*B(i, j)

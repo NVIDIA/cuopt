@@ -32,7 +32,7 @@ void bound_strengthening(const std::vector<char>& row_sense,
   const i_t n = problem.num_cols;
 
   std::vector<f_t> constraint_lower(m);
-  //std::vector<f_t> constraint_upper(m);
+  // std::vector<f_t> constraint_upper(m);
   std::vector<i_t> num_lower_infinity(m);
   std::vector<i_t> num_upper_infinity(m);
 
@@ -43,9 +43,7 @@ void bound_strengthening(const std::vector<char>& row_sense,
   less_rows.reserve(m);
 
   for (i_t i = 0; i < m; ++i) {
-    if (row_sense[i] == 'L') {
-      less_rows.push_back(i);
-    }
+    if (row_sense[i] == 'L') { less_rows.push_back(i); }
   }
 
   std::vector<f_t> lower = problem.lower;
@@ -55,38 +53,44 @@ void bound_strengthening(const std::vector<char>& row_sense,
   updated_variables_list.reserve(n);
   std::vector<i_t> updated_variables_mark(n, 0);
 
-  i_t iter = 0;
-  const i_t iter_limit = 10;
+  i_t iter                         = 0;
+  const i_t iter_limit             = 10;
   i_t total_strengthened_variables = 0;
   settings.log.printf("Less equal rows %d\n", less_rows.size());
-  while (iter < iter_limit && less_rows.size() > 0)
-  {
+  while (iter < iter_limit && less_rows.size() > 0) {
     // Derive bounds on the constraints
-    settings.log.printf("Running bound strengthening on %d rows\n", static_cast<i_t>(less_rows.size()));
+    settings.log.printf("Running bound strengthening on %d rows\n",
+                        static_cast<i_t>(less_rows.size()));
     for (i_t i : less_rows) {
-      const i_t row_start = Arow.col_start[i];
-      const i_t row_end   = Arow.col_start[i + 1];
+      const i_t row_start   = Arow.col_start[i];
+      const i_t row_end     = Arow.col_start[i + 1];
       num_lower_infinity[i] = 0;
       num_upper_infinity[i] = 0;
 
       f_t lower_limit = 0.0;
-      //f_t upper_limit = 0.0;
+      // f_t upper_limit = 0.0;
       for (i_t p = row_start; p < row_end; ++p) {
         const i_t j    = Arow.i[p];
         const f_t a_ij = Arow.x[p];
         if (a_ij > 0) {
           lower_limit += a_ij * lower[j];
-          //upper_limit += a_ij * upper[j];
+          // upper_limit += a_ij * upper[j];
         } else if (a_ij < 0) {
           lower_limit += a_ij * upper[j];
-          //upper_limit += a_ij * lower[j];
+          // upper_limit += a_ij * lower[j];
         }
-        if (lower[j] == -inf && a_ij > 0) { num_lower_infinity[i]++; lower_limit = -inf;}
-        if (upper[j] == inf && a_ij < 0) { num_lower_infinity[i]++;  lower_limit = -inf; }
+        if (lower[j] == -inf && a_ij > 0) {
+          num_lower_infinity[i]++;
+          lower_limit = -inf;
+        }
+        if (upper[j] == inf && a_ij < 0) {
+          num_lower_infinity[i]++;
+          lower_limit = -inf;
+        }
       }
-      //printf("Constraint %d: lo %e\n", i, lower_limit);
+      // printf("Constraint %d: lo %e\n", i, lower_limit);
       constraint_lower[i] = lower_limit;
-      //constraint_upper[i] = upper_limit;
+      // constraint_upper[i] = upper_limit;
     }
 
     // Use the constraint bounds to derive new bounds on the variables
@@ -100,21 +104,25 @@ void bound_strengthening(const std::vector<char>& row_sense,
           if (a_ik > 0) {
             const f_t new_upper = lower[k] + (problem.rhs[i] - constraint_lower[i]) / a_ik;
             if (new_upper < upper[k]) {
-              //printf("Strengthed bound on variable %d: lo %e up %e -> %e\n", k, lower[k], upper[k], new_upper);
+              // printf("Strengthed bound on variable %d: lo %e up %e -> %e\n", k, lower[k],
+              // upper[k], new_upper);
               upper[k] = new_upper;
-              if (lower[k] > upper[k])
-              {
-                settings.log.printf("\t INFEASIBLE!!!!!!!!!!!!!!!!! constraint_lower %e lower %e rhs %e\n", constraint_lower[i], lower[k], problem.rhs[i]);
+              if (lower[k] > upper[k]) {
+                settings.log.printf(
+                  "\t INFEASIBLE!!!!!!!!!!!!!!!!! constraint_lower %e lower %e rhs %e\n",
+                  constraint_lower[i],
+                  lower[k],
+                  problem.rhs[i]);
               }
               if (!updated_variables_mark[k]) { updated_variables_list.push_back(k); }
             }
           } else if (a_ik < 0) {
             const f_t new_lower = upper[k] + (problem.rhs[i] - constraint_lower[i]) / a_ik;
             if (new_lower > lower[k]) {
-              //printf("Strengthend bound on variable %d: lo %e -> %e up %e\n", k, lower[k], new_lower, upper[k]);
+              // printf("Strengthend bound on variable %d: lo %e -> %e up %e\n", k, lower[k],
+              // new_lower, upper[k]);
               lower[k] = new_lower;
-              if (lower[k] > upper[k])
-              {
+              if (lower[k] > upper[k]) {
                 settings.log.printf("\t INFEASIBLE !!!!!!!!!!!!!!!!!!1\n");
               }
               if (!updated_variables_mark[k]) { updated_variables_list.push_back(k); }
@@ -126,15 +134,15 @@ void bound_strengthening(const std::vector<char>& row_sense,
     less_rows.clear();
 
     // Update the bounds on the constraints
-    settings.log.printf("Round %d: Strengthend %d variables\n", iter, static_cast<i_t>(updated_variables_list.size()));
+    settings.log.printf("Round %d: Strengthend %d variables\n",
+                        iter,
+                        static_cast<i_t>(updated_variables_list.size()));
     total_strengthened_variables += updated_variables_list.size();
-    for (i_t j : updated_variables_list)
-    {
+    for (i_t j : updated_variables_list) {
       updated_variables_mark[j] = 0;
-      const i_t col_start = problem.A.col_start[j];
-      const i_t col_end = problem.A.col_start[j+1];
-      for (i_t p = col_start; p < col_end; ++p)
-      {
+      const i_t col_start       = problem.A.col_start[j];
+      const i_t col_end         = problem.A.col_start[j + 1];
+      for (i_t p = col_start; p < col_end; ++p) {
         const i_t i = problem.A.i[p];
         less_rows.push_back(i);
       }
@@ -1034,10 +1042,11 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template void convert_user_problem<int, double>(const user_problem_t<int, double>& user_problem,
-                                                const simplex_solver_settings_t<int, double>& settings,
-                                                lp_problem_t<int, double>& problem,
-                                                std::vector<int>& new_slacks);
+template void convert_user_problem<int, double>(
+  const user_problem_t<int, double>& user_problem,
+  const simplex_solver_settings_t<int, double>& settings,
+  lp_problem_t<int, double>& problem,
+  std::vector<int>& new_slacks);
 
 template void convert_user_lp_with_guess<int, double>(
   const user_problem_t<int, double>& user_problem,
