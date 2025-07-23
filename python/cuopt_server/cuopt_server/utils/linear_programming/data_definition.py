@@ -381,6 +381,12 @@ class Tolerances(StrictModel):
         description="MIP gap relative tolerance"
         "NOTE: Only applicable to MILP",
     )
+    mip_absolute_tolerance: float = Field(
+        default=None, description="MIP absolute tolerance"
+    )
+    mip_relative_tolerance: float = Field(
+        default=None, description="MIP relative tolerance"
+    )
     absolute_primal: float = Field(
         default=None,
         description="Deprecated in 25.08. "

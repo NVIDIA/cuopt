@@ -34,9 +34,11 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_LOG_TO_CONSOLE,
     CUOPT_METHOD,
     CUOPT_MIP_ABSOLUTE_GAP,
+    CUOPT_MIP_ABSOLUTE_TOLERANCE,
     CUOPT_MIP_HEURISTICS_ONLY,
     CUOPT_MIP_INTEGRALITY_TOLERANCE,
     CUOPT_MIP_RELATIVE_GAP,
+    CUOPT_MIP_RELATIVE_TOLERANCE,
     CUOPT_MIP_SCALING,
     CUOPT_NUM_CPU_THREADS,
     CUOPT_PDLP_SOLVER_MODE,
@@ -324,6 +326,16 @@ def create_solver(LP_data, warmstart_data):
             elif tolerance.relative_mip_gap is not None:
                 solver_settings.set_parameter(
                     CUOPT_MIP_RELATIVE_GAP, tolerance.relative_mip_gap
+                )
+            if tolerance.mip_absolute_tolerance is not None:
+                solver_settings.set_parameter(
+                    CUOPT_MIP_ABSOLUTE_TOLERANCE,
+                    tolerance.mip_absolute_tolerance,
+                )
+            if tolerance.mip_relative_tolerance is not None:
+                solver_settings.set_parameter(
+                    CUOPT_MIP_RELATIVE_TOLERANCE,
+                    tolerance.mip_relative_tolerance,
                 )
         if warmstart_data is not None:
             solver_settings.set_pdlp_warm_start_data(warmstart_data)

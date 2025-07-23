@@ -43,7 +43,7 @@ Note: the default value is ``""`` and no log file is written.
 
 Solution File
 ^^^^^^^^^^^^^
-``CUOPT_SOL_FILE`` controls the name of a file where cuOpt should write the solution.
+``CUOPT_SOLUTION_FILE`` controls the name of a file where cuOpt should write the solution.
 
 Note: the default value is ``""`` and no solution file is written.
 
@@ -273,14 +273,14 @@ Note: the defaulte value is true.
 Absolute Tolerance
 ^^^^^^^^^^^^^^^^^^
 
-``CUOPT_ABSOLUTE_TOLERANCE`` controls the MIP absolute tolerance.
+``CUOPT_MIP_ABSOLUTE_TOLERANCE`` controls the MIP absolute tolerance.
 
 Note: the default value is ``1e-4``.
 
 Relative Tolerance
 ^^^^^^^^^^^^^^^^^^
 
-``CUOPT_RELATIVE_TOLERANCE`` controls the MIP relative tolerance.
+``CUOPT_MIP_RELATIVE_TOLERANCE`` controls the MIP relative tolerance.
 
 Note: the default value is ``1e-6``.
 
