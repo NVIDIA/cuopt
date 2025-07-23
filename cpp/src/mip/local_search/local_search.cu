@@ -65,7 +65,6 @@ void local_search_t<i_t, f_t>::generate_fast_solution(solution_t<i_t, f_t>& solu
   fj.settings.n_of_minimums_for_exit = 500;
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
-  fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
   while (!timer.check_time_limit()) {
     timer_t constr_prop_timer = timer_t(std::min(timer.remaining_time(), 2.));
@@ -86,15 +85,14 @@ template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
                                                 const weight_t<i_t, f_t>& weights,
                                                 timer_t timer,
-                                                f_t baseline_objective,
-                                                bool at_least_one_parent_feasible)
+                                                const ls_config_t<i_t, f_t>& ls_config)
 {
   raft::common::nvtx::range fun_scope("local search");
   fj_settings_t fj_settings;
   if (timer.check_time_limit()) return false;
   // adjust these time limits
   if (!solution.get_feasible()) {
-    if (at_least_one_parent_feasible) {
+    if (ls_config.at_least_one_parent_feasible) {
       fj_settings.time_limit = 1.;
       timer                  = timer_t(1.);
     } else {
@@ -102,7 +100,7 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
       timer                  = timer_t(0.5);
     }
   } else {
-    fj_settings.time_limit = timer.remaining_time();
+    fj_settings.time_limit = std::min(10., timer.remaining_time());
   }
   fj_settings.update_weights  = false;
   fj_settings.feasibility_run = false;
@@ -110,10 +108,15 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
   fj.copy_weights(weights, solution.handle_ptr);
   bool is_feas;
   i_t rd = std::uniform_int_distribution(0, 1)(rng);
-  if (rd == 0 && lp_optimal_exists) {
-    is_feas = run_fj_line_segment(solution, timer);
+  if (ls_config.ls_method == ls_method_t::FJ_LINE_SEGMENT) {
+    rd = ls_method_t::FJ_LINE_SEGMENT;
+  } else if (ls_config.ls_method == ls_method_t::FJ_ANNEALING) {
+    rd = ls_method_t::FJ_ANNEALING;
+  }
+  if (rd == ls_method_t::FJ_LINE_SEGMENT && lp_optimal_exists) {
+    is_feas = run_fj_line_segment(solution, timer, ls_config);
   } else {
-    is_feas = run_fj_annealing(solution, timer, baseline_objective);
+    is_feas = run_fj_annealing(solution, timer, ls_config);
   }
   return is_feas;
 }
@@ -141,21 +144,19 @@ bool local_search_t<i_t, f_t>::run_fj_until_timer(solution_t<i_t, f_t>& solution
 template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution,
                                                 timer_t timer,
-                                                f_t baseline_objective)
+                                                const ls_config_t<i_t, f_t>& ls_config)
 {
   auto prev_settings = fj.settings;
 
   // run in FEASIBLE_FIRST to priorize feasibility-improving moves
-  fj.settings.n_of_minimums_for_exit = 250;
-  fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
-  fj.settings.candidate_selection    = fj_candidate_selection_t::FEASIBLE_FIRST;
-  fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT;
-  fj.settings.iteration_limit =
-    max(20 * fj.settings.n_of_minimums_for_exit, solution.problem_ptr->n_constraints / 50);
+  fj.settings.n_of_minimums_for_exit                    = ls_config.n_local_mins;
+  fj.settings.mode                                      = fj_mode_t::EXIT_NON_IMPROVING;
+  fj.settings.candidate_selection                       = fj_candidate_selection_t::FEASIBLE_FIRST;
+  fj.settings.iteration_limit                           = ls_config.iteration_limit;
   fj.settings.time_limit                                = std::min(10., timer.remaining_time());
   fj.settings.parameters.allow_infeasibility_iterations = 100;
   fj.settings.update_weights                            = 1;
-  fj.settings.baseline_objective_for_longer_run         = baseline_objective;
+  fj.settings.baseline_objective_for_longer_run         = ls_config.best_objective_of_parents;
   fj.solve(solution);
   bool is_feasible = solution.compute_feasibility();
 
@@ -164,13 +165,21 @@ bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution,
 }
 
 template <typename i_t, typename f_t>
-bool local_search_t<i_t, f_t>::run_fj_line_segment(solution_t<i_t, f_t>& solution, timer_t timer)
+bool local_search_t<i_t, f_t>::run_fj_line_segment(solution_t<i_t, f_t>& solution,
+                                                   timer_t timer,
+                                                   const ls_config_t<i_t, f_t>& ls_config)
 {
   rmm::device_uvector<f_t> starting_point(solution.assignment, solution.handle_ptr->get_stream());
+  line_segment_search.settings.best_of_parents_cost = ls_config.best_objective_of_parents;
+  line_segment_search.settings.parents_infeasible   = !ls_config.at_least_one_parent_feasible;
+  line_segment_search.settings.recombiner_mode      = false;
+  line_segment_search.settings.n_local_min          = ls_config.n_local_mins_for_line_segment;
+  line_segment_search.settings.n_points_to_search   = ls_config.n_points_to_search_for_line_segment;
+  line_segment_search.settings.iteration_limit      = ls_config.iteration_limit_for_line_segment;
+
   bool feas = line_segment_search.search_line_segment(solution,
                                                       starting_point,
                                                       lp_optimal_solution,
-                                                      /*n_points_to_search=*/5,
                                                       /*feasibility_run=*/false,
                                                       timer);
   return feas;
@@ -210,7 +219,6 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
   fj.settings.n_of_minimums_for_exit = 20000;
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
-  fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
   fj.solve(solution);
   return solution.get_feasible();
@@ -228,7 +236,6 @@ bool local_search_t<i_t, f_t>::run_fj_on_zero(solution_t<i_t, f_t>& solution, ti
   fj.settings.n_of_minimums_for_exit = 20000;
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
-  fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
   bool is_feasible                   = fj.solve(solution);
   return is_feasible;

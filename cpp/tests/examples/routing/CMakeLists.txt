@@ -49,4 +49,4 @@ foreach(target
       cuopttestutils
       OpenMP::OpenMP_CXX
   )
-endforeach() 
+endforeach()

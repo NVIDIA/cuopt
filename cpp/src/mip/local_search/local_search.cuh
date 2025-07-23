@@ -25,6 +25,20 @@
 
 namespace cuopt::linear_programming::detail {
 
+enum ls_method_t { FJ_ANNEALING = 0, FJ_LINE_SEGMENT, RANDOM };
+
+template <typename i_t, typename f_t>
+struct ls_config_t {
+  bool at_least_one_parent_feasible{true};
+  f_t best_objective_of_parents{std::numeric_limits<f_t>::lowest()};
+  i_t n_local_mins_for_line_segment       = 50;
+  i_t n_points_to_search_for_line_segment = 5;
+  i_t n_local_mins                        = 250;
+  i_t iteration_limit_for_line_segment    = 20 * n_local_mins_for_line_segment;
+  i_t iteration_limit                     = 20 * n_local_mins;
+  ls_method_t ls_method                   = ls_method_t::RANDOM;
+};
+
 template <typename i_t, typename f_t>
 class local_search_t {
  public:
@@ -42,12 +56,13 @@ class local_search_t {
   bool run_local_search(solution_t<i_t, f_t>& solution,
                         const weight_t<i_t, f_t>& weights,
                         timer_t timer,
-                        f_t baseline_objective            = std::numeric_limits<f_t>::lowest(),
-                        bool at_least_one_parent_feasible = true);
+                        const ls_config_t<i_t, f_t>& ls_config);
   bool run_fj_annealing(solution_t<i_t, f_t>& solution,
                         timer_t timer,
-                        f_t baseline_objective = std::numeric_limits<f_t>::lowest());
-  bool run_fj_line_segment(solution_t<i_t, f_t>& solution, timer_t timer);
+                        const ls_config_t<i_t, f_t>& ls_config);
+  bool run_fj_line_segment(solution_t<i_t, f_t>& solution,
+                           timer_t timer,
+                           const ls_config_t<i_t, f_t>& ls_config);
   bool run_fj_on_zero(solution_t<i_t, f_t>& solution, timer_t timer);
   bool check_fj_on_lp_optimal(solution_t<i_t, f_t>& solution, bool perturb, timer_t timer);
   bool run_staged_fp(solution_t<i_t, f_t>& solution, timer_t timer, bool& early_exit);

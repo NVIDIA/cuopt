@@ -280,7 +280,7 @@ void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
     CUOPT_LOG_DEBUG("Best solution is infeasible, adjusting weights");
     // if not the case, adjust the weights such that the best is feasible
     f_t weighted_violation_of_best = best().get_quality(weights) - best().get_objective();
-    CUOPT_LOG_DEBUG("weighted_violation_of_best %f quality %f objective %f\n",
+    CUOPT_LOG_DEBUG("weighted_violation_of_best %f quality %f objective %f",
                     weighted_violation_of_best,
                     best().get_quality(weights),
                     best().get_objective());

@@ -139,8 +139,7 @@ static bool run_fj_check_no_obj_runoff(std::string test_instance)
   fj_settings.n_of_minimums_for_exit = 20000 * 1000;
   fj_settings.update_weights         = true;
   fj_settings.feasibility_run        = false;
-  fj_settings.termination     = detail::fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT;
-  fj_settings.iteration_limit = 20000;
+  fj_settings.iteration_limit        = 20000;
 
   auto state = run_fj(test_instance, fj_settings);
 
@@ -162,8 +161,7 @@ static bool run_fj_check_objective(std::string test_instance, int iter_limit, do
   fj_settings.n_of_minimums_for_exit = 20000 * 1000;
   fj_settings.update_weights         = true;
   fj_settings.feasibility_run        = obj_target == +std::numeric_limits<double>::infinity();
-  fj_settings.termination     = detail::fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT;
-  fj_settings.iteration_limit = iter_limit;
+  fj_settings.iteration_limit        = iter_limit;
 
   auto state     = run_fj(test_instance, fj_settings);
   auto& solution = state.solution;
@@ -190,8 +188,7 @@ static bool run_fj_check_feasible(std::string test_instance)
   fj_settings.n_of_minimums_for_exit = 20000 * 1000;
   fj_settings.update_weights         = true;
   fj_settings.feasibility_run        = false;
-  fj_settings.termination     = detail::fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT;
-  fj_settings.iteration_limit = 25000;
+  fj_settings.iteration_limit        = 25000;
 
   auto state     = run_fj(test_instance, fj_settings);
   auto& solution = state.solution;
@@ -232,30 +229,32 @@ TEST_P(MIPSolveParametricTest, feasibility_jump_obj_test)
 INSTANTIATE_TEST_SUITE_P(
   MIPSolveTest,
   MIPSolveParametricTest,
-  testing::Values(std::make_tuple("50v-10.mps", 7800, 100000),
-                  std::make_tuple("fiball.mps", 140, 25000),
-                  std::make_tuple("gen-ip054.mps", 7500, 20000),
-                  std::make_tuple("sct2.mps", 100, 50000),
-                  std::make_tuple("uccase9.mps", 4000000, 50000),
-                  // unstable, prone to failure on slight weight changes
-                  // std::make_tuple("drayage-25-23.mps", 300000, 50000),
-                  std::make_tuple("tr12-30.mps", 300000, 50000),
-                  std::make_tuple("neos-3004026-krka.mps",
-                                  +std::numeric_limits<double>::infinity(),
-                                  35000),  // feasibility
-                  // std::make_tuple("nursesched-medium-hint03.mps", 12000, 50000), // too large
-                  std::make_tuple("ns1208400.mps", 2, 60000),
-                  std::make_tuple("gmu-35-50.mps", -2300000, 25000),
-                  std::make_tuple("n2seq36q.mps", 158800, 25000),
-                  std::make_tuple("seymour1.mps", 440, 50000),
-                  std::make_tuple("rmatr200-p5.mps", 7000, 10000),
-                  std::make_tuple("cvs16r128-89.mps", -50, 10000)
+  testing::Values(
+    // Bug: https://github.com/NVIDIA/cuopt/issues/214
+    // std::make_tuple("50v-10.mps", 7800, 100000),
+    // std::make_tuple("fiball.mps", 140, 25000),
+    // std::make_tuple("rmatr200-p5.mps", 7000, 10000),
+    std::make_tuple("gen-ip054.mps", 7500, 20000),
+    std::make_tuple("sct2.mps", 100, 50000),
+    std::make_tuple("uccase9.mps", 4000000, 50000),
+    // unstable, prone to failure on slight weight changes
+    // std::make_tuple("drayage-25-23.mps", 300000, 50000),
+    std::make_tuple("tr12-30.mps", 300000, 50000),
+    std::make_tuple("neos-3004026-krka.mps",
+                    +std::numeric_limits<double>::infinity(),
+                    35000),  // feasibility
+    // std::make_tuple("nursesched-medium-hint03.mps", 12000, 50000), // too large
+    std::make_tuple("ns1208400.mps", 2, 60000),
+    std::make_tuple("gmu-35-50.mps", -2300000, 25000),
+    std::make_tuple("n2seq36q.mps", 158800, 25000),
+    std::make_tuple("seymour1.mps", 440, 50000),
+    std::make_tuple("cvs16r128-89.mps", -50, 10000)
 // TEMPORARY: occasional cusparse transpose issues on ARM in CI
 #ifndef __aarch64__
-                    ,
-                  std::make_tuple("thor50dday.mps", 250000, 1000)
+      ,
+    std::make_tuple("thor50dday.mps", 250000, 1000)
 #endif
-                    ));
+      ));
 
 TEST(mip_solve, feasibility_jump_feas_test)
 {

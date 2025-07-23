@@ -82,13 +82,6 @@ struct fj_hyper_parameters_t {
   int load_balancing_codepath_min_varcount             = 3200;
 };
 
-// instead of putting in a type dependent class, put it in a name space
-// easy to access and prevents variable shadowing
-enum fj_termination_flags_t {
-  FJ_TERMINATION_TIME_LIMIT      = (1 << 0),
-  FJ_TERMINATION_ITERATION_LIMIT = (1 << 1)
-};
-
 enum fj_move_type_t {
   FJ_MOVE_BEGIN = 0,
   FJ_MOVE_LIFT  = FJ_MOVE_BEGIN,
@@ -112,7 +105,6 @@ struct fj_settings_t {
   int seed{0};
   fj_mode_t mode{fj_mode_t::FIRST_FEASIBLE};
   fj_candidate_selection_t candidate_selection{fj_candidate_selection_t::WEIGHTED_SCORE};
-  int termination{fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT};
   double time_limit{60.0};
   int iteration_limit{std::numeric_limits<int>::max()};
   fj_hyper_parameters_t parameters{};
