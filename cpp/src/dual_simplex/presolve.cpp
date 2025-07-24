@@ -32,7 +32,6 @@ void bound_strengthening(const std::vector<char>& row_sense,
   const i_t n = problem.num_cols;
 
   std::vector<f_t> constraint_lower(m);
-  // std::vector<f_t> constraint_upper(m);
   std::vector<i_t> num_lower_infinity(m);
   std::vector<i_t> num_upper_infinity(m);
 
@@ -68,16 +67,13 @@ void bound_strengthening(const std::vector<char>& row_sense,
       num_upper_infinity[i] = 0;
 
       f_t lower_limit = 0.0;
-      // f_t upper_limit = 0.0;
       for (i_t p = row_start; p < row_end; ++p) {
         const i_t j    = Arow.i[p];
         const f_t a_ij = Arow.x[p];
         if (a_ij > 0) {
           lower_limit += a_ij * lower[j];
-          // upper_limit += a_ij * upper[j];
         } else if (a_ij < 0) {
           lower_limit += a_ij * upper[j];
-          // upper_limit += a_ij * lower[j];
         }
         if (lower[j] == -inf && a_ij > 0) {
           num_lower_infinity[i]++;
@@ -88,9 +84,7 @@ void bound_strengthening(const std::vector<char>& row_sense,
           lower_limit = -inf;
         }
       }
-      // printf("Constraint %d: lo %e\n", i, lower_limit);
       constraint_lower[i] = lower_limit;
-      // constraint_upper[i] = upper_limit;
     }
 
     // Use the constraint bounds to derive new bounds on the variables
@@ -104,8 +98,6 @@ void bound_strengthening(const std::vector<char>& row_sense,
           if (a_ik > 0) {
             const f_t new_upper = lower[k] + (problem.rhs[i] - constraint_lower[i]) / a_ik;
             if (new_upper < upper[k]) {
-              // printf("Strengthed bound on variable %d: lo %e up %e -> %e\n", k, lower[k],
-              // upper[k], new_upper);
               upper[k] = new_upper;
               if (lower[k] > upper[k]) {
                 settings.log.printf(
@@ -119,8 +111,6 @@ void bound_strengthening(const std::vector<char>& row_sense,
           } else if (a_ik < 0) {
             const f_t new_lower = upper[k] + (problem.rhs[i] - constraint_lower[i]) / a_ik;
             if (new_lower > lower[k]) {
-              // printf("Strengthend bound on variable %d: lo %e -> %e up %e\n", k, lower[k],
-              // new_lower, upper[k]);
               lower[k] = new_lower;
               if (lower[k] > upper[k]) {
                 settings.log.printf("\t INFEASIBLE !!!!!!!!!!!!!!!!!!1\n");
@@ -695,7 +685,7 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   // At this point the problem representation is in the form: A*x {<=, =} b
   // This is the time to run bound strengthening
   constexpr bool run_bound_strengthening = false;
-  if (run_bound_strengthening) {
+  if constexpr (run_bound_strengthening) {
     settings.log.printf("Running bound strengthening\n");
     bound_strengthening(row_sense, settings, problem);
   }

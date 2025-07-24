@@ -1347,13 +1347,10 @@ template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::u_transpose_solve(sparse_vector_t<i_t, f_t>& rhs) const
 {
   total_sparse_U_transpose_++;
-  const i_t m = L0_.m;
   // U0'*x = y
   // Solve U0'*x0 = y
-  // csc_matrix_t<i_t, f_t> B(m, 1, 0);
-  rhs.to_csc(B_);
-  i_t top = sparse_triangle_solve<i_t, f_t, true>(
-    B_, 0, std::nullopt, xi_workspace_, U0_transpose_, x_workspace_.data());
+  i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, true>(
+    rhs, std::nullopt, xi_workspace_, U0_transpose_, x_workspace_.data());
   solve_to_sparse_vector(top, rhs);
   return 0;
 }
@@ -1474,27 +1471,10 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& r
   // sort the indices and place into a sparse column
   std::sort(xi_workspace_.begin() + m, xi_workspace_.begin() + m + nz, std::less<i_t>());
 
-  B_.m = m;
-  B_.n = 1;
-  B_.col_start.resize(2);
-  B_.i.resize(nz);
-  B_.x.resize(nz);
-  i_t b_nz = 0;
-  for (i_t k = 0; k < nz; ++k) {
-    const i_t i          = xi_workspace_[m + k];
-    const f_t b_val      = x_workspace_[i];
-    x_workspace_[i]      = 0.0;
-    xi_workspace_[m + k] = 0;
-    xi_workspace_[i]     = 0;
-    B_.i[b_nz]           = i;
-    B_.x[b_nz]           = b_val;
-    b_nz++;
-  }
-  B_.col_start[0] = 0;
-  B_.col_start[1] = b_nz;
-
-  i_t top = sparse_triangle_solve<i_t, f_t, false>(
-    B_, 0, std::nullopt, xi_workspace_, L0_transpose_, x_workspace_.data());
+  sparse_vector_t<i_t, f_t> b(m, nz);
+  gather_into_sparse_vector(nz, b);
+  i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, false>(
+    b, std::nullopt, xi_workspace_, L0_transpose_, x_workspace_.data());
   solve_to_sparse_vector(top, rhs);
 
 #ifdef CHECK_SPARSE_SOLVE
@@ -1680,10 +1660,8 @@ i_t basis_update_mpf_t<i_t, f_t>::u_solve(sparse_vector_t<i_t, f_t>& rhs) const
   // U*x = y
 
   // Solve U0*x = y
-  // csc_matrix_t<i_t, f_t> B(m, 1, 0);
-  rhs.to_csc(B_);
-  i_t top = sparse_triangle_solve<i_t, f_t, false>(
-    B_, 0, std::nullopt, xi_workspace_, U0_, x_workspace_.data());
+  i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, false>(
+    rhs, std::nullopt, xi_workspace_, U0_, x_workspace_.data());
   solve_to_sparse_vector(top, rhs);
 
   return 0;
@@ -1758,10 +1736,8 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(sparse_vector_t<i_t, f_t>& rhs) const
   // L0 * T0 * T1 * ... * T_{num_updates_ - 1} * x = y
 
   // First solve L0*x0 = y
-  // csc_matrix_t<i_t, f_t> B(m, 1, 0);
-  rhs.to_csc(B_);
-  i_t top = sparse_triangle_solve<i_t, f_t, true>(
-    B_, 0, std::nullopt, xi_workspace_, L0_, x_workspace_.data());
+  i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, true>(
+    rhs, std::nullopt, xi_workspace_, L0_, x_workspace_.data());
   solve_to_workspace(top);  // Uses xi_workspace_ and x_workspace_ to fill rhs
   i_t nz = m - top;
   // Then T0 * T1 * ... * T_{num_updates_ - 1} * x = x0

@@ -189,7 +189,6 @@ class basis_update_mpf_t {
       U0_transpose_(1, 1, 1),
       L0_transpose_(1, 1, 1),
       refactor_frequency_(refactor_frequency),
-      B_(Linit.m, 1, 0),
       total_sparse_L_transpose_(0),
       total_dense_L_transpose_(0),
       total_sparse_L_(0),
@@ -380,7 +379,6 @@ class basis_update_mpf_t {
   mutable std::vector<f_t> x_workspace_;
   mutable csc_matrix_t<i_t, f_t> U0_transpose_;  // Needed for sparse solves
   mutable csc_matrix_t<i_t, f_t> L0_transpose_;  // Needed for sparse solves
-  mutable csc_matrix_t<i_t, f_t> B_;             // Needed for sparse solves
 
   mutable i_t total_sparse_L_transpose_;
   mutable i_t total_dense_L_transpose_;
