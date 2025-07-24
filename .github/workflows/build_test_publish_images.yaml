@@ -42,7 +42,7 @@ on:
         type: string
         default: '["22.04"]'
         description: 'JSON array of Linux versions to build for'
-      
+
 
 defaults:
   run:
