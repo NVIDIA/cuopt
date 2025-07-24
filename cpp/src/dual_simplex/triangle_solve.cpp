@@ -102,11 +102,11 @@ i_t reach(const sparse_vector_t<i_t, f_t>& b,
           csc_matrix_t<i_t, f_t>& G,
           std::vector<i_t>& xi)
 {
-  const i_t m = G.m;
-  i_t top     = m;
+  const i_t m   = G.m;
+  i_t top       = m;
   const i_t bnz = b.i.size();
   for (i_t p = 0; p < bnz; ++p) {
-       if (!MARKED(G.col_start, b.i[p])) {  // start a DFS at unmarked node i
+    if (!MARKED(G.col_start, b.i[p])) {  // start a DFS at unmarked node i
       top = depth_first_search(b.i[p], pinv, G, top, xi, xi.begin() + m);
     }
   }
@@ -225,7 +225,6 @@ template int upper_triangular_solve<int, double>(const csc_matrix_t<int, double>
 
 template int upper_triangular_transpose_solve<int, double>(const csc_matrix_t<int, double>& U,
                                                            std::vector<double>& x);
-
 
 template int reach<int, double>(const sparse_vector_t<int, double>& b,
                                 const std::optional<std::vector<int>>& pinv,

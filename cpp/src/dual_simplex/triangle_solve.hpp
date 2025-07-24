@@ -53,7 +53,6 @@ i_t upper_triangular_solve(const csc_matrix_t<i_t, f_t>& U, std::vector<f_t>& x)
 template <typename i_t, typename f_t>
 i_t upper_triangular_transpose_solve(const csc_matrix_t<i_t, f_t>& U, std::vector<f_t>& x);
 
-
 // \brief Reach computes the reach of b in the graph of G
 // \param[in] b - sparse vector containing the rhs
 // \param[in] pinv - inverse permuation vector
@@ -66,7 +65,6 @@ i_t reach(const sparse_vector_t<i_t, f_t>& b,
           const std::optional<std::vector<i_t>>& pinv,
           csc_matrix_t<i_t, f_t>& G,
           std::vector<i_t>& xi);
-
 
 // \brief Performs a depth-first search starting from node j in the graph
 // defined by G
@@ -109,6 +107,5 @@ i_t sparse_triangle_solve(const sparse_vector_t<i_t, f_t>& b,
                           std::vector<i_t>& xi,
                           csc_matrix_t<i_t, f_t>& G,
                           f_t* x);
-
 
 }  // namespace cuopt::linear_programming::dual_simplex
