@@ -327,6 +327,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   ls.lb_constraint_prop.temp_problem.setup(*problem_ptr);
   ls.lb_constraint_prop.bounds_update.setup(ls.lb_constraint_prop.temp_problem);
   ls.constraint_prop.bounds_update.resize(*problem_ptr);
+  problem_ptr->handle_ptr->sync_stream();
   return true;
 }
 
