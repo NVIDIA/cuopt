@@ -26,6 +26,23 @@ on:
         type: string
       build_type:
         type: string
+      arch:
+        type: string
+        default: '["amd64", "arm64"]'
+        description: 'JSON array of architectures to build for'
+      cuda_ver:
+        type: string
+        default: '["12.8.0"]'
+        description: 'JSON array of CUDA versions to build for'
+      python_ver:
+        type: string
+        default: '["3.12.11"]'
+        description: 'JSON array of Python versions to build for'
+      linux_ver:
+        type: string
+        default: '["22.04"]'
+        description: 'JSON array of Linux versions to build for'
+      
 
 defaults:
   run:
@@ -68,10 +85,10 @@ jobs:
         run: |
           MATRIX=$(jq -c '.' <<EOF
           {
-            "arch": ["amd64", "arm64"],
-            "cuda_ver": ["12.8.0"],
-            "python_ver": ["3.12.11"],
-            "linux_ver": ["22.04"]
+            "arch": ${{ inputs.arch }},
+            "cuda_ver": ${{ inputs.cuda_ver }},
+            "python_ver": ${{ inputs.python_ver }},
+            "linux_ver": ${{ inputs.linux_ver }}
           }
           EOF
           )
