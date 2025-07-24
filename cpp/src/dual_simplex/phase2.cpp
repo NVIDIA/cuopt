@@ -327,7 +327,7 @@ void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
   for (i_t k = 0; k < nz_delta_y; k++) {
     const i_t i         = delta_y.i[k];
     const f_t delta_y_i = delta_y.x[k];
-    if (0 && std::abs(delta_y_i) < 1e-12) { continue; }
+    if (std::abs(delta_y_i) < 1e-12) { continue; }
     const i_t row_start = A_transpose.col_start[i];
     const i_t row_end   = A_transpose.col_start[i + 1];
     for (i_t p = row_start; p < row_end; ++p) {
@@ -1272,9 +1272,7 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
   // We want B v =  - B^{-T} e_basic_leaving_index
   ft.b_solve(delta_y_sparse, v_sparse);
   if (direction == -1) {
-    for (i_t k = 0; k < v_sparse.i.size(); ++k) {
-      v_sparse.x[k] *= -1;
-    }
+    v_sparse.negate();
   }
   v_sparse.scatter(v);
 
@@ -2508,6 +2506,7 @@ dual::status_t dual_phase2(i_t phase,
         {
           const f_t dual_infeas = phase2::dual_infeasibility(
             lp, settings, vstatus, unperturbed_z, settings.tight_tol, settings.dual_tol);
+          settings.log.printf("Dual infeasibility after removing perturbation %e\n", dual_infeas);
           if (dual_infeas <= settings.dual_tol) {
             settings.log.printf("Removed perturbation of %.2e.\n", perturbation);
             z            = unperturbed_z;
@@ -2551,13 +2550,42 @@ dual::status_t dual_phase2(i_t phase,
               entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
             continue;
           } else {
+            std::vector<f_t> unperturbed_x(n);
+            phase2::compute_primal_solution_from_basis(
+              lp, ft, basic_list, nonbasic_list, vstatus, unperturbed_x);
+            x                    = unperturbed_x;
+            primal_infeasibility = phase2::compute_initial_primal_infeasibilities(
+              lp, settings, basic_list, x, squared_infeasibilities, infeasibility_indices);
+
+            const f_t orig_dual_infeas = phase2::dual_infeasibility(
+              lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
+
+            if (primal_infeasibility <= settings.primal_tol && orig_dual_infeas <= settings.dual_tol) {
+              phase2::prepare_optimality(lp,
+                                         settings,
+                                         ft,
+                                         objective,
+                                         basic_list,
+                                         nonbasic_list,
+                                         vstatus,
+                                         phase,
+                                         start_time,
+                                         max_val,
+                                         iter,
+                                         x,
+                                         y,
+                                         z,
+                                         sol);
+              status = dual::status_t::OPTIMAL;
+              break;
+            }
             settings.log.printf("Failed to remove perturbation of %.2e.\n", perturbation);
           }
         }
       }
 
       if (perturbation == 0.0 && phase == 2) {
-        constexpr bool use_farkas = false;
+        constexpr bool use_farkas = true;
         if constexpr (use_farkas) {
           std::vector<f_t> farkas_y;
           std::vector<f_t> farkas_zl;
@@ -2668,7 +2696,7 @@ dual::status_t dual_phase2(i_t phase,
                             scaled_delta_xB_sparse,
                             delta_x);
 
-    timers.vector_time += timers.stop_timer();
+    timers.ftran_time += timers.stop_timer();
 
 #ifdef CHECK_PRIMAL_STEP
     std::vector<f_t> residual(m);
