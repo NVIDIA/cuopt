@@ -51,8 +51,6 @@ RUN ln -sf /usr/bin/python${PYTHON_SHORT_VER} /usr/bin/python && \
     useradd -r -g cuopt cuopt && \
     chown -R cuopt:cuopt /usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages
 
-RUN apt-get purge -y gcc && rm -rf /var/lib/apt/lists/*
-
 USER cuopt
 
 FROM python-env AS install-env
@@ -73,6 +71,13 @@ RUN cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
       "cuopt-sh-client==${CUOPT_VER}" \
       "nvidia-cuda-runtime-${cuda_suffix}==${cuda_major_minor}.*" && \
     python -m pip list
+
+USER root
+
+# Remove gcc to save space, gcc was required for building psutils
+RUN apt-get purge -y gcc && rm -rf /var/lib/apt/lists/*
+
+USER cuopt
 
 COPY ./LICENSE /home/cuopt/LICENSE
 COPY ./VERSION /home/cuopt/VERSION
