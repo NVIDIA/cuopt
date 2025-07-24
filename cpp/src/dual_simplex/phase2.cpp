@@ -2557,7 +2557,7 @@ dual::status_t dual_phase2(i_t phase,
       }
 
       if (perturbation == 0.0 && phase == 2) {
-        constexpr bool use_farkas = true;
+        constexpr bool use_farkas = false;
         if constexpr (use_farkas) {
           std::vector<f_t> farkas_y;
           std::vector<f_t> farkas_zl;
