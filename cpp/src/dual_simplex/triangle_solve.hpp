@@ -53,21 +53,6 @@ i_t upper_triangular_solve(const csc_matrix_t<i_t, f_t>& U, std::vector<f_t>& x)
 template <typename i_t, typename f_t>
 i_t upper_triangular_transpose_solve(const csc_matrix_t<i_t, f_t>& U, std::vector<f_t>& x);
 
-// \brief Reach computes the reach of b=B(:, col) in the graph of G
-// \param[in] B - Sparse CSC matrix containing rhs
-// \param[in] col - column of B
-// \param[in] pinv - inverse permuation vector
-// \param[in, out] G - Sparse CSC matrix G. The column pointers of G are
-// modified (but restored) during this call \param[out] xi  - stack of size 2*n.
-// xi[top] .. xi[n-1] contains the reachable indicies \returns top - the size of
-// the stack
-template <typename i_t, typename f_t>
-i_t reach(const csc_matrix_t<i_t, f_t>& B,
-          i_t col,
-          const std::optional<std::vector<i_t>>& pinv,
-          csc_matrix_t<i_t, f_t>& G,
-          std::vector<i_t>& xi);
-
 
 // \brief Reach computes the reach of b in the graph of G
 // \param[in] b - sparse vector containing the rhs
@@ -105,27 +90,6 @@ i_t depth_first_search(i_t j,
                        i_t top,
                        std::vector<i_t>& xi,
                        typename std::vector<i_t>::iterator pstack);
-
-// \brief sparse_triangle_solve solve L*x = b or U*x = b where L is a sparse lower
-// triangular matrix
-//        and U is a sparse upper triangular matrix, and b is a sparse
-//        right-hand side. The vector b is obtained from the column of a sparse
-//        matrix.
-// \param[in] B - Sparse CSC matrix contain the rhs
-// \param[in] col - the column of B to use as b. b = B(:, col)
-// \param[in] pinv - optional inverse permutation vector
-// \param[in, out] xi - An array of size 2*m, on output it contains the non-zero
-// pattern of x in xi[top] through xi[m-1]
-// \param[in, out] G - The lower triangular matrix L or the upper triangular matrix U
-//                     G.col_start is marked and restored during the algorithm
-// \param[out] - The solution vector xi_t
-template <typename i_t, typename f_t, bool lo>
-i_t sparse_triangle_solve(const csc_matrix_t<i_t, f_t>& B,
-                          i_t col,
-                          const std::optional<std::vector<i_t>>& pinv,
-                          std::vector<i_t>& xi,
-                          csc_matrix_t<i_t, f_t>& G,
-                          f_t* x);
 
 // \brief sparse_triangle_solve solve L*x = b or U*x = b where L is a sparse lower
 // triangular matrix

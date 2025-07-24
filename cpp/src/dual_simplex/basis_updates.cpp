@@ -278,12 +278,10 @@ i_t basis_update_t<i_t, f_t>::l_solve(sparse_vector_t<i_t, f_t>& rhs) const
 
   // First solve
   // L0*x0 = b
-  csc_matrix_t<i_t, f_t> B(1, 1, 1);
-  rhs.to_csc(B);
   const i_t m = L0_.m;
 
   i_t top = sparse_triangle_solve<i_t, f_t, true>(
-    B, 0, std::nullopt, xi_workspace_, L0_, x_workspace_.data());
+    rhs, std::nullopt, xi_workspace_, L0_, x_workspace_.data());
   solve_to_sparse_vector(top, rhs);  // Uses xi_workspace_ and x_workspace_ to fill rhs
 
 #ifdef CHECK_L_SOLVE
@@ -502,16 +500,13 @@ i_t basis_update_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& rhs) 
   }
 
   // L0^T * y = cprime
-  csc_matrix_t<i_t, f_t> Cprime(1, 1, 1);
-  rhs.to_csc(Cprime);
-
 #ifdef CHECK_LOWER_TRANSPOSE_SOLVE
   std::vector<f_t> cprime_dense;
   rhs.to_dense(cprime_dense);
 #endif
 
   i_t top = sparse_triangle_solve<i_t, f_t, false>(
-    Cprime, 0, std::nullopt, xi_workspace_, L0_transpose_, x_workspace_.data());
+    rhs, std::nullopt, xi_workspace_, L0_transpose_, x_workspace_.data());
   solve_to_sparse_vector(top, rhs);  // Uses xi_workspace_ and x_workspace_ to fill rhs
 
 #ifdef CHECK_LOWER_TRANSPOSE_SOLVE
@@ -592,10 +587,8 @@ i_t basis_update_t<i_t, f_t>::u_solve(sparse_vector_t<i_t, f_t>& rhs) const
   sparse_vector_t<i_t, f_t> bprime(m, 0);
   rhs.inverse_permute_vector(col_permutation_, bprime);
 
-  csc_matrix_t<i_t, f_t> Bprime(1, 1, 1);
-  bprime.to_csc(Bprime);
   i_t top = sparse_triangle_solve<i_t, f_t, false>(
-    Bprime, 0, std::nullopt, xi_workspace_, U_, x_workspace_.data());
+    bprime, std::nullopt, xi_workspace_, U_, x_workspace_.data());
   solve_to_sparse_vector(top, rhs);  // Uses xi_workspace_ and x_workspace_ to fill rhs
 
   rhs.inverse_permute_vector(inverse_col_permutation_);
@@ -661,10 +654,8 @@ i_t basis_update_t<i_t, f_t>::u_transpose_solve(sparse_vector_t<i_t, f_t>& rhs) 
 #endif
 
   // U'*y = bprime
-  csc_matrix_t<i_t, f_t> Bprime(1, 1, 1);
-  bprime.to_csc(Bprime);
   i_t top = sparse_triangle_solve<i_t, f_t, true>(
-    Bprime, 0, std::nullopt, xi_workspace_, U_transpose_, x_workspace_.data());
+    bprime, std::nullopt, xi_workspace_, U_transpose_, x_workspace_.data());
   solve_to_sparse_vector(top, rhs);  // Uses xi_workspace_ and x_workspace_ to fill rhs
 
 #ifdef CHECK_WORKSPACE
