@@ -65,7 +65,8 @@ class pdlp_solver_t {
    */
   pdlp_solver_t(
     problem_t<i_t, f_t>& op_problem,
-    pdlp_solver_settings_t<i_t, f_t> const& settings = pdlp_solver_settings_t<i_t, f_t>{});
+    pdlp_solver_settings_t<i_t, f_t> const& settings = pdlp_solver_settings_t<i_t, f_t>{},
+    bool is_batch_mode                               = false);
 
   optimization_problem_solution_t<i_t, f_t> run_solver(
     const std::chrono::high_resolution_clock::time_point& start_time);
