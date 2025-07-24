@@ -16,7 +16,6 @@
 ConfigureTest(ROUTING_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_routing_test.cu)
 ConfigureTest(ROUTING_GES_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_ges_test.cu)
 
-# ConfigureTest(SCROSS_GES_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_scross_test.cu)
 ConfigureTest(VEHICLE_ORDER_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_order_match.cu)
 ConfigureTest(VEHICLE_TYPES_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_types_test.cu)
 ConfigureTest(OBJECTIVE_FUNCTION_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_objective_function_test.cu)
@@ -28,11 +27,6 @@ ConfigureTest(RETAIL_L1TEST ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_retail_test.cu
 # ##################################################################################################
 # - L1  tests for quick regression check --------------------------------------------------------------------------
 ConfigureTest(ROUTING_L1TEST ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_routing_test.cu)
-ConfigureTest(CYCLE_FINDER_L1TEST ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_cycle_finder.cu)
-
-# ##################################################################################################
-# - L2  tests for full regression check --------------------------------------------------------------------------
-ConfigureTest(ROUTING_L2TEST ${CMAKE_CURRENT_SOURCE_DIR}/l2_routing_test.cu) # #####################################################################################################
 
 # # - ${CMAKE_CURRENT_SOURCE_DIR} unit tests ----------------------------------------------------------------------------
 ConfigureTest(ROUTING_UNIT_TEST

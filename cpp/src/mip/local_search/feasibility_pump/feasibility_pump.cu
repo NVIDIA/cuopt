@@ -291,7 +291,6 @@ bool feasibility_pump_t<i_t, f_t>::run_fj_cycle_escape(solution_t<i_t, f_t>& sol
   fj.settings.feasibility_run        = true;
   fj.settings.n_of_minimums_for_exit = 5000;
   fj.settings.time_limit             = std::min(3., timer.remaining_time());
-  fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
   is_feasible                        = fj.solve(solution);
   // if FJ didn't change the solution, take last incumbent solution
   if (!is_feasible && cycle_queue.check_cycle(solution)) {
@@ -314,7 +313,6 @@ bool feasibility_pump_t<i_t, f_t>::test_fj_feasible(solution_t<i_t, f_t>& soluti
   fj.settings.feasibility_run        = true;
   fj.settings.n_of_minimums_for_exit = 5000;
   fj.settings.time_limit             = std::min(time_limit, timer.remaining_time());
-  fj.settings.termination            = fj_termination_flags_t::FJ_TERMINATION_TIME_LIMIT;
   cuopt_func_call(solution.test_variable_bounds(true));
   is_feasible = fj.solve(solution);
   cuopt_func_call(solution.test_variable_bounds(true));
