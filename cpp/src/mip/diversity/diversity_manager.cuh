@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include "assignment_hash_map.cuh"
+#include "multi_armed_bandit.cuh"
 #include "population.cuh"
 
 #include "recombiners/bound_prop_recombiner.cuh"
@@ -43,6 +45,7 @@ class diversity_manager_t {
   solution_t<i_t, f_t> generate_solution(f_t time_limit, bool random_start = true);
   // generates initial solutions
   void generate_initial_solutions();
+  void run_fj_alone(solution_t<i_t, f_t>& solution);
   // main loop of diversity improvements
   void main_loop();
   // randomly chooses a recombiner and returns the offspring
@@ -54,7 +57,7 @@ class diversity_manager_t {
   void average_fj_weights(i_t i);
   void diversity_step();
   std::vector<solution_t<i_t, f_t>> generate_more_solutions();
-  void add_user_given_solution(std::vector<solution_t<i_t, f_t>>& initial_sol_vector);
+  void add_user_given_solutions(std::vector<solution_t<i_t, f_t>>& initial_sol_vector);
   population_t<i_t, f_t>* get_population_pointer() { return &population; }
   void recombine_and_ls_with_all(std::vector<solution_t<i_t, f_t>>& solutions);
   void recombine_and_ls_with_all(solution_t<i_t, f_t>& solution);
@@ -63,11 +66,21 @@ class diversity_manager_t {
   void set_new_user_bound(f_t new_user_bound);
   void generate_quick_feasible_solution();
   bool check_b_b_preemption();
+  void check_better_than_both(solution_t<i_t, f_t>& offspring,
+                              solution_t<i_t, f_t>& sol1,
+                              solution_t<i_t, f_t>& sol2);
+  bool run_local_search(solution_t<i_t, f_t>& solution,
+                        const weight_t<i_t, f_t>& weights,
+                        timer_t& timer,
+                        ls_config_t<i_t, f_t>& ls_config);
+
+  void set_simplex_solution(const std::vector<f_t>& solution, f_t objective);
 
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;
   population_t<i_t, f_t> population;
   rmm::device_uvector<f_t> lp_optimal_solution;
+  bool simplex_solution_exists{false};
   local_search_t<i_t, f_t> ls;
   cuopt::timer_t timer;
   bound_prop_recombiner_t<i_t, f_t> bound_prop_recombiner;
@@ -78,6 +91,17 @@ class diversity_manager_t {
   i_t current_step{0};
   solver_stats_t<i_t, f_t>& stats;
   std::vector<solution_t<i_t, f_t>> initial_sol_vector;
+  mab_t mab_recombiner;
+  mab_t mab_ls;
+  assignment_hash_map_t<i_t, f_t> assignment_hash_map;
+  // mutex for the simplex solution update
+  std::mutex relaxed_solution_mutex;
+  // atomic for signalling pdlp to stop
+  std::atomic<int> global_concurrent_halt{0};
+
+  bool run_only_ls_recombiner{false};
+  bool run_only_bp_recombiner{false};
+  bool run_only_fp_recombiner{false};
 };
 
 }  // namespace cuopt::linear_programming::detail

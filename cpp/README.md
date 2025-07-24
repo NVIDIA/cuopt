@@ -57,5 +57,5 @@ cpp/
 
 The MPS parser is a standalone module that parses MPS files and converts them into a format that can be used by the cuOpt library.
 
-It is located in the `libmps_parser` directory. This also contains the `CMakeLists.txt` file to build the module. 
+It is located in the `libmps_parser` directory. This also contains the `CMakeLists.txt` file to build the module.
 

@@ -1,3 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: build
 
 on:
@@ -152,20 +167,21 @@ jobs:
       date: ${{ inputs.date }}
       package-name: cuopt_server
       package-type: python
-  #docs-build:
-  #  if: inputs.build_type == 'nightly' || github.ref_type == 'branch'
-  #  needs: [python-build]
-  #  secrets: inherit
-  #  uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.08
-  #  with:
-  #    build_type: ${{ inputs.build_type || 'branch' }}
-  #    node_type: "gpu-l4-latest-1"
-  #    sha: ${{ inputs.sha }}
-  #    branch: ${{ inputs.branch }}
-  #    date: ${{ inputs.date }}
-  #    arch: amd64
-  #    container_image: rapidsai/ci-conda:cuda11.8.0-ubuntu22.04-py3.10
-  #    run_script: ci/build_docs.sh
+  docs-build:
+    needs: [python-build]
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.08
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      node_type: "gpu-l4-latest-1"
+      sha: ${{ inputs.sha }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      arch: "amd64"
+      file_to_upload: "docs/cuopt/build/html/"
+      artifact-name: "cuopt_docs"
+      container_image: "rapidsai/ci-conda:25.08-latest"
+      script: "ci/build_docs.sh"
   wheel-build-cuopt-sh-client:
     needs: wheel-build-cuopt
     secrets: inherit

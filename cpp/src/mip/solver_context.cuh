@@ -33,11 +33,7 @@ struct mip_solver_context_t {
                                 problem_t<i_t, f_t>* problem_ptr_,
                                 mip_solver_settings_t<i_t, f_t> settings_,
                                 pdlp_initial_scaling_strategy_t<i_t, f_t>& scaling)
-    : handle_ptr(handle_ptr_),
-      problem_ptr(problem_ptr_),
-      settings(settings_),
-      scaling(scaling),
-      lp_state(*problem_ptr)
+    : handle_ptr(handle_ptr_), problem_ptr(problem_ptr_), settings(settings_), scaling(scaling)
   {
     cuopt_assert(problem_ptr != nullptr, "problem_ptr is nullptr");
     stats.solution_bound = problem_ptr->maximize ? std::numeric_limits<f_t>::infinity()
@@ -46,7 +42,6 @@ struct mip_solver_context_t {
 
   raft::handle_t const* const handle_ptr;
   problem_t<i_t, f_t>* problem_ptr;
-  lp_state_t<i_t, f_t> lp_state;
   const mip_solver_settings_t<i_t, f_t> settings;
   pdlp_initial_scaling_strategy_t<i_t, f_t>& scaling;
   solver_stats_t<i_t, f_t> stats;

@@ -47,7 +47,7 @@ Check the help with 'cuopt_sh -h' for more detailed information.
         -i:   Host address of the cuOpt server (default 0.0.0.0)
         -p:   Port of the cuOpt server (default 5000)
         -s:   Use ssl (default False)
-        -c:   Path to self signed certificates only, skip for standard certificates (default "") 
+        -c:   Path to self signed certificates only, skip for standard certificates (default "")
         -l:   Log level (critical,error,warning,info,debug)
 	-ov:  If set, only validates input
         -v:   Print client version and exit
@@ -154,7 +154,7 @@ For more details see https://docs.nvidia.com/cuopt/user-guide/serv-api.html
 By default, the local file feature is not enabled in the cuOpt server. To configure the feature, set the environment variables described below in the server's container environment.
 
 ### Environment variables
-    
+
 To enable reading of cuOpt data files from the local filesystem, set the following
 
 * CUOPT_DATA_DIR: the absolute path of a directory in the cuOpt server's container environment. Typically this path is the mount point for a volume that exists outside of the container.

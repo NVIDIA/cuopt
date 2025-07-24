@@ -88,7 +88,7 @@ void unscale_solution(const std::vector<f_t>& column_scaling,
   unscaled_z.resize(n);
   for (i_t j = 0; j < n; ++j) {
     unscaled_x[j] = scaled_x[j] / column_scaling[j];
-    unscaled_z[j] = scaled_z[j] / column_scaling[j];
+    unscaled_z[j] = scaled_z[j] * column_scaling[j];
   }
 }
 
