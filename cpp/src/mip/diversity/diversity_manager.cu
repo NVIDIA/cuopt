@@ -320,14 +320,9 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     if (!check_bounds_sanity(*problem_ptr)) { return false; }
   }
   stats.presolve_time = presolve_timer.elapsed_time();
-  // after every change to the problem, we should resize all the relevant vars
-  // we need to encapsulate that to prevent repetitions
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
-  ls.resize_vectors(*problem_ptr, problem_ptr->handle_ptr);
-  ls.lb_constraint_prop.temp_problem.setup(*problem_ptr);
-  ls.lb_constraint_prop.bounds_update.setup(ls.lb_constraint_prop.temp_problem);
-  ls.constraint_prop.bounds_update.resize(*problem_ptr);
   problem_ptr->handle_ptr->sync_stream();
+  cudaDeviceSynchronize();
   return true;
 }
 
@@ -398,6 +393,12 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   // to automatically compute the solving time on scope exit
   auto timer_raii_guard =
     cuopt::scope_guard([&]() { stats.total_solve_time = timer.elapsed_time(); });
+  // after every change to the problem, we should resize all the relevant vars
+  // we need to encapsulate that to prevent repetitions
+  ls.resize_vectors(*problem_ptr, problem_ptr->handle_ptr);
+  ls.lb_constraint_prop.temp_problem.setup(*problem_ptr);
+  ls.lb_constraint_prop.bounds_update.setup(ls.lb_constraint_prop.temp_problem);
+  ls.constraint_prop.bounds_update.resize(*problem_ptr);
   problem_ptr->check_problem_representation(true);
   // have the structure ready for reusing later
   problem_ptr->compute_integer_fixed_problem();
