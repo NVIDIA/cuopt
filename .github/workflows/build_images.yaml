@@ -92,7 +92,7 @@ jobs:
           build-args: |
             CUDA_VER=${{ inputs.CUDA_VER }}
             PYTHON_SHORT_VER=${{ steps.trim.outputs.PYTHON_SHORT }}
-            CUOPT_VER=25.8.0a49
+            CUOPT_VER=${{ inputs.CUOPT_VER }}
             LINUX_VER=${{ inputs.LINUX_VER }}
           tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
 
