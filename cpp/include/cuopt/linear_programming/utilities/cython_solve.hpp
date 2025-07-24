@@ -104,7 +104,8 @@ struct solver_ret_t {
 
 std::unique_ptr<solver_ret_t> call_solve(cuopt::mps_parser::data_model_view_t<int, double>*,
                                          linear_programming::solver_settings_t<int, double>*,
-                                         unsigned int flags = cudaStreamNonBlocking);
+                                         unsigned int flags = cudaStreamNonBlocking,
+                                         bool is_batch_mode = false);
 
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
   std::vector<cuopt::mps_parser::data_model_view_t<int, double>*>,

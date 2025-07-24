@@ -40,7 +40,8 @@ template <typename i_t, typename f_t>
 adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
   raft::handle_t const* handle_ptr,
   rmm::device_scalar<f_t>* primal_weight,
-  rmm::device_scalar<f_t>* step_size)
+  rmm::device_scalar<f_t>* step_size,
+  bool is_batch_mode)
   : stream_pool_(parallel_stream_computation),
     dot_delta_X_(cudaEventDisableTiming),
     dot_delta_Y_(cudaEventDisableTiming),
@@ -55,7 +56,7 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
     norm_squared_delta_dual_{stream_view_},
     reusable_device_scalar_value_1_{f_t(1.0), stream_view_},
     reusable_device_scalar_value_0_{f_t(0.0), stream_view_},
-    graph(stream_view_)
+    graph(stream_view_, is_batch_mode)
 {
   valid_step_size_ = make_unique_cuda_host_pinned<i_t>();
 }
