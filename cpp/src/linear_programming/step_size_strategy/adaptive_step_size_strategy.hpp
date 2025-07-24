@@ -56,7 +56,8 @@ class adaptive_step_size_strategy_t {
 
   adaptive_step_size_strategy_t(raft::handle_t const* handle_ptr,
                                 rmm::device_scalar<f_t>* primal_weight,
-                                rmm::device_scalar<f_t>* step_size);
+                                rmm::device_scalar<f_t>* step_size,
+                                bool is_batch_mode = false);
 
   void compute_step_sizes(pdhg_solver_t<i_t, f_t>& pdhg_solver,
                           rmm::device_scalar<f_t>& primal_step_size,

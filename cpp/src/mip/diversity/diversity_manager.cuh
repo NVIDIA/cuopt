@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include "assignment_hash_map.cuh"
+#include "multi_armed_bandit.cuh"
 #include "population.cuh"
 
 #include "recombiners/bound_prop_recombiner.cuh"
@@ -67,11 +69,18 @@ class diversity_manager_t {
   void check_better_than_both(solution_t<i_t, f_t>& offspring,
                               solution_t<i_t, f_t>& sol1,
                               solution_t<i_t, f_t>& sol2);
+  bool run_local_search(solution_t<i_t, f_t>& solution,
+                        const weight_t<i_t, f_t>& weights,
+                        timer_t& timer,
+                        ls_config_t<i_t, f_t>& ls_config);
+
+  void set_simplex_solution(const std::vector<f_t>& solution, f_t objective);
 
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;
   population_t<i_t, f_t> population;
   rmm::device_uvector<f_t> lp_optimal_solution;
+  bool simplex_solution_exists{false};
   local_search_t<i_t, f_t> ls;
   cuopt::timer_t timer;
   bound_prop_recombiner_t<i_t, f_t> bound_prop_recombiner;
@@ -82,29 +91,14 @@ class diversity_manager_t {
   i_t current_step{0};
   solver_stats_t<i_t, f_t>& stats;
   std::vector<solution_t<i_t, f_t>> initial_sol_vector;
+  mab_t mab_recombiner;
+  mab_t mab_ls;
+  assignment_hash_map_t<i_t, f_t> assignment_hash_map;
+  // mutex for the simplex solution update
+  std::mutex relaxed_solution_mutex;
+  // atomic for signalling pdlp to stop
+  std::atomic<int> global_concurrent_halt{0};
 
-  // Enhanced statistics structure for UCB with exponential recency weighting
-  struct mab_arm_stats_t {
-    int num_pulls      = 0;    // Number of times this arm was selected
-    double q_value     = 0.5;  // Exponential recency-weighted average estimate
-    double last_reward = 0.0;  // Last reward received (for debugging)
-  };
-  std::vector<mab_arm_stats_t> mab_arm_stats_;
-  double mab_epsilon_ = 0.15;   // Probability of exploration in Epsilon-Greedy.
-  std::mt19937 mab_rng_;        // RNG dedicated to MAB decisions.
-  double mab_alpha_    = 0.05;  // Step size for exponential recency weighting
-  int mab_total_steps_ = 0;     // Total number of action selections (for UCB)
-  bool use_ucb_        = true;  // Flag to enable UCB vs epsilon-greedy
-
-  // --- MAB Helper Methods ---
-  recombiner_enum_t select_mab_recombiner();
-  void add_mab_reward(recombiner_enum_t recombiner_id,
-                      double best_of_parents_quality,
-                      double best_feasible_quality,
-                      double offspring_quality,
-                      double recombination_time_in_miliseconds);
-  recombiner_enum_t select_ucb_arm();
-  recombiner_enum_t select_epsilon_greedy_arm();
   bool run_only_ls_recombiner{false};
   bool run_only_bp_recombiner{false};
   bool run_only_fp_recombiner{false};

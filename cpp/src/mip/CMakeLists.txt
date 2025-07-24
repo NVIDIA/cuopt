@@ -22,7 +22,9 @@ list(PREPEND
   ${CMAKE_CURRENT_SOURCE_DIR}/solver.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/diversity/assignment_hash_map.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/diversity/diversity_manager.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/diversity/multi_armed_bandit.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/diversity/population.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/relaxed_lp/relaxed_lp.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/local_search.cu
