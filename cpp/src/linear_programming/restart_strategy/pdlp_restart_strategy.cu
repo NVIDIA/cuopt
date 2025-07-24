@@ -108,10 +108,11 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
   problem_t<i_t, f_t>& op_problem,
   const cusparse_view_t<i_t, f_t>& cusparse_view,
   const i_t primal_size,
-  const i_t dual_size)
+  const i_t dual_size,
+  bool is_batch_mode)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
-    weighted_average_solution_{handle_ptr_, primal_size, dual_size},
+    weighted_average_solution_{handle_ptr_, primal_size, dual_size, is_batch_mode},
     primal_size_h_(primal_size),
     dual_size_h_(dual_size),
     problem_ptr(&op_problem),
