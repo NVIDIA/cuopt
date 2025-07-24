@@ -34,6 +34,8 @@ python -m pip install \
 
 echo "running 'cvxpy' tests"
 timeout 3m python -m pytest \
+    --verbose \
+    --capture=no \
     --error-for-skips \
     -k "TestCUOPT" \
     ./cvxpy/tests/test_conic_solvers.py
