@@ -1271,9 +1271,7 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
   // B^T delta_y = - direction * e_basic_leaving_index
   // We want B v =  - B^{-T} e_basic_leaving_index
   ft.b_solve(delta_y_sparse, v_sparse);
-  if (direction == -1) {
-    v_sparse.negate();
-  }
+  if (direction == -1) { v_sparse.negate(); }
   v_sparse.scatter(v);
 
   const i_t leaving_index        = basic_list[basic_leaving_index];
@@ -2560,7 +2558,8 @@ dual::status_t dual_phase2(i_t phase,
             const f_t orig_dual_infeas = phase2::dual_infeasibility(
               lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
 
-            if (primal_infeasibility <= settings.primal_tol && orig_dual_infeas <= settings.dual_tol) {
+            if (primal_infeasibility <= settings.primal_tol &&
+                orig_dual_infeas <= settings.dual_tol) {
               phase2::prepare_optimality(lp,
                                          settings,
                                          ft,
