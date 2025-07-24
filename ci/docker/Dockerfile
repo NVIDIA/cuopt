@@ -84,8 +84,7 @@ ARG PYTHON_SHORT_VER
 
 # Set environment variables in .bashrc for all future shells
 RUN echo 'export PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/bin/:/home/cuopt/.local/bin:$PATH"' >> /home/cuopt/.bashrc && \
-    echo 'export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/lib/:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"' >> /home/cuopt/.bashrc && \
-    echo 'export PYTHONPATH="/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages:${PYTHONPATH:-}"' >> /home/cuopt/.bashrc
+    echo 'export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/lib/:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"' >> /home/cuopt/.bashrc
 
 
 # Create a .bash_profile that sources .bashrc if it exists

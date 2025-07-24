@@ -104,15 +104,13 @@ jobs:
         id: compute-cuopt-ver
         run: |
           ver=$(rapids-generate-version)
-          CUOPT_VER=$(echo "$ver" | sed -E 's/^v//' \
-            | sed -E 's/\.0+([0-9])/\.\1/g' \
-            | sed -E 's/\.0+([a-zA-Z].*)/.0\1/g' \
-            | sed -E 's/\b0*([0-9]+)\b/\1/g')
+          # Remove starting 0s from version 25.08.0a18 -> 25.8.0a18
+          CUOPT_VER=$(echo "$ver" | sed -E 's/\.0+([0-9])/\.\1/g')
           echo "CUOPT_VER=$CUOPT_VER" >> $GITHUB_OUTPUT
-          if [[ "$CUOPT_VER" == *"a"* ]]; then
-            IMAGE_TAG_PREFIX=$(echo "$CUOPT_VER" | sed -E 's/([0-9]+\.[0-9]+\.[0-9]+)a.*/\1a/')
-          else
+          if rapids-is-release-build; then
             IMAGE_TAG_PREFIX="$CUOPT_VER"
+          else
+            IMAGE_TAG_PREFIX=$(echo "$CUOPT_VER" | sed -E 's/([0-9]+\.[0-9]+\.[0-9]+)a.*/\1a/')
           fi
           echo "IMAGE_TAG_PREFIX=$IMAGE_TAG_PREFIX" >> $GITHUB_OUTPUT
 
