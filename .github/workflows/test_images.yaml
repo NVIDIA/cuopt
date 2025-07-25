@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+
+name: Test images
+
+on:
+  workflow_call:
+    inputs:
+      ARCH:
+        required: true
+        type: string
+      CUDA_VER:
+        required: true
+        type: string
+      PYTHON_VER:
+        required: true
+        type: string
+      IMAGE_TAG_PREFIX:
+        required: true
+        type: string
+
+
+jobs:
+
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
+      PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
+    steps:
+      - name: Trim versions
+        id: trim
+        run: |
+          CUDA_SHORT=$(echo "${{ inputs.CUDA_VER }}" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')
+          PYTHON_SHORT=$(echo "${{ inputs.PYTHON_VER }}" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')
+
+          echo "CUDA_SHORT=$CUDA_SHORT" >> $GITHUB_OUTPUT
+          echo "PYTHON_SHORT=$PYTHON_SHORT" >> $GITHUB_OUTPUT
+
+  test:
+    runs-on: "linux-${{ inputs.ARCH }}-gpu-a100-latest-1"
+    needs: prepare
+    container:
+      image: "nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ needs.prepare.outputs.CUDA_SHORT }}-py${{ needs.prepare.outputs.PYTHON_SHORT }}"
+      options: --user root
+    steps:
+      - name: Checkout code repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Test cuopt
+        run: |
+          bash ./ci/docker/test_image.sh
