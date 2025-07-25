@@ -32,11 +32,11 @@
 =====================================================================================*/
 
 #pragma once
-#include "LocalSearch/LocalMIP.h"
+#include "LocalMIP.h"
 #include "ModelCon.h"
 #include "ModelVar.h"
 #include "ReaderMPS.h"
-#include "utils/paras.h"
+#include "header.h"
 
 class Solver {
  private:

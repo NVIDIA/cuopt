@@ -98,7 +98,7 @@ class problem_t {
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment);
   void post_process_solution(solution_t<i_t, f_t>& solution);
   void compute_transpose_of_problem();
-  f_t get_user_obj_from_solver_obj(f_t solver_obj);
+  f_t get_user_obj_from_solver_obj(f_t solver_obj) const;
   void compute_integer_fixed_problem();
   void fill_integer_fixed_problem(rmm::device_uvector<f_t>& assignment,
                                   const raft::handle_t* handle_ptr);

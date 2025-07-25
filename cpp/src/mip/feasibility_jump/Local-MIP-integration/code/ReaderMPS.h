@@ -34,10 +34,10 @@
 #pragma once
 #include "ModelCon.h"
 #include "ModelVar.h"
-#include "utils/paras.h"
+#include "header.h"
 
 class ReaderMPS {
- private:
+ public:
   ModelConUtil* modelConUtil;
   ModelVarUtil* modelVarUtil;
   istringstream iss;

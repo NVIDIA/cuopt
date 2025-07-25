@@ -35,12 +35,12 @@
 
 int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_point _clkStart)
 {
-  Allocate();
-  InitSolution();
+  // Allocate();
+  // InitSolution();
   InitState();
   auto& localObj = localConUtil.conSet[0];
   curStep        = 0;
-  while (true) {
+  while (!halted) {
     if (DEBUG) printf("\nc UNSAT Size: %-10ld; ", localConUtil.unsatConIdxs.size());
     if (localConUtil.unsatConIdxs.empty()) {
       if (!isFoundFeasible || localObj.LHS < localObj.RHS) {
@@ -64,6 +64,7 @@ int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_poi
     }
     ++curStep;
   }
+  PrintResult(_clkStart);
   return 0;
 }
 
@@ -71,7 +72,7 @@ bool LocalMIP::Timeout(chrono::_V2::system_clock::time_point& _clkStart)
 {
   auto clk_now    = chrono::high_resolution_clock::now();
   auto solve_time = chrono::duration_cast<chrono::seconds>(clk_now - _clkStart).count();
-  if (solve_time >= OPT(cutoff)) return true;
+  // if (solve_time >= OPT(cutoff)) return true;
   return false;
 }
 
@@ -96,20 +97,21 @@ void LocalMIP::InitSolution()
   }
 }
 
-void LocalMIP::PrintResult()
+void LocalMIP::PrintResult(chrono::_V2::system_clock::time_point _clkStart)
 {
   if (!isFoundFeasible)
     printf("o no feasible solution found.\n");
   else if (VerifySolution()) {
-    printf("o Best objective: %lf\n", GetObjValue());
+    printf("o Best objective: %lf, run for %g\n", GetObjValue(), ElapsedTime(TimeNow(), _clkStart));
     // printf("B 1 %lf\n", GetObjValue());
-    if (OPT(PrintSol)) PrintSol();
+    // if (OPT(PrintSol)) PrintSol();
   } else
-    cout << "solution verify failed." << endl;
+    printf("solution verify failed.\n");
 }
 
 void LocalMIP::InitState()
 {
+  // printf("pointers: %p %p\n", modelConUtil, modelVarUtil);
   for (size_t conIdx = 1; conIdx < modelConUtil->conNum; ++conIdx) {
     auto& localCon = localConUtil.conSet[conIdx];
     auto& modelCon = modelConUtil->conSet[conIdx];
@@ -117,8 +119,13 @@ void LocalMIP::InitState()
     for (size_t termIdx = 0; termIdx < modelCon.termNum; ++termIdx)
       localCon.LHS +=
         modelCon.coeffSet[termIdx] * localVarUtil.GetVar(modelCon.varIdxSet[termIdx]).nowValue;
-    if (localCon.UNSAT()) localConUtil.insertUnsat(conIdx);
+    if (localCon.UNSAT()) {
+      // printf("c unsat con: %s, lhs vs rhs: %lf vs %lf\n", modelCon.name.c_str(), localCon.LHS,
+      // localCon.RHS);
+      localConUtil.insertUnsat(conIdx);
+    }
   }
+  // printf("here!!\n");
   auto& localObj = localConUtil.conSet[0];
   auto& modelObj = modelConUtil->conSet[0];
   localObj.RHS   = Infinity;
@@ -126,6 +133,10 @@ void LocalMIP::InitState()
   for (size_t termIdx = 0; termIdx < modelObj.termNum; ++termIdx)
     localObj.LHS +=
       modelObj.coeffSet[termIdx] * localVarUtil.GetVar(modelObj.varIdxSet[termIdx]).nowValue;
+
+  double bestOBJ = localObj.LHS;
+  printf("init obj: %lf / %g\n", modelConUtil->MIN * (bestOBJ + modelVarUtil->objBias), bestOBJ);
+  printf("unsat: %d\n", (int)localConUtil.unsatConIdxs.size());
 }
 
 void LocalMIP::UpdateBestSolution()
@@ -313,7 +324,8 @@ LocalMIP::LocalMIP(const ModelConUtil* _modelConUtil, const ModelVarUtil* _model
   : modelConUtil(_modelConUtil), modelVarUtil(_modelVarUtil)
 {
   // set running parameter
-  DEBUG = OPT(DEBUG);
+  DEBUG = false;
+  // DEBUG = OPT(DEBUG);
 }
 
 LocalMIP::~LocalMIP() {}

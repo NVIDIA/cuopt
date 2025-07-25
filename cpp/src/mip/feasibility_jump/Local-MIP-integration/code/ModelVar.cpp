@@ -116,3 +116,5 @@ const ModelVar& ModelVarUtil::GetVar(const size_t _idx) const
 ModelVar& ModelVarUtil::GetVar(const size_t _idx) { return varSet[_idx]; }
 
 ModelVar& ModelVarUtil::GetVar(const string& _name) { return varSet[name2idx[_name]]; }
+
+size_t ModelVarUtil::GetVarIdx(const string& _name) { return name2idx[_name]; }

@@ -48,5 +48,7 @@ list(PREPEND
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump_kernels.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solution/solution.cu)
 
+file(GLOB_RECURSE LocalMIPList "${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/Local-MIP-integration/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/Local-MIP-integration/*.cu")
+
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES}
-  ${MIP_SRC_FILES} PARENT_SCOPE)
+  ${MIP_SRC_FILES} ${LocalMIPList} PARENT_SCOPE)

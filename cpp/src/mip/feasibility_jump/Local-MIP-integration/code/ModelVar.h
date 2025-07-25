@@ -32,7 +32,7 @@
 =====================================================================================*/
 
 #pragma once
-#include "utils/paras.h"
+#include "header.h"
 
 class ModelVar {
  public:
@@ -74,4 +74,5 @@ class ModelVarUtil {
   const ModelVar& GetVar(const size_t _idx) const;
   ModelVar& GetVar(const size_t _idx);
   ModelVar& GetVar(const string& _name);
+  size_t GetVarIdx(const string& _name);
 };

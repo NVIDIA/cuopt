@@ -45,14 +45,13 @@ Solver::~Solver() {}
 
 void Solver::Run()
 {
-  ParseObj();
-  readerMPS->Read(fileName);
+  // ParseObj();
+  // readerMPS->Read(fileName);
   int Result = localMIP->LocalSearch(optimalObj, clkStart);
-  localMIP->PrintResult();
 }
 
 void Solver::ParseObj()
 {
-  fileName   = (char*)OPT(instance).c_str();
-  optimalObj = __global_paras.identify_opt(fileName);
+  // fileName   = (char*)OPT(instance).c_str();
+  // optimalObj = __global_paras.identify_opt(fileName);
 }

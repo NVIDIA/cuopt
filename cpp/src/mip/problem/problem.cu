@@ -1585,7 +1585,7 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   }
 }
 template <typename i_t, typename f_t>
-f_t problem_t<i_t, f_t>::get_user_obj_from_solver_obj(f_t solver_obj)
+f_t problem_t<i_t, f_t>::get_user_obj_from_solver_obj(f_t solver_obj) const
 {
   return presolve_data.objective_scaling_factor * (solver_obj + presolve_data.objective_offset);
 }

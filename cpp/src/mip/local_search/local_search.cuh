@@ -69,6 +69,8 @@ class local_search_t {
   bool run_fp(solution_t<i_t, f_t>& solution, timer_t timer);
   void resize_vectors(problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr);
 
+  bool do_fj_solve(solution_t<i_t, f_t>& solution);
+
   mip_solver_context_t<i_t, f_t>& context;
   rmm::device_uvector<f_t>& lp_optimal_solution;
   bool lp_optimal_exists{false};

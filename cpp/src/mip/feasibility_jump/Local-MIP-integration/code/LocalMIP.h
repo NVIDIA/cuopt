@@ -36,10 +36,12 @@
 #include "LocalVar.h"
 #include "ModelCon.h"
 #include "ModelVar.h"
-#include "utils/paras.h"
+#include "header.h"
+
+#include <atomic>
 
 class LocalMIP {
- private:
+ public:
   const ModelConUtil* modelConUtil;
   const ModelVarUtil* modelVarUtil;
   LocalVarUtil localVarUtil;
@@ -73,7 +75,7 @@ class LocalMIP {
   Value bestOBJ;
   bool DEBUG;
   long subscore;
-
+  std::atomic<bool> halted;
   bool VerifySolution();
   void InitState();
   void UpdateBestSolution();
@@ -97,7 +99,7 @@ class LocalMIP {
   LocalMIP(const ModelConUtil* _modelConUtil, const ModelVarUtil* _modelVarUtil);
   ~LocalMIP();
   int LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_point _clkStart);
-  void PrintResult();
+  void PrintResult(chrono::_V2::system_clock::time_point _clkStart);
   void PrintSol();
   void Allocate();
   Value GetObjValue();

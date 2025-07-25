@@ -309,7 +309,7 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
 {
   raft::common::nvtx::range fun_scope("add_solution");
   double sol_cost = sol.get_quality(weights);
-  CUOPT_LOG_TRACE("Adding solution with quality %f and objective %f n_integers %d!",
+  CUOPT_LOG_DEBUG("Adding solution with quality %f and objective %f n_integers %d!",
                   sol_cost,
                   sol.get_user_objective(),
                   sol.n_assigned_integers);

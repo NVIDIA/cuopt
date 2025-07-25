@@ -67,6 +67,7 @@ size_t ModelConUtil::GetConIdx(const string& _name)
 {
   if (_name == objName) return 0;
   auto iter = name2idx.find(_name);
+  if (iter == name2idx.end()) return 0;
   return iter->second;
 }
 

@@ -26,7 +26,11 @@
 #include <utilities/seed_generator.cuh>
 #include <utilities/timer.hpp>
 
+#include <mip/feasibility_jump/Local-MIP-integration/code/LocalMipAdapter.cuh>
+
 #include <cuda_profiler_api.h>
+
+#include <future>
 
 namespace cuopt::linear_programming::detail {
 
@@ -54,6 +58,54 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
 }
 
 template <typename i_t, typename f_t>
+bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
+{
+  Solver solver;
+  LocalMipRead(solver, *solution.problem_ptr, solution);
+  CopyWeights(solver, fj);
+  cudaDeviceSynchronize();
+  solver.localMIP->halted               = false;
+  std::future<void> local_search_future = std::async(std::launch::async, [&]() { solver.Run(); });
+
+  fj.solve(solution);
+
+  // give the CPU at least a half second to run
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+  solver.localMIP->halted = true;
+  local_search_future.wait();
+
+  solution_t<i_t, f_t> solution_cpu(*solution.problem_ptr);
+  GetSolution(solver, solution_cpu);
+  solution_cpu.compute_feasibility();
+
+  bool gpu_feasible = solution.get_feasible();
+  bool cpu_feasible = solution_cpu.get_feasible();
+
+  static int total_calls = 0;
+  static int cpu_better  = 0;
+
+  total_calls++;
+  if (cpu_feasible && !gpu_feasible ||
+      (cpu_feasible && solution_cpu.get_objective() < solution.get_objective())) {
+    CUOPT_LOG_DEBUG("CPU FJ returns better solution! cpu_obj %g, gpu_obj %g, stats %d/%d",
+                    solution_cpu.get_user_objective(),
+                    solution.get_user_objective(),
+                    total_calls,
+                    cpu_better);
+    solution.copy_from(solution_cpu);
+    cpu_better++;
+  }
+  CUOPT_LOG_DEBUG("CPU FJ returns feas %d, obj %g, stats %d/%d",
+                  cpu_feasible,
+                  solution_cpu.get_user_objective(),
+                  total_calls,
+                  cpu_better);
+
+  return cpu_feasible;
+}
+
+template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::generate_fast_solution(solution_t<i_t, f_t>& solution, timer_t timer)
 {
   thrust::fill(solution.handle_ptr->get_thrust_policy(),
@@ -74,7 +126,7 @@ void local_search_t<i_t, f_t>::generate_fast_solution(solution_t<i_t, f_t>& solu
     if (timer.check_time_limit()) { return; };
     fj.settings.time_limit = std::min(3., timer.remaining_time());
     // run fj on the solution
-    fj.solve(solution);
+    do_fj_solve(solution);
     // TODO check if FJ returns the same solution
     // check if the solution is feasible
     if (solution.compute_feasibility()) { return; }
@@ -135,7 +187,7 @@ bool local_search_t<i_t, f_t>::run_fj_until_timer(solution_t<i_t, f_t>& solution
   fj.settings.update_weights         = false;
   fj.settings.feasibility_run        = false;
   fj.copy_weights(weights, solution.handle_ptr);
-  fj.solve(solution);
+  do_fj_solve(solution);
   CUOPT_LOG_DEBUG("Initial FJ feasibility done");
   is_feasible = solution.compute_feasibility();
   if (fj.settings.feasibility_run || timer.check_time_limit()) { return is_feasible; }
@@ -150,8 +202,15 @@ bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution,
 {
   auto prev_settings = fj.settings;
 
+  solution.compute_feasibility();
+  CUOPT_LOG_DEBUG("Running FJ Annealing on solution with obj %g/%g, feas? %d",
+                  solution.get_user_objective(),
+                  solution.get_objective(),
+                  solution.get_feasible());
+
   // run in FEASIBLE_FIRST to priorize feasibility-improving moves
   fj.settings.n_of_minimums_for_exit                    = ls_config.n_local_mins;
+  fj.settings.n_of_minimums_for_exit                    = 1000;
   fj.settings.mode                                      = fj_mode_t::EXIT_NON_IMPROVING;
   fj.settings.candidate_selection                       = fj_candidate_selection_t::FEASIBLE_FIRST;
   fj.settings.iteration_limit                           = ls_config.iteration_limit;
@@ -159,8 +218,10 @@ bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution,
   fj.settings.parameters.allow_infeasibility_iterations = 100;
   fj.settings.update_weights                            = 1;
   fj.settings.baseline_objective_for_longer_run         = ls_config.best_objective_of_parents;
-  fj.solve(solution);
+  do_fj_solve(solution);
   bool is_feasible = solution.compute_feasibility();
+
+  CUOPT_LOG_DEBUG("GPU FJ returns feas %d, obj %g", is_feasible, solution.get_user_objective());
 
   fj.settings = prev_settings;
   return is_feasible;
@@ -222,7 +283,7 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
-  fj.solve(solution);
+  do_fj_solve(solution);
   return solution.get_feasible();
 }
 
@@ -239,7 +300,7 @@ bool local_search_t<i_t, f_t>::run_fj_on_zero(solution_t<i_t, f_t>& solution, ti
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
-  bool is_feasible                   = fj.solve(solution);
+  bool is_feasible                   = do_fj_solve(solution);
   return is_feasible;
 }
 
