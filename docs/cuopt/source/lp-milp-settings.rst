@@ -255,7 +255,7 @@ We now describe parameter settings for the MILP solvers
 Heuristics only
 ^^^^^^^^^^^^^^^
 
-``CUOPT_HEURISTICS_ONLY`` controls if only the GPU heuristics should be run. When set to true, only the primal
+``CUOPT_MIP_HEURISTICS_ONLY`` controls if only the GPU heuristics should be run for the MIP problem. When set to true, only the primal
 bound is improved via the GPU. When set to false, both the GPU and CPU are used and
 the dual bound is improved on the CPU.
 
