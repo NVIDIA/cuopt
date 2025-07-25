@@ -127,6 +127,7 @@ The following functions are used to set and get parameters. You can find more de
 .. doxygenfunction:: cuOptSetFloatParameter
 .. doxygenfunction:: cuOptGetFloatParameter
 
+.. _parameter-constants:
 
 Parameter Constants
 -------------------
@@ -161,6 +162,8 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
 .. doxygendefine:: CUOPT_USER_PROBLEM_FILE
 
+.. _pdlp-solver-mode-constants:
+
 PDLP Solver Mode Constants
 --------------------------
 
@@ -170,6 +173,8 @@ These constants are used to configure `CUOPT_PDLP_SOLVER_MODE` via :c:func:`cuOp
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE2
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_METHODICAL1
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_FAST1
+
+.. _method-constants:
 
 Method Constants
 ----------------
