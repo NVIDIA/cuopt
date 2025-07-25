@@ -118,7 +118,7 @@ When you are done with a solve you should destroy a `cuOptSolverSettings` object
 
 Setting Parameters
 ------------------
-The following functions are used to set and get parameters. You can find more details on the available parameters in the `LP/MILP settings <../../lp-milp-settings.html>`_ section.
+The following functions are used to set and get parameters. You can find more details on the available parameters in the :doc:`LP/MILP settings <../../lp-milp-settings>` section.
 
 .. doxygenfunction:: cuOptSetParameter
 .. doxygenfunction:: cuOptGetParameter
@@ -131,7 +131,7 @@ The following functions are used to set and get parameters. You can find more de
 Parameter Constants
 -------------------
 
-These constants are used as the parameter name in the `cuOptSetParameter <lp-milp-c-api.html#c.cuOptSetParameter>`_ , `cuOptGetParameter <lp-milp-c-api.html#c.cuOptGetParameter>`_ and similar functions. More details on the parameters can be found in the `LP/MILP settings <../../lp-milp-settings.html>`_ section.
+These constants are used as parameter names in the :c:func:`cuOptSetParameter`, :c:func:`cuOptGetParameter`, and similar functions. For more details on the available parameters, see the :doc:`LP/MILP settings <../../lp-milp-settings>` section.
 
 .. LP/MIP parameter string constants
 .. doxygendefine:: CUOPT_ABSOLUTE_DUAL_TOLERANCE
@@ -164,7 +164,7 @@ These constants are used as the parameter name in the `cuOptSetParameter <lp-mil
 PDLP Solver Mode Constants
 --------------------------
 
-These constants are used to configure `CUOPT_PDLP_SOLVER_MODE` via `cuOptSetIntegerParameter <lp-milp-c-api.html#c.cuOptSetIntegerParameter>`_.
+These constants are used to configure `CUOPT_PDLP_SOLVER_MODE` via :c:func:`cuOptSetIntegerParameter`.
 
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE1
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE2
@@ -174,7 +174,7 @@ These constants are used to configure `CUOPT_PDLP_SOLVER_MODE` via `cuOptSetInte
 Method Constants
 ----------------
 
-These constants are used to configure `CUOPT_METHOD` via `cuOptSetIntegerParameter <lp-milp-c-api.html#c.cuOptSetIntegerParameter>`_.
+These constants are used to configure `CUOPT_METHOD` via :c:func:`cuOptSetIntegerParameter`.
 
 .. doxygendefine:: CUOPT_METHOD_CONCURRENT
 .. doxygendefine:: CUOPT_METHOD_PDLP
@@ -214,7 +214,7 @@ When you are finished with a `cuOptSolution` object you should destory it with
 Termination Status Constants
 ----------------------------
 
-These constants define the termination status received from the `cuOptGetTerminationStatus <lp-milp-c-api.html#c.cuOptGetTerminationStatus>`_ function.
+These constants define the termination status received from the :c:func:`cuOptGetTerminationStatus` function.
 
 .. LP/MIP termination status constants
 .. doxygendefine:: CUOPT_TERIMINATION_STATUS_NO_TERMINATION
