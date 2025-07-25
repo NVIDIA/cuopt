@@ -98,11 +98,14 @@ assignment_t<i_t> ges_solver_t<i_t, f_t, REQUEST>::get_ges_assignment(
       std::vector<double> departure_forward_h(node_infos_h.size(), 0.);
       std::vector<double> actual_arrival_h(node_infos_h.size(), 0.);
       std::vector<double> earliest_arrival_backward_h(node_infos_h.size(), 0.);
+      std::vector<double> latest_arrival_forward_h(node_infos_h.size(), 0.);
       if (problem.dimensions_info.has_dimension(detail::dim_t::TIME)) {
         departure_forward_h = cuopt::host_copy(route.dimensions.time_dim.departure_forward);
         actual_arrival_h    = cuopt::host_copy(route.dimensions.time_dim.actual_arrival);
         earliest_arrival_backward_h =
           cuopt::host_copy(route.dimensions.time_dim.earliest_arrival_backward);
+        latest_arrival_forward_h =
+          cuopt::host_copy(route.dimensions.time_dim.latest_arrival_forward);
       }
 
       i_t drop_return_trip = sol.problem_ptr->drop_return_trip_h[vehicle_id];
@@ -128,7 +131,8 @@ assignment_t<i_t> ges_solver_t<i_t, f_t, REQUEST>::get_ges_assignment(
         if (sol_status == solution_status_t::SUCCESS) {
           if (sol.problem_ptr->dimensions_info.time_dim.should_compute_travel_time()) {
             cuopt_assert(abs(actual_arrival_h[i] -
-                             max(earliest_arrival_backward_h[i], departure_forward_h[i])) < 0.0001f,
+                             max(min(earliest_arrival_backward_h[i], latest_arrival_forward_h[i]),
+                                 departure_forward_h[i])) < 0.0001f,
                          "Feasible time mismatch!");
           } else {
             cuopt_assert(abs(actual_arrival_h[i] - departure_forward_h[i]) < 0.0001f,
