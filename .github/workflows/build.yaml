@@ -207,23 +207,12 @@ jobs:
       date: ${{ inputs.date }}
       package-name: cuopt_sh_client
       package-type: python
-  service-container:
-    if: inputs.build_type == 'nightly'
-    needs: [wheel-build-cuopt, wheel-build-cuopt-server]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code repo
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ inputs.sha }}
-          fetch-depth: 0 # unshallow fetch for setuptools-scm
-          persist-credentials: false
-      - name: build service
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh workflow run service_nightly.yaml \
-            -f branch=${{ inputs.branch }} \
-            -f sha=${{ inputs.sha }} \
-            -f date=${{ inputs.date }} \
-            -f build_type=${{ inputs.build_type }}
+  build-images:
+    needs: [wheel-publish-cuopt, wheel-publish-cuopt-server]
+    uses: ./.github/workflows/build_test_publish_images.yaml
+    secrets: inherit
+    with:
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      build_type: ${{ inputs.build_type || 'branch' }}

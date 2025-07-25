@@ -139,8 +139,7 @@ static bool run_fj_check_no_obj_runoff(std::string test_instance)
   fj_settings.n_of_minimums_for_exit = 20000 * 1000;
   fj_settings.update_weights         = true;
   fj_settings.feasibility_run        = false;
-  fj_settings.termination     = detail::fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT;
-  fj_settings.iteration_limit = 20000;
+  fj_settings.iteration_limit        = 20000;
 
   auto state = run_fj(test_instance, fj_settings);
 
@@ -162,8 +161,7 @@ static bool run_fj_check_objective(std::string test_instance, int iter_limit, do
   fj_settings.n_of_minimums_for_exit = 20000 * 1000;
   fj_settings.update_weights         = true;
   fj_settings.feasibility_run        = obj_target == +std::numeric_limits<double>::infinity();
-  fj_settings.termination     = detail::fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT;
-  fj_settings.iteration_limit = iter_limit;
+  fj_settings.iteration_limit        = iter_limit;
 
   auto state     = run_fj(test_instance, fj_settings);
   auto& solution = state.solution;
@@ -190,8 +188,7 @@ static bool run_fj_check_feasible(std::string test_instance)
   fj_settings.n_of_minimums_for_exit = 20000 * 1000;
   fj_settings.update_weights         = true;
   fj_settings.feasibility_run        = false;
-  fj_settings.termination     = detail::fj_termination_flags_t::FJ_TERMINATION_ITERATION_LIMIT;
-  fj_settings.iteration_limit = 25000;
+  fj_settings.iteration_limit        = 25000;
 
   auto state     = run_fj(test_instance, fj_settings);
   auto& solution = state.solution;
