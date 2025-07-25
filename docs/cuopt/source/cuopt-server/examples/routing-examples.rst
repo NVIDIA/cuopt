@@ -110,6 +110,8 @@ The response would be as follows:
     }
 
 
+.. _initial-solution-in-python:
+
 Initial Solution
 ----------------
 
@@ -322,6 +324,8 @@ Invoke the CLI.
    export ip="localhost"
    export port=5000
    cuopt_sh data.json -i $ip -p $port
+
+.. _initial-solution-in-cli:
 
 Initial Solution in CLI
 -----------------------

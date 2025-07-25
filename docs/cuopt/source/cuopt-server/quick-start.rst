@@ -51,6 +51,8 @@ The container includes both the Python API and self-hosted server components. To
 .. note::
    Make sure you have the NVIDIA Container Toolkit installed on your system to enable GPU support in containers. See the `installation guide <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html>`_ for details.
 
+.. _container-from-nvidia-ngc:
+
 Container from NVIDIA NGC
 -------------------------
 
@@ -184,7 +186,7 @@ Run the server and test
     # Shutdown the server
     kill $SERVER_PID
 
-The Open API specification for the server is available in `open-api spec <../open-api.html>`_.
+The Open API specification for the server is available in :doc:`open-api spec <../open-api>`.
 
 Example Response:
 

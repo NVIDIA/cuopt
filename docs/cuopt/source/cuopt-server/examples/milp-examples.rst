@@ -120,9 +120,10 @@ The response would be as follows:
         "reqId": "524e2e37-3494-4c16-bd06-2a9bfd768f76"
     }
 
+.. _incumbent-and-logging-callback:
 
-Incumbent Solution
-------------------
+Incumbent and Logging Callback
+------------------------------
 
 The incumbent solution can be retrieved using a callback function as follows:
 
