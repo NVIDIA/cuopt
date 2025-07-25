@@ -55,6 +55,7 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   pdlp_settings.tolerances.relative_primal_tolerance = settings.tolerance / 100.;
   pdlp_settings.tolerances.relative_dual_tolerance   = settings.tolerance / 100.;
   pdlp_settings.time_limit                           = settings.time_limit;
+  pdlp_settings.concurrent_halt                      = settings.concurrent_halt;
   if (settings.return_first_feasible) { pdlp_settings.per_constraint_residual = true; }
   pdlp_settings.first_primal_feasible = settings.return_first_feasible;
   pdlp_solver_t<i_t, f_t> lp_solver(op_problem, pdlp_settings);

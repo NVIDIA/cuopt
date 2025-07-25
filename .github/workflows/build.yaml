@@ -167,20 +167,21 @@ jobs:
       date: ${{ inputs.date }}
       package-name: cuopt_server
       package-type: python
-  #docs-build:
-  #  if: inputs.build_type == 'nightly' || github.ref_type == 'branch'
-  #  needs: [python-build]
-  #  secrets: inherit
-  #  uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.08
-  #  with:
-  #    build_type: ${{ inputs.build_type || 'branch' }}
-  #    node_type: "gpu-l4-latest-1"
-  #    sha: ${{ inputs.sha }}
-  #    branch: ${{ inputs.branch }}
-  #    date: ${{ inputs.date }}
-  #    arch: amd64
-  #    container_image: rapidsai/ci-conda:cuda11.8.0-ubuntu22.04-py3.10
-  #    run_script: ci/build_docs.sh
+  docs-build:
+    needs: [python-build]
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.08
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      node_type: "gpu-l4-latest-1"
+      sha: ${{ inputs.sha }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      arch: "amd64"
+      file_to_upload: "docs/cuopt/build/html/"
+      artifact-name: "cuopt_docs"
+      container_image: "rapidsai/ci-conda:25.08-latest"
+      script: "ci/build_docs.sh"
   wheel-build-cuopt-sh-client:
     needs: wheel-build-cuopt
     secrets: inherit

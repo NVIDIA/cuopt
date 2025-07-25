@@ -28,7 +28,7 @@ requirements:
     - python =${{ py_version }}
     - setuptools>=61.0.0
   run:
-    - msgpack-python =1.0.8
+    - msgpack-python =1.1.0
     - python
     - requests
 

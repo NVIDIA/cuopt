@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <mip/problem/problem.cuh>
+
 namespace cuopt::linear_programming::detail {
 
 enum recombiner_enum_t : int { BOUND_PROP = 0, FP, LINE_SEGMENT, SIZE };

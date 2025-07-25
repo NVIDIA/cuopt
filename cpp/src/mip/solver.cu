@@ -64,17 +64,22 @@ mip_solver_t<i_t, f_t>::mip_solver_t(const problem_t<i_t, f_t>& op_problem,
 
 template <typename i_t, typename f_t>
 struct branch_and_bound_solution_helper_t {
-  branch_and_bound_solution_helper_t(population_t<i_t, f_t>* population,
+  branch_and_bound_solution_helper_t(diversity_manager_t<i_t, f_t>* dm,
                                      dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings)
-    : population_ptr(population), settings_(settings) {};
+    : dm(dm), settings_(settings) {};
 
   void solution_callback(std::vector<f_t>& solution, f_t objective)
   {
-    population_ptr->add_external_solution(solution, objective);
+    dm->population.add_external_solution(solution, objective);
   }
 
-  void preempt_heuristic_solver() { population_ptr->preempt_heuristic_solver(); }
-  population_t<i_t, f_t>* population_ptr;
+  void set_simplex_solution(std::vector<f_t>& solution, f_t objective)
+  {
+    dm->set_simplex_solution(solution, objective);
+  }
+
+  void preempt_heuristic_solver() { dm->population.preempt_heuristic_solver(); }
+  diversity_manager_t<i_t, f_t>* dm;
   dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings_;
 };
 
@@ -124,8 +129,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem;
   dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
   std::unique_ptr<dual_simplex::branch_and_bound_t<i_t, f_t>> branch_and_bound;
-  branch_and_bound_solution_helper_t solution_helper(dm.get_population_pointer(),
-                                                     branch_and_bound_settings);
+  branch_and_bound_solution_helper_t solution_helper(&dm, branch_and_bound_settings);
   dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
 
   if (!context.settings.heuristics_only) {
@@ -153,6 +157,13 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                 std::placeholders::_2);
     branch_and_bound_settings.heuristic_preemption_callback = std::bind(
       &branch_and_bound_solution_helper_t<i_t, f_t>::preempt_heuristic_solver, &solution_helper);
+
+    branch_and_bound_settings.set_simplex_solution_callback =
+      std::bind(&branch_and_bound_solution_helper_t<i_t, f_t>::set_simplex_solution,
+                &solution_helper,
+                std::placeholders::_1,
+                std::placeholders::_2);
+
     // Create the branch and bound object
     branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(
       branch_and_bound_problem, branch_and_bound_settings);
