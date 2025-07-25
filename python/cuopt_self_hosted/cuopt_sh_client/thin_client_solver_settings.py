@@ -177,6 +177,18 @@ class ThinClientSolverSettings:
             "mip_relative_gap",
             "mip_absolute_tolerance",
             "mip_relative_tolerance",
+            # deprecated parameters
+            "absolute_primal",
+            "absolute_dual",
+            "absolute_gap",
+            "relative_primal",
+            "relative_dual",
+            "relative_gap",
+            "primal_infeasible",
+            "dual_infeasible",
+            "integrality_tolerance",
+            "absolute_mip_gap",
+            "relative_mip_gap",
         ]
 
         # Grab everything that is not a tolerance
