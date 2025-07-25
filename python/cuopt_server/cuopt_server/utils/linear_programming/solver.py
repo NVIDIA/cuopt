@@ -415,7 +415,7 @@ def get_solver_exception_type(status, message):
         return RuntimeError(msg)
 
 
-def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
+def solve(LP_data, reqId, intermediate_sender, warmstart_data):
     notes = []
 
     def get_if_attribute_is_valid_else_none(attr):
@@ -546,7 +546,7 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data, log_file):
             solver_settings.set_mip_callback(callback)
             solve_begin_time = time.time()
             sol = linear_programming.Solve(
-                data_model, solver_settings=solver_settings, log_file=log_file
+                data_model, solver_settings=solver_settings
             )
             total_solve_time = time.time() - solve_begin_time
 

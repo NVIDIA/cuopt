@@ -957,7 +957,9 @@ async def postrequest(
     ),
     solver_logs: Optional[bool] = Query(
         default=False,
-        description="If set to True, MIP problems will produce detailed solver logs that can be retrieved from /cuopt/log/{id}",  # noqa
+        description="If set to True, MIP problems will produce detailed solver logs that can be retrieved from /cuopt/log/{id}. "  # noqa
+        "The solver_config.log_file value will be set to log_{id} overriding any user value set. If a user wants logs generated "  # noqa
+        "on the server with a user-defined name, then do not use the callback mechanism and simply set solver_config.log_file as desired.",  # noqa
     ),
     cuopt_data_file: str = Header(
         default=None,
