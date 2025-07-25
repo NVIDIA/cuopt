@@ -133,6 +133,8 @@ detected as infeasible for PDLP to stop.
 
 Note: the default value is false.
 
+.. _crossover:
+
 Crossover
 ^^^^^^^^^
 

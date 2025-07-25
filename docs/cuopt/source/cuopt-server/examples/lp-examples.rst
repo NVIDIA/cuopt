@@ -15,6 +15,8 @@ If you want to run server locally, please run the following command in a termina
     export port=5000
     python -m cuopt_server.cuopt_service --ip $ip --port $port
 
+.. _generic-example-with-normal-and-batch-mode:
+
 Genric Example With Normal Mode and Batch Mode
 ------------------------------------------------
 
@@ -224,6 +226,8 @@ Batch mode response:
 
 .. note::
     Warm start is only applicable to LP and not for MILP.
+
+.. _warm-start:
 
 Warm Start
 ----------

@@ -104,7 +104,7 @@ After installation, you can verify that cuOpt Server is working correctly by run
    The following example is for running the server locally. If you are using the container approach, you should comment out the server start and kill commands in the script below since the server is already running in the container.
 
 The following example is testing with a simple routing problem constuctured as Json request and sent over HTTP to the server using ``curl``.This example is running server with few configuration options such as ``--ip`` and ``--port``.
-Additional configuration options for server can be found in `Server CLI <server-api/server-cli.html>`_
+Additional configuration options for server can be found in :doc:`Server CLI <server-api/server-cli>`.
 
 
 Install jq and curl for basic HTTP requests and parsing JSON responses

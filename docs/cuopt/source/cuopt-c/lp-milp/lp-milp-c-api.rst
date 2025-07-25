@@ -48,7 +48,7 @@ Certain constants are needed to define an optimization problem. These constants 
 Objective Sense Constants
 -------------------------
 
-These constants are used to define the objective sense in the `cuOptCreateProblem <lp-milp-c-api.html#c.cuOptCreateProblem>`_ and `cuOptCreateRangedProblem <lp-milp-c-api.html#c.cuOptCreateRangedProblem>`_ functions.
+These constants are used to define the objective sense in the :c:func:`cuOptCreateProblem` and :c:func:`cuOptCreateRangedProblem` functions.
 
 .. doxygendefine:: CUOPT_MINIMIZE
 .. doxygendefine:: CUOPT_MAXIMIZE
@@ -56,7 +56,7 @@ These constants are used to define the objective sense in the `cuOptCreateProble
 Constraint Sense Constants
 --------------------------
 
-These constants are used to define the constraint sense in the `cuOptCreateProblem <lp-milp-c-api.html#c.cuOptCreateProblem>`_ and `cuOptCreateRangedProblem <lp-milp-c-api.html#c.cuOptCreateRangedProblem>`_ functions.
+These constants are used to define the constraint sense in the :c:func:`cuOptCreateProblem` and :c:func:`cuOptCreateRangedProblem` functions.
 
 .. doxygendefine:: CUOPT_LESS_THAN
 .. doxygendefine:: CUOPT_GREATER_THAN
@@ -65,7 +65,7 @@ These constants are used to define the constraint sense in the `cuOptCreateProbl
 Variable Type Constants
 -----------------------
 
-These constants are used to define the the variable type in the `cuOptCreateProblem <lp-milp-c-api.html#c.cuOptCreateProblem>`_ and `cuOptCreateRangedProblem <lp-milp-c-api.html#c.cuOptCreateRangedProblem>`_ functions.
+These constants are used to define the the variable type in the :c:func:`cuOptCreateProblem` and :c:func:`cuOptCreateRangedProblem` functions.
 
 .. doxygendefine:: CUOPT_CONTINUOUS
 .. doxygendefine:: CUOPT_INTEGER
@@ -73,7 +73,7 @@ These constants are used to define the the variable type in the `cuOptCreateProb
 Infinity Constant
 -----------------
 
-This constant may be used to represent infinity in the `cuOptCreateProblem <lp-milp-c-api.html#c.cuOptCreateProblem>`_ and `cuOptCreateRangedProblem <lp-milp-c-api.html#c.cuOptCreateRangedProblem>`_ functions.
+This constant may be used to represent infinity in the :c:func:`cuOptCreateProblem` and :c:func:`cuOptCreateRangedProblem` functions.
 
 .. doxygendefine:: CUOPT_INFINITY
 
