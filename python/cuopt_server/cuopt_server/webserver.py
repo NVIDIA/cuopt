@@ -347,9 +347,9 @@ def getsolverlogs(
                 detail=f"Unsupported Accept value {accept}, "
                 f"supported values are {[mime_json, mime_msgpack, mime_zlib]}",
             )
-        # Create log directory if it doesn't exist
+
+        # result_dir is guaranteed to exist on startup
         log_dir, _, _ = settings.get_result_dir()
-        os.makedirs(log_dir, exist_ok=True)
         log_fname = "log_" + id
         log_file = os.path.join(log_dir, log_fname)
         logging.info(f"Extracting logs from {log_file}")
