@@ -1,0 +1,185 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Build, Test and Publish cuopt images
+
+on:
+  workflow_call:
+    inputs:
+      branch:
+        type: string
+      date:
+        type: string
+      sha:
+        type: string
+      build_type:
+        type: string
+      arch:
+        type: string
+        default: '["amd64", "arm64"]'
+        description: 'JSON array of architectures to build for'
+      cuda_ver:
+        type: string
+        default: '["12.8.0"]'
+        description: 'JSON array of CUDA versions to build for'
+      python_ver:
+        type: string
+        default: '["3.12.11"]'
+        description: 'JSON array of Python versions to build for'
+      linux_ver:
+        type: string
+        default: '["22.04"]'
+        description: 'JSON array of Linux versions to build for'
+
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  actions: read
+  checks: none
+  contents: read
+  deployments: none
+  discussions: none
+  id-token: write
+  issues: none
+  packages: read
+  pages: none
+  pull-requests: read
+  repository-projects: none
+  security-events: none
+  statuses: none
+
+jobs:
+  compute-matrix:
+    runs-on: ubuntu-latest
+    container:
+      image: rapidsai/ci-conda:25.08-latest
+    outputs:
+      MATRIX: ${{ steps.compute-matrix.outputs.MATRIX }}
+      CUOPT_VER: ${{ steps.compute-cuopt-ver.outputs.CUOPT_VER }}
+      IMAGE_TAG_PREFIX: ${{ steps.compute-cuopt-ver.outputs.IMAGE_TAG_PREFIX }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # unshallow fetch for setuptools-scm
+          persist-credentials: false
+
+      - name: Compute matrix
+        id: compute-matrix
+        run: |
+          MATRIX=$(jq -c '.' <<EOF
+          {
+            "arch": ${{ inputs.arch }},
+            "cuda_ver": ${{ inputs.cuda_ver }},
+            "python_ver": ${{ inputs.python_ver }},
+            "linux_ver": ${{ inputs.linux_ver }}
+          }
+          EOF
+          )
+          echo "MATRIX=$MATRIX" >> $GITHUB_OUTPUT
+
+      - name: Install gha-tools
+        run: |
+          mkdir -p /tmp/gha-tools
+          curl -s -L 'https://github.com/rapidsai/gha-tools/releases/latest/download/tools.tar.gz' | tar -xz -C /tmp/gha-tools
+          echo "/tmp/gha-tools" >> "${GITHUB_PATH}"
+
+      - name: Compute cuopt version
+        id: compute-cuopt-ver
+        run: |
+          ver=$(rapids-generate-version)
+          # Remove starting 0s from version 25.08.0a18 -> 25.8.0a18
+          CUOPT_VER=$(echo "$ver" | sed -E 's/\.0+([0-9])/\.\1/g')
+          echo "CUOPT_VER=$CUOPT_VER" >> $GITHUB_OUTPUT
+          if rapids-is-release-build; then
+            IMAGE_TAG_PREFIX="$CUOPT_VER"
+          else
+            IMAGE_TAG_PREFIX=$(echo "$CUOPT_VER" | sed -E 's/([0-9]+\.[0-9]+\.[0-9]+)a.*/\1a/')
+          fi
+          echo "IMAGE_TAG_PREFIX=$IMAGE_TAG_PREFIX" >> $GITHUB_OUTPUT
+
+  build-images:
+    name: Build images
+    needs: compute-matrix
+    secrets: inherit
+    strategy:
+      matrix: ${{ fromJson(needs.compute-matrix.outputs.MATRIX) }}
+    uses: ./.github/workflows/build_images.yaml
+    with:
+      ARCHES: ${{ matrix.arch }}
+      CUDA_VER: ${{ matrix.cuda_ver }}
+      CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
+      IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
+      LINUX_VER: ${{ matrix.linux_ver }}
+      PYTHON_VER: ${{ matrix.python_ver }}
+
+  build-cuopt-multiarch-manifest:
+    name: Build cuopt multiarch manifest
+    needs: [build-images, compute-matrix]
+    strategy:
+      matrix:
+        CUDA_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
+        PYTHON_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).python_ver }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.CUOPT_DOCKERHUB_USERNAME }}
+          password: ${{ secrets.CUOPT_DOCKERHUB_TOKEN }}
+      - name: Login to NGC
+        uses: docker/login-action@v3
+        with:
+          registry: "nvcr.io"
+          username: "$oauthtoken"
+          password: ${{ secrets.CUOPT_NGC_DOCKER_KEY }}
+      - name: Trim CUDA and Python versions
+        id: trim
+        run: |
+          echo "CUDA_SHORT=$(echo '${{ matrix.CUDA_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "PYTHON_SHORT=$(echo '${{ matrix.PYTHON_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+      - name: Create multiarch manifest
+        shell: bash
+        env:
+          CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
+          CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
+          PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
+          IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
+          BUILD_TYPE: ${{ inputs.build_type }}
+        run: bash ci/docker/create_multiarch_manifest.sh
+
+  test-images:
+    name: Test images
+    needs: [build-cuopt-multiarch-manifest, compute-matrix]
+    secrets: inherit
+    strategy:
+      matrix:
+        CUDA_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
+        PYTHON_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).python_ver }}
+        ARCH: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).arch }}
+    uses: ./.github/workflows/test_images.yaml
+    with:
+      ARCH: ${{ matrix.ARCH }}
+      CUDA_VER: ${{ matrix.CUDA_VER }}
+      PYTHON_VER: ${{ matrix.PYTHON_VER }}
+      IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}

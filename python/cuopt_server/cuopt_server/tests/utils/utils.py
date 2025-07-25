@@ -15,14 +15,13 @@
 
 import os
 import shutil
+import signal
 import time
-from subprocess import Popen
+from subprocess import Popen, TimeoutExpired
 from typing import Dict, List, Optional
 
 import pytest
 import requests
-
-from cuopt_server import cuopt_service
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:
@@ -282,8 +281,33 @@ def cuopt_service_sync(
 # Fixture and client to allow full cuopt service
 # to run as a separate process for multiple tests
 cuoptmain = None
-server_script = cuopt_service.__file__
+# Use module name instead of file path to ensure we use the installed package
+server_script = "-m"
+server_module = "cuopt_server.cuopt_service"
 python_path = shutil.which("python")
+
+
+def cleanup_cuopt_process():
+    """Clean up the cuopt process if it's still running"""
+    global cuoptmain
+    if cuoptmain and cuoptmain.poll() is None:
+        cuoptmain.terminate()
+        try:
+            cuoptmain.wait(timeout=5)
+        except TimeoutExpired:
+            cuoptmain.kill()
+            cuoptmain.wait()
+
+
+def signal_handler(signum, frame):
+    """Handle interrupt signals to ensure cleanup"""
+    cleanup_cuopt_process()
+    exit(1)
+
+
+# Register signal handlers for cleanup
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 
 def spinup_wait():
@@ -310,11 +334,11 @@ def cuoptproc(request):
         "CUOPT_SERVER_PORT": "5555",
         "CUOPT_SERVER_LOG_LEVEL": "debug",
     }
-    cuoptmain = Popen([python_path, server_script], env=env)
+    cuoptmain = Popen([python_path, server_script, server_module], env=env)
     spinup_wait()
 
     def shutdown():
-        cuoptmain.wait()
+        cleanup_cuopt_process()
 
     request.addfinalizer(shutdown)
 
