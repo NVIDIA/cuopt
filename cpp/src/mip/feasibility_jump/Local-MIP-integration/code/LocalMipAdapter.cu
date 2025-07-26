@@ -83,6 +83,9 @@ void LocalMipRead(Solver& solver,
     // lower than
     else if (isfinite(ub)) {
       lmip_conIdx = modelConUtil->MakeCon(con_name);
+    } else {
+      cuopt_assert(false, "constraint bounds are not finite");
+      lmip_conIdx = -1;
     }
 
     // RHS
