@@ -86,16 +86,16 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
   static int cpu_better  = 0;
 
   total_calls++;
-  if (cpu_feasible && !gpu_feasible ||
-      (cpu_feasible && solution_cpu.get_objective() < solution.get_objective())) {
-    CUOPT_LOG_DEBUG("CPU FJ returns better solution! cpu_obj %g, gpu_obj %g, stats %d/%d",
-                    solution_cpu.get_user_objective(),
-                    solution.get_user_objective(),
-                    total_calls,
-                    cpu_better);
-    solution.copy_from(solution_cpu);
-    cpu_better++;
-  }
+  // if (cpu_feasible && !gpu_feasible ||
+  //     (cpu_feasible && solution_cpu.get_objective() < solution.get_objective())) {
+  //   CUOPT_LOG_DEBUG("CPU FJ returns better solution! cpu_obj %g, gpu_obj %g, stats %d/%d",
+  //                   solution_cpu.get_user_objective(),
+  //                   solution.get_user_objective(),
+  //                   total_calls,
+  //                   cpu_better);
+  //   solution.copy_from(solution_cpu);
+  //   cpu_better++;
+  // }
   CUOPT_LOG_DEBUG("CPU FJ returns feas %d, obj %g, stats %d/%d",
                   cpu_feasible,
                   solution_cpu.get_user_objective(),
