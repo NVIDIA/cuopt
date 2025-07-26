@@ -108,6 +108,7 @@ i_t create_heavy_item_block_segments(rmm::cuda_stream_view stream,
 
   // Inclusive scan so that each block can determine which item it belongs to
   item_block_segments.set_element_to_zero_async(0, stream);
+
   thrust::inclusive_scan(rmm::exec_policy(stream),
                          calc_blocks_per_vertex_iter,
                          calc_blocks_per_vertex_iter + heavy_id_count,
