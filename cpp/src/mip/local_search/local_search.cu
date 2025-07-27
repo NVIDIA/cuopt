@@ -62,7 +62,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
 {
   Solver solver;
   LocalMipRead(solver, *solution.problem_ptr, solution);
-  CopyWeights(solver, fj);
+  // CopyWeights(solver, fj);
   cudaDeviceSynchronize();
   solver.localMIP->halted               = false;
   std::future<void> local_search_future = std::async(std::launch::async, [&]() { solver.Run(); });
