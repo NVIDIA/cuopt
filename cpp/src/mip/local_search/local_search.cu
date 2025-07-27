@@ -62,15 +62,12 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
 {
   Solver solver;
   LocalMipRead(solver, *solution.problem_ptr, solution);
-  // CopyWeights(solver, fj);
+  CopyWeights(solver, fj);
   cudaDeviceSynchronize();
   solver.localMIP->halted               = false;
   std::future<void> local_search_future = std::async(std::launch::async, [&]() { solver.Run(); });
 
   fj.solve(solution);
-
-  // give the CPU at least a half second to run
-  std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
   solver.localMIP->halted = true;
   local_search_future.wait();
@@ -210,7 +207,7 @@ bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution,
 
   // run in FEASIBLE_FIRST to priorize feasibility-improving moves
   fj.settings.n_of_minimums_for_exit                    = ls_config.n_local_mins;
-  fj.settings.n_of_minimums_for_exit                    = 1000;
+  fj.settings.n_of_minimums_for_exit                    = 5000;
   fj.settings.mode                                      = fj_mode_t::EXIT_NON_IMPROVING;
   fj.settings.candidate_selection                       = fj_candidate_selection_t::FEASIBLE_FIRST;
   fj.settings.iteration_limit                           = ls_config.iteration_limit;
@@ -279,7 +276,7 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
   }
   cuopt_func_call(solution.test_variable_bounds());
   fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
-  fj.settings.n_of_minimums_for_exit = 20000;
+  fj.settings.n_of_minimums_for_exit = 30000;
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
@@ -296,7 +293,7 @@ bool local_search_t<i_t, f_t>::run_fj_on_zero(solution_t<i_t, f_t>& solution, ti
                0.0);
   solution.clamp_within_bounds();
   fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
-  fj.settings.n_of_minimums_for_exit = 20000;
+  fj.settings.n_of_minimums_for_exit = 30000;
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
