@@ -31,6 +31,8 @@
 
 =====================================================================================*/
 
+#include <valgrind/callgrind.h>
+
 #include "Solver.h"
 
 Solver::Solver()
@@ -47,7 +49,10 @@ void Solver::Run()
 {
   // ParseObj();
   // readerMPS->Read(fileName);
+  CALLGRIND_START_INSTRUMENTATION;
   int Result = localMIP->LocalSearch(optimalObj, clkStart);
+  CALLGRIND_STOP_INSTRUMENTATION;
+  CALLGRIND_DUMP_STATS;
 }
 
 void Solver::ParseObj()

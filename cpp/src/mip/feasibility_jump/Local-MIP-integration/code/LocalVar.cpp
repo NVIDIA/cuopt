@@ -60,9 +60,3 @@ LocalVarUtil::~LocalVarUtil()
   tempDeltas.clear();
   tempVarIdxs.clear();
 }
-
-LocalVar& LocalVarUtil::GetVar(size_t _idx)
-{
-  assert(_idx < varSet.size());
-  return varSet[_idx];
-}

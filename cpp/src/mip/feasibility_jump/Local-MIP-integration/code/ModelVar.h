@@ -47,7 +47,10 @@ class ModelVar {
 
   ModelVar(const string& _name, size_t _idx, bool _integrality);
   ~ModelVar();
-  bool InBound(Value _value) const;
+  bool InBound(Value _value) const
+  {
+    return lowerBound - FeasibilityTol < _value && _value < upperBound + FeasibilityTol;
+  }
   void SetType(VarType _varType);
   void SetUpperBound(Value _upperBound);
   void SetLowerBound(Value _lowerBound);
@@ -72,7 +75,7 @@ class ModelVarUtil {
   ~ModelVarUtil();
   size_t MakeVar(const string& _name, const bool _integrality);
   const ModelVar& GetVar(const size_t _idx) const;
-  ModelVar& GetVar(const size_t _idx);
+  ModelVar& GetVar(const size_t _idx) { return varSet[_idx]; }
   ModelVar& GetVar(const string& _name);
   size_t GetVarIdx(const string& _name);
 };

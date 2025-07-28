@@ -63,7 +63,15 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
   Solver solver;
   LocalMipRead(solver, *solution.problem_ptr, solution);
   CopyWeights(solver, fj);
-  cudaDeviceSynchronize();
+
+  // // benchmark solver
+  // auto start_time = std::chrono::high_resolution_clock::now();
+  // solver.Run();
+  // auto end_time = std::chrono::high_resolution_clock::now();
+  // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+  // CUOPT_LOG_DEBUG("Solver time: %d ms", duration.count());
+  // exit(0);
+
   solver.localMIP->halted               = false;
   std::future<void> local_search_future = std::async(std::launch::async, [&]() { solver.Run(); });
 
@@ -85,22 +93,24 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
   static int total_calls = 0;
   static int cpu_better  = 0;
 
-  total_calls++;
-  // if (cpu_feasible && !gpu_feasible ||
-  //     (cpu_feasible && solution_cpu.get_objective() < solution.get_objective())) {
-  //   CUOPT_LOG_DEBUG("CPU FJ returns better solution! cpu_obj %g, gpu_obj %g, stats %d/%d",
-  //                   solution_cpu.get_user_objective(),
-  //                   solution.get_user_objective(),
-  //                   total_calls,
-  //                   cpu_better);
-  //   solution.copy_from(solution_cpu);
-  //   cpu_better++;
-  // }
+  CUOPT_LOG_DEBUG("GPU FJ returns feas %d, obj %g", gpu_feasible, solution.get_user_objective());
   CUOPT_LOG_DEBUG("CPU FJ returns feas %d, obj %g, stats %d/%d",
                   cpu_feasible,
                   solution_cpu.get_user_objective(),
                   total_calls,
                   cpu_better);
+
+  total_calls++;
+  if (cpu_feasible && !gpu_feasible ||
+      (cpu_feasible && solution_cpu.get_objective() < solution.get_objective())) {
+    CUOPT_LOG_DEBUG("CPU FJ returns better solution! cpu_obj %g, gpu_obj %g, stats %d/%d",
+                    solution_cpu.get_user_objective(),
+                    solution.get_user_objective(),
+                    total_calls,
+                    cpu_better);
+    solution.copy_from(solution_cpu);
+    cpu_better++;
+  }
 
   return cpu_feasible;
 }
@@ -220,8 +230,6 @@ bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution,
   fj.settings.baseline_objective_for_longer_run         = ls_config.best_objective_of_parents;
   do_fj_solve(solution);
   bool is_feasible = solution.compute_feasibility();
-
-  CUOPT_LOG_DEBUG("GPU FJ returns feas %d, obj %g", is_feasible, solution.get_user_objective());
 
   fj.settings = prev_settings;
   return is_feasible;

@@ -61,5 +61,5 @@ class LocalVarUtil {
   LocalVarUtil();
   ~LocalVarUtil();
   void Allocate(size_t _varNum, size_t _varNumInObj);
-  LocalVar& GetVar(size_t _idx);
+  LocalVar& GetVar(size_t _idx) { return varSet[_idx]; }
 };

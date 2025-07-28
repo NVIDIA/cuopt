@@ -54,11 +54,6 @@ ModelVar::~ModelVar()
   posInCon.clear();
 }
 
-bool ModelVar::InBound(Value value) const
-{
-  return lowerBound - FeasibilityTol < value && value < upperBound + FeasibilityTol;
-}
-
 void ModelVar::SetType(VarType _varType) { type = _varType; }
 
 void ModelVar::SetLowerBound(Value _lowerBound)
@@ -112,9 +107,6 @@ const ModelVar& ModelVarUtil::GetVar(const size_t _idx) const
   assert(_idx < varSet.size());
   return varSet[_idx];
 }
-
-ModelVar& ModelVarUtil::GetVar(const size_t _idx) { return varSet[_idx]; }
-
 ModelVar& ModelVarUtil::GetVar(const string& _name) { return varSet[name2idx[_name]]; }
 
 size_t ModelVarUtil::GetVarIdx(const string& _name) { return name2idx[_name]; }
