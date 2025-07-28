@@ -389,56 +389,67 @@ class Tolerances(StrictModel):
     )
     absolute_primal: float = Field(
         default=None,
+        deprecated=True,
         description="Deprecated in 25.08. "
         "Use absolute_primal_tolerance instead",
     )
     absolute_dual: float = Field(
         default=None,
+        deprecated=True,
         description="Deprecated in 25.08. "
         "Use absolute_dual_tolerance instead",
     )
     absolute_gap: float = Field(
         default=None,
+        deprecated=True,
         description="Deprecated in 25.08. "
         "Use absolute_gap_tolerance instead",
     )
     relative_primal: float = Field(
         default=None,
+        deprecated=True,
         description="Deprecated in 25.08. "
         "Use relative_primal_tolerance instead",
     )
     relative_dual: float = Field(
         default=None,
+        deprecated=True,
         description="Deprecated in 25.08. "
         "Use relative_dual_tolerance instead",
     )
     relative_gap: float = Field(
         default=None,
+        deprecated=True,
         description="Deprecated in 25.08. "
         "Use relative_gap_tolerance instead",
     )
     primal_infeasible: float = Field(
         default=None,
+        deprecated=True,
         description="Deprecated in 25.08. "
         "Use primal_infeasible_tolerance instead",
     )
     dual_infeasible: float = Field(
         default=None,
+        deprecated=True,
         description="Deprecated in 25.08. "
         "Use dual_infeasible_tolerance instead",
     )
     integrality_tolerance: float = Field(
         default=None,
+        deprecated=True,
         description="Deprecated starting in 25.05. "
         "Use mip_integratlity_tolerance instead.",
     )
     absolute_mip_gap: float = Field(
         default=None,
+        deprecated=True,
         description="Deprecated starting in 25.05. "
         "Use mip_absolute_gap instead.",
     )
     relative_mip_gap: float = Field(
         default=None,
+        deprecated=True,
         description="Deprecated starting in 25.05. "
         "Use mip_relative_gap instead.",
     )
@@ -579,11 +590,13 @@ class SolverConfig(StrictModel):
     )
     solver_mode: Optional[int] = Field(
         default=None,
+        deprecated=True,
         description="Deprecated starting in 25.05. "
         "Use pdlp_solver_mode instead.",
     )
     heuristics_only: Optional[bool] = Field(
         default=None,
+        deprecated=True,
         description="Deprecated starting in 25.05. "
         "Use mip_heuristics_only instead.",
     )
