@@ -273,7 +273,7 @@ endif()
 
 # adds the .so files to the runtime deb package
 install(TARGETS cuopt mps_parser
-  DESTINATION ${_LIB_DEST}z
+  DESTINATION ${_LIB_DEST}
   COMPONENT runtime
   EXPORT cuopt-exports
 )
