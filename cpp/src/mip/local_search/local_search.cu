@@ -70,7 +70,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
   fj.solve(solution);
 
   // give the CPU at least a half second to run
-  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
   solver.localMIP->halted = true;
   local_search_future.wait();
