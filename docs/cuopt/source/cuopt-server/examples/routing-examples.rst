@@ -4,7 +4,7 @@ Routing Python Examples
 
 The following example showcases how to use the ``CuOptServiceSelfHostClient`` to solve a simple routing problem.
 
-The OpenAPI specification for the server is available in `open-api spec <../../open-api.html>`_. The example data is structured as per the OpenAPI specification for the server, please refer `OptimizeRoutingData <../../open-api.html#/default/postrequest_cuopt_request_post>`_ under schema section.
+The OpenAPI specification for the server is available in :doc:`open-api spec <../../open-api>`. The example data is structured as per the OpenAPI specification for the server, please refer :doc:`OptimizeRoutingData under "POST /cuopt/request" <../../open-api>` under schema section.
 
 Generic Example
 ---------------
@@ -109,6 +109,8 @@ The response would be as follows:
     "reqId": "ebd378a3-c02a-47f3-b0a1-adec81be7cdd"
     }
 
+
+.. _initial-solution-in-python:
 
 Initial Solution
 ----------------
@@ -233,9 +235,9 @@ The response would be as follows:
     "reqId": "ebd378a3-c02a-47f3-b0a1-adec81be7cdd"
     }
 
-The ``data`` argument to ``get_optimized_routes`` may be a dictionary of the format shown in `Get Routes Open-API spec <../../open-api.html#operation/postrequest_cuopt_request_post>`_.
+The ``data`` argument to ``get_optimized_routes`` may be a dictionary of the format shown in :doc:`Get Routes Open-API spec <../../open-api>`.
 It may also be the path of a file containing such a dictionary as JSON or written using the Python *msgpack* module.
-A JSON file may optionally be compressed with zlib. More details on the responses can be found under the responses schema under `request and solution API spec <../../open-api.html#/default/getrequest_cuopt_request__id__get>`_.
+A JSON file may optionally be compressed with zlib. More details on the responses can be found under the responses schema in :doc:`"get /cuopt/request" and "get /cuopt/solution" API spec <../../open-api>`.
 
 
 To enable HTTPS:
@@ -297,7 +299,7 @@ More examples are available in the `Examples Notebooks Repository <https://githu
 Aborting a Running Job in Thin Client
 -------------------------------------
 
-Please refer to the `MILP Example on Aborting a Running Job in Thin Client <milp-examples.html#aborting-a-running-job-in-thin-client>`_ for more details.
+Please refer to the :ref:`aborting-thin-client` for more details.
 
 ========================================
 Routing CLI Examples
@@ -322,6 +324,8 @@ Invoke the CLI.
    export ip="localhost"
    export port=5000
    cuopt_sh data.json -i $ip -p $port
+
+.. _initial-solution-in-cli:
 
 Initial Solution in CLI
 -----------------------
@@ -368,7 +372,7 @@ Users can also upload a solution which might have been saved for later runs.
 Aborting a Running Job In CLI
 -----------------------------
 
-Please refer to the `MILP Example <milp-examples.html#aborting-a-running-job-in-cli>`_ for more details.
+Please refer to the :ref:`aborting-cli` for more in MILP Example.
 
 .. note::
    Please use solver settings while using .mps files.

@@ -37,24 +37,29 @@ NVIDIA cuOpt is also available as a container from Docker Hub:
 
 .. code-block:: bash
 
-    docker pull nvidia/cuopt:latest-cuda12.8-py312
+    docker pull nvidia/cuopt:latest-cuda12.8-py3.12
 
 .. note::
-   The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.8-py312`` tag. For example, to use cuOpt 25.5.0, you can use the ``25.5.0-cuda12.8-py312`` tag. Please refer to `cuOpt dockerhub page <https://hub.docker.com/r/nvidia/cuopt>`_ for the list of available tags.
+   The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.8-py3.12`` tag. For example, to use cuOpt 25.5.0, you can use the ``25.5.0-cuda12.8-py3.12`` tag. Please refer to `cuOpt dockerhub page <https://hub.docker.com/r/nvidia/cuopt>`_ for the list of available tags.
 
 The container includes both the Python API and self-hosted server components. To run the container:
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cuda12.8-py312 /bin/bash -c "python3 -m cuopt_server.cuopt_service"
+    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cuda12.8-py3.12
+
+.. note::
+   The nightly version of cuOpt is available as ``[VERSION]a-cuda12.8-py3.12`` tag. For example, to use cuOpt 25.8.0a, you can use the ``25.8.0a-cuda12.8-py3.12`` tag.
 
 .. note::
    Make sure you have the NVIDIA Container Toolkit installed on your system to enable GPU support in containers. See the `installation guide <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html>`_ for details.
 
+.. _container-from-nvidia-ngc:
+
 Container from NVIDIA NGC
 -------------------------
 
-Step 1: Get a subscription for `NVIDIA AI Enterprise (NVAIE) <https://www.nvidia.com/en-us/ai-enterprise/products/cuopt/>`_ to get the cuOpt container to host in your cloud.
+Step 1: Get a subscription for `NVIDIA AI Enterprise (NVAIE) <https://www.nvidia.com/en-us/data-center/products/ai-enterprise/>`_ to get the cuOpt container to host in your cloud.
 
 Step 2: Once given access, users can find `cuOpt container <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/cuopt/containers/cuopt>`_ in the NGC catalog.
 
@@ -85,7 +90,7 @@ The container includes both the Python API and self-hosted server components. To
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 <CONTAINER_IMAGE_PATH> /bin/bash -c "python3 -m cuopt_server.cuopt_service"
+    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 <CONTAINER_IMAGE_PATH>
 
 NVIDIA Launchable
 -------------------
@@ -102,7 +107,7 @@ After installation, you can verify that cuOpt Server is working correctly by run
    The following example is for running the server locally. If you are using the container approach, you should comment out the server start and kill commands in the script below since the server is already running in the container.
 
 The following example is testing with a simple routing problem constuctured as Json request and sent over HTTP to the server using ``curl``.This example is running server with few configuration options such as ``--ip`` and ``--port``.
-Additional configuration options for server can be found in `Server CLI <server-api/server-cli.html>`_
+Additional configuration options for server can be found in :doc:`Server CLI <server-api/server-cli>`.
 
 
 Install jq and curl for basic HTTP requests and parsing JSON responses
@@ -184,7 +189,7 @@ Run the server and test
     # Shutdown the server
     kill $SERVER_PID
 
-The Open API specification for the server is available in `open-api spec <../open-api.html>`_.
+The Open API specification for the server is available in :doc:`open-api spec <../open-api>`.
 
 Example Response:
 
