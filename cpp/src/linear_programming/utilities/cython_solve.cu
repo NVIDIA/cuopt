@@ -118,14 +118,18 @@ data_model_to_optimization_problem(
  */
 linear_programming_ret_t call_solve_lp(
   cuopt::linear_programming::optimization_problem_t<int, double>& op_problem,
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double>& solver_settings)
+  cuopt::linear_programming::pdlp_solver_settings_t<int, double>& solver_settings,
+  bool is_batch_mode)
 {
   raft::common::nvtx::range fun_scope("Call Solve");
   cuopt_expects(
     op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::LP,
     error_type_t::ValidationError,
     "LP solve cannot be called on a MIP problem!");
-  auto solution = cuopt::linear_programming::solve_lp(op_problem, solver_settings);
+  const bool problem_checking     = true;
+  const bool use_pdlp_solver_mode = true;
+  auto solution                   = cuopt::linear_programming::solve_lp(
+    op_problem, solver_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
   linear_programming_ret_t lp_ret{
     std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release()),
     std::make_unique<rmm::device_buffer>(solution.get_dual_solution().release()),
@@ -209,7 +213,8 @@ mip_ret_t call_solve_mip(
 std::unique_ptr<solver_ret_t> call_solve(
   cuopt::mps_parser::data_model_view_t<int, double>* data_model,
   cuopt::linear_programming::solver_settings_t<int, double>* solver_settings,
-  unsigned int flags)
+  unsigned int flags,
+  bool is_batch_mode)
 {
   raft::common::nvtx::range fun_scope("Call Solve");
 
@@ -220,7 +225,8 @@ std::unique_ptr<solver_ret_t> call_solve(
   auto op_problem = data_model_to_optimization_problem(data_model, solver_settings, &handle_);
   solver_ret_t response;
   if (op_problem.get_problem_category() == linear_programming::problem_category_t::LP) {
-    response.lp_ret       = call_solve_lp(op_problem, solver_settings->get_pdlp_settings());
+    response.lp_ret =
+      call_solve_lp(op_problem, solver_settings->get_pdlp_settings(), is_batch_mode);
     response.problem_type = linear_programming::problem_category_t::LP;
   } else {
     response.mip_ret      = call_solve_mip(op_problem, solver_settings->get_mip_settings());
@@ -284,9 +290,12 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
     solver_settings->set_parameter(CUOPT_METHOD, CUOPT_METHOD_PDLP);
   }
 
+  const bool is_batch_mode = true;
+
 #pragma omp parallel for num_threads(max_thread)
   for (std::size_t i = 0; i < size; ++i)
-    list[i] = std::move(call_solve(data_models[i], solver_settings, cudaStreamNonBlocking));
+    list[i] =
+      std::move(call_solve(data_models[i], solver_settings, cudaStreamNonBlocking, is_batch_mode));
 
   auto end      = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);

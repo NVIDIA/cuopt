@@ -77,11 +77,11 @@ class cusparse_view_t {
   // cusparse view of At * Y computation
   cusparseDnVecDescr_t
     current_AtY;  // Only used at very first iteration and after each restart to average
-  cusparseDnVecDescr_t next_AtY;  // Next value is swaped out with current after each valid PDHG
+  cusparseDnVecDescr_t next_AtY;  // Next value is swapped out with current after each valid PDHG
                                   // step to save the first AtY SpMV in compute next primal
   cusparseDnVecDescr_t potential_next_dual_solution;
 
-  // cusparse view of auxillirary space needed for some spmv computations
+  // cusparse view of auxiliary space needed for some spmv computations
   cusparseDnVecDescr_t tmp_primal;
   cusparseDnVecDescr_t tmp_dual;
 

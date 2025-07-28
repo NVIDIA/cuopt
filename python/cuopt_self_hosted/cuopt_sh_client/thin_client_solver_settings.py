@@ -196,7 +196,9 @@ class ThinClientSolverSettings:
             if key not in t:
                 solver_config[key] = self.parameter_dict[key]
 
+        # Now grab everything that is a tolerance and set in the dictionary
         for name in t:
             if name in self.parameter_dict:
                 solver_config["tolerances"][name] = self.parameter_dict[name]
+      
         return solver_config

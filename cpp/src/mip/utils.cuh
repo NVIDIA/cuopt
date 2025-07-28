@@ -346,13 +346,13 @@ bool has_variable_bounds_violation(const raft::handle_t* handle_ptr,
                                    problem_t<i_t, f_t>* problem_ptr)
 {
   auto const assignment_span = make_span(assignment);
-  return thrust::any_of(
-    handle_ptr->get_thrust_policy(),
-    thrust::make_counting_iterator(0),
-    thrust::make_counting_iterator(0) + problem_ptr->original_problem_ptr->get_n_variables(),
-    [assignment_span, problem_view = problem_ptr->view()] __device__(i_t idx) {
-      return !problem_view.check_variable_within_bounds(idx, assignment_span[idx]);
-    });
+  return thrust::any_of(handle_ptr->get_thrust_policy(),
+                        thrust::make_counting_iterator(0),
+                        thrust::make_counting_iterator(0) + problem_ptr->n_variables,
+                        [assignment_span, problem_view = problem_ptr->view()] __device__(i_t idx) {
+                          return !problem_view.check_variable_within_bounds(idx,
+                                                                            assignment_span[idx]);
+                        });
 }
 
 }  // namespace cuopt::linear_programming::detail
