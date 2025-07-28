@@ -47,13 +47,32 @@ struct ls_config_t {
   ls_method_t ls_method                   = ls_method_t::RANDOM;
 };
 
+struct cpu_fj_thread_t {
+  cpu_fj_thread_t();
+  ~cpu_fj_thread_t();
+
+  void cpu_worker_thread();
+  void start_cpu_solver();
+  void stop_cpu_solver();
+  bool wait_for_cpu_solver();  // return feasibility
+
+  std::thread cpu_worker;
+  std::mutex cpu_mutex;
+  std::condition_variable cpu_cv;
+  std::atomic<bool> should_stop{false};
+  std::atomic<bool> cpu_thread_should_start{false};
+  std::atomic<bool> cpu_thread_done{false};
+  std::atomic<bool> cpu_thread_terminate{false};
+  bool cpu_fj_solution_found{false};
+  std::unique_ptr<Solver> cpu_solver;
+};
+
 template <typename i_t, typename f_t>
 class local_search_t {
  public:
   local_search_t() = delete;
   local_search_t(mip_solver_context_t<i_t, f_t>& context,
                  rmm::device_uvector<f_t>& lp_optimal_solution_);
-  ~local_search_t();
 
   void generate_fast_solution(solution_t<i_t, f_t>& solution, timer_t timer);
   bool generate_solution(solution_t<i_t, f_t>& solution,
@@ -81,11 +100,6 @@ class local_search_t {
 
   bool do_fj_solve(solution_t<i_t, f_t>& solution);
 
-  void cpu_worker_thread();
-  void start_cpu_solver();
-  void stop_cpu_solver();
-  void wait_for_cpu_solver();
-
   mip_solver_context_t<i_t, f_t>& context;
   rmm::device_uvector<f_t>& lp_optimal_solution;
   bool lp_optimal_exists{false};
@@ -98,22 +112,8 @@ class local_search_t {
   feasibility_pump_t<i_t, f_t> fp;
   std::mt19937 rng;
 
-  // CPU thread control
-  std::thread cpu_worker;
-  std::atomic<bool> cpu_thread_running{false};
-  std::atomic<bool> cpu_fj_solution_found{false};
-  std::atomic<bool> cpu_thread_should_start{false};
-  std::atomic<bool> cpu_thread_done{false};
-  std::atomic<bool> cpu_thread_terminate{false};
-
-  // Thread synchronization
-  std::mutex cpu_mutex;
-  std::condition_variable cpu_cv;
-
-  // CPU solver data
-  std::unique_ptr<Solver> cpu_solver;
-  solution_t<i_t, f_t>* current_solution_ptr{nullptr};
-  std::atomic<bool> cpu_solution_ready{false};
+  cpu_fj_thread_t ls_cpu_fj;
+  cpu_fj_thread_t scratch_cpu_fj;
 };
 
 }  // namespace cuopt::linear_programming::detail

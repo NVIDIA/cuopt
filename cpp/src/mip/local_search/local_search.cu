@@ -35,6 +35,62 @@
 
 namespace cuopt::linear_programming::detail {
 
+cpu_fj_thread_t::cpu_fj_thread_t()
+{
+  cpu_solver = std::make_unique<Solver>();
+
+  cpu_worker = std::thread(&cpu_fj_thread_t::cpu_worker_thread, this);
+}
+
+cpu_fj_thread_t::~cpu_fj_thread_t()
+{
+  // Signal thread to terminate
+  cpu_thread_terminate = true;
+  cpu_cv.notify_one();
+
+  cpu_worker.join();
+}
+
+void cpu_fj_thread_t::cpu_worker_thread()
+{
+  while (!cpu_thread_terminate) {
+    // Wait for start signal
+    {
+      std::unique_lock<std::mutex> lock(cpu_mutex);
+      cpu_cv.wait(lock, [this] { return cpu_thread_should_start || cpu_thread_terminate; });
+    }
+
+    if (cpu_thread_terminate) break;
+
+    // Run CPU solver
+    cpu_solver->Run();
+    cpu_fj_solution_found = cpu_solver->localMIP->isFoundFeasible;
+
+    cpu_thread_should_start = false;
+    cpu_thread_done         = true;
+  }
+}
+
+void cpu_fj_thread_t::start_cpu_solver()
+{
+  // Reset flags
+  cpu_thread_done              = false;
+  cpu_thread_should_start      = true;
+  cpu_solver->localMIP->halted = false;
+  cpu_cv.notify_one();
+}
+
+void cpu_fj_thread_t::stop_cpu_solver() { cpu_solver->localMIP->halted = true; }
+
+bool cpu_fj_thread_t::wait_for_cpu_solver()
+{
+  while (!cpu_thread_done && !cpu_thread_terminate) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  return cpu_fj_solution_found;
+}
+
 template <typename i_t, typename f_t>
 local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context_,
                                          rmm::device_uvector<f_t>& lp_optimal_solution_)
@@ -56,96 +112,19 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
        lp_optimal_solution_),
     rng(cuopt::seed_generator::get_seed())
 {
-  // Create CPU solver
-  cpu_solver = std::make_unique<Solver>();
-
-  // Start CPU worker thread
-  cpu_thread_running = true;
-  cpu_worker         = std::thread(&local_search_t<i_t, f_t>::cpu_worker_thread, this);
-}
-
-template <typename i_t, typename f_t>
-local_search_t<i_t, f_t>::~local_search_t()
-{
-  // Signal thread to terminate
-  cpu_thread_terminate    = true;
-  cpu_thread_should_start = true;
-  cpu_cv.notify_one();
-
-  // Wait for thread to finish
-  if (cpu_worker.joinable()) { cpu_worker.join(); }
-}
-
-template <typename i_t, typename f_t>
-void local_search_t<i_t, f_t>::cpu_worker_thread()
-{
-  while (!cpu_thread_terminate) {
-    // Wait for start signal
-    {
-      std::unique_lock<std::mutex> lock(cpu_mutex);
-      cpu_cv.wait(lock, [this] { return cpu_thread_should_start || cpu_thread_terminate; });
-    }
-
-    if (cpu_thread_terminate) break;
-
-    // Run CPU solver
-    cpu_solver->Run();
-    cpu_fj_solution_found = cpu_solver->localMIP->isFoundFeasible;
-
-    cpu_thread_should_start = false;
-    cpu_solution_ready      = true;
-    cpu_thread_done         = true;
-  }
-}
-
-template <typename i_t, typename f_t>
-void local_search_t<i_t, f_t>::start_cpu_solver()
-{
-  cpu_thread_should_start = true;
-  cpu_fj_solution_found   = false;
-  // Reset flags
-  cpu_thread_done              = false;
-  cpu_solution_ready           = false;
-  cpu_thread_should_start      = true;
-  cpu_solver->localMIP->halted = false;
-  cpu_cv.notify_one();
-}
-
-template <typename i_t, typename f_t>
-void local_search_t<i_t, f_t>::stop_cpu_solver()
-{
-  cpu_solver->localMIP->halted = true;
-}
-
-template <typename i_t, typename f_t>
-void local_search_t<i_t, f_t>::wait_for_cpu_solver()
-{
-  // Wait for CPU solver to finish with timeout
-  auto start_time    = std::chrono::steady_clock::now();
-  const auto timeout = std::chrono::seconds(30);  // 30 second timeout
-
-  while (!cpu_thread_done && !cpu_thread_terminate) {
-    auto now = std::chrono::steady_clock::now();
-    if (now - start_time > timeout) {
-      CUOPT_LOG_DEBUG("CPU solver timeout, forcing stop");
-      stop_cpu_solver();
-      break;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
 }
 
 template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
 {
-  cpu_solver = nullptr;
-  cpu_solver = std::make_unique<Solver>();
-  LocalMipRead(*cpu_solver, *solution.problem_ptr, solution);
-  CopyWeights(*cpu_solver, fj);
+  scratch_cpu_fj.cpu_solver = nullptr;
+  scratch_cpu_fj.cpu_solver = std::make_unique<Solver>();
+  LocalMipRead(*scratch_cpu_fj.cpu_solver, *solution.problem_ptr, solution);
+  CopyWeights(*scratch_cpu_fj.cpu_solver, fj);
   cudaDeviceSynchronize();
 
   // Start CPU solver in background thread
-  start_cpu_solver();
+  scratch_cpu_fj.start_cpu_solver();
 
   // Run GPU solver
   fj.solve(solution);
@@ -154,18 +133,18 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
   std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
   // Stop CPU solver
-  stop_cpu_solver();
+  scratch_cpu_fj.stop_cpu_solver();
 
   // Wait for CPU solver to finish
-  wait_for_cpu_solver();
+  bool cpu_sol_found = scratch_cpu_fj.wait_for_cpu_solver();
 
   // Get CPU solution if ready
   solution_t<i_t, f_t> solution_cpu(*solution.problem_ptr);
-  GetSolution(*cpu_solver, solution_cpu);
+  GetSolution(*scratch_cpu_fj.cpu_solver, solution_cpu);
   solution_cpu.compute_feasibility();
 
   bool gpu_feasible = solution.get_feasible();
-  bool cpu_feasible = cpu_fj_solution_found && solution_cpu.get_feasible();
+  bool cpu_feasible = cpu_sol_found && solution_cpu.get_feasible();
 
   static int total_calls = 0;
   static int cpu_better  = 0;
