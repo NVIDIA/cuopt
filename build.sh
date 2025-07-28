@@ -273,7 +273,7 @@ else
             echo "Building for Volta and Ampere architectures..."
         else
             CUOPT_CMAKE_CUDA_ARCHITECTURES="RAPIDS"
-            echo "Building for Volta, Ampere and Hopper architectures..."
+            echo "Building for RAPIDS supported architectures..."
         fi
     else
         CUOPT_CMAKE_CUDA_ARCHITECTURES="NATIVE"
