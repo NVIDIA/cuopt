@@ -143,12 +143,29 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
 
   // TODO: other thread running on LP optimal
   scratch_cpu_fj.start_cpu_solver();
+
+  scratch_cpu_fj_on_lp_opt.cpu_solver                   = nullptr;
+  scratch_cpu_fj_on_lp_opt.cpu_solver                   = std::make_unique<Solver>();
+  scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->prefix = "******* scratch on LP optimal: ";
+  scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->optimum_callback = [this, &population]() {
+    std::vector<double> h_vec;
+    GetSolution(*scratch_cpu_fj_on_lp_opt.cpu_solver, h_vec);
+    population.add_external_solution(h_vec, scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ);
+    population.preempt_heuristic_solver();
+  };
+  solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
+  solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
+  LocalMipRead(*scratch_cpu_fj_on_lp_opt.cpu_solver, *context.problem_ptr, solution_lp);
+  // default weights
+  cudaDeviceSynchronize();
+  scratch_cpu_fj_on_lp_opt.start_cpu_solver();
 }
 
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::stop_fj_scratch_threads()
 {
   scratch_cpu_fj.kill_cpu_solver();
+  scratch_cpu_fj_on_lp_opt.kill_cpu_solver();
 }
 
 template <typename i_t, typename f_t>

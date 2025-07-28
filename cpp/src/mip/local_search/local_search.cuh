@@ -118,6 +118,7 @@ class local_search_t {
 
   cpu_fj_thread_t ls_cpu_fj;
   cpu_fj_thread_t scratch_cpu_fj;
+  cpu_fj_thread_t scratch_cpu_fj_on_lp_opt;
 };
 
 }  // namespace cuopt::linear_programming::detail
