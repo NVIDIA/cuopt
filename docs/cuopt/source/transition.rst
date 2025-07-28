@@ -16,7 +16,10 @@ Parameter/option statuses are listed below, they express how each of these optio
 
   **Removed** - These features were deprecated in a previous release and completely removed in this one.
 
-For all solver_configs fields, check the LP/MILP features guide or the service openapi spec.
+For all solver_configs fields, see the LP/MILP settings guide :doc:`lp-milp-settings` or the service openapi spec :doc:`open-api`.
+
+Changes to solver_configs.tolerances
+------------------------------------
 
 The following fields are **Deprecated** in ``solver_configs.tolerances`` for the service:
 
@@ -51,11 +54,16 @@ The following fields are **New** in ``solver_configs.tolerances`` for the servic
 - mip_absolute_tolerance
 - mip_relative_tolerance
 
+Changes to solver_configs
+-------------------------
+
 The following fields are **Deprecated** in ``solver_configs`` for the service:
+
 - solver_mode
 - heuristics_only
 
 The following fields are **New** in ``solver_configs`` for the service and replace the deprecated fields above:
+
 - pdlp_solver_mode
 - mip_heuristics_only
   
