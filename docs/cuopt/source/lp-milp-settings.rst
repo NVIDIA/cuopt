@@ -3,8 +3,8 @@ LP and MILP Settings
 =================================
 
 
-This page describes the parameter settings available for cuOpt's LP and MILP solvers. These parameters are set as `string constants </cuopt-c/lp-milp/lp-milp-c-api.html#parameter-constants>`_ in case of C API and in case of Server Thin client as raw strings.
-Please refer to examples in `C </cuopt-c/lp-milp/>`_ and `Server Thin client </cuopt-server/>`_ for more details.
+This page describes the parameter settings available for cuOpt's LP and MILP solvers. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings.
+Please refer to examples in :doc:`C </cuopt-c/lp-milp/index>` and :doc:`Server Thin client </cuopt-server/index>` for more details.
 
 .. note::
    When setting parameters in thin client solver settings, remove ``CUOPT_`` from the parameter name and convert to lowercase. For example, ``CUOPT_TIME_LIMIT`` would be set as ``time_limit``.
@@ -78,9 +78,9 @@ Method
 
 Note: The default method is ``Concurrent``.
 
-C API users should use the constants defined in `C API Section for Methods </cuopt-c/lp-milp/lp-milp-c-api.html#method-constants>`_ for this parameter.
+C API users should use the constants defined in :ref:`method-constants` for this parameter.
 
-Server Thin client users should use the `Method enum </cuopt-server/client-api/sh-cli-api.html#cuopt_sh_client.SolverMethod>`_ for this parameter.
+Server Thin client users should use the :class:`cuopt_sh_client.SolverMethod` for this parameter.
 
 
 
@@ -97,9 +97,9 @@ overall mode from our experiments. For now, only three modes are available: ``St
 For now, we do not offer a mechanism to know upfront which solver mode will be the best
 for a specific problem.
 
-C API users should use the constants defined in `C API Section for PDLP Solver Modes </cuopt-c/lp-milp/lp-milp-c-api.html#pdlp-solver-mode-constants>`_ for this parameter.
+C API users should use the constants defined in :ref:`pdlp-solver-mode-constants` for this parameter.
 
-Server Thin client users should use the `PDLPSolverMode enum </cuopt-server/client-api/sh-cli-api.html#cuopt_sh_client.PDLPSolverMode>`_ for this parameter.
+Server Thin client users should use the :class:`cuopt_sh_client.PDLPSolverMode` for this parameter.
 
 Iteration Limit
 ^^^^^^^^^^^^^^^
@@ -132,6 +132,8 @@ is detected as infeasible, PDLP will stop. When false both the current and avera
 detected as infeasible for PDLP to stop.
 
 Note: the default value is false.
+
+.. _crossover:
 
 Crossover
 ^^^^^^^^^

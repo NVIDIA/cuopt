@@ -2,7 +2,7 @@
 Quickstart Guide
 =================
 
-cuopt_cli is built as part of the libcuopt package and you can follow these `instructions <../cuopt-c/quick-start.html>`_ to install it.
+cuopt_cli is built as part of the libcuopt package and you can follow these :doc:`../cuopt-c/quick-start` to install it.
 
 To see all available options and their descriptions:
 
@@ -17,4 +17,4 @@ This will display the complete list of command-line arguments and their usage:
     :language: shell
     :linenos:
 
-Please refer to `parameter settings <../lp-milp-settings.html>`_ for more details on default values and other options.
+Please refer to :doc:`../lp-milp-settings` for more details on default values and other options.
