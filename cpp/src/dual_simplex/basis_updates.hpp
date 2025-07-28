@@ -265,10 +265,12 @@ class basis_update_mpf_t {
   i_t b_solve(const sparse_vector_t<i_t, f_t>& rhs, sparse_vector_t<i_t, f_t>& solution) const;
   i_t b_solve(const std::vector<f_t>& rhs,
               std::vector<f_t>& solution,
-              std::vector<f_t>& Lsol) const;
+              std::vector<f_t>& Lsol,
+              bool need_Lsol = true) const;
   i_t b_solve(const sparse_vector_t<i_t, f_t>& rhs,
               sparse_vector_t<i_t, f_t>& solution,
-              sparse_vector_t<i_t, f_t>& Lsol) const;
+              sparse_vector_t<i_t, f_t>& Lsol,
+              bool need_Lsol = true) const;
 
   // Solves for y such that B'*y = c, where B is the basis matrix
   i_t b_transpose_solve(const std::vector<f_t>& rhs, std::vector<f_t>& solution) const;

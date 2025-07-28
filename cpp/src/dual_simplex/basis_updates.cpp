@@ -1121,12 +1121,16 @@ void basis_update_mpf_t<i_t, f_t>::gather_into_sparse_vector(i_t nz,
                                                              sparse_vector_t<i_t, f_t>& out) const
 {
   const i_t m = L0_.m;
-  out.i.resize(nz);
-  out.x.resize(nz);
+  out.i.clear();
+  out.x.clear();
+  out.i.reserve(nz);
+  out.x.reserve(nz);
   for (i_t k = 0; k < nz; ++k) {
     const i_t i          = xi_workspace_[m + k];
-    out.i[k]             = i;
-    out.x[k]             = x_workspace_[i];
+    if (std::abs(x_workspace_[i]) > 1e-13) {
+      out.i.push_back(i);
+      out.x.push_back(x_workspace_[i]);
+    }
     xi_workspace_[m + k] = 0;
     xi_workspace_[i]     = 0;
     x_workspace_[i]      = 0.0;
@@ -1157,13 +1161,17 @@ void basis_update_mpf_t<i_t, f_t>::solve_to_sparse_vector(i_t top,
   const i_t m  = L0_.m;
   out.n        = m;
   const i_t nz = m - top;
-  out.x.resize(nz);
-  out.i.resize(nz);
+  out.x.clear();
+  out.i.clear();
+  out.x.reserve(nz);
+  out.i.reserve(nz);
   i_t k = 0;
   for (i_t p = top; p < m; ++p) {
     const i_t i      = xi_workspace_[p];
-    out.i[k]         = i;
-    out.x[k]         = x_workspace_[i];
+    if (std::abs(x_workspace_[i]) > 1e-13) {
+      out.i.push_back(i);
+      out.x.push_back(x_workspace_[i]);
+    }
     x_workspace_[i]  = 0.0;
     xi_workspace_[p] = 0;
     k++;
@@ -1372,9 +1380,11 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(std::vector<f_t>& rhs) const
     }
     const f_t theta = dot / mu;
 
-    for (i_t p = S_.col_start[v_col]; p < S_.col_start[v_col + 1]; ++p) {
-      const i_t i = S_.i[p];
-      rhs[i] -= theta * S_.x[p];
+    if (std::abs(theta) > 1e-13) {
+      for (i_t p = S_.col_start[v_col]; p < S_.col_start[v_col + 1]; ++p) {
+        const i_t i = S_.i[p];
+        rhs[i] -= theta * S_.x[p];
+      }
     }
   }
 
@@ -1427,16 +1437,17 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& r
 #endif
 
     const f_t theta = dot / mu;
-
-    for (i_t p = S_.col_start[v_col]; p < S_.col_start[v_col + 1]; ++p) {
-      const i_t i = S_.i[p];
-      if (!xi_workspace_[i]) {
-        // Fill occured
-        xi_workspace_[i]      = 1;
-        xi_workspace_[m + nz] = i;
-        nz++;
+    if (std::abs(theta) > 1e-13) {
+      for (i_t p = S_.col_start[v_col]; p < S_.col_start[v_col + 1]; ++p) {
+        const i_t i = S_.i[p];
+        if (!xi_workspace_[i]) {
+          // Fill occured
+          xi_workspace_[i]      = 1;
+          xi_workspace_[m + nz] = i;
+          nz++;
+        }
+        x_workspace_[i] -= theta * S_.x[p];
       }
-      x_workspace_[i] -= theta * S_.x[p];
     }
 
 #ifdef CHECK_MULTIPLY
@@ -1459,8 +1470,6 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& r
   }
 #endif
 
-  // sort the indices and place into a sparse column
-  std::sort(xi_workspace_.begin() + m, xi_workspace_.begin() + m + nz, std::less<i_t>());
 
   sparse_vector_t<i_t, f_t> b(m, nz);
   gather_into_sparse_vector(nz, b);
@@ -1499,7 +1508,8 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
                                           std::vector<f_t>& solution,
-                                          std::vector<f_t>& Lsol) const
+                                          std::vector<f_t>& Lsol,
+                                          bool need_Lsol) const
 {
   const i_t m = L0_.m;
   // P*B = L*U
@@ -1514,7 +1524,9 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
   std::vector<f_t> rhs_permuted = solution;
 #endif
   l_solve(solution);
-  Lsol = solution;
+  if (need_Lsol) {
+    Lsol = solution;
+  }
 
 #ifdef CHECK_L_SOLVE
   std::vector<f_t> Lsol_check = Lsol;
@@ -1544,13 +1556,14 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
                                           sparse_vector_t<i_t, f_t>& solution) const
 {
   sparse_vector_t<i_t, f_t> Lsol(1, 0);
-  return b_solve(rhs, solution, Lsol);
+  return b_solve(rhs, solution, Lsol, false);
 }
 
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
                                           sparse_vector_t<i_t, f_t>& solution,
-                                          sparse_vector_t<i_t, f_t>& Lsol) const
+                                          sparse_vector_t<i_t, f_t>& Lsol,
+                                          bool need_Lsol) const
 {
   const i_t m = L0_.m;
   solution    = rhs;
@@ -1587,7 +1600,9 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
     l_solve(solution_dense);
     solution.from_dense(solution_dense);
   }
-  Lsol = solution;
+  if (need_Lsol) {
+    Lsol = solution;
+  }
   sum_L_ += static_cast<f_t>(solution.i.size()) / input_size;
 
 #ifdef CHECK_L_SOLVE
@@ -1698,9 +1713,11 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
     }
     const f_t theta = dot / mu;
 
-    for (i_t p = S_.col_start[u_col]; p < S_.col_start[u_col + 1]; ++p) {
-      const i_t i = S_.i[p];
-      rhs[i] -= theta * S_.x[p];
+    if (std::abs(theta) > 1e-13) {
+      for (i_t p = S_.col_start[u_col]; p < S_.col_start[u_col + 1]; ++p) {
+        const i_t i = S_.i[p];
+        rhs[i] -= theta * S_.x[p];
+      }
     }
   }
 
@@ -1749,16 +1766,17 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(sparse_vector_t<i_t, f_t>& rhs) const
     }
 
     const f_t theta = dot / mu;
-
-    for (i_t p = S_.col_start[u_col]; p < S_.col_start[u_col + 1]; ++p) {
-      const i_t i = S_.i[p];
-      if (!xi_workspace_[i]) {
-        // Fill occured
-        xi_workspace_[i]      = 1;
-        xi_workspace_[m + nz] = i;
-        nz++;
+    if (std::abs(theta) > 1e-13) {
+      for (i_t p = S_.col_start[u_col]; p < S_.col_start[u_col + 1]; ++p) {
+        const i_t i = S_.i[p];
+        if (!xi_workspace_[i]) {
+          // Fill occured
+          xi_workspace_[i]      = 1;
+          xi_workspace_[m + nz] = i;
+          nz++;
+        }
+        x_workspace_[i] -= theta * S_.x[p];
       }
-      x_workspace_[i] -= theta * S_.x[p];
     }
   }
 
@@ -1993,9 +2011,11 @@ void basis_update_mpf_t<i_t, f_t>::l_transpose_multiply(std::vector<f_t>& inout)
       dot += S_.x[p] * inout[i];
     }
     const f_t theta = dot;
-    for (i_t p = S_.col_start[v_col]; p < S_.col_start[v_col + 1]; ++p) {
-      const i_t i = S_.i[p];
-      inout[i] += theta * S_.x[p];
+    if (std::abs(theta) > 1e-13) {
+      for (i_t p = S_.col_start[v_col]; p < S_.col_start[v_col + 1]; ++p) {
+        const i_t i = S_.i[p];
+        inout[i] += theta * S_.x[p];
+      }
     }
   }
 }
