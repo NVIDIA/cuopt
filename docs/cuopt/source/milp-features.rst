@@ -50,15 +50,22 @@ There are two ways to specify constraints in cuOpt MILP:
 
 Both forms are mathematically equivalent. The choice between them is a matter of convenience depending on your problem formulation.
 
-Incumbent Solution Callback
----------------------------
+Incumbent Solution Callback in the Service
+------------------------------------------
 
-User can provide a callback to receive new integer feasible solutions that improve the objective (called incumbents) while the solver is running. An `Incumbent Example <cuopt-server/examples/milp-examples.html#incumbent-solution>`_ is shared on the self-hosted page.
+When using the service, users can provide a callback to receive new integer feasible solutions that improve the objective (called incumbents) while the solver is running. An `Incumbent Example <cuopt-server/examples/milp-examples.html#incumbent-solution>`_ is shared on the self-hosted page.
 
-Logging Callback
-----------------
+Logging
+-------
 
-A logging callback allows users to get additional information about how the solve is progressing. A `Logging Callback Example <cuopt-server/examples/milp-examples.html#logging-callback>`_ is shared on the self-hosted page.
+The CUOPT_LOG_FILE parameter can be set to write detailed solver logs for MILP problems. This parameter is available in all APIs that allow setting solver parameters.
+
+Logging Callback in the Service
+-------------------------------
+
+In the cuOpt service API, the treatment of log files is slightly different. The ``log_file`` value in ``solver_configs`` may be set to specify the name of a log file on the server where logs will be written. The service will set the CUOPT_LOG_FILE parameter in the solver on your behalf. If you have access to the server, you may read the log files directly. The default location will be the directory where the service was launched. If a results directory is set when the service is launched, then log files will be written in the results directory.
+
+If however you set the ``solver_logs`` flag on the ``/cuopt/request`` REST API call, the value of the CUOPT_LOG_FILE parameter will always be set to ``log_{job_id}`` to support the logging callback feature of the service, and the ``log_file`` value in ``solver_configs`` will be ignored. A logging callback allows users to get additional information about how the solve is progressing. A `Logging Callback Example <cuopt-server/examples/milp-examples.html#logging-callback>`_ is shared on the self-hosted page.
 
 Time Limit
 --------------
