@@ -1210,7 +1210,7 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
   cuopt_assert(assignment.size() == n_variables, "Variable size mismatch");
   std::cout << "variable_map size " << variable_map.size() << std::endl;
   std::cout << "n_variables " << n_variables << std::endl;
-  printf("variable_map size %zu n_variables %d\n", variable_map.size(), n_variables);  
+  printf("variable_map size %zu n_variables %d\n", variable_map.size(), n_variables);
   cuopt_assert(variable_map.size() < n_variables, "Too many variables to fix");
   rmm::device_uvector<f_t> tmp_assignment(assignment, handle_ptr->get_stream());
 
