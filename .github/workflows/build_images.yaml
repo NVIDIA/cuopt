@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Build and push image variant
+
+on:
+  workflow_call:
+    inputs:
+      ARCHES:
+        required: true
+        type: string
+      CUDA_VER:
+        required: true
+        type: string
+      CUOPT_VER:
+        required: true
+        type: string
+      IMAGE_TAG_PREFIX:
+        required: true
+        type: string
+      LINUX_VER:
+        required: true
+        type: string
+      PYTHON_VER:
+        required: true
+        type: string
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        ARCH: ["${{ inputs.ARCHES }}"]
+        CUDA_VER: ["${{ inputs.CUDA_VER }}"]
+        PYTHON_VER: ["${{ inputs.PYTHON_VER }}"]
+        LINUX_VER: ["${{ inputs.LINUX_VER }}"]
+      fail-fast: false
+    runs-on: "linux-${{ matrix.ARCH }}-cpu4"
+    steps:
+      - name: Checkout code repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.CUOPT_DOCKERHUB_USERNAME }}
+          password: ${{ secrets.CUOPT_DOCKERHUB_TOKEN }}
+      - name: Copy License and Version files
+        run: |
+          cp ./LICENSE ./ci/docker/context/LICENSE
+          cp ./VERSION ./ci/docker/context/VERSION
+          cp ./thirdparty/THIRD_PARTY_LICENSES ./ci/docker/context/THIRD_PARTY_LICENSES
+      - name: Login to NGC
+        uses: docker/login-action@v3
+        with:
+          registry: "nvcr.io"
+          username: "$oauthtoken"
+          password: ${{ secrets.CUOPT_NGC_DOCKER_KEY }}
+      - name: Set up Docker Context for Buildx
+        id: buildx-context
+        run: |
+          docker context create builders
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+          endpoint: ./ci/docker/context
+      - name: Trim CUDA and Python versions
+        id: trim
+        run: |
+          echo "CUDA_SHORT=$(echo '${{ inputs.CUDA_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "PYTHON_SHORT=$(echo '${{ inputs.PYTHON_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+      - name: Build image and push to DockerHub and NGC
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ci/docker/context
+          file: ./ci/docker/Dockerfile
+          push: true
+          pull: true
+          build-args: |
+            CUDA_VER=${{ inputs.CUDA_VER }}
+            PYTHON_SHORT_VER=${{ steps.trim.outputs.PYTHON_SHORT }}
+            CUOPT_VER=${{ inputs.CUOPT_VER }}
+            LINUX_VER=${{ inputs.LINUX_VER }}
+          tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
+
+      - name: Push image to NGC
+        run: |
+            docker tag nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }} nvcr.io/nvstaging/nvaie/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
+            docker push nvcr.io/nvstaging/nvaie/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
