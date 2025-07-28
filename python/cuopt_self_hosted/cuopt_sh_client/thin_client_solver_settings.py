@@ -200,5 +200,5 @@ class ThinClientSolverSettings:
         for name in t:
             if name in self.parameter_dict:
                 solver_config["tolerances"][name] = self.parameter_dict[name]
-      
+
         return solver_config
