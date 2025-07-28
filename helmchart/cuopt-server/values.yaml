@@ -1,0 +1,97 @@
+# Default values for cuopt-server.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: nvidia/cuopt
+  pullPolicy: IfNotPresent
+  tag: "25.8.0-cuda12.8-py3.12"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 5000
+  targetPort: 5000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: cuopt-server.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: cuopt-server-tls
+  #    hosts:
+  #      - cuopt-server.local
+
+resources:
+  limits:
+    nvidia.com/gpu: 1
+
+  requests:
+    nvidia.com/gpu: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+nodeSelector:
+  # Uncomment to schedule on nodes with GPU
+  # accelerator: nvidia-tesla-k80
+
+tolerations: []
+
+affinity: {}
+
+# Command to run the cuOpt service
+command:
+  - python
+  - -m
+  - cuopt_server.cuopt_service
+  - -p
+  - "5000"
+
+# Environment variables
+env: []
+
+# Persistent storage (if needed)
+persistence:
+  enabled: false
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  # storageClass: ""
