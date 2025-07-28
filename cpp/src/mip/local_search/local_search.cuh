@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <mip/diversity/population.cuh>
 #include <mip/local_search/feasibility_pump/feasibility_pump.cuh>
 #include <mip/local_search/line_segment_search/line_segment_search.cuh>
 #include <mip/solution/solution.cuh>
@@ -55,6 +56,7 @@ struct cpu_fj_thread_t {
   void start_cpu_solver();
   void stop_cpu_solver();
   bool wait_for_cpu_solver();  // return feasibility
+  void kill_cpu_solver();
 
   std::thread cpu_worker;
   std::mutex cpu_mutex;
@@ -74,6 +76,8 @@ class local_search_t {
   local_search_t(mip_solver_context_t<i_t, f_t>& context,
                  rmm::device_uvector<f_t>& lp_optimal_solution_);
 
+  void start_fj_scratch_threads(population_t<i_t, f_t>& population);
+  void stop_fj_scratch_threads();
   void generate_fast_solution(solution_t<i_t, f_t>& solution, timer_t timer);
   bool generate_solution(solution_t<i_t, f_t>& solution,
                          bool perturb,

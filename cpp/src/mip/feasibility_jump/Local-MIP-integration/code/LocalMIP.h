@@ -39,6 +39,7 @@
 #include "header.h"
 
 #include <atomic>
+#include <functional>
 
 class LocalMIP {
  public:
@@ -186,4 +187,7 @@ class LocalMIP {
   void PrintSol();
   void Allocate();
   Value GetObjValue();
+
+  std::string prefix = "";
+  std::function<void()> optimum_callback;
 };

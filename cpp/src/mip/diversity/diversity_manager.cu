@@ -358,8 +358,11 @@ bool diversity_manager_t<i_t, f_t>::check_b_b_preemption()
   if (population.preempt_heuristic_solver_) {
     if (population.current_size() == 0) { population.allocate_solutions(); }
     auto new_sol_vector = population.get_external_solutions();
+    population.find_diversity(new_sol_vector, use_avg_diversity);
     population.add_solutions_from_vec(std::move(new_sol_vector));
-    return true;
+
+    return false;
+    // return true;
   }
   return false;
 }
@@ -474,7 +477,11 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
   }
   population.allocate_solutions();
+
   if (check_b_b_preemption()) { return population.best_feasible(); }
+
+  ls.start_fj_scratch_threads(population);
+
   // generate a population with 5 solutions(FP+FJ)
   generate_initial_solutions();
   if (context.settings.benchmark_info_ptr != nullptr) {
@@ -487,8 +494,14 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     return population.best_feasible();
   }
 
-  if (timer.check_time_limit()) { return population.best_feasible(); }
+  if (timer.check_time_limit()) {
+    ls.stop_fj_scratch_threads();
+    return population.best_feasible();
+  }
   main_loop();
+
+  ls.stop_fj_scratch_threads();
+
   return population.best_feasible();
 };
 

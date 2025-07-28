@@ -64,7 +64,7 @@ int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_poi
     }
     ++curStep;
 
-    if (curStep > 100000) break;
+    if ((curStep % 100000) == 0) printf("%s running for %d steps\n", prefix.c_str(), curStep);
   }
   PrintResult(_clkStart);
   return 0;
@@ -81,7 +81,10 @@ bool LocalMIP::Timeout(chrono::_V2::system_clock::time_point& _clkStart)
 void LocalMIP::LogObj(chrono::_V2::system_clock::time_point& _clkStart)
 {
   auto clk = TimeNow();
-  printf("n %-20f %lf %d\n", (GetObjValue()), ElapsedTime(clk, _clkStart), curStep);
+  printf(
+    "%s n %-20f %lf %d\n", prefix.c_str(), (GetObjValue()), ElapsedTime(clk, _clkStart), curStep);
+
+  if (optimum_callback) { optimum_callback(); }
 }
 
 void LocalMIP::InitSolution()

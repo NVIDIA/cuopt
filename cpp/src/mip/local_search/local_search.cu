@@ -44,11 +44,7 @@ cpu_fj_thread_t::cpu_fj_thread_t()
 
 cpu_fj_thread_t::~cpu_fj_thread_t()
 {
-  // Signal thread to terminate
-  cpu_thread_terminate = true;
-  cpu_cv.notify_one();
-
-  cpu_worker.join();
+  if (!cpu_thread_terminate) { kill_cpu_solver(); }
 }
 
 void cpu_fj_thread_t::cpu_worker_thread()
@@ -69,6 +65,15 @@ void cpu_fj_thread_t::cpu_worker_thread()
     cpu_thread_should_start = false;
     cpu_thread_done         = true;
   }
+}
+
+void cpu_fj_thread_t::kill_cpu_solver()
+{
+  printf("Killing CPU solver\n");
+  cpu_thread_terminate         = true;
+  cpu_solver->localMIP->halted = true;
+  cpu_cv.notify_one();
+  cpu_worker.join();
 }
 
 void cpu_fj_thread_t::start_cpu_solver()
@@ -115,16 +120,48 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
 }
 
 template <typename i_t, typename f_t>
-bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
+void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& population)
 {
   scratch_cpu_fj.cpu_solver = nullptr;
   scratch_cpu_fj.cpu_solver = std::make_unique<Solver>();
-  LocalMipRead(*scratch_cpu_fj.cpu_solver, *solution.problem_ptr, solution);
-  CopyWeights(*scratch_cpu_fj.cpu_solver, fj);
+  solution_t<i_t, f_t> solution(*context.problem_ptr);
+  thrust::fill(solution.handle_ptr->get_thrust_policy(),
+               solution.assignment.begin(),
+               solution.assignment.end(),
+               0.0);
+  solution.clamp_within_bounds();
+  scratch_cpu_fj.cpu_solver->localMIP->prefix           = "******* scratch: ";
+  scratch_cpu_fj.cpu_solver->localMIP->optimum_callback = [this, &population]() {
+    std::vector<double> h_vec;
+    GetSolution(*scratch_cpu_fj.cpu_solver, h_vec);
+    population.add_external_solution(h_vec, scratch_cpu_fj.cpu_solver->localMIP->bestOBJ);
+    population.preempt_heuristic_solver();
+  };
+  LocalMipRead(*scratch_cpu_fj.cpu_solver, *context.problem_ptr, solution);
+  // default weights
+  cudaDeviceSynchronize();
+
+  // TODO: other thread running on LP optimal
+  scratch_cpu_fj.start_cpu_solver();
+}
+
+template <typename i_t, typename f_t>
+void local_search_t<i_t, f_t>::stop_fj_scratch_threads()
+{
+  scratch_cpu_fj.kill_cpu_solver();
+}
+
+template <typename i_t, typename f_t>
+bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
+{
+  ls_cpu_fj.cpu_solver = nullptr;
+  ls_cpu_fj.cpu_solver = std::make_unique<Solver>();
+  LocalMipRead(*ls_cpu_fj.cpu_solver, *solution.problem_ptr, solution);
+  CopyWeights(*ls_cpu_fj.cpu_solver, fj);
   cudaDeviceSynchronize();
 
   // Start CPU solver in background thread
-  scratch_cpu_fj.start_cpu_solver();
+  ls_cpu_fj.start_cpu_solver();
 
   // Run GPU solver
   fj.solve(solution);
@@ -133,14 +170,14 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
   std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
   // Stop CPU solver
-  scratch_cpu_fj.stop_cpu_solver();
+  ls_cpu_fj.stop_cpu_solver();
 
   // Wait for CPU solver to finish
-  bool cpu_sol_found = scratch_cpu_fj.wait_for_cpu_solver();
+  bool cpu_sol_found = ls_cpu_fj.wait_for_cpu_solver();
 
   // Get CPU solution if ready
   solution_t<i_t, f_t> solution_cpu(*solution.problem_ptr);
-  GetSolution(*scratch_cpu_fj.cpu_solver, solution_cpu);
+  GetSolution(*ls_cpu_fj.cpu_solver, solution_cpu);
   solution_cpu.compute_feasibility();
 
   bool gpu_feasible = solution.get_feasible();
