@@ -489,6 +489,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
       population.best_feasible().get_user_objective();
   }
 
+  population.preempt_heuristic_solver();
+
   if (fj_only_run) {
     run_fj_alone(population.best_feasible());
     return population.best_feasible();

@@ -135,7 +135,6 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
     std::vector<double> h_vec;
     GetSolution(*scratch_cpu_fj.cpu_solver, h_vec);
     population.add_external_solution(h_vec, scratch_cpu_fj.cpu_solver->localMIP->bestOBJ);
-    population.preempt_heuristic_solver();
   };
   LocalMipRead(*scratch_cpu_fj.cpu_solver, *context.problem_ptr, solution);
   // default weights
@@ -151,7 +150,6 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
     std::vector<double> h_vec;
     GetSolution(*scratch_cpu_fj_on_lp_opt.cpu_solver, h_vec);
     population.add_external_solution(h_vec, scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ);
-    population.preempt_heuristic_solver();
   };
   solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
   solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));

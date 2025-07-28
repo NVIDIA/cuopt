@@ -137,7 +137,7 @@ void population_t<i_t, f_t>::add_external_solution(std::vector<f_t>& solution, f
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
 
-  if (external_solution_queue.size() >= 10) return;
+  // if (external_solution_queue.size() >= 10) return;
 
   CUOPT_LOG_INFO("B&B added a solution to population, solution queue size %lu with objective %g",
                  external_solution_queue.size(),
