@@ -7,7 +7,6 @@ import numpy as np
 
 # The type of a variable is either continuous, binary, or integer
 CONTINUOUS = 'C'
-BINARY = 'B'
 INTEGER = 'I'
 
 # Variable objects hold a reference to the problem they were created from as well as info
@@ -22,8 +21,9 @@ class Variable:
         self.UB = ub
         self.Obj = obj
         self.Value = 0.0
-        self.VType = vtype
-        self.VName = vname
+        self.ReducedCost = float('nan')
+        self.VariableType = vtype
+        self.VariableName = vname
     def getIndex(self):
         return self.index
     def getValue(self):
@@ -41,13 +41,13 @@ class Variable:
     def getUpperBound(self):
         return self.UB
     def setVariableType(self, val):
-        self.VType = val
+        self.VariableType = val
     def getVariableType(self):
-        return self.VType
+        return self.VariableType
     def setVariableName(self, val):
-        self.VName = val
+        self.VariableName = val
     def getVariableName(self):
-        return self.VName
+        return self.VariableName
     def __add__(self, other):
         match other:
             case int() | float():
@@ -95,9 +95,9 @@ class LinearExpression:
         self.vars = vars
         self.coefficients = coefficients
         self.constant = constant
-    def getVars(self):
+    def getVariables(self):
         return self.vars
-    def getVar(self, i):
+    def getVariable(self, i):
         return self.vars[i]
     def getCoefficients(self):
         return self.coefficients
@@ -112,11 +112,9 @@ class LinearExpression:
         for i, var in enumerate(self.vars):
             value += var.Value * self.coefficients[i]
         return value
-    def size(self):
-        return len(self.vars)
     def __len__(self):
         return len(self.vars)
-    def __add__(self, other):
+    def __iadd__(self, other):
         match other:
             case int() | float():
                 self.constant += float(other)
@@ -132,9 +130,22 @@ class LinearExpression:
                 return self
             case _:
                 raise ValueError("Can't add type %s to Linear Expression" % type(other).__name__)
+    def __add__(self, other):
+        match other:
+            case int() | float():
+                return LinearExpression(self.vars, self.coefficients, self.constant + float(other))
+            case Variable():
+                vars = self.vars + [other]
+                coeffs = self.coefficients + [1.0]
+                return LinearExpression(vars, coeffs, self.constant)
+            case LinearExpression():
+                vars = self.vars + [other.vars]
+                coeffs = self.coefficients + [other.coefficients]
+                constant = self.constant + other.constant
+                return LinearExpression(vars, coeffs, constant)
     def __radd__(self, other):
         return self + other
-    def __sub__(self, other):
+    def __isub__(self, other):
         match other:
             case int() | float():
                 self.constant -= float(other)
@@ -151,6 +162,23 @@ class LinearExpression:
                 return self
             case _:
                 raise ValueError("Can't sub type %s from LinearExpression" % type(other).__name__)
+    def __sub__(self, other):
+        match other:
+            case int() | float():
+                return LinearExpression(self.vars, self.coefficients, self.constant - float(other))
+            case Variable():
+                vars = self.vars + [other]
+                coeffs = self.coefficients + [-1.0]
+                return LinearExpression(vars, coeffs, self.constant)
+            case LinearExpression():
+                vars = self.vars + [other.vars]
+                coeffs = []
+                for i in self.coefficients:
+                    coeffs.append(i)
+                for i in other.coefficients:
+                    coeffs.append[-1.0*i]
+                constant = self.constant - other.constant
+                return LinearExpression(vars, coeffs, constant)
     def __rsub__(self, other):
         # other - self  -> other + self * -1.0
         return other + self * -1.0
@@ -206,7 +234,7 @@ CONSTRAINT_EQ = 'E'
 class Constraint:
     def __init__(self, expr, sense, rhs, name=''):
         self.vindex_coeff_dict = {}
-        nz = len(expr.getVars())
+        nz = len(expr)
         self.vars = expr.vars
         for i in range(nz):
             v_idx = expr.vars[i].index
@@ -214,9 +242,12 @@ class Constraint:
             self.vindex_coeff_dict[v_idx] = self.vindex_coeff_dict[v_idx] + v_coeff if v_idx in self.vindex_coeff_dict else v_coeff
         self.Sense = sense
         self.RHS = rhs - expr.getConstant()
-        self.CName = name
+        self.ConstraintName = name
+        self.DualValue = float('nan')
+    def __len__(self):
+        return len(self.vindex_coeff_dict)
     def getName(self):
-        return CName
+        return ConstraintName
     def getSense(self):
         return self.Sense
     def getRHS(self):
@@ -247,7 +278,7 @@ class Problem:
         self.constrs = []
         self.ObjSense = MINIMIZE
         self.Obj = None
-        self.ObjCon = 0.0
+        self.ObjConstant = 0.0
         self.Status = -1
         self.IsMIP = False
         self.Settings = solver_settings.SolverSettings()
@@ -261,7 +292,12 @@ class Problem:
         self.upper_bound = None
         self.var_type = None
 
-    def addVar(self, lb=0.0, ub=float('inf'), obj=0.0, vtype=CONTINUOUS, name=''):
+    class dict_to_object:
+        def __init__(self, mdict):
+            for key, value in mdict.items():
+                setattr(self, key, value)
+
+    def addVariable(self, lb=0.0, ub=float('inf'), obj=0.0, vtype=CONTINUOUS, name=''):
         n = len(self.vars)
         if vtype == INTEGER or vtype == BINARY:
             self.IsMIP = True
@@ -269,12 +305,12 @@ class Problem:
         self.vars.append(var)
         return var
 
-    def addConstr(self, constr, name=''):
+    def addConstraint(self, constr, name=''):
         n = len(self.constrs)
         match constr:
             case Constraint():
                 constr.index = n
-                constr.CName = name
+                constr.ConstraintName = name
                 self.constrs.append(constr)
             case _:
                 raise ValueError("addConstraint requires a Constraint object")
@@ -301,26 +337,36 @@ class Problem:
     def getObjective(self):
         return self.Obj
 
-    def getVars(self):
+    def getVariabless(self):
         return self.vars
 
-    def getConstrs(self):
+    def getConstraints(self):
         return self.constrs
 
     @property
-    def NumVars(self):
+    def NumVariables(self):
         return len(self.vars)
 
     @property
-    def NumConstrs(self):
+    def NumConstraints(self):
         return len(self.constrs)
 
     @property
     def NumNZs(self):
         nnz = 0
         for constr in self.constrs:
-            nnz += len(constr.vindex_coeff_dict)
+            nnz += len(constr)
         return nnz
+
+    def getCSR(self):
+        csr_dict = {'row_pointers' : [0],
+                    'column_indices' : [],
+                    'values' : []}
+        for constr in self.constrs:
+            csr_dict['column_indices'].extend(list(constr.vindex_coeff_dict.keys()))
+            csr_dict['values'].extend(list(constr.vindex_coeff_dict.values()))
+            csr_dict['row_pointers'].append(len(csr_dict['column_indices']))
+        return self.dict_to_object(csr_dict)
 
     def post_solve(self, solution):
         self.Status = solution.get_termination_status()
@@ -337,10 +383,15 @@ class Problem:
             for var in self.vars:
                 var.Value = primal_sol[var.index]
                 if not self.IsMIP:
-                    var.RC =  reduced_cost[var.index]
+                    var.ReducedCost =  reduced_cost[var.index]
+        if not self.IsMIP:
+            dual_sol = solution.get_dual_solution()
+            if len(dual_sol) > 0:
+                for i, constr in enumerate(self.constrs):
+                    constr.DualValue = dual_sol[i]
         self.ObjVal = self.Obj.getValue()
 
-    def optimize(self):
+    def solve(self):
         # iterate through the constraints and construct the constraint matrix and the rhs
         m = len(self.constrs)
         n = len(self.vars)
