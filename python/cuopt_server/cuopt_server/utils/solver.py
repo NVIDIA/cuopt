@@ -88,7 +88,7 @@ def solve_LP_sync(
 
     begin_time = time.time()
 
-    if type(LP_data) is list:
+    if isinstance(LP_data, list):
         for i_data in LP_data:
             validate_LP_data(i_data)
     else:
@@ -100,7 +100,13 @@ def solve_LP_sync(
     if not validation_only:
         # log_file setting is ignored in the service,
         # instead we control it and use it as the basis for callbacks
-        if solver_logging:
+        if isinstance(LP_data, list):
+            # clear log_file setting for all because
+            # we don't support callbacks for batch mode
+            # and otherwise we ignore log_file
+            for i_data in LP_data:
+                i_data.solver_config.log_file = ""
+        elif solver_logging:
             log_dir, _, _ = settings.get_result_dir()
             log_fname = "log_" + reqId
             log_file = os.path.join(log_dir, log_fname)
