@@ -165,6 +165,7 @@ class population_t {
   std::vector<std::pair<size_t, f_t>> indices;
   std::vector<std::pair<bool, solution_t<i_t, f_t>>> solutions;
   std::vector<std::vector<f_t>> external_solution_queue;
+  std::vector<f_t> external_solution_queue_obj;
   std::mt19937 rng;
   i_t update_iter = 0;
   std::mutex solution_mutex;

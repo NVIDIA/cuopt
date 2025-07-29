@@ -102,7 +102,7 @@ class local_search_t {
   bool run_fp(solution_t<i_t, f_t>& solution, timer_t timer);
   void resize_vectors(problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr);
 
-  bool do_fj_solve(solution_t<i_t, f_t>& solution);
+  bool do_fj_solve(solution_t<i_t, f_t>& solution, fj_t<i_t, f_t>& fj, const std::string& source);
 
   mip_solver_context_t<i_t, f_t>& context;
   rmm::device_uvector<f_t>& lp_optimal_solution;
@@ -117,8 +117,8 @@ class local_search_t {
   std::mt19937 rng;
 
   cpu_fj_thread_t ls_cpu_fj;
-  // cpu_fj_thread_t scratch_cpu_fj;
-  // cpu_fj_thread_t scratch_cpu_fj_on_lp_opt;
+  cpu_fj_thread_t scratch_cpu_fj;
+  cpu_fj_thread_t scratch_cpu_fj_on_lp_opt;
 };
 
 }  // namespace cuopt::linear_programming::detail

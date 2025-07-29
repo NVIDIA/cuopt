@@ -45,7 +45,7 @@ int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_poi
     if (localConUtil.unsatConIdxs.empty()) {
       if (!isFoundFeasible || localObj.LHS < localObj.RHS) {
         UpdateBestSolution();
-        LogObj(_clkStart);
+        found_better    = true;
         isFoundFeasible = true;
       }
       bool res = LiftMoveWithoutBreak();
@@ -64,7 +64,14 @@ int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_poi
     }
     ++curStep;
 
-    if ((curStep % 100000) == 0) printf("%s running for %d steps\n", prefix.c_str(), curStep);
+    if ((curStep % 100000) == 0)
+      printf("%s running for %d steps, userobj: %lf\n", prefix.c_str(), curStep, GetObjValue());
+    // only send optimal every 5000 steps
+    if (curStep % 5000 == 0 && found_better) {
+      LogObj(_clkStart);
+      if (optimum_callback) { optimum_callback(); }
+      found_better = false;
+    }
   }
   PrintResult(_clkStart);
   return 0;
@@ -83,8 +90,6 @@ void LocalMIP::LogObj(chrono::_V2::system_clock::time_point& _clkStart)
   auto clk = TimeNow();
   printf(
     "%s n %-20f %lf %d\n", prefix.c_str(), (GetObjValue()), ElapsedTime(clk, _clkStart), curStep);
-
-  if (optimum_callback) { optimum_callback(); }
 }
 
 void LocalMIP::InitSolution()
@@ -105,7 +110,7 @@ void LocalMIP::InitSolution()
 void LocalMIP::PrintResult(chrono::_V2::system_clock::time_point _clkStart)
 {
   if (!isFoundFeasible)
-    printf("o no feasible solution found.\n");
+    printf("o no feasible solution found, run for %g\n", ElapsedTime(TimeNow(), _clkStart));
   else if (VerifySolution()) {
     printf("o Best objective: %lf, run for %g\n", GetObjValue(), ElapsedTime(TimeNow(), _clkStart));
     // printf("B 1 %lf\n", GetObjValue());
@@ -312,10 +317,15 @@ void LocalMIP::Allocate()
   bmsFlip             = 20;
   bmsRandom           = 150;
   bestOBJ             = Infinity;
+  // fprintf(stderr, "Allocate localMIP, %d, %d\n", modelVarUtil->varNum,
+  // modelConUtil->conSet.size());
   localVarUtil.Allocate(modelVarUtil->varNum, modelConUtil->conSet[0].varIdxSet.size());
+  // fprintf(stderr, "Allocate localMIP 1\n");
   localConUtil.Allocate(modelConUtil->conNum);
+  // fprintf(stderr, "Allocate localMIP 2\n");
   for (size_t conIdx = 1; conIdx < modelConUtil->conNum; conIdx++)
     localConUtil.conSet[conIdx].RHS = modelConUtil->conSet[conIdx].RHS;
+  // fprintf(stderr, "Allocate localMIP 3\n");
   for (size_t varIdx = 0; varIdx < modelVarUtil->varNum; varIdx++) {
     auto& modelVar = modelVarUtil->GetVar(varIdx);
     if (modelVar.type == VarType::Binary) localVarUtil.binaryIdx.push_back(varIdx);

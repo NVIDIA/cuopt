@@ -59,7 +59,10 @@ void cpu_fj_thread_t::cpu_worker_thread()
     if (cpu_thread_terminate) break;
 
     // Run CPU solver
-    cpu_solver->Run();
+    {
+      raft::common::nvtx::range fun_scope("Running CPU FJ");
+      cpu_solver->Run();
+    }
     cpu_fj_solution_found = cpu_solver->localMIP->isFoundFeasible;
 
     cpu_thread_should_start = false;
@@ -117,73 +120,79 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
        lp_optimal_solution_),
     rng(cuopt::seed_generator::get_seed())
 {
+  line_segment_search.ls = this;
+  ls_cpu_fj.cpu_solver   = nullptr;
 }
 
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& population)
 {
-  // scratch_cpu_fj.cpu_solver = nullptr;
-  // scratch_cpu_fj.cpu_solver = std::make_unique<Solver>();
-  // solution_t<i_t, f_t> solution(*context.problem_ptr);
-  // thrust::fill(solution.handle_ptr->get_thrust_policy(),
-  //              solution.assignment.begin(),
-  //              solution.assignment.end(),
-  //              0.0);
-  // solution.clamp_within_bounds();
-  // scratch_cpu_fj.cpu_solver->localMIP->prefix           = "******* scratch: ";
-  // scratch_cpu_fj.cpu_solver->localMIP->optimum_callback = [this, &population]() {
-  //   std::vector<double> h_vec;
-  //   GetSolution(*scratch_cpu_fj.cpu_solver, h_vec);
-  //   population.add_external_solution(h_vec, scratch_cpu_fj.cpu_solver->localMIP->bestOBJ);
-  // };
-  // LocalMipRead(*scratch_cpu_fj.cpu_solver, *context.problem_ptr, solution);
-  // // default weights
-  // cudaDeviceSynchronize();
+  scratch_cpu_fj.cpu_solver = nullptr;
+  scratch_cpu_fj.cpu_solver = std::make_unique<Solver>();
+  solution_t<i_t, f_t> solution(*context.problem_ptr);
+  thrust::fill(solution.handle_ptr->get_thrust_policy(),
+               solution.assignment.begin(),
+               solution.assignment.end(),
+               0.0);
+  solution.clamp_within_bounds();
+  scratch_cpu_fj.cpu_solver->localMIP->prefix           = "******* scratch: ";
+  scratch_cpu_fj.cpu_solver->localMIP->optimum_callback = [this, &population]() {
+    std::vector<double> h_vec;
+    GetSolution(*scratch_cpu_fj.cpu_solver, h_vec);
+    population.add_external_solution(h_vec, scratch_cpu_fj.cpu_solver->localMIP->bestOBJ);
+  };
+  LocalMipRead(*scratch_cpu_fj.cpu_solver, *context.problem_ptr, solution);
+  // default weights
+  cudaDeviceSynchronize();
 
-  // // TODO: other thread running on LP optimal
-  // scratch_cpu_fj.start_cpu_solver();
+  // TODO: other thread running on LP optimal
+  scratch_cpu_fj.start_cpu_solver();
 
-  // scratch_cpu_fj_on_lp_opt.cpu_solver                   = nullptr;
-  // scratch_cpu_fj_on_lp_opt.cpu_solver                   = std::make_unique<Solver>();
-  // scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->prefix = "******* scratch on LP optimal: ";
-  // scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->optimum_callback = [this, &population]() {
-  //   std::vector<double> h_vec;
-  //   GetSolution(*scratch_cpu_fj_on_lp_opt.cpu_solver, h_vec);
-  //   population.add_external_solution(h_vec,
-  //   scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ);
-  // };
-  // solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
-  // solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
-  // LocalMipRead(*scratch_cpu_fj_on_lp_opt.cpu_solver, *context.problem_ptr, solution_lp);
-  // // default weights
-  // cudaDeviceSynchronize();
-  // scratch_cpu_fj_on_lp_opt.start_cpu_solver();
+  scratch_cpu_fj_on_lp_opt.cpu_solver                   = nullptr;
+  scratch_cpu_fj_on_lp_opt.cpu_solver                   = std::make_unique<Solver>();
+  scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->prefix = "******* scratch on LP optimal: ";
+  scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->optimum_callback = [this, &population]() {
+    std::vector<double> h_vec;
+    GetSolution(*scratch_cpu_fj_on_lp_opt.cpu_solver, h_vec);
+    population.add_external_solution(h_vec, scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ);
+  };
+  solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
+  solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
+  LocalMipRead(*scratch_cpu_fj_on_lp_opt.cpu_solver, *context.problem_ptr, solution_lp);
+  // default weights
+  cudaDeviceSynchronize();
+  scratch_cpu_fj_on_lp_opt.start_cpu_solver();
 }
 
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::stop_fj_scratch_threads()
 {
-  // scratch_cpu_fj.kill_cpu_solver();
-  // scratch_cpu_fj_on_lp_opt.kill_cpu_solver();
+  scratch_cpu_fj.kill_cpu_solver();
+  scratch_cpu_fj_on_lp_opt.kill_cpu_solver();
 }
 
 template <typename i_t, typename f_t>
-bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
+bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
+                                           fj_t<i_t, f_t>& in_fj,
+                                           const std::string& source)
 {
-  ls_cpu_fj.cpu_solver = nullptr;
-  ls_cpu_fj.cpu_solver = std::make_unique<Solver>();
-  LocalMipRead(*ls_cpu_fj.cpu_solver, *solution.problem_ptr, solution);
-  CopyWeights(*ls_cpu_fj.cpu_solver, fj);
-  cudaDeviceSynchronize();
+  if (ls_cpu_fj.cpu_solver == nullptr) {
+    ls_cpu_fj.cpu_solver = std::make_unique<Solver>();
+    LocalMipRead(*ls_cpu_fj.cpu_solver, *solution.problem_ptr, solution);
+  } else {
+    CopySolution(*ls_cpu_fj.cpu_solver, solution);
+  }
+  CopyWeights(*ls_cpu_fj.cpu_solver, in_fj);
+  // cudaDeviceSynchronize();
 
   // Start CPU solver in background thread
   ls_cpu_fj.start_cpu_solver();
 
   // Run GPU solver
-  fj.solve(solution);
+  in_fj.solve(solution);
 
   // Give CPU solver some time to run
-  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  if (source != "line_segment") { std::this_thread::sleep_for(std::chrono::milliseconds(250)); }
 
   // Stop CPU solver
   ls_cpu_fj.stop_cpu_solver();
@@ -199,26 +208,28 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution)
   bool gpu_feasible = solution.get_feasible();
   bool cpu_feasible = cpu_sol_found && solution_cpu.get_feasible();
 
-  static int total_calls = 0;
-  static int cpu_better  = 0;
+  static std::unordered_map<std::string, int> total_calls;
+  static std::unordered_map<std::string, int> cpu_better;
 
   CUOPT_LOG_DEBUG("GPU FJ returns feas %d, obj %g", gpu_feasible, solution.get_user_objective());
   CUOPT_LOG_DEBUG("CPU FJ returns feas %d, obj %g, stats %d/%d",
                   cpu_feasible,
                   solution_cpu.get_user_objective(),
-                  total_calls,
-                  cpu_better);
+                  total_calls[source],
+                  cpu_better[source]);
 
-  total_calls++;
+  total_calls[source]++;
   if (cpu_feasible && !gpu_feasible ||
       (cpu_feasible && solution_cpu.get_objective() < solution.get_objective())) {
-    CUOPT_LOG_DEBUG("CPU FJ returns better solution! cpu_obj %g, gpu_obj %g, stats %d/%d",
-                    solution_cpu.get_user_objective(),
-                    solution.get_user_objective(),
-                    total_calls,
-                    cpu_better);
+    CUOPT_LOG_DEBUG(
+      "CPU FJ returns better solution! cpu_obj %g, gpu_obj %g, stats %d/%d, source %s",
+      solution_cpu.get_user_objective(),
+      solution.get_user_objective(),
+      total_calls[source],
+      cpu_better[source],
+      source.c_str());
     solution.copy_from(solution_cpu);
-    cpu_better++;
+    cpu_better[source]++;
   }
 
   return cpu_feasible;
@@ -245,7 +256,7 @@ void local_search_t<i_t, f_t>::generate_fast_solution(solution_t<i_t, f_t>& solu
     if (timer.check_time_limit()) { return; };
     fj.settings.time_limit = std::min(3., timer.remaining_time());
     // run fj on the solution
-    do_fj_solve(solution);
+    do_fj_solve(solution, fj, "fast");
     // TODO check if FJ returns the same solution
     // check if the solution is feasible
     if (solution.compute_feasibility()) { return; }
@@ -306,7 +317,7 @@ bool local_search_t<i_t, f_t>::run_fj_until_timer(solution_t<i_t, f_t>& solution
   fj.settings.update_weights         = false;
   fj.settings.feasibility_run        = false;
   fj.copy_weights(weights, solution.handle_ptr);
-  do_fj_solve(solution);
+  do_fj_solve(solution, fj, "until_timer");
   CUOPT_LOG_DEBUG("Initial FJ feasibility done");
   is_feasible = solution.compute_feasibility();
   if (fj.settings.feasibility_run || timer.check_time_limit()) { return is_feasible; }
@@ -337,7 +348,7 @@ bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution,
   fj.settings.parameters.allow_infeasibility_iterations = 100;
   fj.settings.update_weights                            = 1;
   fj.settings.baseline_objective_for_longer_run         = ls_config.best_objective_of_parents;
-  do_fj_solve(solution);
+  do_fj_solve(solution, fj, "annealing");
   bool is_feasible = solution.compute_feasibility();
 
   fj.settings = prev_settings;
@@ -400,7 +411,7 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
-  do_fj_solve(solution);
+  do_fj_solve(solution, fj, "on_lp_optimal");
   return solution.get_feasible();
 }
 
@@ -417,7 +428,7 @@ bool local_search_t<i_t, f_t>::run_fj_on_zero(solution_t<i_t, f_t>& solution, ti
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
-  bool is_feasible                   = do_fj_solve(solution);
+  bool is_feasible                   = do_fj_solve(solution, fj, "on_zero");
   return is_feasible;
 }
 

@@ -26,7 +26,7 @@
 
 #include "cuda_profiler_api.h"
 
-constexpr bool from_dir    = true;
+constexpr bool from_dir    = false;
 constexpr bool fj_only_run = false;
 
 namespace cuopt::linear_programming::detail {
@@ -248,9 +248,14 @@ void diversity_manager_t<i_t, f_t>::generate_initial_solutions()
   f_t total_island_gen_time     = std::min(generation_time_limit, max_island_gen_time);
   timer_t gen_timer(total_island_gen_time);
   f_t sol_time_limit = gen_timer.remaining_time();
+  CUOPT_LOG_INFO("TEST sol_time_limit %f, skip? %d, user sols %d",
+                 sol_time_limit,
+                 skip_initial_island_generation,
+                 initial_sol_vector.size());
   for (i_t i = 0; i < maximum_island_size && !skip_initial_island_generation; ++i) {
     if (check_b_b_preemption()) { return; }
-    if (i + population.get_external_solution_size() >= 5) { break; }
+    CUOPT_LOG_INFO("TEST sol %d", i);
+    // if (i + population.get_external_solution_size() >= 5) { break; }
     CUOPT_LOG_DEBUG("Generating sol %d", i);
     bool is_first_sol = (i == 0);
     if (i == 1) { sol_time_limit = gen_timer.remaining_time() / (initial_island_size - 1); }
@@ -292,8 +297,8 @@ void diversity_manager_t<i_t, f_t>::generate_initial_solutions()
                   population.current_size(),
                   population.var_threshold);
   population.print();
-  auto new_sol_vector = population.get_external_solutions();
-  if (!fj_only_run) { recombine_and_ls_with_all(new_sol_vector); }
+  // auto new_sol_vector = population.get_external_solutions();
+  // if (!fj_only_run) { recombine_and_ls_with_all(new_sol_vector); }
 }
 
 template <typename i_t, typename f_t>
@@ -361,6 +366,7 @@ bool diversity_manager_t<i_t, f_t>::check_b_b_preemption()
     population.find_diversity(new_sol_vector, use_avg_diversity);
     population.add_solutions_from_vec(std::move(new_sol_vector));
 
+    CUOPT_LOG_INFO("Preempted heuristic solver!");
     return false;
     // return true;
   }
@@ -480,7 +486,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
 
-  // ls.start_fj_scratch_threads(population);
+  ls.start_fj_scratch_threads(population);
 
   // generate a population with 5 solutions(FP+FJ)
   generate_initial_solutions();

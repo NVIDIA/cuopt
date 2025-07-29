@@ -137,12 +137,20 @@ void population_t<i_t, f_t>::add_external_solution(std::vector<f_t>& solution, f
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
 
-  // if (external_solution_queue.size() >= 10) return;
+  if (external_solution_queue.size() >= 3) {
+    f_t best_obj =
+      *std::min_element(external_solution_queue_obj.begin(), external_solution_queue_obj.end());
+    if (objective > best_obj) return;
+
+    external_solution_queue.erase(external_solution_queue.begin());
+    external_solution_queue_obj.erase(external_solution_queue_obj.begin());
+  }
 
   CUOPT_LOG_INFO("B&B added a solution to population, solution queue size %lu with objective %g",
                  external_solution_queue.size(),
                  problem_ptr->get_user_obj_from_solver_obj(objective));
   external_solution_queue.emplace_back(solution);
+  external_solution_queue_obj.emplace_back(objective);
   if (external_solution_queue.size() >= 5) { early_exit_primal_generation = true; }
 }
 
@@ -153,6 +161,7 @@ void population_t<i_t, f_t>::preempt_heuristic_solver()
 {
   preempt_heuristic_solver_    = true;
   early_exit_primal_generation = true;
+  CUOPT_LOG_INFO("OY! preempted heuristic solver!");
 }
 
 template <typename i_t, typename f_t>
@@ -171,6 +180,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
     CUOPT_LOG_INFO("Consuming B&B solutions, solution queue size %lu",
                    external_solution_queue.size());
     external_solution_queue.clear();
+    external_solution_queue_obj.clear();
   }
   return return_vector;
 }

@@ -41,6 +41,14 @@ LocalVarUtil::LocalVarUtil() {}
 
 void LocalVarUtil::Allocate(size_t _varNum, size_t _varNumInObj)
 {
+  lowerDeltaInLiftMove.clear();
+  upperDeltaInLifiMove.clear();
+  scoreTable.clear();
+  affectedVar.clear();
+  varSet.clear();
+  tempDeltas.clear();
+  tempVarIdxs.clear();
+
   tempDeltas.reserve(_varNum);
   tempVarIdxs.reserve(_varNum);
   affectedVar.reserve(_varNum);

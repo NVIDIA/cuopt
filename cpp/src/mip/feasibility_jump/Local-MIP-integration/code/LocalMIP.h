@@ -190,4 +190,5 @@ class LocalMIP {
 
   std::string prefix = "";
   std::function<void()> optimum_callback;
+  bool found_better = false;
 };

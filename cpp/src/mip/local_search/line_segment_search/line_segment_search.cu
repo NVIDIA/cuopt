@@ -18,6 +18,8 @@
 #include <mip/mip_constants.hpp>
 #include "line_segment_search.cuh"
 
+#include <mip/local_search/local_search.cuh>
+
 #include <thrust/device_ptr.h>
 #include <thrust/functional.h>
 #include <thrust/tabulate.h>
@@ -177,7 +179,8 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(
       fj.settings.update_weights  = false;
       fj.settings.feasibility_run = is_feasibility_run;
       fj.settings.time_limit      = std::min(0.1, timer.remaining_time());
-      is_feasible                 = fj.solve(solution);
+      // is_feasible                 = fj.solve(solution);
+      is_feasible = ls->do_fj_solve(solution, fj, "line_segment");
     }
     cuopt_func_call(solution.test_number_all_integer());
     if (is_feasibility_run) {
@@ -217,7 +220,8 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(
     fj.settings.update_weights         = false;
     fj.settings.feasibility_run        = is_feasibility_run;
     fj.settings.time_limit             = std::min(1., timer.remaining_time());
-    is_feasible                        = fj.solve(solution);
+    // is_feasible                        = fj.solve(solution);
+    is_feasible = ls->do_fj_solve(solution, fj, "line_segment");
     if (is_feasibility_run) {
       if (is_feasible) {
         CUOPT_LOG_DEBUG("Line segment found feasible");

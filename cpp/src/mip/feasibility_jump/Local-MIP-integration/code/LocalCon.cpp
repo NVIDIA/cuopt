@@ -45,6 +45,11 @@ LocalConUtil::LocalConUtil() {}
 
 void LocalConUtil::Allocate(const size_t _conNum)
 {
+  tempSatConIdxs.clear();
+  tempUnsatConIdxs.clear();
+  conSet.clear();
+  unsatConIdxs.clear();
+
   unsatConIdxs.reserve(_conNum);
   tempSatConIdxs.reserve(_conNum);
   tempUnsatConIdxs.reserve(_conNum);

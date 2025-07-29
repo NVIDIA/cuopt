@@ -216,6 +216,8 @@ void GetSolution(Solver& solver, std::vector<double>& solution)
   auto& modelVarUtil = solver.modelVarUtil;
   solution.resize(modelVarUtil->varNum);
 
+  // solver.localMIP->Allocate();
+
   for (size_t var_idx = 0; var_idx < modelVarUtil->varNum; ++var_idx) {
     std::string var_name = "V" + std::to_string(var_idx);
     size_t lmip_varIdx   = modelVarUtil->GetVarIdx(var_name);
@@ -238,5 +240,28 @@ void GetSolution(Solver& solver, solution_t<int32_t, double>& solution)
   }
 
   solution.copy_new_assignment(h_assignment);
+}
+
+void CopySolution(Solver& solver, solution_t<int32_t, double>& solution)
+{
+  auto& localMIP     = solver.localMIP;
+  auto& modelVarUtil = solver.modelVarUtil;
+  auto& problem      = *solution.problem_ptr;
+  auto handle_ptr    = problem.handle_ptr;
+
+  localMIP->Allocate();
+
+  // initialize solution
+  auto h_assignment = cuopt::host_copy(solution.assignment, handle_ptr->get_stream());
+  for (int var_idx = 0; var_idx < problem.n_variables; ++var_idx) {
+    std::string var_name                                = "V" + std::to_string(var_idx);
+    size_t lmip_varIdx                                  = modelVarUtil->GetVarIdx(var_name);
+    localMIP->localVarUtil.GetVar(lmip_varIdx).nowValue = h_assignment[var_idx];
+  }
+  if (problem.n_variables != (int)modelVarUtil->varNum) {
+    CUOPT_LOG_ERROR(
+      "number of variables mismatch: %d != %d", problem.n_variables, modelVarUtil->varNum);
+    cuopt_assert(false, "number of variables mismatch");
+  }
 }
 }  // namespace cuopt::linear_programming::detail

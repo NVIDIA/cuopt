@@ -33,6 +33,9 @@ struct line_segment_settings_t {
 };
 
 template <typename i_t, typename f_t>
+class local_search_t;
+
+template <typename i_t, typename f_t>
 class line_segment_search_t {
  public:
   line_segment_search_t() = delete;
@@ -62,6 +65,7 @@ class line_segment_search_t {
   fj_t<i_t, f_t>& fj;
   constraint_prop_t<i_t, f_t>& constraint_prop;
   line_segment_settings_t settings;
+  local_search_t<i_t, f_t>* ls;
 };
 
 }  // namespace cuopt::linear_programming::detail
