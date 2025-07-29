@@ -2,19 +2,34 @@ import cuopt.linear_programming.data_model as data_model
 import cuopt.linear_programming.solver as solver
 import cuopt.linear_programming.solver_settings as solver_settings
 
-import enum
+from enum import StrEnum, IntEnum
 import numpy as np
 
-# The type of a variable is either continuous, binary, or integer
-CONTINUOUS = 'C'
-INTEGER = 'I'
+# The type of a variable is either continuous or integer
+class vtype(StrEnum):
+    CONTINUOUS = 'C',
+    INTEGER = 'I'
 
-# Variable objects hold a reference to the problem they were created from as well as info
-# about there index, lower bound, upper bound, objective coefficient and variable type.
-# You can add and subtract Variables to scalars and other Variables to form LinearExpression objects.
-# You can multiply variables by a scalar to form a LinearExpression object
+# The sense of a constraint is either LE, GE or EQ
+class ctype(StrEnum):
+    LE = 'L',
+    GE = 'G',
+    EQ = 'E'
+
+# The sense of a model is either MINIMIZE or MAXIMIZE
+class sense(IntEnum):
+    MAXIMIZE = -1,
+    MINIMIZE = 1
+
 class Variable:
-    def __init__(self, problem, index, lb=0.0, ub=float('inf'), obj=0.0, vtype=CONTINUOUS, vname=''):
+    """
+    cuOpt variable object initialized with details of the variable
+    such as lower bound, upper bound, type and name.
+    Variables are always associated with a problem and can be
+    created using problem.addVariable (See problem class).
+    """
+
+    def __init__(self, problem, index, lb=0.0, ub=float('inf'), obj=0.0, vtype=vtype.CONTINUOUS, vname=''):
         self.problem = problem
         self.index = index
         self.LB = lb
@@ -24,30 +39,81 @@ class Variable:
         self.ReducedCost = float('nan')
         self.VariableType = vtype
         self.VariableName = vname
+
     def getIndex(self):
+        """
+        Get the index position of the variable in the problem.
+        """
         return self.index
+
     def getValue(self):
+        """
+        Returns the Value of the variable computed in current solution.
+        Defaults to 0
+        """
         return self.Value
+
     def getObjectiveCoefficient(self):
+        """
+        Returns the objective coefficient of the variable.
+        """
         return self.Obj
+
     def setObjectiveCoefficient(self, val):
+        """
+        Sets the objective cofficient of the variable.
+        """
         self.Obj = val
+
     def setLowerBound(self, val):
+        """
+        Sets the lower bound of the variable.
+        """
         self.LB = val
+
     def getLowerBound(self):
+        """
+        Returns the lower bound of the variable.
+        """
         return self.LB
+
     def setUpperBound(self, val):
+        """
+        Sets the upper bound of the variable.
+        """
         self.UB = val
+
     def getUpperBound(self):
+        """
+        Returns the upper bound of the variable.
+        """
         return self.UB
+
     def setVariableType(self, val):
+        """
+        Sets the variable type of the variable.
+        Variable types can be either CONTINUOUS or INTEGER.
+        """
         self.VariableType = val
+
     def getVariableType(self):
+        """
+        Returns the type of the variable.
+        """
         return self.VariableType
+
     def setVariableName(self, val):
+        """
+        Sets the name of the variable.
+        """
         self.VariableName = val
+
     def getVariableName(self):
+        """
+        Returns the name of the variable.
+        """
         return self.VariableName
+
     def __add__(self, other):
         match other:
             case int() | float():
@@ -59,8 +125,10 @@ class Variable:
                 return other + self
             case _:
                 raise ValueError('Cannot add type %s to variable' % type(other).__name__)
+
     def __radd__(self, other):
         return self + other
+
     def __sub__(self, other):
         match other:
             case int() | float():
@@ -72,48 +140,87 @@ class Variable:
                 return other * -1.0 + self
             case _:
                 raise ValueError('Cannot subtract type %s from variable' % type(other).__name__)
+
     def __rsub__(self, other):
         # other - self  -> other + self * -1.0
         return other + self * -1.0
+
     def __mul__(self, other):
         match other:
             case int() | float():
                 return LinearExpression([self], [float(other)], 0.0)
             case _:
                 raise ValueError('Cannot multiply type %s with variable' % type(other).__name__)
+
     def __rmul__(self, other):
         return self * other
 
 
-# LinearExpressions contain a set of variables, the coefficients for the variables, and a constant
-# LinearExpressions can be used to create constraints and the objective in the Problem
-# LinearExpressions can be added and subtracted with other LinearExpressions and Variables
-# LinearExpressions can be multiplied and divided by scalars
-# LinearExpressions can be compared with scalars, Variables, and other LinearExpressions to create Constraints
 class LinearExpression:
+    """
+    LinearExpressions contain a set of variables, the coefficients
+    for the variables, and a constant.
+    LinearExpressions can be used to create constraints and the
+    objective in the Problem.
+    LinearExpressions can be added and subtracted with other
+    LinearExpressions and Variables and can also be multiplied and
+    divided by scalars.
+    LinearExpressions can be compared with scalars, Variables, and
+    other LinearExpressions to create Constraints.
+    """
+
     def __init__(self, vars, coefficients, constant):
         self.vars = vars
         self.coefficients = coefficients
         self.constant = constant
+
     def getVariables(self):
+        """
+        Returns all the variables in the linear expression.
+        """
         return self.vars
+
     def getVariable(self, i):
+        """
+        Gets Variable at ith index in the linear expression.
+        """
         return self.vars[i]
+
     def getCoefficients(self):
+        """
+        Returns all the coefficients in the linear expression.
+        """
         return self.coefficients
+
     def getCoefficient(self, i):
+        """
+        Gets the coefficient of the variable at ith index of the
+        linear expression.
+        """
         return self.coefficients[i]
+
     def getConstant(self):
+        """
+        Returns the constant in the linear expression.
+        """
         return self.constant
+
     def zipVarCoefficients(self):
         return zip(self.vars, self.coefficients)
+
     def getValue(self):
+        """
+        Returns the value of the expression computed with the
+        current solution.
+        """
         value = 0.0
         for i, var in enumerate(self.vars):
             value += var.Value * self.coefficients[i]
         return value
+
     def __len__(self):
         return len(self.vars)
+
     def __iadd__(self, other):
         match other:
             case int() | float():
@@ -130,6 +237,7 @@ class LinearExpression:
                 return self
             case _:
                 raise ValueError("Can't add type %s to Linear Expression" % type(other).__name__)
+
     def __add__(self, other):
         match other:
             case int() | float():
@@ -139,12 +247,14 @@ class LinearExpression:
                 coeffs = self.coefficients + [1.0]
                 return LinearExpression(vars, coeffs, self.constant)
             case LinearExpression():
-                vars = self.vars + [other.vars]
-                coeffs = self.coefficients + [other.coefficients]
+                vars = self.vars + other.vars
+                coeffs = self.coefficients + other.coefficients
                 constant = self.constant + other.constant
                 return LinearExpression(vars, coeffs, constant)
+
     def __radd__(self, other):
         return self + other
+
     def __isub__(self, other):
         match other:
             case int() | float():
@@ -162,6 +272,7 @@ class LinearExpression:
                 return self
             case _:
                 raise ValueError("Can't sub type %s from LinearExpression" % type(other).__name__)
+
     def __sub__(self, other):
         match other:
             case int() | float():
@@ -171,7 +282,7 @@ class LinearExpression:
                 coeffs = self.coefficients + [-1.0]
                 return LinearExpression(vars, coeffs, self.constant)
             case LinearExpression():
-                vars = self.vars + [other.vars]
+                vars = self.vars + other.vars
                 coeffs = []
                 for i in self.coefficients:
                     coeffs.append(i)
@@ -179,9 +290,11 @@ class LinearExpression:
                     coeffs.append[-1.0*i]
                 constant = self.constant - other.constant
                 return LinearExpression(vars, coeffs, constant)
+
     def __rsub__(self, other):
         # other - self  -> other + self * -1.0
         return other + self * -1.0
+
     def __mul__(self, other):
         match other:
             case int() | float():
@@ -190,8 +303,10 @@ class LinearExpression:
                 return self
             case _:
                 raise ValueError("Can't multiply type %s by LinearExpresson" % type(other).__name__)
+
     def __rmul__(self, other):
         return self * other
+
     def __div__(self, other):
         match other:
             case int() | float():
@@ -200,38 +315,44 @@ class LinearExpression:
                 return self
             case _:
                 raise ValueError("Can't divide LinearExpression by type %s" % type(other).__name__)
+
     def __le__(self, other):
         match other:
             case int() | float():
-                return Constraint(self, CONSTRAINT_LE, float(other))
+                return Constraint(self, ctype.LE, float(other))
             case Variable() | LinearExpression():
                 # expr1 <= expr2   -> expr1 - expr2 <= 0
                 expr = self - other
-                return Constraint(expr, CONSTRAINT_LE, 0.0)
+                return Constraint(expr, ctype.LE, 0.0)
+
     def __ge__(self, other):
         match other:
             case int() | float():
-                return Constraint(self, CONSTRAINT_GE, float(other))
+                return Constraint(self, ctype.GE, float(other))
             case Variable() | LinearExpression():
                 # expr1 >= expr2   ->  expr1 - expr2 >= 0
                 expr = self - other
-                return Constraint(expr, CONSTRAINT_GE, 0.0)
+                return Constraint(expr, ctype.GE, 0.0)
+
     def __eq__(self, other):
         match other:
             case int() | float():
-                return Constraint(self, CONSTRAINT_EQ, float(other))
+                return Constraint(self, ctype.EQ, float(other))
             case Variable() | LinearExpression():
                 # expr1 == expr2   -> expr1 - expr2 == 0
                 expr = self - other
-                return Constraint(expr, CONSTRAINT_EQ, 0.0)
-
-# The sense of a constraint is either less than or equal, greater than or equal, or equal
-CONSTRAINT_LE = 'L'
-CONSTRAINT_GE = 'G'
-CONSTRAINT_EQ = 'E'
+                return Constraint(expr, ctype.EQ, 0.0)
 
 # A constraint contains a linear expression, the sense of the constraint, and the right-hand side of the constraint
 class Constraint:
+    """
+    cuOpt constraint object containing a linear expression,
+    the sense of the constraint, and the right-hand side of
+    the constraint.
+    Constraints are associated with a problem and can be
+    created using problem.addConstraint (See problem class).
+    """
+
     def __init__(self, expr, sense, rhs, name=''):
         self.vindex_coeff_dict = {}
         nz = len(expr)
@@ -244,39 +365,60 @@ class Constraint:
         self.RHS = rhs - expr.getConstant()
         self.ConstraintName = name
         self.DualValue = float('nan')
+
     def __len__(self):
         return len(self.vindex_coeff_dict)
-    def getName(self):
-        return ConstraintName
+
+    def getConstraintName(self):
+        """
+        Returns the name of the constraint.
+        """
+        return self.ConstraintName
+
     def getSense(self):
+        """
+        Returns the sense of the constraint.
+        Constraint sense can be LE(<=), GE(>=) or EQ(==).
+        """
         return self.Sense
+
     def getRHS(self):
+        """
+        Returns the right-hand side value of the constraint.
+        """
         return self.RHS
+
     def getCoefficient(self, var):
+        """
+        Returns the coefficient of a variable in the constraint.
+        """
         v_idx = var.index
-        return vindex_coeff_dict[v_idx]
+        return self.vindex_coeff_dict[v_idx]
+
     @property
     def Slack(self):
+        """
+        Returns the constraint Slack in the current solution.
+        """
         lhs = 0.0
         for var in self.vars:
             lhs += var.Value * self.vindex_coeff_dict[var.index]
         return self.RHS - lhs
 
-# The sense of a problem is either minimize or maximize
-MINIMIZE = 0
-MAXIMIZE = 1
 
-# A Problem defines a Linear Program or Mixed Integer Program
-# Variable can be be created by calling addVariable()
-# Constraints can be added by calling addConstraint()
-# The objective can be set by calling setObjective()
-# The problem data is formed when calling optimize()
 class Problem:
+    """
+    A Problem defines a Linear Program or Mixed Integer Program
+    Variable can be be created by calling addVariable()
+    Constraints can be added by calling addConstraint()
+    The objective can be set by calling setObjective()
+    The problem data is formed when calling solve()
+    """
     def __init__(self, model_name=''):
         self.Name = model_name
         self.vars = []
         self.constrs = []
-        self.ObjSense = MINIMIZE
+        self.ObjSense = sense.MINIMIZE
         self.Obj = None
         self.ObjConstant = 0.0
         self.Status = -1
@@ -297,15 +439,57 @@ class Problem:
             for key, value in mdict.items():
                 setattr(self, key, value)
 
-    def addVariable(self, lb=0.0, ub=float('inf'), obj=0.0, vtype=CONTINUOUS, name=''):
+    def addVariable(self, lb=0.0, ub=float('inf'), obj=0.0, vtype=vtype.CONTINUOUS, name=''):
+        """
+        Adds a variable to the problem defined by lower bound,
+        upper bound, type and name.
+
+        Parameters
+        ----------
+        lb : float
+            Lower bound of the variable. Defaults to  0.
+        ub : float
+            Upper bound of the variable. Defaults to infinity.
+        vtype : enum
+            vtype.CONTINUOUS or vtype.INTEGER. Defaults to CONTINUOUS.
+        name : string
+            Name of the variable. Optional.
+
+        Examples
+        --------
+        >>> problem = problem.Problem("MIP_model")
+        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=vtype.INTEGER, name="Var1")
+        """
         n = len(self.vars)
-        if vtype == INTEGER or vtype == BINARY:
+        if vtype == vtype.INTEGER:
             self.IsMIP = True
         var = Variable(self, n, lb, ub, obj, vtype, name)
         self.vars.append(var)
         return var
 
     def addConstraint(self, constr, name=''):
+        """
+        Adds a constraint to the problem defined by constraint object
+        and name. A constraint is generated using LinearExpression,
+        Sense and RHS.
+
+        Parameters
+        ----------
+        constr : Constraint
+            Constructed using LinearExpressions (See Examples)
+        name : string
+            Name of the variable. Optional.
+
+        Examples
+        --------
+        >>> problem = problem.Problem("MIP_model")
+        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=vtype.INTEGER, name="Var1")
+        >>> y = problem.addVariable(name="Var2")
+        >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
+        >>> expr = 3*x + y
+        >>> problem.addConstraint(expr + x == 20, name="Constr2")
+        """
+
         n = len(self.constrs)
         match constr:
             case Constraint():
@@ -315,7 +499,29 @@ class Problem:
             case _:
                 raise ValueError("addConstraint requires a Constraint object")
 
-    def setObjective(self, expr, sense=MINIMIZE):
+    def setObjective(self, expr, sense=sense.MINIMIZE):
+        """
+        Set the Objective of the problem with an expression that needs to
+        be MINIMIZED or MAXIMIZED.
+
+        Parameters
+        ----------
+        expr : LinearExpression or Variable or Constant
+            Objective expression that needs maximization or minimization.
+        sense : enum
+            Sets whether the problem is a maximization or a minimization
+            problem. Values passed can either be sense.MINIMIZE or
+            sense.MAXIMIZE. Defaults to sense.MINIMIZE.
+        Examples
+        --------
+        >>> problem = problem.Problem("MIP_model")
+        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=vtype.INTEGER, name="Var1")
+        >>> y = problem.addVariable(name="Var2")
+        >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
+        >>> expr = 3*x + y
+        >>> problem.addConstraint(expr + x == 20, name="Constr2")
+        >>> problem.setObjective(x + y, sense=sense.MAXIMIZE)
+        """
         self.ObjSense = sense
         match expr:
             case int() | float():
@@ -335,30 +541,52 @@ class Problem:
         self.Obj = expr
 
     def getObjective(self):
+        """
+        Get the Objective expression of the problem.
+        """
         return self.Obj
 
-    def getVariabless(self):
+    def getVariables(self):
+        """
+        Get a list of all the variables in the problem.
+        """
         return self.vars
 
     def getConstraints(self):
+        """
+        Get a list of all the Constraints in a problem.
+        """
         return self.constrs
 
     @property
     def NumVariables(self):
+        """
+        Returns number of variables in the problem.
+        """
         return len(self.vars)
 
     @property
     def NumConstraints(self):
+        """
+        Returns number of contraints in the problem.
+        """
         return len(self.constrs)
 
     @property
     def NumNZs(self):
+        """
+        Returns number of non-zeros in the problem.
+        """
         nnz = 0
         for constr in self.constrs:
             nnz += len(constr)
         return nnz
 
     def getCSR(self):
+        """
+        Computes and returns the CSR representation of the
+        constraint matrix.
+        """
         csr_dict = {'row_pointers' : [0],
                     'column_indices' : [],
                     'values' : []}
@@ -373,9 +601,9 @@ class Problem:
         self.SolveTime = solution.get_solve_time()
 
         if solution.problem_category == 0:
-            self.SolutionStats = solution.get_lp_stats()
+            self.SolutionStats = self.dict_to_object(solution.get_lp_stats())
         else:
-            self.SolutionStats = solution.get_milp_stats()
+            self.SolutionStats = self.dict_to_object(solution.get_milp_stats())
 
         primal_sol = solution.get_primal_solution()
         reduced_cost = solution.get_reduced_cost()
@@ -392,6 +620,22 @@ class Problem:
         self.ObjVal = self.Obj.getValue()
 
     def solve(self):
+        """
+        Optimizes the LP or MIP problem with the added variables,
+        constraints and objective.
+
+        Examples
+        --------
+        >>> problem = problem.Problem("MIP_model")
+        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=vtype.INTEGER, name="Var1")
+        >>> y = problem.addVariable(name="Var2")
+        >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
+        >>> expr = 3*x + y
+        >>> problem.addConstraint(expr + x == 20, name="Constr2")
+        >>> problem.setObjective(x + y, sense=sense.MAXIMIZE)
+        >>> problem.solve()
+        """
+
         # iterate through the constraints and construct the constraint matrix and the rhs
         m = len(self.constrs)
         n = len(self.vars)
@@ -407,26 +651,27 @@ class Problem:
             self.rhs.append(constr.RHS)
             self.row_sense.append(constr.Sense)
 
-        self.objective = []
-        self.lower_bound, self.upper_bound = [], []
-        self.var_type = []
+        self.objective = np.zeros(n)
+        self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
+        self.var_type = np.empty(n, dtype='S1')
 
         for j in range(n):
-            self.objective.append(self.vars[j].getObjectiveCoefficient())
-            self.var_type.append(self.vars[j].getVariableType())
-            self.lower_bound.append(self.vars[j].getLowerBound())
-            self.upper_bound.append(self.vars[j].getUpperBound())
+            self.objective[j] = self.vars[j].getObjectiveCoefficient()
+            self.var_type[j] = self.vars[j].getVariableType()
+            self.lower_bound[j] = self.vars[j].getLowerBound()
+            self.upper_bound[j] = self.vars[j].getUpperBound()
 
         # Initialize datamodel
         dm = data_model.DataModel()
         dm.set_csr_constraint_matrix(np.array(self.values), np.array(self.column_indicies), np.array(self.row_pointers))
-        dm.set_maximize(self.ObjSense)
+        if self.ObjSense == -1:
+            dm.set_maximize(True)
         dm.set_constraint_bounds(np.array(self.rhs))
         dm.set_row_types(np.array(self.row_sense))
-        dm.set_objective_coefficients(np.array(self.objective))
-        dm.set_variable_lower_bounds(np.array(self.lower_bound))
-        dm.set_variable_upper_bounds(np.array(self.upper_bound))
-        dm.set_variable_types(np.array(self.var_type))
+        dm.set_objective_coefficients(self.objective)
+        dm.set_variable_lower_bounds(self.lower_bound)
+        dm.set_variable_upper_bounds(self.upper_bound)
+        dm.set_variable_types(self.var_type)
 
         # Call Solver
         solution = solver.Solve(dm, self.Settings)
