@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from enum import IntEnum, StrEnum
+from enum import Enum
 
 import numpy as np
 
@@ -23,21 +23,21 @@ import cuopt.linear_programming.solver_settings as solver_settings
 
 
 # The type of a variable is either continuous or integer
-class VType(StrEnum):
-    CONTINUOUS = ("C",)
+class VType(str, Enum):
+    CONTINUOUS = "C"
     INTEGER = "I"
 
 
 # The sense of a constraint is either LE, GE or EQ
-class CType(StrEnum):
-    LE = ("L",)
-    GE = ("G",)
+class CType(str, Enum):
+    LE = "L"
+    GE = "G"
     EQ = "E"
 
 
 # The sense of a model is either MINIMIZE or MAXIMIZE
-class sense(IntEnum):
-    MAXIMIZE = (-1,)
+class sense(int, Enum):
+    MAXIMIZE = -1,
     MINIMIZE = 1
 
 
@@ -783,7 +783,7 @@ class Problem:
         if self.ObjSense == -1:
             dm.set_maximize(True)
         dm.set_constraint_bounds(np.array(self.rhs))
-        dm.set_row_types(np.array(self.row_sense))
+        dm.set_row_types(np.array(self.row_sense, dtype="S1"))
         dm.set_objective_coefficients(self.objective)
         dm.set_variable_lower_bounds(self.lower_bound)
         dm.set_variable_upper_bounds(self.upper_bound)
