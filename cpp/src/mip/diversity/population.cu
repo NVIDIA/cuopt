@@ -137,13 +137,14 @@ void population_t<i_t, f_t>::add_external_solution(std::vector<f_t>& solution, f
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
 
-  if (external_solution_queue.size() >= 3) {
-    f_t best_obj =
-      *std::min_element(external_solution_queue_obj.begin(), external_solution_queue_obj.end());
-    if (objective > best_obj) return;
+  if (external_solution_queue.size() >= 10) {
+    auto worst_obj_it =
+      std::max_element(external_solution_queue_obj.begin(), external_solution_queue_obj.end());
+    if (objective > *worst_obj_it) return;
+    auto worst_obj_idx = std::distance(external_solution_queue_obj.begin(), worst_obj_it);
 
-    external_solution_queue.erase(external_solution_queue.begin());
-    external_solution_queue_obj.erase(external_solution_queue_obj.begin());
+    external_solution_queue.erase(external_solution_queue.begin() + worst_obj_idx);
+    external_solution_queue_obj.erase(external_solution_queue_obj.begin() + worst_obj_idx);
   }
 
   CUOPT_LOG_INFO("B&B added a solution to population, solution queue size %lu with objective %g",

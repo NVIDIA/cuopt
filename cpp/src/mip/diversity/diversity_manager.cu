@@ -297,8 +297,8 @@ void diversity_manager_t<i_t, f_t>::generate_initial_solutions()
                   population.current_size(),
                   population.var_threshold);
   population.print();
-  // auto new_sol_vector = population.get_external_solutions();
-  // if (!fj_only_run) { recombine_and_ls_with_all(new_sol_vector); }
+  auto new_sol_vector = population.get_external_solutions();
+  if (!fj_only_run) { recombine_and_ls_with_all(new_sol_vector); }
 }
 
 template <typename i_t, typename f_t>
@@ -363,12 +363,8 @@ bool diversity_manager_t<i_t, f_t>::check_b_b_preemption()
   if (population.preempt_heuristic_solver_) {
     if (population.current_size() == 0) { population.allocate_solutions(); }
     auto new_sol_vector = population.get_external_solutions();
-    population.find_diversity(new_sol_vector, use_avg_diversity);
     population.add_solutions_from_vec(std::move(new_sol_vector));
-
-    CUOPT_LOG_INFO("Preempted heuristic solver!");
-    return false;
-    // return true;
+    return true;
   }
   return false;
 }
@@ -494,8 +490,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     context.settings.benchmark_info_ptr->objective_of_initial_population =
       population.best_feasible().get_user_objective();
   }
-
-  population.preempt_heuristic_solver();
 
   if (fj_only_run) {
     run_fj_alone(population.best_feasible());
