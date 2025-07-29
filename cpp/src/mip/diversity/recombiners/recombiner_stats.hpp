@@ -21,7 +21,7 @@
 
 namespace cuopt::linear_programming::detail {
 
-enum recombiner_enum_t : int { BOUND_PROP = 0, FP, LINE_SEGMENT, SUB_MIP, SIZE };
+enum recombiner_enum_t : int { BOUND_PROP = 0, FP, LINE_SEGMENT, SIZE, SUB_MIP };
 
 struct recombine_stats {
   int attempts;
