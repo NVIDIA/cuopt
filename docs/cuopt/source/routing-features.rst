@@ -118,4 +118,4 @@ In cases where a set of orders need to be assigned to a set of vehicles, either 
 Initial Solution
 ----------------
 
-Previously run solutions or uploaded solutions can be used as an initial solution to start a new request to boost the speed to the solution. `Examples <cuopt-server/examples/routing-examples.html#initial-solution>`_ are shared on the self-hosted page.
+Previously run solutions or uploaded solutions can be used as an initial solution to start a new request to boost the speed to the solution. :ref:`Examples <initial-solution-in-python>` are shared on the self-hosted page.

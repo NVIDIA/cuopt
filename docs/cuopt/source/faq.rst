@@ -45,11 +45,11 @@ General FAQ
 
 .. dropdown:: Do I need a GPU to use cuOpt?
 
-    Yes, please refer to `system requirements <system-requirements.html>`_ for GPU specifications. You can acquire a cloud instance with a supported GPU and launch cuOpt; alternatively, you can launch it in your local machine if it meets the requirements.
+    Yes, please refer to :doc:`system requirements <system-requirements>` for GPU specifications. You can acquire a cloud instance with a supported GPU and launch cuOpt; alternatively, you can launch it in your local machine if it meets the requirements.
 
 .. dropdown:: Does cuOpt use multiple GPUs/multi-GPUs/multi GPUs?
 
-    #. Yes, in cuOpt self-hosted server, a solver process per GPU can be configured to run multiple solvers. Requests are accepted in a round-robin queue. More details are available in `server api <cuopt-server/server-api/server-cli.html>`_.
+    #. Yes, in cuOpt self-hosted server, a solver process per GPU can be configured to run multiple solvers. Requests are accepted in a round-robin queue. More details are available in :doc:`server api <cuopt-server/server-api/server-cli>`.
     #. There is no support for leveraging multiple GPUs to solve a single problem or oversubscribing a single GPU for multiple solvers.
 
 .. dropdown:: The cuOpt Service is not starting: Issue with port?
@@ -249,7 +249,7 @@ Routing FAQ
 
     #. cuOpt is stateless and cannot handle dynamic constraints directly, but this can be resolved with modeling.
     #. Dynamic reoptimization is used when there is a change in the conditions of the operation such as a vehicle getting broken, a driver calling in sick, a road block, traffic, or a high-priority order coming in.
-    #. The problem is prepped in such a way that the packages that are already en route are assigned to only those vehicles, and new and old deliveries will be added to this problem. Please refer to example notebooks in `cuOpt Resources <resources.html>`__ to understand more about how to tackle this problem.
+    #. The problem is prepped in such a way that the packages that are already en route are assigned to only those vehicles, and new and old deliveries will be added to this problem. Please refer to example notebooks in :doc:`cuOpt Resources <resources>` to understand more about how to tackle this problem.
 
 .. dropdown:: Does cuOpt take an initial solution?
 

@@ -20,6 +20,7 @@
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <mip/mip_constants.hpp>
+#include <utilities/copy_helpers.hpp>
 
 #include <thrust/functional.h>
 #include <thrust/logical.h>
@@ -73,6 +74,18 @@ void problem_checking_t<i_t, f_t>::check_initial_primal_representation(
       "has size %zu, while objective vector has size %zu.",
       primal_initial_solution.size(),
       op_problem.get_objective_coefficients().size());
+    cuopt_expects(!thrust::any_of(op_problem.get_handle_ptr()->get_thrust_policy(),
+                                  thrust::make_counting_iterator(0),
+                                  thrust::make_counting_iterator(0) + op_problem.get_n_variables(),
+                                  [lower_bounds = make_span(op_problem.get_variable_lower_bounds()),
+                                   upper_bounds = make_span(op_problem.get_variable_upper_bounds()),
+                                   assignment_span = make_span(primal_initial_solution),
+                                   int_tol         = 1e-8] __device__(i_t idx) {
+                                    return assignment_span[idx] < lower_bounds[idx] - int_tol ||
+                                           assignment_span[idx] > upper_bounds[idx] + int_tol;
+                                  }),
+                  error_type_t::ValidationError,
+                  "Initial solution violates variable bounds.");
   }
 }
 

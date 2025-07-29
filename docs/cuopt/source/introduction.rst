@@ -6,7 +6,7 @@ Introduction
 
 Using accelerated computing, NVIDIA® cuOpt optimizes operations research and logistics by enabling better, faster decisions.
 
-As part of `NVIDIA AI Enterprise <https://www.nvidia.com/en-us/data-center/products/ai-enterprise/>`_, NVIDIA cuOpt offers a secure, efficient way to rapidly generate world-class route optimization solutions. Using a single optimized container, you can deploy the AI microservice in under 5 minutes on accelerated NVIDIA GPU systems in the cloud, data center, workstations, or PCs. A license for NVIDIA AI Enterprise or membership in the NVIDIA Developer Program is required. For more information about NVAIE licensing, accessing NGC registry, and pulling container images, please refer to the `FAQ section <faq.html>`_.
+As part of `NVIDIA AI Enterprise <https://www.nvidia.com/en-us/data-center/products/ai-enterprise/>`_, NVIDIA cuOpt offers a secure, efficient way to rapidly generate world-class route optimization solutions. Using a single optimized container, you can deploy the AI microservice in under 5 minutes on accelerated NVIDIA GPU systems in the cloud, data center, workstations, or PCs. A license for NVIDIA AI Enterprise or membership in the NVIDIA Developer Program is required. For more information about NVAIE licensing, accessing NGC registry, and pulling container images, please refer to the :doc:`FAQ section <faq>`.
 
 .. note::
    NVAIE support is extended to only cuOpt Routing service API. LP and MILP are not supported as part of it, they are just add-ons.
@@ -106,18 +106,18 @@ Supported APIs
 cuOpt supports the following APIs:
 
 - C API support
-   - `Linear Programming (LP) - C <cuopt-c/quick-start.html>`_
-   - `Mixed Integer Linear Programming (MILP) - C <cuopt-c/quick-start.html>`_
+   - :doc:`Linear Programming (LP) - C <cuopt-c/quick-start>`
+   - :doc:`Mixed Integer Linear Programming (MILP) - C <cuopt-c/quick-start>`
 - C++ API support
    - cuOpt is written in C++ and includes a native C++ API. However, we do not provide documentation for the C++ API at this time. We anticipate that the C++ API will change significantly in the future. Use it at your own risk.
 - Python support
-   - `Routing (TSP, VRP, and PDP) - Python <cuopt-python/quick-start.html>`_
+   - :doc:`Routing (TSP, VRP, and PDP) - Python <cuopt-python/quick-start>`
    - Linear Programming (LP) and Mixed Integer Linear Programming (MILP)
        - cuOpt includes a Python API that is used as the backend of the cuOpt server. However, we do not provide documentation for the Python API at this time. We suggest using cuOpt server to access cuOpt via Python. We anticipate that the Python API will change significantly in the future. Use it at your own risk.
 - Server support
-   - `Linear Programming (LP) - Server <cuopt-server/quick-start.html>`_
-   - `Mixed Integer Linear Programming (MILP) - Server <cuopt-server/quick-start.html>`_
-   - `Routing (TSP, VRP, and PDP) - Server <cuopt-server/quick-start.html>`_
+   - :doc:`Linear Programming (LP) - Server <cuopt-server/quick-start>`
+   - :doc:`Mixed Integer Linear Programming (MILP) - Server <cuopt-server/quick-start>`
+   - :doc:`Routing (TSP, VRP, and PDP) - Server <cuopt-server/quick-start>`
 - Third-party modeling languages
    - `AMPL <https://www.ampl.com/>`_
    - `GAMS <https://www.gams.com/>`_

@@ -46,10 +46,10 @@ Step 1: Create an AWS VM with NVAIE Image
 Step 2: Activate NVAIE Subscription
 ------------------------------------
 
-Once connected to the VM, generate an identity token. Activate your NVIDIA AI Enterprise subscription using that identity token on NGC. Follow the instructions `here <https://docs.nvidia.com/ai-enterprise/deployment-guide-cloud/0.1.0/azure-ai-enterprise-vmi.html#accessing-the-nc-on-ngc>`__.
+Once connected to the VM, generate an identity token. Activate your NVIDIA AI Enterprise subscription using that identity token on NGC. Follow the instructions `here <https://docs.nvidia.com/ai-enterprise/deployment/cloud/latest/azure-ai-enterprise-vmi.html#accessing-the-ngc-catalog-on-ngc>`__.
 
 Step 3: Run cuOpt
 ------------------
 
-To run cuOpt, you will need to log in to the NVIDIA Container Registry, pull the cuOpt container, and then run it. To test that it is successfully running, you can run a sample cuOpt request. This process is the same for deploying cuOpt on your own infrastructure. Refer to  `Self-Hosted Service Quickstart Guide </cuopt-server/quick-start.html#container-from-nvidia-ngc>`__.
+To run cuOpt, you will need to log in to the NVIDIA Container Registry, pull the cuOpt container, and then run it. To test that it is successfully running, you can run a sample cuOpt request. This process is the same for deploying cuOpt on your own infrastructure. Refer to  :ref:`Self-Hosted Service Quickstart Guide <container-from-nvidia-ngc>`.
 
