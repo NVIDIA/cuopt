@@ -172,7 +172,6 @@ class basis_update_t {
   mutable csc_matrix_t<i_t, f_t> L0_transpose_;  // Needed for sparse solves
 };
 
-
 // Middle product form update to the LU factorization of a basis matrix B
 template <typename i_t, typename f_t>
 class basis_update_mpf_t {
@@ -367,8 +366,16 @@ class basis_update_mpf_t {
   i_t nonzeros(const std::vector<f_t>& x) const;
   f_t dot_product(i_t col, const std::vector<f_t>& x) const;
   f_t dot_product(i_t col, const std::vector<i_t>& mark, const std::vector<f_t>& x) const;
-  void add_sparse_column(const csc_matrix_t<i_t, f_t>& S, i_t col, f_t theta, std::vector<f_t>& x) const;
-  void add_sparse_column(const csc_matrix_t<i_t, f_t>& S, i_t col, f_t theta, std::vector<i_t>& mark, i_t& nz, std::vector<f_t>& x) const;
+  void add_sparse_column(const csc_matrix_t<i_t, f_t>& S,
+                         i_t col,
+                         f_t theta,
+                         std::vector<f_t>& x) const;
+  void add_sparse_column(const csc_matrix_t<i_t, f_t>& S,
+                         i_t col,
+                         f_t theta,
+                         std::vector<i_t>& mark,
+                         i_t& nz,
+                         std::vector<f_t>& x) const;
 
   void l_multiply(std::vector<f_t>& inout) const;
   void l_transpose_multiply(std::vector<f_t>& inout) const;

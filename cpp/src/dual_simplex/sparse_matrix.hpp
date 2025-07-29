@@ -63,7 +63,6 @@ class csc_matrix_t {
   // Compute the transpose of A
   i_t transpose(csc_matrix_t<i_t, f_t>& AT) const;
 
-
   // Append a dense column to the matrix. Assumes the matrix has already been resized accordingly
   void append_column(const std::vector<f_t>& x);
 

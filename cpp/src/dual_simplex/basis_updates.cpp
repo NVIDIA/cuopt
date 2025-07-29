@@ -1127,7 +1127,7 @@ void basis_update_mpf_t<i_t, f_t>::gather_into_sparse_vector(i_t nz,
   out.x.reserve(nz);
   const f_t zero_tol = 1e-13;
   for (i_t k = 0; k < nz; ++k) {
-    const i_t i          = xi_workspace_[m + k];
+    const i_t i = xi_workspace_[m + k];
     if (std::abs(x_workspace_[i]) > zero_tol) {
       out.i.push_back(i);
       out.x.push_back(x_workspace_[i]);
@@ -1166,10 +1166,10 @@ void basis_update_mpf_t<i_t, f_t>::solve_to_sparse_vector(i_t top,
   out.i.clear();
   out.x.reserve(nz);
   out.i.reserve(nz);
-  i_t k = 0;
+  i_t k              = 0;
   const f_t zero_tol = 1e-13;
   for (i_t p = top; p < m; ++p) {
-    const i_t i      = xi_workspace_[p];
+    const i_t i = xi_workspace_[p];
     if (std::abs(x_workspace_[i]) > zero_tol) {
       out.i.push_back(i);
       out.x.push_back(x_workspace_[i]);
@@ -1217,7 +1217,7 @@ void basis_update_mpf_t<i_t, f_t>::grow_storage(i_t nz, i_t& S_start, i_t& S_nz)
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::nonzeros(const std::vector<f_t>& x) const
 {
-  i_t nz = 0;
+  i_t nz        = 0;
   const i_t xsz = x.size();
   for (i_t i = 0; i < xsz; ++i) {
     if (x[i] != 0.0) { nz++; }
@@ -1229,7 +1229,7 @@ i_t basis_update_mpf_t<i_t, f_t>::nonzeros(const std::vector<f_t>& x) const
 template <typename i_t, typename f_t>
 f_t basis_update_mpf_t<i_t, f_t>::dot_product(i_t col, const std::vector<f_t>& x) const
 {
-  f_t dot = 0.0;
+  f_t dot             = 0.0;
   const i_t col_start = S_.col_start[col];
   const i_t col_end   = S_.col_start[col + 1];
   for (i_t p = col_start; p < col_end; ++p) {
@@ -1241,23 +1241,26 @@ f_t basis_update_mpf_t<i_t, f_t>::dot_product(i_t col, const std::vector<f_t>& x
 
 // dot = S(:, col)' * x
 template <typename i_t, typename f_t>
-f_t basis_update_mpf_t<i_t, f_t>::dot_product(i_t col, const std::vector<i_t>& mark, const std::vector<f_t>& x) const
+f_t basis_update_mpf_t<i_t, f_t>::dot_product(i_t col,
+                                              const std::vector<i_t>& mark,
+                                              const std::vector<f_t>& x) const
 {
-  f_t dot = 0.0;
+  f_t dot             = 0.0;
   const i_t col_start = S_.col_start[col];
   const i_t col_end   = S_.col_start[col + 1];
   for (i_t p = col_start; p < col_end; ++p) {
     const i_t i = S_.i[p];
-    if (mark[i]) {
-      dot += S_.x[p] * x[i];
-    }
+    if (mark[i]) { dot += S_.x[p] * x[i]; }
   }
   return dot;
 }
 
 // x <- x + theta * S(:, col)
 template <typename i_t, typename f_t>
-void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t>& S, i_t col, f_t theta, std::vector<f_t>& x) const
+void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t>& S,
+                                                     i_t col,
+                                                     f_t theta,
+                                                     std::vector<f_t>& x) const
 {
   const i_t col_start = S.col_start[col];
   const i_t col_end   = S.col_start[col + 1];
@@ -1268,9 +1271,14 @@ void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t
 }
 
 template <typename i_t, typename f_t>
-void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t>& S, i_t col, f_t theta, std::vector<i_t>& mark, i_t& nz, std::vector<f_t>& x) const
+void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t>& S,
+                                                     i_t col,
+                                                     f_t theta,
+                                                     std::vector<i_t>& mark,
+                                                     i_t& nz,
+                                                     std::vector<f_t>& x) const
 {
-  const i_t m = L0_.m;
+  const i_t m         = L0_.m;
   const i_t col_start = S.col_start[col];
   const i_t col_end   = S.col_start[col + 1];
   for (i_t p = col_start; p < col_end; ++p) {
@@ -1390,7 +1398,8 @@ i_t basis_update_mpf_t<i_t, f_t>::b_transpose_solve(const sparse_vector_t<i_t, f
   for (i_t k = 0; k < L0_.m; ++k) {
     if (std::abs(solution_dense[k] - r_dense[k]) > 1e-4) {
       printf(
-        "B transpose solve L transpose solve error %e: index %d multiply %e rhs %e. update %d. use hypersparse %d\n",
+        "B transpose solve L transpose solve error %e: index %d multiply %e rhs %e. update %d. use "
+        "hypersparse %d\n",
         std::abs(solution_dense[k] - r_dense[k]),
         k,
         solution_dense[k],
@@ -1448,12 +1457,10 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(std::vector<f_t>& rhs) const
     const f_t mu    = mu_values_[k];
 
     // dot = u^T * b
-    f_t dot = dot_product(u_col, rhs);
+    f_t dot         = dot_product(u_col, rhs);
     const f_t theta = dot / mu;
 
-    if (std::abs(theta) > zero_tol) {
-      add_sparse_column(S_, v_col, -theta, rhs);
-    }
+    if (std::abs(theta) > zero_tol) { add_sparse_column(S_, v_col, -theta, rhs); }
   }
 
   // Solve for x such that L0^T * x = b'
@@ -1526,7 +1533,6 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& r
   }
 #endif
 
-
   sparse_vector_t<i_t, f_t> b(m, nz);
   gather_into_sparse_vector(nz, b);
   i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, false>(
@@ -1580,9 +1586,7 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
   std::vector<f_t> rhs_permuted = solution;
 #endif
   l_solve(solution);
-  if (need_Lsol) {
-    Lsol = solution;
-  }
+  if (need_Lsol) { Lsol = solution; }
 
 #ifdef CHECK_L_SOLVE
   std::vector<f_t> Lsol_check = Lsol;
@@ -1656,9 +1660,7 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
     l_solve(solution_dense);
     solution.from_dense(solution_dense);
   }
-  if (need_Lsol) {
-    Lsol = solution;
-  }
+  if (need_Lsol) { Lsol = solution; }
   sum_L_ += static_cast<f_t>(solution.i.size()) / input_size;
 
 #ifdef CHECK_L_SOLVE
@@ -1766,9 +1768,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
     f_t dot         = dot_product(v_col, rhs);
     const f_t theta = dot / mu;
 
-    if (std::abs(theta) > zero_tol) {
-      add_sparse_column(S_, u_col, -theta, rhs);
-    }
+    if (std::abs(theta) > zero_tol) { add_sparse_column(S_, u_col, -theta, rhs); }
   }
 
 #ifdef CHECK_L_SOLVE
@@ -1965,7 +1965,7 @@ void basis_update_mpf_t<i_t, f_t>::l_multiply(std::vector<f_t>& inout) const
     const f_t mu    = mu_values_[k];
 
     // dot = v^T b
-    f_t dot = dot_product(v_col, inout);
+    f_t dot         = dot_product(v_col, inout);
     const f_t theta = dot;
     add_sparse_column(S_, u_col, theta, inout);
   }
@@ -1993,11 +1993,9 @@ void basis_update_mpf_t<i_t, f_t>::l_transpose_multiply(std::vector<f_t>& inout)
     // T_k = ( I + u v^T)
     // T_k^T = ( I + v u^T)
     // T_k^T * b = b + v * (u^T * b) = b + theta * v, theta = u^T * b
-    f_t dot = dot_product(u_col, inout);
+    f_t dot         = dot_product(u_col, inout);
     const f_t theta = dot;
-    if (std::abs(theta) > zero_tol) {
-      add_sparse_column(S_, v_col, theta, inout);
-    }
+    if (std::abs(theta) > zero_tol) { add_sparse_column(S_, v_col, theta, inout); }
   }
 }
 

@@ -21,9 +21,9 @@
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/phase1.hpp>
 #include <dual_simplex/phase2.hpp>
+#include <dual_simplex/random.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/random.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
 #include <cassert>
@@ -668,7 +668,7 @@ void update_single_primal_infeasibility(const std::vector<f_t>& lower,
                                         i_t j,
                                         f_t& primal_inf)
 {
-  const f_t old_val      = squared_infeasibilities[j];
+  const f_t old_val = squared_infeasibilities[j];
   // x_j < l_j - epsilon => -x_j + l_j > epsilon
   const f_t lower_infeas = lower[j] - x[j];
   // x_j > u_j + epsilon => x_j - u_j > epsilon
@@ -710,8 +710,8 @@ void update_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
                                    std::vector<i_t>& infeasibility_indices,
                                    f_t& primal_inf)
 {
-  const f_t primal_tol   = settings.primal_tol;
-  const i_t nz           = basic_change_list.size();
+  const f_t primal_tol = settings.primal_tol;
+  const i_t nz         = basic_change_list.size();
   for (i_t k = 0; k < nz; ++k) {
     const i_t j = basic_list[basic_change_list[k]];
     // The change list will contain the leaving variable,
@@ -739,7 +739,7 @@ template <typename i_t, typename f_t>
 void clean_up_infeasibilities(std::vector<f_t>& squared_infeasibilities,
                               std::vector<i_t>& infeasibility_indices)
 {
-  bool needs_clean_up    = false;
+  bool needs_clean_up = false;
   for (i_t k = 0; k < infeasibility_indices.size(); ++k) {
     const i_t j              = infeasibility_indices[k];
     const f_t squared_infeas = squared_infeasibilities[j];
@@ -755,7 +755,7 @@ void clean_up_infeasibilities(std::vector<f_t>& squared_infeasibilities,
         const i_t sz             = infeasibility_indices.size();
         infeasibility_indices[k] = infeasibility_indices[sz - 1];
         infeasibility_indices.pop_back();
-        i_t new_j                  = infeasibility_indices[k];
+        i_t new_j = infeasibility_indices[k];
         if (squared_infeasibilities[new_j] == 0.0) { k--; }
       }
     }
@@ -774,9 +774,9 @@ i_t steepest_edge_pricing_with_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
                                                i_t& basic_leaving,
                                                f_t& max_val)
 {
-  max_val                = 0.0;
-  i_t leaving_index      = -1;
-  const i_t nz           = infeasibility_indices.size();
+  max_val           = 0.0;
+  i_t leaving_index = -1;
+  const i_t nz      = infeasibility_indices.size();
   for (i_t k = 0; k < nz; ++k) {
     const i_t j              = infeasibility_indices[k];
     const f_t squared_infeas = squared_infeasibilities[j];
@@ -2827,7 +2827,8 @@ dual::status_t dual_phase2(i_t phase,
         basis_repair(lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
         if (factorize_basis(
               lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) == -1) {
-          settings.log.printf("Failed to repair basis. %d deficient columns.\n", static_cast<int>(deficient.size()));
+          settings.log.printf("Failed to repair basis. %d deficient columns.\n",
+                              static_cast<int>(deficient.size()));
           return dual::status_t::NUMERICAL;
         }
       }
