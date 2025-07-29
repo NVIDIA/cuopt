@@ -16,6 +16,7 @@
  */
 
 #include <dual_simplex/sparse_matrix.hpp>
+#include <dual_simplex/sparse_vector.hpp>
 
 #include <dual_simplex/types.hpp>
 
@@ -146,6 +147,61 @@ i_t csc_matrix_t<i_t, f_t>::load_a_column(i_t j, std::vector<f_t>& Aj) const
     Aj[i]       = x;
   }
   return (col_end - col_start);
+}
+
+template <typename i_t, typename f_t>
+void csc_matrix_t<i_t, f_t>::append_column(const std::vector<f_t>& x)
+{
+  const i_t m = this->m;
+  assert(x.size() == m);
+  const i_t xsz = x.size();
+  i_t nz = this->col_start[this->n];
+  for (i_t j = 0; j < xsz; ++j) {
+    if (x[j] != 0.0) {
+      this->i[nz] = j;
+      this->x[nz] = x[j];
+      nz++;
+    }
+  }
+  this->col_start[this->n + 1] = nz;
+  this->n++;
+}
+
+template <typename i_t, typename f_t>
+void csc_matrix_t<i_t, f_t>::append_column(const sparse_vector_t<i_t, f_t>& x)
+{
+  const i_t m = this->m;
+  assert(x.n == m);
+  i_t nz = this->col_start[this->n];
+  const i_t xnz = x.i.size();
+  for (i_t k = 0; k < xnz; ++k) {
+    const i_t i = x.i[k];
+    const f_t x_val = x.x[k];
+    if (x_val != 0.0) {
+      this->i[nz] = i;
+      this->x[nz] = x_val;
+      nz++;
+    }
+  }
+  this->col_start[this->n + 1] = nz;
+  this->n++;
+}
+
+template <typename i_t, typename f_t>
+void csc_matrix_t<i_t, f_t>::append_column(i_t x_nz, i_t* i, f_t* x)
+{
+  i_t nz = this->col_start[this->n];
+  for (i_t k = 0; k < x_nz; ++k) {
+    const i_t i_val = i[k];
+    const f_t x_val = x[i_val];
+    if (x_val != 0.0) {
+      this->i[nz] = i_val;
+      this->x[nz] = x_val;
+      nz++;
+    }
+  }
+  this->col_start[this->n + 1] = nz;
+  this->n++;
 }
 
 template <typename i_t, typename f_t>

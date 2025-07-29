@@ -30,6 +30,9 @@ namespace cuopt::linear_programming::dual_simplex {
 template <typename i_t, typename f_t>
 class csr_matrix_t;  // Forward declaration of CSR matrix needed to define CSC matrix
 
+template <typename i_t, typename f_t>
+class sparse_vector_t;  // Forward declaration of sparse vector needed to define CSC matrix
+
 // A sparse matrix stored in compressed sparse column format
 template <typename i_t, typename f_t>
 class csc_matrix_t {
@@ -59,6 +62,16 @@ class csc_matrix_t {
 
   // Compute the transpose of A
   i_t transpose(csc_matrix_t<i_t, f_t>& AT) const;
+
+
+  // Append a dense column to the matrix. Assumes the matrix has already been resized accordingly
+  void append_column(const std::vector<f_t>& x);
+
+  // Append a sparse column to the matrix. Assumes the matrix has already been resized accordingly
+  void append_column(const sparse_vector_t<i_t, f_t>& x);
+
+  // Append a sparse column to the matrix. Assumes the matrix has already been resized accordingly
+  void append_column(i_t nz, i_t* i, f_t* x);
 
   // Remove columns from the matrix
   i_t remove_columns(const std::vector<i_t>& cols_to_remove);

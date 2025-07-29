@@ -33,7 +33,7 @@ class bound_flipping_ratio_test_t {
                               f_t initial_slope,
                               const std::vector<f_t>& lower,
                               const std::vector<f_t>& upper,
-                              const std::vector<bool>& bounded_variables,
+                              const std::vector<uint8_t>& bounded_variables,
                               const std::vector<variable_status_t>& vstatus,
                               const std::vector<i_t>& nonbasic_list,
                               const std::vector<f_t>& z,
@@ -87,7 +87,7 @@ class bound_flipping_ratio_test_t {
 
   const std::vector<f_t>& lower_;
   const std::vector<f_t>& upper_;
-  const std::vector<bool>& bounded_variables_;
+  const std::vector<uint8_t>& bounded_variables_;
   const std::vector<i_t>& nonbasic_list_;
   const std::vector<variable_status_t>& vstatus_;
   const std::vector<f_t>& z_;

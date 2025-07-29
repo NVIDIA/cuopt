@@ -23,6 +23,7 @@
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
+#include <dual_simplex/random.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
 #include <cassert>
@@ -241,6 +242,8 @@ void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
   objective.resize(n);
   f_t sum_perturb = 0.0;
   i_t num_perturb = 0;
+
+  random_t<i_t, f_t> random(settings.seed);
   for (i_t j = 0; j < n; ++j) {
     f_t obj = objective[j] = lp.objective[j];
 
@@ -252,7 +255,7 @@ void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
       continue;
     }
 
-    const f_t rand_val = static_cast<f_t>(std::rand() / (RAND_MAX + 1.0));
+    const f_t rand_val = random.random();
     const f_t perturb =
       (1e-5 * std::abs(obj) + 1e-7 * max_abs_obj_coeff + 10 * dual_tol) * (1.0 + rand_val);
 
@@ -306,7 +309,7 @@ void compute_reduced_cost_update(const lp_problem_t<i_t, f_t>& lp,
     }
     delta_z[j] = -dot;
     if (dot != 0.0) {
-      delta_z_indices.push_back(j);
+      delta_z_indices.push_back(j);  // Note delta_z_indices has n elements reserved
       delta_z_mark[j] = 1;
     }
   }
@@ -336,7 +339,7 @@ void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
         delta_z[j] -= delta_y_i * A_transpose.x[p];
         if (!delta_z_mark[j]) {
           delta_z_mark[j] = 1;
-          delta_z_indices.push_back(j);
+          delta_z_indices.push_back(j);  // Note delta_z_indices has n elements reserved
         }
       }
     }
@@ -526,12 +529,12 @@ void vstatus_changes(const std::vector<variable_status_t>& vstatus,
 template <typename f_t>
 void compute_bounded_info(const std::vector<f_t>& lower,
                           const std::vector<f_t>& upper,
-                          std::vector<bool>& bounded_variables)
+                          std::vector<uint8_t>& bounded_variables)
 {
   const size_t n = lower.size();
   for (size_t j = 0; j < n; j++) {
     const bool bounded   = (lower[j] > -inf) && (upper[j] < inf) && (lower[j] != upper[j]);
-    bounded_variables[j] = bounded;
+    bounded_variables[j] = static_cast<uint8_t>(bounded);
   }
 }
 
@@ -665,7 +668,6 @@ void update_single_primal_infeasibility(const std::vector<f_t>& lower,
                                         i_t j,
                                         f_t& primal_inf)
 {
-  const f_t now_feasible = std::numeric_limits<f_t>::denorm_min();
   const f_t old_val      = squared_infeasibilities[j];
   // x_j < l_j - epsilon => -x_j + l_j > epsilon
   const f_t lower_infeas = lower[j] - x[j];
@@ -689,7 +691,7 @@ void update_single_primal_infeasibility(const std::vector<f_t>& lower,
     if (old_val != 0.0) {
       // We were previously infeasible,
       primal_inf                 = std::max(0.0, primal_inf - old_val);
-      squared_infeasibilities[j] = now_feasible;
+      squared_infeasibilities[j] = 0.0;
     } else {
       // Still feasible
     }
@@ -708,7 +710,6 @@ void update_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
                                    std::vector<i_t>& infeasibility_indices,
                                    f_t& primal_inf)
 {
-  const f_t now_feasible = std::numeric_limits<f_t>::denorm_min();
   const f_t primal_tol   = settings.primal_tol;
   const i_t nz           = basic_change_list.size();
   for (i_t k = 0; k < nz; ++k) {
@@ -719,7 +720,7 @@ void update_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
     if (j == leaving_index) {
       // Force the leaving variable to be feasible
       const f_t old_val          = squared_infeasibilities[j];
-      squared_infeasibilities[j] = now_feasible;
+      squared_infeasibilities[j] = 0.0;
       primal_inf                 = std::max(0.0, primal_inf - old_val);
       continue;
     }
@@ -738,26 +739,24 @@ template <typename i_t, typename f_t>
 void clean_up_infeasibilities(std::vector<f_t>& squared_infeasibilities,
                               std::vector<i_t>& infeasibility_indices)
 {
-  const f_t now_feasible = std::numeric_limits<f_t>::denorm_min();
   bool needs_clean_up    = false;
   for (i_t k = 0; k < infeasibility_indices.size(); ++k) {
     const i_t j              = infeasibility_indices[k];
     const f_t squared_infeas = squared_infeasibilities[j];
-    if (squared_infeas == now_feasible) { needs_clean_up = true; }
+    if (squared_infeas == 0.0) { needs_clean_up = true; }
   }
 
   if (needs_clean_up) {
     for (i_t k = 0; k < infeasibility_indices.size(); ++k) {
       const i_t j              = infeasibility_indices[k];
       const f_t squared_infeas = squared_infeasibilities[j];
-      if (squared_infeas == now_feasible) {
+      if (squared_infeas == 0.0) {
         // Set to the last element
         const i_t sz             = infeasibility_indices.size();
         infeasibility_indices[k] = infeasibility_indices[sz - 1];
         infeasibility_indices.pop_back();
-        squared_infeasibilities[j] = 0.0;
         i_t new_j                  = infeasibility_indices[k];
-        if (squared_infeasibilities[new_j] == now_feasible) { k--; }
+        if (squared_infeasibilities[new_j] == 0.0) { k--; }
       }
     }
   }
@@ -775,10 +774,8 @@ i_t steepest_edge_pricing_with_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
                                                i_t& basic_leaving,
                                                f_t& max_val)
 {
-  const f_t now_feasible = std::numeric_limits<f_t>::denorm_min();
   max_val                = 0.0;
   i_t leaving_index      = -1;
-  bool needs_clean_up    = false;
   const i_t nz           = infeasibility_indices.size();
   for (i_t k = 0; k < nz; ++k) {
     const i_t j              = infeasibility_indices[k];
@@ -1043,7 +1040,7 @@ i_t phase2_ratio_test(const lp_problem_t<i_t, f_t>& lp,
 template <typename i_t, typename f_t>
 i_t flip_bounds(const lp_problem_t<i_t, f_t>& lp,
                 const simplex_solver_settings_t<i_t, f_t>& settings,
-                const std::vector<bool>& bounded_variables,
+                const std::vector<uint8_t>& bounded_variables,
                 const std::vector<f_t>& objective,
                 const std::vector<f_t>& z,
                 const std::vector<i_t>& delta_z_indices,
@@ -2318,9 +2315,11 @@ dual::status_t dual_phase2(i_t phase,
   std::vector<f_t> squared_infeasibilities;
   std::vector<i_t> infeasibility_indices;
 
+  delta_z_indices.reserve(n);
+
   phase2::reset_basis_mark(basic_list, nonbasic_list, basic_mark, nonbasic_mark);
 
-  std::vector<bool> bounded_variables(n, false);
+  std::vector<uint8_t> bounded_variables(n, 0);
   phase2::compute_bounded_info(lp.lower, lp.upper, bounded_variables);
 
   f_t primal_infeasibility = phase2::compute_initial_primal_infeasibilities(
@@ -2828,6 +2827,7 @@ dual::status_t dual_phase2(i_t phase,
         basis_repair(lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
         if (factorize_basis(
               lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) == -1) {
+          settings.log.printf("Failed to repair basis. %d deficient columns.\n", static_cast<int>(deficient.size()));
           return dual::status_t::NUMERICAL;
         }
       }
@@ -2855,7 +2855,6 @@ dual::status_t dual_phase2(i_t phase,
 
     iter++;
 
-    // TODO(CMM): Do we also need to clear delta_y?
     // Clear delta_z
     phase2::clear_delta_z(entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
 

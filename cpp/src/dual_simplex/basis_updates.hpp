@@ -21,6 +21,8 @@
 #include <dual_simplex/sparse_vector.hpp>
 #include <dual_simplex/types.hpp>
 
+#include <numeric>
+
 namespace cuopt::linear_programming::dual_simplex {
 
 // Forrest-Tomlin update to the LU factorization of a basis matrix B
@@ -170,6 +172,8 @@ class basis_update_t {
   mutable csc_matrix_t<i_t, f_t> L0_transpose_;  // Needed for sparse solves
 };
 
+
+// Middle product form update to the LU factorization of a basis matrix B
 template <typename i_t, typename f_t>
 class basis_update_mpf_t {
  public:
@@ -181,7 +185,7 @@ class basis_update_mpf_t {
       U0_(Uinit),
       row_permutation_(p),
       inverse_row_permutation_(p.size()),
-      S_(Linit.m, 1, 0),
+      S_(Linit.m, 0, 0),
       col_permutation_(Linit.m),
       inverse_col_permutation_(Linit.m),
       xi_workspace_(2 * Linit.m, 0),
@@ -333,15 +337,14 @@ class basis_update_mpf_t {
   {
     pivot_indices_.clear();
     pivot_indices_.reserve(L0_.m);
-    for (i_t k = 0; k < L0_.m; ++k) {
-      col_permutation_[k]         = k;
-      inverse_col_permutation_[k] = k;
-    }
+    std::iota(col_permutation_.begin(), col_permutation_.end(), 0);
+    std::iota(inverse_col_permutation_.begin(), inverse_col_permutation_.end(), 0);
     S_.col_start.resize(refactor_frequency_ + 1);
     S_.col_start[0] = 0;
     S_.col_start[1] = 0;
     S_.i.clear();
     S_.x.clear();
+    S_.n = 0;
     mu_values_.clear();
     mu_values_.reserve(refactor_frequency_);
     num_updates_ = 0;
@@ -361,6 +364,11 @@ class basis_update_mpf_t {
   void solve_to_sparse_vector(i_t top, sparse_vector_t<i_t, f_t>& out) const;
   i_t scatter_into_workspace(const sparse_vector_t<i_t, f_t>& in) const;
   void gather_into_sparse_vector(i_t nz, sparse_vector_t<i_t, f_t>& out) const;
+  i_t nonzeros(const std::vector<f_t>& x) const;
+  f_t dot_product(i_t col, const std::vector<f_t>& x) const;
+  f_t dot_product(i_t col, const std::vector<i_t>& mark, const std::vector<f_t>& x) const;
+  void add_sparse_column(const csc_matrix_t<i_t, f_t>& S, i_t col, f_t theta, std::vector<f_t>& x) const;
+  void add_sparse_column(const csc_matrix_t<i_t, f_t>& S, i_t col, f_t theta, std::vector<i_t>& mark, i_t& nz, std::vector<f_t>& x) const;
 
   void l_multiply(std::vector<f_t>& inout) const;
   void l_transpose_multiply(std::vector<f_t>& inout) const;
