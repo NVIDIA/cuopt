@@ -551,8 +551,8 @@ class SolverConfig(StrictModel):
     )
     user_problem_file: Optional[str] = Field(
         default="",
-        description="Controls the name of a file where "
-        "cuOpt should write the user problem.",
+        description="Ignored by the service but included "
+        "for dataset compatibility",
     )
     per_constraint_residual: Optional[bool] = Field(
         default=False,
@@ -580,13 +580,13 @@ class SolverConfig(StrictModel):
     )
     log_file: Optional[str] = Field(
         default="",
-        description="Controls the name of a log file where cuOpt "
-        "should write information about the solve.",
+        description="Ignored by the service but included "
+        "for dataset compatibility",
     )
     solution_file: Optional[str] = Field(
         default="",
-        description="Controls the name of a file where "
-        "cuOpt should write the solution.",
+        description="Ignored by the service but included "
+        "for dataset compatibility",
     )
     solver_mode: Optional[int] = Field(
         default=None,
