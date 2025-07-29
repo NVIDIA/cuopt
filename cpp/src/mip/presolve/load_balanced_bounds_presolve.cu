@@ -203,10 +203,10 @@ bool build_graph(managed_stream_pool& streams,
 
   if (graph_exec != nullptr) {
     cudaGraphExecDestroy(graph_exec);
-    cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0);
+    cudaGraphInstantiate(&graph_exec, graph);
     RAFT_CHECK_CUDA(handle_ptr->get_stream());
   } else {
-    cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0);
+    cudaGraphInstantiate(&graph_exec, graph);
     RAFT_CHECK_CUDA(handle_ptr->get_stream());
   }
 

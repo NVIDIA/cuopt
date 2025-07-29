@@ -268,13 +268,8 @@ if  [ ${BUILD_ALL_GPU_ARCH} -eq 1 ]; then
     echo "Building for *ALL* supported GPU architectures..."
 else
     if [ ${BUILD_CI_ONLY} -eq 1 ]; then
-        if [[ ${CUDA_VERSION} == 11* ]]; then
-            CUOPT_CMAKE_CUDA_ARCHITECTURES="70-real;80"
-            echo "Building for Volta and Ampere architectures..."
-        else
-            CUOPT_CMAKE_CUDA_ARCHITECTURES="RAPIDS"
-            echo "Building for Volta, Ampere and Hopper architectures..."
-        fi
+        CUOPT_CMAKE_CUDA_ARCHITECTURES="RAPIDS"
+        echo "Building for RAPIDS supported architectures..."
     else
         CUOPT_CMAKE_CUDA_ARCHITECTURES="NATIVE"
         echo "Building for the architecture of the GPU in the system..."
@@ -358,5 +353,5 @@ if buildAll || hasArg docs; then
 
     cd "${REPODIR}"/docs/cuopt
     make clean
-    make html
+    make html linkcheck
 fi

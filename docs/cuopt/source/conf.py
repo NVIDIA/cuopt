@@ -325,6 +325,27 @@ html_search_options = {
 }
 html_search = True
 
+# Link checker settings
+linkcheck_retries = 3
+linkcheck_timeout = 30
+linkcheck_workers = 5
+linkcheck_rate_limit_timeout = 60
+
+# GitHub and GitLab link checker exceptions
+linkcheck_ignore = [
+    # GitHub (Rate Limited)
+    r'https://github\.com/.*',
+    r'https://api\.github\.com/.*',
+    r'https://raw\.githubusercontent\.com/.*',
+    r'https://gist\.github\.com/.*',
+    
+    # GitLab (Rate Limited)
+    r'https://gitlab\.com/.*',
+    r'https://api\.gitlab\.com/.*',
+    r'https://gitlab\.org/.*',
+    r'https://api\.gitlab\.org/.*',
+]
+
 def setup(app):
     from sphinx.application import Sphinx
     from typing import Any, List

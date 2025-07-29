@@ -54,7 +54,7 @@ struct cuda_graph_t {
       if (graph_created) { cudaGraphExecDestroy(instance); }
       // Instantiate graphExec from graph. The error node and
       // error message parameters are unused here.
-      cudaGraphInstantiate(&instance, graph, NULL, NULL, 0);
+      cudaGraphInstantiate(&instance, graph);
       graph_created = true;
     }
     cudaGraphDestroy(graph);
