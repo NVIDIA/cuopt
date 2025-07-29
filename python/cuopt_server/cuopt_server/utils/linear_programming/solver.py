@@ -48,10 +48,8 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_RELATIVE_GAP_TOLERANCE,
     CUOPT_RELATIVE_PRIMAL_TOLERANCE,
     CUOPT_SAVE_BEST_PRIMAL_SO_FAR,
-    CUOPT_SOLUTION_FILE,
     CUOPT_STRICT_INFEASIBILITY,
     CUOPT_TIME_LIMIT,
-    CUOPT_USER_PROBLEM_FILE,
 )
 from cuopt.linear_programming.solver.solver_wrapper import (
     ErrorStatus,
@@ -66,7 +64,14 @@ from cuopt.utilities import (
 
 
 def dep_warning(field):
-    return f"{field} is deprecated and will " "be removed in a future release."
+    return (
+        f"solver config {field} is deprecated and will "
+        "be removed in a future release"
+    )
+
+
+def ignored_warning(field):
+    return f"solver config {field} ignored in the cuopt service"
 
 
 class CustomGetSolutionCallback(GetSolutionCallback):
@@ -381,9 +386,7 @@ def create_solver(LP_data, warmstart_data):
                 CUOPT_STRICT_INFEASIBILITY, solver_config.strict_infeasibility
             )
         if solver_config.user_problem_file != "":
-            solver_settings.set_parameter(
-                CUOPT_USER_PROBLEM_FILE, solver_config.user_problem_file
-            )
+            warnings.append(ignored_warning("user_problem_file"))
         if solver_config.per_constraint_residual is not None:
             solver_settings.set_parameter(
                 CUOPT_PER_CONSTRAINT_RESIDUAL,
@@ -404,9 +407,7 @@ def create_solver(LP_data, warmstart_data):
                 CUOPT_LOG_FILE, solver_config.log_file
             )
         if solver_config.solution_file != "":
-            solver_settings.set_parameter(
-                CUOPT_SOLUTION_FILE, solver_config.solution_file
-            )
+            warnings.append(ignored_warning("solution_file"))
 
     return warnings, solver_settings
 

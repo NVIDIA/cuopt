@@ -108,8 +108,12 @@ def solve_LP_sync(
             # web callbacks. The user can not use callbacks if they
             # want explicit control over the log file.
             LP_data.solver_config.log_file = log_file
-        else:
-            log_file = ""
+        elif LP_data.solver_config.log_file:
+            warnings.append(
+                "solver config log_file ignored in the cuopt service"
+            )
+            LP_data.solver_config.log_file = ""
+
         notes, addl_warnings, res, total_solve_time = LP_solve(
             LP_data,
             reqId,

@@ -39,19 +39,19 @@ Log File
 ^^^^^^^^
 ``CUOPT_LOG_FILE`` controls the name of a log file where cuOpt should write information about the solve.
 
-Note: the default value is ``""`` and no log file is written.
+Note: the default value is ``""`` and no log file is written. This setting is ignored by the cuOpt service, use the log callback feature instead.
 
 Solution File
 ^^^^^^^^^^^^^
 ``CUOPT_SOLUTION_FILE`` controls the name of a file where cuOpt should write the solution.
 
-Note: the default value is ``""`` and no solution file is written.
+Note: the default value is ``""`` and no solution file is written. This setting is ignored by the cuOpt service.
 
 User Problem File
 ^^^^^^^^^^^^^^^^^
 ``CUOPT_USER_PROBLEM_FILE`` controls the name of a file where cuOpt should write the user problem.
 
-Note: the default value is ``""`` and no user problem file is written.
+Note: the default value is ``""`` and no user problem file is written. This setting is ignored by the cuOpt service.
 
 Num CPU Threads
 ^^^^^^^^^^^^^^^

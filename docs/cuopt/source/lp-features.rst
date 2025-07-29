@@ -79,7 +79,7 @@ Crossover allows you to obtain a high-quality basic solution from the results of
 Logging
 -------
 
-The CUOPT_LOG_FILE parameter can be set to write detailed solver logs for LP problems. This parameter is available in all APIs that allow setting solver parameters.
+The CUOPT_LOG_FILE parameter can be set to write detailed solver logs for LP problems. This parameter is available in all APIs that allow setting solver parameters except the cuOpt service. For the service, see the logging callback below.
 
 Logging Callback in the Service
 -------------------------------

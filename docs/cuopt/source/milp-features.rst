@@ -58,7 +58,7 @@ When using the service, users can provide a callback to receive new integer feas
 Logging
 -------
 
-The CUOPT_LOG_FILE parameter can be set to write detailed solver logs for MILP problems. This parameter is available in all APIs that allow setting solver parameters.
+The CUOPT_LOG_FILE parameter can be set to write detailed solver logs for MILP problems. This parameter is available in all APIs that allow setting solver parameters except for the cuOpt service. For the service, see the logging callback below.
 
 Logging Callback in the Service
 -------------------------------
