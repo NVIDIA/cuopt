@@ -350,24 +350,26 @@ template <typename i_t, typename f_t>
 static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   detail::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
-  const std::chrono::high_resolution_clock::time_point& start_time)
+  const std::chrono::high_resolution_clock::time_point& start_time,
+  bool is_batch_mode)
 {
   if (problem.n_constraints == 0) {
     CUOPT_LOG_INFO("No constraints in the problem: PDLP can't be run, use Dual Simplex instead.");
     return optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::NumericalError,
                                                      problem.handle_ptr->get_stream()};
   }
-  detail::pdlp_solver_t<i_t, f_t> solver(problem, settings);
+  detail::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode);
   return solver.run_solver(start_time);
 }
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& problem,
-                                                   pdlp_solver_settings_t<i_t, f_t> const& settings)
+                                                   pdlp_solver_settings_t<i_t, f_t> const& settings,
+                                                   bool is_batch_mode)
 {
   auto start_solver = std::chrono::high_resolution_clock::now();
   f_t start_time    = dual_simplex::tic();
-  auto sol          = run_pdlp_solver(problem, settings, start_solver);
+  auto sol          = run_pdlp_solver(problem, settings, start_solver, is_batch_mode);
   auto end          = std::chrono::high_resolution_clock::now();
   auto duration     = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
   sol.set_solve_time(duration.count() / 1000.0);
@@ -467,7 +469,8 @@ template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_concurrent(
   optimization_problem_t<i_t, f_t>& op_problem,
   detail::problem_t<i_t, f_t>& problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings)
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool is_batch_mode)
 {
   CUOPT_LOG_INFO("Running concurrent\n");
   f_t start_time = dual_simplex::tic();
@@ -495,7 +498,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
                                   std::ref(sol_dual_simplex_ptr));
 
   // Run pdlp in the main thread
-  auto sol_pdlp = run_pdlp(problem, settings_pdlp);
+  auto sol_pdlp = run_pdlp(problem, settings_pdlp, is_batch_mode);
 
   // Wait for dual simplex thread to finish
   dual_simplex_thread.join();
@@ -539,14 +542,15 @@ template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
   optimization_problem_t<i_t, f_t>& op_problem,
   detail::problem_t<i_t, f_t>& problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings)
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool is_batch_mode)
 {
   if (settings.method == method_t::DualSimplex) {
     return run_dual_simplex(problem, settings);
   } else if (settings.method == method_t::Concurrent) {
-    return run_concurrent(op_problem, problem, settings);
+    return run_concurrent(op_problem, problem, settings, is_batch_mode);
   } else {
-    return run_pdlp(problem, settings);
+    return run_pdlp(problem, settings, is_batch_mode);
   }
 }
 
@@ -554,7 +558,8 @@ template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f_t>& op_problem,
                                                    pdlp_solver_settings_t<i_t, f_t> const& settings,
                                                    bool problem_checking,
-                                                   bool use_pdlp_solver_mode)
+                                                   bool use_pdlp_solver_mode,
+                                                   bool is_batch_mode)
 {
   try {
     // Create log stream for file logging and add it to default logger
@@ -593,7 +598,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
 
     setup_device_symbols(op_problem.get_handle_ptr()->get_stream());
 
-    auto sol = solve_lp_with_method(op_problem, problem, settings);
+    auto sol = solve_lp_with_method(op_problem, problem, settings, is_batch_mode);
 
     if (settings.sol_file != "") {
       CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
@@ -699,7 +704,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     optimization_problem_t<int, F_TYPE>& op_problem,                                   \
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                               \
     bool problem_checking,                                                             \
-    bool use_pdlp_solver_mode);                                                        \
+    bool use_pdlp_solver_mode,                                                         \
+    bool is_batch_mode);                                                               \
                                                                                        \
   template optimization_problem_solution_t<int, F_TYPE> solve_lp(                      \
     raft::handle_t const* handle_ptr,                                                  \

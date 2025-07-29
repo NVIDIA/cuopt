@@ -53,7 +53,7 @@ Warm Start
 
 A warm starts allow a user to provide an initial solution to help PDLP converge faster. The initial ``primal`` and ``dual`` solutions can be specified by the user.
 
-Alternatively, previously run solutions can be used to warm start a new solve to decrease solve time. `Examples <cuopt-server/lp-examples.html#warm-start>`_ are shared on the self-hosted page.
+Alternatively, previously run solutions can be used to warm start a new solve to decrease solve time. :ref:`Examples <warm-start>` are shared on the self-hosted page.
 
 PDLP Solver Mode
 ----------------
@@ -73,12 +73,12 @@ Method
 Crossover
 ---------
 
-Crossover allows you to obtain a high-quality basic solution from the results of a PDLP solve. More details can be found `here <lp-milp-settings.html#crossover>`__.
+Crossover allows you to obtain a high-quality basic solution from the results of a PDLP solve. More details can be found :ref:`here <crossover>`.
 
 
 Logging Callback
 ----------------
-With logging callback, users can fetch server-side logs for additional debugs and to get details on solver process details. `Examples <cuopt-server/examples/lp-examples.html#logging-callback>`__ are shared on the self-hosted page.
+With logging callback, users can fetch server-side logs for additional debugs and to get details on solver process details. :ref:`Examples <generic-example-with-normal-and-batch-mode>` are shared on the self-hosted page.
 
 
 Infeasibility Detection
@@ -102,4 +102,4 @@ The user may specify a time limit to the solver. By default the solver runs unti
 Batch Mode
 ----------
 
-Users can submit a set of problems which will be solved in a batch. Problems will be solved at the same time in parallel to fully utilize the GPU. Checkout `self-hosted client <cuopt-server/examples/lp-examples.html#batch-mode>`_ example in thin client.
+Users can submit a set of problems which will be solved in a batch. Problems will be solved at the same time in parallel to fully utilize the GPU. Checkout :ref:`self-hosted client <generic-example-with-normal-and-batch-mode>` example in thin client.

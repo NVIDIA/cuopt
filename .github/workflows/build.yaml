@@ -45,7 +45,6 @@ jobs:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@branch-25.08
     with:
-      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
@@ -56,7 +55,6 @@ jobs:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@branch-25.08
     with:
-      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER != "3.13"))
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
@@ -80,7 +78,6 @@ jobs:
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
       script: ci/build_wheel_cuopt_mps_parser.sh
-      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       package-name: cuopt_mps_parser
       package-type: python
       append-cuda-suffix: false
@@ -107,7 +104,7 @@ jobs:
       script: ci/build_wheel_libcuopt.sh
       package-name: libcuopt
       package-type: cpp
-      matrix_filter: map(select((.CUDA_VER | startswith("12")) and .PY_VER == "3.12"))
+      matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
   wheel-publish-libcuopt:
     needs: wheel-build-libcuopt
     secrets: inherit
@@ -124,7 +121,6 @@ jobs:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
-      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
@@ -148,7 +144,6 @@ jobs:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.08
     with:
-      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
@@ -192,7 +187,6 @@ jobs:
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
       script: ci/build_wheel_cuopt_sh_client.sh
-      matrix_filter: map(select((.CUDA_VER | startswith("12"))))
       package-name: cuopt_sh_client
       package-type: python
       append-cuda-suffix: false
@@ -207,23 +201,12 @@ jobs:
       date: ${{ inputs.date }}
       package-name: cuopt_sh_client
       package-type: python
-  service-container:
-    if: inputs.build_type == 'nightly'
-    needs: [wheel-build-cuopt, wheel-build-cuopt-server]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code repo
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ inputs.sha }}
-          fetch-depth: 0 # unshallow fetch for setuptools-scm
-          persist-credentials: false
-      - name: build service
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh workflow run service_nightly.yaml \
-            -f branch=${{ inputs.branch }} \
-            -f sha=${{ inputs.sha }} \
-            -f date=${{ inputs.date }} \
-            -f build_type=${{ inputs.build_type }}
+  build-images:
+    needs: [wheel-publish-cuopt, wheel-publish-cuopt-server]
+    uses: ./.github/workflows/build_test_publish_images.yaml
+    secrets: inherit
+    with:
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      date: ${{ inputs.date }}
+      build_type: ${{ inputs.build_type || 'branch' }}

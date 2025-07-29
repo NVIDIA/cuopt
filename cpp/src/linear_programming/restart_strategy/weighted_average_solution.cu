@@ -29,7 +29,8 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 weighted_average_solution_t<i_t, f_t>::weighted_average_solution_t(raft::handle_t const* handle_ptr,
                                                                    i_t primal_size,
-                                                                   i_t dual_size)
+                                                                   i_t dual_size,
+                                                                   bool is_batch_mode)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     primal_size_h_(primal_size),
@@ -39,7 +40,7 @@ weighted_average_solution_t<i_t, f_t>::weighted_average_solution_t(raft::handle_
     sum_primal_solution_weights_{0.0, stream_view_},
     sum_dual_solution_weights_{0.0, stream_view_},
     iterations_since_last_restart_{0},
-    graph(stream_view_)
+    graph(stream_view_, is_batch_mode)
 {
   RAFT_CUDA_TRY(
     cudaMemsetAsync(sum_primal_solutions_.data(), 0.0, sizeof(f_t) * primal_size_h_, stream_view_));

@@ -347,7 +347,8 @@ def getsolverlogs(
                 detail=f"Unsupported Accept value {accept}, "
                 f"supported values are {[mime_json, mime_msgpack, mime_zlib]}",
             )
-        # TODO: Create a log dir
+
+        # result_dir is guaranteed to exist on startup
         log_dir, _, _ = settings.get_result_dir()
         log_fname = "log_" + id
         log_file = os.path.join(log_dir, log_fname)
@@ -637,7 +638,7 @@ def deletesolution(
 
 @app.delete(
     "/cuopt/request/{id}",
-    description="Note: for use with self hosted cuOpt instances. "
+    description="Note: for use with self-hosted cuOpt instances. "
     "Delete a request (either a cached request or a request to be solved). "
     "The 'id' is the reqId value returned from a POST to /cuopt/request.",
     summary="Delete a request by id (self-hosted)",
@@ -1095,7 +1096,7 @@ async def postrequest(
                 r.unregister_result()
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Requtest id '{reqId}' does not exist",
+                    detail=f"Request id '{reqId}' does not exist",
                 )
 
         # if reqId is not set and we're not using file_path, stream in the data
@@ -1243,7 +1244,7 @@ async def get_body(request: Request):
     responses=ManagedRequestResponse,
     # include_in_schema=False,
     # This form is necessary to allow multiple literal examples to
-    # be added to the Swaggger and redoc UIs. Noe the schema is
+    # be added to the Swagger and redoc UIs. Noe the schema is
     # taken by fastapi from the cuoptData parameter.
     openapi_extra={
         "requestBody": {

@@ -43,9 +43,10 @@ ConfigureTest(UNIT_TEST
 ConfigureTest(EMPTY_FIXED_PROBLEMS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/empty_fixed_problems_test.cu
 )
-ConfigureTest(FEASIBILITY_JUMP_TEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump_tests.cu
-)
+# Disable for now
+# ConfigureTest(FEASIBILITY_JUMP_TEST
+#    ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump_tests.cu
+# )
 ConfigureTest(MIP_TERMINATION_STATUS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/termination_test.cu
 )

@@ -1202,7 +1202,7 @@ class SolverBinaryJob:
         self.warmstart_data = warmstart_data
 
     def delete_data(self):
-        # This is for cases where we skip a job on cancelation
+        # This is for cases where we skip a job on cancellation
         # In this case for shared memory use, we need
         # to unlink the shared memory if it is not a cache
         # reference because we will never call _resolve_job
