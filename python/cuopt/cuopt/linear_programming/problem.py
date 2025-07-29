@@ -1,25 +1,45 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from enum import IntEnum, StrEnum
+
+import numpy as np
+
 import cuopt.linear_programming.data_model as data_model
 import cuopt.linear_programming.solver as solver
 import cuopt.linear_programming.solver_settings as solver_settings
 
-from enum import StrEnum, IntEnum
-import numpy as np
 
 # The type of a variable is either continuous or integer
-class vtype(StrEnum):
-    CONTINUOUS = 'C',
-    INTEGER = 'I'
+class VType(StrEnum):
+    CONTINUOUS = ("C",)
+    INTEGER = "I"
+
 
 # The sense of a constraint is either LE, GE or EQ
-class ctype(StrEnum):
-    LE = 'L',
-    GE = 'G',
-    EQ = 'E'
+class CType(StrEnum):
+    LE = ("L",)
+    GE = ("G",)
+    EQ = "E"
+
 
 # The sense of a model is either MINIMIZE or MAXIMIZE
 class sense(IntEnum):
-    MAXIMIZE = -1,
+    MAXIMIZE = (-1,)
     MINIMIZE = 1
+
 
 class Variable:
     """
@@ -29,14 +49,23 @@ class Variable:
     created using problem.addVariable (See problem class).
     """
 
-    def __init__(self, problem, index, lb=0.0, ub=float('inf'), obj=0.0, vtype=vtype.CONTINUOUS, vname=''):
+    def __init__(
+        self,
+        problem,
+        index,
+        lb=0.0,
+        ub=float("inf"),
+        obj=0.0,
+        vtype=VType.CONTINUOUS,
+        vname="",
+    ):
         self.problem = problem
         self.index = index
         self.LB = lb
         self.UB = ub
         self.Obj = obj
         self.Value = 0.0
-        self.ReducedCost = float('nan')
+        self.ReducedCost = float("nan")
         self.VariableType = vtype
         self.VariableName = vname
 
@@ -124,7 +153,9 @@ class Variable:
             case LinearExpression():
                 return other + self
             case _:
-                raise ValueError('Cannot add type %s to variable' % type(other).__name__)
+                raise ValueError(
+                    "Cannot add type %s to variable" % type(other).__name__
+                )
 
     def __radd__(self, other):
         return self + other
@@ -139,7 +170,10 @@ class Variable:
                 # self - other ->   other * -1.0 + self
                 return other * -1.0 + self
             case _:
-                raise ValueError('Cannot subtract type %s from variable' % type(other).__name__)
+                raise ValueError(
+                    "Cannot subtract type %s from variable"
+                    % type(other).__name__
+                )
 
     def __rsub__(self, other):
         # other - self  -> other + self * -1.0
@@ -150,7 +184,10 @@ class Variable:
             case int() | float():
                 return LinearExpression([self], [float(other)], 0.0)
             case _:
-                raise ValueError('Cannot multiply type %s with variable' % type(other).__name__)
+                raise ValueError(
+                    "Cannot multiply type %s with variable"
+                    % type(other).__name__
+                )
 
     def __rmul__(self, other):
         return self * other
@@ -222,31 +259,44 @@ class LinearExpression:
         return len(self.vars)
 
     def __iadd__(self, other):
+        # Compute expr1 += expr2
         match other:
             case int() | float():
+                # Update just the constant value
                 self.constant += float(other)
                 return self
             case Variable():
+                # Append just a variable with coefficient 1.0
                 self.vars.append(other)
                 self.coefficients.append(1.0)
                 return self
             case LinearExpression():
+                # Append all variables, coefficients and constants
                 self.vars.extend(other.vars)
                 self.coefficients.extend(other.coefficients)
                 self.constant += other.constant
                 return self
             case _:
-                raise ValueError("Can't add type %s to Linear Expression" % type(other).__name__)
+                raise ValueError(
+                    "Can't add type %s to Linear Expression"
+                    % type(other).__name__
+                )
 
     def __add__(self, other):
+        # Compute expr3 = expr1 + expr2
         match other:
             case int() | float():
-                return LinearExpression(self.vars, self.coefficients, self.constant + float(other))
+                # Update just the constant value
+                return LinearExpression(
+                    self.vars, self.coefficients, self.constant + float(other)
+                )
             case Variable():
+                # Append just a variable with coefficient 1.0
                 vars = self.vars + [other]
                 coeffs = self.coefficients + [1.0]
                 return LinearExpression(vars, coeffs, self.constant)
             case LinearExpression():
+                # Append all variables, coefficients and constants
                 vars = self.vars + other.vars
                 coeffs = self.coefficients + other.coefficients
                 constant = self.constant + other.constant
@@ -256,38 +306,51 @@ class LinearExpression:
         return self + other
 
     def __isub__(self, other):
+        # Compute expr1 -= expr2
         match other:
             case int() | float():
+                # Update just the constant value
                 self.constant -= float(other)
                 return self
             case Variable():
+                # Append just a variable with coefficient -1.0
                 self.vars.append(other)
                 self.coefficients.append(-1.0)
                 return self
             case LinearExpression():
+                # Append all variables, coefficients and constants
                 self.vars.extend(other.vars)
-                for coeff in other.coefficients:  # Same Time Complexity as extend O(k), k = nelements to append
+                for coeff in other.coefficients:
                     self.coefficients.append(-coeff)
                 self.constant -= other.constant
                 return self
             case _:
-                raise ValueError("Can't sub type %s from LinearExpression" % type(other).__name__)
+                raise ValueError(
+                    "Can't sub type %s from LinearExpression"
+                    % type(other).__name__
+                )
 
     def __sub__(self, other):
+        # Compute expr3 = expr1 - expr2
         match other:
             case int() | float():
-                return LinearExpression(self.vars, self.coefficients, self.constant - float(other))
+                # Update just the constant value
+                return LinearExpression(
+                    self.vars, self.coefficients, self.constant - float(other)
+                )
             case Variable():
+                # Append just a variable with coefficient -1.0
                 vars = self.vars + [other]
                 coeffs = self.coefficients + [-1.0]
                 return LinearExpression(vars, coeffs, self.constant)
             case LinearExpression():
+                # Append all variables, coefficients and constants
                 vars = self.vars + other.vars
                 coeffs = []
                 for i in self.coefficients:
                     coeffs.append(i)
                 for i in other.coefficients:
-                    coeffs.append[-1.0*i]
+                    coeffs.append(-1.0 * i)
                 constant = self.constant - other.constant
                 return LinearExpression(vars, coeffs, constant)
 
@@ -295,55 +358,93 @@ class LinearExpression:
         # other - self  -> other + self * -1.0
         return other + self * -1.0
 
-    def __mul__(self, other):
+    def __imul__(self, other):
+        # Compute expr *= constant
         match other:
             case int() | float():
-                self.coefficients = [coeff * float(other) for coeff in self.coefficients]
+                self.coefficients = [
+                    coeff * float(other) for coeff in self.coefficients
+                ]
                 self.constant = self.constant * float(other)
                 return self
             case _:
-                raise ValueError("Can't multiply type %s by LinearExpresson" % type(other).__name__)
+                raise ValueError(
+                    "Can't multiply type %s by LinearExpresson"
+                    % type(other).__name__
+                )
+
+    def __mul__(self, other):
+        # Compute expr2 = expr1 * constant
+        match other:
+            case int() | float():
+                coeffs = [coeff * float(other) for coeff in self.coefficients]
+                constant = self.constant * float(other)
+                return LinearExpression(self.vars, coeffs, constant)
+            case _:
+                raise ValueError(
+                    "Can't multiply type %s by LinearExpresson"
+                    % type(other).__name__
+                )
 
     def __rmul__(self, other):
         return self * other
 
-    def __div__(self, other):
+    def __itruediv__(self, other):
+        # Compute expr /= constant
         match other:
             case int() | float():
-                self.coefficients = [coeff / float(other) for coeff in self.coefficients]
+                self.coefficients = [
+                    coeff / float(other) for coeff in self.coefficients
+                ]
                 self.constant = self.constant / float(other)
                 return self
             case _:
-                raise ValueError("Can't divide LinearExpression by type %s" % type(other).__name__)
+                raise ValueError(
+                    "Can't divide LinearExpression by type %s"
+                    % type(other).__name__
+                )
+
+    def __truediv__(self, other):
+        # Compute expr2 = expr1 / constant
+        match other:
+            case int() | float():
+                coeffs = [coeff / float(other) for coeff in self.coefficients]
+                constant = self.constant / float(other)
+                return LinearExpression(self.vars, coeffs, constant)
+            case _:
+                raise ValueError(
+                    "Can't divide LinearExpression by type %s"
+                    % type(other).__name__
+                )
 
     def __le__(self, other):
         match other:
             case int() | float():
-                return Constraint(self, ctype.LE, float(other))
+                return Constraint(self, CType.LE, float(other))
             case Variable() | LinearExpression():
                 # expr1 <= expr2   -> expr1 - expr2 <= 0
                 expr = self - other
-                return Constraint(expr, ctype.LE, 0.0)
+                return Constraint(expr, CType.LE, 0.0)
 
     def __ge__(self, other):
         match other:
             case int() | float():
-                return Constraint(self, ctype.GE, float(other))
+                return Constraint(self, CType.GE, float(other))
             case Variable() | LinearExpression():
                 # expr1 >= expr2   ->  expr1 - expr2 >= 0
                 expr = self - other
-                return Constraint(expr, ctype.GE, 0.0)
+                return Constraint(expr, CType.GE, 0.0)
 
     def __eq__(self, other):
         match other:
             case int() | float():
-                return Constraint(self, ctype.EQ, float(other))
+                return Constraint(self, CType.EQ, float(other))
             case Variable() | LinearExpression():
                 # expr1 == expr2   -> expr1 - expr2 == 0
                 expr = self - other
-                return Constraint(expr, ctype.EQ, 0.0)
+                return Constraint(expr, CType.EQ, 0.0)
 
-# A constraint contains a linear expression, the sense of the constraint, and the right-hand side of the constraint
+
 class Constraint:
     """
     cuOpt constraint object containing a linear expression,
@@ -353,18 +454,23 @@ class Constraint:
     created using problem.addConstraint (See problem class).
     """
 
-    def __init__(self, expr, sense, rhs, name=''):
+    def __init__(self, expr, sense, rhs, name=""):
         self.vindex_coeff_dict = {}
         nz = len(expr)
         self.vars = expr.vars
+        self.index = -1
         for i in range(nz):
             v_idx = expr.vars[i].index
             v_coeff = expr.coefficients[i]
-            self.vindex_coeff_dict[v_idx] = self.vindex_coeff_dict[v_idx] + v_coeff if v_idx in self.vindex_coeff_dict else v_coeff
+            self.vindex_coeff_dict[v_idx] = (
+                self.vindex_coeff_dict[v_idx] + v_coeff
+                if v_idx in self.vindex_coeff_dict
+                else v_coeff
+            )
         self.Sense = sense
         self.RHS = rhs - expr.getConstant()
         self.ConstraintName = name
-        self.DualValue = float('nan')
+        self.DualValue = float("nan")
 
     def __len__(self):
         return len(self.vindex_coeff_dict)
@@ -414,7 +520,8 @@ class Problem:
     The objective can be set by calling setObjective()
     The problem data is formed when calling solve()
     """
-    def __init__(self, model_name=''):
+
+    def __init__(self, model_name=""):
         self.Name = model_name
         self.vars = []
         self.constrs = []
@@ -439,7 +546,9 @@ class Problem:
             for key, value in mdict.items():
                 setattr(self, key, value)
 
-    def addVariable(self, lb=0.0, ub=float('inf'), obj=0.0, vtype=vtype.CONTINUOUS, name=''):
+    def addVariable(
+        self, lb=0.0, ub=float("inf"), obj=0.0, vtype=VType.CONTINUOUS, name=""
+    ):
         """
         Adds a variable to the problem defined by lower bound,
         upper bound, type and name.
@@ -458,16 +567,17 @@ class Problem:
         Examples
         --------
         >>> problem = problem.Problem("MIP_model")
-        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=vtype.INTEGER, name="Var1")
+        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=VType.INTEGER,
+                name="Var1")
         """
         n = len(self.vars)
-        if vtype == vtype.INTEGER:
+        if vtype == VType.INTEGER:
             self.IsMIP = True
         var = Variable(self, n, lb, ub, obj, vtype, name)
         self.vars.append(var)
         return var
 
-    def addConstraint(self, constr, name=''):
+    def addConstraint(self, constr, name=""):
         """
         Adds a constraint to the problem defined by constraint object
         and name. A constraint is generated using LinearExpression,
@@ -483,7 +593,7 @@ class Problem:
         Examples
         --------
         >>> problem = problem.Problem("MIP_model")
-        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=vtype.INTEGER, name="Var1")
+        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=VType.INTEGER)
         >>> y = problem.addVariable(name="Var2")
         >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
         >>> expr = 3*x + y
@@ -512,10 +622,11 @@ class Problem:
             Sets whether the problem is a maximization or a minimization
             problem. Values passed can either be sense.MINIMIZE or
             sense.MAXIMIZE. Defaults to sense.MINIMIZE.
+
         Examples
         --------
         >>> problem = problem.Problem("MIP_model")
-        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=vtype.INTEGER, name="Var1")
+        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=VType.INTEGER)
         >>> y = problem.addVariable(name="Var2")
         >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
         >>> expr = 3*x + y
@@ -537,7 +648,9 @@ class Problem:
                 for var, coeff in expr.zipVarCoefficients():
                     self.vars[var.getIndex()].setObjectiveCoefficient(coeff)
             case _:
-                raise ValueError('Objective must be a LinearExpression or a constant')
+                raise ValueError(
+                    "Objective must be a LinearExpression or a constant"
+                )
         self.Obj = expr
 
     def getObjective(self):
@@ -587,13 +700,13 @@ class Problem:
         Computes and returns the CSR representation of the
         constraint matrix.
         """
-        csr_dict = {'row_pointers' : [0],
-                    'column_indices' : [],
-                    'values' : []}
+        csr_dict = {"row_pointers": [0], "column_indices": [], "values": []}
         for constr in self.constrs:
-            csr_dict['column_indices'].extend(list(constr.vindex_coeff_dict.keys()))
-            csr_dict['values'].extend(list(constr.vindex_coeff_dict.values()))
-            csr_dict['row_pointers'].append(len(csr_dict['column_indices']))
+            csr_dict["column_indices"].extend(
+                list(constr.vindex_coeff_dict.keys())
+            )
+            csr_dict["values"].extend(list(constr.vindex_coeff_dict.values()))
+            csr_dict["row_pointers"].append(len(csr_dict["column_indices"]))
         return self.dict_to_object(csr_dict)
 
     def post_solve(self, solution):
@@ -611,7 +724,7 @@ class Problem:
             for var in self.vars:
                 var.Value = primal_sol[var.index]
                 if not self.IsMIP:
-                    var.ReducedCost =  reduced_cost[var.index]
+                    var.ReducedCost = reduced_cost[var.index]
         if not self.IsMIP:
             dual_sol = solution.get_dual_solution()
             if len(dual_sol) > 0:
@@ -627,7 +740,7 @@ class Problem:
         Examples
         --------
         >>> problem = problem.Problem("MIP_model")
-        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=vtype.INTEGER, name="Var1")
+        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=VType.INTEGER)
         >>> y = problem.addVariable(name="Var2")
         >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
         >>> expr = 3*x + y
@@ -636,8 +749,7 @@ class Problem:
         >>> problem.solve()
         """
 
-        # iterate through the constraints and construct the constraint matrix and the rhs
-        m = len(self.constrs)
+        # iterate through the constraints and construct the constraint matrix
         n = len(self.vars)
         self.row_pointers = [0]
         self.column_indicies = []
@@ -653,7 +765,7 @@ class Problem:
 
         self.objective = np.zeros(n)
         self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
-        self.var_type = np.empty(n, dtype='S1')
+        self.var_type = np.empty(n, dtype="S1")
 
         for j in range(n):
             self.objective[j] = self.vars[j].getObjectiveCoefficient()
@@ -663,7 +775,11 @@ class Problem:
 
         # Initialize datamodel
         dm = data_model.DataModel()
-        dm.set_csr_constraint_matrix(np.array(self.values), np.array(self.column_indicies), np.array(self.row_pointers))
+        dm.set_csr_constraint_matrix(
+            np.array(self.values),
+            np.array(self.column_indicies),
+            np.array(self.row_pointers),
+        )
         if self.ObjSense == -1:
             dm.set_maximize(True)
         dm.set_constraint_bounds(np.array(self.rhs))

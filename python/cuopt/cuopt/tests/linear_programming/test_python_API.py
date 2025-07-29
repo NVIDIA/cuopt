@@ -13,13 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-
-import numpy as np
 import pytest
 
-from cuopt.linear_programming.problem import Problem
-from cuopt.linear_programming.problem import sense, vtype, ctype
+from cuopt.linear_programming.problem import CType, Problem, VType, sense
 
 
 def test_model():
@@ -28,23 +24,23 @@ def test_model():
     assert prob.Name == "Simple MIP"
 
     # Adding Variable
-    x = prob.addVariable(lb=0, vtype=vtype.INTEGER, name="V_x")
-    y = prob.addVariable(lb=10, ub=50, vtype=vtype.INTEGER, name="V_y")
+    x = prob.addVariable(lb=0, vtype=VType.INTEGER, name="V_x")
+    y = prob.addVariable(lb=10, ub=50, vtype=VType.INTEGER, name="V_y")
 
     assert x.getVariableName() == "V_x"
     assert y.getUpperBound() == 50
     assert y.getLowerBound() == 10
-    assert x.getVariableType() == vtype.INTEGER
+    assert x.getVariableType() == VType.INTEGER
     assert y.getVariableType() == "I"
 
     # Adding Constraints
-    prob.addConstraint(2*x + 4*y >= 230, name="C1")
-    prob.addConstraint(3*x + 2*y <= 190, name="C2")
+    prob.addConstraint(2 * x + 4 * y >= 230, name="C1")
+    prob.addConstraint(3 * x + 2 * y <= 190, name="C2")
 
     expected_name = ["C1", "C2"]
     expected_coefficient_x = [2, 3]
     expected_coefficient_y = [4, 2]
-    expected_sense = [ctype.GE, "L"]
+    expected_sense = [CType.GE, "L"]
     expected_rhs = [230, 190]
     for i, c in enumerate(prob.getConstraints()):
         assert c.getConstraintName() == expected_name[i]
@@ -58,7 +54,7 @@ def test_model():
     assert prob.NumNZs == 4
 
     # Setting Objective
-    expr = 5*x + 3*y
+    expr = 5 * x + 3 * y
     prob.setObjective(expr, sense=sense.MAXIMIZE)
 
     expected_obj_coeff = [5, 3]
@@ -73,6 +69,7 @@ def test_model():
     # Solving Problem
     prob.solve()
     assert prob.Status.name == "Optimal"
+    assert prob.SolveTime < 60
 
     csr = prob.getCSR()
     expected_row_pointers = [0, 2, 4]
@@ -80,7 +77,7 @@ def test_model():
     expected_values = [2.0, 4.0, 3.0, 2.0]
 
     assert csr.row_pointers == expected_row_pointers
-    assert csr.column_indices ==  expected_column_indices
+    assert csr.column_indices == expected_column_indices
     assert csr.values == expected_values
 
     expected_slack = [-6, 0]
@@ -94,3 +91,114 @@ def test_model():
 
     for i, c in enumerate(prob.getConstraints()):
         assert c.Slack == pytest.approx(expected_slack[i])
+
+
+def test_linear_expression():
+
+    prob = Problem()
+
+    x = prob.addVariable()
+    y = prob.addVariable()
+    z = prob.addVariable()
+
+    expr1 = 2 * x + 5 + 3 * y
+    expr2 = y - z + 2 * x - 3
+
+    expr3 = expr1 + expr2
+    expr4 = expr1 - expr2
+
+    # Test expr1 and expr 2 is unchanged
+    assert expr1.getCoefficients() == [2, 3]
+    assert expr1.getVariables() == [x, y]
+    assert expr1.getConstant() == 5
+    assert expr2.getCoefficients() == [1, -1, 2]
+    assert expr2.getVariables() == [y, z, x]
+    assert expr2.getConstant() == -3
+
+    # Testing add and sub
+    assert expr3.getCoefficients() == [2, 3, 1, -1, 2]
+    assert expr3.getVariables() == [x, y, y, z, x]
+    assert expr3.getConstant() == 2
+    assert expr4.getCoefficients() == [2, 3, -1, 1, -2]
+    assert expr4.getVariables() == [x, y, y, z, x]
+    assert expr4.getConstant() == 8
+
+    expr5 = 8 * y - x - 5
+    expr6 = expr5 / 2
+    expr7 = expr5 * 2
+
+    # Test expr5 is unchanged
+    assert expr5.getCoefficients() == [8, -1]
+    assert expr5.getVariables() == [y, x]
+    assert expr5.getConstant() == -5
+
+    # Test mul and truediv
+    assert expr6.getCoefficients() == [4, -0.5]
+    assert expr6.getVariables() == [y, x]
+    assert expr6.getConstant() == -2.5
+    assert expr7.getCoefficients() == [16, -2]
+    assert expr7.getVariables() == [y, x]
+    assert expr7.getConstant() == -10
+
+    expr6 *= 2
+    expr7 /= 2
+
+    # Test imul and itruediv
+    assert expr6.getCoefficients() == [8, -1]
+    assert expr6.getVariables() == [y, x]
+    assert expr6.getConstant() == -5
+    assert expr7.getCoefficients() == [8, -1]
+    assert expr7.getVariables() == [y, x]
+    assert expr7.getConstant() == -5
+
+
+def test_constraint_matrix():
+
+    prob = Problem()
+
+    a = prob.addVariable(lb=0, ub=float("inf"), vtype="C", name="a")
+    b = prob.addVariable(lb=0, ub=float("inf"), vtype="C", name="b")
+    c = prob.addVariable(lb=0, ub=float("inf"), vtype="C", name="c")
+    d = prob.addVariable(lb=0, ub=float("inf"), vtype="C", name="d")
+    e = prob.addVariable(lb=0, ub=float("inf"), vtype="C", name="e")
+    f = prob.addVariable(lb=0, ub=float("inf"), vtype="C", name="f")
+
+    # 2*a + 3*e + 1 + 4*d - 2*e + f - 8 <= 90    i.e.    2a + e + 4d + f <= 97
+    prob.addConstraint(2 * a + 3 * e + 1 + 4 * d - 2 * e + f - 8 <= 90, "C1")
+    # d + 5*c - a - 4*d - 2 + 5*b - 20 >= 10    i.e.    -3d + 5c - a + 5b >= 32
+    prob.addConstraint(d + 5 * c - a - 4 * d - 2 + 5 * b - 20 >= 10, "C2")
+    # 7*f + 3 - 2*b + c == 3*f - 61 + 8*e    i.e.    4f - 2b + c - 8e == -64
+    prob.addConstraint(7 * f + 3 - 2 * b + c == 3 * f - 61 + 8 * e, "C3")
+
+    sense = []
+    rhs = []
+    for c in prob.getConstraints():
+        sense.append(c.Sense)
+        rhs.append(c.RHS)
+
+    csr = prob.getCSR()
+
+    exp_row_pointers = [0, 4, 8, 12]
+    exp_column_indices = [0, 4, 3, 5, 2, 3, 0, 1, 5, 1, 2, 4]
+    exp_values = [
+        2.0,
+        1.0,
+        4.0,
+        1.0,
+        5.0,
+        -3.0,
+        -1.0,
+        5.0,
+        4.0,
+        -2.0,
+        1.0,
+        -8.0,
+    ]
+    exp_sense = ["L", "G", "E"]
+    exp_rhs = [97, 32, -64]
+
+    assert csr.row_pointers == exp_row_pointers
+    assert csr.column_indices == exp_column_indices
+    assert csr.values == exp_values
+    assert sense == exp_sense
+    assert rhs == exp_rhs
