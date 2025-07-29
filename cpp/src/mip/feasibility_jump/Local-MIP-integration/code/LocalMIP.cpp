@@ -33,6 +33,8 @@
 
 #include "LocalMIP.h"
 
+#include <cuopt/logger.hpp>
+
 int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_point _clkStart)
 {
   // Allocate();
@@ -88,8 +90,8 @@ bool LocalMIP::Timeout(chrono::_V2::system_clock::time_point& _clkStart)
 void LocalMIP::LogObj(chrono::_V2::system_clock::time_point& _clkStart)
 {
   auto clk = TimeNow();
-  printf(
-    "%s n %-20f %lf %d\n", prefix.c_str(), (GetObjValue()), ElapsedTime(clk, _clkStart), curStep);
+  CUOPT_LOG_DEBUG(
+    "%s n %-20f %lf %d", prefix.c_str(), (GetObjValue()), ElapsedTime(clk, _clkStart), curStep);
 }
 
 void LocalMIP::InitSolution()
@@ -110,13 +112,14 @@ void LocalMIP::InitSolution()
 void LocalMIP::PrintResult(chrono::_V2::system_clock::time_point _clkStart)
 {
   if (!isFoundFeasible)
-    printf("o no feasible solution found, run for %g\n", ElapsedTime(TimeNow(), _clkStart));
+    CUOPT_LOG_DEBUG("o no feasible solution found, run for %g", ElapsedTime(TimeNow(), _clkStart));
   else if (VerifySolution()) {
-    printf("o Best objective: %lf, run for %g\n", GetObjValue(), ElapsedTime(TimeNow(), _clkStart));
+    CUOPT_LOG_DEBUG(
+      "o Best objective: %lf, run for %g", GetObjValue(), ElapsedTime(TimeNow(), _clkStart));
     // printf("B 1 %lf\n", GetObjValue());
     // if (OPT(PrintSol)) PrintSol();
   } else
-    printf("solution verify failed.\n");
+    CUOPT_LOG_ERROR("solution verify failed.");
 }
 
 void LocalMIP::InitState()
@@ -145,8 +148,9 @@ void LocalMIP::InitState()
       modelObj.coeffSet[termIdx] * localVarUtil.GetVar(modelObj.varIdxSet[termIdx]).nowValue;
 
   double bestOBJ = localObj.LHS;
-  printf("init obj: %lf / %g\n", modelConUtil->MIN * (bestOBJ + modelVarUtil->objBias), bestOBJ);
-  printf("unsat: %d\n", (int)localConUtil.unsatConIdxs.size());
+  CUOPT_LOG_DEBUG(
+    "init obj: %lf / %g", modelConUtil->MIN * (bestOBJ + modelVarUtil->objBias), bestOBJ);
+  CUOPT_LOG_DEBUG("unsat: %d", (int)localConUtil.unsatConIdxs.size());
 }
 
 void LocalMIP::UpdateBestSolution()
@@ -265,7 +269,7 @@ bool LocalMIP::VerifySolution()
       lhs +=
         modelCon.coeffSet[termIdx] * localVarUtil.GetVar(modelCon.varIdxSet[termIdx]).bestValue;
     if (lhs > modelCon.RHS + FeasibilityTol) {
-      printf("c lhs: %lf; rhs: %lf\n", lhs, modelCon.RHS);
+      CUOPT_LOG_ERROR("c lhs: %lf; rhs: %lf", lhs, modelCon.RHS);
       return false;
     }
   }
@@ -282,8 +286,8 @@ bool LocalMIP::VerifySolution()
 
 void LocalMIP::PrintSol()
 {
-  printf("c best-found solution:\n");
-  printf("%-50s        %s\n", "Variable name", "Variable value");
+  CUOPT_LOG_DEBUG("c best-found solution:");
+  CUOPT_LOG_DEBUG("%-50s        %s", "Variable name", "Variable value");
   for (size_t varIdx = 0; varIdx < modelVarUtil->varNum; varIdx++) {
     const auto& var      = localVarUtil.GetVar(varIdx);
     const auto& modelVar = modelVarUtil->GetVar(varIdx);

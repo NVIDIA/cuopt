@@ -121,7 +121,10 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
     rng(cuopt::seed_generator::get_seed())
 {
   line_segment_search.ls = this;
-  ls_cpu_fj.cpu_solver   = nullptr;
+
+  for (auto& cpu_fj : ls_cpu_fj) {
+    cpu_fj.cpu_solver = nullptr;
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -176,34 +179,50 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
                                            fj_t<i_t, f_t>& in_fj,
                                            const std::string& source)
 {
-  if (ls_cpu_fj.cpu_solver == nullptr) {
-    ls_cpu_fj.cpu_solver = std::make_unique<Solver>();
-    LocalMipRead(*ls_cpu_fj.cpu_solver, *solution.problem_ptr, solution);
-  } else {
-    CopySolution(*ls_cpu_fj.cpu_solver, solution);
+  for (auto& cpu_fj : ls_cpu_fj) {
+    if (cpu_fj.cpu_solver == nullptr) {
+      cpu_fj.cpu_solver = std::make_unique<Solver>();
+      LocalMipRead(*cpu_fj.cpu_solver, *solution.problem_ptr, solution);
+    } else {
+      CopySolution(*cpu_fj.cpu_solver, solution);
+    }
+    CopyWeights(*cpu_fj.cpu_solver, in_fj);
+    cpu_fj.cpu_solver->localMIP->mt.seed(cuopt::seed_generator::get_seed());
   }
-  CopyWeights(*ls_cpu_fj.cpu_solver, in_fj);
   // cudaDeviceSynchronize();
 
   // Start CPU solver in background thread
-  ls_cpu_fj.start_cpu_solver();
+  for (auto& cpu_fj : ls_cpu_fj) {
+    cpu_fj.start_cpu_solver();
+  }
 
   // Run GPU solver
   in_fj.solve(solution);
 
   // Give CPU solver some time to run
-  if (source != "line_segment") { std::this_thread::sleep_for(std::chrono::milliseconds(250)); }
+  // if (source != "line_segment") { std::this_thread::sleep_for(std::chrono::milliseconds(250)); }
 
   // Stop CPU solver
-  ls_cpu_fj.stop_cpu_solver();
+  for (auto& cpu_fj : ls_cpu_fj) {
+    cpu_fj.stop_cpu_solver();
+  }
 
-  // Wait for CPU solver to finish
-  bool cpu_sol_found = ls_cpu_fj.wait_for_cpu_solver();
-
-  // Get CPU solution if ready
   solution_t<i_t, f_t> solution_cpu(*solution.problem_ptr);
-  GetSolution(*ls_cpu_fj.cpu_solver, solution_cpu);
-  solution_cpu.compute_feasibility();
+
+  f_t best_cpu_obj = std::numeric_limits<f_t>::max();
+  // Wait for CPU solver to finish
+  for (auto& cpu_fj : ls_cpu_fj) {
+    bool cpu_sol_found = cpu_fj.wait_for_cpu_solver();
+    if (cpu_sol_found) {
+      f_t cpu_obj = cpu_fj.cpu_solver->localMIP->bestOBJ;
+      if (cpu_obj < best_cpu_obj) {
+        best_cpu_obj = cpu_obj;
+        GetSolution(*cpu_fj.cpu_solver, solution_cpu);
+        solution_cpu.compute_feasibility();
+      }
+    }
+  }
+  bool cpu_sol_found = best_cpu_obj < std::numeric_limits<f_t>::max();
 
   bool gpu_feasible = solution.get_feasible();
   bool cpu_feasible = cpu_sol_found && solution_cpu.get_feasible();

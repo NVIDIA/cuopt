@@ -50,6 +50,7 @@ void Solver::Run()
   // ParseObj();
   // readerMPS->Read(fileName);
   // CALLGRIND_START_INSTRUMENTATION;
+  clkStart   = chrono::high_resolution_clock::now();
   int Result = localMIP->LocalSearch(optimalObj, clkStart);
   // CALLGRIND_STOP_INSTRUMENTATION;
   // CALLGRIND_DUMP_STATS;
