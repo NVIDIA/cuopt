@@ -27,6 +27,9 @@ struct line_segment_settings_t {
   bool recombiner_mode        = false;
   double best_of_parents_cost = std::numeric_limits<double>::max();
   bool parents_infeasible     = false;
+  int n_local_min             = 50;
+  int iteration_limit         = 20 * n_local_min;
+  int n_points_to_search      = 5;
 };
 
 template <typename i_t, typename f_t>
@@ -37,14 +40,12 @@ class line_segment_search_t {
   bool search_line_segment(solution_t<i_t, f_t>& solution,
                            const rmm::device_uvector<f_t>& point_1,
                            const rmm::device_uvector<f_t>& point_2,
-                           i_t n_points_to_search,
                            bool is_feasibility_run,
                            cuopt::timer_t& timer);
 
   bool search_line_segment(solution_t<i_t, f_t>& solution,
                            const rmm::device_uvector<f_t>& point_1,
                            const rmm::device_uvector<f_t>& point_2,
-                           i_t n_points_to_search,
                            const rmm::device_uvector<f_t>& delta_vector,
                            bool is_feasibility_run,
                            cuopt::timer_t& timer);

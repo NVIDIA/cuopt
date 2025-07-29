@@ -28,53 +28,67 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t>
 class ping_pong_graph_t {
  public:
-  ping_pong_graph_t(rmm::cuda_stream_view stream_view) : stream_view_(stream_view) {}
+  ping_pong_graph_t(rmm::cuda_stream_view stream_view, bool is_batch_mode = false)
+    : stream_view_(stream_view), is_batch_mode_(is_batch_mode)
+  {
+  }
 
   ~ping_pong_graph_t()
   {
-    if (even_initialized) { RAFT_CUDA_TRY_NO_THROW(cudaGraphExecDestroy(even_instance)); }
-    if (odd_initialized) { RAFT_CUDA_TRY_NO_THROW(cudaGraphExecDestroy(odd_instance)); }
+    if (!is_batch_mode_) {
+      if (even_initialized) { RAFT_CUDA_TRY_NO_THROW(cudaGraphExecDestroy(even_instance)); }
+      if (odd_initialized) { RAFT_CUDA_TRY_NO_THROW(cudaGraphExecDestroy(odd_instance)); }
+    }
   }
 
   void start_capture(i_t total_pdlp_iterations)
   {
-    if (total_pdlp_iterations % 2 == 0 && !even_initialized) {
-      RAFT_CUDA_TRY(cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeThreadLocal));
-    } else if (total_pdlp_iterations % 2 == 1 && !odd_initialized) {
-      RAFT_CUDA_TRY(cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeThreadLocal));
+    if (!is_batch_mode_) {
+      if (total_pdlp_iterations % 2 == 0 && !even_initialized) {
+        RAFT_CUDA_TRY(
+          cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeThreadLocal));
+      } else if (total_pdlp_iterations % 2 == 1 && !odd_initialized) {
+        RAFT_CUDA_TRY(
+          cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeThreadLocal));
+      }
     }
   }
 
   void end_capture(i_t total_pdlp_iterations)
   {
-    if (total_pdlp_iterations % 2 == 0 && !even_initialized) {
-      RAFT_CUDA_TRY(cudaStreamEndCapture(stream_view_.value(), &even_graph));
-      // Extra NULL NULL 0 mandatory for cuda 11.8
-      RAFT_CUDA_TRY(cudaGraphInstantiate(&even_instance, even_graph, nullptr, nullptr, 0));
-      even_initialized = true;
-      RAFT_CUDA_TRY_NO_THROW(cudaGraphDestroy(even_graph));
-    } else if (total_pdlp_iterations % 2 == 1 && !odd_initialized) {
-      RAFT_CUDA_TRY(cudaStreamEndCapture(stream_view_.value(), &odd_graph));
-      // Extra NULL NULL 0 mandatory for cuda 11.8
-      RAFT_CUDA_TRY(cudaGraphInstantiate(&odd_instance, odd_graph, nullptr, nullptr, 0));
-      odd_initialized = true;
-      RAFT_CUDA_TRY_NO_THROW(cudaGraphDestroy(odd_graph));
+    if (!is_batch_mode_) {
+      if (total_pdlp_iterations % 2 == 0 && !even_initialized) {
+        RAFT_CUDA_TRY(cudaStreamEndCapture(stream_view_.value(), &even_graph));
+        RAFT_CUDA_TRY(cudaGraphInstantiate(&even_instance, even_graph));
+        even_initialized = true;
+        RAFT_CUDA_TRY_NO_THROW(cudaGraphDestroy(even_graph));
+      } else if (total_pdlp_iterations % 2 == 1 && !odd_initialized) {
+        RAFT_CUDA_TRY(cudaStreamEndCapture(stream_view_.value(), &odd_graph));
+        RAFT_CUDA_TRY(cudaGraphInstantiate(&odd_instance, odd_graph));
+        odd_initialized = true;
+        RAFT_CUDA_TRY_NO_THROW(cudaGraphDestroy(odd_graph));
+      }
     }
   }
 
   void launch(i_t total_pdlp_iterations)
   {
-    if (total_pdlp_iterations % 2 == 0 && even_initialized) {
-      RAFT_CUDA_TRY(cudaGraphLaunch(even_instance, stream_view_.value()));
-    } else if (total_pdlp_iterations % 2 == 1 && odd_initialized) {
-      RAFT_CUDA_TRY(cudaGraphLaunch(odd_instance, stream_view_.value()));
+    if (!is_batch_mode_) {
+      if (total_pdlp_iterations % 2 == 0 && even_initialized) {
+        RAFT_CUDA_TRY(cudaGraphLaunch(even_instance, stream_view_.value()));
+      } else if (total_pdlp_iterations % 2 == 1 && odd_initialized) {
+        RAFT_CUDA_TRY(cudaGraphLaunch(odd_instance, stream_view_.value()));
+      }
     }
   }
 
   bool is_initialized(i_t total_pdlp_iterations)
   {
-    return (total_pdlp_iterations % 2 == 0 && even_initialized) ||
-           (total_pdlp_iterations % 2 == 1 && odd_initialized);
+    if (!is_batch_mode_) {
+      return (total_pdlp_iterations % 2 == 0 && even_initialized) ||
+             (total_pdlp_iterations % 2 == 1 && odd_initialized);
+    }
+    return false;
   }
 
  private:
@@ -85,5 +99,7 @@ class ping_pong_graph_t {
   rmm::cuda_stream_view stream_view_;
   bool even_initialized{false};
   bool odd_initialized{false};
+  // Temporary fix to disable cuda graph in batch mode
+  bool is_batch_mode_{false};
 };
 }  // namespace cuopt::linear_programming::detail

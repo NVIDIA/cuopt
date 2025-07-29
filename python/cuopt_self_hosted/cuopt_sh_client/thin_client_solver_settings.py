@@ -167,7 +167,7 @@ class ThinClientSolverSettings:
         for key in self.parameter_dict:
             if "tolerance" not in key:
                 solver_config[key] = self.parameter_dict[key]
-        # Handle tolerance seperately
+        # Handle tolerance separately
         if "absolute_dual_tolerance" in self.parameter_dict:
             solver_config["tolerances"]["absolute_dual"] = self.parameter_dict[
                 "absolute_dual_tolerance"

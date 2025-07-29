@@ -661,6 +661,16 @@ constraint_prop_t<i_t, f_t>::generate_bulk_rounding_vector(
       cuda::std::tie(first_probe, second_probe) =
         generate_double_probing_pair(sol, orig_sol, unset_var_idx, probing_config, false);
     }
+    cuopt_assert(orig_sol.problem_ptr->variable_lower_bounds.element(
+                   unset_var_idx, sol.handle_ptr->get_stream()) <= first_probe + int_tol &&
+                   first_probe - int_tol <= orig_sol.problem_ptr->variable_upper_bounds.element(
+                                              unset_var_idx, sol.handle_ptr->get_stream()),
+                 "Variable out of original bounds!");
+    cuopt_assert(orig_sol.problem_ptr->variable_lower_bounds.element(
+                   unset_var_idx, sol.handle_ptr->get_stream()) <= second_probe + int_tol &&
+                   second_probe - int_tol <= orig_sol.problem_ptr->variable_upper_bounds.element(
+                                               unset_var_idx, sol.handle_ptr->get_stream()),
+                 "Variable out of original bounds!");
     cuopt_assert(orig_sol.problem_ptr->is_integer(first_probe), "Probing value must be an integer");
     cuopt_assert(orig_sol.problem_ptr->is_integer(second_probe),
                  "Probing value must be an integer");

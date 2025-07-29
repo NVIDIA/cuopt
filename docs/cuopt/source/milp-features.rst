@@ -11,6 +11,7 @@ The MILP solver can be accessed in the following ways:
 
   Currently supported solvers:
    - AMPL
+   - GAMS
    - PuLP
 
 - **C API**: A native C API that provides direct low-level access to cuOpt's MILP solver, enabling integration into any application or system that can interface with C.
@@ -52,12 +53,12 @@ Both forms are mathematically equivalent. The choice between them is a matter of
 Incumbent Solution Callback
 ---------------------------
 
-User can provide a callback to receive new integer feasible solutions that improve the objective (called incumbents) while the solver is running. An `Incumbent Example <cuopt-server/examples/milp-examples.html#incumbent-solution>`_ is shared on the self-hosted page.
+User can provide a callback to receive new integer feasible solutions that improve the objective (called incumbents) while the solver is running. An :ref:`Incumbent Example <incumbent-and-logging-callback>` is shared on the self-hosted page.
 
 Logging Callback
 ----------------
 
-A logging callback allows users to get additional information about how the solve is progressing. A `Logging Callback Example <cuopt-server/examples/milp-examples.html#logging-callback>`_ is shared on the self-hosted page.
+A logging callback allows users to get additional information about how the solve is progressing. A :ref:`Logging Callback Example <incumbent-and-logging-callback>` is shared on the self-hosted page.
 
 Time Limit
 --------------

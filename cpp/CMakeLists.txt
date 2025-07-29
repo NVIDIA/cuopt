@@ -33,11 +33,6 @@ project(
   LANGUAGES CXX CUDA C
 )
 
-if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_LESS 12.0.0)
-  list(REMOVE_ITEM CMAKE_CUDA_ARCHITECTURES "90")
-  list(APPEND CMAKE_CUDA_ARCHITECTURES "80-virtual")
-endif()
-
 set(DEPENDENT_LIB_MAJOR_VERSION "25")
 set(DEPENDENT_LIB_MINOR_VERSION "08")
 
@@ -106,12 +101,15 @@ message("-- Building for GPU_ARCHS = ${CMAKE_CUDA_ARCHITECTURES}")
 
 # make the flags global in order to propagate flags to test cmake files
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extended-lambda")
-if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8.0)
+if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -static-global-template-stub=false")
 endif()
 list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror)
 list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall -Wno-error=non-template-friend)
 list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=-compress-all)
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
+  list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=--compress-level=3)
+endif()
 list(APPEND CUOPT_CUDA_FLAGS -fopenmp)
 
 
@@ -219,9 +217,7 @@ set(CUOPT_PRIVATE_CUDA_LIBS
   CUDA::cusolver
   OpenMP::OpenMP_CXX)
 
-if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA" AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.4)
-  list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
-endif()
+list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser)
 set(CMAKE_LIBRARY_PATH ${CMAKE_CURRENT_BINARY_DIR}/libmps_parser/)

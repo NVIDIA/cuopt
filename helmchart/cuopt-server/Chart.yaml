@@ -1,0 +1,17 @@
+apiVersion: v2
+appVersion: 25.8.0
+description: A Helm chart for NVIDIA cuOpt Server with GPU support
+home: https://docs.nvidia.com/cuopt/user-guide/latest/resources.html
+keywords:
+- nvidia
+- cuopt
+- optimization
+- gpu
+maintainers:
+- email: cuopt@nvidia.com
+  name: cuopt-maintainer
+name: cuopt-server
+sources:
+- https://docs.nvidia.com/cuopt/user-guide/latest/resources.html
+type: application
+version: 25.8.0
