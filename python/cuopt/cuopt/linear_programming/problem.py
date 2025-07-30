@@ -534,6 +534,47 @@ class Problem:
     model_name : str, optional
         Name of the model. Default is an empty string.
 
+    Attributes
+    ----------
+    Name : str
+        Name of the model.
+    vars : list
+        List of variables in the problem.
+    constrs : list  
+        List of constraints in the problem.
+    ObjSense : sense
+        Objective sense (MINIMIZE or MAXIMIZE).
+    Obj : object
+        The objective function.
+    ObjConstant : float
+        Constant term in the objective.
+    Status : int
+        Status of the problem after solving.
+    IsMIP : bool
+        Indicates if the problem is a Mixed Integer Program.
+    rhs : array-like
+        Right-hand side values for constraints.
+    row_sense : array-like
+        Senses for each constraint row.
+    row_pointers : array-like
+        Row pointers for constraint matrix.
+    column_indicies : array-like
+        Column indices for constraint matrix.
+    values : array-like
+        Values for constraint matrix.
+    lower_bound : array-like
+        Lower bounds for variables.
+    upper_bound : array-like
+        Upper bounds for variables.
+    var_type : array-like
+        Types of variables (continuous, integer, etc.).
+    SolveTime : float
+        Time taken to solve the problem.
+    SolutionStats : dict
+        Solution statistics.
+    ObjVal : float
+        Objective value of the problem.
+
     Examples
     --------
     >>> problem = problem.Problem("MIP_model")
@@ -555,7 +596,6 @@ class Problem:
         self.ObjConstant = 0.0
         self.Status = -1
         self.IsMIP = False
-        self.Settings = solver_settings.SolverSettings()
 
         self.rhs = None
         self.row_sense = None
