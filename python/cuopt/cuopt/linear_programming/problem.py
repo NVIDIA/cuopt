@@ -26,6 +26,7 @@ class VType(str, Enum):
     """
     The type of a variable is either continuous or integer.
     """
+
     CONTINUOUS = "C"
     INTEGER = "I"
 
@@ -34,6 +35,7 @@ class CType(str, Enum):
     """
     The sense of a constraint is either LE, GE or EQ.
     """
+
     LE = "L"
     GE = "G"
     EQ = "E"
@@ -43,6 +45,7 @@ class sense(int, Enum):
     """
     The sense of a model is either MINIMIZE or MAXIMIZE.
     """
+
     MAXIMIZE = -1
     MINIMIZE = 1
 
@@ -259,7 +262,7 @@ class LinearExpression:
         value = 0.0
         for i, var in enumerate(self.vars):
             value += var.Value * self.coefficients[i]
-        return value
+        return value + self.constant
 
     def __len__(self):
         return len(self.vars)
@@ -715,6 +718,15 @@ class Problem:
             csr_dict["row_pointers"].append(len(csr_dict["column_indices"]))
         return self.dict_to_object(csr_dict)
 
+    def get_incumbent_values(self, solution, vars):
+        """
+        Extract incumbent values of the vars from a problem solution.
+        """
+        values = []
+        for var in vars:
+            values.append(solution[var.index])
+        return values
+
     def post_solve(self, solution):
         self.Status = solution.get_termination_status()
         self.SolveTime = solution.get_solve_time()
@@ -738,7 +750,7 @@ class Problem:
                     constr.DualValue = dual_sol[i]
         self.ObjVal = self.Obj.getValue()
 
-    def solve(self):
+    def solve(self, settings=solver_settings.SolverSettings()):
         """
         Optimizes the LP or MIP problem with the added variables,
         constraints and objective.
@@ -796,7 +808,7 @@ class Problem:
         dm.set_variable_types(self.var_type)
 
         # Call Solver
-        solution = solver.Solve(dm, self.Settings)
+        solution = solver.Solve(dm, settings)
 
         # Post Solve
         self.post_solve(solution)

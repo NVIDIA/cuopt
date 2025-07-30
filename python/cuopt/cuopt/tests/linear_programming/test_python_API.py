@@ -15,6 +15,11 @@
 
 import pytest
 
+from cuopt.linear_programming import SolverSettings
+from cuopt.linear_programming.internals import (
+    GetSolutionCallback,
+    SetSolutionCallback,
+)
 from cuopt.linear_programming.problem import CType, Problem, VType, sense
 
 
@@ -63,13 +68,14 @@ def test_model():
     assert prob.ObjSense == sense.MAXIMIZE
     assert prob.getObjective() is expr
 
-    # Adding Settings
-    prob.Settings.set_parameter("time_limit", 60)
+    # Initialize Settings
+    settings = SolverSettings()
+    settings.set_parameter("time_limit", 5)
 
     # Solving Problem
-    prob.solve()
+    prob.solve(settings)
     assert prob.Status.name == "Optimal"
-    assert prob.SolveTime < 60
+    assert prob.SolveTime < 5
 
     csr = prob.getCSR()
     expected_row_pointers = [0, 2, 4]
@@ -202,3 +208,64 @@ def test_constraint_matrix():
     assert csr.values == exp_values
     assert sense == exp_sense
     assert rhs == exp_rhs
+
+
+def test_incumbent_solutions():
+
+    # Callback for incumbent solution
+    class CustomGetSolutionCallback(GetSolutionCallback):
+        def __init__(self):
+            super().__init__()
+            self.n_callbacks = 0
+            self.solutions = []
+
+        def get_solution(self, solution, solution_cost):
+
+            self.n_callbacks += 1
+            assert len(solution) > 0
+            assert len(solution_cost) == 1
+
+            self.solutions.append(
+                {
+                    "solution": solution.copy_to_host(),
+                    "cost": solution_cost.copy_to_host()[0],
+                }
+            )
+
+    class CustomSetSolutionCallback(SetSolutionCallback):
+        def __init__(self, get_callback):
+            super().__init__()
+            self.n_callbacks = 0
+            self.get_callback = get_callback
+
+        def set_solution(self, solution, solution_cost):
+            self.n_callbacks += 1
+            if self.get_callback.solutions:
+                solution[:] = self.get_callback.solutions[-1]["solution"]
+                solution_cost[0] = float(
+                    self.get_callback.solutions[-1]["cost"]
+                )
+
+    prob = Problem()
+    x = prob.addVariable(vtype=VType.INTEGER)
+    y = prob.addVariable(vtype=VType.INTEGER)
+    prob.addConstraint(2 * x + 4 * y >= 230)
+    prob.addConstraint(3 * x + 2 * y <= 190)
+    prob.setObjective(5 * x + 3 * y, sense=sense.MAXIMIZE)
+
+    # callback = CustomGetSolutionCallback()
+    get_callback = CustomGetSolutionCallback()
+    set_callback = CustomSetSolutionCallback(get_callback)
+    settings = SolverSettings()
+    settings.set_mip_callback(get_callback)
+    settings.set_mip_callback(set_callback)
+    settings.set_parameter("time_limit", 0.01)
+
+    prob.solve(settings)
+    print(prob.SolveTime)
+    # assert prob.Status.name == "FeasibleFound"
+    print(prob.Status.name)
+    print(get_callback.n_callbacks)
+    # assert get_callback.n_callbacks > 0
+    # values = prob.get_incumbent_values(callback.solution, [x, y])
+    # print(values)
