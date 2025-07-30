@@ -183,8 +183,8 @@ void sparse_vector_t<i_t, f_t>::sort()
 
   // Check
 #ifdef CHECK_SORT
-  for (i_t k = 0; k < i.size() - 1; ++k) {
-    if (i[k] > i[k + 1]) { printf("Sort error %d %d\n", i[k], i[k + 1]); }
+  if (!std::is_sorted(i.begin(), i.end())) {
+    printf("Sort error\n");
   }
 #endif
 }
