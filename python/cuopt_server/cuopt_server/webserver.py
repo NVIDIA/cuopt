@@ -958,7 +958,7 @@ async def postrequest(
     ),
     solver_logs: Optional[bool] = Query(
         default=False,
-        description="If set to True, MIP problems will produce detailed solver logs that can be retrieved from /cuopt/log/{id}",  # noqa
+        description="If set to True, math optimization problems will produce detailed solver logs that can be retrieved from /cuopt/log/{id}. ",  # noqa
     ),
     cuopt_data_file: str = Header(
         default=None,

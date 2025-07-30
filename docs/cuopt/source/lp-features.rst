@@ -76,9 +76,17 @@ Crossover
 Crossover allows you to obtain a high-quality basic solution from the results of a PDLP solve. More details can be found :ref:`here <crossover>`.
 
 
-Logging Callback
-----------------
-With logging callback, users can fetch server-side logs for additional debugs and to get details on solver process details. :ref:`Examples <generic-example-with-normal-and-batch-mode>` are shared on the self-hosted page.
+Logging
+-------
+
+The CUOPT_LOG_FILE parameter can be set to write detailed solver logs for LP problems. This parameter is available in all APIs that allow setting solver parameters except the cuOpt service. For the service, see the logging callback below.
+
+Logging Callback in the Service
+-------------------------------
+
+In the cuOpt service API, the ``log_file`` value in ``solver_configs`` is ignored.
+
+If however you set the ``solver_logs`` flag on the ``/cuopt/request`` REST API call, users can fetch the log file content from the webserver at ``/cuopt/logs/{id}``. Using the logging callback feature through the cuOpt client is shown in :ref:`Examples <generic-example-with-normal-and-batch-mode>` on the self-hosted page.
 
 
 Infeasibility Detection
