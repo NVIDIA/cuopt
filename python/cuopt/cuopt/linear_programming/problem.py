@@ -201,6 +201,42 @@ class Variable:
     def __rmul__(self, other):
         return self * other
 
+    def __le__(self, other):
+        match other:
+            case int() | float():
+                expr = LinearExpression([self], [1.0], 0.0)
+                return Constraint(expr, CType.LE, float(other))
+            case Variable() | LinearExpression():
+                # var1 <= var2   -> var1 - var2 <= 0
+                expr = self - other
+                return Constraint(expr, CType.LE, 0.0)
+            case _:
+                raise ValueError("Unsupported operation")
+
+    def __ge__(self, other):
+        match other:
+            case int() | float():
+                expr = LinearExpression([self], [1.0], 0.0)
+                return Constraint(expr, CType.GE, float(other))
+            case Variable() | LinearExpression():
+                # var1 >= var2   ->  var1 - var2 >= 0
+                expr = self - other
+                return Constraint(expr, CType.GE, 0.0)
+            case _:
+                raise ValueError("Unsupported operation")
+
+    def __eq__(self, other):
+        match other:
+            case int() | float():
+                expr = LinearExpression([self], [1.0], 0.0)
+                return Constraint(expr, CType.EQ, float(other))
+            case Variable() | LinearExpression():
+                # var1 == var2   -> var1 - var2 == 0
+                expr = self - other
+                return Constraint(expr, CType.EQ, 0.0)
+            case _:
+                raise ValueError("Unsupported operation")
+
 
 class LinearExpression:
     """

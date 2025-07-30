@@ -175,6 +175,12 @@ def test_constraint_matrix():
     prob.addConstraint(d + 5 * c - a - 4 * d - 2 + 5 * b - 20 >= 10, "C2")
     # 7*f + 3 - 2*b + c == 3*f - 61 + 8*e    i.e.    4f - 2b + c - 8e == -64
     prob.addConstraint(7 * f + 3 - 2 * b + c == 3 * f - 61 + 8 * e, "C3")
+    # a <= 5
+    prob.addConstraint(a <= 5, "C4")
+    # d >= 7*f - b - 27   i.e.   d - 7*f + b >= -27
+    prob.addConstraint(d >= 7 * f - b - 27, "C5")
+    # c == e   i.e.   c - e == 0
+    prob.addConstraint(c == e, "C6")
 
     sense = []
     rhs = []
@@ -184,8 +190,8 @@ def test_constraint_matrix():
 
     csr = prob.getCSR()
 
-    exp_row_pointers = [0, 4, 8, 12]
-    exp_column_indices = [0, 4, 3, 5, 2, 3, 0, 1, 5, 1, 2, 4]
+    exp_row_pointers = [0, 4, 8, 12, 13, 16, 18]
+    exp_column_indices = [0, 4, 3, 5, 2, 3, 0, 1, 5, 1, 2, 4, 0, 5, 1, 3, 2, 4]
     exp_values = [
         2.0,
         1.0,
@@ -199,9 +205,15 @@ def test_constraint_matrix():
         -2.0,
         1.0,
         -8.0,
+        1.0,
+        -7.0,
+        1.0,
+        1.0,
+        1.0,
+        -1.0,
     ]
-    exp_sense = ["L", "G", "E"]
-    exp_rhs = [97, 32, -64]
+    exp_sense = ["L", "G", "E", "L", "G", "E"]
+    exp_rhs = [97, 32, -64, 5, -27, 0]
 
     assert csr.row_pointers == exp_row_pointers
     assert csr.column_indices == exp_column_indices
@@ -253,7 +265,6 @@ def test_incumbent_solutions():
     prob.addConstraint(3 * x + 2 * y <= 190)
     prob.setObjective(5 * x + 3 * y, sense=sense.MAXIMIZE)
 
-    # callback = CustomGetSolutionCallback()
     get_callback = CustomGetSolutionCallback()
     set_callback = CustomSetSolutionCallback(get_callback)
     settings = SolverSettings()
@@ -262,10 +273,14 @@ def test_incumbent_solutions():
     settings.set_parameter("time_limit", 0.01)
 
     prob.solve(settings)
-    print(prob.SolveTime)
-    # assert prob.Status.name == "FeasibleFound"
-    print(prob.Status.name)
-    print(get_callback.n_callbacks)
-    # assert get_callback.n_callbacks > 0
-    # values = prob.get_incumbent_values(callback.solution, [x, y])
-    # print(values)
+
+    assert prob.Status.name == "FeasibleFound"
+    assert get_callback.n_callbacks > 0
+
+    for sol in get_callback.solutions:
+        x_val = sol["solution"][0]
+        y_val = sol["solution"][1]
+        cost = sol["cost"]
+        assert 2 * x_val + 4 * y_val >= 230
+        assert 3 * x_val + 2 * y_val <= 190
+        assert 5 * x_val + 3 * y_val == cost
