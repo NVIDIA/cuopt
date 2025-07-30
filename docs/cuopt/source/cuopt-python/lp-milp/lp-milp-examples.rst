@@ -15,6 +15,7 @@ Simple Linear Programming Example
 .. code-block:: python
 
     from cuopt.linear_programming.problem import Problem, VType, CType, sense
+    from cuopt.linear_programming.settings import SolverSettings
 
     # Create a new problem
     problem = Problem("Simple LP")
@@ -30,8 +31,12 @@ Simple Linear Programming Example
     # Set objective function
     problem.setObjective(x + y, sense=sense.MAXIMIZE)
     
+    # Configure solver settings
+    settings = SolverSettings()
+    settings.set_parameter("time_limit", 60)
+    
     # Solve the problem
-    problem.solve()
+    problem.solve(settings)
     
     # Check solution status
     if problem.Status.name == "Optimal":
@@ -55,6 +60,7 @@ Mixed Integer Linear Programming Example
 .. code-block:: python
 
     from cuopt.linear_programming.problem import Problem, VType, CType, sense
+    from cuopt.linear_programming.settings import SolverSettings
 
     # Create a new MIP problem
     problem = Problem("Simple MIP")
@@ -71,10 +77,11 @@ Mixed Integer Linear Programming Example
     problem.setObjective(5 * x + 3 * y, sense=sense.MAXIMIZE)
 
     # Configure solver settings
-    problem.Settings.set_parameter("time_limit", 60)
+    settings = SolverSettings()
+    settings.set_parameter("time_limit", 60)
 
     # Solve the problem
-    problem.solve()
+    problem.solve(settings)
     
     # Check solution status and results
     if problem.Status.name == "Optimal":
@@ -101,6 +108,7 @@ Advanced Example: Production Planning
 .. code-block:: python
 
     from cuopt.linear_programming.problem import Problem, VType, CType, sense
+    from cuopt.linear_programming.settings import SolverSettings
 
     # Production planning problem
     problem = Problem("Production Planning")
@@ -126,8 +134,9 @@ Advanced Example: Production Planning
     problem.setObjective(50 * x1 + 30 * x2, sense=sense.MAXIMIZE)
     
     # Solve with time limit
-    problem.Settings.set_parameter("time_limit", 30)
-    problem.solve()
+    settings = SolverSettings()
+    settings.set_parameter("time_limit", 30)
+    problem.solve(settings)
     
     # Display results
     if problem.Status.name == "Optimal":
@@ -159,6 +168,7 @@ Working with Expressions and Constraints
 .. code-block:: python
 
     from cuopt.linear_programming.problem import Problem, VType, CType, sense
+    from cuopt.linear_programming.settings import SolverSettings
 
     problem = Problem("Expression Example")
     
@@ -184,9 +194,10 @@ Working with Expressions and Constraints
     # Set objective
     problem.setObjective(x + 2 * y + 3 * z, sense=sense.MAXIMIZE)
 
-    problem.Settings.set_parameter("time_limit", 20) 
+    settings = SolverSettings()
+    settings.set_parameter("time_limit", 20) 
 
-    problem.solve()
+    problem.solve(settings)
     
     
     if problem.Status.name == "Optimal":
