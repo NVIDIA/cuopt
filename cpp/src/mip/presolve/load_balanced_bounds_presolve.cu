@@ -401,8 +401,6 @@ void load_balanced_bounds_presolve_t<i_t, f_t>::create_bounds_update_graph()
                                                 warp_vars_id_offsets,
                                                 pb->vars_bin_offsets);
   RAFT_CUDA_TRY(cudaGetLastError());
-  cudaGraphDebugDotPrint(upd_graph, "/home/aatish/debug_upd_graph", 0);
-  RAFT_CUDA_TRY(cudaGetLastError());
   cudaGraphInstantiate(&upd_bnd_exec, upd_graph, NULL, NULL, 0);
   RAFT_CUDA_TRY(cudaGetLastError());
 }
@@ -459,7 +457,6 @@ void load_balanced_bounds_presolve_t<i_t, f_t>::create_constraint_slack_graph(bo
                                            warp_cnst_id_offsets,
                                            pb->cnst_bin_offsets,
                                            erase_inf_cnst);
-  cudaGraphDebugDotPrint(cnst_slack_graph, "/home/aatish/debug_cnst_slack_graph", 0);
   if (erase_inf_cnst) {
     cudaGraphInstantiate(&calc_slack_erase_inf_cnst_exec, cnst_slack_graph, NULL, NULL, 0);
   } else {

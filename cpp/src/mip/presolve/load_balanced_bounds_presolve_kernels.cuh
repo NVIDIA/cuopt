@@ -79,25 +79,10 @@ __global__ void lb_calc_act_heavy_kernel(i_t id_range_beg,
                                          activity_view_t view,
                                          raft::device_span<f_t2> tmp_cnst_act)
 {
-  // if (pseudo_block_ids.size() <= blockIdx.x) {
-  //   printf("oob pseudo_block_id %d %d\n", blockIdx.x, int(pseudo_block_ids.size()));
-  // }
-  // if (ids.size() <= blockIdx.x) {
-  //   printf("oob ids\n");
-  // }
-  // if (tmp_cnst_act.size() <= blockIdx.x) {
-  //   printf("oob tmp_cnst_act\n");
-  // }
   auto idx             = ids[blockIdx.x] + id_range_beg;
   auto pseudo_block_id = pseudo_block_ids[blockIdx.x];
-  // if (view.offsets.size() <= idx) {
-  //   printf("oob offset\n");
-  // }
-  // if (view.offsets.size() <= idx + 1) {
-  //   printf("oob offset + 1\n");
-  // }
-  i_t item_off_beg = view.offsets[idx] + work_per_block * pseudo_block_id;
-  i_t item_off_end = min(item_off_beg + work_per_block, view.offsets[idx + 1]);
+  i_t item_off_beg     = view.offsets[idx] + work_per_block * pseudo_block_id;
+  i_t item_off_end     = min(item_off_beg + work_per_block, view.offsets[idx + 1]);
 
   typedef cub::BlockReduce<f_t, BDIM> BlockReduce;
   __shared__ typename BlockReduce::TempStorage temp_storage;
@@ -657,78 +642,5 @@ __global__ void lb_upd_bnd_sub_warp_kernel(bounds_update_view_t view,
     upd_bnd_sub_warp<i_t, f_t, f_t2, BDIM, 16>(id_warp_beg, id_range_end, view);
   }
 }
-
-#if 0
-template <typename i_t, typename f_t, typename f_t2, i_t PSEUDO_BDIM, i_t BDIM, typename bounds_update_view_t>
-__device__ void upd_bnd_block(i_t prior_blocks_in_seg,
-                              i_t id_range_beg, bounds_update_view_t view)
-{
-  //i_t idx     = id_range_beg + blockIdx.x;
-  i_t idx     = id_beg_seg + prior_blocks_in_seg * (BDIM/PSEUDO_BDIM) + (threadIdx.x / PSEUDO_BDIM);
-  i_t var_idx = view.vars_reorg_ids[idx];
-  // x is lb, y is ub
-  auto old_bounds  = view.vars_bnd[var_idx];
-  bool is_int      = (view.vars_types[idx] == var_t::INTEGER);
-  i_t item_off_beg = view.offsets[idx];
-  i_t item_off_end = view.offsets[idx + 1];
-
-  typedef cub::BlockReduce<f_t, BDIM> BlockReduce;
-  __shared__ typename BlockReduce::TempStorage temp_storage;
-
-  // if it is a set variable then don't propagate the bound
-  // consider continuous vars as set if their bounds cross or equal
-  if (old_bounds.x + view.tolerances.integrality_tolerance >= old_bounds.y) { return; }
-  auto bounds =
-    update_bounds<i_t, f_t, f_t2, BDIM>(view, threadIdx.x, item_off_beg, item_off_end, old_bounds);
-
-  bounds.x = BlockReduce(temp_storage).Reduce(bounds.x, cuda::maximum());
-  __syncthreads();
-  bounds.y = BlockReduce(temp_storage).Reduce(bounds.y, cuda::minimum());
-
-  if (threadIdx.x == 0) {
-    write_updated_bounds(&view.vars_bnd[var_idx], is_int, view, bounds, old_bounds);
-  }
-}
-
-template <typename i_t, typename f_t, typename f_t2, i_t BDIM, typename bounds_update_view_t>
-__device__ void upd_bnd_sub_warp(bounds_update_view_t view,
-                                           raft::device_span<i_t> warp_vars_offsets,
-                                           raft::device_span<i_t> warp_vars_id_offsets)
-{
-  i_t id_warp_beg, id_range_end, threads_per_variable;
-  detect_range_sub_warp<i_t>(
-    &id_warp_beg, &id_range_end, &threads_per_variable, warp_vars_offsets, warp_vars_id_offsets);
-
-  if (threads_per_variable == 1) {
-    upd_bnd_sub_warp<i_t, f_t, f_t2, BDIM, 1>(id_warp_beg, id_range_end, view);
-  } else if (threads_per_variable == 2) {
-    upd_bnd_sub_warp<i_t, f_t, f_t2, BDIM, 2>(id_warp_beg, id_range_end, view);
-  } else if (threads_per_variable == 4) {
-    upd_bnd_sub_warp<i_t, f_t, f_t2, BDIM, 4>(id_warp_beg, id_range_end, view);
-  } else if (threads_per_variable == 8) {
-    upd_bnd_sub_warp<i_t, f_t, f_t2, BDIM, 8>(id_warp_beg, id_range_end, view);
-  } else if (threads_per_variable == 16) {
-    upd_bnd_sub_warp<i_t, f_t, f_t2, BDIM, 16>(id_warp_beg, id_range_end, view);
-  }
-}
-
-template <typename i_t, typename f_t, typename f_t2, i_t BDIM, typename bounds_update_view_t>
-__global__ void lb_upd_bnd_kernel(bounds_update_view_t view,
-                                  raft::device_span<i_t> warp_vars_offsets,
-                                  raft::device_span<i_t> warp_vars_id_offsets,
-                                  raft::device_span<i_t> block_vars_offsets,
-                                  raft::device_span<i_t> block_vars_id_offsets)
-{
-  if (blockIdx.x < sub_warp_blocks_end) {
-    upd_bnd_sub_warp(view, warp_vars_offsets, warp_vars_id_offsets);
-  } else if (blockIdx.x < block_vars_offsets[1]) {
-    upd_bnd_block<64, BDIM>(view, blockIdx.x - block_vars_offsets[0], block_vars_offsets[0], block_vars_offsets[1]);
-  } else if (blockIdx.x < block_vars_offsets[2]) {
-    upd_bnd_block<256, BDIM>(view, blockIdx.x - block_vars_offsets[1], block_vars_offsets[1], block_vars_offsets[2]);
-  } else {
-    upd_bnd_heavy<512>(heavy_vars_beg_id, heavy_vars_vertex_ids, heavy_vars_pseudo_block_ids, heavy_degree_cutoff, view, tmp_bnd);
-  }
-}
-#endif
 
 }  // namespace cuopt::linear_programming::detail
