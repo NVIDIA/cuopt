@@ -15,7 +15,7 @@ Simple Linear Programming Example
 .. code-block:: python
 
     from cuopt.linear_programming.problem import Problem, VType, CType, sense
-    from cuopt.linear_programming.settings import SolverSettings
+    from cuopt.linear_programming.solver_settings import SolverSettings
 
     # Create a new problem
     problem = Problem("Simple LP")
@@ -60,7 +60,7 @@ Mixed Integer Linear Programming Example
 .. code-block:: python
 
     from cuopt.linear_programming.problem import Problem, VType, CType, sense
-    from cuopt.linear_programming.settings import SolverSettings
+    from cuopt.linear_programming.solver_settings import SolverSettings
 
     # Create a new MIP problem
     problem = Problem("Simple MIP")
@@ -108,7 +108,7 @@ Advanced Example: Production Planning
 .. code-block:: python
 
     from cuopt.linear_programming.problem import Problem, VType, CType, sense
-    from cuopt.linear_programming.settings import SolverSettings
+    from cuopt.linear_programming.solver_settings import SolverSettings
 
     # Production planning problem
     problem = Problem("Production Planning")
@@ -168,7 +168,7 @@ Working with Expressions and Constraints
 .. code-block:: python
 
     from cuopt.linear_programming.problem import Problem, VType, CType, sense
-    from cuopt.linear_programming.settings import SolverSettings
+    from cuopt.linear_programming.solver_settings import SolverSettings
 
     problem = Problem("Expression Example")
     
@@ -295,6 +295,7 @@ Incumbent solutions are intermediate feasible solutions found during the MIP sol
 The response is as follows:
 
 .. code-block:: text
+
     Optimal solution found.
     Incumbent 1: [ 0. 58.], cost: 174.00
     Incumbent 2: [36. 41.], cost: 303.00
