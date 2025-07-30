@@ -202,6 +202,7 @@ termination_criterion_t bound_presolve_t<i_t, f_t>::bound_update_loop(problem_t<
   }
   pb.handle_ptr->sync_stream();
   calculate_infeasible_redundant_constraints(pb);
+  solve_iter = iter;
 
   return criteria;
 }
