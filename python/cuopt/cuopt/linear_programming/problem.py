@@ -37,7 +37,7 @@ class CType(str, Enum):
 
 # The sense of a model is either MINIMIZE or MAXIMIZE
 class sense(int, Enum):
-    MAXIMIZE = -1,
+    MAXIMIZE = -1
     MINIMIZE = 1
 
 
