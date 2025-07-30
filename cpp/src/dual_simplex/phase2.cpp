@@ -1563,7 +1563,7 @@ void adjust_for_flips(const basis_update_mpf_t<i_t, f_t>& ft,
 }
 
 template <typename i_t, typename f_t>
-void compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
+i_t compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
                      const basis_update_mpf_t<i_t, f_t>& ft,
                      i_t entering_index,
                      i_t leaving_index,
@@ -1602,7 +1602,11 @@ void compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
 #endif
 
   f_t scale = scaled_delta_xB_sparse.find_coefficient(basic_leaving_index);
-  assert(!std::isnan(scale));
+  if (scale != scale) {
+    // We couldn't find a coefficient for the basic leaving index.
+    // Either this is a bug or the primal step length is inf.
+    return -1;
+  }
   const f_t primal_step_length = delta_x_leaving / scale;
   const i_t scaled_delta_xB_nz = scaled_delta_xB_sparse.i.size();
   for (i_t k = 0; k < scaled_delta_xB_nz; ++k) {
@@ -1611,6 +1615,7 @@ void compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
   }
   delta_x[leaving_index]  = delta_x_leaving;
   delta_x[entering_index] = primal_step_length;
+  return 0;
 }
 
 template <typename i_t, typename f_t>
@@ -2680,7 +2685,7 @@ dual::status_t dual_phase2(i_t phase,
     sparse_vector_t<i_t, f_t> utilde_sparse(m, 0);
     sparse_vector_t<i_t, f_t> scaled_delta_xB_sparse(m, 0);
     sparse_vector_t<i_t, f_t> rhs_sparse(lp.A, entering_index);
-    phase2::compute_delta_x(lp,
+    if (phase2::compute_delta_x(lp,
                             ft,
                             entering_index,
                             leaving_index,
@@ -2692,7 +2697,10 @@ dual::status_t dual_phase2(i_t phase,
                             x,
                             utilde_sparse,
                             scaled_delta_xB_sparse,
-                            delta_x);
+                            delta_x) == -1) {
+      settings.log.printf("Failed to compute delta_x. Iter %d\n", iter);
+      return dual::status_t::NUMERICAL;
+    }
 
     timers.ftran_time += timers.stop_timer();
 
@@ -2809,6 +2817,8 @@ dual::status_t dual_phase2(i_t phase,
     nonbasic_mark[leaving_index]           = nonbasic_entering_index;
     basic_mark[leaving_index]              = -1;
     basic_mark[entering_index]             = basic_leaving_index;
+
+    phase2::check_primal_infeasibilities_basic(basic_list, basic_mark, squared_infeasibilities, infeasibility_indices, 7);
 
     timers.start_timer();
     // Refactor or update the basis factorization
