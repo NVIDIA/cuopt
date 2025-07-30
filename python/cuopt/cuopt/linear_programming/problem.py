@@ -576,7 +576,7 @@ class Problem:
         Name of the model.
     vars : list
         List of variables in the problem.
-    constrs : list  
+    constrs : list
         List of constraints in the problem.
     ObjSense : sense
         Objective sense (MINIMIZE or MAXIMIZE).
