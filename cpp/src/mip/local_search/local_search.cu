@@ -209,6 +209,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
     }
     CopyWeights(*cpu_fj.cpu_solver, in_fj);
     cpu_fj.cpu_solver->localMIP->mt.seed(cuopt::seed_generator::get_seed());
+    cpu_fj.cpu_solver->localMIP->RandomizeParams();
   }
   // cudaDeviceSynchronize();
 
