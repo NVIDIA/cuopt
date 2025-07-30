@@ -145,6 +145,10 @@ void fj_t<i_t, f_t>::randomize_weights(const raft::handle_t* handle_ptr)
   f_t h_max_weight = *std::max_element(h_cstr_vec.begin(), h_cstr_vec.end());
   max_cstr_weight.set_value_async(h_max_weight, handle_ptr->get_stream());
   raft::copy(cstr_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
+  raft::copy(
+    cstr_left_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
+  raft::copy(
+    cstr_right_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
   handle_ptr->sync_stream();
 }
 
@@ -243,6 +247,14 @@ void fj_t<i_t, f_t>::copy_weights(const weight_t<i_t, f_t>& weights,
 {
   cuopt_assert(cstr_weights.size() == weights.cstr_weights.size(), "Size mismatch");
   raft::copy(cstr_weights.data(),
+             weights.cstr_weights.data(),
+             weights.cstr_weights.size(),
+             handle_ptr->get_stream());
+  raft::copy(cstr_left_weights.data(),
+             weights.cstr_weights.data(),
+             weights.cstr_weights.size(),
+             handle_ptr->get_stream());
+  raft::copy(cstr_right_weights.data(),
              weights.cstr_weights.data(),
              weights.cstr_weights.size(),
              handle_ptr->get_stream());
