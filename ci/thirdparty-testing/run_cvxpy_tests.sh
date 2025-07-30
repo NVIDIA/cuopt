@@ -32,6 +32,9 @@ python -m pip install \
     'pytest-error-for-skips>=2.0.2' \
     "$(echo ./dist/cvxpy*.whl)[CUOPT,testing]"
 
+# ensure that environment is still consistent (i.e. cvxpy requirements do not conflict with cuopt's)
+pip check
+
 echo "running 'cvxpy' tests"
 timeout 3m python -m pytest \
     --verbose \
