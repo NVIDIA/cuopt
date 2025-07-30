@@ -134,6 +134,12 @@ elseif(CMAKE_CUDA_LINEINFO)
   set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -lineinfo")
 endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
+# Undefine NDEBUG if assert mode is on
+if(DEFINE_ASSERT)
+  message(STATUS "Undefining NDEBUG with assert mode enabled")
+  add_definitions(-UNDEBUG)
+endif()
+
 
 # ##################################################################################################
 # - find CPM based dependencies  ------------------------------------------------------------------

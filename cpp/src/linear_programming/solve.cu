@@ -467,7 +467,7 @@ void run_dual_simplex_thread(
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_concurrent(
-  optimization_problem_t<i_t, f_t>& op_problem,
+  const optimization_problem_t<i_t, f_t>& op_problem,
   detail::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   bool is_batch_mode)
@@ -540,7 +540,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
-  optimization_problem_t<i_t, f_t>& op_problem,
+  const optimization_problem_t<i_t, f_t>& op_problem,
   detail::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   bool is_batch_mode)
@@ -713,6 +713,12 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                               \
     bool problem_checking,                                                             \
     bool use_pdlp_solver_mode);                                                        \
+                                                                                       \
+  template optimization_problem_solution_t<int, F_TYPE> solve_lp_with_method(          \
+    const optimization_problem_t<int, F_TYPE>& op_problem,                             \
+    detail::problem_t<int, F_TYPE>& problem,                                           \
+    pdlp_solver_settings_t<int, F_TYPE> const& settings,                               \
+    bool is_batch_mode = false);                                                       \
                                                                                        \
   template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem( \
     raft::handle_t const* handle_ptr,                                                  \

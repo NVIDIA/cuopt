@@ -24,20 +24,3 @@ LP and MILP API Reference
    :members:
    :undoc-members:
    :show-inheritance:
-
-.. autoclass:: cuopt.linear_programming.problem.Variable
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. autoclass:: cuopt.linear_programming.problem.Constraint
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. autoclass:: cuopt.linear_programming.problem.LinearExpression
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-

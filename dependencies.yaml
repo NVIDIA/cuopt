@@ -371,17 +371,6 @@ dependencies:
           # This index is needed for cubinlinker, ptxcompiler.
           - --extra-index-url=https://pypi.nvidia.com
           - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
-    specific:
-      - output_types: [requirements, pyproject]
-        matrices:
-          - matrix:
-              cuda: "12.*"
-              cuda_suffixed: "true"
-            packages:
-              - cupy-cuda12x
-          - matrix: null
-            packages:
-              - cupy-cuda12x
 
   test_python_cuopt_server:
     common:
@@ -537,7 +526,13 @@ dependencies:
       - output_types: conda
         packages:
           - cupy>=12.0.0
-
+    specific:
+      - output_types: [requirements, pyproject]
+        matrices:
+          - matrix: {cuda: "12.*"}
+            packages: &cupy_packages_cu12
+              - cupy-cuda12x>=12.0.0
+          - {matrix: null, packages: *cupy_packages_cu12}
   depends_on_rapids_logger:
     common:
       - output_types: [conda, requirements, pyproject]
