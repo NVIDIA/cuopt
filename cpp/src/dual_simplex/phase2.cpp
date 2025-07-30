@@ -2818,9 +2818,6 @@ dual::status_t dual_phase2(i_t phase,
     basic_mark[leaving_index]              = -1;
     basic_mark[entering_index]             = basic_leaving_index;
 
-    phase2::check_primal_infeasibilities_basic(
-      basic_list, basic_mark, squared_infeasibilities, infeasibility_indices, 7);
-
     timers.start_timer();
     // Refactor or update the basis factorization
     bool should_refactor = ft.num_updates() > settings.refactor_frequency;
