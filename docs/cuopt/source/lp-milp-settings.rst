@@ -39,19 +39,19 @@ Log File
 ^^^^^^^^
 ``CUOPT_LOG_FILE`` controls the name of a log file where cuOpt should write information about the solve.
 
-Note: the default value is ``""`` and no log file is written.
+Note: the default value is ``""`` and no log file is written. This setting is ignored by the cuOpt service, use the log callback feature instead.
 
 Solution File
 ^^^^^^^^^^^^^
-``CUOPT_SOL_FILE`` controls the name of a file where cuOpt should write the solution.
+``CUOPT_SOLUTION_FILE`` controls the name of a file where cuOpt should write the solution.
 
-Note: the default value is ``""`` and no solution file is written.
+Note: the default value is ``""`` and no solution file is written. This setting is ignored by the cuOpt service.
 
 User Problem File
 ^^^^^^^^^^^^^^^^^
 ``CUOPT_USER_PROBLEM_FILE`` controls the name of a file where cuOpt should write the user problem.
 
-Note: the default value is ``""`` and no user problem file is written.
+Note: the default value is ``""`` and no user problem file is written. This setting is ignored by the cuOpt service.
 
 Num CPU Threads
 ^^^^^^^^^^^^^^^
@@ -257,7 +257,7 @@ We now describe parameter settings for the MILP solvers
 Heuristics only
 ^^^^^^^^^^^^^^^
 
-``CUOPT_HEURISTICS_ONLY`` controls if only the GPU heuristics should be run. When set to true, only the primal
+``CUOPT_MIP_HEURISTICS_ONLY`` controls if only the GPU heuristics should be run for the MIP problem. When set to true, only the primal
 bound is improved via the GPU. When set to false, both the GPU and CPU are used and
 the dual bound is improved on the CPU.
 
@@ -275,14 +275,14 @@ Note: the defaulte value is true.
 Absolute Tolerance
 ^^^^^^^^^^^^^^^^^^
 
-``CUOPT_ABSOLUTE_TOLERANCE`` controls the MIP absolute tolerance.
+``CUOPT_MIP_ABSOLUTE_TOLERANCE`` controls the MIP absolute tolerance.
 
 Note: the default value is ``1e-4``.
 
 Relative Tolerance
 ^^^^^^^^^^^^^^^^^^
 
-``CUOPT_RELATIVE_TOLERANCE`` controls the MIP relative tolerance.
+``CUOPT_MIP_RELATIVE_TOLERANCE`` controls the MIP relative tolerance.
 
 Note: the default value is ``1e-6``.
 
