@@ -4,7 +4,7 @@ LP Python Examples
 
 The following example showcases how to use the ``CuOptServiceSelfHostClient`` to solve a simple LP problem in normal mode and batch mode (where multiple problems are solved at once).
 
-The OpenAPI specification for the server is available in `open-api spec <../../open-api.html>`_. The example data is structured as per the OpenAPI specification for the server, please refer `LPData <../../open-api.html#/default/postrequest_cuopt_request_post>`_ under schema section. LP and MILP share same spec.
+The OpenAPI specification for the server is available in :doc:`open-api spec <../../open-api>`. The example data is structured as per the OpenAPI specification for the server, please refer :doc:`LPData under "POST /cuopt/request" <../../open-api>` under schema section. LP and MILP share same spec.
 
 If you want to run server locally, please run the following command in a terminal or tmux session so you can test examples in another terminal.
 
@@ -14,6 +14,8 @@ If you want to run server locally, please run the following command in a termina
     export ip="localhost"
     export port=5000
     python -m cuopt_server.cuopt_service --ip $ip --port $port
+
+.. _generic-example-with-normal-and-batch-mode:
 
 Genric Example With Normal Mode and Batch Mode
 ------------------------------------------------
@@ -225,6 +227,8 @@ Batch mode response:
 .. note::
     Warm start is only applicable to LP and not for MILP.
 
+.. _warm-start:
+
 Warm Start
 ----------
 
@@ -428,7 +432,7 @@ The response is:
 Generate Datamodel from MPS Parser
 ----------------------------------
 
-Use a datamodel generated from mps file as input; this yields a solution object in response. For more details please refer to `LP/MILP parameters <../../lp-milp-settings.html>`_.
+Use a datamodel generated from mps file as input; this yields a solution object in response. For more details please refer to :doc:`LP/MILP parameters <../../lp-milp-settings>`.
 
 .. code-block:: python
     :linenos:
@@ -560,13 +564,13 @@ The response would be as follows:
 
 Example with DataModel is available in the `Examples Notebooks Repository <https://github.com/NVIDIA/cuopt-examples>`_.
 
-The ``data`` argument to ``get_LP_solve`` may be a dictionary of the format shown in `LP Open-API spec <../../open-api.html#operation/postrequest_cuopt_request_post>`_. More details on the response can be found under the responses schema `request and solution API spec <../../open-api.html#/default/getrequest_cuopt_request__id__get>`_.
+The ``data`` argument to ``get_LP_solve`` may be a dictionary of the format shown in :doc:`LP Open-API spec <../../open-api>`. More details on the response can be found under the responses schema :doc:`"get /cuopt/request" and "get /cuopt/solution" API spec <../../open-api>`.
 
 
 Aborting a Running Job in Thin Client
 -------------------------------------
 
-Please refer to the `MILP Example on Aborting a Running Job in Thin Client <milp-examples.html#aborting-a-running-job-in-thin-client>`_ for more details.
+Please refer to the :ref:`aborting-thin-client` in the MILP Example for more details.
 
 
 =================================================
@@ -709,7 +713,7 @@ In the case of batch mode, you can send a bunch of ``mps`` files at once, and ac
 Aborting a Running Job In CLI
 -----------------------------
 
-Please refer to the `MILP Example <milp-examples.html#aborting-a-running-job-in-cli>`_ for more details.
+Please refer to the :ref:`aborting-cli` in the MILP Example for more details.
 
 .. note::
    Please use solver settings while using .mps files.

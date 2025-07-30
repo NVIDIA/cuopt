@@ -23,7 +23,6 @@
 // 2) medium
 // 3) heavy
 #ifdef ASSERT_MODE
-#undef NDEBUG
 #include <cassert>
 #define cuopt_assert(val, msg) assert(val&& msg)
 #define cuopt_func_call(func)  func;

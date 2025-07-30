@@ -154,6 +154,7 @@ void test_elim_var_solution(std::string test_instance)
   init_handler(op_problem.get_handle_ptr());
   // run the problem constructor of MIP, so that we do bounds standardization
   detail::problem_t<int, double> standardized_problem(op_problem);
+  detail::problem_t<int, double> original_problem(op_problem);
   standardized_problem.preprocess_problem();
   trivial_presolve(standardized_problem);
   detail::problem_t<int, double> sub_problem(standardized_problem);
@@ -171,7 +172,8 @@ void test_elim_var_solution(std::string test_instance)
   bool sol_1_feasible = (int)result_1.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
   EXPECT_EQ((int)result_1.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
   standardized_problem.post_process_solution(solution_1);
-  auto opt_sol_1 = solution_1.get_solution(sol_1_feasible, solver_stats_t<int, double>{});
+  solution_1.problem_ptr = &original_problem;
+  auto opt_sol_1         = solution_1.get_solution(sol_1_feasible, solver_stats_t<int, double>{});
   test_objective_sanity(
     mps_problem, opt_sol_1.get_solution(), opt_sol_1.get_objective_value(), 1e-3);
   test_constraint_sanity_per_row(
@@ -198,7 +200,8 @@ void test_elim_var_solution(std::string test_instance)
   bool sol_2_feasible = (int)result_2.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
   EXPECT_EQ((int)result_2.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
   sub_problem.post_process_solution(solution_2);
-  auto opt_sol_2 = solution_2.get_solution(sol_2_feasible, solver_stats_t<int, double>{});
+  solution_2.problem_ptr = &original_problem;
+  auto opt_sol_2         = solution_2.get_solution(sol_2_feasible, solver_stats_t<int, double>{});
   test_objective_sanity(
     mps_problem, opt_sol_2.get_solution(), opt_sol_2.get_objective_value(), 1e-3);
   test_constraint_sanity_per_row(

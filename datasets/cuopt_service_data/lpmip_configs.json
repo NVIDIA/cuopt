@@ -1,0 +1,103 @@
+{
+  "csr_constraint_matrix": {
+    "offsets": [
+      0,
+      2,
+      4
+    ],
+    "indices": [
+      0,
+      1,
+      0,
+      1
+    ],
+    "values": [
+      3.0,
+      4.0,
+      2.7,
+      10.1
+    ]
+  },
+  "constraint_bounds": {
+    "bounds": [
+      5.4,
+      4.9
+    ],
+    "upper_bounds": [
+      5.4,
+      4.9
+    ],
+    "lower_bounds": [
+      "ninf",
+      "ninf"
+    ]
+  },
+  "objective_data": {
+    "coefficients": [
+      0.2,
+      0.1
+    ],
+    "scalability_factor": 1.0,
+    "offset": 0.0
+  },
+  "variable_bounds": {
+    "upper_bounds": [
+      "inf",
+      "inf"
+    ],
+    "lower_bounds": [
+      0.0,
+      0.0
+    ]
+  },
+  "maximize": false,
+  "solver_config": {
+    "tolerances": {
+	"optimality": 0.0001,
+	"absolute_primal_tolerance": 0.0001,
+	"absolute_dual_tolerance": 0.0001,
+	"absolute_gap_tolerance": 0.0001,
+	"relative_primal_tolerance": 0.0001,
+	"relative_dual_tolerance": 0.0001,
+	"relative_gap_tolerance": 0.0001,
+	"primal_infeasible_tolerance": 0.0001,
+	"dual_infeasible_tolerance": 0.0001,
+	"mip_integrality_tolerance": 0.0001,
+	"mip_absolute_gap": 0.0001,
+	"mip_relative_gap": 0.0001,
+	"mip_absolute_tolerance": 0.0001,
+	"mip_relative_tolerance": 0.0001,
+	
+	"absolute_primal": 0.0001,
+	"absolute_dual": 0.0001,
+	"absolute_gap": 0.0001,
+	"relative_primal": 0.0001,
+	"relative_dual": 0.0001,
+	"relative_gap": 0.0001,
+	"primal_infeasible": 0.0001,
+	"dual_infeasible": 0.0001,
+	"integrality_tolerance": 0.0001,
+	"absolute_mip_gap": 0.0001,
+	"relative_mip_gap": 0.0001
+    },
+    "infeasibility_detection": true,
+    "time_limit": 5,
+    "iteration_limit": 100,
+    "pdlp_solver_mode": 2,
+    "method": 2,
+    "mip_scaling": true,
+    "mip_heuristics_only": true,
+    "num_cpu_threads": 100,
+    "crossover": true,
+    "log_to_console": false,
+    "strict_infeasibility": false,
+    "user_problem_file": "bob",
+    "per_constraint_residual": true,
+    "save_best_primal_so_far": true,
+    "first_primal_feasible": true,
+    "log_file": "bill",
+    "solution_file": "barry",
+    "solver_mode": 3,
+    "heuristics_only": false
+  }
+}
