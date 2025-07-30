@@ -16,6 +16,8 @@ The LP solver can be accessed in the following ways:
 
 - **C API**: A native C API that provides direct low-level access to cuOpt's LP capabilities, enabling integration into any application or system that can interface with C.
 
+- **Python SDK**: A Python package that provides direct access to cuOpt's LP capabilities through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
+
 - **As a Self-Hosted Service**: cuOpt's LP solver can be deployed as a in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
 Each option provide the same powerful linear optimization capabilities while offering flexibility in deployment and integration.

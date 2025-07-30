@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,21 +22,27 @@ import cuopt.linear_programming.solver as solver
 import cuopt.linear_programming.solver_settings as solver_settings
 
 
-# The type of a variable is either continuous or integer
 class VType(str, Enum):
+    """
+    The type of a variable is either continuous or integer.
+    """
     CONTINUOUS = "C"
     INTEGER = "I"
 
 
-# The sense of a constraint is either LE, GE or EQ
 class CType(str, Enum):
+    """
+    The sense of a constraint is either LE, GE or EQ.
+    """
     LE = "L"
     GE = "G"
     EQ = "E"
 
 
-# The sense of a model is either MINIMIZE or MAXIMIZE
 class sense(int, Enum):
+    """
+    The sense of a model is either MINIMIZE or MAXIMIZE.
+    """
     MAXIMIZE = -1
     MINIMIZE = 1
 
