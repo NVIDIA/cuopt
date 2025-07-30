@@ -295,6 +295,26 @@ void LocalMIP::PrintSol()
   }
 }
 
+static int RandomIntInRange(int lower, int upper, std::mt19937& rng)
+{
+  std::uniform_int_distribution<int> dist(lower, upper);
+  return dist(rng);
+}
+
+void LocalMIP::RandomizeParams()
+{
+  smoothProbability = RandomIntInRange(2, 5, mt);
+  tabuBase          = RandomIntInRange(2, 5, mt);
+  tabuVariation     = RandomIntInRange(8, 12, mt);
+  sampleUnsat       = RandomIntInRange(10, 100, mt);
+  bmsUnsatInfeas    = RandomIntInRange(1500, 5000, mt);
+  bmsUnsatFeas      = RandomIntInRange(1500, 5000, mt);
+  sampleSat         = RandomIntInRange(15, 100, mt);
+  bmsSat            = RandomIntInRange(150, 500, mt);
+  bmsFlip           = RandomIntInRange(10, 100, mt);
+  bmsRandom         = RandomIntInRange(100, 500, mt);
+}
+
 void LocalMIP::Allocate()
 {
   liftStep            = 0;

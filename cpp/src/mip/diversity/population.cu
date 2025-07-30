@@ -170,12 +170,29 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
   std::vector<solution_t<i_t, f_t>> return_vector;
+  i_t counter = 0;
   for (auto h_solution_vec : external_solution_queue) {
     solution_t<i_t, f_t> sol(*problem_ptr);
     sol.copy_new_assignment(h_solution_vec);
     sol.compute_feasibility();
+    if (!sol.get_feasible()) {
+      CUOPT_LOG_ERROR(
+        "External solution %d is infeasible, excess %g, obj %g, int viol %g, var viol %g, cstr "
+        "viol %g, n_feasible %d/%d, integers %d/%d",
+        counter,
+        sol.get_total_excess(),
+        sol.get_user_objective(),
+        sol.compute_max_int_violation(),
+        sol.compute_max_variable_violation(),
+        sol.compute_max_constraint_violation(),
+        sol.n_feasible_constraints.value(sol.handle_ptr->get_stream()),
+        problem_ptr->n_constraints,
+        sol.compute_number_of_integers(),
+        problem_ptr->n_integer_vars);
+    }
     sol.handle_ptr->sync_stream();
     return_vector.emplace_back(std::move(sol));
+    counter++;
   }
   if (external_solution_queue.size() > 0) {
     CUOPT_LOG_INFO("Consuming B&B solutions, solution queue size %lu",

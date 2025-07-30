@@ -130,26 +130,44 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& population)
 {
-  scratch_cpu_fj.cpu_solver = nullptr;
-  scratch_cpu_fj.cpu_solver = std::make_unique<Solver>();
+  for (auto& cpu_fj : scratch_cpu_fj) {
+    cpu_fj.cpu_solver = nullptr;
+    cpu_fj.cpu_solver = std::make_unique<Solver>();
+  }
   solution_t<i_t, f_t> solution(*context.problem_ptr);
   thrust::fill(solution.handle_ptr->get_thrust_policy(),
                solution.assignment.begin(),
                solution.assignment.end(),
                0.0);
   solution.clamp_within_bounds();
-  scratch_cpu_fj.cpu_solver->localMIP->prefix           = "******* scratch: ";
-  scratch_cpu_fj.cpu_solver->localMIP->optimum_callback = [this, &population]() {
-    std::vector<double> h_vec;
-    GetSolution(*scratch_cpu_fj.cpu_solver, h_vec);
-    population.add_external_solution(h_vec, scratch_cpu_fj.cpu_solver->localMIP->bestOBJ);
+  i_t counter = 0;
+  for (auto& cpu_fj : scratch_cpu_fj) {
+    cpu_fj.cpu_solver->localMIP->prefix = "******* scratch " + std::to_string(counter) + ": ";
+    cpu_fj.cpu_solver->localMIP->optimum_callback = [this, &population, &cpu_fj]() {
+      std::vector<double> h_vec;
+      GetSolution(*cpu_fj.cpu_solver, h_vec);
+      population.add_external_solution(h_vec, cpu_fj.cpu_solver->localMIP->bestOBJ);
+    };
+    counter++;
   };
-  LocalMipRead(*scratch_cpu_fj.cpu_solver, *context.problem_ptr, solution);
+  // cuopt_func_call(sol.test_feasibility(true))
+  counter = 0;
+  for (auto& cpu_fj : scratch_cpu_fj) {
+    if (counter > 0) solution.assign_random_within_bounds(0.4);
+    LocalMipRead(*cpu_fj.cpu_solver, *context.problem_ptr, solution);
+    if (counter > 0) {
+      cpu_fj.cpu_solver->localMIP->mt.seed(cuopt::seed_generator::get_seed());
+      cpu_fj.cpu_solver->localMIP->RandomizeParams();
+    }
+    counter++;
+  }
   // default weights
   cudaDeviceSynchronize();
 
   // TODO: other thread running on LP optimal
-  scratch_cpu_fj.start_cpu_solver();
+  for (auto& cpu_fj : scratch_cpu_fj) {
+    cpu_fj.start_cpu_solver();
+  }
 
   scratch_cpu_fj_on_lp_opt.cpu_solver                   = nullptr;
   scratch_cpu_fj_on_lp_opt.cpu_solver                   = std::make_unique<Solver>();
@@ -161,6 +179,7 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
   };
   solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
   solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
+  solution_lp.round_nearest();
   LocalMipRead(*scratch_cpu_fj_on_lp_opt.cpu_solver, *context.problem_ptr, solution_lp);
   // default weights
   cudaDeviceSynchronize();
@@ -170,7 +189,9 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::stop_fj_scratch_threads()
 {
-  scratch_cpu_fj.kill_cpu_solver();
+  for (auto& cpu_fj : scratch_cpu_fj) {
+    cpu_fj.kill_cpu_solver();
+  }
   scratch_cpu_fj_on_lp_opt.kill_cpu_solver();
 }
 

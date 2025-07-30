@@ -186,6 +186,7 @@ class LocalMIP {
   void PrintResult(chrono::_V2::system_clock::time_point _clkStart);
   void PrintSol();
   void Allocate();
+  void RandomizeParams();
   Value GetObjValue();
 
   std::string prefix = "";
