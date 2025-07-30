@@ -527,7 +527,23 @@ class Problem:
     Variable can be be created by calling addVariable()
     Constraints can be added by calling addConstraint()
     The objective can be set by calling setObjective()
-    The problem data is formed when calling solve()
+    The problem data is formed when calling solve().
+
+    Parameters
+    ----------
+    model_name : str, optional
+        Name of the model. Default is an empty string.
+
+    Examples
+    --------
+    >>> problem = problem.Problem("MIP_model")
+    >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=VType.INTEGER)
+    >>> y = problem.addVariable(name="Var2")
+    >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
+    >>> expr = 3*x + y
+    >>> problem.addConstraint(expr + x == 20, name="Constr2")
+    >>> problem.setObjective(x + y, sense=sense.MAXIMIZE)
+    >>> problem.solve()
     """
 
     def __init__(self, model_name=""):
