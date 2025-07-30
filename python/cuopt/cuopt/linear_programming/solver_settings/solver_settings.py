@@ -21,22 +21,31 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
     CUOPT_CROSSOVER,
     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
+    CUOPT_FIRST_PRIMAL_FEASIBLE,
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_ITERATION_LIMIT,
+    CUOPT_LOG_FILE,
     CUOPT_LOG_TO_CONSOLE,
     CUOPT_METHOD,
     CUOPT_MIP_ABSOLUTE_GAP,
+    CUOPT_MIP_ABSOLUTE_TOLERANCE,
     CUOPT_MIP_HEURISTICS_ONLY,
     CUOPT_MIP_INTEGRALITY_TOLERANCE,
     CUOPT_MIP_RELATIVE_GAP,
+    CUOPT_MIP_RELATIVE_TOLERANCE,
     CUOPT_MIP_SCALING,
     CUOPT_NUM_CPU_THREADS,
     CUOPT_PDLP_SOLVER_MODE,
+    CUOPT_PER_CONSTRAINT_RESIDUAL,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
     CUOPT_RELATIVE_DUAL_TOLERANCE,
     CUOPT_RELATIVE_GAP_TOLERANCE,
     CUOPT_RELATIVE_PRIMAL_TOLERANCE,
+    CUOPT_SAVE_BEST_PRIMAL_SO_FAR,
+    CUOPT_SOLUTION_FILE,
+    CUOPT_STRICT_INFEASIBILITY,
     CUOPT_TIME_LIMIT,
+    CUOPT_USER_PROBLEM_FILE,
     get_solver_setting,
 )
 
@@ -322,51 +331,72 @@ class SolverSettings:
             time_limit = None
 
         solver_config = {
-            "tolerances": {},
+            "tolerances": {
+                "absolute_dual_tolerance": self.get_parameter(
+                    CUOPT_ABSOLUTE_DUAL_TOLERANCE
+                ),
+                "relative_dual_tolerance": self.get_parameter(
+                    CUOPT_RELATIVE_DUAL_TOLERANCE
+                ),
+                "absolute_primal_tolerance": self.get_parameter(
+                    CUOPT_ABSOLUTE_PRIMAL_TOLERANCE
+                ),
+                "relative_primal_tolerance": self.get_parameter(
+                    CUOPT_RELATIVE_PRIMAL_TOLERANCE
+                ),
+                "absolute_gap_tolerance": self.get_parameter(
+                    CUOPT_ABSOLUTE_GAP_TOLERANCE
+                ),
+                "relative_gap_tolerance": self.get_parameter(
+                    CUOPT_RELATIVE_GAP_TOLERANCE
+                ),
+                "primal_infeasible_tolerance": self.get_parameter(
+                    CUOPT_PRIMAL_INFEASIBLE_TOLERANCE
+                ),
+                "dual_infeasible_tolerance": self.get_parameter(
+                    CUOPT_DUAL_INFEASIBLE_TOLERANCE
+                ),
+                "mip_integrality_tolerance": self.get_parameter(
+                    CUOPT_MIP_INTEGRALITY_TOLERANCE
+                ),
+                "mip_absolute_gap": self.get_parameter(CUOPT_MIP_ABSOLUTE_GAP),
+                "mip_relative_gap": self.get_parameter(CUOPT_MIP_RELATIVE_GAP),
+                "mip_absolute_tolerance": self.get_parameter(
+                    CUOPT_MIP_ABSOLUTE_TOLERANCE
+                ),
+                "mip_relative_tolerance": self.get_parameter(
+                    CUOPT_MIP_RELATIVE_TOLERANCE
+                ),
+            },
             "infeasibility_detection": self.get_parameter(
                 CUOPT_INFEASIBILITY_DETECTION
             ),
             "time_limit": time_limit,
             "iteration_limit": self.get_parameter(CUOPT_ITERATION_LIMIT),
-            "solver_mode": self.get_parameter(CUOPT_PDLP_SOLVER_MODE),
+            "pdlp_solver_mode": self.get_parameter(CUOPT_PDLP_SOLVER_MODE),
             "method": self.get_parameter(CUOPT_METHOD),
             "mip_scaling": self.get_parameter(CUOPT_MIP_SCALING),
-            "heuristics_only": self.get_parameter(CUOPT_MIP_HEURISTICS_ONLY),
+            "mip_heuristics_only": self.get_parameter(
+                CUOPT_MIP_HEURISTICS_ONLY
+            ),
             "num_cpu_threads": self.get_parameter(CUOPT_NUM_CPU_THREADS),
             "crossover": self.get_parameter(CUOPT_CROSSOVER),
             "log_to_console": self.get_parameter(CUOPT_LOG_TO_CONSOLE),
+            "first_primal_feasible": self.get_parameter(
+                CUOPT_FIRST_PRIMAL_FEASIBLE
+            ),
+            "log_file": self.get_parameter(CUOPT_LOG_FILE),
+            "per_constraint_residual": self.get_parameter(
+                CUOPT_PER_CONSTRAINT_RESIDUAL
+            ),
+            "save_best_primal_so_far": self.get_parameter(
+                CUOPT_SAVE_BEST_PRIMAL_SO_FAR
+            ),
+            "solution_file": self.get_parameter(CUOPT_SOLUTION_FILE),
+            "strict_infeasibility": self.get_parameter(
+                CUOPT_STRICT_INFEASIBILITY
+            ),
+            "user_problem_file": self.get_parameter(CUOPT_USER_PROBLEM_FILE),
         }
-        solver_config["tolerances"]["absolute_dual"] = self.get_parameter(
-            CUOPT_ABSOLUTE_DUAL_TOLERANCE
-        )
-        solver_config["tolerances"]["relative_dual"] = self.get_parameter(
-            CUOPT_RELATIVE_DUAL_TOLERANCE
-        )
-        solver_config["tolerances"]["absolute_primal"] = self.get_parameter(
-            CUOPT_ABSOLUTE_PRIMAL_TOLERANCE
-        )
-        solver_config["tolerances"]["relative_primal"] = self.get_parameter(
-            CUOPT_RELATIVE_PRIMAL_TOLERANCE
-        )
-        solver_config["tolerances"]["absolute_gap"] = self.get_parameter(
-            CUOPT_ABSOLUTE_GAP_TOLERANCE
-        )
-        solver_config["tolerances"]["relative_gap"] = self.get_parameter(
-            CUOPT_RELATIVE_GAP_TOLERANCE
-        )
-        solver_config["tolerances"]["primal_infeasible"] = self.get_parameter(
-            CUOPT_PRIMAL_INFEASIBLE_TOLERANCE
-        )
-        solver_config["tolerances"]["dual_infeasible"] = self.get_parameter(
-            CUOPT_DUAL_INFEASIBLE_TOLERANCE
-        )
-        solver_config["tolerances"][
-            "integrality_tolerance"
-        ] = self.get_parameter(CUOPT_MIP_INTEGRALITY_TOLERANCE)
-        solver_config["tolerances"]["absolute_mip_gap"] = self.get_parameter(
-            CUOPT_MIP_ABSOLUTE_GAP
-        )
-        solver_config["tolerances"]["relative_mip_gap"] = self.get_parameter(
-            CUOPT_MIP_RELATIVE_GAP
-        )
+
         return solver_config

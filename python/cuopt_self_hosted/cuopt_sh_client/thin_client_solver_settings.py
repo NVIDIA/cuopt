@@ -163,53 +163,42 @@ class ThinClientSolverSettings:
             "tolerances": {},
         }
 
+        t = [
+            "absolute_primal_tolerance",
+            "absolute_dual_tolerance",
+            "absolute_gap_tolerance",
+            "relative_primal_tolerance",
+            "relative_dual_tolerance",
+            "relative_gap_tolerance",
+            "primal_infeasible_tolerance",
+            "dual_infeasible_tolerance",
+            "mip_integrality_tolerance",
+            "mip_absolute_gap",
+            "mip_relative_gap",
+            "mip_absolute_tolerance",
+            "mip_relative_tolerance",
+            # deprecated parameters
+            "absolute_primal",
+            "absolute_dual",
+            "absolute_gap",
+            "relative_primal",
+            "relative_dual",
+            "relative_gap",
+            "primal_infeasible",
+            "dual_infeasible",
+            "integrality_tolerance",
+            "absolute_mip_gap",
+            "relative_mip_gap",
+        ]
+
         # Grab everything that is not a tolerance
         for key in self.parameter_dict:
-            if "tolerance" not in key:
+            if key not in t:
                 solver_config[key] = self.parameter_dict[key]
-        # Handle tolerance separately
-        if "absolute_dual_tolerance" in self.parameter_dict:
-            solver_config["tolerances"]["absolute_dual"] = self.parameter_dict[
-                "absolute_dual_tolerance"
-            ]
-        if "relative_dual_tolerance" in self.parameter_dict:
-            solver_config["tolerances"]["relative_dual"] = self.parameter_dict[
-                "relative_dual_tolerance"
-            ]
-        if "absolute_primal_tolerance" in self.parameter_dict:
-            solver_config["tolerances"][
-                "absolute_primal"
-            ] = self.parameter_dict["absolute_primal_tolerance"]
-        if "relative_primal_tolerance" in self.parameter_dict:
-            solver_config["tolerances"][
-                "relative_primal"
-            ] = self.parameter_dict["relative_primal_tolerance"]
-        if "absolute_gap_tolerance" in self.parameter_dict:
-            solver_config["tolerances"]["absolute_gap"] = self.parameter_dict[
-                "absolute_gap_tolerance"
-            ]
-        if "relative_gap_tolerance" in self.parameter_dict:
-            solver_config["tolerances"]["relative_gap"] = self.parameter_dict[
-                "relative_gap_tolerance"
-            ]
-        if "primal_infeasible_tolerance" in self.parameter_dict:
-            solver_config["tolerances"][
-                "primal_infeasible"
-            ] = self.parameter_dict["primal_infeasible_tolerance"]
-        if "dual_infeasible_tolerance" in self.parameter_dict:
-            solver_config["tolerances"][
-                "dual_infeasible"
-            ] = self.parameter_dict["dual_infeasible_tolerance"]
-        if "integrality_tolerance" in self.parameter_dict:
-            solver_config["tolerances"][
-                "integrality_tolerance"
-            ] = self.parameter_dict["integrality_tolerance"]
-        if "absolute_mip_gap" in self.parameter_dict:
-            solver_config["tolerances"][
-                "absolute_mip_gap"
-            ] = self.parameter_dict["absolute_mip_gap"]
-        if "relative_mip_gap" in self.parameter_dict:
-            solver_config["tolerances"][
-                "relative_mip_gap"
-            ] = self.parameter_dict["relative_mip_gap"]
+
+        # Now grab everything that is a tolerance and set in the dictionary
+        for name in t:
+            if name in self.parameter_dict:
+                solver_config["tolerances"][name] = self.parameter_dict[name]
+
         return solver_config
