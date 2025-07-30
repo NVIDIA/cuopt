@@ -216,3 +216,96 @@ The response is as follows:
     y = 50.0
     z = 99.99999999999999
     Objective value = 399.99999999999994
+
+Working with Incumbent Solutions
+--------------------------------
+
+Incumbent solutions are intermediate feasible solutions found during the MIP solving process. They represent the best integer-feasible solution discovered so far and can be accessed through callback functions.
+
+.. note::
+    Incumbent solutions are only available for Mixed Integer Programming (MIP) problems, not for pure Linear Programming (LP) problems.
+
+.. code-block:: python
+
+    from cuopt.linear_programming.problem import Problem, VType, sense
+    from cuopt.linear_programming.solver_settings import SolverSettings
+    from cuopt.linear_programming.internals import GetSolutionCallback, SetSolutionCallback
+
+    # Create a callback class to receive incumbent solutions
+    class IncumbentCallback(GetSolutionCallback):
+        def __init__(self):
+            super().__init__()
+            self.solutions = []
+            self.n_callbacks = 0
+
+        def get_solution(self, solution, solution_cost):
+            """
+            Called whenever the solver finds a new incumbent solution.
+
+            Parameters
+            ----------
+            solution : array-like
+                The variable values of the incumbent solution
+            solution_cost : array-like
+                The objective value of the incumbent solution
+            """
+            self.n_callbacks += 1
+
+            # Store the incumbent solution
+            incumbent = {
+                "solution": solution.copy_to_host(),
+                "cost": solution_cost.copy_to_host()[0],
+                "iteration": self.n_callbacks
+            }
+            self.solutions.append(incumbent)
+
+            print(f"Incumbent {self.n_callbacks}: {incumbent['solution']}, cost: {incumbent['cost']:.2f}")
+
+    # Create a more complex MIP problem that will generate multiple incumbents
+    problem = Problem("Incumbent Example")
+
+    # Add integer variables
+    x = problem.addVariable(vtype=VType.INTEGER)
+    y = problem.addVariable(vtype=VType.INTEGER)
+
+    # Add constraints to create a problem that will generate multiple incumbents
+    problem.addConstraint(2 * x + 4 * y >= 230)
+    problem.addConstraint(3 * x + 2 * y <= 190)
+
+    # Set objective to maximize
+    problem.setObjective(5 * x + 3 * y, sense=sense.MAXIMIZE)
+
+    # Configure solver settings with callback
+    settings = SolverSettings()
+    # Set the incumbent callback
+    incumbent_callback = IncumbentCallback()
+    settings.set_mip_callback(incumbent_callback)
+    settings.set_parameter("time_limit", 30)  # Allow enough time to find multiple incumbents
+
+    # Solve the problem
+    problem.solve(settings)
+
+    # Display final results
+    print(f"\n=== Final Results ===")
+    print(f"Problem status: {problem.Status.name}")
+    print(f"Solve time: {problem.SolveTime:.2f} seconds")
+    print(f"Final solution: x={x.getValue()}, y={y.getValue()}")
+    print(f"Final objective value: {problem.ObjVal:.2f}")
+    
+The response is as follows:
+
+.. code-block:: text
+    Optimal solution found.
+    Incumbent 1: [ 0. 58.], cost: 174.00
+    Incumbent 2: [36. 41.], cost: 303.00
+    Generated fast solution in 0.158467 seconds with objective 303.000000
+    Consuming B&B solutions, solution queue size 2
+    Solution objective: 303.000000 , relative_mip_gap 0.000000 solution_bound 303.000000 presolve_time 0.043211 total_solve_time 0.160270 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 4 simplex_iterations 3
+
+    === Final Results ===
+    Problem status: Optimal
+    Solve time: 0.16 seconds
+    Final solution: x=36.0, y=40.99999999999999
+    Final objective value: 303.00
+
+
