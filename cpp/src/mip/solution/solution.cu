@@ -541,6 +541,11 @@ f_t solution_t<i_t, f_t>::compute_max_int_violation()
 template <typename i_t, typename f_t>
 f_t solution_t<i_t, f_t>::compute_max_variable_violation()
 {
+  cuopt_assert(problem_ptr->n_variables == assignment.size(), "Size mismatch");
+  cuopt_assert(problem_ptr->n_variables == problem_ptr->variable_lower_bounds.size(),
+               "Size mismatch");
+  cuopt_assert(problem_ptr->n_variables == problem_ptr->variable_upper_bounds.size(),
+               "Size mismatch");
   return thrust::transform_reduce(
     handle_ptr->get_thrust_policy(),
     thrust::make_counting_iterator(0),
