@@ -668,6 +668,8 @@ class Problem:
         Solution statistics for LP or MIP problem.
     ObjValue : float
         Objective value of the problem.
+    IsMIP : bool
+        Indicates if the problem is a Mixed Integer Program.
     NumVariables : int
         Number of Variables in the problem.
     NumConstraints : int
@@ -871,6 +873,14 @@ class Problem:
         for constr in self.constrs:
             nnz += len(constr)
         return nnz
+
+    @property
+    def IsMIP(self):
+        # Returns if the problem is a MIP problem.
+        for var in self.vars:
+            if var.VariableType == "I":
+                return True
+        return False
 
     def getCSR(self):
         """

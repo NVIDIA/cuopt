@@ -24,7 +24,7 @@ LP and MILP API Reference
    :members:
    :undoc-members:
    :show-inheritance:
-   :exclude-members: reset_solved_values, post_solve, dict_to_object, NumNZs, NumVariables, NumConstraints
+   :exclude-members: reset_solved_values, post_solve, dict_to_object, NumNZs, NumVariables, NumConstraints, IsMIP
 
 .. autoclass:: cuopt.linear_programming.problem.Variable
    :members:

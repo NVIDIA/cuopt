@@ -48,6 +48,7 @@ def test_model():
     assert x.getVariableType() == VType.INTEGER
     assert y.getVariableType() == "I"
     assert [x.getIndex(), y.getIndex()] == [0, 1]
+    assert prob.IsMIP
 
     # Adding Constraints
     prob.addConstraint(2 * x + 4 * y >= 230, name="C1")
@@ -128,6 +129,7 @@ def test_model():
     x.VariableType = VType.CONTINUOUS
     y.VariableType = CONTINUOUS
     y.UB = 45.5
+    assert not prob.IsMIP
 
     prob.solve(settings)
     assert prob.solved

@@ -43,7 +43,7 @@ Simple Linear Programming Example
         print(f"Optimal solution found in {problem.SolveTime:.2f} seconds")
         print(f"x = {x.getValue()}")
         print(f"y = {y.getValue()}")
-        print(f"Objective value = {problem.ObjVal}")
+        print(f"Objective value = {problem.ObjValue}")
 
 The response is as follows:
 
@@ -88,7 +88,7 @@ Mixed Integer Linear Programming Example
         print(f"Optimal solution found in {problem.SolveTime:.2f} seconds")
         print(f"x = {x.getValue()}")
         print(f"y = {y.getValue()}")
-        print(f"Objective value = {problem.ObjVal}")
+        print(f"Objective value = {problem.ObjValue}")
     else:
         print(f"Problem status: {problem.Status.name}")
 
@@ -145,7 +145,7 @@ Advanced Example: Production Planning
         print(f"Solve time: {problem.SolveTime:.2f} seconds")
         print(f"Product A production: {x1.getValue()} units")
         print(f"Product B production: {x2.getValue()} units")
-        print(f"Total profit: ${problem.ObjVal:.2f}")
+        print(f"Total profit: ${problem.ObjValue:.2f}")
         
     else:
         print(f"Problem not solved optimally. Status: {problem.Status.name}")
@@ -205,7 +205,7 @@ Working with Expressions and Constraints
         print(f"x = {x.getValue()}")
         print(f"y = {y.getValue()}")
         print(f"z = {z.getValue()}")
-        print(f"Objective value = {problem.ObjVal}")
+        print(f"Objective value = {problem.ObjValue}")
         
 The response is as follows:
 
@@ -228,7 +228,7 @@ Incumbent solutions are intermediate feasible solutions found during the MIP sol
 .. code-block:: python
 
     from cuopt.linear_programming.problem import Problem, INTEGER, MAXIMIZE
-    from cuopt.linear_programming.solver_settings import SolverSettings
+    from cuopt.linear_programming.solver_settings import SolverSettings, CUOPT_TIME_LIMIT
     from cuopt.linear_programming.internals import GetSolutionCallback, SetSolutionCallback
 
     # Create a callback class to receive incumbent solutions
@@ -280,7 +280,7 @@ Incumbent solutions are intermediate feasible solutions found during the MIP sol
     # Set the incumbent callback
     incumbent_callback = IncumbentCallback()
     settings.set_mip_callback(incumbent_callback)
-    settings.set_parameter("time_limit", 30)  # Allow enough time to find multiple incumbents
+    settings.set_parameter(CUOPT_TIME_LIMIT, 30)  # Allow enough time to find multiple incumbents
 
     # Solve the problem
     problem.solve(settings)
@@ -290,7 +290,7 @@ Incumbent solutions are intermediate feasible solutions found during the MIP sol
     print(f"Problem status: {problem.Status.name}")
     print(f"Solve time: {problem.SolveTime:.2f} seconds")
     print(f"Final solution: x={x.getValue()}, y={y.getValue()}")
-    print(f"Final objective value: {problem.ObjVal:.2f}")
+    print(f"Final objective value: {problem.ObjValue:.2f}")
     
 The response is as follows:
 
