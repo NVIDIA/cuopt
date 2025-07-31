@@ -27,6 +27,9 @@ ConfigureTest(ELIM_VAR_REMAP_TEST
 ConfigureTest(STANDARDIZATION_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/bounds_standardization_test.cu
 )
+ConfigureTest(LB_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/load_balancing_test.cu
+)
 ConfigureTest(MULTI_PROBE_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/multi_probe_test.cu
 )

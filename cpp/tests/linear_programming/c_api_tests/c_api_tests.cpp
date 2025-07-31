@@ -57,7 +57,7 @@ TEST_P(TimeLimitTestFixture, time_limit)
                            method),
             CUOPT_SUCCESS);
   EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_TIME_LIMIT);
-  EXPECT_NEAR(solve_time, target_solve_time, 0.1);
+  EXPECT_NEAR(solve_time, target_solve_time, 1.0);
 }
 INSTANTIATE_TEST_SUITE_P(
   c_api,

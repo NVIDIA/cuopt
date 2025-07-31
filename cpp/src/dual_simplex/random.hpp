@@ -21,7 +21,7 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
-template <typename i_t>
+template <typename i_t, typename f_t>
 class random_t {
  public:
   random_t(i_t seed) : gen(seed) {}
@@ -31,6 +31,12 @@ class random_t {
   {
     std::uniform_int_distribution<> distrib(
       0, n - 1);  // Generate random number in the range [min, max]
+    return distrib(gen);
+  }
+
+  f_t random()
+  {
+    std::uniform_real_distribution<> distrib(0.0, 1.0);
     return distrib(gen);
   }
 
