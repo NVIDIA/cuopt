@@ -228,7 +228,8 @@ Incumbent solutions are intermediate feasible solutions found during the MIP sol
 .. code-block:: python
 
     from cuopt.linear_programming.problem import Problem, INTEGER, MAXIMIZE
-    from cuopt.linear_programming.solver_settings import SolverSettings, CUOPT_TIME_LIMIT
+    from cuopt.linear_programming.solver_settings import SolverSettings
+    from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT    
     from cuopt.linear_programming.internals import GetSolutionCallback, SetSolutionCallback
 
     # Create a callback class to receive incumbent solutions
