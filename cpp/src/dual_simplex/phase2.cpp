@@ -1811,6 +1811,20 @@ void check_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
   }
 }
 
+template <typename i_t>
+void check_basic_infeasibilities(const std::vector<i_t>& basic_list,
+                                 const std::vector<i_t>& basic_mark,
+                                 const std::vector<i_t>& infeasibility_indices,
+                                 i_t info)
+{
+  for (i_t k = 0; k < infeasibility_indices.size(); ++k) {
+    const i_t j = infeasibility_indices[k];
+    if (basic_mark[j] < 0) {
+      printf("%d basic_infeasibilities basic_mark[%d] < 0\n", info, j);
+    }
+  }
+}
+
 template <typename i_t, typename f_t>
 void check_update(const lp_problem_t<i_t, f_t>& lp,
                   const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -2330,6 +2344,10 @@ dual::status_t dual_phase2(i_t phase,
   f_t primal_infeasibility = phase2::compute_initial_primal_infeasibilities(
     lp, settings, basic_list, x, squared_infeasibilities, infeasibility_indices);
 
+#ifdef CHECK_BASIC_INFEASIBILITIES
+  phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 0);
+#endif
+
   csc_matrix_t<i_t, f_t> A_transpose(1, 1, 0);
   lp.A.transpose(A_transpose);
 
@@ -2756,6 +2774,9 @@ dual::status_t dual_phase2(i_t phase,
     timers.start_timer();
     // Update primal infeasibilities due to changes in basic variables
     // from flipping bounds
+#ifdef CHECK_BASIC_INFEASIBILITIES
+    phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 2);
+#endif
     phase2::update_primal_infeasibilities(lp,
                                           settings,
                                           basic_list,
@@ -2818,6 +2839,10 @@ dual::status_t dual_phase2(i_t phase,
     basic_mark[leaving_index]              = -1;
     basic_mark[entering_index]             = basic_leaving_index;
 
+#ifdef CHECK_BASIC_INFEASIBILITIES
+    phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 5);
+#endif
+
     timers.start_timer();
     // Refactor or update the basis factorization
     bool should_refactor = ft.num_updates() > settings.refactor_frequency;
@@ -2829,21 +2854,36 @@ dual::status_t dual_phase2(i_t phase,
       should_refactor = recommend_refactor == 1;
     }
 
+#ifdef CHECK_BASIC_INFEASIBILITIES
+    phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 6);
+#endif
     if (should_refactor) {
       if (factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) ==
           -1) {
+        if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
         basis_repair(lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
-        if (factorize_basis(
+        i_t count = 0;
+        while (factorize_basis(
               lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) == -1) {
           settings.log.printf("Failed to repair basis. %d deficient columns.\n",
                               static_cast<int>(deficient.size()));
-          return dual::status_t::NUMERICAL;
+          if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
+          settings.threshold_partial_pivoting_tol = 1.0;
+          count++;
+          if (count > 100) {
+            return dual::status_t::NUMERICAL;
+          }
+          basis_repair(lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
         }
       }
       reorder_basic_list(q, basic_list);
       ft.reset(L, U, p);
       phase2::reset_basis_mark(basic_list, nonbasic_list, basic_mark, nonbasic_mark);
+      phase2::compute_initial_primal_infeasibilities(lp, settings, basic_list, x, squared_infeasibilities, infeasibility_indices);
     }
+#ifdef CHECK_BASIC_INFEASIBILITIES
+    phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 7);
+#endif
     timers.lu_update_time += timers.stop_timer();
 
     timers.start_timer();

@@ -575,8 +575,8 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
     i_t pivot_j                 = -1;
     i_t pivot_p                 = kNone;
     constexpr f_t pivot_tol     = 1e-11;
-    constexpr f_t drop_tol      = 1e-13;
-    constexpr f_t threshold_tol = 1.0 / 10.0;
+    const f_t drop_tol      = tol == 1.0 ? 0.0 : 1e-13;
+    const f_t threshold_tol = tol;
     markowitz_search(Cdegree,
                      Rdegree,
                      col_count,
