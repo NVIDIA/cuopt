@@ -359,6 +359,13 @@ bool solution_t<i_t, f_t>::round_random_nearest(i_t n_target_random_rounds)
 }
 
 template <typename i_t, typename f_t>
+bool solution_t<i_t, f_t>::round_simple()
+{
+  invoke_simple_rounding(*this);
+  return compute_feasibility();
+}
+
+template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::correct_integer_precision()
 {
   invoke_correct_integers(*this, problem_ptr->tolerances.integrality_tolerance);
@@ -373,6 +380,24 @@ i_t solution_t<i_t, f_t>::compute_number_of_integers()
                      problem_ptr->integer_indices.begin(),
                      problem_ptr->integer_indices.end(),
                      [pb = problem_ptr->view(), assignment_ptr] __device__(i_t idx) -> bool {
+                       bool is_int = pb.is_integer(assignment_ptr[idx]);
+
+                       i_t up_locks                    = 0;
+                       i_t down_locks                  = 0;
+                       auto [offset_begin, offset_end] = pb.reverse_range_for_var(idx);
+                       for (i_t i = offset_begin; i < offset_end; i += 1) {
+                         auto cstr_coeff = pb.reverse_coefficients[i];
+                         if (cstr_coeff > 0) {
+                           up_locks += 1;
+                         } else {
+                           down_locks += 1;
+                         }
+                       }
+
+                       if (up_locks > 0 && down_locks > 0) {
+                         printf("var %d up_locks %d down_locks %d\n", idx, up_locks, down_locks);
+                       }
+
                        return pb.is_integer(assignment_ptr[idx]);
                      });
   return n_assigned_integers;

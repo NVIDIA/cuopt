@@ -320,8 +320,8 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     // do the resizing no-matter what, bounds presolve might not change the bounds but initial
     // trivial presolve might have
     ls.constraint_prop.bounds_update.resize(*problem_ptr);
-    ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
-      *problem_ptr, ls.constraint_prop.bounds_update);
+    // ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
+    //   *problem_ptr, ls.constraint_prop.bounds_update);
     if (!check_bounds_sanity(*problem_ptr)) { return false; }
   }
   stats.presolve_time = presolve_timer.elapsed_time();
@@ -478,6 +478,15 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     // in case the pdlp returned var boudns that are out of bounds
     clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
   }
+
+  solution_t<i_t, f_t> solution(*problem_ptr);
+  solution.copy_new_assignment(host_copy(lp_optimal_solution));
+  solution.round_nearest();
+  CUOPT_LOG_INFO("Initial LP solution is %f, excess %g, int violation %g",
+                 solution.get_user_objective(),
+                 solution.get_total_excess(),
+                 solution.compute_max_int_violation());
+
   population.allocate_solutions();
 
   if (check_b_b_preemption()) { return population.best_feasible(); }

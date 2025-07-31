@@ -25,6 +25,36 @@
 
 namespace cuopt::linear_programming::detail {
 
+template <typename i_t, typename f_t>
+__global__ void simple_rounding_kernel(typename solution_t<i_t, f_t>::view_t solution,
+                                       raft::device_span<i_t> v_up_locks,
+                                       raft::device_span<i_t> v_down_locks,
+                                       bool* successful)
+{
+  if (TH_ID_X >= solution.problem.n_integer_vars) { return; }
+  i_t var_id   = solution.problem.integer_indices[TH_ID_X];
+  f_t curr_val = solution.assignment[var_id];
+  if (solution.problem.is_integer(curr_val)) { return; }
+
+  bool can_round_up   = v_up_locks[var_id] == 0;
+  bool can_round_down = v_down_locks[var_id] == 0;
+
+  if (can_round_up && can_round_down) {
+    if (solution.problem.objective_coefficients[var_id] > 0) {
+      solution.assignment[var_id] = floor(curr_val);
+    } else {
+      solution.assignment[var_id] = ceil(curr_val);
+    }
+  } else if (can_round_up) {
+    solution.assignment[var_id] = ceil(curr_val);
+  } else if (can_round_down) {
+    solution.assignment[var_id] = floor(curr_val);
+  } else {
+    printf("var %d cannot round up or down\n", var_id);
+    *successful = false;
+  }
+}
+
 // rounds each integer variable to the nearest integer value that doesn't violate the bounds
 template <typename i_t, typename f_t>
 __global__ void nearest_rounding_kernel(typename solution_t<i_t, f_t>::view_t solution,

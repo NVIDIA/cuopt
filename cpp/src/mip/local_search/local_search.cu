@@ -127,13 +127,19 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
   }
 }
 
+static double local_search_best_obj       = std::numeric_limits<double>::max();
+static population_t<int, double>* pop_ptr = nullptr;
+
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& population)
 {
+  pop_ptr = &population;
+
   for (auto& cpu_fj : scratch_cpu_fj) {
     cpu_fj.cpu_solver = nullptr;
     cpu_fj.cpu_solver = std::make_unique<Solver>();
   }
+
   solution_t<i_t, f_t> solution(*context.problem_ptr);
   thrust::fill(solution.handle_ptr->get_thrust_policy(),
                solution.assignment.begin(),
@@ -147,6 +153,13 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
       std::vector<double> h_vec;
       GetSolution(*cpu_fj.cpu_solver, h_vec);
       population.add_external_solution(h_vec, cpu_fj.cpu_solver->localMIP->bestOBJ);
+      if (cpu_fj.cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
+        CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
+                        cpu_fj.cpu_solver->localMIP->bestOBJ,
+                        population.is_feasible() ? population.best_feasible().get_objective()
+                                                 : std::numeric_limits<f_t>::max());
+        local_search_best_obj = cpu_fj.cpu_solver->localMIP->bestOBJ;
+      }
     };
     counter++;
   };
@@ -176,6 +189,13 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
     std::vector<double> h_vec;
     GetSolution(*scratch_cpu_fj_on_lp_opt.cpu_solver, h_vec);
     population.add_external_solution(h_vec, scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ);
+    if (scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
+      CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
+                      scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ,
+                      population.is_feasible() ? population.best_feasible().get_objective()
+                                               : std::numeric_limits<f_t>::max());
+      local_search_best_obj = scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ;
+    }
   };
   solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
   solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
@@ -200,6 +220,33 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
                                            fj_t<i_t, f_t>& in_fj,
                                            const std::string& source)
 {
+  if (pop_ptr && pop_ptr->is_feasible() &&
+      pop_ptr->best_feasible().get_objective() < local_search_best_obj) {
+    CUOPT_LOG_DEBUG(
+      "******* Local search obj %g vs best overall %g, should perform a restart",
+      context.problem_ptr->get_user_obj_from_solver_obj(local_search_best_obj),
+      context.problem_ptr->get_user_obj_from_solver_obj(pop_ptr->best_feasible().get_objective()));
+    local_search_best_obj = pop_ptr->best_feasible().get_objective();
+
+    scratch_cpu_fj[0].stop_cpu_solver();
+    scratch_cpu_fj[0].wait_for_cpu_solver();
+    scratch_cpu_fj[0].cpu_solver                   = nullptr;
+    scratch_cpu_fj[0].cpu_solver                   = std::make_unique<Solver>();
+    scratch_cpu_fj[0].cpu_solver->localMIP->prefix = "******* scratch " + std::to_string(0) + ": ";
+    scratch_cpu_fj[0].cpu_solver->localMIP->optimum_callback = [this]() {
+      std::vector<double> h_vec;
+      GetSolution(*scratch_cpu_fj[0].cpu_solver, h_vec);
+      pop_ptr->add_external_solution(h_vec, scratch_cpu_fj[0].cpu_solver->localMIP->bestOBJ);
+      if (scratch_cpu_fj[0].cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
+        local_search_best_obj = scratch_cpu_fj[0].cpu_solver->localMIP->bestOBJ;
+      }
+    };
+    LocalMipRead(*scratch_cpu_fj[0].cpu_solver,
+                 *pop_ptr->best_feasible().problem_ptr,
+                 pop_ptr->best_feasible());
+    scratch_cpu_fj[0].start_cpu_solver();
+  }
+
   for (auto& cpu_fj : ls_cpu_fj) {
     if (cpu_fj.cpu_solver == nullptr) {
       cpu_fj.cpu_solver = std::make_unique<Solver>();

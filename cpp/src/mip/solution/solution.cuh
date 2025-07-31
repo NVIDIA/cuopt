@@ -62,6 +62,7 @@ class solution_t {
   bool round_nearest();
   // rounds integers to random if fractionality is between 0.25 and 0.75. otherwise, to nearest
   bool round_random_nearest(i_t n_target_random_rounds);
+  bool round_simple();
   // makes the approximate integer values up to INTEGRALITY TOLERANCE whole integers
   void correct_integer_precision();
   // does a reduction and returns if the current solution is feasible

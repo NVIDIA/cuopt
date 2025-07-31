@@ -38,13 +38,14 @@ bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
 {
   i_t TPB        = 128;
   i_t n_integers = solution.compute_number_of_integers();
-  CUOPT_LOG_TRACE("before rounding n_integers %d total n_integers %d",
+  CUOPT_LOG_DEBUG("before rounding n_integers %d total n_integers %d",
                   n_integers,
                   solution.problem_ptr->n_integer_vars);
   i_t n_integers_to_round = solution.problem_ptr->n_integer_vars - n_integers;
   if (n_integers_to_round == 0) { return solution.compute_feasibility(); }
   constexpr i_t brute_force_rounding_threshold = 8;
   if (n_integers_to_round <= brute_force_rounding_threshold) {
+    CUOPT_LOG_DEBUG("attempting brute force rounding %d integers", n_integers_to_round);
     solution.compute_constraints();
     i_t n_configs = pow(2, n_integers_to_round);
     i_t n_blocks  = (n_configs + TPB - 1) / TPB;
@@ -83,11 +84,95 @@ bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
 }
 
 template <typename i_t, typename f_t>
+bool invoke_simple_rounding(solution_t<i_t, f_t>& solution)
+{
+  solution.compute_feasibility();
+  CUOPT_LOG_DEBUG("excess before: %g, int violation before: %g",
+                  solution.get_total_excess(),
+                  solution.compute_max_int_violation());
+
+  solution_t<i_t, f_t> sol_copy(*solution.problem_ptr);
+  sol_copy.copy_from(solution);
+
+  rmm::device_uvector<i_t> up_locks(solution.problem_ptr->n_variables,
+                                    solution.handle_ptr->get_stream());
+  rmm::device_uvector<i_t> down_locks(solution.problem_ptr->n_variables,
+                                      solution.handle_ptr->get_stream());
+  thrust::fill(solution.handle_ptr->get_thrust_policy(), up_locks.begin(), up_locks.end(), 0);
+  thrust::fill(solution.handle_ptr->get_thrust_policy(), down_locks.begin(), down_locks.end(), 0);
+
+  thrust::for_each(
+    solution.handle_ptr->get_thrust_policy(),
+    solution.problem_ptr->integer_indices.begin(),
+    solution.problem_ptr->integer_indices.end(),
+    [pb             = solution.problem_ptr->view(),
+     assignment_ptr = solution.assignment.data(),
+     v_up_locks     = up_locks.data(),
+     v_down_locks   = down_locks.data(),
+     orig_lower_bounds =
+       solution.problem_ptr->original_problem_ptr->get_constraint_lower_bounds().data(),
+     orig_upper_bounds = solution.problem_ptr->original_problem_ptr->get_constraint_upper_bounds()
+                           .data()] __device__(i_t idx) {
+      i_t up_locks   = 0;
+      i_t down_locks = 0;
+      bool is_int    = pb.is_integer(assignment_ptr[idx]);
+
+      auto [offset_begin, offset_end] = pb.reverse_range_for_var(idx);
+      for (i_t i = offset_begin; i < offset_end; i += 1) {
+        auto cstr_idx   = pb.reverse_constraints[i];
+        auto cstr_coeff = pb.reverse_coefficients[i];
+
+        // boxed constraint. can't be rounded safely
+        if (std::isfinite(pb.constraint_lower_bounds[cstr_idx]) &&
+            std::isfinite(pb.constraint_upper_bounds[cstr_idx])) {
+          up_locks += 1;
+          down_locks += 1;
+          continue;
+        }
+
+        f_t sign = std::isfinite(pb.constraint_upper_bounds[cstr_idx]) ? 1 : -1;
+
+        if (cstr_coeff * sign > 0) {
+          up_locks += 1;
+        } else {
+          down_locks += 1;
+        }
+      }
+
+      v_up_locks[idx]   = up_locks;
+      v_down_locks[idx] = down_locks;
+    });
+
+  rmm::device_scalar<bool> successful(true, solution.handle_ptr->get_stream());
+  i_t TPB = 128;
+  simple_rounding_kernel<i_t, f_t><<<2048, TPB, 0, solution.handle_ptr->get_stream()>>>(
+    solution.view(), make_span(up_locks), make_span(down_locks), successful.data());
+  if (!successful.value(solution.handle_ptr->get_stream())) {
+    CUOPT_LOG_DEBUG("Simple rounding failed");
+    solution.copy_from(sol_copy);
+    return false;
+  } else {
+    solution.compute_feasibility();
+    CUOPT_LOG_DEBUG("Simple rounding successful");
+    CUOPT_LOG_DEBUG("objective %g, feas %d, excess %g, int violation %g",
+                    solution.get_user_objective(),
+                    solution.get_feasible(),
+                    solution.get_total_excess(),
+                    solution.compute_max_int_violation());
+    return true;
+  }
+}
+
+template <typename i_t, typename f_t>
 void invoke_round_nearest(solution_t<i_t, f_t>& solution)
 {
   i_t TPB                     = 128;
   bool brute_force_found_feas = check_brute_force_rounding(solution);
   if (brute_force_found_feas) { return; }
+
+  bool simple_round = invoke_simple_rounding(solution);
+  if (simple_round) { return; }
+
   i_t n_blocks = (solution.problem_ptr->n_integer_vars + TPB - 1) / TPB;
   nearest_rounding_kernel<i_t, f_t><<<n_blocks, TPB, 0, solution.handle_ptr->get_stream()>>>(
     solution.view(), cuopt::seed_generator::get_seed());
@@ -153,6 +238,7 @@ void invoke_correct_integers(solution_t<i_t, f_t>& solution, f_t tol)
   template void invoke_random_round_nearest<int, F_TYPE>(solution_t<int, F_TYPE> & solution, \
                                                          int n_target_random_rounds);        \
   template void invoke_round_nearest<int, F_TYPE>(solution_t<int, F_TYPE> & solution);       \
+  template bool invoke_simple_rounding<int, F_TYPE>(solution_t<int, F_TYPE> & solution);     \
   template void invoke_correct_integers<int, F_TYPE>(solution_t<int, F_TYPE> & solution,     \
                                                      F_TYPE tol);
 
