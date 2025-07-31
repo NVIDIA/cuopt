@@ -34,9 +34,8 @@ struct element_t {
   i_t i;  // row index
   i_t j;  // column index
   f_t x;  // coefficient value
-  i_t
-    next_in_column;  // index of the next element in the column: nullptr if there is no next element
-  i_t next_in_row;   // index of the next element in the row: nullptr if there is no next element
+  i_t next_in_column;  // index of the next element in the column: kNone if there is no next element
+  i_t next_in_row;     // index of the next element in the row: kNone if there is no next element
 };
 constexpr int kNone = -1;
 
@@ -166,6 +165,31 @@ void initialize_max_in_column(const std::vector<i_t>& first_in_col,
 }
 
 template <typename i_t, typename f_t>
+f_t maximum_in_row(i_t i,
+                   const std::vector<i_t>& first_in_row,
+                   std::vector<element_t<i_t, f_t>>& elements)
+{
+  f_t max_in_row = 0.0;
+  for (i_t p = first_in_row[i]; p != kNone; p = elements[p].next_in_row) {
+    element_t<i_t, f_t>* entry = &elements[p];
+    assert(entry->i == i);
+    max_in_row = std::max(max_in_row, std::abs(entry->x));
+  }
+  return max_in_row;
+}
+
+template <typename i_t, typename f_t>
+void initialize_max_in_row(const std::vector<i_t>& first_in_row,
+                           std::vector<element_t<i_t, f_t>>& elements,
+                           std::vector<f_t>& max_in_row)
+{
+  const i_t m = first_in_row.size();
+  for (i_t i = 0; i < m; ++i) {
+    max_in_row[i] = maximum_in_row(i, first_in_row, elements);
+  }
+}
+
+template <typename i_t, typename f_t>
 i_t markowitz_search(const std::vector<i_t>& Cdegree,
                      const std::vector<i_t>& Rdegree,
                      const std::vector<std::list<i_t>>& col_count,
@@ -173,6 +197,7 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
                      const std::vector<i_t>& first_in_row,
                      const std::vector<i_t>& first_in_col,
                      const std::vector<f_t>& max_in_column,
+                     const std::vector<f_t>& max_in_row,
                      std::vector<element_t<i_t, f_t>>& elements,
                      f_t pivot_tol,
                      f_t threshold_tol,
@@ -199,6 +224,7 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
         element_t<i_t, f_t>* entry = &elements[p];
         const i_t i                = entry->i;
         assert(entry->j == j);
+#ifdef CHECK_RDEGREE
         if (Rdegree[i] < 0) {
           if (verbose) {
             printf("Rdegree[%d] %d. Searching in column %d. Entry i %d j %d val %e\n",
@@ -210,9 +236,11 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
                    entry->x);
           }
         }
+#endif
         assert(Rdegree[i] >= 0);
         const i_t Mij = (Rdegree[i] - 1) * (nz - 1);
         if (Mij < markowitz && std::abs(entry->x) >= threshold_tol * max_in_col &&
+            std::abs(entry->x) >= threshold_tol * max_in_row[i] &&
             std::abs(entry->x) >= pivot_tol) {
           markowitz = Mij;
           pivot_i   = i;
@@ -233,6 +261,7 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
     assert(row_count[nz].size() >= 0);
     for (const i_t i : row_count[nz]) {
       assert(Rdegree[i] == nz);
+      const f_t max_in_row_i = max_in_row[i];
       for (i_t p = first_in_row[i]; p != kNone; p = elements[p].next_in_row) {
         element_t<i_t, f_t>* entry = &elements[p];
         const i_t j                = entry->j;
@@ -241,6 +270,7 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
         assert(Cdegree[j] >= 0);
         const i_t Mij = (nz - 1) * (Cdegree[j] - 1);
         if (Mij < markowitz && std::abs(entry->x) >= threshold_tol * max_in_col &&
+            std::abs(entry->x) >= threshold_tol * max_in_row_i &&
             std::abs(entry->x) >= pivot_tol) {
           markowitz = Mij;
           pivot_i   = i;
@@ -257,7 +287,7 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
     nz++;
   }
   if (nsearch > 10) {
-    if (verbose) { printf("nsearch %d\n", nsearch); }
+    if constexpr (verbose) { printf("nsearch %d\n", nsearch); }
   }
   return nsearch;
 }
@@ -333,6 +363,7 @@ void schur_complement(i_t pivot_i,
                       std::vector<i_t>& row_last_workspace,
                       std::vector<i_t>& column_j_workspace,
                       std::vector<f_t>& max_in_column,
+                      std::vector<f_t>& max_in_row,
                       std::vector<i_t>& Rdegree,
                       std::vector<i_t>& Cdegree,
                       std::vector<std::list<i_t>>& row_count,
@@ -378,6 +409,7 @@ void schur_complement(i_t pivot_i,
         e2->x -= val;
         const f_t abs_e2x = std::abs(e2->x);
         if (abs_e2x > max_in_column[j]) { max_in_column[j] = abs_e2x; }
+        if (abs_e2x > max_in_row[i]) { max_in_row[i] = abs_e2x; }
       } else {
         element_t<i_t, f_t> fill;
         fill.i              = i;
@@ -385,6 +417,7 @@ void schur_complement(i_t pivot_i,
         fill.x              = -val;
         const f_t abs_fillx = std::abs(fill.x);
         if (abs_fillx > max_in_column[j]) { max_in_column[j] = abs_fillx; }
+        if (abs_fillx > max_in_row[i]) { max_in_row[i] = abs_fillx; }
         fill.next_in_column = kNone;
         fill.next_in_row    = kNone;
         elements.push_back(fill);
@@ -484,7 +517,7 @@ void remove_pivot_col(i_t pivot_i,
                       i_t pivot_j,
                       std::vector<i_t>& first_in_col,
                       std::vector<i_t>& first_in_row,
-                      std::vector<f_t>& max_in_column,
+                      std::vector<f_t>& max_in_row,
                       std::vector<element_t<i_t, f_t>>& elements)
 {
   // Remove the pivot col
@@ -492,6 +525,7 @@ void remove_pivot_col(i_t pivot_i,
     element_t<i_t, f_t>* e = &elements[p1];
     const i_t i            = e->i;
     i_t last               = kNone;
+    f_t max_in_row_i = 0.0;
     for (i_t p = first_in_row[i]; p != kNone; p = elements[p].next_in_row) {
       element_t<i_t, f_t>* entry = &elements[p];
       if (entry->j == pivot_j) {
@@ -503,9 +537,13 @@ void remove_pivot_col(i_t pivot_i,
         entry->i = -1;
         entry->j = -1;
         entry->x = std::numeric_limits<f_t>::quiet_NaN();
+      } else {
+        const f_t abs_entryx = std::abs(entry->x);
+        if (abs_entryx > max_in_row_i) { max_in_row_i = abs_entryx; }
       }
       last = p;
     }
+    max_in_row[i] = max_in_row_i;
   }
   first_in_col[pivot_j] = kNone;
 }
@@ -549,7 +587,9 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
   std::vector<i_t> column_j_workspace(n, kNone);
   std::vector<i_t> row_last_workspace(n);
   std::vector<f_t> max_in_column(n);
+  std::vector<f_t> max_in_row(n);
   initialize_max_in_column(first_in_col, elements, max_in_column);
+  initialize_max_in_row(first_in_row, elements, max_in_row);
 
   csr_matrix_t<i_t, f_t> Urow;  // We will store U by rows in Urow during the factorization and
                                 // translate back to U at the end
@@ -561,10 +601,10 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
   L.x.clear();
   L.i.clear();
 
-  for (i_t k = 0; k < n; ++k) {
-    pinv[k] = -1;
-    q[k]    = -1;
-  }
+  std::fill(q.begin(), q.end(), -1);
+  std::fill(pinv.begin(), pinv.end(), -1);
+  std::vector<i_t> qinv(n);
+  std::fill(qinv.begin(), qinv.end(), -1);
 
   i_t pivots = 0;
   for (i_t k = 0; k < n; ++k) {
@@ -584,6 +624,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
                      first_in_row,
                      first_in_col,
                      max_in_column,
+                     max_in_row,
                      elements,
                      pivot_tol,
                      threshold_tol,
@@ -598,6 +639,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
     // Pivot
     pinv[pivot_i]       = k;  // pivot_i is the kth pivot row
     q[k]                = pivot_j;
+    qinv[pivot_j]       = k;
     const f_t pivot_val = pivot_entry->x;
     assert(std::abs(pivot_val) >= pivot_tol);
     pivots++;
@@ -656,6 +698,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
                      row_last_workspace,
                      column_j_workspace,
                      max_in_column,
+                     max_in_row,
                      Rdegree,
                      Cdegree,
                      row_count,
@@ -664,7 +707,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
 
     // Remove the pivot row
     remove_pivot_row(pivot_i, pivot_j, first_in_col, first_in_row, max_in_column, elements);
-    remove_pivot_col(pivot_i, pivot_j, first_in_col, first_in_row, max_in_column, elements);
+    remove_pivot_col(pivot_i, pivot_j, first_in_col, first_in_row, max_in_row, elements);
 
     // Set pivot entry to sentinel value
     pivot_entry->i = -1;
@@ -693,6 +736,29 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
       }
       assert(found_max);
     }
+#endif
+
+#ifdef CHECK_MAX_IN_ROW
+  // Check that maximum in row is maintained
+  for (i_t i = 0; i < m; ++i) {
+    if (Rdegree[i] == -1) { continue; }
+    const f_t max_in_row_i = max_in_row[i];
+    bool found_max = false;
+    f_t largest_abs_x = 0.0;
+    for (i_t p = first_in_row[i]; p != kNone; p = elements[p].next_in_row) {
+      const f_t abs_e2x = std::abs(elements[p].x);
+      if (abs_e2x > largest_abs_x) { largest_abs_x = abs_e2x; }
+      if (abs_e2x > max_in_row_i) {
+        printf("Found max in row %d is %e but %e\n", i, max_in_row_i, abs_e2x);
+      }
+      assert(abs_e2x <= max_in_row_i);
+      if (abs_e2x == max_in_row_i) { found_max = true; }
+    }
+    if (!found_max) {
+      printf("Did not find max %e in row %d. Largest abs x is %e\n", max_in_row_i, i, largest_abs_x);
+    }
+    assert(found_max);
+  }
 #endif
 
 #if CHECK_BAD_ENTRIES
@@ -759,8 +825,20 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
     // Complete the permutation pinv
     i_t start = pivots;
     for (i_t i = 0; i < m; ++i) {
-      if (pinv[i] == -1) { pinv[i] = start++; }
+      if (pinv[i] == -1) {
+        pinv[i] = start++;
+      }
     }
+
+
+    // Finalize the permutation q. Do this by first completing the inverse permutation qinv.
+    // Then invert qinv to get the final permutation q.
+    start = pivots;
+    for (i_t j = 0; j < n; ++j) {
+      if (qinv[j] == -1) { qinv[j] = start++; }
+    }
+    inverse_permutation(qinv, q);
+
     return pivots;
   }
 
@@ -852,7 +930,9 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
   std::vector<i_t> column_j_workspace(m, kNone);
   std::vector<i_t> row_last_workspace(m);
   std::vector<f_t> max_in_column(n);
+  std::vector<f_t> max_in_row(m);
   initialize_max_in_column(first_in_col, elements, max_in_column);
+  initialize_max_in_row(first_in_row, elements, max_in_row);
 
   settings.log.debug("Empty rows %ld\n", row_count[0].size());
   settings.log.debug("Empty cols %ld\n", col_count[0].size());
@@ -884,6 +964,7 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
                      first_in_row,
                      first_in_col,
                      max_in_column,
+                     max_in_row,
                      elements,
                      pivot_tol,
                      threshold_tol,
@@ -924,6 +1005,7 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
                                row_last_workspace,
                                column_j_workspace,
                                max_in_column,
+                               max_in_row,
                                Rdegree,
                                Cdegree,
                                row_count,
@@ -934,7 +1016,7 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
     remove_pivot_row<i_t, f_t>(
       pivot_i, pivot_j, first_in_col, first_in_row, max_in_column, elements);
     remove_pivot_col<i_t, f_t>(
-      pivot_i, pivot_j, first_in_col, first_in_row, max_in_column, elements);
+      pivot_i, pivot_j, first_in_col, first_in_row, max_in_row, elements);
 
     // Set pivot entry to sentinel value
     pivot_entry->i = -1;

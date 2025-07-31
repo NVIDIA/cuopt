@@ -368,6 +368,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
           S, settings.threshold_partial_pivoting_tol, identity, S_col_perm, SL, SU, S_perm_inv);
         if (Srank != Sdim) {
           // Get the rank deficient columns
+          deficient.clear();
           deficient.resize(Sdim - Srank);
           for (i_t h = Srank; h < Sdim; ++h) {
             deficient[h - Srank] = col_perm[num_singletons + S_col_perm[h]];
