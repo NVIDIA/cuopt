@@ -116,7 +116,7 @@ class Variable:
         lb=0.0,
         ub=float("inf"),
         obj=0.0,
-        vtype=VType.CONTINUOUS,
+        vtype=CONTINUOUS,
         vname="",
     ):
         self.index = -1
@@ -255,11 +255,11 @@ class Variable:
         match other:
             case int() | float():
                 expr = LinearExpression([self], [1.0], 0.0)
-                return Constraint(expr, CType.LE, float(other))
+                return Constraint(expr, LE, float(other))
             case Variable() | LinearExpression():
                 # var1 <= var2   -> var1 - var2 <= 0
                 expr = self - other
-                return Constraint(expr, CType.LE, 0.0)
+                return Constraint(expr, LE, 0.0)
             case _:
                 raise ValueError("Unsupported operation")
 
@@ -267,11 +267,11 @@ class Variable:
         match other:
             case int() | float():
                 expr = LinearExpression([self], [1.0], 0.0)
-                return Constraint(expr, CType.GE, float(other))
+                return Constraint(expr, GE, float(other))
             case Variable() | LinearExpression():
                 # var1 >= var2   ->  var1 - var2 >= 0
                 expr = self - other
-                return Constraint(expr, CType.GE, 0.0)
+                return Constraint(expr, GE, 0.0)
             case _:
                 raise ValueError("Unsupported operation")
 
@@ -279,11 +279,11 @@ class Variable:
         match other:
             case int() | float():
                 expr = LinearExpression([self], [1.0], 0.0)
-                return Constraint(expr, CType.EQ, float(other))
+                return Constraint(expr, EQ, float(other))
             case Variable() | LinearExpression():
                 # var1 == var2   -> var1 - var2 == 0
                 expr = self - other
-                return Constraint(expr, CType.EQ, 0.0)
+                return Constraint(expr, EQ, 0.0)
             case _:
                 raise ValueError("Unsupported operation")
 
@@ -524,29 +524,29 @@ class LinearExpression:
     def __le__(self, other):
         match other:
             case int() | float():
-                return Constraint(self, CType.LE, float(other))
+                return Constraint(self, LE, float(other))
             case Variable() | LinearExpression():
                 # expr1 <= expr2   -> expr1 - expr2 <= 0
                 expr = self - other
-                return Constraint(expr, CType.LE, 0.0)
+                return Constraint(expr, LE, 0.0)
 
     def __ge__(self, other):
         match other:
             case int() | float():
-                return Constraint(self, CType.GE, float(other))
+                return Constraint(self, GE, float(other))
             case Variable() | LinearExpression():
                 # expr1 >= expr2   ->  expr1 - expr2 >= 0
                 expr = self - other
-                return Constraint(expr, CType.GE, 0.0)
+                return Constraint(expr, GE, 0.0)
 
     def __eq__(self, other):
         match other:
             case int() | float():
-                return Constraint(self, CType.EQ, float(other))
+                return Constraint(self, EQ, float(other))
             case Variable() | LinearExpression():
                 # expr1 == expr2   -> expr1 - expr2 == 0
                 expr = self - other
-                return Constraint(expr, CType.EQ, 0.0)
+                return Constraint(expr, EQ, 0.0)
 
 
 class Constraint:
@@ -691,7 +691,7 @@ class Problem:
         self.Name = model_name
         self.vars = []
         self.constrs = []
-        self.ObjSense = sense.MINIMIZE
+        self.ObjSense = MINIMIZE
         self.Obj = None
         self.ObjConstant = 0.0
         self.Status = -1
@@ -726,7 +726,7 @@ class Problem:
         self.solved = False
 
     def addVariable(
-        self, lb=0.0, ub=float("inf"), obj=0.0, vtype=VType.CONTINUOUS, name=""
+        self, lb=0.0, ub=float("inf"), obj=0.0, vtype=CONTINUOUS, name=""
     ):
         """
         Adds a variable to the problem defined by lower bound,
@@ -790,7 +790,7 @@ class Problem:
             case _:
                 raise ValueError("addConstraint requires a Constraint object")
 
-    def setObjective(self, expr, sense=sense.MINIMIZE):
+    def setObjective(self, expr, sense=MINIMIZE):
         """
         Set the Objective of the problem with an expression that needs to
         be MINIMIZED or MAXIMIZED.
@@ -801,8 +801,8 @@ class Problem:
             Objective expression that needs maximization or minimization.
         sense : enum
             Sets whether the problem is a maximization or a minimization
-            problem. Values passed can either be sense.MINIMIZE or
-            sense.MAXIMIZE. Defaults to sense.MINIMIZE.
+            problem. Values passed can either be MINIMIZE or MAXIMIZE.
+            Defaults to MINIMIZE.
 
         Examples
         --------
