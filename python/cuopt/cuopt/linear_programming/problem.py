@@ -31,6 +31,10 @@ class VType(str, Enum):
     INTEGER = "I"
 
 
+CONTINUOUS = VType.CONTINUOUS
+INTEGER = VType.INTEGER
+
+
 class CType(str, Enum):
     """
     The sense of a constraint is either LE, GE or EQ.
@@ -39,6 +43,11 @@ class CType(str, Enum):
     LE = "L"
     GE = "G"
     EQ = "E"
+
+
+LE = CType.LE
+GE = CType.GE
+EQ = CType.EQ
 
 
 class sense(int, Enum):
@@ -50,30 +59,48 @@ class sense(int, Enum):
     MINIMIZE = 1
 
 
+MAXIMIZE = sense.MAXIMIZE
+MINIMIZE = sense.MINIMIZE
+
+
 class Variable:
     """
     cuOpt variable object initialized with details of the variable
     such as lower bound, upper bound, type and name.
     Variables are always associated with a problem and can be
     created using problem.addVariable (See problem class).
+
+    Attributes
+    ----------
+    VariableName : str
+        Name of the Variable.
+    VariableType : CONTINUOUS or INTEGER
+        Variable type.
+    LB : float
+        Lower Bound of the Variable.
+    UB : float
+        Upper Bound of the Variable.
+    Obj : float
+        Coefficient of the variable in the Objective function.
+    Value : float
+        Value of the variable after solving.
+    ReducedCost : float
+        Reduced Cost after solving an LP problem.
     """
 
     def __init__(
         self,
-        problem,
-        index,
         lb=0.0,
         ub=float("inf"),
         obj=0.0,
         vtype=VType.CONTINUOUS,
         vname="",
     ):
-        self.problem = problem
-        self.index = index
+        self.index = -1
         self.LB = lb
         self.UB = ub
         self.Obj = obj
-        self.Value = 0.0
+        self.Value = float("nan")
         self.ReducedCost = float("nan")
         self.VariableType = vtype
         self.VariableName = vname
@@ -497,6 +524,19 @@ class Constraint:
     the constraint.
     Constraints are associated with a problem and can be
     created using problem.addConstraint (See problem class).
+
+    Attributes
+    ----------
+    ConstraintName : str
+        Name of the constraint.
+    Sense : LE, GE or EQ
+        Row sense. LE for >=, GE for <= or EQ for == .
+    RHS : float
+        Constraint right-hand side value.
+    Slack : float
+        Computed LHS - RHS with current solution.
+    DualValue : float
+        Constraint dual value in the current solution.
     """
 
     def __init__(self, expr, sense, rhs, name=""):
@@ -516,6 +556,7 @@ class Constraint:
         self.RHS = rhs - expr.getConstant()
         self.ConstraintName = name
         self.DualValue = float("nan")
+        self.Slack = float("nan")
 
     def __len__(self):
         return len(self.vindex_coeff_dict)
@@ -546,11 +587,8 @@ class Constraint:
         v_idx = var.index
         return self.vindex_coeff_dict[v_idx]
 
-    @property
-    def Slack(self):
-        """
-        Returns the constraint Slack in the current solution.
-        """
+    def compute_slack(self):
+        # Computes the constraint Slack in the current solution.
         lhs = 0.0
         for var in self.vars:
             lhs += var.Value * self.vindex_coeff_dict[var.index]
@@ -576,20 +614,22 @@ class Problem:
         Name of the model.
     ObjSense : sense
         Objective sense (MINIMIZE or MAXIMIZE).
-    Obj : object
-        The objective function.
     ObjConstant : float
         Constant term in the objective.
     Status : int
         Status of the problem after solving.
-    IsMIP : bool
-        Indicates if the problem is a Mixed Integer Program.
     SolveTime : float
         Time taken to solve the problem.
-    SolutionStats : dict
-        Solution statistics.
-    ObjVal : float
+    SolutionStats : object
+        Solution statistics for LP or MIP problem.
+    ObjValue : float
         Objective value of the problem.
+    NumVariables : int
+        Number of Variables in the problem.
+    NumConstraints : int
+        Number of constraints in the problem.
+    NumNZs : int
+        Number of non-zeros in the problem.
 
     Examples
     --------
@@ -611,8 +651,9 @@ class Problem:
         self.Obj = None
         self.ObjConstant = 0.0
         self.Status = -1
-        self.IsMIP = False
+        self.ObjValue = float("nan")
 
+        self.solved = False
         self.rhs = None
         self.row_sense = None
         self.row_pointers = None
@@ -626,6 +667,19 @@ class Problem:
         def __init__(self, mdict):
             for key, value in mdict.items():
                 setattr(self, key, value)
+
+    def reset_solved_values(self):
+        # Resets all post solve values
+        for var in self.vars:
+            var.Value = float("nan")
+            var.ReducedCost = float("nan")
+
+        for constr in self.constrs:
+            constr.Slack = float("nan")
+            constr.DualValue = float("nan")
+
+        self.ObjValue = float("nan")
+        self.solved = False
 
     def addVariable(
         self, lb=0.0, ub=float("inf"), obj=0.0, vtype=VType.CONTINUOUS, name=""
@@ -651,10 +705,11 @@ class Problem:
         >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=VType.INTEGER,
                 name="Var1")
         """
+        if self.solved:
+            self.reset_solved_values()  # Reset all solved values
         n = len(self.vars)
-        if vtype == VType.INTEGER:
-            self.IsMIP = True
-        var = Variable(self, n, lb, ub, obj, vtype, name)
+        var = Variable(lb, ub, obj, vtype, name)
+        var.index = n
         self.vars.append(var)
         return var
 
@@ -680,7 +735,8 @@ class Problem:
         >>> expr = 3*x + y
         >>> problem.addConstraint(expr + x == 20, name="Constr2")
         """
-
+        if self.solved:
+            self.reset_solved_values()  # Reset all solved values
         n = len(self.constrs)
         match constr:
             case Constraint():
@@ -714,6 +770,8 @@ class Problem:
         >>> problem.addConstraint(expr + x == 20, name="Constr2")
         >>> problem.setObjective(x + y, sense=sense.MAXIMIZE)
         """
+        if self.solved:
+            self.reset_solved_values()  # Reset all solved values
         self.ObjSense = sense
         match expr:
             case int() | float():
@@ -754,23 +812,17 @@ class Problem:
 
     @property
     def NumVariables(self):
-        """
-        Returns number of variables in the problem.
-        """
+        # Returns number of variables in the problem
         return len(self.vars)
 
     @property
     def NumConstraints(self):
-        """
-        Returns number of contraints in the problem.
-        """
+        # Returns number of contraints in the problem.
         return len(self.constrs)
 
     @property
     def NumNZs(self):
-        """
-        Returns number of non-zeros in the problem.
-        """
+        # Returns number of non-zeros in the problem.
         nnz = 0
         for constr in self.constrs:
             nnz += len(constr)
@@ -803,9 +855,11 @@ class Problem:
         self.Status = solution.get_termination_status()
         self.SolveTime = solution.get_solve_time()
 
+        IsMIP = False
         if solution.problem_category == 0:
             self.SolutionStats = self.dict_to_object(solution.get_lp_stats())
         else:
+            IsMIP = True
             self.SolutionStats = self.dict_to_object(solution.get_milp_stats())
 
         primal_sol = solution.get_primal_solution()
@@ -813,14 +867,17 @@ class Problem:
         if len(primal_sol) > 0:
             for var in self.vars:
                 var.Value = primal_sol[var.index]
-                if not self.IsMIP:
+                if not IsMIP:
                     var.ReducedCost = reduced_cost[var.index]
-        if not self.IsMIP:
+        dual_sol = None
+        if not IsMIP:
             dual_sol = solution.get_dual_solution()
-            if len(dual_sol) > 0:
-                for i, constr in enumerate(self.constrs):
-                    constr.DualValue = dual_sol[i]
-        self.ObjVal = self.Obj.getValue()
+        for i, constr in enumerate(self.constrs):
+            if dual_sol is not None:
+                constr.DualValue = dual_sol[i]
+            constr.Slack = constr.compute_slack()
+        self.ObjValue = self.Obj.getValue()
+        self.solved = True
 
     def solve(self, settings=solver_settings.SolverSettings()):
         """

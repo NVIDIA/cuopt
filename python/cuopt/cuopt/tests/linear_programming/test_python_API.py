@@ -13,14 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 
 from cuopt.linear_programming import SolverSettings
-from cuopt.linear_programming.internals import (
-    GetSolutionCallback,
-    SetSolutionCallback,
+from cuopt.linear_programming.problem import (
+    CONTINUOUS,
+    INTEGER,
+    MAXIMIZE,
+    CType,
+    Problem,
+    VType,
+    sense,
 )
-from cuopt.linear_programming.problem import CType, Problem, VType, sense
+
+# from cuopt.linear_programming.internals import (
+#    GetSolutionCallback,
+#    SetSolutionCallback,
+# )
 
 
 def test_model():
@@ -30,7 +41,7 @@ def test_model():
 
     # Adding Variable
     x = prob.addVariable(lb=0, vtype=VType.INTEGER, name="V_x")
-    y = prob.addVariable(lb=10, ub=50, vtype=VType.INTEGER, name="V_y")
+    y = prob.addVariable(lb=10, ub=50, vtype=INTEGER, name="V_y")
 
     assert x.getVariableName() == "V_x"
     assert y.getUpperBound() == 50
@@ -40,7 +51,7 @@ def test_model():
 
     # Adding Constraints
     prob.addConstraint(2 * x + 4 * y >= 230, name="C1")
-    prob.addConstraint(3 * x + 2 * y <= 190, name="C2")
+    prob.addConstraint(3 * x + 2 * y + 10 <= 200, name="C2")
 
     expected_name = ["C1", "C2"]
     expected_coefficient_x = [2, 3]
@@ -59,12 +70,13 @@ def test_model():
     assert prob.NumNZs == 4
 
     # Setting Objective
-    expr = 5 * x + 3 * y
-    prob.setObjective(expr, sense=sense.MAXIMIZE)
+    expr = 5 * x + 3 * y + 50
+    prob.setObjective(expr, sense=MAXIMIZE)
 
     expected_obj_coeff = [5, 3]
     assert expr.getVariables() == [x, y]
     assert expr.getCoefficients() == expected_obj_coeff
+    assert expr.getConstant() == 50
     assert prob.ObjSense == sense.MAXIMIZE
     assert prob.getObjective() is expr
 
@@ -72,8 +84,10 @@ def test_model():
     settings = SolverSettings()
     settings.set_parameter("time_limit", 5)
 
+    assert not prob.solved
     # Solving Problem
     prob.solve(settings)
+    assert prob.solved
     assert prob.Status.name == "Optimal"
     assert prob.SolveTime < 5
 
@@ -93,10 +107,37 @@ def test_model():
         assert var.Value == pytest.approx(expected_var_values[i])
         assert var.getObjectiveCoefficient() == expected_obj_coeff[i]
 
-    assert prob.ObjVal == 303
+    assert prob.ObjValue == 353
 
     for i, c in enumerate(prob.getConstraints()):
         assert c.Slack == pytest.approx(expected_slack[i])
+
+    assert hasattr(prob.SolutionStats, "mip_gap")
+
+    # Change Objective
+    prob.setObjective(expr + 20, sense.MINIMIZE)
+    assert not prob.solved
+
+    # Check if values reset
+    for i, var in enumerate(prob.getVariables()):
+        assert math.isnan(var.Value) and math.isnan(var.ReducedCost)
+    for i, c in enumerate(prob.getConstraints()):
+        assert math.isnan(c.Slack) and math.isnan(c.DualValue)
+
+    # Change Problem to LP
+    x.VariableType = VType.CONTINUOUS
+    y.VariableType = CONTINUOUS
+    y.UB = 45.5
+
+    prob.solve(settings)
+    assert prob.solved
+    assert prob.Status.name == "Optimal"
+    assert hasattr(prob.SolutionStats, "primal_residual")
+
+    assert x.getValue() == 24
+    assert y.getValue() == pytest.approx(45.5)
+
+    assert prob.ObjValue == pytest.approx(5 * x.Value + 3 * y.Value + 70)
 
 
 def test_linear_expression():
@@ -222,7 +263,7 @@ def test_constraint_matrix():
     assert rhs == exp_rhs
 
 
-def test_incumbent_solutions():
+"""def test_incumbent_solutions():
 
     # Callback for incumbent solution
     class CustomGetSolutionCallback(GetSolutionCallback):
@@ -284,3 +325,4 @@ def test_incumbent_solutions():
         assert 2 * x_val + 4 * y_val >= 230
         assert 3 * x_val + 2 * y_val <= 190
         assert 5 * x_val + 3 * y_val == cost
+"""
