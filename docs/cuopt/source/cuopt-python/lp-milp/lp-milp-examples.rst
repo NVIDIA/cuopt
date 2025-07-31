@@ -14,22 +14,22 @@ Simple Linear Programming Example
 
 .. code-block:: python
 
-    from cuopt.linear_programming.problem import Problem, VType, CType, sense
+    from cuopt.linear_programming.problem import Problem, CONTINUOUS, MAXIMIZE
     from cuopt.linear_programming.solver_settings import SolverSettings
 
     # Create a new problem
     problem = Problem("Simple LP")
     
     # Add variables
-    x = problem.addVariable(lb=0, vtype=VType.CONTINUOUS, name="x")
-    y = problem.addVariable(lb=0, vtype=VType.CONTINUOUS, name="y")
+    x = problem.addVariable(lb=0, vtype=CONTINUOUS, name="x")
+    y = problem.addVariable(lb=0, vtype=CONTINUOUS, name="y")
 
     # Add constraints
     problem.addConstraint(x + y <= 10, name="c1")
     problem.addConstraint(x - y >= 0, name="c2")
 
     # Set objective function
-    problem.setObjective(x + y, sense=sense.MAXIMIZE)
+    problem.setObjective(x + y, sense=MAXIMIZE)
     
     # Configure solver settings
     settings = SolverSettings()
@@ -59,22 +59,22 @@ Mixed Integer Linear Programming Example
 
 .. code-block:: python
 
-    from cuopt.linear_programming.problem import Problem, VType, CType, sense
+    from cuopt.linear_programming.problem import Problem, INTEGER, MAXIMIZE
     from cuopt.linear_programming.solver_settings import SolverSettings
 
     # Create a new MIP problem
     problem = Problem("Simple MIP")
     
     # Add integer variables with bounds
-    x = problem.addVariable(vtype=VType.INTEGER, name="V_x")
-    y = problem.addVariable(lb=10, ub=50, vtype=VType.INTEGER, name="V_y")
+    x = problem.addVariable(vtype=INTEGER, name="V_x")
+    y = problem.addVariable(lb=10, ub=50, vtype=INTEGER, name="V_y")
 
     # Add constraints
     problem.addConstraint(2 * x + 4 * y >= 230, name="C1")
     problem.addConstraint(3 * x + 2 * y <= 190, name="C2")
 
     # Set objective function
-    problem.setObjective(5 * x + 3 * y, sense=sense.MAXIMIZE)
+    problem.setObjective(5 * x + 3 * y, sense=MAXIMIZE)
 
     # Configure solver settings
     settings = SolverSettings()
@@ -107,7 +107,7 @@ Advanced Example: Production Planning
 
 .. code-block:: python
 
-    from cuopt.linear_programming.problem import Problem, VType, CType, sense
+    from cuopt.linear_programming.problem import Problem, INTEGER, MAXIMIZE
     from cuopt.linear_programming.solver_settings import SolverSettings
 
     # Production planning problem
@@ -116,8 +116,8 @@ Advanced Example: Production Planning
     # Decision variables: production quantities
     # x1 = units of product A
     # x2 = units of product B
-    x1 = problem.addVariable(lb=10, vtype=VType.INTEGER, name="Product_A")
-    x2 = problem.addVariable(lb=15, vtype=VType.INTEGER, name="Product_B")
+    x1 = problem.addVariable(lb=10, vtype=INTEGER, name="Product_A")
+    x2 = problem.addVariable(lb=15, vtype=INTEGER, name="Product_B")
     
     # Resource constraints
     # Machine time: 2 hours per unit of A, 1 hour per unit of B, max 100 hours
@@ -131,7 +131,7 @@ Advanced Example: Production Planning
     
     # Objective: maximize profit
     # Profit: $50 per unit of A, $30 per unit of B
-    problem.setObjective(50 * x1 + 30 * x2, sense=sense.MAXIMIZE)
+    problem.setObjective(50 * x1 + 30 * x2, sense=MAXIMIZE)
     
     # Solve with time limit
     settings = SolverSettings()
@@ -167,7 +167,7 @@ Working with Expressions and Constraints
 
 .. code-block:: python
 
-    from cuopt.linear_programming.problem import Problem, VType, CType, sense
+    from cuopt.linear_programming.problem import Problem, MAXIMIZE
     from cuopt.linear_programming.solver_settings import SolverSettings
 
     problem = Problem("Expression Example")
@@ -192,7 +192,7 @@ Working with Expressions and Constraints
     problem.addConstraint(1 * z <= 100, name="Upper_Bound_Z")
     
     # Set objective
-    problem.setObjective(x + 2 * y + 3 * z, sense=sense.MAXIMIZE)
+    problem.setObjective(x + 2 * y + 3 * z, sense=MAXIMIZE)
 
     settings = SolverSettings()
     settings.set_parameter("time_limit", 20) 
@@ -227,7 +227,7 @@ Incumbent solutions are intermediate feasible solutions found during the MIP sol
 
 .. code-block:: python
 
-    from cuopt.linear_programming.problem import Problem, VType, sense
+    from cuopt.linear_programming.problem import Problem, INTEGER, MAXIMIZE
     from cuopt.linear_programming.solver_settings import SolverSettings
     from cuopt.linear_programming.internals import GetSolutionCallback, SetSolutionCallback
 
@@ -265,15 +265,15 @@ Incumbent solutions are intermediate feasible solutions found during the MIP sol
     problem = Problem("Incumbent Example")
 
     # Add integer variables
-    x = problem.addVariable(vtype=VType.INTEGER)
-    y = problem.addVariable(vtype=VType.INTEGER)
+    x = problem.addVariable(vtype=INTEGER)
+    y = problem.addVariable(vtype=INTEGER)
 
     # Add constraints to create a problem that will generate multiple incumbents
     problem.addConstraint(2 * x + 4 * y >= 230)
     problem.addConstraint(3 * x + 2 * y <= 190)
 
     # Set objective to maximize
-    problem.setObjective(5 * x + 3 * y, sense=sense.MAXIMIZE)
+    problem.setObjective(5 * x + 3 * y, sense=MAXIMIZE)
 
     # Configure solver settings with callback
     settings = SolverSettings()

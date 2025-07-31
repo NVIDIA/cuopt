@@ -48,6 +48,7 @@ def test_model():
     assert y.getLowerBound() == 10
     assert x.getVariableType() == VType.INTEGER
     assert y.getVariableType() == "I"
+    assert [x.getIndex(), y.getIndex()] == [0, 1]
 
     # Adding Constraints
     prob.addConstraint(2 * x + 4 * y >= 230, name="C1")

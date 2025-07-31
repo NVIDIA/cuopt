@@ -25,6 +25,9 @@ import cuopt.linear_programming.solver_settings as solver_settings
 class VType(str, Enum):
     """
     The type of a variable is either continuous or integer.
+    Variable Types can be directly used as a constant.
+    CONTINUOUS is  VType.CONTINUOUS
+    INTEGER is VType.INTEGER
     """
 
     CONTINUOUS = "C"
@@ -38,6 +41,10 @@ INTEGER = VType.INTEGER
 class CType(str, Enum):
     """
     The sense of a constraint is either LE, GE or EQ.
+    Constraint Sense Types can be directly used as a constant.
+    LE is CType.LE
+    GE is CType.GE
+    EQ is CType EQ
     """
 
     LE = "L"
@@ -53,6 +60,9 @@ EQ = CType.EQ
 class sense(int, Enum):
     """
     The sense of a model is either MINIMIZE or MAXIMIZE.
+    Model objective sense can be directly used as a constant.
+    MINIMIZE is sense.MINIMIZE
+    MAXIMIZE is sense.MAXIMIZE
     """
 
     MAXIMIZE = -1
@@ -69,6 +79,19 @@ class Variable:
     such as lower bound, upper bound, type and name.
     Variables are always associated with a problem and can be
     created using problem.addVariable (See problem class).
+
+    Parameters
+    ----------
+    lb : float
+        Lower bound of the variable. Defaults to  0.
+    ub : float
+        Upper bound of the variable. Defaults to infinity.
+    vtype : enum
+        CONTINUOUS or INTEGER. Defaults to CONTINUOUS.
+    obj : float
+        Coefficient of the Variable in the objective.
+    name : str
+        Name of the variable. Optional.
 
     Attributes
     ----------
@@ -276,6 +299,15 @@ class LinearExpression:
     divided by scalars.
     LinearExpressions can be compared with scalars, Variables, and
     other LinearExpressions to create Constraints.
+
+    Parameters
+    ----------
+    vars : List
+        List of Variables in the linear expression.
+    coefficients : List
+        List of coefficients corresponding to the variables.
+    constant : float
+        Constant of the linear expression.
     """
 
     def __init__(self, vars, coefficients, constant):
@@ -525,6 +557,18 @@ class Constraint:
     Constraints are associated with a problem and can be
     created using problem.addConstraint (See problem class).
 
+    Parameters
+    ----------
+    expr : LinearExpression
+        Linear expression corresponding to a problem.
+    sense : enum
+        Sense of the constraint. Either LE for <=,
+        GE for >= or EQ for == .
+    rhs : float
+        Constraint right-hand side value.
+    name : str, Optional
+        Name of the constraint. Optional.
+
     Attributes
     ----------
     ConstraintName : str
@@ -634,12 +678,12 @@ class Problem:
     Examples
     --------
     >>> problem = problem.Problem("MIP_model")
-    >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=VType.INTEGER)
+    >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER)
     >>> y = problem.addVariable(name="Var2")
     >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
     >>> expr = 3*x + y
     >>> problem.addConstraint(expr + x == 20, name="Constr2")
-    >>> problem.setObjective(x + y, sense=sense.MAXIMIZE)
+    >>> problem.setObjective(x + y, sense=MAXIMIZE)
     >>> problem.solve()
     """
 
@@ -702,7 +746,7 @@ class Problem:
         Examples
         --------
         >>> problem = problem.Problem("MIP_model")
-        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=VType.INTEGER,
+        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER,
                 name="Var1")
         """
         if self.solved:
@@ -729,7 +773,7 @@ class Problem:
         Examples
         --------
         >>> problem = problem.Problem("MIP_model")
-        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=VType.INTEGER)
+        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER)
         >>> y = problem.addVariable(name="Var2")
         >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
         >>> expr = 3*x + y
@@ -763,12 +807,12 @@ class Problem:
         Examples
         --------
         >>> problem = problem.Problem("MIP_model")
-        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=VType.INTEGER)
+        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER)
         >>> y = problem.addVariable(name="Var2")
         >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
         >>> expr = 3*x + y
         >>> problem.addConstraint(expr + x == 20, name="Constr2")
-        >>> problem.setObjective(x + y, sense=sense.MAXIMIZE)
+        >>> problem.setObjective(x + y, sense=MAXIMIZE)
         """
         if self.solved:
             self.reset_solved_values()  # Reset all solved values
@@ -887,12 +931,12 @@ class Problem:
         Examples
         --------
         >>> problem = problem.Problem("MIP_model")
-        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=VType.INTEGER)
+        >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER)
         >>> y = problem.addVariable(name="Var2")
         >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
         >>> expr = 3*x + y
         >>> problem.addConstraint(expr + x == 20, name="Constr2")
-        >>> problem.setObjective(x + y, sense=sense.MAXIMIZE)
+        >>> problem.setObjective(x + y, sense=MAXIMIZE)
         >>> problem.solve()
         """
 
