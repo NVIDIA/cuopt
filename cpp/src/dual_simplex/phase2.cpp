@@ -1610,12 +1610,12 @@ i_t compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
     const i_t m = basic_list.size();
     std::vector<f_t> scaled_delta_xB(m);
     ft.b_solve(rhs, scaled_delta_xB);
-    if (scaled_delta_xB[basic_leaving_index] != 0.0 && !std::isnan(scaled_delta_xB[basic_leaving_index])) {
+    if (scaled_delta_xB[basic_leaving_index] != 0.0 &&
+        !std::isnan(scaled_delta_xB[basic_leaving_index])) {
       scaled_delta_xB_sparse.from_dense(scaled_delta_xB);
       scaled_delta_xB_sparse.negate();
       scale = -scaled_delta_xB[basic_leaving_index];
-    }
-    else {
+    } else {
       return -1;
     }
   }
@@ -2879,7 +2879,8 @@ dual::status_t dual_phase2(i_t phase,
         i_t count = 0;
         while (factorize_basis(
                  lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) == -1) {
-          settings.log.printf("Failed to repair basis Iter %d. %d deficient columns.\n", iter,
+          settings.log.printf("Failed to repair basis Iter %d. %d deficient columns.\n",
+                              iter,
                               static_cast<int>(deficient.size()));
           for (i_t k = 0; k < deficient.size(); ++k) {
             settings.log.printf("Slack %d needed for column %d\n", slacks_needed[k], deficient[k]);
@@ -2895,7 +2896,7 @@ dual::status_t dual_phase2(i_t phase,
           csc_matrix_t<i_t, f_t> B(m, m, 0);
           form_b(lp.A, basic_list, B);
           for (i_t k = 0; k < deficient.size(); ++k) {
-            const i_t j = deficient[k];
+            const i_t j         = deficient[k];
             const i_t col_start = B.col_start[j];
             const i_t col_end   = B.col_start[j + 1];
             const i_t col_nz    = col_end - col_start;

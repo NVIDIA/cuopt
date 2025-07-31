@@ -31,9 +31,9 @@ namespace {
 // submatrix during the LU factorization
 template <typename i_t, typename f_t>
 struct element_t {
-  i_t i;  // row index
-  i_t j;  // column index
-  f_t x;  // coefficient value
+  i_t i;               // row index
+  i_t j;               // column index
+  f_t x;               // coefficient value
   i_t next_in_column;  // index of the next element in the column: kNone if there is no next element
   i_t next_in_row;     // index of the next element in the row: kNone if there is no next element
 };
@@ -761,26 +761,27 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
 #endif
 
 #ifdef CHECK_MAX_IN_ROW
-  // Check that maximum in row is maintained
-  for (i_t i = 0; i < m; ++i) {
-    if (Rdegree[i] == -1) { continue; }
-    const f_t max_in_row_i = max_in_row[i];
-    bool found_max = false;
-    f_t largest_abs_x = 0.0;
-    for (i_t p = first_in_row[i]; p != kNone; p = elements[p].next_in_row) {
-      const f_t abs_e2x = std::abs(elements[p].x);
-      if (abs_e2x > largest_abs_x) { largest_abs_x = abs_e2x; }
-      if (abs_e2x > max_in_row_i) {
-        printf("Found max in row %d is %e but %e\n", i, max_in_row_i, abs_e2x);
+    // Check that maximum in row is maintained
+    for (i_t i = 0; i < m; ++i) {
+      if (Rdegree[i] == -1) { continue; }
+      const f_t max_in_row_i = max_in_row[i];
+      bool found_max         = false;
+      f_t largest_abs_x      = 0.0;
+      for (i_t p = first_in_row[i]; p != kNone; p = elements[p].next_in_row) {
+        const f_t abs_e2x = std::abs(elements[p].x);
+        if (abs_e2x > largest_abs_x) { largest_abs_x = abs_e2x; }
+        if (abs_e2x > max_in_row_i) {
+          printf("Found max in row %d is %e but %e\n", i, max_in_row_i, abs_e2x);
+        }
+        assert(abs_e2x <= max_in_row_i);
+        if (abs_e2x == max_in_row_i) { found_max = true; }
       }
-      assert(abs_e2x <= max_in_row_i);
-      if (abs_e2x == max_in_row_i) { found_max = true; }
+      if (!found_max) {
+        printf(
+          "Did not find max %e in row %d. Largest abs x is %e\n", max_in_row_i, i, largest_abs_x);
+      }
+      assert(found_max);
     }
-    if (!found_max) {
-      printf("Did not find max %e in row %d. Largest abs x is %e\n", max_in_row_i, i, largest_abs_x);
-    }
-    assert(found_max);
-  }
 #endif
 
 #if CHECK_BAD_ENTRIES
@@ -847,11 +848,8 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
     // Complete the permutation pinv
     i_t start = pivots;
     for (i_t i = 0; i < m; ++i) {
-      if (pinv[i] == -1) {
-        pinv[i] = start++;
-      }
+      if (pinv[i] == -1) { pinv[i] = start++; }
     }
-
 
     // Finalize the permutation q. Do this by first completing the inverse permutation qinv.
     // Then invert qinv to get the final permutation q.
@@ -1039,8 +1037,7 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
     // Remove the pivot row
     remove_pivot_row<i_t, f_t>(
       pivot_i, pivot_j, first_in_col, first_in_row, max_in_column, elements);
-    remove_pivot_col<i_t, f_t>(
-      pivot_i, pivot_j, first_in_col, first_in_row, max_in_row, elements);
+    remove_pivot_col<i_t, f_t>(pivot_i, pivot_j, first_in_col, first_in_row, max_in_row, elements);
 
     // Set pivot entry to sentinel value
     pivot_entry->i = -1;
