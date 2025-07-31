@@ -1604,9 +1604,20 @@ i_t compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
   f_t scale = scaled_delta_xB_sparse.find_coefficient(basic_leaving_index);
   if (scale != scale) {
     // We couldn't find a coefficient for the basic leaving index.
-    // Either this is a bug or the primal step length is inf.
-    printf("No coefficent basic leaving index\n");
-    return -1;
+    // The coefficient might be very small. Switch to a regular solve and try to recover.
+    std::vector<f_t> rhs;
+    rhs_sparse.to_dense(rhs);
+    const i_t m = basic_list.size();
+    std::vector<f_t> scaled_delta_xB(m);
+    ft.b_solve(rhs, scaled_delta_xB);
+    if (scaled_delta_xB[basic_leaving_index] != 0.0 && !std::isnan(scaled_delta_xB[basic_leaving_index])) {
+      scaled_delta_xB_sparse.from_dense(scaled_delta_xB);
+      scaled_delta_xB_sparse.negate();
+      scale = -scaled_delta_xB[basic_leaving_index];
+    }
+    else {
+      return -1;
+    }
   }
   const f_t primal_step_length = delta_x_leaving / scale;
   const i_t scaled_delta_xB_nz = scaled_delta_xB_sparse.i.size();

@@ -189,6 +189,9 @@ void initialize_max_in_row(const std::vector<i_t>& first_in_row,
   }
 }
 
+#undef THRESHOLD_ROOK_PIVOTING  // Disable threshold rook pivoting for now.
+                                // 3% slower when enabled. But keep it around
+                                // for challenging numerical problems.
 template <typename i_t, typename f_t>
 i_t markowitz_search(const std::vector<i_t>& Cdegree,
                      const std::vector<i_t>& Rdegree,
@@ -240,7 +243,9 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
         assert(Rdegree[i] >= 0);
         const i_t Mij = (Rdegree[i] - 1) * (nz - 1);
         if (Mij < markowitz && std::abs(entry->x) >= threshold_tol * max_in_col &&
+#ifdef THRESHOLD_ROOK_PIVOTING
             std::abs(entry->x) >= threshold_tol * max_in_row[i] &&
+#endif
             std::abs(entry->x) >= pivot_tol) {
           markowitz = Mij;
           pivot_i   = i;
@@ -261,7 +266,9 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
     assert(row_count[nz].size() >= 0);
     for (const i_t i : row_count[nz]) {
       assert(Rdegree[i] == nz);
+#ifdef THRESHOLD_ROOK_PIVOTING
       const f_t max_in_row_i = max_in_row[i];
+#endif
       for (i_t p = first_in_row[i]; p != kNone; p = elements[p].next_in_row) {
         element_t<i_t, f_t>* entry = &elements[p];
         const i_t j                = entry->j;
@@ -270,7 +277,9 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
         assert(Cdegree[j] >= 0);
         const i_t Mij = (nz - 1) * (Cdegree[j] - 1);
         if (Mij < markowitz && std::abs(entry->x) >= threshold_tol * max_in_col &&
+#ifdef THRESHOLD_ROOK_PIVOTING
             std::abs(entry->x) >= threshold_tol * max_in_row_i &&
+#endif
             std::abs(entry->x) >= pivot_tol) {
           markowitz = Mij;
           pivot_i   = i;
@@ -409,7 +418,9 @@ void schur_complement(i_t pivot_i,
         e2->x -= val;
         const f_t abs_e2x = std::abs(e2->x);
         if (abs_e2x > max_in_column[j]) { max_in_column[j] = abs_e2x; }
+#ifdef THRESHOLD_ROOK_PIVOTING
         if (abs_e2x > max_in_row[i]) { max_in_row[i] = abs_e2x; }
+#endif
       } else {
         element_t<i_t, f_t> fill;
         fill.i              = i;
@@ -417,7 +428,9 @@ void schur_complement(i_t pivot_i,
         fill.x              = -val;
         const f_t abs_fillx = std::abs(fill.x);
         if (abs_fillx > max_in_column[j]) { max_in_column[j] = abs_fillx; }
+#ifdef THRESHOLD_ROOK_PIVOTING
         if (abs_fillx > max_in_row[i]) { max_in_row[i] = abs_fillx; }
+#endif
         fill.next_in_column = kNone;
         fill.next_in_row    = kNone;
         elements.push_back(fill);
@@ -525,7 +538,9 @@ void remove_pivot_col(i_t pivot_i,
     element_t<i_t, f_t>* e = &elements[p1];
     const i_t i            = e->i;
     i_t last               = kNone;
+#ifdef THRESHOLD_ROOK_PIVOTING
     f_t max_in_row_i = 0.0;
+#endif
     for (i_t p = first_in_row[i]; p != kNone; p = elements[p].next_in_row) {
       element_t<i_t, f_t>* entry = &elements[p];
       if (entry->j == pivot_j) {
@@ -537,13 +552,18 @@ void remove_pivot_col(i_t pivot_i,
         entry->i = -1;
         entry->j = -1;
         entry->x = std::numeric_limits<f_t>::quiet_NaN();
-      } else {
+      }
+#ifdef THRESHOLD_ROOK_PIVOTING
+      else {
         const f_t abs_entryx = std::abs(entry->x);
         if (abs_entryx > max_in_row_i) { max_in_row_i = abs_entryx; }
       }
+#endif
       last = p;
     }
+#ifdef THRESHOLD_ROOK_PIVOTING
     max_in_row[i] = max_in_row_i;
+#endif
   }
   first_in_col[pivot_j] = kNone;
 }
@@ -587,9 +607,11 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
   std::vector<i_t> column_j_workspace(n, kNone);
   std::vector<i_t> row_last_workspace(n);
   std::vector<f_t> max_in_column(n);
-  std::vector<f_t> max_in_row(n);
+  std::vector<f_t> max_in_row(m);
   initialize_max_in_column(first_in_col, elements, max_in_column);
+#ifdef THRESHOLD_ROOK_PIVOTING
   initialize_max_in_row(first_in_row, elements, max_in_row);
+#endif
 
   csr_matrix_t<i_t, f_t> Urow;  // We will store U by rows in Urow during the factorization and
                                 // translate back to U at the end
@@ -932,7 +954,9 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
   std::vector<f_t> max_in_column(n);
   std::vector<f_t> max_in_row(m);
   initialize_max_in_column(first_in_col, elements, max_in_column);
+#ifdef THRESHOLD_ROOK_PIVOTING
   initialize_max_in_row(first_in_row, elements, max_in_row);
+#endif
 
   settings.log.debug("Empty rows %ld\n", row_count[0].size());
   settings.log.debug("Empty cols %ld\n", col_count[0].size());
