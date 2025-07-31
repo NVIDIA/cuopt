@@ -2872,19 +2872,15 @@ dual::status_t dual_phase2(i_t phase,
       if (factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) ==
           -1) {
         should_recompute_x = true;
-        settings.log.printf("Failed to factorize basis Iter %d\n", iter);
-        printf("Failed to factorize basis Iter %d\n", iter);
+        settings.log.printf("Failed to factorize basis. Iteration %d\n", iter);
         if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
         basis_repair(lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
         i_t count = 0;
         while (factorize_basis(
                  lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) == -1) {
-          settings.log.printf("Failed to repair basis Iter %d. %d deficient columns.\n",
+          settings.log.printf("Failed to repair basis. Iteration %d. %d deficient columns.\n",
                               iter,
                               static_cast<int>(deficient.size()));
-          for (i_t k = 0; k < deficient.size(); ++k) {
-            settings.log.printf("Slack %d needed for column %d\n", slacks_needed[k], deficient[k]);
-          }
           if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
           settings.threshold_partial_pivoting_tol = 1.0;
           count++;
@@ -2911,7 +2907,7 @@ dual::status_t dual_phase2(i_t phase,
 #endif
         }
 
-        printf("Successfully repaired basis Iter %d\n", iter);
+        settings.log.printf("Successfully repaired basis. Iteration %d\n", iter);
       }
       reorder_basic_list(q, basic_list);
       ft.reset(L, U, p);
