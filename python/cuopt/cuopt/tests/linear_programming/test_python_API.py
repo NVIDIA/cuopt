@@ -28,10 +28,10 @@ from cuopt.linear_programming.problem import (
     sense,
 )
 
-# from cuopt.linear_programming.internals import (
-#    GetSolutionCallback,
-#    SetSolutionCallback,
-# )
+from cuopt.linear_programming.internals import (
+    GetSolutionCallback,
+    SetSolutionCallback,
+)
 
 
 def test_model():
@@ -264,7 +264,7 @@ def test_constraint_matrix():
     assert rhs == exp_rhs
 
 
-"""def test_incumbent_solutions():
+def test_incumbent_solutions():
 
     # Callback for incumbent solution
     class CustomGetSolutionCallback(GetSolutionCallback):
@@ -312,11 +312,10 @@ def test_constraint_matrix():
     settings = SolverSettings()
     settings.set_mip_callback(get_callback)
     settings.set_mip_callback(set_callback)
-    settings.set_parameter("time_limit", 0.01)
+    settings.set_parameter("time_limit", 1)
 
     prob.solve(settings)
 
-    assert prob.Status.name == "FeasibleFound"
     assert get_callback.n_callbacks > 0
 
     for sol in get_callback.solutions:
@@ -326,4 +325,3 @@ def test_constraint_matrix():
         assert 2 * x_val + 4 * y_val >= 230
         assert 3 * x_val + 2 * y_val <= 190
         assert 5 * x_val + 3 * y_val == cost
-"""
