@@ -840,7 +840,6 @@ template <typename i_t,
           i_t threads_per_variable,
           typename bounds_update_view_t>
 void create_update_bounds_sub_warp(cudaGraph_t upd_graph,
-                                   // cudaGraphNode_t& set_bounds_changed_node,
                                    cudaGraphNode_t& bounds_changed_node,
                                    bounds_update_view_t view,
                                    i_t degree_beg,
@@ -874,7 +873,6 @@ void create_update_bounds_sub_warp(cudaGraph_t upd_graph,
     cudaGraphAddKernelNode(&upd_bnd_sub_warp_node, upd_graph, NULL, 0, &kernelNodeParams);
     RAFT_CUDA_TRY(cudaGetLastError());
 
-    // cudaGraphAddDependencies(upd_graph, &set_bounds_changed_node, &upd_bnd_sub_warp_node, 1);
     cudaGraphAddDependencies(upd_graph, &upd_bnd_sub_warp_node, &bounds_changed_node, 1);
     RAFT_CUDA_TRY(cudaGetLastError());
   }
@@ -886,7 +884,6 @@ template <typename i_t,
           i_t threads_per_variable,
           typename bounds_update_view_t>
 void create_update_bounds_sub_warp(cudaGraph_t upd_graph,
-                                   // cudaGraphNode_t& set_bounds_changed_node,
                                    cudaGraphNode_t& bounds_changed_node,
                                    bounds_update_view_t view,
                                    i_t degree,
@@ -898,7 +895,6 @@ void create_update_bounds_sub_warp(cudaGraph_t upd_graph,
 
 template <typename i_t, typename f_t, typename f_t2, typename bounds_update_view_t>
 void create_update_bounds_sub_warp(cudaGraph_t upd_graph,
-                                   // cudaGraphNode_t& set_bounds_changed_node,
                                    cudaGraphNode_t& bounds_changed_node,
                                    bounds_update_view_t view,
                                    i_t vars_sub_warp_count,

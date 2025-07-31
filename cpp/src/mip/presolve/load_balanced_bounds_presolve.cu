@@ -265,7 +265,6 @@ void load_balanced_bounds_presolve_t<i_t, f_t>::setup(
   std::tie(is_vars_sub_warp_single_bin, vars_sub_warp_count) =
     sub_warp_meta(stream, warp_vars_offsets, warp_vars_id_offsets, pb->vars_bin_offsets, 4);
 
-  // stream.synchronize();
   RAFT_CHECK_CUDA(stream);
   streams.sync_test_all_issued();
 
