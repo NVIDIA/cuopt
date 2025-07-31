@@ -1819,9 +1819,7 @@ void check_basic_infeasibilities(const std::vector<i_t>& basic_list,
 {
   for (i_t k = 0; k < infeasibility_indices.size(); ++k) {
     const i_t j = infeasibility_indices[k];
-    if (basic_mark[j] < 0) {
-      printf("%d basic_infeasibilities basic_mark[%d] < 0\n", info, j);
-    }
+    if (basic_mark[j] < 0) { printf("%d basic_infeasibilities basic_mark[%d] < 0\n", info, j); }
   }
 }
 
@@ -2864,22 +2862,22 @@ dual::status_t dual_phase2(i_t phase,
         basis_repair(lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
         i_t count = 0;
         while (factorize_basis(
-              lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) == -1) {
+                 lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) == -1) {
           settings.log.printf("Failed to repair basis. %d deficient columns.\n",
                               static_cast<int>(deficient.size()));
           if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
           settings.threshold_partial_pivoting_tol = 1.0;
           count++;
-          if (count > 100) {
-            return dual::status_t::NUMERICAL;
-          }
-          basis_repair(lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
+          if (count > 100) { return dual::status_t::NUMERICAL; }
+          basis_repair(
+            lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
         }
       }
       reorder_basic_list(q, basic_list);
       ft.reset(L, U, p);
       phase2::reset_basis_mark(basic_list, nonbasic_list, basic_mark, nonbasic_mark);
-      phase2::compute_initial_primal_infeasibilities(lp, settings, basic_list, x, squared_infeasibilities, infeasibility_indices);
+      phase2::compute_initial_primal_infeasibilities(
+        lp, settings, basic_list, x, squared_infeasibilities, infeasibility_indices);
     }
 #ifdef CHECK_BASIC_INFEASIBILITIES
     phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 7);
