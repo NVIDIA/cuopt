@@ -18,6 +18,10 @@ import math
 import pytest
 
 from cuopt.linear_programming import SolverSettings
+from cuopt.linear_programming.internals import (
+    GetSolutionCallback,
+    SetSolutionCallback,
+)
 from cuopt.linear_programming.problem import (
     CONTINUOUS,
     INTEGER,
@@ -26,11 +30,6 @@ from cuopt.linear_programming.problem import (
     Problem,
     VType,
     sense,
-)
-
-from cuopt.linear_programming.internals import (
-    GetSolutionCallback,
-    SetSolutionCallback,
 )
 
 
