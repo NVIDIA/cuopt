@@ -86,6 +86,7 @@ class bound_presolve_t {
   i_t infeas_constraints_count = 0;
   i_t redund_constraints_count = 0;
   probing_cache_t<i_t, f_t> probing_cache;
+  i_t solve_iter;
 };
 
 }  // namespace cuopt::linear_programming::detail
