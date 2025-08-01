@@ -70,7 +70,7 @@ struct branch_and_bound_solution_helper_t {
 
   void solution_callback(std::vector<f_t>& solution, f_t objective)
   {
-    dm->population.add_external_solution(solution, objective);
+    dm->population.add_external_solution(solution, objective, "B&B");
   }
 
   void set_simplex_solution(std::vector<f_t>& solution, f_t objective)
@@ -125,7 +125,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   }
 
   // CPU FJ EXPERIMENTS
-  int bb_threads = std::thread::hardware_concurrency() / 4 - dm.ls.ls_threads();
+  int bb_threads = std::thread::hardware_concurrency() / 2 - dm.ls.ls_threads();
 
   namespace dual_simplex = cuopt::linear_programming::dual_simplex;
   std::future<dual_simplex::mip_status_t> branch_and_bound_status_future;

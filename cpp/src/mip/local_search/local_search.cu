@@ -152,13 +152,14 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
     cpu_fj.cpu_solver->localMIP->optimum_callback = [this, &population, &cpu_fj]() {
       std::vector<double> h_vec;
       GetSolution(*cpu_fj.cpu_solver, h_vec);
-      population.add_external_solution(h_vec, cpu_fj.cpu_solver->localMIP->bestOBJ);
+      population.add_external_solution(h_vec, cpu_fj.cpu_solver->localMIP->bestOBJ, "CPUFJ");
       if (cpu_fj.cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
         CUOPT_LOG_DEBUG(
           "******* New local search best obj %g, best overall %g",
           context.problem_ptr->get_user_obj_from_solver_obj(cpu_fj.cpu_solver->localMIP->bestOBJ),
-          population.is_feasible() ? population.best_feasible().get_user_objective()
-                                   : std::numeric_limits<f_t>::max());
+          context.problem_ptr->get_user_obj_from_solver_obj(
+            population.is_feasible() ? population.best_feasible().get_objective()
+                                     : std::numeric_limits<f_t>::max()));
         local_search_best_obj = cpu_fj.cpu_solver->localMIP->bestOBJ;
       }
     };
@@ -197,12 +198,15 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
   scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->optimum_callback = [this, &population]() {
     std::vector<double> h_vec;
     GetSolution(*scratch_cpu_fj_on_lp_opt.cpu_solver, h_vec);
-    population.add_external_solution(h_vec, scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ);
+    population.add_external_solution(
+      h_vec, scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ, "CPUFJ");
     if (scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
       CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
-                      scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ,
-                      population.is_feasible() ? population.best_feasible().get_objective()
-                                               : std::numeric_limits<f_t>::max());
+                      context.problem_ptr->get_user_obj_from_solver_obj(
+                        scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ),
+                      context.problem_ptr->get_user_obj_from_solver_obj(
+                        population.is_feasible() ? population.best_feasible().get_objective()
+                                                 : std::numeric_limits<f_t>::max()));
       local_search_best_obj = scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ;
     }
   };
@@ -232,7 +236,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   if (pop_ptr && pop_ptr->is_feasible() &&
       pop_ptr->best_feasible().get_objective() < local_search_best_obj) {
     CUOPT_LOG_DEBUG(
-      "******* Local search obj %g vs best overall %g, should perform a restart",
+      "******* Local search obj %g vs best overall %g, should perform a restart (new best)",
       context.problem_ptr->get_user_obj_from_solver_obj(local_search_best_obj),
       context.problem_ptr->get_user_obj_from_solver_obj(pop_ptr->best_feasible().get_objective()));
     local_search_best_obj = pop_ptr->best_feasible().get_objective();
@@ -245,9 +249,16 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
     scratch_cpu_fj[0].cpu_solver->localMIP->optimum_callback = [this]() {
       std::vector<double> h_vec;
       GetSolution(*scratch_cpu_fj[0].cpu_solver, h_vec);
-      pop_ptr->add_external_solution(h_vec, scratch_cpu_fj[0].cpu_solver->localMIP->bestOBJ);
+      pop_ptr->add_external_solution(
+        h_vec, scratch_cpu_fj[0].cpu_solver->localMIP->bestOBJ, "CPUFJ");
       if (scratch_cpu_fj[0].cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
         local_search_best_obj = scratch_cpu_fj[0].cpu_solver->localMIP->bestOBJ;
+        CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
+                        context.problem_ptr->get_user_obj_from_solver_obj(
+                          scratch_cpu_fj[0].cpu_solver->localMIP->bestOBJ),
+                        context.problem_ptr->get_user_obj_from_solver_obj(
+                          pop_ptr->is_feasible() ? pop_ptr->best_feasible().get_objective()
+                                                 : std::numeric_limits<f_t>::max()));
       }
     };
     LocalMipRead(*scratch_cpu_fj[0].cpu_solver,

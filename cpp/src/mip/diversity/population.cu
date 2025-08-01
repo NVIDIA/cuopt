@@ -133,9 +133,36 @@ size_t population_t<i_t, f_t>::get_external_solution_size()
 }
 
 template <typename i_t, typename f_t>
-void population_t<i_t, f_t>::add_external_solution(std::vector<f_t>& solution, f_t objective)
+void population_t<i_t, f_t>::add_external_solution(std::vector<f_t>& solution,
+                                                   f_t objective,
+                                                   const std::string& origin)
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
+
+  // wait a bit before incorporating CPUFJ solutions
+  if (origin == "CPUFJ") {
+    // CUOPT_LOG_DEBUG("new best, time limit %g, time elapsed %g", timer.get_time_limit(),
+    // timer.elapsed_time());
+    if (timer.elapsed_time() < timer.get_time_limit() / 6.0) return;
+  }
+
+  // give priority to B&B solutions for diversity
+  if (origin == "B&B") {
+    // Remove all external solution queue entries whose origin is not "B&B"
+    for (size_t idx = 0; idx < external_solution_queue_origin.size();) {
+      if (external_solution_queue_origin[idx] != "B&B") {
+        CUOPT_LOG_DEBUG("new best solution Removing solution %s from population",
+                        external_solution_queue_origin[idx].c_str());
+        external_solution_queue.erase(external_solution_queue.begin() + idx);
+        external_solution_queue_obj.erase(external_solution_queue_obj.begin() + idx);
+        external_solution_queue_origin.erase(external_solution_queue_origin.begin() + idx);
+        // Do not increment idx, as the next element shifts into this position
+      } else {
+        ++idx;
+      }
+    }
+    return;
+  }
 
   if (external_solution_queue.size() >= 10) {
     auto worst_obj_it =
@@ -145,13 +172,17 @@ void population_t<i_t, f_t>::add_external_solution(std::vector<f_t>& solution, f
 
     external_solution_queue.erase(external_solution_queue.begin() + worst_obj_idx);
     external_solution_queue_obj.erase(external_solution_queue_obj.begin() + worst_obj_idx);
+    external_solution_queue_origin.erase(external_solution_queue_origin.begin() + worst_obj_idx);
   }
 
-  CUOPT_LOG_INFO("B&B added a solution to population, solution queue size %lu with objective %g",
-                 external_solution_queue.size(),
-                 problem_ptr->get_user_obj_from_solver_obj(objective));
+  CUOPT_LOG_INFO(
+    "%s added a solution to population, solution queue size %lu with objective %g, new best",
+    origin.c_str(),
+    external_solution_queue.size(),
+    problem_ptr->get_user_obj_from_solver_obj(objective));
   external_solution_queue.emplace_back(solution);
   external_solution_queue_obj.emplace_back(objective);
+  external_solution_queue_origin.emplace_back(origin);
   if (external_solution_queue.size() >= 5) { early_exit_primal_generation = true; }
 }
 
@@ -298,7 +329,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       cuopt_assert(std::abs(outside_sol.get_user_objective() - outside_sol_objective) <= 1e-6,
                    "External solution objective mismatch");
       auto h_outside_sol = outside_sol.get_host_assignment();
-      add_external_solution(h_outside_sol, outside_sol.get_objective());
+      add_external_solution(h_outside_sol, outside_sol.get_objective(), "injected");
     }
   }
 }

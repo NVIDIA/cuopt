@@ -94,7 +94,7 @@ class population_t {
    *  \return { -1 = not inserted , others = inserted index}
    */
   i_t add_solution(solution_t<i_t, f_t>&& sol);
-  void add_external_solution(std::vector<f_t>& solution, f_t objective);
+  void add_external_solution(std::vector<f_t>& solution, f_t objective, const std::string& origin);
   std::vector<solution_t<i_t, f_t>> get_external_solutions();
   size_t get_external_solution_size();
   void preempt_heuristic_solver();
@@ -166,6 +166,7 @@ class population_t {
   std::vector<std::pair<bool, solution_t<i_t, f_t>>> solutions;
   std::vector<std::vector<f_t>> external_solution_queue;
   std::vector<f_t> external_solution_queue_obj;
+  std::vector<std::string> external_solution_queue_origin;
   std::mt19937 rng;
   i_t update_iter = 0;
   std::mutex solution_mutex;
