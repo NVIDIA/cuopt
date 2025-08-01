@@ -104,6 +104,8 @@ class local_search_t {
 
   bool do_fj_solve(solution_t<i_t, f_t>& solution, fj_t<i_t, f_t>& fj, const std::string& source);
 
+  i_t ls_threads() const { return ls_cpu_fj.size() + scratch_cpu_fj.size(); }
+
   mip_solver_context_t<i_t, f_t>& context;
   rmm::device_uvector<f_t>& lp_optimal_solution;
   bool lp_optimal_exists{false};
@@ -116,7 +118,7 @@ class local_search_t {
   feasibility_pump_t<i_t, f_t> fp;
   std::mt19937 rng;
 
-  std::array<cpu_fj_thread_t, 8> ls_cpu_fj;
+  std::array<cpu_fj_thread_t, 4> ls_cpu_fj;
   std::array<cpu_fj_thread_t, 4> scratch_cpu_fj;
   cpu_fj_thread_t scratch_cpu_fj_on_lp_opt;
 };

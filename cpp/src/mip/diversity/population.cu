@@ -387,6 +387,7 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
 
     int inserted_pos = insert_index(std::pair<size_t, double>((size_t)hint, sol_cost));
     cuopt_assert(test_invariant(), "Population invariant doesn't hold");
+    test_invariant();
     return inserted_pos;
 
   } else if (sol_cost + OBJECTIVE_EPSILON < indices[index].second) {
@@ -400,10 +401,12 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
 
     int inserted_pos = insert_index(std::pair<size_t, double>((size_t)free, sol_cost));
     cuopt_assert(test_invariant(), "Population invariant doesn't hold");
+    test_invariant();
     return inserted_pos;
   }
   CUOPT_LOG_TRACE("Adding solution failed!");
   cuopt_assert(test_invariant(), "Population invariant doesn't hold");
+  test_invariant();
   return -1;
 }
 

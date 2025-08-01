@@ -414,6 +414,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   population.initialize_population();
   if (check_b_b_preemption()) { return population.best_feasible(); }
   // before probing cache or LP, run FJ to generate initial primal feasible solution
+  // ls.start_fj_scratch_threads(population);
   if (!from_dir) { generate_quick_feasible_solution(); }
   const f_t time_ratio_of_probing_cache = diversity_config_t::time_ratio_of_probing_cache;
   const f_t max_time_on_probing         = diversity_config_t::max_time_on_probing;

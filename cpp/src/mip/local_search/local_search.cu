@@ -154,10 +154,11 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
       GetSolution(*cpu_fj.cpu_solver, h_vec);
       population.add_external_solution(h_vec, cpu_fj.cpu_solver->localMIP->bestOBJ);
       if (cpu_fj.cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
-        CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
-                        cpu_fj.cpu_solver->localMIP->bestOBJ,
-                        population.is_feasible() ? population.best_feasible().get_objective()
-                                                 : std::numeric_limits<f_t>::max());
+        CUOPT_LOG_DEBUG(
+          "******* New local search best obj %g, best overall %g",
+          context.problem_ptr->get_user_obj_from_solver_obj(cpu_fj.cpu_solver->localMIP->bestOBJ),
+          population.is_feasible() ? population.best_feasible().get_user_objective()
+                                   : std::numeric_limits<f_t>::max());
         local_search_best_obj = cpu_fj.cpu_solver->localMIP->bestOBJ;
       }
     };
@@ -207,7 +208,7 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
   };
   solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
   solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
-  solution_lp.round_nearest();
+  solution_lp.round_random_nearest(500);
   LocalMipRead(*scratch_cpu_fj_on_lp_opt.cpu_solver, *context.problem_ptr, solution_lp);
   // default weights
   cudaDeviceSynchronize();

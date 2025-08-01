@@ -124,6 +124,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     return sol;
   }
 
+  // CPU FJ EXPERIMENTS
+  int bb_threads = std::thread::hardware_concurrency() / 4 - dm.ls.ls_threads();
+
   namespace dual_simplex = cuopt::linear_programming::dual_simplex;
   std::future<dual_simplex::mip_status_t> branch_and_bound_status_future;
   dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem;
@@ -148,6 +151,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     if (context.settings.num_cpu_threads != -1) {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
     }
+    branch_and_bound_settings.num_threads = std::max(1, bb_threads);
+    CUOPT_LOG_INFO("Using %d CPU threads for B&B", branch_and_bound_settings.num_threads);
 
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =

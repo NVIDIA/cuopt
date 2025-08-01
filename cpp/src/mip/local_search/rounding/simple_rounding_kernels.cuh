@@ -50,7 +50,7 @@ __global__ void simple_rounding_kernel(typename solution_t<i_t, f_t>::view_t sol
   } else if (can_round_down) {
     solution.assignment[var_id] = floor(curr_val);
   } else {
-    printf("var %d cannot round up or down\n", var_id);
+    // printf("var %d cannot round up or down\n", var_id);
     *successful = false;
   }
 }
