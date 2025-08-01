@@ -50,7 +50,7 @@
 #include <vector>
 using namespace std;
 using Value                          = double;
-const Value Infinity                 = 1e20;
+const Value Infinity                 = std::numeric_limits<double>::infinity();
 const Value NegativeInfinity         = -Infinity;
 const Value DefaultIntegerUpperBound = 1.0;
 const Value DefaultRealUpperBound    = Infinity;

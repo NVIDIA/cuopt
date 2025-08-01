@@ -34,14 +34,20 @@
 #pragma once
 #include "header.h"
 
+class LocalCon;
+
 class ModelVar {
  public:
   string name;
   size_t idx;
   Value upperBound;
   Value lowerBound;
-  vector<size_t> conIdxSet;
-  vector<size_t> posInCon;
+  vector<uint32_t> conIdxSet;
+  vector<uint32_t> conIdxSetNoObj;
+  mutable vector<LocalCon*> conRefSet;
+  mutable bool hasObj = false;
+  vector<uint32_t> posInCon;
+  vector<Value> coeffs;
   size_t termNum;
   VarType type;
 
@@ -74,8 +80,8 @@ class ModelVarUtil {
   ModelVarUtil();
   ~ModelVarUtil();
   size_t MakeVar(const string& _name, const bool _integrality);
-  const ModelVar& GetVar(const size_t _idx) const;
   ModelVar& GetVar(const size_t _idx) { return varSet[_idx]; }
+  const ModelVar& GetVar(const size_t _idx) const { return varSet[_idx]; }
   ModelVar& GetVar(const string& _name);
   size_t GetVarIdx(const string& _name);
 };

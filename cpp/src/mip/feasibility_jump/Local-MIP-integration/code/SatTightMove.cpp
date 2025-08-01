@@ -103,7 +103,7 @@ bool LocalMIP::SatTightMove(vector<bool>& score_table, vector<size_t>& score_idx
         score_idx.push_back(varIdx);
       }
     }
-    long score = TightScore(modelVar, delta);
+    auto [score, subscore] = TightScore(modelVar, delta);
     if (bestScore < score || bestScore == score && bestSubscore < subscore) {
       bestScore    = score;
       bestVarIdx   = varIdx;

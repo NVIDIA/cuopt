@@ -60,9 +60,13 @@ bool LocalMIP::UnsatTightMove()
         neighborConIdxs->at(randomIdx + sampleIdx) = temp;
       }
     }
+    // printf("neighborSize: %d\n", (int)neighborSize);
+    const int average_row_size = 4;
+    neighborVarIdxs.reserve(neighborSize * average_row_size);
+    neighborDeltas.reserve(neighborSize * average_row_size);
     for (size_t neighborIdx = 0; neighborIdx < neighborSize; ++neighborIdx) {
-      auto& localCon = localConUtil.conSet[neighborConIdxs->at(neighborIdx)];
-      auto& modelCon = modelConUtil->conSet[neighborConIdxs->at(neighborIdx)];
+      auto& localCon = localConUtil.conSet[(*neighborConIdxs)[neighborIdx]];
+      auto& modelCon = modelConUtil->conSet[(*neighborConIdxs)[neighborIdx]];
       for (size_t termIdx = 0; termIdx < modelCon.termNum; ++termIdx) {
         size_t varIdx  = modelCon.varIdxSet[termIdx];
         auto& localVar = localVarUtil.GetVar(varIdx);
@@ -119,6 +123,9 @@ bool LocalMIP::UnsatTightMove()
       neighborDeltas[bmsIdx]     = delta;
     }
   }
+  int relvar_count = scoreSize;
+  if (last_var_idx != -1) { relvar_count = relvar_offsets[last_var_idx]; }
+  // printf("scoreSize: %d vs %d\n", (int)scoreSize, relvar_count);
   for (size_t idx = 0; idx < scoreSize; ++idx) {
     size_t varIdx  = neighborVarIdxs[idx];
     Value delta    = neighborDeltas[idx];
@@ -132,7 +139,7 @@ bool LocalMIP::UnsatTightMove()
         scoreIdxs.push_back(varIdx);
       }
     }
-    long score = TightScore(modelVar, delta);
+    auto [score, subscore] = TightScore(modelVar, delta);
     if (bestScore < score || bestScore == score && bestSubscore < subscore) {
       bestScore    = score;
       bestVarIdx   = varIdx;

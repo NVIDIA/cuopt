@@ -102,11 +102,6 @@ size_t ModelVarUtil::MakeVar(const string& _name, const bool _integrality)
   return varIdx;
 }
 
-const ModelVar& ModelVarUtil::GetVar(const size_t _idx) const
-{
-  assert(_idx < varSet.size());
-  return varSet[_idx];
-}
 ModelVar& ModelVarUtil::GetVar(const string& _name) { return varSet[name2idx[_name]]; }
 
 size_t ModelVarUtil::GetVarIdx(const string& _name) { return name2idx[_name]; }

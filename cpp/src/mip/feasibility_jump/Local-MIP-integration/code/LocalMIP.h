@@ -73,10 +73,14 @@ class LocalMIP {
   size_t bmsFlip;
   size_t bmsRandom;
   size_t restartStep;
+  int last_var_idx{-1};
   Value bestOBJ;
   bool DEBUG;
-  long subscore;
+  // long subscore;
   std::atomic<bool> halted;
+  size_t minima{0};
+  size_t max_iters{std::numeric_limits<size_t>::max()};
+  std::vector<int> relvar_offsets;
   bool VerifySolution();
   void InitState();
   void UpdateBestSolution();
@@ -95,11 +99,9 @@ class LocalMIP {
   bool Timeout(chrono::_V2::system_clock::time_point& _clkStart);
   void LogObj(chrono::_V2::system_clock::time_point& _clkStart);
 
-  long TightScore(const ModelVar& _modelVar, Value _delta)
+  std::pair<long, long> TightScore(const ModelVar& _modelVar, Value _delta)
   {
     long score = 0;
-    size_t conIdx;
-    size_t posInCon;
     Value newLHS;
     Value newOBJ;
     bool isPreSat;
@@ -108,15 +110,19 @@ class LocalMIP {
     bool isNowStable;
     bool isPreBetter;
     bool isNowBetter;
-    subscore = 0;
+    long subscore = 0;
+    // hopefully the compiler performs autovectorization as well, but hopes not high
+    // (not sure if SSE/AVX2 has gather/scatter regardless)
+    // i miss my blockreduces. I have no hope of GCC figuring out the reduction.
+#pragma omp simd reduction(+ : score, subscore)
     for (size_t termIdx = 0; termIdx < _modelVar.termNum; ++termIdx) {
-      conIdx         = _modelVar.conIdxSet[termIdx];
-      posInCon       = _modelVar.posInCon[termIdx];
-      auto& localCon = localConUtil.conSet[conIdx];
-      auto& modelCon = modelConUtil->conSet[conIdx];
-      if (conIdx == 0) {
+      // conIdx         = _modelVar.conIdxSet[termIdx];
+      Value coeff = _modelVar.coeffs[termIdx];
+      // auto& localCon = localConUtil.conSet[conIdx];
+      auto& localCon = *_modelVar.conRefSet[termIdx];
+      if (localCon.isObj) {
         if (isFoundFeasible) {
-          newOBJ = localCon.LHS + modelCon.coeffSet[posInCon] * _delta;
+          newOBJ = localCon.LHS + coeff * _delta;
           if (newOBJ < localCon.LHS)
             score += localCon.weight;
           else
@@ -129,7 +135,7 @@ class LocalMIP {
             subscore -= localCon.weight;
         }
       } else {
-        newLHS   = localCon.LHS + modelCon.coeffSet[posInCon] * _delta;
+        newLHS   = localCon.LHS + coeff * _delta;
         isPreSat = localCon.SAT();
         isNowSat = newLHS < localCon.RHS + FeasibilityTol;
         if (!isPreSat && isNowSat)
@@ -149,7 +155,7 @@ class LocalMIP {
           subscore -= localCon.weight;
       }
     }
-    return score;
+    return {score, subscore};
   }
 
   // return delta_x
@@ -160,8 +166,8 @@ class LocalMIP {
     auto varIdx    = _modelCon.varIdxSet[_termIdx];
     auto& localVar = localVarUtil.GetVar(varIdx);
     auto& modelVar = modelVarUtil->GetVar(varIdx);
-    Value delta    = -(gap / _modelCon.coeffSet[_termIdx]);
-    if (_modelCon.coeffSet[_termIdx] > 0) {
+    Value delta    = -(gap * _modelCon.invCoeffs[_termIdx]);
+    if (_modelCon.invCoeffs[_termIdx] > 0) {
       if (modelVar.type == VarType::Real)
         _res = delta;
       else

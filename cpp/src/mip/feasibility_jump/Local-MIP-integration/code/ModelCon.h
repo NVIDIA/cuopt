@@ -41,8 +41,9 @@ class ModelCon {
   bool isEqual;
   bool isLarge;
   vector<Value> coeffSet;
-  vector<size_t> varIdxSet;
-  vector<size_t> posInVar;
+  vector<Value> invCoeffs;
+  vector<uint32_t> varIdxSet;
+  vector<uint32_t> posInVar;
   Value RHS;
   bool inferSAT;
   size_t termNum;

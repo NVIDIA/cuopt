@@ -177,6 +177,14 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
   // default weights
   cudaDeviceSynchronize();
 
+  // scratch_cpu_fj[0].cpu_solver->localMIP->relvar_offsets =
+  // host_copy(context.problem_ptr->related_variables_offsets);
+  // //scratch_cpu_fj[0].cpu_solver->localMIP->max_iters = 100000;
+  // scratch_cpu_fj[0].start_cpu_solver();
+  // scratch_cpu_fj[0].wait_for_cpu_solver();
+  // printf("Waiting!\n");
+  // exit(0);
+
   // TODO: other thread running on LP optimal
   for (auto& cpu_fj : scratch_cpu_fj) {
     cpu_fj.start_cpu_solver();

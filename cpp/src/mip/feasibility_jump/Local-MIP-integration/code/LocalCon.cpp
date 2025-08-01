@@ -37,10 +37,6 @@ LocalCon::LocalCon() : weight(1), RHS(0), LHS(0) {}
 
 LocalCon::~LocalCon() {}
 
-bool LocalCon::SAT() { return LHS < RHS + FeasibilityTol; }
-
-bool LocalCon::UNSAT() { return LHS >= RHS + FeasibilityTol; }
-
 LocalConUtil::LocalConUtil() {}
 
 void LocalConUtil::Allocate(const size_t _conNum)

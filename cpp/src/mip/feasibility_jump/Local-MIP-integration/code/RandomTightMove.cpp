@@ -100,11 +100,11 @@ void LocalMIP::RandomTightMove()
     }
   }
   for (size_t idx = 0; idx < scoreSize; ++idx) {
-    size_t varIdx  = neighborVarIdxs[idx];
-    Value delta    = neighborDeltas[idx];
-    auto& localVar = localVarUtil.GetVar(varIdx);
-    auto& modelVar = modelVarUtil->GetVar(varIdx);
-    long score     = TightScore(modelVar, delta);
+    size_t varIdx          = neighborVarIdxs[idx];
+    Value delta            = neighborDeltas[idx];
+    auto& localVar         = localVarUtil.GetVar(varIdx);
+    auto& modelVar         = modelVarUtil->GetVar(varIdx);
+    auto [score, subscore] = TightScore(modelVar, delta);
     if (bestScore < score || bestScore == score && bestSubscore < subscore) {
       bestScore    = score;
       bestVarIdx   = varIdx;

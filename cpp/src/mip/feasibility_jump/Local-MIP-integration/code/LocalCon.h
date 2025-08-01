@@ -41,11 +41,12 @@ class LocalCon {
   size_t posInUnsatConIdxs;
   Value RHS;
   Value LHS;
+  bool isObj = false;
 
   LocalCon();
   ~LocalCon();
-  bool SAT();
-  bool UNSAT();
+  bool SAT() { return LHS < RHS + FeasibilityTol; }
+  bool UNSAT() { return LHS >= RHS + FeasibilityTol; }
 };
 
 class LocalConUtil {

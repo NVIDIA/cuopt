@@ -59,7 +59,7 @@ bool LocalMIP::FlipMove(vector<bool>& _scoreTable, vector<size_t>& _scoreIdx)
     if (delta < 0 && curStep < localVar.allowDecStep ||
         delta > 0 && curStep < localVar.allowIncStep)
       continue;
-    long score = TightScore(modelVar, delta);
+    auto [score, subscore] = TightScore(modelVar, delta);
     if (bestScore < score || bestScore == score && bestSubscore < subscore) {
       bestScore    = score;
       bestVarIdx   = varIdx;

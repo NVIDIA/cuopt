@@ -31,9 +31,11 @@
 
 =====================================================================================*/
 
-// #include <valgrind/callgrind.h>
+#include <valgrind/callgrind.h>
 
 #include "Solver.h"
+
+// #include "ittnotify.h"
 
 Solver::Solver()
 {
@@ -49,11 +51,17 @@ void Solver::Run()
 {
   // ParseObj();
   // readerMPS->Read(fileName);
-  // CALLGRIND_START_INSTRUMENTATION;
-  clkStart   = chrono::high_resolution_clock::now();
+  CALLGRIND_START_INSTRUMENTATION;
+
+  // __itt_domain* domain = __itt_domain_create("cuOpt");
+  // __itt_string_handle* task = __itt_string_handle_create("CPU FJ");
+
+  clkStart = chrono::high_resolution_clock::now();
+  // __itt_task_begin(domain, __itt_null, __itt_null, task);
   int Result = localMIP->LocalSearch(optimalObj, clkStart);
-  // CALLGRIND_STOP_INSTRUMENTATION;
-  // CALLGRIND_DUMP_STATS;
+  // __itt_task_end(domain);
+  CALLGRIND_STOP_INSTRUMENTATION;
+  CALLGRIND_DUMP_STATS;
 }
 
 void Solver::ParseObj()

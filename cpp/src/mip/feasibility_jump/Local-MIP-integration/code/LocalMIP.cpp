@@ -63,6 +63,8 @@ int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_poi
       else
         SmoothWeight();
       RandomTightMove();
+      ++minima;
+      last_var_idx = -1;
     }
     ++curStep;
 
@@ -74,6 +76,7 @@ int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_poi
       if (optimum_callback) { optimum_callback(); }
       found_better = false;
     }
+    if (curStep >= max_iters) break;
   }
   PrintResult(_clkStart);
   return 0;
@@ -112,10 +115,16 @@ void LocalMIP::InitSolution()
 void LocalMIP::PrintResult(chrono::_V2::system_clock::time_point _clkStart)
 {
   if (!isFoundFeasible)
-    CUOPT_LOG_DEBUG("o no feasible solution found, run for %g", ElapsedTime(TimeNow(), _clkStart));
+    CUOPT_LOG_DEBUG("o no feasible solution found, minima %d/%d, run for %g",
+                    (int)minima,
+                    (int)curStep,
+                    ElapsedTime(TimeNow(), _clkStart));
   else if (VerifySolution()) {
-    CUOPT_LOG_DEBUG(
-      "o Best objective: %lf, run for %g", GetObjValue(), ElapsedTime(TimeNow(), _clkStart));
+    CUOPT_LOG_DEBUG("o Best objective: %lf, minima %d/%d, run for %g",
+                    GetObjValue(),
+                    (int)minima,
+                    (int)curStep,
+                    ElapsedTime(TimeNow(), _clkStart));
     // printf("B 1 %lf\n", GetObjValue());
     // if (OPT(PrintSol)) PrintSol();
   } else
@@ -198,6 +207,7 @@ void LocalMIP::ApplyMove(size_t _varIdx, Value _delta)
     localVar.lastDecStep  = curStep;
     localVar.allowIncStep = curStep + tabuBase + mt() % tabuVariation;
   }
+  last_var_idx = _varIdx;
 }
 
 void LocalMIP::Restart()
@@ -353,6 +363,13 @@ void LocalMIP::Allocate()
   for (size_t varIdx = 0; varIdx < modelVarUtil->varNum; varIdx++) {
     auto& modelVar = modelVarUtil->GetVar(varIdx);
     if (modelVar.type == VarType::Binary) localVarUtil.binaryIdx.push_back(varIdx);
+
+    for (size_t termIdx = 0; termIdx < modelVar.termNum; ++termIdx) {
+      size_t conIdx = modelVar.conIdxSet[termIdx];
+      modelVar.conRefSet.push_back(&localConUtil.conSet[conIdx]);
+      if (conIdx == 0) modelVar.hasObj = true;
+      if (conIdx == 0) localConUtil.conSet[conIdx].isObj = true;
+    }
   }
   mt.seed(2832);
 }

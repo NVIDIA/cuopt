@@ -239,6 +239,8 @@ void ReaderMPS::PushCoeffVarIdx(const size_t _conIdx, Value _coeff, const string
   auto& var      = modelVarUtil->GetVar(_varIdx);
 
   var.conIdxSet.push_back(_conIdx);
+  if (_conIdx == 0) var.hasObj = true;
+  // else var.conIdxSetNoObj.push_back(_conIdx);
   var.posInCon.push_back(con.varIdxSet.size());
   if (_conIdx == 0) _coeff *= modelConUtil->MIN;
   con.coeffSet.push_back(_coeff);

@@ -153,6 +153,19 @@ void LocalMipRead(Solver& solver,
     std::string var_name                                = "V" + std::to_string(var_idx);
     size_t lmip_varIdx                                  = modelVarUtil->GetVarIdx(var_name);
     localMIP->localVarUtil.GetVar(lmip_varIdx).nowValue = h_assignment[var_idx];
+
+    auto& var = modelVarUtil->GetVar(var_name);
+    var.coeffs.resize(var.termNum);
+
+    for (size_t termIdx = 0; termIdx < var.termNum; ++termIdx) {
+      size_t conIdx       = var.conIdxSet[termIdx];
+      size_t posInCon     = var.posInCon[termIdx];
+      var.coeffs[termIdx] = modelConUtil->conSet[conIdx].coeffSet[posInCon];
+      if (modelConUtil->conSet[conIdx].invCoeffs.size() <
+          modelConUtil->conSet[conIdx].coeffSet.size())
+        modelConUtil->conSet[conIdx].invCoeffs.resize(modelConUtil->conSet[conIdx].coeffSet.size());
+      modelConUtil->conSet[conIdx].invCoeffs[posInCon] = 1.0 / var.coeffs[termIdx];
+    }
   }
   if (problem.n_variables != (int)modelVarUtil->varNum) {
     CUOPT_LOG_ERROR(

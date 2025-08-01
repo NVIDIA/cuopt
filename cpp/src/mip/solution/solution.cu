@@ -382,21 +382,22 @@ i_t solution_t<i_t, f_t>::compute_number_of_integers()
                      [pb = problem_ptr->view(), assignment_ptr] __device__(i_t idx) -> bool {
                        bool is_int = pb.is_integer(assignment_ptr[idx]);
 
-                       i_t up_locks                    = 0;
-                       i_t down_locks                  = 0;
-                       auto [offset_begin, offset_end] = pb.reverse_range_for_var(idx);
-                       for (i_t i = offset_begin; i < offset_end; i += 1) {
-                         auto cstr_coeff = pb.reverse_coefficients[i];
-                         if (cstr_coeff > 0) {
-                           up_locks += 1;
-                         } else {
-                           down_locks += 1;
-                         }
-                       }
+                       //  i_t up_locks                    = 0;
+                       //  i_t down_locks                  = 0;
+                       //  auto [offset_begin, offset_end] = pb.reverse_range_for_var(idx);
+                       //  for (i_t i = offset_begin; i < offset_end; i += 1) {
+                       //    auto cstr_coeff = pb.reverse_coefficients[i];
+                       //    if (cstr_coeff > 0) {
+                       //      up_locks += 1;
+                       //    } else {
+                       //      down_locks += 1;
+                       //    }
+                       //  }
 
-                       if (up_locks > 0 && down_locks > 0) {
-                         printf("var %d up_locks %d down_locks %d\n", idx, up_locks, down_locks);
-                       }
+                       //  if (up_locks > 0 && down_locks > 0) {
+                       //    printf("var %d up_locks %d down_locks %d\n", idx, up_locks,
+                       //    down_locks);
+                       //  }
 
                        return pb.is_integer(assignment_ptr[idx]);
                      });
