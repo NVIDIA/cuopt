@@ -234,7 +234,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
                                            const std::string& source)
 {
   if (pop_ptr && pop_ptr->is_feasible() &&
-      pop_ptr->best_feasible().get_objective() < local_search_best_obj) {
+      pop_ptr->best_feasible().get_objective() < local_search_best_obj && false) {
     CUOPT_LOG_DEBUG(
       "******* Local search obj %g vs best overall %g, should perform a restart (new best)",
       context.problem_ptr->get_user_obj_from_solver_obj(local_search_best_obj),
