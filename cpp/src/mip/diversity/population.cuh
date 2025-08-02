@@ -166,6 +166,8 @@ class population_t {
   std::vector<std::pair<bool, solution_t<i_t, f_t>>> solutions;
   std::vector<std::vector<f_t>> external_solution_queue;
   std::vector<f_t> external_solution_queue_obj;
+  std::vector<std::vector<f_t>> external_solution_queue_backlog;
+  std::vector<f_t> external_solution_queue_backlog_obj;
   std::vector<std::string> external_solution_queue_origin;
   std::mt19937 rng;
   i_t update_iter = 0;
