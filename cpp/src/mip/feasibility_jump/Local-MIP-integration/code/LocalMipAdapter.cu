@@ -209,12 +209,23 @@ void CopyWeights(Solver& solver, fj_t<int32_t, double>& fj)
 
   auto h_cstr_weights     = cuopt::host_copy(fj.cstr_weights);
   auto h_objective_weight = fj.objective_weight.value(rmm::cuda_stream_default);
-
+  cuopt_assert(h_cstr_weights.size() == (size_t)problem.n_constraints, "size mismatch");
+  if (h_cstr_weights.size() != (size_t)problem.n_constraints) {
+    printf("h_cstr_weights.size() %d, problem.n_constraints %d\n",
+           (int)h_cstr_weights.size(),
+           problem.n_constraints);
+    // exit(1);
+    //  weird. as a workaround, just set the weights to 1
+    h_cstr_weights.resize(problem.n_constraints);
+    std::fill(h_cstr_weights.begin(), h_cstr_weights.end(), 1.0);
+  }
   for (int conIdx = 0; conIdx < problem.n_constraints; ++conIdx) {
     std::string con_name = "R" + std::to_string(conIdx);
     auto& con            = localConUtil.GetCon(modelConUtil->GetConIdx(con_name));
-    con.weight           = round(h_cstr_weights[conIdx]);
-    size_t con_idx_2     = modelConUtil->GetConIdx(con_name);
+    // printf("conIdx %d, n_constraints %d, weight count %d\n", conIdx, problem.n_constraints,
+    // (int)h_cstr_weights.size());
+    con.weight       = round(h_cstr_weights[conIdx]);
+    size_t con_idx_2 = modelConUtil->GetConIdx(con_name);
     if (con_idx_2) {
       auto& con_2  = localConUtil.GetCon(con_idx_2);
       con_2.weight = con.weight;

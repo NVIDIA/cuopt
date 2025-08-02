@@ -139,6 +139,8 @@ void population_t<i_t, f_t>::add_external_solution(std::vector<f_t>& solution,
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
 
+  // if (origin == "CPUFJ") return;
+
   // // wait a bit before incorporating CPUFJ solutions
   // if (origin == "CPUFJ") {
   //   // CUOPT_LOG_DEBUG("new best, time limit %g, time elapsed %g", timer.get_time_limit(),
