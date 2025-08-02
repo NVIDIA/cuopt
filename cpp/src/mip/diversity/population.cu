@@ -188,7 +188,6 @@ void population_t<i_t, f_t>::add_external_solution(std::vector<f_t>& solution,
         ++idx;
       }
     }
-    return;
   }
 
   if (external_solution_queue.size() >= 10) {
