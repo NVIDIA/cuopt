@@ -35,6 +35,6 @@ void CopyWeights(Solver& solver, fj_t<int32_t, double>& fj);
 void CopySolution(Solver& solver, solution_t<int32_t, double>& solution);
 
 void GetSolution(Solver& solver, solution_t<int32_t, double>& solution);
-void GetSolution(Solver& solver, std::vector<double>& solution);
+double GetSolution(Solver& solver, std::vector<double>& solution, bool get_current = false);
 
 }  // namespace cuopt::linear_programming::detail

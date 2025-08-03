@@ -76,6 +76,10 @@ int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_poi
       if (optimum_callback) { optimum_callback(); }
       found_better = false;
     }
+    // send current solution to callback every 3000 steps for diversity
+    if (curStep % 3000 == 0) {
+      if (diversity_callback) { diversity_callback(); }
+    }
     if (curStep >= max_iters) break;
   }
   PrintResult(_clkStart);

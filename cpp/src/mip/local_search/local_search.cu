@@ -163,6 +163,11 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
         local_search_best_obj = cpu_fj.cpu_solver->localMIP->bestOBJ;
       }
     };
+    cpu_fj.cpu_solver->localMIP->diversity_callback = [this, &population, &cpu_fj]() {
+      std::vector<double> h_vec;
+      f_t obj = GetSolution(*cpu_fj.cpu_solver, h_vec, true);
+      population.add_external_solution(h_vec, obj, "CPUFJ");
+    };
     counter++;
   };
   // cuopt_func_call(sol.test_feasibility(true))
@@ -210,6 +215,11 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
       local_search_best_obj = scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ;
     }
   };
+  scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->diversity_callback = [this, &population]() {
+    std::vector<double> h_vec;
+    f_t obj = GetSolution(*scratch_cpu_fj_on_lp_opt.cpu_solver, h_vec, true);
+    population.add_external_solution(h_vec, obj, "CPUFJ");
+  };
   solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
   solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
   solution_lp.round_random_nearest(500);
@@ -233,39 +243,39 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
                                            fj_t<i_t, f_t>& in_fj,
                                            const std::string& source)
 {
-  if (pop_ptr && pop_ptr->is_feasible() &&
-      pop_ptr->best_feasible().get_objective() < local_search_best_obj && false) {
-    CUOPT_LOG_DEBUG(
-      "******* Local search obj %g vs best overall %g, should perform a restart (new best)",
-      context.problem_ptr->get_user_obj_from_solver_obj(local_search_best_obj),
-      context.problem_ptr->get_user_obj_from_solver_obj(pop_ptr->best_feasible().get_objective()));
-    local_search_best_obj = pop_ptr->best_feasible().get_objective();
+  // if (pop_ptr && pop_ptr->is_feasible() &&
+  //     pop_ptr->best_feasible().get_objective() < local_search_best_obj && false) {
+  //   CUOPT_LOG_DEBUG(
+  //     "******* Local search obj %g vs best overall %g, should perform a restart (new best)",
+  //     context.problem_ptr->get_user_obj_from_solver_obj(local_search_best_obj),
+  //     context.problem_ptr->get_user_obj_from_solver_obj(pop_ptr->best_feasible().get_objective()));
+  //   local_search_best_obj = pop_ptr->best_feasible().get_objective();
 
-    scratch_cpu_fj[1].stop_cpu_solver();
-    scratch_cpu_fj[1].wait_for_cpu_solver();
-    scratch_cpu_fj[1].cpu_solver                   = nullptr;
-    scratch_cpu_fj[1].cpu_solver                   = std::make_unique<Solver>();
-    scratch_cpu_fj[1].cpu_solver->localMIP->prefix = "******* scratch " + std::to_string(1) + ": ";
-    scratch_cpu_fj[1].cpu_solver->localMIP->optimum_callback = [this]() {
-      std::vector<double> h_vec;
-      GetSolution(*scratch_cpu_fj[1].cpu_solver, h_vec);
-      pop_ptr->add_external_solution(
-        h_vec, scratch_cpu_fj[1].cpu_solver->localMIP->bestOBJ, "CPUFJ");
-      if (scratch_cpu_fj[1].cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
-        local_search_best_obj = scratch_cpu_fj[1].cpu_solver->localMIP->bestOBJ;
-        CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
-                        context.problem_ptr->get_user_obj_from_solver_obj(
-                          scratch_cpu_fj[1].cpu_solver->localMIP->bestOBJ),
-                        context.problem_ptr->get_user_obj_from_solver_obj(
-                          pop_ptr->is_feasible() ? pop_ptr->best_feasible().get_objective()
-                                                 : std::numeric_limits<f_t>::max()));
-      }
-    };
-    LocalMipRead(*scratch_cpu_fj[1].cpu_solver,
-                 *pop_ptr->best_feasible().problem_ptr,
-                 pop_ptr->best_feasible());
-    scratch_cpu_fj[1].start_cpu_solver();
-  }
+  //   scratch_cpu_fj[1].stop_cpu_solver();
+  //   scratch_cpu_fj[1].wait_for_cpu_solver();
+  //   scratch_cpu_fj[1].cpu_solver                   = nullptr;
+  //   scratch_cpu_fj[1].cpu_solver                   = std::make_unique<Solver>();
+  //   scratch_cpu_fj[1].cpu_solver->localMIP->prefix = "******* scratch " + std::to_string(1) + ":
+  //   "; scratch_cpu_fj[1].cpu_solver->localMIP->optimum_callback = [this]() {
+  //     std::vector<double> h_vec;
+  //     GetSolution(*scratch_cpu_fj[1].cpu_solver, h_vec);
+  //     pop_ptr->add_external_solution(
+  //       h_vec, scratch_cpu_fj[1].cpu_solver->localMIP->bestOBJ, "CPUFJ");
+  //     if (scratch_cpu_fj[1].cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
+  //       local_search_best_obj = scratch_cpu_fj[1].cpu_solver->localMIP->bestOBJ;
+  //       CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
+  //                       context.problem_ptr->get_user_obj_from_solver_obj(
+  //                         scratch_cpu_fj[1].cpu_solver->localMIP->bestOBJ),
+  //                       context.problem_ptr->get_user_obj_from_solver_obj(
+  //                         pop_ptr->is_feasible() ? pop_ptr->best_feasible().get_objective()
+  //                                                : std::numeric_limits<f_t>::max()));
+  //     }
+  //   };
+  //   LocalMipRead(*scratch_cpu_fj[1].cpu_solver,
+  //                *pop_ptr->best_feasible().problem_ptr,
+  //                pop_ptr->best_feasible());
+  //   scratch_cpu_fj[1].start_cpu_solver();
+  // }
 
   for (auto& cpu_fj : ls_cpu_fj) {
     if (cpu_fj.cpu_solver == nullptr) {
@@ -448,7 +458,7 @@ bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution,
 
   // run in FEASIBLE_FIRST to priorize feasibility-improving moves
   fj.settings.n_of_minimums_for_exit                    = ls_config.n_local_mins;
-  fj.settings.n_of_minimums_for_exit                    = 5000;
+  fj.settings.n_of_minimums_for_exit                    = 1000;
   fj.settings.mode                                      = fj_mode_t::EXIT_NON_IMPROVING;
   fj.settings.candidate_selection                       = fj_candidate_selection_t::FEASIBLE_FIRST;
   fj.settings.iteration_limit                           = ls_config.iteration_limit;

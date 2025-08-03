@@ -192,7 +192,7 @@ void population_t<i_t, f_t>::add_external_solution(std::vector<f_t>& solution,
   //   }
   // }
 
-  if (external_solution_queue.size() >= 10) {
+  if (external_solution_queue.size() >= 30) {
     auto worst_obj_it =
       std::max_element(external_solution_queue_obj.begin(), external_solution_queue_obj.end());
     if (objective > *worst_obj_it) return;

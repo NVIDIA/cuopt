@@ -234,7 +234,7 @@ void CopyWeights(Solver& solver, fj_t<int32_t, double>& fj)
   localConUtil.GetCon(0).weight = round(h_objective_weight);
 }
 
-void GetSolution(Solver& solver, std::vector<double>& solution)
+double GetSolution(Solver& solver, std::vector<double>& solution, bool get_current)
 {
   auto& localMIP     = solver.localMIP;
   auto& modelVarUtil = solver.modelVarUtil;
@@ -245,8 +245,11 @@ void GetSolution(Solver& solver, std::vector<double>& solution)
   for (size_t var_idx = 0; var_idx < modelVarUtil->varNum; ++var_idx) {
     std::string var_name = "V" + std::to_string(var_idx);
     size_t lmip_varIdx   = modelVarUtil->GetVarIdx(var_name);
-    solution[var_idx]    = localMIP->localVarUtil.GetVar(lmip_varIdx).bestValue;
+    solution[var_idx]    = get_current ? localMIP->localVarUtil.GetVar(lmip_varIdx).nowValue
+                                       : localMIP->localVarUtil.GetVar(lmip_varIdx).bestValue;
   }
+  auto& localObj = localMIP->localConUtil.conSet[0];
+  return get_current ? localObj.LHS : localMIP->bestOBJ;
 }
 
 void GetSolution(Solver& solver, solution_t<int32_t, double>& solution)

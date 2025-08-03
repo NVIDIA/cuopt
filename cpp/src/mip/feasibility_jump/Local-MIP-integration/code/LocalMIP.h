@@ -197,5 +197,6 @@ class LocalMIP {
 
   std::string prefix = "";
   std::function<void()> optimum_callback;
+  std::function<void()> diversity_callback;
   bool found_better = false;
 };
