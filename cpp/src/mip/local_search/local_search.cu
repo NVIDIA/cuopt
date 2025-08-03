@@ -448,7 +448,7 @@ bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution,
 
   // run in FEASIBLE_FIRST to priorize feasibility-improving moves
   fj.settings.n_of_minimums_for_exit                    = ls_config.n_local_mins;
-  fj.settings.n_of_minimums_for_exit                    = 1000;
+  fj.settings.n_of_minimums_for_exit                    = 2000;
   fj.settings.mode                                      = fj_mode_t::EXIT_NON_IMPROVING;
   fj.settings.candidate_selection                       = fj_candidate_selection_t::FEASIBLE_FIRST;
   fj.settings.iteration_limit                           = ls_config.iteration_limit;
