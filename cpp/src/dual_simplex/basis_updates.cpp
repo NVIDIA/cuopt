@@ -1872,6 +1872,11 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const std::vector<f_t>& utilde,
                                   S_.x.data() + S_.col_start[S_start + 1],
                                   v_nz);
 
+  if (std::abs(mu) < 1e-13) {
+    // Force a refactor. Otherwise we will get numerical issues when dividing by mu.
+    return 1;
+  }
+
 #ifdef CHECK_MU
   const f_t mu_check = 1.0 + dot<i_t, f_t>(etilde, u);
   printf("Update: mu %e mu_check %e diff %e\n", mu, mu_check, std::abs(mu - mu_check));
@@ -1924,12 +1929,17 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
   S_.append_column(etilde);
 
   // Compute mu = 1 + v^T * u
-  mu_values_.push_back(1.0 + sparse_dot(S_.i.data() + S_.col_start[S_start],
-                                        S_.x.data() + S_.col_start[S_start],
-                                        S_.col_start[S_start + 1] - S_.col_start[S_start],
-                                        S_.i.data() + S_.col_start[S_start + 1],
-                                        S_.x.data() + S_.col_start[S_start + 1],
-                                        S_.col_start[S_start + 2] - S_.col_start[S_start + 1]));
+  const f_t mu = 1.0 + sparse_dot(S_.i.data() + S_.col_start[S_start],
+                                  S_.x.data() + S_.col_start[S_start],
+                                  S_.col_start[S_start + 1] - S_.col_start[S_start],
+                                  S_.i.data() + S_.col_start[S_start + 1],
+                                  S_.x.data() + S_.col_start[S_start + 1],
+                                  S_.col_start[S_start + 2] - S_.col_start[S_start + 1]);
+  if (std::abs(mu) < 1e-13) {
+    // Force a refactor. Otherwise we will get numerical issues when dividing by mu.
+    return 1;
+  }
+  mu_values_.push_back(mu);
   // Clear the workspace
   for (i_t k = 0; k < nz; ++k) {
     const i_t i          = xi_workspace_[m + k];
