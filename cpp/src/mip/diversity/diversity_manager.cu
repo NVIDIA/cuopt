@@ -74,8 +74,10 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     sub_mip_recombiner(context, context.problem_ptr->n_variables, context.problem_ptr->handle_ptr),
     rng(cuopt::seed_generator::get_seed()),
     stats(context.stats),
-    mab_recombiner(
-      recombiner_enum_t::SIZE, cuopt::seed_generator::get_seed(), recombiner_alpha, "recombiner"),
+    mab_recombiner(static_cast<int>(recombiner_enum_t::SIZE),
+                   cuopt::seed_generator::get_seed(),
+                   recombiner_alpha,
+                   "recombiner"),
     mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), ls_alpha, "ls"),
     assignment_hash_map(*context.problem_ptr)
 {
@@ -675,7 +677,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   auto [offspring, success] = recombine(sol1, sol2);
   if (!success) {
     // add the attempt
-    mab_recombiner.add_mab_reward(recombine_stats.get_last_attempt(),
+    mab_recombiner.add_mab_reward(static_cast<int>(recombine_stats.get_last_attempt()),
                                   std::numeric_limits<double>::lowest(),
                                   std::numeric_limits<double>::lowest(),
                                   std::numeric_limits<double>::max(),
@@ -695,7 +697,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   success = this->run_local_search(offspring, population.weights, timer, ls_config);
   if (!success) {
     // add the attempt
-    mab_recombiner.add_mab_reward(recombine_stats.get_last_attempt(),
+    mab_recombiner.add_mab_reward(static_cast<int>(recombine_stats.get_last_attempt()),
                                   std::numeric_limits<double>::lowest(),
                                   std::numeric_limits<double>::lowest(),
                                   std::numeric_limits<double>::max(),
@@ -739,7 +741,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   f_t best_quality_of_parents =
     std::min(sol1.get_quality(population.weights), sol2.get_quality(population.weights));
   mab_recombiner.add_mab_reward(
-    recombine_stats.get_last_attempt(),
+    static_cast<int>(recombine_stats.get_last_attempt()),
     best_quality_of_parents,
     population.best().get_quality(population.weights),
     offspring_qual,
@@ -760,7 +762,7 @@ template <typename i_t, typename f_t>
 std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
   solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b)
 {
-  i_t recombiner;
+  recombiner_enum_t recombiner;
   if (run_only_ls_recombiner) {
     recombiner = recombiner_enum_t::LINE_SEGMENT;
   } else if (run_only_bp_recombiner) {
@@ -770,34 +772,43 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
   } else if (run_only_sub_mip_recombiner) {
     recombiner = recombiner_enum_t::SUB_MIP;
   } else {
-    recombiner = mab_recombiner.select_mab_option();
+    recombiner = static_cast<recombiner_enum_t>(mab_recombiner.select_mab_option());
   }
   recombine_stats.add_attempt((recombiner_enum_t)recombiner);
   recombine_stats.start_recombiner_time();
-  if (recombiner == recombiner_enum_t::BOUND_PROP) {
-    auto [sol, success] = bound_prop_recombiner.recombine(a, b, population.weights);
-    recombine_stats.stop_recombiner_time();
-    if (success) { recombine_stats.add_success(); }
-    return std::make_pair(sol, success);
-  } else if (recombiner == recombiner_enum_t::FP) {
-    auto [sol, success] = fp_recombiner.recombine(a, b, population.weights);
-    recombine_stats.stop_recombiner_time();
-    if (success) { recombine_stats.add_success(); }
-    return std::make_pair(sol, success);
-  } else if (recombiner == recombiner_enum_t::LINE_SEGMENT) {
-    auto [sol, success] = line_segment_recombiner.recombine(a, b, population.weights);
-    recombine_stats.stop_recombiner_time();
-    if (success) { recombine_stats.add_success(); }
-    return std::make_pair(sol, success);
-  } else if (recombiner == recombiner_enum_t::SUB_MIP) {
-    auto [sol, success] = sub_mip_recombiner.recombine(a, b, population.weights);
-    recombine_stats.stop_recombiner_time();
-    if (success) { recombine_stats.add_success(); }
-    return std::make_pair(sol, success);
-  } else {
-    CUOPT_LOG_ERROR("Invalid recombiner type: %d", recombiner);
-    return std::make_pair(solution_t<i_t, f_t>(a), false);
+  // Refactored code using a switch statement
+  switch (recombiner) {
+    case recombiner_enum_t::BOUND_PROP: {
+      auto [sol, success] = bound_prop_recombiner.recombine(a, b, population.weights);
+      recombine_stats.stop_recombiner_time();
+      if (success) { recombine_stats.add_success(); }
+      return std::make_pair(sol, success);
+    }
+    case recombiner_enum_t::FP: {
+      auto [sol, success] = fp_recombiner.recombine(a, b, population.weights);
+      recombine_stats.stop_recombiner_time();
+      if (success) { recombine_stats.add_success(); }
+      return std::make_pair(sol, success);
+    }
+    case recombiner_enum_t::LINE_SEGMENT: {
+      auto [sol, success] = line_segment_recombiner.recombine(a, b, population.weights);
+      recombine_stats.stop_recombiner_time();
+      if (success) { recombine_stats.add_success(); }
+      return std::make_pair(sol, success);
+    }
+    case recombiner_enum_t::SUB_MIP: {
+      auto [sol, success] = sub_mip_recombiner.recombine(a, b, population.weights);
+      recombine_stats.stop_recombiner_time();
+      if (success) { recombine_stats.add_success(); }
+      return std::make_pair(sol, success);
+    }
+    case recombiner_enum_t::SIZE: {
+      CUOPT_LOG_ERROR("Invalid or unhandled recombiner type: %d", recombiner);
+      return std::make_pair(solution_t<i_t, f_t>(a), false);
+    }
   }
+  CUOPT_LOG_ERROR("Invalid or unhandled recombiner type: %d", recombiner);
+  return std::make_pair(solution_t<i_t, f_t>(a), false);
 }
 
 template <typename i_t, typename f_t>

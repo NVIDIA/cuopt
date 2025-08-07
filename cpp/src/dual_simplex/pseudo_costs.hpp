@@ -56,9 +56,7 @@ class pseudo_costs_t {
   std::vector<f_t> pseudo_cost_sum_down;
   std::vector<i_t> pseudo_cost_num_up;
   std::vector<i_t> pseudo_cost_num_down;
-  // Global variable storing the results of strong branching down
   std::vector<f_t> strong_branch_down;
-  // Global variable storing the results of strong branching up
   std::vector<f_t> strong_branch_up;
 
   std::mutex strong_branches_completed;
