@@ -113,6 +113,7 @@ class problem_t {
 
   void write_as_mps(const std::string& path);
   void add_cutting_plane_at_objective(f_t objective);
+  void compute_vars_with_objective_coeffs();
 
   struct view_t {
     DI std::pair<i_t, i_t> reverse_range_for_var(i_t v) const

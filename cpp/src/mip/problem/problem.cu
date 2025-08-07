@@ -1597,7 +1597,7 @@ void problem_t<i_t, f_t>::compute_vars_with_objective_coeffs()
   auto h_objective_coefficients = cuopt::host_copy(objective_coefficients);
   std::vector<i_t> vars_with_objective_coeffs_;
   std::vector<f_t> objective_coeffs_;
-  for (i_t i = 0; i < pb.n_variables; ++i) {
+  for (i_t i = 0; i < n_variables; ++i) {
     if (h_objective_coefficients[i] != 0) {
       vars_with_objective_coeffs_.push_back(i);
       objective_coeffs_.push_back(h_objective_coefficients[i]);

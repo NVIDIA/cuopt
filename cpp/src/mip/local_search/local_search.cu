@@ -390,6 +390,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
   rmm::device_uvector<f_t> best_solution(solution.assignment, solution.handle_ptr->get_stream());
   problem_t<i_t, f_t>* old_problem_ptr = solution.problem_ptr;
   if (!feasibility_run) {
+    // if it has not been initialized yet, create a new problem and move it to the cut problem
     if (!problem_with_objective_cut.cutting_plane_added) {
       problem_with_objective_cut = std::move(problem_t<i_t, f_t>(*old_problem_ptr));
     }
