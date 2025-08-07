@@ -92,8 +92,8 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
     is_binary_variable.resize(n_variables, handle_ptr->get_stream());
     compute_n_integer_vars();
     compute_binary_var_table();
+    compute_vars_with_objective_coeffs();
   }
-
   compute_transpose_of_problem();
   // Check after modifications
   check_problem_representation(true, is_mip);
@@ -716,7 +716,7 @@ void problem_t<i_t, f_t>::recompute_auxilliary_data(bool check_representation)
 {
   compute_n_integer_vars();
   compute_binary_var_table();
-
+  compute_vars_with_objective_coeffs();
   // TODO: speedup compute related variables
   const double time_limit = 30.;
   compute_related_variables(time_limit);
@@ -999,6 +999,7 @@ void problem_t<i_t, f_t>::insert_variables(variables_delta_t<i_t, f_t>& h_vars)
 
   compute_n_integer_vars();
   compute_binary_var_table();
+  compute_vars_with_objective_coeffs();
 }
 
 // note that these don't change the reverse structure
@@ -1591,6 +1592,21 @@ f_t problem_t<i_t, f_t>::get_user_obj_from_solver_obj(f_t solver_obj)
 }
 
 template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::compute_vars_with_objective_coeffs()
+{
+  auto h_objective_coefficients = cuopt::host_copy(objective_coefficients);
+  std::vector<i_t> vars_with_objective_coeffs_;
+  std::vector<f_t> objective_coeffs_;
+  for (i_t i = 0; i < pb.n_variables; ++i) {
+    if (h_objective_coefficients[i] != 0) {
+      vars_with_objective_coeffs_.push_back(i);
+      objective_coeffs_.push_back(h_objective_coefficients[i]);
+    }
+  }
+  vars_with_objective_coeffs = std::make_pair(vars_with_objective_coeffs_, objective_coeffs_);
+}
+
+template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::add_cutting_plane_at_objective(f_t objective)
 {
   CUOPT_LOG_INFO("Adding cutting plane at objective %f", objective);
@@ -1602,20 +1618,13 @@ void problem_t<i_t, f_t>::add_cutting_plane_at_objective(f_t objective)
   }
   cutting_plane_added = true;
   constraints_delta_t<i_t, f_t> h_constraints;
-  auto h_objective_coefficients = cuopt::host_copy(objective_coefficients);
-  handle_ptr->sync_stream();
-  std::vector<i_t> var_indices;
-  std::vector<f_t> constr_coeffs;
-  for (i_t i = 0; i < n_variables; ++i) {
-    if (h_objective_coefficients[i] != 0) {
-      var_indices.push_back(i);
-      constr_coeffs.push_back(h_objective_coefficients[i]);
-    }
-  }
-  h_constraints.add_constraint(
-    var_indices, constr_coeffs, -std::numeric_limits<f_t>::infinity(), objective);
+  h_constraints.add_constraint(vars_with_objective_coeffs.first,
+                               vars_with_objective_coeffs.second,
+                               -std::numeric_limits<f_t>::infinity(),
+                               objective);
   insert_constraints(h_constraints);
   compute_transpose_of_problem();
+  cuopt_func_call(check_problem_representation(true));
 }
 
 #if MIP_INSTANTIATE_FLOAT

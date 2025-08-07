@@ -274,6 +274,7 @@ class problem_t {
   lp_state_t<i_t, f_t> lp_state;
   problem_fixing_helpers_t<i_t, f_t> fixing_helpers;
   bool cutting_plane_added{false};
+  std::pair<std::vector<i_t>, std::vector<f_t>> vars_with_objective_coeffs;
 };
 
 }  // namespace linear_programming::detail

@@ -26,7 +26,13 @@
 namespace cuopt::linear_programming::detail {
 
 // make sure RANDOM is always the last
-enum ls_method_t { FJ_ANNEALING = 0, FJ_LINE_SEGMENT, FP_SEARCH, RANDOM };
+enum class ls_method_t : int {
+  FJ_ANNEALING = 0,
+  FJ_LINE_SEGMENT,
+  FP_SEARCH,
+  RANDOM,
+  LS_METHODS_SIZE = RANDOM
+};
 
 template <typename i_t, typename f_t>
 struct ls_config_t {

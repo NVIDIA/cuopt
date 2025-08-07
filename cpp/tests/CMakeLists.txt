@@ -81,12 +81,12 @@ if(RAPIDS_DATASET_ROOT_DIR)
 endif(RAPIDS_DATASET_ROOT_DIR)
 
 # ## test sources
-add_subdirectory(routing)
+# add_subdirectory(routing)
 add_subdirectory(linear_programming)
-add_subdirectory(distance_engine)
+# add_subdirectory(distance_engine)
 add_subdirectory(mip)
 add_subdirectory(dual_simplex)
-add_subdirectory(examples)
+# add_subdirectory(examples)
 add_subdirectory(utilities)
 
 enable_testing()

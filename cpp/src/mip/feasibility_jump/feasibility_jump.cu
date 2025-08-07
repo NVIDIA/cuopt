@@ -241,11 +241,16 @@ template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::copy_weights(const weight_t<i_t, f_t>& weights,
                                   const raft::handle_t* handle_ptr)
 {
+  i_t old_size = cstr_weights.size();
   cstr_weights.resize(weights.cstr_weights.size(), handle_ptr->get_stream());
-  raft::copy(cstr_weights.data(),
-             weights.cstr_weights.data(),
-             weights.cstr_weights.size(),
-             handle_ptr->get_stream());
+  thrust::for_each(handle_ptr->get_thrust_policy(),
+                   thrust::counting_iterator<i_t>(0),
+                   thrust::counting_iterator<i_t>(weights.cstr_weights.size()),
+                   [old_size,
+                    fj_weights  = make_span(cstr_weights),
+                    new_weights = make_span(weights.cstr_weights)] __device__(i_t idx) {
+                     fj_weights[idx] = idx >= old_size ? 1. : new_weights[idx];
+                   });
   thrust::transform(handle_ptr->get_thrust_policy(),
                     weights.objective_weight.data(),
                     weights.objective_weight.data() + 1,
