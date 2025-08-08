@@ -336,34 +336,34 @@ class Tolerances(StrictModel):
         default=None,
         description="absolute and relative tolerance on the primal feasibility, dual feasibility, and gap",  # noqa
     )
-    absolute_primal: float = Field(
+    absolute_primal_tolerance: float = Field(
         default=None, description="Absolute primal tolerance"
     )
-    absolute_dual: float = Field(
+    absolute_dual_tolerance: float = Field(
         default=None,
         description="Absolute dual tolerance" "NOTE: Only applicable to LP",
     )
-    absolute_gap: float = Field(
+    absolute_gap_tolerance: float = Field(
         default=None,
         description="Absolute gap tolerance" "NOTE: Only applicable to LP",
     )
-    relative_primal: float = Field(
+    relative_primal_tolerance: float = Field(
         default=None, description="Relative primal tolerance"
     )
-    relative_dual: float = Field(
+    relative_dual_tolerance: float = Field(
         default=None,
         description="Relative dual tolerance" "NOTE: Only applicable to LP",
     )
-    relative_gap: float = Field(
+    relative_gap_tolerance: float = Field(
         default=None,
         description="Relative gap tolerance" "NOTE: Only applicable to LP",
     )
-    primal_infeasible: float = Field(
+    primal_infeasible_tolerance: float = Field(
         default=None,
         description="Primal infeasible tolerance"
         "NOTE: Only applicable to LP",
     )
-    dual_infeasible: float = Field(
+    dual_infeasible_tolerance: float = Field(
         default=None,
         description="Dual infeasible tolerance" "NOTE: Only applicable to LP",
     )
@@ -380,6 +380,78 @@ class Tolerances(StrictModel):
         default=None,
         description="MIP gap relative tolerance"
         "NOTE: Only applicable to MILP",
+    )
+    mip_absolute_tolerance: float = Field(
+        default=None, description="MIP absolute tolerance"
+    )
+    mip_relative_tolerance: float = Field(
+        default=None, description="MIP relative tolerance"
+    )
+    absolute_primal: float = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated in 25.08. "
+        "Use absolute_primal_tolerance instead",
+    )
+    absolute_dual: float = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated in 25.08. "
+        "Use absolute_dual_tolerance instead",
+    )
+    absolute_gap: float = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated in 25.08. "
+        "Use absolute_gap_tolerance instead",
+    )
+    relative_primal: float = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated in 25.08. "
+        "Use relative_primal_tolerance instead",
+    )
+    relative_dual: float = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated in 25.08. "
+        "Use relative_dual_tolerance instead",
+    )
+    relative_gap: float = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated in 25.08. "
+        "Use relative_gap_tolerance instead",
+    )
+    primal_infeasible: float = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated in 25.08. "
+        "Use primal_infeasible_tolerance instead",
+    )
+    dual_infeasible: float = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated in 25.08. "
+        "Use dual_infeasible_tolerance instead",
+    )
+    integrality_tolerance: float = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated starting in 25.05. "
+        "Use mip_integratlity_tolerance instead.",
+    )
+    absolute_mip_gap: float = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated starting in 25.05. "
+        "Use mip_absolute_gap instead.",
+    )
+    relative_mip_gap: float = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated starting in 25.05. "
+        "Use mip_relative_gap instead.",
     )
 
 
@@ -467,6 +539,66 @@ class SolverConfig(StrictModel):
         default=True,
         description="Set True to write logs to console, False to "
         "not write logs to console.",
+    )
+    strict_infeasibility: Optional[bool] = Field(
+        default=False,
+        description=" controls the strict infeasibility "
+        "mode in PDLP. When true if either the current or "
+        "the average solution is detected as infeasible, "
+        "PDLP will stop. When false both the current and "
+        "average solution need to be detected as infeasible "
+        "for PDLP to stop.",
+    )
+    user_problem_file: Optional[str] = Field(
+        default="",
+        description="Ignored by the service but included "
+        "for dataset compatibility",
+    )
+    per_constraint_residual: Optional[bool] = Field(
+        default=False,
+        description="Controls whether PDLP should compute the "
+        "primal & dual residual per constraint instead of globally.",
+    )
+    save_best_primal_so_far: Optional[bool] = Field(
+        default=False,
+        description="controls whether PDLP should save the "
+        "best primal solution so far. "
+        "With this parameter set to true, PDLP will always "
+        "prioritize a primal feasible "
+        "to a non primal feasible. "
+        "If a new primal feasible is found, the one with the "
+        "best primal objective will be kept. "
+        "If no primal feasible was found, the one "
+        "with the lowest primal residual will be kept. "
+        "If two have the same primal residual, "
+        "the one with the best objective will be kept.",
+    )
+    first_primal_feasible: Optional[bool] = Field(
+        default=False,
+        description="Controls whether PDLP should stop when "
+        "the first primal feasible solution is found.",
+    )
+    log_file: Optional[str] = Field(
+        default="",
+        description="Ignored by the service but included "
+        "for dataset compatibility",
+    )
+    solution_file: Optional[str] = Field(
+        default="",
+        description="Ignored by the service but included "
+        "for dataset compatibility",
+    )
+    solver_mode: Optional[int] = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated starting in 25.05. "
+        "Use pdlp_solver_mode instead.",
+    )
+    heuristics_only: Optional[bool] = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated starting in 25.05. "
+        "Use mip_heuristics_only instead.",
     )
 
 
@@ -715,7 +847,7 @@ lp_zlib_example_data = 'x\x01\x8dR\xd1j\xc4 \x10|\xcfW\x88\xcf%$\xd7\x94\xd2\xfe
 managed_lp_example_data = {
     "action": "cuOpt_LP",
     "data": lp_example_data,
-    "client_version": "25.08",
+    "client_version": "25.10",
 }
 
 # cut and pasted from actual run of LP example data.

@@ -35,7 +35,8 @@ namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
 pdhg_solver_t<i_t, f_t>::pdhg_solver_t(raft::handle_t const* handle_ptr,
-                                       problem_t<i_t, f_t>& op_problem_scaled)
+                                       problem_t<i_t, f_t>& op_problem_scaled,
+                                       bool is_batch_mode)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     problem_ptr(&op_problem_scaled),
@@ -57,8 +58,8 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(raft::handle_t const* handle_ptr,
     reusable_device_scalar_value_0_{0.0, stream_view_},
     reusable_device_scalar_value_neg_1_{f_t(-1.0), stream_view_},
     reusable_device_scalar_1_{stream_view_},
-    graph_all{stream_view_},
-    graph_prim_proj_gradient_dual{stream_view_},
+    graph_all{stream_view_, is_batch_mode},
+    graph_prim_proj_gradient_dual{stream_view_, is_batch_mode},
     d_total_pdhg_iterations_{0, stream_view_}
 {
 }

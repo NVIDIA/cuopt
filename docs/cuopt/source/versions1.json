@@ -1,9 +1,13 @@
 [
     {
-      "version": "25.08",
-      "url": "../25.08/",
+      "version": "25.10",
+      "url": "../25.10/",
       "name": "latest",
       "preferred": true
+    },
+    {
+      "version": "25.08",
+      "url": "../25.08/"
     },
     {
       "version": "25.05",

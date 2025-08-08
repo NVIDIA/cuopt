@@ -143,6 +143,15 @@ cd $CUOPT_HOME
 ./build.sh --help
 ```
 
+#### Deb package
+
+`libcuopt.so` can be packaged as a deb package with option deb. This is a beta-feature and dependecies of libcuopt needs to be installed manually while installing it using deb package.
+This is only available to be built through source code and libcuopt is not being released as deb package in any official space.
+
+```bash
+./build.sh libmps_parser libcuopt deb
+```
+
 #### Building for development
 
 To build all libraries and tests, simply run

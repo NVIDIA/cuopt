@@ -212,6 +212,8 @@ class load_balanced_bounds_presolve_t {
 
   activity_view_t get_activity_view(const load_balanced_problem_t<i_t, f_t>& pb);
   bounds_update_view_t get_bounds_update_view(const load_balanced_problem_t<i_t, f_t>& pb);
+  void create_bounds_update_graph();
+  void create_constraint_slack_graph(bool erase_inf_cnst);
 
   rmm::cuda_stream main_stream;
   rmm::cuda_stream act_stream;
@@ -221,6 +223,7 @@ class load_balanced_bounds_presolve_t {
   const load_balanced_problem_t<i_t, f_t>* pb;
 
   rmm::device_scalar<i_t> bounds_changed;
+  i_t h_bounds_changed;
 
   rmm::device_uvector<f_t> cnst_slack;
   rmm::device_uvector<f_t> vars_bnd;

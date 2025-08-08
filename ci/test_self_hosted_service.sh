@@ -217,6 +217,10 @@ if [ "$doservertest" -eq 1 ]; then
     # Test for message on absolute path, bad directory
     run_cli_test "Absolute path '/nohay' does not exist" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f /nohay/nada
 
+    # Set all current and deprecated solver_config values and make sure the service does not reject the dataset
+    # This is a smoketest against parameter name misalignment
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/lpmip_configs.json
+
     rapids-logger "Running cuopt_self_hosted Python tests"
     pytest tests
 

@@ -5,7 +5,7 @@ LP C API Examples
 Example With Data
 -----------------
 
-This example demonstrates how to use the LP solver in C. More details on the API can be found in `C API <lp-milp-c-api.html>`_.
+This example demonstrates how to use the LP solver in C. More details on the API can be found in :doc:`C API <lp-milp-c-api>`.
 
 Copy the code below into a file called ``lp_example.c``:
 

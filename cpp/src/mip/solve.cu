@@ -125,10 +125,12 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     running_mip);
 
   cuopt_func_call(auto saved_problem = scaled_problem);
-  if (settings.mip_scaling) { scaling.scale_problem(); }
-  if (settings.initial_solutions.size() > 0) {
-    for (const auto& initial_solution : settings.initial_solutions) {
-      scaling.scale_primal(*initial_solution);
+  if (settings.mip_scaling) {
+    scaling.scale_problem();
+    if (settings.initial_solutions.size() > 0) {
+      for (const auto& initial_solution : settings.initial_solutions) {
+        scaling.scale_primal(*initial_solution);
+      }
     }
   }
   // only call preprocess on scaled problem, so we can compute feasibility on the original problem

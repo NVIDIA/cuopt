@@ -155,9 +155,9 @@ std::vector<solution_t<i_t, f_t>> diversity_manager_t<i_t, f_t>::generate_more_s
     population.run_solution_callbacks(sol);
     solutions.emplace_back(solution_t<i_t, f_t>(sol));
     if (total_time_to_generate.check_time_limit()) { return solutions; }
-    timer_t timer(std::min(ls_limit, timer.remaining_time()));
+    timer_t ls_timer(std::min(ls_limit, timer.remaining_time()));
     ls_config_t<i_t, f_t> ls_config;
-    run_local_search(sol, population.weights, timer, ls_config);
+    run_local_search(sol, population.weights, ls_timer, ls_config);
     population.run_solution_callbacks(sol);
     solutions.emplace_back(std::move(sol));
     if (total_time_to_generate.check_time_limit()) { return solutions; }
@@ -318,6 +318,9 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     if (!check_bounds_sanity(*problem_ptr)) { return false; }
   }
   stats.presolve_time = presolve_timer.elapsed_time();
+  lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
+  problem_ptr->handle_ptr->sync_stream();
+  cudaDeviceSynchronize();
   return true;
 }
 
@@ -390,7 +393,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     cuopt::scope_guard([&]() { stats.total_solve_time = timer.elapsed_time(); });
   // after every change to the problem, we should resize all the relevant vars
   // we need to encapsulate that to prevent repetitions
-  lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
   ls.resize_vectors(*problem_ptr, problem_ptr->handle_ptr);
   ls.lb_constraint_prop.temp_problem.setup(*problem_ptr);
   ls.lb_constraint_prop.bounds_update.setup(ls.lb_constraint_prop.temp_problem);
@@ -813,8 +815,10 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
 {
   CUOPT_LOG_DEBUG("Setting simplex solution with objective %f", objective);
   using sol_t = solution_t<i_t, f_t>;
+  context.handle_ptr->sync_stream();
   RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
   cuopt_func_call(sol_t new_sol(*problem_ptr));
+  cuopt_assert(new_sol.assignment.size() == solution.size(), "Assignment size mismatch");
   cuopt_func_call(new_sol.copy_new_assignment(solution));
   cuopt_func_call(new_sol.compute_feasibility());
   cuopt_assert(integer_equal(new_sol.get_user_objective(), objective, 1e-3), "Objective mismatch");
