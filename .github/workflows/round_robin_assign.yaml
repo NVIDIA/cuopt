@@ -47,7 +47,7 @@ jobs:
               const issueNumber = issue.number;
               const index = (issueNumber - 1) % assignees.length;
               const assignee = assignees[index];
-              
+
               console.log(`Assigning issue #${issueNumber} to @${assignee}`);
 
               await github.rest.issues.addAssignees({
