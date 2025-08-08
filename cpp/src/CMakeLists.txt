@@ -19,7 +19,7 @@ set(UTIL_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/utilities/seed_generator.cu
 add_subdirectory(linear_programming)
 add_subdirectory(math_optimization)
 add_subdirectory(mip)
-# add_subdirectory(routing)
+add_subdirectory(routing)
 add_subdirectory(dual_simplex)
 
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} ${UTIL_SRC_FILES} PARENT_SCOPE)
