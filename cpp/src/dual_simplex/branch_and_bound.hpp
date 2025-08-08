@@ -79,12 +79,12 @@ class branch_and_bound_t {
   // Mutex for lower bound
   std::mutex mutex_lower;
   // Global variable for lower bound
-  f_t lower_bound;
+  f_t lower_bound_;
 
   // Mutex for upper bound
   std::mutex mutex_upper;
   // Global variable for upper bound
-  f_t upper_bound;
+  f_t upper_bound_;
   // Global variable for incumbent. The incumbent should be updated with the upper bound
   mip_solution_t<i_t, f_t> incumbent;
 
