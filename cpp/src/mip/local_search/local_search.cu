@@ -120,8 +120,8 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
   if (rd == ls_method_t::FJ_LINE_SEGMENT && lp_optimal_exists) {
     is_feas = run_fj_line_segment(solution, timer, ls_config);
   } else if (rd == ls_method_t::FP_SEARCH) {
-    timer   = timer_t(std::min(3., timer.remaining_time()));
-    is_feas = run_fp(solution, timer, false);
+    timer = timer_t(std::min(3., timer.remaining_time()));
+    // is_feas = run_fp(solution, timer, false);
   } else {
     is_feas = run_fj_annealing(solution, timer, ls_config);
   }
