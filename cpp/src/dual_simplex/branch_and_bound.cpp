@@ -484,7 +484,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     heap(compare);
   i_t num_nodes = 0;
   mip_node_t<i_t, f_t> root_node(root_objective, root_vstatus);
-  graphviz_node(settings, &root_node, "lower bound", lower_bound_);
+  graphviz_node(settings, &root_node, "lower bound", lower_bound);
 
   // Choose variable to branch on
   logger_t log;
@@ -529,7 +529,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                          std::move(up_child));  // child pointers moved into the tree
   lp_problem_t leaf_problem =
     original_lp;  // Make a copy of the original LP. We will modify its bounds at each leaf
-  f_t gap            = get_upper_bound() - lower_bound_;
+  f_t gap            = get_upper_bound() - lower_bound;
   i_t nodes_explored = 0;
   settings.log.printf(
     "| Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   | "
@@ -541,7 +541,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   f_t total_lp_iters = 0.0;
   f_t last_log       = 0;
   while (gap > settings.absolute_mip_gap_tol &&
-         relative_gap(get_upper_bound(), lower_bound_) > settings.relative_mip_gap_tol &&
+         relative_gap(get_upper_bound(), lower_bound) > settings.relative_mip_gap_tol &&
          heap.size() > 0) {
     // Check if there are any solutions to repair
     std::vector<std::vector<f_t>> to_repair;
@@ -568,9 +568,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
             settings.log.printf(
               "H                        %+13.6e  %+10.6e                      %s %9.2f\n",
               compute_user_objective(original_lp, repaired_obj),
-              compute_user_objective(original_lp, lower_bound_),
+              compute_user_objective(original_lp, lower_bound),
               user_mip_gap<f_t>(compute_user_objective(original_lp, repaired_obj),
-                                compute_user_objective(original_lp, lower_bound_))
+                                compute_user_objective(original_lp, lower_bound))
                 .c_str(),
               toc(start_time));
             if (settings.solution_callback != nullptr) {
@@ -791,16 +791,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     toc(start_time),
     gap,
     compute_user_objective(original_lp, get_upper_bound()),
-    compute_user_objective(original_lp, lower_bound_));
+    compute_user_objective(original_lp, lower_bound));
 
   if (gap <= settings.absolute_mip_gap_tol ||
-      relative_gap(get_upper_bound(), lower_bound_) <= settings.relative_mip_gap_tol) {
+      relative_gap(get_upper_bound(), lower_bound) <= settings.relative_mip_gap_tol) {
     status = mip_status_t::OPTIMAL;
     if (gap > 0 && gap <= settings.absolute_mip_gap_tol) {
       settings.log.printf("Optimal solution found within absolute MIP gap tolerance (%.1e)\n",
                           settings.absolute_mip_gap_tol);
     } else if (gap > 0 &&
-               relative_gap(get_upper_bound(), lower_bound_) <= settings.relative_mip_gap_tol) {
+               relative_gap(get_upper_bound(), lower_bound) <= settings.relative_mip_gap_tol) {
       settings.log.printf("Optimal solution found within relative MIP gap tolerance (%.1e)\n",
                           settings.relative_mip_gap_tol);
     } else {
@@ -821,7 +821,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   uncrush_primal_solution(original_problem, original_lp, incumbent.x, solution.x);
   solution.objective          = incumbent.objective;
-  solution.lower_bound        = lower_bound_;
+  solution.lower_bound        = lower_bound;
   solution.nodes_explored     = nodes_explored;
   solution.simplex_iterations = total_lp_iters;
   return status;
