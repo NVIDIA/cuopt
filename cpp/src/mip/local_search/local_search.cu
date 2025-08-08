@@ -107,7 +107,7 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
   fj_settings.feasibility_run = false;
   fj.set_fj_settings(fj_settings);
   fj.copy_weights(weights, solution.handle_ptr);
-  bool is_feas;
+  bool is_feas   = false;
   ls_method_t rd = static_cast<ls_method_t>(std::uniform_int_distribution(
     static_cast<int>(ls_method_t::FJ_LINE_SEGMENT), static_cast<int>(ls_method_t::FP_SEARCH))(rng));
   if (ls_config.ls_method == ls_method_t::FJ_LINE_SEGMENT) {
