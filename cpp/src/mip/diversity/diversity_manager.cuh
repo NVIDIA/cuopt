@@ -18,6 +18,7 @@
 #pragma once
 
 #include "assignment_hash_map.cuh"
+#include "diversity_config.hpp"
 #include "multi_armed_bandit.cuh"
 #include "population.cuh"
 
@@ -79,6 +80,7 @@ class diversity_manager_t {
 
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;
+  diversity_config_t diversity_config;
   population_t<i_t, f_t> population;
   rmm::device_uvector<f_t> lp_optimal_solution;
   bool simplex_solution_exists{false};
