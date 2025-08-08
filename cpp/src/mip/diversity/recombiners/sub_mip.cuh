@@ -29,12 +29,20 @@ template <typename i_t, typename f_t>
 class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
  public:
   sub_mip_recombiner_t(mip_solver_context_t<i_t, f_t>& context,
+                       population_t<i_t, f_t>& population,
                        i_t n_vars,
                        const raft::handle_t* handle_ptr)
     : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr),
       vars_to_fix(n_vars, handle_ptr->get_stream()),
-      context(context)
+      context(context),
+      population(population)
   {
+  }
+
+  void solution_callback(std::vector<f_t>& solution, f_t objective)
+  {
+    CUOPT_LOG_DEBUG("SUBMIP added solution with objective %.16e", objective);
+    solution_vector.push_back(solution);
   }
 
   std::pair<solution_t<i_t, f_t>, bool> recombine(solution_t<i_t, f_t>& a,
@@ -42,6 +50,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
                                                   const weight_t<i_t, f_t>& weights)
   {
     raft::common::nvtx::range fun_scope("Sub-MIP recombiner");
+    solution_vector.clear();
     auto& guiding_solution = a.get_feasible() ? a : b;
     auto& other_solution   = a.get_feasible() ? b : a;
     // copy the solution from A
@@ -88,13 +97,17 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
       branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
       branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
+      branch_and_bound_settings.solution_callback = [this](std::vector<f_t>& solution,
+                                                           f_t objective) {
+        this->solution_callback(solution, objective);
+      };
       // disable B&B logs, so that it is not interfering with the main B&B thread
       branch_and_bound_settings.log.log = false;
       dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(branch_and_bound_problem,
                                                                   branch_and_bound_settings);
       branch_and_bound.set_initial_guess(cuopt::host_copy(fixed_assignment));
       branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
-      if (!std::isnan(branch_and_bound_solution.objective)) {
+      if (solution_vector.size() > 0) {
         cuopt_assert(fixed_assignment.size() == branch_and_bound_solution.x.size(),
                      "Assignment size mismatch");
         CUOPT_LOG_DEBUG("Sub-MIP solution found. Objective %.16e. Status %d",
@@ -121,6 +134,20 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
         sub_mip_recombiner_config_t::decrease_max_n_of_vars_from_other();
       }
     }
+    // try adding all intermediate solutions to the population
+    for (const auto& solution : solution_vector) {
+      CUOPT_LOG_DEBUG("Adding intermediate submip solution to population");
+      solution_t<i_t, f_t> sol(offspring);
+      rmm::device_uvector<f_t> fixed_assignment(solution.size(),
+                                                offspring.handle_ptr->get_stream());
+      raft::copy(fixed_assignment.data(),
+                 solution.data(),
+                 solution.size(),
+                 offspring.handle_ptr->get_stream());
+      sol.unfix_variables(fixed_assignment, variable_map);
+      sol.compute_feasibility();
+      population.add_solution(std::move(sol));
+    }
     bool better_cost_than_parents =
       offspring.get_quality(weights) <
       std::min(other_solution.get_quality(weights), guiding_solution.get_quality(weights));
@@ -135,6 +162,8 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
   }
   rmm::device_uvector<i_t> vars_to_fix;
   mip_solver_context_t<i_t, f_t>& context;
+  std::vector<std::vector<f_t>> solution_vector;
+  population_t<i_t, f_t>& population;
 };
 
 }  // namespace cuopt::linear_programming::detail

@@ -71,7 +71,8 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                             context.problem_ptr->n_variables,
                             ls.line_segment_search,
                             context.problem_ptr->handle_ptr),
-    sub_mip_recombiner(context, context.problem_ptr->n_variables, context.problem_ptr->handle_ptr),
+    sub_mip_recombiner(
+      context, population, context.problem_ptr->n_variables, context.problem_ptr->handle_ptr),
     rng(cuopt::seed_generator::get_seed()),
     stats(context.stats),
     mab_recombiner(static_cast<int>(recombiner_enum_t::SIZE),
