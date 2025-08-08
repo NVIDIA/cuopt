@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Inactivity Reminder with Different Times
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # Runs daily at 09:00 UTC
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remind inactive issues and PRs with different thresholds
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const MS_IN_DAY = 24 * 60 * 60 * 1000;
+            const now = new Date();
+
+            // Inactivity thresholds in days
+            const ISSUE_INACTIVITY_DAYS = 21; // 3 weeks
+            const PR_INACTIVITY_DAYS = 7;     // 1 week
+
+            function isInactive(updatedAt, thresholdDays) {
+              const updatedDate = new Date(updatedAt);
+              return (now - updatedDate) > thresholdDays * MS_IN_DAY;
+            }
+
+            const issuesAndPRs = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            for (const item of issuesAndPRs) {
+              if (!item.assignees || item.assignees.length === 0) continue;
+
+              const isPR = !!item.pull_request;
+              const thresholdDays = isPR ? PR_INACTIVITY_DAYS : ISSUE_INACTIVITY_DAYS;
+
+              if (isInactive(item.updated_at, thresholdDays)) {
+                const mentions = item.assignees.map(a => `@${a.login}`).join(' ');
+                const issueNumber = item.number;
+                const type = isPR ? "pull request" : "issue";
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: `⚠️ Hi ${mentions}, this ${type} has had no activity for ${thresholdDays} days. Please update or let us know if it can be closed. Thank you!`,
+                });
+
+                console.log(`Posted reminder on #${issueNumber} (${type}) to ${mentions}`);
+              }
+            }
