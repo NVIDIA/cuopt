@@ -88,11 +88,10 @@ sed_runner 's/\("version": "\)[0-9][0-9]\.[0-9][0-9]\.[0-9][0-9]"/\1'${NEXT_FULL
 VERSIONS_FILE="docs/cuopt/source/versions1.json"
 # Only update if NEXT_FULL_TAG is not already present
 if ! grep -q "\"version\": \"${NEXT_FULL_TAG}\"" "${VERSIONS_FILE}"; then
-  # Remove preferred and latest flags, but keep the version entry
+  # Remove preferred and latest flags, but keep the version entry and URL
   sed_runner '/"name": "latest",/d' "${VERSIONS_FILE}"
   sed_runner '/"preferred": true,\?/d' "${VERSIONS_FILE}"
-  # Remove all version entries except the version number and remove trailing commas
-  sed_runner 's/.*"url": ".*\/",\?$//g' "${VERSIONS_FILE}"
+  # Clean up trailing commas and empty lines
   sed_runner 's/,\s*}/}/g' "${VERSIONS_FILE}"  # Remove trailing commas before closing braces
   sed_runner 's/,\s*$//g' "${VERSIONS_FILE}"   # Remove trailing commas at end of lines
   sed_runner '/^$/d' "${VERSIONS_FILE}"
