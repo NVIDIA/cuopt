@@ -178,8 +178,7 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
       }
     }
 
-    if (remove_var)
-    {
+    if (remove_var) {
       col_marker[j] = 1;
       presolve_info.removed_variables.push_back(j);
       presolve_info.removed_reduced_costs.push_back(problem.objective[j]);
