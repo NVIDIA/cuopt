@@ -91,10 +91,6 @@ if ! grep -q "\"version\": \"${NEXT_FULL_TAG}\"" "${VERSIONS_FILE}"; then
   # Remove preferred and latest flags, but keep the version entry and URL
   sed_runner '/"name": "latest",/d' "${VERSIONS_FILE}"
   sed_runner '/"preferred": true,\?/d' "${VERSIONS_FILE}"
-  # Clean up trailing commas and empty lines
-  sed_runner 's/,\s*}/}/g' "${VERSIONS_FILE}"  # Remove trailing commas before closing braces
-  sed_runner 's/,\s*$//g' "${VERSIONS_FILE}"   # Remove trailing commas at end of lines
-  sed_runner '/^$/d' "${VERSIONS_FILE}"
   # Add new version entry with both preferred and latest flags
   NEW_VERSION_ENTRY='    {\n      "version": "'${NEXT_FULL_TAG}'",\n      "url": "../'${NEXT_FULL_TAG}'/",\n      "name": "latest",\n      "preferred": true\n    },'
   sed_runner "/\[/a\\${NEW_VERSION_ENTRY}" "${VERSIONS_FILE}"
