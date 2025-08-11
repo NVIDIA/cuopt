@@ -428,7 +428,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     std::min(max_time_on_probing, time_limit * time_ratio_of_probing_cache);
   timer_t probing_timer{time_for_probing_cache};
   if (check_b_b_preemption()) { return population.best_feasible(); }
-  if (!fj_only_run && !fp_only_run) {
+  if (!fj_only_run) {
     compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
   }
   // careful, assign the correct probing cache
@@ -446,7 +446,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   }  // Mutex is unlocked here
   if (bb_thread_solution_exists) {
     ls.lp_optimal_exists = true;
-  } else if (!fj_only_run && !fp_only_run) {
+  } else if (!fj_only_run) {
     relaxed_lp_settings_t lp_settings;
     lp_settings.time_limit            = lp_time_limit;
     lp_settings.tolerance             = context.settings.tolerances.absolute_tolerance;
