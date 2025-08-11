@@ -40,7 +40,7 @@ function sed_runner() {
 echo "${NEXT_FULL_TAG}" > VERSION
 echo "${NEXT_FULL_TAG}" > RAPIDS_VERSION
 
-dependencies='libcuopt libcuopt-cu12 cuopt cuopt-cu12 cuopt-mps-parser'
+dependencies='libcuopt libcuopt-cu12 cuopt cuopt-cu12 cuopt-mps-parser cuopt-server cuopt-server-cu12 cuopt-sh-client'
 for FILE in conda/environments/*.yaml dependencies.yaml; do
     for dependency in ${dependencies}; do
         sed_runner "s/\(${dependency}==\)[0-9]\+\.[0-9]\+/\1${NEXT_SHORT_TAG_PEP440}/" "${FILE}"
@@ -65,9 +65,9 @@ sed_runner 's/'"\"client_version\": \"[0-9][0-9].[0-9][0-9]\""'/'"\"client_versi
 sed_runner 's/'"version = \"[0-9][0-9].[0-9][0-9]\""'/'"version = \"${NEXT_SHORT_TAG}\""'/g' docs/cuopt/source/conf.py
 sed_runner 's/'"PROJECT_NUMBER         = [0-9][0-9].[0-9][0-9]"'/'"PROJECT_NUMBER         = ${NEXT_SHORT_TAG}"'/g' cpp/doxygen/Doxyfile
 # Update quick-start docs for conda
-sed_runner 's/cuopt=[0-9][0-9].[0-9][0-9].[^ ]* python=[0-9].[0-9][0-9] cuda-version=[0-9][0-9].[0-9]/cuopt='${NEXT_SHORT_TAG}'.* python=3.12 cuda-version=12.8/g' docs/cuopt/source/cuopt-python/quick-start.rst
-sed_runner 's/libcuopt=[0-9][0-9].[0-9][0-9].[^ ]* python=[0-9].[0-9][0-9] cuda-version=[0-9][0-9].[0-9]/libcuopt='${NEXT_SHORT_TAG}'.* python=3.12 cuda-version=12.8/g' docs/cuopt/source/cuopt-c/quick-start.rst
-sed_runner 's/cuopt-server=[0-9][0-9].[0-9][0-9].[^ ]* cuopt-sh-client=[0-9][0-9].[0-9][0-9].[^ ]* python=[0-9].[0-9][0-9]/cuopt-server='${NEXT_SHORT_TAG}'.* cuopt-sh-client='${NEXT_SHORT_TAG}'.* python=3.12/g' docs/cuopt/source/cuopt-server/quick-start.rst
+sed_runner 's/cuopt=[0-9][0-9].[0-9][0-9].[^ ]*/cuopt='${NEXT_SHORT_TAG}'.*/g' docs/cuopt/source/cuopt-python/quick-start.rst
+sed_runner 's/libcuopt=[0-9][0-9].[0-9][0-9].[^ ]*/libcuopt='${NEXT_SHORT_TAG}'.*/g' docs/cuopt/source/cuopt-c/quick-start.rst
+sed_runner 's/cuopt-server=[0-9][0-9].[0-9][0-9].[^ ]* cuopt-sh-client=[0-9][0-9].[0-9][0-9].[^ ]*/cuopt-server='${NEXT_SHORT_TAG}'.* cuopt-sh-client='${NEXT_SHORT_TAG}'.*/g' docs/cuopt/source/cuopt-server/quick-start.rst
 # Update quick-start docs for pip
 sed_runner "s/\(cuopt-cu12==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" docs/cuopt/source/cuopt-python/quick-start.rst
 sed_runner "s/\(libcuopt-cu12==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" docs/cuopt/source/cuopt-c/quick-start.rst
@@ -77,8 +77,6 @@ sed_runner "s/\(cuopt-sh-client==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP4
 # Update docker image tags in docs
 sed_runner 's|cuopt:[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda12\.8-\)\(py[0-9]\+\)|cuopt:'"${DOCKER_TAG}"'\1\2|g' docs/cuopt/source/cuopt-python/quick-start.rst
 sed_runner 's|cuopt:[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda12\.8-\)\(py[0-9]\+\)|cuopt:'"${DOCKER_TAG}"'\1\2|g' docs/cuopt/source/cuopt-server/quick-start.rst
-
-# Update doc version
 
 # Update project.json
 PROJECT_FILE="docs/cuopt/source/project.json"
@@ -109,7 +107,7 @@ sed_runner 's/'"cuopt_version: \"[0-9][0-9].[0-9][0-9]\""'/'"cuopt_version: \"${
 # Update README.md
 sed_runner "s/\(cuopt-server-cu12==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" README.md
 sed_runner "s/\(cuopt-sh-client==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" README.md
-sed_runner 's/cuopt-server=[0-9][0-9].[0-9][0-9] cuopt-sh-client=[0-9][0-9].[0-9][0-9] python=[0-9].[0-9][0-9] cuda-version=[0-9][0-9].[0-9]/cuopt-server='${NEXT_SHORT_TAG}' cuopt-sh-client='${NEXT_SHORT_TAG}' python=3.12 cuda-version=12.8/g' README.md
+sed_runner 's/cuopt-server=[0-9][0-9].[0-9][0-9].* cuopt-sh-client=[0-9][0-9].[0-9][0-9].*/cuopt-server='${NEXT_SHORT_TAG}' cuopt-sh-client='${NEXT_SHORT_TAG}'/g' README.md
 sed_runner 's|cuopt:[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda12\.8-\)\(py[0-9]\+\)|cuopt:'"${DOCKER_TAG}"'\1\2|g' README.md
 
 # Update Helm chart files
