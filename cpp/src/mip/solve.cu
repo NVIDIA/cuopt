@@ -67,8 +67,8 @@ template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                                  mip_solver_settings_t<i_t, f_t> const& settings)
 {
-  const f_t time_limit =
-    settings.time_limit == 0 ? std::numeric_limits<f_t>::max() : settings.time_limit;
+  constexpr f_t max_time_limit = 1000000000;
+  const f_t time_limit         = settings.time_limit == 0 ? max_time_limit : settings.time_limit;
   if (settings.heuristics_only && time_limit == std::numeric_limits<f_t>::max()) {
     CUOPT_LOG_ERROR("Time limit cannot be infinity when heuristics only is set");
     cuopt_expects(false,

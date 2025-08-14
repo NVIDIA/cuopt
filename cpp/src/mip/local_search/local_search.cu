@@ -226,7 +226,7 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
   fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
   fj.settings.n_of_minimums_for_exit = 20000;
   fj.settings.update_weights         = true;
-  fj.settings.feasibility_run        = true;
+  fj.settings.feasibility_run        = false;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
   fj.solve(solution);
   return solution.get_feasible();
@@ -243,7 +243,7 @@ bool local_search_t<i_t, f_t>::run_fj_on_zero(solution_t<i_t, f_t>& solution, ti
   fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
   fj.settings.n_of_minimums_for_exit = 20000;
   fj.settings.update_weights         = true;
-  fj.settings.feasibility_run        = true;
+  fj.settings.feasibility_run        = false;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
   bool is_feasible                   = fj.solve(solution);
   return is_feasible;
@@ -365,18 +365,19 @@ void local_search_t<i_t, f_t>::save_solution_and_add_cutting_plane(
 }
 
 template <typename i_t, typename f_t>
-void local_search_t<i_t, f_t>::run_fp_restart(solution_t<i_t, f_t>& solution,
-                                              rmm::device_uvector<f_t>& best_solution,
-                                              f_t& best_objective,
-                                              timer_t timer)
+void local_search_t<i_t, f_t>::run_fj_and_add_cutting_plane(solution_t<i_t, f_t>& solution,
+                                                            rmm::device_uvector<f_t>& best_solution,
+                                                            f_t& best_objective,
+                                                            timer_t timer)
 {
   fp.config.alpha = default_alpha;
-  ls_config_t<i_t, f_t> ls_config;
-  // assign current objective
-  ls_config.best_objective_of_parents = solution.get_objective();
-  ls_config.n_local_mins              = 500;
-  bool is_feasible                    = run_fj_annealing(solution, timer, ls_config);
-  if (is_feasible) { save_solution_and_add_cutting_plane(solution, best_solution, best_objective); }
+  // ls_config_t<i_t, f_t> ls_config;
+  // // assign current objective
+  // ls_config.best_objective_of_parents = solution.get_objective();
+  // ls_config.n_local_mins              = 500;
+  // bool is_feasible                    = run_fj_annealing(solution, timer, ls_config);
+  // if (is_feasible) { save_solution_and_add_cutting_plane(solution, best_solution,
+  // best_objective); }
 }
 
 template <typename i_t, typename f_t>
@@ -385,10 +386,11 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                       bool feasibility_run)
 {
   const i_t n_fp_iterations = 1000000;
-  bool is_feasible          = false;
-  double best_objective     = std::numeric_limits<double>::max();
+  bool is_feasible          = solution.compute_feasibility();
+  double best_objective     = solution.get_objective();
   rmm::device_uvector<f_t> best_solution(solution.assignment, solution.handle_ptr->get_stream());
   problem_t<i_t, f_t>* old_problem_ptr = solution.problem_ptr;
+  fp.timer                             = timer_t(timer.remaining_time());
   if (!feasibility_run) {
     // if it has not been initialized yet, create a new problem and move it to the cut problem
     if (!problem_with_objective_cut.cutting_plane_added) {
@@ -419,7 +421,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
         CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
                         solution.get_objective());
         save_solution_and_add_cutting_plane(solution, best_solution, best_objective);
-        run_fp_restart(solution, best_solution, best_objective, timer);
+        run_fj_and_add_cutting_plane(solution, best_solution, best_objective, timer);
       }
     }
     // if not feasible, it means it is a cycle
@@ -437,7 +439,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
           CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
                           solution.get_objective());
           save_solution_and_add_cutting_plane(solution, best_solution, best_objective);
-          run_fp_restart(solution, best_solution, best_objective, timer);
+          run_fj_and_add_cutting_plane(solution, best_solution, best_objective, timer);
         }
       }
     }

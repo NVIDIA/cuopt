@@ -193,7 +193,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     is_scaled_(problem_.is_scaled_),
     preprocess_called(problem_.preprocess_called),
     lp_state(problem_.lp_state),
-    fixing_helpers(problem_.fixing_helpers, handle_ptr)
+    fixing_helpers(problem_.fixing_helpers, handle_ptr),
+    vars_with_objective_coeffs(problem_.vars_with_objective_coeffs)
 {
 }
 
@@ -291,7 +292,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     is_scaled_(problem_.is_scaled_),
     preprocess_called(problem_.preprocess_called),
     lp_state(problem_.lp_state),
-    fixing_helpers(problem_.fixing_helpers, handle_ptr)
+    fixing_helpers(problem_.fixing_helpers, handle_ptr),
+    vars_with_objective_coeffs(problem_.vars_with_objective_coeffs)
 {
 }
 
