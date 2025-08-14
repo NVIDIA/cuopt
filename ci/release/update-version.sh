@@ -40,18 +40,52 @@ function sed_runner() {
 echo "${NEXT_FULL_TAG}" > VERSION
 echo "${NEXT_FULL_TAG}" > RAPIDS_VERSION
 
-dependencies='libcuopt libcuopt-cu12 cuopt cuopt-cu12 cuopt-mps-parser cuopt-server cuopt-server-cu12 cuopt-sh-client'
-for FILE in conda/environments/*.yaml dependencies.yaml; do
-    for dependency in ${dependencies}; do
-        sed_runner "s/\(${dependency}==\)[0-9]\+\.[0-9]\+/\1${NEXT_SHORT_TAG_PEP440}/" "${FILE}"
-    done
+DEPENDENCIES=(
+  libcuopt
+  libcuopt-cu12
+  cuopt-mps-parser
+  cuopt
+  cuopt-cu12
+  cuopt-server
+  cuopt-server-cu12
+  cuopt-sh-client
+  cudf
+  cudf-cu12
+  cuvs
+  cuvs-cu12
+  librmm
+  librmm-cu12
+  libraft-headers
+  rmm
+  rmm-cu12
+  pylibraft
+  pylibraft-cu12
+  raft-dask
+  raft-dask-cu12
+  rapids-dask-dependency
+)
+
+for DEP in "${DEPENDENCIES[@]}"; do
+  for FILE in dependencies.yaml conda/environments/*.yaml python/*/pyproject.toml; do
+    sed_runner "s/\(${DEP}==\)[0-9]\+\.[0-9]\+/\1${NEXT_SHORT_TAG_PEP440}/" "${FILE}"
+  done
+  for FILE in python/*/pyproject.toml; do
+    sed_runner "s/\(${DEP}==\)[0-9]\+\.[0-9]\+/\1${NEXT_SHORT_TAG_PEP440}/" "${FILE}"
+  done
+  for FILE in docs/cuopt/source/*/quick-start.rst README.md; do
+    sed_runner "s/\(${DEP}==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" "${FILE}"
+  done
+  for FILE in docs/cuopt/source/*/quick-start.rst README.md; do
+    sed_runner "s/\(${DEP}=\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?[^ ]*/\1${NEXT_SHORT_TAG}.*/g" "${FILE}"
+  done
+  for FILE in docs/cuopt/source/*/quick-start.rst README.md; do
+    sed_runner "s/\(${DEP}:\)[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda[0-9]\+\.[0-9]\+-\)\(py[0-9]\+\)/\1${DOCKER_TAG}\2\3/g" docs/cuopt/source/cuopt-python/quick-start.rst
+  done
 done
 
 # CMakeLists update
 sed_runner 's/'"VERSION [0-9][0-9].[0-9][0-9].[0-9][0-9]"'/'"VERSION ${NEXT_FULL_TAG}"'/g' cpp/CMakeLists.txt
 sed_runner 's/'"VERSION [0-9][0-9].[0-9][0-9].[0-9][0-9]"'/'"VERSION ${NEXT_FULL_TAG}"'/g' cpp/libmps_parser/CMakeLists.txt
-
-# RAPIDS CMakeLists update
 sed_runner 's/'"DEPENDENT_LIB_MAJOR_VERSION \"[0-9][0-9]\""'/'"DEPENDENT_LIB_MAJOR_VERSION \"${NEXT_MAJOR}\""'/g' cpp/CMakeLists.txt
 sed_runner 's/'"DEPENDENT_LIB_MINOR_VERSION \"[0-9][0-9]\""'/'"DEPENDENT_LIB_MINOR_VERSION \"${NEXT_MINOR}\""'/g' cpp/CMakeLists.txt
 
@@ -61,22 +95,8 @@ sed_runner 's/'"\"client_version\": \"[0-9][0-9].[0-9][0-9]\""'/'"\"client_versi
 sed_runner 's/'"\"client_version\": \"[0-9][0-9].[0-9][0-9]\""'/'"\"client_version\": \"${NEXT_SHORT_TAG}\""'/g' python/cuopt_server/cuopt_server/utils/linear_programming/data_definition.py
 
 # Doc update
-
 sed_runner 's/'"version = \"[0-9][0-9].[0-9][0-9]\""'/'"version = \"${NEXT_SHORT_TAG}\""'/g' docs/cuopt/source/conf.py
 sed_runner 's/'"PROJECT_NUMBER         = [0-9][0-9].[0-9][0-9]"'/'"PROJECT_NUMBER         = ${NEXT_SHORT_TAG}"'/g' cpp/doxygen/Doxyfile
-# Update quick-start docs for conda
-sed_runner 's/cuopt=[0-9][0-9].[0-9][0-9].[^ ]*/cuopt='${NEXT_SHORT_TAG}'.*/g' docs/cuopt/source/cuopt-python/quick-start.rst
-sed_runner 's/libcuopt=[0-9][0-9].[0-9][0-9].[^ ]*/libcuopt='${NEXT_SHORT_TAG}'.*/g' docs/cuopt/source/cuopt-c/quick-start.rst
-sed_runner 's/cuopt-server=[0-9][0-9].[0-9][0-9].[^ ]* cuopt-sh-client=[0-9][0-9].[0-9][0-9].[^ ]*/cuopt-server='${NEXT_SHORT_TAG}'.* cuopt-sh-client='${NEXT_SHORT_TAG}'.*/g' docs/cuopt/source/cuopt-server/quick-start.rst
-# Update quick-start docs for pip
-sed_runner "s/\(cuopt-cu12==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" docs/cuopt/source/cuopt-python/quick-start.rst
-sed_runner "s/\(libcuopt-cu12==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" docs/cuopt/source/cuopt-c/quick-start.rst
-sed_runner "s/\(cuopt-server-cu12==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" docs/cuopt/source/cuopt-server/quick-start.rst
-sed_runner "s/\(cuopt-sh-client==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" docs/cuopt/source/cuopt-server/quick-start.rst
-
-# Update docker image tags in docs
-sed_runner 's|cuopt:[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda12\.8-\)\(py[0-9]\+\)|cuopt:'"${DOCKER_TAG}"'\1\2|g' docs/cuopt/source/cuopt-python/quick-start.rst
-sed_runner 's|cuopt:[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda12\.8-\)\(py[0-9]\+\)|cuopt:'"${DOCKER_TAG}"'\1\2|g' docs/cuopt/source/cuopt-server/quick-start.rst
 
 # Update project.json
 PROJECT_FILE="docs/cuopt/source/project.json"
@@ -104,39 +124,11 @@ sed_runner "/^set(cuopt_version/ s/[0-9][0-9].[0-9][0-9].[0-9][0-9]/${NEXT_FULL_
 # Update nightly
 sed_runner 's/'"cuopt_version: \"[0-9][0-9].[0-9][0-9]\""'/'"cuopt_version: \"${NEXT_SHORT_TAG}\""'/g' .github/workflows/nightly.yaml
 
-# Update README.md
-sed_runner "s/\(cuopt-server-cu12==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" README.md
-sed_runner "s/\(cuopt-sh-client==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" README.md
-sed_runner 's/cuopt-server=[0-9][0-9].[0-9][0-9].* cuopt-sh-client=[0-9][0-9].[0-9][0-9].*/cuopt-server='${NEXT_SHORT_TAG}' cuopt-sh-client='${NEXT_SHORT_TAG}'/g' README.md
-sed_runner 's|cuopt:[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda12\.8-\)\(py[0-9]\+\)|cuopt:'"${DOCKER_TAG}"'\1\2|g' README.md
-
 # Update Helm chart files
 sed_runner 's/\(tag: "\)[0-9][0-9]\.[0-9]\+\.[0-9]\+\(-cuda12\.8-py3\.12"\)/\1'${DOCKER_TAG}'\2/g' helmchart/cuopt-server/values.yaml
 sed_runner 's/\(appVersion: \)[0-9][0-9]\.[0-9]\+\.[0-9]\+/\1'${DOCKER_TAG}'/g' helmchart/cuopt-server/Chart.yaml
 sed_runner 's/\(version: \)[0-9][0-9]\.[0-9]\+\.[0-9]\+/\1'${DOCKER_TAG}'/g' helmchart/cuopt-server/Chart.yaml
 
-DEPENDENCIES=(
-  libcuopt
-  cuopt
-  cuopt-mps-parser
-)
-
-for DEP in "${DEPENDENCIES[@]}"; do
-  for FILE in python/*/pyproject.toml; do
-    sed_runner "s/\(${DEP}==\)[0-9]\+\.[0-9]\+/\1${NEXT_SHORT_TAG_PEP440}/" "${FILE}"
-  done
-done
-
-# RAPIDS-specific updates
-# RTD update for RAPIDS dependencies
-rapids_dependencies='cudf cudf-cu12 cuvs cuvs-cu12 libcudf librmm librmm-cu12 rmm rmm-cu12 librmm libraft-headers pylibraft pylibraft-cu12 raft-dask raft-dask-cu12 rapids-dask-dependency'
-for FILE in conda/environments/*.yaml dependencies.yaml; do
-    for dependency in ${rapids_dependencies}; do
-        sed_runner "s/\(${dependency}==\)[0-9]\+\.[0-9]\+/\1${NEXT_SHORT_TAG_PEP440}/" "${FILE}"
-    done
-done
-
-# WORKFLOWS for RAPIDS
 for FILE in .github/workflows/*.yaml; do
   sed_runner "/shared-workflows/ s/@.*/@branch-${NEXT_SHORT_TAG}/g" "${FILE}"
   # CI image tags of the form {rapids_version}-{something}
@@ -149,23 +141,3 @@ sed_runner 's/'"DEPENDENT_PACKAGE_VERSION=\"[0-9][0-9].[0-9][0-9]\""'/'"DEPENDEN
 
 # PYTHON for RAPIDS
 sed_runner "/DOWNLOAD.*rapids-cmake/ s/branch-[0-9][0-9].[0-9][0-9]/branch-${NEXT_SHORT_TAG}/g" python/cuopt/CMakeLists.txt
-
-# Fixing RAPIDS dependencies and pyproject.toml
-RAPIDS_DEPENDENCIES=(
-  cudf
-  cuvs
-  librmm
-  rmm
-  pylibraft
-  raft-dask
-  rapids-dask-dependency
-)
-
-for DEP in "${RAPIDS_DEPENDENCIES[@]}"; do
-  for FILE in dependencies.yaml conda/environments/*.yaml; do
-    sed_runner "s/\(${DEP}==\)[0-9]\+\.[0-9]\+/\1${NEXT_SHORT_TAG_PEP440}/" "${FILE}"
-  done
-  for FILE in python/*/pyproject.toml; do
-    sed_runner "s/\(${DEP}==\)[0-9]\+\.[0-9]\+/\1${NEXT_SHORT_TAG_PEP440}/" "${FILE}"
-  done
-done
