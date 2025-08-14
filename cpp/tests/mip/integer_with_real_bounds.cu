@@ -26,7 +26,11 @@
 namespace cuopt::linear_programming::test {
 TEST(mip_solve, integer_with_real_bounds_test)
 {
-  auto [termination_status, obj_val, lb] = test_mps_file("mip/integer-with-real-bounds.mps");
+  auto time_limit      = 1;
+  auto heuristics_only = true;
+  auto presolve        = false;
+  auto [termination_status, obj_val, lb] =
+    test_mps_file("mip/integer-with-real-bounds.mps", time_limit, heuristics_only, presolve);
   EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
   EXPECT_NEAR(obj_val, 4, 1e-5);
 }

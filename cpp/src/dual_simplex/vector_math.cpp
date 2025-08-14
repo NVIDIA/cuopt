@@ -68,6 +68,47 @@ f_t dot(const std::vector<f_t>& x, const std::vector<f_t>& y)
 }
 
 template <typename i_t, typename f_t>
+f_t sparse_dot(
+  i_t const* xind, f_t const* xval, i_t nx, i_t const* yind, i_t ny, f_t const* y_scatter_val)
+{
+  f_t dot = 0.0;
+  for (i_t i = 0, j = 0; i < nx && j < ny;) {
+    const i_t p = xind[i];
+    const i_t q = yind[j];
+    if (p == q) {
+      dot += xval[i] * y_scatter_val[q];
+      i++;
+      j++;
+    } else if (p < q) {
+      i++;
+    } else if (q < p) {
+      j++;
+    }
+  }
+  return dot;
+}
+
+template <typename i_t, typename f_t>
+f_t sparse_dot(i_t* xind, f_t* xval, i_t nx, i_t* yind, f_t* yval, i_t ny)
+{
+  f_t dot = 0.0;
+  for (i_t i = 0, j = 0; i < nx && j < ny;) {
+    const i_t p = xind[i];
+    const i_t q = yind[j];
+    if (p == q) {
+      dot += xval[i] * yval[j];
+      i++;
+      j++;
+    } else if (p < q) {
+      i++;
+    } else if (q < p) {
+      j++;
+    }
+  }
+  return dot;
+}
+
+template <typename i_t, typename f_t>
 f_t sparse_dot(const std::vector<i_t>& xind,
                const std::vector<f_t>& xval,
                const std::vector<i_t>& yind,
@@ -145,6 +186,16 @@ template double sparse_dot<int, double>(const std::vector<int>& xind,
                                         const std::vector<double>& xval,
                                         const std::vector<int>& yind,
                                         const std::vector<double>& yval);
+
+template double sparse_dot<int, double>(int const* xind,
+                                        double const* xval,
+                                        int nx,
+                                        int const* yind,
+                                        int ny,
+                                        double const* y_scatter_val);
+
+template double sparse_dot<int, double>(
+  int* xind, double* xval, int nx, int* yind, double* yval, int ny);
 
 template int permute_vector<int, double>(const std::vector<int>& p,
                                          const std::vector<double>& b,

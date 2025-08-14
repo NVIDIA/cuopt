@@ -65,7 +65,6 @@ from numba import cuda
 import cudf
 from cudf.core.buffer import as_buffer
 
-from cuopt.linear_programming.solver.solver_parameters import CUOPT_LOG_FILE
 from cuopt.linear_programming.solver_settings.solver_settings import (
     PDLPSolverMode,
     SolverSettings,
@@ -279,7 +278,6 @@ cdef set_data_model_view(DataModel data_model_obj):
 cdef set_solver_setting(
         unique_ptr[solver_settings_t[int, double]]& unique_solver_settings,
         settings,
-        log_file,
         DataModel data_model_obj=None,
         mip=False):
     cdef solver_settings_t[int, double]* c_solver_settings = (
@@ -424,13 +422,6 @@ cdef set_solver_setting(
             settings.get_pdlp_warm_start_data().sum_solution_weight,
             settings.get_pdlp_warm_start_data().iterations_since_last_restart # noqa
         )
-
-    # Common to LP and MIP
-
-    c_solver_settings.set_parameter_from_string(
-        CUOPT_LOG_FILE.encode('utf-8'),
-        log_file.encode('utf-8')
-    )
 
 cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                      DataModel data_model_obj,
@@ -670,7 +661,7 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         )
 
 
-def Solve(py_data_model_obj, settings, str log_file, mip=False):
+def Solve(py_data_model_obj, settings, mip=False):
 
     cdef DataModel data_model_obj = <DataModel>py_data_model_obj
     cdef unique_ptr[solver_settings_t[int, double]] unique_solver_settings
@@ -682,7 +673,7 @@ def Solve(py_data_model_obj, settings, str log_file, mip=False):
     )
 
     set_solver_setting(
-        unique_solver_settings, settings, log_file, data_model_obj, mip
+        unique_solver_settings, settings, data_model_obj, mip
     )
     set_data_model_view(data_model_obj)
 
@@ -697,13 +688,13 @@ cdef insert_vector(DataModel data_model_obj,
     data_model_views.push_back(data_model_obj.c_data_model_view.get())
 
 
-def BatchSolve(py_data_model_list, settings, str log_file):
+def BatchSolve(py_data_model_list, settings):
     cdef unique_ptr[solver_settings_t[int, double]] unique_solver_settings
     unique_solver_settings.reset(new solver_settings_t[int, double]())
 
     if settings.get_pdlp_warm_start_data() is not None:  # noqa
         raise Exception("Cannot use warmstart data with Batch Solve")
-    set_solver_setting(unique_solver_settings, settings, log_file)
+    set_solver_setting(unique_solver_settings, settings)
 
     cdef vector[data_model_view_t[int, double] *] data_model_views
 

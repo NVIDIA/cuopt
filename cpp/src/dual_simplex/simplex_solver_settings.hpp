@@ -46,6 +46,8 @@ struct simplex_solver_settings_t {
       cut_off(std::numeric_limits<f_t>::infinity()),
       steepest_edge_ratio(0.5),
       steepest_edge_primal_tol(1e-9),
+      hypersparse_threshold(0.05),
+      threshold_partial_pivoting_tol(1.0 / 10.0),
       use_steepest_edge_pricing(true),
       use_harris_ratio(false),
       use_bound_flip_ratio(true),
@@ -86,7 +88,9 @@ struct simplex_solver_settings_t {
   f_t cut_off;               // If the dual objective is greater than the cutoff we stop
   f_t
     steepest_edge_ratio;  // the ratio of computed steepest edge mismatch from updated steepest edge
-  f_t steepest_edge_primal_tol;    // Primal tolerance divided by steepest edge norm
+  f_t steepest_edge_primal_tol;  // Primal tolerance divided by steepest edge norm
+  f_t hypersparse_threshold;
+  mutable f_t threshold_partial_pivoting_tol;
   bool use_steepest_edge_pricing;  // true if using steepest edge pricing, false if using max
                                    // infeasibility pricing
   bool use_harris_ratio;           // true if using the harris ratio test

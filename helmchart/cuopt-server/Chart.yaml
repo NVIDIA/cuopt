@@ -1,5 +1,5 @@
 apiVersion: v2
-appVersion: 25.8.0
+appVersion: 25.10.0
 description: A Helm chart for NVIDIA cuOpt Server with GPU support
 home: https://docs.nvidia.com/cuopt/user-guide/latest/resources.html
 keywords:
@@ -14,4 +14,4 @@ name: cuopt-server
 sources:
 - https://docs.nvidia.com/cuopt/user-guide/latest/resources.html
 type: application
-version: 25.8.0
+version: 25.10.0
