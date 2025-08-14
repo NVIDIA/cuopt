@@ -37,7 +37,6 @@ endif()
 
 unset(cuopt_FOUND)
 
-
 include(FetchContent)
 FetchContent_Declare(
   argparse
@@ -46,6 +45,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(argparse)
 
+set(TBB OFF CACHE BOOL "Disable TBB")
+set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
+set(PAPILO_NO_BINARIES ON)
+option(LUSOL "Disable LUSOL" OFF)
+
 set(BUILD_TESTS OFF)
 set(BUILD_BENCHMARKS OFF)
 set(CUOPT_BUILD_TESTUTIL OFF)
@@ -53,8 +57,12 @@ set(CUDA_STATIC_RUNTIME ON)
 
 add_subdirectory(../../cpp cuopt-cpp)
 
-target_link_libraries(cuopt PRIVATE argparse)
-target_link_libraries(cuopt_cli PRIVATE argparse)
+target_link_libraries(cuopt PRIVATE
+    argparse
+)
+target_link_libraries(cuopt_cli PRIVATE
+    argparse
+)
 
 set(rpaths
   "$ORIGIN/../lib64"

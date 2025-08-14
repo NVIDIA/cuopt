@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.30.4 FATAL_ERROR)
+
+# Add our custom Find modules to the module path
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/thirdparty")
 
 include(GNUInstallDirs)
 
@@ -157,6 +160,21 @@ else()
   find_package(RMM REQUIRED)
   find_package(RAFT REQUIRED)
 endif()
+
+FetchContent_Declare(
+  papilo
+  GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
+  GIT_TAG "v2.4.3"
+  SYSTEM
+)
+
+set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
+set(TBB OFF CACHE BOOL "Disable TBB")
+set(PAPILO_NO_BINARIES ON)
+option(LUSOL "Disable LUSOL" OFF)
+
+FetchContent_MakeAvailable(papilo)
+
 include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 # generate logging macros
 rapids_cpm_rapids_logger(BUILD_EXPORT_SET cuopt-exports INSTALL_EXPORT_SET cuopt-exports)
@@ -204,6 +222,9 @@ target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
 add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
 # - include paths ---------------------------------------------------------------------------------
+
+target_include_directories(cuopt SYSTEM PRIVATE "${papilo_SOURCE_DIR}/src" "${papilo_BINARY_DIR}")
+
 target_include_directories(cuopt
   PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
@@ -212,6 +233,7 @@ target_include_directories(cuopt
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include>"
+  INTERFACE
   "$<INSTALL_INTERFACE:include>"
 )
 
@@ -241,6 +263,7 @@ target_link_libraries(cuopt
   PRIVATE
   ${CUOPT_PRIVATE_CUDA_LIBS}
   )
+
 
 # ##################################################################################################
 # - generate tests --------------------------------------------------------------------------------
@@ -357,6 +380,8 @@ target_link_libraries(cuopt_cli
   PUBLIC
   cuopt
   OpenMP::OpenMP_CXX
+  PRIVATE
+  papilo-core
 )
 set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
@@ -377,6 +402,8 @@ if(BUILD_BENCHMARKS)
     PUBLIC
     cuopt
     OpenMP::OpenMP_CXX
+    PRIVATE
+    papilo-core
   )
 endif()
 

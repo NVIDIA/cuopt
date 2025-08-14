@@ -33,6 +33,7 @@ target_link_libraries(cuopttestutils
     cuopt
     GTest::gmock
     GTest::gtest
+    papilo-core
 )
 
 set(CUOPT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
@@ -49,7 +50,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
     )
 
     target_link_libraries(${CMAKE_TEST_NAME}
-        PRIVATE
+       PRIVATE
         mps_parser
         cuopt
         cuopttestutils

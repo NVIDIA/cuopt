@@ -90,9 +90,9 @@ class csc_matrix_t {
   // Compute || A ||_1 = max_j (sum {i = 1 to m} | A(i, j) | )
   f_t norm1() const;
 
-  i_t nz_max;                  // maximum number of entries
   i_t m;                       // number of rows
   i_t n;                       // number of columns
+  i_t nz_max;                  // maximum number of entries
   std::vector<i_t> col_start;  // column pointers (size n + 1)
   std::vector<i_t> i;          // row indices, size nz_max
   std::vector<f_t> x;          // numerical values, size nz_max
