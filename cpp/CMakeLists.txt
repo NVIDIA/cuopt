@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.30.4 FATAL_ERROR)
+
+# Add our custom Find modules to the module path
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/thirdparty")
 
 include(GNUInstallDirs)
 
@@ -29,14 +32,9 @@ rapids_cuda_init_architectures(CUOPT)
 
 project(
   CUOPT
-  VERSION 25.08.00
+  VERSION 25.10.00
   LANGUAGES CXX CUDA C
 )
-
-if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_LESS 12.0.0)
-  list(REMOVE_ITEM CMAKE_CUDA_ARCHITECTURES "90")
-  list(APPEND CMAKE_CUDA_ARCHITECTURES "80-virtual")
-endif()
 
 set(DEPENDENT_LIB_MAJOR_VERSION "25")
 set(DEPENDENT_LIB_MINOR_VERSION "10")
@@ -139,6 +137,12 @@ elseif(CMAKE_CUDA_LINEINFO)
   set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -lineinfo")
 endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
+# Undefine NDEBUG if assert mode is on
+if(DEFINE_ASSERT)
+  message(STATUS "Undefining NDEBUG with assert mode enabled")
+  add_definitions(-UNDEBUG)
+endif()
+
 
 # ##################################################################################################
 # - find CPM based dependencies  ------------------------------------------------------------------
@@ -156,6 +160,21 @@ else()
   find_package(RMM REQUIRED)
   find_package(RAFT REQUIRED)
 endif()
+
+FetchContent_Declare(
+  papilo
+  GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
+  GIT_TAG "v2.4.3"
+  SYSTEM
+)
+
+set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
+set(TBB OFF CACHE BOOL "Disable TBB")
+set(PAPILO_NO_BINARIES ON)
+option(LUSOL "Disable LUSOL" OFF)
+
+FetchContent_MakeAvailable(papilo)
+
 include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 # generate logging macros
 rapids_cpm_rapids_logger(BUILD_EXPORT_SET cuopt-exports INSTALL_EXPORT_SET cuopt-exports)
@@ -203,6 +222,9 @@ target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
 add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
 # - include paths ---------------------------------------------------------------------------------
+
+target_include_directories(cuopt SYSTEM PRIVATE "${papilo_SOURCE_DIR}/src" "${papilo_BINARY_DIR}")
+
 target_include_directories(cuopt
   PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
@@ -211,6 +233,7 @@ target_include_directories(cuopt
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include>"
+  INTERFACE
   "$<INSTALL_INTERFACE:include>"
 )
 
@@ -222,9 +245,7 @@ set(CUOPT_PRIVATE_CUDA_LIBS
   CUDA::cusolver
   OpenMP::OpenMP_CXX)
 
-if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA" AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.4)
-  list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
-endif()
+list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser)
 set(CMAKE_LIBRARY_PATH ${CMAKE_CURRENT_BINARY_DIR}/libmps_parser/)
@@ -243,6 +264,7 @@ target_link_libraries(cuopt
   ${CUOPT_PRIVATE_CUDA_LIBS}
   )
 
+
 # ##################################################################################################
 # - generate tests --------------------------------------------------------------------------------
 if(BUILD_TESTS)
@@ -252,16 +274,49 @@ endif(BUILD_TESTS)
 
 # ##################################################################################################
 # - install targets -------------------------------------------------------------------------------
+
+# allows for CPack component builds and install location
+set(CPACK_DEB_COMPONENT_INSTALL ON)
+set(CPACK_COMPONENTS_ALL runtime dev)
+set(CPACK_PACKAGING_INSTALL_PREFIX "/usr/local")
+
+#If using cpack to create a deb package
+if(CPACK_GENERATOR STREQUAL "DEB")
+  set(_BIN_DEST "bin")
+  set(_LIB_DEST "lib")
+  set(_INCLUDE_DEST "lib/cuopt")
+
+#If building locally use the Default install paths(e.g. for local development or other package types)
+else()
+  set(_BIN_DEST "${CMAKE_INSTALL_BINDIR}")
+  set(_LIB_DEST "${lib_dir}")
+  set(_INCLUDE_DEST  include/cuopt/)
+endif()
+
+# adds the .so files to the runtime deb package
 install(TARGETS cuopt mps_parser
-  DESTINATION ${lib_dir}
-  EXPORT cuopt-exports)
+  DESTINATION ${_LIB_DEST}
+  COMPONENT runtime
+  EXPORT cuopt-exports
+)
 
+# adds the .so files to the development deb package
+install(TARGETS cuopt mps_parser
+  DESTINATION ${_LIB_DEST}
+  COMPONENT dev
+)
+
+# adds the header files to the development deb package
 install(DIRECTORY include/cuopt/
-  DESTINATION include/cuopt)
+  DESTINATION ${_INCLUDE_DEST}
+  COMPONENT dev
+)
 
+# adds the version header file to the development deb package
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/cuopt/version_config.hpp
-  DESTINATION include/cuopt)
-
+  DESTINATION ${_INCLUDE_DEST}
+  COMPONENT dev
+)
 # ###############################################################################################
 # - install export -------------------------------------------------------------------------------
 set(doc_string
@@ -306,8 +361,6 @@ if(Doxygen_FOUND)
 endif()
 
 
-
-list(APPEND CUOPT_CXX_FLAGS -g -O0)
 add_executable(cuopt_cli cuopt_cli.cpp)
 target_compile_options(cuopt_cli
   PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
@@ -327,13 +380,16 @@ target_link_libraries(cuopt_cli
   PUBLIC
   cuopt
   OpenMP::OpenMP_CXX
+  PRIVATE
+  papilo-core
 )
 set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
-# FIXME:: Is this the right way?
+# adds the cuopt_cli executable to the runtime deb package
 install(TARGETS cuopt_cli
-  DESTINATION ${CMAKE_INSTALL_BINDIR})
-
+  COMPONENT runtime
+  RUNTIME DESTINATION ${_BIN_DEST}
+)
 
 option(BUILD_BENCHMARKS "Build benchmarks" ON)
 if(BUILD_BENCHMARKS)
@@ -346,5 +402,42 @@ if(BUILD_BENCHMARKS)
     PUBLIC
     cuopt
     OpenMP::OpenMP_CXX
+    PRIVATE
+    papilo-core
   )
 endif()
+
+
+# ##################################################################################################
+# - CPack has to be the last item in the cmake file-------------------------------------------------
+# Used to create an installable deb package for cuOpt
+
+set(CPACK_GENERATOR "DEB")
+
+# Runtime package metadata
+execute_process(COMMAND dpkg --print-architecture OUTPUT_VARIABLE DEB_ARCH OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+# general package metadata
+set(CPACK_DEBIAN_PACKAGE_NAME "cuOpt")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Nvidia")
+set(CPACK_PACKAGE_FILE_NAME "cuOpt_${CPACK_PACKAGE_VERSION}_${DEB_ARCH}")
+
+# runtime package metadata
+set(CPACK_COMPONENT_RUNTIME_DESCRIPTION "cuOpt runtime components (binaries and shared libraries)")
+set(CPACK_COMPONENT_RUNTIME_DISPLAY_NAME "cuOpt Runtime")
+set(CPACK_COMPONENT_RUNTIME_GROUP "Runtime")
+set(CPACK_DEBIAN_RUNTIME_PACKAGE_MAINTAINER "NVIDIA")
+set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME "cuopt")
+set(CPACK_DEBIAN_RUNTIME_PACKAGE_FILE_NAME "cuopt_${PROJECT_VERSION}_${DEB_ARCH}")
+
+# Dev package metadata
+set(CPACK_COMPONENT_DEV_DESCRIPTION "cuOpt development files (headers, symlinks, etc.)")
+set(CPACK_COMPONENT_DEV_DISPLAY_NAME "cuOpt Development")
+set(CPACK_COMPONENT_DEV_GROUP "Development")
+set(CPACK_DEBIAN_DEV_PACKAGE_MAINTAINER "NVIDIA")
+set(CPACK_DEBIAN_DEV_PACKAGE_NAME "cuopt-dev")
+set(CPACK_DEBIAN_DEV_PACKAGE_FILE_NAME "cuopt-dev_${PROJECT_VERSION}_${DEB_ARCH}")
+
+# MUST BE THE LAST ITEM IN THE CMAKE FILE!!!
+include(CPack)

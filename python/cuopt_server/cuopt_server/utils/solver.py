@@ -88,7 +88,7 @@ def solve_LP_sync(
 
     begin_time = time.time()
 
-    if type(LP_data) is list:
+    if isinstance(LP_data, list):
         for i_data in LP_data:
             validate_LP_data(i_data)
     else:
@@ -98,15 +98,31 @@ def solve_LP_sync(
     logging.debug(f"etl_time {etl_end_time - begin_time}")
 
     if not validation_only:
-        if solver_logging:
+        # log_file setting is ignored in the service,
+        # instead we control it and use it as the basis for callbacks
+        if isinstance(LP_data, list):
+            # clear log_file setting for all because
+            # we don't support callbacks for batch mode
+            # and otherwise we ignore log_file
+            for i_data in LP_data:
+                i_data.solver_config.log_file = ""
+        elif solver_logging:
             log_dir, _, _ = settings.get_result_dir()
             log_fname = "log_" + reqId
             log_file = os.path.join(log_dir, log_fname)
             logging.info(f"Writing logs to {log_file}")
-        else:
-            log_file = ""
+            LP_data.solver_config.log_file = log_file
+        elif LP_data.solver_config.log_file:
+            warnings.append(
+                "solver config log_file ignored in the cuopt service"
+            )
+            LP_data.solver_config.log_file = ""
+
         notes, addl_warnings, res, total_solve_time = LP_solve(
-            LP_data, reqId, intermediate_sender, warmstart_data, log_file
+            LP_data,
+            reqId,
+            intermediate_sender,
+            warmstart_data,
         )
         warnings.extend(addl_warnings)
     else:

@@ -54,9 +54,9 @@ class mip_solver_settings_t {
    *
    * @note This function can be called multiple times to add more solutions.
    *
-   * @param[in] initial_solution Device or host memory pointer to a floating point array of
-   * size size.
-   * cuOpt copies this data. Copy happens on the stream of the raft:handler passed to the problem.
+   * @param[in] initial_solution Device or host memory pointer to a floating
+   * point array of size size. cuOpt copies this data. Copy happens on the
+   * stream of the raft:handler passed to the problem.
    * @param size Size of the initial_solution array.
    */
   void add_initial_solution(const f_t* initial_solution,
@@ -99,7 +99,9 @@ class mip_solver_settings_t {
   /** Initial primal solutions */
   std::vector<std::shared_ptr<rmm::device_uvector<f_t>>> initial_solutions;
   bool mip_scaling = true;
-  // this is for extracting info from different places of the solver during benchmarks
+  bool presolve    = true;
+  // this is for extracting info from different places of the solver during
+  // benchmarks
   benchmark_info_t* benchmark_info_ptr = nullptr;
 
  private:

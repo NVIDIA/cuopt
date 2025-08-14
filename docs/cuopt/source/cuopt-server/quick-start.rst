@@ -12,7 +12,7 @@ For CUDA 12.x:
 
 .. code-block:: bash
 
-    pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.8.* cuopt-sh-client==25.8.* nvidia-cuda-runtime-cu12==12.8.*
+    pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.10.* cuopt-sh-client==25.10.* nvidia-cuda-runtime-cu12==12.8.*
 
 .. note::
    For development wheels which are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/`.
@@ -24,7 +24,7 @@ cuOpt Server can be installed with Conda (via `miniforge <https://github.com/con
 
 .. code-block:: bash
 
-    conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=25.08.* cuopt-sh-client=25.08.*
+    conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=25.10.* cuopt-sh-client=25.10.*
 
 .. note::
    For development conda packages which are available as nightlies, please update `-c rapidsai` to `-c rapidsai-nightly`.

@@ -27,7 +27,7 @@ REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs -a -b -g -v -l= --verbose-pdlp  [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -v -l= --verbose-pdlp  [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -38,6 +38,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    cuopt_server     - build the cuopt_server Python package
    cuopt_sh_client  - build cuopt self host client
    docs             - build the docs
+   deb              - build deb package (requires libcuopt to be built first)
  and <flag> is:
    -v               - verbose build mode
    -g               - build for debug
@@ -268,13 +269,8 @@ if  [ ${BUILD_ALL_GPU_ARCH} -eq 1 ]; then
     echo "Building for *ALL* supported GPU architectures..."
 else
     if [ ${BUILD_CI_ONLY} -eq 1 ]; then
-        if [[ ${CUDA_VERSION} == 11* ]]; then
-            CUOPT_CMAKE_CUDA_ARCHITECTURES="70-real;80"
-            echo "Building for Volta and Ampere architectures..."
-        else
-            CUOPT_CMAKE_CUDA_ARCHITECTURES="RAPIDS"
-            echo "Building for Volta, Ampere and Hopper architectures..."
-        fi
+        CUOPT_CMAKE_CUDA_ARCHITECTURES="RAPIDS"
+        echo "Building for RAPIDS supported architectures..."
     else
         CUOPT_CMAKE_CUDA_ARCHITECTURES="NATIVE"
         echo "Building for the architecture of the GPU in the system..."
@@ -319,6 +315,21 @@ if buildAll || hasArg libcuopt; then
     else
         cmake --build "${LIBCUOPT_BUILD_DIR}" --target ${INSTALL_TARGET} ${VERBOSE_FLAG} -j"${PARALLEL_LEVEL}"
     fi
+fi
+
+################################################################################
+# Build deb package
+if hasArg deb; then
+    # Check if libcuopt has been built
+    if [ ! -d "${LIBCUOPT_BUILD_DIR}" ]; then
+        echo "Error: libcuopt must be built before creating deb package. Run with 'libcuopt' target first."
+        exit 1
+    fi
+    
+    echo "Building deb package..."
+    cd "${LIBCUOPT_BUILD_DIR}"
+    cpack -G DEB
+    echo "Deb package created in ${LIBCUOPT_BUILD_DIR}"
 fi
 
 

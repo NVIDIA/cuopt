@@ -89,26 +89,25 @@ i_t upper_triangular_transpose_solve(const csc_matrix_t<i_t, f_t>& U, std::vecto
   return 0;
 }
 
-// \brief Reach computes the reach of b=B(:, col) in the graph of G
-// \param[in] B - Sparse CSC matrix containing rhs
-// \param[in] col - column of B
+// \brief Reach computes the reach of b in the graph of G
+// \param[in] b - Sparse vector containing the rhs
 // \param[in] pinv - inverse permuation vector
 // \param[in, out] G - Sparse CSC matrix G. The column pointers of G are
 // modified (but restored) during this call \param[out] xi  - stack of size 2*n.
 // xi[top] .. xi[n-1] contains the reachable indicies \returns top - the size of
 // the stack
 template <typename i_t, typename f_t>
-i_t reach(const csc_matrix_t<i_t, f_t>& B,
-          i_t col,
+i_t reach(const sparse_vector_t<i_t, f_t>& b,
           const std::optional<std::vector<i_t>>& pinv,
           csc_matrix_t<i_t, f_t>& G,
           std::vector<i_t>& xi)
 {
-  const i_t m = G.m;
-  i_t top     = m;
-  for (i_t p = B.col_start[col]; p < B.col_start[col + 1]; ++p) {
-    if (!MARKED(G.col_start, B.i[p])) {  // start a DFS at unmarked node i
-      top = depth_first_search(B.i[p], pinv, G, top, xi, xi.begin() + m);
+  const i_t m   = G.m;
+  i_t top       = m;
+  const i_t bnz = b.i.size();
+  for (i_t p = 0; p < bnz; ++p) {
+    if (!MARKED(G.col_start, b.i[p])) {  // start a DFS at unmarked node i
+      top = depth_first_search(b.i[p], pinv, G, top, xi, xi.begin() + m);
     }
   }
   for (i_t p = top; p < m; ++p) {  // restore G
@@ -152,7 +151,7 @@ i_t depth_first_search(i_t j,
     }
     done   = 1;  // Node j is done if no unvisited neighbors
     i_t p2 = (jnew < 0) ? 0 : UNFLIP(G.col_start[jnew + 1]);
-    for (i_t p = pstack[head]; p < p2; ++p) {  // Examin all neighbors of j
+    for (i_t p = pstack[head]; p < p2; ++p) {  // Examine all neighbors of j
       i_t i = G.i[p];                          // Consider neighbor i
       if (MARKED(G.col_start, i)) {
         continue;  // skip visited node i
@@ -163,29 +162,31 @@ i_t depth_first_search(i_t j,
       break;             // break to start dfs at node i
     }
     if (done) {
-      head--;         // remove j from the recursion stack
-      xi[--top] = j;  // and place it the output stack
+      pstack[head] = 0;  // restore pstack so it can be used again in other routines
+      xi[head]     = 0;  // restore xi so it can be used again in other routines
+      head--;            // remove j from the recursion stack
+      xi[--top] = j;     // and place it the output stack
     }
   }
   return top;
 }
 
 template <typename i_t, typename f_t, bool lo>
-i_t sparse_triangle_solve(const csc_matrix_t<i_t, f_t>& B,
-                          i_t col,
+i_t sparse_triangle_solve(const sparse_vector_t<i_t, f_t>& b,
                           const std::optional<std::vector<i_t>>& pinv,
                           std::vector<i_t>& xi,
                           csc_matrix_t<i_t, f_t>& G,
                           f_t* x)
 {
   i_t m = G.m;
-  assert(B.m == m);
-  i_t top = reach(B, col, pinv, G, xi);
+  assert(b.n == m);
+  i_t top = reach(b, pinv, G, xi);
   for (i_t p = top; p < m; ++p) {
     x[xi[p]] = 0;  // Clear x vector
   }
-  for (i_t p = B.col_start[col]; p < B.col_start[col + 1]; ++p) {
-    x[B.i[p]] = B.x[p];  // Scatter b
+  const i_t bnz = b.i.size();
+  for (i_t p = 0; p < bnz; ++p) {
+    x[b.i[p]] = b.x[p];  // Scatter b
   }
   for (i_t px = top; px < m; ++px) {
     i_t j = xi[px];                   // x(j) is nonzero
@@ -225,8 +226,7 @@ template int upper_triangular_solve<int, double>(const csc_matrix_t<int, double>
 template int upper_triangular_transpose_solve<int, double>(const csc_matrix_t<int, double>& U,
                                                            std::vector<double>& x);
 
-template int reach<int, double>(const csc_matrix_t<int, double>& B,
-                                int col,
+template int reach<int, double>(const sparse_vector_t<int, double>& b,
                                 const std::optional<std::vector<int>>& pinv,
                                 csc_matrix_t<int, double>& G,
                                 std::vector<int>& xi);
@@ -238,12 +238,17 @@ template int depth_first_search<int, double>(int j,
                                              std::vector<int>& xi,
                                              std::vector<int>::iterator pstack);
 
-template int sparse_triangle_solve<int, double, true>(const csc_matrix_t<int, double>& B,
-                                                      int col,
+template int sparse_triangle_solve<int, double, true>(const sparse_vector_t<int, double>& b,
                                                       const std::optional<std::vector<int>>& pinv,
                                                       std::vector<int>& xi,
                                                       csc_matrix_t<int, double>& G,
                                                       double* x);
+
+template int sparse_triangle_solve<int, double, false>(const sparse_vector_t<int, double>& b,
+                                                       const std::optional<std::vector<int>>& pinv,
+                                                       std::vector<int>& xi,
+                                                       csc_matrix_t<int, double>& G,
+                                                       double* x);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

@@ -118,6 +118,23 @@ auto host_copy(rmm::device_uvector<T> const& device_vec, rmm::cuda_stream_view s
  * @brief Simple utility function to copy std::vector to device
  *
  * @tparam T
+ * @param[in] device_vec
+ * @param[in] stream_view
+ * @return device_vec
+ */
+template <typename T>
+inline rmm::device_uvector<T> device_copy(rmm::device_uvector<T> const& device_vec,
+                                          rmm::cuda_stream_view stream_view)
+{
+  rmm::device_uvector<T> device_vec_copy(device_vec.size(), stream_view);
+  raft::copy(device_vec_copy.data(), device_vec.data(), device_vec.size(), stream_view);
+  return device_vec_copy;
+}
+
+/**
+ * @brief Simple utility function to copy std::vector to device
+ *
+ * @tparam T
  * @param[in] host_vec
  * @param[in] stream_view
  * @return device_vec

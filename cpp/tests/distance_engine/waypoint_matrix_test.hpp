@@ -38,7 +38,7 @@ std::vector<T> parse_vector(std::vector<std::string> const& vect)
 {
   std::vector<T> out(vect.size());
 
-  for (auto i = 0; i != vect.size(); ++i) {
+  for (size_t i = 0; i != vect.size(); ++i) {
     if constexpr (std::is_same_v<T, int>)
       out[i] = std::stoi(vect[i]);
     else if constexpr (std::is_same_v<T, float>)

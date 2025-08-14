@@ -69,7 +69,8 @@ static void test_objective_sanity(
 static void test_constraint_sanity(
   const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
   const optimization_problem_solution_t<int, double>& solution,
-  double epsilon = tolerance)
+  double epsilon        = tolerance,
+  bool presolve_enabled = true)
 {
   const std::vector<double> primal_vars              = host_copy(solution.get_primal_solution());
   const std::vector<double>& values                  = op_problem.get_constraint_matrix_values();
@@ -82,51 +83,53 @@ static void test_constraint_sanity(
   std::vector<double> residual(solution.get_dual_solution().size(), 0.0);
   std::vector<double> viol(solution.get_dual_solution().size(), 0.0);
 
-  // CSR SpMV
-  for (size_t i = 0; i < offsets.size() - 1; ++i) {
-    for (int j = offsets[i]; j < offsets[i + 1]; ++j) {
-      residual[i] += values[j] * primal_vars[indices[j]];
+  if (!presolve_enabled) {
+    // CSR SpMV
+    for (size_t i = 0; i < offsets.size() - 1; ++i) {
+      for (int j = offsets[i]; j < offsets[i + 1]; ++j) {
+        residual[i] += values[j] * primal_vars[indices[j]];
+      }
     }
+
+    auto functor = cuopt::linear_programming::detail::violation<double>{};
+
+    // Compute violation to lower/upper bound
+
+    // std::transform can't take 3 inputs
+    for (size_t i = 0; i < residual.size(); ++i) {
+      viol[i] = functor(residual[i], constraint_lower_bounds[i], constraint_upper_bounds[i]);
+    }
+
+    // Compute the l2 primal residual
+    double l2_primal_residual = std::accumulate(
+      viol.cbegin(), viol.cend(), 0.0, [](double acc, double val) { return acc + val * val; });
+    l2_primal_residual = std::sqrt(l2_primal_residual);
+
+    EXPECT_NEAR(l2_primal_residual,
+                solution.get_additional_termination_information().l2_primal_residual,
+                epsilon);
+
+    // Check if primal residual is indeed respecting the default tolerance
+    pdlp_solver_settings_t solver_settings = pdlp_solver_settings_t<int, double>{};
+
+    std::vector<double> combined_bounds(constraint_lower_bounds.size());
+
+    std::transform(constraint_lower_bounds.cbegin(),
+                   constraint_lower_bounds.cend(),
+                   constraint_upper_bounds.cbegin(),
+                   combined_bounds.begin(),
+                   cuopt::linear_programming::detail::combine_finite_abs_bounds<double>{});
+
+    double l2_norm_primal_right_hand_side = std::accumulate(
+      combined_bounds.cbegin(), combined_bounds.cend(), 0.0, [](double acc, double val) {
+        return acc + val * val;
+      });
+    l2_norm_primal_right_hand_side = std::sqrt(l2_norm_primal_right_hand_side);
+
+    EXPECT_TRUE(l2_primal_residual <= solver_settings.tolerances.absolute_primal_tolerance +
+                                        solver_settings.tolerances.relative_primal_tolerance *
+                                          l2_norm_primal_right_hand_side);
   }
-
-  auto functor = cuopt::linear_programming::detail::violation<double>{};
-
-  // Compute violation to lower/upper bound
-
-  // std::transform can't take 3 inputs
-  for (size_t i = 0; i < residual.size(); ++i) {
-    viol[i] = functor(residual[i], constraint_lower_bounds[i], constraint_upper_bounds[i]);
-  }
-
-  // Compute the l2 primal residual
-  double l2_primal_residual = std::accumulate(
-    viol.cbegin(), viol.cend(), 0.0, [](double acc, double val) { return acc + val * val; });
-  l2_primal_residual = std::sqrt(l2_primal_residual);
-
-  EXPECT_NEAR(l2_primal_residual,
-              solution.get_additional_termination_information().l2_primal_residual,
-              epsilon);
-
-  // Check if primal residual is indeed respecting the default tolerance
-  pdlp_solver_settings_t solver_settings = pdlp_solver_settings_t<int, double>{};
-
-  std::vector<double> combined_bounds(constraint_lower_bounds.size());
-
-  std::transform(constraint_lower_bounds.cbegin(),
-                 constraint_lower_bounds.cend(),
-                 constraint_upper_bounds.cbegin(),
-                 combined_bounds.begin(),
-                 cuopt::linear_programming::detail::combine_finite_abs_bounds<double>{});
-
-  double l2_norm_primal_right_hand_side = std::accumulate(
-    combined_bounds.cbegin(), combined_bounds.cend(), 0.0, [](double acc, double val) {
-      return acc + val * val;
-    });
-  l2_norm_primal_right_hand_side = std::sqrt(l2_norm_primal_right_hand_side);
-
-  EXPECT_TRUE(l2_primal_residual <= solver_settings.tolerances.absolute_primal_tolerance +
-                                      solver_settings.tolerances.relative_primal_tolerance *
-                                        l2_norm_primal_right_hand_side);
 
   // Checking variable bounds
 
