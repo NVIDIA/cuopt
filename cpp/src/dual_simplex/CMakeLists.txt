@@ -14,6 +14,7 @@
 # limitations under the License.
 
 set(DUAL_SIMPLEX_SRC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/barrier.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/basis_solves.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/basis_updates.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/bound_flipping_ratio_test.cpp
@@ -35,6 +36,8 @@ set(DUAL_SIMPLEX_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/tic_toc.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/triangle_solve.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/vector_math.cpp)
+
+set_source_files_properties(${DUAL_SIMPLEX_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES}
   ${DUAL_SIMPLEX_SRC_FILES} PARENT_SCOPE)

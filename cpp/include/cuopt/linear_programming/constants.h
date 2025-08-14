@@ -50,6 +50,7 @@
 #define CUOPT_LOG_FILE                    "log_file"
 #define CUOPT_LOG_TO_CONSOLE              "log_to_console"
 #define CUOPT_CROSSOVER                   "crossover"
+#define CUOPT_USE_CUDSS                   "use_cudss"
 #define CUOPT_PRESOLVE                    "presolve"
 #define CUOPT_MIP_ABSOLUTE_TOLERANCE      "mip_absolute_tolerance"
 #define CUOPT_MIP_RELATIVE_TOLERANCE      "mip_relative_tolerance"
@@ -105,6 +106,7 @@
 #define CUOPT_METHOD_CONCURRENT   0
 #define CUOPT_METHOD_PDLP         1
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
+#define CUOPT_METHOD_BARRIER      3
 
 /* @brief Status codes constants */
 #define CUOPT_SUCCESS          0

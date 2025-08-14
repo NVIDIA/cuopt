@@ -89,7 +89,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
   int_parameters = {
     {CUOPT_ITERATION_LIMIT, &pdlp_settings.iteration_limit, 0, std::numeric_limits<i_t>::max(), std::numeric_limits<i_t>::max()},
     {CUOPT_PDLP_SOLVER_MODE, reinterpret_cast<int*>(&pdlp_settings.pdlp_solver_mode), CUOPT_PDLP_SOLVER_MODE_STABLE1, CUOPT_PDLP_SOLVER_MODE_FAST1, CUOPT_PDLP_SOLVER_MODE_STABLE2},
-    {CUOPT_METHOD, reinterpret_cast<int*>(&pdlp_settings.method), CUOPT_METHOD_CONCURRENT, CUOPT_METHOD_DUAL_SIMPLEX, CUOPT_METHOD_CONCURRENT},
+    {CUOPT_METHOD, reinterpret_cast<int*>(&pdlp_settings.method), CUOPT_METHOD_CONCURRENT, CUOPT_METHOD_BARRIER, CUOPT_METHOD_CONCURRENT},
     {CUOPT_NUM_CPU_THREADS, &mip_settings.num_cpu_threads, -1, std::numeric_limits<i_t>::max(), -1}
   };
 
@@ -105,6 +105,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_LOG_TO_CONSOLE, &pdlp_settings.log_to_console, true},
     {CUOPT_LOG_TO_CONSOLE, &mip_settings.log_to_console, true},
     {CUOPT_CROSSOVER, &pdlp_settings.crossover, false},
+    {CUOPT_USE_CUDSS, &pdlp_settings.use_cudss, false},
     {CUOPT_PRESOLVE, &pdlp_settings.presolve, false},
     {CUOPT_PRESOLVE, &mip_settings.presolve, true}
   };

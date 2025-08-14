@@ -65,7 +65,8 @@ enum pdlp_solver_mode_t : int {
 enum method_t : int {
   Concurrent  = CUOPT_METHOD_CONCURRENT,
   PDLP        = CUOPT_METHOD_PDLP,
-  DualSimplex = CUOPT_METHOD_DUAL_SIMPLEX
+  DualSimplex = CUOPT_METHOD_DUAL_SIMPLEX,
+  Barrier     = CUOPT_METHOD_BARRIER
 };
 
 template <typename i_t, typename f_t>
@@ -207,6 +208,7 @@ class pdlp_solver_settings_t {
   std::string user_problem_file{""};
   bool per_constraint_residual{false};
   bool crossover{false};
+  bool use_cudss{false};
   bool save_best_primal_so_far{false};
   bool first_primal_feasible{false};
   bool presolve{false};

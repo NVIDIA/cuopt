@@ -87,8 +87,14 @@ class csc_matrix_t {
   // Prints the matrix to a file
   void print_matrix(FILE* fid) const;
 
+  // Writes the matrix to a file in Matrix Market format
+  void write_matrix_market(FILE* fid) const;
+
   // Compute || A ||_1 = max_j (sum {i = 1 to m} | A(i, j) | )
   f_t norm1() const;
+
+  // Perform column scaling of the matrix
+  void scale_columns(const std::vector<f_t>& scale);
 
   i_t m;                       // number of rows
   i_t n;                       // number of columns

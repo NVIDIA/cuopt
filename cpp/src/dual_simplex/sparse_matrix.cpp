@@ -373,9 +373,37 @@ void csc_matrix_t<i_t, f_t>::print_matrix(FILE* fid) const
 }
 
 template <typename i_t, typename f_t>
+void csc_matrix_t<i_t, f_t>::write_matrix_market(FILE* fid) const
+{
+  fprintf(fid, "%%%%MatrixMarket matrix coordinate real general\n");
+  fprintf(fid, "%d %d %d\n", this->m, this->n, this->col_start[this->n]);
+  for (i_t j = 0; j < this->n; ++j) {
+    const i_t col_beg = this->col_start[j];
+    const i_t col_end = this->col_start[j + 1];
+    for (i_t p = col_beg; p < col_end; ++p) {
+      fprintf(fid, "%d %d %.16e\n", this->i[p] + 1, j + 1, this->x[p]);
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
 void csc_matrix_t<i_t, f_t>::print_matrix() const
 {
   this->print_matrix(stdout);
+}
+
+template <typename i_t, typename f_t>
+void csc_matrix_t<i_t, f_t>::scale_columns(const std::vector<f_t>& scale)
+{
+  const i_t n = this->n;
+  assert(scale.size() == n);
+  for (i_t j = 0; j < n; ++j) {
+    const i_t col_start = this->col_start[j];
+    const i_t col_end   = this->col_start[j + 1];
+    for (i_t p = col_start; p < col_end; ++p) {
+      this->x[p] *= scale[j];
+    }
+  }
 }
 
 template <typename i_t, typename f_t>

@@ -18,6 +18,7 @@
 #include <dual_simplex/presolve.hpp>
 
 #include <dual_simplex/right_looking_lu.hpp>
+#include <dual_simplex/tic_toc.hpp>
 
 #include <cmath>
 
@@ -219,9 +220,10 @@ template <typename i_t, typename f_t>
 i_t remove_rows(lp_problem_t<i_t, f_t>& problem,
                 const std::vector<char>& row_sense,
                 csr_matrix_t<i_t, f_t>& Arow,
-                std::vector<i_t>& row_marker)
+                std::vector<i_t>& row_marker,
+                bool error_on_nonzero_rhs)
 {
-  constexpr bool verbose = false;
+  constexpr bool verbose = true;
   if (verbose) { printf("Removing rows %d %ld\n", Arow.m, row_marker.size()); }
   csr_matrix_t<i_t, f_t> Aout;
   Arow.remove_rows(row_marker, Aout);
@@ -236,7 +238,7 @@ i_t remove_rows(lp_problem_t<i_t, f_t>& problem,
       new_rhs[row_count]       = problem.rhs[i];
       row_count++;
     } else {
-      if (problem.rhs[i] != 0.0) {
+      if (error_on_nonzero_rhs && problem.rhs[i] != 0.0) {
         if (verbose) {
           printf(
             "Error nonzero rhs %e for zero row %d sense %c\n", problem.rhs[i], i, row_sense[i]);
@@ -273,7 +275,7 @@ i_t remove_empty_rows(lp_problem_t<i_t, f_t>& problem,
       row_marker[i] = 0;
     }
   }
-  const i_t retval = remove_rows(problem, row_sense, Arow, row_marker);
+  const i_t retval = remove_rows(problem, row_sense, Arow, row_marker, true);
   return retval;
 }
 
@@ -522,14 +524,11 @@ i_t find_dependent_rows(lp_problem_t<i_t, f_t>& problem,
   csc_matrix_t<i_t, f_t> U(m, m, nz);
   std::vector<i_t> pinv(n);
   std::vector<i_t> q(m);
-  for (i_t i = 0; i < m; ++i) {
-    q[i] = i;
-  }
-  std::optional<std::vector<i_t>> optional_q = q;
-  // TODO: Replace with right looking LU in crossover PR
-  // i_t pivots = left_looking_lu(C, settings, 1e-13, optional_q, L, U, pinv);
-  i_t pivots = 0;
+
+  i_t pivots = right_looking_lu_row_permutation_only(C, settings, 1e-13, tic(), q, pinv);
+
   if (pivots < m) {
+    settings.log.printf("Found %d dependent rows\n", m - pivots);
     const i_t num_dependent = m - pivots;
     std::vector<f_t> independent_rhs(pivots);
     std::vector<f_t> dependent_rhs(num_dependent);
@@ -537,7 +536,7 @@ i_t find_dependent_rows(lp_problem_t<i_t, f_t>& problem,
     i_t ind_count = 0;
     i_t dep_count = 0;
     for (i_t i = 0; i < m; ++i) {
-      i_t row = (*optional_q)[i];
+      i_t row = q[i];
       if (i < pivots) {
         dependent_rows[row]          = 0;
         independent_rhs[ind_count++] = problem.rhs[row];
@@ -548,6 +547,7 @@ i_t find_dependent_rows(lp_problem_t<i_t, f_t>& problem,
       }
     }
 
+#if 0
     std::vector<f_t> z = independent_rhs;
     // Solve U1^T z = independent_rhs
     for (i_t k = 0; k < pivots; ++k) {
@@ -579,6 +579,9 @@ i_t find_dependent_rows(lp_problem_t<i_t, f_t>& problem,
         problem.rhs[dependent_row_list[k]] = 0.0;
       }
     }
+#endif
+  } else {
+    settings.log.printf("No dependent rows found\n");
   }
   return pivots;
 }
@@ -694,27 +697,12 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
     bound_strengthening(row_sense, settings, problem);
   }
 
-  // The original problem may have a variable without a lower bound
-  // but a finite upper bound
-  // -inf < x_j <= u_j
-  i_t no_lower_bound = 0;
-  for (i_t j = 0; j < problem.num_cols; j++) {
-    if (problem.lower[j] == -INFINITY && problem.upper[j] < INFINITY) { no_lower_bound++; }
-  }
-
-  // The original problem may have nonzero lower bounds
-  // 0 != l_j <= x_j <= u_j
-  i_t nonzero_lower_bounds = 0;
-  for (i_t j = 0; j < problem.num_cols; j++) {
-    if (problem.lower[j] != 0.0 && problem.lower[j] > -INFINITY) { nonzero_lower_bounds++; }
-  }
-
   if (less_rows > 0) {
     convert_less_than_to_equal(user_problem, row_sense, problem, less_rows, new_slacks);
   }
 
   // Add artifical variables
-  add_artifical_variables(problem, equality_rows, new_slacks);
+  if (!settings.barrier_presolve) { add_artifical_variables(problem, equality_rows, new_slacks); }
 }
 
 template <typename i_t, typename f_t>
@@ -726,11 +714,115 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   problem = original;
   std::vector<char> row_sense(problem.num_rows, '=');
 
+  // The original problem may have a variable without a lower bound
+  // but a finite upper bound
+  // -inf < x_j <= u_j
+  i_t no_lower_bound = 0;
+  for (i_t j = 0; j < problem.num_cols; j++) {
+    if (problem.lower[j] == -inf && problem.upper[j] < inf) { no_lower_bound++; }
+  }
+  settings.log.printf("%d variables with no lower bound\n", no_lower_bound);
+
+  // The original problem may have nonzero lower bounds
+  // 0 != l_j <= x_j <= u_j
+  i_t nonzero_lower_bounds = 0;
+  for (i_t j = 0; j < problem.num_cols; j++) {
+    if (problem.lower[j] != 0.0 && problem.lower[j] > -inf) { nonzero_lower_bounds++; }
+  }
+  if (settings.barrier_presolve && nonzero_lower_bounds > 0) {
+    settings.log.printf("Transforming %ld nonzero lower bound\n", nonzero_lower_bounds);
+    presolve_info.removed_lower_bounds.resize(problem.num_cols);
+    // We can construct a new variable: x'_j = x_j - l_j or x_j = x'_j + l_j
+    // than we have 0 <= x'_j <= u_j - l_j
+    // Constraints in the form:
+    //  sum_{k != j} a_ik x_k + a_ij * x_j {=, <=} beta_i
+    //  become
+    //  sum_{k != j} a_ik x_k + a_ij * (x'_j + l_j) {=, <=} beta_i
+    //  or
+    //  sum_{k != j} a_ik x_k + a_ij * x'_j {=, <=} beta_i - a_{ij} l_j
+    //
+    // the cost function
+    // sum_{k != j} c_k x_k + c_j * x_j
+    // becomes
+    // sum_{k != j} c_k x_k + c_j (x'_j + l_j)
+    //
+    // so we get the constant term c_j * l_j
+    for (i_t j = 0; j < problem.num_cols; j++) {
+      if (problem.lower[j] != 0.0 && problem.lower[j] > -inf) {
+        for (i_t p = problem.A.col_start[j]; p < problem.A.col_start[j + 1]; p++) {
+          i_t i   = problem.A.i[p];
+          f_t aij = problem.A.x[p];
+          problem.rhs[i] -= aij * problem.lower[j];
+        }
+        problem.obj_constant += problem.objective[j] * problem.lower[j];
+        problem.upper[j] -= problem.lower[j];
+        presolve_info.removed_lower_bounds[j] = problem.lower[j];
+        problem.lower[j] = 0.0;
+      }
+    }
+  }
+
+  // Check for free variables
   i_t free_variables = 0;
   for (i_t j = 0; j < problem.num_cols; j++) {
-    if (problem.lower[j] == -INFINITY && problem.upper[j] == INFINITY) { free_variables++; }
+    if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
-  if (free_variables > 0) { settings.log.printf("%d free variables\n", free_variables); }
+  if (free_variables > 0) {
+    settings.log.printf("%d free variables\n", free_variables);
+
+    // We have a variable x_j: with -inf < x_j < inf
+    // we create new variables v and w with 0 <= v, w and x_j = v - w
+    // Constraints
+    // sum_{k != j} a_ik x_k + a_ij x_j {=, <=} beta
+    // become
+    // sum_{k != j} a_ik x_k + aij v - a_ij w {=, <=} beta
+    //
+    // The cost function
+    // sum_{k != j} c_k x_k + c_j x_j
+    // becomes
+    // sum_{k != j} c_k x_k + c_j v - c_j w
+
+    i_t num_cols = problem.num_cols + free_variables;
+    i_t nnz      = problem.A.col_start[problem.num_cols];
+    for (i_t j = 0; j < problem.num_cols; j++) {
+      if (problem.lower[j] == -inf && problem.upper[j] == inf) {
+        nnz += (problem.A.col_start[j + 1] - problem.A.col_start[j]);
+      }
+    }
+
+    problem.A.col_start.resize(num_cols + 1);
+    problem.A.i.resize(nnz);
+    problem.A.x.resize(nnz);
+    problem.lower.resize(num_cols);
+    problem.upper.resize(num_cols);
+    problem.objective.resize(num_cols);
+
+    presolve_info.free_variable_pairs.resize(free_variables * 2);
+    i_t pair_count = 0;
+    i_t q          = problem.A.col_start[problem.num_cols];
+    i_t col        = problem.num_cols;
+    for (i_t j = 0; j < problem.num_cols; j++) {
+      if (problem.lower[j] == -inf && problem.upper[j] == inf) {
+        for (i_t p = problem.A.col_start[j]; p < problem.A.col_start[j + 1]; p++) {
+          i_t i          = problem.A.i[p];
+          f_t aij        = problem.A.x[p];
+          problem.A.i[q] = i;
+          problem.A.x[q] = -aij;
+          q++;
+        }
+        problem.lower[col]                              = 0.0;
+        problem.upper[col]                              = inf;
+        problem.objective[col]                          = -problem.objective[j];
+        presolve_info.free_variable_pairs[pair_count++] = j;
+        presolve_info.free_variable_pairs[pair_count++] = col;
+        problem.A.col_start[++col]                      = q;
+        problem.lower[j]                                = 0.0;
+      }
+    }
+    assert(problem.A.p[num_cols] == nnz);
+    problem.A.n      = num_cols;
+    problem.num_cols = num_cols;
+  }
 
   // Check for empty rows
   i_t num_empty_rows = 0;
@@ -760,11 +852,12 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
 
   // Check for dependent rows
-  constexpr bool check_dependent_rows = false;
+  bool check_dependent_rows = false;  // settings.barrier;
   if (check_dependent_rows) {
     std::vector<i_t> dependent_rows;
     constexpr i_t kOk = -1;
     i_t infeasible;
+    f_t dependent_row_start    = tic();
     const i_t independent_rows = find_dependent_rows(problem, settings, dependent_rows, infeasible);
     if (infeasible != kOk) {
       settings.log.printf("Found problem infeasible in presolve\n");
@@ -775,8 +868,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
       settings.log.printf("%d dependent rows\n", num_dependent_rows);
       csr_matrix_t<i_t, f_t> Arow;
       problem.A.to_compressed_row(Arow);
-      remove_rows(problem, row_sense, Arow, dependent_rows);
+      remove_rows(problem, row_sense, Arow, dependent_rows, false);
     }
+    settings.log.printf("Dependent row check in %.2fs\n", toc(dependent_row_start));
   }
   assert(problem.num_rows == problem.A.m);
   assert(problem.num_cols == problem.A.n);
@@ -1012,25 +1106,49 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   if (presolve_info.removed_variables.size() == 0) {
     uncrushed_x = crushed_x;
     uncrushed_z = crushed_z;
-    return;
+  } else {
+    printf("Presolve info removed variables %d\n", presolve_info.removed_variables.size());
+    // We removed some variables, so we need to map the crushed solution back to the original variables
+    const i_t n = presolve_info.removed_variables.size() + presolve_info.remaining_variables.size();
+    uncrushed_x.resize(n);
+    uncrushed_z.resize(n);
+
+    i_t k = 0;
+    for (const i_t j : presolve_info.remaining_variables) {
+      uncrushed_x[j] = crushed_x[k];
+      uncrushed_z[j] = crushed_z[k];
+      k++;
+    }
+
+    k = 0;
+    for (const i_t j : presolve_info.removed_variables) {
+      uncrushed_x[j] = presolve_info.removed_values[k];
+      uncrushed_z[j] = presolve_info.removed_reduced_costs[k];
+      k++;
+    }
   }
 
-  const i_t n = presolve_info.removed_variables.size() + presolve_info.remaining_variables.size();
-  uncrushed_x.resize(n);
-  uncrushed_z.resize(n);
-
-  i_t k = 0;
-  for (const i_t j : presolve_info.remaining_variables) {
-    uncrushed_x[j] = crushed_x[k];
-    uncrushed_z[j] = crushed_z[k];
-    k++;
+  const i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
+  if (num_free_variables > 0) {
+    printf("Presolve info free variables %d\n", num_free_variables);
+    // We added free variables so we need to map the crushed solution back to the original variables
+    for (i_t k = 0; k < 2 * num_free_variables; k+= 2)
+    {
+      const i_t u = presolve_info.free_variable_pairs[k];
+      const i_t v = presolve_info.free_variable_pairs[k + 1];
+      uncrushed_x[u] -= uncrushed_x[v];
+    }
+    const i_t n = uncrushed_x.size();
+    uncrushed_x.resize(n - num_free_variables);
+    uncrushed_z.resize(n - num_free_variables);
   }
 
-  k = 0;
-  for (const i_t j : presolve_info.removed_variables) {
-    uncrushed_x[j] = presolve_info.removed_values[k];
-    uncrushed_z[j] = presolve_info.removed_reduced_costs[k];
-    k++;
+  if (presolve_info.removed_lower_bounds.size() > 0) {
+    printf("Presolve info removed lower bounds %d\n", presolve_info.removed_lower_bounds.size());
+    // We removed some lower bounds so we need to map the crushed solution back to the original variables
+    for (i_t j = 0; j < uncrushed_x.size(); j++) {
+      uncrushed_x[j] += presolve_info.removed_lower_bounds[j];
+    }
   }
 }
 
