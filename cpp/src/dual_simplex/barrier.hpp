@@ -18,9 +18,9 @@
 
 #include "dual_simplex/dense_vector.hpp"
 #include "dual_simplex/presolve.hpp"
-#include "dual_simplex/solve.hpp"
-#include "dual_simplex/solution.hpp"
 #include "dual_simplex/simplex_solver_settings.hpp"
+#include "dual_simplex/solution.hpp"
+#include "dual_simplex/solve.hpp"
 #include "dual_simplex/sparse_cholesky.hpp"
 #include "dual_simplex/sparse_matrix.hpp"
 #include "dual_simplex/tic_toc.hpp"

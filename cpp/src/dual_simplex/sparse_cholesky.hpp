@@ -223,7 +223,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     f_t start_symbolic = tic();
 
     CUDSS_CALL_AND_CHECK(
-      cudssExecute(handle, CUDSS_PHASE_SYMBOLIC_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b),
+      cudssExecute(
+        handle, CUDSS_PHASE_SYMBOLIC_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b),
       status,
       "cudssExecute for symbolic factorization");
 
@@ -249,7 +250,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     A_in.to_compressed_row(Arow);
 
     if (nnz != A_in.col_start[A_in.n]) {
-      settings_.log.printf("Error: nnz %d != A_in.col_start[A_in.n] %d\n", nnz, A_in.col_start[A_in.n]);
+      settings_.log.printf(
+        "Error: nnz %d != A_in.col_start[A_in.n] %d\n", nnz, A_in.col_start[A_in.n]);
       exit(1);
     }
 

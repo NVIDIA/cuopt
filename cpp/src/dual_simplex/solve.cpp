@@ -243,7 +243,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
                                               lp_solution_t<i_t, f_t>& solution)
 {
-  f_t start_time     = tic();
+  f_t start_time = tic();
   lp_problem_t<i_t, f_t> original_lp(1, 1, 1);
 
   // Convert the user problem to a linear program with only equality constraints
@@ -271,7 +271,6 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   barrier_solver_settings_t<i_t, f_t> barrier_solver_settings;
   lp_status_t barrier_status = barrier_solver.solve(barrier_solver_settings, barrier_solution);
   if (barrier_status == lp_status_t::OPTIMAL) {
-
     std::vector<f_t> scaled_residual = barrier_lp.rhs;
     matrix_vector_multiply(barrier_lp.A, 1.0, barrier_solution.x, -1.0, scaled_residual);
     f_t scaled_primal_residual = vector_norm_inf<i_t, f_t>(scaled_residual);
@@ -281,14 +280,16 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     for (i_t j = 0; j < scaled_dual_residual.size(); ++j) {
       scaled_dual_residual[j] -= barrier_lp.objective[j];
     }
-    matrix_transpose_vector_multiply(barrier_lp.A, 1.0, barrier_solution.y, 1.0, scaled_dual_residual);
+    matrix_transpose_vector_multiply(
+      barrier_lp.A, 1.0, barrier_solution.y, 1.0, scaled_dual_residual);
     f_t scaled_dual_residual_norm = vector_norm_inf<i_t, f_t>(scaled_dual_residual);
     settings.log.printf("Scaled Dual residual: %e\n", scaled_dual_residual_norm);
 
     // Unscale the solution
     std::vector<f_t> unscaled_x(barrier_lp.num_cols);
     std::vector<f_t> unscaled_z(barrier_lp.num_cols);
-    unscale_solution<i_t, f_t>(column_scales, barrier_solution.x, barrier_solution.z, unscaled_x, unscaled_z);
+    unscale_solution<i_t, f_t>(
+      column_scales, barrier_solution.x, barrier_solution.z, unscaled_x, unscaled_z);
 
     std::vector<f_t> residual = presolved_lp.rhs;
     matrix_vector_multiply(presolved_lp.A, 1.0, unscaled_x, -1.0, residual);
@@ -299,7 +300,8 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     for (i_t j = 0; j < unscaled_dual_residual.size(); ++j) {
       unscaled_dual_residual[j] -= presolved_lp.objective[j];
     }
-    matrix_transpose_vector_multiply(presolved_lp.A, 1.0, barrier_solution.y, 1.0, unscaled_dual_residual);
+    matrix_transpose_vector_multiply(
+      presolved_lp.A, 1.0, barrier_solution.y, 1.0, unscaled_dual_residual);
     f_t unscaled_dual_residual_norm = vector_norm_inf<i_t, f_t>(unscaled_dual_residual);
     settings.log.printf("Unscaled Dual residual: %e\n", unscaled_dual_residual_norm);
 
@@ -316,12 +318,14 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     for (i_t j = 0; j < post_solve_dual_residual.size(); ++j) {
       post_solve_dual_residual[j] -= original_lp.objective[j];
     }
-    matrix_transpose_vector_multiply(original_lp.A, 1.0, lp_solution.y, 1.0, post_solve_dual_residual);
+    matrix_transpose_vector_multiply(
+      original_lp.A, 1.0, lp_solution.y, 1.0, post_solve_dual_residual);
     f_t post_solve_dual_residual_norm = vector_norm_inf<i_t, f_t>(post_solve_dual_residual);
     settings.log.printf("Post-solve Dual residual: %e\n", post_solve_dual_residual_norm);
 
     uncrush_primal_solution(user_problem, original_lp, lp_solution.x, solution.x);
-    uncrush_dual_solution(user_problem, original_lp, lp_solution.y, lp_solution.z, solution.y, solution.z);
+    uncrush_dual_solution(
+      user_problem, original_lp, lp_solution.y, lp_solution.z, solution.y, solution.z);
     solution.objective          = barrier_solution.objective;
     solution.user_objective     = barrier_solution.user_objective;
     solution.l2_primal_residual = barrier_solution.l2_primal_residual;
@@ -330,23 +334,20 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   }
 
   // If we aren't doing crossover, we're done
-  if (!settings.crossover) {
-    return barrier_status;
-  }
+  if (!settings.crossover) { return barrier_status; }
 
   if (settings.crossover && barrier_status == lp_status_t::OPTIMAL) {
-
     // Check to see if we need to add artifical variables
-    csc_matrix_t<i_t, f_t> Atranspose(1,1,1);
+    csc_matrix_t<i_t, f_t> Atranspose(1, 1, 1);
     original_lp.A.transpose(Atranspose);
     std::vector<i_t> artificial_variables;
     artificial_variables.reserve(original_lp.num_rows);
     for (i_t i = 0; i < original_lp.num_rows; ++i) {
       const i_t row_start = Atranspose.col_start[i];
       const i_t row_end   = Atranspose.col_start[i + 1];
-      bool found_slack = false;
+      bool found_slack    = false;
       for (i_t p = row_start; p < row_end; ++p) {
-        const i_t j = Atranspose.i[p];
+        const i_t j      = Atranspose.i[p];
         const i_t nz_col = original_lp.A.col_start[j + 1] - original_lp.A.col_start[j];
         if (nz_col == 1) {
           found_slack = true;
@@ -354,17 +355,17 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
         }
       }
       if (!found_slack) {
-        //settings.log.printf("No slack found for row %d\n", i);
+        // settings.log.printf("No slack found for row %d\n", i);
         artificial_variables.push_back(i);
       }
     }
     if (artificial_variables.size() > 0) {
       settings.log.printf("Adding %ld artificial variables\n", artificial_variables.size());
       const i_t additional_vars = artificial_variables.size();
-      const i_t new_cols = original_lp.num_cols + additional_vars;
-      i_t col = original_lp.num_cols;
-      i_t nz = original_lp.A.col_start[col];
-      const i_t new_nz = nz + additional_vars;
+      const i_t new_cols        = original_lp.num_cols + additional_vars;
+      i_t col                   = original_lp.num_cols;
+      i_t nz                    = original_lp.A.col_start[col];
+      const i_t new_nz          = nz + additional_vars;
       original_lp.A.col_start.resize(new_cols + 1);
       original_lp.A.x.resize(new_nz);
       original_lp.A.i.resize(new_nz);
@@ -374,30 +375,36 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
       lp_solution.x.resize(new_cols);
       lp_solution.z.resize(new_cols);
       for (i_t i : artificial_variables) {
-        original_lp.A.x[nz] = 1.0;
-        original_lp.A.i[nz] = i;
+        original_lp.A.x[nz]        = 1.0;
+        original_lp.A.i[nz]        = i;
         original_lp.objective[col] = 0.0;
-        original_lp.lower[col] = 0.0;
-        original_lp.upper[col] = 0.0;
-        lp_solution.x[col] = 0.0;
-        lp_solution.z[col] = 0.0;
+        original_lp.lower[col]     = 0.0;
+        original_lp.upper[col]     = 0.0;
+        lp_solution.x[col]         = 0.0;
+        lp_solution.z[col]         = 0.0;
         nz++;
         col++;
         original_lp.A.col_start[col] = nz;
       }
-      original_lp.A.n = new_cols;
+      original_lp.A.n      = new_cols;
       original_lp.num_cols = new_cols;
-      printf("nz %d =? new_nz %d =? Acol %d, num_cols %d =? new_cols %d x size %ld z size %ld\n", nz, new_nz, original_lp.A.col_start[original_lp.num_cols], original_lp.num_cols, new_cols, lp_solution.x.size(), lp_solution.z.size());
+      printf("nz %d =? new_nz %d =? Acol %d, num_cols %d =? new_cols %d x size %ld z size %ld\n",
+             nz,
+             new_nz,
+             original_lp.A.col_start[original_lp.num_cols],
+             original_lp.num_cols,
+             new_cols,
+             lp_solution.x.size(),
+             lp_solution.z.size());
     }
 
     // Run crossover
     lp_solution_t<i_t, f_t> crossover_solution(original_lp.num_rows, original_lp.num_cols);
     std::vector<variable_status_t> vstatus(original_lp.num_cols);
-    crossover_status_t crossover_status = crossover(original_lp, barrier_settings, lp_solution, start_time, crossover_solution, vstatus);
+    crossover_status_t crossover_status = crossover(
+      original_lp, barrier_settings, lp_solution, start_time, crossover_solution, vstatus);
     settings.log.printf("Crossover status: %d\n", crossover_status);
-    if (crossover_status == crossover_status_t::OPTIMAL) {
-      barrier_status = lp_status_t::OPTIMAL;
-    }
+    if (crossover_status == crossover_status_t::OPTIMAL) { barrier_status = lp_status_t::OPTIMAL; }
   }
   return barrier_status;
 }
