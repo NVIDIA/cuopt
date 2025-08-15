@@ -24,4 +24,3 @@ Please note that you need to choose a `Runtime` as `GPU` in order to run the not
 
 Contact us - cuopt@nvidia.com
 -----------------------------
-

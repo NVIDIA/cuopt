@@ -66,7 +66,7 @@ The following fields are **New** in ``solver_configs`` for the service and repla
 
 - pdlp_solver_mode
 - mip_heuristics_only
-  
+
 The following are **New** in ``solver_configs`` for the service but were available in the C API in 25.05
 
 - strict_infeasibility
@@ -76,6 +76,3 @@ The following are **New** in ``solver_configs`` for the service but were availab
 - first_primal_feasible
 - log_file
 - solution_file
-  
-
- 

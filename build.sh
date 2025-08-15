@@ -325,7 +325,7 @@ if hasArg deb; then
         echo "Error: libcuopt must be built before creating deb package. Run with 'libcuopt' target first."
         exit 1
     fi
-    
+
     echo "Building deb package..."
     cd "${LIBCUOPT_BUILD_DIR}"
     cpack -G DEB
