@@ -16,7 +16,7 @@
 name: Inactivity Reminder with Different Times
 
 on:
-  workflow_dispatch:
+  workflow_call:
 
 jobs:
   remind:
