@@ -16,8 +16,7 @@
 name: Inactivity Reminder with Different Times
 
 on:
-  schedule:
-    - cron: '0 9 * * *'  # Runs daily at 09:00 UTC
+  workflow_dispatch:
 
 jobs:
   remind:
@@ -30,9 +29,9 @@ jobs:
             const MS_IN_DAY = 24 * 60 * 60 * 1000;
             const now = new Date();
 
-            // Thresholds
-            const ISSUE_INACTIVITY_DAYS = 21; // 3 weeks
-            const PR_INACTIVITY_DAYS = 7;     // 1 week
+            // Thresholds - set to 0 to trigger on every run
+            const ISSUE_INACTIVITY_DAYS = 0; // 0 days - triggers immediately
+            const PR_INACTIVITY_DAYS = 0;     // 0 days - triggers immediately
 
             // Always notify this user
             const defaultNotify = '@anandhkb';
@@ -54,6 +53,11 @@ jobs:
             );
 
             for (const item of issuesAndPRs) {
+              // Only process issue 309 or PR 310
+              if (item.number !== 309 && item.number !== 310) {
+                continue;
+              }
+
               if (!item.assignees || item.assignees.length === 0) continue;
 
               // Skip if issue/PR has the skip_inactivity_reminder label
