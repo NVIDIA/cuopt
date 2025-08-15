@@ -58,7 +58,7 @@ jobs:
                 continue;
               }
 
-              if (!item.assignees || item.assignees.length === 0) continue;
+              // Skip if no assignees - we'll just use default notifier
 
               // Skip if issue/PR has the skip_inactivity_reminder label
               if (item.labels && item.labels.some(label => label.name === 'skip_inactivity_reminder')) {
@@ -89,8 +89,12 @@ jobs:
                   continue;
                 }
 
-                const assigneeMentions = item.assignees.map(a => `@${a.login}`).join(' ');
-                const mentions = `${defaultNotify} ${assigneeMentions}`.trim();
+                const assigneeMentions = item.assignees && item.assignees.length > 0 
+                  ? item.assignees.map(a => `@${a.login}`).join(' ')
+                  : '';
+                const mentions = assigneeMentions 
+                  ? `${defaultNotify} ${assigneeMentions}`.trim()
+                  : defaultNotify;
                 const issueNumber = item.number;
                 const type = isPR ? "pull request" : "issue";
 
