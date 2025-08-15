@@ -262,7 +262,8 @@ bool feasibility_pump_t<i_t, f_t>::round(solution_t<i_t, f_t>& solution)
   CUOPT_LOG_DEBUG("Rounding the point");
   timer_t bounds_prop_timer(std::min(2., timer.remaining_time()));
   const f_t lp_run_time_after_feasible = std::min(3., timer.remaining_time() / 20.);
-  result = constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
+  // result = constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
+  result = solution.round_nearest();
   cuopt_func_call(solution.test_variable_bounds(true));
   // copy the last rounding
   raft::copy(last_rounding.data(),
