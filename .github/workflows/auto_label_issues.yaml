@@ -30,14 +30,14 @@ jobs:
             // Only process issues (not PRs)
             if (context.payload.issue && !context.payload.issue.pull_request) {
               console.log(`Adding 'awaiting response' label to issue #${context.payload.issue.number}`);
-              
+
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.payload.issue.number,
                 labels: ['awaiting response']
               });
-              
+
               console.log(`Successfully added 'awaiting response' label to issue #${context.payload.issue.number}`);
             } else {
               console.log('Skipping - this is a pull request, not an issue');

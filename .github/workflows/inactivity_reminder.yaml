@@ -61,13 +61,13 @@ jobs:
               }
 
               const isPR = !!item.pull_request;
-              
+
               // Skip if PR is in Draft mode
               if (isPR && item.draft) {
                 console.log(`Skipping #${item.number} due to Draft PR status`);
                 continue;
               }
-              
+
               // Skip if issue (not PR) is an EPIC
               if (!isPR && item.labels && item.labels.some(label => label.name === 'epic')) {
                 console.log(`Skipping #${item.number} due to EPIC label (issue only)`);
@@ -83,10 +83,10 @@ jobs:
                   continue;
                 }
 
-                const assigneeMentions = item.assignees && item.assignees.length > 0 
+                const assigneeMentions = item.assignees && item.assignees.length > 0
                   ? item.assignees.map(a => `@${a.login}`).join(' ')
                   : '';
-                const mentions = assigneeMentions 
+                const mentions = assigneeMentions
                   ? `${defaultNotify} ${assigneeMentions}`.trim()
                   : defaultNotify;
                 const issueNumber = item.number;
