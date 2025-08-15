@@ -102,7 +102,13 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: issueNumber,
-                  body: `🔔 Hi ${mentions}, this ${type} has had no activity for ${thresholdDays} days. Please update or let us know if it can be closed. Thank you!`,
+                  body: [
+                    `🔔 Hi ${mentions}, this ${type} has had no activity for ${thresholdDays} days. Please update or let us know if it can be closed. Thank you!`,
+                    '',
+                    'If this is an "epic" issue, then please add the "epic" label to this issue.',
+                    'If it is a PR and needs a lot of time, then please convert this to draft.',
+                    'If you just want to switch off this notification, then use the "skip inactivity reminder" label.'
+                  ].join('\n'),
                 });
 
                 console.log(`Posted reminder on #${issueNumber} (${type}) to ${mentions}`);
