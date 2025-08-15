@@ -54,11 +54,9 @@ jobs:
             );
 
             for (const item of issuesAndPRs) {
-              if (!item.assignees || item.assignees.length === 0) continue;
-
-              // Skip if issue/PR has the skip_inactivity_reminder label
-              if (item.labels && item.labels.some(label => label.name === 'skip_inactivity_reminder')) {
-                console.log(`Skipping #${item.number} due to skip_inactivity_reminder label`);
+              // Skip if issue/PR has the skip inactivity reminder label
+              if (item.labels && item.labels.some(label => label.name === 'skip inactivity reminder')) {
+                console.log(`Skipping #${item.number} due to skip inactivity reminder label`);
                 continue;
               }
 
@@ -85,8 +83,12 @@ jobs:
                   continue;
                 }
 
-                const assigneeMentions = item.assignees.map(a => `@${a.login}`).join(' ');
-                const mentions = `${defaultNotify} ${assigneeMentions}`.trim();
+                const assigneeMentions = item.assignees && item.assignees.length > 0 
+                  ? item.assignees.map(a => `@${a.login}`).join(' ')
+                  : '';
+                const mentions = assigneeMentions 
+                  ? `${defaultNotify} ${assigneeMentions}`.trim()
+                  : defaultNotify;
                 const issueNumber = item.number;
                 const type = isPR ? "pull request" : "issue";
 
@@ -94,7 +96,13 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: issueNumber,
-                  body: `⚠️ Hi ${mentions}, this ${type} has had no activity for ${thresholdDays} days. Please update or let us know if it can be closed. Thank you!`,
+                  body: [
+                    `🔔 Hi ${mentions}, this ${type} has had no activity for ${thresholdDays} days. Please update or let us know if it can be closed. Thank you!`,
+                    '',
+                    'If this is an "epic" issue, then please add the "epic" label to this issue.',
+                    'If it is a PR and needs a lot of time, then please convert this to draft.',
+                    'If you just want to switch off this notification, then use the "skip inactivity reminder" label.'
+                  ].join('\n'),
                 });
 
                 console.log(`Posted reminder on #${issueNumber} (${type}) to ${mentions}`);
