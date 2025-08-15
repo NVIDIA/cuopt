@@ -151,7 +151,8 @@ int run_single_file(std::string file_path,
                     int num_cpu_threads,
                     bool write_log_file,
                     bool log_to_console,
-                    double time_limit)
+                    double time_limit,
+                    bool use_diving)
 {
   const raft::handle_t handle_{};
   cuopt::linear_programming::mip_solver_settings_t<int, double> settings;
@@ -168,11 +169,13 @@ int run_single_file(std::string file_path,
     }
   }
 
+  settings.search_strategy.use_diving = use_diving;
+
   constexpr bool input_mps_strict = false;
   cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model;
   bool parsing_failed = false;
   {
-    CUOPT_LOG_INFO("running file %s on gpu : %d", base_filename.c_str(), device);
+    CUOPT_LOG_INFO("Running file %s", base_filename.c_str());
     try {
       mps_data_model = cuopt::mps_parser::parse_mps<int, double>(file_path, input_mps_strict);
     } catch (const std::logic_error& e) {
@@ -232,14 +235,15 @@ int run_single_file(std::string file_path,
   } else {
     CUOPT_LOG_INFO("%s: no solution found", base_filename.c_str());
   }
-  std::stringstream ss;
-  int decimal_places = 2;
-  ss << std::fixed << std::setprecision(decimal_places) << base_filename << "," << sol_found << ","
-     << obj_val << "," << benchmark_info.objective_of_initial_population << ","
-     << benchmark_info.last_improvement_of_best_feasible << ","
-     << benchmark_info.last_improvement_after_recombination << "\n";
-  write_to_output_file(out_dir, base_filename, device, batch_id, ss.str());
-  CUOPT_LOG_INFO("Results written to the file %s", base_filename.c_str());
+  // std::stringstream ss;
+  // int decimal_places = 2;
+  // ss << std::fixed << std::setprecision(decimal_places) << base_filename << "," << sol_found <<
+  // ","
+  //    << obj_val << "," << benchmark_info.objective_of_initial_population << ","
+  //    << benchmark_info.last_improvement_of_best_feasible << ","
+  //    << benchmark_info.last_improvement_after_recombination << "\n";
+  // write_to_output_file(out_dir, base_filename, device, batch_id, ss.str());
+  // CUOPT_LOG_INFO("Results written to the file %s", base_filename.c_str());
   return sol_found;
 }
 
@@ -252,7 +256,8 @@ void run_single_file_mp(std::string file_path,
                         int num_cpu_threads,
                         bool write_log_file,
                         bool log_to_console,
-                        double time_limit)
+                        double time_limit,
+                        bool use_diving)
 {
   std::cout << "running file " << file_path << " on gpu : " << device << std::endl;
   auto memory_resource = make_async();
@@ -266,7 +271,8 @@ void run_single_file_mp(std::string file_path,
                                   num_cpu_threads,
                                   write_log_file,
                                   log_to_console,
-                                  time_limit);
+                                  time_limit,
+                                  use_diving);
   // this is a bad design to communicate the result but better than adding complexity of IPC or
   // pipes
   exit(sol_found);
@@ -340,6 +346,10 @@ int main(int argc, char* argv[])
     .scan<'g', double>()
     .default_value(std::numeric_limits<double>::max());
 
+  program.add_argument("--diving")
+    .help("use diving during branch and bound(t/f)")
+    .default_value(std::string("f"));
+
   // Parse arguments
   try {
     program.parse_args(argc, argv);
@@ -366,6 +376,7 @@ int main(int argc, char* argv[])
   int num_cpu_threads  = program.get<int>("--num-cpu-threads");
   bool write_log_file  = program.get<std::string>("--write-log-file")[0] == 't';
   bool log_to_console  = program.get<std::string>("--log-to-console")[0] == 't';
+  bool use_diving      = program.get<std::string>("--diving")[0] == 't';
 
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
@@ -451,7 +462,8 @@ int main(int argc, char* argv[])
                                num_cpu_threads,
                                write_log_file,
                                log_to_console,
-                               time_limit);
+                               time_limit,
+                               use_diving);
           } else if (sys_pid < 0) {
             std::cerr << "Fork failed!" << std::endl;
             exit(1);
@@ -480,7 +492,8 @@ int main(int argc, char* argv[])
                     num_cpu_threads,
                     write_log_file,
                     log_to_console,
-                    time_limit);
+                    time_limit,
+                    use_diving);
   }
 
   return 0;

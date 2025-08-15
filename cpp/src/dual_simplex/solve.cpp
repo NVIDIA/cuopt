@@ -35,6 +35,7 @@
 #include <cstdlib>
 #include <queue>
 #include <string>
+#include "cuopt/linear_programming/mip/solver_settings.hpp"
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -265,11 +266,12 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
 template <typename i_t, typename f_t>
 i_t solve(const user_problem_t<i_t, f_t>& problem,
           const simplex_solver_settings_t<i_t, f_t>& settings,
+          const bnb_search_strategy_t search_strategy,
           std::vector<f_t>& primal_solution)
 {
   i_t status;
   if (is_mip(problem) && !settings.relaxation) {
-    branch_and_bound_t branch_and_bound(problem, settings);
+    branch_and_bound_t branch_and_bound(problem, settings, search_strategy);
     mip_solution_t<i_t, f_t> mip_solution(problem.num_cols);
     mip_status_t mip_status = branch_and_bound.solve(mip_solution);
     if (mip_status == mip_status_t::OPTIMAL) {
@@ -302,12 +304,13 @@ i_t solve(const user_problem_t<i_t, f_t>& problem,
 template <typename i_t, typename f_t>
 i_t solve_mip_with_guess(const user_problem_t<i_t, f_t>& problem,
                          const simplex_solver_settings_t<i_t, f_t>& settings,
+                         const bnb_search_strategy_t search_strategy,
                          const std::vector<f_t>& guess,
                          mip_solution_t<i_t, f_t>& solution)
 {
   i_t status;
   if (is_mip(problem)) {
-    branch_and_bound_t branch_and_bound(problem, settings);
+    branch_and_bound_t branch_and_bound(problem, settings, search_strategy);
     branch_and_bound.set_initial_guess(guess);
     mip_status_t mip_status = branch_and_bound.solve(solution);
     if (mip_status == mip_status_t::OPTIMAL) {
@@ -348,11 +351,13 @@ template lp_status_t solve_linear_program(const user_problem_t<int, double>& use
 
 template int solve<int, double>(const user_problem_t<int, double>& user_problem,
                                 const simplex_solver_settings_t<int, double>& settings,
+                                const bnb_search_strategy_t search_strategy,
                                 std::vector<double>& primal_solution);
 
 template int solve_mip_with_guess<int, double>(
   const user_problem_t<int, double>& problem,
   const simplex_solver_settings_t<int, double>& settings,
+  const bnb_search_strategy_t search_strategy,
   const std::vector<double>& guess,
   mip_solution_t<int, double>& solution);
 

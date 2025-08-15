@@ -27,6 +27,7 @@
 #include <dual_simplex/user_problem.hpp>
 
 #include <mps_parser/parser.hpp>
+#include "cuopt/linear_programming/mip/solver_settings.hpp"
 
 namespace cuopt::linear_programming::dual_simplex::test {
 
@@ -87,6 +88,8 @@ TEST(dual_simplex, chess_set)
   user_problem.var_types[0] = dual_simplex::variable_type_t::CONTINUOUS;
   user_problem.var_types[1] = dual_simplex::variable_type_t::CONTINUOUS;
 
+  bnb_search_strategy_t search_strategy;
+
   double start_time = dual_simplex::tic();
   dual_simplex::simplex_solver_settings_t<int, double> settings;
   dual_simplex::lp_solution_t<int, double> solution(user_problem.num_rows, user_problem.num_cols);
@@ -100,7 +103,7 @@ TEST(dual_simplex, chess_set)
   user_problem.var_types[0] = dual_simplex::variable_type_t::INTEGER;
   user_problem.var_types[1] = dual_simplex::variable_type_t::INTEGER;
 
-  EXPECT_EQ((dual_simplex::solve(user_problem, settings, solution.x)), 0);
+  EXPECT_EQ((dual_simplex::solve(user_problem, settings, search_strategy, solution.x)), 0);
 }
 
 TEST(dual_simplex, burglar)
@@ -160,9 +163,12 @@ TEST(dual_simplex, burglar)
   for (int j = 0; j < num_items; ++j) {
     user_problem.var_types[j] = cuopt::linear_programming::dual_simplex::variable_type_t::INTEGER;
   }
+
+  bnb_search_strategy_t search_strategy;
+
   cuopt::linear_programming::dual_simplex::simplex_solver_settings_t<int, double> settings;
   std::vector<double> solution(num_items);
-  EXPECT_EQ((cuopt::linear_programming::dual_simplex::solve(user_problem, settings, solution)), 0);
+  EXPECT_EQ((cuopt::linear_programming::dual_simplex::solve(user_problem, settings, search_strategy, solution)), 0);
   double objective = 0.0;
   for (int j = 0; j < num_items; ++j) {
     objective += value[j] * solution[j];

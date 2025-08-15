@@ -399,8 +399,9 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(
 template <typename i_t, typename f_t>
 branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   const user_problem_t<i_t, f_t>& user_problem,
-  const simplex_solver_settings_t<i_t, f_t>& solver_settings)
-  : original_problem(user_problem), settings(solver_settings), original_lp(1, 1, 1)
+  const simplex_solver_settings_t<i_t, f_t>& solver_settings,
+  const bnb_search_strategy_t strategy)
+  : original_problem(user_problem), settings(solver_settings), search_strategy(strategy), original_lp(1, 1, 1)
 {
   start_time = tic();
   convert_user_problem(original_problem, settings, original_lp, new_slacks);

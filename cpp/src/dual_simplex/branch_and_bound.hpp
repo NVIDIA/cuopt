@@ -25,6 +25,7 @@
 
 #include <string>
 #include <vector>
+#include "cuopt/linear_programming/mip/solver_settings.hpp"
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -45,7 +46,8 @@ template <typename i_t, typename f_t>
 class branch_and_bound_t {
  public:
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
-                     const simplex_solver_settings_t<i_t, f_t>& solver_settings);
+                     const simplex_solver_settings_t<i_t, f_t>& solver_settings,
+                     const bnb_search_strategy_t strategy);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess = user_guess; }
@@ -65,6 +67,7 @@ class branch_and_bound_t {
  private:
   const user_problem_t<i_t, f_t>& original_problem;
   const simplex_solver_settings_t<i_t, f_t> settings;
+  bnb_search_strategy_t search_strategy;
 
   f_t start_time;
   std::vector<f_t> guess;

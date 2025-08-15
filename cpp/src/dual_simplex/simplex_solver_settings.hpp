@@ -113,6 +113,8 @@ struct simplex_solver_settings_t {
   mutable logger_t log;
   std::atomic<i_t>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt
+
+  
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
