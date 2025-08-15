@@ -37,32 +37,23 @@ function sed_runner() {
 }
 
 # Centralized version file update
-echo "${NEXT_FULL_TAG}" > VERSION
-echo "${NEXT_FULL_TAG}" > RAPIDS_VERSION
+echo "${NEXT_FULL_TAG}" > ./VERSION
+echo "${NEXT_FULL_TAG}" > ./RAPIDS_VERSION
 
 DEPENDENCIES=(
-  libcuopt
-  libcuopt-cu12
-  cuopt-mps-parser
-  cuopt
-  cuopt-cu12
-  cuopt-server
-  cuopt-server-cu12
-  cuopt-sh-client
   cudf
-  cudf-cu12
   cuvs
-  cuvs-cu12
-  librmm
-  librmm-cu12
+  cuopt
+  cuopt-mps-parser
+  cuopt-server
+  cuopt-sh-client
+  libcuopt
   libraft-headers
-  rmm
-  rmm-cu12
+  librmm
   pylibraft
-  pylibraft-cu12
   raft-dask
-  raft-dask-cu12
   rapids-dask-dependency
+  rmm
 )
 
 for DEP in "${DEPENDENCIES[@]}"; do
@@ -70,16 +61,12 @@ for DEP in "${DEPENDENCIES[@]}"; do
     sed_runner "s/\(${DEP}==\)[0-9]\+\.[0-9]\+/\1${NEXT_SHORT_TAG_PEP440}/" "${FILE}"
   done
   for FILE in python/*/pyproject.toml; do
-    sed_runner "s/\(${DEP}==\)[0-9]\+\.[0-9]\+/\1${NEXT_SHORT_TAG_PEP440}/" "${FILE}"
+    sed_runner "/-.* ${DEP}\(-cu[[:digit:]]\{2\}\)\{0,1\}\(\[.*\]\)\{0,1\}==/ s/==.*/==${NEXT_SHORT_TAG_PEP440}.*,>=0.0.0a0/g" "${FILE}"
   done
   for FILE in docs/cuopt/source/*/quick-start.rst README.md; do
     sed_runner "s/\(${DEP}==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" "${FILE}"
-  done
-  for FILE in docs/cuopt/source/*/quick-start.rst README.md; do
     sed_runner "s/\(${DEP}=\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?[^ ]*/\1${NEXT_SHORT_TAG}.*/g" "${FILE}"
-  done
-  for FILE in docs/cuopt/source/*/quick-start.rst README.md; do
-    sed_runner "s/\(${DEP}:\)[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda[0-9]\+\.[0-9]\+-\)\(py[0-9]\+\)/\1${DOCKER_TAG}\2\3/g" docs/cuopt/source/cuopt-python/quick-start.rst
+    sed_runner "s/\(${DEP}:\)[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda[0-9]\+\.[0-9]\+-\)\(py[0-9]\+\)/\1${DOCKER_TAG}\2\3/g" "${FILE}"
   done
 done
 

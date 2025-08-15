@@ -18,10 +18,8 @@ repos:
     rev: 'v5.0.0'
     hooks:
       - id: end-of-file-fixer
-        files: \.(mps|json|yaml|yml|txt)$
         exclude: ^(datasets|helmchart)/.*\.(mps|json|yaml|yml|txt)$
       - id: trailing-whitespace
-        files: \.(mps|json|yaml|yml|txt)$
         exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$
       - id: check-builtin-literals
       - id: check-executables-have-shebangs
