@@ -122,9 +122,5 @@ for FILE in .github/workflows/*.yaml; do
   sed_runner "s/:[0-9]*\\.[0-9]*-/:${NEXT_SHORT_TAG}-/g" "${FILE}"
 done
 
-# CI for RAPIDS
-sed_runner 's/'"DEPENDENT_PACKAGE_VERSION=\"[0-9][0-9].[0-9][0-9]\""'/'"DEPENDENT_PACKAGE_VERSION=\"${NEXT_SHORT_TAG}\""'/g' ci/build_cpp.sh
-sed_runner 's/'"DEPENDENT_PACKAGE_VERSION=\"[0-9][0-9].[0-9][0-9]\""'/'"DEPENDENT_PACKAGE_VERSION=\"${NEXT_SHORT_TAG}\""'/g' ci/build_python.sh
-
 # PYTHON for RAPIDS
 sed_runner "/DOWNLOAD.*rapids-cmake/ s/branch-[0-9][0-9].[0-9][0-9]/branch-${NEXT_SHORT_TAG}/g" python/cuopt/CMakeLists.txt
