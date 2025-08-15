@@ -17,6 +17,7 @@
 #include "initial_solution_reader.hpp"
 #include "mip_test_instances.hpp"
 
+#include <cstdio>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
@@ -377,7 +378,7 @@ int main(int argc, char* argv[])
   bool write_log_file  = program.get<std::string>("--write-log-file")[0] == 't';
   bool log_to_console  = program.get<std::string>("--log-to-console")[0] == 't';
   bool use_diving      = program.get<std::string>("--diving")[0] == 't';
-
+  
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
     result_file = out_dir + "/final_result.csv";
