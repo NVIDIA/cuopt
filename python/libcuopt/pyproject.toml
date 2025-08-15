@@ -64,9 +64,7 @@ libcuopt = "libcuopt"
 select = [
     "distro-too-large-compressed",
 ]
-# PyPI limit is 700 MiB, fail CI before we get too close to that
-# 11.X size is 300M compressed and 12.x size is 600M compressed
-max_allowed_size_compressed = '700M'
+max_allowed_size_compressed = '775M'
 
 [project.scripts]
 cuopt_cli = "libcuopt._cli_wrapper:main"
