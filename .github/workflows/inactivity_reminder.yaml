@@ -56,10 +56,35 @@ jobs:
             for (const item of issuesAndPRs) {
               if (!item.assignees || item.assignees.length === 0) continue;
 
+              // Skip if issue/PR has the skip_inactivity_reminder label
+              if (item.labels && item.labels.some(label => label.name === 'skip_inactivity_reminder')) {
+                console.log(`Skipping #${item.number} due to skip_inactivity_reminder label`);
+                continue;
+              }
+
               const isPR = !!item.pull_request;
+              
+              // Skip if PR is in Draft mode
+              if (isPR && item.draft) {
+                console.log(`Skipping #${item.number} due to Draft PR status`);
+                continue;
+              }
+              
+              // Skip if issue (not PR) is an EPIC
+              if (!isPR && item.labels && item.labels.some(label => label.name === 'EPIC')) {
+                console.log(`Skipping #${item.number} due to EPIC label (issue only)`);
+                continue;
+              }
+
               const thresholdDays = isPR ? PR_INACTIVITY_DAYS : ISSUE_INACTIVITY_DAYS;
 
               if (isInactive(item.updated_at, thresholdDays)) {
+                // For issues, only send reminder if they have "awaiting response" label
+                if (!isPR && (!item.labels || !item.labels.some(label => label.name === 'awaiting response'))) {
+                  console.log(`Skipping #${item.number} (issue) - no awaiting response label`);
+                  continue;
+                }
+
                 const assigneeMentions = item.assignees.map(a => `@${a.login}`).join(' ');
                 const mentions = `${defaultNotify} ${assigneeMentions}`.trim();
                 const issueNumber = item.number;
