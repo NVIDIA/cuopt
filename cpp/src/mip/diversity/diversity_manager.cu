@@ -27,8 +27,8 @@
 #include "cuda_profiler_api.h"
 
 constexpr bool from_dir    = false;
-constexpr bool fj_only_run = false;
-constexpr bool fp_only_run = true;
+constexpr bool fj_only_run = true;
+constexpr bool fp_only_run = false;
 
 namespace cuopt::linear_programming::detail {
 
@@ -429,7 +429,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   timer_t probing_timer{time_for_probing_cache};
   if (check_b_b_preemption()) { return population.best_feasible(); }
   if (!fj_only_run) {
-    // compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
+    compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
   }
   // careful, assign the correct probing cache
   ls.lb_constraint_prop.bounds_update.probing_cache.probing_cache =
