@@ -71,7 +71,7 @@ jobs:
               }
               
               // Skip if issue (not PR) is an EPIC
-              if (!isPR && item.labels && item.labels.some(label => label.name === 'EPIC')) {
+              if (!isPR && item.labels && item.labels.some(label => label.name === 'epic')) {
                 console.log(`Skipping #${item.number} due to EPIC label (issue only)`);
                 continue;
               }
