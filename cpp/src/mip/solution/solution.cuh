@@ -100,7 +100,9 @@ class solution_t {
   f_t get_total_excess();
   // brings all vars within bounds
   void clamp_within_bounds();
-  mip_solution_t<i_t, f_t> get_solution(bool output_feasible, solver_stats_t<i_t, f_t> stats);
+  mip_solution_t<i_t, f_t> get_solution(bool output_feasible,
+                                        solver_stats_t<i_t, f_t> stats,
+                                        bool log_stats = true);
   f_t compute_max_constraint_violation();
   f_t compute_max_int_violation();
   f_t compute_max_variable_violation();

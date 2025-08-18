@@ -48,5 +48,6 @@ foreach(target
       cuopt
       cuopttestutils
       OpenMP::OpenMP_CXX
+      papilo-core
   )
 endforeach()

@@ -122,9 +122,6 @@ int run_single_file(const std::string& file_path,
     (op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP ||
      op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::IP);
 
-  bool sol_found = false;
-  double obj_val = std::numeric_limits<double>::infinity();
-
   auto initial_solution =
     initial_solution_file.empty()
       ? std::vector<double>()
@@ -195,6 +192,11 @@ int main(int argc, char* argv[])
   program.add_argument("--relaxation")
     .help("solve the LP relaxation of the MIP")
     .default_value(false)
+    .implicit_value(true);
+
+  program.add_argument("--presolve")
+    .help("enable/disable presolve (default: true for MIP problems, false for LP problems)")
+    .default_value(true)
     .implicit_value(true);
 
   std::map<std::string, std::string> arg_name_to_param_name;

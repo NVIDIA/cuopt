@@ -11,4 +11,3 @@ Example
 
     import cuopt_mps_parser
     x = cuopt_mps_parser.ParseMps('good-mps-1.mps')
-

@@ -112,7 +112,10 @@ static void test_constraint_sanity_per_row(
 }
 
 static std::tuple<mip_termination_status_t, double, double> test_mps_file(
-  std::string test_instance, double time_limit = 1, bool heuristics_only = true)
+  std::string test_instance,
+  double time_limit    = 1,
+  bool heuristics_only = true,
+  bool presolve        = true)
 {
   const raft::handle_t handle_{};
 
@@ -123,6 +126,7 @@ static std::tuple<mip_termination_status_t, double, double> test_mps_file(
   mip_solver_settings_t<int, double> settings;
   settings.time_limit                  = time_limit;
   settings.heuristics_only             = heuristics_only;
+  settings.presolve                    = presolve;
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
   return std::make_tuple(solution.get_termination_status(),
                          solution.get_objective_value(),

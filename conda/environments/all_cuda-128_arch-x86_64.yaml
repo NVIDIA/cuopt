@@ -5,6 +5,7 @@ channels:
 - rapidsai-nightly
 - conda-forge
 dependencies:
+- boost
 - breathe
 - c-compiler
 - ccache

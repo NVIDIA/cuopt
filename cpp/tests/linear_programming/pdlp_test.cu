@@ -209,7 +209,8 @@ TEST(pdlp_class, run_sub_mittleman)
     cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
       cuopt::mps_parser::parse_mps<int, double>(path);
 
-    // Testing for each solver_mode is ok as it's parsing that is the bottleneck here, not solving
+    // Testing for each solver_mode is ok as it's parsing that is the bottleneck here, not
+    // solving
     auto solver_mode_list = {
       cuopt::linear_programming::pdlp_solver_mode_t::Stable2,
       cuopt::linear_programming::pdlp_solver_mode_t::Methodical1,
@@ -218,7 +219,6 @@ TEST(pdlp_class, run_sub_mittleman)
     for (auto solver_mode : solver_mode_list) {
       auto settings             = pdlp_solver_settings_t<int, double>{};
       settings.pdlp_solver_mode = solver_mode;
-      settings.method           = cuopt::linear_programming::method_t::PDLP;
       const raft::handle_t handle_{};
       optimization_problem_solution_t<int, double> solution =
         solve_lp(&handle_, op_problem, settings);

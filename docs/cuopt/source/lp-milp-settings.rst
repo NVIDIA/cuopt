@@ -61,6 +61,9 @@ parallel parts of the solvers.
 
 Note: by default the number of CPU threads is automatically determined based on the number of CPU cores.
 
+Presolve
+^^^^^^^^
+``CUOPT_PRESOLVE`` controls whether presolve is enabled. Presolve can reduce problem size and improve solve time. Enabled by default for MIP, disabled by default for LP.
 
 Linear Programming
 ------------------
@@ -321,5 +324,3 @@ If the Best Objective and the Dual Bound are both zero the gap is zero. If the b
 gap is infinity.
 
 Note: the default value is ``1e-4``.
-
-
