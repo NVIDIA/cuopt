@@ -49,6 +49,7 @@ cache:
 
   requirements:
     build:
+      - boost
       - ${{ compiler("c") }}
       - ${{ compiler("cxx") }}
       - ${{ compiler("cuda") }} =${{ cuda_version }}
@@ -68,6 +69,7 @@ cache:
       - libcurand-dev
       - libcusparse-dev
       - cuda-cudart-dev
+      - boost
 
 outputs:
   - package:
@@ -126,6 +128,7 @@ outputs:
         - ${{ stdlib("c") }}
       host:
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
+        - boost
         - cuda-version =${{ cuda_version }}
         - rapids-logger =0.1
         - librmm =${{ dep_minor_version }}
@@ -135,6 +138,7 @@ outputs:
       run:
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
+        - boost
         - librmm =${{ dep_minor_version }}
         - cuda-nvrtc
       ignore_run_exports:
@@ -146,6 +150,8 @@ outputs:
           - libcurand
           - libcusparse
           - librmm
+          - libboost
+          - libboost_iostreams
     tests:
     - package_contents:
         files:
@@ -173,6 +179,7 @@ outputs:
       host:
         - ${{ pin_subpackage("libcuopt", exact=True) }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
+        - boost
         - gmock ${{ gtest_version }}
         - gtest ${{ gtest_version }}
         - cuda-cudart-dev
@@ -192,6 +199,8 @@ outputs:
           - libcurand
           - libcusparse
           - librmm
+          - libboost
+          - libboost_iostreams
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
       license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license.text }}

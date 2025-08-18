@@ -41,9 +41,3 @@ Similarly, for Conda package,
 
 
 There are other scripts in this directory which are used to build and test the code and are also used in the workflows as utlities.
-
-
-
-
-
-

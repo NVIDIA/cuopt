@@ -535,6 +535,12 @@ class SolverConfig(StrictModel):
         default=False,
         description="Set True to use crossover, False to not use crossover.",
     )
+    presolve: Optional[bool] = Field(
+        default=None,
+        description="Set True to enable presolve, False to disable presolve. "
+        "Presolve can reduce problem size and improve solve time. "
+        "Default is True for MIP problems and False for LP problems.",
+    )
     log_to_console: Optional[bool] = Field(
         default=True,
         description="Set True to write logs to console, False to "
@@ -847,7 +853,7 @@ lp_zlib_example_data = 'x\x01\x8dR\xd1j\xc4 \x10|\xcfW\x88\xcf%$\xd7\x94\xd2\xfe
 managed_lp_example_data = {
     "action": "cuOpt_LP",
     "data": lp_example_data,
-    "client_version": "25.08",
+    "client_version": "25.10",
 }
 
 # cut and pasted from actual run of LP example data.

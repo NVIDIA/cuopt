@@ -22,3 +22,12 @@ This section contains details on the cuOpt Python package.
    :titlesonly:
 
    Routing Optimization <routing/index.rst>
+
+
+.. toctree::
+   :maxdepth: 3
+   :caption: Linear Programming and Mixed Integer Linear Programming
+   :name: LP and MILP API
+   :titlesonly:
+
+   Linear Programming and Mixed Integer Linear Programming <lp-milp/index.rst>

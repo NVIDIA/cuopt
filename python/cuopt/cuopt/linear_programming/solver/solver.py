@@ -84,10 +84,16 @@ def Solve(data_model, solver_settings=None):
     def is_mip(var_types):
         if len(var_types) == 0:
             return False
-        elif "I" in var_types:
-            return True
-
-        return False
+        # Check if all types are the same (fast check)
+        if len(set(map(type, var_types))) == 1:
+            # Homogeneous - use appropriate check
+            if isinstance(var_types[0], bytes):
+                return b"I" in var_types
+            else:
+                return "I" in var_types
+        else:
+            # Mixed types - fallback to comprehensive check
+            return any(vt == "I" or vt == b"I" for vt in var_types)
 
     return solver_wrapper.Solve(
         data_model,

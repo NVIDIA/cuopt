@@ -437,7 +437,7 @@ cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variab
              variable_types.size(),
              problem_and_stream_view->stream_view);
   problem_and_stream_view->stream_view.synchronize();
-  for (int j = 0; j < variable_types_host.size(); j++) {
+  for (size_t j = 0; j < variable_types_host.size(); j++) {
     variable_types_ptr[j] =
       variable_types_host[j] == var_t::INTEGER ? CUOPT_INTEGER : CUOPT_CONTINUOUS;
   }

@@ -205,6 +205,29 @@ void graphviz_edge(const simplex_solver_settings_t<i_t, f_t>& settings,
   }
 }
 
+dual::status_t convert_lp_status_to_dual_status(lp_status_t status)
+{
+  if (status == lp_status_t::OPTIMAL) {
+    return dual::status_t::OPTIMAL;
+  } else if (status == lp_status_t::INFEASIBLE) {
+    return dual::status_t::DUAL_UNBOUNDED;
+  } else if (status == lp_status_t::ITERATION_LIMIT) {
+    return dual::status_t::ITERATION_LIMIT;
+  } else if (status == lp_status_t::TIME_LIMIT) {
+    return dual::status_t::TIME_LIMIT;
+  } else if (status == lp_status_t::NUMERICAL_ISSUES) {
+    return dual::status_t::NUMERICAL;
+  } else if (status == lp_status_t::CUTOFF) {
+    return dual::status_t::CUTOFF;
+  } else if (status == lp_status_t::CONCURRENT_LIMIT) {
+    return dual::status_t::CONCURRENT_LIMIT;
+  } else if (status == lp_status_t::UNSET) {
+    return dual::status_t::UNSET;
+  } else {
+    return dual::status_t::NUMERICAL;
+  }
+}
+
 }  // namespace
 
 template <typename f_t>
@@ -380,7 +403,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   : original_problem(user_problem), settings(solver_settings), original_lp(1, 1, 1)
 {
   start_time = tic();
-  convert_user_problem(original_problem, original_lp, new_slacks);
+  convert_user_problem(original_problem, settings, original_lp, new_slacks);
   full_variable_types(original_problem, original_lp, var_types);
 
   global_variables::mutex_upper.lock();
@@ -674,6 +697,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                            leaf_solution,
                                            node_iter,
                                            leaf_edge_norms);
+    if (lp_status == dual::status_t::NUMERICAL) {
+      settings.log.printf("Numerical issue node %d. Resolving from scratch.\n", nodes_explored);
+      lp_status_t second_status = solve_linear_program_advanced(
+        leaf_problem, lp_start_time, lp_settings, leaf_solution, leaf_vstatus, leaf_edge_norms);
+      lp_status = convert_lp_status_to_dual_status(second_status);
+    }
     total_lp_solve_time += toc(lp_start_time);
     total_lp_iters += node_iter;
 

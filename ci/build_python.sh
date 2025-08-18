@@ -29,7 +29,7 @@ CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
 
 version=$(rapids-generate-version)
 export RAPIDS_PACKAGE_VERSION=${version}
-export DEPENDENT_PACKAGE_VERSION="25.08"
+export DEPENDENT_PACKAGE_VERSION="25.10"
 echo "${version}" > VERSION
 
 git_commit=$(git rev-parse HEAD)
