@@ -84,15 +84,17 @@ target_compile_options(mps_parser
   PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${MPS_PARSER_CXX_FLAGS}>"
 )
 
-file(WRITE "${MPS_PARSER_BINARY_DIR}/fatbin.ld"
-  [=[
-SECTIONS
-{
-  .nvFatBinSegment : { *(.nvFatBinSegment) }
-  .nv_fatbin : { *(.nv_fatbin) }
-}
-]=])
-target_link_options(mps_parser PRIVATE "${MPS_PARSER_BINARY_DIR}/fatbin.ld")
+if(WRITE_FATBIN)
+  file(WRITE "${MPS_PARSER_BINARY_DIR}/fatbin.ld"
+    [=[
+  SECTIONS
+  {
+    .nvFatBinSegment : { *(.nvFatBinSegment) }
+    .nv_fatbin : { *(.nv_fatbin) }
+  }
+  ]=])
+  target_link_options(mps_parser PRIVATE "${MPS_PARSER_BINARY_DIR}/fatbin.ld")
+endif()
 
 add_library(cuopt::mps_parser ALIAS mps_parser)
 
