@@ -27,7 +27,7 @@
 #include "cuda_profiler_api.h"
 
 constexpr bool from_dir    = false;
-constexpr bool fj_only_run = true;
+constexpr bool fj_only_run = false;
 constexpr bool fp_only_run = false;
 
 namespace cuopt::linear_programming::detail {
@@ -323,7 +323,6 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   stats.presolve_time = presolve_timer.elapsed_time();
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
   problem_ptr->handle_ptr->sync_stream();
-  cudaDeviceSynchronize();
   return true;
 }
 
