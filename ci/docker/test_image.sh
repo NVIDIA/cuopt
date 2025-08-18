@@ -51,4 +51,8 @@ python -m pytest python/cuopt_server/cuopt_server/tests/
 echo '----------------- CUOPT SERVER TEST END ---------------'
 EOF
 
-su -s /bin/bash -c "bash /opt/cuopt/test.sh" 888
+# Create a temporary user with UID 888
+useradd -m -u 888 -s /bin/bash tempuser888
+
+# Switch to it
+su - tempuser888 -c "bash /opt/cuopt/test.sh"
