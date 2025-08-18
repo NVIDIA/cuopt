@@ -29,12 +29,3 @@ else
     echo "Neither dnf nor apt-get found. Cannot install cudss dependencies."
     exit 1
 fi
-
-
-
-
-
-
-
-
-
