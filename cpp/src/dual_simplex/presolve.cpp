@@ -819,7 +819,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
         problem.lower[j]                                = 0.0;
       }
     }
-    assert(problem.A.p[num_cols] == nnz);
+    assert(problem.A.col_start[num_cols] == nnz);
     problem.A.n      = num_cols;
     problem.num_cols = num_cols;
   }
