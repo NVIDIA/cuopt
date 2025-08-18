@@ -153,7 +153,7 @@ int run_single_file(std::string file_path,
                     bool write_log_file,
                     bool log_to_console,
                     double time_limit,
-                    bool use_diving)
+                    int diving)
 {
   const raft::handle_t handle_{};
   cuopt::linear_programming::mip_solver_settings_t<int, double> settings;
@@ -170,7 +170,7 @@ int run_single_file(std::string file_path,
     }
   }
 
-  settings.search_strategy.use_diving = use_diving;
+  settings.search_strategy.strategy = diving;
 
   constexpr bool input_mps_strict = false;
   cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model;
@@ -258,7 +258,7 @@ void run_single_file_mp(std::string file_path,
                         bool write_log_file,
                         bool log_to_console,
                         double time_limit,
-                        bool use_diving)
+                        int diving)
 {
   std::cout << "running file " << file_path << " on gpu : " << device << std::endl;
   auto memory_resource = make_async();
@@ -273,7 +273,7 @@ void run_single_file_mp(std::string file_path,
                                   write_log_file,
                                   log_to_console,
                                   time_limit,
-                                  use_diving);
+                                  diving);
   // this is a bad design to communicate the result but better than adding complexity of IPC or
   // pipes
   exit(sol_found);
@@ -348,7 +348,7 @@ int main(int argc, char* argv[])
     .default_value(std::numeric_limits<double>::max());
 
   program.add_argument("--diving")
-    .help("use diving during branch and bound(t/f)")
+    .help("diving strategy (bfs, dfs or bfs_diving)")
     .default_value(std::string("f"));
 
   // Parse arguments
@@ -377,8 +377,21 @@ int main(int argc, char* argv[])
   int num_cpu_threads  = program.get<int>("--num-cpu-threads");
   bool write_log_file  = program.get<std::string>("--write-log-file")[0] == 't';
   bool log_to_console  = program.get<std::string>("--log-to-console")[0] == 't';
-  bool use_diving      = program.get<std::string>("--diving")[0] == 't';
-  
+  int diving;
+
+  std::string diving_cli = program.get<std::string>("--diving");
+
+  if (diving_cli == "bfs") {
+    diving = cuopt::linear_programming::bnb_search_strategy_t::BEST_FIRST;
+  } else if (diving_cli == "dfs") {
+    diving = cuopt::linear_programming::bnb_search_strategy_t::DEPTH_FIRST;
+  } else if (diving_cli == "bfs_diving") {
+    diving = cuopt::linear_programming::bnb_search_strategy_t::BEST_FIRST_WITH_DIVING;
+  } else {
+    std::cout << "Incorrect diving strategy!\n";
+    exit(1);
+  }
+
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
     result_file = out_dir + "/final_result.csv";
@@ -464,7 +477,7 @@ int main(int argc, char* argv[])
                                write_log_file,
                                log_to_console,
                                time_limit,
-                               use_diving);
+                               diving);
           } else if (sys_pid < 0) {
             std::cerr << "Fork failed!" << std::endl;
             exit(1);
@@ -494,7 +507,7 @@ int main(int argc, char* argv[])
                     write_log_file,
                     log_to_console,
                     time_limit,
-                    use_diving);
+                    diving);
   }
 
   return 0;

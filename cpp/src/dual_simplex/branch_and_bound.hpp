@@ -77,7 +77,8 @@ class branch_and_bound_t {
   std::vector<variable_type_t> var_types;
 
   mip_status_t solve_bfs(mip_solution_t<i_t, f_t>& solution);
-  mip_status_t solve_diving(mip_solution_t<i_t, f_t>& solution);
+  mip_status_t solve_bfs_diving(mip_solution_t<i_t, f_t>& solution);
+  mip_status_t solve_dfs(mip_solution_t<i_t, f_t>& solution);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

@@ -36,6 +36,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "cuopt/linear_programming/mip/solver_settings.hpp"
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -426,7 +427,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
 }
 
 template <typename i_t, typename f_t>
-mip_status_t branch_and_bound_t<i_t, f_t>::solve_diving(mip_solution_t<i_t, f_t>& solution)
+mip_status_t branch_and_bound_t<i_t, f_t>::solve_dfs(mip_solution_t<i_t, f_t>& solution)
 {
   mip_status_t status = mip_status_t::UNSET;
   mip_solution_t<i_t, f_t> incumbent(original_lp.num_cols);
@@ -1339,13 +1340,25 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_bfs(mip_solution_t<i_t, f_t>& s
 template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solution)
 {
-  if (search_strategy.use_diving) {
-    settings.log.printf("Using DFS as search strategy.\n");
-    return solve_diving(solution);
-  } else {
-    settings.log.printf("Using BFS as search strategy.\n");
-    return solve_bfs(solution);
+  switch (search_strategy.strategy) {
+    case bnb_search_strategy_t::BEST_FIRST:
+      settings.log.printf("Using BFS as search strategy.\n");
+      return solve_bfs(solution);
+
+    case bnb_search_strategy_t::DEPTH_FIRST:
+      settings.log.printf("Using DFS as search strategy.\n");
+      return solve_dfs(solution);
+
+    case bnb_search_strategy_t::BEST_FIRST_WITH_DIVING:
+      settings.log.printf("Using BFS with diving as search strategy.\n");
+      return solve_bfs(solution);
+
+    default:
+      settings.log.printf("Invalid search strategy! Exiting...");
+      exit(EXIT_FAILURE);
+      break;
   }
+
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE

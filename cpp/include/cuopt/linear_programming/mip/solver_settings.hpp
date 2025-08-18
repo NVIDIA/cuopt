@@ -36,7 +36,13 @@ struct benchmark_info_t {
 };
 
 struct bnb_search_strategy_t {
-  bool use_diving = false;
+  enum {
+    BEST_FIRST = 0,
+    DEPTH_FIRST = 1,
+    BEST_FIRST_WITH_DIVING = 2
+  };
+
+  int strategy = BEST_FIRST;
 };
 
 // Forward declare solver_settings_t for friend class
