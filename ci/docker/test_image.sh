@@ -27,8 +27,8 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file b
 bash datasets/linear_programming/download_pdlp_test_dataset.sh
 bash datasets/mip/download_miplib_test_dataset.sh
 pushd ./datasets
-./get_test_data.sh --solomon 
-./get_test_data.sh --tsp 
+./get_test_data.sh --solomon
+./get_test_data.sh --tsp
 popd
 
 # Create symlink to cuopt
