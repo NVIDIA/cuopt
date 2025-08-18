@@ -266,7 +266,7 @@ worker() {
         echo "GPU $gpu_id processing $my_index"
 
         # Build arguments string
-        args=""      
+        args=""
         if [ -n "$NUM_CPU_THREADS" ]; then
             args="$args --num-cpu-threads $NUM_CPU_THREADS"
         fi

@@ -338,7 +338,7 @@ linkcheck_ignore = [
     r'https://api\.github\.com/.*',
     r'https://raw\.githubusercontent\.com/.*',
     r'https://gist\.github\.com/.*',
-    
+
     # GitLab (Rate Limited)
     r'https://gitlab\.com/.*',
     r'https://api\.gitlab\.com/.*',
@@ -352,4 +352,3 @@ def setup(app):
 
     app.setup_extension("sphinx.ext.autodoc")
     app.connect("autodoc-skip-member", skip_unwanted_inherited_members)
-

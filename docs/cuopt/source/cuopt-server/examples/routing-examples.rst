@@ -391,5 +391,3 @@ To enable HTTPS
   .. code-block:: shell
 
    cuopt_sh data.json -s -c /complete/path/to/certificate -i $ip -p $port
-
-

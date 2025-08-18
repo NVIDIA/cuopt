@@ -42,6 +42,3 @@ rapids-print-env
 
 rapids-logger "Build Docs"
 ./build.sh docs
-
-
-
