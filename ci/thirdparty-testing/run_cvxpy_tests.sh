@@ -17,6 +17,16 @@
 set -e -u -o pipefail
 
 echo "building 'cvxpy' from source"
+
+PYTHON_VERSION=$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
+PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
+
+if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 11 ]; }; then
+    echo "Skipping cvxpy tests: Python version is less than 3.11 (found $PYTHON_VERSION)"
+    exit 0
+fi
+
 git clone https://github.com/cvxpy/cvxpy.git
 pushd ./cvxpy || exit 1
 pip wheel \
