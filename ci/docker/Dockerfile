@@ -46,58 +46,73 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 
 ENV DEBIAN_FRONTEND=""
 
-RUN ln -sf /usr/bin/python${PYTHON_SHORT_VER} /usr/bin/python && \
-    groupadd -r cuopt && \
-    useradd -r -g cuopt cuopt && \
-    chown -R cuopt:cuopt /usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages
-
-USER cuopt
+RUN ln -sf /usr/bin/python${PYTHON_SHORT_VER} /usr/bin/python
 
 FROM python-env AS install-env
-
-WORKDIR /home/cuopt
 
 ARG CUOPT_VER
 ARG PYTHON_SHORT_VER
 
+# Install cuOpt as root to make it available to all users
 RUN cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
     cuda_major_minor=$(echo ${CUDA_VER} | cut -d'.' -f1-2) && \
     python -m pip install \
       --extra-index-url https://pypi.nvidia.com \
       --extra-index-url https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \
-      --user \
       --no-cache-dir \
       "cuopt-server-${cuda_suffix}==${CUOPT_VER}" \
       "cuopt-sh-client==${CUOPT_VER}" \
       "nvidia-cuda-runtime-${cuda_suffix}==${cuda_major_minor}.*" && \
     python -m pip list
 
-USER root
-
 # Remove gcc to save space, gcc was required for building psutils
 RUN apt-get purge -y gcc && rm -rf /var/lib/apt/lists/*
-
-USER cuopt
-
-COPY ./LICENSE /home/cuopt/LICENSE
-COPY ./VERSION /home/cuopt/VERSION
-COPY ./THIRD_PARTY_LICENSES /home/cuopt/THIRD_PARTY_LICENSES
 
 FROM install-env AS cuopt-final
 
 ARG PYTHON_SHORT_VER
 
-# Set environment variables in .bashrc for all future shells
-RUN echo 'export PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/bin/:/home/cuopt/.local/bin:$PATH"' >> /home/cuopt/.bashrc && \
-    echo 'export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/lib/:/home/cuopt/.local/lib/python${PYTHON_SHORT_VER}/dist-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"' >> /home/cuopt/.bashrc
+# Consolidate all directory creation, permissions, and file operations into a single layer
+RUN mkdir -p /opt/cuopt && \
+    chmod 777 /opt/cuopt && \
+    # Create profile.d script for universal access
+    echo '#!/bin/bash' > /etc/profile.d/cuopt.sh && \
+    echo 'export PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/bin:$PATH"' >> /etc/profile.d/cuopt.sh && \
+    echo 'export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/lib/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"' >> /etc/profile.d/cuopt.sh && \
+    chmod +x /etc/profile.d/cuopt.sh && \
+    # Set in /etc/environment for system-wide access
+    echo 'PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/bin:$PATH"' >> /etc/environment && \
+    echo 'LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/lib/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"' >> /etc/environment && \
+    # Set proper permissions for cuOpt installation
+    chmod -R 755 /usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/cuopt* && \
+    chmod -R 755 /usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt* && \
+    chmod -R 755 /usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/cuopt_* && \
+    chmod -R 755 /usr/local/bin/* && \
+    # Create entrypoint script in a single operation
+    echo '#!/bin/bash' > /opt/cuopt/entrypoint.sh && \
+    echo 'set -e' >> /opt/cuopt/entrypoint.sh && \
+    echo '' >> /opt/cuopt/entrypoint.sh && \
+    echo '# Get current user info from Docker environment variables' >> /opt/cuopt/entrypoint.sh && \
+    echo 'CURRENT_UID=${UID:-1000}' >> /opt/cuopt/entrypoint.sh && \
+    echo 'CURRENT_GID=${GID:-1000}' >> /opt/cuopt/entrypoint.sh && \
+    echo '' >> /opt/cuopt/entrypoint.sh && \
+    echo '# Set environment variables for the current user' >> /opt/cuopt/entrypoint.sh && \
+    echo 'export HOME="/opt/cuopt"' >> /opt/cuopt/entrypoint.sh && \
+    echo '' >> /opt/cuopt/entrypoint.sh && \
+    echo '# Execute the command' >> /opt/cuopt/entrypoint.sh && \
+    echo 'exec "$@"' >> /opt/cuopt/entrypoint.sh && \
+    chmod +x /opt/cuopt/entrypoint.sh
 
+# Set the default working directory to the cuopt folder
+WORKDIR /opt/cuopt
 
-# Create a .bash_profile that sources .bashrc if it exists
-RUN echo 'if [ -f ~/.bashrc ]; then . ~/.bashrc; fi' > /home/cuopt/.bash_profile
+# Copy all static files in a single layer
+COPY ./LICENSE ./VERSION ./THIRD_PARTY_LICENSES /opt/cuopt/
 
+# Copy CUDA libraries from the cuda-libs stage
 COPY --from=cuda-libs /usr/local/cuda/lib64/libnvrtc* /usr/local/cuda/lib64/
 COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
 
-# Use a shell as entrypoint to handle both service and interactive modes
-ENTRYPOINT ["/bin/bash", "-c"]
-CMD ["python -m cuopt_server.cuopt_service"]
+# Use the flexible entrypoint
+ENTRYPOINT ["/opt/cuopt/entrypoint.sh"]
+CMD ["python", "-m", "cuopt_server.cuopt_service"]
