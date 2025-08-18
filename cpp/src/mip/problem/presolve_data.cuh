@@ -19,10 +19,14 @@
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
 
+#include <thrust/sequence.h>
 #include <rmm/device_uvector.hpp>
 
 namespace cuopt {
 namespace linear_programming::detail {
+
+template <typename i_t, typename f_t>
+class problem_t;
 
 template <typename i_t, typename f_t>
 class presolve_data_t {
@@ -37,6 +41,7 @@ class presolve_data_t {
       fixed_var_assignment(0, stream)
   {
   }
+
   presolve_data_t(const presolve_data_t& other, rmm::cuda_stream_view stream)
     : variable_offsets(other.variable_offsets),
       additional_var_used(other.additional_var_used),
@@ -46,6 +51,23 @@ class presolve_data_t {
       variable_mapping(other.variable_mapping, stream),
       fixed_var_assignment(other.fixed_var_assignment, stream)
   {
+  }
+
+  void reset(const problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
+  {
+    variable_mapping.resize(problem.n_variables, handle_ptr->get_stream());
+    thrust::sequence(
+      handle_ptr->get_thrust_policy(), variable_mapping.begin(), variable_mapping.end());
+    fixed_var_assignment.resize(problem.n_variables, handle_ptr->get_stream());
+    thrust::uninitialized_fill(handle_ptr->get_thrust_policy(),
+                               fixed_var_assignment.begin(),
+                               fixed_var_assignment.end(),
+                               0.);
+    objective_offset         = 0;
+    objective_scaling_factor = 1;
+    additional_var_used.resize(problem.n_variables, false);
+    additional_var_id_per_var.resize(problem.n_variables, -1);
+    variable_offsets.resize(problem.n_variables, 0);
   }
   presolve_data_t(presolve_data_t&&)                 = default;
   presolve_data_t& operator=(presolve_data_t&&)      = default;

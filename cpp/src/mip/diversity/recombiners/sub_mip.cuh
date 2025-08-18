@@ -79,6 +79,8 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       "n_vars_from_guiding %d n_vars_from_other %d", n_vars_from_guiding, n_vars_from_other);
     this->compute_vars_to_fix(offspring, vars_to_fix, n_vars_from_other, n_vars_from_guiding);
     auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
+    fixed_problem.presolve_data.reset(fixed_problem, offspring.handle_ptr);
+    trivial_presolve(fixed_problem);
     fixed_problem.check_problem_representation(true);
     // brute force rounding threshold is 8
     const bool run_sub_mip                             = fixed_problem.n_integer_vars > 8;
@@ -105,7 +107,6 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       branch_and_bound_settings.log.log = false;
       dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(branch_and_bound_problem,
                                                                   branch_and_bound_settings);
-      branch_and_bound.set_initial_guess(cuopt::host_copy(fixed_assignment));
       branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
       if (solution_vector.size() > 0) {
         cuopt_assert(fixed_assignment.size() == branch_and_bound_solution.x.size(),
@@ -113,10 +114,22 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
         CUOPT_LOG_DEBUG("Sub-MIP solution found. Objective %.16e. Status %d",
                         branch_and_bound_solution.objective,
                         int(branch_and_bound_status));
-        raft::copy(fixed_assignment.data(),
+        // first post process the trivial presolve on a device vector
+        rmm::device_uvector<f_t> post_processed_solution(branch_and_bound_solution.x.size(),
+                                                         offspring.handle_ptr->get_stream());
+        raft::copy(post_processed_solution.data(),
                    branch_and_bound_solution.x.data(),
-                   fixed_assignment.size(),
+                   branch_and_bound_solution.x.size(),
                    offspring.handle_ptr->get_stream());
+        CUOPT_LOG_DEBUG(
+          "variable map size %lu post processed solution size %lu offspring assignment size %lu",
+          fixed_problem.presolve_data.variable_mapping.size(),
+          post_processed_solution.size(),
+          offspring.assignment.size());
+        fixed_problem.post_process_assignment(post_processed_solution, false);
+        cuopt_assert(post_processed_solution.size() == fixed_assignment.size(),
+                     "Assignment size mismatch");
+        std::swap(fixed_assignment, post_processed_solution);
       }
       offspring.handle_ptr->sync_stream();
     }
@@ -144,6 +157,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
                  solution.data(),
                  solution.size(),
                  offspring.handle_ptr->get_stream());
+      fixed_problem.post_process_assignment(fixed_assignment, false);
       sol.unfix_variables(fixed_assignment, variable_map);
       sol.compute_feasibility();
       population.add_solution(std::move(sol));
