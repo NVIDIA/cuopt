@@ -31,7 +31,7 @@ jobs:
             if (context.payload.issue && !context.payload.issue.pull_request) {
               const issue = context.payload.issue;
               const issueNumber = issue.number;
-              
+
               console.log(`Adding 'awaiting response' label to issue #${issueNumber}`);
 
               await github.rest.issues.addLabels({
@@ -85,7 +85,7 @@ jobs:
                   issue_number: issueNumber,
                   assignees: [assignee],
                 });
-                
+
                 console.log(`Successfully assigned issue #${issueNumber} to @${assignee}`);
               } else {
                 console.log(`Issue #${issueNumber} already has assignees, skipping assignment.`);
