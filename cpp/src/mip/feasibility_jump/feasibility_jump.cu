@@ -250,6 +250,7 @@ void fj_t<i_t, f_t>::copy_weights(const weight_t<i_t, f_t>& weights,
                     fj_weights  = make_span(cstr_weights),
                     new_weights = make_span(weights.cstr_weights)] __device__(i_t idx) {
                      fj_weights[idx] = idx >= old_size ? 1. : new_weights[idx];
+                     cuopt_assert(isfinite(fj_weights[idx]), "invalid weight");
                    });
   thrust::transform(handle_ptr->get_thrust_policy(),
                     weights.objective_weight.data(),
