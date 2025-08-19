@@ -415,6 +415,8 @@ if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     PUBLIC
     cuopt
     OpenMP::OpenMP_CXX
+    PRIVATE
+    papilo-core
   )
 endif()
 
