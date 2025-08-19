@@ -40,7 +40,7 @@ bool inactive_status(node_status_t status);
 template <typename i_t, typename f_t>
 class mip_node_t {
  public:
-  mip_node_t(f_t root_lower_bound, std::vector<variable_status_t>& basis)
+  mip_node_t(f_t root_lower_bound, const std::vector<variable_status_t>& basis)
     : status(node_status_t::ACTIVE),
       lower_bound(root_lower_bound),
       depth(0),
@@ -53,13 +53,14 @@ class mip_node_t {
     children[0] = nullptr;
     children[1] = nullptr;
   }
+
   mip_node_t(const lp_problem_t<i_t, f_t>& problem,
              mip_node_t* parent_node,
              i_t node_num,
              i_t branch_variable,
              i_t branch_direction,
              f_t branch_var_value,
-             std::vector<variable_status_t>& basis)
+             const std::vector<variable_status_t>& basis)
     : status(node_status_t::ACTIVE),
       lower_bound(parent_node->lower_bound),
       depth(parent_node->depth + 1),

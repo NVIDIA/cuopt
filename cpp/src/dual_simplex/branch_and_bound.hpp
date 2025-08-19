@@ -19,6 +19,7 @@
 
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/presolve.hpp>
+#include <dual_simplex/pseudo_costs.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
 #include <dual_simplex/types.hpp>
@@ -79,6 +80,14 @@ class branch_and_bound_t {
   mip_status_t solve_bfs(mip_solution_t<i_t, f_t>& solution);
   mip_status_t solve_bfs_diving(mip_solution_t<i_t, f_t>& solution);
   mip_status_t solve_dfs(mip_solution_t<i_t, f_t>& solution);
+
+  mip_status_t diving(f_t root_objective,
+                      std::vector<f_t>& edge_norms,
+                      pseudo_costs_t<i_t, f_t> pc,
+                      i_t branch_var,
+                      f_t branch_var_val,
+                      const std::vector<variable_status_t>& root_vstatus,
+                      mip_solution_t<i_t, f_t>& incumbent);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
