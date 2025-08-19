@@ -79,7 +79,8 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       "n_vars_from_guiding %d n_vars_from_other %d", n_vars_from_guiding, n_vars_from_other);
     this->compute_vars_to_fix(offspring, vars_to_fix, n_vars_from_other, n_vars_from_guiding);
     auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
-    fixed_problem.presolve_data.initialize(fixed_problem, offspring.handle_ptr);
+    fixed_problem.presolve_data.reset_additional_vars(fixed_problem, offspring.handle_ptr);
+    fixed_problem.presolve_data.initialize_var_mapping(fixed_problem, offspring.handle_ptr);
     trivial_presolve(fixed_problem);
     fixed_problem.check_problem_representation(true);
     // brute force rounding threshold is 8
@@ -121,21 +122,20 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
                    branch_and_bound_solution.x.data(),
                    branch_and_bound_solution.x.size(),
                    offspring.handle_ptr->get_stream());
-        CUOPT_LOG_DEBUG(
-          "variable map size %lu post processed solution size %lu offspring assignment size %lu",
-          fixed_problem.presolve_data.variable_mapping.size(),
-          post_processed_solution.size(),
-          offspring.assignment.size());
         fixed_problem.post_process_assignment(post_processed_solution, false);
         cuopt_assert(post_processed_solution.size() == fixed_assignment.size(),
                      "Assignment size mismatch");
+        offspring.handle_ptr->sync_stream();
         std::swap(fixed_assignment, post_processed_solution);
       }
       offspring.handle_ptr->sync_stream();
     }
-    // unfix the assignment on given result no matter if it is feasible
-    offspring.unfix_variables(fixed_assignment, variable_map);
-    if (!run_sub_mip) { offspring.round_nearest(); }
+    if (solution_vector.size() > 0) {
+      // unfix the assignment on given result no matter if it is feasible
+      offspring.unfix_variables(fixed_assignment, variable_map);
+    } else {
+      offspring.round_nearest();
+    }
     cuopt_assert(offspring.test_number_all_integer(), "All must be integers after offspring");
     offspring.compute_feasibility();
     // bool same_as_parents = this->check_if_offspring_is_same_as_parents(offspring, a, b);
