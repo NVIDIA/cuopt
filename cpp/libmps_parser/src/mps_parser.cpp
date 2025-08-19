@@ -28,6 +28,99 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <memory>
+
+#ifdef MPS_PARSER_WITH_BZIP2
+#include <bzlib.h>
+#include <dlfcn.h>
+#endif // MPS_PARSER_WITH_BZIP2
+
+namespace {
+using cuopt::mps_parser::mps_parser_expects_fatal;
+using cuopt::mps_parser::mps_parser_expects;
+using cuopt::mps_parser::error_type_t;
+
+struct FcloseDeleter {
+    void operator()(FILE* fp) {
+        mps_parser_expects_fatal(fclose(fp) == 0,
+                           error_type_t::ValidationError,
+                           "Error closing MPS file!");
+    }
+};
+} // end namespace
+
+#ifdef MPS_PARSER_WITH_BZIP2
+namespace {
+using BZ2_bzReadOpen_t  = decltype(&BZ2_bzReadOpen);
+using BZ2_bzReadClose_t = decltype(&BZ2_bzReadClose);
+using BZ2_bzRead_t      = decltype(&BZ2_bzRead);
+
+std::vector<char> bz2_file_to_string(const std::string& file)
+{
+    struct DlCloseDeleter {
+        void operator()(void* fp) {
+            mps_parser_expects_fatal(dlclose(fp) == 0,
+                               error_type_t::ValidationError,
+                               "Error closing libbz2.so!");
+        }
+    };
+    struct BzReadCloseDeleter {
+        void operator()(void* f) {
+            int bzerror;
+            if(f != nullptr)
+                fptr(&bzerror, f);
+                mps_parser_expects_fatal(bzerror == BZ_OK,
+                                   error_type_t::ValidationError,
+                                   "Error closing bzip2 file!");
+        }
+        BZ2_bzReadClose_t fptr = nullptr;
+    };
+
+    std::unique_ptr<void, DlCloseDeleter> lbz2handle{dlopen("libbz2.so", RTLD_LAZY)};
+    mps_parser_expects(lbz2handle != nullptr,
+                       error_type_t::ValidationError,
+                       "Could not open .mps.bz2 file since libbz2.so was not found. In order to open .mps.bz2 files directly, please ensure libbzip2 is installed. Alternatively, decompress the .mps.bz2 file manually and open the uncompressed .mps file. Given path: %s",
+                       file.c_str());
+
+    BZ2_bzReadOpen_t  BZ2_bzReadOpen  = reinterpret_cast<BZ2_bzReadOpen_t>(dlsym(lbz2handle.get(), "BZ2_bzReadOpen"));
+    BZ2_bzReadClose_t BZ2_bzReadClose = reinterpret_cast<BZ2_bzReadClose_t>(dlsym(lbz2handle.get(), "BZ2_bzReadClose"));
+    BZ2_bzRead_t      BZ2_bzRead      = reinterpret_cast<BZ2_bzRead_t>(dlsym(lbz2handle.get(), "BZ2_bzRead"));
+    mps_parser_expects(BZ2_bzReadOpen != nullptr && BZ2_bzReadClose != nullptr && BZ2_bzRead != nullptr,
+                       error_type_t::ValidationError,
+                       "Error loading libbzip2! Library version might be incompatible. Please decompress the .mps.bz2 file manually and open the uncompressed .mps file. Given path: %s",
+                       file.c_str());
+
+
+    std::unique_ptr<FILE, FcloseDeleter> fp{fopen(file.c_str(), "rb")};
+    mps_parser_expects(fp != nullptr,
+                       error_type_t::ValidationError,
+                       "Error opening MPS file! Given path: %s",
+                       file.c_str());
+    int bzerror = BZ_OK;
+    std::unique_ptr<void, BzReadCloseDeleter> bzfile{BZ2_bzReadOpen(&bzerror, fp.get(), 0, 0, nullptr, 0), {BZ2_bzReadClose}};
+    mps_parser_expects(bzerror == BZ_OK,
+                       error_type_t::ValidationError,
+                       "Could not open bzip2 compressed file! Given path: %s",
+                       file.c_str());
+
+    std::vector<char> buf;
+    const size_t readbufsize = 1ull << 24; // 16MiB - just a guess.
+    std::vector<char> readbuf(readbufsize);
+    while (bzerror == BZ_OK) {
+        const size_t bytes_read = BZ2_bzRead(&bzerror, bzfile.get(), readbuf.data(), readbuf.size());
+        if (bzerror == BZ_OK || bzerror == BZ_STREAM_END) {
+            buf.insert(buf.end(), begin(readbuf), begin(readbuf) + bytes_read);
+        }
+    }
+    buf.push_back('\0');
+    mps_parser_expects(bzerror == BZ_STREAM_END,
+                       error_type_t::ValidationError,
+                       "Error in bzip2 decompression of MPS file! Given path: %s",
+                       file.c_str());
+    return buf;
+}
+} // end namespace
+#endif // MPS_PARSER_WITH_BZIP2
 
 namespace cuopt::mps_parser {
 
@@ -270,6 +363,12 @@ template <typename i_t, typename f_t>
 std::vector<char> mps_parser_t<i_t, f_t>::file_to_string(const std::string& file)
 {
   // raft::common::nvtx::range fun_scope("file to string");
+
+#ifdef MPS_PARSER_WITH_BZIP2
+  if(file.size() > 4 && file.substr(file.size() - 4, 4) == ".bz2") {
+      return bz2_file_to_string(file);
+  }
+#endif // MPS_PARSER_WITH_BZIP2
 
   // Faster than using C++ I/O
   FILE* fp = fopen(file.c_str(), "r");

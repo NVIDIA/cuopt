@@ -22,12 +22,17 @@
 namespace cuopt::mps_parser {
 
 /**
- * @brief Reads the equation from the input text file which is MPS formatted
+ * @brief Reads the equation from an MPS file.
+ *
+ * The input file can be a plain text file in MPS-format or a bzip2-compressed MPS
+ * file (.mps.bz2).
  *
  * Read this link http://lpsolve.sourceforge.net/5.5/mps-format.htm for more
  * details on both free and fixed MPS format.
  *
- * @param[in] mps_file_path Path to MPS formatted file.
+ * Note: bzip2-compressed files can only be read if libbzip2 is installed.
+ *
+ * @param[in] mps_file_path Path to MPS file.
  * @param[in] fixed_mps_format If MPS file should be parsed as fixed, false by default
  * @return mps_data_model_t A fully formed LP problem which represents the given MPS file
  */
