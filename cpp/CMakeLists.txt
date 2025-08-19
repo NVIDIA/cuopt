@@ -418,7 +418,7 @@ if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
   )
 endif()
 
-option(BUILD_LP_BENCHMARKS "Build LP benchmarks" ON)
+option(BUILD_LP_BENCHMARKS "Build LP benchmarks" OFF)
 if(BUILD_LP_BENCHMARKS)
   add_executable(solve_LP ../benchmarks/linear_programming/cuopt/run_pdlp.cu)
   target_compile_options(solve_LP
