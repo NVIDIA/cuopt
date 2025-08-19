@@ -1463,12 +1463,12 @@ void compute_csr(const std::vector<std::vector<std::pair<i_t, f_t>>>& variable_c
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::preprocess_problem()
 {
+  presolve_data.initialize(*this, handle_ptr);
   auto variable_constraint_map = compute_var_to_constraint_map(*this);
   standardize_bounds(variable_constraint_map, *this);
   compute_csr(variable_constraint_map, *this);
   compute_transpose_of_problem();
   check_problem_representation(true, false);
-  presolve_data.reset(*this, handle_ptr);
   integer_indices.resize(n_variables, handle_ptr->get_stream());
   is_binary_variable.resize(n_variables, handle_ptr->get_stream());
   original_ids.resize(n_variables);

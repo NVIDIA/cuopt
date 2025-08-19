@@ -53,7 +53,7 @@ class presolve_data_t {
   {
   }
 
-  void reset(const problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
+  void initialize(const problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
   {
     variable_mapping.resize(problem.n_variables, handle_ptr->get_stream());
     thrust::sequence(
@@ -63,11 +63,9 @@ class presolve_data_t {
                                fixed_var_assignment.begin(),
                                fixed_var_assignment.end(),
                                0.);
-    objective_offset         = 0;
-    objective_scaling_factor = 1;
+    variable_offsets.resize(problem.n_variables, 0);
     additional_var_used.resize(problem.n_variables, false);
     additional_var_id_per_var.resize(problem.n_variables, -1);
-    variable_offsets.resize(problem.n_variables, 0);
   }
   presolve_data_t(presolve_data_t&&)                 = default;
   presolve_data_t& operator=(presolve_data_t&&)      = default;
