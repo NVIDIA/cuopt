@@ -32,8 +32,15 @@
 
 #ifdef MPS_PARSER_WITH_BZIP2
 #include <bzlib.h>
-#include <dlfcn.h>
 #endif // MPS_PARSER_WITH_BZIP2
+
+#ifdef MPS_PARSER_WITH_ZLIB
+#include <zlib.h>
+#endif // MPS_PARSER_WITH_ZLIB
+
+#if defined(MPS_PARSER_WITH_BZIP2) || defined(MPS_PARSER_WITH_ZLIB)
+#include <dlfcn.h>
+#endif // MPS_PARSER_WITH_BZIP2 || MPS_PARSER_WITH_ZLIB
 
 namespace {
 using cuopt::mps_parser::mps_parser_expects_fatal;
@@ -121,6 +128,80 @@ std::vector<char> bz2_file_to_string(const std::string& file)
 }
 } // end namespace
 #endif // MPS_PARSER_WITH_BZIP2
+
+#ifdef MPS_PARSER_WITH_ZLIB
+namespace {
+using gzopen_t    = decltype(&gzopen);
+using gzclose_r_t = decltype(&gzclose_r);
+using gzbuffer_t  = decltype(&gzbuffer);
+using gzread_t    = decltype(&gzread);
+using gzerror_t   = decltype(&gzerror);
+std::vector<char> zlib_file_to_string(const std::string& file)
+{
+    struct DlCloseDeleter {
+        void operator()(void* fp) {
+            mps_parser_expects_fatal(dlclose(fp) == 0,
+                               error_type_t::ValidationError,
+                               "Error closing libbz2.so!");
+        }
+    };
+    struct GzCloseDeleter {
+        void operator()(gzFile_s* f) {
+                int err = fptr(f);
+                mps_parser_expects_fatal(err == Z_OK,
+                                   error_type_t::ValidationError,
+                                   "Error closing gz file!");
+        }
+        gzclose_r_t fptr = nullptr;
+    };
+
+    std::unique_ptr<void, DlCloseDeleter> lzhandle{dlopen("libz.so", RTLD_LAZY)};
+    mps_parser_expects(lzhandle != nullptr,
+                       error_type_t::ValidationError,
+                       "Could not open .mps.gz file since libz.so was not found. In order to open .mps.gz files directly, please ensure zlib is installed. Alternatively, decompress the .mps.gz file manually and open the uncompressed .mps file. Given path: %s",
+                       file.c_str());
+    gzopen_t    gzopen    = reinterpret_cast<gzopen_t>(dlsym(lzhandle.get(), "gzopen"));
+    gzclose_r_t gzclose_r = reinterpret_cast<gzclose_r_t>(dlsym(lzhandle.get(), "gzclose_r"));
+    gzbuffer_t  gzbuffer  = reinterpret_cast<gzbuffer_t>(dlsym(lzhandle.get(), "gzbuffer"));
+    gzread_t    gzread    = reinterpret_cast<gzread_t>(dlsym(lzhandle.get(), "gzread"));
+    gzerror_t   gzerror   = reinterpret_cast<gzerror_t>(dlsym(lzhandle.get(), "gzerror"));
+    mps_parser_expects(gzopen != nullptr && gzclose_r != nullptr && gzbuffer != nullptr && gzread != nullptr && gzerror != nullptr,
+                       error_type_t::ValidationError,
+                       "Error loading zlib! Library version might be incompatible. Please decompress the .mps.gz file manually and open the uncompressed .mps file. Given path: %s",
+                       file.c_str());
+    std::unique_ptr<gzFile_s, GzCloseDeleter> gzfp{gzopen(file.c_str(), "rb"), {gzclose_r}};
+    mps_parser_expects(gzfp != nullptr,
+                       error_type_t::ValidationError,
+                       "Error opening compressed MPS file! Given path: %s",
+                       file.c_str());
+    int zlib_status = gzbuffer(gzfp.get(), 1 << 20); // 1 MiB
+    mps_parser_expects(zlib_status == Z_OK,
+                       error_type_t::ValidationError,
+                       "Could not set zlib internal buffer size for decompression! Given path: %s",
+                       file.c_str());
+    std::vector<char> buf;
+    const size_t readbufsize = 1ull << 24; // 16MiB
+    std::vector<char> readbuf(readbufsize);
+    int bytes_read = -1;
+    while (bytes_read != 0) {
+        bytes_read = gzread(gzfp.get(), readbuf.data(), readbuf.size());
+        if (bytes_read > 0) {
+            buf.insert(buf.end(), begin(readbuf), begin(readbuf) + bytes_read);
+        }
+        if (bytes_read < 0) {
+            gzerror(gzfp.get(), &zlib_status);
+            break;
+        }
+    }
+    buf.push_back('\0');
+    mps_parser_expects(zlib_status == Z_OK,
+                       error_type_t::ValidationError,
+                       "Error in zlib decompression of MPS file! Given path: %s",
+                       file.c_str());
+    return buf;
+}
+} // end namespace
+#endif // MPS_PARSER_WITH_ZLIB
 
 namespace cuopt::mps_parser {
 
@@ -369,6 +450,12 @@ std::vector<char> mps_parser_t<i_t, f_t>::file_to_string(const std::string& file
       return bz2_file_to_string(file);
   }
 #endif // MPS_PARSER_WITH_BZIP2
+
+#ifdef MPS_PARSER_WITH_ZLIB
+  if(file.size() > 3 && file.substr(file.size() - 3, 3) == ".gz") {
+      return zlib_file_to_string(file);
+  }
+#endif // MPS_PARSER_WITH_ZLIB
 
   // Faster than using C++ I/O
   FILE* fp = fopen(file.c_str(), "r");

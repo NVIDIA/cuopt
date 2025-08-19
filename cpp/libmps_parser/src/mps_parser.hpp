@@ -139,10 +139,10 @@ class mps_parser_t {
   std::unordered_set<i_t> bounds_defined_for_var_id{};
   static constexpr f_t unset_range_value = std::numeric_limits<f_t>::infinity();
 
-  /* Reads the MPS input file into a buffer.
+  /* Reads an MPS input file into a buffer.
    *
-   * If the file has a .bz2 suffix and libbzip2 is installed, this function
-   * can directly read and decompress the compressed MPS file.
+   * If the file has a .gz or .bz2 suffix and zlib or libbzip2 are installed, respectively,
+   * the function directly reads and decompresses the compressed MPS file.
    */
   std::vector<char> file_to_string(const std::string& file);
   void fill_problem(mps_data_model_t<i_t, f_t>& problem);

@@ -39,6 +39,7 @@ rapids_cmake_build_type(Release)
 # - User Options  ------------------------------------------------------------
 option(BUILD_TESTS "Configure CMake to build tests" ON)
 option(MPS_PARSER_WITH_BZIP2 "Build with bzip2 decompression" ON)
+option(MPS_PARSER_WITH_ZLIB "Build with zlib decompression" ON)
 
 message(VERBOSE "cuOpt: Build mps-parser unit-tests: ${BUILD_TESTS}")
 
@@ -55,6 +56,11 @@ if(MPS_PARSER_WITH_BZIP2)
   find_package(BZip2 REQUIRED)
   add_definitions(-DMPS_PARSER_WITH_BZIP2)
 endif(MPS_PARSER_WITH_BZIP2)
+
+if(MPS_PARSER_WITH_ZLIB)
+  find_package(ZLIB REQUIRED)
+  add_definitions(-DMPS_PARSER_WITH_ZLIB)
+endif(MPS_PARSER_WITH_ZLIB)
 
 if(DEFINE_ASSERT)
   add_definitions(-DASSERT_MODE)
@@ -116,6 +122,10 @@ target_include_directories(mps_parser
 if(MPS_PARSER_WITH_BZIP2)
     target_include_directories(mps_parser PRIVATE BZip2::BZip2)
 endif(MPS_PARSER_WITH_BZIP2)
+
+if(MPS_PARSER_WITH_ZLIB)
+    target_include_directories(mps_parser PRIVATE ZLIB::ZLIB)
+endif(MPS_PARSER_WITH_ZLIB)
 
 # ##################################################################################################
 # - generate tests --------------------------------------------------------------------------------
