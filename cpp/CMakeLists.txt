@@ -55,7 +55,7 @@ option(CUDA_STATIC_RUNTIME "Statically link the CUDA toolkit runtime and librari
 option(BUILD_LP_ONLY "Build only linear programming components, exclude routing and MIP-specific files" OFF)
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
-option(BUILD_FATBIN "Enable fatbin" OFF)
+option(WRITE_FATBIN "Enable fatbin writing" ON)
 
 message(VERBOSE "cuOpt: Enable nvcc -lineinfo: ${CMAKE_CUDA_LINEINFO}")
 message(VERBOSE "cuOpt: Build cuOpt unit-tests: ${BUILD_TESTS}")
