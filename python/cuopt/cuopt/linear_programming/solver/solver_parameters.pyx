@@ -59,6 +59,7 @@ cdef extern from "cuopt/linear_programming/constants.h": # noqa
     cdef const char* c_CUOPT_LOG_FILE "CUOPT_LOG_FILE" # noqa
     cdef const char* c_CUOPT_LOG_TO_CONSOLE "CUOPT_LOG_TO_CONSOLE" # noqa
     cdef const char* c_CUOPT_CROSSOVER "CUOPT_CROSSOVER" # noqa
+    cdef const char* c_CUOPT_PRESOLVE "CUOPT_PRESOLVE" # noqa
     cdef const char* c_CUOPT_MIP_ABSOLUTE_TOLERANCE "CUOPT_MIP_ABSOLUTE_TOLERANCE" # noqa
     cdef const char* c_CUOPT_MIP_RELATIVE_TOLERANCE "CUOPT_MIP_RELATIVE_TOLERANCE" # noqa
     cdef const char* c_CUOPT_MIP_INTEGRALITY_TOLERANCE "CUOPT_MIP_INTEGRALITY_TOLERANCE" # noqa
@@ -92,6 +93,7 @@ CUOPT_FIRST_PRIMAL_FEASIBLE = c_CUOPT_FIRST_PRIMAL_FEASIBLE.decode('utf-8') # no
 CUOPT_LOG_FILE = c_CUOPT_LOG_FILE.decode('utf-8') # noqa
 CUOPT_LOG_TO_CONSOLE = c_CUOPT_LOG_TO_CONSOLE.decode('utf-8') # noqa
 CUOPT_CROSSOVER = c_CUOPT_CROSSOVER.decode('utf-8') # noqa
+CUOPT_PRESOLVE = c_CUOPT_PRESOLVE.decode('utf-8') # noqa
 CUOPT_MIP_ABSOLUTE_TOLERANCE = c_CUOPT_MIP_ABSOLUTE_TOLERANCE.decode('utf-8') # noqa
 CUOPT_MIP_RELATIVE_TOLERANCE = c_CUOPT_MIP_RELATIVE_TOLERANCE.decode('utf-8') # noqa
 CUOPT_MIP_INTEGRALITY_TOLERANCE = c_CUOPT_MIP_INTEGRALITY_TOLERANCE.decode('utf-8') # noqa

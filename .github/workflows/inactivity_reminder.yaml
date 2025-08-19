@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Inactivity Reminder with Different Times
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # Runs daily at 09:00 UTC
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remind inactive issues and PRs
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const MS_IN_DAY = 24 * 60 * 60 * 1000;
+            const now = new Date();
+
+            // Thresholds
+            const ISSUE_INACTIVITY_DAYS = 21; // 3 weeks
+            const PR_INACTIVITY_DAYS = 7;     // 1 week
+
+            // Always notify this user
+            const defaultNotify = '@anandhkb';
+
+            function isInactive(updatedAt, thresholdDays) {
+              const updatedDate = new Date(updatedAt);
+              return (now - updatedDate) > thresholdDays * MS_IN_DAY;
+            }
+
+            // Fetch all open issues + PRs (paginate if >100)
+            const issuesAndPRs = await github.paginate(
+              github.rest.issues.listForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                per_page: 100,
+              }
+            );
+
+            for (const item of issuesAndPRs) {
+              // Skip if issue/PR has the skip inactivity reminder label
+              if (item.labels && item.labels.some(label => label.name === 'skip inactivity reminder')) {
+                console.log(`Skipping #${item.number} due to skip inactivity reminder label`);
+                continue;
+              }
+
+              const isPR = !!item.pull_request;
+
+              // Skip if PR is in Draft mode
+              if (isPR && item.draft) {
+                console.log(`Skipping #${item.number} due to Draft PR status`);
+                continue;
+              }
+
+              // Skip if issue (not PR) is an EPIC
+              if (!isPR && item.labels && item.labels.some(label => label.name === 'epic')) {
+                console.log(`Skipping #${item.number} due to EPIC label (issue only)`);
+                continue;
+              }
+
+              const thresholdDays = isPR ? PR_INACTIVITY_DAYS : ISSUE_INACTIVITY_DAYS;
+
+              if (isInactive(item.updated_at, thresholdDays)) {
+                // For issues, only send reminder if they have "awaiting response" label
+                if (!isPR && (!item.labels || !item.labels.some(label => label.name === 'awaiting response'))) {
+                  console.log(`Skipping #${item.number} (issue) - no awaiting response label`);
+                  continue;
+                }
+
+                const assigneeMentions = item.assignees && item.assignees.length > 0
+                  ? item.assignees.map(a => `@${a.login}`).join(' ')
+                  : '';
+                const mentions = assigneeMentions
+                  ? `${defaultNotify} ${assigneeMentions}`.trim()
+                  : defaultNotify;
+                const issueNumber = item.number;
+                const type = isPR ? "pull request" : "issue";
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: [
+                    `🔔 Hi ${mentions}, this ${type} has had no activity for ${thresholdDays} days. Please update or let us know if it can be closed. Thank you!`,
+                    '',
+                    'If this is an "epic" issue, then please add the "epic" label to this issue.',
+                    'If it is a PR and not ready for review, then please convert this to draft.',
+                    'If you just want to switch off this notification, then use the "skip inactivity reminder" label.'
+                  ].join('\n'),
+                });
+
+                console.log(`Posted reminder on #${issueNumber} (${type}) to ${mentions}`);
+              }
+            }

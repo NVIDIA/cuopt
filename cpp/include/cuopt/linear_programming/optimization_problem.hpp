@@ -42,7 +42,8 @@ enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
  *
  * @tparam f_t  Data type of the variables and their weights in the equations
  *
- * This structure stores all the information necessary to represent the following LP:
+ * This structure stores all the information necessary to represent the
+ * following LP:
  *
  * <pre>
  * Minimize:
@@ -61,7 +62,8 @@ enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
  *
  * Objective value can be scaled and offset accordingly:
  * objective_scaling_factor * (dot(c, x) + objective_offset)
- * please refer to the `set_objective_scaling_factor()` and `set_objective_offset()` methods.
+ * please refer to the `set_objective_scaling_factor()` and
+ * `set_objective_offset()` methods.
  */
 template <typename i_t, typename f_t>
 class optimization_problem_t {
@@ -329,6 +331,7 @@ class optimization_problem_t {
   const rmm::device_uvector<char>& get_row_types() const;
   const rmm::device_uvector<var_t>& get_variable_types() const;
   bool get_sense() const;
+  bool empty() const;
 
   std::string get_objective_name() const;
   std::string get_problem_name() const;

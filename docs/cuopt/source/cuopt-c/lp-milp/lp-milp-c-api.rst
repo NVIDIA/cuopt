@@ -158,6 +158,7 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_MIP_INTEGRALITY_TOLERANCE
 .. doxygendefine:: CUOPT_MIP_SCALING
 .. doxygendefine:: CUOPT_MIP_HEURISTICS_ONLY
+.. doxygendefine:: CUOPT_PRESOLVE
 .. doxygendefine:: CUOPT_SOLUTION_FILE
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
 .. doxygendefine:: CUOPT_USER_PROBLEM_FILE

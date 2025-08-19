@@ -309,6 +309,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
+          - boost
           - cpp-argparse
           - librmm==25.10.*
           - libraft-headers==25.10.*

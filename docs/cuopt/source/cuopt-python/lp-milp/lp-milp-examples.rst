@@ -19,7 +19,7 @@ Simple Linear Programming Example
 
     # Create a new problem
     problem = Problem("Simple LP")
-    
+
     # Add variables
     x = problem.addVariable(lb=0, vtype=CONTINUOUS, name="x")
     y = problem.addVariable(lb=0, vtype=CONTINUOUS, name="y")
@@ -30,14 +30,14 @@ Simple Linear Programming Example
 
     # Set objective function
     problem.setObjective(x + y, sense=MAXIMIZE)
-    
+
     # Configure solver settings
     settings = SolverSettings()
     settings.set_parameter("time_limit", 60)
-    
+
     # Solve the problem
     problem.solve(settings)
-    
+
     # Check solution status
     if problem.Status.name == "Optimal":
         print(f"Optimal solution found in {problem.SolveTime:.2f} seconds")
@@ -64,7 +64,7 @@ Mixed Integer Linear Programming Example
 
     # Create a new MIP problem
     problem = Problem("Simple MIP")
-    
+
     # Add integer variables with bounds
     x = problem.addVariable(vtype=INTEGER, name="V_x")
     y = problem.addVariable(lb=10, ub=50, vtype=INTEGER, name="V_y")
@@ -82,7 +82,7 @@ Mixed Integer Linear Programming Example
 
     # Solve the problem
     problem.solve(settings)
-    
+
     # Check solution status and results
     if problem.Status.name == "Optimal":
         print(f"Optimal solution found in {problem.SolveTime:.2f} seconds")
@@ -112,32 +112,32 @@ Advanced Example: Production Planning
 
     # Production planning problem
     problem = Problem("Production Planning")
-    
+
     # Decision variables: production quantities
     # x1 = units of product A
     # x2 = units of product B
     x1 = problem.addVariable(lb=10, vtype=INTEGER, name="Product_A")
     x2 = problem.addVariable(lb=15, vtype=INTEGER, name="Product_B")
-    
+
     # Resource constraints
     # Machine time: 2 hours per unit of A, 1 hour per unit of B, max 100 hours
     problem.addConstraint(2 * x1 + x2 <= 100, name="Machine_Time")
-    
+
     # Labor: 1 hour per unit of A, 3 hours per unit of B, max 120 hours
     problem.addConstraint(x1 + 3 * x2 <= 120, name="Labor_Hours")
-    
+
     # Material: 4 units per unit of A, 2 units per unit of B, max 200 units
     problem.addConstraint(4 * x1 + 2 * x2 <= 200, name="Material")
-    
+
     # Objective: maximize profit
     # Profit: $50 per unit of A, $30 per unit of B
     problem.setObjective(50 * x1 + 30 * x2, sense=MAXIMIZE)
-    
+
     # Solve with time limit
     settings = SolverSettings()
     settings.set_parameter("time_limit", 30)
     problem.solve(settings)
-    
+
     # Display results
     if problem.Status.name == "Optimal":
         print("=== Production Planning Solution ===")
@@ -146,7 +146,7 @@ Advanced Example: Production Planning
         print(f"Product A production: {x1.getValue()} units")
         print(f"Product B production: {x2.getValue()} units")
         print(f"Total profit: ${problem.ObjValue:.2f}")
-        
+
     else:
         print(f"Problem not solved optimally. Status: {problem.Status.name}")
 
@@ -171,42 +171,42 @@ Working with Expressions and Constraints
     from cuopt.linear_programming.solver_settings import SolverSettings
 
     problem = Problem("Expression Example")
-    
+
     # Create variables
     x = problem.addVariable(lb=0, name="x")
     y = problem.addVariable(lb=0, name="y")
     z = problem.addVariable(lb=0, name="z")
-    
+
     # Create complex expressions
     expr1 = 2 * x + 3 * y - z
     expr2 = x + y + z
-    
+
     # Add constraints using expressions
     problem.addConstraint(expr1 <= 100, name="Complex_Constraint_1")
     problem.addConstraint(expr2 >= 20, name="Complex_Constraint_2")
-    
+
     # Add constraint with different senses
     problem.addConstraint(x + y == 50, name="Equality_Constraint")
     problem.addConstraint(1 * x <= 30, name="Upper_Bound_X")
     problem.addConstraint(1 * y >= 10, name="Lower_Bound_Y")
     problem.addConstraint(1 * z <= 100, name="Upper_Bound_Z")
-    
+
     # Set objective
     problem.setObjective(x + 2 * y + 3 * z, sense=MAXIMIZE)
 
     settings = SolverSettings()
-    settings.set_parameter("time_limit", 20) 
+    settings.set_parameter("time_limit", 20)
 
     problem.solve(settings)
-    
-    
+
+
     if problem.Status.name == "Optimal":
         print("=== Expression Example Results ===")
         print(f"x = {x.getValue()}")
         print(f"y = {y.getValue()}")
         print(f"z = {z.getValue()}")
         print(f"Objective value = {problem.ObjValue}")
-        
+
 The response is as follows:
 
 .. code-block:: text
@@ -229,7 +229,7 @@ Incumbent solutions are intermediate feasible solutions found during the MIP sol
 
     from cuopt.linear_programming.problem import Problem, INTEGER, MAXIMIZE
     from cuopt.linear_programming.solver_settings import SolverSettings
-    from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT    
+    from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
     from cuopt.linear_programming.internals import GetSolutionCallback, SetSolutionCallback
 
     # Create a callback class to receive incumbent solutions
@@ -292,7 +292,7 @@ Incumbent solutions are intermediate feasible solutions found during the MIP sol
     print(f"Solve time: {problem.SolveTime:.2f} seconds")
     print(f"Final solution: x={x.getValue()}, y={y.getValue()}")
     print(f"Final objective value: {problem.ObjValue:.2f}")
-    
+
 The response is as follows:
 
 .. code-block:: text
@@ -309,5 +309,3 @@ The response is as follows:
     Solve time: 0.16 seconds
     Final solution: x=36.0, y=40.99999999999999
     Final objective value: 303.00
-
-

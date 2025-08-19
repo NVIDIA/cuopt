@@ -87,7 +87,6 @@ TEST(dual_simplex, chess_set)
   user_problem.var_types[0] = dual_simplex::variable_type_t::CONTINUOUS;
   user_problem.var_types[1] = dual_simplex::variable_type_t::CONTINUOUS;
 
-  double start_time = dual_simplex::tic();
   dual_simplex::simplex_solver_settings_t<int, double> settings;
   dual_simplex::lp_solution_t<int, double> solution(user_problem.num_rows, user_problem.num_cols);
   EXPECT_EQ((dual_simplex::solve_linear_program(user_problem, settings, solution)),
