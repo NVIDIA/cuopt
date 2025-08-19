@@ -124,6 +124,9 @@ void problem_t<i_t, f_t>::write_as_mps(const std::string& path)
       mps_file << "    RHS1      " << row_name << " " << rhs << "\n";
     }
   }
+  if (isfinite(objective_offset) && objective_offset != 0.0) {
+    mps_file << "    RHS1      " << (objective_name.empty() ? "OBJ" : objective_name) << " " << -objective_offset << "\n";
+  }
 
   // RANGES section if needed
   bool has_ranges = false;
