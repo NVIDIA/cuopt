@@ -73,7 +73,10 @@ class local_search_t {
   bool run_fj_on_zero(solution_t<i_t, f_t>& solution, timer_t timer);
   bool check_fj_on_lp_optimal(solution_t<i_t, f_t>& solution, bool perturb, timer_t timer);
   bool run_staged_fp(solution_t<i_t, f_t>& solution, timer_t timer, bool& early_exit);
-  bool run_fp(solution_t<i_t, f_t>& solution, timer_t timer, bool feasibility_run = true);
+  bool run_fp(solution_t<i_t, f_t>& solution,
+              timer_t timer,
+              const weight_t<i_t, f_t>* weights = nullptr,
+              bool feasibility_run              = true);
   void resize_vectors(problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr);
   void save_solution_and_add_cutting_plane(solution_t<i_t, f_t>& solution,
                                            rmm::device_uvector<f_t>& best_solution,

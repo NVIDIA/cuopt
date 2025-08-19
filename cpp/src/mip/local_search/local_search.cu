@@ -106,7 +106,6 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
   fj_settings.update_weights  = false;
   fj_settings.feasibility_run = false;
   fj.set_fj_settings(fj_settings);
-  fj.copy_weights(weights, solution.handle_ptr);
   bool is_feas   = false;
   ls_method_t rd = static_cast<ls_method_t>(std::uniform_int_distribution(
     static_cast<int>(ls_method_t::FJ_LINE_SEGMENT), static_cast<int>(ls_method_t::FP_SEARCH))(rng));
@@ -118,11 +117,13 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
     rd = ls_method_t::FP_SEARCH;
   }
   if (rd == ls_method_t::FJ_LINE_SEGMENT && lp_optimal_exists) {
+    fj.copy_weights(weights, solution.handle_ptr);
     is_feas = run_fj_line_segment(solution, timer, ls_config);
   } else if (rd == ls_method_t::FP_SEARCH) {
     timer   = timer_t(std::min(3., timer.remaining_time()));
-    is_feas = run_fp(solution, timer, false);
+    is_feas = run_fp(solution, timer, &weights, false);
   } else {
+    fj.copy_weights(weights, solution.handle_ptr);
     is_feas = run_fj_annealing(solution, timer, ls_config);
   }
   return is_feas;
@@ -367,6 +368,7 @@ void local_search_t<i_t, f_t>::save_solution_and_add_cutting_plane(
 template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                       timer_t timer,
+                                      const weight_t<i_t, f_t>* weights,
                                       bool feasibility_run)
 {
   const i_t n_fp_iterations = 1000000;
@@ -382,6 +384,8 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     }
     problem_with_objective_cut.add_cutting_plane_at_objective(solution.get_objective() -
                                                               OBJECTIVE_EPSILON);
+    // Do the copy here for proper handling of the added constraints weight
+    fj.copy_weights(*weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
     solution.problem_ptr = &problem_with_objective_cut;
     solution.resize_to_problem();
     resize_vectors(problem_with_objective_cut, solution.handle_ptr);

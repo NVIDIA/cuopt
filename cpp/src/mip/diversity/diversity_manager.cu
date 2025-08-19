@@ -387,7 +387,7 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::run_fp_alone(solution_t<i_t, f_t>& solution)
 {
   CUOPT_LOG_INFO("Running FP alone!");
-  ls.run_fp(solution, timer, false);
+  ls.run_fp(solution, timer, &population.weights, false);
   CUOPT_LOG_INFO("FP alone finished!");
 }
 
