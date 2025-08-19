@@ -1281,7 +1281,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_bfs(mip_solution_t<i_t, f_t>& s
     }
   }
 
-  mip_status_t diving_status = diving_thread.get();
+  if (search_strategy.strategy == bnb_search_strategy_t::BEST_FIRST_WITH_DIVING) {
+    mip_status_t diving_status = diving_thread.get();
+  }
 
   global_variables::mutex_branching.lock();
   global_variables::currently_branching = false;
@@ -1374,6 +1376,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::diving(f_t root_objective,
                                            1,
                                            branch_var_val,
                                            root_vstatus);
+
 
   node_stack.push_back(down_child.get());  // the stack does not own the unique_ptr the tree does
   node_stack.push_back(up_child.get());    // the stack does not own the unqiue_ptr the tree does
