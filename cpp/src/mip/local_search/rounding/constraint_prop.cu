@@ -342,7 +342,7 @@ struct find_unset_int_t {
   HDI bool operator()(i_t idx)
   {
     auto var_val = assignment[idx];
-    bool is_set  = is_integer<f_t>(var_val);
+    bool is_set  = is_integer<f_t>(var_val, eps);
     return !is_set;
   }
 };
@@ -813,6 +813,23 @@ bool constraint_prop_t<i_t, f_t>::run_repair_procedure(problem_t<i_t, f_t>& prob
 }
 
 template <typename i_t, typename f_t>
+void constraint_prop_t<i_t, f_t>::find_unset_integer_vars(solution_t<i_t, f_t>& sol,
+                                                          rmm::device_uvector<i_t>& unset_vars)
+{
+  unset_vars.resize(sol.problem_ptr->n_integer_vars, sol.handle_ptr->get_stream());
+  auto iter =
+    thrust::copy_if(sol.handle_ptr->get_thrust_policy(),
+                    sol.problem_ptr->integer_indices.begin(),
+                    sol.problem_ptr->integer_indices.end(),
+                    unset_vars.begin(),
+                    find_unset_int_t<i_t, f_t>{sol.problem_ptr->tolerances.integrality_tolerance,
+                                               make_span(sol.problem_ptr->variable_lower_bounds),
+                                               make_span(sol.problem_ptr->variable_upper_bounds),
+                                               make_span(sol.assignment)});
+  unset_vars.resize(iter - unset_vars.begin(), sol.handle_ptr->get_stream());
+}
+
+template <typename i_t, typename f_t>
 bool constraint_prop_t<i_t, f_t>::is_problem_ii(problem_t<i_t, f_t>& problem)
 {
   bounds_update.calculate_activity_on_problem_bounds(problem);
@@ -851,10 +868,15 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();
   }
-  raft::copy(unset_integer_vars.data(),
-             sol.problem_ptr->integer_indices.data(),
-             sol.problem_ptr->n_integer_vars,
-             sol.handle_ptr->get_stream());
+  if (round_all_vars) {
+    raft::copy(unset_integer_vars.data(),
+               sol.problem_ptr->integer_indices.data(),
+               sol.problem_ptr->n_integer_vars,
+               sol.handle_ptr->get_stream());
+  } else {
+    find_unset_integer_vars(sol, unset_integer_vars);
+  }
+
   CUOPT_LOG_DEBUG("Bounds propagation rounding: unset vars %lu", unset_integer_vars.size());
   if (unset_integer_vars.size() == 0) {
     CUOPT_LOG_ERROR("No integer variables provided in the bounds prop rounding");
@@ -1023,10 +1045,7 @@ bool constraint_prop_t<i_t, f_t>::apply_round(
   std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>> probing_config)
 {
   raft::common::nvtx::range fun_scope("constraint prop round");
-
-  // this is second timer that can continue but without recovery mode
-  const f_t max_time_for_bounds_prop = 5.;
-  max_timer                          = timer_t{max_time_for_bounds_prop};
+  max_timer = timer_t{max_time_for_bounds_prop};
   if (check_brute_force_rounding(sol)) { return true; }
   recovery_mode      = false;
   rounding_ii        = false;
