@@ -48,7 +48,7 @@ class branch_and_bound_t {
  public:
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-                     const bnb_search_strategy_t strategy);
+                     const diving_settings_t strategy);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess = user_guess; }
@@ -68,7 +68,7 @@ class branch_and_bound_t {
  private:
   const user_problem_t<i_t, f_t>& original_problem;
   const simplex_solver_settings_t<i_t, f_t> settings;
-  bnb_search_strategy_t search_strategy;
+  diving_settings_t diving_settings;
 
   f_t start_time;
   std::vector<f_t> guess;
@@ -76,10 +76,6 @@ class branch_and_bound_t {
   lp_problem_t<i_t, f_t> original_lp;
   std::vector<i_t> new_slacks;
   std::vector<variable_type_t> var_types;
-
-  mip_status_t solve_bfs(mip_solution_t<i_t, f_t>& solution);
-  mip_status_t solve_bfs_diving(mip_solution_t<i_t, f_t>& solution);
-  mip_status_t solve_dfs(mip_solution_t<i_t, f_t>& solution);
 
   mip_status_t diving(f_t root_objective,
                       std::vector<f_t>& edge_norms,

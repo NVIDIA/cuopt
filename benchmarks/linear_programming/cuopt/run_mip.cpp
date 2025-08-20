@@ -153,7 +153,7 @@ int run_single_file(std::string file_path,
                     bool write_log_file,
                     bool log_to_console,
                     double time_limit,
-                    int diving)
+                    bool diving)
 {
   const raft::handle_t handle_{};
   cuopt::linear_programming::mip_solver_settings_t<int, double> settings;
@@ -170,7 +170,8 @@ int run_single_file(std::string file_path,
     }
   }
 
-  settings.search_strategy.strategy = diving;
+  settings.diving_settings.use_diving = diving;
+  
 
   constexpr bool input_mps_strict = false;
   cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model;
@@ -258,7 +259,7 @@ void run_single_file_mp(std::string file_path,
                         bool write_log_file,
                         bool log_to_console,
                         double time_limit,
-                        int diving)
+                        bool diving)
 {
   std::cout << "running file " << file_path << " on gpu : " << device << std::endl;
   auto memory_resource = make_async();
@@ -348,8 +349,13 @@ int main(int argc, char* argv[])
     .default_value(std::numeric_limits<double>::max());
 
   program.add_argument("--diving")
-    .help("diving strategy (bfs, dfs or bfs_diving)")
+    .help("enable diving (t/f)")
     .default_value(std::string("f"));
+
+  program.add_argument("--gpu")
+    .help("id of the GPU to use (default: 0)")
+    .scan<'i', int>()
+    .default_value(0);
 
   // Parse arguments
   try {
@@ -377,20 +383,8 @@ int main(int argc, char* argv[])
   int num_cpu_threads  = program.get<int>("--num-cpu-threads");
   bool write_log_file  = program.get<std::string>("--write-log-file")[0] == 't';
   bool log_to_console  = program.get<std::string>("--log-to-console")[0] == 't';
-  int diving;
-
-  std::string diving_cli = program.get<std::string>("--diving");
-
-  if (diving_cli == "bfs") {
-    diving = cuopt::linear_programming::bnb_search_strategy_t::BEST_FIRST;
-  } else if (diving_cli == "dfs") {
-    diving = cuopt::linear_programming::bnb_search_strategy_t::DEPTH_FIRST;
-  } else if (diving_cli == "bfs_diving") {
-    diving = cuopt::linear_programming::bnb_search_strategy_t::BEST_FIRST_WITH_DIVING;
-  } else {
-    std::cout << "Incorrect diving strategy!\n";
-    exit(1);
-  }
+  bool diving = program.get<std::string>("--diving")[0] == 't';
+  int gpu_id = program.get<int>("--gpu");
 
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
@@ -495,6 +489,9 @@ int main(int argc, char* argv[])
     }
     merge_result_files(out_dir, result_file, n_gpus, batch_num);
   } else {
+    RAFT_CUDA_TRY(cudaSetDevice(gpu_id));
+    CUOPT_LOG_INFO("Using GPU %d", gpu_id);
+
     auto memory_resource = make_async();
     rmm::mr::set_current_device_resource(memory_resource.get());
     run_single_file(path,

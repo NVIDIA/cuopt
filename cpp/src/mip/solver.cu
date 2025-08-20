@@ -69,7 +69,7 @@ template <typename i_t, typename f_t>
 struct branch_and_bound_solution_helper_t {
   branch_and_bound_solution_helper_t(diversity_manager_t<i_t, f_t>* dm,
                                      dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings)
-    : dm(dm), settings_(settings) {};
+    : dm(dm), settings_(settings){};
 
   void solution_callback(std::vector<f_t>& solution, f_t objective)
   {
@@ -190,7 +190,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     // Create the branch and bound object
     branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(
-      branch_and_bound_problem, branch_and_bound_settings, context.settings.search_strategy);
+      branch_and_bound_problem, branch_and_bound_settings, context.settings.diving_settings);
 
     // Set the primal heuristics -> branch and bound callback
     context.problem_ptr->branch_and_bound_callback =
