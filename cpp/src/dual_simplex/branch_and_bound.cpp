@@ -422,6 +422,10 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
 template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solution)
 {
+  // TODO remove this after submip PR merge
+  global_variables::mutex_upper.lock();
+  global_variables::repair_queue.clear();
+  global_variables::mutex_upper.unlock();
   mip_status_t status = mip_status_t::UNSET;
   mip_solution_t<i_t, f_t> incumbent(original_lp.num_cols);
   if (guess.size() != 0) {
