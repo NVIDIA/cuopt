@@ -1021,16 +1021,16 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
   if ((multi_probe.infeas_constraints_count_0 == 0 ||
        multi_probe.infeas_constraints_count_1 == 0) &&
       !timeout_happened) {
-    relaxed_lp_settings_t lp_settings;
-    lp_settings.time_limit            = lp_run_time_after_feasible;
-    lp_settings.tolerance             = orig_sol.problem_ptr->tolerances.absolute_tolerance;
-    lp_settings.save_state            = false;
-    lp_settings.return_first_feasible = true;
-    run_lp_with_vars_fixed(*orig_sol.problem_ptr,
-                           orig_sol,
-                           orig_sol.problem_ptr->integer_indices,
-                           lp_settings,
-                           static_cast<bound_presolve_t<i_t, f_t>*>(nullptr));
+    // relaxed_lp_settings_t lp_settings;
+    // lp_settings.time_limit            = lp_run_time_after_feasible;
+    // lp_settings.tolerance             = orig_sol.problem_ptr->tolerances.absolute_tolerance;
+    // lp_settings.save_state            = false;
+    // lp_settings.return_first_feasible = true;
+    // run_lp_with_vars_fixed(*orig_sol.problem_ptr,
+    //                        orig_sol,
+    //                        orig_sol.problem_ptr->integer_indices,
+    //                        lp_settings,
+    //                        static_cast<bound_presolve_t<i_t, f_t>*>(nullptr));
   }
   bool res_feasible = orig_sol.compute_feasibility();
   orig_sol.handle_ptr->sync_stream();
