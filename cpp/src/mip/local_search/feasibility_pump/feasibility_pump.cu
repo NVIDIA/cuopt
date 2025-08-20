@@ -265,7 +265,7 @@ bool feasibility_pump_t<i_t, f_t>::round(solution_t<i_t, f_t>& solution)
   bool old_var                             = constraint_prop.round_all_vars;
   f_t old_time                             = constraint_prop.max_time_for_bounds_prop;
   constraint_prop.round_all_vars           = true;
-  constraint_prop.max_time_for_bounds_prop = 0.7;
+  constraint_prop.max_time_for_bounds_prop = 0.2;
   result = constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
   constraint_prop.round_all_vars           = old_var;
   constraint_prop.max_time_for_bounds_prop = old_time;
