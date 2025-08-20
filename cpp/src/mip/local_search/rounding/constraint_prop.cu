@@ -758,7 +758,6 @@ bool constraint_prop_t<i_t, f_t>::run_repair_procedure(problem_t<i_t, f_t>& prob
                                                        timer_t& timer,
                                                        const raft::handle_t* handle_ptr)
 {
-  return false;
   // select the first probing value
   i_t select = 0;
   multi_probe.set_updated_bounds(problem, select, handle_ptr);
