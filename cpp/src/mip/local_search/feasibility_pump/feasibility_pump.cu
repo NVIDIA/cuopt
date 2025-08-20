@@ -269,7 +269,7 @@ bool feasibility_pump_t<i_t, f_t>::round(solution_t<i_t, f_t>& solution)
   // result = constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
   // constraint_prop.round_all_vars           = old_var;
   // constraint_prop.max_time_for_bounds_prop = old_time;
-  solution.round_nearest();
+  result = solution.round_nearest();
   cuopt_func_call(solution.test_variable_bounds(true));
   // copy the last rounding
   raft::copy(last_rounding.data(),
