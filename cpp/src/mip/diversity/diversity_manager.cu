@@ -27,8 +27,8 @@
 #include "cuda_profiler_api.h"
 
 constexpr bool from_dir    = false;
-constexpr bool fj_only_run = false;
-constexpr bool fp_only_run = true;
+constexpr bool fj_only_run = true;
+constexpr bool fp_only_run = false;
 
 namespace cuopt::linear_programming::detail {
 
@@ -486,7 +486,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   }
   population.allocate_solutions();
   if (check_b_b_preemption()) { return population.best_feasible(); }
-  if (!fp_only_run) {
+  if (!fp_only_run && !fj_only_run) {
     // generate a population with 5 solutions(FP+FJ)
     generate_initial_solutions();
   }
@@ -496,8 +496,9 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   }
 
   if (fj_only_run) {
-    run_fj_alone(population.best_feasible());
-    return population.best_feasible();
+    solution_t<i_t, f_t> sol(*problem_ptr);
+    run_fj_alone(sol);
+    return sol;
   }
 
   if (fp_only_run) {
