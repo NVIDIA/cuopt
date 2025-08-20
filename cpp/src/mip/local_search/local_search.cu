@@ -486,8 +486,8 @@ bool local_search_t<i_t, f_t>::generate_solution(solution_t<i_t, f_t>& solution,
   fp.cycle_queue.reset(solution);
   fp.reset();
   fp.resize_vectors(*solution.problem_ptr, solution.handle_ptr);
-  is_feasible = run_staged_fp(solution, timer, early_exit);
-  // is_feasible = run_fp(solution, timer);
+  // is_feasible = run_staged_fp(solution, timer, early_exit);
+  is_feasible = run_fp(solution, timer);
   CUOPT_LOG_DEBUG("Solution generated with FP: is_feasible %d", is_feasible);
   return is_feasible;
 }
