@@ -78,11 +78,9 @@ class branch_and_bound_t {
   std::vector<i_t> new_slacks;
   std::vector<variable_type_t> var_types;
 
-  std::mutex pseudocost_mutex;
-
   mip_status_t diving(f_t root_objective,
                       std::vector<f_t>& edge_norms,
-                      pseudo_costs_t<i_t, f_t>& pc,
+                      pseudo_costs_t<i_t, f_t> pc,
                       i_t branch_var,
                       f_t branch_var_val,
                       const std::vector<variable_status_t>& root_vstatus,
