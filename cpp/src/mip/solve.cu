@@ -89,7 +89,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     solution.compute_objective();  // just to ensure h_user_obj is set
     auto stats           = solver_stats_t<i_t, f_t>{};
     stats.solution_bound = solution.get_user_objective();
-    return solution.get_solution(true, stats, false);
+    return solution.get_solution(true, stats, settings.presolve);
   }
   // problem contains unpreprocessed data
   detail::problem_t<i_t, f_t> scaled_problem(problem);
@@ -144,8 +144,9 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
       "please provide a more numerically stable problem.");
   }
 
-  auto sol = scaled_sol.get_solution(
-    is_feasible_before_scaling || is_feasible_after_unscaling, solver.get_solver_stats(), false);
+  auto sol = scaled_sol.get_solution(is_feasible_before_scaling || is_feasible_after_unscaling,
+                                     solver.get_solver_stats(),
+                                     settings.presolve);
   detail::print_solution(scaled_problem.handle_ptr, sol.get_solution());
   return sol;
 }
