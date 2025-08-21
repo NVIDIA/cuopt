@@ -342,12 +342,11 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
 }
 
 template <typename i_t, typename f_t>
-bool branch_and_bound_t<i_t, f_t>::repair_solution(
-  const std::vector<variable_status_t>& root_vstatus,
-  const std::vector<f_t>& edge_norms,
-  const std::vector<f_t>& potential_solution,
-  f_t& repaired_obj,
-  std::vector<f_t>& repaired_solution) const
+bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<variable_status_t>& root_vstatus,
+                                                   const std::vector<f_t>& edge_norms,
+                                                   const std::vector<f_t>& potential_solution,
+                                                   f_t& repaired_obj,
+                                                   std::vector<f_t>& repaired_solution) const
 {
   bool feasible = false;
   repaired_obj  = std::numeric_limits<f_t>::quiet_NaN();
@@ -734,7 +733,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       f_t leaf_objective = compute_objective(leaf_problem, leaf_solution.x);
       graphviz_node(settings, node_ptr, "lower bound", leaf_objective);
 
+      pseudocost_mutex.lock();
       pc.update_pseudo_costs(node_ptr, leaf_objective);
+      pseudocost_mutex.unlock();
+
       node_ptr->lower_bound = leaf_objective;
 
       constexpr f_t fathom_tol = 1e-5;
@@ -770,8 +772,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         remove_fathomed_nodes(stack);
       } else if (leaf_objective <= upper_bound + fathom_tol) {
         // Choose fractional variable to branch on
-        const i_t branch_var = pc.variable_selection(
-          fractional, leaf_solution.x, leaf_problem.lower, leaf_problem.upper, log);
+        pseudocost_mutex.lock();
+        const i_t branch_var = pc.variable_selection(fractional, leaf_solution.x, leaf_problem.lower, leaf_problem.upper, log);
+        pseudocost_mutex.unlock();
         assert(leaf_vstatus.size() == leaf_problem.num_cols);
 
         // down child
@@ -823,9 +826,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
   }
 
-  if (diving_settings.use_diving) {
-    mip_status_t diving_status = diving_thread.get();
-  }
+  if (diving_settings.use_diving) { mip_status_t diving_status = diving_thread.get(); }
 
   global_variables::mutex_branching.lock();
   global_variables::currently_branching = false;
@@ -881,14 +882,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 }
 
 template <typename i_t, typename f_t>
-mip_status_t branch_and_bound_t<i_t, f_t>::diving(
-  f_t root_objective,
-  std::vector<f_t>& edge_norms,
-  pseudo_costs_t<i_t, f_t> pc,
-  i_t branch_var,
-  f_t branch_var_val,
-  const std::vector<variable_status_t>& root_vstatus,
-  mip_solution_t<i_t, f_t>& incumbent)
+mip_status_t branch_and_bound_t<i_t, f_t>::diving(f_t root_objective, 
+                                                  std::vector<f_t>& edge_norms, 
+                                                  pseudo_costs_t<i_t, f_t>& pc, 
+                                                  i_t branch_var, 
+                                                  f_t branch_var_val, 
+                                                  const std::vector<variable_status_t>& root_vstatus, 
+                                                  mip_solution_t<i_t, f_t>& incumbent)
 {
   logger_t log;
   log.log = false;
@@ -931,24 +931,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::diving(
     const i_t leaf_depth = node_ptr->depth;
     f_t now              = toc(start_time);
     f_t time_since_log   = last_log == 0 ? 1.0 : toc(last_log);
-
-    // if ((nodes_explored % 1000 == 0 || gap < 10 * settings.absolute_mip_gap_tol ||
-    //      nodes_explored < 1000) &&
-    //       (time_since_log >= 1) ||
-    //     (time_since_log > 60) || now > settings.time_limit) {
-    //   settings.log.printf("D%8d %8lu       %+13.6e  %+10.6e   %4d   %7.1e     %s %9.2f\n",
-    //                       nodes_explored,
-    //                       node_stack.size(),
-    //                       compute_user_objective(original_lp, upper_bound),
-    //                       compute_user_objective(original_lp, lower_bound),
-    //                       leaf_depth,
-    //                       nodes_explored > 0 ? total_lp_iters / nodes_explored : 0,
-    //                       user_mip_gap<f_t>(compute_user_objective(original_lp, upper_bound),
-    //                                         compute_user_objective(original_lp, lower_bound))
-    //                         .c_str(),
-    //                       now);
-    //   last_log = tic();
-    // }
 
     if (now > settings.time_limit) {
       status = mip_status_t::TIME_LIMIT;
@@ -1017,7 +999,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::diving(
       f_t leaf_objective = compute_objective(leaf_problem, leaf_solution.x);
       graphviz_node(settings, node_ptr, "lower bound", leaf_objective);
 
+      pseudocost_mutex.lock();
       pc.update_pseudo_costs(node_ptr, leaf_objective);
+      pseudocost_mutex.unlock();
+
       node_ptr->lower_bound = leaf_objective;
 
       constexpr f_t fathom_tol = 1e-5;
@@ -1055,8 +1040,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::diving(
 
       } else if (leaf_objective <= upper_bound + fathom_tol) {
         // Choose fractional variable to branch on
-        const i_t branch_var = pc.variable_selection(
-          fractional, leaf_solution.x, leaf_problem.lower, leaf_problem.upper, log);
+        pseudocost_mutex.lock();
+        const i_t branch_var = pc.variable_selection(fractional, leaf_solution.x, leaf_problem.lower, leaf_problem.upper, log);
+        pseudocost_mutex.unlock();
         assert(leaf_vstatus.size() == leaf_problem.num_cols);
 
         // down child
