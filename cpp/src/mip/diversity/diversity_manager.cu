@@ -618,7 +618,8 @@ void diversity_manager_t<i_t, f_t>::main_loop()
       auto best_sol = population.is_feasible() ? population.best_feasible() : population.best();
       ls.run_fj_until_timer(best_sol, population.weights, timer);
       population.add_solution(std::move(best_sol));
-      CUOPT_LOG_WARN("Enough solutions couldn't be generated,exiting heuristics!");
+      CUOPT_LOG_INFO(
+        "Crossovers cannot continue. Running local search on best solution until time limit.");
       break;
     }
     if (timer.check_time_limit()) { break; }
