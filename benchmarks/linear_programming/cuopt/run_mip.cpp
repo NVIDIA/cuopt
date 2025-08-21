@@ -201,12 +201,12 @@ int run_single_file(std::string file_path,
     }
   }
 
-  settings.time_limit      = time_limit;
-  settings.heuristics_only = heuristics_only;
-  settings.num_cpu_threads = num_cpu_threads;
-  settings.log_to_console  = log_to_console;
-  // settings.tolerances.relative_tolerance = 1e-10;
-  // settings.tolerances.absolute_tolerance = 1e-6;
+  settings.time_limit                    = time_limit;
+  settings.heuristics_only               = heuristics_only;
+  settings.num_cpu_threads               = num_cpu_threads;
+  settings.log_to_console                = log_to_console;
+  settings.tolerances.relative_tolerance = 1e-12;
+  settings.tolerances.absolute_tolerance = 1e-6;
   cuopt::linear_programming::benchmark_info_t benchmark_info;
   settings.benchmark_info_ptr = &benchmark_info;
   auto start_run_solver       = std::chrono::high_resolution_clock::now();
