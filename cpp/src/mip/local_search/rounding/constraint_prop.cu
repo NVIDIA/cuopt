@@ -877,7 +877,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
                sol.handle_ptr->get_stream());
   } else {
     find_unset_integer_vars(sol, unset_integer_vars);
-    sort_by_interval_and_frac(sol, make_span(unset_integer_vars), rng);
+    sort_by_frac(sol, make_span(unset_integer_vars));
     // round first unset_integer_vars.size() - 50, leave last 50 to be rounded by the algo
     i_t n_to_round = std::max(unset_integer_vars.size() - 50, 0lu);
     if (n_to_round > 0) {
