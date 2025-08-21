@@ -23,6 +23,8 @@ from typing import List, Literal, Optional, Union
 import jsonref
 from pydantic import BaseModel, Extra, Field
 
+import cuopt
+
 from .linear_programming.data_definition import (  # noqa
     IncumbentSolution,
     LPData,
