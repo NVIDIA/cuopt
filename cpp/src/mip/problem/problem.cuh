@@ -112,6 +112,8 @@ class problem_t {
     cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const;
 
   void write_as_mps(const std::string& path);
+  void add_cutting_plane_at_objective(f_t objective);
+  void compute_vars_with_objective_coeffs();
 
   struct view_t {
     DI std::pair<i_t, i_t> reverse_range_for_var(i_t v) const
@@ -272,6 +274,8 @@ class problem_t {
   // is always the same and only the RHS changes. Using this helps in warm start.
   lp_state_t<i_t, f_t> lp_state;
   problem_fixing_helpers_t<i_t, f_t> fixing_helpers;
+  bool cutting_plane_added{false};
+  std::pair<std::vector<i_t>, std::vector<f_t>> vars_with_objective_coeffs;
 };
 
 }  // namespace linear_programming::detail

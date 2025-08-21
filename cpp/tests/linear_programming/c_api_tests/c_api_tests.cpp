@@ -57,7 +57,11 @@ TEST_P(TimeLimitTestFixture, time_limit)
                            method),
             CUOPT_SUCCESS);
   EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_TIME_LIMIT);
-  EXPECT_NEAR(solve_time, target_solve_time, 1.0);
+
+  // Dual simplex is spending some time for factorizing the basis, and this computation does not
+  // check for time limit
+  double excess_allowed_time = 2.0;
+  EXPECT_NEAR(solve_time, target_solve_time, excess_allowed_time);
 }
 INSTANTIATE_TEST_SUITE_P(
   c_api,
