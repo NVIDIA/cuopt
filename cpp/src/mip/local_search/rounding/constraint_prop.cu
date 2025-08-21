@@ -876,6 +876,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
                sol.handle_ptr->get_stream());
   } else {
     find_unset_integer_vars(sol, unset_integer_vars);
+    set_bounds_on_fixed_vars(sol);
   }
 
   CUOPT_LOG_DEBUG("Bounds propagation rounding: unset vars %lu", unset_integer_vars.size());
@@ -889,17 +890,19 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
   bool problem_ii = is_problem_ii(*sol.problem_ptr);
   // if the problem is ii, run the bounds prop in the beginning
   if (problem_ii) {
-    bool bounds_repaired =
-      bounds_repair.repair_problem(*sol.problem_ptr, *orig_sol.problem_ptr, timer, sol.handle_ptr);
-    if (bounds_repaired) {
-      CUOPT_LOG_DEBUG("Initial ii is repaired by bounds repair!");
-    } else {
-      auto term_crit = bounds_update.solve(*sol.problem_ptr);
-      if (termination_criterion_t::NO_UPDATE != term_crit) {
-        bounds_update.set_updated_bounds(*sol.problem_ptr);
-      }
-      rounding_ii = true;
-    }
+    // bool bounds_repaired =
+    //   bounds_repair.repair_problem(*sol.problem_ptr, *orig_sol.problem_ptr, timer,
+    //   sol.handle_ptr);
+    // if (bounds_repaired) {
+    //   CUOPT_LOG_DEBUG("Initial ii is repaired by bounds repair!");
+    // } else {
+    //   auto term_crit = bounds_update.solve(*sol.problem_ptr);
+    //   if (termination_criterion_t::NO_UPDATE != term_crit) {
+    //     bounds_update.set_updated_bounds(*sol.problem_ptr);
+    //   }
+    //   rounding_ii = true;
+    // }
+    rounding_ii = true;
   }
   // do the sort if the problem is not ii. crossing bounds might cause some issues on the sort order
   else {
