@@ -289,11 +289,20 @@ template <typename f_t>
 void set_presolve_options(papilo::Presolve<f_t>& presolver,
                           problem_category_t category,
                           f_t absolute_tolerance,
+                          f_t relative_tolerance,
                           double time_limit)
 {
-  presolver.getPresolveOptions().tlim    = time_limit;
-  presolver.getPresolveOptions().epsilon = absolute_tolerance;
-  presolver.getPresolveOptions().feastol = absolute_tolerance;
+  presolver.getPresolveOptions().tlim = time_limit;
+
+  if (category == problem_category_t::LP) {
+    presolver.getPresolveOptions().useabsfeas = false;
+    presolver.getPresolveOptions().feastol    = relative_tolerance;
+    presolver.getPresolveOptions().epsilon    = absolute_tolerance;
+  } else if (category == problem_category_t::MIP || category == problem_category_t::IP) {
+    presolver.getPresolveOptions().useabsfeas = true;
+    presolver.getPresolveOptions().feastol    = absolute_tolerance;
+    presolver.getPresolveOptions().epsilon    = absolute_tolerance;
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -301,6 +310,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
   optimization_problem_t<i_t, f_t> const& op_problem,
   problem_category_t category,
   f_t absolute_tolerance,
+  f_t relative_tolerance,
   double time_limit)
 {
   cuopt_expects(
@@ -316,7 +326,8 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
 
   papilo::Presolve<f_t> presolver;
   set_presolve_methods<f_t>(presolver, category);
-  set_presolve_options<f_t>(presolver, category, absolute_tolerance, time_limit);
+  set_presolve_options<f_t>(
+    presolver, category, absolute_tolerance, relative_tolerance, time_limit);
 
   // Disable papilo logs
   presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
