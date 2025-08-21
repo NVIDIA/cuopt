@@ -877,24 +877,24 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
                sol.handle_ptr->get_stream());
   } else {
     find_unset_integer_vars(sol, unset_integer_vars);
-    sort_by_frac(sol, make_span(unset_integer_vars));
-    // round first unset_integer_vars.size() - 50, leave last 50 to be rounded by the algo
-    i_t n_to_round = std::max(unset_integer_vars.size() - 50, 0lu);
-    if (n_to_round > 0) {
-      thrust::for_each(
-        sol.handle_ptr->get_thrust_policy(),
-        unset_integer_vars.begin(),
-        unset_integer_vars.begin() + n_to_round,
-        [sol = sol.view(), seed = cuopt::seed_generator::get_seed()] __device__(i_t var_idx) {
-          raft::random::PCGenerator rng(seed, var_idx, 0);
-          sol.assignment[var_idx] = round_nearest(sol.assignment[var_idx],
-                                                  sol.problem.variable_lower_bounds[var_idx],
-                                                  sol.problem.variable_upper_bounds[var_idx],
-                                                  sol.problem.tolerances.integrality_tolerance,
-                                                  rng);
-        });
-      find_unset_integer_vars(sol, unset_integer_vars);
-    }
+    // sort_by_frac(sol, make_span(unset_integer_vars));
+    // // round first unset_integer_vars.size() - 50, leave last 50 to be rounded by the algo
+    // i_t n_to_round = std::max(unset_integer_vars.size() - 50, 0lu);
+    // if (n_to_round > 0) {
+    //   thrust::for_each(
+    //     sol.handle_ptr->get_thrust_policy(),
+    //     unset_integer_vars.begin(),
+    //     unset_integer_vars.begin() + n_to_round,
+    //     [sol = sol.view(), seed = cuopt::seed_generator::get_seed()] __device__(i_t var_idx) {
+    //       raft::random::PCGenerator rng(seed, var_idx, 0);
+    //       sol.assignment[var_idx] = round_nearest(sol.assignment[var_idx],
+    //                                               sol.problem.variable_lower_bounds[var_idx],
+    //                                               sol.problem.variable_upper_bounds[var_idx],
+    //                                               sol.problem.tolerances.integrality_tolerance,
+    //                                               rng);
+    //     });
+    //   find_unset_integer_vars(sol, unset_integer_vars);
+    // }
     // set_bounds_on_fixed_vars(sol);
   }
 
