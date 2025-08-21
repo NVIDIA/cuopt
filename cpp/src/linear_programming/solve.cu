@@ -604,6 +604,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
         presolver->apply(op_problem,
                          cuopt::linear_programming::problem_category_t::LP,
                          settings.tolerances.absolute_primal_tolerance,
+                         settings.tolerances.relative_primal_tolerance,
                          presolve_time_limit);
       if (!feasible) {
         return optimization_problem_solution_t<i_t, f_t>(

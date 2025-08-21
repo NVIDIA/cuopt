@@ -205,7 +205,9 @@ class fj_t {
   void set_fj_settings(fj_settings_t settings_);
   void reset_weights(const rmm::cuda_stream_view& stream, f_t weight = 10.);
   void randomize_weights(const raft::handle_t* handle_ptr);
-  void copy_weights(const weight_t<i_t, f_t>& weights, const raft::handle_t* handle_ptr);
+  void copy_weights(const weight_t<i_t, f_t>& weights,
+                    const raft::handle_t* handle_ptr,
+                    std::optional<i_t> new_size = std::nullopt);
   i_t host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx = 0);
   void run_step_device(i_t climber_idx = 0, bool use_graph = true);
   void run_step_device(const rmm::cuda_stream_view& stream,
