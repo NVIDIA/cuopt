@@ -261,7 +261,7 @@ bool feasibility_pump_t<i_t, f_t>::round(solution_t<i_t, f_t>& solution)
   bool result;
   CUOPT_LOG_DEBUG("Rounding the point");
   timer_t bounds_prop_timer(std::min(0.5, timer.remaining_time()));
-  const f_t lp_run_time_after_feasible     = std::min(0.3, timer.remaining_time() / 20.);
+  const f_t lp_run_time_after_feasible     = 0.;
   bool old_var                             = constraint_prop.round_all_vars;
   f_t old_time                             = constraint_prop.max_time_for_bounds_prop;
   constraint_prop.round_all_vars           = false;
