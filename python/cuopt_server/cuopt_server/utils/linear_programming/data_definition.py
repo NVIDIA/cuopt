@@ -15,6 +15,7 @@
 
 import copy
 import json
+import cuopt
 from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import jsonref
@@ -853,7 +854,7 @@ lp_zlib_example_data = 'x\x01\x8dR\xd1j\xc4 \x10|\xcfW\x88\xcf%$\xd7\x94\xd2\xfe
 managed_lp_example_data = {
     "action": "cuOpt_LP",
     "data": lp_example_data,
-    "client_version": "25.10",
+    "client_version": ".".join(cuopt.__version__.split(".")[:2]),
 }
 
 # cut and pasted from actual run of LP example data.
