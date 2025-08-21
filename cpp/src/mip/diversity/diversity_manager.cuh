@@ -46,6 +46,7 @@ class diversity_manager_t {
   // generates initial solutions
   void generate_initial_solutions();
   void run_fj_alone(solution_t<i_t, f_t>& solution);
+  void run_fp_alone(solution_t<i_t, f_t>& solution);
   // main loop of diversity improvements
   void main_loop();
   // randomly chooses a recombiner and returns the offspring
