@@ -97,6 +97,13 @@ repos:
           (?x)^(
             ^cpp/tests/utilities/cxxopts.hpp
           )
+  - repo: local
+    hooks:
+      - id: update-versions
+        name: Update versions1.json
+        entry: python ci/utils/update_doc_versions.py
+        language: system
+        files: docs/cuopt/source/versions1.json
 
 
 default_language_version:

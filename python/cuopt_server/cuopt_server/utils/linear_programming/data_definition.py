@@ -15,13 +15,14 @@
 
 import copy
 import json
-import cuopt
 from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import jsonref
 import numpy as np
 from pydantic import BaseModel, Extra, Field, PlainValidator
 from typing_extensions import Annotated
+
+import cuopt
 
 # INPUT DATA DEFINITIONS
 

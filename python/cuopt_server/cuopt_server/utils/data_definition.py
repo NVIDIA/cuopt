@@ -343,7 +343,12 @@ HealthResponse = {
             "application/json": {
                 "examples": {
                     "Healthy response": {
-                        "value": {"status": "RUNNING", "version": ".".join(cuopt.__version__.split(".")[:2])}
+                        "value": {
+                            "status": "RUNNING",
+                            "version": ".".join(
+                                cuopt.__version__.split(".")[:2]
+                            ),
+                        }
                     }
                 }
             }

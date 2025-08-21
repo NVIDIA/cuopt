@@ -15,12 +15,13 @@
 
 import copy
 import json
-import cuopt
 from enum import Enum
 from typing import Dict, List, Optional, Union
 
 import jsonref
 from pydantic import BaseModel, Extra, Field, RootModel, root_validator
+
+import cuopt
 
 
 class LocationTypeEnum(str, Enum):
