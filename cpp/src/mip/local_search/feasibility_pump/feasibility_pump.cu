@@ -260,16 +260,16 @@ bool feasibility_pump_t<i_t, f_t>::round(solution_t<i_t, f_t>& solution)
 {
   bool result;
   CUOPT_LOG_DEBUG("Rounding the point");
-  // timer_t bounds_prop_timer(std::min(0.5, timer.remaining_time()));
-  // const f_t lp_run_time_after_feasible     = 0.;
-  // bool old_var                             = constraint_prop.round_all_vars;
-  // f_t old_time                             = constraint_prop.max_time_for_bounds_prop;
-  // constraint_prop.round_all_vars           = false;
-  // constraint_prop.max_time_for_bounds_prop = 0.7;
-  // result = constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
-  // constraint_prop.round_all_vars           = old_var;
-  // constraint_prop.max_time_for_bounds_prop = old_time;
-  result = solution.round_nearest();
+  timer_t bounds_prop_timer(std::min(0.5, timer.remaining_time()));
+  const f_t lp_run_time_after_feasible     = 0.;
+  bool old_var                             = constraint_prop.round_all_vars;
+  f_t old_time                             = constraint_prop.max_time_for_bounds_prop;
+  constraint_prop.round_all_vars           = false;
+  constraint_prop.max_time_for_bounds_prop = 0.7;
+  result = constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
+  constraint_prop.round_all_vars           = old_var;
+  constraint_prop.max_time_for_bounds_prop = old_time;
+  // result = solution.round_nearest();
   cuopt_func_call(solution.test_variable_bounds(true));
   // copy the last rounding
   raft::copy(last_rounding.data(),
