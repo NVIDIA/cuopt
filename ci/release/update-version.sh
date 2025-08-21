@@ -64,9 +64,9 @@ for DEP in "${DEPENDENCIES[@]}"; do
     sed_runner "/\"${DEP}==/ s/==.*\"/==${NEXT_SHORT_TAG_PEP440}.*,>=0.0.0a0\"/g" "${FILE}"
   done
   for FILE in docs/cuopt/source/*/quick-start.rst README.md; do
-    sed_runner "s/\(${DEP}==\)[0-9]\+\.[0-9]\+\.\\*/\1${NEXT_SHORT_TAG_PEP440}.\*/g" "${FILE}"
-    sed_runner "s/\(${DEP}=\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?[^ ]*/\1${NEXT_SHORT_TAG}.*/g" "${FILE}"
-    sed_runner "s/\(${DEP}:\)[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda[0-9]\+\.[0-9]\+-\)\(py[0-9]\+\)/\1${DOCKER_TAG}\2\3/g" "${FILE}"
+    sed_runner "/${DEP}\(-cu[[:digit:]]\{2\}\)\{0,1\}==/ s/==[0-9]\+\.[0-9]\+\.\*/==${NEXT_SHORT_TAG_PEP440}.\*/g" "${FILE}"
+    sed_runner "/${DEP}=/ s/=[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?[^ ]*/=${NEXT_SHORT_TAG}.*/g" "${FILE}"
+    sed_runner "/${DEP}:/ s/:[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda[0-9]\+\.[0-9]\+-\)\(py[0-9]\+\)/:${DOCKER_TAG}\1\2/g" "${FILE}"
   done
 done
 
