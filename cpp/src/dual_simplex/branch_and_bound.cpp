@@ -484,6 +484,30 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions(
 }
 
 template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::branch(mip_node_t<i_t, f_t>* parent_node,
+                                          i_t branch_var,
+                                          f_t branch_var_val,
+                                          std::vector<variable_status_t>& parent_vstatus,
+                                          stats_t& stats)
+{
+  // down child
+  std::unique_ptr<mip_node_t<i_t, f_t>> down_child = std::make_unique<mip_node_t<i_t, f_t>>(
+    original_lp, parent_node, ++stats.num_nodes, branch_var, 0, branch_var_val, parent_vstatus);
+
+  graphviz_edge(settings, parent_node, down_child.get(), branch_var, 0, std::floor(branch_var_val));
+
+  // up child
+  std::unique_ptr<mip_node_t<i_t, f_t>> up_child = std::make_unique<mip_node_t<i_t, f_t>>(
+    original_lp, parent_node, ++stats.num_nodes, branch_var, 1, branch_var_val, parent_vstatus);
+
+  graphviz_edge(settings, parent_node, up_child.get(), branch_var, 1, std::ceil(branch_var_val));
+
+  assert(parent_vstatus.size() == original_lp.num_cols);
+  parent_node->add_children(std::move(down_child),
+                            std::move(up_child));  // child pointers moved into the tree
+}
+
+template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::best_first_solve(stats_t& stats,
                                                     f_t root_objective,
                                                     i_t branch_var,
@@ -509,23 +533,9 @@ void branch_and_bound_t<i_t, f_t>::best_first_solve(stats_t& stats,
   mip_node_t<i_t, f_t> root_node(root_objective, root_vstatus);
   graphviz_node(settings, &root_node, "lower bound", stats.lower_bound);
 
-  // down child
-  std::unique_ptr<mip_node_t<i_t, f_t>> down_child = std::make_unique<mip_node_t<i_t, f_t>>(
-    original_lp, &root_node, ++stats.num_nodes, branch_var, 0, branch_var_val, root_vstatus);
-
-  graphviz_edge(settings, &root_node, down_child.get(), branch_var, 0, std::floor(branch_var_val));
-
-  // up child
-  std::unique_ptr<mip_node_t<i_t, f_t>> up_child = std::make_unique<mip_node_t<i_t, f_t>>(
-    original_lp, &root_node, ++stats.num_nodes, branch_var, 1, branch_var_val, root_vstatus);
-
-  graphviz_edge(settings, &root_node, up_child.get(), branch_var, 0, std::ceil(branch_var_val));
-
-  assert(root_vstatus.size() == original_lp.num_cols);
-  heap.push(down_child.get());  // the heap does not own the unique_ptr the tree does
-  heap.push(up_child.get());    // the heap does not own the unqiue_ptr the tree does
-  root_node.add_children(std::move(down_child),
-                         std::move(up_child));  // child pointers moved into the tree
+  branch(&root_node, branch_var, branch_var_val, root_vstatus, stats);
+  heap.push(root_node.get_down_child());  // the heap does not own the unique_ptr the tree does
+  heap.push(root_node.get_up_child()); // the heap does not own the unqiue_ptr the tree does
 
   // Make a copy of the original LP. We will modify its bounds at each leaf
   lp_problem_t leaf_problem = original_lp;
@@ -669,56 +679,28 @@ void branch_and_bound_t<i_t, f_t>::best_first_solve(stats_t& stats,
             toc(start_time));
           send_solution = true;
         }
-        global_variables::mutex_upper.unlock();
+
         if (send_solution && settings.solution_callback != nullptr) {
           std::vector<f_t> original_x;
           uncrush_primal_solution(original_problem, original_lp, incumbent.x, original_x);
           settings.solution_callback(original_x, upper_bound);
         }
+
+        global_variables::mutex_upper.unlock();
+
         graphviz_node(settings, node_ptr, "integer feasible", leaf_objective);
         std::vector<mip_node_t<i_t, f_t>*> stack;
         node_ptr->set_status(node_status_t::INTEGER_FEASIBLE, stack);
         remove_fathomed_nodes(stack);
       } else if (leaf_objective <= upper_bound + fathom_tol) {
         // Choose fractional variable to branch on
-        const i_t branch_var = pc.variable_selection(
-          fractional, leaf_solution.x, leaf_problem.lower, leaf_problem.upper, log);
+        const i_t branch_var = pc.variable_selection(fractional, leaf_solution.x, leaf_problem.lower, leaf_problem.upper, log);
         assert(leaf_vstatus.size() == leaf_problem.num_cols);
 
-        // down child
-        std::unique_ptr<mip_node_t<i_t, f_t>> down_child =
-          std::make_unique<mip_node_t<i_t, f_t>>(original_lp,
-                                                 node_ptr,
-                                                 ++stats.num_nodes,
-                                                 branch_var,
-                                                 0,
-                                                 leaf_solution.x[branch_var],
-                                                 leaf_vstatus);
-        graphviz_edge(settings,
-                      node_ptr,
-                      down_child.get(),
-                      branch_var,
-                      0,
-                      std::floor(leaf_solution.x[branch_var]));
-        //  up child
-        std::unique_ptr<mip_node_t<i_t, f_t>> up_child =
-          std::make_unique<mip_node_t<i_t, f_t>>(original_lp,
-                                                 node_ptr,
-                                                 ++stats.num_nodes,
-                                                 branch_var,
-                                                 1,
-                                                 leaf_solution.x[branch_var],
-                                                 leaf_vstatus);
-        graphviz_edge(settings,
-                      node_ptr,
-                      up_child.get(),
-                      branch_var,
-                      0,
-                      std::ceil(leaf_solution.x[branch_var]));
-        heap.push(down_child.get());  // the heap does not own the unique_ptr the tree does
-        heap.push(up_child.get());    // the heap does not own the unique_ptr the tree does
-        node_ptr->add_children(std::move(down_child),
-                               std::move(up_child));  // child pointers moved into the tree
+        branch(node_ptr, branch_var, leaf_solution.x[branch_var], leaf_vstatus, stats);
+        heap.push(node_ptr->get_down_child());  // the heap does not own the unique_ptr the tree does
+        heap.push(node_ptr->get_up_child());    // the heap does not own the unique_ptr the tree does
+
       } else {
         graphviz_node(settings, node_ptr, "fathomed", leaf_objective);
         std::vector<mip_node_t<i_t, f_t>*> stack;
@@ -858,8 +840,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if (diving_settings.use_diving) {
     settings.log.printf("Launching the diving thread!\n");
     diving_thread = std::async(std::launch::async, [&]() {
-      return diving(
-        root_objective, edge_norms, pc, branch_var, root_relax_soln.x[branch_var], root_vstatus, incumbent);
+      return diving(root_objective,
+                    edge_norms,
+                    pc,
+                    branch_var,
+                    root_relax_soln.x[branch_var],
+                    root_vstatus,
+                    incumbent);
     });
   }
 

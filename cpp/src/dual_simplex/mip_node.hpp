@@ -99,6 +99,16 @@ class mip_node_t {
     }
   }
 
+  mip_node_t* get_down_child() const
+  {
+    return children[0].get();
+  }
+
+  mip_node_t* get_up_child() const
+  {
+    return children[1].get();
+  }
+
   void add_children(std::unique_ptr<mip_node_t>&& down_child,
                     std::unique_ptr<mip_node_t>&& up_child)
   {

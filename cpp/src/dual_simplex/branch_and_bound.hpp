@@ -105,6 +105,12 @@ class branch_and_bound_t {
                         mip_solution_t<i_t, f_t>& incumbent,
                         mip_solution_t<i_t, f_t>& solution);
 
+  void branch(mip_node_t<i_t, f_t>* parent_node,
+              i_t branch_var,
+              f_t branch_var_val,
+              std::vector<variable_status_t>& parent_vstatus,
+              stats_t& stats);
+
   mip_status_t diving(f_t root_objective,
                       std::vector<f_t>& edge_norms,
                       pseudo_costs_t<i_t, f_t> pc,
