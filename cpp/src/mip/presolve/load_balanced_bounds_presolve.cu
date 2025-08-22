@@ -245,6 +245,7 @@ void load_balanced_bounds_presolve_t<i_t, f_t>::setup(
                                                            heavy_degree_cutoff,
                                                            problem.cnst_bin_offsets,
                                                            problem.offsets);
+  RAFT_CHECK_CUDA(stream_heavy_cnst);
 
   num_blocks_heavy_vars = create_heavy_item_block_segments(stream_heavy_vars,
                                                            heavy_vars_vertex_ids,
@@ -253,49 +254,33 @@ void load_balanced_bounds_presolve_t<i_t, f_t>::setup(
                                                            heavy_degree_cutoff,
                                                            problem.vars_bin_offsets,
                                                            problem.reverse_offsets);
+  RAFT_CHECK_CUDA(stream_heavy_vars);
 
   tmp_act.resize(2 * num_blocks_heavy_cnst, stream_heavy_cnst);
   tmp_bnd.resize(2 * num_blocks_heavy_vars, stream_heavy_vars);
 
-  std::tie(is_cnst_sub_warp_single_bin, cnst_sub_warp_count) = sub_warp_meta(
-    streams.get_stream(), warp_cnst_offsets, warp_cnst_id_offsets, pb->cnst_bin_offsets, 4);
+  std::tie(is_cnst_sub_warp_single_bin, cnst_sub_warp_count) =
+    sub_warp_meta(stream, warp_cnst_offsets, warp_cnst_id_offsets, pb->cnst_bin_offsets, 4);
 
-  std::tie(is_vars_sub_warp_single_bin, vars_sub_warp_count) = sub_warp_meta(
-    streams.get_stream(), warp_vars_offsets, warp_vars_id_offsets, pb->vars_bin_offsets, 4);
+  std::tie(is_vars_sub_warp_single_bin, vars_sub_warp_count) =
+    sub_warp_meta(stream, warp_vars_offsets, warp_vars_id_offsets, pb->vars_bin_offsets, 4);
 
-  stream.synchronize();
-  streams.sync_all_issued();
+  RAFT_CHECK_CUDA(stream);
+  streams.sync_test_all_issued();
 
   if (!calc_slack_erase_inf_cnst_graph_created) {
-    bool erase_inf_cnst                     = true;
-    calc_slack_erase_inf_cnst_graph_created = build_graph(
-      streams,
-      handle_ptr,
-      calc_slack_erase_inf_cnst_graph,
-      calc_slack_erase_inf_cnst_exec,
-      [erase_inf_cnst, this]() { this->calculate_activity_graph(erase_inf_cnst, true); },
-      [erase_inf_cnst, this]() { this->calculate_activity_graph(erase_inf_cnst); });
+    create_constraint_slack_graph(true);
+    calc_slack_erase_inf_cnst_graph_created = true;
   }
 
   if (!calc_slack_graph_created) {
-    bool erase_inf_cnst      = false;
-    calc_slack_graph_created = build_graph(
-      streams,
-      handle_ptr,
-      calc_slack_graph,
-      calc_slack_exec,
-      [erase_inf_cnst, this]() { this->calculate_activity_graph(erase_inf_cnst, true); },
-      [erase_inf_cnst, this]() { this->calculate_activity_graph(erase_inf_cnst); });
+    create_constraint_slack_graph(false);
+    calc_slack_graph_created = true;
   }
 
   if (!upd_bnd_graph_created) {
-    upd_bnd_graph_created = build_graph(
-      streams,
-      handle_ptr,
-      upd_bnd_graph,
-      upd_bnd_exec,
-      [this]() { this->calculate_bounds_update_graph(true); },
-      [this]() { this->calculate_bounds_update_graph(); });
+    create_bounds_update_graph();
+    upd_bnd_graph_created = true;
   }
 }
 
@@ -369,6 +354,116 @@ void load_balanced_bounds_presolve_t<i_t, f_t>::calculate_activity_graph(bool er
 }
 
 template <typename i_t, typename f_t>
+void load_balanced_bounds_presolve_t<i_t, f_t>::create_bounds_update_graph()
+{
+  using f_t2 = typename type_2<f_t>::type;
+  cudaGraph_t upd_graph;
+  cudaGraphCreate(&upd_graph, 0);
+  cudaGraphNode_t bounds_changed_node;
+  {
+    i_t* bounds_changed_ptr = bounds_changed.data();
+
+    cudaMemcpy3DParms memcpyParams = {0};
+    memcpyParams.srcArray          = NULL;
+    memcpyParams.srcPos            = make_cudaPos(0, 0, 0);
+    memcpyParams.srcPtr            = make_cudaPitchedPtr(bounds_changed_ptr, sizeof(i_t), 1, 1);
+    memcpyParams.dstArray          = NULL;
+    memcpyParams.dstPos            = make_cudaPos(0, 0, 0);
+    memcpyParams.dstPtr            = make_cudaPitchedPtr(&h_bounds_changed, sizeof(i_t), 1, 1);
+    memcpyParams.extent            = make_cudaExtent(sizeof(i_t), 1, 1);
+    memcpyParams.kind              = cudaMemcpyDeviceToHost;
+    cudaGraphAddMemcpyNode(&bounds_changed_node, upd_graph, NULL, 0, &memcpyParams);
+  }
+
+  auto bounds_update_view = get_bounds_update_view(*pb);
+
+  create_update_bounds_heavy_vars<i_t, f_t, f_t2, 640>(upd_graph,
+                                                       bounds_changed_node,
+                                                       bounds_update_view,
+                                                       make_span_2(tmp_bnd),
+                                                       heavy_vars_vertex_ids,
+                                                       heavy_vars_pseudo_block_ids,
+                                                       heavy_vars_block_segments,
+                                                       pb->vars_bin_offsets,
+                                                       heavy_degree_cutoff,
+                                                       num_blocks_heavy_vars);
+  RAFT_CUDA_TRY(cudaGetLastError());
+  create_update_bounds_per_block<i_t, f_t, f_t2>(
+    upd_graph, bounds_changed_node, bounds_update_view, pb->vars_bin_offsets, heavy_degree_cutoff);
+  RAFT_CUDA_TRY(cudaGetLastError());
+  create_update_bounds_sub_warp<i_t, f_t, f_t2>(upd_graph,
+                                                bounds_changed_node,
+                                                bounds_update_view,
+                                                is_vars_sub_warp_single_bin,
+                                                vars_sub_warp_count,
+                                                warp_vars_offsets,
+                                                warp_vars_id_offsets,
+                                                pb->vars_bin_offsets);
+  RAFT_CUDA_TRY(cudaGetLastError());
+  cudaGraphInstantiate(&upd_bnd_exec, upd_graph, NULL, NULL, 0);
+  RAFT_CUDA_TRY(cudaGetLastError());
+}
+
+template <typename i_t, typename f_t>
+void load_balanced_bounds_presolve_t<i_t, f_t>::create_constraint_slack_graph(bool erase_inf_cnst)
+{
+  using f_t2 = typename type_2<f_t>::type;
+  cudaGraph_t cnst_slack_graph;
+  cudaGraphCreate(&cnst_slack_graph, 0);
+
+  cudaGraphNode_t set_bounds_changed_node;
+  {
+    // TODO : Investigate why memset node is not captured manually
+    i_t* bounds_changed_ptr = bounds_changed.data();
+
+    cudaMemcpy3DParms memcpyParams = {0};
+    memcpyParams.srcArray          = NULL;
+    memcpyParams.srcPos            = make_cudaPos(0, 0, 0);
+    memcpyParams.srcPtr            = make_cudaPitchedPtr(&h_bounds_changed, sizeof(i_t), 1, 1);
+    memcpyParams.dstArray          = NULL;
+    memcpyParams.dstPos            = make_cudaPos(0, 0, 0);
+    memcpyParams.dstPtr            = make_cudaPitchedPtr(bounds_changed_ptr, sizeof(i_t), 1, 1);
+    memcpyParams.extent            = make_cudaExtent(sizeof(i_t), 1, 1);
+    memcpyParams.kind              = cudaMemcpyHostToDevice;
+    cudaGraphAddMemcpyNode(&set_bounds_changed_node, cnst_slack_graph, NULL, 0, &memcpyParams);
+  }
+
+  auto activity_view = get_activity_view(*pb);
+
+  create_activity_heavy_cnst<i_t, f_t, f_t2, 512>(cnst_slack_graph,
+                                                  set_bounds_changed_node,
+                                                  activity_view,
+                                                  make_span_2(tmp_act),
+                                                  heavy_cnst_vertex_ids,
+                                                  heavy_cnst_pseudo_block_ids,
+                                                  heavy_cnst_block_segments,
+                                                  pb->cnst_bin_offsets,
+                                                  heavy_degree_cutoff,
+                                                  num_blocks_heavy_cnst,
+                                                  erase_inf_cnst);
+  create_activity_per_block<i_t, f_t, f_t2>(cnst_slack_graph,
+                                            set_bounds_changed_node,
+                                            activity_view,
+                                            pb->cnst_bin_offsets,
+                                            heavy_degree_cutoff,
+                                            erase_inf_cnst);
+  create_activity_sub_warp<i_t, f_t, f_t2>(cnst_slack_graph,
+                                           set_bounds_changed_node,
+                                           activity_view,
+                                           is_cnst_sub_warp_single_bin,
+                                           cnst_sub_warp_count,
+                                           warp_cnst_offsets,
+                                           warp_cnst_id_offsets,
+                                           pb->cnst_bin_offsets,
+                                           erase_inf_cnst);
+  if (erase_inf_cnst) {
+    cudaGraphInstantiate(&calc_slack_erase_inf_cnst_exec, cnst_slack_graph, NULL, NULL, 0);
+  } else {
+    cudaGraphInstantiate(&calc_slack_exec, cnst_slack_graph, NULL, NULL, 0);
+  }
+}
+
+template <typename i_t, typename f_t>
 void load_balanced_bounds_presolve_t<i_t, f_t>::calculate_bounds_update_graph(bool dry_run)
 {
   using f_t2 = typename type_2<f_t>::type;
@@ -401,12 +496,13 @@ template <typename i_t, typename f_t>
 void load_balanced_bounds_presolve_t<i_t, f_t>::calculate_constraint_slack_iter(
   const raft::handle_t* handle_ptr)
 {
+  // h_bounds_changed is copied to bounds_changed in calc_slack_exec
+  h_bounds_changed = 0;
   {
     // writes nans to constraint activities that are infeasible
     //-> less expensive checks for update bounds step
     raft::common::nvtx::range scope("act_cuda_task_graph");
     cudaGraphLaunch(calc_slack_erase_inf_cnst_exec, handle_ptr->get_stream());
-    handle_ptr->sync_stream();
   }
   infeas_cnst_slack_set_to_nan = true;
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
@@ -416,6 +512,8 @@ template <typename i_t, typename f_t>
 void load_balanced_bounds_presolve_t<i_t, f_t>::calculate_constraint_slack(
   const raft::handle_t* handle_ptr)
 {
+  // h_bounds_changed is copied to bounds_changed in calc_slack_exec
+  h_bounds_changed = 0;
   {
     raft::common::nvtx::range scope("act_cuda_task_graph");
     cudaGraphLaunch(calc_slack_exec, handle_ptr->get_stream());
@@ -428,13 +526,10 @@ template <typename i_t, typename f_t>
 bool load_balanced_bounds_presolve_t<i_t, f_t>::update_bounds_from_slack(
   const raft::handle_t* handle_ptr)
 {
-  i_t h_bounds_changed;
-  bounds_changed.set_value_to_zero_async(handle_ptr->get_stream());
-
+  // bounds_changed is copied to h_bounds_changed in upd_bnd_exec
   {
     raft::common::nvtx::range scope("upd_cuda_task_graph");
     cudaGraphLaunch(upd_bnd_exec, handle_ptr->get_stream());
-    h_bounds_changed = bounds_changed.value(handle_ptr->get_stream());
   }
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
   constexpr i_t zero = 0;

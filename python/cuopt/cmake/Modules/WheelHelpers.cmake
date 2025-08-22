@@ -59,4 +59,3 @@ function(install_aliased_imported_targets)
     endif()
   endforeach()
 endfunction()
-

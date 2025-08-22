@@ -44,4 +44,3 @@ Please refer to following links for more information on API and examples:
    :titlesonly:
 
    CSP-Guides<csp-guides/index.rst>
-

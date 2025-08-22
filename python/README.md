@@ -34,9 +34,3 @@ python/
 ```
 
 - The dependencies are defined in the [dependencies.yaml](../dependencies.yaml) file in the root folder. For example, the `python/cuopt/pyproject.toml` file contains the dependencies for the `cuopt` Python package. Therefore, any changes to dependencies should be done in the [dependencies.yaml](../dependencies.yaml) file. Please refer to different sections in the [dependencies.yaml](../dependencies.yaml) file for more details.
-
-
-
-
-
-

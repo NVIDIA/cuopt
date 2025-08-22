@@ -288,7 +288,7 @@ bool feasibility_pump_t<i_t, f_t>::run_fj_cycle_escape(solution_t<i_t, f_t>& sol
   bool is_feasible;
   fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
   fj.settings.update_weights         = true;
-  fj.settings.feasibility_run        = true;
+  fj.settings.feasibility_run        = false;
   fj.settings.n_of_minimums_for_exit = 5000;
   fj.settings.time_limit             = std::min(3., timer.remaining_time());
   is_feasible                        = fj.solve(solution);
@@ -344,9 +344,10 @@ bool feasibility_pump_t<i_t, f_t>::handle_cycle(solution_t<i_t, f_t>& solution)
   cuopt_assert(solution.test_number_all_integer(), "All must be integers before fj");
   is_feasible = run_fj_cycle_escape(solution);
   cuopt_assert(solution.test_number_all_integer(), "All must be integers after fj");
-  if (!is_feasible && cycle_queue.check_cycle(solution)) {
+  if (cycle_queue.check_cycle(solution)) {
     CUOPT_LOG_DEBUG("Cycle couldn't be broken. Perturbating FP");
     perturbate(solution);
+    is_feasible = solution.get_feasible();
   }
   cycle_queue.n_iterations_without_cycle = 0;
   cycle_queue.update_recent_solutions(solution);
@@ -381,7 +382,6 @@ void feasibility_pump_t<i_t, f_t>::reset()
   total_fp_time_until_cycle = 0;
   fp_fj_cycle_time_begin    = timer.remaining_time();
   max_n_of_integers         = 0;
-  run_intensive_restart     = false;
   config.alpha              = default_alpha;
   last_distances.resize(0);
 }

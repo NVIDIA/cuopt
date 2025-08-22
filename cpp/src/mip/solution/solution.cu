@@ -542,8 +542,12 @@ template <typename i_t, typename f_t>
 f_t solution_t<i_t, f_t>::compute_max_variable_violation()
 {
   const auto num_variables = view().assignment.size();
-  assert(problem_ptr->variable_lower_bounds.size() >= num_variables);
-  assert(problem_ptr->variable_upper_bounds.size() >= num_variables);
+
+  cuopt_assert(problem_ptr->n_variables == assignment.size(), "Size mismatch");
+  cuopt_assert(problem_ptr->n_variables == problem_ptr->variable_lower_bounds.size(),
+               "Size mismatch");
+  cuopt_assert(problem_ptr->n_variables == problem_ptr->variable_upper_bounds.size(),
+               "Size mismatch");
   return thrust::transform_reduce(
     handle_ptr->get_thrust_policy(),
     thrust::make_counting_iterator(0),
@@ -560,7 +564,8 @@ f_t solution_t<i_t, f_t>::compute_max_variable_violation()
 // returns the solution after applying the conversions
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible,
-                                                            solver_stats_t<i_t, f_t> stats)
+                                                            solver_stats_t<i_t, f_t> stats,
+                                                            bool log_stats)
 {
   cuopt::default_logger().flush();
   cuopt_expects(
@@ -579,22 +584,23 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
     i_t num_nodes                    = stats.num_nodes;
     i_t num_simplex_iterations       = stats.num_simplex_iterations;
     handle_ptr->sync_stream();
-    CUOPT_LOG_INFO(
-      "Solution objective: %f , relative_mip_gap %f solution_bound %f presolve_time %f "
-      "total_solve_time %f "
-      "max constraint violation %f max int violation %f max var bounds violation %f "
-      "nodes %d simplex_iterations %d",
-      h_user_obj,
-      rel_mip_gap,
-      solution_bound,
-      presolve_time,
-      total_solve_time,
-      max_constraint_violation,
-      max_int_violation,
-      max_variable_bound_violation,
-      num_nodes,
-      num_simplex_iterations);
-
+    if (log_stats) {
+      CUOPT_LOG_INFO(
+        "Solution objective: %f , relative_mip_gap %f solution_bound %f presolve_time %f "
+        "total_solve_time %f "
+        "max constraint violation %f max int violation %f max var bounds violation %f "
+        "nodes %d simplex_iterations %d",
+        h_user_obj,
+        rel_mip_gap,
+        solution_bound,
+        presolve_time,
+        total_solve_time,
+        max_constraint_violation,
+        max_int_violation,
+        max_variable_bound_violation,
+        num_nodes,
+        num_simplex_iterations);
+    }
     const bool not_optimal = rel_mip_gap > problem_ptr->tolerances.relative_mip_gap &&
                              abs_mip_gap > problem_ptr->tolerances.absolute_mip_gap;
     auto term_reason =

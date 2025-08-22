@@ -201,12 +201,12 @@ int run_single_file(std::string file_path,
     }
   }
 
-  settings.time_limit      = time_limit;
-  settings.heuristics_only = heuristics_only;
-  settings.num_cpu_threads = num_cpu_threads;
-  settings.log_to_console  = log_to_console;
-  // settings.tolerances.relative_tolerance = 1e-10;
-  // settings.tolerances.absolute_tolerance = 1e-6;
+  settings.time_limit                    = time_limit;
+  settings.heuristics_only               = heuristics_only;
+  settings.num_cpu_threads               = num_cpu_threads;
+  settings.log_to_console                = log_to_console;
+  settings.tolerances.relative_tolerance = 1e-12;
+  settings.tolerances.absolute_tolerance = 1e-6;
   cuopt::linear_programming::benchmark_info_t benchmark_info;
   settings.benchmark_info_ptr = &benchmark_info;
   auto start_run_solver       = std::chrono::high_resolution_clock::now();
@@ -360,7 +360,7 @@ int main(int argc, char* argv[])
 
   std::string out_dir;
   std::string result_file;
-  int batch_num;
+  int batch_num = -1;
 
   bool heuristics_only = program.get<std::string>("--heuristics-only")[0] == 't';
   int num_cpu_threads  = program.get<int>("--num-cpu-threads");
@@ -392,8 +392,7 @@ int main(int argc, char* argv[])
     for (int i = 0; i < n_gpus; ++i) {
       gpu_queue.push(i);
     }
-    int tests_ran          = 0;
-    int n_instances_solved = 0;
+    int tests_ran = 0;
     std::vector<std::string> paths;
     if (run_selected) {
       for (const auto& instance : instances) {
@@ -421,11 +420,11 @@ int main(int argc, char* argv[])
 
     bool static_dispatch = false;
     if (static_dispatch) {
-      for (int i = 0; i < paths.size(); ++i) {
+      for (size_t i = 0; i < paths.size(); ++i) {
         // TODO implement
       }
     } else {
-      for (int i = 0; i < paths.size(); ++i) {
+      for (size_t i = 0; i < paths.size(); ++i) {
         task_queue.push(paths[i]);
       }
       while (!task_queue.empty()) {

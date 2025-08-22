@@ -16,6 +16,8 @@ The MILP solver can be accessed in the following ways:
 
 - **C API**: A native C API that provides direct low-level access to cuOpt's MILP solver, enabling integration into any application or system that can interface with C.
 
+- **Python SDK**: A Python package that provides direct access to cuOpt's MILP capabilities through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
+
 - **As a Self-Hosted Service**: cuOpt's MILP solver can be deployed in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
 Each option provide the same powerful mixed-integer linear optimization capabilities while offering flexibility in deployment and integration.
@@ -50,15 +52,23 @@ There are two ways to specify constraints in cuOpt MILP:
 
 Both forms are mathematically equivalent. The choice between them is a matter of convenience depending on your problem formulation.
 
-Incumbent Solution Callback
----------------------------
+Incumbent Solution Callback in the Service
+------------------------------------------
 
-User can provide a callback to receive new integer feasible solutions that improve the objective (called incumbents) while the solver is running. An :ref:`Incumbent Example <incumbent-and-logging-callback>` is shared on the self-hosted page.
+When using the service, users can provide a callback to receive new integer feasible solutions that improve the objective (called incumbents) while the solver is running. An :ref:`Incumbent Example <incumbent-and-logging-callback>` is shared on the self-hosted page.
 
-Logging Callback
-----------------
+Logging
+-------
 
-A logging callback allows users to get additional information about how the solve is progressing. A :ref:`Logging Callback Example <incumbent-and-logging-callback>` is shared on the self-hosted page.
+The CUOPT_LOG_FILE parameter can be set to write detailed solver logs for MILP problems. This parameter is available in all APIs that allow setting solver parameters except for the cuOpt service. For the service, see the logging callback below.
+
+Logging Callback in the Service
+-------------------------------
+
+In the cuOpt service API, the ``log_file`` value in ``solver_configs`` is ignored.
+
+If however you set the ``solver_logs`` flag on the ``/cuopt/request`` REST API call, users can fetch the log file content from the webserver at ``/cuopt/logs/{id}``. Using the logging callback feature through the cuOpt client is shown in :ref:`Logging Callback Example <incumbent-and-logging-callback>` on the self-hosted page.
+
 
 Time Limit
 --------------
