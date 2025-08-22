@@ -88,7 +88,7 @@ TEST(dual_simplex, chess_set)
   user_problem.var_types[0] = dual_simplex::variable_type_t::CONTINUOUS;
   user_problem.var_types[1] = dual_simplex::variable_type_t::CONTINUOUS;
 
-  diving_settings_t diving_settings;
+  search_settings_t search_settings;
 
   double start_time = dual_simplex::tic();
   dual_simplex::simplex_solver_settings_t<int, double> settings;
@@ -103,7 +103,7 @@ TEST(dual_simplex, chess_set)
   user_problem.var_types[0] = dual_simplex::variable_type_t::INTEGER;
   user_problem.var_types[1] = dual_simplex::variable_type_t::INTEGER;
 
-  EXPECT_EQ((dual_simplex::solve(user_problem, settings, diving_settings, solution.x)), 0);
+  EXPECT_EQ((dual_simplex::solve(user_problem, settings, search_settings, solution.x)), 0);
 }
 
 TEST(dual_simplex, burglar)
@@ -164,12 +164,12 @@ TEST(dual_simplex, burglar)
     user_problem.var_types[j] = cuopt::linear_programming::dual_simplex::variable_type_t::INTEGER;
   }
 
-  diving_settings_t diving_settings;
+  search_settings_t search_settings;
 
   cuopt::linear_programming::dual_simplex::simplex_solver_settings_t<int, double> settings;
   std::vector<double> solution(num_items);
   EXPECT_EQ((cuopt::linear_programming::dual_simplex::solve(
-              user_problem, settings, diving_settings, solution)),
+              user_problem, settings, search_settings, solution)),
             0);
   double objective = 0.0;
   for (int j = 0; j < num_items; ++j) {

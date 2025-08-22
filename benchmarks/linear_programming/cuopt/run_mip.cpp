@@ -153,7 +153,7 @@ int run_single_file(std::string file_path,
                     bool write_log_file,
                     bool log_to_console,
                     double time_limit,
-                    bool diving)
+                    cuopt::linear_programming::search_settings_t::strategy_t search_strategy)
 {
   const raft::handle_t handle_{};
   cuopt::linear_programming::mip_solver_settings_t<int, double> settings;
@@ -170,8 +170,7 @@ int run_single_file(std::string file_path,
     }
   }
 
-  settings.diving_settings.use_diving = diving;
-  
+  settings.search_settings.strategy = search_strategy;
 
   constexpr bool input_mps_strict = false;
   cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model;
@@ -259,7 +258,7 @@ void run_single_file_mp(std::string file_path,
                         bool write_log_file,
                         bool log_to_console,
                         double time_limit,
-                        bool diving)
+                        cuopt::linear_programming::search_settings_t::strategy_t search_strategy)
 {
   std::cout << "running file " << file_path << " on gpu : " << device << std::endl;
   auto memory_resource = make_async();
@@ -274,7 +273,7 @@ void run_single_file_mp(std::string file_path,
                                   write_log_file,
                                   log_to_console,
                                   time_limit,
-                                  diving);
+                                  search_strategy);
   // this is a bad design to communicate the result but better than adding complexity of IPC or
   // pipes
   exit(sol_found);
@@ -348,12 +347,12 @@ int main(int argc, char* argv[])
     .scan<'g', double>()
     .default_value(std::numeric_limits<double>::max());
 
-  program.add_argument("--diving")
-    .help("enable diving (t/f)")
-    .default_value(std::string("f"));
+  program.add_argument("--search-strategy")
+    .help("Search strategy used in B&B (bfs/bfs-diving/dfs)")
+    .default_value(std::string("bfs"));
 
   program.add_argument("--gpu")
-    .help("id of the GPU to use (default: 0)")
+    .help("id of the GPU to use when running a single test (default: 0)")
     .scan<'i', int>()
     .default_value(0);
 
@@ -379,12 +378,24 @@ int main(int argc, char* argv[])
   std::string result_file;
   int batch_num;
 
-  bool heuristics_only = program.get<std::string>("--heuristics-only")[0] == 't';
-  int num_cpu_threads  = program.get<int>("--num-cpu-threads");
-  bool write_log_file  = program.get<std::string>("--write-log-file")[0] == 't';
-  bool log_to_console  = program.get<std::string>("--log-to-console")[0] == 't';
-  bool diving = program.get<std::string>("--diving")[0] == 't';
-  int gpu_id = program.get<int>("--gpu");
+  bool heuristics_only            = program.get<std::string>("--heuristics-only")[0] == 't';
+  int num_cpu_threads             = program.get<int>("--num-cpu-threads");
+  bool write_log_file             = program.get<std::string>("--write-log-file")[0] == 't';
+  bool log_to_console             = program.get<std::string>("--log-to-console")[0] == 't';
+  std::string search_strategy_cli = program.get<std::string>("--search-strategy");
+  int gpu_id                      = program.get<int>("--gpu");
+
+  cuopt::linear_programming::search_settings_t::strategy_t search_strategy;
+  if (search_strategy_cli == "bfs") {
+    search_strategy = cuopt::linear_programming::search_settings_t::strategy_t::BEST_FIRST;
+  } else if (search_strategy_cli == "bfs-diving") {
+    search_strategy = cuopt::linear_programming::search_settings_t::strategy_t::BEST_FIRST_DIVING;
+  } else if (search_strategy_cli == "dfs") {
+    search_strategy = cuopt::linear_programming::search_settings_t::strategy_t::DEPTH_FIRST;
+  } else {
+    std::cerr << "Invalid search strategy: " << search_strategy_cli << std::endl;
+    exit(1);
+  }
 
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
@@ -471,7 +482,7 @@ int main(int argc, char* argv[])
                                write_log_file,
                                log_to_console,
                                time_limit,
-                               diving);
+                               search_strategy);
           } else if (sys_pid < 0) {
             std::cerr << "Fork failed!" << std::endl;
             exit(1);
@@ -504,7 +515,7 @@ int main(int argc, char* argv[])
                     write_log_file,
                     log_to_console,
                     time_limit,
-                    diving);
+                    search_strategy);
   }
 
   return 0;

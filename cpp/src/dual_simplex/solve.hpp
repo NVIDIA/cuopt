@@ -68,14 +68,14 @@ i_t solve_mip(const user_problem_t<i_t, f_t>& user_problem, mip_solution_t<i_t, 
 template <typename i_t, typename f_t>
 i_t solve_mip_with_guess(const user_problem_t<i_t, f_t>& problem,
                          const simplex_solver_settings_t<i_t, f_t>& settings,
-                         const diving_settings_t diving_settings,
+                         const search_settings_t search_settings,
                          const std::vector<f_t>& guess,
                          mip_solution_t<i_t, f_t>& solution);
 
 template <typename i_t, typename f_t>
 i_t solve(const user_problem_t<i_t, f_t>& user_problem,
           const simplex_solver_settings_t<i_t, f_t>& settings,
-          const diving_settings_t diving_settings,
+          const search_settings_t search_settings,
           std::vector<f_t>& primal_solution);
 
 }  // namespace cuopt::linear_programming::dual_simplex

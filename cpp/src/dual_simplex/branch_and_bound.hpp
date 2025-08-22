@@ -18,12 +18,12 @@
 #pragma once
 
 #include <dual_simplex/initial_basis.hpp>
+#include <dual_simplex/phase2.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/pseudo_costs.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
 #include <dual_simplex/types.hpp>
-#include <dual_simplex/phase2.hpp>
 
 #include <mutex>
 #include <string>
@@ -48,9 +48,21 @@ void upper_bound_callback(f_t upper_bound);
 template <typename i_t, typename f_t>
 class branch_and_bound_t {
  public:
+  struct stats_t {
+    f_t lower_bound         = 0.0;
+    f_t upper_bound         = inf;
+    f_t gap                 = 0.0;
+    f_t total_lp_solve_time = 0.0;
+    i_t nodes_explored      = 0;
+    i_t unexplored_nodes    = 0;
+    f_t total_lp_iters      = 0;
+    i_t num_nodes           = 0;
+    mip_status_t status     = mip_status_t::UNSET;
+  };
+
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-                     const diving_settings_t strategy);
+                     const search_settings_t strategy);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess = user_guess; }
@@ -70,7 +82,7 @@ class branch_and_bound_t {
  private:
   const user_problem_t<i_t, f_t>& original_problem;
   const simplex_solver_settings_t<i_t, f_t> settings;
-  diving_settings_t diving_settings;
+  search_settings_t search_settings;
 
   f_t start_time;
   std::vector<f_t> guess;
@@ -78,18 +90,6 @@ class branch_and_bound_t {
   lp_problem_t<i_t, f_t> original_lp;
   std::vector<i_t> new_slacks;
   std::vector<variable_type_t> var_types;
-
-  struct stats_t {
-    f_t lower_bound         = 0.0;
-    f_t upper_bound         = inf;
-    f_t gap                 = 0.0;
-    f_t total_lp_solve_time = 0.0;
-    i_t nodes_explored      = 0;
-    i_t unexplored_nodes    = 0;
-    f_t total_lp_iters      = 0;
-    i_t num_nodes           = 0;
-    mip_status_t status     = mip_status_t::UNSET;
-  };
 
   void repair_heuristic_solutions(const std::vector<variable_status_t>& root_vstatus,
                                   const std::vector<f_t>& edge_norms,
@@ -103,9 +103,20 @@ class branch_and_bound_t {
                         f_t branch_var_val,
                         std::vector<variable_status_t>& root_vstatus,
                         std::vector<f_t>& edge_norms,
-                        pseudo_costs_t<i_t, f_t>& pc,
+                        pseudo_costs_t<i_t, f_t> pc,
                         mip_solution_t<i_t, f_t>& incumbent,
                         mip_solution_t<i_t, f_t>& solution);
+
+  void depth_first_solve(stats_t& stats,
+                         f_t root_objective,
+                         i_t branch_var,
+                         f_t branch_var_val,
+                         std::vector<variable_status_t>& root_vstatus,
+                         std::vector<f_t>& edge_norms,
+                         pseudo_costs_t<i_t, f_t> pc,
+                         mip_solution_t<i_t, f_t>& incumbent,
+                         mip_solution_t<i_t, f_t>& solution,
+                         bool enable_reporting);
 
   void branch(mip_node_t<i_t, f_t>* parent_node,
               i_t branch_var,
@@ -132,14 +143,6 @@ class branch_and_bound_t {
                                lp_solution_t<i_t, f_t>& leaf_solution,
                                std::vector<f_t>& edge_norms,
                                stats_t& stats);
-
-  mip_status_t diving(f_t root_objective,
-                      std::vector<f_t>& edge_norms,
-                      pseudo_costs_t<i_t, f_t> pc,
-                      i_t branch_var,
-                      f_t branch_var_val,
-                      const std::vector<variable_status_t>& root_vstatus,
-                      mip_solution_t<i_t, f_t>& incumbent);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
