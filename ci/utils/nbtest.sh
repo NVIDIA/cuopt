@@ -50,7 +50,7 @@ get_ipython().run_cell_magic=my_run_cell_magic
 NO_COLORS=--colors=NoColor
 EXITCODE=0
 
-# PWD is REPO_ROOT/notebooks
+# PWD is REPO_ROOT/cuopt-examples
 NBTMPDIR="${PWD}/../tmp"
 mkdir -p "${NBTMPDIR}"
 NBUTILS="${PWD}/external"
