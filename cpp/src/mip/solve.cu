@@ -155,8 +155,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                    mip_solver_settings_t<i_t, f_t> const& settings)
 {
   try {
-    const f_t time_limit =
-      settings.time_limit == 0 ? std::numeric_limits<f_t>::max() : settings.time_limit;
+    constexpr f_t max_time_limit = 1000000000;
+    const f_t time_limit         = settings.time_limit == 0 ? max_time_limit : settings.time_limit;
     if (settings.heuristics_only && time_limit == std::numeric_limits<f_t>::max()) {
       CUOPT_LOG_ERROR("Time limit cannot be infinity when heuristics only is set");
       cuopt_expects(false,
@@ -183,7 +183,6 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     detail::problem_t<i_t, f_t> problem(op_problem, settings.get_tolerances());
 
     auto run_presolve = settings.presolve;
-    run_presolve      = run_presolve && op_problem.get_sense() == false;
     run_presolve      = run_presolve && settings.get_mip_callbacks().empty();
 
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }

@@ -239,13 +239,31 @@ void fj_t<i_t, f_t>::populate_climber_views()
 
 template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::copy_weights(const weight_t<i_t, f_t>& weights,
-                                  const raft::handle_t* handle_ptr)
+                                  const raft::handle_t* handle_ptr,
+                                  std::optional<i_t> new_size)
 {
-  cuopt_assert(cstr_weights.size() == weights.cstr_weights.size(), "Size mismatch");
-  raft::copy(cstr_weights.data(),
-             weights.cstr_weights.data(),
-             weights.cstr_weights.size(),
-             handle_ptr->get_stream());
+  i_t old_size = weights.cstr_weights.size();
+  cstr_weights.resize(new_size.value_or(weights.cstr_weights.size()), handle_ptr->get_stream());
+  cstr_left_weights.resize(new_size.value_or(weights.cstr_weights.size()),
+                           handle_ptr->get_stream());
+  cstr_right_weights.resize(new_size.value_or(weights.cstr_weights.size()),
+                            handle_ptr->get_stream());
+  thrust::for_each(handle_ptr->get_thrust_policy(),
+                   thrust::counting_iterator<i_t>(0),
+                   thrust::counting_iterator<i_t>(new_size.value_or(weights.cstr_weights.size())),
+                   [old_size,
+                    fj_weights       = make_span(cstr_weights),
+                    fj_left_weights  = make_span(cstr_left_weights),
+                    fj_right_weights = make_span(cstr_right_weights),
+                    new_weights      = make_span(weights.cstr_weights)] __device__(i_t idx) {
+                     fj_weights[idx] = idx >= old_size ? 1. : new_weights[idx];
+                     // TODO: ask Alice how we can manage the previous left,right weights
+                     fj_left_weights[idx]  = idx >= old_size ? 1. : new_weights[idx];
+                     fj_right_weights[idx] = idx >= old_size ? 1. : new_weights[idx];
+                     cuopt_assert(isfinite(fj_weights[idx]), "invalid weight");
+                     cuopt_assert(isfinite(fj_left_weights[idx]), "invalid left weight");
+                     cuopt_assert(isfinite(fj_right_weights[idx]), "invalid right weight");
+                   });
   thrust::transform(handle_ptr->get_thrust_policy(),
                     weights.objective_weight.data(),
                     weights.objective_weight.data() + 1,

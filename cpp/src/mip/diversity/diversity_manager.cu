@@ -28,6 +28,7 @@
 
 constexpr bool from_dir    = false;
 constexpr bool fj_only_run = false;
+constexpr bool fp_only_run = false;
 
 namespace cuopt::linear_programming::detail {
 
@@ -112,8 +113,8 @@ bool diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solut
                                                      timer_t& timer,
                                                      ls_config_t<i_t, f_t>& ls_config)
 {
-  // i_t ls_mab_option = mab_ls.select_mab_option();
-  // mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
+  i_t ls_mab_option = mab_ls.select_mab_option();
+  mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
   assignment_hash_map.insert(solution);
   constexpr i_t skip_solutions_threshold = 3;
   if (assignment_hash_map.check_skip_solution(solution, skip_solutions_threshold)) { return false; }
@@ -293,7 +294,7 @@ void diversity_manager_t<i_t, f_t>::generate_initial_solutions()
                   population.var_threshold);
   population.print();
   auto new_sol_vector = population.get_external_solutions();
-  if (!fj_only_run) { recombine_and_ls_with_all(new_sol_vector); }
+  if (!fj_only_run && !fp_only_run) { recombine_and_ls_with_all(new_sol_vector); }
 }
 
 template <typename i_t, typename f_t>
@@ -322,7 +323,6 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   stats.presolve_time = presolve_timer.elapsed_time();
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
   problem_ptr->handle_ptr->sync_stream();
-  cudaDeviceSynchronize();
   return true;
 }
 
@@ -384,6 +384,15 @@ void diversity_manager_t<i_t, f_t>::run_fj_alone(solution_t<i_t, f_t>& solution)
 
 // returns the best feasible solution
 template <typename i_t, typename f_t>
+void diversity_manager_t<i_t, f_t>::run_fp_alone(solution_t<i_t, f_t>& solution)
+{
+  CUOPT_LOG_INFO("Running FP alone!");
+  ls.run_fp(solution, timer, &population.weights, false);
+  CUOPT_LOG_INFO("FP alone finished!");
+}
+
+// returns the best feasible solution
+template <typename i_t, typename f_t>
 solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 {
   population.timer        = timer;
@@ -411,7 +420,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   population.initialize_population();
   if (check_b_b_preemption()) { return population.best_feasible(); }
   // before probing cache or LP, run FJ to generate initial primal feasible solution
-  if (!from_dir) { generate_quick_feasible_solution(); }
+  if (!from_dir && !fp_only_run && !fj_only_run) { generate_quick_feasible_solution(); }
   constexpr f_t time_ratio_of_probing_cache = diversity_config_t::time_ratio_of_probing_cache;
   constexpr f_t max_time_on_probing         = diversity_config_t::max_time_on_probing;
   f_t time_for_probing_cache =
@@ -477,8 +486,10 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   }
   population.allocate_solutions();
   if (check_b_b_preemption()) { return population.best_feasible(); }
-  // generate a population with 5 solutions(FP+FJ)
-  generate_initial_solutions();
+  if (!fp_only_run) {
+    // generate a population with 5 solutions(FP+FJ)
+    generate_initial_solutions();
+  }
   if (context.settings.benchmark_info_ptr != nullptr) {
     context.settings.benchmark_info_ptr->objective_of_initial_population =
       population.best_feasible().get_user_objective();
@@ -487,6 +498,12 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   if (fj_only_run) {
     run_fj_alone(population.best_feasible());
     return population.best_feasible();
+  }
+
+  if (fp_only_run) {
+    auto sol = generate_solution(timer.remaining_time(), false);
+    run_fp_alone(sol);
+    return sol;
   }
 
   if (timer.check_time_limit()) { return population.best_feasible(); }
