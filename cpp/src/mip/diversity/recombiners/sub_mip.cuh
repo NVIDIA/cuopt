@@ -136,6 +136,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     } else {
       offspring.round_nearest();
     }
+    cuopt_func_call(offspring.test_variable_bounds());
     cuopt_assert(offspring.test_number_all_integer(), "All must be integers after offspring");
     offspring.compute_feasibility();
     // bool same_as_parents = this->check_if_offspring_is_same_as_parents(offspring, a, b);
@@ -160,6 +161,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       fixed_problem.post_process_assignment(fixed_assignment, false);
       sol.unfix_variables(fixed_assignment, variable_map);
       sol.compute_feasibility();
+      cuopt_func_call(sol.test_variable_bounds());
       population.add_solution(std::move(sol));
     }
     bool better_cost_than_parents =
