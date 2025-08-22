@@ -691,8 +691,9 @@ def extract(file, dir, type):
                        shell=True)
     else:
         raise Exception(f"Unknown file extension found for extraction {file}")
-    #    download emps and compile
-    if type == "netlib":
+    # download emps and compile
+    # Disable emps for now
+    if type == "netlib" and False:
         url = MittelmannInstances["emps"]
         file = os.path.join(dir, "emps.c")
         download(url, file)
