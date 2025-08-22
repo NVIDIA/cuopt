@@ -35,7 +35,7 @@ jobs:
       - conda-python-tests
       - docs-build
       - wheel-build-libcuopt
-      # - conda-notebook-tests
+      - conda-notebook-tests
       - wheel-build-cuopt
       - wheel-tests-cuopt
       - wheel-build-cuopt-server
@@ -148,7 +148,7 @@ jobs:
       build_type: pull-request
       script: ci/test_python.sh
   conda-notebook-tests:
-    needs: [conda-python-build]
+    needs: [conda-python-build, changed-files]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.10
     with:
