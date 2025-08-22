@@ -342,11 +342,12 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
 }
 
 template <typename i_t, typename f_t>
-bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<variable_status_t>& root_vstatus,
-                                                   const std::vector<f_t>& edge_norms,
-                                                   const std::vector<f_t>& potential_solution,
-                                                   f_t& repaired_obj,
-                                                   std::vector<f_t>& repaired_solution) const
+bool branch_and_bound_t<i_t, f_t>::repair_solution(
+  const std::vector<variable_status_t>& root_vstatus,
+  const std::vector<f_t>& edge_norms,
+  const std::vector<f_t>& potential_solution,
+  f_t& repaired_obj,
+  std::vector<f_t>& repaired_solution) const
 {
   bool feasible = false;
   repaired_obj  = std::numeric_limits<f_t>::quiet_NaN();
@@ -425,6 +426,60 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   global_variables::mutex_branching.lock();
   global_variables::currently_branching = false;
   global_variables::mutex_branching.unlock();
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions(const std::vector<variable_status_t>& root_vstatus,
+                                                              const std::vector<f_t>& edge_norms,
+                                                              const f_t& lower_bound,
+                                                              mip_solution_t<i_t, f_t>& incumbent,
+                                                              mip_solution_t<i_t, f_t>& solution)
+{
+  // Check if there are any solutions to repair
+  std::vector<std::vector<f_t>> to_repair;
+  global_variables::mutex_repair.lock();
+  if (global_variables::repair_queue.size() > 0) {
+    to_repair = global_variables::repair_queue;
+    global_variables::repair_queue.clear();
+  }
+  global_variables::mutex_repair.unlock();
+
+  if (to_repair.size() > 0) {
+    settings.log.debug("Attempting to repair %ld injected solutions\n", to_repair.size());
+    for (const std::vector<f_t>& potential_solution : to_repair) {
+      std::vector<f_t> repaired_solution;
+      f_t repaired_obj;
+      bool is_feasible = repair_solution(
+        root_vstatus, edge_norms, potential_solution, repaired_obj, repaired_solution);
+      if (is_feasible) {
+        global_variables::mutex_upper.lock();
+
+        if (repaired_obj < global_variables::upper_bound) {
+          global_variables::upper_bound = repaired_obj;
+          incumbent.set_incumbent_solution(repaired_obj, repaired_solution);
+
+          f_t obj         = compute_user_objective(original_lp, repaired_obj);
+          f_t lower       = compute_user_objective(original_lp, lower_bound);
+          std::string gap = user_mip_gap<f_t>(obj, lower);
+
+          settings.log.printf(
+            "H                        %+13.6e  %+10.6e                      %s %9.2f\n",
+            obj,
+            lower,
+            gap.c_str(),
+            toc(start_time));
+
+          if (settings.solution_callback != nullptr) {
+            std::vector<f_t> original_x;
+            uncrush_primal_solution(original_problem, original_lp, repaired_solution, original_x);
+            settings.solution_callback(original_x, repaired_obj);
+          }
+        }
+
+        global_variables::mutex_upper.unlock();
+      }
+    }
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -528,16 +583,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                              edge_norms,
                              pc);
 
-  auto compare = [](mip_node_t<i_t, f_t>* a, mip_node_t<i_t, f_t>* b) {
-    return a->lower_bound >
-           b->lower_bound;  // True if a comes before b, elements that come before are output last
-  };
-  std::priority_queue<mip_node_t<i_t, f_t>*, std::vector<mip_node_t<i_t, f_t>*>, decltype(compare)>
-    heap(compare);
-  i_t num_nodes = 0;
-  mip_node_t<i_t, f_t> root_node(root_objective, root_vstatus);
-  graphviz_node(settings, &root_node, "lower bound", lower_bound);
-
   // Choose variable to branch on
   logger_t log;
   log.log = false;
@@ -554,6 +599,25 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         root_objective, edge_norms, pc, branch_var, branch_var_val, root_vstatus, incumbent);
     });
   }
+
+  settings.log.printf(
+    "| Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   | "
+    "   Time \n");
+  global_variables::mutex_branching.lock();
+  global_variables::currently_branching = true;
+  global_variables::mutex_branching.unlock();
+
+  auto compare = [](mip_node_t<i_t, f_t>* a, mip_node_t<i_t, f_t>* b) {
+    return a->lower_bound >
+           b->lower_bound;  // True if a comes before b, elements that come before are output last
+  };
+
+  i_t num_nodes = 0;
+  std::priority_queue<mip_node_t<i_t, f_t>*, std::vector<mip_node_t<i_t, f_t>*>, decltype(compare)>
+    heap(compare);
+
+  mip_node_t<i_t, f_t> root_node(root_objective, root_vstatus);
+  graphviz_node(settings, &root_node, "lower bound", lower_bound);
 
   // down child
   std::unique_ptr<mip_node_t<i_t, f_t>> down_child = std::make_unique<mip_node_t<i_t, f_t>>(
@@ -578,58 +642,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   f_t gap            = get_upper_bound<f_t>() - lower_bound;
   i_t nodes_explored = 0;
-  settings.log.printf(
-    "| Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   | "
-    "   Time \n");
-  global_variables::mutex_branching.lock();
-  global_variables::currently_branching = true;
-  global_variables::mutex_branching.unlock();
+
 
   f_t total_lp_iters = 0.0;
   f_t last_log       = 0;
   while (gap > settings.absolute_mip_gap_tol &&
          relative_gap(get_upper_bound<f_t>(), lower_bound) > settings.relative_mip_gap_tol &&
          heap.size() > 0) {
-    // Check if there are any solutions to repair
-    std::vector<std::vector<f_t>> to_repair;
-    global_variables::mutex_repair.lock();
-    if (global_variables::repair_queue.size() > 0) {
-      to_repair = global_variables::repair_queue;
-      global_variables::repair_queue.clear();
-    }
-    global_variables::mutex_repair.unlock();
-
-    if (to_repair.size() > 0) {
-      settings.log.debug("Attempting to repair %ld injected solutions\n", to_repair.size());
-      for (const std::vector<f_t>& potential_solution : to_repair) {
-        std::vector<f_t> repaired_solution;
-        f_t repaired_obj;
-        bool is_feasible = repair_solution(
-          root_vstatus, edge_norms, potential_solution, repaired_obj, repaired_solution);
-        if (is_feasible) {
-          global_variables::mutex_upper.lock();
-          if (repaired_obj < global_variables::upper_bound) {
-            global_variables::upper_bound = repaired_obj;
-            incumbent.set_incumbent_solution(repaired_obj, repaired_solution);
-
-            settings.log.printf(
-              "H                        %+13.6e  %+10.6e                      %s %9.2f\n",
-              compute_user_objective(original_lp, repaired_obj),
-              compute_user_objective(original_lp, lower_bound),
-              user_mip_gap<f_t>(compute_user_objective(original_lp, repaired_obj),
-                                compute_user_objective(original_lp, lower_bound))
-                .c_str(),
-              toc(start_time));
-            if (settings.solution_callback != nullptr) {
-              std::vector<f_t> original_x;
-              uncrush_primal_solution(original_problem, original_lp, repaired_solution, original_x);
-              settings.solution_callback(original_x, repaired_obj);
-            }
-          }
-          global_variables::mutex_upper.unlock();
-        }
-      }
-    }
+    repair_heuristic_solutions(root_vstatus, edge_norms, lower_bound, incumbent, solution);
 
     // Get a node off the heap
     mip_node_t<i_t, f_t>* node_ptr = heap.top();
@@ -877,13 +897,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 }
 
 template <typename i_t, typename f_t>
-mip_status_t branch_and_bound_t<i_t, f_t>::diving(f_t root_objective, 
-                                                  std::vector<f_t>& edge_norms, 
-                                                  pseudo_costs_t<i_t, f_t> pc, 
-                                                  i_t branch_var, 
-                                                  f_t branch_var_val, 
-                                                  const std::vector<variable_status_t>& root_vstatus, 
-                                                  mip_solution_t<i_t, f_t>& incumbent)
+mip_status_t branch_and_bound_t<i_t, f_t>::diving(
+  f_t root_objective,
+  std::vector<f_t>& edge_norms,
+  pseudo_costs_t<i_t, f_t> pc,
+  i_t branch_var,
+  f_t branch_var_val,
+  const std::vector<variable_status_t>& root_vstatus,
+  mip_solution_t<i_t, f_t>& incumbent)
 {
   logger_t log;
   log.log = false;
@@ -1033,7 +1054,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::diving(f_t root_objective,
 
       } else if (leaf_objective <= upper_bound + fathom_tol) {
         // Choose fractional variable to branch on
-        const i_t branch_var = pc.variable_selection(fractional, leaf_solution.x, leaf_problem.lower, leaf_problem.upper, log);
+        const i_t branch_var = pc.variable_selection(
+          fractional, leaf_solution.x, leaf_problem.lower, leaf_problem.upper, log);
         assert(leaf_vstatus.size() == leaf_problem.num_cols);
 
         // down child
