@@ -23,7 +23,7 @@ from typing import List, Literal, Optional, Union
 import jsonref
 from pydantic import BaseModel, Extra, Field
 
-import cuopt
+from cuopt import __version_major_minor__
 
 from .linear_programming.data_definition import (  # noqa
     IncumbentSolution,
@@ -347,9 +347,7 @@ HealthResponse = {
                     "Healthy response": {
                         "value": {
                             "status": "RUNNING",
-                            "version": ".".join(
-                                cuopt.__version__.split(".")[:2]
-                            ),
+                            "version": __version_major_minor__,
                         }
                     }
                 }

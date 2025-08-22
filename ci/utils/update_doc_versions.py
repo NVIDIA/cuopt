@@ -82,13 +82,7 @@ def main():
     )
 
     # Update versions
-    was_updated = update_versions(version_file_path, versions_file_path)
-
-    if was_updated:
-        print("Version update completed successfully!")
-    else:
-        print("No update needed - version already exists")
-
+    update_versions(version_file_path, versions_file_path)
 
 if __name__ == "__main__":
     main()
