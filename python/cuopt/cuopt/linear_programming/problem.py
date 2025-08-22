@@ -874,7 +874,7 @@ class Problem:
             case int() | float():
                 for var in self.vars:
                     var.setObjectiveCoefficient(0.0)
-                self.ObjCon = float(expr)
+                self.ObjConstant = float(expr)
             case Variable():
                 for var in self.vars:
                     var.setObjectiveCoefficient(0.0)
@@ -883,6 +883,7 @@ class Problem:
             case LinearExpression():
                 for var, coeff in expr.zipVarCoefficients():
                     self.vars[var.getIndex()].setObjectiveCoefficient(coeff)
+                self.ObjConstant = expr.getConstant()
             case _:
                 raise ValueError(
                     "Objective must be a LinearExpression or a constant"
@@ -1075,6 +1076,7 @@ class Problem:
         dm.set_constraint_bounds(np.array(self.rhs))
         dm.set_row_types(np.array(self.row_sense, dtype="S1"))
         dm.set_objective_coefficients(self.objective)
+        dm.set_objective_offset(self.ObjConstant)
         dm.set_variable_lower_bounds(self.lower_bound)
         dm.set_variable_upper_bounds(self.upper_bound)
         dm.set_variable_types(self.var_type)
