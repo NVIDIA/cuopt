@@ -23,6 +23,7 @@
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
 #include <dual_simplex/types.hpp>
+#include <dual_simplex/phase2.hpp>
 
 #include <mutex>
 #include <string>
@@ -80,6 +81,7 @@ class branch_and_bound_t {
 
   struct stats_t {
     f_t lower_bound         = 0.0;
+    f_t upper_bound         = inf;
     f_t gap                 = 0.0;
     f_t total_lp_solve_time = 0.0;
     i_t nodes_explored      = 0;
@@ -110,6 +112,26 @@ class branch_and_bound_t {
               f_t branch_var_val,
               std::vector<variable_status_t>& parent_vstatus,
               stats_t& stats);
+
+  void add_feasible_solution(mip_node_t<i_t, f_t>* leaf_ptr,
+                             f_t leaf_objective,
+                             const std::vector<f_t>& leaf_sol,
+                             mip_solution_t<i_t, f_t>& incumbent,
+                             stats_t& stats,
+                             char symbol);
+
+  mip_status_t solve_root_relaxation(f_t& root_objective,
+                                     lp_solution_t<i_t, f_t>& root_relax_soln,
+                                     std::vector<variable_status_t>& root_vstatus,
+                                     std::vector<f_t>& edge_norms,
+                                     stats_t& stats);
+
+  dual::status_t solve_leaf_lp(mip_node_t<i_t, f_t>* node_ptr,
+                               lp_problem_t<i_t, f_t>& leaf_problem,
+                               std::vector<variable_status_t>& leaf_vstatus,
+                               lp_solution_t<i_t, f_t>& leaf_solution,
+                               std::vector<f_t>& edge_norms,
+                               stats_t& stats);
 
   mip_status_t diving(f_t root_objective,
                       std::vector<f_t>& edge_norms,
