@@ -78,6 +78,16 @@ class branch_and_bound_t {
   std::vector<i_t> new_slacks;
   std::vector<variable_type_t> var_types;
 
+  struct stats_t {
+    f_t lower_bound = 0.0;
+    f_t gap = 0.0;
+    f_t total_lp_solve_time = 0.0;
+    i_t nodes_explored = 0;
+    i_t unexplored_nodes = 0;
+    f_t total_lp_iters = 0;
+    i_t num_nodes = 0;
+    mip_status_t status = mip_status_t::UNSET;
+  };
 
   void repair_heuristic_solutions(const std::vector<variable_status_t>& root_vstatus,
                                   const std::vector<f_t>& edge_norms,
