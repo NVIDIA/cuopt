@@ -656,6 +656,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_solve(stats_t& stats,
                                                     mip_solution_t<i_t, f_t>& incumbent,
                                                     mip_solution_t<i_t, f_t>& solution)
 {
+  stats.status = mip_status_t::UNSET;
   logger_t log;
   log.log = false;
 
@@ -795,6 +796,13 @@ void branch_and_bound_t<i_t, f_t>::best_first_solve(stats_t& stats,
   }
 
   stats.unexplored_nodes = heap.size();
+
+  if (stats.unexplored_nodes == 0) {
+    global_variables::mutex_lower.lock();
+    stats.lower_bound = global_variables::lower_bound = root_node.lower_bound;
+    global_variables::mutex_lower.unlock();
+    stats.gap = get_upper_bound<f_t>() - stats.lower_bound;
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -809,6 +817,8 @@ void branch_and_bound_t<i_t, f_t>::depth_first_solve(stats_t& stats,
                                                      mip_solution_t<i_t, f_t>& solution,
                                                      bool enable_reporting)
 {
+  stats.status = mip_status_t::UNSET;
+
   logger_t log;
   log.log = false;
 
@@ -951,6 +961,13 @@ void branch_and_bound_t<i_t, f_t>::depth_first_solve(stats_t& stats,
   }
 
   stats.unexplored_nodes = node_stack.size();
+
+  if (stats.unexplored_nodes == 0) {
+    global_variables::mutex_lower.lock();
+    stats.lower_bound = global_variables::lower_bound = root_node.lower_bound;
+    global_variables::mutex_lower.unlock();
+    stats.gap = get_upper_bound<f_t>() - stats.lower_bound;
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -1099,12 +1116,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   global_variables::currently_branching = false;
   global_variables::mutex_branching.unlock();
 
-  if (stats.unexplored_nodes == 0) {
-    global_variables::mutex_lower.lock();
-    stats.lower_bound = global_variables::lower_bound = root_objective;
-    global_variables::mutex_lower.unlock();
-    stats.gap = get_upper_bound<f_t>() - stats.lower_bound;
-  }
 
   settings.log.printf(
     "Explored %d nodes in %.2fs.\nAbsolute Gap %e Objective %.16e Lower Bound %.16e\n",
