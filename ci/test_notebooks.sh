@@ -45,15 +45,27 @@ set -u
 
 rapids-print-env
 
-EXAMPLES_BRANCH="branch-${CUOPT_VERSION%.*}"
+
+#EXAMPLES_BRANCH="branch-${CUOPT_VERSION%.*}"
+EXAMPLES_BRANCH="fix_testing"
 rapids-logger "Cloning cuopt-examples repository for branch: ${EXAMPLES_BRANCH}"
+
+# Remove any existing cuopt-examples directory
+rm -rf cuopt-examples
 git clone --single-branch --branch "${EXAMPLES_BRANCH}" https://github.com/NVIDIA/cuopt-examples.git
 
 NBTEST="$(realpath "$(dirname "$0")/utils/nbtest.sh")"
 NBLIST_PATH="$(realpath "$(dirname "$0")/utils/notebook_list.py")"
-NBLIST=$(python "${NBLIST_PATH}")
 
 pushd cuopt-examples
+
+NBLIST=$(python "${NBLIST_PATH}")
+
+# Install any wheels if they are present in any subdirectory
+find . -type f -name "*.whl" | while read whl; do
+    echo "Installing wheel: $whl"
+    pip install "$whl"
+done
 
 EXITCODE=0
 trap "EXITCODE=1" ERR
@@ -66,6 +78,10 @@ rapids-logger "Start notebooks tests"
 for nb in ${NBLIST}; do
   nvidia-smi
   ${NBTEST} "${nb}"
+  if [ $? -ne 0 ]; then
+    echo "Notebook ${nb} failed to execute. Exiting."
+    exit 1
+  fi
 done
 
 rapids-logger "Notebook test script exiting with value: $EXITCODE"
