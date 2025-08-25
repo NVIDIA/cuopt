@@ -76,6 +76,7 @@ struct heavy_vertex_meta_t {
 
   __device__ __forceinline__ void operator()(i_t id) const
   {
+    assert(false);
     vertex_id[offsets[id]] = id;
     if (id != 0) {
       pseudo_block_id[offsets[id]] = offsets[id - 1] - offsets[id] + 1;
