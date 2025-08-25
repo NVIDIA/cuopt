@@ -52,4 +52,3 @@ Step 3: Run cuOpt
 ------------------
 
 To run cuOpt, you will need to log in to the NVIDIA Container Registry, pull the cuOpt container, and then run it. To test that it is successfully running, you can run a sample cuOpt request. This process is the same for deploying cuOpt on your own infrastructure. Refer to  :ref:`Self-Hosted Service Quickstart Guide <container-from-nvidia-ngc>`.
-
