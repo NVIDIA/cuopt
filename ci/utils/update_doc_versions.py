@@ -84,5 +84,6 @@ def main():
     # Update versions
     update_versions(version_file_path, versions_file_path)
 
+
 if __name__ == "__main__":
     main()
