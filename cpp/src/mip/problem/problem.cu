@@ -86,8 +86,6 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
   // If maximization problem, convert the problem
   if (maximize) convert_to_maximization_problem(*this);
   if (is_mip) {
-    // Resize what is needed for MIP
-    raft::common::nvtx::range scope("trivial_presolve");
     integer_indices.resize(n_variables, handle_ptr->get_stream());
     is_binary_variable.resize(n_variables, handle_ptr->get_stream());
     compute_n_integer_vars();
@@ -670,7 +668,8 @@ bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assig
 // it removes the additional variable for free variables
 // and expands the assignment to the original variable dimension
 template <typename i_t, typename f_t>
-void problem_t<i_t, f_t>::post_process_assignment(rmm::device_uvector<f_t>& current_assignment)
+void problem_t<i_t, f_t>::post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
+                                                  bool resize_to_original_problem)
 {
   cuopt_assert(current_assignment.size() == presolve_data.variable_mapping.size(), "size mismatch");
   auto assgn       = make_span(current_assignment);
@@ -700,7 +699,9 @@ void problem_t<i_t, f_t>::post_process_assignment(rmm::device_uvector<f_t>& curr
   raft::copy(
     current_assignment.data(), h_assignment.data(), h_assignment.size(), handle_ptr->get_stream());
   // this separate resizing is needed because of the callback
-  current_assignment.resize(original_problem_ptr->get_n_variables(), handle_ptr->get_stream());
+  if (resize_to_original_problem) {
+    current_assignment.resize(original_problem_ptr->get_n_variables(), handle_ptr->get_stream());
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -1470,15 +1471,7 @@ void problem_t<i_t, f_t>::preprocess_problem()
   compute_csr(variable_constraint_map, *this);
   compute_transpose_of_problem();
   check_problem_representation(true, false);
-  presolve_data.variable_mapping.resize(n_variables, handle_ptr->get_stream());
-  thrust::sequence(handle_ptr->get_thrust_policy(),
-                   presolve_data.variable_mapping.begin(),
-                   presolve_data.variable_mapping.end());
-  presolve_data.fixed_var_assignment.resize(n_variables, handle_ptr->get_stream());
-  thrust::uninitialized_fill(handle_ptr->get_thrust_policy(),
-                             presolve_data.fixed_var_assignment.begin(),
-                             presolve_data.fixed_var_assignment.end(),
-                             0.);
+  presolve_data.initialize_var_mapping(*this, handle_ptr);
   integer_indices.resize(n_variables, handle_ptr->get_stream());
   is_binary_variable.resize(n_variables, handle_ptr->get_stream());
   original_ids.resize(n_variables);

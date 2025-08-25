@@ -19,7 +19,6 @@
 #include <mip/presolve/probing_cache.cuh>
 #include <mip/presolve/trivial_presolve.cuh>
 #include <mip/problem/problem_helpers.cuh>
-#include "diversity_config.hpp"
 #include "diversity_manager.cuh"
 
 #include <utilities/scope_guard.hpp>
@@ -32,34 +31,29 @@ constexpr bool fp_only_run = false;
 
 namespace cuopt::linear_programming::detail {
 
-constexpr int max_var_diff                    = diversity_config_t::max_var_diff;
-constexpr size_t max_solutions                = diversity_config_t::max_solutions;
-constexpr double initial_infeasibility_weight = diversity_config_t::initial_infeasibility_weight;
-constexpr double default_time_limit           = diversity_config_t::default_time_limit;
-constexpr int initial_island_size             = diversity_config_t::initial_island_size;
-constexpr int maximum_island_size             = diversity_config_t::maximum_island_size;
-constexpr bool use_avg_diversity              = diversity_config_t::use_avg_diversity;
-
 size_t fp_recombiner_config_t::max_n_of_vars_from_other =
   fp_recombiner_config_t::initial_n_of_vars_from_other;
 size_t ls_recombiner_config_t::max_n_of_vars_from_other =
   ls_recombiner_config_t::initial_n_of_vars_from_other;
 size_t bp_recombiner_config_t::max_n_of_vars_from_other =
   bp_recombiner_config_t::initial_n_of_vars_from_other;
+size_t sub_mip_recombiner_config_t::max_n_of_vars_from_other =
+  sub_mip_recombiner_config_t::initial_n_of_vars_from_other;
 
 template <typename i_t, typename f_t>
 diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t>& context_)
-  : problem_ptr(context.problem_ptr),
-    context(context_),
+  : context(context_),
+    problem_ptr(context.problem_ptr),
+    diversity_config(),
     population("population",
                context,
-               max_var_diff,
-               max_solutions,
-               initial_infeasibility_weight * context.problem_ptr->n_constraints),
+               diversity_config.max_var_diff,
+               diversity_config.max_solutions,
+               diversity_config.initial_infeasibility_weight * context.problem_ptr->n_constraints),
     lp_optimal_solution(context.problem_ptr->n_variables,
                         context.problem_ptr->handle_ptr->get_stream()),
     ls(context, lp_optimal_solution),
-    timer(default_time_limit),
+    timer(diversity_config.default_time_limit),
     bound_prop_recombiner(context,
                           context.problem_ptr->n_variables,
                           ls.constraint_prop,
@@ -70,10 +64,14 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                             context.problem_ptr->n_variables,
                             ls.line_segment_search,
                             context.problem_ptr->handle_ptr),
+    sub_mip_recombiner(
+      context, population, context.problem_ptr->n_variables, context.problem_ptr->handle_ptr),
     rng(cuopt::seed_generator::get_seed()),
     stats(context.stats),
-    mab_recombiner(
-      recombiner_enum_t::SIZE, cuopt::seed_generator::get_seed(), recombiner_alpha, "recombiner"),
+    mab_recombiner(static_cast<int>(recombiner_enum_t::SIZE),
+                   cuopt::seed_generator::get_seed(),
+                   recombiner_alpha,
+                   "recombiner"),
     mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), ls_alpha, "ls"),
     assignment_hash_map(*context.problem_ptr)
 {
@@ -84,7 +82,7 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
   if (env_max_config != nullptr) {
     try {
       max_config = std::stoi(env_max_config);
-      CUOPT_LOG_DEBUG("Using maximum configuration value from environment: %d", max_config);
+      CUOPT_LOG_INFO("Using maximum configuration value from environment: %d", max_config);
     } catch (const std::exception& e) {
       CUOPT_LOG_WARN("Failed to parse CUOPT_MAX_CONFIG environment variable: %s", e.what());
     }
@@ -95,14 +93,11 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     if (env_config_id != nullptr) {
       try {
         config_id = std::stoi(env_config_id);
-        CUOPT_LOG_DEBUG("Using configuration ID from environment: %d", config_id);
+        CUOPT_LOG_INFO("Using configuration ID from environment: %d", config_id);
       } catch (const std::exception& e) {
         CUOPT_LOG_WARN("Failed to parse CUOPT_CONFIG_ID environment variable: %s", e.what());
       }
     }
-    run_only_ls_recombiner = config_id == 0;
-    run_only_bp_recombiner = config_id == 1;
-    run_only_fp_recombiner = config_id == 2;
   }
 }
 
@@ -239,22 +234,25 @@ void diversity_manager_t<i_t, f_t>::generate_initial_solutions()
 {
   add_user_given_solutions(initial_sol_vector);
   bool skip_initial_island_generation =
-    initial_sol_vector.size() > diversity_config_t::n_sol_for_skip_init_gen || from_dir;
+    initial_sol_vector.size() > diversity_config.n_sol_for_skip_init_gen || from_dir;
   // allocate maximum of 40% of the time to the initial island generation
   // aim to generate at least 5 feasible solutions thus spending 8% of the time to generate a
   // solution if we can generate faster generate up to 10 sols
   const f_t generation_time_limit =
-    diversity_config_t::generation_time_limit_ratio * timer.get_time_limit();
-  const f_t max_island_gen_time = diversity_config_t::max_island_gen_time;
+    diversity_config.generation_time_limit_ratio * timer.get_time_limit();
+  const f_t max_island_gen_time = diversity_config.max_island_gen_time;
   f_t total_island_gen_time     = std::min(generation_time_limit, max_island_gen_time);
   timer_t gen_timer(total_island_gen_time);
   f_t sol_time_limit = gen_timer.remaining_time();
-  for (i_t i = 0; i < maximum_island_size && !skip_initial_island_generation; ++i) {
+  for (i_t i = 0; i < diversity_config.maximum_island_size && !skip_initial_island_generation;
+       ++i) {
     if (check_b_b_preemption()) { return; }
     if (i + population.get_external_solution_size() >= 5) { break; }
     CUOPT_LOG_DEBUG("Generating sol %d", i);
     bool is_first_sol = (i == 0);
-    if (i == 1) { sol_time_limit = gen_timer.remaining_time() / (initial_island_size - 1); }
+    if (i == 1) {
+      sol_time_limit = gen_timer.remaining_time() / (diversity_config.initial_island_size - 1);
+    }
     // in first iteration, definitely generate feasible
     if (is_first_sol) {
       sol_time_limit = gen_timer.remaining_time();
@@ -280,13 +278,13 @@ void diversity_manager_t<i_t, f_t>::generate_initial_solutions()
     average_fj_weights(i);
     // run ls on the solutions
     // if at least initial_island_size solutions are generated and time limit is reached
-    if (i >= initial_island_size || gen_timer.check_time_limit()) { break; }
+    if (i >= diversity_config.initial_island_size || gen_timer.check_time_limit()) { break; }
   }
   CUOPT_LOG_DEBUG("Initial unsearched solutions are generated!");
   i_t actual_island_size = initial_sol_vector.size();
   population.normalize_weights();
   // find diversity of the population
-  population.find_diversity(initial_sol_vector, use_avg_diversity);
+  population.find_diversity(initial_sol_vector, diversity_config.use_avg_diversity);
   population.add_solutions_from_vec(std::move(initial_sol_vector));
   population.update_qualities();
   CUOPT_LOG_DEBUG("Initial population generated, size %d var_threshold %d",
@@ -332,7 +330,7 @@ void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
   solution_t<i_t, f_t> solution(*problem_ptr);
   // min 1 second, max 10 seconds
   const f_t generate_fast_solution_time =
-    std::min(diversity_config_t::max_fast_sol_time, std::max(1., timer.remaining_time() / 20.));
+    std::min(diversity_config.max_fast_sol_time, std::max(1., timer.remaining_time() / 20.));
   timer_t sol_timer(generate_fast_solution_time);
   // do very short LP run to get somewhere close to the optimal point
   ls.generate_fast_solution(solution, sol_timer);
@@ -395,10 +393,10 @@ void diversity_manager_t<i_t, f_t>::run_fp_alone(solution_t<i_t, f_t>& solution)
 template <typename i_t, typename f_t>
 solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 {
-  population.timer        = timer;
-  const f_t time_limit    = timer.remaining_time();
-  const f_t lp_time_limit = std::min(diversity_config_t::max_time_on_lp,
-                                     time_limit * diversity_config_t::time_ratio_on_init_lp);
+  population.timer     = timer;
+  const f_t time_limit = timer.remaining_time();
+  const f_t lp_time_limit =
+    std::min(diversity_config.max_time_on_lp, time_limit * diversity_config.time_ratio_on_init_lp);
   // to automatically compute the solving time on scope exit
   auto timer_raii_guard =
     cuopt::scope_guard([&]() { stats.total_solve_time = timer.elapsed_time(); });
@@ -421,8 +419,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   if (check_b_b_preemption()) { return population.best_feasible(); }
   // before probing cache or LP, run FJ to generate initial primal feasible solution
   if (!from_dir && !fp_only_run && !fj_only_run) { generate_quick_feasible_solution(); }
-  constexpr f_t time_ratio_of_probing_cache = diversity_config_t::time_ratio_of_probing_cache;
-  constexpr f_t max_time_on_probing         = diversity_config_t::max_time_on_probing;
+  const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
+  const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
   f_t time_for_probing_cache =
     std::min(max_time_on_probing, time_limit * time_ratio_of_probing_cache);
   timer_t probing_timer{time_for_probing_cache};
@@ -515,8 +513,8 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::diversity_step()
 {
   // TODO when the solver is faster, increase this number
-  constexpr i_t max_iterations_without_improvement =
-    diversity_config_t::max_iterations_without_improvement;
+  const i_t max_iterations_without_improvement =
+    diversity_config.max_iterations_without_improvement;
   bool improved = true;
   while (improved) {
     int k    = max_iterations_without_improvement;
@@ -625,7 +623,7 @@ void diversity_manager_t<i_t, f_t>::main_loop()
     diversity_step();
     if (timer.check_time_limit()) { break; }
 
-    if (diversity_config_t::halve_population) {
+    if (diversity_config.halve_population) {
       population.adjust_threshold(timer);
       i_t prev_threshold = population.var_threshold;
       population.halve_the_population();
@@ -635,7 +633,7 @@ void diversity_manager_t<i_t, f_t>::main_loop()
       current_population.insert(current_population.end(),
                                 std::make_move_iterator(new_solutions.begin()),
                                 std::make_move_iterator(new_solutions.end()));
-      population.find_diversity(current_population, use_avg_diversity);
+      population.find_diversity(current_population, diversity_config.use_avg_diversity);
       // if the threshold is lower than the threshold we progress with time
       // set it to the higher threshold
       // population.var_threshold = max(population.var_threshold, prev_threshold);
@@ -694,7 +692,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   auto [offspring, success] = recombine(sol1, sol2);
   if (!success) {
     // add the attempt
-    mab_recombiner.add_mab_reward(recombine_stats.get_last_attempt(),
+    mab_recombiner.add_mab_reward(static_cast<int>(recombine_stats.get_last_attempt()),
                                   std::numeric_limits<double>::lowest(),
                                   std::numeric_limits<double>::lowest(),
                                   std::numeric_limits<double>::max(),
@@ -714,7 +712,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   success = this->run_local_search(offspring, population.weights, timer, ls_config);
   if (!success) {
     // add the attempt
-    mab_recombiner.add_mab_reward(recombine_stats.get_last_attempt(),
+    mab_recombiner.add_mab_reward(static_cast<int>(recombine_stats.get_last_attempt()),
                                   std::numeric_limits<double>::lowest(),
                                   std::numeric_limits<double>::lowest(),
                                   std::numeric_limits<double>::max(),
@@ -732,8 +730,8 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   solution_t<i_t, f_t> lp_offspring(offspring);
   cuopt_assert(population.test_invariant(), "");
   cuopt_assert(lp_offspring.test_number_all_integer(), "All must be integers before LP");
-  f_t lp_run_time = offspring.get_feasible() ? diversity_config_t::lp_run_time_if_feasible
-                                             : diversity_config_t::lp_run_time_if_infeasible;
+  f_t lp_run_time = offspring.get_feasible() ? diversity_config.lp_run_time_if_feasible
+                                             : diversity_config.lp_run_time_if_infeasible;
   lp_run_time     = std::min(lp_run_time, timer.remaining_time());
   relaxed_lp_settings_t lp_settings;
   lp_settings.time_limit              = lp_run_time;
@@ -758,16 +756,16 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   f_t best_quality_of_parents =
     std::min(sol1.get_quality(population.weights), sol2.get_quality(population.weights));
   mab_recombiner.add_mab_reward(
-    recombine_stats.get_last_attempt(),
+    static_cast<int>(recombine_stats.get_last_attempt()),
     best_quality_of_parents,
     population.best().get_quality(population.weights),
     offspring_qual,
     recombiner_work_normalized_reward_t(recombine_stats.get_last_recombiner_time()));
-  mab_ls.add_mab_reward(mab_ls_config_t<i_t, f_t>::last_ls_mab_option,
-                        best_quality_of_parents,
-                        population.best_feasible().get_quality(population.weights),
-                        offspring_qual,
-                        ls_work_normalized_reward_t(mab_ls_config_t<i_t, f_t>::last_lm_config));
+  // mab_ls.add_mab_reward(mab_ls_config_t<i_t, f_t>::last_ls_mab_option,
+  //                       best_quality_of_parents,
+  //                       population.best_feasible().get_quality(population.weights),
+  //                       offspring_qual,
+  //                       ls_work_normalized_reward_t(mab_ls_config_t<i_t, f_t>::last_lm_config));
   if (context.settings.benchmark_info_ptr != nullptr) {
     check_better_than_both(offspring, sol1, sol2);
     check_better_than_both(lp_offspring, sol1, sol2);
@@ -779,34 +777,53 @@ template <typename i_t, typename f_t>
 std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
   solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b)
 {
-  i_t recombiner;
+  recombiner_enum_t recombiner;
   if (run_only_ls_recombiner) {
     recombiner = recombiner_enum_t::LINE_SEGMENT;
   } else if (run_only_bp_recombiner) {
     recombiner = recombiner_enum_t::BOUND_PROP;
   } else if (run_only_fp_recombiner) {
     recombiner = recombiner_enum_t::FP;
+  } else if (run_only_sub_mip_recombiner) {
+    recombiner = recombiner_enum_t::SUB_MIP;
   } else {
-    recombiner = mab_recombiner.select_mab_option();
+    recombiner = static_cast<recombiner_enum_t>(mab_recombiner.select_mab_option());
   }
   recombine_stats.add_attempt((recombiner_enum_t)recombiner);
   recombine_stats.start_recombiner_time();
-  if (recombiner == recombiner_enum_t::BOUND_PROP) {
-    auto [sol, success] = bound_prop_recombiner.recombine(a, b, population.weights);
-    recombine_stats.stop_recombiner_time();
-    if (success) { recombine_stats.add_success(); }
-    return std::make_pair(sol, success);
-  } else if (recombiner == recombiner_enum_t::FP) {
-    auto [sol, success] = fp_recombiner.recombine(a, b, population.weights);
-    recombine_stats.stop_recombiner_time();
-    if (success) { recombine_stats.add_success(); }
-    return std::make_pair(sol, success);
-  } else {
-    auto [sol, success] = line_segment_recombiner.recombine(a, b, population.weights);
-    recombine_stats.stop_recombiner_time();
-    if (success) { recombine_stats.add_success(); }
-    return std::make_pair(sol, success);
+  // Refactored code using a switch statement
+  switch (recombiner) {
+    case recombiner_enum_t::BOUND_PROP: {
+      auto [sol, success] = bound_prop_recombiner.recombine(a, b, population.weights);
+      recombine_stats.stop_recombiner_time();
+      if (success) { recombine_stats.add_success(); }
+      return std::make_pair(sol, success);
+    }
+    case recombiner_enum_t::FP: {
+      auto [sol, success] = fp_recombiner.recombine(a, b, population.weights);
+      recombine_stats.stop_recombiner_time();
+      if (success) { recombine_stats.add_success(); }
+      return std::make_pair(sol, success);
+    }
+    case recombiner_enum_t::LINE_SEGMENT: {
+      auto [sol, success] = line_segment_recombiner.recombine(a, b, population.weights);
+      recombine_stats.stop_recombiner_time();
+      if (success) { recombine_stats.add_success(); }
+      return std::make_pair(sol, success);
+    }
+    case recombiner_enum_t::SUB_MIP: {
+      auto [sol, success] = sub_mip_recombiner.recombine(a, b, population.weights);
+      recombine_stats.stop_recombiner_time();
+      if (success) { recombine_stats.add_success(); }
+      return std::make_pair(sol, success);
+    }
+    case recombiner_enum_t::SIZE: {
+      CUOPT_LOG_ERROR("Invalid or unhandled recombiner type: %d", recombiner);
+      return std::make_pair(solution_t<i_t, f_t>(a), false);
+    }
   }
+  CUOPT_LOG_ERROR("Invalid or unhandled recombiner type: %d", recombiner);
+  return std::make_pair(solution_t<i_t, f_t>(a), false);
 }
 
 template <typename i_t, typename f_t>
