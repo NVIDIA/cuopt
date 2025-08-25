@@ -32,6 +32,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <future>
+#include <limits>
 #include <string>
 #include <vector>
 #include "cuopt/linear_programming/mip/solver_settings.hpp"
@@ -210,6 +211,8 @@ f_t relative_gap(f_t obj_value, f_t lower_bound)
   f_t user_mip_gap = obj_value == 0.0
                        ? (lower_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity())
                        : std::abs(obj_value - lower_bound) / std::abs(obj_value);
+  // Handle NaNs (i.e., NaN != NaN)
+  if (user_mip_gap != user_mip_gap) { return std::numeric_limits<f_t>::infinity(); }
   return user_mip_gap;
 }
 
@@ -637,6 +640,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_solve(stats_t& stats,
   stats.nodes_explored = 0;
   stats.total_lp_iters = 0.0;
   f_t last_log         = 0;
+
   while (stats.gap > settings.absolute_mip_gap_tol &&
          relative_gap(get_upper_bound(), stats.lower_bound) > settings.relative_mip_gap_tol &&
          heap.size() > 0) {
@@ -727,7 +731,6 @@ void branch_and_bound_t<i_t, f_t>::best_first_solve(stats_t& stats,
         add_feasible_solution(node_ptr, leaf_objective, leaf_solution.x, incumbent, stats, 'B');
 
       } else if (leaf_objective <= stats.upper_bound + fathom_tol) {
-
         mutex_pseudocosts.lock();
         // Choose fractional variable to branch on
         const i_t branch_var = pc.variable_selection(
@@ -927,9 +930,8 @@ void branch_and_bound_t<i_t, f_t>::depth_first_solve(stats_t& stats,
       break;
     }
   }
-  mutex_branching.lock();
-  currently_branching = false;
-  mutex_branching.unlock();
+
+  stats.unexplored_nodes = node_stack.size();
 
   if (stats.unexplored_nodes == 0) {
     mutex_lower.lock();
