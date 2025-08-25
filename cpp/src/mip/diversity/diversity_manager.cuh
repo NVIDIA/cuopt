@@ -18,6 +18,7 @@
 #pragma once
 
 #include "assignment_hash_map.cuh"
+#include "diversity_config.hpp"
 #include "multi_armed_bandit.cuh"
 #include "population.cuh"
 
@@ -25,6 +26,7 @@
 #include "recombiners/fp_recombiner.cuh"
 #include "recombiners/line_segment_recombiner.cuh"
 #include "recombiners/recombiner_stats.hpp"
+#include "recombiners/sub_mip.cuh"
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_stats.hpp>
@@ -79,6 +81,7 @@ class diversity_manager_t {
 
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;
+  diversity_config_t diversity_config;
   population_t<i_t, f_t> population;
   rmm::device_uvector<f_t> lp_optimal_solution;
   bool simplex_solution_exists{false};
@@ -87,6 +90,7 @@ class diversity_manager_t {
   bound_prop_recombiner_t<i_t, f_t> bound_prop_recombiner;
   fp_recombiner_t<i_t, f_t> fp_recombiner;
   line_segment_recombiner_t<i_t, f_t> line_segment_recombiner;
+  sub_mip_recombiner_t<i_t, f_t> sub_mip_recombiner;
   all_recombine_stats recombine_stats;
   std::mt19937 rng;
   i_t current_step{0};
@@ -103,6 +107,7 @@ class diversity_manager_t {
   bool run_only_ls_recombiner{false};
   bool run_only_bp_recombiner{false};
   bool run_only_fp_recombiner{false};
+  bool run_only_sub_mip_recombiner{false};
 };
 
 }  // namespace cuopt::linear_programming::detail

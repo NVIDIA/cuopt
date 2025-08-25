@@ -22,6 +22,8 @@
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/types.hpp>
 
+#include <mutex>
+
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
@@ -49,13 +51,16 @@ class pseudo_costs_t {
                          logger_t& log) const;
 
   void update_pseudo_costs_from_strong_branching(const std::vector<i_t>& fractional,
-                                                 const std::vector<f_t>& root_soln,
-                                                 const std::vector<f_t>& strong_branch_down,
-                                                 const std::vector<f_t>& strong_branch_up);
+                                                 const std::vector<f_t>& root_soln);
   std::vector<f_t> pseudo_cost_sum_up;
   std::vector<f_t> pseudo_cost_sum_down;
   std::vector<i_t> pseudo_cost_num_up;
   std::vector<i_t> pseudo_cost_num_down;
+  std::vector<f_t> strong_branch_down;
+  std::vector<f_t> strong_branch_up;
+
+  std::mutex strong_branches_completed;
+  i_t num_strong_branches_completed = 0;
 };
 
 template <typename i_t, typename f_t>

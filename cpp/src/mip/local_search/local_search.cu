@@ -125,6 +125,7 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
   } else {
     fj.copy_weights(weights, solution.handle_ptr);
     is_feas = run_fj_annealing(solution, timer, ls_config);
+    if (lp_optimal_exists) { is_feas = run_fj_line_segment(solution, timer, ls_config); }
   }
   return is_feas;
 }
