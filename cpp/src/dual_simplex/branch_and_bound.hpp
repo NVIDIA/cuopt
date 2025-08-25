@@ -26,8 +26,8 @@
 #include <dual_simplex/types.hpp>
 
 #include <mutex>
+#include <atomic>
 #include <queue>
-#include <mutex>
 #include <string>
 #include <vector>
 #include "cuopt/linear_programming/mip/solver_settings.hpp"
@@ -50,18 +50,6 @@ void upper_bound_callback(f_t upper_bound);
 template <typename i_t, typename f_t>
 class branch_and_bound_t {
  public:
-  struct stats_t {
-    f_t lower_bound         = 0.0;
-    f_t upper_bound         = inf;
-    f_t gap                 = 0.0;
-    f_t total_lp_solve_time = 0.0;
-    i_t nodes_explored      = 0;
-    i_t unexplored_nodes    = 0;
-    f_t total_lp_iters      = 0;
-    i_t num_nodes           = 0;
-    mip_status_t status     = mip_status_t::UNSET;
-  };
-
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
                      const search_settings_t strategy);
@@ -79,6 +67,8 @@ class branch_and_bound_t {
                        std::vector<f_t>& repaired_solution) const;
 
   f_t get_upper_bound();
+  
+  f_t get_lower_bound();
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
@@ -88,7 +78,6 @@ class branch_and_bound_t {
   const simplex_solver_settings_t<i_t, f_t> settings;
   search_settings_t search_settings;
 
-  f_t start_time;
   std::vector<f_t> guess;
 
   lp_problem_t<i_t, f_t> original_lp;
@@ -109,20 +98,24 @@ class branch_and_bound_t {
   // Mutex for gap
   std::mutex mutex_gap;
   // Global variable for gap
-  f_t gap;
+  f_t gap_;
 
   // Mutex for branching
   std::mutex mutex_branching;
   bool currently_branching;
 
-  // // Mutex for stats
-  // std::mutex mutex_stats;
-  // // Global variable for stats
-  // struct stats_t {
-  //   int nodes_explored;
-  //   f_t total_lp_solve_time;
-  //   f_t start_time;
-  // } stats;
+  // Global variable for stats
+  std::mutex mutex_stats;
+
+  // Note  that floating point atomics are only supported in C++20
+  struct stats_t {
+    f_t start_time                       = 0.0;
+    f_t total_lp_solve_time = 0.0;
+    std::atomic<i_t> nodes_explored      = 0;
+    std::atomic<i_t> unexplored_nodes    = 0;
+    f_t total_lp_iters      = 0;
+    std::atomic<i_t> num_nodes           = 0;
+  } stats_;
 
   // Mutex for repair
   std::mutex mutex_repair;
@@ -137,52 +130,49 @@ class branch_and_bound_t {
                                   mip_solution_t<i_t, f_t>& incumbent,
                                   mip_solution_t<i_t, f_t>& solution);
 
-  void best_first_solve(stats_t& stats,
-                        f_t root_objective,
-                        i_t branch_var,
-                        f_t branch_var_val,
-                        std::vector<variable_status_t>& root_vstatus,
-                        std::vector<f_t>& edge_norms,
-                        pseudo_costs_t<i_t, f_t>& pc,
-                        mip_solution_t<i_t, f_t>& incumbent,
-                        mip_solution_t<i_t, f_t>& solution);
+  mip_status_t best_first_solve(f_t root_objective,
+                                i_t branch_var,
+                                f_t branch_var_val,
+                                std::vector<variable_status_t>& root_vstatus,
+                                std::vector<f_t>& edge_norms,
+                                pseudo_costs_t<i_t, f_t>& pc,
+                                mip_solution_t<i_t, f_t>& incumbent,
+                                mip_solution_t<i_t, f_t>& solution);
 
-  void depth_first_solve(stats_t& stats,
-                         f_t root_objective,
-                         i_t branch_var,
-                         f_t branch_var_val,
-                         std::vector<variable_status_t>& root_vstatus,
-                         std::vector<f_t>& edge_norms,
-                         pseudo_costs_t<i_t, f_t>& pc,
-                         mip_solution_t<i_t, f_t>& incumbent,
-                         mip_solution_t<i_t, f_t>& solution,
-                         bool enable_reporting);
+  mip_status_t depth_first_solve(f_t root_objective,
+                                 i_t branch_var,
+                                 f_t branch_var_val,
+                                 std::vector<variable_status_t>& root_vstatus,
+                                 std::vector<f_t>& edge_norms,
+                                 pseudo_costs_t<i_t, f_t>& pc,
+                                 mip_solution_t<i_t, f_t>& incumbent,
+                                 mip_solution_t<i_t, f_t>& solution,
+                                 bool enable_reporting);
 
   void branch(mip_node_t<i_t, f_t>* parent_node,
               i_t branch_var,
               f_t branch_var_val,
-              std::vector<variable_status_t>& parent_vstatus,
-              stats_t& stats);
+              std::vector<variable_status_t>& parent_vstatus);
 
   void add_feasible_solution(mip_node_t<i_t, f_t>* leaf_ptr,
                              f_t leaf_objective,
                              const std::vector<f_t>& leaf_sol,
                              mip_solution_t<i_t, f_t>& incumbent,
-                             stats_t& stats,
+                             i_t nodes_explored,
+                             i_t unexplored_nodes,
                              char symbol);
 
   mip_status_t solve_root_relaxation(f_t& root_objective,
                                      lp_solution_t<i_t, f_t>& root_relax_soln,
                                      std::vector<variable_status_t>& root_vstatus,
-                                     std::vector<f_t>& edge_norms,
-                                     stats_t& stats);
+                                     std::vector<f_t>& edge_norms);
 
   dual::status_t solve_leaf_lp(mip_node_t<i_t, f_t>* node_ptr,
                                lp_problem_t<i_t, f_t>& leaf_problem,
                                std::vector<variable_status_t>& leaf_vstatus,
                                lp_solution_t<i_t, f_t>& leaf_solution,
                                std::vector<f_t>& edge_norms,
-                               stats_t& stats);
+                               f_t upper_bound);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
