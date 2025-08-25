@@ -752,7 +752,7 @@ void clean_up_infeasibilities(std::vector<f_t>& squared_infeasibilities,
       const f_t squared_infeas = squared_infeasibilities[j];
       if (squared_infeas == 0.0) {
         // Set to the last element
-        const i_t new_j = infeasibility_indices.back();
+        const i_t new_j          = infeasibility_indices.back();
         infeasibility_indices[k] = new_j;
         infeasibility_indices.pop_back();
         if (squared_infeasibilities[new_j] == 0.0) { k--; }
