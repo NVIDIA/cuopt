@@ -46,7 +46,7 @@ Dependencies are installed automatically when using the pip and Conda installati
       - CUDA 12.0 with Driver 525.60.13+
       - CUDA 12.2 with Driver 535.86.10+
       - CUDA 12.5 with Driver 555.42.06+
-      - CUDA 12.8 with Driver 570.42.01+
+      - CUDA 12.9 with Driver 570.42.01+
 
 .. dropdown:: Recommended Requirements for Best Performance
 
@@ -67,7 +67,7 @@ Dependencies are installed automatically when using the pip and Conda installati
       - 100+ GB free space
 
    * CUDA:
-      - 12.8
+      - 12.9
 
    * Latest NVIDIA drivers (570.42.01+)
 
