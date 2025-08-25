@@ -349,7 +349,6 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
             }
           }
         }
-        assert(Snz <= Snz_max && (Sdim > 0 && Snz > 0));
         S.col_start[Sdim] = Snz;  // Finalize S
 
         csc_matrix_t<i_t, f_t> SL(Sdim, Sdim, Snz);

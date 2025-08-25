@@ -23,6 +23,8 @@
 #include <dual_simplex/solution.hpp>
 #include <dual_simplex/types.hpp>
 
+#include <mutex>
+#include <queue>
 #include <string>
 #include <vector>
 
@@ -59,6 +61,8 @@ class branch_and_bound_t {
                        f_t& repaired_obj,
                        std::vector<f_t>& repaired_solution) const;
 
+  f_t get_upper_bound();
+
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
 
@@ -72,6 +76,39 @@ class branch_and_bound_t {
   lp_problem_t<i_t, f_t> original_lp;
   std::vector<i_t> new_slacks;
   std::vector<variable_type_t> var_types;
+  // Mutex for lower bound
+  std::mutex mutex_lower;
+  // Global variable for lower bound
+  f_t lower_bound_;
+
+  // Mutex for upper bound
+  std::mutex mutex_upper;
+  // Global variable for upper bound
+  f_t upper_bound_;
+  // Global variable for incumbent. The incumbent should be updated with the upper bound
+  mip_solution_t<i_t, f_t> incumbent;
+
+  // Mutex for gap
+  std::mutex mutex_gap;
+  // Global variable for gap
+  f_t gap;
+
+  // Mutex for branching
+  std::mutex mutex_branching;
+  bool currently_branching;
+
+  // Mutex for stats
+  std::mutex mutex_stats;
+  // Global variable for stats
+  struct stats_t {
+    int nodes_explored;
+    f_t total_lp_solve_time;
+    f_t start_time;
+  } stats;
+
+  // Mutex for repair
+  std::mutex mutex_repair;
+  std::vector<std::vector<f_t>> repair_queue;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
