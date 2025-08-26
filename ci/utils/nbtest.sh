@@ -35,7 +35,7 @@ for nb in "$@"; do
     NBDIR=$(dirname "$NBFILENAME")
 
     echo "Changing to directory: ${NBDIR}"
-    cd "${NBDIR}"
+    cd "${NBDIR}" || exit 1
 
     # Output the executed notebook in the same folder
     EXECUTED_NOTEBOOK="${NBNAME}-executed.ipynb"
@@ -87,7 +87,7 @@ for nb in "$@"; do
     fi
 
     echo "Returning to original directory: ${ORIGINAL_DIR}"
-    cd "${ORIGINAL_DIR}"
+    cd "${ORIGINAL_DIR}" || exit 1
 done
 
 exit ${EXITCODE}
