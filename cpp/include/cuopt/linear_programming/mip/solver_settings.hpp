@@ -35,14 +35,10 @@ struct benchmark_info_t {
   double objective_of_initial_population      = std::numeric_limits<double>::max();
 };
 
-struct search_settings_t {
-  enum class strategy_t {
-    BEST_FIRST        = 0,
-    DEPTH_FIRST       = 1,
-    BEST_FIRST_DIVING = 2,
-  };
-
-  strategy_t strategy = strategy_t::BEST_FIRST;
+enum class bnb_search_strategy_t {
+  BEST_FIRST                           = 0,
+  DEPTH_FIRST                          = 1,
+  MULTITHREADED_BEST_FIRST_WITH_DIVING = 2,
 };
 
 // Forward declare solver_settings_t for friend class
@@ -89,7 +85,7 @@ class mip_solver_settings_t {
     f_t relative_mip_gap            = 1.0e-4;
   };
 
-  search_settings_t search_settings;
+  bnb_search_strategy_t bnb_search_strategy = bnb_search_strategy_t::BEST_FIRST;
 
   /**
    * @brief Get the tolerance settings as a single structure.

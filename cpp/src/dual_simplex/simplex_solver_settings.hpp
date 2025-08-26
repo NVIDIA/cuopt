@@ -17,8 +17,10 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/types.hpp>
+
 
 #include <algorithm>
 #include <atomic>
@@ -114,7 +116,8 @@ struct simplex_solver_settings_t {
   std::atomic<i_t>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt
 
-  
+  bnb_search_strategy_t bnb_search_strategy =
+    bnb_search_strategy_t::BEST_FIRST;  // Search strategy for B&B
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

@@ -369,11 +369,9 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(
 template <typename i_t, typename f_t>
 branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   const user_problem_t<i_t, f_t>& user_problem,
-  const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-  const search_settings_t strategy)
+  const simplex_solver_settings_t<i_t, f_t>& solver_settings)
   : original_problem(user_problem),
     settings(solver_settings),
-    search_settings(strategy),
     original_lp(1, 1, 1),
     incumbent(1)
 {
@@ -1043,9 +1041,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   root_node_->fractional_val = root_relax_soln.x[branch_var];
   root_node_->branch_var     = branch_var;
 
-  if (search_settings.strategy == search_settings_t::strategy_t::DEPTH_FIRST) {
+  if (settings.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
     settings.log.printf("Using depth first search\n");
-  } else if (search_settings.strategy == search_settings_t::strategy_t::BEST_FIRST_DIVING) {
+  } else if (settings.bnb_search_strategy == bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
     settings.log.printf("Using best first search with diving\n");
   } else {
     settings.log.printf("Using best first search\n");
@@ -1059,13 +1057,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   currently_branching = true;
   mutex_branching.unlock();
 
-  if (search_settings.strategy == search_settings_t::strategy_t::DEPTH_FIRST) {
+  if (settings.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
     status = depth_first_solve(
       root_objective, branch_var, root_node_->fractional_val, root_vstatus, solution, true);
   } else {
     std::future<mip_status_t> diving_thread;
 
-    if (search_settings.strategy == search_settings_t::strategy_t::BEST_FIRST_DIVING) {
+    if (settings.bnb_search_strategy == bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
       diving_thread = std::async(std::launch::async, [&]() {
         return depth_first_solve(
           root_objective, branch_var, root_node_->fractional_val, root_vstatus, solution, false);
@@ -1075,7 +1073,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     status = best_first_solve(
       root_objective, branch_var, root_node_->fractional_val, root_vstatus, solution);
 
-    if (search_settings.strategy == search_settings_t::strategy_t::BEST_FIRST_DIVING) {
+    if (settings.bnb_search_strategy == bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
       // TODO: Instead of waiting, we should send a signal that we are already done in the main
       // thread
       diving_thread.get();

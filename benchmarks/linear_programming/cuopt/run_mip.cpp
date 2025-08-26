@@ -153,7 +153,7 @@ int run_single_file(std::string file_path,
                     bool write_log_file,
                     bool log_to_console,
                     double time_limit,
-                    cuopt::linear_programming::search_settings_t::strategy_t search_strategy)
+                    cuopt::linear_programming::bnb_search_strategy_t search_strategy)
 {
   const raft::handle_t handle_{};
   cuopt::linear_programming::mip_solver_settings_t<int, double> settings;
@@ -170,7 +170,7 @@ int run_single_file(std::string file_path,
     }
   }
 
-  settings.search_settings.strategy = search_strategy;
+  settings.bnb_search_strategy = search_strategy;
 
   constexpr bool input_mps_strict = false;
   cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model;
@@ -258,7 +258,7 @@ void run_single_file_mp(std::string file_path,
                         bool write_log_file,
                         bool log_to_console,
                         double time_limit,
-                        cuopt::linear_programming::search_settings_t::strategy_t search_strategy)
+                        cuopt::linear_programming::bnb_search_strategy_t search_strategy)
 {
   std::cout << "running file " << file_path << " on gpu : " << device << std::endl;
   auto memory_resource = make_async();
@@ -385,13 +385,13 @@ int main(int argc, char* argv[])
   std::string search_strategy_cli = program.get<std::string>("--search-strategy");
   int gpu_id                      = program.get<int>("--gpu");
 
-  cuopt::linear_programming::search_settings_t::strategy_t search_strategy;
+  cuopt::linear_programming::bnb_search_strategy_t search_strategy;
   if (search_strategy_cli == "bfs") {
-    search_strategy = cuopt::linear_programming::search_settings_t::strategy_t::BEST_FIRST;
+    search_strategy = cuopt::linear_programming::bnb_search_strategy_t::BEST_FIRST;
   } else if (search_strategy_cli == "bfs-diving") {
-    search_strategy = cuopt::linear_programming::search_settings_t::strategy_t::BEST_FIRST_DIVING;
+    search_strategy = cuopt::linear_programming::bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING;
   } else if (search_strategy_cli == "dfs") {
-    search_strategy = cuopt::linear_programming::search_settings_t::strategy_t::DEPTH_FIRST;
+    search_strategy = cuopt::linear_programming::bnb_search_strategy_t::DEPTH_FIRST;
   } else {
     std::cerr << "Invalid search strategy: " << search_strategy_cli << std::endl;
     exit(1);

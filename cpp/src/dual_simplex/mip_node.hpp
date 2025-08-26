@@ -24,6 +24,7 @@
 #include <list>
 #include <memory>
 #include <vector>
+#include <atomic>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -33,6 +34,7 @@ enum class node_status_t : int {
   INTEGER_FEASIBLE = 2,  // Node has an integer feasible solution
   INFEASIBLE       = 3,  // Node is infeasible
   FATHOMED         = 4,  // Node objective is greater than the upper bound
+  COMPLETED        = 5,  // Node has already been solved
 };
 
 bool inactive_status(node_status_t status);
@@ -79,6 +81,7 @@ class mip_node_t {
     children[0] = nullptr;
     children[1] = nullptr;
   }
+
 
   void get_variable_bounds(std::vector<f_t>& lower, std::vector<f_t>& upper) const
   {
@@ -145,10 +148,15 @@ class mip_node_t {
     }
   }
 
+  node_status_t set_status(node_status_t new_status)
+  {
+    return status.exchange(new_status, std::memory_order_seq_cst);
+  }
+
   // outputs a stack containing inactive nodes in the tree that can be freed
   void set_status(node_status_t node_status, std::vector<mip_node_t*>& stack)
   {
-    status = node_status;
+    status.store(node_status, std::memory_order_seq_cst);
     if (inactive_status(status)) {
       update_bound();
       stack.push_back(this);
@@ -156,7 +164,7 @@ class mip_node_t {
       mip_node_t* parent_ptr = parent;
       while (parent_ptr != nullptr) {
         if (parent_ptr->is_inactive()) {
-          parent_ptr->status = node_status_t::FATHOMED;
+          parent_ptr->status.store(node_status_t::FATHOMED, std::memory_order_seq_cst);
           parent_ptr->update_bound();
           stack.push_back(parent_ptr);
         } else {
@@ -200,7 +208,7 @@ class mip_node_t {
     }
   }
 
-  node_status_t status;
+  std::atomic<node_status_t> status;
   f_t lower_bound;
   i_t depth;
   i_t node_id;

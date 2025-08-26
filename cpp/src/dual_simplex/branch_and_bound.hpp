@@ -53,8 +53,7 @@ template <typename i_t, typename f_t>
 class branch_and_bound_t {
  public:
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
-                     const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-                     const search_settings_t strategy);
+                     const simplex_solver_settings_t<i_t, f_t>& solver_settings);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess = user_guess; }
@@ -78,7 +77,6 @@ class branch_and_bound_t {
  private:
   const user_problem_t<i_t, f_t>& original_problem;
   const simplex_solver_settings_t<i_t, f_t> settings;
-  search_settings_t search_settings;
 
   std::vector<f_t> guess;
 

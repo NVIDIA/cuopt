@@ -168,6 +168,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
     branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
     branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
+    branch_and_bound_settings.bnb_search_strategy = context.settings.bnb_search_strategy;
 
     if (context.settings.num_cpu_threads != -1) {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
@@ -189,8 +190,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                 std::placeholders::_2);
 
     // Create the branch and bound object
-    branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(
-      branch_and_bound_problem, branch_and_bound_settings, context.settings.search_settings);
+    branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(branch_and_bound_problem, branch_and_bound_settings);
 
     // Set the primal heuristics -> branch and bound callback
     context.problem_ptr->branch_and_bound_callback =
