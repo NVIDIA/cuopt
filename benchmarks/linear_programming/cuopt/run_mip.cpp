@@ -389,7 +389,8 @@ int main(int argc, char* argv[])
   if (search_strategy_cli == "bfs") {
     search_strategy = cuopt::linear_programming::bnb_search_strategy_t::BEST_FIRST;
   } else if (search_strategy_cli == "bfs-diving") {
-    search_strategy = cuopt::linear_programming::bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING;
+    search_strategy =
+      cuopt::linear_programming::bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING;
   } else if (search_strategy_cli == "dfs") {
     search_strategy = cuopt::linear_programming::bnb_search_strategy_t::DEPTH_FIRST;
   } else {

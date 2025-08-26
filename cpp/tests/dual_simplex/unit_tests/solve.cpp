@@ -163,8 +163,7 @@ TEST(dual_simplex, burglar)
 
   cuopt::linear_programming::dual_simplex::simplex_solver_settings_t<int, double> settings;
   std::vector<double> solution(num_items);
-  EXPECT_EQ((cuopt::linear_programming::dual_simplex::solve(user_problem, settings, solution)),
-            0);
+  EXPECT_EQ((cuopt::linear_programming::dual_simplex::solve(user_problem, settings, solution)), 0);
   double objective = 0.0;
   for (int j = 0; j < num_items; ++j) {
     objective += value[j] * solution[j];

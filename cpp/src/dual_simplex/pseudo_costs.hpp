@@ -30,20 +30,20 @@ template <typename i_t, typename f_t>
 class pseudo_costs_t {
  public:
   pseudo_costs_t()
-    : pseudo_cost_sum_down(0),
-      pseudo_cost_sum_up(0),
-      pseudo_cost_num_down(0),
-      pseudo_cost_num_up(0)
-  {}
+    : pseudo_cost_sum_down(0), pseudo_cost_sum_up(0), pseudo_cost_num_down(0), pseudo_cost_num_up(0)
+  {
+  }
 
   explicit pseudo_costs_t(i_t num_variables)
     : pseudo_cost_sum_down(num_variables),
       pseudo_cost_sum_up(num_variables),
       pseudo_cost_num_down(num_variables),
       pseudo_cost_num_up(num_variables)
-  {}
+  {
+  }
 
-  void initialize(i_t num_variables) {
+  void initialize(i_t num_variables)
+  {
     pseudo_cost_sum_down.resize(num_variables);
     pseudo_cost_sum_up.resize(num_variables);
     pseudo_cost_num_down.resize(num_variables);

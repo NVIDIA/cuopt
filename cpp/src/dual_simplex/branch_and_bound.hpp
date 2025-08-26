@@ -93,7 +93,7 @@ class branch_and_bound_t {
   // Global variable for upper bound
   f_t upper_bound_;
   // Global variable for incumbent. The incumbent should be updated with the upper bound
-  mip_solution_t<i_t, f_t> incumbent;
+  mip_solution_t<i_t, f_t> incumbent_;
 
   // Mutex for gap
   std::mutex mutex_gap;
@@ -102,7 +102,7 @@ class branch_and_bound_t {
 
   // Mutex for branching
   std::mutex mutex_branching;
-  bool currently_branching;
+  bool currently_branching_;
 
   // Global variable for stats
   std::mutex mutex_stats;
@@ -130,43 +130,42 @@ class branch_and_bound_t {
   std::vector<variable_status_t> root_vstatus;
   std::vector<f_t> edge_norms;
 
-  void repair_heuristic_solutions(const f_t& lower_bound,
-                                  mip_solution_t<i_t, f_t>& solution);
+  void repair_heuristic_solutions(const f_t& lower_bound, mip_solution_t<i_t, f_t>& solution);
 
-  mip_status_t best_first_solve(f_t root_objective,
-                                i_t branch_var,
-                                f_t branch_var_val,
-                                std::vector<variable_status_t>& root_vstatus,
-                                mip_solution_t<i_t, f_t>& solution);
+  void report(f_t last_log,
+              i_t nodes_explored,
+              i_t nodes_unexplored,
+              f_t gap,
+              f_t upper_bound,
+              f_t lower_bound,
+              i_t leaf_depth);
 
-  mip_status_t depth_first_solve(f_t root_objective,
-                                 i_t branch_var,
-                                 f_t branch_var_val,
-                                 std::vector<variable_status_t>& root_vstatus,
-                                 mip_solution_t<i_t, f_t>& solution,
-                                 bool enable_reporting);
+  mip_status_t explore_tree(mip_node_t<i_t, f_t>* start_node,
+                            f_t root_objective,
+                            mip_solution_t<i_t, f_t>& solution);
+
+  mip_status_t dive(f_t root_objective,
+                    i_t branch_var,
+                    f_t branch_var_val,
+                    std::vector<variable_status_t>& root_vstatus,
+                    mip_solution_t<i_t, f_t>& solution,
+                    bool enable_reporting);
 
   void branch(mip_node_t<i_t, f_t>* parent_node,
               i_t branch_var,
               f_t branch_var_val,
               const std::vector<variable_status_t>& parent_vstatus);
 
-  void add_feasible_solution(mip_node_t<i_t, f_t>* leaf_ptr,
-                             f_t leaf_objective,
-                             const std::vector<f_t>& leaf_sol,
-                             i_t nodes_explored,
-                             i_t unexplored_nodes,
-                             char symbol);
-
   mip_status_t solve_root_relaxation(f_t& root_objective,
                                      lp_solution_t<i_t, f_t>& root_relax_soln,
                                      std::vector<variable_status_t>& root_vstatus);
 
-  dual::status_t solve_leaf_lp(mip_node_t<i_t, f_t>* node_ptr,
-                               lp_problem_t<i_t, f_t>& leaf_problem,
-                               std::vector<variable_status_t>& leaf_vstatus,
-                               lp_solution_t<i_t, f_t>& leaf_solution,
-                               f_t upper_bound);
+  mip_status_t solve_leaf_lp(mip_node_t<i_t, f_t>* node_ptr,
+                             lp_problem_t<i_t, f_t>& leaf_problem,
+                             f_t upper_bound,
+                             f_t lower_bound,
+                             i_t nodes_explored,
+                             i_t unexplored_nodes);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

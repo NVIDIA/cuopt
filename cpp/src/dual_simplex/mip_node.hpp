@@ -20,11 +20,11 @@
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/types.hpp>
 
+#include <atomic>
 #include <cmath>
 #include <list>
 #include <memory>
 #include <vector>
-#include <atomic>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -34,7 +34,7 @@ enum class node_status_t : int {
   INTEGER_FEASIBLE = 2,  // Node has an integer feasible solution
   INFEASIBLE       = 3,  // Node is infeasible
   FATHOMED         = 4,  // Node objective is greater than the upper bound
-  COMPLETED        = 5,  // Node has already been solved
+  HAS_CHILDREN     = 5,  // Node has children to explore
 };
 
 bool inactive_status(node_status_t status);
@@ -82,7 +82,6 @@ class mip_node_t {
     children[1] = nullptr;
   }
 
-
   void get_variable_bounds(std::vector<f_t>& lower, std::vector<f_t>& upper) const
   {
     // Apply the bounds at the current node
@@ -102,15 +101,9 @@ class mip_node_t {
     }
   }
 
-  mip_node_t* get_down_child() const
-  {
-    return children[0].get();
-  }
+  mip_node_t* get_down_child() const { return children[0].get(); }
 
-  mip_node_t* get_up_child() const
-  {
-    return children[1].get();
-  }
+  mip_node_t* get_up_child() const { return children[1].get(); }
 
   void add_children(std::unique_ptr<mip_node_t>&& down_child,
                     std::unique_ptr<mip_node_t>&& up_child)

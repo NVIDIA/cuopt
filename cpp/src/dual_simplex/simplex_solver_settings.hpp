@@ -21,7 +21,6 @@
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/types.hpp>
 
-
 #include <algorithm>
 #include <atomic>
 #include <functional>
