@@ -28,7 +28,7 @@
 
 constexpr bool from_dir    = false;
 constexpr bool fj_only_run = false;
-constexpr bool fp_only_run = true;
+constexpr bool fp_only_run = false;
 
 namespace cuopt::linear_programming::detail {
 
