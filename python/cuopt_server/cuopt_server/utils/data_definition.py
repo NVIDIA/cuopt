@@ -24,7 +24,6 @@ import jsonref
 from pydantic import BaseModel, Extra, Field
 
 from .._version import __version_major_minor__
-
 from .linear_programming.data_definition import (  # noqa
     IncumbentSolution,
     LPData,
