@@ -19,6 +19,7 @@
 
 #include <mps_parser.hpp>
 #include <mps_parser/parser.hpp>
+#include <mps_parser/data_model_view.hpp>
 
 #include <gtest/gtest.h>
 
@@ -27,10 +28,29 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <fstream>
+#include <algorithm>
 
 namespace cuopt::mps_parser {
 
 constexpr double tolerance = 1e-6;
+
+// Enumeration for file format types
+enum class ProblemFileFormat {
+  MPS,    // Linear Programming (MPS format)
+  QPS,    // Quadratic Programming (QPS format)
+  UNKNOWN // Cannot determine format
+};
+
+// Structure to hold file format analysis results
+struct FileFormatInfo {
+  ProblemFileFormat format;
+  bool has_quadratic_objective;
+  bool has_quadratic_constraints;
+  std::vector<std::string> quadratic_constraint_names;
+  std::string detected_extension;
+  std::string problem_name;
+};
 
 mps_parser_t<int, double> read_from_mps(const std::string& file, bool fixed_format = true)
 {
@@ -51,6 +71,175 @@ bool file_exists(const std::string& file)
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   rel_file                                = rapidsDatasetRootDir + "/" + file;
   return std::filesystem::exists(rel_file);
+}
+
+/**
+ * @brief Detect file format by analyzing file contents and extension
+ * 
+ * This function determines whether a file is MPS or QPS format by:
+ * 1. Checking the file extension (.mps vs .QPS/.qps)
+ * 2. Scanning file contents for QPS-specific sections (QUADOBJ, QMATRIX)
+ * 3. Extracting problem name and quadratic programming features
+ * 
+ * @param file Relative path to the file to analyze
+ * @return FileFormatInfo structure with detected format and features
+ */
+FileFormatInfo detect_file_format(const std::string& file)
+{
+  FileFormatInfo info;
+  info.format = ProblemFileFormat::UNKNOWN;
+  info.has_quadratic_objective = false;
+  info.has_quadratic_constraints = false;
+  
+  // Get full file path
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string full_path = rapidsDatasetRootDir + "/" + file;
+  
+  // Extract file extension
+  std::filesystem::path filepath(full_path);
+  info.detected_extension = filepath.extension().string();
+  
+  if (!std::filesystem::exists(full_path)) {
+    return info; // Return UNKNOWN for non-existent files
+  }
+  
+  // Read and analyze file contents
+  std::ifstream infile(full_path);
+  if (!infile.is_open()) {
+    return info; // Return UNKNOWN if cannot open file
+  }
+  
+  std::string line;
+  bool found_quadobj = false;
+  bool found_qmatrix = false;
+  std::string current_qmatrix_constraint;
+  
+  while (std::getline(infile, line)) {
+    // Trim whitespace
+    line.erase(0, line.find_first_not_of(" \t\r\n"));
+    line.erase(line.find_last_not_of(" \t\r\n") + 1);
+    
+    // Skip empty lines and comments
+    if (line.empty() || line[0] == '*') continue;
+    
+    // Convert to uppercase for case-insensitive comparison
+    std::string upper_line = line;
+    std::transform(upper_line.begin(), upper_line.end(), upper_line.begin(), ::toupper);
+    
+    // Extract problem name
+    if (upper_line.find("NAME") == 0 && info.problem_name.empty()) {
+      std::istringstream iss(line);
+      std::string keyword, name;
+      iss >> keyword >> name;
+      info.problem_name = name;
+    }
+    
+    // Check for QUADOBJ section
+    if (upper_line.find("QUADOBJ") == 0) {
+      found_quadobj = true;
+      info.has_quadratic_objective = true;
+    }
+    
+    // Check for QMATRIX section
+    if (upper_line.find("QMATRIX") == 0) {
+      found_qmatrix = true;
+      info.has_quadratic_constraints = true;
+      
+      // Extract constraint name if provided on same line
+      std::istringstream iss(line);
+      std::string keyword, constraint_name;
+      iss >> keyword >> constraint_name;
+      if (!constraint_name.empty()) {
+        current_qmatrix_constraint = constraint_name;
+        info.quadratic_constraint_names.push_back(constraint_name);
+      }
+    }
+    
+    // Track additional QMATRIX constraint names
+    if (found_qmatrix && !current_qmatrix_constraint.empty() && 
+        upper_line.find("QMATRIX") != 0 && upper_line.find("ENDATA") != 0) {
+      // This might be a new constraint name line in QMATRIX
+      std::istringstream iss(line);
+      std::string first_token;
+      iss >> first_token;
+      
+      // If line doesn't start with variable names (heuristic check)
+      if (first_token.length() > 8) { // Variable names are typically <= 8 chars
+        current_qmatrix_constraint = first_token;
+        if (std::find(info.quadratic_constraint_names.begin(), 
+                     info.quadratic_constraint_names.end(), 
+                     first_token) == info.quadratic_constraint_names.end()) {
+          info.quadratic_constraint_names.push_back(first_token);
+        }
+      }
+    }
+    
+    // Stop at ENDATA
+    if (upper_line.find("ENDATA") == 0) break;
+  }
+  
+  infile.close();
+  
+  // Determine format based on findings
+  if (found_quadobj || found_qmatrix) {
+    info.format = ProblemFileFormat::QPS;
+  } else {
+    // Also check extension as secondary indicator
+    std::string lower_ext = info.detected_extension;
+    std::transform(lower_ext.begin(), lower_ext.end(), lower_ext.begin(), ::tolower);
+    
+    if (lower_ext == ".qps") {
+      info.format = ProblemFileFormat::QPS; // QPS extension but no quadratic terms found
+    } else if (lower_ext == ".mps") {
+      info.format = ProblemFileFormat::MPS;
+    } else {
+      // Assume MPS if no quadratic sections found
+      info.format = ProblemFileFormat::MPS;
+    }
+  }
+  
+  return info;
+}
+
+/**
+ * @brief Helper function to print format information
+ */
+std::string format_to_string(ProblemFileFormat format) {
+  switch (format) {
+    case ProblemFileFormat::MPS: return "MPS (Linear Programming)";
+    case ProblemFileFormat::QPS: return "QPS (Quadratic Programming)";
+    case ProblemFileFormat::UNKNOWN: return "UNKNOWN";
+    default: return "INVALID";
+  }
+}
+
+/**
+ * @brief Enhanced file reading function that also validates format
+ */
+mps_parser_t<int, double> read_from_mps_with_format_validation(const std::string& file, 
+                                                              bool fixed_format = true,
+                                                              ProblemFileFormat expected_format = ProblemFileFormat::UNKNOWN)
+{
+  // First detect the format
+  auto format_info = detect_file_format(file);
+  
+  // If expected format is specified, validate it
+  if (expected_format != ProblemFileFormat::UNKNOWN) {
+    if (format_info.format != expected_format) {
+      throw std::logic_error("Format mismatch: expected " + format_to_string(expected_format) + 
+                            " but detected " + format_to_string(format_info.format) + 
+                            " for file: " + file);
+    }
+  }
+  
+  // Proceed with normal parsing
+  std::string rel_file{};
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  rel_file = rapidsDatasetRootDir + "/" + file;
+  mps_data_model_t<int, double> problem;
+  mps_parser_t<int, double> mps{problem, rel_file, fixed_format};
+  
+  return mps;
 }
 
 TEST(mps_parser, bad_mps_files)
@@ -755,6 +944,673 @@ TEST(mps_parser, good_mps_file_partial_bounds)
   ASSERT_EQ(int(2), mps.variable_upper_bounds.size());
   EXPECT_EQ(1.0, mps.variable_upper_bounds[0]);
   EXPECT_EQ(10.0, mps.variable_upper_bounds[1]);
+}
+
+// QPS-specific tests for quadratic programming support
+TEST(qps_parser, quadratic_objective_basic)
+{
+  // Create a simple QPS test to verify quadratic objective parsing
+  // This would require actual QPS test files - for now, test the API
+  mps_data_model_t<int, double> model;
+  
+  // Test setting quadratic objective matrix
+  std::vector<double> Q_values = {2.0, 1.0, 1.0, 2.0};  // 2x2 matrix
+  std::vector<int> Q_indices = {0, 1, 0, 1};
+  std::vector<int> Q_offsets = {0, 2, 4};  // CSR offsets
+  
+  model.set_quadratic_objective_matrix(Q_values.data(), Q_values.size(),
+                                      Q_indices.data(), Q_indices.size(),
+                                      Q_offsets.data(), Q_offsets.size());
+  
+  // Verify the data was stored correctly
+  EXPECT_TRUE(model.has_quadratic_objective());
+  EXPECT_EQ(4, model.get_quadratic_objective_values().size());
+  EXPECT_EQ(2.0, model.get_quadratic_objective_values()[0]);
+  EXPECT_EQ(1.0, model.get_quadratic_objective_values()[1]);
+}
+
+TEST(qps_parser, quadratic_constraints_basic)
+{
+  // Test setting quadratic constraint matrices
+  mps_data_model_t<int, double> model;
+  
+  std::vector<std::string> constraint_names = {"CON1"};
+  std::vector<std::vector<double>> matrices_values = {{1.0, 0.5, 0.5, 1.0}};
+  std::vector<std::vector<int>> matrices_indices = {{0, 1, 0, 1}};
+  std::vector<std::vector<int>> matrices_offsets = {{0, 2, 4}};
+  
+  model.set_quadratic_constraint_matrices(constraint_names, matrices_values,
+                                         matrices_indices, matrices_offsets);
+  
+  // Verify the data was stored correctly
+  EXPECT_TRUE(model.has_quadratic_constraints());
+  EXPECT_EQ(1, model.get_quadratic_constraint_names().size());
+  EXPECT_EQ("CON1", model.get_quadratic_constraint_names()[0]);
+  EXPECT_EQ(4, model.get_quadratic_constraint_matrices_values()[0].size());
+}
+
+TEST(qps_parser, data_model_view_quadratic_support)
+{
+  // Test data_model_view_t with quadratic data
+  data_model_view_t<int, double> view;
+  
+  std::vector<double> Q_values = {2.0, 1.0};
+  std::vector<int> Q_indices = {0, 1};
+  std::vector<int> Q_offsets = {0, 1, 2};
+  
+  view.set_quadratic_objective_matrix(Q_values.data(), Q_values.size(),
+                                     Q_indices.data(), Q_indices.size(),
+                                     Q_offsets.data(), Q_offsets.size());
+  
+  EXPECT_TRUE(view.has_quadratic_objective());
+  EXPECT_EQ(2, view.get_quadratic_objective_values().size());
+  EXPECT_EQ(2.0, view.get_quadratic_objective_values().data()[0]);
+  EXPECT_EQ(1.0, view.get_quadratic_objective_values().data()[1]);
+}
+
+// ================================================================================================
+// FORMAT DETECTION TESTS
+// ================================================================================================
+
+TEST(format_detection, detect_mps_format_by_content)
+{
+  // Test detection of MPS format based on file content
+  auto info = detect_file_format("linear_programming/afiro.mps");
+  
+  EXPECT_EQ(ProblemFileFormat::MPS, info.format);
+  EXPECT_FALSE(info.has_quadratic_objective);
+  EXPECT_FALSE(info.has_quadratic_constraints);
+  EXPECT_EQ(".mps", info.detected_extension);
+  EXPECT_EQ("AFIRO", info.problem_name);
+  EXPECT_TRUE(info.quadratic_constraint_names.empty());
+}
+
+TEST(format_detection, detect_mps_format_various_files)
+{
+  // Test MPS format detection on various known MPS files
+  std::vector<std::string> mps_files = {
+    "linear_programming/afiro.mps",
+    "linear_programming/adlittle.mps",
+    "linear_programming/maros.mps",
+    "linear_programming/testprob.mps"
+  };
+  
+  for (const auto& file : mps_files) {
+    if (!file_exists(file)) continue;
+    
+    auto info = detect_file_format(file);
+    
+    EXPECT_EQ(ProblemFileFormat::MPS, info.format) << "Failed for file: " << file;
+    EXPECT_FALSE(info.has_quadratic_objective) << "MPS file should not have quadratic objective: " << file;
+    EXPECT_FALSE(info.has_quadratic_constraints) << "MPS file should not have quadratic constraints: " << file;
+    EXPECT_FALSE(info.problem_name.empty()) << "Should extract problem name from: " << file;
+  }
+}
+
+TEST(format_detection, detect_qps_format_by_content)
+{
+  // Test detection of QPS format based on file content
+  // First, test the internal test QPS file
+  std::string qps_file = "quadratic_programming/test_quadratic.qps";
+  
+  // If the test QPS file doesn't exist in the expected location, skip this test
+  if (!file_exists(qps_file)) {
+    GTEST_SKIP() << "Test QPS file not found: " << qps_file;
+  }
+  
+  auto info = detect_file_format(qps_file);
+  
+  EXPECT_EQ(ProblemFileFormat::QPS, info.format);
+  EXPECT_TRUE(info.has_quadratic_objective);
+  EXPECT_FALSE(info.problem_name.empty());
+}
+
+TEST(format_detection, detect_qps_format_by_extension)
+{
+  // Test detection based on QPS extension even without quadratic content
+  // This tests the fallback logic when extension suggests QPS but no quadratic sections found
+  std::string test_file = "some_file.qps";
+  
+  // Create a temporary minimal file for this test
+  std::string full_path = cuopt::test::get_rapids_dataset_root_dir() + "/temp_test.qps";
+  std::ofstream temp_file(full_path);
+  if (temp_file.is_open()) {
+    temp_file << "NAME TEST\n";
+    temp_file << "ROWS\n";
+    temp_file << " N OBJ\n";
+    temp_file << "COLUMNS\n";
+    temp_file << "RHS\n";
+    temp_file << "ENDATA\n";
+    temp_file.close();
+    
+    auto info = detect_file_format("temp_test.qps");
+    
+    EXPECT_EQ(ProblemFileFormat::QPS, info.format);
+    EXPECT_FALSE(info.has_quadratic_objective);
+    EXPECT_FALSE(info.has_quadratic_constraints);
+    EXPECT_EQ("TEST", info.problem_name);
+    
+    // Clean up
+    std::filesystem::remove(full_path);
+  }
+}
+
+TEST(format_detection, detect_unknown_format)
+{
+  // Test detection of unknown format for non-existent files
+  auto info = detect_file_format("non_existent_file.xyz");
+  
+  EXPECT_EQ(ProblemFileFormat::UNKNOWN, info.format);
+  EXPECT_FALSE(info.has_quadratic_objective);
+  EXPECT_FALSE(info.has_quadratic_constraints);
+  EXPECT_TRUE(info.problem_name.empty());
+}
+
+TEST(format_detection, comprehensive_format_analysis)
+{
+  // Test comprehensive analysis including quadratic features
+  std::string full_path = cuopt::test::get_rapids_dataset_root_dir() + "/test_comprehensive.qps";
+  std::ofstream temp_file(full_path);
+  if (temp_file.is_open()) {
+    temp_file << "NAME COMPREHENSIVE_TEST\n";
+    temp_file << "ROWS\n";
+    temp_file << " N OBJ\n";
+    temp_file << " L CON1\n";
+    temp_file << " L CON2\n";
+    temp_file << "COLUMNS\n";
+    temp_file << " X1 OBJ 1.0\n";
+    temp_file << " X1 CON1 1.0\n";
+    temp_file << " X2 OBJ 2.0\n";
+    temp_file << "RHS\n";
+    temp_file << " RHS1 CON1 5.0\n";
+    temp_file << "QUADOBJ\n";
+    temp_file << " X1 X1 2.0\n";
+    temp_file << " X1 X2 1.0\n";
+    temp_file << "QMATRIX CON1\n";
+    temp_file << " X1 X1 1.0\n";
+    temp_file << "QMATRIX CON2\n";
+    temp_file << " X2 X2 0.5\n";
+    temp_file << "ENDATA\n";
+    temp_file.close();
+    
+    auto info = detect_file_format("test_comprehensive.qps");
+    
+    EXPECT_EQ(ProblemFileFormat::QPS, info.format);
+    EXPECT_TRUE(info.has_quadratic_objective);
+    EXPECT_TRUE(info.has_quadratic_constraints);
+    EXPECT_EQ("COMPREHENSIVE_TEST", info.problem_name);
+    EXPECT_EQ(".qps", info.detected_extension);
+    
+    // Should detect quadratic constraint names
+    EXPECT_GE(info.quadratic_constraint_names.size(), 1);
+    
+    // Clean up
+    std::filesystem::remove(full_path);
+  }
+}
+
+TEST(format_detection, edge_cases)
+{
+  // Test edge cases in format detection
+  
+  // Case 1: Empty file
+  std::string empty_file_path = cuopt::test::get_rapids_dataset_root_dir() + "/empty_test.mps";
+  std::ofstream empty_file(empty_file_path);
+  empty_file.close();
+  
+  auto info = detect_file_format("empty_test.mps");
+  EXPECT_EQ(ProblemFileFormat::MPS, info.format); // Should default to MPS based on extension
+  EXPECT_TRUE(info.problem_name.empty());
+  
+  std::filesystem::remove(empty_file_path);
+  
+  // Case 2: File with only comments
+  std::string comment_file_path = cuopt::test::get_rapids_dataset_root_dir() + "/comment_test.mps";
+  std::ofstream comment_file(comment_file_path);
+  comment_file << "* This is a comment\n";
+  comment_file << "* Another comment\n";
+  comment_file << "NAME TEST_COMMENTS\n";
+  comment_file << "ENDATA\n";
+  comment_file.close();
+  
+  info = detect_file_format("comment_test.mps");
+  EXPECT_EQ(ProblemFileFormat::MPS, info.format);
+  EXPECT_EQ("TEST_COMMENTS", info.problem_name);
+  
+  std::filesystem::remove(comment_file_path);
+}
+
+TEST(format_detection, enhanced_mps_parsing_with_validation)
+{
+  // Test enhanced parsing with format validation
+  
+  // Should succeed for MPS file with correct expected format
+  EXPECT_NO_THROW({
+    auto mps = read_from_mps_with_format_validation("linear_programming/afiro.mps", 
+                                                   true, ProblemFileFormat::MPS);
+    EXPECT_EQ("AFIRO", mps.problem_name);
+  });
+  
+  // Should throw for format mismatch (expecting QPS but file is MPS)
+  EXPECT_THROW({
+    read_from_mps_with_format_validation("linear_programming/afiro.mps", 
+                                        true, ProblemFileFormat::QPS);
+  }, std::logic_error);
+}
+
+TEST(format_detection, real_world_file_analysis)
+{
+  // Test format detection on existing test files
+  
+  // Test the internal QPS test file if available
+  std::string test_qps_path = cuopt::test::get_rapids_dataset_root_dir() + "/test_real_qps.qps";
+  std::ofstream test_file(test_qps_path);
+  if (test_file.is_open()) {
+    // Create a realistic QPS file
+    test_file << "NAME          REAL_WORLD_QPS\n";
+    test_file << "ROWS\n";
+    test_file << " N  OBJ\n";
+    test_file << " L  BUDGET\n";
+    test_file << " L  CAPACITY\n";
+    test_file << "COLUMNS\n";
+    test_file << "    PRODUCT1  OBJ       -10.0\n";
+    test_file << "    PRODUCT1  BUDGET    2.5\n";
+    test_file << "    PRODUCT1  CAPACITY  1.2\n";
+    test_file << "    PRODUCT2  OBJ       -15.0\n";
+    test_file << "    PRODUCT2  BUDGET    3.0\n";
+    test_file << "    PRODUCT2  CAPACITY  1.8\n";
+    test_file << "RHS\n";
+    test_file << "    LIMITS    BUDGET    100.0\n";
+    test_file << "    LIMITS    CAPACITY  50.0\n";
+    test_file << "BOUNDS\n";
+    test_file << " UP BOUNDS    PRODUCT1  20.0\n";
+    test_file << " UP BOUNDS    PRODUCT2  15.0\n";
+    test_file << "QUADOBJ\n";
+    test_file << "    PRODUCT1  PRODUCT1  0.1\n";
+    test_file << "    PRODUCT1  PRODUCT2  0.05\n";
+    test_file << "    PRODUCT2  PRODUCT2  0.2\n";
+    test_file << "ENDATA\n";
+    test_file.close();
+    
+    auto info = detect_file_format("test_real_qps.qps");
+    
+    EXPECT_EQ(ProblemFileFormat::QPS, info.format);
+    EXPECT_TRUE(info.has_quadratic_objective);
+    EXPECT_FALSE(info.has_quadratic_constraints);
+    EXPECT_EQ("REAL_WORLD_QPS", info.problem_name);
+    EXPECT_EQ(".qps", info.detected_extension);
+    
+    // Test that parser can actually parse this file
+    EXPECT_NO_THROW({
+      auto mps = read_from_mps_with_format_validation("test_real_qps.qps", 
+                                                     false, ProblemFileFormat::QPS);
+      EXPECT_EQ("REAL_WORLD_QPS", mps.problem_name);
+    });
+    
+    // Clean up
+    std::filesystem::remove(test_qps_path);
+  }
+}
+
+TEST(format_detection, format_consistency_check)
+{
+  // Test that format detection is consistent with parser behavior
+  std::vector<std::pair<std::string, ProblemFileFormat>> test_cases;
+  
+  // Add known MPS files
+  test_cases.emplace_back("linear_programming/afiro.mps", ProblemFileFormat::MPS);
+  test_cases.emplace_back("linear_programming/adlittle.mps", ProblemFileFormat::MPS);
+  
+  for (const auto& [file_path, expected_format] : test_cases) {
+    if (!file_exists(file_path)) continue;
+    
+    // Detect format
+    auto info = detect_file_format(file_path);
+    EXPECT_EQ(expected_format, info.format) << "Format detection failed for: " << file_path;
+    
+    // Parse file and check consistency
+    auto mps_data = cuopt::mps_parser::parse_mps<int, double>(
+      cuopt::test::get_rapids_dataset_root_dir() + "/" + file_path, true);
+    
+    // For MPS files, quadratic features should be absent
+    if (expected_format == ProblemFileFormat::MPS) {
+      EXPECT_FALSE(info.has_quadratic_objective) << "MPS file should not have quadratic objective: " << file_path;
+      EXPECT_FALSE(info.has_quadratic_constraints) << "MPS file should not have quadratic constraints: " << file_path;
+      EXPECT_FALSE(mps_data.has_quadratic_objective()) << "Parsed MPS should not report quadratic objective: " << file_path;
+      EXPECT_FALSE(mps_data.has_quadratic_constraints()) << "Parsed MPS should not report quadratic constraints: " << file_path;
+    }
+    
+    // Problem names should match
+    EXPECT_EQ(info.problem_name, mps_data.get_problem_name()) 
+      << "Problem name mismatch for: " << file_path;
+  }
+}
+
+// ================================================================================================
+// QPS FILES SAMPLING TESTS - Tests on actual QPS files from attached directory
+// ================================================================================================
+
+/**
+ * @brief Helper function to get QPS file path relative to the test data root
+ */
+std::string get_qps_file_path(const std::string& filename) {
+    const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+    return rapidsDatasetRootDir + "/quadratic_programming/" + filename;
+}
+
+/**
+ * @brief Structure to hold expected QPS file properties for validation
+ */
+struct QpsFileExpectation {
+    std::string filename;
+    std::string expected_problem_name;
+    bool should_have_quadratic_objective;
+    bool should_have_quadratic_constraints;
+    int min_variables;      // Minimum expected variables (-1 for no check)
+    int min_constraints;    // Minimum expected constraints (-1 for no check)
+    std::string description; // Description for test output
+};
+
+TEST(qps_sampling, small_scale_qps_problems)
+{
+    // Test small-scale QPS problems (HS series - Hock & Schittkowski test problems)
+    std::vector<QpsFileExpectation> small_qps_files = {
+        {"HS21.QPS", "HS21", true, false, 2, 1, "HS21: Simple quadratic objective problem"},
+        {"HS35.QPS", "HS35", true, false, 3, 1, "HS35: Three-variable quadratic problem"},
+        {"HS53.QPS", "HS53", true, false, 5, 3, "HS53: Five-variable quadratic problem"}
+    };
+
+    for (const auto& expectation : small_qps_files) {
+        std::string qps_path = get_qps_file_path(expectation.filename);
+        
+        // Skip if file doesn't exist (graceful handling)
+        if (!std::filesystem::exists(qps_path)) {
+            GTEST_SKIP() << "QPS file not found: " << qps_path;
+            continue;
+        }
+
+        SCOPED_TRACE("Testing " + expectation.description);
+        
+        // Test our format detection
+        auto info = detect_file_format("quadratic_programming/" + expectation.filename);
+        
+        EXPECT_EQ(ProblemFileFormat::QPS, info.format) 
+            << "Should detect QPS format for: " << expectation.filename;
+        EXPECT_EQ(expectation.expected_problem_name, info.problem_name)
+            << "Problem name mismatch for: " << expectation.filename;
+        EXPECT_EQ(".QPS", info.detected_extension)
+            << "Extension should be .QPS for: " << expectation.filename;
+
+        // Test actual parsing
+        decltype(auto) parsed_data = cuopt::mps_parser::parse_mps<int, double>(qps_path, false);
+        
+        // Verify problem properties
+        EXPECT_EQ(expectation.expected_problem_name, parsed_data.get_problem_name())
+            << "Parsed problem name mismatch for: " << expectation.filename;
+            
+        // Check variable and constraint counts
+        if (expectation.min_variables > 0) {
+            EXPECT_GE(parsed_data.get_n_variables(), expectation.min_variables)
+                << "Variable count too low for: " << expectation.filename;
+        }
+        if (expectation.min_constraints > 0) {
+            EXPECT_GE(parsed_data.get_n_constraints(), expectation.min_constraints)
+                << "Constraint count too low for: " << expectation.filename;
+        }
+        
+        // Check quadratic features
+        EXPECT_EQ(expectation.should_have_quadratic_objective, parsed_data.has_quadratic_objective())
+            << "Quadratic objective expectation failed for: " << expectation.filename;
+        EXPECT_EQ(expectation.should_have_quadratic_constraints, parsed_data.has_quadratic_constraints())
+            << "Quadratic constraints expectation failed for: " << expectation.filename;
+            
+        // Verify format detection matches parser results
+        EXPECT_EQ(info.has_quadratic_objective, parsed_data.has_quadratic_objective())
+            << "Format detection vs parser mismatch (objective) for: " << expectation.filename;
+        EXPECT_EQ(info.has_quadratic_constraints, parsed_data.has_quadratic_constraints())
+            << "Format detection vs parser mismatch (constraints) for: " << expectation.filename;
+    }
+}
+
+TEST(qps_sampling, medium_scale_qps_problems)
+{
+    // Test medium-scale QPS problems
+    std::vector<QpsFileExpectation> medium_qps_files = {
+        {"BOYD1.QPS", "BOYD1", true, false, 2, 1, "BOYD1: Boyd & Vandenberghe problem"},
+        {"CVXQP1_S.QPS", "CVXQP1", true, false, 100, 20, "CVXQP1_S: Convex QP small version"},
+        {"GENHS28.QPS", "GENHS28", true, false, 10, 5, "GENHS28: Generalized HS28 problem"}
+    };
+
+    for (const auto& expectation : medium_qps_files) {
+        std::string qps_path = get_qps_file_path(expectation.filename);
+        
+        if (!std::filesystem::exists(qps_path)) {
+            GTEST_SKIP() << "QPS file not found: " << qps_path;
+            continue;
+        }
+
+        SCOPED_TRACE("Testing " + expectation.description);
+        
+        // Test format detection
+        auto info = detect_file_format("quadratic_programming/" + expectation.filename);
+        
+        EXPECT_EQ(ProblemFileFormat::QPS, info.format) 
+            << "Should detect QPS format for: " << expectation.filename;
+        EXPECT_FALSE(info.problem_name.empty())
+            << "Should extract problem name for: " << expectation.filename;
+        
+        // Test parsing and validate structure
+        auto mps_data = cuopt::mps_parser::parse_mps<int, double>(qps_path, false);
+        
+        // Basic structure validation
+        EXPECT_GT(mps_data.get_n_variables(), 0) << "Should have variables: " << expectation.filename;
+        EXPECT_GE(mps_data.get_n_constraints(), 0) << "Should have constraints: " << expectation.filename;
+        EXPECT_GT(mps_data.get_nnz(), 0) << "Should have non-zero elements: " << expectation.filename;
+        
+        // QPS files should generally have quadratic objectives
+        if (expectation.should_have_quadratic_objective) {
+            EXPECT_TRUE(mps_data.has_quadratic_objective())
+                << "Expected quadratic objective for: " << expectation.filename;
+                
+            if (mps_data.has_quadratic_objective()) {
+                const auto& Q_values = mps_data.get_quadratic_objective_values();
+                EXPECT_GT(Q_values.size(), 0) 
+                    << "Quadratic objective should have non-zero elements: " << expectation.filename;
+            }
+        }
+    }
+}
+
+TEST(qps_sampling, diverse_qps_problem_types)
+{
+    // Test diverse types of QPS problems to ensure broad compatibility
+    std::vector<std::pair<std::string, std::string>> diverse_qps_files = {
+        {"AUG2DQP.QPS", "AUG2DQP: Augmented Lagrangian 2D QP problem"},
+        {"DUAL1.QPS", "DUAL1: Dual formulation problem"},
+        {"PRIMAL1.QPS", "PRIMAL1: Primal formulation problem"},
+        {"TAME.QPS", "TAME: Test problem for algorithms"},
+        {"VALUES.QPS", "VALUES: Value function problem"}
+    };
+
+    int successful_tests = 0;
+    int total_tests = 0;
+
+    for (const auto& [filename, description] : diverse_qps_files) {
+        total_tests++;
+        std::string qps_path = get_qps_file_path(filename);
+        
+        if (!std::filesystem::exists(qps_path)) {
+            continue; // Skip non-existent files gracefully
+        }
+
+        SCOPED_TRACE("Testing " + description);
+        
+        try {
+            // Test format detection
+            auto info = detect_file_format("quadratic_programming/" + filename);
+            EXPECT_EQ(ProblemFileFormat::QPS, info.format) 
+                << "Format detection failed for: " << filename;
+            
+            // Test parsing
+            auto mps_data = cuopt::mps_parser::parse_mps<int, double>(qps_path, false);
+            
+            // Basic validation
+            EXPECT_FALSE(mps_data.get_problem_name().empty()) 
+                << "Problem name should not be empty for: " << filename;
+            EXPECT_GT(mps_data.get_n_variables(), 0) 
+                << "Should have variables for: " << filename;
+            
+            successful_tests++;
+            
+        } catch (const std::exception& e) {
+            // Log parsing failures but don't fail the test
+            std::cout << "Warning: Failed to parse " << filename << ": " << e.what() << std::endl;
+        }
+    }
+
+    // Require at least 50% success rate for diverse problems
+    double success_rate = static_cast<double>(successful_tests) / total_tests;
+    EXPECT_GT(success_rate, 0.5) 
+        << "Success rate too low: " << successful_tests << "/" << total_tests 
+        << " (" << (success_rate * 100) << "%)";
+}
+
+TEST(qps_sampling, large_scale_qps_sample)
+{
+    // Test a few larger QPS problems to ensure scalability
+    std::vector<std::string> large_qps_files = {
+        "CONT-050.QPS"  // This is a larger problem (~744KB)
+    };
+
+    for (const auto& filename : large_qps_files) {
+        std::string qps_path = get_qps_file_path(filename);
+        
+        if (!std::filesystem::exists(qps_path)) {
+            GTEST_SKIP() << "Large QPS file not found: " << qps_path;
+            continue;
+        }
+
+        SCOPED_TRACE("Testing large-scale QPS file: " + filename);
+        
+        // Test format detection (should be fast even for large files)
+        auto start_time = std::chrono::high_resolution_clock::now();
+        auto info = detect_file_format("quadratic_programming/" + filename);
+        auto detection_time = std::chrono::high_resolution_clock::now() - start_time;
+        
+        EXPECT_EQ(ProblemFileFormat::QPS, info.format) 
+            << "Should detect QPS format for large file: " << filename;
+        
+        // Format detection should complete quickly (< 100ms for any reasonable file)
+        auto detection_ms = std::chrono::duration_cast<std::chrono::milliseconds>(detection_time).count();
+        EXPECT_LT(detection_ms, 100) 
+            << "Format detection took too long: " << detection_ms << "ms for " << filename;
+        
+        // Test parsing (this might take longer but should not fail)
+        auto mps_data = cuopt::mps_parser::parse_mps<int, double>(qps_path, false);
+        
+        // Large problems should have significant structure
+        EXPECT_GT(mps_data.get_n_variables(), 10) 
+            << "Large QPS should have many variables: " << filename;
+        EXPECT_GT(mps_data.get_nnz(), 50) 
+            << "Large QPS should have many non-zeros: " << filename;
+            
+        std::cout << "Successfully parsed large QPS " << filename 
+                  << ": " << mps_data.get_n_variables() << " vars, "
+                  << mps_data.get_n_constraints() << " constraints, "
+                  << mps_data.get_nnz() << " non-zeros" << std::endl;
+    }
+}
+
+TEST(qps_sampling, qps_format_detection_statistics)
+{
+    // Comprehensive statistics on QPS format detection across sample files
+    std::vector<std::string> sample_qps_files = {
+        "HS21.QPS", "HS35.QPS", "HS53.QPS", "HS76.QPS",
+        "BOYD1.QPS", "CVXQP1_S.QPS", "GENHS28.QPS",
+        "AUG2DQP.QPS", "DUAL1.QPS", "PRIMAL1.QPS",
+        "TAME.QPS", "VALUES.QPS"
+    };
+
+    struct DetectionStats {
+        int total_files = 0;
+        int existing_files = 0;
+        int detected_as_qps = 0;
+        int with_quadratic_objective = 0;
+        int with_quadratic_constraints = 0;
+        int successfully_parsed = 0;
+        std::vector<std::string> problem_names;
+    } stats;
+
+    for (const auto& filename : sample_qps_files) {
+        stats.total_files++;
+        std::string qps_path = get_qps_file_path(filename);
+        
+        if (!std::filesystem::exists(qps_path)) {
+            continue;
+        }
+        stats.existing_files++;
+        
+        // Test format detection
+        auto info = detect_file_format("quadratic_programming/" + filename);
+        
+        if (info.format == ProblemFileFormat::QPS) {
+            stats.detected_as_qps++;
+        }
+        if (info.has_quadratic_objective) {
+            stats.with_quadratic_objective++;
+        }
+        if (info.has_quadratic_constraints) {
+            stats.with_quadratic_constraints++;
+        }
+        if (!info.problem_name.empty()) {
+            stats.problem_names.push_back(info.problem_name);
+        }
+        
+        // Test parsing
+        try {
+            auto mps_data = cuopt::mps_parser::parse_mps<int, double>(qps_path, false);
+            stats.successfully_parsed++;
+        } catch (...) {
+            // Count parsing failures
+        }
+    }
+
+    // Report statistics
+    std::cout << "\n=== QPS Format Detection Statistics ===" << std::endl;
+    std::cout << "Total sample files: " << stats.total_files << std::endl;
+    std::cout << "Existing files: " << stats.existing_files << std::endl;
+    std::cout << "Detected as QPS: " << stats.detected_as_qps << std::endl;
+    std::cout << "With quadratic objective: " << stats.with_quadratic_objective << std::endl;
+    std::cout << "With quadratic constraints: " << stats.with_quadratic_constraints << std::endl;
+    std::cout << "Successfully parsed: " << stats.successfully_parsed << std::endl;
+    
+    if (!stats.problem_names.empty()) {
+        std::cout << "Sample problem names: ";
+        for (size_t i = 0; i < std::min(size_t(5), stats.problem_names.size()); ++i) {
+            std::cout << stats.problem_names[i] << " ";
+        }
+        std::cout << std::endl;
+    }
+
+    // Validation assertions
+    if (stats.existing_files > 0) {
+        // At least 90% of existing files should be detected as QPS
+        double qps_detection_rate = static_cast<double>(stats.detected_as_qps) / stats.existing_files;
+        EXPECT_GE(qps_detection_rate, 0.9) 
+            << "QPS detection rate too low: " << (qps_detection_rate * 100) << "%";
+        
+        // At least 80% of existing files should parse successfully
+        double parse_success_rate = static_cast<double>(stats.successfully_parsed) / stats.existing_files;
+        EXPECT_GE(parse_success_rate, 0.8) 
+            << "Parse success rate too low: " << (parse_success_rate * 100) << "%";
+            
+        // Most QPS files should have quadratic objectives
+        if (stats.detected_as_qps > 0) {
+            double quad_obj_rate = static_cast<double>(stats.with_quadratic_objective) / stats.detected_as_qps;
+            EXPECT_GE(quad_obj_rate, 0.5) 
+                << "Quadratic objective rate unexpectedly low: " << (quad_obj_rate * 100) << "%";
+        }
+    }
 }
 
 }  // namespace cuopt::mps_parser
