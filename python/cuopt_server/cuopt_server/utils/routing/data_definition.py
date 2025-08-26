@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, Union
 import jsonref
 from pydantic import BaseModel, Extra, Field, RootModel, root_validator
 
-from cuopt import __version_major_minor__
+from ..._version import __version_major_minor__
 
 
 class LocationTypeEnum(str, Enum):

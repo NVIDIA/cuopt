@@ -22,7 +22,7 @@ import numpy as np
 from pydantic import BaseModel, Extra, Field, PlainValidator
 from typing_extensions import Annotated
 
-from cuopt import __version_major_minor__
+from ..._version import __version_major_minor__
 
 # INPUT DATA DEFINITIONS
 
