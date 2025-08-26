@@ -30,7 +30,7 @@ for nb in "$@"; do
     NBFILENAME=$nb
     NBNAME=${NBFILENAME%.*}
     NBNAME=${NBNAME##*/}
-    
+
     # Get the directory where the notebook is located
     NBDIR=$(dirname "$NBFILENAME")
 
@@ -61,8 +61,8 @@ for nb in "$@"; do
                 echo "Running: $cmd"
                 # Remove the ! prefix if present for execution
                 EXEC_CMD="${cmd#!}"
-                # Clean up escaped quotes and extra quotes
-                EXEC_CMD=$(echo "$EXEC_CMD" | sed 's/\\"/"/g' | sed 's/^"//' | sed 's/"$//')
+                # Clean up escaped quotes, extra quotes, and newlines
+                EXEC_CMD=$(echo "$EXEC_CMD" | sed 's/\\"/"/g' | sed 's/^"//' | sed 's/"$//' | tr -d '\n\r')
                 echo "Executing: $EXEC_CMD"
                 eval "$EXEC_CMD"
                 if [ $? -eq 0 ]; then
@@ -75,17 +75,17 @@ for nb in "$@"; do
             fi
         done
     fi
-    
+
     # Execute notebook with default kernel
     jupyter nbconvert --execute "${NBNAME}.ipynb" --to notebook --output "${EXECUTED_NOTEBOOK}" --ExecutePreprocessor.kernel_name="python3"
-    
+
     if [ $? -eq 0 ]; then
         echo "Notebook executed successfully: ${EXECUTED_NOTEBOOK}"
     else
         echo "ERROR: Failed to execute notebook: ${NBFILENAME}"
         EXITCODE=1
     fi
-    
+
     echo "Returning to original directory: ${ORIGINAL_DIR}"
     cd "${ORIGINAL_DIR}"
 done
