@@ -264,6 +264,104 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   problem.set_variable_types(std::move(var_types));
   problem.set_row_names(std::move(row_names));
   problem.set_maximize(maximize);
+
+  // Process QPS-specific data if present
+  if (!quadobj_entries.empty()) {
+    // Convert quadratic objective entries to CSR format
+    std::vector<f_t> Q_values;
+    std::vector<i_t> Q_indices;
+    std::vector<i_t> Q_offsets;
+
+    // Sort entries by row index, then by column index
+    std::sort(quadobj_entries.begin(), quadobj_entries.end(), 
+              [](const std::tuple<i_t, i_t, f_t>& a, const std::tuple<i_t, i_t, f_t>& b) {
+                return std::get<0>(a) < std::get<0>(b) || 
+                       (std::get<0>(a) == std::get<0>(b) && std::get<1>(a) < std::get<1>(b));
+              });
+
+    // Build CSR representation
+    Q_offsets.push_back(0);
+    i_t current_row = 0;
+    for (const auto& entry : quadobj_entries) {
+      i_t row = std::get<0>(entry);
+      i_t col = std::get<1>(entry);
+      f_t val = std::get<2>(entry);
+
+      // Fill missing rows with empty entries
+      while (current_row < row) {
+        Q_offsets.push_back(Q_values.size());
+        current_row++;
+      }
+
+      Q_values.push_back(val);
+      Q_indices.push_back(col);
+    }
+
+    // Complete the offsets array
+    while (current_row < static_cast<i_t>(var_names.size())) {
+      Q_offsets.push_back(Q_values.size());
+      current_row++;
+    }
+
+    problem.set_quadratic_objective_matrix(Q_values.data(), Q_values.size(),
+                                          Q_indices.data(), Q_indices.size(),
+                                          Q_offsets.data(), Q_offsets.size());
+  }
+
+  if (!qmatrix_entries.empty()) {
+    // Convert quadratic constraint entries to the required format
+    std::vector<std::string> constraint_names;
+    std::vector<std::vector<f_t>> matrices_values;
+    std::vector<std::vector<i_t>> matrices_indices;
+    std::vector<std::vector<i_t>> matrices_offsets;
+
+    for (const auto& [constraint_name, entries] : qmatrix_entries) {
+      constraint_names.push_back(constraint_name);
+
+      // Sort entries for this constraint
+      auto sorted_entries = entries;
+      std::sort(sorted_entries.begin(), sorted_entries.end(),
+                [](const std::tuple<i_t, i_t, f_t>& a, const std::tuple<i_t, i_t, f_t>& b) {
+                  return std::get<0>(a) < std::get<0>(b) || 
+                         (std::get<0>(a) == std::get<0>(b) && std::get<1>(a) < std::get<1>(b));
+                });
+
+      std::vector<f_t> values;
+      std::vector<i_t> indices;
+      std::vector<i_t> offsets;
+
+      // Build CSR representation for this constraint
+      offsets.push_back(0);
+      i_t current_row = 0;
+      for (const auto& entry : sorted_entries) {
+        i_t row = std::get<0>(entry);
+        i_t col = std::get<1>(entry);
+        f_t val = std::get<2>(entry);
+
+        // Fill missing rows
+        while (current_row < row) {
+          offsets.push_back(values.size());
+          current_row++;
+        }
+
+        values.push_back(val);
+        indices.push_back(col);
+      }
+
+      // Complete the offsets array
+      while (current_row < static_cast<i_t>(var_names.size())) {
+        offsets.push_back(values.size());
+        current_row++;
+      }
+
+      matrices_values.push_back(std::move(values));
+      matrices_indices.push_back(std::move(indices));
+      matrices_offsets.push_back(std::move(offsets));
+    }
+
+    problem.set_quadratic_constraint_matrices(constraint_names, matrices_values, 
+                                             matrices_indices, matrices_offsets);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -426,6 +524,28 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_ranges_   = false;
         inside_objname_  = true;
         inside_objsense_ = false;
+      } else if (line.find("QUADOBJ", 0, 7) == 0) {
+        encountered_sections.insert("QUADOBJ");
+        inside_rows_     = false;
+        inside_columns_  = false;
+        inside_rhs_      = false;
+        inside_bounds_   = false;
+        inside_ranges_   = false;
+        inside_objname_  = false;
+        inside_objsense_ = false;
+        inside_quadobj_  = true;
+        inside_qmatrix_  = false;
+      } else if (line.find("QMATRIX", 0, 7) == 0) {
+        encountered_sections.insert("QMATRIX");
+        inside_rows_     = false;
+        inside_columns_  = false;
+        inside_rhs_      = false;
+        inside_bounds_   = false;
+        inside_ranges_   = false;
+        inside_objname_  = false;
+        inside_objsense_ = false;
+        inside_quadobj_  = false;
+        inside_qmatrix_  = true;
       } else if (line.find("ENDATA", 0, 6) == 0) {
         encountered_sections.insert("ENDATA");
         break;
@@ -462,6 +582,10 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
       parse_objsense(line);
     } else if (inside_objname_) {
       parse_objname(line);
+    } else if (inside_quadobj_) {
+      parse_quadobj(line);
+    } else if (inside_qmatrix_) {
+      parse_qmatrix(line);
     } else {
       mps_parser_expects(false,
                          error_type_t::ValidationError,
@@ -975,6 +1099,151 @@ void mps_parser_t<i_t, f_t>::parse_objname(std::string_view line)
     }
     // Since OBJNAME always is before ROWS, this objective name will keep priority
     objective_name = name;
+  }
+}
+
+template <typename i_t, typename f_t>
+void mps_parser_t<i_t, f_t>::parse_quadobj(std::string_view line)
+{
+  // Parse QUADOBJ section for quadratic objective terms
+  // Format: variable1 variable2 value
+  
+  std::string var1_name, var2_name;
+  f_t value;
+  
+  if (fixed_mps_format) {
+    mps_parser_expects(line.size() >= 25,
+                       error_type_t::ValidationError,
+                       "QUADOBJ should have at least 3 entities! line=%s",
+                       std::string(line).c_str());
+    
+    var1_name = std::string(trim(line.substr(4, 8)));   // max of 8 chars allowed
+    var2_name = std::string(trim(line.substr(14, 8)));  // max of 8 chars allowed
+    if (var1_name[0] == '$' || var2_name[0] == '$') return;
+    
+    i_t pos = 24;
+    value = get_numerical_bound<false>(line, pos);
+  } else {
+    std::stringstream ss{std::string(line)};
+    ss >> var1_name >> var2_name >> value;
+    if (var1_name[0] == '$' || var2_name[0] == '$') return;
+  }
+
+  // Find variable indices
+  auto var1_it = var_names_map.find(var1_name);
+  auto var2_it = var_names_map.find(var2_name);
+  
+  mps_parser_expects(var1_it != var_names_map.end(),
+                     error_type_t::ValidationError,
+                     "Variable '%s' not found in QUADOBJ! line=%s",
+                     var1_name.c_str(), std::string(line).c_str());
+  mps_parser_expects(var2_it != var_names_map.end(),
+                     error_type_t::ValidationError,
+                     "Variable '%s' not found in QUADOBJ! line=%s",
+                     var2_name.c_str(), std::string(line).c_str());
+  
+  i_t var1_id = var1_it->second;
+  i_t var2_id = var2_it->second;
+  
+  // Store quadratic objective entry
+  quadobj_entries.emplace_back(var1_id, var2_id, value);
+  
+  // If it's not a diagonal term, also add the symmetric term
+  if (var1_id != var2_id) {
+    quadobj_entries.emplace_back(var2_id, var1_id, value);
+  }
+}
+
+template <typename i_t, typename f_t>
+void mps_parser_t<i_t, f_t>::parse_qmatrix(std::string_view line)
+{
+  // Parse QMATRIX section header or entries
+  // Format for header: QMATRIX constraint_name
+  // Format for entries: variable1 variable2 value
+  
+  if (fixed_mps_format) {
+    mps_parser_expects(line.size() >= 14,
+                       error_type_t::ValidationError,
+                       "QMATRIX should have at least 2 entities! line=%s",
+                       std::string(line).c_str());
+    
+    // Check if this is a constraint name line (starts at position 14)
+    std::string first_token = std::string(trim(line.substr(4, 8)));
+    if (first_token[0] == '$') return;
+    
+    if (line.size() < 25) {
+      // This is a constraint name line
+      current_qmatrix_constraint_ = first_token;
+      qmatrix_entries[current_qmatrix_constraint_] = std::vector<std::tuple<i_t, i_t, f_t>>();
+    } else {
+      // This is an entry line
+      parse_qmatrix_entries(line, current_qmatrix_constraint_);
+    }
+  } else {
+    std::stringstream ss{std::string(line)};
+    std::string first_token, second_token, third_token;
+    ss >> first_token >> second_token >> third_token;
+    
+    if (first_token[0] == '$') return;
+    
+    if (third_token.empty()) {
+      // This is a constraint name line
+      current_qmatrix_constraint_ = first_token;
+      qmatrix_entries[current_qmatrix_constraint_] = std::vector<std::tuple<i_t, i_t, f_t>>();
+    } else {
+      // This is an entry line - reconstruct the line for parsing
+      std::string entry_line = first_token + " " + second_token + " " + third_token;
+      parse_qmatrix_entries(entry_line, current_qmatrix_constraint_);
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+void mps_parser_t<i_t, f_t>::parse_qmatrix_entries(std::string_view line, const std::string& constraint_name)
+{
+  mps_parser_expects(!constraint_name.empty(),
+                     error_type_t::ValidationError,
+                     "QMATRIX entries found without constraint name! line=%s",
+                     std::string(line).c_str());
+  
+  std::string var1_name, var2_name;
+  f_t value;
+  
+  if (fixed_mps_format) {
+    var1_name = std::string(trim(line.substr(4, 8)));   // max of 8 chars allowed
+    var2_name = std::string(trim(line.substr(14, 8)));  // max of 8 chars allowed
+    if (var1_name[0] == '$' || var2_name[0] == '$') return;
+    
+    i_t pos = 24;
+    value = get_numerical_bound<false>(line, pos);
+  } else {
+    std::stringstream ss{std::string(line)};
+    ss >> var1_name >> var2_name >> value;
+    if (var1_name[0] == '$' || var2_name[0] == '$') return;
+  }
+
+  // Find variable indices
+  auto var1_it = var_names_map.find(var1_name);
+  auto var2_it = var_names_map.find(var2_name);
+  
+  mps_parser_expects(var1_it != var_names_map.end(),
+                     error_type_t::ValidationError,
+                     "Variable '%s' not found in QMATRIX! line=%s",
+                     var1_name.c_str(), std::string(line).c_str());
+  mps_parser_expects(var2_it != var_names_map.end(),
+                     error_type_t::ValidationError,
+                     "Variable '%s' not found in QMATRIX! line=%s",
+                     var2_name.c_str(), std::string(line).c_str());
+  
+  i_t var1_id = var1_it->second;
+  i_t var2_id = var2_it->second;
+  
+  // Store quadratic constraint matrix entry
+  qmatrix_entries[constraint_name].emplace_back(var1_id, var2_id, value);
+  
+  // If it's not a diagonal term, also add the symmetric term
+  if (var1_id != var2_id) {
+    qmatrix_entries[constraint_name].emplace_back(var2_id, var1_id, value);
   }
 }
 
