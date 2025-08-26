@@ -251,6 +251,42 @@ class mps_data_model_t {
    */
   void set_initial_dual_solution(const f_t* initial_dual_solution, i_t size);
 
+  /**
+   * @brief Set the quadratic objective matrix (Q) in CSR format for QPS files.
+   *
+   * @note This is used for quadratic programming problems where the objective 
+   * function contains quadratic terms: (1/2) * x^T * Q * x + c^T * x
+   *
+   * @param[in] Q_values Values of the CSR representation of the quadratic objective matrix
+   * @param size_values Size of the Q_values array
+   * @param[in] Q_indices Indices of the CSR representation of the quadratic objective matrix
+   * @param size_indices Size of the Q_indices array
+   * @param[in] Q_offsets Offsets of the CSR representation of the quadratic objective matrix
+   * @param size_offsets Size of the Q_offsets array
+   */
+  void set_quadratic_objective_matrix(const f_t* Q_values,
+                                      i_t size_values,
+                                      const i_t* Q_indices,
+                                      i_t size_indices,
+                                      const i_t* Q_offsets,
+                                      i_t size_offsets);
+
+  /**
+   * @brief Set the quadratic constraint matrices in CSR format for QPS files.
+   *
+   * @note This is used for quadratic programming problems with quadratic constraints
+   *
+   * @param[in] constraint_names Names of the constraints with quadratic terms
+   * @param[in] Q_matrices_values Values for each quadratic constraint matrix
+   * @param[in] Q_matrices_indices Indices for each quadratic constraint matrix
+   * @param[in] Q_matrices_offsets Offsets for each quadratic constraint matrix
+   */
+  void set_quadratic_constraint_matrices(
+      const std::vector<std::string>& constraint_names,
+      const std::vector<std::vector<f_t>>& Q_matrices_values,
+      const std::vector<std::vector<i_t>>& Q_matrices_indices,
+      const std::vector<std::vector<i_t>>& Q_matrices_offsets);
+
   i_t get_n_variables() const;
   i_t get_n_constraints() const;
   i_t get_nnz() const;
@@ -284,6 +320,20 @@ class mps_data_model_t {
   std::string get_problem_name() const;
   const std::vector<std::string>& get_variable_names() const;
   const std::vector<std::string>& get_row_names() const;
+
+  // QPS-specific getters
+  const std::vector<f_t>& get_quadratic_objective_values() const;
+  std::vector<f_t>& get_quadratic_objective_values();
+  const std::vector<i_t>& get_quadratic_objective_indices() const;
+  std::vector<i_t>& get_quadratic_objective_indices();
+  const std::vector<i_t>& get_quadratic_objective_offsets() const;
+  std::vector<i_t>& get_quadratic_objective_offsets();
+  const std::vector<std::string>& get_quadratic_constraint_names() const;
+  const std::vector<std::vector<f_t>>& get_quadratic_constraint_matrices_values() const;
+  const std::vector<std::vector<i_t>>& get_quadratic_constraint_matrices_indices() const;
+  const std::vector<std::vector<i_t>>& get_quadratic_constraint_matrices_offsets() const;
+  bool has_quadratic_objective() const noexcept;
+  bool has_quadratic_constraints() const noexcept;
 
   /** whether to maximize or minimize the objective function */
   bool maximize_;
@@ -333,6 +383,18 @@ class mps_data_model_t {
   std::vector<f_t> initial_primal_solution_;
   /** Initial dual solution */
   std::vector<f_t> initial_dual_solution_;
+  
+  // QPS-specific data members for quadratic programming support
+  /** Quadratic objective matrix in CSR format (for (1/2) * x^T * Q * x term) */
+  std::vector<f_t> Q_objective_;
+  std::vector<i_t> Q_objective_indices_;
+  std::vector<i_t> Q_objective_offsets_;
+  /** Names of constraints that have quadratic terms */
+  std::vector<std::string> quadratic_constraint_names_;
+  /** Quadratic constraint matrices in CSR format */
+  std::vector<std::vector<f_t>> Q_constraint_matrices_values_;
+  std::vector<std::vector<i_t>> Q_constraint_matrices_indices_;
+  std::vector<std::vector<i_t>> Q_constraint_matrices_offsets_;
 };  // class mps_data_model_t
 
 }  // namespace cuopt::mps_parser
