@@ -68,12 +68,12 @@ for nb in "$@"; do
         echo "Found pip install commands:"
         echo "$PIP_COMMANDS"
         echo "Executing pip install commands..."
-        
+
         # Split multiple commands by common separators and process each one
         echo "$PIP_COMMANDS" | awk -F'\\n",' '{for(i=1;i<=NF;i++) print $i}' | while IFS= read -r cmd; do
             # Clean up the command and remove any remaining quote artifacts and trailing commas
             cmd=$(echo "$cmd" | tr -d '"' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/\\n//g' | sed 's/\\r//g' | sed 's/,$//')
-            
+
             if [ -n "$cmd" ] && [[ "$cmd" =~ ^!?pip[[:space:]]+install ]]; then
                 echo "Processing command: '$cmd'"
                 echo "Running: $cmd"
