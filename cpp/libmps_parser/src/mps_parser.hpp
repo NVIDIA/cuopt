@@ -122,6 +122,12 @@ class mps_parser_t {
   std::vector<f_t> ranges_values{};
   /** Objection function sense (maximize of minimize) */
   bool maximize{false};
+  
+  // QPS-specific data for quadratic programming
+  /** Quadratic objective matrix entries */
+  std::vector<std::tuple<i_t, i_t, f_t>> quadobj_entries{};
+  /** Quadratic constraint matrices entries mapped by constraint name */
+  std::unordered_map<std::string, std::vector<std::tuple<i_t, i_t, f_t>>> qmatrix_entries{};
 
  private:
   bool inside_rows_{false};
@@ -132,6 +138,9 @@ class mps_parser_t {
   bool inside_objsense_{false};
   bool inside_intcapture_{false};
   bool inside_objname_{false};
+  // QPS-specific parsing states
+  bool inside_quadobj_{false};
+  bool inside_qmatrix_{false};
   std::unordered_set<std::string> encountered_sections{};
   std::unordered_map<std::string, i_t> row_names_map{};
   std::unordered_map<std::string, i_t> var_names_map{};
@@ -168,6 +177,12 @@ class mps_parser_t {
   void read_bound_and_value(std::string_view line, BoundType type, i_t var_id, i_t start);
   void parse_ranges(std::string_view line);
   i_t insert_range_value(std::string_view line, bool skip_range = true);
+  
+  // QPS-specific parsing methods
+  void parse_quadobj(std::string_view line);
+  void parse_qmatrix(std::string_view line);
+  void parse_qmatrix_entries(std::string_view line, const std::string& constraint_name);
+  std::string current_qmatrix_constraint_{};  // Track current constraint in QMATRIX section
 
 };  // class mps_parser_t
 
