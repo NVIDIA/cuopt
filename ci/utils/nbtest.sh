@@ -47,34 +47,63 @@ for nb in "$@"; do
     echo "Executing notebook: ${NBFILENAME}"
     echo "Output will be saved to: ${EXECUTED_NOTEBOOK}"
 
-    # Extract and execute pip install commands from notebook
     echo "Checking for pip install commands in notebook..."
-    PIP_COMMANDS=$(grep -h "pip install" "$NBNAME.ipynb" 2>/dev/null | grep -v "#" | sed 's/^[[:space:]]*//' | sed 's/^["'"'"']*//' | sed 's/["'"'"']*$//' || true)
+
+   # if [[ "$NBNAME" != *trnsport* ]]; then
+   #     echo "Skipping notebook '${NBNAME}' as it does not contain '01_optimization' in the name."
+   #     cd "$ORIGINAL_DIR"
+   #     continue
+   # fi
+
+    # Extract pip install lines (approximate method)
+    PIP_COMMANDS=$(grep -h "pip install" "$NBNAME.ipynb" 2>/dev/null \
+        | grep -v "#" \
+        | sed 's/^[[:space:]]*//' \
+        | sed 's/^["'"'"']*//' \
+        | sed 's/["'"'"']*$//' \
+        | sed 's/\\$//' \
+        || true)
 
     if [ -n "$PIP_COMMANDS" ]; then
         echo "Found pip install commands:"
         echo "$PIP_COMMANDS"
         echo "Executing pip install commands..."
-        echo "$PIP_COMMANDS" | while read -r cmd; do
-            echo "Processing command: '$cmd'"
-            if [[ "$cmd" =~ ^!?pip[[:space:]]+install ]]; then
+        
+        # Split multiple commands by common separators and process each one
+        echo "$PIP_COMMANDS" | awk -F'\\n",' '{for(i=1;i<=NF;i++) print $i}' | while IFS= read -r cmd; do
+            # Clean up the command and remove any remaining quote artifacts and trailing commas
+            cmd=$(echo "$cmd" | tr -d '"' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/\\n//g' | sed 's/\\r//g' | sed 's/,$//')
+            
+            if [ -n "$cmd" ] && [[ "$cmd" =~ ^!?pip[[:space:]]+install ]]; then
+                echo "Processing command: '$cmd'"
                 echo "Running: $cmd"
                 # Remove the ! prefix if present for execution
                 EXEC_CMD="${cmd#!}"
-                # Clean up escaped quotes, extra quotes, and newlines
-                EXEC_CMD=$(echo "$EXEC_CMD" | sed 's/\\"/"/g' | sed 's/^"//' | sed 's/"$//' | tr -d '\n\r')
+
+                # Clean up quotes, backslashes, and newline artifacts using safer methods
+                EXEC_CMD=$(echo "$EXEC_CMD" | tr -d '"' | tr -d '\n\r' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/,$//')
+                echo "DEBUG: Original command: '$cmd'"
+                echo "DEBUG: Cleaned command: '$EXEC_CMD'"
                 echo "Executing: $EXEC_CMD"
+
+                # INSERT_YOUR_CODE
+                # Add --pre to EXEC_CMD if not already present
+                if [[ "$EXEC_CMD" =~ ^pip[[:space:]]+install ]] && [[ ! "$EXEC_CMD" =~ [[:space:]]--pre([[:space:]]|$) ]]; then
+                    EXEC_CMD="$EXEC_CMD --pre --extra-index-url https://pypi.anaconda.org/rapidsai-nightly/simple"
+                fi
+
                 eval "$EXEC_CMD"
                 if [ $? -eq 0 ]; then
                     echo "✓ Successfully executed: $cmd"
-                else
-                    echo "✗ Failed to execute: $cmd"
-                fi
-            else
+               else
+                echo "✗ Failed to execute: $cmd"
+               fi
+            elif [ -n "$cmd" ]; then
                 echo "Command '$cmd' did not match pip install pattern"
             fi
         done
     fi
+
 
     # Execute notebook with default kernel
     jupyter nbconvert --execute "${NBNAME}.ipynb" --to notebook --output "${EXECUTED_NOTEBOOK}" --ExecutePreprocessor.kernel_name="python3"
