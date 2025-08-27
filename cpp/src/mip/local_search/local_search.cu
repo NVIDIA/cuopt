@@ -418,7 +418,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
           population_ptr->add_solution(std::move(solution_copy));
           auto new_sol_vector = population_ptr->get_external_solutions();
           population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
-          if (population_ptr->current_size() >= 6) { break; }
+          if (population_ptr->current_size() >= 3) { break; }
         }
       }
     }
@@ -445,7 +445,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
             population_ptr->add_solution(std::move(solution_copy));
             auto new_sol_vector = population_ptr->get_external_solutions();
             population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
-            if (population_ptr->current_size() >= 6) { break; }
+            if (population_ptr->current_size() >= 3) { break; }
           }
         }
       }
