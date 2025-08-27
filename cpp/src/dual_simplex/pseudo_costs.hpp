@@ -29,11 +29,6 @@ namespace cuopt::linear_programming::dual_simplex {
 template <typename i_t, typename f_t>
 class pseudo_costs_t {
  public:
-  pseudo_costs_t()
-    : pseudo_cost_sum_down(0), pseudo_cost_sum_up(0), pseudo_cost_num_down(0), pseudo_cost_num_up(0)
-  {
-  }
-
   explicit pseudo_costs_t(i_t num_variables)
     : pseudo_cost_sum_down(num_variables),
       pseudo_cost_sum_up(num_variables),
@@ -42,12 +37,26 @@ class pseudo_costs_t {
   {
   }
 
-  void initialize(i_t num_variables)
+  pseudo_costs_t(const pseudo_costs_t& other)
+    : pseudo_cost_sum_down(other.pseudo_cost_sum_down),
+      pseudo_cost_sum_up(other.pseudo_cost_sum_up),
+      pseudo_cost_num_down(other.pseudo_cost_num_down),
+      pseudo_cost_num_up(other.pseudo_cost_num_up),
+      strong_branch_down(other.strong_branch_down),
+      strong_branch_up(other.strong_branch_up),
+      num_strong_branches_completed(other.num_strong_branches_completed)
   {
-    pseudo_cost_sum_down.resize(num_variables);
-    pseudo_cost_sum_up.resize(num_variables);
-    pseudo_cost_num_down.resize(num_variables);
-    pseudo_cost_num_up.resize(num_variables);
+  }
+
+  pseudo_costs_t(pseudo_costs_t&& other)
+    : pseudo_cost_sum_down(std::move(other.pseudo_cost_sum_down)),
+      pseudo_cost_sum_up(std::move(other.pseudo_cost_sum_up)),
+      pseudo_cost_num_down(std::move(other.pseudo_cost_num_down)),
+      pseudo_cost_num_up(std::move(other.pseudo_cost_num_up)),
+      strong_branch_down(std::move(other.strong_branch_down)),
+      strong_branch_up(std::move(other.strong_branch_up)),
+      num_strong_branches_completed(other.num_strong_branches_completed)
+  {
   }
 
   void update_pseudo_costs(mip_node_t<i_t, f_t>* node_ptr, f_t leaf_objective);

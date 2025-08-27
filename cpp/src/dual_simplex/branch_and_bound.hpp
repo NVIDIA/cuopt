@@ -56,13 +56,12 @@ class branch_and_bound_t {
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
-  void set_initial_guess(const std::vector<f_t>& user_guess) { guess = user_guess; }
+  void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
 
   // Set a solution based on the user problem during the course of the solve
   void set_new_solution(const std::vector<f_t>& solution);
 
-  bool repair_solution(const std::vector<variable_status_t>& root_vstatus,
-                       const std::vector<f_t>& leaf_edge_norms,
+  bool repair_solution(const std::vector<f_t>& leaf_edge_norms,
                        const std::vector<f_t>& potential_solution,
                        f_t& repaired_obj,
                        std::vector<f_t>& repaired_solution) const;
@@ -75,97 +74,82 @@ class branch_and_bound_t {
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
 
  private:
-  const user_problem_t<i_t, f_t>& original_problem;
-  const simplex_solver_settings_t<i_t, f_t> settings;
+  const user_problem_t<i_t, f_t>& original_problem_;
+  const simplex_solver_settings_t<i_t, f_t> settings_;
 
-  std::vector<f_t> guess;
+  std::vector<f_t> guess_;
 
-  lp_problem_t<i_t, f_t> original_lp;
-  std::vector<i_t> new_slacks;
-  std::vector<variable_type_t> var_types;
+  lp_problem_t<i_t, f_t> original_lp_;
+  std::vector<i_t> new_slacks_;
+  std::vector<variable_type_t> var_types_;
   // Mutex for lower bound
-  std::mutex mutex_lower;
+  std::mutex mutex_lower_;
   // Global variable for lower bound
   f_t lower_bound_;
 
   // Mutex for upper bound
-  std::mutex mutex_upper;
+  std::mutex mutex_upper_;
   // Global variable for upper bound
   f_t upper_bound_;
   // Global variable for incumbent. The incumbent should be updated with the upper bound
   mip_solution_t<i_t, f_t> incumbent_;
 
   // Mutex for gap
-  std::mutex mutex_gap;
+  std::mutex mutex_gap_;
   // Global variable for gap
   f_t gap_;
 
   // Mutex for branching
-  std::mutex mutex_branching;
+  std::mutex mutex_branching_;
   bool currently_branching_;
 
   // Global variable for stats
-  std::mutex mutex_stats;
+  std::mutex mutex_stats_;
 
   // Note  that floating point atomics are only supported in C++20
   struct stats_t {
     f_t start_time                    = 0.0;
     f_t total_lp_solve_time           = 0.0;
     std::atomic<i_t> nodes_explored   = 0;
-    std::atomic<i_t> unexplored_nodes = 0;
+    std::atomic<i_t> nodes_unexplored = 0;
     f_t total_lp_iters                = 0;
     std::atomic<i_t> num_nodes        = 0;
   } stats_;
 
   // Mutex for repair
-  std::mutex mutex_repair;
-  std::vector<std::vector<f_t>> repair_queue;
-
-  // Pseudocosts
-  std::mutex mutex_pseudocosts;
-  pseudo_costs_t<i_t, f_t> pc;
+  std::mutex mutex_repair_;
+  std::vector<std::vector<f_t>> repair_queue_;
 
   // Search tree
-  std::unique_ptr<mip_node_t<i_t, f_t>> root_node_;
-  std::vector<variable_status_t> root_vstatus;
-  std::vector<f_t> edge_norms;
+  std::vector<variable_status_t> root_vstatus_;
+  f_t root_objective_;
+  lp_solution_t<i_t, f_t> root_relax_soln_;
+  std::vector<f_t> edge_norms_;
 
   void repair_heuristic_solutions(const f_t& lower_bound, mip_solution_t<i_t, f_t>& solution);
 
-  void report(f_t last_log,
-              i_t nodes_explored,
-              i_t nodes_unexplored,
-              f_t gap,
-              f_t upper_bound,
-              f_t lower_bound,
-              i_t leaf_depth);
+  mip_status_t explore_tree(i_t branch_var,
+                            mip_solution_t<i_t, f_t>& solution,
+                            pseudo_costs_t<i_t, f_t> pc);
 
-  mip_status_t explore_tree(mip_node_t<i_t, f_t>* start_node,
-                            f_t root_objective,
-                            mip_solution_t<i_t, f_t>& solution);
-
-  mip_status_t dive(f_t root_objective,
-                    i_t branch_var,
-                    f_t branch_var_val,
-                    std::vector<variable_status_t>& root_vstatus,
+  mip_status_t dive(i_t branch_var,
                     mip_solution_t<i_t, f_t>& solution,
-                    bool enable_reporting);
+                    pseudo_costs_t<i_t, f_t> pc);
 
   void branch(mip_node_t<i_t, f_t>* parent_node,
               i_t branch_var,
               f_t branch_var_val,
               const std::vector<variable_status_t>& parent_vstatus);
 
-  mip_status_t solve_root_relaxation(f_t& root_objective,
-                                     lp_solution_t<i_t, f_t>& root_relax_soln,
-                                     std::vector<variable_status_t>& root_vstatus);
+  mip_status_t solve_root_relaxation();
 
   mip_status_t solve_leaf_lp(mip_node_t<i_t, f_t>* node_ptr,
                              lp_problem_t<i_t, f_t>& leaf_problem,
                              f_t upper_bound,
                              f_t lower_bound,
                              i_t nodes_explored,
-                             i_t unexplored_nodes);
+                             i_t unexplored_nodes,
+                             pseudo_costs_t<i_t, f_t>& pc);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
