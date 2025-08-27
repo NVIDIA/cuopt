@@ -22,6 +22,8 @@ import numpy as np
 from pydantic import BaseModel, Extra, Field, PlainValidator
 from typing_extensions import Annotated
 
+from ..._version import __version_major_minor__
+
 # INPUT DATA DEFINITIONS
 
 
@@ -853,7 +855,7 @@ lp_zlib_example_data = 'x\x01\x8dR\xd1j\xc4 \x10|\xcfW\x88\xcf%$\xd7\x94\xd2\xfe
 managed_lp_example_data = {
     "action": "cuOpt_LP",
     "data": lp_example_data,
-    "client_version": "25.10",
+    "client_version": __version_major_minor__,
 }
 
 # cut and pasted from actual run of LP example data.
