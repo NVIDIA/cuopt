@@ -271,21 +271,7 @@ class mps_data_model_t {
                                       const i_t* Q_offsets,
                                       i_t size_offsets);
 
-  /**
-   * @brief Set the quadratic constraint matrices in CSR format for QPS files.
-   *
-   * @note This is used for quadratic programming problems with quadratic constraints
-   *
-   * @param[in] constraint_names Names of the constraints with quadratic terms
-   * @param[in] Q_matrices_values Values for each quadratic constraint matrix
-   * @param[in] Q_matrices_indices Indices for each quadratic constraint matrix
-   * @param[in] Q_matrices_offsets Offsets for each quadratic constraint matrix
-   */
-  void set_quadratic_constraint_matrices(
-      const std::vector<std::string>& constraint_names,
-      const std::vector<std::vector<f_t>>& Q_matrices_values,
-      const std::vector<std::vector<i_t>>& Q_matrices_indices,
-      const std::vector<std::vector<i_t>>& Q_matrices_offsets);
+
 
   i_t get_n_variables() const;
   i_t get_n_constraints() const;
@@ -328,12 +314,8 @@ class mps_data_model_t {
   std::vector<i_t>& get_quadratic_objective_indices();
   const std::vector<i_t>& get_quadratic_objective_offsets() const;
   std::vector<i_t>& get_quadratic_objective_offsets();
-  const std::vector<std::string>& get_quadratic_constraint_names() const;
-  const std::vector<std::vector<f_t>>& get_quadratic_constraint_matrices_values() const;
-  const std::vector<std::vector<i_t>>& get_quadratic_constraint_matrices_indices() const;
-  const std::vector<std::vector<i_t>>& get_quadratic_constraint_matrices_offsets() const;
+
   bool has_quadratic_objective() const noexcept;
-  bool has_quadratic_constraints() const noexcept;
 
   /** whether to maximize or minimize the objective function */
   bool maximize_;
@@ -389,12 +371,7 @@ class mps_data_model_t {
   std::vector<f_t> Q_objective_;
   std::vector<i_t> Q_objective_indices_;
   std::vector<i_t> Q_objective_offsets_;
-  /** Names of constraints that have quadratic terms */
-  std::vector<std::string> quadratic_constraint_names_;
-  /** Quadratic constraint matrices in CSR format */
-  std::vector<std::vector<f_t>> Q_constraint_matrices_values_;
-  std::vector<std::vector<i_t>> Q_constraint_matrices_indices_;
-  std::vector<std::vector<i_t>> Q_constraint_matrices_offsets_;
+
 };  // class mps_data_model_t
 
 }  // namespace cuopt::mps_parser
