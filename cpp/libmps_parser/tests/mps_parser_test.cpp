@@ -46,8 +46,6 @@ enum class ProblemFileFormat {
 struct FileFormatInfo {
   ProblemFileFormat format;
   bool has_quadratic_objective;
-  bool has_quadratic_constraints;
-  std::vector<std::string> quadratic_constraint_names;
   std::string detected_extension;
   std::string problem_name;
 };
@@ -78,7 +76,7 @@ bool file_exists(const std::string& file)
  * 
  * This function determines whether a file is MPS or QPS format by:
  * 1. Checking the file extension (.mps vs .QPS/.qps)
- * 2. Scanning file contents for QPS-specific sections (QUADOBJ, QMATRIX)
+ * 2. Scanning file contents for QPS-specific sections QUADOBJ
  * 3. Extracting problem name and quadratic programming features
  * 
  * @param file Relative path to the file to analyze
@@ -89,7 +87,6 @@ FileFormatInfo detect_file_format(const std::string& file)
   FileFormatInfo info;
   info.format = ProblemFileFormat::UNKNOWN;
   info.has_quadratic_objective = false;
-  info.has_quadratic_constraints = false;
   
   // Get full file path
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
@@ -111,8 +108,6 @@ FileFormatInfo detect_file_format(const std::string& file)
   
   std::string line;
   bool found_quadobj = false;
-  bool found_qmatrix = false;
-  std::string current_qmatrix_constraint;
   
   while (std::getline(infile, line)) {
     // Trim whitespace
@@ -140,39 +135,7 @@ FileFormatInfo detect_file_format(const std::string& file)
       info.has_quadratic_objective = true;
     }
     
-    // Check for QMATRIX section
-    if (upper_line.find("QMATRIX") == 0) {
-      found_qmatrix = true;
-      info.has_quadratic_constraints = true;
-      
-      // Extract constraint name if provided on same line
-      std::istringstream iss(line);
-      std::string keyword, constraint_name;
-      iss >> keyword >> constraint_name;
-      if (!constraint_name.empty()) {
-        current_qmatrix_constraint = constraint_name;
-        info.quadratic_constraint_names.push_back(constraint_name);
-      }
-    }
-    
-    // Track additional QMATRIX constraint names
-    if (found_qmatrix && !current_qmatrix_constraint.empty() && 
-        upper_line.find("QMATRIX") != 0 && upper_line.find("ENDATA") != 0) {
-      // This might be a new constraint name line in QMATRIX
-      std::istringstream iss(line);
-      std::string first_token;
-      iss >> first_token;
-      
-      // If line doesn't start with variable names (heuristic check)
-      if (first_token.length() > 8) { // Variable names are typically <= 8 chars
-        current_qmatrix_constraint = first_token;
-        if (std::find(info.quadratic_constraint_names.begin(), 
-                     info.quadratic_constraint_names.end(), 
-                     first_token) == info.quadratic_constraint_names.end()) {
-          info.quadratic_constraint_names.push_back(first_token);
-        }
-      }
-    }
+
     
     // Stop at ENDATA
     if (upper_line.find("ENDATA") == 0) break;
@@ -181,7 +144,7 @@ FileFormatInfo detect_file_format(const std::string& file)
   infile.close();
   
   // Determine format based on findings
-  if (found_quadobj || found_qmatrix) {
+  if (found_quadobj) {
     info.format = ProblemFileFormat::QPS;
   } else {
     // Also check extension as secondary indicator
@@ -969,25 +932,7 @@ TEST(qps_parser, quadratic_objective_basic)
   EXPECT_EQ(1.0, model.get_quadratic_objective_values()[1]);
 }
 
-TEST(qps_parser, quadratic_constraints_basic)
-{
-  // Test setting quadratic constraint matrices
-  mps_data_model_t<int, double> model;
-  
-  std::vector<std::string> constraint_names = {"CON1"};
-  std::vector<std::vector<double>> matrices_values = {{1.0, 0.5, 0.5, 1.0}};
-  std::vector<std::vector<int>> matrices_indices = {{0, 1, 0, 1}};
-  std::vector<std::vector<int>> matrices_offsets = {{0, 2, 4}};
-  
-  model.set_quadratic_constraint_matrices(constraint_names, matrices_values,
-                                         matrices_indices, matrices_offsets);
-  
-  // Verify the data was stored correctly
-  EXPECT_TRUE(model.has_quadratic_constraints());
-  EXPECT_EQ(1, model.get_quadratic_constraint_names().size());
-  EXPECT_EQ("CON1", model.get_quadratic_constraint_names()[0]);
-  EXPECT_EQ(4, model.get_quadratic_constraint_matrices_values()[0].size());
-}
+
 
 TEST(qps_parser, data_model_view_quadratic_support)
 {
@@ -1019,10 +964,8 @@ TEST(format_detection, detect_mps_format_by_content)
   
   EXPECT_EQ(ProblemFileFormat::MPS, info.format);
   EXPECT_FALSE(info.has_quadratic_objective);
-  EXPECT_FALSE(info.has_quadratic_constraints);
   EXPECT_EQ(".mps", info.detected_extension);
   EXPECT_EQ("AFIRO", info.problem_name);
-  EXPECT_TRUE(info.quadratic_constraint_names.empty());
 }
 
 TEST(format_detection, detect_mps_format_various_files)
@@ -1042,7 +985,6 @@ TEST(format_detection, detect_mps_format_various_files)
     
     EXPECT_EQ(ProblemFileFormat::MPS, info.format) << "Failed for file: " << file;
     EXPECT_FALSE(info.has_quadratic_objective) << "MPS file should not have quadratic objective: " << file;
-    EXPECT_FALSE(info.has_quadratic_constraints) << "MPS file should not have quadratic constraints: " << file;
     EXPECT_FALSE(info.problem_name.empty()) << "Should extract problem name from: " << file;
   }
 }
@@ -1087,7 +1029,6 @@ TEST(format_detection, detect_qps_format_by_extension)
     
     EXPECT_EQ(ProblemFileFormat::QPS, info.format);
     EXPECT_FALSE(info.has_quadratic_objective);
-    EXPECT_FALSE(info.has_quadratic_constraints);
     EXPECT_EQ("TEST", info.problem_name);
     
     // Clean up
@@ -1102,7 +1043,6 @@ TEST(format_detection, detect_unknown_format)
   
   EXPECT_EQ(ProblemFileFormat::UNKNOWN, info.format);
   EXPECT_FALSE(info.has_quadratic_objective);
-  EXPECT_FALSE(info.has_quadratic_constraints);
   EXPECT_TRUE(info.problem_name.empty());
 }
 
@@ -1126,10 +1066,6 @@ TEST(format_detection, comprehensive_format_analysis)
     temp_file << "QUADOBJ\n";
     temp_file << " X1 X1 2.0\n";
     temp_file << " X1 X2 1.0\n";
-    temp_file << "QMATRIX CON1\n";
-    temp_file << " X1 X1 1.0\n";
-    temp_file << "QMATRIX CON2\n";
-    temp_file << " X2 X2 0.5\n";
     temp_file << "ENDATA\n";
     temp_file.close();
     
@@ -1137,12 +1073,8 @@ TEST(format_detection, comprehensive_format_analysis)
     
     EXPECT_EQ(ProblemFileFormat::QPS, info.format);
     EXPECT_TRUE(info.has_quadratic_objective);
-    EXPECT_TRUE(info.has_quadratic_constraints);
     EXPECT_EQ("COMPREHENSIVE_TEST", info.problem_name);
     EXPECT_EQ(".qps", info.detected_extension);
-    
-    // Should detect quadratic constraint names
-    EXPECT_GE(info.quadratic_constraint_names.size(), 1);
     
     // Clean up
     std::filesystem::remove(full_path);
@@ -1236,7 +1168,6 @@ TEST(format_detection, real_world_file_analysis)
     
     EXPECT_EQ(ProblemFileFormat::QPS, info.format);
     EXPECT_TRUE(info.has_quadratic_objective);
-    EXPECT_FALSE(info.has_quadratic_constraints);
     EXPECT_EQ("REAL_WORLD_QPS", info.problem_name);
     EXPECT_EQ(".qps", info.detected_extension);
     
@@ -1275,9 +1206,7 @@ TEST(format_detection, format_consistency_check)
     // For MPS files, quadratic features should be absent
     if (expected_format == ProblemFileFormat::MPS) {
       EXPECT_FALSE(info.has_quadratic_objective) << "MPS file should not have quadratic objective: " << file_path;
-      EXPECT_FALSE(info.has_quadratic_constraints) << "MPS file should not have quadratic constraints: " << file_path;
       EXPECT_FALSE(mps_data.has_quadratic_objective()) << "Parsed MPS should not report quadratic objective: " << file_path;
-      EXPECT_FALSE(mps_data.has_quadratic_constraints()) << "Parsed MPS should not report quadratic constraints: " << file_path;
     }
     
     // Problem names should match
@@ -1305,7 +1234,6 @@ struct QpsFileExpectation {
     std::string filename;
     std::string expected_problem_name;
     bool should_have_quadratic_objective;
-    bool should_have_quadratic_constraints;
     int min_variables;      // Minimum expected variables (-1 for no check)
     int min_constraints;    // Minimum expected constraints (-1 for no check)
     std::string description; // Description for test output
@@ -1315,9 +1243,9 @@ TEST(qps_sampling, small_scale_qps_problems)
 {
     // Test small-scale QPS problems (HS series - Hock & Schittkowski test problems)
     std::vector<QpsFileExpectation> small_qps_files = {
-        {"HS21.QPS", "HS21", true, false, 2, 1, "HS21: Simple quadratic objective problem"},
-        {"HS35.QPS", "HS35", true, false, 3, 1, "HS35: Three-variable quadratic problem"},
-        {"HS53.QPS", "HS53", true, false, 5, 3, "HS53: Five-variable quadratic problem"}
+        {"HS21.QPS", "HS21", true, 2, 1, "HS21: Simple quadratic objective problem"},
+        {"HS35.QPS", "HS35", true, 3, 1, "HS35: Three-variable quadratic problem"},
+        {"HS53.QPS", "HS53", true, 5, 3, "HS53: Five-variable quadratic problem"}
     };
 
     for (const auto& expectation : small_qps_files) {
@@ -1326,7 +1254,6 @@ TEST(qps_sampling, small_scale_qps_problems)
         // Skip if file doesn't exist (graceful handling)
         if (!std::filesystem::exists(qps_path)) {
             GTEST_SKIP() << "QPS file not found: " << qps_path;
-            continue;
         }
 
         SCOPED_TRACE("Testing " + expectation.description);
@@ -1361,14 +1288,10 @@ TEST(qps_sampling, small_scale_qps_problems)
         // Check quadratic features
         EXPECT_EQ(expectation.should_have_quadratic_objective, parsed_data.has_quadratic_objective())
             << "Quadratic objective expectation failed for: " << expectation.filename;
-        EXPECT_EQ(expectation.should_have_quadratic_constraints, parsed_data.has_quadratic_constraints())
-            << "Quadratic constraints expectation failed for: " << expectation.filename;
             
         // Verify format detection matches parser results
         EXPECT_EQ(info.has_quadratic_objective, parsed_data.has_quadratic_objective())
             << "Format detection vs parser mismatch (objective) for: " << expectation.filename;
-        EXPECT_EQ(info.has_quadratic_constraints, parsed_data.has_quadratic_constraints())
-            << "Format detection vs parser mismatch (constraints) for: " << expectation.filename;
     }
 }
 
@@ -1376,9 +1299,9 @@ TEST(qps_sampling, medium_scale_qps_problems)
 {
     // Test medium-scale QPS problems
     std::vector<QpsFileExpectation> medium_qps_files = {
-        {"BOYD1.QPS", "BOYD1", true, false, 2, 1, "BOYD1: Boyd & Vandenberghe problem"},
-        {"CVXQP1_S.QPS", "CVXQP1", true, false, 100, 20, "CVXQP1_S: Convex QP small version"},
-        {"GENHS28.QPS", "GENHS28", true, false, 10, 5, "GENHS28: Generalized HS28 problem"}
+        {"BOYD1.QPS", "BOYD1", true, 2, 1, "BOYD1: Boyd & Vandenberghe problem"},
+        {"CVXQP1_S.QPS", "CVXQP1", true, 100, 20, "CVXQP1_S: Convex QP small version"},
+        {"GENHS28.QPS", "GENHS28", true, 10, 5, "GENHS28: Generalized HS28 problem"}
     };
 
     for (const auto& expectation : medium_qps_files) {
@@ -1386,7 +1309,6 @@ TEST(qps_sampling, medium_scale_qps_problems)
         
         if (!std::filesystem::exists(qps_path)) {
             GTEST_SKIP() << "QPS file not found: " << qps_path;
-            continue;
         }
 
         SCOPED_TRACE("Testing " + expectation.description);
@@ -1487,7 +1409,6 @@ TEST(qps_sampling, large_scale_qps_sample)
         
         if (!std::filesystem::exists(qps_path)) {
             GTEST_SKIP() << "Large QPS file not found: " << qps_path;
-            continue;
         }
 
         SCOPED_TRACE("Testing large-scale QPS file: " + filename);
@@ -1536,7 +1457,6 @@ TEST(qps_sampling, qps_format_detection_statistics)
         int existing_files = 0;
         int detected_as_qps = 0;
         int with_quadratic_objective = 0;
-        int with_quadratic_constraints = 0;
         int successfully_parsed = 0;
         std::vector<std::string> problem_names;
     } stats;
@@ -1559,9 +1479,6 @@ TEST(qps_sampling, qps_format_detection_statistics)
         if (info.has_quadratic_objective) {
             stats.with_quadratic_objective++;
         }
-        if (info.has_quadratic_constraints) {
-            stats.with_quadratic_constraints++;
-        }
         if (!info.problem_name.empty()) {
             stats.problem_names.push_back(info.problem_name);
         }
@@ -1581,7 +1498,6 @@ TEST(qps_sampling, qps_format_detection_statistics)
     std::cout << "Existing files: " << stats.existing_files << std::endl;
     std::cout << "Detected as QPS: " << stats.detected_as_qps << std::endl;
     std::cout << "With quadratic objective: " << stats.with_quadratic_objective << std::endl;
-    std::cout << "With quadratic constraints: " << stats.with_quadratic_constraints << std::endl;
     std::cout << "Successfully parsed: " << stats.successfully_parsed << std::endl;
     
     if (!stats.problem_names.empty()) {
