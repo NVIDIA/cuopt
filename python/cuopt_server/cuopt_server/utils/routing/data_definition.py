@@ -21,6 +21,8 @@ from typing import Dict, List, Optional, Union
 import jsonref
 from pydantic import BaseModel, Extra, Field, RootModel, root_validator
 
+from ..._version import __version_major_minor__
+
 
 class LocationTypeEnum(str, Enum):
     Depot = "Depot"
@@ -1026,7 +1028,7 @@ vrp_msgpack_example_data = "\x85\xb0cost_matrix_data\x81\xa4data\x82\xa11\x93\x9
 managed_vrp_example_data = {
     "action": "cuOpt_OptimizedRouting",
     "data": vrp_example_data,
-    "client_version": "25.10",
+    "client_version": __version_major_minor__,
 }
 
 # cut and pasted from actual run of VRP example data.

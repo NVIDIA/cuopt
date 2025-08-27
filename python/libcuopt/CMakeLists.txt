@@ -15,21 +15,19 @@
 
 cmake_minimum_required(VERSION 3.30.4 FATAL_ERROR)
 
-set(cuopt_version 25.10.00)
-
 include(../../cmake/rapids_config.cmake)
 include(rapids-cuda)
 rapids_cuda_init_architectures(libcuopt-python)
 
 project(
   libcuopt-python
-  VERSION "${cuopt_version}"
+  VERSION "${CUOPT_VERSION}"
   LANGUAGES CXX CUDA
 )
 
 # Check if cuopt is already available. If so, it is the user's responsibility to ensure that the
 # CMake package is also available at build time of the Python cuopt package.
-find_package(cuopt "${cuopt_version}")
+find_package(cuopt "${CUOPT_VERSION}")
 
 if(cuopt_FOUND)
   return()

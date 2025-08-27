@@ -22,7 +22,7 @@ include(rapids-find)
 
 project(
   MPS_PARSER
-  VERSION 25.10.00
+  VERSION "${CUOPT_VERSION}"
   LANGUAGES CXX
 )
 
