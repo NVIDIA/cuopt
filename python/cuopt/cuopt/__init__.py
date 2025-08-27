@@ -22,4 +22,4 @@ else:
     del libcuopt
 
 from cuopt import linear_programming, routing
-from cuopt._version import __git_commit__, __version__
+from cuopt._version import __git_commit__, __version__, __version_major_minor__
