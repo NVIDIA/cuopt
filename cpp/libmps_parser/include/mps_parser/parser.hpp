@@ -31,8 +31,7 @@ namespace cuopt::mps_parser {
  * QPS files (for quadratic programming). QPS files are MPS files with additional
  * sections:
  * - QUADOBJ: Defines quadratic terms in the objective function
- * - QMATRIX: Defines quadratic constraint matrices
- *
+ * 
  * @param[in] mps_file_path Path to MPS or QPS formatted file.
  * @param[in] fixed_mps_format If MPS/QPS file should be parsed as fixed format, false by default
  * @return mps_data_model_t A fully formed LP/QP problem which represents the given MPS/QPS file
