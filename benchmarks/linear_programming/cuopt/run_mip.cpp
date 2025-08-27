@@ -348,7 +348,7 @@ int main(int argc, char* argv[])
   program.add_argument("--memory-limit")
     .help("memory limit in MB")
     .scan<'g', double>()
-    .default_value(0);
+    .default_value(0.0);
 
   program.add_argument("--track-allocations")
     .help("track allocations (t/f)")
