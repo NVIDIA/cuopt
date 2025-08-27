@@ -233,24 +233,7 @@ void mps_data_model_t<i_t, f_t>::set_quadratic_objective_matrix(const f_t* Q_val
   std::copy(Q_offsets, Q_offsets + size_offsets, Q_objective_offsets_.data());
 }
 
-template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::set_quadratic_constraint_matrices(
-    const std::vector<std::string>& constraint_names,
-    const std::vector<std::vector<f_t>>& Q_matrices_values,
-    const std::vector<std::vector<i_t>>& Q_matrices_indices,
-    const std::vector<std::vector<i_t>>& Q_matrices_offsets)
-{
-  mps_parser_expects(constraint_names.size() == Q_matrices_values.size() &&
-                     Q_matrices_values.size() == Q_matrices_indices.size() &&
-                     Q_matrices_indices.size() == Q_matrices_offsets.size(),
-                     error_type_t::ValidationError,
-                     "All quadratic constraint data arrays must have the same size");
-  
-  quadratic_constraint_names_ = constraint_names;
-  Q_constraint_matrices_values_ = Q_matrices_values;
-  Q_constraint_matrices_indices_ = Q_matrices_indices;
-  Q_constraint_matrices_offsets_ = Q_matrices_offsets;
-}
+
 
 template <typename i_t, typename f_t>
 const std::vector<f_t>& mps_data_model_t<i_t, f_t>::get_constraint_matrix_values() const
@@ -487,29 +470,7 @@ std::vector<i_t>& mps_data_model_t<i_t, f_t>::get_quadratic_objective_offsets()
   return Q_objective_offsets_;
 }
 
-template <typename i_t, typename f_t>
-const std::vector<std::string>& mps_data_model_t<i_t, f_t>::get_quadratic_constraint_names() const
-{
-  return quadratic_constraint_names_;
-}
 
-template <typename i_t, typename f_t>
-const std::vector<std::vector<f_t>>& mps_data_model_t<i_t, f_t>::get_quadratic_constraint_matrices_values() const
-{
-  return Q_constraint_matrices_values_;
-}
-
-template <typename i_t, typename f_t>
-const std::vector<std::vector<i_t>>& mps_data_model_t<i_t, f_t>::get_quadratic_constraint_matrices_indices() const
-{
-  return Q_constraint_matrices_indices_;
-}
-
-template <typename i_t, typename f_t>
-const std::vector<std::vector<i_t>>& mps_data_model_t<i_t, f_t>::get_quadratic_constraint_matrices_offsets() const
-{
-  return Q_constraint_matrices_offsets_;
-}
 
 template <typename i_t, typename f_t>
 bool mps_data_model_t<i_t, f_t>::has_quadratic_objective() const noexcept
@@ -517,11 +478,7 @@ bool mps_data_model_t<i_t, f_t>::has_quadratic_objective() const noexcept
   return !Q_objective_.empty();
 }
 
-template <typename i_t, typename f_t>
-bool mps_data_model_t<i_t, f_t>::has_quadratic_constraints() const noexcept
-{
-  return !quadratic_constraint_names_.empty();
-}
+
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
 template class mps_data_model_t<int, float>;
