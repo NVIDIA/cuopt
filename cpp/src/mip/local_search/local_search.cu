@@ -416,6 +416,8 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
           solution_copy.problem_ptr = old_problem_ptr;
           solution_copy.resize_to_problem();
           population_ptr->add_solution(std::move(solution_copy));
+          auto new_sol_vector = population_ptr->get_external_solutions();
+          population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
           if (population_ptr->current_size() >= 4) { break; }
         }
       }
@@ -441,6 +443,8 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
             solution_copy.problem_ptr = old_problem_ptr;
             solution_copy.resize_to_problem();
             population_ptr->add_solution(std::move(solution_copy));
+            auto new_sol_vector = population_ptr->get_external_solutions();
+            population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
             if (population_ptr->current_size() >= 4) { break; }
           }
         }
