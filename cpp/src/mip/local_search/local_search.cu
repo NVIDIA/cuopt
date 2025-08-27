@@ -369,7 +369,8 @@ template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                       timer_t timer,
                                       const weight_t<i_t, f_t>* weights,
-                                      bool feasibility_run)
+                                      bool feasibility_run,
+                                      population_t<i_t, f_t>* population_ptr)
 {
   const i_t n_fp_iterations = 1000000;
   bool is_feasible          = solution.compute_feasibility();
@@ -410,6 +411,13 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                         solution.get_objective());
         save_solution_and_add_cutting_plane(solution, best_solution, best_objective);
         fp.config.alpha = default_alpha;
+        if (population_ptr) {
+          solution_t<i_t, f_t> solution_copy(solution);
+          solution_copy.problem_ptr = old_problem_ptr;
+          solution_copy.resize_to_problem();
+          population_ptr->add_solution(std::move(solution_copy));
+          if (population_ptr->current_size() >= 4) { break; }
+        }
       }
     }
     // if not feasible, it means it is a cycle
@@ -428,6 +436,13 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                           solution.get_objective());
           save_solution_and_add_cutting_plane(solution, best_solution, best_objective);
           fp.config.alpha = default_alpha;
+          if (population_ptr) {
+            solution_t<i_t, f_t> solution_copy(solution);
+            solution_copy.problem_ptr = old_problem_ptr;
+            solution_copy.resize_to_problem();
+            population_ptr->add_solution(std::move(solution_copy));
+            if (population_ptr->current_size() >= 4) { break; }
+          }
         }
       }
     }

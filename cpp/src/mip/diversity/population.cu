@@ -55,6 +55,21 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
   best_feasible_objective = std::numeric_limits<f_t>::max();
 }
 
+template <typename i_t>
+i_t get_max_var_threshold(i_t n_vars)
+{
+  if (n_vars < 50) {
+    return std::max(1, n_vars - 1);
+  } else if (n_vars < 80) {
+    return n_vars - 2;
+  } else if (n_vars < 200) {
+    return n_vars - 4;
+  } else if (n_vars < 1000) {
+    return n_vars - 8;
+  }
+  return n_vars - 10;
+}
+
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::allocate_solutions()
 {
@@ -67,8 +82,7 @@ void population_t<i_t, f_t>::allocate_solutions()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::initialize_population()
 {
-  var_threshold =
-    std::max(problem_ptr->n_variables - var_threshold, (problem_ptr->n_variables / 10) * 8);
+  var_threshold = get_max_var_threshold(problem_ptr->n_integer_vars);
   solutions.reserve(max_solutions);
   indices.reserve(max_solutions);
   // indices[0] always points to solutions[0] - a special place for feasible solution
@@ -574,21 +588,6 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::population_to_vector()
     sol_vec.emplace_back(solution_t<i_t, f_t>{solutions[indices[i].first].second});
   }
   return sol_vec;
-}
-
-template <typename i_t>
-i_t get_max_var_threshold(i_t n_vars)
-{
-  if (n_vars < 50) {
-    return std::max(1, n_vars - 1);
-  } else if (n_vars < 80) {
-    return n_vars - 2;
-  } else if (n_vars < 200) {
-    return n_vars - 4;
-  } else if (n_vars < 1000) {
-    return n_vars - 8;
-  }
-  return n_vars - 10;
 }
 
 template <typename i_t, typename f_t>

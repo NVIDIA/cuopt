@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <mip/diversity/population.cuh>
 #include <mip/local_search/feasibility_pump/feasibility_pump.cuh>
 #include <mip/local_search/line_segment_search/line_segment_search.cuh>
 #include <mip/solution/solution.cuh>
@@ -75,8 +76,9 @@ class local_search_t {
   bool run_staged_fp(solution_t<i_t, f_t>& solution, timer_t timer, bool& early_exit);
   bool run_fp(solution_t<i_t, f_t>& solution,
               timer_t timer,
-              const weight_t<i_t, f_t>* weights = nullptr,
-              bool feasibility_run              = true);
+              const weight_t<i_t, f_t>* weights      = nullptr,
+              bool feasibility_run                   = true,
+              population_t<i_t, f_t>* population_ptr = nullptr);
   void resize_vectors(problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr);
   void save_solution_and_add_cutting_plane(solution_t<i_t, f_t>& solution,
                                            rmm::device_uvector<f_t>& best_solution,
