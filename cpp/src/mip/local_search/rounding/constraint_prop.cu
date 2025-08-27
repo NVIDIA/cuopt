@@ -759,7 +759,6 @@ bool constraint_prop_t<i_t, f_t>::run_repair_procedure(problem_t<i_t, f_t>& prob
                                                        timer_t& timer,
                                                        const raft::handle_t* handle_ptr)
 {
-  return false;
   // select the first probing value
   i_t select = 0;
   multi_probe.set_updated_bounds(problem, select, handle_ptr);
@@ -877,25 +876,25 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
                sol.handle_ptr->get_stream());
   } else {
     find_unset_integer_vars(sol, unset_integer_vars);
-    // sort_by_frac(sol, make_span(unset_integer_vars));
-    // // round first unset_integer_vars.size() - 50, leave last 50 to be rounded by the algo
-    // i_t n_to_round = std::max(unset_integer_vars.size() - 50, 0lu);
-    // if (n_to_round > 0) {
-    //   thrust::for_each(
-    //     sol.handle_ptr->get_thrust_policy(),
-    //     unset_integer_vars.begin(),
-    //     unset_integer_vars.begin() + n_to_round,
-    //     [sol = sol.view(), seed = cuopt::seed_generator::get_seed()] __device__(i_t var_idx) {
-    //       raft::random::PCGenerator rng(seed, var_idx, 0);
-    //       sol.assignment[var_idx] = round_nearest(sol.assignment[var_idx],
-    //                                               sol.problem.variable_lower_bounds[var_idx],
-    //                                               sol.problem.variable_upper_bounds[var_idx],
-    //                                               sol.problem.tolerances.integrality_tolerance,
-    //                                               rng);
-    //     });
-    //   find_unset_integer_vars(sol, unset_integer_vars);
-    // }
-    // set_bounds_on_fixed_vars(sol);
+    sort_by_frac(sol, make_span(unset_integer_vars));
+    // round first unset_integer_vars.size() - 50, leave last 50 to be rounded by the algo
+    i_t n_to_round = std::max(unset_integer_vars.size() - 50, 0lu);
+    if (n_to_round > 0) {
+      thrust::for_each(
+        sol.handle_ptr->get_thrust_policy(),
+        unset_integer_vars.begin(),
+        unset_integer_vars.begin() + n_to_round,
+        [sol = sol.view(), seed = cuopt::seed_generator::get_seed()] __device__(i_t var_idx) {
+          raft::random::PCGenerator rng(seed, var_idx, 0);
+          sol.assignment[var_idx] = round_nearest(sol.assignment[var_idx],
+                                                  sol.problem.variable_lower_bounds[var_idx],
+                                                  sol.problem.variable_upper_bounds[var_idx],
+                                                  sol.problem.tolerances.integrality_tolerance,
+                                                  rng);
+        });
+      find_unset_integer_vars(sol, unset_integer_vars);
+    }
+    set_bounds_on_fixed_vars(sol);
   }
 
   CUOPT_LOG_DEBUG("Bounds propagation rounding: unset vars %lu", unset_integer_vars.size());
@@ -909,19 +908,17 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
   bool problem_ii = is_problem_ii(*sol.problem_ptr);
   // if the problem is ii, run the bounds prop in the beginning
   if (problem_ii) {
-    // bool bounds_repaired =
-    //   bounds_repair.repair_problem(*sol.problem_ptr, *orig_sol.problem_ptr, timer,
-    //   sol.handle_ptr);
-    // if (bounds_repaired) {
-    //   CUOPT_LOG_DEBUG("Initial ii is repaired by bounds repair!");
-    // } else {
-    //   auto term_crit = bounds_update.solve(*sol.problem_ptr);
-    //   if (termination_criterion_t::NO_UPDATE != term_crit) {
-    //     bounds_update.set_updated_bounds(*sol.problem_ptr);
-    //   }
-    //   rounding_ii = true;
-    // }
-    rounding_ii = true;
+    bool bounds_repaired =
+      bounds_repair.repair_problem(*sol.problem_ptr, *orig_sol.problem_ptr, timer, sol.handle_ptr);
+    if (bounds_repaired) {
+      CUOPT_LOG_DEBUG("Initial ii is repaired by bounds repair!");
+    } else {
+      auto term_crit = bounds_update.solve(*sol.problem_ptr);
+      if (termination_criterion_t::NO_UPDATE != term_crit) {
+        bounds_update.set_updated_bounds(*sol.problem_ptr);
+      }
+      rounding_ii = true;
+    }
   }
   // do the sort if the problem is not ii. crossing bounds might cause some issues on the sort order
   else {
