@@ -57,6 +57,8 @@ cache:
       - cuda-version =${{ cuda_version }}
       - cmake ${{ cmake_version }}
       - ninja
+      - zlib
+      - bzip2
     host:
       - cpp-argparse
       - cuda-version =${{ cuda_version }}
@@ -70,6 +72,8 @@ cache:
       - libcusparse-dev
       - cuda-cudart-dev
       - boost
+      - zlib
+      - bzip2
 
 outputs:
   - package:
@@ -90,6 +94,8 @@ outputs:
       build:
         - cmake ${{ cmake_version }}
         - ${{ stdlib("c") }}
+        - zlib
+        - bzip2
       ignore_run_exports:
         by_name:
           - cuda-cudart
