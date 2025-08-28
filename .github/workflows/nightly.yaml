@@ -8,6 +8,9 @@ on:
 jobs:
   compute-matrix:
     runs-on: ubuntu-latest
+    outputs:
+      DATE: ${{ steps.compute-matrix.outputs.DATE }}
+      MATRIX: ${{ steps.compute-matrix.outputs.MATRIX }}
     steps:
       - name: compute matrix
         id: compute-matrix
