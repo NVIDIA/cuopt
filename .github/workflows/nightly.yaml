@@ -5,52 +5,42 @@ on:
   schedule:
     - cron: "0 5 * * *" # 5am UTC / 1am EST
 
-
-        echo "RAPIDS_REPOSITORY=${{ inputs.repo || github.repository }}" | tee --append "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
-        sha="${{ inputs.sha }}"
-        if [[ "${sha}" == "" ]]; then
-          sha=$(git rev-parse HEAD)
-        fi
-        echo "RAPIDS_SHA=${sha}" | tee --append "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
-        echo "RAPIDS_REF_NAME=${{ inputs.branch || github.ref_name }}" | tee --append "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
-        echo "RAPIDS_NIGHTLY_DATE=${{ inputs.date }}" | tee --append "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
-        if [[ -n "${{ inputs.build_workflow_name }}" ]]; then
-          echo "RAPIDS_BUILD_WORKFLOW_NAME=${{ inputs.build_workflow_name }}" | tee --append "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
-        fi
-
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - cuopt_version: "25.10"
-jobs:
-  get-run-info:
+  compute-matrix:
+    id: compute-matrix
     runs-on: ubuntu-latest
     shell: bash
     run: |
-      MATRIX="
+      # add more list items here to run nightlies for more branches
+      export CI_MATRIX="
       - branch: '25.10'
-        sha: "\'$(git ls-remote https://github.com/NVIDIA/cuopt.git refs/heads/branch-25.10 | awk '{print $1}')\'"
+        sha: "\'$(git ls-remote ${{ github.repositoryUrl }} refs/heads/branch-25.10 | awk '{print $1}')\'"
       "
-      echo "date=$(date +%F)" >> ${GITHUB_OUTPUT}
-      echo ""
+      MATRIX="$(
+        yq -n -o json 'env(CI_MATRIX)' | \
+      )"
 
-      # latest commit on each branch
-      export RAPIDS_SHA="$(git ls-remote ${{ github.repositoryUrl }} refs/heads/${{ }} | awk '{print $1}')"
+      echo "MATRIX=${MATRIX}" | tee --append "${GITHUB_OUTPUT}"
+      echo "date=$(date +%F)" | tee --append "${GITHUB_OUTPUT}"
   build:
+    needs: [compute-matrix]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.compute-matrix.outputs.MATRIX) }}
     uses: ./.github/workflows/build.yaml
     with:
       build_type: nightly
-      branch: branch-${{ matrix.cuopt_version }}
-      date: ${{ inputs.date }}
-      sha: ${{ inputs.sha }}
+      branch: ${{ matrix.branch }}
+      date: ${{ needs.compute-matrix.outputs.date }}
+      sha: ${{ matrix.sha }}
   test:
-    needs: build
+    needs: [compute-matrix, build]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.compute-matrix.outputs.MATRIX) }}
     uses: ./.github/workflows/test.yaml
     with:
       build_type: nightly
-      branch: branch-${{ matrix.cuopt_version }}
-      date: ${{ inputs.date }}
-      sha: ${{ inputs.sha }}
+      branch: ${{ matrix.branch }}
+      date: ${{ needs.compute-matrix.outputs.date }}
+      sha: ${{ matrix.sha }}
