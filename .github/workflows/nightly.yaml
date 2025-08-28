@@ -25,7 +25,7 @@ jobs:
             yq -n --indent 0 -o json 'env(CI_MATRIX)'
           )"
 
-          echo "MATRIX=${MATRIX}" | tee --append "${GITHUB_OUTPUT}"
+          echo "MATRIX='${MATRIX}'" | tee --append "${GITHUB_OUTPUT}"
           echo "DATE=$(date +%F)" | tee --append "${GITHUB_OUTPUT}"
   build:
     needs: [compute-matrix]
