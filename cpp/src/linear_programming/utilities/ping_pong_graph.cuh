@@ -59,14 +59,12 @@ class ping_pong_graph_t {
     if (!is_batch_mode_) {
       if (total_pdlp_iterations % 2 == 0 && !even_initialized) {
         RAFT_CUDA_TRY(cudaStreamEndCapture(stream_view_.value(), &even_graph));
-        // Extra NULL NULL 0 mandatory for cuda 11.8
-        RAFT_CUDA_TRY(cudaGraphInstantiate(&even_instance, even_graph, nullptr, nullptr, 0));
+        RAFT_CUDA_TRY(cudaGraphInstantiate(&even_instance, even_graph));
         even_initialized = true;
         RAFT_CUDA_TRY_NO_THROW(cudaGraphDestroy(even_graph));
       } else if (total_pdlp_iterations % 2 == 1 && !odd_initialized) {
         RAFT_CUDA_TRY(cudaStreamEndCapture(stream_view_.value(), &odd_graph));
-        // Extra NULL NULL 0 mandatory for cuda 11.8
-        RAFT_CUDA_TRY(cudaGraphInstantiate(&odd_instance, odd_graph, nullptr, nullptr, 0));
+        RAFT_CUDA_TRY(cudaGraphInstantiate(&odd_instance, odd_graph));
         odd_initialized = true;
         RAFT_CUDA_TRY_NO_THROW(cudaGraphDestroy(odd_graph));
       }

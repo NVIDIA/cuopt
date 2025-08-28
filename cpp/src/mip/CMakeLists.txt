@@ -42,6 +42,7 @@ list(PREPEND
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/load_balanced_bounds_presolve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/multi_probe.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/probing_cache.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/third_party_presolve.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/trivial_presolve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/problem/load_balanced_problem.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump.cu

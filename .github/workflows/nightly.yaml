@@ -12,9 +12,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - cuopt_version: "25.08"
+          - cuopt_version: "25.10"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Trigger Pipeline
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,9 +59,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - cuopt_version: "25.08"
+          - cuopt_version: "25.10"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Trigger Test
         env:
           GH_TOKEN: ${{ github.token }}

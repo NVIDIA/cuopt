@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Auto-label and Round-Robin Assign Issues
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  auto-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add awaiting response label to new issues
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // Only process issues (not PRs)
+            if (context.payload.issue && !context.payload.issue.pull_request) {
+              const issue = context.payload.issue;
+              const issueNumber = issue.number;
+
+              console.log(`Adding 'awaiting response' label to issue #${issueNumber}`);
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ['awaiting response']
+              });
+
+              console.log(`Successfully added 'awaiting response' label to issue #${issueNumber}`);
+            } else {
+              console.log('Skipping - this is a pull request, not an issue');
+            }
+
+  round-robin-assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign issue round-robin only if unassigned
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // Only process issues (not PRs)
+            if (context.payload.issue && !context.payload.issue.pull_request) {
+              const issue = context.payload.issue;
+              const issueNumber = issue.number;
+
+              // Round-robin assignment logic
+              const assignees = [
+                'kaatish',
+                'rg20',
+                'akifcorduk',
+                'hlinsen',
+                'Kh4ster',
+                'aliceb-nv',
+                'chris-maes',
+                'rgsl888prabhu',
+                'Iroy30',
+                'tmckayus'
+              ];
+
+              // Only assign if no one is assigned yet
+              if (!issue.assignees || issue.assignees.length === 0) {
+                const index = (issueNumber - 1) % assignees.length;
+                const assignee = assignees[index];
+
+                console.log(`Assigning issue #${issueNumber} to @${assignee}`);
+
+                await github.rest.issues.addAssignees({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  assignees: [assignee],
+                });
+
+                console.log(`Successfully assigned issue #${issueNumber} to @${assignee}`);
+              } else {
+                console.log(`Issue #${issueNumber} already has assignees, skipping assignment.`);
+              }
+            } else {
+              console.log('Skipping - this is a pull request, not an issue');
+            }

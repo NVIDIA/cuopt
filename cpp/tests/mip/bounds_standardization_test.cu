@@ -71,6 +71,7 @@ void test_bounds_standardization_test(std::string test_instance)
   init_handler(op_problem.get_handle_ptr());
   // run the problem constructor of MIP, so that we do bounds standardization
   detail::problem_t<int, double> standardized_problem(op_problem);
+  detail::problem_t<int, double> original_problem(op_problem);
   standardized_problem.preprocess_problem();
   detail::trivial_presolve(standardized_problem);
   detail::solution_t<int, double> solution_1(standardized_problem);
@@ -88,6 +89,7 @@ void test_bounds_standardization_test(std::string test_instance)
   // only consider the pdlp results
   EXPECT_TRUE(sol_1_feasible);
   standardized_problem.post_process_solution(solution_1);
+  solution_1.problem_ptr = &original_problem;
   auto optimization_prob_solution =
     solution_1.get_solution(sol_1_feasible, solver_stats_t<int, double>{});
   test_objective_sanity(problem,

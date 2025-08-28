@@ -129,12 +129,14 @@ static void convert_to_maximization_problem(detail::problem_t<i_t, f_t>& op_prob
 {
   raft::common::nvtx::range scope("convert_to_maximization_problem");
 
-  // Negate objective coefficient
-  raft::linalg::unaryOp(op_problem.objective_coefficients.data(),
-                        op_problem.objective_coefficients.data(),
-                        op_problem.objective_coefficients.size(),
-                        detail::negate<f_t>(),
-                        op_problem.handle_ptr->get_stream());
+  if (op_problem.objective_coefficients.size()) {
+    // Negate objective coefficient
+    raft::linalg::unaryOp(op_problem.objective_coefficients.data(),
+                          op_problem.objective_coefficients.data(),
+                          op_problem.objective_coefficients.size(),
+                          detail::negate<f_t>(),
+                          op_problem.handle_ptr->get_stream());
+  }
   // Negate objective scaling factor and objective offset so that primal / dual stay same sign after
   // negating objective coeffs
   op_problem.presolve_data.objective_scaling_factor =

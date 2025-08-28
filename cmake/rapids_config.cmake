@@ -28,3 +28,18 @@ endif()
 
 set(rapids-cmake-version "${RAPIDS_VERSION_MAJOR_MINOR}")
 include("${CMAKE_CURRENT_LIST_DIR}/RAPIDS.cmake")
+
+file(READ "${CMAKE_CURRENT_LIST_DIR}/../VERSION" _cuopt_version)
+if(_cuopt_version MATCHES [[^([0-9][0-9])\.([0-9][0-9])\.([0-9][0-9])]])
+  set(CUOPT_VERSION_MAJOR "${CMAKE_MATCH_1}")
+  set(CUOPT_VERSION_MINOR "${CMAKE_MATCH_2}")
+  set(CUOPT_VERSION_PATCH "${CMAKE_MATCH_3}")
+  set(CUOPT_VERSION_MAJOR_MINOR "${CUOPT_VERSION_MAJOR}.${CUOPT_VERSION_MINOR}")
+  set(CUOPT_VERSION "${CUOPT_VERSION_MAJOR}.${CUOPT_VERSION_MINOR}.${CUOPT_VERSION_PATCH}")
+else()
+  string(REPLACE "\n" "\n  " _cuopt_version_formatted "  ${_cuopt_version}")
+  message(
+    FATAL_ERROR
+    "Could not determine cuOpt version. Contents of VERSION file:\n${_cuopt_version_formatted}"
+  )
+endif()

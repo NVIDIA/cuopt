@@ -38,14 +38,13 @@ bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
 {
   i_t TPB        = 128;
   i_t n_integers = solution.compute_number_of_integers();
-  CUOPT_LOG_DEBUG("before rounding n_integers %d total n_integers %d",
+  CUOPT_LOG_TRACE("before rounding n_integers %d total n_integers %d",
                   n_integers,
                   solution.problem_ptr->n_integer_vars);
   i_t n_integers_to_round = solution.problem_ptr->n_integer_vars - n_integers;
   if (n_integers_to_round == 0) { return solution.compute_feasibility(); }
   constexpr i_t brute_force_rounding_threshold = 8;
   if (n_integers_to_round <= brute_force_rounding_threshold) {
-    CUOPT_LOG_DEBUG("attempting brute force rounding %d integers", n_integers_to_round);
     solution.compute_constraints();
     i_t n_configs = pow(2, n_integers_to_round);
     i_t n_blocks  = (n_configs + TPB - 1) / TPB;

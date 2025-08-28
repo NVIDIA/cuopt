@@ -221,7 +221,6 @@ void population_t<i_t, f_t>::preempt_heuristic_solver()
 {
   preempt_heuristic_solver_    = true;
   early_exit_primal_generation = true;
-  CUOPT_LOG_INFO("OY! preempted heuristic solver!");
 }
 
 template <typename i_t, typename f_t>

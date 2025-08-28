@@ -599,11 +599,10 @@ thrust::pair<f_t, f_t> constraint_prop_t<i_t, f_t>::generate_double_probing_pair
     f_t random_value  = dist(rng);
     f_t average_value = (from_first + from_second) / 2;
     if (random_value > 0.5) {
-      average_value = ceil(average_value);
+      average_value = ceil(average_value - orig_sol.problem_ptr->tolerances.integrality_tolerance);
     } else {
-      average_value = floor(average_value);
+      average_value = floor(average_value + orig_sol.problem_ptr->tolerances.integrality_tolerance);
     }
-
     // if the first set of values are more represented use the second value
     if (probing_config.value().get().n_of_fixed_from_first >
         probing_config.value().get().n_of_fixed_from_second) {

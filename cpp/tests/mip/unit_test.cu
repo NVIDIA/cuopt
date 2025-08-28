@@ -140,6 +140,7 @@ TEST(LPTest, TestSampleLP)
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings{};
   settings.set_optimality_tolerance(1e-4);
   settings.time_limit = 5;
+  settings.presolve   = false;
 
   auto result = cuopt::linear_programming::solve_lp(&handle, problem, settings);
 
@@ -154,6 +155,8 @@ TEST(ErrorTest, TestError)
 
   cuopt::linear_programming::mip_solver_settings_t<int, double> settings{};
   settings.time_limit = 5;
+  settings.presolve   = false;
+
   // Set constraint bounds
   std::vector<double> lower_bounds = {1.0};
   std::vector<double> upper_bounds = {0.0};
@@ -184,6 +187,7 @@ TEST_P(MILPTestParams, TestSampleMILP)
   settings.time_limit      = 5;
   settings.mip_scaling     = scaling;
   settings.heuristics_only = heuristics_only;
+  settings.presolve        = false;
 
   auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
 
@@ -204,6 +208,7 @@ TEST_P(MILPTestParams, TestSingleVarMILP)
   settings.time_limit      = 5;
   settings.mip_scaling     = scaling;
   settings.heuristics_only = heuristics_only;
+  settings.presolve        = false;
 
   auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
 
