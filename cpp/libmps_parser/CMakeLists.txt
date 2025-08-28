@@ -54,12 +54,12 @@ endif(CMAKE_COMPILER_IS_GNUCXX)
 
 if(MPS_PARSER_WITH_BZIP2)
   find_package(BZip2 REQUIRED)
-  add_definitions(-DMPS_PARSER_WITH_BZIP2)
+  add_compile_definitions(-DMPS_PARSER_WITH_BZIP2)
 endif(MPS_PARSER_WITH_BZIP2)
 
 if(MPS_PARSER_WITH_ZLIB)
   find_package(ZLIB REQUIRED)
-  add_definitions(-DMPS_PARSER_WITH_ZLIB)
+  add_compile_definitions(-DMPS_PARSER_WITH_ZLIB)
 endif(MPS_PARSER_WITH_ZLIB)
 
 if(DEFINE_ASSERT)
