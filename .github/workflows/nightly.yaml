@@ -22,7 +22,7 @@ jobs:
             sha: "\'$(git ls-remote https://github.com/${{ github.repository }}.git refs/heads/branch-25.10 | awk '{print $1}')\'"
           "
           MATRIX="$(
-            yq -n --indent 0 -o json '{include: env(CI_MATRIX)}' \
+            yq -n --indent 0 -o json 'env(CI_MATRIX)' \
             | jq -c '{include: .}'
           )"
 
