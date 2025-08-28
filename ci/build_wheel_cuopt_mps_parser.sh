@@ -40,6 +40,6 @@ EXCLUDE_ARGS=(
 )
 
 # repair wheels and write to the location that artifact-uploading code expects to find them
-python -m auditwheel repair -w "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}" ${package_dir}/dist/*
+python -m auditwheel repair "${EXCLUDE_ARGS[@]}" -w "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}" ${package_dir}/dist/*
 
 ci/validate_wheel.sh "${package_dir}" "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}"
