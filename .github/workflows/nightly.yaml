@@ -9,19 +9,21 @@ jobs:
   compute-matrix:
     id: compute-matrix
     runs-on: ubuntu-latest
-    shell: bash
-    run: |
-      # add more list items here to run nightlies for more branches
-      export CI_MATRIX="
-      - branch: '25.10'
-        sha: "\'$(git ls-remote ${{ github.repositoryUrl }} refs/heads/branch-25.10 | awk '{print $1}')\'"
-      "
-      MATRIX="$(
-        yq -n -o json 'env(CI_MATRIX)' | \
-      )"
+    steps:
+      - name: compute-matrix
+        shell: bash
+        run: |
+          # add more list items here to run nightlies for more branches
+          export CI_MATRIX="
+          - branch: '25.10'
+            sha: "\'$(git ls-remote ${{ github.repositoryUrl }} refs/heads/branch-25.10 | awk '{print $1}')\'"
+          "
+          MATRIX="$(
+            yq -n -o json 'env(CI_MATRIX)' | \
+          )"
 
-      echo "MATRIX=${MATRIX}" | tee --append "${GITHUB_OUTPUT}"
-      echo "date=$(date +%F)" | tee --append "${GITHUB_OUTPUT}"
+          echo "MATRIX=${MATRIX}" | tee --append "${GITHUB_OUTPUT}"
+          echo "date=$(date +%F)" | tee --append "${GITHUB_OUTPUT}"
   build:
     needs: [compute-matrix]
     strategy:
