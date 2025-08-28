@@ -8,8 +8,12 @@ on:
 jobs:
   compute-matrix:
     runs-on: ubuntu-latest
+    outputs:
+      DATE: ${{ steps.compute-matrix.outputs.DATE }}
+      MATRIX: ${{ steps.compute-matrix.outputs.MATRIX }}
     steps:
       - name: compute matrix
+        id: compute-matrix
         shell: bash
         run: |
           # add more list items here to run nightlies for more branches
@@ -22,7 +26,7 @@ jobs:
           )"
 
           echo "MATRIX=${MATRIX}" | tee --append "${GITHUB_OUTPUT}"
-          echo "date=$(date +%F)" | tee --append "${GITHUB_OUTPUT}"
+          echo "DATE=$(date +%F)" | tee --append "${GITHUB_OUTPUT}"
   build:
     needs: [compute-matrix]
     strategy:
@@ -32,7 +36,7 @@ jobs:
     with:
       build_type: nightly
       branch: ${{ matrix.branch }}
-      date: ${{ needs.compute-matrix.outputs.date }}
+      date: ${{ needs.compute-matrix.outputs.DATE }}
       sha: ${{ matrix.sha }}
   test:
     needs: [compute-matrix, build]
@@ -43,5 +47,5 @@ jobs:
     with:
       build_type: nightly
       branch: ${{ matrix.branch }}
-      date: ${{ needs.compute-matrix.outputs.date }}
+      date: ${{ needs.compute-matrix.outputs.DATE }}
       sha: ${{ matrix.sha }}
