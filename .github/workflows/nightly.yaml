@@ -7,10 +7,9 @@ on:
 
 jobs:
   compute-matrix:
-    id: compute-matrix
     runs-on: ubuntu-latest
     steps:
-      - name: compute-matrix
+      - name: compute matrix
         shell: bash
         run: |
           # add more list items here to run nightlies for more branches
