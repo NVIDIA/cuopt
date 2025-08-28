@@ -6,72 +6,49 @@ on:
     - cron: "0 5 * * *" # 5am UTC / 1am EST
 
 
+        echo "RAPIDS_REPOSITORY=${{ inputs.repo || github.repository }}" | tee --append "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
+        sha="${{ inputs.sha }}"
+        if [[ "${sha}" == "" ]]; then
+          sha=$(git rev-parse HEAD)
+        fi
+        echo "RAPIDS_SHA=${sha}" | tee --append "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
+        echo "RAPIDS_REF_NAME=${{ inputs.branch || github.ref_name }}" | tee --append "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
+        echo "RAPIDS_NIGHTLY_DATE=${{ inputs.date }}" | tee --append "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
+        if [[ -n "${{ inputs.build_workflow_name }}" ]]; then
+          echo "RAPIDS_BUILD_WORKFLOW_NAME=${{ inputs.build_workflow_name }}" | tee --append "${GITHUB_ENV}" "${GITHUB_OUTPUT}"
+        fi
+
 jobs:
-  trigger-build:
+  build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
           - cuopt_version: "25.10"
-    steps:
-      - uses: actions/checkout@v4
-      - name: Trigger Pipeline
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          export CUOPT_BRANCH="branch-${{ matrix.cuopt_version }}"
-          export DATE=$(date +%F)
-          export SHA=$(gh api -q '.commit.sha' "repos/nvidia/cuopt/branches/${CUOPT_BRANCH}")
-
-          gh workflow run build.yaml \
-            -f branch="${CUOPT_BRANCH}" \
-            -f sha="${SHA}" \
-            -f date="${DATE}" \
-            -f build_type=nightly
-
-          # Wait a short bit for the workflow to register (optional)
-          sleep 3
-
-          # Get the latest run ID for this workflow on this branch
-          RUN_ID=$(gh run list --workflow=build.yaml --branch="${CUOPT_BRANCH}" --json databaseId --limit 1 | jq -r '.[0].databaseId')
-
-          STATUS=$(gh run view $RUN_ID --json status,conclusion --jq '.status')
-          CONCLUSION=$(gh run view $RUN_ID --json status,conclusion --jq '.conclusion')
-
-          while [[ "$STATUS" != "completed" || "$CONCLUSION" == "null" ]]; do
-            echo "Status: $STATUS, Conclusion: $CONCLUSION — waiting 10 seconds..."
-            sleep 10
-            STATUS=$(gh run view $RUN_ID --json status,conclusion --jq '.status')
-            CONCLUSION=$(gh run view $RUN_ID --json status,conclusion --jq '.conclusion')
-          done
-
-          echo "Workflow run finished with conclusion: $CONCLUSION"
-
-          if [[ "$CONCLUSION" != "success" ]]; then
-            echo "Build did not succeed"
-            exit 1
-          fi
-
-
-  trigger-test:
+jobs:
+  get-run-info:
     runs-on: ubuntu-latest
-    needs: trigger-build
-    strategy:
-      matrix:
-        include:
-          - cuopt_version: "25.10"
-    steps:
-      - uses: actions/checkout@v4
-      - name: Trigger Test
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          export CUOPT_BRANCH="branch-${{ matrix.cuopt_version }}"
-          export DATE=$(date +%F)
-          export SHA=$(gh api -q '.commit.sha' "repos/nvidia/cuopt/branches/${CUOPT_BRANCH}")
+    shell: bash
+    run: |
+      BRANCHES=(
+        branch-25.10
+      )
+      for 
 
-          gh workflow run test.yaml \
-            -f branch=${CUOPT_BRANCH} \
-            -f sha=${SHA} \
-            -f date=${DATE} \
-            -f build_type=nightly
+      # latest commit on each branch
+      export RAPIDS_SHA="$(git ls-remote ${{ github.repositoryUrl }} refs/heads/${{ }} | awk '{print $1}')"
+  build:
+    uses: ./.github/workflows/build.yaml
+    with:
+      build_type: nightly
+      branch: branch-${{ matrix.cuopt_version }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
+  test:
+    needs: build
+    uses: ./.github/workflows/test.yaml
+    with:
+      build_type: nightly
+      branch: branch-${{ matrix.cuopt_version }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
