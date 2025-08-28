@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include "diversity_manager.cuh"
 #include "population.cuh"
 
 #include <thrust/for_each.h>
@@ -38,12 +39,14 @@ constexpr double halving_skip_ratio          = 0.75;
 template <typename i_t, typename f_t>
 population_t<i_t, f_t>::population_t(std::string const& name_,
                                      mip_solver_context_t<i_t, f_t>& context_,
+                                     diversity_manager_t<i_t, f_t>& dm_,
                                      int var_threshold_,
                                      size_t max_solutions_,
                                      f_t infeasibility_weight_)
   : name(name_),
     context(context_),
     problem_ptr(context.problem_ptr),
+    dm(dm_),
     var_threshold(var_threshold_),
     max_solutions(max_solutions_),
     infeasibility_importance(infeasibility_weight_),
@@ -753,6 +756,14 @@ void population_t<i_t, f_t>::print()
     i++;
   }
   CUOPT_LOG_DEBUG(" -------------- ");
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::run_all_recombiners(solution_t<i_t, f_t>& sol)
+{
+  std::vector<solution_t<i_t, f_t>> sol_vec;
+  sol_vec.emplace_back(std::move(solution_t<i_t, f_t>(sol)));
+  dm.recombine_and_ls_with_all(sol_vec, true);
 }
 
 #if MIP_INSTANTIATE_FLOAT

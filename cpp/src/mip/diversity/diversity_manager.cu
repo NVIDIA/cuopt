@@ -47,6 +47,7 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     diversity_config(),
     population("population",
                context,
+               *this,
                diversity_config.max_var_diff,
                diversity_config.max_solutions,
                diversity_config.initial_infeasibility_weight * context.problem_ptr->n_constraints),
@@ -563,7 +564,8 @@ void diversity_manager_t<i_t, f_t>::set_new_user_bound(f_t new_bound)
 }
 
 template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(solution_t<i_t, f_t>& solution)
+void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(solution_t<i_t, f_t>& solution,
+                                                              bool add_only_feasible)
 {
   raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
   auto population_vector = population.population_to_vector();
@@ -571,8 +573,12 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(solution_t<i_t, f_
     if (check_b_b_preemption()) { return; }
     if (curr_sol.get_feasible()) {
       auto [offspring, lp_offspring] = recombine_and_local_search(curr_sol, solution);
-      i_t inserted_pos_1             = population.add_solution(std::move(lp_offspring));
-      i_t inserted_pos_2             = population.add_solution(std::move(offspring));
+      if (!add_only_feasible || lp_offspring.get_feasible()) {
+        population.add_solution(std::move(lp_offspring));
+      }
+      if (!add_only_feasible || offspring.get_feasible()) {
+        population.add_solution(std::move(offspring));
+      }
       if (timer.check_time_limit()) { return; }
     }
   }
@@ -580,7 +586,7 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(solution_t<i_t, f_
 
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
-  std::vector<solution_t<i_t, f_t>>& solutions)
+  std::vector<solution_t<i_t, f_t>>& solutions, bool add_only_feasible)
 {
   raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
   if (solutions.size() > 0) {
@@ -599,10 +605,10 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
       // TODO try if running LP with integers fixed makes it feasible
       if (ls_solution.get_feasible()) {
         CUOPT_LOG_DEBUG("External LS searched solution feasible, running recombiners!");
-        recombine_and_ls_with_all(ls_solution);
+        recombine_and_ls_with_all(ls_solution, add_only_feasible);
       } else {
         CUOPT_LOG_DEBUG("External solution feasible, running recombiners!");
-        recombine_and_ls_with_all(sol);
+        recombine_and_ls_with_all(sol, add_only_feasible);
       }
     }
   }

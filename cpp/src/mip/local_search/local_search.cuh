@@ -83,6 +83,8 @@ class local_search_t {
   void save_solution_and_add_cutting_plane(solution_t<i_t, f_t>& solution,
                                            rmm::device_uvector<f_t>& best_solution,
                                            f_t& best_objective);
+  void resize_to_new_problem();
+  void resize_to_old_problem(problem_t<i_t, f_t>* old_problem_ptr);
 
   mip_solver_context_t<i_t, f_t>& context;
   rmm::device_uvector<f_t>& lp_optimal_solution;

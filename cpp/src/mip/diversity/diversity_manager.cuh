@@ -62,8 +62,9 @@ class diversity_manager_t {
   std::vector<solution_t<i_t, f_t>> generate_more_solutions();
   void add_user_given_solutions(std::vector<solution_t<i_t, f_t>>& initial_sol_vector);
   population_t<i_t, f_t>* get_population_pointer() { return &population; }
-  void recombine_and_ls_with_all(std::vector<solution_t<i_t, f_t>>& solutions);
-  void recombine_and_ls_with_all(solution_t<i_t, f_t>& solution);
+  void recombine_and_ls_with_all(std::vector<solution_t<i_t, f_t>>& solutions,
+                                 bool add_only_feasible = false);
+  void recombine_and_ls_with_all(solution_t<i_t, f_t>& solution, bool add_only_feasible = false);
   std::pair<solution_t<i_t, f_t>, solution_t<i_t, f_t>> recombine_and_local_search(
     solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b);
   void set_new_user_bound(f_t new_user_bound);

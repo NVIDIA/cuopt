@@ -38,7 +38,7 @@ struct diversity_config_t {
   double max_fast_sol_time                  = 10;
   double lp_run_time_if_feasible            = 15.;
   double lp_run_time_if_infeasible          = 1;
-  bool halve_population                     = true;
+  bool halve_population                     = false;
 };
 
 }  // namespace cuopt::linear_programming::detail

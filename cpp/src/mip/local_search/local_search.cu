@@ -367,6 +367,24 @@ void local_search_t<i_t, f_t>::save_solution_and_add_cutting_plane(
 }
 
 template <typename i_t, typename f_t>
+void local_search_t<i_t, f_t>::resize_to_new_problem()
+{
+  resize_vectors(problem_with_objective_cut, problem_with_objective_cut.handle_ptr);
+  lb_constraint_prop.temp_problem.setup(problem_with_objective_cut);
+  lb_constraint_prop.bounds_update.setup(lb_constraint_prop.temp_problem);
+  constraint_prop.bounds_update.resize(problem_with_objective_cut);
+}
+
+template <typename i_t, typename f_t>
+void local_search_t<i_t, f_t>::resize_to_old_problem(problem_t<i_t, f_t>* old_problem_ptr)
+{
+  resize_vectors(*old_problem_ptr, old_problem_ptr->handle_ptr);
+  lb_constraint_prop.temp_problem.setup(*old_problem_ptr);
+  lb_constraint_prop.bounds_update.setup(lb_constraint_prop.temp_problem);
+  constraint_prop.bounds_update.resize(*old_problem_ptr);
+}
+
+template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                       timer_t timer,
                                       const weight_t<i_t, f_t>* weights,
@@ -390,10 +408,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     fj.copy_weights(*weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
     solution.problem_ptr = &problem_with_objective_cut;
     solution.resize_to_problem();
-    resize_vectors(problem_with_objective_cut, solution.handle_ptr);
-    lb_constraint_prop.temp_problem.setup(problem_with_objective_cut);
-    lb_constraint_prop.bounds_update.setup(lb_constraint_prop.temp_problem);
-    constraint_prop.bounds_update.resize(problem_with_objective_cut);
+    resize_to_new_problem();
   }
   for (i_t i = 0; i < n_fp_iterations && !timer.check_time_limit(); ++i) {
     if (timer.check_time_limit()) {
@@ -416,6 +431,11 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
           solution_t<i_t, f_t> solution_copy(solution);
           solution_copy.problem_ptr = old_problem_ptr;
           solution_copy.resize_to_problem();
+          // if (population_ptr->current_size() > 0) {
+          //   resize_to_new_problem();
+          //   population_ptr->run_all_recombiners(solution_copy);
+          //   resize_to_old_problem(old_problem_ptr);
+          // }
           population_ptr->add_solution(std::move(solution_copy));
           auto new_sol_vector = population_ptr->get_external_solutions();
           population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
@@ -443,6 +463,11 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
             solution_t<i_t, f_t> solution_copy(solution);
             solution_copy.problem_ptr = old_problem_ptr;
             solution_copy.resize_to_problem();
+            // if (population_ptr->current_size() > 0) {
+            //   resize_to_new_problem();
+            //   population_ptr->run_all_recombiners(solution_copy);
+            //   resize_to_old_problem(old_problem_ptr);
+            // }
             population_ptr->add_solution(std::move(solution_copy));
             auto new_sol_vector = population_ptr->get_external_solutions();
             population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
@@ -459,10 +484,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                solution.handle_ptr->get_stream());
     solution.problem_ptr = old_problem_ptr;
     solution.resize_to_problem();
-    resize_vectors(*old_problem_ptr, solution.handle_ptr);
-    lb_constraint_prop.temp_problem.setup(*old_problem_ptr);
-    lb_constraint_prop.bounds_update.setup(lb_constraint_prop.temp_problem);
-    constraint_prop.bounds_update.resize(*old_problem_ptr);
+    resize_to_old_problem(old_problem_ptr);
     solution.handle_ptr->sync_stream();
   }
   return is_feasible;
