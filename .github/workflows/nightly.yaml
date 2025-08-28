@@ -30,10 +30,12 @@ jobs:
     runs-on: ubuntu-latest
     shell: bash
     run: |
-      BRANCHES=(
-        branch-25.10
-      )
-      for 
+      MATRIX="
+      - branch: '25.10'
+        sha: "\'$(git ls-remote https://github.com/NVIDIA/cuopt.git refs/heads/branch-25.10 | awk '{print $1}')\'"
+      "
+      echo "date=$(date +%F)" >> ${GITHUB_OUTPUT}
+      echo ""
 
       # latest commit on each branch
       export RAPIDS_SHA="$(git ls-remote ${{ github.repositoryUrl }} refs/heads/${{ }} | awk '{print $1}')"
