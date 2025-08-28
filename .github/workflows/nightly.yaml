@@ -15,10 +15,10 @@ jobs:
           # add more list items here to run nightlies for more branches
           export CI_MATRIX="
           - branch: '25.10'
-            sha: "\'$(git ls-remote ${{ github.repositoryUrl }} refs/heads/branch-25.10 | awk '{print $1}')\'"
+            sha: "\'$(git ls-remote https://github.com/${{ github.repository }}.git refs/heads/branch-25.10 | awk '{print $1}')\'"
           "
           MATRIX="$(
-            yq -n -o json 'env(CI_MATRIX)' | \
+            yq -n -o json 'env(CI_MATRIX)'
           )"
 
           echo "MATRIX=${MATRIX}" | tee --append "${GITHUB_OUTPUT}"
