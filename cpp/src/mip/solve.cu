@@ -183,7 +183,6 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     detail::problem_t<i_t, f_t> problem(op_problem, settings.get_tolerances());
 
     auto run_presolve = settings.presolve;
-    run_presolve      = run_presolve && op_problem.get_sense() == false;
     run_presolve      = run_presolve && settings.get_mip_callbacks().empty();
 
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
@@ -197,6 +196,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
         presolver->apply(op_problem,
                          cuopt::linear_programming::problem_category_t::MIP,
                          settings.tolerances.absolute_tolerance,
+                         settings.tolerances.relative_tolerance,
                          presolve_time_limit);
       if (!feasible) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,

@@ -32,12 +32,12 @@ rapids_cuda_init_architectures(CUOPT)
 
 project(
   CUOPT
-  VERSION 25.10.00
+  VERSION "${CUOPT_VERSION}"
   LANGUAGES CXX CUDA C
 )
 
-set(DEPENDENT_LIB_MAJOR_VERSION "25")
-set(DEPENDENT_LIB_MINOR_VERSION "10")
+set(DEPENDENT_LIB_MAJOR_VERSION "${RAPIDS_VERSION_MAJOR}")
+set(DEPENDENT_LIB_MINOR_VERSION "${RAPIDS_VERSION_MINOR}")
 
 rapids_cmake_write_version_file(include/cuopt/version_config.hpp)
 # ##################################################################################################
@@ -104,7 +104,7 @@ message("-- Building for GPU_ARCHS = ${CMAKE_CUDA_ARCHITECTURES}")
 
 # make the flags global in order to propagate flags to test cmake files
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extended-lambda")
-if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
+if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -static-global-template-stub=false")
 endif()
 list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror)

@@ -30,7 +30,6 @@ constexpr double ls_alpha         = 0.03;
 
 template <typename i_t, typename f_t>
 struct mab_ls_config_t {
-  // RANDOM is the last ls method
   static constexpr i_t n_of_arms = static_cast<i_t>(ls_method_t::LS_METHODS_SIZE);
 
   static void get_local_search_and_lm_from_config(i_t config_id, ls_config_t<i_t, f_t>& ls_config)

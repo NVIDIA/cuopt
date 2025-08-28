@@ -23,6 +23,7 @@ from typing import List, Literal, Optional, Union
 import jsonref
 from pydantic import BaseModel, Extra, Field
 
+from .._version import __version_major_minor__
 from .linear_programming.data_definition import (  # noqa
     IncumbentSolution,
     LPData,
@@ -343,7 +344,10 @@ HealthResponse = {
             "application/json": {
                 "examples": {
                     "Healthy response": {
-                        "value": {"status": "RUNNING", "version": "25.10"}
+                        "value": {
+                            "status": "RUNNING",
+                            "version": __version_major_minor__,
+                        }
                     }
                 }
             }

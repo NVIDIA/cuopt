@@ -30,6 +30,7 @@ class third_party_presolve_t {
     optimization_problem_t<i_t, f_t> const& op_problem,
     problem_category_t category,
     f_t absolute_tolerance,
+    f_t relative_tolerance,
     double time_limit);
 
   void undo(rmm::device_uvector<f_t>& primal_solution,

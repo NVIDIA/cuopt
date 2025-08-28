@@ -15,18 +15,19 @@
  * limitations under the License.
  */
 
-#include <mip/mip_constants.hpp>
-#include <mip/presolve/third_party_presolve.hpp>
-#include <papilo/core/Presolve.hpp>
-#include <papilo/core/ProblemBuilder.hpp>
-// #include <utilities/copy_helpers.hpp>
 #include <cuopt/error.hpp>
 #include <cuopt/logger.hpp>
+#include <mip/mip_constants.hpp>
+#include <mip/presolve/third_party_presolve.hpp>
+
+#include <papilo/core/Presolve.hpp>
+#include <papilo/core/ProblemBuilder.hpp>
 
 namespace cuopt::linear_programming::detail {
 
 static papilo::PostsolveStorage<double> post_solve_storage_;
 static int presolve_calls_ = 0;
+static bool maximize_      = false;
 
 template <typename i_t, typename f_t>
 papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem)
@@ -38,10 +39,6 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
   const i_t num_cols = op_problem.get_n_variables();
   const i_t num_rows = op_problem.get_n_constraints();
   const i_t nnz      = op_problem.get_nnz();
-
-  cuopt_expects(op_problem.get_sense() == false,
-                error_type_t::ValidationError,
-                "Papilo does not support maximization problems");
 
   builder.reserve(nnz, num_rows, num_cols);
 
@@ -83,6 +80,13 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
   std::vector<var_t> h_var_types(var_types.size());
   raft::copy(h_var_types.data(), var_types.data(), var_types.size(), stream_view);
 
+  maximize_ = op_problem.get_sense();
+  if (maximize_) {
+    for (size_t i = 0; i < h_obj_coeffs.size(); ++i) {
+      h_obj_coeffs[i] = -h_obj_coeffs[i];
+    }
+  }
+
   auto constr_bounds_empty = h_constr_lb.empty() && h_constr_ub.empty();
   if (constr_bounds_empty) {
     for (size_t i = 0; i < h_row_types.size(); ++i) {
@@ -103,7 +107,8 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
   builder.setNumRows(num_rows);
 
   builder.setObjAll(h_obj_coeffs);
-  builder.setObjOffset(op_problem.get_objective_offset());
+  builder.setObjOffset(maximize_ ? -op_problem.get_objective_offset()
+                                 : op_problem.get_objective_offset());
 
   if (!h_var_lb.empty() && !h_var_ub.empty()) {
     builder.setColLbAll(h_var_lb);
@@ -149,7 +154,8 @@ optimization_problem_t<i_t, f_t> build_optimization_problem(
   optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
 
   auto obj = papilo_problem.getObjective();
-  op_problem.set_objective_offset(obj.offset);
+  op_problem.set_objective_offset(maximize_ ? -obj.offset : obj.offset);
+  op_problem.set_maximize(maximize_);
 
   if (papilo_problem.getNRows() == 0 && papilo_problem.getNCols() == 0) {
     // FIXME: Shouldn't need to set offsets
@@ -165,7 +171,11 @@ optimization_problem_t<i_t, f_t> build_optimization_problem(
 
     return op_problem;
   }
-
+  if (maximize_) {
+    for (size_t i = 0; i < obj.coefficients.size(); ++i) {
+      obj.coefficients[i] = -obj.coefficients[i];
+    }
+  }
   op_problem.set_objective_coefficients(obj.coefficients.data(), obj.coefficients.size());
 
   auto& constraint_matrix = papilo_problem.getConstraintMatrix();
@@ -250,7 +260,11 @@ void check_postsolve_status(const papilo::PostsolveStatus& status)
 {
   switch (status) {
     case papilo::PostsolveStatus::kOk: CUOPT_LOG_INFO("Post-solve status:: succeeded"); break;
-    case papilo::PostsolveStatus::kFailed: CUOPT_LOG_INFO("Post-solve status:: failed"); break;
+    case papilo::PostsolveStatus::kFailed:
+      CUOPT_LOG_INFO(
+        "Post-solve status:: Post solved solution violates constraints. This is most likely due to "
+        "different tolerances.");
+      break;
   }
 }
 
@@ -269,8 +283,8 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t c
   presolver.addPresolveMethod(uptr(new papilo::SimpleProbing<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::ParallelRowDetection<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::ParallelColDetection<f_t>()));
-  // FIXME: Postsolve fails with this method
-  // presolver.addPresolveMethod(uptr(new papilo::SingletonStuffing<f_t>()));
+
+  presolver.addPresolveMethod(uptr(new papilo::SingletonStuffing<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::DualFix<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::SimplifyInequalities<f_t>()));
 
@@ -289,11 +303,10 @@ template <typename f_t>
 void set_presolve_options(papilo::Presolve<f_t>& presolver,
                           problem_category_t category,
                           f_t absolute_tolerance,
+                          f_t relative_tolerance,
                           double time_limit)
 {
-  presolver.getPresolveOptions().tlim    = time_limit;
-  presolver.getPresolveOptions().epsilon = absolute_tolerance;
-  presolver.getPresolveOptions().feastol = absolute_tolerance;
+  presolver.getPresolveOptions().tlim = time_limit;
 }
 
 template <typename i_t, typename f_t>
@@ -301,6 +314,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
   optimization_problem_t<i_t, f_t> const& op_problem,
   problem_category_t category,
   f_t absolute_tolerance,
+  f_t relative_tolerance,
   double time_limit)
 {
   cuopt_expects(
@@ -316,7 +330,8 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
 
   papilo::Presolve<f_t> presolver;
   set_presolve_methods<f_t>(presolver, category);
-  set_presolve_options<f_t>(presolver, category, absolute_tolerance, time_limit);
+  set_presolve_options<f_t>(
+    presolver, category, absolute_tolerance, relative_tolerance, time_limit);
 
   // Disable papilo logs
   presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);

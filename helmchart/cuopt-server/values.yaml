@@ -7,7 +7,7 @@ replicaCount: 1
 image:
   repository: nvidia/cuopt
   pullPolicy: IfNotPresent
-  tag: "25.10.0-cuda12.8-py3.12"
+  tag: "25.10.0-cuda12.9-py3.12"
 
 imagePullSecrets: []
 nameOverride: ""
