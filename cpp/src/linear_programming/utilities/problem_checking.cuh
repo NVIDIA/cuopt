@@ -20,9 +20,17 @@
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 
-#include <mip/problem/problem.cuh>
+namespace rmm {
+template <typename T>
+class device_uvector;
+}  // namespace rmm
 
 namespace cuopt::linear_programming {
+
+namespace detail {
+template <typename i_t, typename f_t>
+class problem_t;
+}  // namespace detail
 
 template <typename i_t, typename f_t>
 class problem_checking_t {

@@ -21,6 +21,7 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/logger.hpp>
+#include <linear_programming/utilities/problem_checking.cuh>
 
 #include <mps_parser/parser.hpp>
 
@@ -148,7 +149,11 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
         variable_types[j] == CUOPT_CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
     }
     problem_and_stream->op_problem->set_variable_types(variable_types_host.data(), num_variables);
+    problem_checking_t<cuopt_int_t, cuopt_float_t>::check_problem_representation(
+      *problem_and_stream->op_problem);
     *problem_ptr = static_cast<cuOptOptimizationProblem>(problem_and_stream);
+  } catch (const cuopt::logic_error& e) {
+    return static_cast<cuopt_int_t>(e.get_error_type());
   } catch (const raft::exception& e) {
     return CUOPT_INVALID_ARGUMENT;
   }
@@ -205,7 +210,12 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
         variable_types[j] == CUOPT_CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
     }
     problem_and_stream->op_problem->set_variable_types(variable_types_host.data(), num_variables);
+    problem_checking_t<cuopt_int_t, cuopt_float_t>::check_problem_representation(
+      *problem_and_stream->op_problem);
     *problem_ptr = static_cast<cuOptOptimizationProblem>(problem_and_stream);
+  } catch (const cuopt::logic_error& e) {
+    printf("Error: %s, type %d\n", e.what(), static_cast<cuopt_int_t>(e.get_error_type()));
+    return static_cast<cuopt_int_t>(e.get_error_type());
   } catch (const raft::exception& e) {
     return CUOPT_INVALID_ARGUMENT;
   }

@@ -22,6 +22,8 @@
 #include <mip/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
 
+#include <mip/problem/problem.cuh>
+
 #include <thrust/functional.h>
 #include <thrust/logical.h>
 #include <thrust/sort.h>
