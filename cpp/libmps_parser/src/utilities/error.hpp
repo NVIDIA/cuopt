@@ -91,7 +91,10 @@ inline void mps_parser_expects_fatal(bool cond, error_type_t error_type, const c
     vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
     std::string error_string = error_to_string(error_type);
-    std::fprintf(stderr, "{\"MPS_PARSER_ERROR_TYPE\": \"%s\", \"msg\": \"%s\"}\n", error_to_string(error_type).c_str(), msg);
+    std::fprintf(stderr,
+                 "{\"MPS_PARSER_ERROR_TYPE\": \"%s\", \"msg\": \"%s\"}\n",
+                 error_to_string(error_type).c_str(),
+                 msg);
     std::fflush(stderr);
     std::abort();
   }

@@ -105,6 +105,8 @@ outputs:
           - libcurand
           - libcusparse
           - librmm
+          - libzlib
+          - libbz2
     tests:
     - package_contents:
         files:
