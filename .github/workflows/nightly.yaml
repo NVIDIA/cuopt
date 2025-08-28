@@ -33,9 +33,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.compute-matrix.outputs.MATRIX) }}
+    name: build (${{ matrix.branch }})
     uses: ./.github/workflows/build.yaml
     with:
-      build_type: nightly
+      # Because build and test happen in the same workflow run, build_type="branch" is preferred here.
+      # That tells artifact-downloading code to just look for artifacts from this same run.
+      build_type: branch
       branch: ${{ matrix.branch }}
       date: ${{ needs.compute-matrix.outputs.DATE }}
       sha: ${{ matrix.sha }}
@@ -44,9 +47,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.compute-matrix.outputs.MATRIX) }}
+    name: test (${{ matrix.branch }})
     uses: ./.github/workflows/test.yaml
     with:
-      build_type: nightly
+      # Because build and test happen in the same workflow run, build_type="branch" is preferred here.
+      # That tells artifact-downloading code to just look for artifacts from this same run.
+      build_type: branch
       branch: ${{ matrix.branch }}
       date: ${{ needs.compute-matrix.outputs.DATE }}
       sha: ${{ matrix.sha }}

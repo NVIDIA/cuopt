@@ -59,6 +59,7 @@ on:
 
 jobs:
   conda-cpp-tests:
+    name: conda-cpp-tests
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@branch-25.10
     with:
@@ -68,6 +69,7 @@ jobs:
       sha: ${{ inputs.sha }}
       script: ci/test_cpp.sh
   conda-python-tests:
+    name: conda-python-tests
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@branch-25.10
     with:
@@ -78,6 +80,7 @@ jobs:
       sha: ${{ inputs.sha }}
       script: ci/test_python.sh
   wheel-tests-cuopt:
+    name: wheel-tests-cuopt
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@branch-25.10
     with:
@@ -87,6 +90,7 @@ jobs:
       sha: ${{ inputs.sha }}
       script: ci/test_wheel_cuopt.sh
   wheel-tests-cuopt-server:
+    name: wheel-tests-cuopt-server
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@branch-25.10
     with:
