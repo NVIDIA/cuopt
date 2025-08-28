@@ -219,17 +219,21 @@ TEST(pdlp_class, run_sub_mittleman)
     for (auto solver_mode : solver_mode_list) {
       auto settings             = pdlp_solver_settings_t<int, double>{};
       settings.pdlp_solver_mode = solver_mode;
-      const raft::handle_t handle_{};
-      optimization_problem_solution_t<int, double> solution =
-        solve_lp(&handle_, op_problem, settings);
-      EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
-      EXPECT_FALSE(
-        is_incorrect_objective(expected_objective_value,
-                               solution.get_additional_termination_information().primal_objective));
-      test_objective_sanity(op_problem,
-                            solution.get_primal_solution(),
-                            solution.get_additional_termination_information().primal_objective);
-      test_constraint_sanity(op_problem, solution);
+      for (auto [presolve, epsilon] : {std::pair{true, 1e-1}, std::pair{false, 1e-6}}) {
+        settings.presolve = presolve;
+        const raft::handle_t handle_{};
+        optimization_problem_solution_t<int, double> solution =
+          solve_lp(&handle_, op_problem, settings);
+        EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+        EXPECT_FALSE(is_incorrect_objective(
+          expected_objective_value,
+          solution.get_additional_termination_information().primal_objective));
+        test_objective_sanity(op_problem,
+                              solution.get_primal_solution(),
+                              solution.get_additional_termination_information().primal_objective,
+                              epsilon);
+        test_constraint_sanity(op_problem, solution, epsilon, presolve);
+      }
     }
   }
 }
