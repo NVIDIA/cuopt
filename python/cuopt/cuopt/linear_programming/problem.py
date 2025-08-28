@@ -717,6 +717,7 @@ class Problem:
 
     def _from_data_model(self, dm):
         obj_coeffs = dm.get_objective_coefficients()
+        obj_constant = dm.get_objective_offset()
         num_vars = len(obj_coeffs)
         sense = dm.get_sense()
         if sense:
@@ -735,7 +736,7 @@ class Problem:
                 v_name = v_names[i]
             self.addVariable(v_lb[i], v_ub[i], vtype=v_types[i], name=v_name)
         vars = self.getVariables()
-        expr = LinearExpression(vars, obj_coeffs, 0.0)
+        expr = LinearExpression(vars, obj_coeffs, obj_constant)
         self.setObjective(expr, sense)
 
         # Add all Constraints
@@ -806,6 +807,7 @@ class Problem:
         dm.set_constraint_bounds(np.array(self.rhs))
         dm.set_row_types(np.array(self.row_sense, dtype="S1"))
         dm.set_objective_coefficients(self.objective)
+        dm.set_objective_offset(self.ObjConstant)
         dm.set_variable_lower_bounds(self.lower_bound)
         dm.set_variable_upper_bounds(self.upper_bound)
         dm.set_variable_types(self.var_type)
@@ -922,7 +924,7 @@ class Problem:
             case int() | float():
                 for var in self.vars:
                     var.setObjectiveCoefficient(0.0)
-                self.ObjCon = float(expr)
+                self.ObjConstant = float(expr)
             case Variable():
                 for var in self.vars:
                     var.setObjectiveCoefficient(0.0)
@@ -931,6 +933,7 @@ class Problem:
             case LinearExpression():
                 for var, coeff in expr.zipVarCoefficients():
                     self.vars[var.getIndex()].setObjectiveCoefficient(coeff)
+                self.ObjConstant = expr.getConstant()
             case _:
                 raise ValueError(
                     "Objective must be a LinearExpression or a constant"
