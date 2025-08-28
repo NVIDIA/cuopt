@@ -236,15 +236,14 @@ int run_single_file(std::string file_path,
   } else {
     CUOPT_LOG_INFO("%s: no solution found", base_filename.c_str());
   }
-  // std::stringstream ss;
-  // int decimal_places = 2;
-  // ss << std::fixed << std::setprecision(decimal_places) << base_filename << "," << sol_found <<
-  // ","
-  //    << obj_val << "," << benchmark_info.objective_of_initial_population << ","
-  //    << benchmark_info.last_improvement_of_best_feasible << ","
-  //    << benchmark_info.last_improvement_after_recombination << "\n";
-  // write_to_output_file(out_dir, base_filename, device, batch_id, ss.str());
-  // CUOPT_LOG_INFO("Results written to the file %s", base_filename.c_str());
+  std::stringstream ss;
+  int decimal_places = 2;
+  ss << std::fixed << std::setprecision(decimal_places) << base_filename << "," << sol_found << ","
+     << obj_val << "," << benchmark_info.objective_of_initial_population << ","
+     << benchmark_info.last_improvement_of_best_feasible << ","
+     << benchmark_info.last_improvement_after_recombination << "\n";
+  write_to_output_file(out_dir, base_filename, device, batch_id, ss.str());
+  CUOPT_LOG_INFO("Results written to the file %s", base_filename.c_str());
   return sol_found;
 }
 

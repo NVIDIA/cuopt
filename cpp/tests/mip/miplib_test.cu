@@ -16,6 +16,7 @@
  */
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
+#include "cuopt/linear_programming/mip/solver_settings.hpp"
 #include "mip_utils.cuh"
 
 #include <cuopt/linear_programming/solve.hpp>
@@ -40,7 +41,7 @@ struct result_map_t {
   double cost;
 };
 
-void test_miplib_file(result_map_t test_instance)
+void test_miplib_file(result_map_t test_instance, mip_solver_settings_t<int, double> settings)
 {
   const raft::handle_t handle_{};
 
@@ -48,7 +49,6 @@ void test_miplib_file(result_map_t test_instance)
   cuopt::mps_parser::mps_data_model_t<int, double> problem =
     cuopt::mps_parser::parse_mps<int, double>(path, false);
   handle_.sync_stream();
-  mip_solver_settings_t<int, double> settings;
   // set the time limit depending on we are in assert mode or not
 #ifdef ASSERT_MODE
   constexpr double test_time_limit = 60.;
@@ -68,10 +68,30 @@ void test_miplib_file(result_map_t test_instance)
 
 TEST(mip_solve, run_small_tests)
 {
+  mip_solver_settings_t<int, double> settings;
   std::vector<result_map_t> test_instances = {
     {"mip/50v-10.mps", 11311031.}, {"mip/neos5.mps", 15.}, {"mip/swath1.mps", 1300.}};
   for (const auto& test_instance : test_instances) {
-    test_miplib_file(test_instance);
+    test_miplib_file(test_instance, settings);
+  }
+}
+
+TEST(mip_solve, bnb_search_strategy)
+{
+  mip_solver_settings_t<int, double> settings;
+  std::vector<result_map_t> test_instances = {
+    {"mip/50v-10.mps", 11311031.}, {"mip/neos5.mps", 15.}, {"mip/swath1.mps", 1300.}};
+
+  std::vector<bnb_search_strategy_t> strategies = {
+    bnb_search_strategy_t::BEST_FIRST,
+    bnb_search_strategy_t::DEPTH_FIRST,
+    bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING};
+
+  for (const auto& search : strategies) {
+    for (const auto& test_instance : test_instances) {
+      settings.bnb_search_strategy = search;
+      test_miplib_file(test_instance, settings);
+    }
   }
 }
 
