@@ -763,6 +763,54 @@ class Problem:
             else:
                 raise Exception("Couldn't initialize constraints")
 
+    def _to_data_model(self):
+        # iterate through the constraints and construct the constraint matrix
+        n = len(self.vars)
+        self.rhs = []
+        self.row_sense = []
+
+        if self.constraint_csr_matrix is None:
+            csr_dict = {"row_pointers": [0], "column_indices": [], "values": []}
+            for constr in self.constrs:
+                csr_dict["column_indices"].extend(list(constr.vindex_coeff_dict.keys()))
+                csr_dict["values"].extend(list(constr.vindex_coeff_dict.values()))
+                csr_dict["row_pointers"].append(len(csr_dict["column_indices"]))
+                self.rhs.append(constr.RHS)
+                self.row_sense.append(constr.Sense)
+            self.constraint_csr_matrix = csr_dict
+
+        else:
+            for constr in self.constrs:
+                self.rhs.append(constr.RHS)
+                self.row_sense.append(constr.Sense)
+
+        self.objective = np.zeros(n)
+        self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
+        self.var_type = np.empty(n, dtype="S1")
+
+        for j in range(n):
+            self.objective[j] = self.vars[j].getObjectiveCoefficient()
+            self.var_type[j] = self.vars[j].getVariableType()
+            self.lower_bound[j] = self.vars[j].getLowerBound()
+            self.upper_bound[j] = self.vars[j].getUpperBound()
+
+        # Initialize datamodel
+        dm = data_model.DataModel()
+        dm.set_csr_constraint_matrix(
+            np.array(self.constraint_csr_matrix["values"]),
+            np.array(self.constraint_csr_matrix["column_indices"]),
+            np.array(self.constraint_csr_matrix["row_pointers"]),
+        )
+        if self.ObjSense == -1:
+            dm.set_maximize(True)
+        dm.set_constraint_bounds(np.array(self.rhs))
+        dm.set_row_types(np.array(self.row_sense, dtype="S1"))
+        dm.set_objective_coefficients(self.objective)
+        dm.set_variable_lower_bounds(self.lower_bound)
+        dm.set_variable_upper_bounds(self.upper_bound)
+        dm.set_variable_types(self.var_type)
+        self.model = dm
+
     def reset_solved_values(self):
         # Resets all post solve values
         for var in self.vars:
@@ -918,6 +966,11 @@ class Problem:
         problem.model = data_model
         return problem
 
+    def writeMPS(self, mps_file):
+        if self.model is None:
+            self._to_data_model()
+        solver.writeMPS(self.model, mps_file)
+
     @property
     def NumVariables(self):
         # Returns number of variables in the problem
@@ -1026,62 +1079,11 @@ class Problem:
         >>> problem.solve()
         """
 
-        if self.model is not None:
-            # Call Solver
-            solution = solver.Solve(self.model, settings)
-            # Post Solve
-            self.post_solve(solution)
-            return
-
-        # iterate through the constraints and construct the constraint matrix
-        n = len(self.vars)
-        self.rhs = []
-        self.row_sense = []
-
-        if self.constraint_csr_matrix is None:
-            csr_dict = {"row_pointers": [0], "column_indices": [], "values": []}
-            for constr in self.constrs:
-                csr_dict["column_indices"].extend(list(constr.vindex_coeff_dict.keys()))
-                csr_dict["values"].extend(list(constr.vindex_coeff_dict.values()))
-                csr_dict["row_pointers"].append(len(csr_dict["column_indices"]))
-                self.rhs.append(constr.RHS)
-                self.row_sense.append(constr.Sense)
-            self.constraint_csr_matrix = csr_dict
-
-        else:
-            for constr in self.constrs:
-                self.rhs.append(constr.RHS)
-                self.row_sense.append(constr.Sense)
-
-        self.objective = np.zeros(n)
-        self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
-        self.var_type = np.empty(n, dtype="S1")
-
-        for j in range(n):
-            self.objective[j] = self.vars[j].getObjectiveCoefficient()
-            self.var_type[j] = self.vars[j].getVariableType()
-            self.lower_bound[j] = self.vars[j].getLowerBound()
-            self.upper_bound[j] = self.vars[j].getUpperBound()
-
-        # Initialize datamodel
-        dm = data_model.DataModel()
-        dm.set_csr_constraint_matrix(
-            np.array(self.constraint_csr_matrix["values"]),
-            np.array(self.constraint_csr_matrix["column_indices"]),
-            np.array(self.constraint_csr_matrix["row_pointers"]),
-        )
-        if self.ObjSense == -1:
-            dm.set_maximize(True)
-        dm.set_constraint_bounds(np.array(self.rhs))
-        dm.set_row_types(np.array(self.row_sense, dtype="S1"))
-        dm.set_objective_coefficients(self.objective)
-        dm.set_variable_lower_bounds(self.lower_bound)
-        dm.set_variable_upper_bounds(self.upper_bound)
-        dm.set_variable_types(self.var_type)
-        self.model = dm
+        if self.model is None:
+            self._to_data_model()
 
         # Call Solver
-        solution = solver.Solve(dm, settings)
+        solution = solver.Solve(self.model, settings)
 
         # Post Solve
         self.post_solve(solution)

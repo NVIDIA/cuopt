@@ -191,6 +191,10 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         solver_settings_t[int, double]* solver_settings,
     ) except +
 
+    #cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace "cuopt::cython": # noqa
+    cdef void write_mps(data_model_view_t[int, double]* data_model,
+        string user_problem_file) except +
+
     cdef pair[vector[unique_ptr[solver_ret_t]], double] call_batch_solve( # noqa
         vector[data_model_view_t[int, double] *] data_models,
         solver_settings_t[int, double]* solver_settings,

@@ -109,6 +109,20 @@ data_model_to_optimization_problem(
   return op_problem;
 }
 
+void write_mps(cuopt::mps_parser::data_model_view_t<int, double>* data_model,
+               std::string user_problem_file,
+               unsigned int flags)
+{
+  cudaStream_t stream;
+  RAFT_CUDA_TRY(cudaStreamCreateWithFlags(&stream, flags));
+  const raft::handle_t handle_{stream};
+
+  cuopt::linear_programming::solver_settings_t<int, double> solver_settings;
+  auto op_problem = data_model_to_optimization_problem(data_model, &solver_settings, &handle_);
+
+  cuopt::linear_programming::write_mps(op_problem, user_problem_file);
+}
+
 /**
  * @brief Wrapper for linear_programming to expose the API to cython
  *

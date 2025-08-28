@@ -26,6 +26,7 @@
 #include <cuopt/linear_programming/utilities/internals.hpp>
 #include <mps_parser/mps_data_model.hpp>
 #include <vector>
+#include <string>
 
 namespace cuopt::linear_programming {
 
@@ -116,4 +117,7 @@ optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
   raft::handle_t const* handle_ptr,
   const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model);
 
+template <typename i_t, typename f_t>
+void write_mps(optimization_problem_t<i_t, f_t>& op_problem,
+               std::string);
 }  // namespace cuopt::linear_programming

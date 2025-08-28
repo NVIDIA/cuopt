@@ -180,3 +180,8 @@ def BatchSolve(data_model_list, solver_settings=None):
         solver_settings = SolverSettings()
 
     return solver_wrapper.BatchSolve(data_model_list, solver_settings)
+
+
+@catch_cuopt_exception
+def writeMPS(data_model, user_problem_file):
+    return solver_wrapper.writeMPS(data_model, user_problem_file)

@@ -44,6 +44,7 @@ from cuopt.linear_programming.data_model.data_model_wrapper cimport DataModel
 from cuopt.linear_programming.solver.solver cimport (
     call_batch_solve,
     call_solve,
+    write_mps,
     error_type_t,
     mip_termination_status_t,
     pdlp_solver_mode_t,
@@ -661,6 +662,14 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         )
 
 
+def writeMPS(py_data_model_obj, user_problem_file):
+    cdef DataModel data_model_obj = <DataModel>py_data_model_obj
+    data_model_obj.variable_types = type_cast(
+        data_model_obj.variable_types, "S1", "variable_types"
+    )
+    set_data_model_view(data_model_obj)
+    write_mps(data_model_obj.c_data_model_view.get(), user_problem_file.encode('utf-8'))
+ 
 def Solve(py_data_model_obj, settings, mip=False):
 
     cdef DataModel data_model_obj = <DataModel>py_data_model_obj
