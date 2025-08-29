@@ -333,25 +333,6 @@ void local_search_t<i_t, f_t>::resize_vectors(problem_t<i_t, f_t>& problem,
 }
 
 template <typename i_t, typename f_t>
-void save_best_fp_solution(solution_t<i_t, f_t>& solution,
-                           rmm::device_uvector<f_t>& best_solution,
-                           f_t& best_objective,
-                           bool feasibility_run)
-{
-  if (feasibility_run || solution.get_objective() < best_objective) {
-    CUOPT_LOG_DEBUG("Found better feasible in FP with obj %f. Continue with FJ!",
-                    solution.get_objective());
-    best_objective = solution.get_objective();
-    raft::copy(best_solution.data(),
-               solution.assignment.data(),
-               solution.assignment.size(),
-               solution.handle_ptr->get_stream());
-    solution.problem_ptr->add_cutting_plane_at_objective(solution.get_objective() -
-                                                         OBJECTIVE_EPSILON);
-  }
-}
-
-template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::save_solution_and_add_cutting_plane(
   solution_t<i_t, f_t>& solution, rmm::device_uvector<f_t>& best_solution, f_t& best_objective)
 {
@@ -361,8 +342,8 @@ void local_search_t<i_t, f_t>::save_solution_and_add_cutting_plane(
                solution.assignment.size(),
                solution.handle_ptr->get_stream());
     best_objective = solution.get_objective();
-    solution.problem_ptr->add_cutting_plane_at_objective(solution.get_objective() -
-                                                         OBJECTIVE_EPSILON);
+    problem_with_objective_cut.add_cutting_plane_at_objective(solution.get_objective() -
+                                                              OBJECTIVE_EPSILON);
   }
 }
 
@@ -425,7 +406,6 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
       } else {
         CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
                         solution.get_objective());
-        save_solution_and_add_cutting_plane(solution, best_solution, best_objective);
         fp.config.alpha = default_alpha;
         if (population_ptr) {
           solution_t<i_t, f_t> solution_copy(solution);
@@ -434,12 +414,17 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
           if (population_ptr->current_size() > 0) {
             resize_to_new_problem();
             population_ptr->run_all_recombiners(solution_copy);
+            fp.timer = timer_t(timer.remaining_time());
             resize_to_old_problem(old_problem_ptr);
           }
           population_ptr->add_solution(std::move(solution_copy));
           auto new_sol_vector = population_ptr->get_external_solutions();
           population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
+          save_solution_and_add_cutting_plane(
+            population_ptr->best_feasible(), best_solution, best_objective);
           if (population_ptr->current_size() >= 6) { break; }
+        } else {
+          save_solution_and_add_cutting_plane(solution, best_solution, best_objective);
         }
       }
     }
@@ -457,7 +442,6 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
         } else {
           CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
                           solution.get_objective());
-          save_solution_and_add_cutting_plane(solution, best_solution, best_objective);
           fp.config.alpha = default_alpha;
           if (population_ptr) {
             solution_t<i_t, f_t> solution_copy(solution);
@@ -466,12 +450,17 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
             if (population_ptr->current_size() > 0) {
               resize_to_new_problem();
               population_ptr->run_all_recombiners(solution_copy);
+              fp.timer = timer_t(timer.remaining_time());
               resize_to_old_problem(old_problem_ptr);
             }
             population_ptr->add_solution(std::move(solution_copy));
             auto new_sol_vector = population_ptr->get_external_solutions();
             population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
+            save_solution_and_add_cutting_plane(
+              population_ptr->best_feasible(), best_solution, best_objective);
             if (population_ptr->current_size() >= 6) { break; }
+          } else {
+            save_solution_and_add_cutting_plane(solution, best_solution, best_objective);
           }
         }
       }
