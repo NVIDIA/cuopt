@@ -96,6 +96,12 @@ outputs:
         - ${{ stdlib("c") }}
         - zlib
         - bzip2
+      host:
+        - zlib
+        - bzip2
+      run:
+        - zlib
+        - bzip2
       ignore_run_exports:
         by_name:
           - cuda-cudart
