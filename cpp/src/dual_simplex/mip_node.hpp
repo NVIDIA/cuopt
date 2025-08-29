@@ -141,15 +141,12 @@ class mip_node_t {
     }
   }
 
-  node_status_t set_status(node_status_t new_status)
-  {
-    return status.exchange(new_status, std::memory_order_seq_cst);
-  }
+  node_status_t set_status(node_status_t new_status) { return status; }
 
   // outputs a stack containing inactive nodes in the tree that can be freed
   void set_status(node_status_t node_status, std::vector<mip_node_t*>& stack)
   {
-    status.store(node_status, std::memory_order_seq_cst);
+    status = node_status;
     if (inactive_status(status)) {
       update_bound();
       stack.push_back(this);
@@ -157,7 +154,7 @@ class mip_node_t {
       mip_node_t* parent_ptr = parent;
       while (parent_ptr != nullptr) {
         if (parent_ptr->is_inactive()) {
-          parent_ptr->status.store(node_status_t::FATHOMED, std::memory_order_seq_cst);
+          parent_ptr->status = node_status_t::FATHOMED;
           parent_ptr->update_bound();
           stack.push_back(parent_ptr);
         } else {
@@ -201,7 +198,7 @@ class mip_node_t {
     }
   }
 
-  std::atomic<node_status_t> status;
+  node_status_t status;
   f_t lower_bound;
   i_t depth;
   i_t node_id;

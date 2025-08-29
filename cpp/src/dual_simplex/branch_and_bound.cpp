@@ -518,7 +518,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation()
 }
 
 template <typename i_t, typename f_t>
-mip_status_t branch_and_bound_t<i_t, f_t>::solve_leaf_lp(mip_node_t<i_t, f_t>* node_ptr,
+mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
                                                          lp_problem_t<i_t, f_t>& leaf_problem,
                                                          f_t upper_bound,
                                                          f_t lower_bound,
@@ -749,7 +749,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
       break;
     }
 
-    status = solve_leaf_lp(
+    status = solve_node_lp(
       node_ptr, leaf_problem, upper_bound, lower_bound, nodes_explored, heap.size(), pc);
 
     if (status == mip_status_t::NUMERICAL) { break; }
@@ -853,7 +853,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::dive(i_t branch_var,
       break;
     }
 
-    status = solve_leaf_lp(
+    status = solve_node_lp(
       node_ptr, leaf_problem, upper_bound, lower_bound, nodes_explored, node_stack.size(), pc);
     if (status == mip_status_t::NUMERICAL) { break; }
 

@@ -156,7 +156,7 @@ class branch_and_bound_t {
   mip_status_t solve_root_relaxation();
 
   // Solve the LP relaxation of a leaf node.
-  mip_status_t solve_leaf_lp(mip_node_t<i_t, f_t>* node_ptr,
+  mip_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
                              lp_problem_t<i_t, f_t>& leaf_problem,
                              f_t upper_bound,
                              f_t lower_bound,
