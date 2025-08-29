@@ -52,7 +52,9 @@ class diversity_manager_t {
   // main loop of diversity improvements
   void main_loop();
   // randomly chooses a recombiner and returns the offspring
-  std::pair<solution_t<i_t, f_t>, bool> recombine(solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b);
+  std::pair<solution_t<i_t, f_t>, bool> recombine(solution_t<i_t, f_t>& a,
+                                                  solution_t<i_t, f_t>& b,
+                                                  recombiner_enum_t recombiner_type);
   bool regenerate_solutions();
   void generate_add_solution(std::vector<solution_t<i_t, f_t>>& initial_sol_vector,
                              f_t time_limit,
@@ -66,7 +68,9 @@ class diversity_manager_t {
                                  bool add_only_feasible = false);
   void recombine_and_ls_with_all(solution_t<i_t, f_t>& solution, bool add_only_feasible = false);
   std::pair<solution_t<i_t, f_t>, solution_t<i_t, f_t>> recombine_and_local_search(
-    solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b);
+    solution_t<i_t, f_t>& a,
+    solution_t<i_t, f_t>& b,
+    recombiner_enum_t recombiner_type = recombiner_enum_t::SIZE);
   void set_new_user_bound(f_t new_user_bound);
   void generate_quick_feasible_solution();
   bool check_b_b_preemption();

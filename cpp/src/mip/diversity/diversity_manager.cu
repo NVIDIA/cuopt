@@ -570,16 +570,19 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(solution_t<i_t, f_
   raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
   auto population_vector = population.population_to_vector();
   for (auto& curr_sol : population_vector) {
-    if (check_b_b_preemption()) { return; }
-    if (curr_sol.get_feasible()) {
-      auto [offspring, lp_offspring] = recombine_and_local_search(curr_sol, solution);
-      if (!add_only_feasible || lp_offspring.get_feasible()) {
-        population.add_solution(std::move(lp_offspring));
+    for (const auto recombiner_type : recombiner_types) {
+      if (check_b_b_preemption()) { return; }
+      if (curr_sol.get_feasible()) {
+        auto [offspring, lp_offspring] =
+          recombine_and_local_search(curr_sol, solution, recombiner_type);
+        if (!add_only_feasible || lp_offspring.get_feasible()) {
+          population.add_solution(std::move(lp_offspring));
+        }
+        if (!add_only_feasible || offspring.get_feasible()) {
+          population.add_solution(std::move(offspring));
+        }
+        if (timer.check_time_limit()) { return; }
       }
-      if (!add_only_feasible || offspring.get_feasible()) {
-        population.add_solution(std::move(offspring));
-      }
-      if (timer.check_time_limit()) { return; }
     }
   }
 }
@@ -691,7 +694,8 @@ void diversity_manager_t<i_t, f_t>::check_better_than_both(solution_t<i_t, f_t>&
 template <typename i_t, typename f_t>
 std::pair<solution_t<i_t, f_t>, solution_t<i_t, f_t>>
 diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& sol1,
-                                                          solution_t<i_t, f_t>& sol2)
+                                                          solution_t<i_t, f_t>& sol2,
+                                                          recombiner_enum_t recombiner_type)
 {
   raft::common::nvtx::range fun_scope("recombine_and_local_search");
   CUOPT_LOG_DEBUG("Recombining sol cost:feas %f : %d and %f : %d",
@@ -702,7 +706,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   double best_objective_of_parents  = std::min(sol1.get_objective(), sol2.get_objective());
   bool at_least_one_parent_feasible = sol1.get_feasible() || sol2.get_feasible();
   // randomly choose among 3 recombiners
-  auto [offspring, success] = recombine(sol1, sol2);
+  auto [offspring, success] = recombine(sol1, sol2, recombiner_type);
   if (!success) {
     // add the attempt
     mab_recombiner.add_mab_reward(static_cast<int>(recombine_stats.get_last_attempt()),
@@ -788,7 +792,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
 
 template <typename i_t, typename f_t>
 std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
-  solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b)
+  solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b, recombiner_enum_t recombiner_type)
 {
   recombiner_enum_t recombiner;
   if (run_only_ls_recombiner) {
@@ -800,7 +804,12 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
   } else if (run_only_sub_mip_recombiner) {
     recombiner = recombiner_enum_t::SUB_MIP;
   } else {
-    recombiner = static_cast<recombiner_enum_t>(mab_recombiner.select_mab_option());
+    // only run the given recombiner unless it is defult
+    if (recombiner_type == recombiner_enum_t::SIZE) {
+      recombiner = static_cast<recombiner_enum_t>(mab_recombiner.select_mab_option());
+    } else {
+      recombiner = recombiner_type;
+    }
   }
   recombine_stats.add_attempt((recombiner_enum_t)recombiner);
   recombine_stats.start_recombiner_time();
