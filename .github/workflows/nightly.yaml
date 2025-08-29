@@ -31,6 +31,7 @@ jobs:
   build:
     name: build (${{ matrix.branch }})
     needs: [compute-matrix]
+    secrets: inherit
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.compute-matrix.outputs.MATRIX) }}
@@ -45,6 +46,7 @@ jobs:
   test:
     name: test (${{ matrix.branch }})
     needs: [compute-matrix, build]
+    secrets: inherit
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.compute-matrix.outputs.MATRIX) }}
