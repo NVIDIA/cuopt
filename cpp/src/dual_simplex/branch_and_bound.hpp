@@ -137,14 +137,22 @@ class branch_and_bound_t {
   pseudo_costs_t<i_t, f_t> pc_;
   std::mutex mutex_pc_;
 
+  // Number of active tasks.
+  // This needs to be updated atomically.
+  i_t active_tasks_;
+
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions(f_t lower_bound, mip_solution_t<i_t, f_t>& solution);
 
   // Explore the search tree using the best-first search strategy.
-  mip_status_t explore_tree(i_t branch_var, mip_solution_t<i_t, f_t>& solution);
+  void explore_tree(i_t branch_var,
+                    mip_solution_t<i_t, f_t>& solution,
+                    mip_status_t& status);
 
   // Explore the search tree using the depth-first search strategy.
-  mip_status_t dive(i_t branch_var, mip_solution_t<i_t, f_t>& solution);
+  void dive(mip_node_t<i_t, f_t>* start_node,
+            mip_solution_t<i_t, f_t>& solution,
+            mip_status_t& status);
 
   // Branch the current node, creating two children.
   void branch(mip_node_t<i_t, f_t>* parent_node,
@@ -162,6 +170,12 @@ class branch_and_bound_t {
                              f_t lower_bound,
                              i_t nodes_explored,
                              i_t unexplored_nodes);
+
+  // Solve the LP relaxation of a leaf node using the dual simplex method.
+  dual::status_t leaf_dual_simplex(lp_problem_t<i_t, f_t>& leaf_problem,
+                                   std::vector<variable_status_t>& leaf_vstatus,
+                                   lp_solution_t<i_t, f_t>& leaf_solution,
+                                   f_t upper_bound);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

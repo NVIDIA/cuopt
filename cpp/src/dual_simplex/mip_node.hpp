@@ -35,6 +35,7 @@ enum class node_status_t : int {
   INFEASIBLE       = 3,  // Node is infeasible
   FATHOMED         = 4,  // Node objective is greater than the upper bound
   HAS_CHILDREN     = 5,  // Node has children to explore
+  REMOVED          = 6,  // Node will be removed from the tree
 };
 
 bool inactive_status(node_status_t status);
@@ -146,18 +147,21 @@ class mip_node_t {
   // outputs a stack containing inactive nodes in the tree that can be freed
   void set_status(node_status_t node_status, std::vector<mip_node_t*>& stack)
   {
-    status = node_status;
+    set_status(node_status);
     if (inactive_status(status)) {
       update_bound();
       stack.push_back(this);
       // Propagate to parent
       mip_node_t* parent_ptr = parent;
       while (parent_ptr != nullptr) {
-        if (parent_ptr->is_inactive()) {
-          parent_ptr->status = node_status_t::FATHOMED;
+        parent_ptr->node_mutex.lock();
+        if (parent_ptr->is_inactive() && parent_ptr->status != node_status_t::REMOVED) {
+          parent_ptr->status = node_status_t::REMOVED;
           parent_ptr->update_bound();
           stack.push_back(parent_ptr);
+          parent_ptr->node_mutex.unlock();
         } else {
+          parent_ptr->node_mutex.unlock();
           break;
         }
         parent_ptr = parent_ptr->parent;
@@ -207,6 +211,7 @@ class mip_node_t {
   f_t branch_var_lower;
   f_t branch_var_upper;
   f_t fractional_val;
+  std::mutex node_mutex;
 
   mip_node_t<i_t, f_t>* parent;
   std::unique_ptr<mip_node_t> children[2];

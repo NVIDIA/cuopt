@@ -60,9 +60,7 @@ struct simplex_solver_settings_t {
       refactor_frequency(100),
       iteration_log_frequency(1000),
       first_iteration_log(2),
-      num_threads(std::thread::hardware_concurrency() > 8
-                    ? (std::thread::hardware_concurrency() / 8)
-                    : std::thread::hardware_concurrency()),
+      num_threads(std::thread::hardware_concurrency() - 1),
       random_seed(0),
       inside_mip(0),
       solution_callback(nullptr),
