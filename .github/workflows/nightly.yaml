@@ -18,7 +18,7 @@ jobs:
         run: |
           # add more list items here to run nightlies for more branches
           export CI_MATRIX="
-          - branch: '25.10'
+          - branch: 'branch-25.10'
             sha: "\'$(git ls-remote https://github.com/${{ github.repository }}.git refs/heads/branch-25.10 | awk '{print $1}')\'"
           "
           MATRIX="$(
@@ -29,11 +29,11 @@ jobs:
           echo "MATRIX=${MATRIX}" | tee --append "${GITHUB_OUTPUT}"
           echo "DATE=$(date +%F)" | tee --append "${GITHUB_OUTPUT}"
   build:
+    name: build (${{ matrix.branch }})
     needs: [compute-matrix]
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.compute-matrix.outputs.MATRIX) }}
-    name: build (${{ matrix.branch }})
     uses: ./.github/workflows/build.yaml
     with:
       # Because build and test happen in the same workflow run, build_type="branch" is preferred here.
@@ -43,11 +43,11 @@ jobs:
       date: ${{ needs.compute-matrix.outputs.DATE }}
       sha: ${{ matrix.sha }}
   test:
+    name: test (${{ matrix.branch }})
     needs: [compute-matrix, build]
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.compute-matrix.outputs.MATRIX) }}
-    name: test (${{ matrix.branch }})
     uses: ./.github/workflows/test.yaml
     with:
       # Because build and test happen in the same workflow run, build_type="branch" is preferred here.
