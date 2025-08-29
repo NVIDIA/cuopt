@@ -260,7 +260,11 @@ void check_postsolve_status(const papilo::PostsolveStatus& status)
 {
   switch (status) {
     case papilo::PostsolveStatus::kOk: CUOPT_LOG_INFO("Post-solve status:: succeeded"); break;
-    case papilo::PostsolveStatus::kFailed: CUOPT_LOG_INFO("Post-solve status:: failed"); break;
+    case papilo::PostsolveStatus::kFailed:
+      CUOPT_LOG_INFO(
+        "Post-solve status:: Post solved solution violates constraints. This is most likely due to "
+        "different tolerances.");
+      break;
   }
 }
 
@@ -279,8 +283,8 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t c
   presolver.addPresolveMethod(uptr(new papilo::SimpleProbing<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::ParallelRowDetection<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::ParallelColDetection<f_t>()));
-  // FIXME: Postsolve fails with this method
-  // presolver.addPresolveMethod(uptr(new papilo::SingletonStuffing<f_t>()));
+
+  presolver.addPresolveMethod(uptr(new papilo::SingletonStuffing<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::DualFix<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::SimplifyInequalities<f_t>()));
 
@@ -303,16 +307,6 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
                           double time_limit)
 {
   presolver.getPresolveOptions().tlim = time_limit;
-
-  if (category == problem_category_t::LP) {
-    presolver.getPresolveOptions().useabsfeas = false;
-    presolver.getPresolveOptions().feastol    = relative_tolerance;
-    presolver.getPresolveOptions().epsilon    = absolute_tolerance;
-  } else if (category == problem_category_t::MIP || category == problem_category_t::IP) {
-    presolver.getPresolveOptions().useabsfeas = true;
-    presolver.getPresolveOptions().feastol    = absolute_tolerance;
-    presolver.getPresolveOptions().epsilon    = absolute_tolerance;
-  }
 }
 
 template <typename i_t, typename f_t>

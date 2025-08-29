@@ -22,6 +22,9 @@ rapids-logger "Create test conda environment"
 
 ENV_YAML_DIR="$(mktemp -d)"
 
+CUOPT_VERSION_MAJOR_MINOR="$(rapids-version-major-minor)"
+export CUOPT_VERSION_MAJOR_MINOR
+
 rapids-logger "Downloading artifacts from previous jobs"
 CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
 PYTHON_CHANNEL=$(rapids-download-conda-from-github python)
