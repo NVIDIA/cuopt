@@ -161,25 +161,21 @@ void data_model_view_t<i_t, f_t>::set_quadratic_objective_matrix(const f_t* Q_va
                                                                  i_t size_offsets)
 {
   if (size_values != 0) {
-    mps_parser_expects(Q_values != nullptr,
-                       error_type_t::ValidationError,
-                       "Q_values cannot be null");
+    mps_parser_expects(
+      Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
   }
   Q_objective_ = span<f_t const>(Q_values, size_values);
 
   if (size_indices != 0) {
-    mps_parser_expects(Q_indices != nullptr,
-                       error_type_t::ValidationError,
-                       "Q_indices cannot be null");
+    mps_parser_expects(
+      Q_indices != nullptr, error_type_t::ValidationError, "Q_indices cannot be null");
   }
   Q_objective_indices_ = span<i_t const>(Q_indices, size_indices);
 
-  mps_parser_expects(Q_offsets != nullptr,
-                     error_type_t::ValidationError,
-                     "Q_offsets cannot be null");
-  mps_parser_expects(size_offsets > 0,
-                     error_type_t::ValidationError,
-                     "size_offsets cannot be empty");
+  mps_parser_expects(
+    Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
+  mps_parser_expects(
+    size_offsets > 0, error_type_t::ValidationError, "size_offsets cannot be empty");
   Q_objective_offsets_ = span<i_t const>(Q_offsets, size_offsets);
 }
 
