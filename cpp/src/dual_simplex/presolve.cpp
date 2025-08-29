@@ -47,7 +47,7 @@ template <typename i_t, typename f_t>
 bool bound_strengthening(const std::vector<char>& row_sense,
                          const simplex_solver_settings_t<i_t, f_t>& settings,
                          lp_problem_t<i_t, f_t>& problem,
-                         const std::vector<i_t>& is_int)
+                         const std::vector<variable_type_t>& var_types)
 {
   const i_t m = problem.num_rows;
   const i_t n = problem.num_cols;
@@ -146,7 +146,8 @@ bool bound_strengthening(const std::vector<char>& row_sense,
         f_t new_ub        = update_ub(old_ub, a_ik, delta_min_act, delta_max_act);
 
         // Integer rounding
-        if (!is_int.empty() && is_int[k]) {
+        if (!var_types.empty() &&
+            (var_types[k] == variable_type_t::INTEGER || var_types[k] == variable_type_t::BINARY)) {
           new_lb = std::ceil(new_lb - settings.integer_tol);
           new_ub = std::floor(new_ub + settings.integer_tol);
         }
@@ -1121,7 +1122,7 @@ template bool bound_strengthening<int, double>(
   const std::vector<char>& row_sense,
   const simplex_solver_settings_t<int, double>& settings,
   lp_problem_t<int, double>& problem,
-  const std::vector<int>& is_int);
+  const std::vector<variable_type_t>& var_types);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

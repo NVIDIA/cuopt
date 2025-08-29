@@ -631,6 +631,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     // Set the correct bounds for the leaf problem
     leaf_problem.lower = original_lp.lower;
     leaf_problem.upper = original_lp.upper;
+    // FIXME:: should we get the bounds from the node/parent instead of the original problem?
     node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper);
 
     std::vector<variable_status_t>& leaf_vstatus = node_ptr->vstatus;
@@ -647,9 +648,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
     // in B&B we only have equality constraints
     std::vector<char> row_sense(leaf_problem.num_rows, 'E');
-    std::vector<i_t> is_int(leaf_problem.num_cols, 0);
-    // FIXME:: populate is_int correctly
-    bool feasible = bound_strengthening(row_sense, lp_settings, leaf_problem, is_int);
+    bool feasible = bound_strengthening(row_sense, lp_settings, leaf_problem, var_types);
 
     dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
 
