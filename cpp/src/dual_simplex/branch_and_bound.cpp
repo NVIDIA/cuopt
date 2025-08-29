@@ -651,24 +651,25 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     // FIXME:: populate is_int correctly
     bool feasible = bound_strengthening(row_sense, lp_settings, leaf_problem, is_int);
 
-    if (!feasible) {
-      // do something here
-    }
+    dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
 
-    dual::status_t lp_status = dual_phase2(2,
-                                           0,
-                                           lp_start_time,
-                                           leaf_problem,
-                                           lp_settings,
-                                           leaf_vstatus,
-                                           leaf_solution,
-                                           node_iter,
-                                           leaf_edge_norms);
-    if (lp_status == dual::status_t::NUMERICAL) {
-      settings.log.printf("Numerical issue node %d. Resolving from scratch.\n", nodes_explored);
-      lp_status_t second_status = solve_linear_program_advanced(
-        leaf_problem, lp_start_time, lp_settings, leaf_solution, leaf_vstatus, leaf_edge_norms);
-      lp_status = convert_lp_status_to_dual_status(second_status);
+    // If the problem is infeasible after bounds strengthening, we don't need to solve the LP
+    if (feasible) {
+      lp_status = dual_phase2(2,
+                              0,
+                              lp_start_time,
+                              leaf_problem,
+                              lp_settings,
+                              leaf_vstatus,
+                              leaf_solution,
+                              node_iter,
+                              leaf_edge_norms);
+      if (lp_status == dual::status_t::NUMERICAL) {
+        settings.log.printf("Numerical issue node %d. Resolving from scratch.\n", nodes_explored);
+        lp_status_t second_status = solve_linear_program_advanced(
+          leaf_problem, lp_start_time, lp_settings, leaf_solution, leaf_vstatus, leaf_edge_norms);
+        lp_status = convert_lp_status_to_dual_status(second_status);
+      }
     }
     total_lp_solve_time += toc(lp_start_time);
     total_lp_iters += node_iter;
