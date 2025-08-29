@@ -145,9 +145,7 @@ class branch_and_bound_t {
   void repair_heuristic_solutions(f_t lower_bound, mip_solution_t<i_t, f_t>& solution);
 
   // Explore the search tree using the best-first search strategy.
-  void explore_tree(i_t branch_var,
-                    mip_solution_t<i_t, f_t>& solution,
-                    mip_status_t& status);
+  void explore_tree(i_t branch_var, mip_solution_t<i_t, f_t>& solution, mip_status_t& status);
 
   // Explore the search tree using the depth-first search strategy.
   void dive(mip_node_t<i_t, f_t>* start_node,
@@ -173,7 +171,7 @@ class branch_and_bound_t {
                              char symbol);
 
   // Solve the LP relaxation of a leaf node using the dual simplex method.
-  dual::status_t leaf_dual_simplex(lp_problem_t<i_t, f_t>& leaf_problem,
+  dual::status_t node_dual_simplex(lp_problem_t<i_t, f_t>& leaf_problem,
                                    std::vector<variable_status_t>& leaf_vstatus,
                                    lp_solution_t<i_t, f_t>& leaf_solution,
                                    f_t upper_bound);

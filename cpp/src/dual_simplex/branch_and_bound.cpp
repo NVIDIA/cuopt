@@ -519,7 +519,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation()
 }
 
 template <typename i_t, typename f_t>
-dual::status_t branch_and_bound_t<i_t, f_t>::leaf_node_simplex(
+dual::status_t branch_and_bound_t<i_t, f_t>::node_dual_simplex(
   lp_problem_t<i_t, f_t>& leaf_problem,
   std::vector<variable_status_t>& leaf_vstatus,
   lp_solution_t<i_t, f_t>& leaf_solution,
@@ -580,7 +580,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
   node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper);
 
   dual::status_t lp_status =
-    leaf_dual_simplex(leaf_problem, leaf_vstatus, leaf_solution, upper_bound);
+    node_dual_simplex(leaf_problem, leaf_vstatus, leaf_solution, upper_bound);
 
   if (lp_status == dual::status_t::DUAL_UNBOUNDED) {
     node_ptr->lower_bound = inf;
@@ -800,7 +800,6 @@ void branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
 
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::dive(mip_node_t<i_t, f_t>* start_node,
-                                        i_t branch_var,
                                         mip_solution_t<i_t, f_t>& solution,
                                         mip_status_t& status)
 {
@@ -838,31 +837,7 @@ void branch_and_bound_t<i_t, f_t>::dive(mip_node_t<i_t, f_t>* start_node,
     f_t now            = toc(stats_.start_time);
     f_t time_since_log = last_log == 0 ? 1.0 : toc(last_log);
 
-    // if (settings_.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
-    //   if ((nodes_explored % 1000 == 0 || gap < 10 * settings_.absolute_mip_gap_tol ||
-    //        nodes_explored < 1000) &&
-    //         (time_since_log >= 1) ||
-    //       (time_since_log > 60) || now > settings_.time_limit) {
-    //     settings_.log.printf(" %8d %8lu       %+13.6e  %+10.6e   %4d   %7.1e     %s %9.2f\n",
-    //                          nodes_explored,
-    //                          node_stack.size(),
-    //                          compute_user_objective(original_lp_, upper_bound),
-    //                          compute_user_objective(original_lp_, lower_bound),
-    //                          leaf_depth,
-    //                          nodes_explored > 0 ? stats_.total_lp_iters / nodes_explored : 0,
-    //                          user_mip_gap<f_t>(compute_user_objective(original_lp_, upper_bound),
-    //                                            compute_user_objective(original_lp_, lower_bound))
-    //                            .c_str(),
-    //                          now);
-    //     last_log = tic();
-    //   }
-    // }
-
     if (toc(stats_.start_time) > settings_.time_limit) {
-      // if (settings_.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
-      //   settings_.log.printf("Hit time limit. Stoppping\n");
-      // }
-
       status = mip_status_t::TIME_LIMIT;
       break;
     }
@@ -889,7 +864,7 @@ void branch_and_bound_t<i_t, f_t>::dive(mip_node_t<i_t, f_t>* start_node,
 
         if (active < settings_.num_threads) {
 #pragma omp task
-          dive(node_ptr->get_down_child(), solution, pc, status);
+          dive(node_ptr->get_down_child(), solution, status);
 
 #pragma omp atomic
           active_tasks_++;
@@ -902,7 +877,7 @@ void branch_and_bound_t<i_t, f_t>::dive(mip_node_t<i_t, f_t>* start_node,
 
         if (active < settings_.num_threads) {
 #pragma omp task
-          dive(node_ptr->get_up_child(), solution, pc, status);
+          dive(node_ptr->get_up_child(), solution, status);
 
 #pragma omp atomic
           active_tasks_++;
@@ -913,22 +888,6 @@ void branch_and_bound_t<i_t, f_t>::dive(mip_node_t<i_t, f_t>* start_node,
       }
     }
   }
-
-  // if (settings_.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
-  //   stats_.nodes_unexplored = node_stack.size();
-  //   stats_.nodes_explored   = nodes_explored;
-
-  //   if (stats_.nodes_unexplored == 0) {
-  //     mutex_lower_.lock();
-  //     lower_bound = lower_bound_ = root_node.lower_bound;
-  //     mutex_lower_.unlock();
-  //     gap = get_upper_bound() - lower_bound;
-
-  //     mutex_gap_.lock();
-  //     gap_ = gap;
-  //     mutex_gap_.unlock();
-  //   }
-  // }
 
 #pragma omp atomic
   active_tasks_--;
@@ -1028,9 +987,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   mutex_branching_.unlock();
 
   if (settings_.bnb_search_strategy ==
-    bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
-  mip_node_t<i_t, f_t> diving_tree(root_objective_, root_vstatus_);
-  graphviz_node(settings_, &diving_tree, "lower bound", root_objective_);
+      bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
+    mip_node_t<i_t, f_t> diving_tree(root_objective_, root_vstatus_);
+    graphviz_node(settings_, &diving_tree, "lower bound", root_objective_);
 
     branch(&diving_tree, branch_var, root_relax_soln_.x[branch_var], root_vstatus_);
 
@@ -1044,69 +1003,69 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         active_tasks_ = 3;
 
 #pragma omp task
-        explore_tree(branch_var, solution, pc, status);
+        explore_tree(branch_var, solution, status);
 
 #pragma omp task
-        dive(diving_tree.get_down_child(), solution, pc, diving_status);
+        dive(diving_tree.get_down_child(), solution, diving_status);
 
 #pragma omp task
-        dive(diving_tree.get_up_child(), solution, pc, diving_status);
+        dive(diving_tree.get_up_child(), solution, diving_status);
       }
     }
 
   } else {
-    explore_tree(branch_var, solution, pc, status);
+    explore_tree(branch_var, solution, status);
   }
 
-    mutex_branching_.lock();
-    currently_branching_ = false;
-    mutex_branching_.unlock();
+  mutex_branching_.lock();
+  currently_branching_ = false;
+  mutex_branching_.unlock();
 
-    settings_.log.printf(
-      "Explored %d nodes in %.2fs.\nAbsolute Gap %e Objective %.16e Lower Bound %.16e\n",
-      stats_.nodes_explored.load(),
-      toc(stats_.start_time),
-      gap_,
-      compute_user_objective(original_lp_, get_upper_bound()),
-      compute_user_objective(original_lp_, lower_bound_));
+  settings_.log.printf(
+    "Explored %d nodes in %.2fs.\nAbsolute Gap %e Objective %.16e Lower Bound %.16e\n",
+    stats_.nodes_explored.load(),
+    toc(stats_.start_time),
+    gap_,
+    compute_user_objective(original_lp_, get_upper_bound()),
+    compute_user_objective(original_lp_, lower_bound_));
 
-    if (gap_ <= settings_.absolute_mip_gap_tol ||
-        relative_gap(get_upper_bound(), lower_bound_) <= settings_.relative_mip_gap_tol) {
-      status = mip_status_t::OPTIMAL;
-      if (gap_ > 0 && gap_ <= settings_.absolute_mip_gap_tol) {
-        settings_.log.printf("Optimal solution found within absolute MIP gap tolerance (%.1e)\n",
-                             settings_.absolute_mip_gap_tol);
-      } else if (gap_ > 0 &&
-                 relative_gap(get_upper_bound(), lower_bound_) <= settings_.relative_mip_gap_tol) {
-        settings_.log.printf("Optimal solution found within relative MIP gap tolerance (%.1e)\n",
-                             settings_.relative_mip_gap_tol);
-      } else {
-        settings_.log.printf("Optimal solution found.\n");
-      }
-      if (settings_.heuristic_preemption_callback != nullptr) {
-        settings_.heuristic_preemption_callback();
-      }
+  if (gap_ <= settings_.absolute_mip_gap_tol ||
+      relative_gap(get_upper_bound(), lower_bound_) <= settings_.relative_mip_gap_tol) {
+    status = mip_status_t::OPTIMAL;
+    if (gap_ > 0 && gap_ <= settings_.absolute_mip_gap_tol) {
+      settings_.log.printf("Optimal solution found within absolute MIP gap tolerance (%.1e)\n",
+                           settings_.absolute_mip_gap_tol);
+    } else if (gap_ > 0 &&
+               relative_gap(get_upper_bound(), lower_bound_) <= settings_.relative_mip_gap_tol) {
+      settings_.log.printf("Optimal solution found within relative MIP gap tolerance (%.1e)\n",
+                           settings_.relative_mip_gap_tol);
+    } else {
+      settings_.log.printf("Optimal solution found.\n");
     }
-
-    if (stats_.nodes_unexplored == 0 && get_upper_bound() == inf) {
-      settings_.log.printf("Integer infeasible.\n");
-      status = mip_status_t::INFEASIBLE;
-      if (settings_.heuristic_preemption_callback != nullptr) {
-        settings_.heuristic_preemption_callback();
-      }
+    if (settings_.heuristic_preemption_callback != nullptr) {
+      settings_.heuristic_preemption_callback();
     }
-
-    uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
-    solution.objective          = incumbent_.objective;
-    solution.lower_bound        = get_lower_bound();
-    solution.nodes_explored     = stats_.nodes_explored;
-    solution.simplex_iterations = stats_.total_lp_iters;
-    return status;
   }
+
+  if (stats_.nodes_unexplored == 0 && get_upper_bound() == inf) {
+    settings_.log.printf("Integer infeasible.\n");
+    status = mip_status_t::INFEASIBLE;
+    if (settings_.heuristic_preemption_callback != nullptr) {
+      settings_.heuristic_preemption_callback();
+    }
+  }
+
+  uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
+  solution.objective          = incumbent_.objective;
+  solution.lower_bound        = get_lower_bound();
+  solution.nodes_explored     = stats_.nodes_explored;
+  solution.simplex_iterations = stats_.total_lp_iters;
+  return status;
+}
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-  template class branch_and_bound_t<int, double>;
+template class branch_and_bound_t<int, double>;
 
 #endif
 
