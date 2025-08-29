@@ -254,7 +254,7 @@ class mps_data_model_t {
   /**
    * @brief Set the quadratic objective matrix (Q) in CSR format for QPS files.
    *
-   * @note This is used for quadratic programming problems where the objective 
+   * @note This is used for quadratic programming problems where the objective
    * function contains quadratic terms: (1/2) * x^T * Q * x + c^T * x
    *
    * @param[in] Q_values Values of the CSR representation of the quadratic objective matrix
@@ -270,8 +270,6 @@ class mps_data_model_t {
                                       i_t size_indices,
                                       const i_t* Q_offsets,
                                       i_t size_offsets);
-
-
 
   i_t get_n_variables() const;
   i_t get_n_constraints() const;
@@ -365,7 +363,7 @@ class mps_data_model_t {
   std::vector<f_t> initial_primal_solution_;
   /** Initial dual solution */
   std::vector<f_t> initial_dual_solution_;
-  
+
   // QPS-specific data members for quadratic programming support
   /** Quadratic objective matrix in CSR format (for (1/2) * x^T * Q * x term) */
   std::vector<f_t> Q_objective_;

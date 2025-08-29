@@ -122,11 +122,10 @@ class mps_parser_t {
   std::vector<f_t> ranges_values{};
   /** Objection function sense (maximize of minimize) */
   bool maximize{false};
-  
+
   // QPS-specific data for quadratic programming
   /** Quadratic objective matrix entries */
   std::vector<std::tuple<i_t, i_t, f_t>> quadobj_entries{};
-
 
  private:
   bool inside_rows_{false};
@@ -175,7 +174,7 @@ class mps_parser_t {
   void read_bound_and_value(std::string_view line, BoundType type, i_t var_id, i_t start);
   void parse_ranges(std::string_view line);
   i_t insert_range_value(std::string_view line, bool skip_range = true);
-  
+
   // QPS-specific parsing methods
   void parse_quadobj(std::string_view line);
 

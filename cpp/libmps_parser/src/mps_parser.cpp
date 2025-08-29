@@ -265,36 +265,37 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   problem.set_row_names(std::move(row_names));
   problem.set_maximize(maximize);
 
-  // Helper function to build CSR format using double transpose (O(m+n+nnz) instead of O(nnz*log(nnz)))
-  // For QUADOBJ: handles upper triangular input by expanding to full symmetric matrix
-  auto build_csr_via_transpose = [](const std::vector<std::tuple<i_t, i_t, f_t>>& entries, 
-                                    i_t num_rows, i_t num_cols, bool is_quadobj = false) {
+  // Helper function to build CSR format using double transpose (O(m+n+nnz) instead of
+  // O(nnz*log(nnz))) For QUADOBJ: handles upper triangular input by expanding to full symmetric
+  // matrix
+  auto build_csr_via_transpose = [](const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
+                                    i_t num_rows,
+                                    i_t num_cols,
+                                    bool is_quadobj = false) {
     struct CSRResult {
       std::vector<f_t> values;
-      std::vector<i_t> indices;  
+      std::vector<i_t> indices;
       std::vector<i_t> offsets;
     };
-    
+
     if (entries.empty()) {
       CSRResult result;
       result.offsets.resize(num_rows + 1, 0);
       return result;
     }
-    
+
     // First transpose: build CSC format (entries sorted by column)
     std::vector<std::vector<std::pair<i_t, f_t>>> csc_data(num_cols);
     for (const auto& entry : entries) {
       i_t row = std::get<0>(entry);
       i_t col = std::get<1>(entry);
       f_t val = std::get<2>(entry);
-      
+
       // For QUADOBJ (upper triangular), add both (row,col) and (col,row) if off-diagonal
       csc_data[col].emplace_back(row, val);
-      if (is_quadobj && row != col) {
-        csc_data[row].emplace_back(col, val);
-      }
+      if (is_quadobj && row != col) { csc_data[row].emplace_back(col, val); }
     }
-    
+
     // Second transpose: convert CSC to CSR (entries sorted by row, columns within rows sorted)
     std::vector<std::vector<std::pair<i_t, f_t>>> csr_data(num_rows);
     for (i_t col = 0; col < num_cols; ++col) {
@@ -302,12 +303,12 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
         csr_data[row].emplace_back(col, val);
       }
     }
-    
+
     // Build final CSR format
     CSRResult result;
     result.offsets.reserve(num_rows + 1);
     result.offsets.push_back(0);
-    
+
     for (i_t row = 0; row < num_rows; ++row) {
       for (const auto& [col, val] : csr_data[row]) {
         result.values.push_back(val);
@@ -315,7 +316,7 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
       }
       result.offsets.push_back(result.values.size());
     }
-    
+
     return result;
   };
 
@@ -323,16 +324,17 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   if (!quadobj_entries.empty()) {
     // Convert quadratic objective entries to CSR format using double transpose
     // QUADOBJ stores upper triangular elements, so we expand to full symmetric matrix
-    i_t num_vars = static_cast<i_t>(var_names.size());
+    i_t num_vars    = static_cast<i_t>(var_names.size());
     auto csr_result = build_csr_via_transpose(quadobj_entries, num_vars, num_vars, true);
 
     // Use optimized double transpose method - O(m+n+nnz) instead of O(nnz*log(nnz))
-    problem.set_quadratic_objective_matrix(csr_result.values.data(), csr_result.values.size(),
-                                          csr_result.indices.data(), csr_result.indices.size(),
-                                          csr_result.offsets.data(), csr_result.offsets.size());
+    problem.set_quadratic_objective_matrix(csr_result.values.data(),
+                                           csr_result.values.size(),
+                                           csr_result.indices.data(),
+                                           csr_result.indices.size(),
+                                           csr_result.offsets.data(),
+                                           csr_result.offsets.size());
   }
-
-
 }
 
 template <typename i_t, typename f_t>
@@ -1064,22 +1066,22 @@ void mps_parser_t<i_t, f_t>::parse_quadobj(std::string_view line)
 {
   // Parse QUADOBJ section for quadratic objective terms
   // Format: variable1 variable2 value
-  
+
   std::string var1_name, var2_name;
   f_t value;
-  
+
   if (fixed_mps_format) {
     mps_parser_expects(line.size() >= 25,
                        error_type_t::ValidationError,
                        "QUADOBJ should have at least 3 entities! line=%s",
                        std::string(line).c_str());
-    
+
     var1_name = std::string(trim(line.substr(4, 8)));   // max of 8 chars allowed
     var2_name = std::string(trim(line.substr(14, 8)));  // max of 8 chars allowed
     if (var1_name[0] == '$' || var2_name[0] == '$') return;
-    
+
     i_t pos = 24;
-    value = get_numerical_bound<false>(line, pos);
+    value   = get_numerical_bound<false>(line, pos);
   } else {
     std::stringstream ss{std::string(line)};
     ss >> var1_name >> var2_name >> value;
@@ -1089,23 +1091,24 @@ void mps_parser_t<i_t, f_t>::parse_quadobj(std::string_view line)
   // Find variable indices
   auto var1_it = var_names_map.find(var1_name);
   auto var2_it = var_names_map.find(var2_name);
-  
+
   mps_parser_expects(var1_it != var_names_map.end(),
                      error_type_t::ValidationError,
                      "Variable '%s' not found in QUADOBJ! line=%s",
-                     var1_name.c_str(), std::string(line).c_str());
+                     var1_name.c_str(),
+                     std::string(line).c_str());
   mps_parser_expects(var2_it != var_names_map.end(),
                      error_type_t::ValidationError,
                      "Variable '%s' not found in QUADOBJ! line=%s",
-                     var2_name.c_str(), std::string(line).c_str());
-  
+                     var2_name.c_str(),
+                     std::string(line).c_str());
+
   i_t var1_id = var1_it->second;
   i_t var2_id = var2_it->second;
-  
+
   // Store quadratic objective entry (QUADOBJ stores upper triangular elements only)
   quadobj_entries.emplace_back(var1_id, var2_id, value);
 }
-
 
 template <typename i_t, typename f_t>
 template <bool bounds_or_ranges, int fixed_length>

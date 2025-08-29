@@ -232,15 +232,18 @@ class data_model_view_t {
   /**
    * @brief Set the quadratic objective matrix (Q) in CSR format for QPS files.
    *
-   * @note This is used for quadratic programming problems where the objective 
+   * @note This is used for quadratic programming problems where the objective
    * function contains quadratic terms: (1/2) * x^T * Q * x + c^T * x
    * cuOpt does not own or copy this data.
    *
-   * @param[in] Q_values Device memory pointer to values of the CSR representation of the quadratic objective matrix
+   * @param[in] Q_values Device memory pointer to values of the CSR representation of the quadratic
+   * objective matrix
    * @param size_values Size of the Q_values array
-   * @param[in] Q_indices Device memory pointer to indices of the CSR representation of the quadratic objective matrix
+   * @param[in] Q_indices Device memory pointer to indices of the CSR representation of the
+   * quadratic objective matrix
    * @param size_indices Size of the Q_indices array
-   * @param[in] Q_offsets Device memory pointer to offsets of the CSR representation of the quadratic objective matrix
+   * @param[in] Q_offsets Device memory pointer to offsets of the CSR representation of the
+   * quadratic objective matrix
    * @param size_offsets Size of the Q_offsets array
    */
   void set_quadratic_objective_matrix(const f_t* Q_values,
