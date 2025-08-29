@@ -133,15 +133,21 @@ bool bound_strengthening(const std::vector<char>& row_sense,
 
         bool is_infeasible =
           check_infeasibility<i_t, f_t>(min_a, max_a, cnst_lb, cnst_ub, settings.primal_tol);
-        if (is_infeasible) { return false; }
+        if (is_infeasible) { 
+          settings.log.printf("Infeasible constraint %d, cnst_lb %e, cnst_ub %e, min_a %e, max_a %e\n", i, cnst_lb, cnst_ub, min_a, max_a);
+          std::cout << "Iter:: " << iter << ", Infeasible constraint " << i << ", cnst_lb " << cnst_lb << ", cnst_ub " << cnst_ub << ", min_a " << min_a << ", max_a " << max_a << std::endl;
+          return false; 
+        }
 
-        min_a -= (a_ik < 0) ? a_ik * cnst_ub : a_ik * cnst_lb;
-        max_a -= (a_ik > 0) ? a_ik * cnst_ub : a_ik * cnst_lb;
+        f_t old_lb        = lower[k];
+        f_t old_ub        = upper[k];
+
+        min_a -= (a_ik < 0) ? a_ik * old_ub : a_ik * old_lb;
+        max_a -= (a_ik > 0) ? a_ik * old_ub : a_ik * old_lb;
 
         f_t delta_min_act = cnst_ub - min_a;
         f_t delta_max_act = cnst_lb - max_a;
-        f_t old_lb        = lower[k];
-        f_t old_ub        = upper[k];
+
         f_t new_lb        = update_lb(old_lb, a_ik, delta_min_act, delta_max_act);
         f_t new_ub        = update_ub(old_ub, a_ik, delta_min_act, delta_max_act);
 
