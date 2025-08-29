@@ -161,7 +161,7 @@ std::vector<char> zlib_file_to_string(const std::string& file)
     gzclose_r_t fptr = nullptr;
   };
 
-  std::unique_ptr<void, DlCloseDeleter> lzhandle{dlopen("libz.so", RTLD_LAZY)};
+  std::unique_ptr<void, DlCloseDeleter> lzhandle{dlopen("libz.so.1", RTLD_LAZY)};
   mps_parser_expects(
     lzhandle != nullptr,
     error_type_t::ValidationError,
