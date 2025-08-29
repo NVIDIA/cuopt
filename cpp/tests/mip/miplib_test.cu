@@ -58,7 +58,9 @@ void test_miplib_file(result_map_t test_instance, mip_solver_settings_t<int, dou
 
   settings.time_limit                  = test_time_limit;
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
-  EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::FeasibleFound);
+  bool is_feasible = solution.get_termination_status() == mip_termination_status_t::FeasibleFound ||
+                     solution.get_termination_status() == mip_termination_status_t::Optimal;
+  EXPECT_TRUE(is_feasible);
   double obj_val = solution.get_objective_value();
   // for now keep a 100% error rate
   EXPECT_NEAR(test_instance.cost, obj_val, test_instance.cost);
