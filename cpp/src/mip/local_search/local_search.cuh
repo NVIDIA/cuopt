@@ -132,7 +132,7 @@ class local_search_t {
   std::mt19937 rng;
 
   std::array<cpu_fj_thread_t, 4> ls_cpu_fj;
-  std::array<cpu_fj_thread_t, 4> scratch_cpu_fj;
+  std::array<cpu_fj_thread_t, 1> scratch_cpu_fj;
   cpu_fj_thread_t scratch_cpu_fj_on_lp_opt;
   problem_t<i_t, f_t> problem_with_objective_cut;
 };

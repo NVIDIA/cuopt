@@ -203,11 +203,11 @@ void population_t<i_t, f_t>::add_external_solution(std::vector<f_t>& solution,
     external_solution_queue_origin.erase(external_solution_queue_origin.begin() + worst_obj_idx);
   }
 
-  CUOPT_LOG_INFO(
-    "%s added a solution to population, solution queue size %lu with objective %g, new best",
-    origin.c_str(),
-    external_solution_queue.size(),
-    problem_ptr->get_user_obj_from_solver_obj(objective));
+  // CUOPT_LOG_INFO(
+  //   "%s added a solution to population, solution queue size %lu with objective %g, new best",
+  //   origin.c_str(),
+  //   external_solution_queue.size(),
+  //   problem_ptr->get_user_obj_from_solver_obj(objective));
   external_solution_queue.emplace_back(solution);
   external_solution_queue_obj.emplace_back(objective);
   external_solution_queue_origin.emplace_back(origin);

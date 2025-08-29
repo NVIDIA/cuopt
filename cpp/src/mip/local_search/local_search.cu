@@ -227,7 +227,7 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
   LocalMipRead(*scratch_cpu_fj_on_lp_opt.cpu_solver, *context.problem_ptr, solution_lp);
   // default weights
   cudaDeviceSynchronize();
-  scratch_cpu_fj_on_lp_opt.start_cpu_solver();
+  // scratch_cpu_fj_on_lp_opt.start_cpu_solver();
 }
 
 template <typename i_t, typename f_t>

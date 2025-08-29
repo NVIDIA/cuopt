@@ -97,6 +97,8 @@ enum class fj_mode_t {
   EXIT_NON_IMPROVING  // iterate until we are don't improve the best
 };
 
+enum MTMMoveType { FJ_MTM_VIOLATED, FJ_MTM_SATISFIED, FJ_MTM_ALL };
+
 enum class fj_load_balancing_mode_t { ALWAYS_ON, AUTO, ALWAYS_OFF };
 
 enum class fj_candidate_selection_t { WEIGHTED_SCORE, FEASIBLE_FIRST };
@@ -197,6 +199,7 @@ class fj_t {
   ~fj_t();
   void reset_cuda_graph();
   i_t solve(solution_t<i_t, f_t>& solution);
+  i_t cpu_solve(solution_t<i_t, f_t>& solution);
   i_t alloc_max_climbers(i_t desired_climbers);
   void resize_vectors(const raft::handle_t* handle_ptr);
   void device_init(const rmm::cuda_stream_view& stream);
@@ -499,12 +502,12 @@ class fj_t {
 
       fj_settings_t* settings;
 
-      DI f_t lower_excess_score(i_t cstr, f_t lhs) const
+      HDI f_t lower_excess_score(i_t cstr, f_t lhs) const
       {
         return raft::min(lhs - pb.constraint_lower_bounds[cstr], (f_t)0);
       }
 
-      DI f_t upper_excess_score(i_t cstr, f_t lhs) const
+      HDI f_t upper_excess_score(i_t cstr, f_t lhs) const
       {
         return raft::min(pb.constraint_upper_bounds[cstr] - lhs, (f_t)0);
       }
@@ -513,7 +516,7 @@ class fj_t {
       // If the constraint is satisfied by the given LHS value, returns 0.
       // If the constraint is violated by the given LHS value, returns -|lhs-rhs|.
       // caution: is inverted compared to solution_t's excess convention
-      DI f_t excess_score(i_t cstr, f_t lhs) const
+      HDI f_t excess_score(i_t cstr, f_t lhs) const
       {
         f_t right_score = upper_excess_score(cstr, lhs);
         if (right_score < 0.) { return right_score; }
@@ -524,7 +527,7 @@ class fj_t {
       // which may suffer from numerical errors and lead to very slight (~machine epsilon)
       // violations of the actual bounds.
       // Use a slightly tightened tolerance in FJ to account for this.
-      DI f_t get_corrected_tolerance(i_t cstr) const
+      HDI f_t get_corrected_tolerance(i_t cstr) const
       {
         f_t cstr_tolerance = get_cstr_tolerance<i_t, f_t>(pb.constraint_lower_bounds[cstr],
                                                           pb.constraint_upper_bounds[cstr],
@@ -533,7 +536,7 @@ class fj_t {
         return max((f_t)0, cstr_tolerance - MACHINE_EPSILON);
       }
 
-      DI bool cstr_satisfied(i_t cstr, f_t lhs) const
+      HDI bool cstr_satisfied(i_t cstr, f_t lhs) const
       {
         f_t cstr_tolerance = get_cstr_tolerance<i_t, f_t>(pb.constraint_lower_bounds[cstr],
                                                           pb.constraint_upper_bounds[cstr],
@@ -542,7 +545,7 @@ class fj_t {
         return excess_score(cstr, lhs) >= -cstr_tolerance;
       }
 
-      DI bool move_numerically_stable(f_t old_val, f_t new_val, f_t infeasibility) const
+      HDI bool move_numerically_stable(f_t old_val, f_t new_val, f_t infeasibility) const
       {
         return fabs(new_val - old_val) < 1e6 && fabs(new_val) < 1e20 &&
                fabs(*violation_score - infeasibility) < 1e20;

@@ -47,9 +47,12 @@ list(PREPEND
   ${CMAKE_CURRENT_SOURCE_DIR}/problem/load_balanced_problem.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump_kernels.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solution/solution.cu)
 
 file(GLOB_RECURSE LocalMIPList "${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/Local-MIP-integration/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/Local-MIP-integration/*.cu")
+
+set_source_files_properties(${MIP_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES}
   ${MIP_SRC_FILES} ${LocalMIPList} PARENT_SCOPE)
