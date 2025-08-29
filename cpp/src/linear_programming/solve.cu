@@ -590,7 +590,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
 
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      problem.write_as_mps(settings.user_problem_file);
+      op_problem.write_to_mps(settings.user_problem_file);
     }
 
     // Set the hyper-parameters based on the solver_settings

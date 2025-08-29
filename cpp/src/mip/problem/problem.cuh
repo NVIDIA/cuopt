@@ -111,8 +111,6 @@ class problem_t {
   void get_host_user_problem(
     cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const;
 
-  void write_as_mps(const std::string& path);
-
   struct view_t {
     DI std::pair<i_t, i_t> reverse_range_for_var(i_t v) const
     {

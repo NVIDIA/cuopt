@@ -22,6 +22,9 @@
 #include <cuopt/linear_programming/utilities/cython_solve.hpp>
 #include <mip/logger.hpp>
 #include <mps_parser/data_model_view.hpp>
+#include <mps_parser/mps_data_model.hpp>
+#include <mps_parser/writer.hpp>
+#include <utilities/copy_helpers.hpp>
 
 #include <raft/common/nvtx.hpp>
 #include <raft/core/handle.hpp>
@@ -113,14 +116,7 @@ void write_mps(cuopt::mps_parser::data_model_view_t<int, double>* data_model,
                std::string user_problem_file,
                unsigned int flags)
 {
-  cudaStream_t stream;
-  RAFT_CUDA_TRY(cudaStreamCreateWithFlags(&stream, flags));
-  const raft::handle_t handle_{stream};
-
-  cuopt::linear_programming::solver_settings_t<int, double> solver_settings;
-  auto op_problem = data_model_to_optimization_problem(data_model, &solver_settings, &handle_);
-
-  cuopt::linear_programming::write_mps(op_problem, user_problem_file);
+  cuopt::mps_parser::write_mps(*data_model, user_problem_file);
 }
 
 /**

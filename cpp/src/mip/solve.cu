@@ -178,7 +178,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     detail::problem_t<i_t, f_t> problem(op_problem, settings.get_tolerances());
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      problem.write_as_mps(settings.user_problem_file);
+      op_problem.write_to_mps(settings.user_problem_file);
     }
 
     // this is for PDLP, i think this should be part of pdlp solver
@@ -204,14 +204,6 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 }
 
 template <typename i_t, typename f_t>
-void write_mps(optimization_problem_t<i_t, f_t>& op_problem,
-               std::string user_problem_file)
-{
-  detail::problem_t<i_t, f_t> problem(op_problem);
-  problem.write_as_mps(user_problem_file);
-}
-
-template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(
   raft::handle_t const* handle_ptr,
   const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
@@ -229,11 +221,7 @@ mip_solution_t<i_t, f_t> solve_mip(
   template mip_solution_t<int, F_TYPE> solve_mip(                           \
     raft::handle_t const* handle_ptr,                                       \
     const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& mps_data_model, \
-    mip_solver_settings_t<int, F_TYPE> const& settings);                    \
-                                                                            \
-  template void write_mps(                                                  \
-    optimization_problem_t<int, F_TYPE>& op_problem,                        \
-    std::string user_problem_file);
+    mip_solver_settings_t<int, F_TYPE> const& settings);
 
 #if MIP_INSTANTIATE_FLOAT
 INSTANTIATE(float)
