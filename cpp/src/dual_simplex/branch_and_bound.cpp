@@ -564,7 +564,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
                                                          f_t upper_bound,
                                                          f_t lower_bound,
                                                          i_t nodes_explored,
-                                                         i_t unexplored_nodes)
+                                                         i_t unexplored_nodes,
+                                                         char symbol)
 {
   logger_t log;
   log.log = false;
@@ -625,7 +626,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
         gap          = upper_bound_ - lower_bound;
         f_t obj      = compute_user_objective(original_lp_, upper_bound_);
         f_t lower    = compute_user_objective(original_lp_, lower_bound);
-        settings_.log.printf("B%8d %8lu       %+13.6e  %+10.6e   %4d   %7.1e     %s %9.2f\n",
+        settings_.log.printf("%c%8d %8lu       %+13.6e  %+10.6e   %4d   %7.1e     %s %9.2f\n",
+                             symbol,
                              nodes_explored,
                              unexplored_nodes,
                              obj,
@@ -857,9 +859,9 @@ void branch_and_bound_t<i_t, f_t>::dive(mip_node_t<i_t, f_t>* start_node,
     // }
 
     if (toc(stats_.start_time) > settings_.time_limit) {
-      if (settings_.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
-        settings_.log.printf("Hit time limit. Stoppping\n");
-      }
+      // if (settings_.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
+      //   settings_.log.printf("Hit time limit. Stoppping\n");
+      // }
 
       status = mip_status_t::TIME_LIMIT;
       break;
@@ -885,7 +887,7 @@ void branch_and_bound_t<i_t, f_t>::dive(mip_node_t<i_t, f_t>* start_node,
       if (down_dist < up_dist) {
         node_stack.push_back(node_ptr->get_up_child());
 
-        if (active < 2 * settings_.num_threads) {
+        if (active < settings_.num_threads) {
 #pragma omp task
           dive(node_ptr->get_down_child(), solution, pc, status);
 
@@ -898,7 +900,7 @@ void branch_and_bound_t<i_t, f_t>::dive(mip_node_t<i_t, f_t>* start_node,
       } else {
         node_stack.push_back(node_ptr->get_down_child());
 
-        if (active < 2 * settings_.num_threads) {
+        if (active < settings_.num_threads) {
 #pragma omp task
           dive(node_ptr->get_up_child(), solution, pc, status);
 
@@ -1025,9 +1027,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   currently_branching_ = true;
   mutex_branching_.unlock();
 
-
-    mip_node_t<i_t, f_t> diving_tree(root_objective_, root_vstatus_);
-    graphviz_node(settings_, &diving_tree, "lower bound", root_objective_);
+  if (settings_.bnb_search_strategy ==
+    bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
+  mip_node_t<i_t, f_t> diving_tree(root_objective_, root_vstatus_);
+  graphviz_node(settings_, &diving_tree, "lower bound", root_objective_);
 
     branch(&diving_tree, branch_var, root_relax_soln_.x[branch_var], root_vstatus_);
 
@@ -1050,6 +1053,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         dive(diving_tree.get_up_child(), solution, pc, diving_status);
       }
     }
+
+  } else {
+    explore_tree(branch_var, solution, pc, status);
+  }
 
     mutex_branching_.lock();
     currently_branching_ = false;

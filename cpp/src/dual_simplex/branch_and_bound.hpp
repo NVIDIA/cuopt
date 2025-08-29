@@ -169,7 +169,8 @@ class branch_and_bound_t {
                              f_t upper_bound,
                              f_t lower_bound,
                              i_t nodes_explored,
-                             i_t unexplored_nodes);
+                             i_t unexplored_nodes,
+                             char symbol);
 
   // Solve the LP relaxation of a leaf node using the dual simplex method.
   dual::status_t leaf_dual_simplex(lp_problem_t<i_t, f_t>& leaf_problem,
