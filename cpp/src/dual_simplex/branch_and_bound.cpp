@@ -676,6 +676,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
     nodes_explored++;
     if (lp_status == dual::status_t::DUAL_UNBOUNDED) {
+      if (!feasible) {
+        settings.log.printf("Infeasible after bounds strengthening. Fathoming node %d.\n",
+                            nodes_explored);
+      }
       node_ptr->lower_bound = inf;
       std::vector<mip_node_t<i_t, f_t>*> stack;
       node_ptr->set_status(node_status_t::INFEASIBLE, stack);
