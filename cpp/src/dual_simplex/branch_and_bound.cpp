@@ -377,7 +377,8 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     settings_(solver_settings),
     original_lp_(1, 1, 1),
     incumbent_(1),
-    root_relax_soln_(1, 1)
+    root_relax_soln_(1, 1),
+    pc_(1)
 {
   stats_.start_time = tic();
   convert_user_problem(original_problem_, settings_, original_lp_, new_slacks_);
@@ -523,8 +524,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
                                                          f_t upper_bound,
                                                          f_t lower_bound,
                                                          i_t nodes_explored,
-                                                         i_t unexplored_nodes,
-                                                         pseudo_costs_t<i_t, f_t>& pc)
+                                                         i_t unexplored_nodes)
 {
   logger_t log;
   log.log                                      = false;
@@ -590,7 +590,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
     f_t leaf_objective = compute_objective(leaf_problem, leaf_solution.x);
     graphviz_node(settings_, node_ptr, "lower bound", leaf_objective);
 
-    pc.update_pseudo_costs(node_ptr, leaf_objective);
+    mutex_pc_.lock();
+    pc_.update_pseudo_costs(node_ptr, leaf_objective);
+    mutex_pc_.unlock();
 
     node_ptr->lower_bound = leaf_objective;
 
@@ -638,8 +640,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
 
     } else if (leaf_objective <= upper_bound + fathom_tol) {
       // Choose fractional variable to branch on
-      const i_t branch_var = pc.variable_selection(
+      mutex_pc_.lock();
+      const i_t branch_var = pc_.variable_selection(
         fractional, leaf_solution.x, leaf_problem.lower, leaf_problem.upper, log);
+      mutex_pc_.unlock();
 
       assert(leaf_vstatus.size() == leaf_problem.num_cols);
       branch(node_ptr, branch_var, leaf_solution.x[branch_var], leaf_vstatus);
@@ -663,8 +667,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
 
 template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
-                                                        mip_solution_t<i_t, f_t>& solution,
-                                                        pseudo_costs_t<i_t, f_t> pc)
+                                                        mip_solution_t<i_t, f_t>& solution)
 {
   mip_status_t status = mip_status_t::UNSET;
   logger_t log;
@@ -749,8 +752,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
       break;
     }
 
-    status = solve_node_lp(
-      node_ptr, leaf_problem, upper_bound, lower_bound, nodes_explored, heap.size(), pc);
+    status =
+      solve_node_lp(node_ptr, leaf_problem, upper_bound, lower_bound, nodes_explored, heap.size());
 
     if (status == mip_status_t::NUMERICAL) { break; }
 
@@ -778,9 +781,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
 }
 
 template <typename i_t, typename f_t>
-mip_status_t branch_and_bound_t<i_t, f_t>::dive(i_t branch_var,
-                                                mip_solution_t<i_t, f_t>& solution,
-                                                pseudo_costs_t<i_t, f_t> pc)
+mip_status_t branch_and_bound_t<i_t, f_t>::dive(i_t branch_var, mip_solution_t<i_t, f_t>& solution)
 {
   mip_status_t status = mip_status_t::UNSET;
 
@@ -854,7 +855,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::dive(i_t branch_var,
     }
 
     status = solve_node_lp(
-      node_ptr, leaf_problem, upper_bound, lower_bound, nodes_explored, node_stack.size(), pc);
+      node_ptr, leaf_problem, upper_bound, lower_bound, nodes_explored, node_stack.size());
     if (status == mip_status_t::NUMERICAL) { break; }
 
     if (node_ptr->status == node_status_t::HAS_CHILDREN) {
@@ -948,7 +949,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return mip_status_t::OPTIMAL;
   }
 
-  pseudo_costs_t<i_t, f_t> pc(original_lp_.num_cols);
+  pc_.initialize(original_lp_.num_cols);
   strong_branching<i_t, f_t>(original_lp_,
                              settings_,
                              stats_.start_time,
@@ -958,12 +959,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                              root_objective_,
                              root_vstatus_,
                              edge_norms_,
-                             pc);
+                             pc_);
 
   // Choose variable to branch on
   logger_t log;
   log.log        = false;
-  i_t branch_var = pc.variable_selection(
+  i_t branch_var = pc_.variable_selection(
     fractional, root_relax_soln_.x, original_lp_.lower, original_lp_.upper, log);
 
   stats_.total_lp_iters   = 0;
@@ -989,17 +990,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   mutex_branching_.unlock();
 
   if (settings_.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
-    status = dive(branch_var, solution, std::move(pc));
+    status = dive(branch_var, solution);
   } else {
     std::future<mip_status_t> diving_thread;
 
     if (settings_.bnb_search_strategy ==
         bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
-      diving_thread =
-        std::async(std::launch::async, [&]() { return dive(branch_var, solution, pc); });
+      diving_thread = std::async(std::launch::async, [&]() { return dive(branch_var, solution); });
     }
 
-    status = explore_tree(branch_var, solution, pc);
+    status = explore_tree(branch_var, solution);
 
     if (settings_.bnb_search_strategy ==
         bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {

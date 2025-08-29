@@ -133,18 +133,18 @@ class branch_and_bound_t {
   lp_solution_t<i_t, f_t> root_relax_soln_;
   std::vector<f_t> edge_norms_;
 
+  // Pseudocosts
+  pseudo_costs_t<i_t, f_t> pc_;
+  std::mutex mutex_pc_;
+
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions(f_t lower_bound, mip_solution_t<i_t, f_t>& solution);
 
   // Explore the search tree using the best-first search strategy.
-  mip_status_t explore_tree(i_t branch_var,
-                            mip_solution_t<i_t, f_t>& solution,
-                            pseudo_costs_t<i_t, f_t> pc);
+  mip_status_t explore_tree(i_t branch_var, mip_solution_t<i_t, f_t>& solution);
 
   // Explore the search tree using the depth-first search strategy.
-  mip_status_t dive(i_t branch_var,
-                    mip_solution_t<i_t, f_t>& solution,
-                    pseudo_costs_t<i_t, f_t> pc);
+  mip_status_t dive(i_t branch_var, mip_solution_t<i_t, f_t>& solution);
 
   // Branch the current node, creating two children.
   void branch(mip_node_t<i_t, f_t>* parent_node,
@@ -161,8 +161,7 @@ class branch_and_bound_t {
                              f_t upper_bound,
                              f_t lower_bound,
                              i_t nodes_explored,
-                             i_t unexplored_nodes,
-                             pseudo_costs_t<i_t, f_t>& pc);
+                             i_t unexplored_nodes);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

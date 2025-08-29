@@ -37,29 +37,15 @@ class pseudo_costs_t {
   {
   }
 
-  pseudo_costs_t(const pseudo_costs_t& other)
-    : pseudo_cost_sum_down(other.pseudo_cost_sum_down),
-      pseudo_cost_sum_up(other.pseudo_cost_sum_up),
-      pseudo_cost_num_down(other.pseudo_cost_num_down),
-      pseudo_cost_num_up(other.pseudo_cost_num_up),
-      strong_branch_down(other.strong_branch_down),
-      strong_branch_up(other.strong_branch_up),
-      num_strong_branches_completed(other.num_strong_branches_completed)
-  {
-  }
-
-  pseudo_costs_t(pseudo_costs_t&& other)
-    : pseudo_cost_sum_down(std::move(other.pseudo_cost_sum_down)),
-      pseudo_cost_sum_up(std::move(other.pseudo_cost_sum_up)),
-      pseudo_cost_num_down(std::move(other.pseudo_cost_num_down)),
-      pseudo_cost_num_up(std::move(other.pseudo_cost_num_up)),
-      strong_branch_down(std::move(other.strong_branch_down)),
-      strong_branch_up(std::move(other.strong_branch_up)),
-      num_strong_branches_completed(other.num_strong_branches_completed)
-  {
-  }
-
   void update_pseudo_costs(mip_node_t<i_t, f_t>* node_ptr, f_t leaf_objective);
+
+  void initialize(i_t num_variables)
+  {
+    pseudo_cost_sum_down.resize(num_variables);
+    pseudo_cost_sum_up.resize(num_variables);
+    pseudo_cost_num_down.resize(num_variables);
+    pseudo_cost_num_up.resize(num_variables);
+  }
 
   void initialized(i_t& num_initialized_down,
                    i_t& num_initialized_up,
