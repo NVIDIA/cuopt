@@ -137,6 +137,8 @@ class branch_and_bound_t {
   pseudo_costs_t<i_t, f_t> pc_;
   std::mutex mutex_pc_;
 
+  std::mutex mutex_diving_tree_;
+
   // Number of active tasks.
   // This needs to be updated atomically.
   i_t active_tasks_;

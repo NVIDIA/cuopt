@@ -586,20 +586,22 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
     node_ptr->lower_bound = inf;
     graphviz_node(settings_, node_ptr, "infeasible", 0.0);
 
+    if (symbol == 'D') { mutex_diving_tree_.lock(); }
     std::vector<mip_node_t<i_t, f_t>*> stack;
     node_ptr->set_status(node_status_t::INFEASIBLE, stack);
     remove_fathomed_nodes(stack);
-
+    if (symbol == 'D') { mutex_diving_tree_.unlock(); }
     // Node was infeasible. Do not branch
   } else if (lp_status == dual::status_t::CUTOFF) {
     node_ptr->lower_bound = upper_bound;
     f_t leaf_objective    = compute_objective(leaf_problem, leaf_solution.x);
     graphviz_node(settings_, node_ptr, "cut off", leaf_objective);
 
+    if (symbol == 'D') { mutex_diving_tree_.lock(); }
     std::vector<mip_node_t<i_t, f_t>*> stack;
     node_ptr->set_status(node_status_t::FATHOMED, stack);
     remove_fathomed_nodes(stack);
-
+    if (symbol == 'D') { mutex_diving_tree_.unlock(); }
     // Node was cut off. Do not branch
   } else if (lp_status == dual::status_t::OPTIMAL) {
     // LP was feasible
@@ -655,9 +657,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
 
       graphviz_node(settings_, node_ptr, "integer feasible", leaf_objective);
 
+      if (symbol == 'D') { mutex_diving_tree_.lock(); }
       std::vector<mip_node_t<i_t, f_t>*> stack;
       node_ptr->set_status(node_status_t::INTEGER_FEASIBLE, stack);
       remove_fathomed_nodes(stack);
+      if (symbol == 'D') { mutex_diving_tree_.unlock(); }
     } else if (leaf_objective <= upper_bound + fathom_tol) {
       // Choose fractional variable to branch on
       mutex_pc_.lock();
@@ -671,9 +675,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
 
     } else {
       graphviz_node(settings_, node_ptr, "fathomed", leaf_objective);
+      if (symbol == 'D') { mutex_diving_tree_.lock(); }
       std::vector<mip_node_t<i_t, f_t>*> stack;
       node_ptr->set_status(node_status_t::FATHOMED, stack);
       remove_fathomed_nodes(stack);
+      if (symbol == 'D') { mutex_diving_tree_.unlock(); }
     }
   } else {
     graphviz_node(settings_, node_ptr, "numerical", 0.0);
@@ -772,8 +778,8 @@ void branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
       break;
     }
 
-    status =
-      solve_node_lp(node_ptr, leaf_problem, upper_bound, lower_bound, nodes_explored, heap.size());
+    status = solve_node_lp(
+      node_ptr, leaf_problem, upper_bound, lower_bound, nodes_explored, heap.size(), 'B');
 
     if (status == mip_status_t::NUMERICAL) { break; }
 
@@ -843,7 +849,7 @@ void branch_and_bound_t<i_t, f_t>::dive(mip_node_t<i_t, f_t>* start_node,
     }
 
     status = solve_node_lp(
-      node_ptr, leaf_problem, upper_bound, lower_bound, nodes_explored, node_stack.size());
+      node_ptr, leaf_problem, upper_bound, lower_bound, nodes_explored, node_stack.size(), 'D');
     if (status == mip_status_t::NUMERICAL) { break; }
 
     if (node_ptr->status == node_status_t::HAS_CHILDREN) {
@@ -964,6 +970,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   i_t branch_var = pc_.variable_selection(
     fractional, root_relax_soln_.x, original_lp_.lower, original_lp_.upper, log);
 
+  mip_node_t<i_t, f_t> diving_tree(root_objective_, root_vstatus_);
+  graphviz_node(settings_, &diving_tree, "lower bound", root_objective_);
+
+  branch(&diving_tree, branch_var, root_relax_soln_.x[branch_var], root_vstatus_);
+
+  mip_status_t diving_status;
+
   stats_.total_lp_iters   = 0;
   stats_.nodes_explored   = 0;
   stats_.nodes_unexplored = 0;
@@ -988,13 +1001,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (settings_.bnb_search_strategy ==
       bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
-    mip_node_t<i_t, f_t> diving_tree(root_objective_, root_vstatus_);
-    graphviz_node(settings_, &diving_tree, "lower bound", root_objective_);
-
-    branch(&diving_tree, branch_var, root_relax_soln_.x[branch_var], root_vstatus_);
-
-    mip_status_t diving_status;
-
 #pragma omp parallel num_threads(settings_.num_threads)
     {
 #pragma omp single
@@ -1013,8 +1019,23 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
     }
 
-  } else {
+  } else if (settings_.bnb_search_strategy == bnb_search_strategy_t::BEST_FIRST) {
     explore_tree(branch_var, solution, status);
+  } else if (settings_.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
+#pragma omp parallel num_threads(settings_.num_threads)
+    {
+#pragma omp single
+      {
+#pragma omp atomic write
+        active_tasks_ = 2;
+
+#pragma omp task
+        dive(diving_tree.get_down_child(), solution, diving_status);
+
+#pragma omp task
+        dive(diving_tree.get_up_child(), solution, diving_status);
+      }
+    }
   }
 
   mutex_branching_.lock();

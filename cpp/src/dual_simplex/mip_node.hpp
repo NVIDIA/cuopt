@@ -154,14 +154,11 @@ class mip_node_t {
       // Propagate to parent
       mip_node_t* parent_ptr = parent;
       while (parent_ptr != nullptr) {
-        parent_ptr->node_mutex.lock();
         if (parent_ptr->is_inactive() && parent_ptr->status != node_status_t::REMOVED) {
           parent_ptr->status = node_status_t::REMOVED;
           parent_ptr->update_bound();
           stack.push_back(parent_ptr);
-          parent_ptr->node_mutex.unlock();
         } else {
-          parent_ptr->node_mutex.unlock();
           break;
         }
         parent_ptr = parent_ptr->parent;
@@ -211,7 +208,6 @@ class mip_node_t {
   f_t branch_var_lower;
   f_t branch_var_upper;
   f_t fractional_val;
-  std::mutex node_mutex;
 
   mip_node_t<i_t, f_t>* parent;
   std::unique_ptr<mip_node_t> children[2];
