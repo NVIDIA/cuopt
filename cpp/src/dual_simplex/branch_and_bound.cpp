@@ -642,8 +642,19 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     std::vector<f_t> leaf_edge_norms      = edge_norms;  // = node.steepest_edge_norms;
     simplex_solver_settings_t lp_settings = settings;
     lp_settings.set_log(false);
-    lp_settings.cut_off      = upper_bound + settings.dual_tol;
-    lp_settings.inside_mip   = 2;
+    lp_settings.cut_off    = upper_bound + settings.dual_tol;
+    lp_settings.inside_mip = 2;
+
+    // in B&B we only have equality constraints
+    std::vector<char> row_sense(leaf_problem.num_rows, 'E');
+    std::vector<i_t> is_int(leaf_problem.num_cols, 0);
+    // FIXME:: populate is_int correctly
+    bool feasible = bound_strengthening(row_sense, lp_settings, leaf_problem, is_int);
+
+    if (!feasible) {
+      // do something here
+    }
+
     dual::status_t lp_status = dual_phase2(2,
                                            0,
                                            lp_start_time,

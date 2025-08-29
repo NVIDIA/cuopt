@@ -23,26 +23,55 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
+template <typename f_t>
+static inline f_t update_lb(f_t curr_lb, f_t coeff, f_t delta_min_act, f_t delta_max_act)
+{
+  auto comp_bnd = (coeff < 0.) ? delta_min_act / coeff : delta_max_act / coeff;
+  return std::max(curr_lb, comp_bnd);
+}
+
+template <typename f_t>
+static inline f_t update_ub(f_t curr_ub, f_t coeff, f_t delta_min_act, f_t delta_max_act)
+{
+  auto comp_bnd = (coeff < 0.) ? delta_max_act / coeff : delta_min_act / coeff;
+  return std::min(curr_ub, comp_bnd);
+}
+
 template <typename i_t, typename f_t>
-void bound_strengthening(const std::vector<char>& row_sense,
+static inline bool check_infeasibility(f_t min_a, f_t max_a, f_t cnst_lb, f_t cnst_ub, f_t eps)
+{
+  return (min_a > cnst_ub + eps) || (max_a < cnst_lb - eps);
+}
+
+template <typename i_t, typename f_t>
+bool bound_strengthening(const std::vector<char>& row_sense,
                          const simplex_solver_settings_t<i_t, f_t>& settings,
-                         lp_problem_t<i_t, f_t>& problem)
+                         lp_problem_t<i_t, f_t>& problem,
+                         const std::vector<i_t>& is_int)
 {
   const i_t m = problem.num_rows;
   const i_t n = problem.num_cols;
 
-  std::vector<f_t> constraint_lower(m);
-  std::vector<i_t> num_lower_infinity(m);
-  std::vector<i_t> num_upper_infinity(m);
+  std::vector<f_t> min_activity(m);
+  std::vector<f_t> max_activity(m);
 
   csc_matrix_t<i_t, f_t> Arow(1, 1, 1);
   problem.A.transpose(Arow);
 
-  std::vector<i_t> less_rows;
-  less_rows.reserve(m);
+  std::vector<f_t> constraint_lb(m);
+  std::vector<f_t> constraint_ub(m);
 
   for (i_t i = 0; i < m; ++i) {
-    if (row_sense[i] == 'L') { less_rows.push_back(i); }
+    if (row_sense[i] == 'L') {
+      constraint_ub[i] = problem.rhs[i];
+      constraint_lb[i] = -inf;
+    } else if (row_sense[i] == 'G') {
+      constraint_lb[i] = problem.rhs[i];
+      constraint_ub[i] = inf;
+    } else {
+      constraint_lb[i] = problem.rhs[i];
+      constraint_ub[i] = problem.rhs[i];
+    }
   }
 
   std::vector<f_t> lower = problem.lower;
@@ -55,73 +84,88 @@ void bound_strengthening(const std::vector<char>& row_sense,
   i_t iter                         = 0;
   const i_t iter_limit             = 10;
   i_t total_strengthened_variables = 0;
-  settings.log.printf("Less equal rows %d\n", less_rows.size());
-  while (iter < iter_limit && less_rows.size() > 0) {
+  while (iter < iter_limit) {
     // Derive bounds on the constraints
-    settings.log.printf("Running bound strengthening on %d rows\n",
-                        static_cast<i_t>(less_rows.size()));
-    for (i_t i : less_rows) {
-      const i_t row_start   = Arow.col_start[i];
-      const i_t row_end     = Arow.col_start[i + 1];
-      num_lower_infinity[i] = 0;
-      num_upper_infinity[i] = 0;
+    settings.log.printf("Running bound strengthening on %d rows\n", static_cast<i_t>(n));
 
-      f_t lower_limit = 0.0;
+    // Compute the min and max activity of the constraints
+    // FIXME:: use changed constraints logic
+    for (i_t i = 0; i < m; ++i) {
+      const i_t row_start = Arow.col_start[i];
+      const i_t row_end   = Arow.col_start[i + 1];
+
+      f_t min_a = 0.0;
+      f_t max_a = 0.0;
       for (i_t p = row_start; p < row_end; ++p) {
         const i_t j    = Arow.i[p];
         const f_t a_ij = Arow.x[p];
         if (a_ij > 0) {
-          lower_limit += a_ij * lower[j];
+          min_a += a_ij * lower[j];
+          max_a += a_ij * upper[j];
         } else if (a_ij < 0) {
-          lower_limit += a_ij * upper[j];
+          min_a += a_ij * upper[j];
+          max_a += a_ij * lower[j];
         }
-        if (lower[j] == -inf && a_ij > 0) {
-          num_lower_infinity[i]++;
-          lower_limit = -inf;
-        }
-        if (upper[j] == inf && a_ij < 0) {
-          num_lower_infinity[i]++;
-          lower_limit = -inf;
-        }
+        if (upper[j] == inf && a_ij > 0) { max_a = inf; }
+        if (lower[j] == -inf && a_ij < 0) { max_a = inf; }
+
+        if (lower[j] == -inf && a_ij > 0) { min_a = -inf; }
+        if (upper[j] == inf && a_ij < 0) { min_a = -inf; }
       }
-      constraint_lower[i] = lower_limit;
+      min_activity[i] = min_a;
+      max_activity[i] = max_a;
     }
 
-    // Use the constraint bounds to derive new bounds on the variables
-    for (i_t i : less_rows) {
-      if (std::isfinite(constraint_lower[i]) && num_lower_infinity[i] == 0) {
-        const i_t row_start = Arow.col_start[i];
-        const i_t row_end   = Arow.col_start[i + 1];
-        for (i_t p = row_start; p < row_end; ++p) {
-          const i_t k    = Arow.i[p];
-          const f_t a_ik = Arow.x[p];
-          if (a_ik > 0) {
-            const f_t new_upper = lower[k] + (problem.rhs[i] - constraint_lower[i]) / a_ik;
-            if (new_upper < upper[k]) {
-              upper[k] = new_upper;
-              if (lower[k] > upper[k]) {
-                settings.log.printf(
-                  "\t INFEASIBLE!!!!!!!!!!!!!!!!! constraint_lower %e lower %e rhs %e\n",
-                  constraint_lower[i],
-                  lower[k],
-                  problem.rhs[i]);
-              }
-              if (!updated_variables_mark[k]) { updated_variables_list.push_back(k); }
-            }
-          } else if (a_ik < 0) {
-            const f_t new_lower = upper[k] + (problem.rhs[i] - constraint_lower[i]) / a_ik;
-            if (new_lower > lower[k]) {
-              lower[k] = new_lower;
-              if (lower[k] > upper[k]) {
-                settings.log.printf("\t INFEASIBLE !!!!!!!!!!!!!!!!!!1\n");
-              }
-              if (!updated_variables_mark[k]) { updated_variables_list.push_back(k); }
-            }
-          }
+    i_t num_bounds_changed = 0;
+    // FIXME:: Use the transpose of Arow here to update variable bounds
+    // Use the activities to derive new bounds on the variables
+    for (i_t i = 0; i < m; ++i) {
+      const i_t row_start = Arow.col_start[i];
+      const i_t row_end   = Arow.col_start[i + 1];
+      for (i_t p = row_start; p < row_end; ++p) {
+        const i_t k    = Arow.i[p];
+        const f_t a_ik = Arow.x[p];
+
+        f_t min_a   = min_activity[i];
+        f_t max_a   = max_activity[i];
+        f_t cnst_lb = constraint_lb[i];
+        f_t cnst_ub = constraint_ub[i];
+
+        bool is_infeasible =
+          check_infeasibility<i_t, f_t>(min_a, max_a, cnst_lb, cnst_ub, settings.primal_tol);
+        if (is_infeasible) { return false; }
+
+        min_a -= (a_ik < 0) ? a_ik * cnst_ub : a_ik * cnst_lb;
+        max_a -= (a_ik > 0) ? a_ik * cnst_ub : a_ik * cnst_lb;
+
+        f_t delta_min_act = cnst_ub - min_a;
+        f_t delta_max_act = cnst_lb - max_a;
+        f_t old_lb        = lower[k];
+        f_t old_ub        = upper[k];
+        f_t new_lb        = update_lb(old_lb, a_ik, delta_min_act, delta_max_act);
+        f_t new_ub        = update_ub(old_ub, a_ik, delta_min_act, delta_max_act);
+
+        // Integer rounding
+        if (!is_int.empty() && is_int[k]) {
+          new_lb = std::ceil(new_lb - settings.integer_tol);
+          new_ub = std::floor(new_ub + settings.integer_tol);
+        }
+
+        bool lb_updated = abs(new_lb - old_lb) > 1e3 * settings.primal_tol;
+        bool ub_updated = abs(new_ub - old_ub) > 1e3 * settings.primal_tol;
+
+        if (lb_updated) { lower[k] = new_lb; }
+        if (ub_updated) { upper[k] = new_ub; }
+
+        bool bounds_changed = lb_updated || ub_updated;
+        if (bounds_changed) {
+          num_bounds_changed++;
+          if (!updated_variables_mark[k]) { updated_variables_list.push_back(k); }
         }
       }
     }
-    less_rows.clear();
+
+    if (num_bounds_changed == 0) { break; }
 
     // Update the bounds on the constraints
     settings.log.printf("Round %d: Strengthend %d variables\n",
@@ -130,12 +174,6 @@ void bound_strengthening(const std::vector<char>& row_sense,
     total_strengthened_variables += updated_variables_list.size();
     for (i_t j : updated_variables_list) {
       updated_variables_mark[j] = 0;
-      const i_t col_start       = problem.A.col_start[j];
-      const i_t col_end         = problem.A.col_start[j + 1];
-      for (i_t p = col_start; p < col_end; ++p) {
-        const i_t i = problem.A.i[p];
-        less_rows.push_back(i);
-      }
     }
     updated_variables_list.clear();
     iter++;
@@ -143,6 +181,7 @@ void bound_strengthening(const std::vector<char>& row_sense,
   settings.log.printf("Total strengthened variables %d\n", total_strengthened_variables);
   problem.lower = lower;
   problem.upper = upper;
+  return true;
 }
 
 template <typename i_t, typename f_t>
@@ -1077,6 +1116,12 @@ template void uncrush_solution<int, double>(const presolve_info_t<int, double>& 
                                             const std::vector<double>& crushed_z,
                                             std::vector<double>& uncrushed_x,
                                             std::vector<double>& uncrushed_z);
+
+template bool bound_strengthening<int, double>(
+  const std::vector<char>& row_sense,
+  const simplex_solver_settings_t<int, double>& settings,
+  lp_problem_t<int, double>& problem,
+  const std::vector<int>& is_int);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

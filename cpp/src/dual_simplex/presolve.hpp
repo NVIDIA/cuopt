@@ -131,4 +131,10 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
                       std::vector<f_t>& uncrushed_x,
                       std::vector<f_t>& uncrushed_z);
 
+template <typename i_t, typename f_t>
+bool bound_strengthening(const std::vector<char>& row_sense,
+                         const simplex_solver_settings_t<i_t, f_t>& settings,
+                         lp_problem_t<i_t, f_t>& problem,
+                         const std::vector<i_t>& is_int = {});
+
 }  // namespace cuopt::linear_programming::dual_simplex
