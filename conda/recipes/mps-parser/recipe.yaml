@@ -42,9 +42,13 @@ requirements:
     - python =${{ py_version }}
     - rapids-build-backend >=0.4.0,<0.5.0.dev0
     - scikit-build-core >=0.10.0
+    - bzip2
+    - zlib
   run:
     - numpy >=1.23,<3.0a0
     - python
+    - bzip2
+    - zlib
 
 tests:
   - python:
