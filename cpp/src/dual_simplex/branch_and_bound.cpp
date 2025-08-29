@@ -221,7 +221,7 @@ f_t relative_gap(f_t obj_value, f_t lower_bound)
                        ? (lower_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity())
                        : std::abs(obj_value - lower_bound) / std::abs(obj_value);
   // Handle NaNs (i.e., NaN != NaN)
-  if (user_mip_gap != user_mip_gap) { return std::numeric_limits<f_t>::infinity(); }
+  if (std::isnan(user_mip_gap)) { return std::numeric_limits<f_t>::infinity(); }
   return user_mip_gap;
 }
 
@@ -397,7 +397,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions(const f_t& lower_bound,
+void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions(f_t lower_bound,
                                                               mip_solution_t<i_t, f_t>& solution)
 {
   // Check if there are any solutions to repair
@@ -454,14 +454,14 @@ void branch_and_bound_t<i_t, f_t>::branch(mip_node_t<i_t, f_t>* parent_node,
                                           const std::vector<variable_status_t>& parent_vstatus)
 {
   // down child
-  std::unique_ptr<mip_node_t<i_t, f_t>> down_child = std::make_unique<mip_node_t<i_t, f_t>>(
+  auto down_child = std::make_unique<mip_node_t<i_t, f_t>>(
     original_lp_, parent_node, ++stats_.num_nodes, branch_var, 0, branch_var_val, parent_vstatus);
 
   graphviz_edge(
     settings_, parent_node, down_child.get(), branch_var, 0, std::floor(branch_var_val));
 
   // up child
-  std::unique_ptr<mip_node_t<i_t, f_t>> up_child = std::make_unique<mip_node_t<i_t, f_t>>(
+  auto up_child = std::make_unique<mip_node_t<i_t, f_t>>(
     original_lp_, parent_node, ++stats_.num_nodes, branch_var, 1, branch_var_val, parent_vstatus);
 
   graphviz_edge(settings_, parent_node, up_child.get(), branch_var, 1, std::ceil(branch_var_val));

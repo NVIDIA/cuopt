@@ -134,7 +134,7 @@ class branch_and_bound_t {
   std::vector<f_t> edge_norms_;
 
   // Repairs low-quality solutions from the heuristics, if it is applicable.
-  void repair_heuristic_solutions(const f_t& lower_bound, mip_solution_t<i_t, f_t>& solution);
+  void repair_heuristic_solutions(f_t lower_bound, mip_solution_t<i_t, f_t>& solution);
 
   // Explore the search tree using the best-first search strategy.
   mip_status_t explore_tree(i_t branch_var,

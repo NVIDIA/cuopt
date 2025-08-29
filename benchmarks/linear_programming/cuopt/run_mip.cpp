@@ -25,7 +25,6 @@
 #include <cuopt/logger.hpp>
 #include <mps_parser/parser.hpp>
 
-#include <omp.h>
 #include <raft/core/handle.hpp>
 
 #include <rmm/mr/device/cuda_async_memory_resource.hpp>
@@ -350,11 +349,6 @@ int main(int argc, char* argv[])
     .help("Search strategy used in B&B (bfs/bfs-diving/dfs)")
     .default_value(std::string("bfs"));
 
-  program.add_argument("--gpu")
-    .help("id of the GPU to use when running a single test (default: 0)")
-    .scan<'i', int>()
-    .default_value(0);
-
   // Parse arguments
   try {
     program.parse_args(argc, argv);
@@ -382,7 +376,6 @@ int main(int argc, char* argv[])
   bool write_log_file             = program.get<std::string>("--write-log-file")[0] == 't';
   bool log_to_console             = program.get<std::string>("--log-to-console")[0] == 't';
   std::string search_strategy_cli = program.get<std::string>("--search-strategy");
-  int gpu_id                      = program.get<int>("--gpu");
 
   cuopt::linear_programming::bnb_search_strategy_t search_strategy;
   if (search_strategy_cli == "bfs") {
@@ -499,9 +492,6 @@ int main(int argc, char* argv[])
     }
     merge_result_files(out_dir, result_file, n_gpus, batch_num);
   } else {
-    RAFT_CUDA_TRY(cudaSetDevice(gpu_id));
-    CUOPT_LOG_INFO("Using GPU %d", gpu_id);
-
     auto memory_resource = make_async();
     rmm::mr::set_current_device_resource(memory_resource.get());
     run_single_file(path,
