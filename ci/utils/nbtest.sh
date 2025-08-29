@@ -45,7 +45,7 @@ for nb in "$@"; do
 
     # Skip notebooks that are not yet supported
     SKIP_NOTEBOOKS=(
-        "trnsport_cuopt",
+        "trnsport_cuopt"
         "Production_Planning_Example_Pulp"
         "Simple_LP_pulp"
         "Simple_MIP_pulp"
@@ -55,7 +55,7 @@ for nb in "$@"; do
     for skip in "${SKIP_NOTEBOOKS[@]}"; do
         if [[ "$NBNAME" == "$skip"* ]]; then
             echo "Skipping notebook '${NBNAME}' as it matches skip pattern '${skip}'"
-            cd "$ORIGINAL_DIR"
+            cd "$ORIGINAL_DIR" || exit 1
             continue 2
         fi
     done
