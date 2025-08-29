@@ -70,29 +70,13 @@ def extract_shell_commands(notebook_path: str) -> List[str]:
             "curl",
             "git",
             "python",
-            "jupyter",
-            "ls",
-            "pwd",
             "cd",
             "mkdir",
             "rm",
             "cp",
             "mv",
-            "chmod",
             "unzip",
             "tar",
-            "apt",
-            "yum",
-            "brew",
-            "conda",
-            "npm",
-            "yarn",
-            "docker",
-            "kubectl",
-            "helm",
-            "aws",
-            "gcloud",
-            "az",
         ]
 
         for cell in notebook.get("cells", []):
@@ -137,11 +121,7 @@ def execute_pip_command(cmd: str, verbose: bool = False) -> bool:
 
     # Add --pre to exec_cmd if not already present
     if exec_cmd.startswith("pip install") and "--pre" not in exec_cmd:
-        # Check if --extra-index-url is already present
-        if "--extra-index-url" in exec_cmd:
-            exec_cmd += " --pre"
-        else:
-            exec_cmd += " --pre --extra-index-url https://pypi.anaconda.org/rapidsai-nightly/simple"
+        exec_cmd += " --pre --extra-index-url https://pypi.anaconda.org/rapidsai-nightly/simple"
 
     if verbose:
         print(f"Final command: {exec_cmd}")
@@ -241,6 +221,9 @@ def main():
     # Extract commands
     pip_commands = extract_pip_commands(args.notebook_path)
     shell_commands = extract_shell_commands(args.notebook_path)
+
+    print(f"Pip commands: {pip_commands}")
+    print(f"Shell commands: {shell_commands}")
 
     if args.output_format == "json":
         # Output as JSON for shell script processing
