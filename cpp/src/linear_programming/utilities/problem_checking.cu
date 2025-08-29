@@ -338,6 +338,34 @@ void problem_checking_t<i_t, f_t>::check_unscaled_solution(
   }
 }
 
+template <typename i_t, typename f_t>
+bool problem_checking_t<i_t, f_t>::has_crossing_bounds(
+  const optimization_problem_t<i_t, f_t>& op_problem)
+{
+  // Check if all variable bounds are valid (upper >= lower)
+  bool all_variable_bounds_valid = thrust::all_of(
+    op_problem.get_handle_ptr()->get_thrust_policy(),
+    thrust::make_counting_iterator(0),
+    thrust::make_counting_iterator(0) + op_problem.get_variable_upper_bounds().size(),
+    [upper_bounds = make_span(op_problem.get_variable_upper_bounds()),
+     lower_bounds = make_span(op_problem.get_variable_lower_bounds())] __device__(size_t i) {
+      return upper_bounds[i] >= lower_bounds[i];
+    });
+
+  // Check if all constraint bounds are valid (upper >= lower)
+  bool all_constraint_bounds_valid = thrust::all_of(
+    op_problem.get_handle_ptr()->get_thrust_policy(),
+    thrust::make_counting_iterator(0),
+    thrust::make_counting_iterator(0) + op_problem.get_constraint_upper_bounds().size(),
+    [upper_bounds = make_span(op_problem.get_constraint_upper_bounds()),
+     lower_bounds = make_span(op_problem.get_constraint_lower_bounds())] __device__(size_t i) {
+      return upper_bounds[i] >= lower_bounds[i];
+    });
+
+  // Return true if any bounds are invalid (crossing)
+  return !all_variable_bounds_valid || !all_constraint_bounds_valid;
+}
+
 #define INSTANTIATE(F_TYPE) template class problem_checking_t<int, F_TYPE>;
 
 #if MIP_INSTANTIATE_FLOAT

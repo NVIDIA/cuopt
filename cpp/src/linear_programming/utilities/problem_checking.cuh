@@ -38,6 +38,7 @@ class problem_checking_t {
   static void check_csr_representation(const optimization_problem_t<i_t, f_t>& op_problem);
   // Check all fields and convert row_types to constraints lower/upper bounds if needed
   static void check_problem_representation(const optimization_problem_t<i_t, f_t>& op_problem);
+  static bool has_crossing_bounds(const optimization_problem_t<i_t, f_t>& op_problem);
 
   static void check_scaled_problem(detail::problem_t<i_t, f_t> const& scaled_problem,
                                    detail::problem_t<i_t, f_t> const& op_problem);

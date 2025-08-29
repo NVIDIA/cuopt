@@ -950,17 +950,13 @@ cuopt_int_t test_invalid_bounds()
 
   printf("cuOptCreateRangedProblem returned: %d\n", status);
 
-  if (status == CUOPT_VALIDATION_ERROR) {
-    printf("✓ Validation error triggered as expected!\n");
-    printf("This reproduces the 'Variable bounds are invalid' error from MOI wrapper\n");
-    return CUOPT_SUCCESS;  // This is the expected result
-  } else if (status != CUOPT_SUCCESS) {
+  if (status != CUOPT_SUCCESS) {
     printf("✗ Unexpected error: %d\n", status);
     goto DONE;
   }
 
   // If we get here, the problem was created successfully
-  printf("✓ Problem created successfully (unexpected!)\n");
+  printf("✓ Problem created successfully\n");
 
   // Create solver settings
   status = cuOptCreateSolverSettings(&settings);
@@ -986,6 +982,18 @@ cuopt_int_t test_invalid_bounds()
   status = cuOptGetTerminationStatus(solution, &termination_status);
   if (status != CUOPT_SUCCESS) {
     printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+  if (termination_status != CUOPT_TERIMINATION_STATUS_INFEASIBLE) {
+    printf("Error: expected termination status to be %d, but got %d\n",
+           CUOPT_TERIMINATION_STATUS_INFEASIBLE,
+           termination_status);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  else {
+    printf("✓ Problem found infeasible as expected\n");
+    status = CUOPT_SUCCESS;
     goto DONE;
   }
 

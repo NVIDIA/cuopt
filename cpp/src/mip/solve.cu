@@ -176,6 +176,13 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
 
+    // Check for crossing bounds. Return infeasible if there are any
+    if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
+      return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
+                                      solver_stats_t<i_t, f_t>{},
+                                      op_problem.get_handle_ptr()->get_stream());
+    }
+
     auto timer = cuopt::timer_t(time_limit);
 
     double presolve_time = 0.0;
@@ -204,7 +211,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                         op_problem.get_handle_ptr()->get_stream());
       }
 
-      problem       = detail::problem_t<i_t, f_t>(reduced_op_problem);
+      problem       = detail::problem_t<i_t, f_t>(reduced_op_problem, settings.get_tolerances());
       presolve_time = timer.elapsed_time();
       CUOPT_LOG_INFO("Third party presolve time: %f", presolve_time);
     }
