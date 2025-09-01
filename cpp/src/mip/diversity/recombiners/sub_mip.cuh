@@ -101,7 +101,8 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
       branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
       branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
-      branch_and_bound_settings.solution_callback = [this](std::vector<f_t>& solution,
+      branch_and_bound_settings.bnb_search_strategy = bnb_search_strategy_t::DEPTH_FIRST;
+      branch_and_bound_settings.solution_callback   = [this](std::vector<f_t>& solution,
                                                            f_t objective) {
         this->solution_callback(solution, objective);
       };
