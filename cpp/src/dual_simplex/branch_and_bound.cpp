@@ -16,8 +16,14 @@
  */
 
 #include <cmath>
-#include <dual_simplex/branch_and_bound.hpp>
+#include <cstdio>
+#include <cstdlib>
+#include <limits>
+#include <queue>
+#include <string>
+#include <vector>
 
+#include <dual_simplex/branch_and_bound.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/mip_node.hpp>
@@ -28,14 +34,6 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
-
-#include <cstdio>
-#include <cstdlib>
-#include <future>
-#include <limits>
-#include <string>
-#include <vector>
-#include "cuopt/linear_programming/mip/solver_settings.hpp"
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -202,9 +200,9 @@ f_t branch_and_bound_t<i_t, f_t>::get_upper_bound()
 template <typename i_t, typename f_t>
 f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
 {
-  mutex_lower_.lock();
-  const f_t lower_bound = lower_bound_;
-  mutex_lower_.unlock();
+  f_t lower_bound;
+#pragma omp atomic read
+  lower_bound = lower_bound_;
   return lower_bound;
 }
 
@@ -277,12 +275,15 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
   mutex_upper_.unlock();
 
   if (is_feasible) {
-    mutex_lower_.lock();
-    f_t lower_bound = lower_bound_;
-    mutex_lower_.unlock();
-    mutex_branching_.lock();
-    bool currently_branching = currently_branching_;
-    mutex_branching_.unlock();
+    f_t lower_bound;
+#pragma omp atomic read
+    lower_bound = lower_bound_;
+
+    bool currently_branching;
+
+#pragma omp atomic read
+    currently_branching = currently_branching_;
+
     if (currently_branching) {
       settings_.log.printf(
         "H                        %+13.6e  %+10.6e                      %s %9.2f\n",
@@ -388,13 +389,11 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   upper_bound_ = inf;
   mutex_upper_.unlock();
 
-  mutex_lower_.lock();
+#pragma omp atomic write
   lower_bound_ = -inf;
-  mutex_lower_.unlock();
 
-  mutex_branching_.lock();
+#pragma omp atomic write
   currently_branching_ = false;
-  mutex_branching_.unlock();
 }
 
 template <typename i_t, typename f_t>
@@ -454,16 +453,24 @@ void branch_and_bound_t<i_t, f_t>::branch(mip_node_t<i_t, f_t>* parent_node,
                                           f_t branch_var_val,
                                           const std::vector<variable_status_t>& parent_vstatus)
 {
+  i_t id;
+
+#pragma omp atomic capture
+  {
+    id = stats_.num_nodes;
+    stats_.num_nodes += 2;
+  }
+
   // down child
   auto down_child = std::make_unique<mip_node_t<i_t, f_t>>(
-    original_lp_, parent_node, ++stats_.num_nodes, branch_var, 0, branch_var_val, parent_vstatus);
+    original_lp_, parent_node, ++id, branch_var, 0, branch_var_val, parent_vstatus);
 
   graphviz_edge(
     settings_, parent_node, down_child.get(), branch_var, 0, std::floor(branch_var_val));
 
   // up child
   auto up_child = std::make_unique<mip_node_t<i_t, f_t>>(
-    original_lp_, parent_node, ++stats_.num_nodes, branch_var, 1, branch_var_val, parent_vstatus);
+    original_lp_, parent_node, ++id, branch_var, 1, branch_var_val, parent_vstatus);
 
   graphviz_edge(settings_, parent_node, up_child.get(), branch_var, 1, std::ceil(branch_var_val));
 
@@ -502,8 +509,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation()
   }
   set_uninitialized_steepest_edge_norms(original_lp_.num_cols, edge_norms_);
 
-  std::vector<i_t> fractional;
-
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
   if (settings_.set_simplex_solution_callback != nullptr) {
     std::vector<f_t> original_x;
@@ -511,9 +516,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation()
     settings_.set_simplex_solution_callback(original_x,
                                             compute_user_objective(original_lp_, root_objective_));
   }
-  mutex_lower_.lock();
+#pragma omp atomic write
   lower_bound_ = root_objective_;
-  mutex_lower_.unlock();
 
   return mip_status_t::UNSET;
 }
@@ -523,7 +527,8 @@ dual::status_t branch_and_bound_t<i_t, f_t>::node_dual_simplex(
   lp_problem_t<i_t, f_t>& leaf_problem,
   std::vector<variable_status_t>& leaf_vstatus,
   lp_solution_t<i_t, f_t>& leaf_solution,
-  f_t upper_bound)
+  f_t upper_bound,
+  i_t nodes_explored)
 {
   i_t node_iter = 0;
   assert(leaf_vstatus.size() == leaf_problem.num_cols);
@@ -543,17 +548,17 @@ dual::status_t branch_and_bound_t<i_t, f_t>::node_dual_simplex(
                                          node_iter,
                                          leaf_edge_norms);
   if (lp_status == dual::status_t::NUMERICAL) {
-    settings_.log.printf("Numerical issue node %d. Resolving from scratch.\n",
-                         stats_.nodes_explored.load());
+    settings_.log.printf("Numerical issue node %d. Resolving from scratch.\n", nodes_explored);
     lp_status_t second_status = solve_linear_program_advanced(
       leaf_problem, lp_start_time, lp_settings, leaf_solution, leaf_vstatus, leaf_edge_norms);
     lp_status = convert_lp_status_to_dual_status(second_status);
   }
 
-  mutex_stats_.lock();
+#pragma omp atomic update
   stats_.total_lp_solve_time += toc(lp_start_time);
+
+#pragma omp atomic update
   stats_.total_lp_iters += node_iter;
-  mutex_stats_.unlock();
 
   return lp_status;
 }
@@ -580,7 +585,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
   node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper);
 
   dual::status_t lp_status =
-    node_dual_simplex(leaf_problem, leaf_vstatus, leaf_solution, upper_bound);
+    node_dual_simplex(leaf_problem, leaf_vstatus, leaf_solution, upper_bound, nodes_explored);
 
   if (lp_status == dual::status_t::DUAL_UNBOUNDED) {
     node_ptr->lower_bound = inf;
@@ -650,9 +655,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
       }
 
       if (send_solution) {
-        mutex_gap_.lock();
+#pragma omp atomic write
         gap_ = gap;
-        mutex_gap_.unlock();
       }
 
       graphviz_node(settings_, node_ptr, "integer feasible", leaf_objective);
@@ -744,13 +748,15 @@ void branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
       remove_fathomed_nodes(stack);
       continue;
     }
-    mutex_lower_.lock();
-    lower_bound = lower_bound_ = node_ptr->lower_bound;
-    mutex_lower_.unlock();
 
-    mutex_gap_.lock();
-    gap_ = gap = upper_bound - lower_bound;
-    mutex_gap_.unlock();
+    lower_bound = node_ptr->lower_bound;
+    gap         = upper_bound - lower_bound;
+
+#pragma omp atomic write
+    lower_bound_ = lower_bound;
+
+#pragma omp atomic write
+    gap_ = gap;
 
     f_t now            = toc(stats_.start_time);
     f_t time_since_log = last_log == 0 ? 1.0 : toc(last_log);
@@ -790,17 +796,21 @@ void branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
     }
   }
 
+#pragma omp atomic write
   stats_.nodes_unexplored = heap.size();
-  stats_.nodes_explored   = nodes_explored;
+
+#pragma omp atomic write
+  stats_.nodes_explored = nodes_explored;
 
   if (stats_.nodes_unexplored == 0) {
-    mutex_lower_.lock();
-    lower_bound = lower_bound_ = root_node.lower_bound;
-    mutex_lower_.unlock();
+    lower_bound = root_node.lower_bound;
+    gap         = get_upper_bound() - lower_bound;
 
-    mutex_gap_.lock();
-    gap_ = gap = get_upper_bound() - lower_bound;
-    mutex_gap_.unlock();
+#pragma omp atomic write
+    lower_bound_ = lower_bound;
+
+#pragma omp atomic write
+    gap_ = gap;
   }
 }
 
@@ -995,9 +1005,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     "| Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   | "
     "   Time \n");
 
-  mutex_branching_.lock();
+#pragma omp atomic write
   currently_branching_ = true;
-  mutex_branching_.unlock();
 
   if (settings_.bnb_search_strategy ==
       bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
@@ -1036,15 +1045,23 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         dive(diving_tree.get_up_child(), solution, diving_status);
       }
     }
+
+    f_t lower_bound = diving_tree.lower_bound;
+    f_t gap         = get_upper_bound() - lower_bound;
+
+#pragma omp atomic write
+    lower_bound_ = lower_bound;
+
+#pragma omp atomic write
+    gap_ = gap;
   }
 
-  mutex_branching_.lock();
+#pragma omp atomic write
   currently_branching_ = false;
-  mutex_branching_.unlock();
 
   settings_.log.printf(
     "Explored %d nodes in %.2fs.\nAbsolute Gap %e Objective %.16e Lower Bound %.16e\n",
-    stats_.nodes_explored.load(),
+    stats_.nodes_explored,
     toc(stats_.start_time),
     gap_,
     compute_user_objective(original_lp_, get_upper_bound()),

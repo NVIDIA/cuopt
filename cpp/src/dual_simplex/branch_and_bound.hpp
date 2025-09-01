@@ -17,7 +17,9 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <dual_simplex/initial_basis.hpp>
+#include <dual_simplex/mip_node.hpp>
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/pseudo_costs.hpp>
@@ -25,14 +27,8 @@
 #include <dual_simplex/solution.hpp>
 #include <dual_simplex/types.hpp>
 
-#include <atomic>
-#include <memory>
-#include <mutex>
-#include <queue>
-#include <string>
+#include <omp.h>
 #include <vector>
-#include "cuopt/linear_programming/mip/solver_settings.hpp"
-#include "dual_simplex/mip_node.hpp"
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -85,9 +81,6 @@ class branch_and_bound_t {
   std::vector<i_t> new_slacks_;
   std::vector<variable_type_t> var_types_;
 
-  // Mutex for lower bound
-  std::mutex mutex_lower_;
-
   // Global variable for lower bound
   f_t lower_bound_;
 
@@ -100,27 +93,19 @@ class branch_and_bound_t {
   // Global variable for incumbent. The incumbent should be updated with the upper bound
   mip_solution_t<i_t, f_t> incumbent_;
 
-  // Mutex for gap
-  std::mutex mutex_gap_;
-
   // Global variable for gap
   f_t gap_;
 
-  // Mutex for branching
-  std::mutex mutex_branching_;
   bool currently_branching_;
-
-  // Global variable for stats
-  std::mutex mutex_stats_;
 
   // Note that floating point atomics are only supported in C++20.
   struct stats_t {
-    f_t start_time                    = 0.0;
-    f_t total_lp_solve_time           = 0.0;
-    std::atomic<i_t> nodes_explored   = 0;
-    std::atomic<i_t> nodes_unexplored = 0;
-    f_t total_lp_iters                = 0;
-    std::atomic<i_t> num_nodes        = 0;
+    f_t start_time          = 0.0;
+    f_t total_lp_solve_time = 0.0;
+    i_t nodes_explored      = 0;
+    i_t nodes_unexplored    = 0;
+    f_t total_lp_iters      = 0;
+    i_t num_nodes           = 0;
   } stats_;
 
   // Mutex for repair
@@ -176,7 +161,8 @@ class branch_and_bound_t {
   dual::status_t node_dual_simplex(lp_problem_t<i_t, f_t>& leaf_problem,
                                    std::vector<variable_status_t>& leaf_vstatus,
                                    lp_solution_t<i_t, f_t>& leaf_solution,
-                                   f_t upper_bound);
+                                   f_t upper_bound,
+                                   i_t nodes_explored);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
