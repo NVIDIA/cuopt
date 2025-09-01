@@ -78,5 +78,7 @@ bool update_step_size_on_initial_solution = false;
 bool handle_some_primal_gradients_on_finite_bounds_as_residuals = false;
 // Whether to project initial primal values using variable bounds
 bool project_initial_primal = true;
+// Whether to use adaptive step size strategy
+bool use_adaptive_step_size_strategy = true;
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params

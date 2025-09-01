@@ -546,8 +546,12 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   // after for kkt restart
 #ifdef PDLP_VERBOSE_MODE
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
+  const auto current_time = std::chrono::high_resolution_clock::now();
+  const f_t elapsed =
+    std::chrono::duration_cast<std::chrono::milliseconds>(current_time - start_time).count() /
+    1000.0;
   printf("Termination criteria current\n");
-  current_termination_strategy_.print_termination_criteria();
+  print_termination_criteria(start_time, false);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
 #endif
   pdlp_termination_status_t termination_current =
@@ -561,10 +565,9 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
 #ifdef PDLP_VERBOSE_MODE
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
   std::cout << "Termination criteria average:" << std::endl;
-  average_termination_strategy_.print_termination_criteria();
+  print_termination_criteria(start_time, true);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
 #endif
-
   // Check both average and current solution
   pdlp_termination_status_t termination_average =
     average_termination_strategy_.evaluate_termination_criteria(
@@ -1187,7 +1190,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
 }
 
 template <typename i_t, typename f_t>
-void pdlp_solver_t<i_t, f_t>::take_step(i_t total_pdlp_iterations)
+void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations)
 {
   // continue testing stepsize until we find a valid one or encounter a numerical error
   step_size_strategy_.set_valid_step_size(0);
@@ -1221,6 +1224,22 @@ void pdlp_solver_t<i_t, f_t>::take_step(i_t total_pdlp_iterations)
     step_size_,
     total_pdlp_iterations);
   pdhg_solver_.update_solution(current_op_problem_evaluation_cusparse_view_);
+}
+
+template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::take_constant_step()
+{
+  pdhg_solver_.take_step(primal_step_size_, dual_step_size_, 0, false, 0);
+}
+
+template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::take_step([[maybe_unused]] i_t total_pdlp_iterations)
+{
+  if (pdlp_hyper_params::use_adaptive_step_size_strategy) {
+    take_adaptive_step(total_pdlp_iterations);
+  } else {
+    take_constant_step();
+  }
 }
 
 template <typename i_t, typename f_t>

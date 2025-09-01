@@ -56,5 +56,6 @@ extern bool update_primal_weight_on_initial_solution;
 extern bool update_step_size_on_initial_solution;
 extern bool handle_some_primal_gradients_on_finite_bounds_as_residuals;
 extern bool project_initial_primal;
+extern bool use_adaptive_step_size_strategy;
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params
