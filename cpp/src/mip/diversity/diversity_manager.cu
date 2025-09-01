@@ -59,8 +59,14 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                           context.problem_ptr->n_variables,
                           ls.constraint_prop,
                           context.problem_ptr->handle_ptr),
-    fp_recombiner(
-      context, context.problem_ptr->n_variables, ls.fp, context.problem_ptr->handle_ptr),
+    fp_recombiner(context,
+                  context.problem_ptr->n_variables,
+                  ls.fj,
+                  ls.constraint_prop,
+                  ls.lb_constraint_prop,
+                  ls.line_segment_search,
+                  lp_optimal_solution,
+                  context.problem_ptr->handle_ptr),
     line_segment_recombiner(context,
                             context.problem_ptr->n_variables,
                             ls.line_segment_search,
@@ -74,7 +80,7 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                    recombiner_alpha,
                    "recombiner"),
     mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), ls_alpha, "ls"),
-    assignment_hash_map(*context.problem_ptr)
+    ls_hash_map(*context.problem_ptr)
 {
   // Read configuration ID from environment variable
   int max_config = -1;
@@ -111,9 +117,9 @@ bool diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solut
 {
   i_t ls_mab_option = mab_ls.select_mab_option();
   mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
-  assignment_hash_map.insert(solution);
+  ls_hash_map.insert(solution);
   constexpr i_t skip_solutions_threshold = 3;
-  if (assignment_hash_map.check_skip_solution(solution, skip_solutions_threshold)) { return false; }
+  if (ls_hash_map.check_skip_solution(solution, skip_solutions_threshold)) { return false; }
   ls.run_local_search(solution, weights, timer, ls_config);
   return true;
 }
@@ -568,6 +574,7 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(solution_t<i_t, f_
                                                               bool add_only_feasible)
 {
   raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
+  if (population.population_hash_map.check_skip_solution(solution, 1)) { return; }
   auto population_vector = population.population_to_vector();
   for (auto& curr_sol : population_vector) {
     for (const auto recombiner_type : recombiner_types) {

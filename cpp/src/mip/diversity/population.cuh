@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include "assignment_hash_map.cuh"
 #include "population.cuh"
 
 #include <mip/solution/solution.cuh>
@@ -178,6 +179,7 @@ class population_t {
   bool early_exit_primal_generation = false;
   f_t best_feasible_objective       = std::numeric_limits<f_t>::max();
   bool preempt_heuristic_solver_    = false;
+  assignment_hash_map_t<i_t, f_t> population_hash_map;
   cuopt::timer_t timer;
 };
 

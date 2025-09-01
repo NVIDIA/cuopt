@@ -53,6 +53,7 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
     weights(0, context.problem_ptr->handle_ptr),
     rng(cuopt::seed_generator::get_seed()),
     early_exit_primal_generation(false),
+    population_hash_map(*problem_ptr),
     timer(0)
 {
   best_feasible_objective = std::numeric_limits<f_t>::max();
@@ -326,6 +327,7 @@ template <typename i_t, typename f_t>
 i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
 {
   raft::common::nvtx::range fun_scope("add_solution");
+  population_hash_map.insert(sol);
   double sol_cost = sol.get_quality(weights);
   CUOPT_LOG_TRACE("Adding solution with quality %f and objective %f n_integers %d!",
                   sol_cost,

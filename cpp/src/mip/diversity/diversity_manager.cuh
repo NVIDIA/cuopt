@@ -103,7 +103,7 @@ class diversity_manager_t {
   std::vector<solution_t<i_t, f_t>> initial_sol_vector;
   mab_t mab_recombiner;
   mab_t mab_ls;
-  assignment_hash_map_t<i_t, f_t> assignment_hash_map;
+  assignment_hash_map_t<i_t, f_t> ls_hash_map;
   // mutex for the simplex solution update
   std::mutex relaxed_solution_mutex;
   // atomic for signalling pdlp to stop

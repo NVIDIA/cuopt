@@ -412,10 +412,10 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
           solution_copy.problem_ptr = old_problem_ptr;
           solution_copy.resize_to_problem();
           if (population_ptr->current_size() > 0) {
-            resize_to_old_problem(old_problem_ptr);
+            // resize_to_old_problem(old_problem_ptr);
             population_ptr->run_all_recombiners(solution_copy);
-            fp.timer = timer_t(timer.remaining_time());
-            resize_to_new_problem();
+            // fp.timer = timer_t(timer.remaining_time());
+            // resize_to_new_problem();
           }
           population_ptr->add_solution(std::move(solution_copy));
           auto new_sol_vector = population_ptr->get_external_solutions();
@@ -448,10 +448,10 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
             solution_copy.problem_ptr = old_problem_ptr;
             solution_copy.resize_to_problem();
             if (population_ptr->current_size() > 0) {
-              resize_to_old_problem(old_problem_ptr);
+              // resize_to_old_problem(old_problem_ptr);
               population_ptr->run_all_recombiners(solution_copy);
-              fp.timer = timer_t(timer.remaining_time());
-              resize_to_new_problem();
+              // fp.timer = timer_t(timer.remaining_time());
+              // resize_to_new_problem();
             }
             population_ptr->add_solution(std::move(solution_copy));
             auto new_sol_vector = population_ptr->get_external_solutions();
