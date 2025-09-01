@@ -13,10 +13,8 @@ dependencies:
 - clang==20.1.4
 - cmake>=3.30.4
 - cpp-argparse
-- cuda-crt
 - cuda-nvcc
 - cuda-nvtx-dev
-- cuda-nvvm
 - cuda-sanitizer-api
 - cuda-version=12.9
 - cudf==25.10.*,>=0.0.0a0
@@ -28,7 +26,7 @@ dependencies:
 - exhale
 - fastapi
 - folium
-- gcc_linux-64=13.*
+- gcc_linux-64=14.*
 - geopandas
 - gmock
 - gtest
