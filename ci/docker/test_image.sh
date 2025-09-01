@@ -17,8 +17,6 @@
 
 set -euo pipefail
 
-chsh -s /bin/bash cuopt
-
 # Install dependencies
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file bzip2
@@ -32,18 +30,14 @@ pushd ./datasets
 popd
 
 # Create symlink to cuopt
-ln -sf "$(pwd)" /home/cuopt/cuopt
+ln -sf "$(pwd)" /opt/cuopt/cuopt
 
 # Set permissions since the repo is mounted on root
 chmod -R a+w "$(pwd)"
 
-# If this script is being run as root, use 'su - cuopt -c "<command>"' to run each command as cuopt.
-
-# Change to cuopt home directory and then to cuopt repo
-cat > /home/cuopt/test.sh <<EOF
-cd ~/cuopt
-pip install --user pytest pexpect
-export PATH=\$PATH:/home/cuopt/.local/bin
+cat > /opt/cuopt/test.sh <<EOF
+cd /opt/cuopt/cuopt
+pip install pytest pexpect
 export RAPIDS_DATASET_ROOT_DIR=\$(realpath datasets)
 echo '----------------- CLI TEST START ---------------'
 bash python/libcuopt/libcuopt/tests/test_cli.sh
@@ -56,4 +50,9 @@ echo '----------------- CUOPT SERVER TEST START ---------------'
 python -m pytest python/cuopt_server/cuopt_server/tests/
 echo '----------------- CUOPT SERVER TEST END ---------------'
 EOF
-su - cuopt -c "bash ~/test.sh"
+
+# Create a temporary user with UID 888
+useradd -m -u 888 -s /bin/bash tempuser888
+
+# Switch to it
+su - tempuser888 -c "bash /opt/cuopt/test.sh"

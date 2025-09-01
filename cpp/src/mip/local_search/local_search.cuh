@@ -25,7 +25,14 @@
 
 namespace cuopt::linear_programming::detail {
 
-enum ls_method_t { FJ_ANNEALING = 0, FJ_LINE_SEGMENT, RANDOM };
+// make sure RANDOM is always the last
+enum class ls_method_t : int {
+  FJ_ANNEALING = 0,
+  FJ_LINE_SEGMENT,
+  FP_SEARCH,
+  RANDOM,
+  LS_METHODS_SIZE = RANDOM
+};
 
 template <typename i_t, typename f_t>
 struct ls_config_t {
@@ -66,8 +73,14 @@ class local_search_t {
   bool run_fj_on_zero(solution_t<i_t, f_t>& solution, timer_t timer);
   bool check_fj_on_lp_optimal(solution_t<i_t, f_t>& solution, bool perturb, timer_t timer);
   bool run_staged_fp(solution_t<i_t, f_t>& solution, timer_t timer, bool& early_exit);
-  bool run_fp(solution_t<i_t, f_t>& solution, timer_t timer);
+  bool run_fp(solution_t<i_t, f_t>& solution,
+              timer_t timer,
+              const weight_t<i_t, f_t>* weights = nullptr,
+              bool feasibility_run              = true);
   void resize_vectors(problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr);
+  void save_solution_and_add_cutting_plane(solution_t<i_t, f_t>& solution,
+                                           rmm::device_uvector<f_t>& best_solution,
+                                           f_t& best_objective);
 
   mip_solver_context_t<i_t, f_t>& context;
   rmm::device_uvector<f_t>& lp_optimal_solution;
@@ -80,6 +93,7 @@ class local_search_t {
   line_segment_search_t<i_t, f_t> line_segment_search;
   feasibility_pump_t<i_t, f_t> fp;
   std::mt19937 rng;
+  problem_t<i_t, f_t> problem_with_objective_cut;
 };
 
 }  // namespace cuopt::linear_programming::detail

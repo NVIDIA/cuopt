@@ -70,7 +70,7 @@ static void test_constraint_sanity(
   const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
   const optimization_problem_solution_t<int, double>& solution,
   double epsilon        = tolerance,
-  bool presolve_enabled = true)
+  bool presolve_enabled = false)
 {
   const std::vector<double> primal_vars              = host_copy(solution.get_primal_solution());
   const std::vector<double>& values                  = op_problem.get_constraint_matrix_values();
@@ -83,6 +83,7 @@ static void test_constraint_sanity(
   std::vector<double> residual(solution.get_dual_solution().size(), 0.0);
   std::vector<double> viol(solution.get_dual_solution().size(), 0.0);
 
+  // No dual solution and residual for presolved problems
   if (!presolve_enabled) {
     // CSR SpMV
     for (size_t i = 0; i < offsets.size() - 1; ++i) {
@@ -137,8 +138,14 @@ static void test_constraint_sanity(
   for (size_t i = 0; i < primal_vars.size(); ++i) {
     // Not always stricly true because we apply variable bound clamping on the scaled problem
     // After unscaling it, the variables might not respect exactly (this adding an epsilon)
-    EXPECT_TRUE(primal_vars[i] >= variable_lower_bounds[i] - epsilon &&
-                primal_vars[i] <= variable_upper_bounds[i] + epsilon);
+    auto condition = primal_vars[i] >= variable_lower_bounds[i] - epsilon &&
+                     primal_vars[i] <= variable_upper_bounds[i] + epsilon;
+    if (!condition) {
+      std::cout << "Variable " << i << " is " << primal_vars[i] << " but should be between "
+                << variable_lower_bounds[i] - epsilon << " and "
+                << variable_upper_bounds[i] + epsilon << std::endl;
+    }
+    EXPECT_TRUE(condition);
   }
 }
 

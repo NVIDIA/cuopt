@@ -62,7 +62,7 @@ on the major version of CUDA available in your environment:
 For CUDA 12.x:
 
 ```bash
-pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.10.* cuopt-sh-client==25.10.* nvidia-cuda-runtime-cu12==12.8.*
+pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.10.* cuopt-sh-client==25.10.* nvidia-cuda-runtime-cu12==12.9.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -85,10 +85,10 @@ of our latest development branch. Just replace `-c rapidsai` with `-c rapidsai-n
 Users can pull the cuOpt container from the NVIDIA container registry.
 
 ```bash
-docker pull nvidia/cuopt:latest-cuda12.8-py312
+docker pull nvidia/cuopt:latest-cuda12.9-py312
 ```
 
-Note: The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.8-py312`` tag. For example, to use cuOpt 25.5.0, you can use the ``25.5.0-cuda12.8-py312`` tag. Please refer to `cuOpt dockerhub page <https://hub.docker.com/r/nvidia/cuopt>`_ for the list of available tags.
+Note: The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.9-py312`` tag. For example, to use cuOpt 25.5.0, you can use the ``25.5.0-cuda12.8-py312`` tag. Please refer to `cuOpt dockerhub page <https://hub.docker.com/r/nvidia/cuopt>`_ for the list of available tags.
 
 More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub).
 

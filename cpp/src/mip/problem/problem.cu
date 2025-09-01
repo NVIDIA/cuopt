@@ -86,14 +86,12 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
   // If maximization problem, convert the problem
   if (maximize) convert_to_maximization_problem(*this);
   if (is_mip) {
-    // Resize what is needed for MIP
-    raft::common::nvtx::range scope("trivial_presolve");
     integer_indices.resize(n_variables, handle_ptr->get_stream());
     is_binary_variable.resize(n_variables, handle_ptr->get_stream());
     compute_n_integer_vars();
     compute_binary_var_table();
+    compute_vars_with_objective_coeffs();
   }
-
   compute_transpose_of_problem();
   // Check after modifications
   check_problem_representation(true, is_mip);
@@ -193,7 +191,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     is_scaled_(problem_.is_scaled_),
     preprocess_called(problem_.preprocess_called),
     lp_state(problem_.lp_state),
-    fixing_helpers(problem_.fixing_helpers, handle_ptr)
+    fixing_helpers(problem_.fixing_helpers, handle_ptr),
+    vars_with_objective_coeffs(problem_.vars_with_objective_coeffs)
 {
 }
 
@@ -291,7 +290,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     is_scaled_(problem_.is_scaled_),
     preprocess_called(problem_.preprocess_called),
     lp_state(problem_.lp_state),
-    fixing_helpers(problem_.fixing_helpers, handle_ptr)
+    fixing_helpers(problem_.fixing_helpers, handle_ptr),
+    vars_with_objective_coeffs(problem_.vars_with_objective_coeffs)
 {
 }
 
@@ -668,7 +668,8 @@ bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assig
 // it removes the additional variable for free variables
 // and expands the assignment to the original variable dimension
 template <typename i_t, typename f_t>
-void problem_t<i_t, f_t>::post_process_assignment(rmm::device_uvector<f_t>& current_assignment)
+void problem_t<i_t, f_t>::post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
+                                                  bool resize_to_original_problem)
 {
   cuopt_assert(current_assignment.size() == presolve_data.variable_mapping.size(), "size mismatch");
   auto assgn       = make_span(current_assignment);
@@ -698,7 +699,9 @@ void problem_t<i_t, f_t>::post_process_assignment(rmm::device_uvector<f_t>& curr
   raft::copy(
     current_assignment.data(), h_assignment.data(), h_assignment.size(), handle_ptr->get_stream());
   // this separate resizing is needed because of the callback
-  current_assignment.resize(original_problem_ptr->get_n_variables(), handle_ptr->get_stream());
+  if (resize_to_original_problem) {
+    current_assignment.resize(original_problem_ptr->get_n_variables(), handle_ptr->get_stream());
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -716,7 +719,7 @@ void problem_t<i_t, f_t>::recompute_auxilliary_data(bool check_representation)
 {
   compute_n_integer_vars();
   compute_binary_var_table();
-
+  compute_vars_with_objective_coeffs();
   // TODO: speedup compute related variables
   const double time_limit = 30.;
   compute_related_variables(time_limit);
@@ -999,6 +1002,7 @@ void problem_t<i_t, f_t>::insert_variables(variables_delta_t<i_t, f_t>& h_vars)
 
   compute_n_integer_vars();
   compute_binary_var_table();
+  compute_vars_with_objective_coeffs();
 }
 
 // note that these don't change the reverse structure
@@ -1467,15 +1471,7 @@ void problem_t<i_t, f_t>::preprocess_problem()
   compute_csr(variable_constraint_map, *this);
   compute_transpose_of_problem();
   check_problem_representation(true, false);
-  presolve_data.variable_mapping.resize(n_variables, handle_ptr->get_stream());
-  thrust::sequence(handle_ptr->get_thrust_policy(),
-                   presolve_data.variable_mapping.begin(),
-                   presolve_data.variable_mapping.end());
-  presolve_data.fixed_var_assignment.resize(n_variables, handle_ptr->get_stream());
-  thrust::uninitialized_fill(handle_ptr->get_thrust_policy(),
-                             presolve_data.fixed_var_assignment.begin(),
-                             presolve_data.fixed_var_assignment.end(),
-                             0.);
+  presolve_data.initialize_var_mapping(*this, handle_ptr);
   integer_indices.resize(n_variables, handle_ptr->get_stream());
   is_binary_variable.resize(n_variables, handle_ptr->get_stream());
   original_ids.resize(n_variables);
@@ -1588,6 +1584,42 @@ template <typename i_t, typename f_t>
 f_t problem_t<i_t, f_t>::get_user_obj_from_solver_obj(f_t solver_obj)
 {
   return presolve_data.objective_scaling_factor * (solver_obj + presolve_data.objective_offset);
+}
+
+template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::compute_vars_with_objective_coeffs()
+{
+  auto h_objective_coefficients = cuopt::host_copy(objective_coefficients);
+  std::vector<i_t> vars_with_objective_coeffs_;
+  std::vector<f_t> objective_coeffs_;
+  for (i_t i = 0; i < n_variables; ++i) {
+    if (h_objective_coefficients[i] != 0) {
+      vars_with_objective_coeffs_.push_back(i);
+      objective_coeffs_.push_back(h_objective_coefficients[i]);
+    }
+  }
+  vars_with_objective_coeffs = std::make_pair(vars_with_objective_coeffs_, objective_coeffs_);
+}
+
+template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::add_cutting_plane_at_objective(f_t objective)
+{
+  CUOPT_LOG_INFO("Adding cutting plane at objective %f", objective);
+  if (cutting_plane_added) {
+    // modify the RHS
+    i_t last_constraint = n_constraints - 1;
+    constraint_upper_bounds.set_element_async(last_constraint, objective, handle_ptr->get_stream());
+    return;
+  }
+  cutting_plane_added = true;
+  constraints_delta_t<i_t, f_t> h_constraints;
+  h_constraints.add_constraint(vars_with_objective_coeffs.first,
+                               vars_with_objective_coeffs.second,
+                               -std::numeric_limits<f_t>::infinity(),
+                               objective);
+  insert_constraints(h_constraints);
+  compute_transpose_of_problem();
+  cuopt_func_call(check_problem_representation(true));
 }
 
 #if MIP_INSTANTIATE_FLOAT

@@ -51,7 +51,6 @@ jobs:
     needs: prepare
     container:
       image: "nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ needs.prepare.outputs.CUDA_SHORT }}-py${{ needs.prepare.outputs.PYTHON_SHORT }}"
-      options: --user root
     steps:
       - name: Checkout code repo
         uses: actions/checkout@v4
