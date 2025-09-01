@@ -342,8 +342,7 @@ void local_search_t<i_t, f_t>::save_solution_and_add_cutting_plane(
                solution.assignment.size(),
                solution.handle_ptr->get_stream());
     best_objective = solution.get_objective();
-    problem_with_objective_cut.add_cutting_plane_at_objective(solution.get_objective() -
-                                                              OBJECTIVE_EPSILON);
+    problem_with_objective_cut.add_cutting_plane_at_objective(0.999 * best_objective);
   }
 }
 
