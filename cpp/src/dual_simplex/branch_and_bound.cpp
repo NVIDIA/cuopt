@@ -941,7 +941,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                          compute_user_objective(original_lp_, root_objective_),
                          toc(stats_.start_time));
     if (settings_.set_simplex_solution_callback != nullptr) {
-      settings_.set_simplex_solution_callback(solution.x, solution.objective);
+      settings_.solution_callback(solution.x, solution.objective);
     }
     if (settings_.heuristic_preemption_callback != nullptr) {
       settings_.heuristic_preemption_callback();
