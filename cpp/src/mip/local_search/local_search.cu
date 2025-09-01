@@ -167,7 +167,7 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
     cpu_fj.cpu_solver->localMIP->diversity_callback = [this, &population, &cpu_fj]() {
       std::vector<double> h_vec;
       f_t obj = GetSolution(*cpu_fj.cpu_solver, h_vec, true);
-      population.add_external_solution(h_vec, obj, "CPUFJ");
+      // population.add_external_solution(h_vec, obj, "CPUFJ");
     };
     counter++;
   };
