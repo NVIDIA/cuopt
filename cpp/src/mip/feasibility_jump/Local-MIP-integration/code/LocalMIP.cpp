@@ -37,13 +37,15 @@
 
 int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_point _clkStart)
 {
-  // Allocate();
-  // InitSolution();
+  // DEBUG = true;
+  //  Allocate();
+  //  InitSolution();
   InitState();
   auto& localObj = localConUtil.conSet[0];
   curStep        = 0;
   while (!halted) {
-    if (DEBUG) printf("\nc UNSAT Size: %-10ld; ", localConUtil.unsatConIdxs.size());
+    if (DEBUG)
+      printf("\nc UNSAT Size: %-10ld; lmin %d\n", localConUtil.unsatConIdxs.size(), minima);
     if (localConUtil.unsatConIdxs.empty()) {
       if (!isFoundFeasible || localObj.LHS < localObj.RHS) {
         UpdateBestSolution();
@@ -68,13 +70,15 @@ int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_poi
     }
     ++curStep;
 
-    if ((curStep % 100000) == 0)
+    if ((curStep % 10000) == 0)
       printf("%s running for %d steps, userobj: %lf\n", prefix.c_str(), curStep, GetObjValue());
     // only send optimal every 5000 steps
-    if (curStep % 5000 == 0 && found_better) {
+    // if (curStep % 5000 == 0 && found_better) {
+    if (found_better) {
       LogObj(_clkStart);
       if (optimum_callback) { optimum_callback(); }
       found_better = false;
+      // exit(1);
     }
     // send current solution to callback every 3000 steps for diversity
     if (curStep % 3000 == 0) {
@@ -182,7 +186,8 @@ void LocalMIP::ApplyMove(size_t _varIdx, Value _delta)
   auto& localVar = localVarUtil.GetVar(_varIdx);
   auto& modelVar = modelVarUtil->GetVar(_varIdx);
   localVar.nowValue += _delta;
-  if (DEBUG) printf("varType: %d; varIdx: %-10ld; delta: %-10lf; ", modelVar.type, _varIdx, _delta);
+  if (DEBUG)
+    printf("varType: %d; varIdx: %-10ld; delta: %-10lf; \n", modelVar.type, _varIdx, _delta);
   for (size_t termIdx = 0; termIdx < modelVar.termNum; ++termIdx) {
     size_t conIdx   = modelVar.conIdxSet[termIdx];
     size_t posInCon = modelVar.posInCon[termIdx];

@@ -122,7 +122,11 @@ struct fj_move_t {
   int var_idx;
   double value;
 
-  bool operator<(const fj_move_t& rhs) const { return value < rhs.value; }
+  bool operator<(const fj_move_t& rhs) const
+  {
+    if (var_idx == rhs.var_idx) return value < rhs.value;
+    return var_idx < rhs.var_idx;
+  }
 };
 
 // TODO: use 32bit integers instead,

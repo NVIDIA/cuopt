@@ -81,6 +81,7 @@ fj_staged_score_t compute_score(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t del
 
     f_t c_lb = fj_cpu.h_cstr_lb[cstr_idx];
     f_t c_ub = fj_cpu.h_cstr_ub[cstr_idx];
+    cuopt_assert(c_lb <= c_ub, "invalid bounds");
 
     auto [cstr_base_feas, cstr_bonus_robust] = feas_score_constraint<i_t, f_t>(
       fj_cpu.view, var_idx, delta, cstr_idx, cstr_coeff, c_lb, c_ub, fj_cpu.h_lhs[cstr_idx]);
@@ -174,7 +175,8 @@ void apply_move(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta)
 {
   raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
 
-  printf("applying move: %d, %g\n", var_idx, delta);
+  // printf("    applying move: %d, %g, unsat %zu\n", var_idx, delta,
+  // fj_cpu.violated_constraints.size());
 
   cuopt_assert(var_idx < fj_cpu.view.pb.n_variables, "variable index out of bounds");
   // Update the LHSs of all involved constraints.
@@ -245,6 +247,7 @@ thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(fj_cpu_t<i_t, f_t>& fj
   fj_staged_score_t best_score = fj_staged_score_t::zero();
 
   for (size_t cstr_idx : target_cstrs) {
+    cuopt_assert(cstr_idx < fj_cpu.h_cstr_lb.size(), "cstr_idx is out of bounds");
     auto [offset_begin, offset_end] = fj_cpu.view.pb.range_for_constraint(cstr_idx);
     for (auto i = offset_begin; i < offset_end; i++) {
       auto var_idx = fj_cpu.h_variables[i];
@@ -283,11 +286,13 @@ thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(fj_cpu_t<i_t, f_t>& fj
       } else {
         new_val = val + delta;
       }
-
       // fallback
-      if (!fj_cpu.view.pb.check_variable_within_bounds(var_idx, new_val)) {
+      if (new_val < fj_cpu.h_var_lb[var_idx] || new_val > fj_cpu.h_var_ub[var_idx]) {
         new_val = cstr_coeff * sign > 0 ? fj_cpu.h_var_lb[var_idx] : fj_cpu.h_var_ub[var_idx];
       }
+      cuopt_assert(isfinite(new_val), "new_val is not finite");
+      cuopt_assert(new_val >= fj_cpu.h_var_lb[var_idx], "new_val is not greater than lower bound");
+      cuopt_assert(new_val <= fj_cpu.h_var_ub[var_idx], "new_val is not less than upper bound");
       delta = new_val - val;
       if (delta < 0 && fj_cpu.iterations < fj_cpu.h_tabu_nodec_until[var_idx] ||
           delta > 0 && fj_cpu.iterations < fj_cpu.h_tabu_noinc_until[var_idx])
@@ -296,6 +301,9 @@ thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(fj_cpu_t<i_t, f_t>& fj
 
       // Check if we already have a move for this variable
       auto move = fj_move_t{var_idx, new_val};
+      cuopt_assert(move.var_idx < fj_cpu.h_assignment.size(), "move.var_idx is out of bounds");
+      cuopt_assert(move.var_idx >= 0, "move.var_idx is not positive");
+
       if (candidate_moves.count(move)) continue;
 
       candidate_moves.insert(move);
@@ -307,6 +315,8 @@ thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(fj_cpu_t<i_t, f_t>& fj
     }
   }
 
+  // printf("best_move: %d, %g, score %d, subscore %d\n", best_move.var_idx, best_move.value,
+  // (int)best_score.base, (int)best_score.bonus);
   return thrust::make_tuple(best_move, best_score);
 }
 
@@ -394,6 +404,7 @@ void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& solution)
     raft::device_span<f_t>(fj_cpu.h_cstr_left_weights.data(), fj_cpu.h_cstr_left_weights.size());
   fj_cpu.view.cstr_right_weights =
     raft::device_span<f_t>(fj_cpu.h_cstr_right_weights.data(), fj_cpu.h_cstr_right_weights.size());
+  fj_cpu.view.objective_weight = &fj_cpu.h_objective_weight;
   fj_cpu.view.incumbent_assignment =
     raft::device_span<f_t>(fj_cpu.h_assignment.data(), fj_cpu.h_assignment.size());
   fj_cpu.view.incumbent_lhs = raft::device_span<f_t>(fj_cpu.h_lhs.data(), fj_cpu.h_lhs.size());
@@ -431,6 +442,13 @@ void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& solution)
   fj_cpu.view.pb.reverse_offsets =
     raft::device_span<i_t>(fj_cpu.h_reverse_offsets.data(), fj_cpu.h_reverse_offsets.size());
 
+  // scratch thread: fill all weights with 1
+  for (i_t cstr_idx = 0; cstr_idx < fj.pb_ptr->n_constraints; ++cstr_idx) {
+    fj_cpu.h_cstr_left_weights[cstr_idx]  = 1;
+    fj_cpu.h_cstr_right_weights[cstr_idx] = 1;
+  }
+  fj_cpu.h_objective_weight = 0;
+
   init_lhs(fj_cpu);
 }
 
@@ -448,25 +466,27 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
   fprintf(stderr, "running bespoke CPU FJ!\n");
 
   i_t local_mins = 0;
-  while (fj_cpu.iterations < 100000) {
-    auto [move, score] = find_mtm_move_viol(fj_cpu, 1500);
+  while (fj_cpu.iterations < 10000) {
+    auto [move, score] = find_mtm_move_viol(fj_cpu, 1500 * 1000);
     if (score > fj_staged_score_t::zero()) {
       apply_move(fj_cpu, move.var_idx, move.value - fj_cpu.h_assignment[move.var_idx]);
     } else {
-      printf("local min\n");
+      // printf("local min\n");
       update_weights(fj_cpu);
       auto [move, score] =
         find_mtm_move_viol(fj_cpu, 1);  // pick a single random violated constraint
-      if (move.var_idx >= 0) {
-        apply_move(fj_cpu, move.var_idx, move.value - fj_cpu.h_assignment[move.var_idx]);
-      }
+      i_t var_idx = move.var_idx >= 0 ? move.var_idx : 0;
+      f_t delta   = move.var_idx >= 0 ? move.value - fj_cpu.h_assignment[move.var_idx] : 0;
+      apply_move(fj_cpu, var_idx, delta);
       ++local_mins;
     }
-    printf("iteration: %d, local mins: %d, best_objective: %g, viol: %zu\n",
-           fj_cpu.iterations,
-           local_mins,
-           fj_cpu.h_best_objective,
-           fj_cpu.violated_constraints.size());
+    if (fj_cpu.iterations % 100 == 0) {
+      printf("iteration: %d, local mins: %d, best_objective: %g, viol: %zu\n",
+             fj_cpu.iterations,
+             local_mins,
+             fj_cpu.h_best_objective,
+             fj_cpu.violated_constraints.size());
+    }
     fj_cpu.iterations++;
   }
 

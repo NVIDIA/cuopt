@@ -495,7 +495,14 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
   if (!fp_only_run) {
-    ls.fj.cpu_solve(solution);
+    // run cpu_solve on the same as the other thread: zero solution
+    solution_t<i_t, f_t> zero_solution(*problem_ptr);
+    thrust::fill(zero_solution.handle_ptr->get_thrust_policy(),
+                 zero_solution.assignment.begin(),
+                 zero_solution.assignment.end(),
+                 0.0);
+    zero_solution.clamp_within_bounds();
+    ls.fj.cpu_solve(zero_solution);
     ls.start_fj_scratch_threads(population);
     std::this_thread::sleep_for(std::chrono::seconds(10));
     ls.stop_fj_scratch_threads();

@@ -48,6 +48,7 @@ bool LocalMIP::UnsatTightMove()
   if (localConUtil.unsatConIdxs.size() > 0) {
     size_t neighborSize             = localConUtil.unsatConIdxs.size();
     vector<size_t>* neighborConIdxs = &localConUtil.unsatConIdxs;
+    // no samplin
     if (sampleUnsat < neighborSize) {
       neighborSize    = sampleUnsat;
       neighborConIdxs = &localConUtil.tempUnsatConIdxs;
@@ -88,6 +89,7 @@ bool LocalMIP::UnsatTightMove()
   }
   auto& localObj = localConUtil.conSet[0];
   auto& modelObj = modelConUtil->conSet[0];
+  // BM moves
   if (isFoundFeasible && localObj.UNSAT())
     for (size_t termIdx = 0; termIdx < modelObj.termNum; ++termIdx) {
       size_t varIdx  = modelObj.varIdxSet[termIdx];
@@ -148,7 +150,9 @@ bool LocalMIP::UnsatTightMove()
     }
   }
   if (bestScore > 0) {
-    if (DEBUG) printf("UNSAT: %-10ld; ", bestScore);
+    if (DEBUG)
+      printf(
+        "UNSAT: %-10ld; score %d; subscore %d\n", (int)bestVarIdx, bestScore, (int)bestSubscore);
     ++tightStepUnsat;
     ApplyMove(bestVarIdx, bestDelta);
     for (auto idx : scoreIdxs)
