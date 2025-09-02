@@ -8,10 +8,12 @@ Installation
 pip
 ---
 
-For CUDA 12.x:
-
 .. code-block:: bash
 
+    # CUDA 13
+    pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu13==25.10.* cuopt-sh-client==25.10.* nvidia-cuda-runtime-cu13==13.0.*
+
+    # CUDA 12
     pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.10.* cuopt-sh-client==25.10.* nvidia-cuda-runtime-cu12==12.9.*
 
 .. note::

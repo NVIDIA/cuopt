@@ -16,7 +16,7 @@ dependencies:
 - cuda-nvcc
 - cuda-nvtx-dev
 - cuda-sanitizer-api
-- cuda-version=12.9
+- cuda-version=13.0
 - cudf==25.10.*,>=0.0.0a0
 - cupy>=13.6.0
 - cuvs==25.10.*,>=0.0.0a0
@@ -26,7 +26,7 @@ dependencies:
 - exhale
 - fastapi
 - folium
-- gcc_linux-aarch64=14.*
+- gcc_linux-64=14.*
 - geopandas
 - gmock
 - gtest
@@ -77,10 +77,10 @@ dependencies:
 - sphinx_rtd_theme
 - sphinxcontrib-openapi
 - sphinxcontrib-websupport
-- sysroot_linux-aarch64==2.28
+- sysroot_linux-64==2.28
 - uvicorn==0.34.*
 - pip:
   - nvidia_sphinx_theme
   - swagger-plugin-for-sphinx
   - veroviz
-name: all_cuda-129_arch-aarch64
+name: all_cuda-130_arch-x86_64
