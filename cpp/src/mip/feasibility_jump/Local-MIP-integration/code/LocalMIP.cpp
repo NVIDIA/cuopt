@@ -71,7 +71,11 @@ int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_poi
     ++curStep;
 
     if ((curStep % 10000) == 0)
-      printf("%s running for %d steps, userobj: %lf\n", prefix.c_str(), curStep, GetObjValue());
+      printf("%s running for %d steps (%d mins), userobj: %lf\n",
+             prefix.c_str(),
+             curStep,
+             minima,
+             GetObjValue());
     // only send optimal every 5000 steps
     // if (curStep % 5000 == 0 && found_better) {
     if (found_better) {

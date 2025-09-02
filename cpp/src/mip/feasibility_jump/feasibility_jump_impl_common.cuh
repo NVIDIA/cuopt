@@ -178,4 +178,42 @@ HDI std::pair<f_t, f_t> feas_score_constraint(
   return {base_feas, bonus_robust};
 }
 
+template <typename i_t, typename f_t>
+HDI f_t get_breakthrough_move(typename fj_t<i_t, f_t>::climber_data_t::view_t fj, i_t var_idx)
+{
+  f_t obj_coeff = fj.pb.objective_coefficients[var_idx];
+  f_t v_lb      = fj.pb.variable_lower_bounds[var_idx];
+  f_t v_ub      = fj.pb.variable_upper_bounds[var_idx];
+  cuopt_assert(isfinite(v_lb) || isfinite(v_ub), "unexpected free variable");
+  cuopt_assert(v_lb <= v_ub, "invalid bounds");
+  cuopt_assert(fj.pb.check_variable_within_bounds(var_idx, fj.incumbent_assignment[var_idx]),
+               "invalid incumbent assignment");
+  cuopt_assert(isfinite(obj_coeff), "invalid objective coefficient");
+  cuopt_assert(obj_coeff != 0, "objective coefficient shouldn't be null");
+
+  f_t excess = (*fj.best_objective) - *fj.incumbent_objective;
+
+  cuopt_assert(isfinite(excess) && excess < 0,
+               "breakthru move invoked during invalid solver state");
+
+  f_t old_val = fj.incumbent_assignment[var_idx];
+  f_t new_val = old_val;
+
+  f_t delta_ij = excess / obj_coeff;
+
+  if (fj.pb.is_integer_var(var_idx)) {
+    new_val = obj_coeff > 0 ? floor(old_val + delta_ij + fj.pb.tolerances.integrality_tolerance)
+                            : ceil(old_val + delta_ij - fj.pb.tolerances.integrality_tolerance);
+  } else {
+    new_val = old_val + delta_ij;
+  }
+
+  // fallback
+  if (!fj.pb.check_variable_within_bounds(var_idx, new_val)) {
+    new_val = obj_coeff > 0 ? v_lb : v_ub;
+  }
+
+  return new_val;
+}
+
 }  // namespace cuopt::linear_programming::detail
