@@ -22,21 +22,21 @@ set -euo pipefail
 CUOPT_VERSION="$(rapids-version)"
 
 rapids-logger "Downloading artifacts from previous jobs"
-# CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
-# PYTHON_CHANNEL=$(rapids-download-conda-from-github python)
+CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
+PYTHON_CHANNEL=$(rapids-download-conda-from-github python)
 
 rapids-logger "Generate notebook testing dependencies"
 
 ENV_YAML_DIR="$(mktemp -d)"
 
-#rapids-dependency-file-generator \
-#  --output conda \
-#  --file-key test_notebooks \
-#  --prepend-channel "${CPP_CHANNEL}" \
-#  --prepend-channel "${PYTHON_CHANNEL}" \
-#  --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch);py=${RAPIDS_PY_VERSION}" | tee "${ENV_YAML_DIR}/env.yaml"
+rapids-dependency-file-generator \
+  --output conda \
+  --file-key test_notebooks \
+  --prepend-channel "${CPP_CHANNEL}" \
+  --prepend-channel "${PYTHON_CHANNEL}" \
+  --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch);py=${RAPIDS_PY_VERSION}" | tee "${ENV_YAML_DIR}/env.yaml"
 
-# rapids-mamba-retry env create --yes -f "${ENV_YAML_DIR}/env.yaml" -n test
+rapids-mamba-retry env create --yes -f "${ENV_YAML_DIR}/env.yaml" -n test
 
 # Temporarily allow unbound variables for conda activation.
 set +u
