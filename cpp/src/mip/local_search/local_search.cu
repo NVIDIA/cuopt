@@ -423,7 +423,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
           population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
           save_solution_and_add_cutting_plane(
             population_ptr->best_feasible(), best_solution, best_objective);
-          if (population_ptr->current_size() >= 6) { break; }
+          if (population_ptr->current_size() >= 4) { break; }
         } else {
           save_solution_and_add_cutting_plane(solution, best_solution, best_objective);
         }
@@ -457,7 +457,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
             population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
             save_solution_and_add_cutting_plane(
               population_ptr->best_feasible(), best_solution, best_objective);
-            if (population_ptr->current_size() >= 6) { break; }
+            if (population_ptr->current_size() >= 4) { break; }
           } else {
             save_solution_and_add_cutting_plane(solution, best_solution, best_objective);
           }
