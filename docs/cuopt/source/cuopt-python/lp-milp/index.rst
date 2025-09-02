@@ -7,7 +7,7 @@ This section contains details on the cuOpt linear programming and mixed integer 
 .. toctree::
    :maxdepth: 3
    :caption: LP and MILP
-   :name: LP and MILP    
+   :name: LP and MILP
    :titlesonly:
 
    lp-milp-api.rst

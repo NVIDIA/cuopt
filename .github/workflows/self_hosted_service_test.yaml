@@ -59,7 +59,7 @@ jobs:
     runs-on: linux-amd64-gpu-l4-latest-1
     strategy:
       matrix:
-        ctk: ["12.8.0"]
+        ctk: ["12.9.0"]
         linux_ver: ["ubuntu24.04"]
         py_ver: ["3.12"]
     container:

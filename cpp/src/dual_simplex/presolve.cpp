@@ -165,19 +165,23 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
   std::vector<i_t> col_marker(problem.num_cols);
   i_t new_cols = 0;
   for (i_t j = 0; j < problem.num_cols; ++j) {
+    bool remove_var = false;
     if ((problem.A.col_start[j + 1] - problem.A.col_start[j]) == 0) {
+      if (problem.objective[j] >= 0 && problem.lower[j] > -inf) {
+        presolve_info.removed_values.push_back(problem.lower[j]);
+        problem.obj_constant += problem.objective[j] * problem.lower[j];
+        remove_var = true;
+      } else if (problem.objective[j] <= 0 && problem.upper[j] < inf) {
+        presolve_info.removed_values.push_back(problem.upper[j]);
+        problem.obj_constant += problem.objective[j] * problem.upper[j];
+        remove_var = true;
+      }
+    }
+
+    if (remove_var) {
       col_marker[j] = 1;
       presolve_info.removed_variables.push_back(j);
       presolve_info.removed_reduced_costs.push_back(problem.objective[j]);
-      if (problem.objective[j] >= 0) {
-        presolve_info.removed_values.push_back(problem.lower[j]);
-        problem.obj_constant += problem.objective[j] * problem.lower[j];
-        assert(problem.lower[j] > -inf);
-      } else {
-        presolve_info.removed_values.push_back(problem.upper[j]);
-        problem.obj_constant += problem.objective[j] * problem.upper[j];
-        assert(problem.upper[j] < inf);
-      }
     } else {
       col_marker[j] = 0;
       new_cols++;
@@ -751,7 +755,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     }
   }
   if (num_empty_cols > 0) {
-    settings.log.printf("Presolve removing %d empty cols\n", num_empty_cols);
+    settings.log.printf("Presolve attempt to remove %d empty cols\n", num_empty_cols);
     remove_empty_cols(problem, num_empty_cols, presolve_info);
   }
 

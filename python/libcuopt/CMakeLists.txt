@@ -15,28 +15,25 @@
 
 cmake_minimum_required(VERSION 3.30.4 FATAL_ERROR)
 
-set(cuopt_version 25.08.00)
-
 include(../../cmake/rapids_config.cmake)
 include(rapids-cuda)
 rapids_cuda_init_architectures(libcuopt-python)
 
 project(
   libcuopt-python
-  VERSION "${cuopt_version}"
+  VERSION "${CUOPT_VERSION}"
   LANGUAGES CXX CUDA
 )
 
 # Check if cuopt is already available. If so, it is the user's responsibility to ensure that the
 # CMake package is also available at build time of the Python cuopt package.
-find_package(cuopt "${cuopt_version}")
+find_package(cuopt "${CUOPT_VERSION}")
 
 if(cuopt_FOUND)
   return()
 endif()
 
 unset(cuopt_FOUND)
-
 
 include(FetchContent)
 FetchContent_Declare(
@@ -46,6 +43,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(argparse)
 
+set(TBB OFF CACHE BOOL "Disable TBB")
+set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
+set(PAPILO_NO_BINARIES ON)
+option(LUSOL "Disable LUSOL" OFF)
+
 set(BUILD_TESTS OFF)
 set(BUILD_BENCHMARKS OFF)
 set(CUOPT_BUILD_TESTUTIL OFF)
@@ -53,8 +55,12 @@ set(CUDA_STATIC_RUNTIME ON)
 
 add_subdirectory(../../cpp cuopt-cpp)
 
-target_link_libraries(cuopt PRIVATE argparse)
-target_link_libraries(cuopt_cli PRIVATE argparse)
+target_link_libraries(cuopt PRIVATE
+    argparse
+)
+target_link_libraries(cuopt_cli PRIVATE
+    argparse
+)
 
 set(rpaths
   "$ORIGIN/../lib64"

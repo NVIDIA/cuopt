@@ -70,7 +70,7 @@ library features. The following instructions are for building with a conda envir
 
 CUDA/GPU Runtime:
 
-* CUDA 12.8
+* CUDA 12.9
 * Volta architecture or better ([Compute Capability](https://docs.nvidia.com/deploy/cuda-compatibility/) >=7.0)
 
 Python:
@@ -323,5 +323,3 @@ You can skip these checks with `git commit --no-verify` or with the short versio
 
     (d) I understand and agree that this project and the contribution are public and that a record of the contribution (including all personal information I submit with it, including my sign-off) is maintained indefinitely and may be redistributed consistent with this project or the open source license(s) involved.
   ```
-
-

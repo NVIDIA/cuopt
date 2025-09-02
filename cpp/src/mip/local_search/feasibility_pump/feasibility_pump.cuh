@@ -169,8 +169,7 @@ class feasibility_pump_t {
   f_t proj_and_round_time;
   f_t proj_begin;
   i_t n_fj_single_descents;
-  i_t max_n_of_integers      = 0;
-  bool run_intensive_restart = false;
+  i_t max_n_of_integers = 0;
   cuopt::timer_t timer;
 };
 
