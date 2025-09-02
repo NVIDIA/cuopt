@@ -14,7 +14,7 @@ For CUDA 12.x:
 
 .. code-block:: bash
 
-    pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu12==25.10.* nvidia-cuda-runtime-cu12==12.9.*
+    pip install --extra-index-url=https://pypi.nvidia.com nvidia-cuda-runtime-cu12==12.9.* cuopt-cu12==25.10.*
 
 
 .. note::
@@ -22,7 +22,7 @@ For CUDA 12.x:
 
 .. code-block:: bash
 
-    pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ cuopt-cu12==25.10.* nvidia-cuda-runtime-cu12==12.9.*
+    pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ nvidia-cuda-runtime-cu12==12.9.* cuopt-cu12==25.10.*
 
 
 Conda
