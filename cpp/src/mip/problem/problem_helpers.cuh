@@ -58,6 +58,54 @@ struct transform_bounds_functor {
   }
 };
 
+#if 1
+template <typename f_t, typename f_t2>
+static std::tuple<std::vector<f_t>, std::vector<f_t>> extract_host_bounds(
+  const rmm::device_uvector<f_t2>& variable_bounds, const raft::handle_t* handle_ptr)
+{
+  rmm::device_uvector<f_t> var_lb(variable_bounds.size(), handle_ptr->get_stream());
+  rmm::device_uvector<f_t> var_ub(variable_bounds.size(), handle_ptr->get_stream());
+  thrust::transform(handle_ptr->get_thrust_policy(),
+                    variable_bounds.begin(),
+                    variable_bounds.end(),
+                    thrust::make_zip_iterator(thrust::make_tuple(var_lb.begin(), var_ub.begin())),
+                    [] __device__(auto i) { return thrust::make_tuple(i.x, i.y); });
+  auto h_var_lb = cuopt::host_copy(var_lb);
+  auto h_var_ub = cuopt::host_copy(var_ub);
+  return std::make_tuple(h_var_lb, h_var_ub);
+}
+
+template <typename i_t, typename f_t>
+static void set_variable_bounds(detail::problem_t<i_t, f_t>& op_problem)
+{
+  op_problem.variable_bounds.resize(op_problem.n_variables, op_problem.handle_ptr->get_stream());
+  auto vars_bnd = make_span(op_problem.variable_bounds);
+
+  auto orig_problem          = op_problem.original_problem_ptr;
+  auto variable_lower_bounds = make_span(orig_problem->get_variable_lower_bounds());
+  auto variable_upper_bounds = make_span(orig_problem->get_variable_upper_bounds());
+
+  bool default_variable_lb = (orig_problem->get_variable_lower_bounds().is_empty());
+  bool default_variable_ub = (orig_problem->get_variable_upper_bounds().is_empty());
+
+  thrust::for_each(op_problem.handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator<i_t>(0),
+                   thrust::make_counting_iterator<i_t>(op_problem.n_variables),
+                   [vars_bnd,
+                    variable_lower_bounds,
+                    variable_upper_bounds,
+                    default_variable_lb,
+                    default_variable_ub] __device__(auto i) {
+                     using f_t2 = typename type_2<f_t>::type;
+                     auto lb    = f_t{0};
+                     auto ub    = std::numeric_limits<f_t>::infinity();
+                     if (!default_variable_lb) { lb = variable_lower_bounds[i]; }
+                     if (!default_variable_ub) { ub = variable_upper_bounds[i]; }
+                     vars_bnd[i] = f_t2{lb, ub};
+                   });
+}
+#endif
+
 template <typename i_t, typename f_t>
 static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
 {
@@ -90,6 +138,7 @@ static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
                       transform_bounds_functor<f_t>());
   }
 
+#if 1
   // If variable bound was not set, set it to default value
   if (op_problem.variable_lower_bounds.is_empty() &&
       !op_problem.objective_coefficients.is_empty()) {
@@ -109,6 +158,7 @@ static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
                  op_problem.variable_upper_bounds.end(),
                  std::numeric_limits<f_t>::infinity());
   }
+#endif
   if (op_problem.variable_types.is_empty() && !op_problem.objective_coefficients.is_empty()) {
     op_problem.variable_types.resize(op_problem.objective_coefficients.size(),
                                      op_problem.handle_ptr->get_stream());

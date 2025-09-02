@@ -129,10 +129,18 @@ struct a_divides_sqrt_b_bounded {
 };
 
 template <typename f_t>
-struct clamp {
+struct constraint_clamp {
   __device__ f_t operator()(f_t value, f_t lower, f_t upper)
   {
     return raft::min<f_t>(raft::max<f_t>(value, lower), upper);
+  }
+};
+
+template <typename f_t, typename f_t2>
+struct clamp {
+  __device__ f_t operator()(f_t value, f_t2 bounds)
+  {
+    return raft::min<f_t>(raft::max<f_t>(value, bounds.x), bounds.y);
   }
 };
 
@@ -177,34 +185,56 @@ struct violation {
   }
 };
 
-template <typename f_t>
+template <typename f_t, typename f_t2>
 struct max_violation {
   max_violation() {}
-  __device__ f_t operator()(const thrust::tuple<f_t, f_t, f_t>& t) const
+  __device__ f_t operator()(const thrust::tuple<f_t, f_t2>& t) const
   {
-    const f_t value = thrust::get<0>(t);
-    const f_t lower = thrust::get<1>(t);
-    const f_t upper = thrust::get<2>(t);
-    f_t local_max   = f_t(0.0);
+    const f_t value   = thrust::get<0>(t);
+    const f_t2 bounds = thrust::get<1>(t);
+    const f_t lower   = bounds.x;
+    const f_t upper   = bounds.y;
+    f_t local_max     = f_t(0.0);
     if (isfinite(lower)) { local_max = raft::max(local_max, -value); }
     if (isfinite(upper)) { local_max = raft::max(local_max, value); }
     return local_max;
   }
 };
 
-template <typename f_t>
+template <typename f_t, typename f_t2>
 struct bound_value_gradient {
-  __device__ f_t operator()(f_t value, f_t lower, f_t upper)
+  __device__ f_t operator()(f_t value, f_t2 bounds)
   {
+    f_t lower = bounds.x;
+    f_t upper = bounds.y;
     if (value > f_t(0) && value < f_t(0)) { return 0; }
     return value > f_t(0) ? lower : upper;
   }
 };
 
 template <typename f_t>
-struct bound_value_reduced_cost_product {
+struct constraint_bound_value_reduced_cost_product {
   __device__ f_t operator()(f_t value, f_t lower, f_t upper)
   {
+    f_t bound_value = f_t(0);
+    if (value > f_t(0)) {
+      // A positive reduced cost is associated with a binding lower bound.
+      bound_value = lower;
+    } else if (value < f_t(0)) {
+      // A negative reduced cost is associated with a binding upper bound.
+      bound_value = upper;
+    }
+    f_t val = isfinite(bound_value) ? value * bound_value : f_t(0);
+    return val;
+  }
+};
+
+template <typename f_t, typename f_t2>
+struct bound_value_reduced_cost_product {
+  __device__ f_t operator()(f_t value, f_t2 variable_bounds)
+  {
+    f_t lower       = variable_bounds.x;
+    f_t upper       = variable_bounds.y;
     f_t bound_value = f_t(0);
     if (value > f_t(0)) {
       // A positive reduced cost is associated with a binding lower bound.

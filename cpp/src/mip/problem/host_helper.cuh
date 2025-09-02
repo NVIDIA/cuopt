@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
@@ -52,7 +53,9 @@ struct constraints_delta_t {
 
 template <typename i_t, typename f_t>
 struct variables_delta_t {
+  using f_t2 = typename type_2<f_t>::type;
   std::vector<f_t> objective_coefficients;
+  std::vector<f_t2> variable_bounds;
   std::vector<f_t> lower_bounds;
   std::vector<f_t> upper_bounds;
   std::vector<var_t> variable_types;
@@ -66,6 +69,7 @@ struct variables_delta_t {
   i_t add_variable(f_t lower_bound, f_t upper_bound, f_t obj_weight, var_t var_type)
   {
     cuopt_assert(lower_bound >= 0, "Variable bounds must be non-negative!");
+    variable_bounds.push_back(f_t2{lower_bound, upper_bound});
     lower_bounds.push_back(lower_bound);
     upper_bounds.push_back(upper_bound);
     objective_coefficients.push_back(obj_weight);

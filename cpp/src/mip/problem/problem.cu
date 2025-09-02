@@ -70,6 +70,8 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
   // Set variables bounds to default if not set and constraints bounds if user has set a row type
   set_bounds_if_not_set(*this);
 
+  set_variable_bounds(*this);
+
   const bool is_mip = original_problem_ptr->get_problem_category() != problem_category_t::LP;
   if (is_mip) {
     variable_types =
@@ -123,6 +125,7 @@ problem_t<i_t, f_t>::problem_t(
     offsets(problem_.get_constraint_matrix_offsets(), problem_.get_handle_ptr()->get_stream()),
     objective_coefficients(problem_.get_objective_coefficients(),
                            problem_.get_handle_ptr()->get_stream()),
+    variable_bounds(0, problem_.get_handle_ptr()->get_stream()),
     variable_lower_bounds(problem_.get_variable_lower_bounds(),
                           problem_.get_handle_ptr()->get_stream()),
     variable_upper_bounds(problem_.get_variable_upper_bounds(),
@@ -175,6 +178,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     variables(problem_.variables, handle_ptr->get_stream()),
     offsets(problem_.offsets, handle_ptr->get_stream()),
     objective_coefficients(problem_.objective_coefficients, handle_ptr->get_stream()),
+    variable_bounds(problem_.variable_bounds, handle_ptr->get_stream()),
     variable_lower_bounds(problem_.variable_lower_bounds, handle_ptr->get_stream()),
     variable_upper_bounds(problem_.variable_upper_bounds, handle_ptr->get_stream()),
     constraint_lower_bounds(problem_.constraint_lower_bounds, handle_ptr->get_stream()),
@@ -248,6 +252,10 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
         ? rmm::device_uvector<f_t>(problem_.objective_coefficients, handle_ptr->get_stream())
         : rmm::device_uvector<f_t>(problem_.objective_coefficients.size(),
                                    handle_ptr->get_stream())),
+    variable_bounds(
+      (!no_deep_copy)
+        ? rmm::device_uvector<f_t2>(problem_.variable_bounds, handle_ptr->get_stream())
+        : rmm::device_uvector<f_t2>(problem_.variable_bounds.size(), handle_ptr->get_stream())),
     variable_lower_bounds(
       (!no_deep_copy)
         ? rmm::device_uvector<f_t>(problem_.variable_lower_bounds, handle_ptr->get_stream())
@@ -392,7 +400,13 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
   if (!empty) {
     cuopt_assert(!variable_lower_bounds.is_empty() && !variable_upper_bounds.is_empty(),
                  "Variable lower bounds and variable upper bounds must be set.");
+    cuopt_assert(!variable_bounds.is_empty(), "Variable bounds must be set.");
   }
+  cuopt_assert(variable_bounds.size() == 2 * objective_coefficients.size(),
+               "Sizes for vectors related to the variables are not the same.");
+  cuopt_assert(variable_bounds.size() == 2 * (std::size_t)n_variables,
+               "Sizes for vectors related to the variables are not the same.");
+
   cuopt_assert(variable_lower_bounds.size() == objective_coefficients.size(),
                "Sizes for vectors related to the variables are not the same.");
   cuopt_assert(variable_upper_bounds.size() == objective_coefficients.size(),
@@ -418,16 +432,15 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                "Sizes for vectors related to the constraints are not the same.");
 
   // Check the validity of bounds
-  cuopt_expects(
-    thrust::all_of(handle_ptr->get_thrust_policy(),
-                   thrust::make_counting_iterator<i_t>(0),
-                   thrust::make_counting_iterator<i_t>(n_variables),
-                   [variable_lower_bounds = variable_lower_bounds.data(),
-                    variable_upper_bounds = variable_upper_bounds.data()] __device__(i_t idx) {
-                     return variable_lower_bounds[idx] <= variable_upper_bounds[idx];
-                   }),
-    error_type_t::ValidationError,
-    "Variable bounds are invalid");
+  cuopt_expects(thrust::all_of(handle_ptr->get_thrust_policy(),
+                               thrust::make_counting_iterator<i_t>(0),
+                               thrust::make_counting_iterator<i_t>(n_variables),
+                               [vars_bnd = make_span(variable_bounds)] __device__(i_t idx) {
+                                 auto bounds = vars_bnd[idx];
+                                 return bounds.x <= bounds.y;
+                               }),
+                error_type_t::ValidationError,
+                "Variable bounds are invalid");
   cuopt_expects(
     thrust::all_of(handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator<i_t>(0),
@@ -581,14 +594,14 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                                   is_binary_variable.cbegin()),
         thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(is_binary_variable.size()),
                                   is_binary_variable.cend()),
-        [types = variable_types.data(),
-         lb    = variable_lower_bounds.data(),
-         ub    = variable_upper_bounds.data(),
-         v     = view()] __device__(const thrust::tuple<int, int> tuple) {
-          i_t idx  = thrust::get<0>(tuple);
-          i_t pred = thrust::get<1>(tuple);
-          return pred == (types[idx] != var_t::CONTINUOUS && v.integer_equal(lb[idx], 0.) &&
-                          v.integer_equal(ub[idx], 1.));
+        [types    = variable_types.data(),
+         vars_bnd = make_span(variable_bounds),
+         v        = view()] __device__(const thrust::tuple<int, int> tuple) {
+          i_t idx     = thrust::get<0>(tuple);
+          i_t pred    = thrust::get<1>(tuple);
+          auto bounds = vars_bnd[idx];
+          return pred == (types[idx] != var_t::CONTINUOUS && v.integer_equal(bounds.x, 0.) &&
+                          v.integer_equal(bounds.y, 1.));
         }),
       "The binary variable table is incorrect.");
     if (!empty) {
@@ -761,14 +774,15 @@ void problem_t<i_t, f_t>::compute_binary_var_table()
   auto pb_view = view();
 
   is_binary_variable.resize(n_variables, handle_ptr->get_stream());
-  thrust::tabulate(handle_ptr->get_thrust_policy(),
-                   is_binary_variable.begin(),
-                   is_binary_variable.end(),
-                   [pb_view] __device__(i_t i) {
-                     return pb_view.variable_types[i] != var_t::CONTINUOUS &&
-                            (pb_view.integer_equal(pb_view.variable_lower_bounds[i], 0) &&
-                             pb_view.integer_equal(pb_view.variable_upper_bounds[i], 1));
-                   });
+  thrust::tabulate(
+    handle_ptr->get_thrust_policy(),
+    is_binary_variable.begin(),
+    is_binary_variable.end(),
+    [pb_view] __device__(i_t i) {
+      auto bounds = pb_view.variable_bounds[i];
+      return pb_view.variable_types[i] != var_t::CONTINUOUS &&
+             (pb_view.integer_equal(bounds.x, 0) && pb_view.integer_equal(bounds.y, 1));
+    });
   get_n_binary_variables();
 
   binary_indices.resize(n_variables, handle_ptr->get_stream());
@@ -916,6 +930,7 @@ typename problem_t<i_t, f_t>::view_t problem_t<i_t, f_t>::view()
   v.offsets         = raft::device_span<i_t>{offsets.data(), offsets.size()};
   v.objective_coefficients =
     raft::device_span<f_t>{objective_coefficients.data(), objective_coefficients.size()};
+  v.variable_bounds = make_span(variable_bounds);
   v.variable_lower_bounds =
     raft::device_span<f_t>{variable_lower_bounds.data(), variable_lower_bounds.size()};
   v.variable_upper_bounds =
@@ -942,6 +957,7 @@ typename problem_t<i_t, f_t>::view_t problem_t<i_t, f_t>::view()
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::resize_variables(size_t size)
 {
+  variable_bounds.resize(size, handle_ptr->get_stream());
   variable_lower_bounds.resize(size, handle_ptr->get_stream());
   variable_upper_bounds.resize(size, handle_ptr->get_stream());
   variable_types.resize(size, handle_ptr->get_stream());
@@ -975,6 +991,10 @@ void problem_t<i_t, f_t>::insert_variables(variables_delta_t<i_t, f_t>& h_vars)
   CUOPT_LOG_DEBUG("problem added variable size %d prev %d", h_vars.size(), n_variables);
   // resize the variable arrays if it can't fit the variables
   resize_variables(n_variables + h_vars.size());
+  raft::copy(variable_bounds.data() + n_variables,
+             h_vars.variable_bounds.data(),
+             h_vars.variable_bounds.size(),
+             handle_ptr->get_stream());
   raft::copy(variable_lower_bounds.data() + n_variables,
              h_vars.lower_bounds.data(),
              h_vars.lower_bounds.size(),
@@ -1221,6 +1241,12 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
   thrust::gather(handle_ptr->get_thrust_policy(),
                  variable_map.begin(),
                  variable_map.end(),
+                 original_problem.variable_bounds.begin(),
+                 variable_bounds.begin());
+  variable_bounds.resize(variable_map.size(), handle_ptr->get_stream());
+  thrust::gather(handle_ptr->get_thrust_policy(),
+                 variable_map.begin(),
+                 variable_map.end(),
                  original_problem.variable_lower_bounds.begin(),
                  variable_lower_bounds.begin());
   variable_lower_bounds.resize(variable_map.size(), handle_ptr->get_stream());
@@ -1346,21 +1372,23 @@ template <typename i_t, typename f_t>
 void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_constraint_map,
                         problem_t<i_t, f_t>& pb)
 {
-  auto handle_ptr               = pb.handle_ptr;
-  auto h_var_lower_bounds       = cuopt::host_copy(pb.variable_lower_bounds);
-  auto h_var_upper_bounds       = cuopt::host_copy(pb.variable_upper_bounds);
+  auto handle_ptr   = pb.handle_ptr;
+  auto h_var_bounds = cuopt::host_copy(pb.variable_bounds);
+  // auto h_var_lower_bounds       = cuopt::host_copy(pb.variable_lower_bounds);
+  // auto h_var_upper_bounds       = cuopt::host_copy(pb.variable_upper_bounds);
   auto h_objective_coefficients = cuopt::host_copy(pb.objective_coefficients);
   auto h_variable_types         = cuopt::host_copy(pb.variable_types);
   handle_ptr->sync_stream();
 
-  const i_t n_vars_originally = (i_t)h_var_lower_bounds.size();
+  const i_t n_vars_originally = (i_t)h_var_bounds.size();
 
   for (i_t i = 0; i < n_vars_originally; ++i) {
     // if variable has free bounds, replace it with two vars
     // but add only one var and use it in all constraints
     // TODO create one var for integrals and one var for continuous
-    if (h_var_lower_bounds[i] == -std::numeric_limits<f_t>::infinity() &&
-        h_var_upper_bounds[i] == std::numeric_limits<f_t>::infinity()) {
+    auto h_var_bound = h_var_bounds[i];
+    if (h_var_bound.x == -std::numeric_limits<f_t>::infinity() &&
+        h_var_bound.y == std::numeric_limits<f_t>::infinity()) {
       // add new variable
       auto var_coeff_vec = variable_constraint_map[i];
       // negate all values in vec
@@ -1368,16 +1396,16 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
         coeff = -coeff;
       }
 
-      h_var_lower_bounds[i]                         = 0.;
+      h_var_bounds[i].x                             = 0.;
       pb.presolve_data.variable_offsets[i]          = 0.;
       pb.presolve_data.additional_var_used[i]       = true;
       pb.presolve_data.additional_var_id_per_var[i] = pb.n_variables;
 
+      using f_t2 = typename type_2<f_t>::type;
       // new var data
       std::stable_sort(var_coeff_vec.begin(), var_coeff_vec.end());
       variable_constraint_map.push_back(var_coeff_vec);
-      h_var_lower_bounds.push_back(0.);
-      h_var_upper_bounds.push_back(std::numeric_limits<f_t>::infinity());
+      h_var_bounds.push_back(f_t2{0., std::numeric_limits<f_t>::infinity()});
       pb.presolve_data.variable_offsets.push_back(0.);
       h_objective_coefficients.push_back(-h_objective_coefficients[i]);
       h_variable_types.push_back(h_variable_types[i]);
@@ -1393,21 +1421,24 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
   // TODO add some tests
 
   // resize the device vectors is sizes are smaller
-  if (pb.variable_lower_bounds.size() < h_var_lower_bounds.size()) {
-    pb.variable_lower_bounds.resize(h_var_lower_bounds.size(), handle_ptr->get_stream());
-    pb.variable_upper_bounds.resize(h_var_lower_bounds.size(), handle_ptr->get_stream());
+  if (pb.variable_bounds.size() < h_var_bounds.size()) {
+    // pb.variable_lower_bounds.resize(h_var_lower_bounds.size(), handle_ptr->get_stream());
+    // pb.variable_upper_bounds.resize(h_var_lower_bounds.size(), handle_ptr->get_stream());
+    pb.variable_bounds.resize(h_var_bounds.size(), handle_ptr->get_stream());
     pb.objective_coefficients.resize(h_objective_coefficients.size(), handle_ptr->get_stream());
     pb.variable_types.resize(h_variable_types.size(), handle_ptr->get_stream());
   }
 
-  raft::copy(pb.variable_lower_bounds.data(),
-             h_var_lower_bounds.data(),
-             h_var_lower_bounds.size(),
-             handle_ptr->get_stream());
-  raft::copy(pb.variable_upper_bounds.data(),
-             h_var_upper_bounds.data(),
-             h_var_upper_bounds.size(),
-             handle_ptr->get_stream());
+  raft::copy(
+    pb.variable_bounds.data(), h_var_bounds.data(), h_var_bounds.size(), handle_ptr->get_stream());
+  // raft::copy(pb.variable_lower_bounds.data(),
+  //            h_var_lower_bounds.data(),
+  //            h_var_lower_bounds.size(),
+  //            handle_ptr->get_stream());
+  // raft::copy(pb.variable_upper_bounds.data(),
+  //            h_var_upper_bounds.data(),
+  //            h_var_upper_bounds.size(),
+  //            handle_ptr->get_stream());
   raft::copy(pb.objective_coefficients.data(),
              h_objective_coefficients.data(),
              h_objective_coefficients.size(),
@@ -1543,9 +1574,11 @@ void problem_t<i_t, f_t>::get_host_user_problem(
     }
   }
   user_problem.num_range_rows = user_problem.range_rows.size();
-  user_problem.lower          = cuopt::host_copy(variable_lower_bounds);
-  user_problem.upper          = cuopt::host_copy(variable_upper_bounds);
-  user_problem.problem_name   = original_problem_ptr->get_problem_name();
+  // user_problem.lower          = cuopt::host_copy(variable_lower_bounds);
+  // user_problem.upper          = cuopt::host_copy(variable_upper_bounds);
+  std::tie(user_problem.lower, user_problem.upper) =
+    extract_host_bounds<f_t>(variable_bounds, handle_ptr);
+  user_problem.problem_name = original_problem_ptr->get_problem_name();
   if (static_cast<i_t>(row_names.size()) == m) {
     user_problem.row_names.resize(m);
     for (int i = 0; i < m; ++i) {
