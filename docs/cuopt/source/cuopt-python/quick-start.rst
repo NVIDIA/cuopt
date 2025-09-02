@@ -20,6 +20,10 @@ For CUDA 12.x:
 .. note::
    For development wheels which are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/`.
 
+.. code-block:: bash
+
+    pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ cuopt-cu12==25.10.* nvidia-cuda-runtime-cu12==12.9.*
+
 
 Conda
 -----
