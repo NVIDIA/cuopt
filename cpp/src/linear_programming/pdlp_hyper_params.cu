@@ -81,7 +81,7 @@ bool project_initial_primal = true;
 // Whether to use adaptive step size strategy
 bool use_adaptive_step_size_strategy = true;
 // TODO comment
-bool initial_step_size_max_singular_value = false;
-
+bool initial_step_size_max_singular_value  = false;
+bool initial_primal_weight_combined_bounds = true;
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params

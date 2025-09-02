@@ -95,6 +95,8 @@ static void set_Stable1()
   pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = true;
   pdlp_hyper_params::project_initial_primal                                     = false;
   pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
+  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
+  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
 }
 
 // Even better general setting due to proper primal gradient handling for KKT restart and initial
@@ -132,6 +134,7 @@ static void set_Stable2()
   pdlp_hyper_params::project_initial_primal                                     = true;
   pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
   pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
+  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
 }
 
 // Same as Stable2 but without adaptive step size strategy
@@ -168,6 +171,7 @@ static void set_Stable3()
   pdlp_hyper_params::project_initial_primal                                     = true;
   pdlp_hyper_params::use_adaptive_step_size_strategy                            = false;
   pdlp_hyper_params::initial_step_size_max_singular_value                       = true;
+  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = false;
 }
 
 // Legacy/Original/Initial PDLP settings
@@ -204,7 +208,7 @@ static void set_Methodical1()
   pdlp_hyper_params::project_initial_primal                                     = false;
   pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
   pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
-
+  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
 }
 
 // Can be extremly faster but usually leads to more divergence
@@ -242,7 +246,7 @@ static void set_Fast1()
   pdlp_hyper_params::project_initial_primal                                     = false;
   pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
   pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
-
+  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
 }
 
 template <typename i_t, typename f_t>
