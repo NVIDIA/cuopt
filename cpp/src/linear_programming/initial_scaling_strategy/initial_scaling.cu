@@ -17,6 +17,8 @@
 
 #include <cuopt/error.hpp>
 
+#include <utilities/copy_helpers.hpp>
+
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <linear_programming/utils.cuh>
@@ -56,6 +58,8 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
     running_mip_(running_mip),
     iteration_constraint_matrix_scaling_{static_cast<size_t>(dual_size_h_), stream_view_},
     iteration_variable_scaling_{static_cast<size_t>(primal_size_h_), stream_view_},
+    bound_rescaling_(f_t(1), stream_view_),
+    objective_rescaling_(f_t(1), stream_view_),
     cummulative_constraint_matrix_scaling_{static_cast<size_t>(dual_size_h_), stream_view_},
     cummulative_variable_scaling_{static_cast<size_t>(primal_size_h_), stream_view_}
 {
@@ -89,6 +93,62 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::compute_scaling_vectors(
 
   if (pdlp_hyper_params::do_ruiz_scaling) { ruiz_inf_scaling(number_of_ruiz_iterations); }
   if (pdlp_hyper_params::do_pock_chambolle_scaling) { pock_chambolle_scaling(alpha); }
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
+{
+  rmm::device_buffer d_temp_storage;
+  size_t bytes;
+
+  auto main_op = [] HD(const thrust::tuple<f_t, f_t> t) {
+    const f_t lower = thrust::get<0>(t);
+    const f_t upper = thrust::get<1>(t);
+    f_t sum         = 0;
+    if (isfinite(lower) && (lower != upper)) sum += lower * lower;
+    if (isfinite(upper)) sum += upper * upper;
+    return sum;
+  };
+  cub::DeviceReduce::TransformReduce(
+    nullptr,
+    bytes,
+    thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
+                              op_problem_scaled_.constraint_upper_bounds.data()),
+    bound_rescaling_.data(),
+    op_problem_scaled_.constraint_lower_bounds.size(),
+    cuda::std::plus<>{},
+    main_op,
+    f_t(0),
+    stream_view_);
+
+  d_temp_storage.resize(bytes, stream_view_);
+
+  cub::DeviceReduce::TransformReduce(
+    d_temp_storage.data(),
+    bytes,
+    thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
+                              op_problem_scaled_.constraint_upper_bounds.data()),
+    bound_rescaling_.data(),
+    op_problem_scaled_.constraint_lower_bounds.size(),
+    cuda::std::plus<>{},
+    main_op,
+    f_t(0),
+    stream_view_);
+
+  f_t res = f_t(1.0) / (std::sqrt(bound_rescaling_.value(stream_view_)) + f_t(1.0));
+  bound_rescaling_.set_value_async(res, stream_view_);
+
+  detail::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.objective_coefficients,
+                                        pdlp_hyper_params::initial_primal_weight_c_scaling,
+                                        objective_rescaling_,
+                                        stream_view_);
+
+  // sqrt already applied
+  f_t res2 = f_t(1.0) / (objective_rescaling_.value(stream_view_) + f_t(1.0));
+  objective_rescaling_.set_value_async(res2, stream_view_);
+
+  // Sync since we are using local variable
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 }
 
 template <typename i_t, typename f_t>
@@ -400,6 +460,43 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
     cummulative_constraint_matrix_scaling_.data(),
     dual_size_h_,
     stream_view_);
+
+  if (pdlp_hyper_params::bound_objective_rescaling) {
+    // Coefficients are computed on the already scaled values
+    bound_objective_rescaling();
+
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(op_problem_scaled_.constraint_lower_bounds.data(),
+                            op_problem_scaled_.constraint_upper_bounds.data()),
+      thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
+                                op_problem_scaled_.constraint_upper_bounds.data()),
+      op_problem_scaled_.constraint_upper_bounds.size(),
+      [bound_rescaling = bound_rescaling_.data()] __device__(
+        f_t constraint_lower_bound, f_t constraint_upper_bound) -> thrust::tuple<f_t, f_t> {
+        return {constraint_lower_bound * *bound_rescaling,
+                constraint_upper_bound * *bound_rescaling};
+      },
+      stream_view_);
+
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(op_problem_scaled_.variable_lower_bounds.data(),
+                            op_problem_scaled_.variable_upper_bounds.data(),
+                            op_problem_scaled_.objective_coefficients.data()),
+      thrust::make_zip_iterator(op_problem_scaled_.variable_lower_bounds.data(),
+                                op_problem_scaled_.variable_upper_bounds.data(),
+                                op_problem_scaled_.objective_coefficients.data()),
+      op_problem_scaled_.variable_upper_bounds.size(),
+      [bound_rescaling     = bound_rescaling_.data(),
+       objective_rescaling = objective_rescaling_.data()] __device__(f_t variable_lower_bound,
+                                                                     f_t variable_upper_bound,
+                                                                     f_t objective_coefficient)
+        -> thrust::tuple<f_t, f_t, f_t> {
+        return {variable_lower_bound * *bound_rescaling,
+                variable_upper_bound * *bound_rescaling,
+                objective_coefficient * *objective_rescaling};
+      },
+      stream_view_);
+  }
 
   op_problem_scaled_.is_scaled_ = true;
   if (!running_mip_) {

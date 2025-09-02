@@ -83,5 +83,6 @@ bool use_adaptive_step_size_strategy = true;
 // TODO comment
 bool initial_step_size_max_singular_value  = false;
 bool initial_primal_weight_combined_bounds = true;
+bool bound_objective_rescaling             = false;
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params

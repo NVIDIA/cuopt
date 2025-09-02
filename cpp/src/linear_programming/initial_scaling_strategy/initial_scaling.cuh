@@ -74,6 +74,8 @@ class pdlp_initial_scaling_strategy_t {
   rmm::device_uvector<f_t>& get_variable_scaling_vector();
   const problem_t<i_t, f_t>& get_scaled_op_problem();
 
+  void bound_objective_rescaling();
+
   /**
    * @brief Gets the device-side view (with raw pointers), for ease of access
    *        inside cuda kernels
@@ -95,6 +97,9 @@ class pdlp_initial_scaling_strategy_t {
 
   rmm::device_uvector<f_t> iteration_constraint_matrix_scaling_;
   rmm::device_uvector<f_t> iteration_variable_scaling_;
+
+  rmm::device_scalar<f_t> bound_rescaling_;
+  rmm::device_scalar<f_t> objective_rescaling_;
 
   rmm::device_uvector<f_t> cummulative_constraint_matrix_scaling_;
   rmm::device_uvector<f_t> cummulative_variable_scaling_;
