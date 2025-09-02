@@ -80,5 +80,8 @@ bool handle_some_primal_gradients_on_finite_bounds_as_residuals = false;
 bool project_initial_primal = true;
 // Whether to use adaptive step size strategy
 bool use_adaptive_step_size_strategy = true;
+// TODO comment
+bool initial_step_size_max_singular_value = false;
+
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params

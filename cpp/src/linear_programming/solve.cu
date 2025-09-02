@@ -131,6 +131,7 @@ static void set_Stable2()
   pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = false;
   pdlp_hyper_params::project_initial_primal                                     = true;
   pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
+  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
 }
 
 // Same as Stable2 but without adaptive step size strategy
@@ -166,6 +167,7 @@ static void set_Stable3()
   pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = false;
   pdlp_hyper_params::project_initial_primal                                     = true;
   pdlp_hyper_params::use_adaptive_step_size_strategy                            = false;
+  pdlp_hyper_params::initial_step_size_max_singular_value                       = true;
 }
 
 // Legacy/Original/Initial PDLP settings
@@ -201,6 +203,8 @@ static void set_Methodical1()
   pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = true;
   pdlp_hyper_params::project_initial_primal                                     = false;
   pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
+  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
+
 }
 
 // Can be extremly faster but usually leads to more divergence
@@ -237,6 +241,8 @@ static void set_Fast1()
   pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = true;
   pdlp_hyper_params::project_initial_primal                                     = false;
   pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
+  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
+
 }
 
 template <typename i_t, typename f_t>
@@ -250,6 +256,8 @@ void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t> const& settings)
     set_Methodical1();
   else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Fast1)
     set_Fast1();
+  else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Stable3)
+    set_Stable3();
 }
 
 void setup_device_symbols(rmm::cuda_stream_view stream_view)

@@ -48,6 +48,7 @@ class solver_settings_t;
 enum pdlp_solver_mode_t : int {
   Stable1     = CUOPT_PDLP_SOLVER_MODE_STABLE1,
   Stable2     = CUOPT_PDLP_SOLVER_MODE_STABLE2,
+  Stable3     = CUOPT_PDLP_SOLVER_MODE_STABLE3,
   Methodical1 = CUOPT_PDLP_SOLVER_MODE_METHODICAL1,
   Fast1       = CUOPT_PDLP_SOLVER_MODE_FAST1
 };

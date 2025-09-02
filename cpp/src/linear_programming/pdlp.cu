@@ -24,9 +24,13 @@
 #include <mip/mip_constants.hpp>
 #include "cuopt/linear_programming/pdlp/solver_solution.hpp"
 
+#include <utilities/copy_helpers.hpp>
+
 #include <raft/common/nvtx.hpp>
 #include <raft/linalg/eltwise.cuh>
 #include <raft/linalg/ternary_op.cuh>
+#include <raft/sparse/detail/cusparse_macros.h>
+#include <raft/sparse/detail/cusparse_wrappers.h>
 
 #include <rmm/device_buffer.hpp>
 #include <rmm/device_scalar.hpp>
@@ -1247,35 +1251,154 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
 {
   raft::common::nvtx::range fun_scope("compute_initial_step_size");
 
-  // set stepsize relative to maximum absolute value of A
-  rmm::device_scalar<f_t> abs_max_element{0.0, stream_view_};
-  void* d_temp_storage      = NULL;
-  size_t temp_storage_bytes = 0;
+  if (!pdlp_hyper_params::initial_step_size_max_singular_value)
+  {
+    // set stepsize relative to maximum absolute value of A
+    rmm::device_scalar<f_t> abs_max_element{0.0, stream_view_};
+    void* d_temp_storage      = NULL;
+    size_t temp_storage_bytes = 0;
 
-  detail::max_abs_value<f_t> red_op;
-  cub::DeviceReduce::Reduce(d_temp_storage,
-                            temp_storage_bytes,
-                            op_problem_scaled_.coefficients.data(),
-                            abs_max_element.data(),
-                            op_problem_scaled_.nnz,
-                            red_op,
-                            0.0,
-                            stream_view_);
-  // Allocate temporary storage
-  rmm::device_buffer cub_tmp{temp_storage_bytes, stream_view_};
-  // Run max-reduction
-  cub::DeviceReduce::Reduce(cub_tmp.data(),
-                            temp_storage_bytes,
-                            op_problem_scaled_.coefficients.data(),
-                            abs_max_element.data(),
-                            op_problem_scaled_.nnz,
-                            red_op,
-                            0.0,
-                            stream_view_);
-  raft::linalg::eltwiseDivideCheckZero(
-    step_size_.data(), step_size_.data(), abs_max_element.data(), 1, stream_view_);
+    detail::max_abs_value<f_t> red_op;
+    cub::DeviceReduce::Reduce(d_temp_storage,
+                              temp_storage_bytes,
+                              op_problem_scaled_.coefficients.data(),
+                              abs_max_element.data(),
+                              op_problem_scaled_.nnz,
+                              red_op,
+                              0.0,
+                              stream_view_);
+    // Allocate temporary storage
+    rmm::device_buffer cub_tmp{temp_storage_bytes, stream_view_};
+    // Run max-reduction
+    cub::DeviceReduce::Reduce(cub_tmp.data(),
+                              temp_storage_bytes,
+                              op_problem_scaled_.coefficients.data(),
+                              abs_max_element.data(),
+                              op_problem_scaled_.nnz,
+                              red_op,
+                              0.0,
+                              stream_view_);
+    raft::linalg::eltwiseDivideCheckZero(
+      step_size_.data(), step_size_.data(), abs_max_element.data(), 1, stream_view_);
 
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    // Sync since we are using local variable
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  }
+  else
+  {
+    constexpr i_t max_iterations = 5000;
+    constexpr f_t tolerance = 1e-4;
+    constexpr f_t perturbation = 1e-8;
+    
+    i_t m = op_problem_scaled_.n_constraints;
+    i_t n = op_problem_scaled_.n_variables;
+    
+    std::vector<f_t> z(m);
+    rmm::device_uvector<f_t> d_z(m, stream_view_);
+    rmm::device_uvector<f_t> d_q(m, stream_view_);
+    rmm::device_uvector<f_t> d_atq(n, stream_view_);
+    
+    std::mt19937 gen(1);
+    std::normal_distribution<double> dist(0.0, 1.0);
+    
+    for (int i = 0; i < m; ++i)
+        z[i] = dist(gen) + perturbation;
+    
+    device_copy(d_z, z, stream_view_);
+
+    rmm::device_scalar<f_t> norm_q(stream_view_);
+    rmm::device_scalar<f_t> sigma_max_sq(stream_view_);
+    rmm::device_scalar<f_t> residual_norm(stream_view_);
+    rmm::device_scalar<f_t> reusable_device_scalar_value_1_(1, stream_view_);
+    rmm::device_scalar<f_t> reusable_device_scalar_value_0_(0, stream_view_);
+
+    cusparseDnVecDescr_t vecZ, vecQ, vecATQ;
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
+    &vecZ,
+    m,
+    const_cast<f_t*>(d_z.data())));
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
+    &vecQ,
+    m,
+    const_cast<f_t*>(d_q.data())));
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
+    &vecATQ,
+    n,
+    const_cast<f_t*>(d_atq.data())));
+
+    const auto& cusparse_view_ = pdhg_solver_.get_cusparse_view();
+
+    for (int i = 0; i < max_iterations; ++i)
+    {
+      // d_q = d_z
+      raft::copy(d_q.data(), d_z.data(), m, stream_view_);
+      // norm_q = l2_norm(d_q)
+      my_l2_norm<i_t, f_t>(d_q, norm_q, handle_ptr_);
+
+      cuopt_assert(norm_q.value(stream_view_) != f_t(0), "norm q can't be 0");
+
+      // d_q *= 1 / norm_q
+      cub::DeviceTransform::Transform(
+                            d_q.data(),
+                            d_q.data(),
+      d_q.size(),
+      [norm_q = norm_q.data()] __device__ (f_t d_q) { return d_q / *norm_q; },
+      stream_view_);
+        
+      // A_t_q = A_t @ d_q
+      RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                       reusable_device_scalar_value_1_.data(),
+                                                       cusparse_view_.A_T,
+                                                       vecQ,
+                                                       reusable_device_scalar_value_0_.data(),
+                                                       vecATQ,
+                                                       CUSPARSE_SPMV_CSR_ALG2,
+                                                       (f_t*)cusparse_view_.buffer_transpose.data(),
+                                                       stream_view_));  
+
+      // z = A @ A_t_q
+      RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                        reusable_device_scalar_value_1_.data(),  // 1
+                                        cusparse_view_.A,
+                                        vecATQ,
+                                        reusable_device_scalar_value_0_.data(),  // 1
+                                        vecZ,
+                                        CUSPARSE_SPMV_CSR_ALG2,
+                                        (f_t*)cusparse_view_.buffer_non_transpose.data(),
+                                        stream_view_));
+      // sigma_max_sq = dot(q, z)
+      RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
+                                                  m,
+                                                  d_q.data(),
+                                                  primal_stride,
+                                                  d_z.data(),
+                                                  primal_stride,
+                                                  sigma_max_sq.data(),
+                                                  stream_view_));
+
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(d_q.data(),
+                            d_z.data()),
+                            d_q.data(),
+      d_q.size(),
+      [sigma_max_sq = sigma_max_sq.data()] __device__ (f_t d_q, f_t d_z) { return d_q * -(*sigma_max_sq) + d_z; },
+      stream_view_);
+
+      my_l2_norm<i_t, f_t>(d_q, residual_norm, handle_ptr_);
+
+      if (residual_norm.value(stream_view_) < tolerance)
+          break;
+    }
+
+    constexpr f_t scaling_factor = 0.999;
+    const f_t step_size = scaling_factor / std::sqrt(sigma_max_sq.value(stream_view_));
+    step_size_.set_value_async(step_size, stream_view_);
+
+    // Sync since we are using local variable
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  }
 }
 
 template <typename f_t>

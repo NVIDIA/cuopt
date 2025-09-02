@@ -98,6 +98,7 @@ class pdlp_solver_t {
 
   void set_inside_mip(bool inside_mip);
 
+  void compute_initial_step_size();
  private:
   void print_termination_criteria(const std::chrono::high_resolution_clock::time_point& start_time,
                                   bool is_average = false);
@@ -106,7 +107,6 @@ class pdlp_solver_t {
     const convergence_information_t<i_t, f_t>& convergence_information,
     const pdlp_termination_status_t& termination_status,
     bool is_average = false);
-  void compute_initial_step_size();
   void compute_initial_primal_weight();
   std::optional<optimization_problem_solution_t<i_t, f_t>> check_termination(
     const std::chrono::high_resolution_clock::time_point& start_time);
