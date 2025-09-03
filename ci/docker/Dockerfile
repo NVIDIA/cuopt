@@ -107,7 +107,7 @@ RUN mkdir -p /opt/cuopt && \
 WORKDIR /opt/cuopt
 
 # Copy all static files in a single layer
-COPY ./LICENSE ./VERSION ./THIRD_PARTY_LICENSES /opt/cuopt/
+COPY ./LICENSE ./VERSION ./THIRD_PARTY_LICENSES ./COMMIT_SHA /opt/cuopt/
 
 # Copy CUDA libraries from the cuda-libs stage
 COPY --from=cuda-libs /usr/local/cuda/lib64/libnvrtc* /usr/local/cuda/lib64/
