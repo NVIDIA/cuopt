@@ -58,9 +58,8 @@ std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_
   auto seed = std::random_device{}();
   std::cerr << "Tested with seed " << seed << "\n";
   problem.compute_n_integer_vars();
-  auto v_lb       = host_copy(problem.variable_lower_bounds);
-  auto v_ub       = host_copy(problem.variable_upper_bounds);
-  auto int_var_id = host_copy(problem.integer_indices);
+  auto [v_lb, v_ub] = extract_host_bounds<double>(problem.variable_bounds, problem.handle_ptr);
+  auto int_var_id   = host_copy(problem.integer_indices);
   int_var_id.erase(std::remove_if(int_var_id.begin(),
                                   int_var_id.end(),
                                   [v_lb, v_ub](auto id) {
@@ -209,7 +208,9 @@ void test_multi_probe(std::string path)
 TEST(presolve, multi_probe)
 {
   std::vector<std::string> test_instances = {
-    "mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
+    //"mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
+    "mip/50v-10-free-bound.mps",
+    "mip/neos5-free-bound.mps"};
   for (const auto& test_instance : test_instances) {
     std::cout << "Running: " << test_instance << std::endl;
     auto path = make_path_absolute(test_instance);

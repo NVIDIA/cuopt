@@ -185,8 +185,8 @@ class problem_t {
     raft::device_span<i_t> offsets;
     raft::device_span<f_t> objective_coefficients;
     raft::device_span<f_t2> variable_bounds;
-    raft::device_span<f_t> variable_lower_bounds;
-    raft::device_span<f_t> variable_upper_bounds;
+    // raft::device_span<f_t> variable_lower_bounds;
+    // raft::device_span<f_t> variable_upper_bounds;
     raft::device_span<f_t> constraint_lower_bounds;
     raft::device_span<f_t> constraint_upper_bounds;
     raft::device_span<var_t> variable_types;
@@ -242,8 +242,8 @@ class problem_t {
   rmm::device_uvector<f_t> objective_coefficients;
   using f_t2 = typename type_2<f_t>::type;
   rmm::device_uvector<f_t2> variable_bounds;
-  rmm::device_uvector<f_t> variable_lower_bounds;
-  rmm::device_uvector<f_t> variable_upper_bounds;
+  // rmm::device_uvector<f_t> variable_lower_bounds;
+  // rmm::device_uvector<f_t> variable_upper_bounds;
   rmm::device_uvector<f_t> constraint_lower_bounds;
   rmm::device_uvector<f_t> constraint_upper_bounds;
   /* biggest between cstr lower and upper */

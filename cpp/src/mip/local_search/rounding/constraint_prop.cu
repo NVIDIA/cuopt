@@ -430,8 +430,7 @@ void constraint_prop_t<i_t, f_t>::collapse_crossing_bounds(problem_t<i_t, f_t>& 
 
         cuopt_assert(o_lb - int_tol <= val_to_collapse && val_to_collapse <= o_ub + int_tol,
                      "Out of original bounds!");
-        using f_t2  = typename type_2<f_t>::type;
-        v_bnds[idx] = f_t2{val_to_collapse, val_to_collapse};
+        v_bnds[idx] = typename type_2<f_t>::type{val_to_collapse, val_to_collapse};
       }
     });
 }
@@ -447,10 +446,9 @@ void constraint_prop_t<i_t, f_t>::set_bounds_on_fixed_vars(solution_t<i_t, f_t>&
                    sol.problem_ptr->integer_indices.begin(),
                    sol.problem_ptr->integer_indices.end(),
                    [pb = sol.problem_ptr->view(), assgn, var_bounds] __device__(i_t idx) {
-                     using f_t2   = typename type_2<f_t>::type;
                      auto var_val = assgn[idx];
                      if (pb.is_integer(var_val)) {
-                       var_bounds[idx] = f_t2{var_val, var_val};
+                       var_bounds[idx] = typename type_2<f_t>::type{var_val, var_val};
                        // lb[idx] = var_val;
                        // ub[idx] = var_val;
                      }
@@ -461,8 +459,8 @@ template <typename i_t, typename f_t, typename f_t2>
 struct is_bound_fixed_t {
   // This functor should be called only on integer variables
   f_t eps;
-  raft::device_span<f_t2> bnd;
-  raft::device_span<f_t2> original_bnd;
+  raft::device_span<typename type_2<f_t>::type> bnd;
+  raft::device_span<typename type_2<f_t>::type> original_bnd;
   raft::device_span<f_t> assignment;
   is_bound_fixed_t(f_t eps_,
                    raft::device_span<f_t2> bnd_,
@@ -523,26 +521,28 @@ struct greater_than_threshold_t {
 };
 
 template <typename i_t, typename f_t>
-template <typename f_t2>
-void constraint_prop_t<i_t, f_t>::copy_bounds(rmm::device_uvector<f_t2>& output_bounds,
-                                              const rmm::device_uvector<f_t>& input_lb,
-                                              const rmm::device_uvector<f_t>& input_ub,
-                                              const raft::handle_t* handle_ptr)
+void constraint_prop_t<i_t, f_t>::copy_bounds(
+  rmm::device_uvector<typename type_2<f_t>::type>& output_bounds,
+  const rmm::device_uvector<f_t>& input_lb,
+  const rmm::device_uvector<f_t>& input_ub,
+  const raft::handle_t* handle_ptr)
 {
   thrust::transform(
     handle_ptr->get_thrust_policy(),
     thrust::make_zip_iterator(thrust::make_tuple(input_lb.begin(), input_ub.begin())),
     thrust::make_zip_iterator(thrust::make_tuple(input_lb.end(), input_ub.end())),
     output_bounds.begin(),
-    [] __device__(auto bounds) { return f_t2{thrust::get<0>(bounds), thrust::get<1>(bounds)}; });
+    [] __device__(auto bounds) {
+      return typename type_2<f_t>::type{thrust::get<0>(bounds), thrust::get<1>(bounds)};
+    });
 }
 
 template <typename i_t, typename f_t>
-template <typename f_t2>
-void constraint_prop_t<i_t, f_t>::copy_bounds(rmm::device_uvector<f_t>& output_lb,
-                                              rmm::device_uvector<f_t>& output_ub,
-                                              const rmm::device_uvector<f_t2>& input_bounds,
-                                              const raft::handle_t* handle_ptr)
+void constraint_prop_t<i_t, f_t>::copy_bounds(
+  rmm::device_uvector<f_t>& output_lb,
+  rmm::device_uvector<f_t>& output_ub,
+  const rmm::device_uvector<typename type_2<f_t>::type>& input_bounds,
+  const raft::handle_t* handle_ptr)
 {
   thrust::transform(
     handle_ptr->get_thrust_policy(),
@@ -1043,15 +1043,15 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
         rounding_ii        = false;
         n_iter_in_recovery = 0;
         // during repair procedure some variables might be collapsed
-        using f_t2 = typename type_2<f_t>::type;
-        auto iter  = thrust::stable_partition(
-          sol.handle_ptr->get_thrust_policy(),
-          unset_vars.begin() + set_count,
-          unset_vars.end(),
-          is_bound_fixed_t<i_t, f_t, f_t2>{orig_sol.problem_ptr->tolerances.integrality_tolerance,
-                                            make_span(sol.problem_ptr->variable_bounds),
-                                            make_span(orig_sol.problem_ptr->variable_bounds),
-                                            make_span(sol.assignment)});
+        auto iter =
+          thrust::stable_partition(sol.handle_ptr->get_thrust_policy(),
+                                   unset_vars.begin() + set_count,
+                                   unset_vars.end(),
+                                   is_bound_fixed_t<i_t, f_t, typename type_2<f_t>::type>{
+                                     orig_sol.problem_ptr->tolerances.integrality_tolerance,
+                                     make_span(sol.problem_ptr->variable_bounds),
+                                     make_span(orig_sol.problem_ptr->variable_bounds),
+                                     make_span(sol.assignment)});
         i_t n_fixed_vars = (iter - (unset_vars.begin() + set_count));
         CUOPT_LOG_TRACE("After repair procedure, number of additional fixed vars %d", n_fixed_vars);
         set_count += n_fixed_vars;
@@ -1234,15 +1234,14 @@ bool constraint_prop_t<i_t, f_t>::handle_fixed_vars(
   auto set_count    = *set_count_ptr;
   const f_t int_tol = sol.problem_ptr->tolerances.integrality_tolerance;
   // which other variables were affected?
-  using f_t2 = typename type_2<f_t>::type;
-  auto iter  = thrust::stable_partition(
-    sol.handle_ptr->get_thrust_policy(),
-    unset_vars.begin() + set_count,
-    unset_vars.end(),
-    is_bound_fixed_t<i_t, f_t, f_t2>{int_tol,
-                                      make_span(sol.problem_ptr->variable_bounds),
-                                      make_span(original_problem->variable_bounds),
-                                      make_span(sol.assignment)});
+  auto iter        = thrust::stable_partition(sol.handle_ptr->get_thrust_policy(),
+                                       unset_vars.begin() + set_count,
+                                       unset_vars.end(),
+                                       is_bound_fixed_t<i_t, f_t, typename type_2<f_t>::type>{
+                                         int_tol,
+                                         make_span(sol.problem_ptr->variable_bounds),
+                                         make_span(original_problem->variable_bounds),
+                                         make_span(sol.assignment)});
   i_t n_fixed_vars = (iter - (unset_vars.begin() + set_count));
   cuopt_assert(n_fixed_vars >= std::get<0>(var_probe_vals).size(),
                "Error in number of vars fixed!");

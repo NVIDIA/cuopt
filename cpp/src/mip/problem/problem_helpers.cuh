@@ -122,7 +122,7 @@ static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
                       transform_bounds_functor<f_t>());
   }
 
-#if 1
+#if 0
   // If variable bound was not set, set it to default value
   if (op_problem.variable_lower_bounds.is_empty() &&
       !op_problem.objective_coefficients.is_empty()) {
@@ -142,6 +142,8 @@ static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
                  op_problem.variable_upper_bounds.end(),
                  std::numeric_limits<f_t>::infinity());
   }
+#else
+  set_variable_bounds(op_problem);
 #endif
   if (op_problem.variable_types.is_empty() && !op_problem.objective_coefficients.is_empty()) {
     op_problem.variable_types.resize(op_problem.objective_coefficients.size(),
@@ -293,11 +295,11 @@ static bool check_var_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
   bool crossing_bounds_detected =
     thrust::any_of(problem.handle_ptr->get_thrust_policy(),
                    thrust::counting_iterator(0),
-                   thrust::counting_iterator((i_t)problem.variable_lower_bounds.size()),
+                   thrust::counting_iterator((i_t)problem.variable_bounds.size()),
                    [tolerance = problem.tolerances.presolve_absolute_tolerance,
-                    lb        = make_span(problem.variable_lower_bounds),
-                    ub        = make_span(problem.variable_upper_bounds)] __device__(i_t index) {
-                     return (lb[index] > ub[index] + tolerance);
+                    var_bnd   = make_span(problem.variable_bounds)] __device__(i_t index) {
+                     auto var_bounds = var_bnd[index];
+                     return (var_bounds.x > var_bounds.y + tolerance);
                    });
   return !crossing_bounds_detected;
 }
@@ -324,12 +326,12 @@ static void round_bounds(detail::problem_t<i_t, f_t>& problem)
   thrust::for_each(problem.handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator(0),
                    thrust::make_counting_iterator(problem.n_variables),
-                   [lb    = make_span(problem.variable_lower_bounds),
-                    ub    = make_span(problem.variable_upper_bounds),
-                    types = make_span(problem.variable_types)] __device__(i_t index) {
+                   [bounds = make_span(problem.variable_bounds),
+                    types  = make_span(problem.variable_types)] __device__(i_t index) {
                      if (types[index] == var_t::INTEGER) {
-                       lb[index] = ceil(lb[index]);
-                       ub[index] = floor(ub[index]);
+                       using f_t2    = typename type_2<f_t>::type;
+                       auto bnd      = bounds[index];
+                       bounds[index] = f_t2{ceil(bnd.x), floor(bnd.y)};
                      }
                    });
 }

@@ -77,16 +77,11 @@ void cleanup_vectors(problem_t<i_t, f_t>& pb,
                                     handle_ptr->get_stream());
 
   handle_ptr->sync_stream();
-  auto lb_iter     = thrust::remove_if(handle_ptr->get_thrust_policy(),
-                                   pb.variable_lower_bounds.begin(),
-                                   pb.variable_lower_bounds.end(),
-                                   var_map.begin(),
-                                   is_zero_t<i_t>{});
-  auto ub_iter     = thrust::remove_if(handle_ptr->get_thrust_policy(),
-                                   pb.variable_upper_bounds.begin(),
-                                   pb.variable_upper_bounds.end(),
-                                   var_map.begin(),
-                                   is_zero_t<i_t>{});
+  auto bnd_iter    = thrust::remove_if(handle_ptr->get_thrust_policy(),
+                                    pb.variable_bounds.begin(),
+                                    pb.variable_bounds.end(),
+                                    var_map.begin(),
+                                    is_zero_t<i_t>{});
   auto type_iter   = thrust::remove_if(handle_ptr->get_thrust_policy(),
                                      pb.variable_types.begin(),
                                      pb.variable_types.end(),
@@ -102,10 +97,7 @@ void cleanup_vectors(problem_t<i_t, f_t>& pb,
                                     pb.objective_coefficients.end(),
                                     var_map.begin(),
                                     is_zero_t<i_t>{});
-  pb.variable_lower_bounds.resize(lb_iter - pb.variable_lower_bounds.begin(),
-                                  handle_ptr->get_stream());
-  pb.variable_upper_bounds.resize(ub_iter - pb.variable_upper_bounds.begin(),
-                                  handle_ptr->get_stream());
+  pb.variable_bounds.resize(bnd_iter - pb.variable_bounds.begin(), handle_ptr->get_stream());
   pb.variable_types.resize(type_iter - pb.variable_types.begin(), handle_ptr->get_stream());
   pb.is_binary_variable.resize(binary_iter - pb.is_binary_variable.begin(),
                                handle_ptr->get_stream());
@@ -117,6 +109,7 @@ void cleanup_vectors(problem_t<i_t, f_t>& pb,
 template <typename i_t, typename f_t>
 void update_from_csr(problem_t<i_t, f_t>& pb)
 {
+  using f_t2      = typename type_2<f_t>::type;
   auto handle_ptr = pb.handle_ptr;
   rmm::device_uvector<i_t> cnst(pb.coefficients.size(), handle_ptr->get_stream());
   thrust::uninitialized_fill(handle_ptr->get_thrust_policy(), cnst.begin(), cnst.end(), 0);
@@ -145,9 +138,8 @@ void update_from_csr(problem_t<i_t, f_t>& pb)
       thrust::stable_partition(handle_ptr->get_thrust_policy(),
                                coo_begin,
                                coo_begin + cnst.size(),
-                               is_variable_free_t<f_t>{pb.tolerances.integrality_tolerance,
-                                                       make_span(pb.variable_lower_bounds),
-                                                       make_span(pb.variable_upper_bounds)});
+                               is_variable_free_t<f_t, f_t2>{pb.tolerances.integrality_tolerance,
+                                                             make_span(pb.variable_bounds)});
     RAFT_CHECK_CUDA(handle_ptr->get_stream());
     nnz_edge_count = partition_iter - coo_begin;
   }
@@ -180,12 +172,11 @@ void update_from_csr(problem_t<i_t, f_t>& pb)
       handle_ptr->get_thrust_policy(),
       thrust::make_counting_iterator<i_t>(0),
       thrust::make_counting_iterator<i_t>(pb.n_variables),
-      assign_fixed_var_t<i_t, f_t>{make_span(var_map),
-                                   make_span(pb.variable_lower_bounds),
-                                   make_span(pb.variable_upper_bounds),
-                                   make_span(pb.objective_coefficients),
-                                   make_span(pb.presolve_data.variable_mapping),
-                                   make_span(pb.presolve_data.fixed_var_assignment)});
+      assign_fixed_var_t<i_t, f_t, f_t2>{make_span(var_map),
+                                         make_span(pb.variable_bounds),
+                                         make_span(pb.objective_coefficients),
+                                         make_span(pb.presolve_data.variable_mapping),
+                                         make_span(pb.presolve_data.fixed_var_assignment)});
     auto used_iter = thrust::stable_partition(handle_ptr->get_thrust_policy(),
                                               pb.presolve_data.variable_mapping.begin(),
                                               pb.presolve_data.variable_mapping.end(),
@@ -203,11 +194,10 @@ void update_from_csr(problem_t<i_t, f_t>& pb)
                                              handle_ptr->get_stream());
     rmm::device_uvector<f_t> unused_coo_cnst_bound_updates(cnst.size() - nnz_edge_count,
                                                            handle_ptr->get_stream());
-    elem_multi_t<i_t, f_t> mul{make_span(pb.coefficients),
-                               make_span(pb.variables),
-                               make_span(pb.objective_coefficients),
-                               make_span(pb.variable_lower_bounds),
-                               make_span(pb.variable_upper_bounds)};
+    elem_multi_t<i_t, f_t, f_t2> mul{make_span(pb.coefficients),
+                                     make_span(pb.variables),
+                                     make_span(pb.objective_coefficients),
+                                     make_span(pb.variable_bounds)};
 
     auto iter = thrust::reduce_by_key(
       handle_ptr->get_thrust_policy(),
@@ -233,16 +223,14 @@ void update_from_csr(problem_t<i_t, f_t>& pb)
   }
 
   //  update objective_offset
-  pb.presolve_data.objective_offset +=
-    thrust::transform_reduce(handle_ptr->get_thrust_policy(),
-                             thrust::counting_iterator<i_t>(0),
-                             thrust::counting_iterator<i_t>(pb.n_variables),
-                             unused_var_obj_offset_t<i_t, f_t>{make_span(var_map),
-                                                               make_span(pb.objective_coefficients),
-                                                               make_span(pb.variable_lower_bounds),
-                                                               make_span(pb.variable_upper_bounds)},
-                             0.,
-                             thrust::plus<f_t>{});
+  pb.presolve_data.objective_offset += thrust::transform_reduce(
+    handle_ptr->get_thrust_policy(),
+    thrust::counting_iterator<i_t>(0),
+    thrust::counting_iterator<i_t>(pb.n_variables),
+    unused_var_obj_offset_t<i_t, f_t, f_t2>{
+      make_span(var_map), make_span(pb.objective_coefficients), make_span(pb.variable_bounds)},
+    0.,
+    thrust::plus<f_t>{});
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
 
   //  create renumbering maps

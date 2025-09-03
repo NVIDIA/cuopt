@@ -46,7 +46,6 @@ feasibility_pump_t<i_t, f_t>::feasibility_pump_t(
   fj_t<i_t, f_t>& fj_,
   //  fj_tree_t<i_t, f_t>& fj_tree_,
   constraint_prop_t<i_t, f_t>& constraint_prop_,
-  lb_constraint_prop_t<i_t, f_t>& lb_constraint_prop_,
   line_segment_search_t<i_t, f_t>& line_segment_search_,
   rmm::device_uvector<f_t>& lp_optimal_solution_)
   : context(context_),
@@ -55,7 +54,6 @@ feasibility_pump_t<i_t, f_t>::feasibility_pump_t(
     line_segment_search(line_segment_search_),
     cycle_queue(*context.problem_ptr),
     constraint_prop(constraint_prop_),
-    lb_constraint_prop(lb_constraint_prop_),
     last_rounding(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     last_projection(context.problem_ptr->n_variables,
                     context.problem_ptr->handle_ptr->get_stream()),
@@ -437,9 +435,7 @@ void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& 
 {
   orig_variable_types.resize(solution.problem_ptr->n_variables, solution.handle_ptr->get_stream());
 
-  auto var_types = make_span(solution.problem_ptr->variable_types);
-  // auto var_lb     = make_span(solution.problem_ptr->variable_lower_bounds);
-  // auto var_ub     = make_span(solution.problem_ptr->variable_upper_bounds);
+  auto var_types  = make_span(solution.problem_ptr->variable_types);
   auto var_bnds   = make_span(solution.problem_ptr->variable_bounds);
   auto copy_types = make_span(orig_variable_types);
 

@@ -96,14 +96,12 @@ struct constraint_prop_t {
   void restore_bounds(solution_t<i_t, f_t>& sol);
   void save_bounds(solution_t<i_t, f_t>& sol);
 
-  template <typename f_t2>
   void copy_bounds(rmm::device_uvector<f_t>& output_lb,
                    rmm::device_uvector<f_t>& output_ub,
-                   const rmm::device_uvector<f_t2>& input_bounds,
+                   const rmm::device_uvector<typename type_2<f_t>::type>& input_bounds,
                    const raft::handle_t* handle_ptr);
 
-  template <typename f_t2>
-  void copy_bounds(rmm::device_uvector<f_t2>& output_bounds,
+  void copy_bounds(rmm::device_uvector<typename type_2<f_t>::type>& output_bounds,
                    const rmm::device_uvector<f_t>& input_lb,
                    const rmm::device_uvector<f_t>& input_ub,
                    const raft::handle_t* handle_ptr);

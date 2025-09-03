@@ -56,6 +56,9 @@ class multi_probe_t {
                           i_t select_update,
                           const raft::handle_t* handle_ptr);
   void set_updated_bounds(const raft::handle_t* handle_ptr,
+                          raft::device_span<typename type_2<f_t>::type> output_bounds,
+                          i_t select_update);
+  void set_updated_bounds(const raft::handle_t* handle_ptr,
                           raft::device_span<f_t> output_lb,
                           raft::device_span<f_t> output_ub,
                           i_t select_update);
@@ -71,9 +74,8 @@ class multi_probe_t {
     const raft::handle_t* handle_ptr);
   void constraint_stats(problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
   void copy_problem_into_probing_buffers(problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
-  template <typename f_t2>
   void update_host_bounds(const raft::handle_t* handle_ptr,
-                          const raft::device_span<f_t2> variable_bounds);
+                          const raft::device_span<typename type_2<f_t>::type> variable_bounds);
   void update_device_bounds(const raft::handle_t* handle_ptr);
   mip_solver_context_t<i_t, f_t>& context;
   bounds_update_data_t<i_t, f_t> upd_0;

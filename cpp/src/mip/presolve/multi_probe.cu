@@ -331,9 +331,9 @@ void multi_probe_t<i_t, f_t>::update_device_bounds(const raft::handle_t* handle_
 }
 
 template <typename i_t, typename f_t>
-template <typename f_t2>
-void multi_probe_t<i_t, f_t>::update_host_bounds(const raft::handle_t* handle_ptr,
-                                                 const raft::device_span<f_t2> variable_bounds)
+void multi_probe_t<i_t, f_t>::update_host_bounds(
+  const raft::handle_t* handle_ptr,
+  const raft::device_span<typename type_2<f_t>::type> variable_bounds)
 {
   cuopt_assert(variable_bounds.size() == host_lb.size(), "size of variable lower bound mismatch");
   // raft::copy(host_lb.data(), variable_lb.data(), variable_lb.size(), handle_ptr->get_stream());
@@ -355,22 +355,21 @@ template <typename i_t, typename f_t>
 void multi_probe_t<i_t, f_t>::copy_problem_into_probing_buffers(problem_t<i_t, f_t>& pb,
                                                                 const raft::handle_t* handle_ptr)
 {
-  cuopt_assert(upd_0.lb.size() == pb.variable_lower_bounds.size(),
+  cuopt_assert(upd_0.lb.size() == pb.variable_bounds.size(),
                "size of variable lower bound mismatch");
-  raft::copy(
-    upd_0.lb.data(), pb.variable_lower_bounds.data(), upd_0.lb.size(), handle_ptr->get_stream());
-  cuopt_assert(upd_1.lb.size() == pb.variable_lower_bounds.size(),
+  cuopt_assert(upd_1.lb.size() == pb.variable_bounds.size(),
                "size of variable lower bound mismatch");
-  raft::copy(
-    upd_1.lb.data(), pb.variable_lower_bounds.data(), upd_1.lb.size(), handle_ptr->get_stream());
-  cuopt_assert(upd_0.ub.size() == pb.variable_upper_bounds.size(),
+  cuopt_assert(upd_0.ub.size() == pb.variable_bounds.size(),
                "size of variable upper bound mismatch");
-  raft::copy(
-    upd_0.ub.data(), pb.variable_upper_bounds.data(), upd_0.ub.size(), handle_ptr->get_stream());
-  cuopt_assert(upd_1.ub.size() == pb.variable_upper_bounds.size(),
+  cuopt_assert(upd_1.ub.size() == pb.variable_bounds.size(),
                "size of variable upper bound mismatch");
-  raft::copy(
-    upd_1.ub.data(), pb.variable_upper_bounds.data(), upd_1.ub.size(), handle_ptr->get_stream());
+
+  thrust::transform(handle_ptr->get_thrust_policy(),
+                    pb.variable_bounds.begin(),
+                    pb.variable_bounds.end(),
+                    thrust::make_zip_iterator(thrust::make_tuple(
+                      upd_0.lb.begin(), upd_0.ub.begin(), upd_1.lb.begin(), upd_1.ub.begin())),
+                    [] __device__(auto i) { return thrust::make_tuple(i.x, i.y, i.x, i.y); });
 }
 
 template <typename i_t, typename f_t>
@@ -421,6 +420,26 @@ void multi_probe_t<i_t, f_t>::set_updated_bounds(const raft::handle_t* handle_pt
 }
 
 template <typename i_t, typename f_t>
+void multi_probe_t<i_t, f_t>::set_updated_bounds(
+  const raft::handle_t* handle_ptr,
+  raft::device_span<typename type_2<f_t>::type> output_bounds,
+  i_t select_update)
+{
+  auto& lb = select_update ? upd_1.lb : upd_0.lb;
+  auto& ub = select_update ? upd_1.ub : upd_0.ub;
+
+  cuopt_assert(ub.size() == output_bounds.size(), "size of variable upper bound mismatch");
+  cuopt_assert(lb.size() == output_bounds.size(), "size of variable lower bound mismatch");
+  thrust::transform(handle_ptr->get_thrust_policy(),
+                    thrust::make_zip_iterator(thrust::make_tuple(lb.begin(), ub.begin())),
+                    thrust::make_zip_iterator(thrust::make_tuple(lb.end(), ub.end())),
+                    output_bounds.begin(),
+                    [] __device__(auto i) {
+                      return typename type_2<f_t>::type{thrust::get<0>(i), thrust::get<1>(i)};
+                    });
+}
+
+template <typename i_t, typename f_t>
 void multi_probe_t<i_t, f_t>::constraint_stats(problem_t<i_t, f_t>& pb,
                                                const raft::handle_t* handle_ptr)
 {
@@ -464,10 +483,7 @@ void multi_probe_t<i_t, f_t>::set_updated_bounds(problem_t<i_t, f_t>& pb,
                                                  i_t select_update,
                                                  const raft::handle_t* handle_ptr)
 {
-  set_updated_bounds(handle_ptr,
-                     make_span(pb.variable_lower_bounds),
-                     make_span(pb.variable_upper_bounds),
-                     select_update);
+  set_updated_bounds(handle_ptr, make_span(pb.variable_bounds), select_update);
 }
 
 #if MIP_INSTANTIATE_FLOAT
