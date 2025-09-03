@@ -523,6 +523,36 @@ struct greater_than_threshold_t {
 };
 
 template <typename i_t, typename f_t>
+template <typename f_t2>
+void constraint_prop_t<i_t, f_t>::copy_bounds(rmm::device_uvector<f_t2>& output_bounds,
+                                              const rmm::device_uvector<f_t>& input_lb,
+                                              const rmm::device_uvector<f_t>& input_ub,
+                                              const raft::handle_t* handle_ptr)
+{
+  thrust::transform(
+    handle_ptr->get_thrust_policy(),
+    thrust::make_zip_iterator(thrust::make_tuple(input_lb.begin(), input_ub.begin())),
+    thrust::make_zip_iterator(thrust::make_tuple(input_lb.end(), input_ub.end())),
+    output_bounds.begin(),
+    [] __device__(auto bounds) { return f_t2{thrust::get<0>(bounds), thrust::get<1>(bounds)}; });
+}
+
+template <typename i_t, typename f_t>
+template <typename f_t2>
+void constraint_prop_t<i_t, f_t>::copy_bounds(rmm::device_uvector<f_t>& output_lb,
+                                              rmm::device_uvector<f_t>& output_ub,
+                                              const rmm::device_uvector<f_t2>& input_bounds,
+                                              const raft::handle_t* handle_ptr)
+{
+  thrust::transform(
+    handle_ptr->get_thrust_policy(),
+    input_bounds.begin(),
+    input_bounds.end(),
+    thrust::make_zip_iterator(thrust::make_tuple(output_lb.begin(), output_ub.begin())),
+    [] __device__(auto bounds) { return thrust::make_tuple(bounds.x, bounds.y); });
+}
+
+template <typename i_t, typename f_t>
 void constraint_prop_t<i_t, f_t>::copy_bounds(rmm::device_uvector<f_t>& output_lb,
                                               rmm::device_uvector<f_t>& output_ub,
                                               const rmm::device_uvector<f_t>& input_lb,
@@ -552,38 +582,56 @@ void constraint_prop_t<i_t, f_t>::copy_bounds(rmm::device_uvector<f_t>& output_l
 template <typename i_t, typename f_t>
 void constraint_prop_t<i_t, f_t>::save_bounds(solution_t<i_t, f_t>& sol)
 {
-  copy_bounds(lb_restore,
-              ub_restore,
-              assignment_restore,
-              sol.problem_ptr->variable_lower_bounds,
-              sol.problem_ptr->variable_upper_bounds,
-              sol.assignment,
-              sol.handle_ptr);
+  // copy_bounds(lb_restore,
+  //             ub_restore,
+  //             assignment_restore,
+  //             sol.problem_ptr->variable_lower_bounds,
+  //             sol.problem_ptr->variable_upper_bounds,
+  //             sol.assignment,
+  //             sol.handle_ptr);
+  copy_bounds(lb_restore, ub_restore, sol.problem_ptr->variable_bounds, sol.handle_ptr);
+  raft::copy(assignment_restore.data(),
+             sol.assignment.data(),
+             sol.assignment.size(),
+             sol.handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
 void constraint_prop_t<i_t, f_t>::restore_bounds(solution_t<i_t, f_t>& sol)
 {
-  copy_bounds(sol.problem_ptr->variable_lower_bounds,
-              sol.problem_ptr->variable_upper_bounds,
-              sol.assignment,
-              lb_restore,
-              ub_restore,
-              assignment_restore,
-              sol.handle_ptr);
+  // copy_bounds(sol.problem_ptr->variable_lower_bounds,
+  //             sol.problem_ptr->variable_upper_bounds,
+  //             sol.assignment,
+  //             lb_restore,
+  //             ub_restore,
+  //             assignment_restore,
+  //             sol.handle_ptr);
+  copy_bounds(sol.problem_ptr->variable_bounds, lb_restore, ub_restore, sol.handle_ptr);
+  raft::copy(sol.assignment.data(),
+             assignment_restore.data(),
+             assignment_restore.size(),
+             sol.handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
 void constraint_prop_t<i_t, f_t>::restore_original_bounds(solution_t<i_t, f_t>& sol,
                                                           solution_t<i_t, f_t>& orig_sol)
 {
-  copy_bounds(sol.problem_ptr->variable_lower_bounds,
-              sol.problem_ptr->variable_upper_bounds,
-              sol.assignment,
-              orig_sol.problem_ptr->variable_lower_bounds,
-              orig_sol.problem_ptr->variable_upper_bounds,
-              orig_sol.assignment,
-              orig_sol.handle_ptr);
+  // copy_bounds(sol.problem_ptr->variable_lower_bounds,
+  //             sol.problem_ptr->variable_upper_bounds,
+  //             sol.assignment,
+  //             orig_sol.problem_ptr->variable_lower_bounds,
+  //             orig_sol.problem_ptr->variable_upper_bounds,
+  //             orig_sol.assignment,
+  //             orig_sol.handle_ptr);
+  raft::copy(sol.problem_ptr->variable_bounds.data(),
+             orig_sol.problem_ptr->variable_bounds.data(),
+             orig_sol.problem_ptr->variable_bounds.size(),
+             orig_sol.handle_ptr->get_stream());
+  raft::copy(sol.assignment.data(),
+             orig_sol.assignment.data(),
+             orig_sol.assignment.size(),
+             orig_sol.handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
@@ -1030,9 +1078,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     // we update from the problem bounds and not the final bounds of bounds update
     // because we might be in a recovery mode where we want to continue with the bounds before bulk
     // which is the unchanged problem bounds
-    multi_probe.update_host_bounds(sol.handle_ptr,
-                                   make_span(sol.problem_ptr->variable_lower_bounds),
-                                   make_span(sol.problem_ptr->variable_upper_bounds));
+    multi_probe.update_host_bounds(sol.handle_ptr, make_span(sol.problem_ptr->variable_bounds));
   }
   CUOPT_LOG_DEBUG(
     "Bounds propagation rounding end: ii constraint count first buffer %d, second buffer %d",

@@ -77,13 +77,17 @@ struct a_sub_scalar_times_b {
   const f_t* scalar_;
 };
 
-template <typename f_t>
+template <typename f_t, typename f_t2>
 struct primal_projection {
   primal_projection(const f_t* step_size) : step_size_(step_size) {}
 
-  __device__ __forceinline__ thrust::tuple<f_t, f_t, f_t> operator()(
-    f_t primal, f_t obj_coeff, f_t AtY, f_t lower, f_t upper)
+  __device__ __forceinline__ thrust::tuple<f_t, f_t, f_t> operator()(f_t primal,
+                                                                     f_t obj_coeff,
+                                                                     f_t AtY,
+                                                                     f_t2 bounds)
   {
+    f_t lower    = bounds.x;
+    f_t upper    = bounds.y;
     f_t gradient = obj_coeff - AtY;
     f_t next     = primal - (*step_size_ * gradient);
     next         = raft::max<f_t>(raft::min<f_t>(next, upper), lower);
@@ -198,6 +202,21 @@ struct max_violation {
     if (isfinite(lower)) { local_max = raft::max(local_max, -value); }
     if (isfinite(upper)) { local_max = raft::max(local_max, value); }
     return local_max;
+  }
+};
+
+template <typename f_t, typename f_t2>
+struct divide_check_zero {
+  __device__ f_t2 operator()(f_t2 bounds, f_t value)
+  {
+    if (value == f_t{0}) {
+      bounds.x = f_t{0};
+      bounds.y = f_t{0};
+    } else {
+      bounds.x = bounds.x / value;
+      bounds.y = bounds.y / value;
+    }
+    return bounds;
   }
 };
 

@@ -331,14 +331,24 @@ void multi_probe_t<i_t, f_t>::update_device_bounds(const raft::handle_t* handle_
 }
 
 template <typename i_t, typename f_t>
+template <typename f_t2>
 void multi_probe_t<i_t, f_t>::update_host_bounds(const raft::handle_t* handle_ptr,
-                                                 const raft::device_span<f_t> variable_lb,
-                                                 const raft::device_span<f_t> variable_ub)
+                                                 const raft::device_span<f_t2> variable_bounds)
 {
-  cuopt_assert(variable_lb.size() == host_lb.size(), "size of variable lower bound mismatch");
-  raft::copy(host_lb.data(), variable_lb.data(), variable_lb.size(), handle_ptr->get_stream());
-  cuopt_assert(variable_ub.size() == host_ub.size(), "size of variable upper bound mismatch");
-  raft::copy(host_ub.data(), variable_ub.data(), variable_ub.size(), handle_ptr->get_stream());
+  cuopt_assert(variable_bounds.size() == host_lb.size(), "size of variable lower bound mismatch");
+  // raft::copy(host_lb.data(), variable_lb.data(), variable_lb.size(), handle_ptr->get_stream());
+  cuopt_assert(variable_bounds.size() == host_ub.size(), "size of variable upper bound mismatch");
+  // raft::copy(host_ub.data(), variable_ub.data(), variable_ub.size(), handle_ptr->get_stream());
+
+  rmm::device_uvector<f_t> var_lb(variable_bounds.size(), handle_ptr->get_stream());
+  rmm::device_uvector<f_t> var_ub(variable_bounds.size(), handle_ptr->get_stream());
+  thrust::transform(handle_ptr->get_thrust_policy(),
+                    variable_bounds.begin(),
+                    variable_bounds.end(),
+                    thrust::make_zip_iterator(thrust::make_tuple(var_lb.begin(), var_ub.begin())),
+                    [] __device__(auto i) { return thrust::make_tuple(i.x, i.y); });
+  raft::copy(host_lb.data(), var_lb.data(), var_lb.size(), handle_ptr->get_stream());
+  raft::copy(host_ub.data(), var_ub.data(), var_ub.size(), handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>

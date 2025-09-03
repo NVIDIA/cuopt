@@ -239,18 +239,18 @@ void clamp_within_var_bounds(rmm::device_uvector<f_t>& assignment,
 {
   cuopt_assert(assignment.size() == problem_ptr->n_variables, "Size mismatch!");
   f_t* assignment_ptr = assignment.data();
-  thrust::for_each(handle_ptr->get_thrust_policy(),
-                   thrust::make_counting_iterator(0),
-                   thrust::make_counting_iterator(0) + problem_ptr->n_variables,
-                   [assignment_ptr,
-                    lower_bound = problem_ptr->variable_lower_bounds.data(),
-                    upper_bound = problem_ptr->variable_upper_bounds.data()] __device__(i_t idx) {
-                     if (assignment_ptr[idx] < lower_bound[idx]) {
-                       assignment_ptr[idx] = lower_bound[idx];
-                     } else if (assignment_ptr[idx] > upper_bound[idx]) {
-                       assignment_ptr[idx] = upper_bound[idx];
-                     }
-                   });
+  thrust::for_each(
+    handle_ptr->get_thrust_policy(),
+    thrust::make_counting_iterator(0),
+    thrust::make_counting_iterator(0) + problem_ptr->n_variables,
+    [assignment_ptr, variable_bound = problem_ptr->variable_bounds.data()] __device__(i_t idx) {
+      auto bound = variable_bound[idx];
+      if (assignment_ptr[idx] < bound.x) {
+        assignment_ptr[idx] = bound.x;
+      } else if (assignment_ptr[idx] > bound.y) {
+        assignment_ptr[idx] = bound.y;
+      }
+    });
 }
 
 template <typename i_t, typename f_t>

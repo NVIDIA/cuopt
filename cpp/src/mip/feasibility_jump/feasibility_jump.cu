@@ -273,9 +273,9 @@ void fj_t<i_t, f_t>::device_init(const rmm::cuda_stream_view& stream)
 
                      cuopt_assert(var_idx < pb.is_binary_variable.size(), "");
                      if (pb.is_binary_variable[var_idx]) {
-                       cuopt_assert(pb.variable_lower_bounds[var_idx] == 0 &&
-                                      pb.variable_upper_bounds[var_idx] == 1,
-                                    "invalid bounds for binary variable");
+                       cuopt_assert(
+                         pb.variable_bounds[var_idx].x == 0 && pb.variable_bounds[var_idx].y == 1,
+                         "invalid bounds for binary variable");
                      }
                    });
 }
@@ -374,9 +374,8 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
         incumbent_assignment[var_idx] = round(incumbent_assignment[var_idx]);
       }
       // clamp to bounds
-      incumbent_assignment[var_idx] =
-        max(pb.variable_lower_bounds[var_idx],
-            min(pb.variable_upper_bounds[var_idx], incumbent_assignment[var_idx]));
+      auto bounds                   = pb.variable_bounds[var_idx];
+      incumbent_assignment[var_idx] = max(bounds.x, min(bounds.y, incumbent_assignment[var_idx]));
     });
 
   thrust::for_each(

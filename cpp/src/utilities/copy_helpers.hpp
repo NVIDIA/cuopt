@@ -18,6 +18,7 @@
 #pragma once
 
 #include <raft/core/device_span.hpp>
+#include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
 
 #include <rmm/device_uvector.hpp>
@@ -46,6 +47,26 @@ struct type_2<float> {
 template <>
 struct type_2<double> {
   using type = double2;
+};
+
+template <typename T>
+struct scalar_type {
+  using type = void;
+};
+
+template <>
+struct scalar_type<int2> {
+  using type = int;
+};
+
+template <>
+struct scalar_type<float2> {
+  using type = float;
+};
+
+template <>
+struct scalar_type<double2> {
+  using type = double;
 };
 
 template <typename T>
@@ -274,6 +295,22 @@ inline void expand_device_copy(rmm::device_uvector<T>& dst_vec,
 {
   if (src_vec.size() > dst_vec.size()) { dst_vec.resize(src_vec.size(), stream_view); }
   raft::copy(dst_vec.data(), src_vec.data(), src_vec.size(), stream_view);
+}
+
+template <typename f_t, typename f_t2>
+std::tuple<std::vector<f_t>, std::vector<f_t>> extract_host_bounds(
+  const rmm::device_uvector<f_t2>& variable_bounds, const raft::handle_t* handle_ptr)
+{
+  rmm::device_uvector<f_t> var_lb(variable_bounds.size(), handle_ptr->get_stream());
+  rmm::device_uvector<f_t> var_ub(variable_bounds.size(), handle_ptr->get_stream());
+  thrust::transform(handle_ptr->get_thrust_policy(),
+                    variable_bounds.begin(),
+                    variable_bounds.end(),
+                    thrust::make_zip_iterator(thrust::make_tuple(var_lb.begin(), var_ub.begin())),
+                    [] __device__(auto i) { return thrust::make_tuple(i.x, i.y); });
+  auto h_var_lb = cuopt::host_copy(var_lb);
+  auto h_var_ub = cuopt::host_copy(var_ub);
+  return std::make_tuple(h_var_lb, h_var_ub);
 }
 
 }  // namespace cuopt

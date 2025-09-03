@@ -402,14 +402,6 @@ void infeasibility_information_t<i_t, f_t>::compute_reduced_costs_dual_objective
   // Check if these bounds are the same as computed above
   // if reduced cost is positive -> lower bound, negative -> upper bounds, 0 -> 0
   // if bound_val is not finite let element be -inf, otherwise bound_value*reduced_cost
-  // raft::linalg::binaryOp(bound_value_.data(),
-  //                        reduced_cost_.data(),
-  //                        //problem_ptr->variable_lower_bounds.data(),
-  //                        //problem_ptr->variable_upper_bounds.data(),
-  //                        problem_ptr->variable_bounds.data(),
-  //                        primal_size_h_,
-  //                        bound_value_reduced_cost_product<f_t, f_t2>(),
-  //                        stream_view_);
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(reduced_cost_.data(), problem_ptr->variable_bounds.data()),
     bound_value_.data(),
