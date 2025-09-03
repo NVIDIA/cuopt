@@ -51,7 +51,8 @@ class pdhg_solver_t {
                  rmm::device_scalar<f_t>& dual_step_size,
                  i_t iterations_since_last_restart,
                  bool last_restart_was_average,
-                 i_t total_pdlp_iterations);
+                 i_t total_pdlp_iterations,
+                 bool is_major_iteration);
   void update_solution(cusparse_view_t<i_t, f_t>& current_op_problem_evaluation_cusparse_view_);
 
   i_t total_pdhg_iterations_;
@@ -63,6 +64,9 @@ class pdhg_solver_t {
                                          rmm::device_scalar<f_t>& dual_step_size,
                                          i_t total_pdlp_iterations);
   void compute_next_dual_solution(rmm::device_scalar<f_t>& dual_step_size);
+  void compute_next_primal_dual_solution_reflected(rmm::device_scalar<f_t>& primal_step_size,
+                                                   rmm::device_scalar<f_t>& dual_step_size,
+                                                   bool should_major);
 
   void compute_primal_projection_with_gradient(rmm::device_scalar<f_t>& primal_step_size);
   void compute_primal_projection(rmm::device_scalar<f_t>& primal_step_size);
@@ -84,6 +88,11 @@ class pdhg_solver_t {
   rmm::device_uvector<f_t> potential_next_primal_solution_;
   rmm::device_uvector<f_t> potential_next_dual_solution_;
 
+  rmm::device_uvector<f_t> dual_slack_;
+  rmm::device_uvector<f_t> reflected_primal_;
+  rmm::device_uvector<f_t> reflected_dual_;
+
+  // Important that vectors passed down to the cusparse_view are allocated before
   cusparse_view_t<i_t, f_t> cusparse_view_;
 
   const rmm::device_scalar<f_t> reusable_device_scalar_value_1_;

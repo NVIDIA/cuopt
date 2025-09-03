@@ -1080,6 +1080,11 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
     raft::print_device_vector("Initial primal_step_size", primal_step_size_.data(), 1, std::cout);
     raft::print_device_vector("Initial dual_step_size", dual_step_size_.data(), 1, std::cout);
   }
+#ifdef CUPDLP_DEBUG_MODE
+  printf("Initial primal weight %lf, step size %lf\n",
+         primal_weight_.value(stream_view_),
+         step_size_.value(stream_view_));
+#endif
 
   bool warm_start_was_given =
     settings_.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.size() != 0;
@@ -1185,7 +1190,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
       }
     }
 
-    take_step(total_pdlp_iterations_);
+    take_step(total_pdlp_iterations_, is_major_iteration);
 
     ++total_pdlp_iterations_;
     ++internal_solver_iterations_;
@@ -1195,7 +1200,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
 }
 
 template <typename i_t, typename f_t>
-void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations)
+void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations, bool is_major_iteration)
 {
   // continue testing stepsize until we find a valid one or encounter a numerical error
   step_size_strategy_.set_valid_step_size(0);
@@ -1212,7 +1217,8 @@ void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations)
                            dual_step_size_,
                            restart_strategy_.get_iterations_since_last_restart(),
                            restart_strategy_.get_last_restart_was_average(),
-                           total_pdlp_iterations);
+                           total_pdlp_iterations,
+                           is_major_iteration);
 
     step_size_strategy_.compute_step_sizes(
       pdhg_solver_, primal_step_size_, dual_step_size_, total_pdlp_iterations);
@@ -1232,18 +1238,21 @@ void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations)
 }
 
 template <typename i_t, typename f_t>
-void pdlp_solver_t<i_t, f_t>::take_constant_step()
+void pdlp_solver_t<i_t, f_t>::take_constant_step(bool is_major_iteration)
 {
-  pdhg_solver_.take_step(primal_step_size_, dual_step_size_, 0, false, 0);
+  pdhg_solver_.take_step(primal_step_size_, dual_step_size_, 0, false, 0, is_major_iteration);
 }
 
 template <typename i_t, typename f_t>
-void pdlp_solver_t<i_t, f_t>::take_step([[maybe_unused]] i_t total_pdlp_iterations)
+void pdlp_solver_t<i_t, f_t>::take_step([[maybe_unused]] i_t total_pdlp_iterations,
+                                        [[maybe_unused]] bool is_major_iteration)
 {
   if (pdlp_hyper_params::use_adaptive_step_size_strategy) {
-    take_adaptive_step(total_pdlp_iterations);
+    take_adaptive_step(total_pdlp_iterations, is_major_iteration);
   } else {
-    take_constant_step();
+    cuopt_assert(total_pdlp_iterations == pdhg_solver_.get_total_pdhg_iterations(),
+                 "In non adaptive step size mode, both pdlp and pdhg step should always be equal");
+    take_constant_step(is_major_iteration);
   }
 }
 
@@ -1286,7 +1295,6 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
   } else {
     constexpr i_t max_iterations = 5000;
     constexpr f_t tolerance      = 1e-4;
-    constexpr f_t perturbation   = 1e-8;
 
     i_t m = op_problem_scaled_.n_constraints;
     i_t n = op_problem_scaled_.n_variables;
@@ -1300,7 +1308,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     std::normal_distribution<double> dist(0.0, 1.0);
 
     for (int i = 0; i < m; ++i)
-      z[i] = dist(gen) + perturbation;
+      z[i] = dist(gen);
 
     device_copy(d_z, z, stream_view_);
 
@@ -1385,7 +1393,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
       if (residual_norm.value(stream_view_) < tolerance) break;
     }
 
-    constexpr f_t scaling_factor = 0.999;
+    constexpr f_t scaling_factor = 0.998;
     const f_t step_size          = scaling_factor / std::sqrt(sigma_max_sq.value(stream_view_));
     step_size_.set_value_async(step_size, stream_view_);
 
@@ -1443,54 +1451,59 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
                                           stream_view_);
 
   } else {
-    // TODO handle bound_objective_rescaling
+    if (pdlp_hyper_params::bound_objective_rescaling) {
+      const f_t one = 1;
+      primal_weight_.set_value_async(one, stream_view_);
+      best_primal_weight_.set_value_async(one, stream_view_);
+      return;
+    } else {
+      rmm::device_buffer d_temp_storage;
+      size_t bytes;
 
-    rmm::device_buffer d_temp_storage;
-    size_t bytes;
+      cuopt_expects(pdlp_hyper_params::initial_primal_weight_b_scaling == 1,
+                    error_type_t::ValidationError,
+                    "Passing a scaling is not supported for now");
 
-    cuopt_expects(pdlp_hyper_params::initial_primal_weight_b_scaling == 1,
-                  error_type_t::ValidationError,
-                  "Passing a scaling is not supported for now");
+      auto main_op = [] HD(const thrust::tuple<f_t, f_t> t) {
+        const f_t lower = thrust::get<0>(t);
+        const f_t upper = thrust::get<1>(t);
+        f_t sum         = 0;
+        if (isfinite(lower) && (lower != upper)) sum += lower * lower;
+        if (isfinite(upper)) sum += upper * upper;
+        return sum;
+      };
+      cub::DeviceReduce::TransformReduce(
+        nullptr,
+        bytes,
+        thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
+                                  op_problem_scaled_.constraint_upper_bounds.data()),
+        b_vec_norm.data(),
+        op_problem_scaled_.constraint_lower_bounds.size(),
+        cuda::std::plus<>{},
+        main_op,
+        f_t(0),
+        stream_view_);
 
-    auto main_op = [] HD(const thrust::tuple<f_t, f_t> t) {
-      const f_t lower = thrust::get<0>(t);
-      const f_t upper = thrust::get<1>(t);
-      f_t sum         = 0;
-      if (isfinite(lower) && (lower != upper)) sum += lower * lower;
-      if (isfinite(upper)) sum += upper * upper;
-      return sum;
-    };
-    cub::DeviceReduce::TransformReduce(
-      nullptr,
-      bytes,
-      thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
-                                op_problem_scaled_.constraint_upper_bounds.data()),
-      b_vec_norm.data(),
-      op_problem_scaled_.constraint_lower_bounds.size(),
-      cuda::std::plus<>{},
-      main_op,
-      f_t(0),
-      stream_view_);
+      d_temp_storage.resize(bytes, stream_view_);
 
-    d_temp_storage.resize(bytes, stream_view_);
+      cub::DeviceReduce::TransformReduce(
+        d_temp_storage.data(),
+        bytes,
+        thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
+                                  op_problem_scaled_.constraint_upper_bounds.data()),
+        b_vec_norm.data(),
+        op_problem_scaled_.constraint_lower_bounds.size(),
+        cuda::std::plus<>{},
+        main_op,
+        f_t(0),
+        stream_view_);
 
-    cub::DeviceReduce::TransformReduce(
-      d_temp_storage.data(),
-      bytes,
-      thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
-                                op_problem_scaled_.constraint_upper_bounds.data()),
-      b_vec_norm.data(),
-      op_problem_scaled_.constraint_lower_bounds.size(),
-      cuda::std::plus<>{},
-      main_op,
-      f_t(0),
-      stream_view_);
+      const f_t res = std::sqrt(b_vec_norm.value(stream_view_));
+      b_vec_norm.set_value_async(res, stream_view_);
 
-    const f_t res = std::sqrt(b_vec_norm.value(stream_view_));
-    b_vec_norm.set_value_async(res, stream_view_);
-
-    // Sync since we are using local variable
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+      // Sync since we are using local variable
+      RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    }
   }
 
   compute_weights_initial_primal_weight_from_squared_norms<<<1, 1, 0, stream_view_>>>(

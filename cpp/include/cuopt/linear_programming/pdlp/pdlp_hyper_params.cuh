@@ -60,5 +60,6 @@ extern bool use_adaptive_step_size_strategy;
 extern bool initial_step_size_max_singular_value;
 extern bool initial_primal_weight_combined_bounds;
 extern bool bound_objective_rescaling;
+extern bool use_reflected_primal_dual;
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params

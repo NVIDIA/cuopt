@@ -465,6 +465,12 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
     // Coefficients are computed on the already scaled values
     bound_objective_rescaling();
 
+#ifdef CUPDLP_DEBUG_MODE
+    printf("Bound rescaling %lf %lf\n",
+           bound_rescaling_.value(stream_view_),
+           objective_rescaling_.value(stream_view_));
+#endif
+
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(op_problem_scaled_.constraint_lower_bounds.data(),
                             op_problem_scaled_.constraint_upper_bounds.data()),
@@ -498,6 +504,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
       stream_view_);
   }
 
+#ifdef CUPDLP_DEBUG_MODE
+  print("constraint_lower_bound", op_problem_scaled_.constraint_lower_bounds);
+  print("constraint_upper_bound", op_problem_scaled_.constraint_upper_bounds);
+  print("variable_lower_bound", op_problem_scaled_.variable_lower_bounds);
+  print("variable_upper_bound", op_problem_scaled_.variable_upper_bounds);
+  print("objective_vector", op_problem_scaled_.objective_coefficients);
+#endif
   op_problem_scaled_.is_scaled_ = true;
   if (!running_mip_) {
     scale_solutions(pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution());

@@ -118,9 +118,10 @@ class pdlp_solver_t {
                                  const pdlp_termination_status_t& termination_current,
                                  const pdlp_termination_status_t& termination_average);
 
-  void take_step([[maybe_unused]] i_t total_pdlp_iterations);
-  void take_adaptive_step(i_t total_pdlp_iterations);
-  void take_constant_step();
+  void take_step([[maybe_unused]] i_t total_pdlp_iterations,
+                 [[maybe_unused]] bool is_major_iteration);
+  void take_adaptive_step(i_t total_pdlp_iterations, bool is_major_iteration);
+  void take_constant_step(bool is_major_iteration);
 
   /**
    * @brief Update current primal & dual solution by setting new solutions and triggering a
