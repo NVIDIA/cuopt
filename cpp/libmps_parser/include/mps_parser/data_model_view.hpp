@@ -230,6 +230,30 @@ class data_model_view_t {
   void set_initial_dual_solution(const f_t* initial_dual_solution, i_t size);
 
   /**
+   * @brief Set the quadratic objective matrix (Q) in CSR format for QPS files.
+   *
+   * @note This is used for quadratic programming problems where the objective
+   * function contains quadratic terms: (1/2) * x^T * Q * x + c^T * x
+   * cuOpt does not own or copy this data.
+   *
+   * @param[in] Q_values Device memory pointer to values of the CSR representation of the quadratic
+   * objective matrix
+   * @param size_values Size of the Q_values array
+   * @param[in] Q_indices Device memory pointer to indices of the CSR representation of the
+   * quadratic objective matrix
+   * @param size_indices Size of the Q_indices array
+   * @param[in] Q_offsets Device memory pointer to offsets of the CSR representation of the
+   * quadratic objective matrix
+   * @param size_offsets Size of the Q_offsets array
+   */
+  void set_quadratic_objective_matrix(const f_t* Q_values,
+                                      i_t size_values,
+                                      const i_t* Q_indices,
+                                      i_t size_indices,
+                                      const i_t* Q_offsets,
+                                      i_t size_offsets);
+
+  /**
    * @brief Get the sense value (false:minimize, true:maximize)
    *
    * @return Sense value
@@ -339,6 +363,32 @@ class data_model_view_t {
    */
   std::string get_objective_name() const noexcept;
 
+  // QPS-specific getters
+  /**
+   * @brief Get the quadratic objective matrix values
+   *
+   * @return span<f_t const>
+   */
+  span<f_t const> get_quadratic_objective_values() const noexcept;
+  /**
+   * @brief Get the quadratic objective matrix indices
+   *
+   * @return span<i_t const>
+   */
+  span<i_t const> get_quadratic_objective_indices() const noexcept;
+  /**
+   * @brief Get the quadratic objective matrix offsets
+   *
+   * @return span<i_t const>
+   */
+  span<i_t const> get_quadratic_objective_offsets() const noexcept;
+  /**
+   * @brief Check if the problem has quadratic objective terms
+   *
+   * @return bool
+   */
+  bool has_quadratic_objective() const noexcept;
+
  private:
   bool maximize_{false};
   span<f_t const> A_;
@@ -360,6 +410,11 @@ class data_model_view_t {
   // TODO move to solver_settings in next release
   span<f_t const> initial_primal_solution_;
   span<f_t const> initial_dual_solution_;
+
+  // QPS-specific data members for quadratic programming support
+  span<f_t const> Q_objective_;
+  span<i_t const> Q_objective_indices_;
+  span<i_t const> Q_objective_offsets_;
 
 };  // class data_model_view_t
 
