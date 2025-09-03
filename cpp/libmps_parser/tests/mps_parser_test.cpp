@@ -757,6 +757,78 @@ TEST(mps_parser, good_mps_file_partial_bounds)
   EXPECT_EQ(10.0, mps.variable_upper_bounds[1]);
 }
 
+TEST(mps_parser, good_mps_file_bzip2_compressed)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-1.mps.bz2");
+  EXPECT_EQ("good-1", mps.problem_name);
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(3., mps.A_values[0][0]);
+  EXPECT_EQ(4., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(2.7, mps.A_values[1][0]);
+  EXPECT_EQ(10.1, mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(5.4, mps.b_values[0]);
+  EXPECT_EQ(4.9, mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(0.2, mps.c_values[0]);
+  EXPECT_EQ(0.1, mps.c_values[1]);
+}
+
+TEST(mps_parser, good_mps_file_zlib_compressed)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-1.mps.gz");
+  EXPECT_EQ("good-1", mps.problem_name);
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(3., mps.A_values[0][0]);
+  EXPECT_EQ(4., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(2.7, mps.A_values[1][0]);
+  EXPECT_EQ(10.1, mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(5.4, mps.b_values[0]);
+  EXPECT_EQ(4.9, mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(0.2, mps.c_values[0]);
+  EXPECT_EQ(0.1, mps.c_values[1]);
+}
+
 // ================================================================================================
 // QPS (Quadratic Programming) Support Tests
 // ================================================================================================
