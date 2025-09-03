@@ -367,6 +367,18 @@ target_compile_options(cuopt_cli
   "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
 )
 
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_COMMIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+target_compile_definitions(cuopt_cli PUBLIC
+  "CUOPT_GIT_COMMIT_HASH=\"${GIT_COMMIT_HASH}\""
+  "CUOPT_CUDA_ARCHITECTURES=\"${CMAKE_CUDA_ARCHITECTURES}\""
+  "CUOPT_CPU_ARCHITECTURE=\"${CMAKE_SYSTEM_PROCESSOR}\"")
+
 target_include_directories(cuopt_cli
   PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -398,6 +410,10 @@ if(BUILD_BENCHMARKS)
     PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
   )
+  target_compile_definitions(solve_MPS_file PUBLIC
+    "CUOPT_GIT_COMMIT_HASH=\"${GIT_COMMIT_HASH}\""
+    "CUOPT_CUDA_ARCHITECTURES=\"${CMAKE_CUDA_ARCHITECTURES}\""
+    "CUOPT_CPU_ARCHITECTURE=\"${CMAKE_SYSTEM_PROCESSOR}\"")
   target_link_libraries(solve_MPS_file
     PUBLIC
     cuopt
