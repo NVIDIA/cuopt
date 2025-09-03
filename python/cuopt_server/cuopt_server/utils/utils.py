@@ -16,7 +16,7 @@
 import json
 import os
 
-from cuopt_server.utils.job_queue import SolverLPJob, lp_datamodel_compat
+from cuopt_server.utils.job_queue import SolverLPJob
 from cuopt_server.utils.linear_programming.data_definition import LPData
 from cuopt_server.utils.linear_programming.solver import (
     create_data_model as lp_create_data_model,
@@ -73,14 +73,12 @@ def build_lp_datamodel_from_json(data):
     """
 
     if isinstance(data, dict):
-        lp_datamodel_compat(data)
         data = LPData.parse_obj(data)
     elif os.path.isfile(data):
         with open(data, "r") as f:
             data = json.loads(f.read())
             # Remove this once we support variable names
             data.pop("variable_names")
-            lp_datamodel_compat(data)
             data = LPData.parse_obj(data)
     else:
         raise ValueError(
