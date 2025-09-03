@@ -84,6 +84,10 @@ bool bound_strengthening(const std::vector<char>& row_sense,
   std::vector<f_t> constraint_lb(m);
   std::vector<f_t> constraint_ub(m);
 
+  // FIXME:: Instead of initializing constraint_changed to true, we can only look 
+  // at the constraints corresponding to branched variable in branch and bound
+  // This is because, the parent LP already checked for feasibility of the constraints 
+  // without the branched variable bounds
   std::vector<bool> constraint_changed(m, true);
   std::vector<bool> variable_changed(n, false);
   std::vector<bool> constraint_changed_next(m, false);
