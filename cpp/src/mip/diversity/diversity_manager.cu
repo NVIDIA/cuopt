@@ -818,6 +818,12 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
       recombiner = recombiner_type;
     }
   }
+  if (recombiner == recombiner_enum_t::SUB_MIP) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, 2);
+    recombiner = static_cast<recombiner_enum_t>(dis(gen));
+  }
   recombine_stats.add_attempt((recombiner_enum_t)recombiner);
   recombine_stats.start_recombiner_time();
   // Refactored code using a switch statement
