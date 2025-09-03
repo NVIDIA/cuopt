@@ -153,6 +153,33 @@ void data_model_view_t<i_t, f_t>::set_initial_dual_solution(const f_t* initial_d
 }
 
 template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::set_quadratic_objective_matrix(const f_t* Q_values,
+                                                                 i_t size_values,
+                                                                 const i_t* Q_indices,
+                                                                 i_t size_indices,
+                                                                 const i_t* Q_offsets,
+                                                                 i_t size_offsets)
+{
+  if (size_values != 0) {
+    mps_parser_expects(
+      Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
+  }
+  Q_objective_ = span<f_t const>(Q_values, size_values);
+
+  if (size_indices != 0) {
+    mps_parser_expects(
+      Q_indices != nullptr, error_type_t::ValidationError, "Q_indices cannot be null");
+  }
+  Q_objective_indices_ = span<i_t const>(Q_indices, size_indices);
+
+  mps_parser_expects(
+    Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
+  mps_parser_expects(
+    size_offsets > 0, error_type_t::ValidationError, "size_offsets cannot be empty");
+  Q_objective_offsets_ = span<i_t const>(Q_offsets, size_offsets);
+}
+
+template <typename i_t, typename f_t>
 void data_model_view_t<i_t, f_t>::set_row_types(const char* row_types, i_t size)
 {
   mps_parser_expects(
@@ -277,6 +304,31 @@ template <typename i_t, typename f_t>
 bool data_model_view_t<i_t, f_t>::get_sense() const noexcept
 {
   return maximize_;
+}
+
+// QPS-specific getter implementations
+template <typename i_t, typename f_t>
+span<const f_t> data_model_view_t<i_t, f_t>::get_quadratic_objective_values() const noexcept
+{
+  return Q_objective_;
+}
+
+template <typename i_t, typename f_t>
+span<const i_t> data_model_view_t<i_t, f_t>::get_quadratic_objective_indices() const noexcept
+{
+  return Q_objective_indices_;
+}
+
+template <typename i_t, typename f_t>
+span<const i_t> data_model_view_t<i_t, f_t>::get_quadratic_objective_offsets() const noexcept
+{
+  return Q_objective_offsets_;
+}
+
+template <typename i_t, typename f_t>
+bool data_model_view_t<i_t, f_t>::has_quadratic_objective() const noexcept
+{
+  return Q_objective_.size() > 0;
 }
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
