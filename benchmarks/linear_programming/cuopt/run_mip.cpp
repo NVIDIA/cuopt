@@ -435,7 +435,7 @@ static double get_available_memory_gb()
 
 int main(int argc, char* argv[])
 {
-  argparse::ArgumentParser program("solve_mps_file");
+  argparse::ArgumentParser program("solve_MIP");
 
   // Define all arguments with appropriate defaults and help messages
   program.add_argument("--path").help("input path").required();

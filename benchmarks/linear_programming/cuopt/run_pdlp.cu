@@ -113,7 +113,7 @@ static cuopt::linear_programming::pdlp_solver_settings_t<int, double> create_sol
 int main(int argc, char* argv[])
 {
   // Parse binary arguments
-  argparse::ArgumentParser program("solve_mps_file");
+  argparse::ArgumentParser program("solve_LP");
   parse_arguments(program);
 
   try {
