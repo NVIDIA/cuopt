@@ -94,7 +94,7 @@ struct elem_multi_t {
   __device__ f_t operator()(i_t i) const
   {
     auto var    = variables[i];
-    auto bounds = variable_bounds[i];
+    auto bounds = variable_bounds[var];
     if (obj_coefficients[var] > 0) {
       return bounds.x * coefficients[i];
     } else {

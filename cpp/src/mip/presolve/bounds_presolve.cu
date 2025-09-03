@@ -323,8 +323,8 @@ template <typename i_t, typename f_t>
 void bound_presolve_t<i_t, f_t>::set_updated_bounds(
   const raft::handle_t* handle_ptr, raft::device_span<typename type_2<f_t>::type> output_bounds)
 {
-  cuopt_assert(ub.size() == output_bounds.size(), "size of variable upper bound mismatch");
-  cuopt_assert(lb.size() == output_bounds.size(), "size of variable lower bound mismatch");
+  cuopt_assert(upd.ub.size() == output_bounds.size(), "size of variable upper bound mismatch");
+  cuopt_assert(upd.lb.size() == output_bounds.size(), "size of variable lower bound mismatch");
   thrust::transform(handle_ptr->get_thrust_policy(),
                     thrust::make_zip_iterator(thrust::make_tuple(upd.lb.begin(), upd.ub.begin())),
                     thrust::make_zip_iterator(thrust::make_tuple(upd.lb.end(), upd.ub.end())),

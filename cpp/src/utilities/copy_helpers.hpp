@@ -308,6 +308,7 @@ std::tuple<std::vector<f_t>, std::vector<f_t>> extract_host_bounds(
                     variable_bounds.end(),
                     thrust::make_zip_iterator(thrust::make_tuple(var_lb.begin(), var_ub.begin())),
                     [] __device__(auto i) { return thrust::make_tuple(i.x, i.y); });
+  handle_ptr->sync_stream();
   auto h_var_lb = cuopt::host_copy(var_lb);
   auto h_var_ub = cuopt::host_copy(var_ub);
   return std::make_tuple(h_var_lb, h_var_ub);

@@ -213,9 +213,7 @@ void test_elim_var_solution(std::string test_instance)
 TEST(mip_solve, elim_var_remap_test)
 {
   std::vector<std::string> test_instances = {
-    //"mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
-    "mip/50v-10-free-bound.mps",
-    "mip/neos5-free-bound.mps"};
+    "mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
   for (const auto& test_instance : test_instances) {
     test_elim_var_remap(test_instance);
   }
@@ -224,9 +222,7 @@ TEST(mip_solve, elim_var_remap_test)
 TEST(mip_solve, elim_var_remap_solution_test)
 {
   std::vector<std::string> test_instances = {
-    //"mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
-    "mip/50v-10-free-bound.mps",
-    "mip/neos5-free-bound.mps"};
+    "mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
   for (const auto& test_instance : test_instances) {
     test_elim_var_solution(test_instance);
   }

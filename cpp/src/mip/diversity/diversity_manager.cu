@@ -114,10 +114,34 @@ bool diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solut
 {
   // i_t ls_mab_option = mab_ls.select_mab_option();
   // mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
+  int dev;
+  cudaGetDevice(&dev);
+  std::cerr << "run_local_search pt -1\n device " << dev << "\n";
+  solution.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
   assignment_hash_map.insert(solution);
   constexpr i_t skip_solutions_threshold = 3;
+  std::cerr << "run_local_search pt 0\n";
+  solution.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
   if (assignment_hash_map.check_skip_solution(solution, skip_solutions_threshold)) { return false; }
+  std::cerr << "run_local_search pt 1\n";
+  solution.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
   ls.run_local_search(solution, weights, timer, ls_config);
+  std::cerr << "run_local_search pt 2\n";
+  solution.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
   return true;
 }
 
@@ -306,11 +330,19 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     stats.presolve_time = timer.elapsed_time();
     return false;
   }
+  problem_ptr->handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(problem_ptr->handle_ptr->get_stream());
+  cudaDeviceSynchronize();
+  std::cerr << "pt 0\n";
   if (termination_criterion_t::NO_UPDATE != term_crit) {
     ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
     trivial_presolve(*problem_ptr);
     if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   }
+  problem_ptr->handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(problem_ptr->handle_ptr->get_stream());
+  cudaDeviceSynchronize();
+  std::cerr << "pt 1\n";
   if (!problem_ptr->empty) {
     // do the resizing no-matter what, bounds presolve might not change the bounds but initial
     // trivial presolve might have
@@ -319,31 +351,66 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
       *problem_ptr, ls.constraint_prop.bounds_update);
     if (!check_bounds_sanity(*problem_ptr)) { return false; }
   }
+  problem_ptr->handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(problem_ptr->handle_ptr->get_stream());
+  cudaDeviceSynchronize();
+  std::cerr << "pt 2\n";
   stats.presolve_time = presolve_timer.elapsed_time();
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
   problem_ptr->handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(problem_ptr->handle_ptr->get_stream());
   cudaDeviceSynchronize();
+  std::cerr << "pt 3\n";
   return true;
 }
 
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
 {
+  std::cerr << "generate_fast_solution_time pt 0\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
+
   solution_t<i_t, f_t> solution(*problem_ptr);
+  std::cerr << "generate_fast_solution_time pt 1\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
   // min 1 second, max 10 seconds
   const f_t generate_fast_solution_time =
     std::min(diversity_config_t::max_fast_sol_time, std::max(1., timer.remaining_time() / 20.));
   timer_t sol_timer(generate_fast_solution_time);
   // do very short LP run to get somewhere close to the optimal point
   ls.generate_fast_solution(solution, sol_timer);
+  std::cerr << "generate_fast_solution_time pt 2\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
   if (solution.get_feasible()) {
     population.run_solution_callbacks(solution);
     initial_sol_vector.emplace_back(std::move(solution));
     problem_ptr->handle_ptr->sync_stream();
     solution_t<i_t, f_t> searched_sol(initial_sol_vector.back());
+    std::cerr << "generate_fast_solution_time pt 2a\n";
+    context.handle_ptr->sync_stream();
+    RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+    cudaDeviceSynchronize();
     ls_config_t<i_t, f_t> ls_config;
+    std::cerr << "generate_fast_solution_time pt 3\n";
+    context.handle_ptr->sync_stream();
+    RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+    cudaDeviceSynchronize();
     run_local_search(searched_sol, population.weights, sol_timer, ls_config);
+    std::cerr << "generate_fast_solution_time pt 4\n";
+    context.handle_ptr->sync_stream();
+    RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+    cudaDeviceSynchronize();
     population.run_solution_callbacks(searched_sol);
+    std::cerr << "generate_fast_solution_time pt 5\n";
+    context.handle_ptr->sync_stream();
+    RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+    cudaDeviceSynchronize();
     initial_sol_vector.emplace_back(std::move(searched_sol));
     auto& feas_sol = initial_sol_vector.back().get_feasible()
                        ? initial_sol_vector.back()
@@ -395,11 +462,21 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     cuopt::scope_guard([&]() { stats.total_solve_time = timer.elapsed_time(); });
   // after every change to the problem, we should resize all the relevant vars
   // we need to encapsulate that to prevent repetitions
+  std::cerr << "run_solver pt 0\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
+
   ls.resize_vectors(*problem_ptr, problem_ptr->handle_ptr);
   ls.constraint_prop.bounds_update.resize(*problem_ptr);
   problem_ptr->check_problem_representation(true);
   // have the structure ready for reusing later
   problem_ptr->compute_integer_fixed_problem();
+  std::cerr << "run_solver pt 1\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
+
   // test problem is not ii
   cuopt_func_call(
     ls.constraint_prop.bounds_update.calculate_activity_on_problem_bounds(*problem_ptr));
@@ -407,9 +484,21 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     ls.constraint_prop.bounds_update.calculate_infeasible_redundant_constraints(*problem_ptr),
     "The problem must not be ii");
   population.initialize_population();
+  std::cerr << "run_solver pt 2\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
   if (check_b_b_preemption()) { return population.best_feasible(); }
+  std::cerr << "run_solver pt 2a\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
   // before probing cache or LP, run FJ to generate initial primal feasible solution
   if (!from_dir) { generate_quick_feasible_solution(); }
+  std::cerr << "run_solver pt 2b\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
   constexpr f_t time_ratio_of_probing_cache = diversity_config_t::time_ratio_of_probing_cache;
   constexpr f_t max_time_on_probing         = diversity_config_t::max_time_on_probing;
   f_t time_for_probing_cache =
@@ -417,8 +506,20 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   timer_t probing_timer{time_for_probing_cache};
   if (check_b_b_preemption()) { return population.best_feasible(); }
   if (!fj_only_run) {
+    std::cerr << "run_solver pt 2c\n";
+    context.handle_ptr->sync_stream();
+    RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+    cudaDeviceSynchronize();
     compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
+    std::cerr << "run_solver pt 2d\n";
+    context.handle_ptr->sync_stream();
+    RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+    cudaDeviceSynchronize();
   }
+  std::cerr << "run_solver pt 3\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
   lp_state_t<i_t, f_t>& lp_state = problem_ptr->lp_state;
@@ -470,10 +571,20 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     // in case the pdlp returned var boudns that are out of bounds
     clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
   }
+  std::cerr << "run_solver pt 4\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
+
   population.allocate_solutions();
   if (check_b_b_preemption()) { return population.best_feasible(); }
   // generate a population with 5 solutions(FP+FJ)
   generate_initial_solutions();
+  std::cerr << "run_solver pt 5\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
+
   if (context.settings.benchmark_info_ptr != nullptr) {
     context.settings.benchmark_info_ptr->objective_of_initial_population =
       population.best_feasible().get_user_objective();
@@ -485,7 +596,17 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   }
 
   if (timer.check_time_limit()) { return population.best_feasible(); }
+  std::cerr << "run_solver pt 6\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
+
   main_loop();
+  std::cerr << "run_solver pt 7\n";
+  context.handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
+  cudaDeviceSynchronize();
+
   return population.best_feasible();
 };
 

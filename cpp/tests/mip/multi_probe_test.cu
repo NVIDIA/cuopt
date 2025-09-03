@@ -60,12 +60,13 @@ std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_
   problem.compute_n_integer_vars();
   auto [v_lb, v_ub] = extract_host_bounds<double>(problem.variable_bounds, problem.handle_ptr);
   auto int_var_id   = host_copy(problem.integer_indices);
-  int_var_id.erase(std::remove_if(int_var_id.begin(),
-                                  int_var_id.end(),
-                                  [v_lb, v_ub](auto id) {
-                                    return !(std::isfinite(v_lb[id]) && std::isfinite(v_ub[id]));
-                                  }),
-                   int_var_id.end());
+  int_var_id.erase(
+    std::remove_if(int_var_id.begin(),
+                   int_var_id.end(),
+                   [v_lb_sp = v_lb, v_ub_sp = v_ub](auto id) {
+                     return !(std::isfinite(v_lb_sp[id]) && std::isfinite(v_ub_sp[id]));
+                   }),
+    int_var_id.end());
   sample_size = std::min(sample_size, static_cast<int>(int_var_id.size()));
   std::vector<int> random_int_vars;
   std::mt19937 m{seed};
@@ -208,9 +209,7 @@ void test_multi_probe(std::string path)
 TEST(presolve, multi_probe)
 {
   std::vector<std::string> test_instances = {
-    //"mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
-    "mip/50v-10-free-bound.mps",
-    "mip/neos5-free-bound.mps"};
+    "mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
   for (const auto& test_instance : test_instances) {
     std::cout << "Running: " << test_instance << std::endl;
     auto path = make_path_absolute(test_instance);

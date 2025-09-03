@@ -402,17 +402,15 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
     //              "Variable lower bounds and variable upper bounds must be set.");
     cuopt_assert(!variable_bounds.is_empty(), "Variable bounds must be set.");
   }
-  cuopt_assert(variable_bounds.size() == 2 * objective_coefficients.size(),
+  cuopt_assert(variable_bounds.size() == objective_coefficients.size(),
                "Sizes for vectors related to the variables are not the same.");
-  cuopt_assert(variable_bounds.size() == 2 * (std::size_t)n_variables,
+  cuopt_assert(variable_bounds.size() == (std::size_t)n_variables,
                "Sizes for vectors related to the variables are not the same.");
 
   // cuopt_assert(variable_lower_bounds.size() == objective_coefficients.size(),
   //              "Sizes for vectors related to the variables are not the same.");
   // cuopt_assert(variable_upper_bounds.size() == objective_coefficients.size(),
   //              "Sizes for vectors related to the variables are not the same");
-  cuopt_assert(variable_upper_bounds.size() == (std::size_t)n_variables,
-               "Sizes for vectors related to the variables are not the same.");
   cuopt_assert(variable_types.size() == (std::size_t)n_variables,
                "Sizes for vectors related to the variables are not the same.");
   // Check constraints bounds sizes
