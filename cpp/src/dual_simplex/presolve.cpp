@@ -138,12 +138,6 @@ bool bound_strengthening(const std::vector<char>& row_sense,
         if (upper[j] == inf && a_ij < 0) { min_a = -inf; }
       }
 
-      if (max_a < min_a) {
-        settings.log.printf(
-          "Iter:: %d, Infeasible constraint %d, min_a %e, max_a %e\n", iter, i, min_a, max_a);
-        return false;
-      }
-
       f_t cnst_lb = constraint_lb[i];
       f_t cnst_ub = constraint_ub[i];
       bool is_infeasible =
