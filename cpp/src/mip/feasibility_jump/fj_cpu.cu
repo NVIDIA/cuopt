@@ -20,9 +20,33 @@
 #include "feasibility_jump.cuh"
 #include "feasibility_jump_impl_common.cuh"
 
+#include <chrono>
 #include <unordered_set>
+#include <vector>
 
 namespace cuopt::linear_programming::detail {
+
+// RAII timing wrapper for automatic timing measurement
+template <typename i_t, typename f_t>
+class timing_raii_t {
+ public:
+  timing_raii_t(std::vector<double>& times_vec)
+    : times_vec_(times_vec), start_time_(std::chrono::high_resolution_clock::now())
+  {
+  }
+
+  ~timing_raii_t()
+  {
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration =
+      std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time_);
+    times_vec_.push_back(duration.count());
+  }
+
+ private:
+  std::vector<double>& times_vec_;
+  std::chrono::high_resolution_clock::time_point start_time_;
+};
 
 // NOTE: this seems ripe for reflection/xmacros once this is available.
 // Maintaining a single source of truth for all members would be nice
@@ -64,11 +88,60 @@ struct fj_cpu_t {
   f_t h_objective_weight;
   f_t h_incumbent_objective;
   f_t h_best_objective;
+  i_t last_feasible_entrance_iter{0};
   i_t iterations;
   std::unordered_set<i_t> violated_constraints;
   std::unordered_set<i_t> satisfied_constraints;
   bool feasible_found{false};
+
+  // Timing data structures
+  std::vector<double> find_lift_move_times;
+  std::vector<double> find_mtm_move_viol_times;
+  std::vector<double> find_mtm_move_sat_times;
+  std::vector<double> apply_move_times;
+  std::vector<double> update_weights_times;
 };
+
+template <typename i_t, typename f_t>
+static void print_timing_stats(fj_cpu_t<i_t, f_t>& fj_cpu)
+{
+  auto compute_avg_and_total = [](const std::vector<double>& times) -> std::pair<double, double> {
+    if (times.empty()) return {0.0, 0.0};
+    double sum = 0.0;
+    for (double time : times)
+      sum += time;
+    return {sum / times.size(), sum};
+  };
+
+  auto [lift_avg, lift_total]       = compute_avg_and_total(fj_cpu.find_lift_move_times);
+  auto [viol_avg, viol_total]       = compute_avg_and_total(fj_cpu.find_mtm_move_viol_times);
+  auto [sat_avg, sat_total]         = compute_avg_and_total(fj_cpu.find_mtm_move_sat_times);
+  auto [apply_avg, apply_total]     = compute_avg_and_total(fj_cpu.apply_move_times);
+  auto [weights_avg, weights_total] = compute_avg_and_total(fj_cpu.update_weights_times);
+
+  printf("=== Timing Statistics (Iteration %d) ===\n", fj_cpu.iterations);
+  printf("find_lift_move:      avg=%.6f ms, total=%.6f ms, calls=%zu\n",
+         lift_avg * 1000.0,
+         lift_total * 1000.0,
+         fj_cpu.find_lift_move_times.size());
+  printf("find_mtm_move_viol:  avg=%.6f ms, total=%.6f ms, calls=%zu\n",
+         viol_avg * 1000.0,
+         viol_total * 1000.0,
+         fj_cpu.find_mtm_move_viol_times.size());
+  printf("find_mtm_move_sat:   avg=%.6f ms, total=%.6f ms, calls=%zu\n",
+         sat_avg * 1000.0,
+         sat_total * 1000.0,
+         fj_cpu.find_mtm_move_sat_times.size());
+  printf("apply_move:          avg=%.6f ms, total=%.6f ms, calls=%zu\n",
+         apply_avg * 1000.0,
+         apply_total * 1000.0,
+         fj_cpu.apply_move_times.size());
+  printf("update_weights:      avg=%.6f ms, total=%.6f ms, calls=%zu\n",
+         weights_avg * 1000.0,
+         weights_total * 1000.0,
+         fj_cpu.update_weights_times.size());
+  printf("========================================\n");
+}
 
 template <typename i_t, typename f_t>
 static inline bool tabu_check(fj_cpu_t<i_t, f_t>& fj_cpu,
@@ -120,8 +193,8 @@ static inline fj_staged_score_t compute_score(fj_cpu_t<i_t, f_t>& fj_cpu, i_t va
 
   f_t bonus_breakthrough = 0;
 
-  bool old_obj_better = fj_cpu.h_objective_weight < fj_cpu.h_best_objective;
-  bool new_obj_better = fj_cpu.h_objective_weight + obj_diff < fj_cpu.h_best_objective;
+  bool old_obj_better = fj_cpu.h_incumbent_objective < fj_cpu.h_best_objective;
+  bool new_obj_better = fj_cpu.h_incumbent_objective + obj_diff < fj_cpu.h_best_objective;
   if (!old_obj_better && new_obj_better)
     bonus_breakthrough += fj_cpu.h_objective_weight;
   else if (old_obj_better && !new_obj_better) {
@@ -156,10 +229,15 @@ static void smooth_weights(fj_cpu_t<i_t, f_t>& fj_cpu)
 template <typename i_t, typename f_t>
 static void update_weights(fj_cpu_t<i_t, f_t>& fj_cpu)
 {
+  timing_raii_t<i_t, f_t> timer(fj_cpu.update_weights_times);
+
   raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
   bool smoothing = rng.next_float() <= fj_cpu.settings.parameters.weight_smoothing_probability;
 
-  if (smoothing) return smooth_weights<i_t, f_t>(fj_cpu);
+  if (smoothing) {
+    smooth_weights<i_t, f_t>(fj_cpu);
+    return;
+  }
 
   for (auto cstr_idx : fj_cpu.violated_constraints) {
     f_t curr_incumbent_lhs = fj_cpu.h_lhs[cstr_idx];
@@ -197,17 +275,21 @@ static void update_weights(fj_cpu_t<i_t, f_t>& fj_cpu)
 template <typename i_t, typename f_t>
 static void apply_move(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool localmin = false)
 {
+  timing_raii_t<i_t, f_t> timer(fj_cpu.apply_move_times);
+
   raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
 
   // cuopt_assert(delta != 0, "delta is zero");
   if (delta != 0) cuopt_assert(!tabu_check(fj_cpu, var_idx, delta, localmin), "move is tabu");
 
-  // printf("   [%d] applying move: %d, %g, unsat %zu\n", fj_cpu.iterations, var_idx, delta,
-  // fj_cpu.violated_constraints.size());
+  // printf("   [%d] applying move: %d, %g, unsat %zu, incumbent obj %g\n", fj_cpu.iterations,
+  // var_idx, delta, fj_cpu.violated_constraints.size(), fj_cpu.h_incumbent_objective);
 
   cuopt_assert(var_idx < fj_cpu.view.pb.n_variables, "variable index out of bounds");
   // Update the LHSs of all involved constraints.
   auto [offset_begin, offset_end] = fj_cpu.view.pb.reverse_range_for_var(var_idx);
+
+  i_t previous_viol = fj_cpu.violated_constraints.size();
 
   for (auto i = offset_begin; i < offset_end; i++) {
     cuopt_assert(i < (i_t)fj_cpu.h_reverse_constraints.size(), "");
@@ -237,6 +319,11 @@ static void apply_move(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool 
     fj_cpu.h_lhs[cstr_idx]         = t;
     cuopt_assert(isfinite(fj_cpu.h_lhs[cstr_idx]), "assignment should be finite");
   }
+
+  if (previous_viol > 0 && fj_cpu.violated_constraints.empty()) {
+    fj_cpu.last_feasible_entrance_iter = fj_cpu.iterations;
+  }
+
   // update the assignment and objective proper
   f_t new_val                  = fj_cpu.h_assignment[var_idx] + delta;
   fj_cpu.h_assignment[var_idx] = new_val;
@@ -340,13 +427,17 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
   // also consider BM moves if we have found a feasible solution at least once
   if (move_type == MTMMoveType::FJ_MTM_VIOLATED &&
       fj_cpu.h_best_objective < std::numeric_limits<f_t>::infinity() &&
-      fj_cpu.h_incumbent_objective > fj_cpu.h_best_objective) {
+      fj_cpu.h_incumbent_objective >= fj_cpu.h_best_objective + 1e-6) {
     cuopt_assert(fj_cpu.h_objective_vars.size() > 0, "This MIP is quite odd...");
     for (auto var_idx : fj_cpu.h_objective_vars) {
-      if (fj_cpu.view.pb.is_binary_variable[var_idx]) continue;
+      // if (fj_cpu.view.pb.is_binary_variable[var_idx]) continue;
 
       f_t old_val = fj_cpu.h_assignment[var_idx];
       f_t new_val = get_breakthrough_move<i_t, f_t>(fj_cpu.view, var_idx);
+
+      // if (fj_cpu.iterations <= 3 && fabs(fabs(fj_cpu.h_obj_coeffs[var_idx]) - 51.75) < 0.1)
+      //   printf("BM: var_idx %d, delta %g, coeff %g, diff %g\n", var_idx, new_val - old_val,
+      //   fj_cpu.h_obj_coeffs[var_idx], fj_cpu.h_incumbent_objective - fj_cpu.h_best_objective);
 
       if (fj_cpu.view.pb.integer_equal(new_val, old_val) || !isfinite(new_val)) continue;
 
@@ -360,7 +451,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       candidate_moves.insert(move);
       f_t delta = new_val - old_val;
 
-      if (tabu_check(fj_cpu, var_idx, delta, localmin)) continue;
+      if (tabu_check(fj_cpu, var_idx, delta)) continue;
 
       fj_staged_score_t score = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
 
@@ -415,6 +506,8 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_viol(fj_cpu_t<i
                                                                       i_t sample_size = 100,
                                                                       bool localmin   = false)
 {
+  timing_raii_t<i_t, f_t> timer(fj_cpu.find_mtm_move_viol_times);
+
   std::vector<i_t> sampled_cstrs;
   sampled_cstrs.reserve(sample_size);
   std::sample(fj_cpu.violated_constraints.begin(),
@@ -430,6 +523,8 @@ template <typename i_t, typename f_t>
 static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_sat(fj_cpu_t<i_t, f_t>& fj_cpu,
                                                                      i_t sample_size = 100)
 {
+  timing_raii_t<i_t, f_t> timer(fj_cpu.find_mtm_move_sat_times);
+
   std::vector<i_t> sampled_cstrs;
   sampled_cstrs.reserve(sample_size);
   std::sample(fj_cpu.satisfied_constraints.begin(),
@@ -444,6 +539,8 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_sat(fj_cpu_t<i_
 template <typename i_t, typename f_t>
 static void init_lhs(fj_cpu_t<i_t, f_t>& fj_cpu)
 {
+  fj_cpu.violated_constraints.clear();
+  fj_cpu.satisfied_constraints.clear();
   for (i_t cstr_idx = 0; cstr_idx < fj_cpu.view.pb.n_constraints; ++cstr_idx) {
     auto [offset_begin, offset_end] = fj_cpu.view.pb.range_for_constraint(cstr_idx);
     f_t lhs                         = 0;
@@ -464,12 +561,15 @@ static void init_lhs(fj_cpu_t<i_t, f_t>& fj_cpu)
   // compute incumbent objective
   fj_cpu.h_incumbent_objective = thrust::inner_product(
     fj_cpu.h_assignment.begin(), fj_cpu.h_assignment.end(), fj_cpu.h_obj_coeffs.begin(), 0.);
-  fj_cpu.h_best_objective = +std::numeric_limits<f_t>::infinity();
+  printf("initial objective: %g\n",
+         fj_cpu.fj.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_incumbent_objective));
 }
 
 template <typename i_t, typename f_t>
 static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(fj_cpu_t<i_t, f_t>& fj_cpu)
 {
+  timing_raii_t<i_t, f_t> timer(fj_cpu.find_lift_move_times);
+
   fj_move_t best_move          = fj_move_t{-1, 0};
   fj_staged_score_t best_score = fj_staged_score_t::zero();
 
@@ -478,63 +578,75 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(fj_cpu_t<i_t, 
     f_t delta     = -std::numeric_limits<f_t>::infinity();
     f_t val       = fj_cpu.h_assignment[var_idx];
 
-    f_t lfd_lb                      = fj_cpu.h_var_lb[var_idx] - val;
-    f_t lfd_ub                      = fj_cpu.h_var_ub[var_idx] - val;
-    auto [offset_begin, offset_end] = fj_cpu.view.pb.reverse_range_for_var(var_idx);
-    for (i_t j = offset_begin; j < offset_end; j += 1) {
-      auto cstr_idx      = fj_cpu.view.pb.reverse_constraints[j];
-      auto cstr_coeff    = fj_cpu.view.pb.reverse_coefficients[j];
-      f_t c_lb           = fj_cpu.view.pb.constraint_lower_bounds[cstr_idx];
-      f_t c_ub           = fj_cpu.view.pb.constraint_upper_bounds[cstr_idx];
-      f_t cstr_tolerance = fj_cpu.view.get_corrected_tolerance(cstr_idx);
-      cuopt_assert(c_lb <= c_ub, "invalid bounds");
-      cuopt_assert(fj_cpu.view.cstr_satisfied(cstr_idx, fj_cpu.h_lhs[cstr_idx]),
-                   "cstr should be satisfied");
+    // special path for binary variables
+    if (fj_cpu.h_is_binary_variable[var_idx] && false) {
+      cuopt_assert(fj_cpu.view.pb.is_integer(val), "binary variable is not integer");
+      cuopt_assert(val == 0 || val == 1, "binary variable is not 0 or 1");
+      delta = round(1.0 - 2 * val);
+      // flip move wouldn't improve
+      if (delta * obj_coeff >= 0) continue;
+    } else {
+      f_t lfd_lb                      = fj_cpu.h_var_lb[var_idx] - val;
+      f_t lfd_ub                      = fj_cpu.h_var_ub[var_idx] - val;
+      auto [offset_begin, offset_end] = fj_cpu.view.pb.reverse_range_for_var(var_idx);
+      for (i_t j = offset_begin; j < offset_end; j += 1) {
+        auto cstr_idx      = fj_cpu.view.pb.reverse_constraints[j];
+        auto cstr_coeff    = fj_cpu.view.pb.reverse_coefficients[j];
+        f_t c_lb           = fj_cpu.view.pb.constraint_lower_bounds[cstr_idx];
+        f_t c_ub           = fj_cpu.view.pb.constraint_upper_bounds[cstr_idx];
+        f_t cstr_tolerance = fj_cpu.view.get_corrected_tolerance(cstr_idx);
+        cuopt_assert(c_lb <= c_ub, "invalid bounds");
+        cuopt_assert(fj_cpu.view.cstr_satisfied(cstr_idx, fj_cpu.h_lhs[cstr_idx]),
+                     "cstr should be satisfied");
 
-      // Process each bound separately, as both are satified and may both be finite
-      // otherwise range constraints aren't correctly handled
-      for (auto [bound, sign] : {std::make_tuple(c_lb, -1), std::make_tuple(c_ub, 1)}) {
-        auto [delta, slack] =
-          get_mtm_for_bound<i_t, f_t>(fj_cpu.view, var_idx, cstr_idx, cstr_coeff, bound, sign);
+        // Process each bound separately, as both are satified and may both be finite
+        // otherwise range constraints aren't correctly handled
+        for (auto [bound, sign] : {std::make_tuple(c_lb, -1), std::make_tuple(c_ub, 1)}) {
+          auto [delta, slack] =
+            get_mtm_for_bound<i_t, f_t>(fj_cpu.view, var_idx, cstr_idx, cstr_coeff, bound, sign);
 
-        if (cstr_coeff * sign < 0) {
-          if (fj_cpu.view.pb.is_integer_var(var_idx)) delta = ceil(delta);
-        } else {
-          if (fj_cpu.view.pb.is_integer_var(var_idx)) delta = floor(delta);
-        }
-
-        // skip this variable if there is no slack
-        if (fabs(slack) <= cstr_tolerance) {
-          if (cstr_coeff * sign > 0) {
-            lfd_ub = 0;
-          } else {
-            lfd_lb = 0;
-          }
-        } else if (!fj_cpu.view.pb.check_variable_within_bounds(var_idx, val + delta)) {
-          continue;
-        } else {
           if (cstr_coeff * sign < 0) {
-            lfd_lb = max(lfd_lb, delta);
+            if (fj_cpu.view.pb.is_integer_var(var_idx)) delta = ceil(delta);
           } else {
-            lfd_ub = min(lfd_ub, delta);
+            if (fj_cpu.view.pb.is_integer_var(var_idx)) delta = floor(delta);
+          }
+
+          // skip this variable if there is no slack
+          if (fabs(slack) <= cstr_tolerance) {
+            if (cstr_coeff * sign > 0) {
+              lfd_ub = 0;
+            } else {
+              lfd_lb = 0;
+            }
+          } else if (!fj_cpu.view.pb.check_variable_within_bounds(var_idx, val + delta)) {
+            continue;
+          } else {
+            if (cstr_coeff * sign < 0) {
+              lfd_lb = max(lfd_lb, delta);
+            } else {
+              lfd_ub = min(lfd_ub, delta);
+            }
           }
         }
+        if (lfd_lb >= lfd_ub) break;
       }
-      if (lfd_lb >= lfd_ub) break;
+
+      // invalid crossing bounds
+      if (lfd_lb >= lfd_ub) { lfd_lb = lfd_ub = 0; }
+
+      if (!fj_cpu.view.pb.check_variable_within_bounds(var_idx, val + lfd_lb)) { lfd_lb = 0; }
+      if (!fj_cpu.view.pb.check_variable_within_bounds(var_idx, val + lfd_ub)) { lfd_ub = 0; }
+
+      // Now that the life move domain is computed, compute the correct lift move
+      cuopt_assert(isfinite(val), "invalid assignment value");
+      delta = obj_coeff < 0 ? lfd_ub : lfd_lb;
     }
 
-    // invalid crossing bounds
-    if (lfd_lb >= lfd_ub) { lfd_lb = lfd_ub = 0; }
-
-    if (!fj_cpu.view.pb.check_variable_within_bounds(var_idx, val + lfd_lb)) { lfd_lb = 0; }
-    if (!fj_cpu.view.pb.check_variable_within_bounds(var_idx, val + lfd_ub)) { lfd_ub = 0; }
-
-    // Now that the life move domain is computed, compute the correct lift move
-    cuopt_assert(isfinite(val), "invalid assignment value");
-    delta = obj_coeff < 0 ? lfd_ub : lfd_lb;
     if (!isfinite(delta)) delta = 0;
     if (fj_cpu.view.pb.integer_equal(delta, (f_t)0)) continue;
     if (tabu_check(fj_cpu, var_idx, delta)) continue;
+
+    cuopt_assert(delta * obj_coeff < 0, "lift move doesn't improve the objective!");
 
     // get the score
     auto move               = fj_move_t{var_idx, delta + val};
@@ -547,7 +659,37 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(fj_cpu_t<i_t, 
       best_move  = move;
     }
   }
+
   return thrust::make_tuple(best_move, best_score);
+}
+
+template <typename i_t, typename f_t>
+static void perturb(fj_cpu_t<i_t, f_t>& fj_cpu)
+{
+  // select N variables, assign them a random value between their bounds
+  std::vector<i_t> sampled_vars;
+  std::sample(fj_cpu.h_objective_vars.begin(),
+              fj_cpu.h_objective_vars.end(),
+              std::back_inserter(sampled_vars),
+              2,
+              std::mt19937(fj_cpu.settings.seed + fj_cpu.iterations));
+  raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
+
+  for (auto var_idx : sampled_vars) {
+    f_t lb  = ceil(std::max(fj_cpu.h_var_lb[var_idx], -1e7));
+    f_t ub  = floor(std::min(fj_cpu.h_var_ub[var_idx], 1e7));
+    f_t val = lb + (ub - lb) * rng.next_double();
+    if (fj_cpu.view.pb.is_integer_var(var_idx)) {
+      val = std::round(val);
+      val = std::min(std::max(val, lb), ub);
+    }
+
+    cuopt_assert(fj_cpu.view.pb.check_variable_within_bounds(var_idx, val),
+                 "value is out of bounds");
+    fj_cpu.h_assignment[var_idx] = val;
+  }
+
+  init_lhs(fj_cpu);
 }
 
 template <typename i_t, typename f_t>
@@ -648,6 +790,7 @@ static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& soluti
     fj_cpu.h_cstr_right_weights[cstr_idx] = 1;
   }
   fj_cpu.h_objective_weight = 0;
+  fj_cpu.h_best_objective   = +std::numeric_limits<f_t>::infinity();
 
   init_lhs(fj_cpu);
 }
@@ -703,7 +846,7 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
   fprintf(stderr, "running bespoke CPU FJ!\n");
 
   i_t local_mins = 0;
-  while (fj_cpu.iterations < 50000) {
+  while (fj_cpu.iterations < 5000) {
     fj_move_t move          = fj_move_t{-1, 0};
     fj_staged_score_t score = fj_staged_score_t::invalid();
     // Perform lift moves
@@ -715,12 +858,23 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
     if (!(score > fj_staged_score_t::zero())) {
       // put more effort when no feasible has been found yet
       thrust::tie(move, score) = find_mtm_move_viol(fj_cpu, fj_cpu.feasible_found ? 5000 : 2000);
-      // if (score > fj_staged_score_t::zero()) printf("MTM viol move\n");
+      // if (score > fj_staged_score_t::zero()) printf("MTM viol move, score %d, %d\n",
+      // (int)score.base, (int)score.bonus);
     }
     // try with MTM in satisfied constraints
     if (fj_cpu.feasible_found && !(score > fj_staged_score_t::zero())) {
-      thrust::tie(move, score) = find_mtm_move_sat(fj_cpu, 200);
-      // if (score > fj_staged_score_t::zero()) printf("sat move\n");
+      thrust::tie(move, score) = find_mtm_move_sat(fj_cpu, 20);
+      // if (score > fj_staged_score_t::zero()) printf("sat move, score %d, %d, obj is %g, best obj
+      // is %g, viol %zu\n", (int)score.base, (int)score.bonus, fj_cpu.h_incumbent_objective,
+      // fj_cpu.h_best_objective, fj_cpu.violated_constraints.size());
+    }
+    // if we're in the feasible region but haven't found improvements in the last n iterations,
+    // perturb
+    if (fj_cpu.violated_constraints.empty() &&
+        fj_cpu.iterations - fj_cpu.last_feasible_entrance_iter > 500) {
+      perturb(fj_cpu);
+      fj_cpu.last_feasible_entrance_iter = fj_cpu.iterations;
+      printf("PERTURB\n");
     }
     // try a boolean flip operation(?)(already covered by the MTM bin specialization)
     // if (!(score > fj_staged_score_t::zero())) {
@@ -752,15 +906,25 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
       ++local_mins;
     }
     if (fj_cpu.iterations % 100 == 0) {
-      printf("iteration: %d, local mins: %d, best_objective: %g, viol: %zu\n",
+      printf("iteration: %d, local mins: %d, best_objective: %g, viol: %zu, obj weight %g\n",
              fj_cpu.iterations,
              local_mins,
              fj_cpu.fj.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective),
-             fj_cpu.violated_constraints.size());
+             fj_cpu.violated_constraints.size(),
+             fj_cpu.h_objective_weight);
     }
+
+    // Print timing statistics every 5000 iterations
+    if (fj_cpu.iterations % 5000 == 0 && fj_cpu.iterations > 0) { print_timing_stats(fj_cpu); }
     cuopt_func_call(sanity_checks(fj_cpu));
     fj_cpu.iterations++;
   }
+
+  // exit(0);
+
+  // Print final timing statistics
+  printf("\n=== Final Timing Statistics ===\n");
+  print_timing_stats(fj_cpu);
 
   return 0;
 }

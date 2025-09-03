@@ -74,15 +74,18 @@ void LocalMIP::RandomTightMove()
       auto& localVar = localVarUtil.GetVar(varIdx);
       auto& modelVar = modelVarUtil->GetVar(varIdx);
       Value delta;
-      if (!TightDelta(localObj, modelObj, termIdx, delta))
+      if (!TightDelta(localObj, modelObj, termIdx, delta)) {
         if (modelObj.coeffSet[termIdx] > 0)
           delta = modelVar.lowerBound - localVar.nowValue;
         else
           delta = modelVar.upperBound - localVar.nowValue;
+      }
       if (delta < 0 && curStep < localVar.allowDecStep ||
           delta > 0 && curStep < localVar.allowIncStep)
         continue;
       if (fabs(delta) < FeasibilityTol) continue;
+      // printf("Considering BM %d, delta %g, coeff %g, gap %g\n", varIdx, delta,
+      // modelObj.coeffSet[termIdx], localObj.LHS - localObj.RHS);
       neighborVarIdxs.push_back(varIdx);
       neighborDeltas.push_back(delta);
     }
@@ -117,5 +120,7 @@ void LocalMIP::RandomTightMove()
     ++randomStep;
     ApplyMove(bestVarIdx, bestDelta);
     return;
+  } else {
+    // printf("No move found\n");
   }
 }

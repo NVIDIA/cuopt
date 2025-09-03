@@ -38,8 +38,8 @@
 int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_point _clkStart)
 {
   // DEBUG = true;
-  //  Allocate();
-  //  InitSolution();
+  //   Allocate();
+  //   InitSolution();
   InitState();
   auto& localObj = localConUtil.conSet[0];
   curStep        = 0;

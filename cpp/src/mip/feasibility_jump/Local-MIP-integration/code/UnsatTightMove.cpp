@@ -151,8 +151,10 @@ bool LocalMIP::UnsatTightMove()
   }
   if (bestScore > 0) {
     if (DEBUG)
-      printf(
-        "UNSAT: %-10ld; score %d; subscore %d\n", (int)bestVarIdx, bestScore, (int)bestSubscore);
+      printf("move_UNSAT: %-10ld; score %d; subscore %d\n",
+             (int)bestVarIdx,
+             bestScore,
+             (int)bestSubscore);
     ++tightStepUnsat;
     ApplyMove(bestVarIdx, bestDelta);
     for (auto idx : scoreIdxs)
@@ -160,8 +162,8 @@ bool LocalMIP::UnsatTightMove()
     return true;
   } else {
     bool resFurtherMove = false;
-    if (isFoundFeasible) resFurtherMove = SatTightMove(scoreTable, scoreIdxs);
-    if (!resFurtherMove) resFurtherMove = FlipMove(scoreTable, scoreIdxs);
+    // if (isFoundFeasible) resFurtherMove = SatTightMove(scoreTable, scoreIdxs);
+    // if (!resFurtherMove) resFurtherMove = FlipMove(scoreTable, scoreIdxs);
     for (auto idx : scoreIdxs)
       scoreTable[idx] = false;
     return resFurtherMove;

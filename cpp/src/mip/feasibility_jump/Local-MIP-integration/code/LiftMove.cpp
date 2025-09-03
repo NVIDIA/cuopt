@@ -119,6 +119,7 @@ bool LocalMIP::LiftMoveWithoutBreak()
 
   if (bestVarIdx != -1 && bestVarDelta != 0) {
     ++liftStep;
+    if (DEBUG) printf("move_LIFT: %-10ld; objdelta %g\n", (int)bestVarIdx, bestObjDelta);
     ApplyMove(bestVarIdx, bestVarDelta);
     isKeepFeas                         = true;
     unordered_set<size_t>& affectedVar = localVarUtil.affectedVar;

@@ -171,13 +171,19 @@ class LocalMIP {
       if (modelVar.type == VarType::Real)
         _res = delta;
       else
-        _res = floor(delta);
+        _res = floor(delta - 1e-6);
     } else {
       if (modelVar.type == VarType::Real)
         _res = delta;
       else
-        _res = ceil(delta);
+        _res = ceil(delta + 1e-6);
     }
+
+    // if (varIdx == 2387)
+    // {
+    //   printf("delta %g, res %g, gap %g, coeff %g\n", delta, _res, gap,
+    //   _modelCon.coeffSet[_termIdx]);
+    // }
 
     if (modelVar.InBound(localVar.nowValue + _res))
       return true;
