@@ -18,6 +18,7 @@
 #include <dual_simplex/presolve.hpp>
 
 #include <dual_simplex/right_looking_lu.hpp>
+#include <dual_simplex/tic_toc.hpp>
 
 #include <cmath>
 #include <iostream>
@@ -74,17 +75,18 @@ bool bound_strengthening(const std::vector<char>& row_sense,
   const i_t m = problem.num_rows;
   const i_t n = problem.num_cols;
 
-  std::vector<f_t> min_activity(m);
-  std::vector<f_t> max_activity(m);
-
+  // FIXME:: pre-compute transpose and store
   csc_matrix_t<i_t, f_t> Arow(1, 1, 1);
   problem.A.transpose(Arow);
 
+  std::vector<f_t> min_activity(m);
+  std::vector<f_t> max_activity(m);
   std::vector<f_t> constraint_lb(m);
   std::vector<f_t> constraint_ub(m);
 
-  i_t num_finite_lower_bounds = 0;
-  i_t num_finite_upper_bounds = 0;
+  std::vector<bool> constraint_changed(m, true);
+  std::vector<bool> variable_changed(n, false);
+  std::vector<bool> constraint_changed_next(m, false);
 
   for (i_t i = 0; i < m; ++i) {
     if (row_sense[i] == 'L') {
@@ -102,29 +104,12 @@ bool bound_strengthening(const std::vector<char>& row_sense,
   std::vector<f_t> lower = problem.lower;
   std::vector<f_t> upper = problem.upper;
   print_bounds_stats(lower, upper, settings, "Initial bounds");
-  for (i_t i = 0; i < n; ++i) {
-    if (lower[i] > upper[i]) {
-      // std::cout << "Infeasible variable " << i << ", lower " << lower[i] << ", upper " <<
-      // upper[i] << std::endl;
-      return false;
-    }
-  }
 
-  std::vector<i_t> updated_variables_list;
-  updated_variables_list.reserve(n);
-  std::vector<i_t> updated_variables_mark(n, 0);
-
-  i_t iter                         = 0;
-  const i_t iter_limit             = 10;
-  i_t total_strengthened_variables = 0;
+  i_t iter             = 0;
+  const i_t iter_limit = 10;
   while (iter < iter_limit) {
-    // std::cout << " XXXXXXXXXX  Iter:: " << iter << std::endl;
-    // Derive bounds on the constraints
-    // settings.log.printf("Running bound strengthening on %d rows\n", static_cast<i_t>(n));
-
-    // Compute the min and max activity of the constraints
-    // FIXME:: use changed constraints logic
     for (i_t i = 0; i < m; ++i) {
+      if (!constraint_changed[i]) { continue; }
       const i_t row_start = Arow.col_start[i];
       const i_t row_end   = Arow.col_start[i + 1];
 
@@ -133,6 +118,8 @@ bool bound_strengthening(const std::vector<char>& row_sense,
       for (i_t p = row_start; p < row_end; ++p) {
         const i_t j    = Arow.i[p];
         const f_t a_ij = Arow.x[p];
+
+        variable_changed[j] = true;
         if (a_ij > 0) {
           min_a += a_ij * lower[j];
           max_a += a_ij * upper[j];
@@ -148,8 +135,24 @@ bool bound_strengthening(const std::vector<char>& row_sense,
       }
 
       if (max_a < min_a) {
-        // std::cout << "Iter:: " << iter << ", Infeasible constraint " << i << ", min_a " << min_a
-        // << ", max_a " << max_a << std::endl;
+        settings.log.printf(
+          "Iter:: %d, Infeasible constraint %d, min_a %e, max_a %e\n", iter, i, min_a, max_a);
+        return false;
+      }
+
+      f_t cnst_lb = constraint_lb[i];
+      f_t cnst_ub = constraint_ub[i];
+      bool is_infeasible =
+        check_infeasibility<i_t, f_t>(min_a, max_a, cnst_lb, cnst_ub, settings.primal_tol);
+      if (is_infeasible) {
+        settings.log.printf(
+          "Iter:: %d, Infeasible constraint %d, cnst_lb %e, cnst_ub %e, min_a %e, max_a %e\n",
+          iter,
+          i,
+          cnst_lb,
+          cnst_ub,
+          min_a,
+          max_a);
         return false;
       }
 
@@ -158,94 +161,79 @@ bool bound_strengthening(const std::vector<char>& row_sense,
     }
 
     i_t num_bounds_changed = 0;
-    // FIXME:: Use the transpose of Arow here to update variable bounds
-    // Use the activities to derive new bounds on the variables
-    for (i_t i = 0; i < m; ++i) {
-      const i_t row_start = Arow.col_start[i];
-      const i_t row_end   = Arow.col_start[i + 1];
+
+    for (i_t k = 0; k < n; ++k) {
+      if (!variable_changed[k]) { continue; }
+      f_t old_lb = lower[k];
+      f_t old_ub = upper[k];
+
+      f_t new_lb = old_lb;
+      f_t new_ub = old_ub;
+
+      const i_t row_start = problem.A.col_start[k];
+      const i_t row_end   = problem.A.col_start[k + 1];
       for (i_t p = row_start; p < row_end; ++p) {
-        const i_t k    = Arow.i[p];
-        const f_t a_ik = Arow.x[p];
+        const i_t i = problem.A.i[p];
 
-        f_t min_a   = min_activity[i];
-        f_t max_a   = max_activity[i];
-        f_t cnst_lb = constraint_lb[i];
-        f_t cnst_ub = constraint_ub[i];
-
-        bool is_infeasible =
-          check_infeasibility<i_t, f_t>(min_a, max_a, cnst_lb, cnst_ub, settings.primal_tol);
-        if (is_infeasible) {
-          settings.log.printf(
-            "Infeasible constraint %d, cnst_lb %e, cnst_ub %e, min_a %e, max_a %e\n",
-            i,
-            cnst_lb,
-            cnst_ub,
-            min_a,
-            max_a);
-          return false;
-        }
-
-        f_t old_lb = lower[k];
-        f_t old_ub = upper[k];
-
+        if (!constraint_changed[i]) { continue; }
+        const f_t a_ik = problem.A.x[p];
+        f_t min_a      = min_activity[i];
+        f_t max_a      = max_activity[i];
+        f_t cnst_lb    = constraint_lb[i];
+        f_t cnst_ub    = constraint_ub[i];
         min_a -= (a_ik < 0) ? a_ik * old_ub : a_ik * old_lb;
         max_a -= (a_ik > 0) ? a_ik * old_ub : a_ik * old_lb;
 
         f_t delta_min_act = cnst_ub - min_a;
         f_t delta_max_act = cnst_lb - max_a;
 
-        f_t new_lb = update_lb(old_lb, a_ik, delta_min_act, delta_max_act);
-        f_t new_ub = update_ub(old_ub, a_ik, delta_min_act, delta_max_act);
+        new_lb = std::max(new_lb, update_lb(old_lb, a_ik, delta_min_act, delta_max_act));
+        new_ub = std::min(new_ub, update_ub(old_ub, a_ik, delta_min_act, delta_max_act));
+      }
 
-        // Integer rounding
-        if (!var_types.empty() &&
-            (var_types[k] == variable_type_t::INTEGER || var_types[k] == variable_type_t::BINARY)) {
-          new_lb = std::ceil(new_lb - settings.integer_tol);
-          new_ub = std::floor(new_ub + settings.integer_tol);
-        }
+      // Integer rounding
+      if (!var_types.empty() &&
+          (var_types[k] == variable_type_t::INTEGER || var_types[k] == variable_type_t::BINARY)) {
+        new_lb = std::ceil(new_lb - settings.integer_tol);
+        new_ub = std::floor(new_ub + settings.integer_tol);
+      }
 
-        if (std::isfinite(old_lb)) { assert(std::isfinite(new_lb)); }
-        if (std::isfinite(old_ub)) { assert(std::isfinite(new_ub)); }
+      bool lb_updated = abs(new_lb - old_lb) > 1e3 * settings.primal_tol;
+      bool ub_updated = abs(new_ub - old_ub) > 1e3 * settings.primal_tol;
 
-        bool lb_updated = abs(new_lb - old_lb) > 1e3 * settings.primal_tol;
-        bool ub_updated = abs(new_ub - old_ub) > 1e3 * settings.primal_tol;
+      new_lb = std::max(new_lb, problem.lower[k]);
+      new_ub = std::min(new_ub, problem.upper[k]);
 
-        if (lb_updated) { lower[k] = new_lb; }
-        if (ub_updated) { upper[k] = new_ub; }
-
-        if (lower[k] > upper[k] + 1e-6) {
-          // std::cout << "Iter:: " << iter << ", Infeasible variable after update " << k << ",
-          // lower " << lower[k] << ", upper " << upper[k] << std::endl;
-          return false;
-        }
-        lower[k] = std::min(lower[k], upper[k]);
-
-        bool bounds_changed = lb_updated || ub_updated;
-        if (bounds_changed) {
-          num_bounds_changed++;
-          if (!updated_variables_mark[k]) { updated_variables_list.push_back(k); }
+      if (new_lb > new_ub + 1e-6) {
+        // std::cout << "Iter:: " << iter << ", Infeasible variable after update " << k << ", " <<
+        // new_lb << " > " << new_ub << std::endl;
+        settings.log.printf(
+          "Iter:: %d, Infeasible variable after update %d, %e > %e\n", iter, k, new_lb, new_ub);
+        return false;
+      }
+      if (new_lb != old_lb || new_ub != old_ub) {
+        for (i_t p = row_start; p < row_end; ++p) {
+          const i_t i                = problem.A.i[p];
+          constraint_changed_next[i] = true;
         }
       }
+
+      lower[k] = std::min(new_lb, new_ub);
+      upper[k] = std::max(new_lb, new_ub);
+
+      bool bounds_changed = lb_updated || ub_updated;
+      if (bounds_changed) { num_bounds_changed++; }
     }
 
-    if (num_bounds_changed == 0) {
-      settings.log.printf("No bounds changed, iter %d\n", iter + 1);
-      break;
-    } else {
-      settings.log.printf("Num bounds changed %d, iter %d\n", num_bounds_changed, iter + 1);
-    }
+    if (num_bounds_changed == 0) { break; }
 
-    // Update the bounds on the constraints
-    // settings.log.printf("Round %d: Strengthend %d variables\n",
-    //                     iter,
-    //                     static_cast<i_t>(updated_variables_list.size()));
-    total_strengthened_variables += updated_variables_list.size();
-    for (i_t j : updated_variables_list) {
-      updated_variables_mark[j] = 0;
-    }
-    updated_variables_list.clear();
+    std::swap(constraint_changed, constraint_changed_next);
+    std::fill(constraint_changed_next.begin(), constraint_changed_next.end(), false);
+    std::fill(variable_changed.begin(), variable_changed.end(), false);
+
     iter++;
   }
+
   // settings.log.printf("Total strengthened variables %d\n", total_strengthened_variables);
 
 #if DEBUG_BOUND_STRENGTHENING
