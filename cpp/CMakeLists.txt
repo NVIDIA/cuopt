@@ -100,7 +100,8 @@ message(VERBOSE "CUOPT: LIBCUOPT_LOGGING_LEVEL = '${LIBCUOPT_LOGGING_LEVEL}'.")
 
 message("-- Building with logging level = ${LIBCUOPT_LOGGING_LEVEL}")
 
-message("-- Building for GPU_ARCHS = ${CMAKE_CUDA_ARCHITECTURES}")
+message("-- Building for GPU_ARCHS = '${CMAKE_CUDA_ARCHITECTURES}'")
+message("-- Host target architecture = '${CMAKE_SYSTEM_PROCESSOR}'")
 
 # make the flags global in order to propagate flags to test cmake files
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extended-lambda")
@@ -373,11 +374,13 @@ execute_process(
     OUTPUT_VARIABLE GIT_COMMIT_HASH
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
+message("-- Building with GIT_COMMIT_HASH = '${GIT_COMMIT_HASH}'")
 
+list(JOIN CMAKE_CUDA_ARCHITECTURES "," JOINED_CUDA_ARCHITECTURES) # ';' breaks compile_definitions, replace it
 target_compile_definitions(cuopt_cli PUBLIC
-  "CUOPT_GIT_COMMIT_HASH=\"${GIT_COMMIT_HASH}\""
-  "CUOPT_CUDA_ARCHITECTURES=\"${CMAKE_CUDA_ARCHITECTURES}\""
-  "CUOPT_CPU_ARCHITECTURE=\"${CMAKE_SYSTEM_PROCESSOR}\"")
+  CUOPT_GIT_COMMIT_HASH="${GIT_COMMIT_HASH}"
+  CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
+  CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}")
 
 target_include_directories(cuopt_cli
   PRIVATE
@@ -412,7 +415,7 @@ if(BUILD_BENCHMARKS)
   )
   target_compile_definitions(solve_MPS_file PUBLIC
     "CUOPT_GIT_COMMIT_HASH=\"${GIT_COMMIT_HASH}\""
-    "CUOPT_CUDA_ARCHITECTURES=\"${CMAKE_CUDA_ARCHITECTURES}\""
+    "CUOPT_CUDA_ARCHITECTURES=\"${JOINED_CUDA_ARCHITECTURES}\""
     "CUOPT_CPU_ARCHITECTURE=\"${CMAKE_SYSTEM_PROCESSOR}\"")
   target_link_libraries(solve_MPS_file
     PUBLIC
