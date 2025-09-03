@@ -22,7 +22,7 @@ namespace cuopt::linear_programming::detail {
 struct diversity_config_t {
   double time_ratio_on_init_lp              = 0.1;
   double max_time_on_lp                     = 30;
-  double time_ratio_of_probing_cache        = 0.03;
+  double time_ratio_of_probing_cache        = 0.05;
   double max_time_on_probing                = 60;
   size_t max_iterations_without_improvement = 15;
   int max_var_diff                          = 256;
