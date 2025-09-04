@@ -449,12 +449,10 @@ void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& 
     thrust::make_counting_iterator<i_t>(solution.problem_ptr->n_variables),
     [var_types, var_bnds, copy_types, pb = solution.problem_ptr->view()] __device__(auto v_idx) {
       auto orig_v_type = var_types[v_idx];
-      // auto lb          = var_lb[v_idx];
-      // auto ub          = var_ub[v_idx];
-      auto var_bounds = var_bnds[v_idx];
-      auto lb         = var_bounds.x;
-      auto ub         = var_bounds.y;
-      bool var_binary = (pb.integer_equal(lb, 0) && pb.integer_equal(ub, 1));
+      auto var_bounds  = var_bnds[v_idx];
+      auto lb          = var_bounds.x;
+      auto ub          = var_bounds.y;
+      bool var_binary  = (pb.integer_equal(lb, 0) && pb.integer_equal(ub, 1));
       auto copy_type =
         (orig_v_type == var_t::INTEGER) && var_binary ? var_t::INTEGER : var_t::CONTINUOUS;
       var_types[v_idx] = copy_type;

@@ -1459,13 +1459,6 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
     // component becomes fixed by its bounds
 
     // Copying primal / dual bound before sorting them according to threshold
-    // TODO : transform
-    // raft::copy(
-    //  lower_bound_.data(), problem_ptr->variable_lower_bounds.data(), primal_size_h_,
-    //  stream_view_);
-    // raft::copy(
-    //  upper_bound_.data(), problem_ptr->variable_upper_bounds.data(), primal_size_h_,
-    //  stream_view_);
     using f_t2 = typename type_2<f_t>::type;
     cub::DeviceTransform::Transform(
       problem_ptr->variable_bounds.data(),
@@ -1650,13 +1643,6 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
                            a_add_scalar_times_b<f_t>(target_threshold_.data()),
                            stream_view_);
     // project by max(min(x[i], upperbound[i]),lowerbound[i]) for primal part
-    // raft::linalg::ternaryOp(duality_gap.primal_solution_tr_.data(),
-    //                        duality_gap.primal_solution_tr_.data(),
-    //                        problem_ptr->variable_lower_bounds.data(),
-    //                        problem_ptr->variable_upper_bounds.data(),
-    //                        primal_size_h_,
-    //                        clamp<f_t>(),
-    //                        stream_view_);
     using f_t2 = typename type_2<f_t>::type;
     cub::DeviceTransform::Transform(cuda::std::make_tuple(duality_gap.primal_solution_tr_.data(),
                                                           problem_ptr->variable_bounds.data()),

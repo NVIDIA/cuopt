@@ -242,8 +242,6 @@ class problem_t {
   rmm::device_uvector<f_t> objective_coefficients;
   using f_t2 = typename type_2<f_t>::type;
   rmm::device_uvector<f_t2> variable_bounds;
-  // rmm::device_uvector<f_t> variable_lower_bounds;
-  // rmm::device_uvector<f_t> variable_upper_bounds;
   rmm::device_uvector<f_t> constraint_lower_bounds;
   rmm::device_uvector<f_t> constraint_upper_bounds;
   /* biggest between cstr lower and upper */

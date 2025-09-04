@@ -130,11 +130,9 @@ __global__ void compute_implied_slack_consumption_per_var(
   i_t var_offset                       = pb.reverse_offsets[var_idx];
   i_t var_degree                       = pb.reverse_offsets[var_idx + 1] - var_offset;
   f_t th_var_implied_slack_consumption = 0.;
-  // f_t lb                               = pb.variable_lower_bounds[var_idx];
-  // f_t ub                               = pb.variable_upper_bounds[var_idx];
-  auto var_bnd = pb.variable_bounds[var_idx];
-  f_t lb       = var_bnd.x;
-  f_t ub       = var_bnd.y;
+  auto var_bnd                         = pb.variable_bounds[var_idx];
+  f_t lb                               = var_bnd.x;
+  f_t ub                               = var_bnd.y;
   for (i_t i = threadIdx.x; i < var_degree; i += blockDim.x) {
     auto a        = pb.reverse_coefficients[var_offset + i];
     auto cnst_idx = pb.reverse_constraints[var_offset + i];
@@ -395,11 +393,6 @@ void constraint_prop_t<i_t, f_t>::collapse_crossing_bounds(problem_t<i_t, f_t>& 
                                                            problem_t<i_t, f_t>& orig_problem,
                                                            const raft::handle_t* handle_ptr)
 {
-  // auto lb          = make_span(problem.variable_lower_bounds);
-  // auto ub          = make_span(problem.variable_upper_bounds);
-  // auto original_lb = make_span(orig_problem.variable_lower_bounds);
-  // auto original_ub = make_span(orig_problem.variable_upper_bounds);
-
   auto v_bnds          = make_span(problem.variable_bounds);
   auto original_v_bnds = make_span(orig_problem.variable_bounds);
   thrust::for_each(
@@ -438,9 +431,7 @@ void constraint_prop_t<i_t, f_t>::collapse_crossing_bounds(problem_t<i_t, f_t>& 
 template <typename i_t, typename f_t>
 void constraint_prop_t<i_t, f_t>::set_bounds_on_fixed_vars(solution_t<i_t, f_t>& sol)
 {
-  auto assgn = make_span(sol.assignment);
-  // auto lb    = make_span(sol.problem_ptr->variable_lower_bounds);
-  // auto ub    = make_span(sol.problem_ptr->variable_upper_bounds);
+  auto assgn      = make_span(sol.assignment);
   auto var_bounds = make_span(sol.problem_ptr->variable_bounds);
   thrust::for_each(sol.handle_ptr->get_thrust_policy(),
                    sol.problem_ptr->integer_indices.begin(),
@@ -449,8 +440,6 @@ void constraint_prop_t<i_t, f_t>::set_bounds_on_fixed_vars(solution_t<i_t, f_t>&
                      auto var_val = assgn[idx];
                      if (pb.is_integer(var_val)) {
                        var_bounds[idx] = typename type_2<f_t>::type{var_val, var_val};
-                       // lb[idx] = var_val;
-                       // ub[idx] = var_val;
                      }
                    });
 }
@@ -582,13 +571,6 @@ void constraint_prop_t<i_t, f_t>::copy_bounds(rmm::device_uvector<f_t>& output_l
 template <typename i_t, typename f_t>
 void constraint_prop_t<i_t, f_t>::save_bounds(solution_t<i_t, f_t>& sol)
 {
-  // copy_bounds(lb_restore,
-  //             ub_restore,
-  //             assignment_restore,
-  //             sol.problem_ptr->variable_lower_bounds,
-  //             sol.problem_ptr->variable_upper_bounds,
-  //             sol.assignment,
-  //             sol.handle_ptr);
   copy_bounds(lb_restore, ub_restore, sol.problem_ptr->variable_bounds, sol.handle_ptr);
   raft::copy(assignment_restore.data(),
              sol.assignment.data(),
@@ -599,13 +581,6 @@ void constraint_prop_t<i_t, f_t>::save_bounds(solution_t<i_t, f_t>& sol)
 template <typename i_t, typename f_t>
 void constraint_prop_t<i_t, f_t>::restore_bounds(solution_t<i_t, f_t>& sol)
 {
-  // copy_bounds(sol.problem_ptr->variable_lower_bounds,
-  //             sol.problem_ptr->variable_upper_bounds,
-  //             sol.assignment,
-  //             lb_restore,
-  //             ub_restore,
-  //             assignment_restore,
-  //             sol.handle_ptr);
   copy_bounds(sol.problem_ptr->variable_bounds, lb_restore, ub_restore, sol.handle_ptr);
   raft::copy(sol.assignment.data(),
              assignment_restore.data(),
@@ -617,13 +592,6 @@ template <typename i_t, typename f_t>
 void constraint_prop_t<i_t, f_t>::restore_original_bounds(solution_t<i_t, f_t>& sol,
                                                           solution_t<i_t, f_t>& orig_sol)
 {
-  // copy_bounds(sol.problem_ptr->variable_lower_bounds,
-  //             sol.problem_ptr->variable_upper_bounds,
-  //             sol.assignment,
-  //             orig_sol.problem_ptr->variable_lower_bounds,
-  //             orig_sol.problem_ptr->variable_upper_bounds,
-  //             orig_sol.assignment,
-  //             orig_sol.handle_ptr);
   raft::copy(sol.problem_ptr->variable_bounds.data(),
              orig_sol.problem_ptr->variable_bounds.data(),
              orig_sol.problem_ptr->variable_bounds.size(),
@@ -731,16 +699,6 @@ constraint_prop_t<i_t, f_t>::generate_bulk_rounding_vector(
     cuopt_assert(
       test_var_out_of_bounds(orig_sol, unset_var_idx, second_probe, int_tol, sol.handle_ptr),
       "Variable out of original bounds!");
-    // cuopt_assert(orig_sol.problem_ptr->variable_lower_bounds.element(
-    //                unset_var_idx, sol.handle_ptr->get_stream()) <= first_probe + int_tol &&
-    //                first_probe - int_tol <= orig_sol.problem_ptr->variable_upper_bounds.element(
-    //                                           unset_var_idx, sol.handle_ptr->get_stream()),
-    //              "Variable out of original bounds!");
-    // cuopt_assert(orig_sol.problem_ptr->variable_lower_bounds.element(
-    //                unset_var_idx, sol.handle_ptr->get_stream()) <= second_probe + int_tol &&
-    //                second_probe - int_tol <= orig_sol.problem_ptr->variable_upper_bounds.element(
-    //                                            unset_var_idx, sol.handle_ptr->get_stream()),
-    //              "Variable out of original bounds!");
     cuopt_assert(orig_sol.problem_ptr->is_integer(first_probe), "Probing value must be an integer");
     cuopt_assert(orig_sol.problem_ptr->is_integer(second_probe),
                  "Probing value must be an integer");
@@ -764,16 +722,6 @@ constraint_prop_t<i_t, f_t>::generate_bulk_rounding_vector(
     cuopt_assert(
       test_var_out_of_bounds(orig_sol, unset_var_idx, second_probe, int_tol, sol.handle_ptr),
       "Variable out of original bounds!");
-    // cuopt_assert(orig_sol.problem_ptr->variable_lower_bounds.element(
-    //                unset_var_idx, sol.handle_ptr->get_stream()) <= val_to_round + int_tol &&
-    //                val_to_round - int_tol <= orig_sol.problem_ptr->variable_upper_bounds.element(
-    //                                            unset_var_idx, sol.handle_ptr->get_stream()),
-    //              "Variable out of original bounds!");
-    // cuopt_assert(orig_sol.problem_ptr->variable_lower_bounds.element(
-    //                unset_var_idx, sol.handle_ptr->get_stream()) <= second_probe + int_tol &&
-    //                second_probe - int_tol <= orig_sol.problem_ptr->variable_upper_bounds.element(
-    //                                            unset_var_idx, sol.handle_ptr->get_stream()),
-    //              "Variable out of original bounds!");
     std::get<0>(var_probe_vals)[i] = unset_var_idx;
     std::get<1>(var_probe_vals)[i] = val_to_round;
     std::get<2>(var_probe_vals)[i] = second_probe;
@@ -821,8 +769,6 @@ void constraint_prop_t<i_t, f_t>::restore_original_bounds_on_unfixed(
       auto p_v_var_bnd = p_v.variable_bounds[var_idx];
       if (!p_v.integer_equal(p_v_var_bnd.x, p_v_var_bnd.y) || !p_v.is_integer_var(var_idx)) {
         p_v.variable_bounds[var_idx] = op_v.variable_bounds[var_idx];
-        // p_v.variable_lower_bounds[var_idx] = op_v.variable_lower_bounds[var_idx];
-        // p_v.variable_upper_bounds[var_idx] = op_v.variable_upper_bounds[var_idx];
       }
     });
 }
@@ -1169,10 +1115,6 @@ std::tuple<f_t, f_t, f_t> constraint_prop_t<i_t, f_t>::probing_values(
                  "probing value out of bounds");
     return std::make_tuple(first_round_val, var_val, second_round_val);
   } else {
-    // auto orig_v_lb =
-    //   orig_sol.problem_ptr->variable_lower_bounds.element(idx, sol.handle_ptr->get_stream());
-    // auto orig_v_ub =
-    //   orig_sol.problem_ptr->variable_upper_bounds.element(idx, sol.handle_ptr->get_stream());
     auto orig_v_bnd =
       orig_sol.problem_ptr->variable_bounds.element(idx, sol.handle_ptr->get_stream());
     auto orig_v_lb = orig_v_bnd.x;

@@ -336,9 +336,7 @@ void multi_probe_t<i_t, f_t>::update_host_bounds(
   const raft::device_span<typename type_2<f_t>::type> variable_bounds)
 {
   cuopt_assert(variable_bounds.size() == host_lb.size(), "size of variable lower bound mismatch");
-  // raft::copy(host_lb.data(), variable_lb.data(), variable_lb.size(), handle_ptr->get_stream());
   cuopt_assert(variable_bounds.size() == host_ub.size(), "size of variable upper bound mismatch");
-  // raft::copy(host_ub.data(), variable_ub.data(), variable_ub.size(), handle_ptr->get_stream());
 
   rmm::device_uvector<f_t> var_lb(variable_bounds.size(), handle_ptr->get_stream());
   rmm::device_uvector<f_t> var_ub(variable_bounds.size(), handle_ptr->get_stream());

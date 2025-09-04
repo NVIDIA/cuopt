@@ -363,13 +363,6 @@ void infeasibility_information_t<i_t, f_t>::compute_reduced_cost_from_primal_gra
   rmm::device_uvector<f_t>& primal_gradient, rmm::device_uvector<f_t>& primal_ray)
 {
   using f_t2 = typename type_2<f_t>::type;
-  // raft::linalg::binaryOp(bound_value_.data(),
-  //                         primal_gradient.data(),
-  //                         problem_ptr->variable_bounds.data(),
-  //                         //problem_ptr->variable_upper_bounds.data(),
-  //                         primal_size_h_,
-  //                         bound_value_gradient<f_t, f_t2>(),
-  //                         stream_view_);
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(primal_gradient.data(), problem_ptr->variable_bounds.data()),
     bound_value_.data(),
