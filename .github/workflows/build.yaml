@@ -26,15 +26,19 @@ on:
       branch:
         required: true
         type: string
+        description: "Branch to build"
       date:
         required: true
         type: string
+        description: "Build date"
       sha:
         required: true
         type: string
+        description: "Commit SHA to build"
       build_type:
         type: string
         default: nightly
+        description: "Type of build (nightly, branch, etc.)"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -210,3 +214,81 @@ jobs:
       sha: ${{ inputs.sha }}
       date: ${{ inputs.date }}
       build_type: ${{ inputs.build_type || 'branch' }}
+  failure-notification:
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [cpp-build, python-build, upload-conda, wheel-build-cuopt-mps-parser, wheel-publish-cuopt-mps-parser, wheel-build-libcuopt, wheel-publish-libcuopt, wheel-build-cuopt, wheel-publish-cuopt, wheel-build-cuopt-server, wheel-publish-cuopt-server, docs-build, wheel-build-cuopt-sh-client, wheel-publish-cuopt-sh-client, build-images]
+    steps:
+      - name: Check for Failures
+        id: check-failures
+        run: |
+          # Extract job names from needs context automatically
+          needs_json='${{ toJson(needs) }}'
+          job_names=$(echo "$needs_json" | jq -r 'keys[]')
+          
+          failed_jobs=()
+          has_failures=false
+          
+          # Check each job for failures
+          while IFS= read -r job; do
+            result=$(echo "$needs_json" | jq -r ".${job}.result // 'unknown'")
+            if [[ "$result" == "failure" ]]; then
+              failed_jobs+=("$job")
+              has_failures=true
+            fi
+          done <<< "$job_names"
+          
+          # Set outputs
+          if [[ "$has_failures" == "true" ]]; then
+            echo "has-failures=true" >> $GITHUB_OUTPUT
+            echo "failed-jobs=${failed_jobs[*]}" >> $GITHUB_OUTPUT
+          else
+            echo "has-failures=false" >> $GITHUB_OUTPUT
+            echo "failed-jobs=" >> $GITHUB_OUTPUT
+          fi
+          
+          # Check if workflow was manually cancelled
+          if [[ "${{ github.event.head_commit.message }}" == *"[skip ci]"* ]] || 
+             [[ "${{ github.event.head_commit.message }}" == *"[ci skip]"* ]]; then
+            echo "is-cancelled=true" >> $GITHUB_OUTPUT
+          else
+            echo "is-cancelled=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Format Failed Jobs List
+        id: format-failed-jobs
+        if: steps.check-failures.outputs.has-failures == 'true'
+        run: |
+          # Format failed jobs list with bullet points
+          if [[ -n "${{ steps.check-failures.outputs.failed-jobs }}" ]]; then
+            failed_jobs_formatted=$(echo "${{ steps.check-failures.outputs.failed-jobs }}" | tr ' ' '\n' | sed 's/^/• /' | tr '\n' '\n')
+            echo "failed-jobs-formatted<<EOF" >> $GITHUB_OUTPUT
+            echo "$failed_jobs_formatted" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "failed-jobs-formatted=" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Send Slack Failure Notification
+        if: steps.check-failures.outputs.has-failures == 'true' && steps.check-failures.outputs.is-cancelled == 'false'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#cuopt-ci'
+          text: |
+            🚨 *Build Failed* 🚨
+            
+            *Repository:* ${{ github.repository }}
+            *Branch:* ${{ inputs.branch || github.ref_name }}
+            *Commit:* ${{ inputs.sha || github.sha }}
+            *Build Type:* ${{ inputs.build_type || 'branch' }}
+            *Workflow Run:* https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            *Failed At:* ${{ github.event.head_commit.timestamp }}
+            
+            *Failed Jobs:*
+            ${{ steps.format-failed-jobs.outputs.failed-jobs-formatted }}
+            
+            Please check the workflow logs for details.
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
