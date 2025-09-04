@@ -28,6 +28,7 @@
 #include <dual_simplex/types.hpp>
 
 #include <omp.h>
+#include <queue>
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -48,6 +49,10 @@ void upper_bound_callback(f_t upper_bound);
 template <typename i_t, typename f_t>
 class branch_and_bound_t {
  public:
+  using heap_t = std::priority_queue<mip_node_t<i_t, f_t>*,
+                                     std::vector<mip_node_t<i_t, f_t>*>,
+                                     node_compare_t<i_t, f_t>>;
+
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings);
 
@@ -93,9 +98,6 @@ class branch_and_bound_t {
   // Global variable for incumbent. The incumbent should be updated with the upper bound
   mip_solution_t<i_t, f_t> incumbent_;
 
-  // Global variable for gap
-  f_t gap_;
-
   bool currently_branching_;
 
   // Note that floating point atomics are only supported in C++20.
@@ -103,7 +105,6 @@ class branch_and_bound_t {
     f_t start_time          = 0.0;
     f_t total_lp_solve_time = 0.0;
     i_t nodes_explored      = 0;
-    i_t nodes_unexplored    = 0;
     f_t total_lp_iters      = 0;
     i_t num_nodes           = 0;
   } stats_;
@@ -122,22 +123,23 @@ class branch_and_bound_t {
   pseudo_costs_t<i_t, f_t> pc_;
   std::mutex mutex_pc_;
 
-  std::mutex mutex_diving_tree_;
+  std::mutex mutex_search_tree_;
+  std::unique_ptr<mip_node_t<i_t, f_t>> search_tree_;
+
+  std::mutex mutex_heap_;
+  heap_t heap_;
 
   // Number of active tasks.
   // This needs to be updated atomically.
   i_t active_tasks_;
 
+  void update_tree(mip_node_t<i_t, f_t>* node_ptr, node_status_t status);
+
   // Repairs low-quality solutions from the heuristics, if it is applicable.
-  void repair_heuristic_solutions(f_t lower_bound, mip_solution_t<i_t, f_t>& solution);
+  void repair_heuristic_solutions();
 
   // Explore the search tree using the best-first search strategy.
-  void explore_tree(i_t branch_var, mip_solution_t<i_t, f_t>& solution, mip_status_t& status);
-
-  // Explore the search tree using the depth-first search strategy.
-  void dive(mip_node_t<i_t, f_t>* start_node,
-            mip_solution_t<i_t, f_t>& solution,
-            mip_status_t& status);
+  void explore_branch(mip_node_t<i_t, f_t>* start_node, mip_status_t& status);
 
   // Branch the current node, creating two children.
   void branch(mip_node_t<i_t, f_t>* parent_node,
@@ -152,17 +154,14 @@ class branch_and_bound_t {
   mip_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
                              lp_problem_t<i_t, f_t>& leaf_problem,
                              f_t upper_bound,
-                             f_t lower_bound,
-                             i_t nodes_explored,
-                             i_t unexplored_nodes,
-                             char symbol);
+                             f_t lower_bound);
 
   // Solve the LP relaxation of a leaf node using the dual simplex method.
-  dual::status_t node_dual_simplex(lp_problem_t<i_t, f_t>& leaf_problem,
+  dual::status_t node_dual_simplex(i_t leaf_id,
+                                   lp_problem_t<i_t, f_t>& leaf_problem,
                                    std::vector<variable_status_t>& leaf_vstatus,
                                    lp_solution_t<i_t, f_t>& leaf_solution,
-                                   f_t upper_bound,
-                                   i_t nodes_explored);
+                                   f_t upper_bound);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

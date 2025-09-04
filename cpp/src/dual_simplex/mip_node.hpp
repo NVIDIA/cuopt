@@ -20,7 +20,6 @@
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/types.hpp>
 
-#include <atomic>
 #include <cmath>
 #include <list>
 #include <memory>
@@ -142,12 +141,10 @@ class mip_node_t {
     }
   }
 
-  void set_status(node_status_t new_status) { status = new_status; }
-
   // outputs a stack containing inactive nodes in the tree that can be freed
   void set_status(node_status_t node_status, std::vector<mip_node_t*>& stack)
   {
-    set_status(node_status);
+    status = node_status;
     if (inactive_status(status)) {
       update_bound();
       stack.push_back(this);
@@ -228,10 +225,16 @@ void remove_fathomed_nodes(std::vector<mip_node_t<i_t, f_t>*>& stack)
 template <typename i_t, typename f_t>
 class node_compare_t {
  public:
-  bool operator()(mip_node_t<i_t, f_t>& a, mip_node_t<i_t, f_t>& b)
+  bool operator()(mip_node_t<i_t, f_t>& a, mip_node_t<i_t, f_t>& b) const
   {
     return a.lower_bound >
            b.lower_bound;  // True if a comes before b, elements that come before are output last
+  }
+
+  bool operator()(mip_node_t<i_t, f_t>* a, mip_node_t<i_t, f_t>* b) const
+  {
+    return a->lower_bound >
+           b->lower_bound;  // True if a comes before b, elements that come before are output last
   }
 };
 
