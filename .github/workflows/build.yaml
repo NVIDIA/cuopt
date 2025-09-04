@@ -81,6 +81,8 @@ jobs:
       package-name: cuopt_mps_parser
       package-type: python
       append-cuda-suffix: false
+      # Package is pure Python and only ever requires one build. Just use amd64 + the latest Python.
+      matrix_filter: 'map(select(.ARCH == "amd64") | sort_by(.PY_VER | split(".") | map(tonumber)) | [.[-1]]'
   wheel-publish-cuopt-mps-parser:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
@@ -190,6 +192,8 @@ jobs:
       package-name: cuopt_sh_client
       package-type: python
       append-cuda-suffix: false
+      # Package is pure Python and only ever requires one build. Just use amd64 + the latest Python.
+      matrix_filter: 'map(select(.ARCH == "amd64") | sort_by(.PY_VER | split(".") | map(tonumber)) | [.[-1]]'
   wheel-publish-cuopt-sh-client:
     needs: wheel-build-cuopt-sh-client
     secrets: inherit
