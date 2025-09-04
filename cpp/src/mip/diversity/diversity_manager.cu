@@ -160,9 +160,9 @@ std::vector<solution_t<i_t, f_t>> diversity_manager_t<i_t, f_t>::generate_more_s
     population.run_solution_callbacks(sol);
     solutions.emplace_back(solution_t<i_t, f_t>(sol));
     if (total_time_to_generate.check_time_limit()) { return solutions; }
-    timer_t timer(std::min(ls_limit, timer.remaining_time()));
+    timer_t ls_timer(std::min(ls_limit, timer.remaining_time()));
     ls_config_t<i_t, f_t> ls_config;
-    run_local_search(sol, population.weights, timer, ls_config);
+    run_local_search(sol, population.weights, ls_timer, ls_config);
     population.run_solution_callbacks(sol);
     solutions.emplace_back(std::move(sol));
     if (total_time_to_generate.check_time_limit()) { return solutions; }
