@@ -38,6 +38,8 @@ rapids_cmake_build_type(Release)
 # #############################################################################
 # - User Options  ------------------------------------------------------------
 option(BUILD_TESTS "Configure CMake to build tests" ON)
+option(MPS_PARSER_WITH_BZIP2 "Build with bzip2 decompression" ON)
+option(MPS_PARSER_WITH_ZLIB "Build with zlib decompression" ON)
 
 message(VERBOSE "cuOpt: Build mps-parser unit-tests: ${BUILD_TESTS}")
 
@@ -49,6 +51,16 @@ set(MPS_PARSER_CXX_FLAGS "")
 if(CMAKE_COMPILER_IS_GNUCXX)
   list(APPEND MPS_PARSER_CXX_FLAGS -Werror -Wno-error=deprecated-declarations)
 endif(CMAKE_COMPILER_IS_GNUCXX)
+
+if(MPS_PARSER_WITH_BZIP2)
+  find_package(BZip2 REQUIRED)
+  add_compile_definitions(-DMPS_PARSER_WITH_BZIP2)
+endif(MPS_PARSER_WITH_BZIP2)
+
+if(MPS_PARSER_WITH_ZLIB)
+  find_package(ZLIB REQUIRED)
+  add_compile_definitions(-DMPS_PARSER_WITH_ZLIB)
+endif(MPS_PARSER_WITH_ZLIB)
 
 if(DEFINE_ASSERT)
   add_definitions(-DASSERT_MODE)
@@ -108,6 +120,14 @@ target_include_directories(mps_parser
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include>"
 )
+
+if(MPS_PARSER_WITH_BZIP2)
+    target_include_directories(mps_parser PRIVATE BZip2::BZip2)
+endif(MPS_PARSER_WITH_BZIP2)
+
+if(MPS_PARSER_WITH_ZLIB)
+    target_include_directories(mps_parser PRIVATE ZLIB::ZLIB)
+endif(MPS_PARSER_WITH_ZLIB)
 
 # ##################################################################################################
 # - generate tests --------------------------------------------------------------------------------

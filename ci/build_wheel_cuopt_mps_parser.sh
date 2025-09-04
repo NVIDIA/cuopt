@@ -33,7 +33,13 @@ fi
 
 ci/build_wheel.sh cuopt_mps_parser ${package_dir}
 
+
+EXCLUDE_ARGS=(
+  --exclude "libzlib.so"
+  --exclude "libbz2.so"
+)
+
 # repair wheels and write to the location that artifact-uploading code expects to find them
-python -m auditwheel repair -w "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}" ${package_dir}/dist/*
+python -m auditwheel repair "${EXCLUDE_ARGS[@]}" -w "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}" ${package_dir}/dist/*
 
 ci/validate_wheel.sh "${package_dir}" "${RAPIDS_WHEEL_BLD_OUTPUT_DIR}"

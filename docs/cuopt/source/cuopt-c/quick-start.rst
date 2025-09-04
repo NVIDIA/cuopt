@@ -20,8 +20,19 @@ This wheel is a Python wrapper around the C++ library and eases installation and
 
     # This is a deprecated module and no longer used, but it shares the same name for the CLI, so we need to uninstall it first if it exists.
     pip uninstall cuopt-thin-client
-    pip install --extra-index-url=https://pypi.nvidia.com libcuopt-cu12==25.10.* nvidia-cuda-runtime-cu12==12.9.*
+    pip install --extra-index-url=https://pypi.nvidia.com \
+      nvidia-cuda-runtime-cu12==12.9.* \
+      libcuopt-cu12==25.10.*
 
+
+.. note::
+    For development wheels which are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/`.
+
+.. code-block:: bash
+
+    pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
+      nvidia-cuda-runtime-cu12==12.9.* \
+      libcuopt-cu12==25.10.*
 
 Conda
 -----
@@ -36,3 +47,6 @@ NVIDIA cuOpt can be installed with Conda (via `miniforge <https://github.com/con
 
 
 Please visit examples under each section to learn how to use the cuOpt C API.
+
+.. note::
+    For development conda packages which are available as nightlies, please update `-c rapidsai` to `-c rapidsai-nightly`.
