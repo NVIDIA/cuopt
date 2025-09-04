@@ -231,7 +231,7 @@ jobs:
           
           # Check each job for failures
           while IFS= read -r job; do
-            result=$(echo "$needs_json" | jq -r ".${job}.result // 'unknown'")
+            result=$(echo "$needs_json" | jq -r --arg job "$job" '.[$job].result // "unknown"')
             if [[ "$result" == "failure" ]]; then
               failed_jobs+=("$job")
               has_failures=true
