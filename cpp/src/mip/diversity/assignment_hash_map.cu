@@ -80,8 +80,6 @@ template <typename i_t, typename f_t>
 void assignment_hash_map_t<i_t, f_t>::fill_integer_assignment(solution_t<i_t, f_t>& solution)
 {
   static_assert(sizeof(f_t) == sizeof(size_t), "f_t must be double precision");
-  std::cerr << "integer_indices size " << solution.problem_ptr->integer_indices.size()
-            << " integer_assignment " << integer_assignment.size() << "\n";
   thrust::gather(solution.handle_ptr->get_thrust_policy(),
                  solution.problem_ptr->integer_indices.begin(),
                  solution.problem_ptr->integer_indices.end(),
@@ -94,26 +92,12 @@ size_t assignment_hash_map_t<i_t, f_t>::hash_solution(solution_t<i_t, f_t>& solu
 {
   const int TPB = 1024;
 
-  std::cerr << "has_solution pt 0\n";
-  solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
-
   fill_integer_assignment(solution);
-  std::cerr << "has_solution pt 1\n";
-  solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
-
   thrust::fill(
     solution.handle_ptr->get_thrust_policy(), reduction_buffer.begin(), reduction_buffer.end(), 0);
   hash_solution_kernel<i_t, f_t, TPB>
     <<<(integer_assignment.size() + TPB - 1) / TPB, TPB, 0, solution.handle_ptr->get_stream()>>>(
       cuopt::make_span(integer_assignment), cuopt::make_span(reduction_buffer));
-  std::cerr << "has_solution pt 2\n";
-  solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
   RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
   // Get the number of blocks used in the hash_solution_kernel
   int num_blocks = (integer_assignment.size() + TPB - 1) / TPB;
@@ -136,10 +120,6 @@ size_t assignment_hash_map_t<i_t, f_t>::hash_solution(solution_t<i_t, f_t>& solu
     temp_storage.resize(temp_storage_bytes, solution.handle_ptr->get_stream());
     d_temp_storage = temp_storage.data();
 
-    std::cerr << "has_solution pt 3\n";
-    solution.handle_ptr->sync_stream();
-    RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-    cudaDeviceSynchronize();
     // Run reduction
     cub::DeviceReduce::Reduce(d_temp_storage,
                               temp_storage_bytes,
@@ -149,10 +129,6 @@ size_t assignment_hash_map_t<i_t, f_t>::hash_solution(solution_t<i_t, f_t>& solu
                               combine_hash(),
                               0,
                               solution.handle_ptr->get_stream());
-    std::cerr << "has_solution pt 4\n";
-    solution.handle_ptr->sync_stream();
-    RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-    cudaDeviceSynchronize();
 
     // Return early since we've already computed the hash sum
     return hash_sum.value(solution.handle_ptr->get_stream());

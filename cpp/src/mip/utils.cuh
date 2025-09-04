@@ -224,8 +224,6 @@ f_t compute_objective_from_vec(const rmm::device_uvector<f_t>& assignment,
                                const raft::handle_t* handle_ptr)
 {
   cuopt_assert(assignment.size() == objective_coefficients.size(), "Size mismatch!");
-  std::cerr << "assignment " << assignment.size() << "\n";
-  std::cerr << "objective_coefficients " << objective_coefficients.size() << "\n";
   f_t computed_obj = thrust::inner_product(handle_ptr->get_thrust_policy(),
                                            assignment.begin(),
                                            assignment.end(),

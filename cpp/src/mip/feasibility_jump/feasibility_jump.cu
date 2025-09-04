@@ -827,10 +827,6 @@ void fj_t<i_t, f_t>::refresh_lhs_and_violation(const rmm::cuda_stream_view& stre
 template <typename i_t, typename f_t>
 i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
 {
-  std::cerr << "host_loop pt 0\n";
-  solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
   auto& data = *climbers[climber_idx];
   auto v     = data.view();  // == climber_views[climber_idx]
 
@@ -839,10 +835,6 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
 
   auto [grid_resetmoves, blocks_resetmoves] = resetmoves_launch_dims;
   solution.compute_feasibility();
-  std::cerr << "host_loop pt 1\n";
-  solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
   if (settings.feasibility_run) {
     objective_weight.set_value_to_zero_async(handle_ptr->get_stream());
   }
@@ -877,25 +869,13 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
         objective_weight.value(climber_stream));
     }
 
-    std::cerr << "host_loop pt 2\n";
-    solution.handle_ptr->sync_stream();
-    RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-    cudaDeviceSynchronize();
-    if (!limit_reached) { run_step_device(climber_stream, climber_idx, false); }
-    std::cerr << "host_loop pt 3\n";
-    solution.handle_ptr->sync_stream();
-    RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-    cudaDeviceSynchronize();
+    if (!limit_reached) { run_step_device(climber_stream, climber_idx); }
 
     // periodically recompute the LHS and violation scores
     // to correct any accumulated numerical errors
     if (steps % settings.parameters.lhs_refresh_period == 0) {
       refresh_lhs_and_violation(climber_stream, climber_idx);
     }
-    std::cerr << "host_loop pt 4\n";
-    solution.handle_ptr->sync_stream();
-    RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-    cudaDeviceSynchronize();
 
     // periodically synchronize and check the latest solution
     // feasible solution found!*view.break_condition
@@ -908,10 +888,6 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
       i_t iterations = data.iterations.value(climber_stream);
       // make sure we have the current incumbent saved (e.g. in the case of a timeout)
       update_best_solution_kernel<i_t, f_t><<<1, blocks_resetmoves, 0, climber_stream>>>(v);
-      std::cerr << "host_loop pt 5\n";
-      solution.handle_ptr->sync_stream();
-      RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-      cudaDeviceSynchronize();
       // check feasibility with the relative tolerance rather than the violation score
       raft::copy(solution.assignment.data(),
                  data.best_assignment.data(),
@@ -921,15 +897,7 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
       // this solution cost computation with the changing(or not changing) weights is needed to
       // decide whether we reset the best objective on the FIRST_FEASIBLE mode. once we get rid of
       // FIRST_FEASIBLE mode, we can remove the following too.
-      std::cerr << "host_loop pt 6\n";
-      solution.handle_ptr->sync_stream();
-      RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-      cudaDeviceSynchronize();
       bool is_feasible = solution.compute_feasibility();
-      std::cerr << "host_loop pt 7\n";
-      solution.handle_ptr->sync_stream();
-      RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-      cudaDeviceSynchronize();
       solution.handle_ptr->sync_stream();
 
       if (limit_reached) { break; }
@@ -1067,11 +1035,6 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
   pb_ptr->check_problem_representation(true);
   resize_vectors(solution.handle_ptr);
 
-  std::cerr << "fj solve pt 0\n";
-  solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
-
   bool is_initial_feasible = solution.compute_feasibility();
   // if we're in rounding mode, split the time/iteration limit between the first and second stage
   cuopt_assert(settings.parameters.rounding_second_stage_split >= 0 &&
@@ -1101,28 +1064,13 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
                handle_ptr->get_stream());
   }
 
-  std::cerr << "fj solve pt 1\n";
-  solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
-
   climber_init(0);
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
   handle_ptr->sync_stream();
 
-  std::cerr << "fj solve pt 2\n";
-  solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
-
   i_t iterations = host_loop(solution);
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
   handle_ptr->sync_stream();
-
-  std::cerr << "fj solve pt 3\n";
-  solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
 
   f_t effort_rate = (f_t)iterations / timer.elapsed_time();
 
@@ -1135,24 +1083,12 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
       settings.iteration_limit * settings.parameters.rounding_second_stage_split;
 
     round_remaining_fractionals(solution);
-    std::cerr << "fj solve pt 4\n";
-    solution.handle_ptr->sync_stream();
-    RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-    cudaDeviceSynchronize();
 
     // if time limit exceeded: round all remaining fractionals if any by nearest rounding.
     if (climbers[0]->fractional_variables.set_size.value(handle_ptr->get_stream()) > 0) {
       solution.round_nearest();
-      std::cerr << "fj solve pt 5\n";
-      solution.handle_ptr->sync_stream();
-      RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-      cudaDeviceSynchronize();
     }
   }
-  std::cerr << "fj solve pt 6\n";
-  solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
 
   CUOPT_LOG_TRACE("GPU solver took %g", timer.elapsed_time());
   CUOPT_LOG_TRACE("limit reached, effort rate %g steps/secm %d steps", effort_rate, iterations);
@@ -1170,11 +1106,6 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
     });
   cuopt_assert(solution.test_number_all_integer(), "All integers must be rounded");
   bool is_new_feasible = solution.compute_feasibility();
-
-  std::cerr << "fj solve pt 7\n";
-  solution.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(solution.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
 
   if (is_initial_feasible && !is_new_feasible) {
     CUOPT_LOG_ERROR(

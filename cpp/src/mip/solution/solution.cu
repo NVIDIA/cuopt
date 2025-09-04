@@ -319,31 +319,10 @@ template <typename i_t, typename f_t>
 bool solution_t<i_t, f_t>::compute_feasibility()
 {
   n_feasible_constraints.set_value_to_zero_async(handle_ptr->get_stream());
-  std::cerr << "compute_feasibility pt 0\n";
-  handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
-  cudaDeviceSynchronize();
   compute_constraints();
-  std::cerr << "compute_feasibility pt 1\n";
-  handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
-  cudaDeviceSynchronize();
-  std::cerr << "compute_feasibility pt 1a\n";
   compute_objective();
-  std::cerr << "compute_feasibility pt 2\n";
-  handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
-  cudaDeviceSynchronize();
   compute_infeasibility();
-  std::cerr << "compute_feasibility pt 3\n";
-  handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
-  cudaDeviceSynchronize();
   compute_number_of_integers();
-  std::cerr << "compute_feasibility pt 4\n";
-  handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
-  cudaDeviceSynchronize();
   i_t h_n_feas_constraints = n_feasible_constraints.value(handle_ptr->get_stream());
   is_feasible = h_n_feas_constraints == problem_ptr->n_constraints && test_number_all_integer();
   CUOPT_LOG_TRACE("is_feasible %d n_feasible_cstr %d all_cstr %d",
@@ -356,23 +335,11 @@ bool solution_t<i_t, f_t>::compute_feasibility()
 template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::compute_objective()
 {
-  std::cerr << "compute_objective pt 0\n";
-  handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
-  cudaDeviceSynchronize();
   h_obj = compute_objective_from_vec<i_t, f_t>(
     assignment, problem_ptr->objective_coefficients, handle_ptr);
-  std::cerr << "compute_objective pt 1\n";
-  handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
-  cudaDeviceSynchronize();
   // to save from memory transactions, don't update the device objective
   // when needed we can update the device objective here
   h_user_obj = problem_ptr->get_user_obj_from_solver_obj(h_obj);
-  std::cerr << "compute_objective pt 2\n";
-  handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
-  cudaDeviceSynchronize();
 }
 
 template <typename i_t, typename f_t>

@@ -148,11 +148,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     return sol;
   }
 
-  std::cerr << "pt 4\n";
-  context.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
-
   namespace dual_simplex = cuopt::linear_programming::dual_simplex;
   std::future<dual_simplex::mip_status_t> branch_and_bound_status_future;
   dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem;
@@ -161,19 +156,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   branch_and_bound_solution_helper_t solution_helper(&dm, branch_and_bound_settings);
   dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
 
-  std::cerr << "pt 5\n";
-  context.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
-
   if (!context.settings.heuristics_only) {
     // Convert the presolved problem to dual_simplex::user_problem_t
     op_problem_.get_host_user_problem(branch_and_bound_problem);
-    std::cerr << "pt 6\n";
-    context.handle_ptr->sync_stream();
-    RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
-    cudaDeviceSynchronize();
-
     // Resize the solution now that we know the number of columns/variables
     branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
 
@@ -222,18 +207,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                                                 branch_and_bound.get(),
                                                 std::ref(branch_and_bound_solution));
   }
-  std::cerr << "pt 7\n";
-  context.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
-  std::cerr << "pt 7a\n";
 
   // Start the primal heuristics
   auto sol = dm.run_solver();
-  std::cerr << "pt 8\n";
-  context.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
   if (!context.settings.heuristics_only) {
     // Wait for the branch and bound to finish
     auto bb_status = branch_and_bound_status_future.get();
@@ -245,17 +221,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.stats.num_nodes              = branch_and_bound_solution.nodes_explored;
     context.stats.num_simplex_iterations = branch_and_bound_solution.simplex_iterations;
   }
-  std::cerr << "pt 9\n";
-  context.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
   sol.compute_feasibility();
-  rmm::device_scalar<i_t> is_feasible(context.handle_ptr->get_stream());
+  rmm::device_scalar<i_t> is_feasible(sol.handle_ptr->get_stream());
   sol.test_variable_bounds(true, is_feasible.data());
-  std::cerr << "pt 10\n";
-  context.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(context.handle_ptr->get_stream());
-  cudaDeviceSynchronize();
   // test_variable_bounds clears is_feasible if the test is failed
   if (!is_feasible.value(sol.handle_ptr->get_stream())) {
     CUOPT_LOG_ERROR(

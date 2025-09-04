@@ -919,9 +919,6 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
   multi_probe.settings.iteration_limit = 50;
   multi_probe.settings.time_limit      = max_timer.remaining_time();
   multi_probe.resize(*sol.problem_ptr);
-  sol.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(sol.handle_ptr->get_stream());
-  std::cerr << "find_integer pt 0\n";
   if (max_timer.check_time_limit()) {
     CUOPT_LOG_DEBUG("Time limit is reached before bounds prop rounding!");
     sol.round_nearest();
@@ -929,9 +926,6 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();
   }
-  sol.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(sol.handle_ptr->get_stream());
-  std::cerr << "find_integer pt 1\n";
   raft::copy(unset_integer_vars.data(),
              sol.problem_ptr->integer_indices.data(),
              sol.problem_ptr->n_integer_vars,
@@ -943,24 +937,12 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();
   }
-  sol.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(sol.handle_ptr->get_stream());
-  std::cerr << "find_integer pt 2\n";
   // this is needed for the sort inside of the loop
   bool problem_ii = is_problem_ii(*sol.problem_ptr);
-  sol.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(sol.handle_ptr->get_stream());
-  std::cerr << "find_integer pt 2a\n";
   // if the problem is ii, run the bounds prop in the beginning
   if (problem_ii) {
-    sol.handle_ptr->sync_stream();
-    RAFT_CHECK_CUDA(sol.handle_ptr->get_stream());
-    std::cerr << "find_integer pt 3\n";
     bool bounds_repaired =
       bounds_repair.repair_problem(*sol.problem_ptr, *orig_sol.problem_ptr, timer, sol.handle_ptr);
-    sol.handle_ptr->sync_stream();
-    RAFT_CHECK_CUDA(sol.handle_ptr->get_stream());
-    std::cerr << "find_integer pt 4\n";
     if (bounds_repaired) {
       CUOPT_LOG_DEBUG("Initial ii is repaired by bounds repair!");
     } else {
@@ -970,23 +952,14 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
       }
       rounding_ii = true;
     }
-    sol.handle_ptr->sync_stream();
-    RAFT_CHECK_CUDA(sol.handle_ptr->get_stream());
-    std::cerr << "find_integer pt 5\n";
   }
   // do the sort if the problem is not ii. crossing bounds might cause some issues on the sort order
   else {
     // this is a sort to have initial shuffling, so that stable sort within will keep the order and
     // some randomness will be achieved
     sort_by_interval_and_frac(sol, make_span(unset_integer_vars), rng);
-    sol.handle_ptr->sync_stream();
-    RAFT_CHECK_CUDA(sol.handle_ptr->get_stream());
-    std::cerr << "find_integer pt 6\n";
   }
   set_host_bounds(sol);
-  sol.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(sol.handle_ptr->get_stream());
-  std::cerr << "find_integer pt 7\n";
   size_t set_count               = 0;
   bool timeout_happened          = false;
   i_t n_failed_repair_iterations = 0;
@@ -1136,13 +1109,7 @@ bool constraint_prop_t<i_t, f_t>::apply_round(
   temp_sol.problem_ptr       = &p;
   f_t bounds_prop_start_time = max_timer.remaining_time();
   cuopt_func_call(temp_sol.test_variable_bounds(false));
-  sol.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(sol.handle_ptr->get_stream());
-  std::cerr << "find_integer\n";
   bool sol_found = find_integer(temp_sol, sol, lp_run_time_after_feasible, timer, probing_config);
-  sol.handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(sol.handle_ptr->get_stream());
-  std::cerr << "find_integer done\n";
   f_t bounds_prop_end_time = max_timer.remaining_time();
   repair_stats.total_time_spent_on_bounds_prop += bounds_prop_start_time - bounds_prop_end_time;
 

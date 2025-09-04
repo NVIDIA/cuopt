@@ -67,15 +67,12 @@ void local_search_t<i_t, f_t>::generate_fast_solution(solution_t<i_t, f_t>& solu
   while (!timer.check_time_limit()) {
     timer_t constr_prop_timer = timer_t(std::min(timer.remaining_time(), 2.));
     // do constraint prop on lp optimal solution
-    std::cerr << "apply round\n";
     constraint_prop.apply_round(solution, 1., constr_prop_timer);
     if (solution.compute_feasibility()) { return; }
     if (timer.check_time_limit()) { return; };
     fj.settings.time_limit = std::min(3., timer.remaining_time());
     // run fj on the solution
-    std::cerr << "solve\n";
     fj.solve(solution);
-    std::cerr << "solve done\n";
     // TODO check if FJ returns the same solution
     // check if the solution is feasible
     if (solution.compute_feasibility()) { return; }
@@ -115,10 +112,8 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
     rd = ls_method_t::FJ_ANNEALING;
   }
   if (rd == ls_method_t::FJ_LINE_SEGMENT && lp_optimal_exists) {
-    std::cerr << "run_local_search pt 0\n";
     is_feas = run_fj_line_segment(solution, timer, ls_config);
   } else {
-    std::cerr << "run_local_search pt 1\n";
     is_feas = run_fj_annealing(solution, timer, ls_config);
   }
   return is_feas;
