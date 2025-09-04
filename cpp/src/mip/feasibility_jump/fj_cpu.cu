@@ -48,7 +48,28 @@ class timing_raii_t {
   std::chrono::high_resolution_clock::time_point start_time_;
 };
 
-// NOTE: this seems ripe for reflection/xmacros once this is available.
+struct pair_hash {
+  template <class T1, class T2>
+  std::size_t operator()(const std::pair<T1, T2>& p) const
+  {
+    std::size_t h1 = std::hash<T1>{}(p.first);
+    std::size_t h2 = std::hash<T2>{}(p.second);
+    // Combines the two hash values (boost-inspired)
+    return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+  }
+};
+
+struct fj_move_hash {
+  std::size_t operator()(const fj_move_t& p) const
+  {
+    std::size_t h1 = std::hash<int>{}(p.var_idx);
+    std::size_t h2 = std::hash<double>{}(p.value);
+    // Combines the two hash values (boost-inspired)
+    return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+  }
+};
+
+// NOTE: this seems an easy pick for reflection/xmacros once this is available (C++26?)
 // Maintaining a single source of truth for all members would be nice
 template <typename i_t, typename f_t>
 struct fj_cpu_t {
@@ -100,6 +121,17 @@ struct fj_cpu_t {
   std::vector<double> find_mtm_move_sat_times;
   std::vector<double> apply_move_times;
   std::vector<double> update_weights_times;
+  std::vector<double> compute_score_times;
+
+  i_t hit_count{0};
+  i_t miss_count{0};
+
+  i_t candidate_move_hits[3]   = {0};
+  i_t candidate_move_misses[3] = {0};
+
+  // (var,cstr) -> (delta, score)
+  std::unordered_map<std::pair<i_t, i_t>, std::pair<f_t, fj_staged_score_t>, pair_hash>
+    cached_mtm_moves;
 };
 
 template <typename i_t, typename f_t>
@@ -118,7 +150,7 @@ static void print_timing_stats(fj_cpu_t<i_t, f_t>& fj_cpu)
   auto [sat_avg, sat_total]         = compute_avg_and_total(fj_cpu.find_mtm_move_sat_times);
   auto [apply_avg, apply_total]     = compute_avg_and_total(fj_cpu.apply_move_times);
   auto [weights_avg, weights_total] = compute_avg_and_total(fj_cpu.update_weights_times);
-
+  auto [compute_score_avg, compute_score_total] = compute_avg_and_total(fj_cpu.compute_score_times);
   printf("=== Timing Statistics (Iteration %d) ===\n", fj_cpu.iterations);
   printf("find_lift_move:      avg=%.6f ms, total=%.6f ms, calls=%zu\n",
          lift_avg * 1000.0,
@@ -140,6 +172,21 @@ static void print_timing_stats(fj_cpu_t<i_t, f_t>& fj_cpu)
          weights_avg * 1000.0,
          weights_total * 1000.0,
          fj_cpu.update_weights_times.size());
+  printf("compute_score:       avg=%.6f ms, total=%.6f ms, calls=%zu\n",
+         compute_score_avg * 1000.0,
+         compute_score_total * 1000.0,
+         fj_cpu.compute_score_times.size());
+  printf("cache hit percentage: %.2f%%\n",
+         (double)fj_cpu.hit_count / (fj_cpu.hit_count + fj_cpu.miss_count) * 100.0);
+  printf("bin  candidate move hit percentage: %.2f%%\n",
+         (double)fj_cpu.candidate_move_hits[0] /
+           (fj_cpu.candidate_move_hits[0] + fj_cpu.candidate_move_misses[0]) * 100.0);
+  printf("int  candidate move hit percentage: %.2f%%\n",
+         (double)fj_cpu.candidate_move_hits[1] /
+           (fj_cpu.candidate_move_hits[1] + fj_cpu.candidate_move_misses[1]) * 100.0);
+  printf("cont candidate move hit percentage: %.2f%%\n",
+         (double)fj_cpu.candidate_move_hits[2] /
+           (fj_cpu.candidate_move_hits[2] + fj_cpu.candidate_move_misses[2]) * 100.0);
   printf("========================================\n");
 }
 
@@ -161,14 +208,18 @@ static inline bool tabu_check(fj_cpu_t<i_t, f_t>& fj_cpu,
 template <typename i_t, typename f_t>
 static inline fj_staged_score_t compute_score(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta)
 {
+  timing_raii_t<i_t, f_t> timer(fj_cpu.compute_score_times);
+
   f_t obj_diff = fj_cpu.h_obj_coeffs[var_idx] * delta;
 
   cuopt_assert(isfinite(delta), "");
 
   cuopt_assert(var_idx < fj_cpu.view.pb.n_variables, "variable index out of bounds");
 
-  f_t base_feas_sum               = 0;
-  f_t bonus_robust_sum            = 0;
+  f_t base_feas_sum    = 0;
+  f_t bonus_robust_sum = 0;
+  // Minimize memory accesses / latency as much as possible. CPUs have terrible bandwidth/load
+  // issue!
   auto [offset_begin, offset_end] = fj_cpu.view.pb.reverse_range_for_var(var_idx);
   for (i_t i = offset_begin; i < offset_end; i++) {
     auto cstr_idx   = fj_cpu.h_reverse_constraints[i];
@@ -318,6 +369,13 @@ static void apply_move(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool 
     fj_cpu.h_lhs_sumcomp[cstr_idx] = (t - old_lhs) - y;
     fj_cpu.h_lhs[cstr_idx]         = t;
     cuopt_assert(isfinite(fj_cpu.h_lhs[cstr_idx]), "assignment should be finite");
+
+    // Invalidate related cached move scores
+    auto [relvar_offset_begin, relvar_offset_end] = fj_cpu.view.pb.range_for_constraint(cstr_idx);
+    for (auto i = relvar_offset_begin; i < relvar_offset_end; i++) {
+      auto var_idx = fj_cpu.h_variables[i];
+      fj_cpu.cached_mtm_moves.erase({var_idx, cstr_idx});
+    }
   }
 
   if (previous_viol > 0 && fj_cpu.violated_constraints.empty()) {
@@ -366,7 +424,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
   auto& problem = *fj_cpu.fj.pb_ptr;
 
   // Maps a candidate move to its score
-  std::set<fj_move_t> candidate_moves;
+  // std::unordered_set<fj_move_t, fj_move_hash> candidate_moves;
   fj_move_t best_move          = fj_move_t{-1, 0};
   fj_staged_score_t best_score = fj_staged_score_t::invalid();
 
@@ -375,9 +433,13 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
     auto [offset_begin, offset_end] = fj_cpu.view.pb.range_for_constraint(cstr_idx);
     for (auto i = offset_begin; i < offset_end; i++) {
       auto var_idx = fj_cpu.h_variables[i];
+      i_t var_type = fj_cpu.h_is_binary_variable[var_idx]     ? 0
+                     : fj_cpu.view.pb.is_integer_var(var_idx) ? 1
+                                                              : 2;
       f_t val      = fj_cpu.h_assignment[var_idx];
       f_t new_val  = val;
       f_t delta    = 0;
+
       // Special case for binary variables
       if (fj_cpu.h_is_binary_variable[var_idx]) {
         new_val = 1 - val;
@@ -413,10 +475,26 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       cuopt_assert(move.var_idx < fj_cpu.h_assignment.size(), "move.var_idx is out of bounds");
       cuopt_assert(move.var_idx >= 0, "move.var_idx is not positive");
 
-      if (candidate_moves.count(move)) continue;
+      // if (candidate_moves.count(move))
+      // {
+      //   fj_cpu.candidate_move_hits[var_type]++;
+      // }
+      // else
+      // {
+      //   fj_cpu.candidate_move_misses[var_type]++;
+      // }
 
       candidate_moves.insert(move);
-      fj_staged_score_t score = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
+      fj_staged_score_t score;
+      if (auto cached_move_it = fj_cpu.cached_mtm_moves.find({var_idx, cstr_idx});
+          cached_move_it != fj_cpu.cached_mtm_moves.end()) {
+        score = cached_move_it->second.second;
+        fj_cpu.hit_count++;
+      } else {
+        score = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
+        fj_cpu.cached_mtm_moves[{var_idx, cstr_idx}] = {delta, score};
+        fj_cpu.miss_count++;
+      }
       if (best_score < score) {
         best_score = score;
         best_move  = move;
@@ -432,6 +510,9 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
     for (auto var_idx : fj_cpu.h_objective_vars) {
       // if (fj_cpu.view.pb.is_binary_variable[var_idx]) continue;
 
+      // i_t var_type = fj_cpu.h_is_binary_variable[var_idx] ? 0 :
+      // fj_cpu.view.pb.is_integer_var(var_idx) ? 1 : 2;
+
       f_t old_val = fj_cpu.h_assignment[var_idx];
       f_t new_val = get_breakthrough_move<i_t, f_t>(fj_cpu.view, var_idx);
 
@@ -446,7 +527,14 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       cuopt_assert(move.var_idx < fj_cpu.h_assignment.size(), "move.var_idx is out of bounds");
       cuopt_assert(move.var_idx >= 0, "move.var_idx is not positive");
 
-      if (candidate_moves.count(move)) continue;
+      // if (candidate_moves.count(move))
+      // {
+      //   fj_cpu.candidate_move_hits[var_type]++;
+      // }
+      // else
+      // {
+      //   fj_cpu.candidate_move_misses[var_type]++;
+      // }
 
       candidate_moves.insert(move);
       f_t delta = new_val - old_val;
@@ -845,8 +933,9 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
 
   fprintf(stderr, "running bespoke CPU FJ!\n");
 
-  i_t local_mins = 0;
-  while (fj_cpu.iterations < 5000) {
+  i_t local_mins  = 0;
+  auto loop_start = std::chrono::high_resolution_clock::now();
+  while (fj_cpu.iterations < 20000) {
     fj_move_t move          = fj_move_t{-1, 0};
     fj_staged_score_t score = fj_staged_score_t::invalid();
     // Perform lift moves
@@ -903,6 +992,7 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
           fj_cpu.h_incumbent_objective - fj_cpu.h_best_objective);
       }
       apply_move(fj_cpu, var_idx, delta, true);
+      fj_cpu.cached_mtm_moves.clear();
       ++local_mins;
     }
     if (fj_cpu.iterations % 100 == 0) {
@@ -919,6 +1009,11 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
     cuopt_func_call(sanity_checks(fj_cpu));
     fj_cpu.iterations++;
   }
+  auto loop_end = std::chrono::high_resolution_clock::now();
+  double total_time =
+    std::chrono::duration_cast<std::chrono::duration<double>>(loop_end - loop_start).count();
+  double avg_time_per_iter = total_time / 20000.0;
+  printf("Average time per iteration: %.8fms\n", avg_time_per_iter * 1000.0);
 
   // exit(0);
 

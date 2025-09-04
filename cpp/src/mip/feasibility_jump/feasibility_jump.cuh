@@ -127,6 +127,11 @@ struct fj_move_t {
     if (var_idx == rhs.var_idx) return value < rhs.value;
     return var_idx < rhs.var_idx;
   }
+  bool operator==(const fj_move_t& rhs) const
+  {
+    return var_idx == rhs.var_idx && value == rhs.value;
+  }
+  bool operator!=(const fj_move_t& rhs) const { return !(*this == rhs); }
 };
 
 // TODO: use 32bit integers instead,

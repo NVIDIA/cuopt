@@ -43,6 +43,7 @@ int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_poi
   InitState();
   auto& localObj = localConUtil.conSet[0];
   curStep        = 0;
+  auto last_time = chrono::high_resolution_clock::now();
   while (!halted) {
     if (DEBUG)
       printf("\nc UNSAT Size: %-10ld; lmin %d\n", localConUtil.unsatConIdxs.size(), minima);
@@ -70,12 +71,19 @@ int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_poi
     }
     ++curStep;
 
-    if ((curStep % 10000) == 0)
-      printf("%s running for %d steps (%d mins), userobj: %lf\n",
+    if ((curStep % 10000) == 0) {
+      auto now_time = chrono::high_resolution_clock::now();
+      double elapsed =
+        chrono::duration_cast<chrono::duration<double>>(now_time - last_time).count();
+      double avg_time_per_iter = (elapsed / 10000.0) * 1000.0;  // ms
+      printf("%s running for %d steps (%d mins), userobj: %lf, avg_time_per_iter: %.8fms\n",
              prefix.c_str(),
              curStep,
              minima,
-             GetObjValue());
+             GetObjValue(),
+             avg_time_per_iter);
+      last_time = now_time;
+    }
     // only send optimal every 5000 steps
     // if (curStep % 5000 == 0 && found_better) {
     if (found_better) {
