@@ -19,3 +19,5 @@ __version__ = (
     importlib.resources.files("cuopt").joinpath("VERSION").read_text().strip()
 )
 __git_commit__ = ""
+
+__version_major_minor__ = ".".join(__version__.split(".")[:2])

@@ -13,4 +13,3 @@ This section contains details on Server options supported and open-api specifica
    server-cli.rst
    ../../open-api.rst
    ../../lp-milp-settings.rst
-

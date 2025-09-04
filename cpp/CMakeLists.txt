@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.30.4 FATAL_ERROR)
+
+# Add our custom Find modules to the module path
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/thirdparty")
 
 include(GNUInstallDirs)
 
@@ -29,12 +32,12 @@ rapids_cuda_init_architectures(CUOPT)
 
 project(
   CUOPT
-  VERSION 25.08.00
+  VERSION "${CUOPT_VERSION}"
   LANGUAGES CXX CUDA C
 )
 
-set(DEPENDENT_LIB_MAJOR_VERSION "25")
-set(DEPENDENT_LIB_MINOR_VERSION "08")
+set(DEPENDENT_LIB_MAJOR_VERSION "${RAPIDS_VERSION_MAJOR}")
+set(DEPENDENT_LIB_MINOR_VERSION "${RAPIDS_VERSION_MINOR}")
 
 rapids_cmake_write_version_file(include/cuopt/version_config.hpp)
 # ##################################################################################################
@@ -49,11 +52,19 @@ option(CMAKE_CUDA_LINEINFO "Enable the -lineinfo option for nvcc useful for cuda
 option(BUILD_TESTS "Configure CMake to build tests" ON)
 option(DISABLE_OPENMP "Disable OpenMP" OFF)
 option(CUDA_STATIC_RUNTIME "Statically link the CUDA toolkit runtime and libraries" OFF)
+option(BUILD_LP_ONLY "Build only linear programming components, exclude routing and MIP-specific files" OFF)
+option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
+option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
+option(WRITE_FATBIN "Enable fatbin writing" ON)
 
 message(VERBOSE "cuOpt: Enable nvcc -lineinfo: ${CMAKE_CUDA_LINEINFO}")
 message(VERBOSE "cuOpt: Build cuOpt unit-tests: ${BUILD_TESTS}")
 message(VERBOSE "cuOpt: Build cuOpt multigpu tests: ${BUILD_TESTS}")
 message(VERBOSE "cuOpt: Disable OpenMP: ${DISABLE_OPENMP}")
+message(VERBOSE "cuOpt: Build LP-only mode: ${BUILD_LP_ONLY}")
+message(VERBOSE "cuOpt: Skip C/Python adapters: ${SKIP_C_PYTHON_ADAPTERS}")
+message(VERBOSE "cuOpt: Skip routing build: ${SKIP_ROUTING_BUILD}")
+message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
 
 # ##################################################################################################
 # - compiler options ------------------------------------------------------------------------------
@@ -101,7 +112,7 @@ message("-- Building for GPU_ARCHS = ${CMAKE_CUDA_ARCHITECTURES}")
 
 # make the flags global in order to propagate flags to test cmake files
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extended-lambda")
-if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
+if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -static-global-template-stub=false")
 endif()
 list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror)
@@ -157,6 +168,21 @@ else()
   find_package(RMM REQUIRED)
   find_package(RAFT REQUIRED)
 endif()
+
+FetchContent_Declare(
+  papilo
+  GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
+  GIT_TAG "v2.4.3"
+  SYSTEM
+)
+
+set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
+set(TBB OFF CACHE BOOL "Disable TBB")
+set(PAPILO_NO_BINARIES ON)
+option(LUSOL "Disable LUSOL" OFF)
+
+FetchContent_MakeAvailable(papilo)
+
 include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 # generate logging macros
 rapids_cpm_rapids_logger(BUILD_EXPORT_SET cuopt-exports INSTALL_EXPORT_SET cuopt-exports)
@@ -191,19 +217,24 @@ target_compile_options(cuopt
   "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
 )
 
-file(WRITE "${CUOPT_BINARY_DIR}/fatbin.ld"
-  [=[
-SECTIONS
-{
-  .nvFatBinSegment : { *(.nvFatBinSegment) }
-  .nv_fatbin : { *(.nv_fatbin) }
-}
-]=])
-target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
+if(WRITE_FATBIN)
+  file(WRITE "${CUOPT_BINARY_DIR}/fatbin.ld"
+    [=[
+  SECTIONS
+  {
+    .nvFatBinSegment : { *(.nvFatBinSegment) }
+    .nv_fatbin : { *(.nv_fatbin) }
+  }
+  ]=])
+  target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
+endif()
 
 add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
 # - include paths ---------------------------------------------------------------------------------
+
+target_include_directories(cuopt SYSTEM PRIVATE "${papilo_SOURCE_DIR}/src" "${papilo_BINARY_DIR}")
+
 target_include_directories(cuopt
   PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
@@ -212,6 +243,7 @@ target_include_directories(cuopt
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include>"
+  INTERFACE
   "$<INSTALL_INTERFACE:include>"
 )
 
@@ -241,6 +273,7 @@ target_link_libraries(cuopt
   PRIVATE
   ${CUOPT_PRIVATE_CUDA_LIBS}
   )
+
 
 # ##################################################################################################
 # - generate tests --------------------------------------------------------------------------------
@@ -338,45 +371,68 @@ if(Doxygen_FOUND)
 endif()
 
 
-add_executable(cuopt_cli cuopt_cli.cpp)
-target_compile_options(cuopt_cli
-  PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
-  "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
-)
-
-target_include_directories(cuopt_cli
-  PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/src"
-  PUBLIC
-  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-  "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
-  "$<INSTALL_INTERFACE:include>"
-)
-
-target_link_libraries(cuopt_cli
-  PUBLIC
-  cuopt
-  OpenMP::OpenMP_CXX
-)
-set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
-
-# adds the cuopt_cli executable to the runtime deb package
-install(TARGETS cuopt_cli
-  COMPONENT runtime
-  RUNTIME DESTINATION ${_BIN_DEST}
-)
-
-option(BUILD_BENCHMARKS "Build benchmarks" ON)
-if(BUILD_BENCHMARKS)
-  add_executable(solve_MPS_file ../benchmarks/linear_programming/cuopt/run_mip.cpp)
-  target_compile_options(solve_MPS_file
+if(NOT BUILD_LP_ONLY)
+  add_executable(cuopt_cli cuopt_cli.cpp)
+  target_compile_options(cuopt_cli
     PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
   )
-  target_link_libraries(solve_MPS_file
+
+  target_include_directories(cuopt_cli
+    PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+    "$<INSTALL_INTERFACE:include>"
+  )
+
+  target_link_libraries(cuopt_cli
     PUBLIC
     cuopt
     OpenMP::OpenMP_CXX
+    PRIVATE
+    papilo-core
+  )
+  set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
+
+  # adds the cuopt_cli executable to the runtime deb package
+  install(TARGETS cuopt_cli
+    COMPONENT runtime
+    RUNTIME DESTINATION ${_BIN_DEST}
+  )
+endif()
+
+
+option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
+if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
+  add_executable(solve_MIP ../benchmarks/linear_programming/cuopt/run_mip.cpp)
+  target_compile_options(solve_MIP
+    PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+    "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
+  )
+  target_link_libraries(solve_MIP
+    PUBLIC
+    cuopt
+    OpenMP::OpenMP_CXX
+    PRIVATE
+    papilo-core
+  )
+endif()
+
+option(BUILD_LP_BENCHMARKS "Build LP benchmarks" OFF)
+if(BUILD_LP_BENCHMARKS)
+  add_executable(solve_LP ../benchmarks/linear_programming/cuopt/run_pdlp.cu)
+  target_compile_options(solve_LP
+    PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+    "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
+  )
+  target_link_libraries(solve_LP
+    PUBLIC
+    cuopt
+    OpenMP::OpenMP_CXX
+    PRIVATE
+    papilo-core
   )
 endif()
 

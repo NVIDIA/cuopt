@@ -22,3 +22,5 @@ __version__ = (
     .strip()
 )
 __git_commit__ = ""
+
+__version_major_minor__ = ".".join(__version__.split(".")[:2])

@@ -21,26 +21,9 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
-#include <mutex>
 #include <random>
 
 namespace cuopt::linear_programming::dual_simplex {
-
-namespace global_variables {
-
-#ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
-
-// Global variable storing the results of strong branching down
-std::vector<double> strong_branch_down;
-// Global variable storing the results of strong branching up
-std::vector<double> strong_branch_up;
-
-std::mutex strong_branches_completed;
-int num_strong_branches_completed = 0;
-
-#endif
-
-}  // namespace global_variables
 
 namespace {
 
@@ -56,7 +39,8 @@ void strong_branch_helper(i_t thread_id,
                           f_t root_obj,
                           const std::vector<f_t>& root_soln,
                           const std::vector<variable_status_t>& root_vstatus,
-                          const std::vector<f_t>& edge_norms)
+                          const std::vector<f_t>& edge_norms,
+                          pseudo_costs_t<i_t, f_t>& pc)
 {
   lp_problem_t child_problem = original_lp;
 
@@ -112,7 +96,7 @@ void strong_branch_helper(i_t thread_id,
       }
 
       if (branch == 0) {
-        global_variables::strong_branch_down[k] = obj - root_obj;
+        pc.strong_branch_down[k] = obj - root_obj;
         if (verbose) {
           settings.log.printf("Thread id %2d remaining %d variable %d branch %d obj %e time %.2f\n",
                               thread_id,
@@ -123,7 +107,7 @@ void strong_branch_helper(i_t thread_id,
                               toc(start_time));
         }
       } else {
-        global_variables::strong_branch_up[k] = obj - root_obj;
+        pc.strong_branch_up[k] = obj - root_obj;
         if (verbose) {
           settings.log.printf(
             "Thread id %2d remaining %d variable %d branch %d obj %e change down %e change up %e "
@@ -133,8 +117,8 @@ void strong_branch_helper(i_t thread_id,
             j,
             branch,
             obj,
-            global_variables::strong_branch_down[k],
-            global_variables::strong_branch_up[k],
+            pc.strong_branch_down[k],
+            pc.strong_branch_up[k],
             toc(start_time));
         }
       }
@@ -142,15 +126,15 @@ void strong_branch_helper(i_t thread_id,
     }
     if (toc(start_time) > settings.time_limit) { break; }
 
-    global_variables::strong_branches_completed.lock();
-    global_variables::num_strong_branches_completed++;
-    global_variables::strong_branches_completed.unlock();
+    pc.strong_branches_completed.lock();
+    pc.num_strong_branches_completed++;
+    pc.strong_branches_completed.unlock();
 
     if (thread_id == 0 && toc(last_log) > 10) {
       last_log = tic();
-      global_variables::strong_branches_completed.lock();
-      const i_t completed = global_variables::num_strong_branches_completed;
-      global_variables::strong_branches_completed.unlock();
+      pc.strong_branches_completed.lock();
+      const i_t completed = pc.num_strong_branches_completed;
+      pc.strong_branches_completed.unlock();
       settings.log.printf("%d of %ld strong branches completed in %.1fs\n",
                           completed,
                           fractional.size(),
@@ -190,7 +174,8 @@ void thread_strong_branch(i_t thread_id,
                           f_t root_obj,
                           const std::vector<f_t>& root_soln,
                           const std::vector<variable_status_t>& root_vstatus,
-                          const std::vector<f_t>& edge_norms)
+                          const std::vector<f_t>& edge_norms,
+                          pseudo_costs_t<i_t, f_t>& pc)
 {
   i_t start, end;
   get_partitioning(static_cast<i_t>(fractional.size()), num_threads, thread_id, start, end);
@@ -211,7 +196,8 @@ void thread_strong_branch(i_t thread_id,
                        root_obj,
                        root_soln,
                        root_vstatus,
-                       edge_norms);
+                       edge_norms,
+                       pc);
 }
 
 }  // namespace
@@ -228,10 +214,10 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       const std::vector<f_t>& edge_norms,
                       pseudo_costs_t<i_t, f_t>& pc)
 {
-  global_variables::strong_branch_down.resize(fractional.size());
-  global_variables::strong_branch_up.resize(fractional.size());
+  pc.strong_branch_down.resize(fractional.size());
+  pc.strong_branch_up.resize(fractional.size());
 
-  global_variables::num_strong_branches_completed = 0;
+  pc.num_strong_branches_completed = 0;
 
   if (fractional.size() > settings.num_threads) {
     int num_threads = settings.num_threads;
@@ -251,7 +237,8 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                                        root_obj,
                                        root_soln,
                                        root_vstatus,
-                                       edge_norms);
+                                       edge_norms,
+                                       std::ref(pc));
     }
 
     for (int thread_id = 0; thread_id < num_threads; thread_id++) {
@@ -270,13 +257,11 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                          root_obj,
                          root_soln,
                          root_vstatus,
-                         edge_norms);
+                         edge_norms,
+                         pc);
   }
 
-  pc.update_pseudo_costs_from_strong_branching(fractional,
-                                               root_soln,
-                                               global_variables::strong_branch_down,
-                                               global_variables::strong_branch_up);
+  pc.update_pseudo_costs_from_strong_branching(fractional, root_soln);
 }
 
 template <typename i_t, typename f_t>
@@ -393,10 +378,7 @@ i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractio
 
 template <typename i_t, typename f_t>
 void pseudo_costs_t<i_t, f_t>::update_pseudo_costs_from_strong_branching(
-  const std::vector<i_t>& fractional,
-  const std::vector<f_t>& root_soln,
-  const std::vector<f_t>& strong_branch_down,
-  const std::vector<f_t>& strong_branch_up)
+  const std::vector<i_t>& fractional, const std::vector<f_t>& root_soln)
 {
   for (i_t k = 0; k < fractional.size(); k++) {
     const i_t j = fractional[k];

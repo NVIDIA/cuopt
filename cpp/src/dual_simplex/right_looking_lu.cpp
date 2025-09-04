@@ -21,7 +21,6 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
-#include <list>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -44,8 +43,8 @@ i_t initialize_degree_data(const csc_matrix_t<i_t, f_t>& A,
                            const std::vector<i_t>& column_list,
                            std::vector<i_t>& Cdegree,
                            std::vector<i_t>& Rdegree,
-                           std::vector<std::list<i_t>>& col_count,
-                           std::vector<std::list<i_t>>& row_count)
+                           std::vector<std::vector<i_t>>& col_count,
+                           std::vector<std::vector<i_t>>& row_count)
 {
   const i_t n = column_list.size();
   const i_t m = A.m;
@@ -195,8 +194,8 @@ void initialize_max_in_row(const std::vector<i_t>& first_in_row,
 template <typename i_t, typename f_t>
 i_t markowitz_search(const std::vector<i_t>& Cdegree,
                      const std::vector<i_t>& Rdegree,
-                     const std::vector<std::list<i_t>>& col_count,
-                     const std::vector<std::list<i_t>>& row_count,
+                     const std::vector<std::vector<i_t>>& col_count,
+                     const std::vector<std::vector<i_t>>& row_count,
                      const std::vector<i_t>& first_in_row,
                      const std::vector<i_t>& first_in_col,
                      const std::vector<f_t>& max_in_column,
@@ -306,7 +305,7 @@ void update_Cdegree_and_col_count(i_t pivot_i,
                                   i_t pivot_j,
                                   const std::vector<i_t>& first_in_row,
                                   std::vector<i_t>& Cdegree,
-                                  std::vector<std::list<i_t>>& col_count,
+                                  std::vector<std::vector<i_t>>& col_count,
                                   std::vector<element_t<i_t, f_t>>& elements)
 {
   // Update Cdegree and col_count
@@ -316,11 +315,13 @@ void update_Cdegree_and_col_count(i_t pivot_i,
     assert(entry->i == pivot_i);
     i_t cdeg = Cdegree[j];
     assert(cdeg >= 0);
-    for (typename std::list<i_t>::iterator it = col_count[cdeg].begin();
+    for (typename std::vector<i_t>::iterator it = col_count[cdeg].begin();
          it != col_count[cdeg].end();
          it++) {
       if (*it == j) {
-        col_count[cdeg].erase(it);
+        // Remove col j from col_count[cdeg]
+        std::swap(*it, col_count[cdeg].back());
+        col_count[cdeg].pop_back();
         break;
       }
     }
@@ -336,7 +337,7 @@ void update_Rdegree_and_row_count(i_t pivot_i,
                                   i_t pivot_j,
                                   const std::vector<i_t>& first_in_col,
                                   std::vector<i_t>& Rdegree,
-                                  std::vector<std::list<i_t>>& row_count,
+                                  std::vector<std::vector<i_t>>& row_count,
                                   std::vector<element_t<i_t, f_t>>& elements)
 {
   // Update Rdegree and row_count
@@ -345,11 +346,13 @@ void update_Rdegree_and_row_count(i_t pivot_i,
     const i_t i                = entry->i;
     i_t rdeg                   = Rdegree[i];
     assert(rdeg >= 0);
-    for (typename std::list<i_t>::iterator it = row_count[rdeg].begin();
+    for (typename std::vector<i_t>::iterator it = row_count[rdeg].begin();
          it != row_count[rdeg].end();
          it++) {
       if (*it == i) {
-        row_count[rdeg].erase(it);
+        // Remove row i from row_count[rdeg]
+        std::swap(*it, row_count[rdeg].back());
+        row_count[rdeg].pop_back();
         break;
       }
     }
@@ -375,8 +378,8 @@ void schur_complement(i_t pivot_i,
                       std::vector<f_t>& max_in_row,
                       std::vector<i_t>& Rdegree,
                       std::vector<i_t>& Cdegree,
-                      std::vector<std::list<i_t>>& row_count,
-                      std::vector<std::list<i_t>>& col_count,
+                      std::vector<std::vector<i_t>>& row_count,
+                      std::vector<std::vector<i_t>>& col_count,
                       std::vector<element_t<i_t, f_t>>& elements)
 {
   for (i_t p1 = first_in_col[pivot_j]; p1 != kNone; p1 = elements[p1].next_in_column) {
@@ -452,11 +455,13 @@ void schur_complement(i_t pivot_i,
         }
         row_last_workspace[i] = fill_p;
         i_t rdeg              = Rdegree[i];  // Rdgree must increase
-        for (typename std::list<i_t>::iterator it = row_count[rdeg].begin();
+        for (typename std::vector<i_t>::iterator it = row_count[rdeg].begin();
              it != row_count[rdeg].end();
              it++) {
           if (*it == i) {
-            row_count[rdeg].erase(it);  // Remove row i from row_count[rdeg]
+            // Remove row i from row_count[rdeg]
+            std::swap(*it, row_count[rdeg].back());
+            row_count[rdeg].pop_back();
             break;
           }
         }
@@ -464,11 +469,13 @@ void schur_complement(i_t pivot_i,
         row_count[rdeg].push_back(i);  // Add row i to row_count[rdeg]
 
         i_t cdeg = Cdegree[j];  // Cdegree must increase
-        for (typename std::list<i_t>::iterator it = col_count[cdeg].begin();
+        for (typename std::vector<i_t>::iterator it = col_count[cdeg].begin();
              it != col_count[cdeg].end();
              it++) {
           if (*it == j) {
-            col_count[cdeg].erase(it);  // Remove column j from col_count[cdeg]
+            // Remove col j from col_count[cdeg]
+            std::swap(*it, col_count[cdeg].back());
+            col_count[cdeg].pop_back();
             break;
           }
         }
@@ -593,9 +600,9 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
   std::vector<i_t> Rdegree(n);  // Rdegree[i] is the degree of row i
   std::vector<i_t> Cdegree(n);  // Cdegree[j] is the degree of column j
 
-  std::vector<std::list<i_t>> col_count(
+  std::vector<std::vector<i_t>> col_count(
     n + 1);  // col_count[nz] is a list of columns with nz nonzeros in the active submatrix
-  std::vector<std::list<i_t>> row_count(
+  std::vector<std::vector<i_t>> row_count(
     n + 1);  // row_count[nz] is a list of rows with nz nonzeros in the active submatrix
 
   const i_t Bnz = initialize_degree_data(A, column_list, Cdegree, Rdegree, col_count, row_count);
@@ -931,9 +938,9 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
   std::vector<i_t> Rdegree(m);  // Rdegree[i] is the degree of row i
   std::vector<i_t> Cdegree(n);  // Cdegree[j] is the degree of column j
 
-  std::vector<std::list<i_t>> col_count(
+  std::vector<std::vector<i_t>> col_count(
     m + 1);  // col_count[nz] is a list of columns with nz nonzeros in the active submatrix
-  std::vector<std::list<i_t>> row_count(
+  std::vector<std::vector<i_t>> row_count(
     n + 1);  // row_count[nz] is a list of rows with nz nonzeros in the active submatrix
 
   std::vector<i_t> column_list(n);

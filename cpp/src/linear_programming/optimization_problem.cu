@@ -451,6 +451,12 @@ bool optimization_problem_t<i_t, f_t>::get_sense() const
 }
 
 template <typename i_t, typename f_t>
+bool optimization_problem_t<i_t, f_t>::empty() const
+{
+  return n_vars_ == 0 && n_constraints_ == 0;
+}
+
+template <typename i_t, typename f_t>
 typename optimization_problem_t<i_t, f_t>::view_t optimization_problem_t<i_t, f_t>::view() const
 {
   optimization_problem_t<i_t, f_t>::view_t v;

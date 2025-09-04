@@ -15,13 +15,11 @@
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: 'v5.0.0'
+    rev: 'v6.0.0'
     hooks:
       - id: end-of-file-fixer
-        files: \.(mps|json|yaml|yml|txt)$
         exclude: ^(datasets|helmchart)/.*\.(mps|json|yaml|yml|txt)$
       - id: trailing-whitespace
-        files: \.(mps|json|yaml|yml|txt)$
         exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$
       - id: check-builtin-literals
       - id: check-executables-have-shebangs
@@ -77,17 +75,17 @@ repos:
         types_or: [file]
         args: ['-fallback-style=none', '-style=file', '-i']
   - repo: https://github.com/rapidsai/dependency-file-generator
-    rev: v1.18.1
+    rev: v1.20.0
     hooks:
       - id: rapids-dependency-file-generator
-        args: ["--clean"]
+        args: ["--clean", "--warn-all", "--strict"]
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.10.0.1
     hooks:
       - id: shellcheck
         args: ["--severity=warning"]
   - repo: https://github.com/rapidsai/pre-commit-hooks
-    rev: v0.6.0
+    rev: v0.7.0
     hooks:
       - id: verify-copyright
         files: |
@@ -99,6 +97,13 @@ repos:
           (?x)^(
             ^cpp/tests/utilities/cxxopts.hpp
           )
+  - repo: local
+    hooks:
+      - id: update-versions
+        name: Update versions1.json
+        entry: python ci/utils/update_doc_versions.py
+        language: system
+        files: docs/cuopt/source/versions1.json
 
 
 default_language_version:
