@@ -7,6 +7,7 @@ channels:
 dependencies:
 - boost
 - breathe
+- bzip2
 - c-compiler
 - ccache
 - clang-tools=20.1.4
@@ -79,6 +80,7 @@ dependencies:
 - sphinxcontrib-websupport
 - sysroot_linux-aarch64==2.28
 - uvicorn==0.34.*
+- zlib
 - pip:
   - nvidia_sphinx_theme
   - swagger-plugin-for-sphinx

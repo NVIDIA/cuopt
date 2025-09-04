@@ -45,7 +45,7 @@ inline std::string error_to_string(error_type_t error)
 }
 
 /**
- * @brief Macro for checking (pre-)conditions that throws an exception when a
+ * @brief Function for checking (pre-)conditions that throws an exception when a
  * condition is false
  *
  * @param[bool] cond From expression that evaluates to true or false
@@ -67,6 +67,36 @@ inline void mps_parser_expects(bool cond, error_type_t error_type, const char* f
 
     throw std::logic_error("{\"MPS_PARSER_ERROR_TYPE\": \"" + error_to_string(error_type) +
                            "\", \"msg\": " + "\"" + std::string(msg) + "\"}");
+  }
+}
+
+/**
+ * @brief Function for checking (pre-)conditions that aborts the program when a
+ * condition is false
+ *
+ * @param[bool] cond From expression that evaluates to true or false
+ * @param[error_type_t] error enum error type
+ * @param[const char *] fmt String format for error message
+ * @param variable set of arguments used for fmt
+ * @throw std::logic_error if the condition evaluates to false.
+ */
+inline void mps_parser_expects_fatal(bool cond, error_type_t error_type, const char* fmt, ...)
+{
+  if (not cond) {
+    va_list args;
+    va_start(args, fmt);
+
+    char msg[2048];
+    va_start(args, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, args);
+    va_end(args);
+    std::string error_string = error_to_string(error_type);
+    std::fprintf(stderr,
+                 "{\"MPS_PARSER_ERROR_TYPE\": \"%s\", \"msg\": \"%s\"}\n",
+                 error_to_string(error_type).c_str(),
+                 msg);
+    std::fflush(stderr);
+    std::abort();
   }
 }
 
