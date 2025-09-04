@@ -42,7 +42,7 @@ class init_logger_t {
 #else
       cuopt::default_logger().set_pattern(cuopt::default_pattern());
 #endif
-      cuopt::default_logger().flush_on(rapids_logger::level_enum::info);
+      cuopt::default_logger().flush_on(rapids_logger::level_enum::debug);
     }
   }
   ~init_logger_t() { cuopt::reset_default_logger(); }
