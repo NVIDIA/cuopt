@@ -726,10 +726,6 @@ void branch_and_bound_t<i_t, f_t>::explore_branch(mip_node_t<i_t, f_t>* node_ptr
       f_t user_lower       = compute_user_objective(original_lp_, lower_bound);
       std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
 
-      settings_.log.printf("node lower bound: %f, root lower bound: %f, heap top lower bound: %f\n",
-                           compute_user_objective(original_lp_, node_ptr->lower_bound),
-                           compute_user_objective(original_lp_, search_tree_->lower_bound),
-                           compute_user_objective(original_lp_, heap_.top()->lower_bound));
       settings_.log.printf(" %8d %8lu       %+13.6e  %+10.6e   %4d   %7.1e     %s %9.2f\n",
                            nodes_explored,
                            heap_.size(),
@@ -881,15 +877,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   f_t gap         = upper_bound - lower_bound;
   f_t obj         = compute_user_objective(original_lp_, upper_bound);
   f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
-  f_t gap_rel     = relative_gap(obj, user_lower);
+  f_t gap_rel     = relative_gap(get_upper_bound(), lower_bound);
 
   settings_.log.printf(
-    "Explored %d nodes in %.2fs.\nAbsolute Gap %e Objective %.16e Lower Bound %.16e\n",
-    stats_.nodes_explored,
-    toc(stats_.start_time),
-    gap,
-    obj,
-    user_lower);
+    "Explored %d nodes in %.2fs.\n", stats_.nodes_explored, toc(stats_.start_time));
+  settings_.log.printf("Absolute Gap %e Relative Gap %e Objective %.16e Lower Bound %.16e\n",
+                       gap,
+                       gap_rel,
+                       obj,
+                       user_lower);
 
   if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
     status = mip_status_t::OPTIMAL;
@@ -920,8 +916,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   solution.lower_bound        = lower_bound;
   solution.nodes_explored     = stats_.nodes_explored;
   solution.simplex_iterations = stats_.total_lp_iters;
-
-  printf("Status: %d\n", (int)status);
   return status;
 }
 
