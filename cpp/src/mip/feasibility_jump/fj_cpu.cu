@@ -129,9 +129,8 @@ struct fj_cpu_t {
   i_t candidate_move_hits[3]   = {0};
   i_t candidate_move_misses[3] = {0};
 
-  // (var,cstr) -> (delta, score)
-  std::unordered_map<std::pair<i_t, i_t>, std::pair<f_t, fj_staged_score_t>, pair_hash>
-    cached_mtm_moves;
+  // CSR nnz offset -> (delta, score)
+  std::vector<std::pair<f_t, fj_staged_score_t>> cached_mtm_moves;
 };
 
 template <typename i_t, typename f_t>
@@ -206,7 +205,7 @@ static inline bool tabu_check(fj_cpu_t<i_t, f_t>& fj_cpu,
 }
 
 template <typename i_t, typename f_t>
-static inline fj_staged_score_t compute_score(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta)
+static fj_staged_score_t compute_score(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta)
 {
   timing_raii_t<i_t, f_t> timer(fj_cpu.compute_score_times);
 
@@ -373,8 +372,7 @@ static void apply_move(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool 
     // Invalidate related cached move scores
     auto [relvar_offset_begin, relvar_offset_end] = fj_cpu.view.pb.range_for_constraint(cstr_idx);
     for (auto i = relvar_offset_begin; i < relvar_offset_end; i++) {
-      auto var_idx = fj_cpu.h_variables[i];
-      fj_cpu.cached_mtm_moves.erase({var_idx, cstr_idx});
+      fj_cpu.cached_mtm_moves[i].first = 0;
     }
   }
 
@@ -484,15 +482,14 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       //   fj_cpu.candidate_move_misses[var_type]++;
       // }
 
-      candidate_moves.insert(move);
+      // candidate_moves.insert(move);
       fj_staged_score_t score;
-      if (auto cached_move_it = fj_cpu.cached_mtm_moves.find({var_idx, cstr_idx});
-          cached_move_it != fj_cpu.cached_mtm_moves.end()) {
-        score = cached_move_it->second.second;
+      if (auto& cached_move = fj_cpu.cached_mtm_moves[i]; cached_move.first != 0) {
+        score = cached_move.second;
         fj_cpu.hit_count++;
       } else {
-        score = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
-        fj_cpu.cached_mtm_moves[{var_idx, cstr_idx}] = {delta, score};
+        score                      = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
+        fj_cpu.cached_mtm_moves[i] = std::make_pair(delta, score);
         fj_cpu.miss_count++;
       }
       if (best_score < score) {
@@ -536,7 +533,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       //   fj_cpu.candidate_move_misses[var_type]++;
       // }
 
-      candidate_moves.insert(move);
+      // candidate_moves.insert(move);
       f_t delta = new_val - old_val;
 
       if (tabu_check(fj_cpu, var_idx, delta)) continue;
@@ -880,6 +877,10 @@ static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& soluti
   fj_cpu.h_objective_weight = 0;
   fj_cpu.h_best_objective   = +std::numeric_limits<f_t>::infinity();
 
+  // nnz count
+  fj_cpu.cached_mtm_moves.resize(fj_cpu.h_coefficients.size(),
+                                 std::make_pair(0, fj_staged_score_t::zero()));
+
   init_lhs(fj_cpu);
 }
 
@@ -992,7 +993,9 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
           fj_cpu.h_incumbent_objective - fj_cpu.h_best_objective);
       }
       apply_move(fj_cpu, var_idx, delta, true);
-      fj_cpu.cached_mtm_moves.clear();
+      // clear cached moves
+      for (auto& cached_move : fj_cpu.cached_mtm_moves)
+        cached_move.first = 0;
       ++local_mins;
     }
     if (fj_cpu.iterations % 100 == 0) {
@@ -1020,6 +1023,8 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
   // Print final timing statistics
   printf("\n=== Final Timing Statistics ===\n");
   print_timing_stats(fj_cpu);
+
+  exit(0);
 
   return 0;
 }
