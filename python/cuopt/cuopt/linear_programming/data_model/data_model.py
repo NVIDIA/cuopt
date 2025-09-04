@@ -603,3 +603,7 @@ class DataModel(data_model_wrapper.DataModel):
 
         """
         return super().get_row_names()
+
+    @catch_cuopt_exception
+    def writeMPS(self, user_problem_file):
+        return super().writeMPS(user_problem_file)

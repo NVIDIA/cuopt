@@ -102,10 +102,6 @@ struct solver_ret_t {
 
 // Wrapper for solve to expose the API to cython.
 
-void write_mps(cuopt::mps_parser::data_model_view_t<int, double>*,
-               std::string,
-               unsigned int flags = cudaStreamNonBlocking);
-
 std::unique_ptr<solver_ret_t> call_solve(cuopt::mps_parser::data_model_view_t<int, double>*,
                                          linear_programming::solver_settings_t<int, double>*,
                                          unsigned int flags = cudaStreamNonBlocking,

@@ -112,13 +112,6 @@ data_model_to_optimization_problem(
   return op_problem;
 }
 
-void write_mps(cuopt::mps_parser::data_model_view_t<int, double>* data_model,
-               std::string user_problem_file,
-               unsigned int flags)
-{
-  cuopt::mps_parser::write_mps(*data_model, user_problem_file);
-}
-
 /**
  * @brief Wrapper for linear_programming to expose the API to cython
  *

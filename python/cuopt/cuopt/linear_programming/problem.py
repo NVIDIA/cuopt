@@ -972,7 +972,7 @@ class Problem:
     def writeMPS(self, mps_file):
         if self.model is None:
             self._to_data_model()
-        solver.writeMPS(self.model, mps_file)
+        self.model.writeMPS(mps_file)
 
     @property
     def NumVariables(self):
