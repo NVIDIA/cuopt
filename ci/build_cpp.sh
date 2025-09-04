@@ -28,6 +28,10 @@ rapids-print-env
 
 rapids-logger "Begin cpp build"
 
+# INTENTIONAL FAILURE FOR TESTING
+echo "INTENTIONALLY FAILING CPP BUILD FOR TESTING PURPOSES"
+exit 1
+
 sccache --zero-stats
 
 RAPIDS_PACKAGE_VERSION=$(rapids-generate-version)

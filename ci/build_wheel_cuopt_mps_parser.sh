@@ -31,6 +31,9 @@ else
     echo "Building in release mode"
 fi
 
+echo "Intentionally failing for testing purposes"
+exit 1
+
 ci/build_wheel.sh cuopt_mps_parser ${package_dir}
 
 
