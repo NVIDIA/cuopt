@@ -271,24 +271,56 @@ jobs:
       
       - name: Send Slack Failure Notification
         if: steps.check-failures.outputs.has-failures == 'true' && steps.check-failures.outputs.is-cancelled == 'false'
-        uses: 8398a7/action-slack@v3
+        uses: slackapi/slack-github-action@485a9d42d3a73031f12ec201c457e2162c45d02d # v2.0.0
         with:
-          status: failure
-          channel: '#cuopt-ci'
-          text: |
-            🚨 *Build Failed* 🚨
-            
-            *Repository:* ${{ github.repository }}
-            *Branch:* ${{ inputs.branch || github.ref_name }}
-            *Commit:* ${{ inputs.sha || github.sha }}
-            *Build Type:* ${{ inputs.build_type || 'branch' }}
-            *Workflow Run:* https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            *Failed At:* ${{ github.event.head_commit.timestamp }}
-            
-            *Failed Jobs:*
-            ${{ steps.format-failed-jobs.outputs.failed-jobs-formatted }}
-            
-            Please check the workflow logs for details.
-          fields: repo,message,commit,author,action,eventName,ref,workflow
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "icon_emoji": ":x:",
+              "username": "CuOpt Build Notifier - Build Failed",
+              "attachments": [
+                {
+                  "author_name": "Build Failed - ${{ github.repository }}",
+                  "author_link": "https://github.com/${{ github.repository }}",
+                  "color": "danger",
+                  "fallback": "Build failed for ${{ github.repository }} on ${{ inputs.branch || github.ref_name }}",
+                  "text": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.repository }} Build #${{ github.run_number }}>",
+                  "fields": [
+                    {
+                      "title": "Repository",
+                      "value": "${{ github.repository }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Branch",
+                      "value": "${{ inputs.branch || github.ref_name }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Commit",
+                      "value": "<https://github.com/${{ github.repository }}/commit/${{ inputs.sha || github.sha }}|${{ inputs.sha || github.sha }}>",
+                      "short": true
+                    },
+                    {
+                      "title": "Build Type",
+                      "value": "${{ inputs.build_type || 'branch' }}",
+                      "short": true
+                    },
+                    {
+                      "title": "Failed Jobs",
+                      "value": "${{ steps.format-failed-jobs.outputs.failed-jobs-formatted }}",
+                      "short": false
+                    },
+                    {
+                      "title": "Failed At",
+                      "value": "${{ github.event.head_commit.timestamp }}",
+                      "short": true
+                    }
+                  ],
+                  "footer": "<https://github.com/${{ github.repository }}|${{ github.repository }}>",
+                  "footer_icon": "https://avatars0.githubusercontent.com/u/43887749?s=32&v=4"
+                }
+              ]
+            }
+          payload-templated: true
+          webhook: ${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
