@@ -13,14 +13,30 @@ pip
 .. code-block:: bash
 
     # CUDA 13
-    pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu13==25.10.* nvidia-cuda-runtime-cu13==13.0.*
+    pip install --extra-index-url=https://pypi.nvidia.com \
+      'nvidia-cuda-runtime-cu13==13.0.*' \
+      'cuopt-cu13==25.10.*'
 
     # CUDA 12
-    pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu12==25.10.* nvidia-cuda-runtime-cu12==12.9.*
+    pip install --extra-index-url=https://pypi.nvidia.com \
+      'nvidia-cuda-runtime-cu12==12.9.*' \
+      'cuopt-cu12==25.10.*'
 
 
 .. note::
    For development wheels which are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/`.
+
+.. code-block:: bash
+
+    # CUDA 13
+    pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
+      'nvidia-cuda-runtime-cu13==13.0.*' \
+      'cuopt-cu13==25.10.*'
+
+    # CUDA 12
+    pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
+      'nvidia-cuda-runtime-cu12==12.9.*' \
+      'cuopt-cu12==25.10.*'
 
 
 Conda
