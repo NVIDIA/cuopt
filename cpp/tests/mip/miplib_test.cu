@@ -78,23 +78,4 @@ TEST(mip_solve, run_small_tests)
   }
 }
 
-TEST(mip_solve, bnb_search_strategy)
-{
-  mip_solver_settings_t<int, double> settings;
-  std::vector<result_map_t> test_instances = {
-    {"mip/50v-10.mps", 11311031.}, {"mip/neos5.mps", 15.}, {"mip/swath1.mps", 1300.}};
-
-  std::vector<bnb_search_strategy_t> strategies = {
-    bnb_search_strategy_t::BEST_FIRST,
-    bnb_search_strategy_t::DEPTH_FIRST,
-    bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING};
-
-  for (const auto& search : strategies) {
-    for (const auto& test_instance : test_instances) {
-      settings.bnb_search_strategy = search;
-      test_miplib_file(test_instance, settings);
-    }
-  }
-}
-
 }  // namespace cuopt::linear_programming::test

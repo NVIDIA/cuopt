@@ -43,9 +43,23 @@ enum class mip_status_t {
   UNSET      = 6
 };
 
+// Since we are using OpenMP, we omp_lock_t instead of std::mutex.
+class omp_mutex_t {
+ public:
+  omp_mutex_t() { omp_init_lock(&lock_); }
+  ~omp_mutex_t() { omp_destroy_lock(&lock_); }
+  void lock() { omp_set_lock(&lock_); }
+  void unlock() { omp_unset_lock(&lock_); }
+
+ private:
+  omp_lock_t lock_;
+};
+
 template <typename i_t, typename f_t>
 void upper_bound_callback(f_t upper_bound);
 
+// Note that floating point atomics are only supported in C++20. So, we
+// are using omp atomic operations instead.
 template <typename i_t, typename f_t>
 class branch_and_bound_t {
  public:
@@ -82,6 +96,7 @@ class branch_and_bound_t {
   // Initial guess.
   std::vector<f_t> guess_;
 
+  // LP relaxation
   lp_problem_t<i_t, f_t> original_lp_;
   std::vector<i_t> new_slacks_;
   std::vector<variable_type_t> var_types_;
@@ -90,7 +105,7 @@ class branch_and_bound_t {
   f_t lower_bound_;
 
   // Mutex for upper bound
-  std::mutex mutex_upper_;
+  omp_mutex_t mutex_upper_;
 
   // Global variable for upper bound
   f_t upper_bound_;
@@ -98,9 +113,10 @@ class branch_and_bound_t {
   // Global variable for incumbent. The incumbent should be updated with the upper bound
   mip_solution_t<i_t, f_t> incumbent_;
 
+  // Global variable for indicating if the solver is running or not.
   bool currently_branching_;
 
-  // Note that floating point atomics are only supported in C++20.
+  // Structure with the general info of the solver.
   struct stats_t {
     f_t start_time          = 0.0;
     f_t total_lp_solve_time = 0.0;
@@ -110,7 +126,7 @@ class branch_and_bound_t {
   } stats_;
 
   // Mutex for repair
-  std::mutex mutex_repair_;
+  omp_mutex_t mutex_repair_;
   std::vector<std::vector<f_t>> repair_queue_;
 
   // Variables for the root node in the search tree.
@@ -121,25 +137,38 @@ class branch_and_bound_t {
 
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;
-  std::mutex mutex_pc_;
+  omp_mutex_t mutex_pc_;
 
-  std::mutex mutex_search_tree_;
+  // Search tree
+  omp_mutex_t mutex_search_tree_;
   std::unique_ptr<mip_node_t<i_t, f_t>> search_tree_;
 
-  std::mutex mutex_heap_;
+  // Heap storing the nodes to be explored.
+  omp_mutex_t mutex_heap_;
   heap_t heap_;
 
   // Number of active tasks.
-  // This needs to be updated atomically.
   i_t active_tasks_;
+
+  // Maximum number of active tasks. We may go slight over
+  // since reading the value of active_tasks_ and incrementing it
+  // are done in separated atomic operations.
+  i_t max_active_tasks_;
+
+  // Global status
+  mip_status_t status_;
 
   void update_tree(mip_node_t<i_t, f_t>* node_ptr, node_status_t status);
 
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
+  // Spawn a new task to explore a subtree if there are any nodes on the heap
+  // and if the number of active tasks is less than the maximum number of active tasks.
+  void spawn_new_task();
+
   // Explore the search tree using the best-first search strategy.
-  void explore_branch(mip_node_t<i_t, f_t>* start_node, mip_status_t& status);
+  void explore_subtree(mip_node_t<i_t, f_t>* start_node);
 
   // Branch the current node, creating two children.
   void branch(mip_node_t<i_t, f_t>* parent_node,
@@ -153,8 +182,7 @@ class branch_and_bound_t {
   // Solve the LP relaxation of a leaf node.
   mip_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
                              lp_problem_t<i_t, f_t>& leaf_problem,
-                             f_t upper_bound,
-                             f_t lower_bound);
+                             f_t upper_bound);
 
   // Solve the LP relaxation of a leaf node using the dual simplex method.
   dual::status_t node_dual_simplex(i_t leaf_id,

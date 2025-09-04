@@ -168,7 +168,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
     branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
     branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
-    branch_and_bound_settings.bnb_search_strategy = context.settings.bnb_search_strategy;
 
     if (context.settings.num_cpu_threads != -1) {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
