@@ -169,7 +169,7 @@ jobs:
       package-type: python
       append-cuda-suffix: false
       # Package is pure Python and only ever requires one build. Just use amd64 + the latest Python.
-      matrix_filter: 'map(select(.ARCH == "amd64") | sort_by(.PY_VER | split(".") | map(tonumber)) | [.[-1]]'
+      matrix_filter: 'map(select(.ARCH == "amd64") | sort_by(.PY_VER | split(".") | map(tonumber))) | [.[-1]]'
   wheel-build-libcuopt:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
@@ -217,7 +217,7 @@ jobs:
       package-type: python
       append-cuda-suffix: false
       # Package is pure Python and only ever requires one build. Just use amd64 + the latest Python.
-      matrix_filter: 'map(select(.ARCH == "amd64") | sort_by(.PY_VER | split(".") | map(tonumber)) | [.[-1]]'
+      matrix_filter: 'map(select(.ARCH == "amd64") | sort_by(.PY_VER | split(".") | map(tonumber))) | [.[-1]]'
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt-server, changed-files]
     secrets: inherit
