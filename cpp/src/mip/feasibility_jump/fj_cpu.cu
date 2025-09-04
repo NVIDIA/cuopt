@@ -427,13 +427,23 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
   fj_staged_score_t best_score = fj_staged_score_t::invalid();
 
   for (size_t cstr_idx : target_cstrs) {
+    f_t cstr_tol = fj_cpu.view.get_corrected_tolerance(cstr_idx);
+
     cuopt_assert(cstr_idx < fj_cpu.h_cstr_lb.size(), "cstr_idx is out of bounds");
     auto [offset_begin, offset_end] = fj_cpu.view.pb.range_for_constraint(cstr_idx);
     for (auto i = offset_begin; i < offset_end; i++) {
+      // early cached check
+      if (auto& cached_move = fj_cpu.cached_mtm_moves[i]; cached_move.first != 0) {
+        if (best_score < cached_move.second) {
+          auto var_idx = fj_cpu.h_variables[i];
+          best_score   = cached_move.second;
+          best_move    = fj_move_t{var_idx, cached_move.first};
+        }
+        fj_cpu.hit_count++;
+        continue;
+      }
+
       auto var_idx = fj_cpu.h_variables[i];
-      i_t var_type = fj_cpu.h_is_binary_variable[var_idx]     ? 0
-                     : fj_cpu.view.pb.is_integer_var(var_idx) ? 1
-                                                              : 2;
       f_t val      = fj_cpu.h_assignment[var_idx];
       f_t new_val  = val;
       f_t delta    = 0;
@@ -466,32 +476,17 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       delta = new_val - val;
       // more permissive tabu in the case of local minima
       if (tabu_check(fj_cpu, var_idx, delta, localmin)) continue;
-      if (fabs(delta) < fj_cpu.view.get_corrected_tolerance(cstr_idx)) continue;
+      if (fabs(delta) < cstr_tol) continue;
 
-      // Check if we already have a move for this variable
-      auto move = fj_move_t{var_idx, new_val};
+      auto move = fj_move_t{var_idx, delta};
       cuopt_assert(move.var_idx < fj_cpu.h_assignment.size(), "move.var_idx is out of bounds");
       cuopt_assert(move.var_idx >= 0, "move.var_idx is not positive");
 
-      // if (candidate_moves.count(move))
-      // {
-      //   fj_cpu.candidate_move_hits[var_type]++;
-      // }
-      // else
-      // {
-      //   fj_cpu.candidate_move_misses[var_type]++;
-      // }
-
       // candidate_moves.insert(move);
       fj_staged_score_t score;
-      if (auto& cached_move = fj_cpu.cached_mtm_moves[i]; cached_move.first != 0) {
-        score = cached_move.second;
-        fj_cpu.hit_count++;
-      } else {
-        score                      = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
-        fj_cpu.cached_mtm_moves[i] = std::make_pair(delta, score);
-        fj_cpu.miss_count++;
-      }
+      score                      = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
+      fj_cpu.cached_mtm_moves[i] = std::make_pair(delta, score);
+      fj_cpu.miss_count++;
       if (best_score < score) {
         best_score = score;
         best_move  = move;
@@ -519,22 +514,12 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
 
       if (fj_cpu.view.pb.integer_equal(new_val, old_val) || !isfinite(new_val)) continue;
 
+      f_t delta = new_val - old_val;
+
       // Check if we already have a move for this variable
-      auto move = fj_move_t{var_idx, new_val};
+      auto move = fj_move_t{var_idx, delta};
       cuopt_assert(move.var_idx < fj_cpu.h_assignment.size(), "move.var_idx is out of bounds");
       cuopt_assert(move.var_idx >= 0, "move.var_idx is not positive");
-
-      // if (candidate_moves.count(move))
-      // {
-      //   fj_cpu.candidate_move_hits[var_type]++;
-      // }
-      // else
-      // {
-      //   fj_cpu.candidate_move_misses[var_type]++;
-      // }
-
-      // candidate_moves.insert(move);
-      f_t delta = new_val - old_val;
 
       if (tabu_check(fj_cpu, var_idx, delta)) continue;
 
@@ -566,11 +551,10 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_flip_move(fj_cpu_t<i_t, 
   for (auto var_idx : fj_cpu.h_binary_indices) {
     f_t old_val = fj_cpu.h_assignment[var_idx];
     f_t new_val = 1 - old_val;
-    auto move   = fj_move_t{var_idx, new_val};
+    f_t delta   = new_val - old_val;
+    auto move   = fj_move_t{var_idx, delta};
     cuopt_assert(move.var_idx < fj_cpu.h_assignment.size(), "move.var_idx is out of bounds");
     cuopt_assert(move.var_idx >= 0, "move.var_idx is not positive");
-
-    f_t delta = new_val - old_val;
 
     if (tabu_check(fj_cpu, var_idx, delta)) continue;
 
@@ -734,7 +718,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(fj_cpu_t<i_t, 
     cuopt_assert(delta * obj_coeff < 0, "lift move doesn't improve the objective!");
 
     // get the score
-    auto move               = fj_move_t{var_idx, delta + val};
+    auto move               = fj_move_t{var_idx, delta};
     fj_staged_score_t score = fj_staged_score_t::zero();
     f_t obj_score           = -1 * obj_coeff * delta;  // negated to turn this into a positive score
     score.base              = round(obj_score);
@@ -973,14 +957,14 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
     // }
 
     if (score > fj_staged_score_t::zero()) {
-      apply_move(fj_cpu, move.var_idx, move.value - fj_cpu.h_assignment[move.var_idx], false);
+      apply_move(fj_cpu, move.var_idx, move.value, false);
     } else {
       // Local Min
       update_weights(fj_cpu);
       thrust::tie(move, score) =
         find_mtm_move_viol(fj_cpu, 1, true);  // pick a single random violated constraint
       i_t var_idx = move.var_idx >= 0 ? move.var_idx : 0;
-      f_t delta   = move.var_idx >= 0 ? move.value - fj_cpu.h_assignment[move.var_idx] : 0;
+      f_t delta   = move.var_idx >= 0 ? move.value : 0;
       if (move.var_idx < 0) {
         printf(
           "no move found, viol %zu lmin: %d, max_weight: %g, objweight: %g, obj %g/%g, diff %g\n",
@@ -1024,7 +1008,7 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
   printf("\n=== Final Timing Statistics ===\n");
   print_timing_stats(fj_cpu);
 
-  exit(0);
+  // exit(0);
 
   return 0;
 }
