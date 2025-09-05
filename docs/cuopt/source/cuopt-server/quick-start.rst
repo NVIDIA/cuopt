@@ -8,24 +8,36 @@ Installation
 pip
 ---
 
-For CUDA 12.x:
-
 .. code-block:: bash
 
+    # CUDA 13
     pip install --extra-index-url=https://pypi.nvidia.com \
-      nvidia-cuda-runtime-cu12==12.9.* \
-      cuopt-server-cu12==25.10.* \
-      cuopt-sh-client==25.10.*
+      'nvidia-cuda-runtime-cu13==13.0.*' \
+      'cuopt-server-cu13==25.10.*' \
+      'cuopt-sh-client==25.10.*'
+
+    # CUDA 12
+    pip install --extra-index-url=https://pypi.nvidia.com \
+      'nvidia-cuda-runtime-cu12==12.9.*' \
+      'cuopt-server-cu12==25.10.*' \
+      'cuopt-sh-client==25.10.*'
 
 .. note::
    For development wheels which are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/`.
 
 .. code-block:: bash
 
+    # CUDA 13
     pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-      nvidia-cuda-runtime-cu12==12.9.* \
-      cuopt-server-cu12==25.10.* \
-      cuopt-sh-client==25.10.*
+      'nvidia-cuda-runtime-cu13==13.0.*' \
+      'cuopt-server-cu13==25.10.*' \
+      'cuopt-sh-client==25.10.*'
+
+    # CUDA 12
+    pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
+      'nvidia-cuda-runtime-cu12==12.9.*' \
+      'cuopt-server-cu12==25.10.*' \
+      'cuopt-sh-client==25.10.*'
 
 Conda
 -----
