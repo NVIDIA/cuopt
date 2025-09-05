@@ -292,8 +292,8 @@ jobs:
       workflow_run_number: ${{ github.run_number }}
       commit_timestamp: ${{ github.event.head_commit.timestamp }}
       commit_message: ${{ github.event.head_commit.message }}
-      has_failures: ${{ needs.check-failures.outputs.has-failures }}
+      has_failures: ${{ needs.check-failures.outputs.has-failures == 'true' }}
       failed_jobs: ${{ needs.check-failures.outputs.failed-jobs }}
       failed_jobs_formatted: ${{ needs.check-failures.outputs.failed-jobs-formatted }}
-      is_cancelled: ${{ needs.check-failures.outputs.is-cancelled }}
+      is_cancelled: ${{ needs.check-failures.outputs.is-cancelled == 'true' }}
     secrets: inherit
