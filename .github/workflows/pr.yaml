@@ -168,8 +168,9 @@ jobs:
       package-name: cuopt_mps_parser
       package-type: python
       append-cuda-suffix: false
-      # Package is not CUDA-suffixed, only build on one CUDA version (but all combinations of Python, OS, and CPU architecture)
-      matrix_filter: max_by([(.CUDA_VER|split(".")|map(tonumber))]) | [.]
+      pure-wheel: true
+      # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
+      matrix_filter: '[map(select(.ARCH == "amd64")) | min_by((.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber)))]'
   wheel-build-libcuopt:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
@@ -216,8 +217,9 @@ jobs:
       package-name: cuopt_sh_client
       package-type: python
       append-cuda-suffix: false
-      # Package is not CUDA-suffixed, only build on one CUDA version (but all combinations of Python, OS, and CPU architecture)
-      matrix_filter: max_by([(.CUDA_VER|split(".")|map(tonumber))]) | [.]
+      pure-wheel: true
+      # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
+      matrix_filter: '[map(select(.ARCH == "amd64")) | min_by((.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber)))]'
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt-server, changed-files]
     secrets: inherit
