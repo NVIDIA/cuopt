@@ -499,26 +499,37 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
   // Set optimization sense
   data_model_view.set_maximize(get_sense());
 
+  // Copy to host
+  auto constraint_matrix_values  = cuopt::host_copy(get_constraint_matrix_values());
+  auto constraint_matrix_indices = cuopt::host_copy(get_constraint_matrix_indices());
+  auto constraint_matrix_offsets = cuopt::host_copy(get_constraint_matrix_offsets());
+  auto constraint_bounds         = cuopt::host_copy(get_constraint_bounds());
+  auto objective_coefficients    = cuopt::host_copy(get_objective_coefficients());
+  auto variable_lower_bounds     = cuopt::host_copy(get_variable_lower_bounds());
+  auto variable_upper_bounds     = cuopt::host_copy(get_variable_upper_bounds());
+  auto constraint_lower_bounds   = cuopt::host_copy(get_constraint_lower_bounds());
+  auto constraint_upper_bounds   = cuopt::host_copy(get_constraint_upper_bounds());
+  auto row_types                 = cuopt::host_copy(get_row_types());
+
   // Set constraint matrix in CSR format
   if (get_nnz() != 0) {
-    data_model_view.set_csr_constraint_matrix(get_constraint_matrix_values().data(),
-                                              get_constraint_matrix_values().size(),
-                                              get_constraint_matrix_indices().data(),
-                                              get_constraint_matrix_indices().size(),
-                                              get_constraint_matrix_offsets().data(),
-                                              get_constraint_matrix_offsets().size());
+    data_model_view.set_csr_constraint_matrix(constraint_matrix_values.data(),
+                                              constraint_matrix_values.size(),
+                                              constraint_matrix_indices.data(),
+                                              constraint_matrix_indices.size(),
+                                              constraint_matrix_offsets.data(),
+                                              constraint_matrix_offsets.size());
   }
 
   // Set constraint bounds (RHS)
   if (get_n_constraints() != 0) {
-    data_model_view.set_constraint_bounds(get_constraint_bounds().data(),
-                                          get_constraint_bounds().size());
+    data_model_view.set_constraint_bounds(constraint_bounds.data(), constraint_bounds.size());
   }
 
   // Set objective coefficients
   if (get_n_variables() != 0) {
-    data_model_view.set_objective_coefficients(get_objective_coefficients().data(),
-                                               get_objective_coefficients().size());
+    data_model_view.set_objective_coefficients(objective_coefficients.data(),
+                                               objective_coefficients.size());
   }
 
   // Set objective scaling and offset
@@ -527,23 +538,23 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
 
   // Set variable bounds
   if (get_n_variables() != 0) {
-    data_model_view.set_variable_lower_bounds(get_variable_lower_bounds().data(),
-                                              get_variable_lower_bounds().size());
-    data_model_view.set_variable_upper_bounds(get_variable_upper_bounds().data(),
-                                              get_variable_upper_bounds().size());
+    data_model_view.set_variable_lower_bounds(variable_lower_bounds.data(),
+                                              variable_lower_bounds.size());
+    data_model_view.set_variable_upper_bounds(variable_upper_bounds.data(),
+                                              variable_upper_bounds.size());
   }
 
   // Set row types (constraint types)
   if (get_row_types().size() != 0) {
-    data_model_view.set_row_types(get_row_types().data(), get_row_types().size());
+    data_model_view.set_row_types(row_types.data(), row_types.size());
   }
 
   // Set constraint bounds (lower and upper)
   if (get_n_constraints() != 0) {
-    data_model_view.set_constraint_lower_bounds(get_constraint_lower_bounds().data(),
-                                                get_constraint_lower_bounds().size());
-    data_model_view.set_constraint_upper_bounds(get_constraint_upper_bounds().data(),
-                                                get_constraint_upper_bounds().size());
+    data_model_view.set_constraint_lower_bounds(constraint_lower_bounds.data(),
+                                                constraint_lower_bounds.size());
+    data_model_view.set_constraint_upper_bounds(constraint_upper_bounds.data(),
+                                                constraint_upper_bounds.size());
   }
 
   // Create a temporary vector to hold the converted variable types

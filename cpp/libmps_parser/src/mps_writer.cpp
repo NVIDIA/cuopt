@@ -20,14 +20,12 @@
 #include <mps_parser/data_model_view.hpp>
 #include <utilities/error.hpp>
 
-#include <cuda_runtime_api.h>
-
 #include <cmath>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <limits>
 #include <map>
-#include <iostream>
 
 namespace cuopt::mps_parser {
 
@@ -46,7 +44,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
                      "Error creating output MPS file! Given path: %s",
                      mps_file_path.c_str());
 
-  i_t n_variables   = problem_.get_variable_lower_bounds().size();
+  i_t n_variables = problem_.get_variable_lower_bounds().size();
   i_t n_constraints;
   if (problem_.get_constraint_bounds().size() > 0)
     n_constraints = problem_.get_constraint_bounds().size();
@@ -65,31 +63,60 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   std::vector<i_t> constraint_matrix_indices(problem_.get_constraint_matrix_indices().size());
   std::vector<f_t> constraint_matrix_values(problem_.get_constraint_matrix_values().size());
 
-  std::copy(problem_.get_objective_coefficients().data(), problem_.get_objective_coefficients().data() + problem_.get_objective_coefficients().size(), objective_coefficients.data());
-  std::copy(problem_.get_constraint_bounds().data(), problem_.get_constraint_bounds().data() + problem_.get_constraint_bounds().size(), constraint_bounds.data());
-  std::copy(problem_.get_variable_lower_bounds().data(), problem_.get_variable_lower_bounds().data() + problem_.get_variable_lower_bounds().size(), variable_lower_bounds.data());
-  std::copy(problem_.get_variable_upper_bounds().data(), problem_.get_variable_upper_bounds().data() + problem_.get_variable_upper_bounds().size(), variable_upper_bounds.data());
-  std::copy(problem_.get_variable_types().data(), problem_.get_variable_types().data() + problem_.get_variable_types().size(), variable_types.data());
-  std::copy(problem_.get_row_types().data(), problem_.get_row_types().data() + problem_.get_row_types().size(), row_types.data());
-  std::copy(problem_.get_constraint_matrix_offsets().data(), problem_.get_constraint_matrix_offsets().data() + problem_.get_constraint_matrix_offsets().size(), constraint_matrix_offsets.data());
-  std::copy(problem_.get_constraint_matrix_indices().data(), problem_.get_constraint_matrix_indices().data() + problem_.get_constraint_matrix_indices().size(), constraint_matrix_indices.data());
-  std::copy(problem_.get_constraint_matrix_values().data(), problem_.get_constraint_matrix_values().data() + problem_.get_constraint_matrix_values().size(), constraint_matrix_values.data());
+  std::copy(
+    problem_.get_objective_coefficients().data(),
+    problem_.get_objective_coefficients().data() + problem_.get_objective_coefficients().size(),
+    objective_coefficients.data());
+  std::copy(problem_.get_constraint_bounds().data(),
+            problem_.get_constraint_bounds().data() + problem_.get_constraint_bounds().size(),
+            constraint_bounds.data());
+  std::copy(
+    problem_.get_variable_lower_bounds().data(),
+    problem_.get_variable_lower_bounds().data() + problem_.get_variable_lower_bounds().size(),
+    variable_lower_bounds.data());
+  std::copy(
+    problem_.get_variable_upper_bounds().data(),
+    problem_.get_variable_upper_bounds().data() + problem_.get_variable_upper_bounds().size(),
+    variable_upper_bounds.data());
+  std::copy(problem_.get_variable_types().data(),
+            problem_.get_variable_types().data() + problem_.get_variable_types().size(),
+            variable_types.data());
+  std::copy(problem_.get_row_types().data(),
+            problem_.get_row_types().data() + problem_.get_row_types().size(),
+            row_types.data());
+  std::copy(problem_.get_constraint_matrix_offsets().data(),
+            problem_.get_constraint_matrix_offsets().data() +
+              problem_.get_constraint_matrix_offsets().size(),
+            constraint_matrix_offsets.data());
+  std::copy(problem_.get_constraint_matrix_indices().data(),
+            problem_.get_constraint_matrix_indices().data() +
+              problem_.get_constraint_matrix_indices().size(),
+            constraint_matrix_indices.data());
+  std::copy(
+    problem_.get_constraint_matrix_values().data(),
+    problem_.get_constraint_matrix_values().data() + problem_.get_constraint_matrix_values().size(),
+    constraint_matrix_values.data());
 
-  if (problem_.get_constraint_lower_bounds().size() == 0 || problem_.get_constraint_upper_bounds().size() == 0) {
+  if (problem_.get_constraint_lower_bounds().size() == 0 ||
+      problem_.get_constraint_upper_bounds().size() == 0) {
     for (size_t i = 0; i < (size_t)n_constraints; i++) {
       constraint_lower_bounds[i] = constraint_bounds[i];
       constraint_upper_bounds[i] = constraint_bounds[i];
       if (row_types[i] == 'L') {
         constraint_lower_bounds[i] = -std::numeric_limits<f_t>::infinity();
-      }
-      else if (row_types[i] == 'G') {
-         constraint_upper_bounds[i] = std::numeric_limits<f_t>::infinity();
+      } else if (row_types[i] == 'G') {
+        constraint_upper_bounds[i] = std::numeric_limits<f_t>::infinity();
       }
     }
-  }
-  else {
-    std::copy(problem_.get_constraint_lower_bounds().data(), problem_.get_constraint_lower_bounds().data() + problem_.get_constraint_lower_bounds().size(), constraint_lower_bounds.data());
-    std::copy(problem_.get_constraint_upper_bounds().data(), problem_.get_constraint_upper_bounds().data() + problem_.get_constraint_upper_bounds().size(), constraint_upper_bounds.data());
+  } else {
+    std::copy(
+      problem_.get_constraint_lower_bounds().data(),
+      problem_.get_constraint_lower_bounds().data() + problem_.get_constraint_lower_bounds().size(),
+      constraint_lower_bounds.data());
+    std::copy(
+      problem_.get_constraint_upper_bounds().data(),
+      problem_.get_constraint_upper_bounds().data() + problem_.get_constraint_upper_bounds().size(),
+      constraint_upper_bounds.data());
   }
 
   // save coefficients with full precision
