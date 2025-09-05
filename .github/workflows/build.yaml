@@ -235,6 +235,8 @@ jobs:
           failed_jobs=()
           has_failures=false
           
+          echo "All jobs: $(echo "$job_names" | tr '\n' ' ')"
+          
           # Check each job for failures
           while IFS= read -r job; do
             result=$(echo "$needs_json" | jq -r --arg job "$job" '.[$job].result // "unknown"')
@@ -244,11 +246,13 @@ jobs:
             fi
           done <<< "$job_names"
           
-          # Set outputs
+          # Log failed jobs
           if [[ "$has_failures" == "true" ]]; then
+            echo "Failed jobs: ${failed_jobs[*]}"
             echo "has-failures=true" >> $GITHUB_OUTPUT
             echo "failed-jobs=${failed_jobs[*]}" >> $GITHUB_OUTPUT
           else
+            echo "No failed jobs"
             echo "has-failures=false" >> $GITHUB_OUTPUT
             echo "failed-jobs=" >> $GITHUB_OUTPUT
           fi
