@@ -340,11 +340,12 @@ void multi_probe_t<i_t, f_t>::update_host_bounds(
 
   rmm::device_uvector<f_t> var_lb(variable_bounds.size(), handle_ptr->get_stream());
   rmm::device_uvector<f_t> var_ub(variable_bounds.size(), handle_ptr->get_stream());
-  thrust::transform(handle_ptr->get_thrust_policy(),
-                    variable_bounds.begin(),
-                    variable_bounds.end(),
-                    thrust::make_zip_iterator(thrust::make_tuple(var_lb.begin(), var_ub.begin())),
-                    [] __device__(auto i) { return thrust::make_tuple(i.x, i.y); });
+  thrust::transform(
+    handle_ptr->get_thrust_policy(),
+    variable_bounds.begin(),
+    variable_bounds.end(),
+    thrust::make_zip_iterator(thrust::make_tuple(var_lb.begin(), var_ub.begin())),
+    [] __device__(auto i) { return thrust::make_tuple(get_lower(i), get_upper(i)); });
   raft::copy(host_lb.data(), var_lb.data(), var_lb.size(), handle_ptr->get_stream());
   raft::copy(host_ub.data(), var_ub.data(), var_ub.size(), handle_ptr->get_stream());
 }
@@ -362,12 +363,15 @@ void multi_probe_t<i_t, f_t>::copy_problem_into_probing_buffers(problem_t<i_t, f
   cuopt_assert(upd_1.ub.size() == pb.variable_bounds.size(),
                "size of variable upper bound mismatch");
 
-  thrust::transform(handle_ptr->get_thrust_policy(),
-                    pb.variable_bounds.begin(),
-                    pb.variable_bounds.end(),
-                    thrust::make_zip_iterator(thrust::make_tuple(
-                      upd_0.lb.begin(), upd_0.ub.begin(), upd_1.lb.begin(), upd_1.ub.begin())),
-                    [] __device__(auto i) { return thrust::make_tuple(i.x, i.y, i.x, i.y); });
+  thrust::transform(
+    handle_ptr->get_thrust_policy(),
+    pb.variable_bounds.begin(),
+    pb.variable_bounds.end(),
+    thrust::make_zip_iterator(
+      thrust::make_tuple(upd_0.lb.begin(), upd_0.ub.begin(), upd_1.lb.begin(), upd_1.ub.begin())),
+    [] __device__(auto i) {
+      return thrust::make_tuple(get_lower(i), get_upper(i), get_lower(i), get_upper(i));
+    });
 }
 
 template <typename i_t, typename f_t>

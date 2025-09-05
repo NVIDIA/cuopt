@@ -411,7 +411,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                                thrust::make_counting_iterator<i_t>(n_variables),
                                [vars_bnd = make_span(variable_bounds)] __device__(i_t idx) {
                                  auto bounds = vars_bnd[idx];
-                                 return bounds.x <= bounds.y;
+                                 return get_lower(bounds) <= get_upper(bounds);
                                }),
                 error_type_t::ValidationError,
                 "Variable bounds are invalid");
@@ -561,23 +561,23 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
           return true;
         }),
       "Some variables aren't referenced in the appropriate indice tables");
-    cuopt_assert(
-      thrust::all_of(
-        handle_ptr->get_thrust_policy(),
-        thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(0),
-                                  is_binary_variable.cbegin()),
-        thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(is_binary_variable.size()),
+    cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
+                                thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(0),
+                                                          is_binary_variable.cbegin()),
+                                thrust::make_zip_iterator(
+                                  thrust::make_counting_iterator<i_t>(is_binary_variable.size()),
                                   is_binary_variable.cend()),
-        [types    = variable_types.data(),
-         vars_bnd = make_span(variable_bounds),
-         v        = view()] __device__(const thrust::tuple<int, int> tuple) {
-          i_t idx     = thrust::get<0>(tuple);
-          i_t pred    = thrust::get<1>(tuple);
-          auto bounds = vars_bnd[idx];
-          return pred == (types[idx] != var_t::CONTINUOUS && v.integer_equal(bounds.x, 0.) &&
-                          v.integer_equal(bounds.y, 1.));
-        }),
-      "The binary variable table is incorrect.");
+                                [types    = variable_types.data(),
+                                 vars_bnd = make_span(variable_bounds),
+                                 v = view()] __device__(const thrust::tuple<int, int> tuple) {
+                                  i_t idx     = thrust::get<0>(tuple);
+                                  i_t pred    = thrust::get<1>(tuple);
+                                  auto bounds = vars_bnd[idx];
+                                  return pred == (types[idx] != var_t::CONTINUOUS &&
+                                                  v.integer_equal(get_lower(bounds), 0.) &&
+                                                  v.integer_equal(get_upper(bounds), 1.));
+                                }),
+                 "The binary variable table is incorrect.");
     if (!empty) {
       cuopt_assert(is_binary_pb == (n_variables == thrust::count(handle_ptr->get_thrust_policy(),
                                                                  is_binary_variable.begin(),
@@ -751,15 +751,15 @@ void problem_t<i_t, f_t>::compute_binary_var_table()
   auto pb_view = view();
 
   is_binary_variable.resize(n_variables, handle_ptr->get_stream());
-  thrust::tabulate(
-    handle_ptr->get_thrust_policy(),
-    is_binary_variable.begin(),
-    is_binary_variable.end(),
-    [pb_view] __device__(i_t i) {
-      auto bounds = pb_view.variable_bounds[i];
-      return pb_view.variable_types[i] != var_t::CONTINUOUS &&
-             (pb_view.integer_equal(bounds.x, 0) && pb_view.integer_equal(bounds.y, 1));
-    });
+  thrust::tabulate(handle_ptr->get_thrust_policy(),
+                   is_binary_variable.begin(),
+                   is_binary_variable.end(),
+                   [pb_view] __device__(i_t i) {
+                     auto bounds = pb_view.variable_bounds[i];
+                     return pb_view.variable_types[i] != var_t::CONTINUOUS &&
+                            (pb_view.integer_equal(get_lower(bounds), 0) &&
+                             pb_view.integer_equal(get_upper(bounds), 1));
+                   });
   get_n_binary_variables();
 
   binary_indices.resize(n_variables, handle_ptr->get_stream());
@@ -1337,8 +1337,8 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
     // but add only one var and use it in all constraints
     // TODO create one var for integrals and one var for continuous
     auto h_var_bound = h_var_bounds[i];
-    if (h_var_bound.x == -std::numeric_limits<f_t>::infinity() &&
-        h_var_bound.y == std::numeric_limits<f_t>::infinity()) {
+    if (get_lower(h_var_bound) == -std::numeric_limits<f_t>::infinity() &&
+        get_upper(h_var_bound) == std::numeric_limits<f_t>::infinity()) {
       // add new variable
       auto var_coeff_vec = variable_constraint_map[i];
       // negate all values in vec

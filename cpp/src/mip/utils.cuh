@@ -259,10 +259,10 @@ void clamp_within_var_bounds(rmm::device_uvector<f_t>& assignment,
     thrust::make_counting_iterator(0) + problem_ptr->n_variables,
     [assignment_ptr, variable_bound = problem_ptr->variable_bounds.data()] __device__(i_t idx) {
       auto bound = variable_bound[idx];
-      if (assignment_ptr[idx] < bound.x) {
-        assignment_ptr[idx] = bound.x;
-      } else if (assignment_ptr[idx] > bound.y) {
-        assignment_ptr[idx] = bound.y;
+      if (assignment_ptr[idx] < get_lower(bound)) {
+        assignment_ptr[idx] = get_lower(bound);
+      } else if (assignment_ptr[idx] > get_upper(bound)) {
+        assignment_ptr[idx] = get_upper(bound);
       }
     });
 }

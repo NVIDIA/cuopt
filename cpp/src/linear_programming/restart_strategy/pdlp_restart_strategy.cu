@@ -1392,7 +1392,7 @@ template <typename f_t, typename f_t2>
 struct extract_bounds_t {
   __device__ thrust::tuple<f_t, f_t> operator()(f_t2 bounds)
   {
-    return thrust::make_tuple(bounds.x, bounds.y);
+    return thrust::make_tuple(get_lower(bounds), get_upper(bounds));
   }
 };
 

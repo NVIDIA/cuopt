@@ -224,11 +224,12 @@ void bound_presolve_t<i_t, f_t>::copy_input_bounds(problem_t<i_t, f_t>& pb)
   cuopt_assert(upd.lb.size() == pb.variable_bounds.size(), "size of variable lower bound mismatch");
   cuopt_assert(upd.ub.size() == pb.variable_bounds.size(), "size of variable upper bound mismatch");
 
-  thrust::transform(handle_ptr->get_thrust_policy(),
-                    pb.variable_bounds.begin(),
-                    pb.variable_bounds.end(),
-                    thrust::make_zip_iterator(thrust::make_tuple(upd.lb.begin(), upd.ub.begin())),
-                    [] __device__(auto i) { return thrust::make_tuple(i.x, i.y); });
+  thrust::transform(
+    handle_ptr->get_thrust_policy(),
+    pb.variable_bounds.begin(),
+    pb.variable_bounds.end(),
+    thrust::make_zip_iterator(thrust::make_tuple(upd.lb.begin(), upd.ub.begin())),
+    [] __device__(auto i) { return thrust::make_tuple(get_lower(i), get_upper(i)); });
 }
 
 template <typename i_t, typename f_t>

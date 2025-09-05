@@ -131,8 +131,8 @@ __global__ void compute_implied_slack_consumption_per_var(
   i_t var_degree                       = pb.reverse_offsets[var_idx + 1] - var_offset;
   f_t th_var_implied_slack_consumption = 0.;
   auto var_bnd                         = pb.variable_bounds[var_idx];
-  f_t lb                               = var_bnd.x;
-  f_t ub                               = var_bnd.y;
+  f_t lb                               = get_lower(var_bnd);
+  f_t ub                               = get_upper(var_bnd);
   for (i_t i = threadIdx.x; i < var_degree; i += blockDim.x) {
     auto a        = pb.reverse_coefficients[var_offset + i];
     auto cnst_idx = pb.reverse_constraints[var_offset + i];
@@ -214,8 +214,8 @@ void constraint_prop_t<i_t, f_t>::sort_by_interval_and_frac(solution_t<i_t, f_t>
     [bnds = sol.problem_ptr->variable_bounds.data(), assgn] __device__(i_t v_idx_1, i_t v_idx_2) {
       auto bnd_1            = bnds[v_idx_1];
       auto bnd_2            = bnds[v_idx_2];
-      f_t bounds_interval_1 = bnd_1.y - bnd_1.x;
-      f_t bounds_interval_2 = bnd_2.y - bnd_2.x;
+      f_t bounds_interval_1 = get_upper(bnd_1) - get_lower(bnd_1);
+      f_t bounds_interval_2 = get_upper(bnd_2) - get_lower(bnd_2);
       // if bounds interval are equal (binary and ternary) check fraction
       // if both bounds intervals are greater than 2. then do fraction
       if ((bounds_interval_1 == bounds_interval_2) ||
@@ -247,8 +247,8 @@ void constraint_prop_t<i_t, f_t>::sort_by_interval_and_frac(solution_t<i_t, f_t>
                      i_t var_2             = vars[idx + 1];
                      auto bnd_1            = bnds[var_1];
                      auto bnd_2            = bnds[var_2];
-                     f_t bounds_interval_1 = bnd_1.y - bnd_1.x;
-                     f_t bounds_interval_2 = bnd_2.y - bnd_2.x;
+                     f_t bounds_interval_1 = get_upper(bnd_1) - get_lower(bnd_1);
+                     f_t bounds_interval_2 = get_upper(bnd_2) - get_lower(bnd_2);
                      f_t frac_1            = get_fractionality_of_val(assgn[var_1]);
                      f_t frac_2            = get_fractionality_of_val(assgn[var_2]);
                      if (bounds_interval_1 == 1 && bounds_interval_2 == 1) {
@@ -405,10 +405,10 @@ void constraint_prop_t<i_t, f_t>::collapse_crossing_bounds(problem_t<i_t, f_t>& 
      int_tol        = problem.tolerances.integrality_tolerance] __device__(i_t idx) {
       auto v_bnd  = v_bnds[idx];
       auto ov_bnd = original_v_bnds[idx];
-      auto v_lb   = v_bnd.x;
-      auto v_ub   = v_bnd.y;
-      auto o_lb   = ov_bnd.x;
-      auto o_ub   = ov_bnd.y;
+      auto v_lb   = get_lower(v_bnd);
+      auto v_ub   = get_upper(v_bnd);
+      auto o_lb   = get_lower(ov_bnd);
+      auto o_ub   = get_upper(ov_bnd);
       if (v_lb > v_ub) {
         f_t val_to_collapse;
         if (variable_types[idx] == var_t::INTEGER) {
@@ -462,11 +462,11 @@ struct is_bound_fixed_t {
   HDI bool operator()(i_t idx)
   {
     auto v_bnd  = bnd[idx];
-    auto v_lb   = v_bnd.x;
-    auto v_ub   = v_bnd.y;
+    auto v_lb   = get_lower(v_bnd);
+    auto v_ub   = get_upper(v_bnd);
     auto ov_bnd = original_bnd[idx];
-    auto o_lb   = ov_bnd.x;
-    auto o_ub   = ov_bnd.y;
+    auto o_lb   = get_lower(ov_bnd);
+    auto o_ub   = get_upper(ov_bnd);
     bool is_singleton =
       round_val_on_singleton_and_crossing<i_t, f_t>(assignment[idx], v_lb, v_ub, o_lb, o_ub);
     return is_singleton;
@@ -538,7 +538,9 @@ void constraint_prop_t<i_t, f_t>::copy_bounds(
     input_bounds.begin(),
     input_bounds.end(),
     thrust::make_zip_iterator(thrust::make_tuple(output_lb.begin(), output_ub.begin())),
-    [] __device__(auto bounds) { return thrust::make_tuple(bounds.x, bounds.y); });
+    [] __device__(auto bounds) {
+      return thrust::make_tuple(get_lower(bounds), get_upper(bounds));
+    });
 }
 
 template <typename i_t, typename f_t>
@@ -664,7 +666,7 @@ bool test_var_out_of_bounds(const solution_t<i_t, f_t>& orig_sol,
 {
   auto var_bnd =
     orig_sol.problem_ptr->variable_bounds.element(unset_var_idx, handle_ptr->get_stream());
-  return (var_bnd.x <= probe + int_tol) && (probe - int_tol <= var_bnd.y);
+  return (get_lower(var_bnd) <= probe + int_tol) && (probe - int_tol <= get_upper(var_bnd));
 }
 
 template <typename i_t, typename f_t>
@@ -743,7 +745,7 @@ template <typename f_t, typename f_t2>
 struct extract_bounds_t {
   __device__ thrust::tuple<f_t, f_t> operator()(f_t2 bounds)
   {
-    return thrust::make_tuple(bounds.x, bounds.y);
+    return thrust::make_tuple(get_lower(bounds), get_upper(bounds));
   }
 };
 
@@ -760,16 +762,16 @@ void constraint_prop_t<i_t, f_t>::restore_original_bounds_on_unfixed(
   problem_t<i_t, f_t>& original_problem,
   const raft::handle_t* handle_ptr)
 {
-  thrust::for_each(
-    handle_ptr->get_thrust_policy(),
-    thrust::make_counting_iterator(0),
-    thrust::make_counting_iterator(problem.n_variables),
-    [p_v = problem.view(), op_v = original_problem.view()] __device__(i_t var_idx) {
-      auto p_v_var_bnd = p_v.variable_bounds[var_idx];
-      if (!p_v.integer_equal(p_v_var_bnd.x, p_v_var_bnd.y) || !p_v.is_integer_var(var_idx)) {
-        p_v.variable_bounds[var_idx] = op_v.variable_bounds[var_idx];
-      }
-    });
+  thrust::for_each(handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(problem.n_variables),
+                   [p_v = problem.view(), op_v = original_problem.view()] __device__(i_t var_idx) {
+                     auto p_v_var_bnd = p_v.variable_bounds[var_idx];
+                     if (!p_v.integer_equal(get_lower(p_v_var_bnd), get_upper(p_v_var_bnd)) ||
+                         !p_v.is_integer_var(var_idx)) {
+                       p_v.variable_bounds[var_idx] = op_v.variable_bounds[var_idx];
+                     }
+                   });
 }
 
 template <typename i_t, typename f_t>
@@ -1116,8 +1118,8 @@ std::tuple<f_t, f_t, f_t> constraint_prop_t<i_t, f_t>::probing_values(
   } else {
     auto orig_v_bnd =
       orig_sol.problem_ptr->variable_bounds.element(idx, sol.handle_ptr->get_stream());
-    auto orig_v_lb = orig_v_bnd.x;
-    auto orig_v_ub = orig_v_bnd.y;
+    auto orig_v_lb = get_lower(orig_v_bnd);
+    auto orig_v_ub = get_upper(orig_v_bnd);
     cuopt_assert(v_lb >= orig_v_lb, "Current lb should be greater than original lb");
     cuopt_assert(v_ub <= orig_v_ub, "Current ub should be smaller than original ub");
     v_lb = std::max(v_lb, orig_v_lb);

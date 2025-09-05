@@ -171,15 +171,15 @@ void inline insert_current_probing_to_cache(i_t var_idx,
   cache_item.val_interval = probe_val;
   for (auto impacted_var_idx : h_integer_indices) {
     auto original_var_bounds = original_bounds[impacted_var_idx];
-    if (original_var_bounds.x != modified_lb[impacted_var_idx] ||
-        original_var_bounds.y != modified_ub[impacted_var_idx]) {
+    if (get_lower(original_var_bounds) != modified_lb[impacted_var_idx] ||
+        get_upper(original_var_bounds) != modified_ub[impacted_var_idx]) {
       if (integer_equal<f_t>(
             modified_lb[impacted_var_idx], modified_ub[impacted_var_idx], int_tol)) {
         ++n_implied_singletons;
       }
-      cuopt_assert(modified_lb[impacted_var_idx] >= original_var_bounds.x,
+      cuopt_assert(modified_lb[impacted_var_idx] >= get_lower(original_var_bounds),
                    "Lower bound must be greater than or equal to original lower bound");
-      cuopt_assert(modified_ub[impacted_var_idx] <= original_var_bounds.y,
+      cuopt_assert(modified_ub[impacted_var_idx] <= get_upper(original_var_bounds),
                    "Upper bound must be less than or equal to original upper bound");
       cached_bound_t<f_t> new_bound{modified_lb[impacted_var_idx], modified_ub[impacted_var_idx]};
       cache_item.var_to_cached_bound_map.insert({impacted_var_idx, new_bound});
@@ -211,8 +211,8 @@ __global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t p
   i_t var_degree        = pb.reverse_offsets[var_idx + 1] - var_offset;
   f_t th_var_unit_slack = std::numeric_limits<f_t>::max();
   auto var_bounds       = pb.variable_bounds[var_idx];
-  f_t lb                = var_bounds.x;
-  f_t ub                = var_bounds.y;
+  f_t lb                = get_lower(var_bounds);
+  f_t ub                = get_upper(var_bounds);
   f_t first_coeff       = pb.reverse_coefficients[var_offset];
   bool different_coeff  = false;
   for (i_t i = threadIdx.x; i < var_degree; i += blockDim.x) {
@@ -379,8 +379,8 @@ void compute_cache_for_var(i_t var_idx,
   std::vector<f_t> h_improved_upper_bounds(h_var_bounds.size());
   std::pair<val_interval_t<i_t, f_t>, val_interval_t<i_t, f_t>> probe_vals;
   auto bounds = h_var_bounds[var_idx];
-  f_t lb      = bounds.x;
-  f_t ub      = bounds.y;
+  f_t lb      = get_lower(bounds);
+  f_t ub      = get_upper(bounds);
   for (i_t i = 0; i < 2; ++i) {
     auto& probe_val = i == 0 ? probe_vals.first : probe_vals.second;
     // if binary, probe both values

@@ -497,10 +497,10 @@ __global__ void update_constraint_bounds_kernel(typename problem_t<i_t, f_t>::vi
                                                 raft::device_span<i_t> lock_per_constraint)
 {
   auto constraint_pair = constraint_pairs[blockIdx.x];
-  int constr_i         = constraint_pair.x;
+  int constr_i         = get_lower(constraint_pair);
   if (constr_i == -1) { return; }
 
-  int constr_j = constraint_pair.y;
+  int constr_j = get_upper(constraint_pair);
 
   // FIXME:: for now handle only the constraints that fit in shared
   i_t offset_j                  = pb.offsets[constr_j];
@@ -551,8 +551,8 @@ __global__ void update_constraint_bounds_kernel(typename problem_t<i_t, f_t>::vi
     i_t variable_j = pb.variables[offset_j + tid];
     a[tid]         = pb.coefficients[offset_j + tid];
     auto bounds    = pb.variable_bounds[variable_j];
-    lb[tid]        = bounds.x;
-    ub[tid]        = bounds.y;
+    lb[tid]        = get_lower(bounds);
+    ub[tid]        = get_upper(bounds);
     vtypes[tid]    = pb.variable_types[variable_j];
 
     c[tid] = 0.;
@@ -577,8 +577,8 @@ __global__ void update_constraint_bounds_kernel(typename problem_t<i_t, f_t>::vi
       f_t coeff = pb.coefficients[offset_i + index];
 
       auto bounds = pb.variable_bounds[variable_i];
-      f_t li      = bounds.x;
-      f_t ui      = bounds.y;
+      f_t li      = get_lower(bounds);
+      f_t ui      = get_upper(bounds);
       min_activity_if_not_participating += (coeff > 0. ? coeff * li : coeff * ui);
       max_activity_if_not_participating += (coeff > 0. ? coeff * ui : coeff * li);
     }

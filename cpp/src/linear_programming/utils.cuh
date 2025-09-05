@@ -86,8 +86,8 @@ struct primal_projection {
                                                                      f_t AtY,
                                                                      f_t2 bounds)
   {
-    f_t lower    = bounds.x;
-    f_t upper    = bounds.y;
+    f_t lower    = get_lower(bounds);
+    f_t upper    = get_upper(bounds);
     f_t gradient = obj_coeff - AtY;
     f_t next     = primal - (*step_size_ * gradient);
     next         = raft::max<f_t>(raft::min<f_t>(next, upper), lower);
@@ -144,7 +144,7 @@ template <typename f_t, typename f_t2>
 struct clamp {
   __device__ f_t operator()(f_t value, f_t2 bounds)
   {
-    return raft::min<f_t>(raft::max<f_t>(value, bounds.x), bounds.y);
+    return raft::min<f_t>(raft::max<f_t>(value, get_lower(bounds)), get_upper(bounds));
   }
 };
 
@@ -196,8 +196,8 @@ struct max_violation {
   {
     const f_t value   = thrust::get<0>(t);
     const f_t2 bounds = thrust::get<1>(t);
-    const f_t lower   = bounds.x;
-    const f_t upper   = bounds.y;
+    const f_t lower   = get_lower(bounds);
+    const f_t upper   = get_upper(bounds);
     f_t local_max     = f_t(0.0);
     if (isfinite(lower)) { local_max = raft::max(local_max, -value); }
     if (isfinite(upper)) { local_max = raft::max(local_max, value); }
@@ -210,13 +210,10 @@ struct divide_check_zero {
   __device__ f_t2 operator()(f_t2 bounds, f_t value)
   {
     if (value == f_t{0}) {
-      bounds.x = f_t{0};
-      bounds.y = f_t{0};
+      return f_t2{0, 0};
     } else {
-      bounds.x = bounds.x / value;
-      bounds.y = bounds.y / value;
+      return f_t2{get_lower(bounds) / value, get_upper(bounds) / value};
     }
-    return bounds;
   }
 };
 
@@ -224,8 +221,8 @@ template <typename f_t, typename f_t2>
 struct bound_value_gradient {
   __device__ f_t operator()(f_t value, f_t2 bounds)
   {
-    f_t lower = bounds.x;
-    f_t upper = bounds.y;
+    f_t lower = get_lower(bounds);
+    f_t upper = get_upper(bounds);
     if (value > f_t(0) && value < f_t(0)) { return 0; }
     return value > f_t(0) ? lower : upper;
   }
@@ -252,8 +249,8 @@ template <typename f_t, typename f_t2>
 struct bound_value_reduced_cost_product {
   __device__ f_t operator()(f_t value, f_t2 variable_bounds)
   {
-    f_t lower       = variable_bounds.x;
-    f_t upper       = variable_bounds.y;
+    f_t lower       = get_lower(variable_bounds);
+    f_t upper       = get_upper(variable_bounds);
     f_t bound_value = f_t(0);
     if (value > f_t(0)) {
       // A positive reduced cost is associated with a binding lower bound.

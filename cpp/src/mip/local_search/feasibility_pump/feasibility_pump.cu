@@ -161,20 +161,23 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
   // for each integer add the variable and the distance constraints
   for (auto i : h_integer_indices) {
     auto h_var_bounds = h_variable_bounds[i];
-    if (solution.problem_ptr->integer_equal(h_assignment[i], h_var_bounds.y)) {
-      obj_offset += h_var_bounds.y;
+    if (solution.problem_ptr->integer_equal(h_assignment[i], get_upper(h_var_bounds))) {
+      obj_offset += get_upper(h_var_bounds);
       // set the objective weight to -1,  u - x
       obj_coefficients[i] = -1;
-    } else if (solution.problem_ptr->integer_equal(h_assignment[i], h_var_bounds.x)) {
-      obj_offset -= h_var_bounds.x;
+    } else if (solution.problem_ptr->integer_equal(h_assignment[i], get_lower(h_var_bounds))) {
+      obj_offset -= get_lower(h_var_bounds);
       // set the objective weight to +1,  x - l
       obj_coefficients[i] = 1;
     } else {
       // objective weight is 1
       const f_t obj_weight = 1.;
       // the distance should always be positive
-      i_t var_id = h_variables.add_variable(
-        0, (h_var_bounds.y - h_var_bounds.x) + int_tol, obj_weight, var_t::CONTINUOUS);
+      i_t var_id =
+        h_variables.add_variable(0,
+                                 (get_upper(h_var_bounds) - get_lower(h_var_bounds)) + int_tol,
+                                 obj_weight,
+                                 var_t::CONTINUOUS);
       obj_coefficients.push_back(obj_weight);
       f_t dist_val = abs(h_assignment[i] - h_last_projection[i]);
       // if it is out of bounds, because of the approximation issues,or init issues
@@ -450,8 +453,8 @@ void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& 
     [var_types, var_bnds, copy_types, pb = solution.problem_ptr->view()] __device__(auto v_idx) {
       auto orig_v_type = var_types[v_idx];
       auto var_bounds  = var_bnds[v_idx];
-      auto lb          = var_bounds.x;
-      auto ub          = var_bounds.y;
+      auto lb          = get_lower(var_bounds);
+      auto ub          = get_upper(var_bounds);
       bool var_binary  = (pb.integer_equal(lb, 0) && pb.integer_equal(ub, 1));
       auto copy_type =
         (orig_v_type == var_t::INTEGER) && var_binary ? var_t::INTEGER : var_t::CONTINUOUS;

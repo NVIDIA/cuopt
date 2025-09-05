@@ -58,7 +58,6 @@ struct transform_bounds_functor {
   }
 };
 
-#if 1
 template <typename i_t, typename f_t>
 static void set_variable_bounds(detail::problem_t<i_t, f_t>& op_problem)
 {
@@ -88,7 +87,6 @@ static void set_variable_bounds(detail::problem_t<i_t, f_t>& op_problem)
                      vars_bnd[i] = f_t2{lb, ub};
                    });
 }
-#endif
 
 template <typename i_t, typename f_t>
 static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
@@ -122,29 +120,7 @@ static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
                       transform_bounds_functor<f_t>());
   }
 
-#if 0
-  // If variable bound was not set, set it to default value
-  if (op_problem.variable_lower_bounds.is_empty() &&
-      !op_problem.objective_coefficients.is_empty()) {
-    op_problem.variable_lower_bounds.resize(op_problem.objective_coefficients.size(),
-                                            op_problem.handle_ptr->get_stream());
-    thrust::fill(op_problem.handle_ptr->get_thrust_policy(),
-                 op_problem.variable_lower_bounds.begin(),
-                 op_problem.variable_lower_bounds.end(),
-                 f_t(0));
-  }
-  if (op_problem.variable_upper_bounds.is_empty() &&
-      !op_problem.objective_coefficients.is_empty()) {
-    op_problem.variable_upper_bounds.resize(op_problem.objective_coefficients.size(),
-                                            op_problem.handle_ptr->get_stream());
-    thrust::fill(op_problem.handle_ptr->get_thrust_policy(),
-                 op_problem.variable_upper_bounds.begin(),
-                 op_problem.variable_upper_bounds.end(),
-                 std::numeric_limits<f_t>::infinity());
-  }
-#else
   set_variable_bounds(op_problem);
-#endif
   if (op_problem.variable_types.is_empty() && !op_problem.objective_coefficients.is_empty()) {
     op_problem.variable_types.resize(op_problem.objective_coefficients.size(),
                                      op_problem.handle_ptr->get_stream());
@@ -301,7 +277,7 @@ static bool check_var_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
                    [tolerance = problem.tolerances.presolve_absolute_tolerance,
                     var_bnd   = make_span(problem.variable_bounds)] __device__(i_t index) {
                      auto var_bounds = var_bnd[index];
-                     return (var_bounds.x > var_bounds.y + tolerance);
+                     return (get_lower(var_bounds) > get_upper(var_bounds) + tolerance);
                    });
   return !crossing_bounds_detected;
 }
@@ -333,7 +309,7 @@ static void round_bounds(detail::problem_t<i_t, f_t>& problem)
                      if (types[index] == var_t::INTEGER) {
                        using f_t2    = typename type_2<f_t>::type;
                        auto bnd      = bounds[index];
-                       bounds[index] = f_t2{ceil(bnd.x), floor(bnd.y)};
+                       bounds[index] = f_t2{ceil(get_lower(bnd)), floor(get_upper(bnd))};
                      }
                    });
 }

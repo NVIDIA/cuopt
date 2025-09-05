@@ -36,8 +36,8 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename f_t>
-rmm::device_uvector<f_t> get_lower_bounds(rmm::device_uvector<typename type_2<f_t>::type>& bounds,
-                                          const raft::handle_t* handle_ptr)
+rmm::device_uvector<f_t> get_lower_bounds(
+  rmm::device_uvector<typename type_2<f_t>::type> const& bounds, const raft::handle_t* handle_ptr)
 {
   using f_t2 = typename type_2<f_t>::type;
   rmm::device_uvector<f_t> lower_bounds(bounds.size(), handle_ptr->get_stream());
@@ -242,8 +242,8 @@ void solution_t<i_t, f_t>::assign_random_within_bounds(f_t ratio_of_vars_to_rand
     bool skip = unif_prob(rng) > ratio_of_vars_to_random_assign;
     if (skip) { continue; }
     auto var_bounds  = variable_bounds[i];
-    auto lower_bound = var_bounds.x;
-    auto upper_bound = var_bounds.y;
+    auto lower_bound = get_lower(var_bounds);
+    auto upper_bound = get_upper(var_bounds);
     if (lower_bound == -std::numeric_limits<f_t>::infinity()) {
       h_assignment[i] = upper_bound;
     } else if (upper_bound == std::numeric_limits<f_t>::infinity()) {
@@ -460,8 +460,8 @@ i_t solution_t<i_t, f_t>::calculate_similarity_radius(solution_t<i_t, f_t>& othe
         auto var_bounds = p_view.variable_bounds[idx];
         return diverse_equal<f_t>(other_ptr[idx],
                                   curr_assignment[idx],
-                                  var_bounds.x,
-                                  var_bounds.y,
+                                  get_lower(var_bounds),
+                                  get_upper(var_bounds),
                                   p_view.is_integer_var(idx),
                                   p_view.tolerances.integrality_tolerance);
       }));
@@ -564,8 +564,8 @@ f_t solution_t<i_t, f_t>::compute_max_variable_violation()
     thrust::make_counting_iterator(0) + problem_ptr->n_variables,
     cuda::proclaim_return_type<f_t>([v = view()] __device__(i_t idx) -> f_t {
       auto var_bounds = v.problem.variable_bounds[idx];
-      f_t lower_vio   = max(0., var_bounds.x - v.assignment[idx]);
-      f_t upper_vio   = max(0., v.assignment[idx] - var_bounds.y);
+      f_t lower_vio   = max(0., get_lower(var_bounds) - v.assignment[idx]);
+      f_t upper_vio   = max(0., v.assignment[idx] - get_upper(var_bounds));
       return max(lower_vio, upper_vio);
     }),
     0.,

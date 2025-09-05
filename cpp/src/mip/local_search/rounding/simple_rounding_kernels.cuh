@@ -37,8 +37,8 @@ __global__ void nearest_rounding_kernel(typename solution_t<i_t, f_t>::view_t so
   if (solution.problem.is_integer(curr_val)) { return; }
   const f_t int_tol           = solution.problem.tolerances.integrality_tolerance;
   auto var_bnd                = solution.problem.variable_bounds[var_id];
-  f_t lb                      = var_bnd.x;
-  f_t ub                      = var_bnd.y;
+  f_t lb                      = get_lower(var_bnd);
+  f_t ub                      = get_upper(var_bnd);
   f_t nearest_val             = round_nearest(curr_val, lb, ub, int_tol, rng);
   solution.assignment[var_id] = nearest_val;
 }

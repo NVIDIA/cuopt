@@ -40,7 +40,7 @@ struct is_variable_free_t {
   {
     auto var    = thrust::get<2>(edge);
     auto bounds = bnd[var];
-    return abs(bounds.y - bounds.x) > tol;
+    return abs(get_upper(bounds) - get_lower(bounds)) > tol;
   }
 };
 
@@ -67,9 +67,10 @@ struct assign_fixed_var_t {
   __device__ void operator()(i_t i) const
   {
     if (!is_var_used[i]) {
-      auto orig_v_idx              = variable_mapping[i];
-      auto bounds                  = variable_bounds[i];
-      fixed_assignment[orig_v_idx] = (objective_coefficients[i] > 0) ? bounds.x : bounds.y;
+      auto orig_v_idx = variable_mapping[i];
+      auto bounds     = variable_bounds[i];
+      fixed_assignment[orig_v_idx] =
+        (objective_coefficients[i] > 0) ? get_lower(bounds) : get_upper(bounds);
     }
   }
 };
@@ -96,9 +97,9 @@ struct elem_multi_t {
     auto var    = variables[i];
     auto bounds = variable_bounds[var];
     if (obj_coefficients[var] > 0) {
-      return bounds.x * coefficients[i];
+      return get_lower(bounds) * coefficients[i];
     } else {
-      return bounds.y * coefficients[i];
+      return get_upper(bounds) * coefficients[i];
     }
   }
 };
@@ -147,7 +148,7 @@ struct unused_var_obj_offset_t {
     // in case both bounds are infinite
     if (obj_coeff == 0.) return 0.;
     auto bounds  = bnd[i];
-    auto obj_off = (obj_coeff > 0) ? obj_coeff * bounds.x : obj_coeff * bounds.y;
+    auto obj_off = (obj_coeff > 0) ? obj_coeff * get_lower(bounds) : obj_coeff * get_upper(bounds);
     return var_map[i] ? 0. : obj_off;
   }
 };

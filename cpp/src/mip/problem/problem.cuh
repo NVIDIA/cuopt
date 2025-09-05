@@ -135,9 +135,10 @@ class problem_t {
 
     DI bool check_variable_within_bounds(i_t v, f_t val) const
     {
-      const f_t int_tol  = tolerances.integrality_tolerance;
-      auto bounds        = variable_bounds[v];
-      bool within_bounds = val <= (bounds.y + int_tol) && val >= (bounds.x - int_tol);
+      const f_t int_tol = tolerances.integrality_tolerance;
+      auto bounds       = variable_bounds[v];
+      bool within_bounds =
+        val <= (get_upper(bounds) + int_tol) && val >= (get_lower(bounds) - int_tol);
       return within_bounds;
     }
 
@@ -161,14 +162,14 @@ class problem_t {
       auto bounds = variable_bounds[v];
 
       f_t val;
-      if (isfinite(bounds.x) && isfinite(bounds.y)) {
-        f_t diff = bounds.y - bounds.x;
-        val      = diff * rng.next_float() + bounds.x;
+      if (isfinite(get_lower(bounds)) && isfinite(get_upper(bounds))) {
+        f_t diff = get_upper(bounds) - get_lower(bounds);
+        val      = diff * rng.next_float() + get_lower(bounds);
       } else {
-        auto finite_bound = isfinite(bounds.x) ? bounds.x : bounds.y;
+        auto finite_bound = isfinite(get_lower(bounds)) ? get_lower(bounds) : get_upper(bounds);
         val               = finite_bound;
       }
-      cuopt_assert(isfinite(bounds.x), "Value must be finite");
+      cuopt_assert(isfinite(get_lower(bounds)), "Value must be finite");
       return val;
     }
 
@@ -188,8 +189,6 @@ class problem_t {
     raft::device_span<i_t> offsets;
     raft::device_span<f_t> objective_coefficients;
     raft::device_span<f_t2> variable_bounds;
-    // raft::device_span<f_t> variable_lower_bounds;
-    // raft::device_span<f_t> variable_upper_bounds;
     raft::device_span<f_t> constraint_lower_bounds;
     raft::device_span<f_t> constraint_upper_bounds;
     raft::device_span<var_t> variable_types;

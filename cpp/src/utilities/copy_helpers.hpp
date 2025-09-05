@@ -69,11 +69,26 @@ struct scalar_type<double2> {
   using type = double;
 };
 
+template <>
+struct scalar_type<const int2> {
+  using type = const int;
+};
+
+template <>
+struct scalar_type<const float2> {
+  using type = const float;
+};
+
+template <>
+struct scalar_type<const double2> {
+  using type = const double;
+};
+
 template <typename T>
 raft::device_span<typename type_2<T>::type> make_span_2(rmm::device_uvector<T>& container)
 {
-  // TODO : ceildiv or throw assert
   using T2 = typename type_2<T>::type;
+  static_assert(sizeof(T2) == 2 * sizeof(T));
   return raft::device_span<T2>(reinterpret_cast<T2*>(container.data()),
                                sizeof(T) * container.size() / sizeof(T2));
 }
@@ -82,10 +97,22 @@ template <typename T>
 raft::device_span<const typename type_2<T>::type> make_span_2(
   rmm::device_uvector<T> const& container)
 {
-  // TODO : ceildiv or throw assert
   using T2 = typename type_2<T>::type;
+  static_assert(sizeof(T2) == 2 * sizeof(T));
   return raft::device_span<const T2>(reinterpret_cast<const T2*>(container.data()),
                                      sizeof(T) * container.size() / sizeof(T2));
+}
+
+template <typename f_t2>
+__host__ __device__ inline typename scalar_type<f_t2>::type& get_lower(f_t2& val)
+{
+  return val.x;
+}
+
+template <typename f_t2>
+__host__ __device__ inline typename scalar_type<f_t2>::type& get_upper(f_t2& val)
+{
+  return val.y;
 }
 
 /**
@@ -320,11 +347,12 @@ std::tuple<std::vector<f_t>, std::vector<f_t>> extract_host_bounds(
 {
   rmm::device_uvector<f_t> var_lb(variable_bounds.size(), handle_ptr->get_stream());
   rmm::device_uvector<f_t> var_ub(variable_bounds.size(), handle_ptr->get_stream());
-  thrust::transform(handle_ptr->get_thrust_policy(),
-                    variable_bounds.begin(),
-                    variable_bounds.end(),
-                    thrust::make_zip_iterator(thrust::make_tuple(var_lb.begin(), var_ub.begin())),
-                    [] __device__(auto i) { return thrust::make_tuple(i.x, i.y); });
+  thrust::transform(
+    handle_ptr->get_thrust_policy(),
+    variable_bounds.begin(),
+    variable_bounds.end(),
+    thrust::make_zip_iterator(thrust::make_tuple(var_lb.begin(), var_ub.begin())),
+    [] __device__(auto i) { return thrust::make_tuple(get_lower(i), get_upper(i)); });
   handle_ptr->sync_stream();
   auto h_var_lb = cuopt::host_copy(var_lb);
   auto h_var_ub = cuopt::host_copy(var_ub);

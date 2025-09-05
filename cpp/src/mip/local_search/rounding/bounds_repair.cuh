@@ -45,11 +45,12 @@ struct bounds_t {
   {
     cuopt_assert(lb.size() == pb.variable_bounds.size(), "");
     cuopt_assert(ub.size() == pb.variable_bounds.size(), "");
-    thrust::transform(handle_ptr->get_thrust_policy(),
-                      pb.variable_bounds.begin(),
-                      pb.variable_bounds.end(),
-                      thrust::make_zip_iterator(thrust::make_tuple(lb.begin(), ub.begin())),
-                      [] __device__(auto i) { return thrust::make_tuple(i.x, i.y); });
+    thrust::transform(
+      handle_ptr->get_thrust_policy(),
+      pb.variable_bounds.begin(),
+      pb.variable_bounds.end(),
+      thrust::make_zip_iterator(thrust::make_tuple(lb.begin(), ub.begin())),
+      [] __device__(auto i) { return thrust::make_tuple(get_lower(i), get_upper(i)); });
   };
   void update_to(problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr)
   {

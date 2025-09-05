@@ -290,8 +290,10 @@ void problem_checking_t<i_t, f_t>::check_scaled_problem(
     auto var_type = variable_types[i];
     if (var_type == var_t::INTEGER) {
       // Integers should be untouched
-      cuopt_assert(variable_bounds[i].y == scaled_variable_bounds[i].y, "Mismatch upper scaling");
-      cuopt_assert(variable_bounds[i].x == scaled_variable_bounds[i].x, "Mismatch lower scaling");
+      cuopt_assert(get_lower(variable_bounds[i]) == get_lower(scaled_variable_bounds[i]),
+                   "Mismatch lower scaling");
+      cuopt_assert(get_upper(variable_bounds[i]) == get_upper(scaled_variable_bounds[i]),
+                   "Mismatch upper scaling");
     }
   }
 }
@@ -313,8 +315,8 @@ void problem_checking_t<i_t, f_t>::check_unscaled_solution(
     h_assignment.data(), assignment.data(), assignment.size(), op_problem.handle_ptr->get_stream());
   const f_t int_tol = op_problem.tolerances.integrality_tolerance;
   for (size_t i = 0; i < variable_bounds.size(); ++i) {
-    cuopt_assert(h_assignment[i] <= variable_bounds[i].y + int_tol, "Excess upper bound");
-    cuopt_assert(h_assignment[i] >= variable_bounds[i].x - int_tol, "Excess lower bound");
+    cuopt_assert(h_assignment[i] >= get_lower(variable_bounds[i]) - int_tol, "Excess lower bound");
+    cuopt_assert(h_assignment[i] <= get_upper(variable_bounds[i]) + int_tol, "Excess upper bound");
   }
 }
 
