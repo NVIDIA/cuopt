@@ -40,7 +40,7 @@ CUOPT_MPS_PARSER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" RAPIDS_PY_
 echo "cuopt-mps-parser @ file://$(echo ${CUOPT_MPS_PARSER_WHEELHOUSE}/cuopt_mps_parser*.whl)" >> /tmp/constraints.txt
 export PIP_CONSTRAINT="/tmp/constraints.txt"
 
-rapids-dependency-file-generator \q
+rapids-dependency-file-generator \
   --output requirements \
   --file-key "py_build_${package_name}" \
   --file-key "py_rapids_build_${package_name}" \
