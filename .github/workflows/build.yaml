@@ -231,10 +231,10 @@ jobs:
           # Extract job names from needs context automatically
           needs_json='${{ toJson(needs) }}'
           job_names=$(echo "$needs_json" | jq -r 'keys[]')
-          
+
           failed_jobs=()
           has_failures=false
-          
+
           # Check each job for failures
           while IFS= read -r job; do
             result=$(echo "$needs_json" | jq -r --arg job "$job" '.[$job].result // "unknown"')
@@ -243,7 +243,7 @@ jobs:
               has_failures=true
             fi
           done <<< "$job_names"
-          
+
           # Log failed jobs
           if [[ "$has_failures" == "true" ]]; then
             echo "has-failures=true" >> $GITHUB_OUTPUT
@@ -252,15 +252,15 @@ jobs:
             echo "has-failures=false" >> $GITHUB_OUTPUT
             echo "failed-jobs=" >> $GITHUB_OUTPUT
           fi
-          
+
           # Check if workflow was manually cancelled
-          if [[ "${{ github.event.head_commit.message }}" == *"[skip ci]"* ]] || 
+          if [[ "${{ github.event.head_commit.message }}" == *"[skip ci]"* ]] ||
              [[ "${{ github.event.head_commit.message }}" == *"[ci skip]"* ]]; then
             echo "is-cancelled=true" >> $GITHUB_OUTPUT
           else
             echo "is-cancelled=false" >> $GITHUB_OUTPUT
           fi
-      
+
       - name: Format Failed Jobs List
         id: format-failed-jobs
         if: steps.check-failures.outputs.has-failures == 'true'
