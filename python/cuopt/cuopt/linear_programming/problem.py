@@ -716,6 +716,7 @@ class Problem:
                 setattr(self, key, value)
 
     def _from_data_model(self, dm):
+        self.Name = dm.get_problem_name()
         obj_coeffs = dm.get_objective_coefficients()
         obj_constant = dm.get_objective_offset()
         num_vars = len(obj_coeffs)
@@ -743,6 +744,7 @@ class Problem:
         c_lb = dm.get_constraint_lower_bounds()
         c_ub = dm.get_constraint_upper_bounds()
         c_b = dm.get_constraint_bounds()
+        c_names = dm.get_row_names()
         offsets = dm.get_constraint_matrix_offsets()
         indices = dm.get_constraint_matrix_indices()
         values = dm.get_constraint_matrix_values()
@@ -756,11 +758,11 @@ class Problem:
             c_vars = [vars[j] for j in c_indices]
             expr = LinearExpression(c_vars, c_coeffs, 0.0)
             if c_lb[i] == c_ub[i]:
-                self.addConstraint(expr == c_b[i])
+                self.addConstraint(expr == c_b[i], name=c_names[i])
             elif c_lb[i] == c_b[i]:
-                self.addConstraint(expr >= c_b[i])
+                self.addConstraint(expr >= c_b[i], name=c_names[i])
             elif c_ub[i] == c_b[i]:
-                self.addConstraint(expr <= c_b[i])
+                self.addConstraint(expr <= c_b[i], name=c_names[i])
             else:
                 raise Exception("Couldn't initialize constraints")
 
@@ -769,6 +771,7 @@ class Problem:
         n = len(self.vars)
         self.rhs = []
         self.row_sense = []
+        self.row_names = []
 
         if self.constraint_csr_matrix is None:
             csr_dict = {"row_pointers": [0], "column_indices": [], "values": []}
@@ -778,6 +781,7 @@ class Problem:
                 csr_dict["row_pointers"].append(len(csr_dict["column_indices"]))
                 self.rhs.append(constr.RHS)
                 self.row_sense.append(constr.Sense)
+                self.row_names.append(constr.ConstraintName)
             self.constraint_csr_matrix = csr_dict
 
         else:
@@ -788,12 +792,14 @@ class Problem:
         self.objective = np.zeros(n)
         self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
         self.var_type = np.empty(n, dtype="S1")
+        self.var_names = []
 
         for j in range(n):
             self.objective[j] = self.vars[j].getObjectiveCoefficient()
             self.var_type[j] = self.vars[j].getVariableType()
             self.lower_bound[j] = self.vars[j].getLowerBound()
             self.upper_bound[j] = self.vars[j].getUpperBound()
+            self.var_names.append(self.vars[j].VariableName)
 
         # Initialize datamodel
         dm = data_model.DataModel()
@@ -811,6 +817,10 @@ class Problem:
         dm.set_variable_lower_bounds(self.lower_bound)
         dm.set_variable_upper_bounds(self.upper_bound)
         dm.set_variable_types(self.var_type)
+        dm.set_variable_names(self.var_names)
+        dm.set_row_names(self.row_names)
+        dm.set_problem_name(self.Name)
+
         self.model = dm
 
     def reset_solved_values(self):

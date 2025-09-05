@@ -281,7 +281,7 @@ def test_read_write_mps_and_relaxation():
     x5 = m.addVariable(name="x5", lb=0.0, vtype=INTEGER)
 
     # Objective (minimize)
-    m.setObjective(2*x1 + 3*x2 + 0*x3 + 1*x4 + 4*x5, MINIMIZE)
+    m.setObjective(2*x1 + 3*x2 + x3 + 1*x4 + 4*x5, MINIMIZE)
 
     # Constraints (5 total)
     m.addConstraint(x1 + x2 + x3 <= 10, name="c1")
@@ -291,12 +291,11 @@ def test_read_write_mps_and_relaxation():
     m.addConstraint(x1 + x2 + x3 + x4 + x5 >= 5, name="c5")
 
     # Write MPS
-    ss = SolverSettings()
-    ss.set_parameter(CUOPT_USER_PROBLEM_FILE, "small_mip.mps")
-    m.solve(ss)
+    m.writeMPS("small_mip.mps")
 
     # Read MPS and solve
     prob = Problem.readMPS("small_mip.mps")
+    assert prob.IsMIP
     prob.solve()
 
     expected_values_mip = [0.0, 1.0, 3.0, 0.0, 2.0]

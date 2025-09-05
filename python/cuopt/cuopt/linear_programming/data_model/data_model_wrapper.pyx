@@ -146,6 +146,12 @@ cdef class DataModel:
     def set_row_names(self, row_names):
         self.row_names = row_names
 
+    def set_objective_name(self, objective_name):
+        self.objective_name = objective_name
+
+    def set_problem_name(self, problem_name):
+        self.problem_name = problem_name
+
     def get_sense(self):
         return self.maximize
 
@@ -203,6 +209,11 @@ cdef class DataModel:
     def get_row_names(self):
         return self.row_names
 
+    def get_objective_name(self):
+        return self.objective_name
+
+    def get_problem_name(self):
+        return self.problem_name
 
     def set_data_model_view(self):
         cdef data_model_view_t[int, double]* c_data_model_view = (
@@ -306,6 +317,30 @@ cdef class DataModel:
                 self.get_variable_types().shape[0]
             )
 
+        cdef vector[string] c_var_names
+        for s in self.get_variable_names():
+            c_var_names.push_back(s.encode())
+  
+        if len(self.get_variable_names()) != 0:
+            c_data_model_view.set_variable_names(
+                c_var_names                
+            )
+
+        cdef vector[string] c_row_names
+        for s in self.get_row_names():
+            c_row_names.push_back(s.encode())
+
+        if len(self.get_row_names()) != 0:
+            c_data_model_view.set_row_names(
+                c_row_names
+            )
+
+        if self.get_problem_name():
+            c_data_model_view.set_problem_name(self.get_problem_name().encode())
+
+        if self.get_objective_name():
+            c_data_model_view.set_objective_name( self.get_objective_name().encode())
+
         # Set initial solution on the C++ side if set on the Python side
         cdef uintptr_t c_initial_primal_solution = (
             get_data_ptr(self.get_initial_primal_solution())
@@ -329,10 +364,4 @@ cdef class DataModel:
             self.variable_types, "S1", "variable_types"
         )
         self.set_data_model_view()
-        cdef int a = 10
-        cdef int* b = &a
-        #cdef data_model_view_t[int, double] abc
-        #cdef data_model_view_t[int, double] abc = self.c_data_model_view.get()[0]
-        #cdef data_model_view_t[int, double] abc = <data_model_view_t[int, double]>self.c_data_model_view.get()
-
         write_mps(self.c_data_model_view.get()[0], user_problem_file.encode('utf-8'))
