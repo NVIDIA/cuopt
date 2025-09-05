@@ -177,8 +177,8 @@ FetchContent_Declare(
   SYSTEM
 )
 
+find_package(TBB REQUIRED)
 set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
-set(TBB OFF CACHE BOOL "Disable TBB")
 set(PAPILO_NO_BINARIES ON)
 option(LUSOL "Disable LUSOL" OFF)
 
@@ -254,6 +254,7 @@ target_include_directories(cuopt
 set(CUOPT_PRIVATE_CUDA_LIBS
   CUDA::curand
   CUDA::cusolver
+  TBB::tbb
   OpenMP::OpenMP_CXX)
 
 list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)

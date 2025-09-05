@@ -306,6 +306,7 @@ dependencies:
           - cpp-argparse
           - librmm==25.10.*
           - libraft-headers==25.10.*
+          - tbb-devel
           - zlib
           - bzip2
   test_cpp:

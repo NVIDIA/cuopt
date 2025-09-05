@@ -79,6 +79,7 @@ dependencies:
 - sphinxcontrib-openapi
 - sphinxcontrib-websupport
 - sysroot_linux-64==2.28
+- tbb-devel
 - uvicorn==0.34.*
 - zlib
 - pip:
