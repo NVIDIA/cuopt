@@ -31,6 +31,7 @@
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <linear_programming/utils.cuh>
 #include <utilities/timer.hpp>
+#include <utilities/version_info.hpp>
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
@@ -169,6 +170,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     // Init libraies before to not include it in solve time
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
+
+    print_version_info();
 
     raft::common::nvtx::range fun_scope("Running solver");
 
