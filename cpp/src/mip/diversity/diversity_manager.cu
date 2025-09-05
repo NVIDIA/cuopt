@@ -320,6 +320,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   }
   stats.presolve_time = presolve_timer.elapsed_time();
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
+  problem_ptr->handle_ptr->sync_stream();
   return true;
 }
 
