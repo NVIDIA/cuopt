@@ -82,8 +82,8 @@ jobs:
       package-type: python
       append-cuda-suffix: false
       pure-wheel: true
-      # need 1 build per Python version and arch (but CUDA version doesn't matter)
-      matrix_filter: '[max_by((.CUDA_VER | split(".") | map(tonumber))]'
+      # need 1 build per Python version and arch (but CUDA version doesn't matter so choose the latest)
+      matrix_filter: 'group_by(.PY_VER |split(".") | map(tonumber) | .[0])|map(max_by([(.CUDA_VER|split(".")|map(tonumber))]))'
   wheel-publish-cuopt-mps-parser:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
