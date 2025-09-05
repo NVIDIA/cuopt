@@ -31,7 +31,8 @@ class third_party_presolve_t {
     problem_category_t category,
     f_t absolute_tolerance,
     f_t relative_tolerance,
-    double time_limit);
+    double time_limit,
+    i_t num_cpu_threads = 0);
 
   void undo(rmm::device_uvector<f_t>& primal_solution,
             rmm::device_uvector<f_t>& dual_solution,
