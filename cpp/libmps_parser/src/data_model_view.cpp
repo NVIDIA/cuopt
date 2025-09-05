@@ -329,6 +329,7 @@ template <typename i_t, typename f_t>
 const std::vector<std::string>& data_model_view_t<i_t, f_t>::get_row_names() const noexcept
 {
   return row_names_;
+}
 
 // QPS-specific getter implementations
 template <typename i_t, typename f_t>
