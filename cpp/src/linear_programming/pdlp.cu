@@ -991,6 +991,57 @@ void pdlp_solver_t<i_t, f_t>::update_primal_dual_solutions(
 }
 
 template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::compute_fixed_error()
+{
+#ifdef CUPDLP_DEBUG_MODE
+  printf("Computing compute_fixed_point_error \n");
+#endif
+  // Computing the deltas
+  cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(pdhg_solver_.get_reflected_primal().data(),
+                            pdhg_solver_.get_primal_solution().data()),
+      pdhg_solver_.get_saddle_point_state().get_delta_primal().data(),
+      primal_size_h_,
+      cuda::std::minus<f_t>{},
+      stream_view_);
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(pdhg_solver_.get_reflected_dual().data(),
+                          pdhg_solver_.get_dual_solution().data()),
+    pdhg_solver_.get_saddle_point_state().get_delta_dual().data(),
+    dual_size_h_,
+    cuda::std::minus<f_t>{},
+    stream_view_);
+
+  auto& cusparse_view = pdhg_solver_.get_cusparse_view();
+  // Make potential_next_dual_solution point towards reflected dual solution to reuse the code 
+  RAFT_CUSPARSE_TRY(
+    raft::sparse::detail::cusparsecreatednvec(&cusparse_view.potential_next_dual_solution,
+                                              op_problem_scaled_.n_constraints,
+                                              const_cast<f_t*>(pdhg_solver_.get_reflected_dual().data())));
+
+  step_size_strategy_.compute_interaction_and_movement(pdhg_solver_.get_primal_tmp_resource(),
+                                                       cusparse_view,
+                                                      pdhg_solver_.get_saddle_point_state());
+
+  const f_t movement = step_size_strategy_.get_norm_squared_delta_primal() * primal_weight_.value(stream_view_) + step_size_strategy_.get_norm_squared_delta_dual() / primal_weight_.value(stream_view_);
+  const f_t interaction = f_t(2.0) * step_size_strategy_.get_interaction() * step_size_.value(stream_view_);
+
+  restart_strategy_.fixed_point_error_ = std::sqrt(movement + interaction);
+
+#ifdef CUPDLP_DEBUG_MODE
+  printf("movement %lf\n", movement);
+  printf("interaction %lf\n", interaction);
+  printf("state->fixed_point_error %lf\n", restart_strategy_.fixed_point_error_);
+#endif
+
+  // Put back 
+  RAFT_CUSPARSE_TRY(
+    raft::sparse::detail::cusparsecreatednvec(&cusparse_view.potential_next_dual_solution,
+                                              op_problem_scaled_.n_constraints,
+                                              const_cast<f_t*>(pdhg_solver_.get_potential_next_dual_solution().data())));
+}
+
+template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
   const std::chrono::high_resolution_clock::time_point& start_time)
 {
@@ -1094,7 +1145,10 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
       "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
   }
   while (true) {
-    bool is_major_iteration = ((total_pdlp_iterations_ % pdlp_hyper_params::major_iteration == 0) &&
+    #ifdef CUPDLP_DEBUG_MODE
+    printf("Step: %d\n", total_pdlp_iterations_);
+    #endif
+    bool is_major_iteration = (((total_pdlp_iterations_ + pdlp_hyper_params::use_plus_one) % pdlp_hyper_params::major_iteration == 0) &&
                                (total_pdlp_iterations_ > 0)) ||
                               (total_pdlp_iterations_ <= pdlp_hyper_params::min_iteration_restart);
     bool error_occured                      = (step_size_strategy_.get_valid_step_size() == -1);
@@ -1190,7 +1244,14 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
       }
     }
 
+    printf("Is Major %d\n", is_major_iteration);
     take_step(total_pdlp_iterations_, is_major_iteration);
+
+    if (pdlp_hyper_params::use_fixed_point_error && is_major_iteration)
+      compute_fixed_error();
+
+    if (pdlp_hyper_params::use_reflected_primal_dual)
+      halpern_update();
 
     ++total_pdlp_iterations_;
     ++internal_solver_iterations_;
@@ -1240,7 +1301,50 @@ void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations, bool
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::take_constant_step(bool is_major_iteration)
 {
-  pdhg_solver_.take_step(primal_step_size_, dual_step_size_, 0, false, 0, is_major_iteration);
+  pdhg_solver_.take_step(primal_step_size_, dual_step_size_, 0, false, total_pdlp_iterations_, is_major_iteration);
+}
+
+template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::halpern_update()
+{
+  const f_t weight = f_t(total_pdlp_iterations_ + 1) / f_t(total_pdlp_iterations_ + 2);
+   
+  // Update primal
+  cub::DeviceTransform::Transform(
+  cuda::std::make_tuple(
+    pdhg_solver_.get_reflected_primal().data(),
+    pdhg_solver_.get_saddle_point_state().get_primal_solution().data(),
+    restart_strategy_.last_restart_duality_gap_.primal_solution_.data()
+  ),
+  pdhg_solver_.get_saddle_point_state().get_primal_solution().data(),
+  primal_size_h_,
+  [weight, reflection_coefficient = pdlp_hyper_params::reflection_coefficient] __device__ (f_t reflected_primal, f_t current_primal, f_t initial_primal)
+  {
+      const f_t reflected = reflection_coefficient * reflected_primal + (f_t(1.0) - reflection_coefficient) * current_primal;
+      return weight * reflected + (f_t(1.0) - weight) * initial_primal;
+  },
+  stream_view_);
+
+  // Update dual
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(
+      pdhg_solver_.get_reflected_dual().data(),
+      pdhg_solver_.get_saddle_point_state().get_dual_solution().data(),
+      restart_strategy_.last_restart_duality_gap_.primal_solution_.data()
+    ),
+    pdhg_solver_.get_saddle_point_state().get_dual_solution().data(),
+    dual_size_h_,
+    [weight, reflection_coefficient = pdlp_hyper_params::reflection_coefficient] __device__ (f_t reflected_dual, f_t current_dual, f_t initial_dual)
+    {
+        const f_t reflected = reflection_coefficient * reflected_dual + (f_t(1.0) - reflection_coefficient) * current_dual;
+        return weight * reflected + (f_t(1.0) - weight) * initial_dual;
+    },
+    stream_view_);
+
+#ifdef CUPDLP_DEBUG_MODE
+  print("halpen_update current primal", pdhg_solver_.get_saddle_point_state().get_primal_solution());
+  print("halpen_update current dual", pdhg_solver_.get_saddle_point_state().get_dual_solution());
+#endif
 }
 
 template <typename i_t, typename f_t>

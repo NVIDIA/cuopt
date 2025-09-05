@@ -315,8 +315,8 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       stream_view_);
 #ifdef CUPDLP_DEBUG_MODE
     print("potential_next_primal_solution_", potential_next_primal_solution_);
-    print("dual_slack_", dual_slack_);
     print("reflected_primal_", reflected_primal_);
+    print("dual_slack_", dual_slack_);
 #endif
   } else {
     cub::DeviceTransform::Transform(
@@ -411,7 +411,7 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_scalar<f_t>& primal_step_siz
                                       iterations_since_last_restart,
                                       last_restart_was_average,
                                       dual_step_size,
-                                      total_pdlp_iterations);
+                                      0);
   } else {
     compute_next_primal_dual_solution_reflected(
       primal_step_size,
@@ -502,6 +502,18 @@ template <typename i_t, typename f_t>
 const rmm::device_uvector<f_t>& pdhg_solver_t<i_t, f_t>::get_potential_next_dual_solution() const
 {
   return potential_next_dual_solution_;
+}
+
+template <typename i_t, typename f_t>
+const rmm::device_uvector<f_t>& pdhg_solver_t<i_t, f_t>::get_reflected_dual() const
+{
+  return reflected_dual_;
+}
+
+template <typename i_t, typename f_t>
+const rmm::device_uvector<f_t>& pdhg_solver_t<i_t, f_t>::get_reflected_primal() const
+{
+  return reflected_primal_;
 }
 
 template <typename i_t, typename f_t>

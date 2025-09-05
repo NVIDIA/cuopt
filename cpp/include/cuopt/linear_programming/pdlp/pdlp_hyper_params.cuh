@@ -61,5 +61,8 @@ extern bool initial_step_size_max_singular_value;
 extern bool initial_primal_weight_combined_bounds;
 extern bool bound_objective_rescaling;
 extern bool use_reflected_primal_dual;
+extern bool use_fixed_point_error;
+extern double reflection_coefficient;
+extern bool use_plus_one;
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params

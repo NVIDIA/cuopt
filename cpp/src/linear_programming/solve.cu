@@ -99,6 +99,9 @@ static void set_Stable1()
   pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
   pdlp_hyper_params::bound_objective_rescaling                                  = false;
   pdlp_hyper_params::use_reflected_primal_dual                                  = false;
+  pdlp_hyper_params::use_fixed_point_error                          = false;
+  pdlp_hyper_params::reflection_coefficient = 1.0;
+  pdlp_hyper_params::use_plus_one = false;
 }
 
 // Even better general setting due to proper primal gradient handling for KKT restart and initial
@@ -139,6 +142,9 @@ static void set_Stable2()
   pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
   pdlp_hyper_params::bound_objective_rescaling                                  = false;
   pdlp_hyper_params::use_reflected_primal_dual                                  = false;
+  pdlp_hyper_params::use_fixed_point_error                          = false;
+  pdlp_hyper_params::reflection_coefficient = 1.0;
+  pdlp_hyper_params::use_plus_one = false;
 }
 
 // Same as Stable2 but without adaptive step size strategy
@@ -154,7 +160,7 @@ static void set_Stable3()
   pdlp_hyper_params::compute_initial_primal_weight_before_scaling = false;
   pdlp_hyper_params::initial_primal_weight_c_scaling              = 1.0;
   pdlp_hyper_params::initial_primal_weight_b_scaling              = 1.0;
-  pdlp_hyper_params::major_iteration                              = 40;
+  pdlp_hyper_params::major_iteration                              = 200; // TODO Try with something smaller 
   pdlp_hyper_params::min_iteration_restart =
     -1;  // TODO we still should check the problem but not restart at step 0
   pdlp_hyper_params::restart_strategy                                           = 1;
@@ -179,6 +185,8 @@ static void set_Stable3()
   pdlp_hyper_params::initial_primal_weight_combined_bounds                      = false;
   pdlp_hyper_params::bound_objective_rescaling                                  = true;
   pdlp_hyper_params::use_reflected_primal_dual                                  = true;
+  pdlp_hyper_params::use_fixed_point_error                          = true;
+  pdlp_hyper_params::use_plus_one                          = true; // TODO really necessary and better naming if yes
 }
 
 // Legacy/Original/Initial PDLP settings
@@ -218,6 +226,9 @@ static void set_Methodical1()
   pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
   pdlp_hyper_params::bound_objective_rescaling                                  = false;
   pdlp_hyper_params::use_reflected_primal_dual                                  = false;
+  pdlp_hyper_params::use_fixed_point_error                          = false;
+  pdlp_hyper_params::reflection_coefficient = 1.0;
+  pdlp_hyper_params::use_plus_one = false;
 }
 
 // Can be extremly faster but usually leads to more divergence
@@ -258,6 +269,9 @@ static void set_Fast1()
   pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
   pdlp_hyper_params::bound_objective_rescaling                                  = false;
   pdlp_hyper_params::use_reflected_primal_dual                                  = false;
+  pdlp_hyper_params::use_fixed_point_error                          = false;
+    pdlp_hyper_params::reflection_coefficient = 1.0;
+  pdlp_hyper_params::use_plus_one = false;
 }
 
 template <typename i_t, typename f_t>

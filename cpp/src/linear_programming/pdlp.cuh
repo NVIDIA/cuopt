@@ -172,10 +172,13 @@ class pdlp_solver_t {
  public:
   // Inner solver
   detail::pdhg_solver_t<i_t, f_t> pdhg_solver_;
+  void halpern_update();
 
  private:
   // Intentionnaly take a copy to avoid an unintentional modification in the calling context
   const pdlp_solver_settings_t<i_t, f_t> settings_;
+
+  void compute_fixed_error();
 
   pdlp_warm_start_data_t<i_t, f_t> get_filled_warmed_start_data();
 
