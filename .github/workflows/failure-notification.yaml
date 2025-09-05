@@ -83,7 +83,7 @@ jobs:
             {
               "icon_emoji": ":x:",
               "username": "CuOpt Build Notifier - Build Failed",
-              "text": "<!subteam^S01ABC123DEF|@cuopt-infra> 🚨 Build failed!",
+              "text": "<!subteam^S086JPX5CSC|@cuopt-infra> 🚨 Build failed!",
               "attachments": [
                 {
                   "author_name": "Build Failed - ${{ inputs.repository }}",
