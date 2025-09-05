@@ -47,7 +47,7 @@ concurrency:
 jobs:
   cpp-build:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -57,7 +57,7 @@ jobs:
   python-build:
     needs: [cpp-build]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -67,7 +67,7 @@ jobs:
   upload-conda:
     needs: [cpp-build, python-build]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-upload-packages.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/conda-upload-packages.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -75,7 +75,7 @@ jobs:
       sha: ${{ inputs.sha }}
   wheel-build-cuopt-mps-parser:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -85,10 +85,13 @@ jobs:
       package-name: cuopt_mps_parser
       package-type: python
       append-cuda-suffix: false
+      pure-wheel: true
+      # need 1 build per Python version and arch (but CUDA version doesn't matter so choose the latest)
+      matrix_filter: 'group_by([.ARCH, (.PY_VER |split(".") | map(tonumber))])|map(max_by([(.CUDA_VER|split(".")|map(tonumber))]))'
   wheel-publish-cuopt-mps-parser:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -99,7 +102,7 @@ jobs:
   wheel-build-libcuopt:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -112,7 +115,7 @@ jobs:
   wheel-publish-libcuopt:
     needs: wheel-build-libcuopt
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -123,7 +126,7 @@ jobs:
   wheel-build-cuopt:
     needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -135,7 +138,7 @@ jobs:
   wheel-publish-cuopt:
     needs: wheel-build-cuopt
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -146,7 +149,7 @@ jobs:
   wheel-build-cuopt-server:
     needs: wheel-build-cuopt
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -158,7 +161,7 @@ jobs:
   wheel-publish-cuopt-server:
     needs: wheel-build-cuopt-server
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -169,7 +172,7 @@ jobs:
   docs-build:
     needs: [python-build]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       node_type: "gpu-l4-latest-1"
@@ -184,7 +187,7 @@ jobs:
   wheel-build-cuopt-sh-client:
     needs: wheel-build-cuopt
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -194,10 +197,12 @@ jobs:
       package-name: cuopt_sh_client
       package-type: python
       append-cuda-suffix: false
+      # need 1 build per Python version and arch (but CUDA version doesn't matter)
+      matrix_filter: '[max_by((.CUDA_VER | split(".") | map(tonumber))]'
   wheel-publish-cuopt-sh-client:
     needs: wheel-build-cuopt-sh-client
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
