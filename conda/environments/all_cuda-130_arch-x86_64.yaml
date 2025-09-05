@@ -16,9 +16,9 @@ dependencies:
 - cpp-argparse
 - cuda-nvcc
 - cuda-nvtx-dev
-- cuda-python>=12.9.2,<13.0a0
+- cuda-python>=13.0.1,<14.0a0
 - cuda-sanitizer-api
-- cuda-version=12.9
+- cuda-version=13.0
 - cudf==25.10.*,>=0.0.0a0
 - cupy>=13.6.0
 - cuvs==25.10.*,>=0.0.0a0
@@ -27,7 +27,9 @@ dependencies:
 - doxygen=1.9.1
 - exhale
 - fastapi
-- gcc_linux-aarch64=14.*
+- folium
+- gcc_linux-64=14.*
+- geopandas
 - gmock
 - gtest
 - httpx
@@ -36,9 +38,11 @@ dependencies:
 - libcurand-dev
 - libcusolver-dev
 - libcusparse-dev
+- libgdal<3.9.0
 - libraft-headers==25.10.*
 - librmm==25.10.*
 - make
+- matplotlib
 - msgpack-numpy==0.4.8
 - msgpack-python==1.1.0
 - myst-nb
@@ -52,6 +56,7 @@ dependencies:
 - pandas>=2.0
 - pexpect
 - pip
+- polyline
 - pre-commit
 - psutil>=5.9,<6.0a0
 - pylibraft==25.10.*,>=0.0.0a0
@@ -66,6 +71,7 @@ dependencies:
 - requests
 - rmm==25.10.*,>=0.0.0a0
 - scikit-build-core>=0.10.0
+- scipy
 - sphinx
 - sphinx-copybutton
 - sphinx-design
@@ -73,12 +79,11 @@ dependencies:
 - sphinx_rtd_theme
 - sphinxcontrib-openapi
 - sphinxcontrib-websupport
-- sysroot_linux-aarch64==2.28
-- tbb-devel
+- sysroot_linux-64==2.28
 - uvicorn==0.34.*
 - zlib
 - pip:
   - nvidia_sphinx_theme
   - swagger-plugin-for-sphinx
   - veroviz
-name: all_cuda-129_arch-aarch64
+name: all_cuda-130_arch-x86_64

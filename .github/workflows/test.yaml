@@ -34,7 +34,7 @@ on:
 jobs:
   conda-cpp-tests:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -43,7 +43,7 @@ jobs:
       script: ci/test_cpp.sh
   conda-python-tests:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@cuda13.0
     with:
       run_codecov: false
       build_type: ${{ inputs.build_type }}
@@ -53,7 +53,7 @@ jobs:
       script: ci/test_python.sh
   wheel-tests-cuopt:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -62,7 +62,7 @@ jobs:
       script: ci/test_wheel_cuopt.sh
   wheel-tests-cuopt-server:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@cuda13.0
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
