@@ -292,7 +292,7 @@ void return_gpu_to_the_queue(std::unordered_map<pid_t, int>& pid_gpu_map,
 
 int main(int argc, char* argv[])
 {
-  argparse::ArgumentParser program("solve_mps_file");
+  argparse::ArgumentParser program("solve_MIP");
 
   // Define all arguments with appropriate defaults and help messages
   program.add_argument("--path").help("input path").required();
