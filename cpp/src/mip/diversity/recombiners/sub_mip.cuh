@@ -89,7 +89,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
     if (run_sub_mip) {
       static int counter = 0;
-      fixed_problem.write_as_mps("/lustre/fsw/coreai_devtech_all/acoerduek/mip/" +
+      fixed_problem.write_as_mps("/acoerduek-lustre/mip/" +
                                  fixed_problem.original_problem_ptr->get_problem_name() + "_" +
                                  std::to_string(counter++));
       CUOPT_LOG_DEBUG("Running sub-mip");
