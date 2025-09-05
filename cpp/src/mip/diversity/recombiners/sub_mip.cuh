@@ -88,6 +88,10 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     dual_simplex::mip_status_t branch_and_bound_status = dual_simplex::mip_status_t::UNSET;
     dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
     if (run_sub_mip) {
+      static int counter = 0;
+      fixed_problem.write_as_mps("/lustre/fsw/coreai_devtech_all/acoerduek/mip/" +
+                                 fixed_problem.original_problem_ptr->get_problem_name() + "_" +
+                                 std::to_string(counter++));
       CUOPT_LOG_DEBUG("Running sub-mip");
       // run sub-mip
       namespace dual_simplex = cuopt::linear_programming::dual_simplex;
@@ -95,7 +99,9 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
       fixed_problem.get_host_user_problem(branch_and_bound_problem);
       branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
-      CUOPT_LOG_DEBUG("Branch and bound problem size %d", branch_and_bound_problem.num_cols);
+      CUOPT_LOG_DEBUG("Branch and bound variables %d constraints %d",
+                      branch_and_bound_problem.num_cols,
+                      branch_and_bound_problem.num_rows);
       // Fill in the settings for branch and bound
       branch_and_bound_settings.time_limit = sub_mip_recombiner_config_t::sub_mip_time_limit;
       branch_and_bound_settings.print_presolve_stats = false;
