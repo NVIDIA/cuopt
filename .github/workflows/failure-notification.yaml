@@ -70,20 +70,34 @@ jobs:
           failed_jobs=()
           has_failures=false
           
+          echo "🔍 Checking job results..."
+          echo "📋 All jobs: $(echo "$job_names" | tr '\n' ' ')"
+          
           # Check each job for failures
           while IFS= read -r job; do
             result=$(echo "$needs_json" | jq -r --arg job "$job" '.[$job].result // "unknown"')
+            echo "  • $job: $result"
             if [[ "$result" == "failure" ]]; then
               failed_jobs+=("$job")
               has_failures=true
+              echo "    ❌ FAILED"
+            elif [[ "$result" == "success" ]]; then
+              echo "    ✅ SUCCESS"
+            elif [[ "$result" == "cancelled" ]]; then
+              echo "    ⏹️ CANCELLED"
+            else
+              echo "    ❓ UNKNOWN"
             fi
           done <<< "$job_names"
           
-          # Set outputs
+          # Log summary
           if [[ "$has_failures" == "true" ]]; then
+            echo "🚨 FAILURE DETECTED!"
+            echo "💥 Failed jobs: ${failed_jobs[*]}"
             echo "has-failures=true" >> $GITHUB_OUTPUT
             echo "failed-jobs=${failed_jobs[*]}" >> $GITHUB_OUTPUT
           else
+            echo "✅ All jobs completed successfully"
             echo "has-failures=false" >> $GITHUB_OUTPUT
             echo "failed-jobs=" >> $GITHUB_OUTPUT
           fi
@@ -91,6 +105,7 @@ jobs:
           # Check if workflow was manually cancelled
           if [[ "${{ inputs.commit_message }}" == *"[skip ci]"* ]] || 
              [[ "${{ inputs.commit_message }}" == *"[ci skip]"* ]]; then
+            echo "⏭️ Workflow was manually cancelled (skip ci detected)"
             echo "is-cancelled=true" >> $GITHUB_OUTPUT
           else
             echo "is-cancelled=false" >> $GITHUB_OUTPUT
