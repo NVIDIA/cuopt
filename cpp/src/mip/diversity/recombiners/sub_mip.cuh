@@ -88,12 +88,14 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     dual_simplex::mip_status_t branch_and_bound_status = dual_simplex::mip_status_t::UNSET;
     dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
     if (run_sub_mip) {
+      CUOPT_LOG_DEBUG("Running sub-mip");
       // run sub-mip
       namespace dual_simplex = cuopt::linear_programming::dual_simplex;
       dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem;
       dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
       fixed_problem.get_host_user_problem(branch_and_bound_problem);
       branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
+      CUOPT_LOG_DEBUG("Branch and bound problem size %d", branch_and_bound_problem.num_cols);
       // Fill in the settings for branch and bound
       branch_and_bound_settings.time_limit = sub_mip_recombiner_config_t::sub_mip_time_limit;
       branch_and_bound_settings.print_presolve_stats = false;
@@ -105,10 +107,11 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
         this->solution_callback(solution, objective);
       };
       // disable B&B logs, so that it is not interfering with the main B&B thread
-      branch_and_bound_settings.log.log = false;
+      branch_and_bound_settings.log.log = true;
       dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(branch_and_bound_problem,
                                                                   branch_and_bound_settings);
       branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
+      CUOPT_LOG_DEBUG("Sub-MIP status %d", int(branch_and_bound_status));
       if (solution_vector.size() > 0) {
         cuopt_assert(fixed_assignment.size() == branch_and_bound_solution.x.size(),
                      "Assignment size mismatch");
@@ -131,9 +134,11 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       offspring.handle_ptr->sync_stream();
     }
     if (solution_vector.size() > 0) {
+      CUOPT_LOG_DEBUG("Unfixing variables");
       // unfix the assignment on given result no matter if it is feasible
       offspring.unfix_variables(fixed_assignment, variable_map);
     } else {
+      CUOPT_LOG_DEBUG("Rounding nearest");
       offspring.round_nearest();
     }
     cuopt_func_call(offspring.test_variable_bounds());
