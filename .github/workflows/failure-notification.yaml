@@ -51,82 +51,32 @@ on:
         type: string
         description: "Commit message"
         default: ""
+      has_failures:
+        required: true
+        type: boolean
+        description: "Whether there are failures"
+      failed_jobs:
+        required: true
+        type: string
+        description: "Comma-separated list of failed jobs"
+      failed_jobs_formatted:
+        required: true
+        type: string
+        description: "Formatted list of failed jobs"
+      is_cancelled:
+        required: true
+        type: boolean
+        description: "Whether the workflow was cancelled"
     secrets:
       CUOPT_SLACK_WEBHOOK_URL:
         required: true
 
 jobs:
-  check-and-notify:
-    if: always()
+  send-notification:
+    if: inputs.has_failures == true && inputs.is_cancelled == false
     runs-on: ubuntu-latest
     steps:
-      - name: Check for Failures
-        id: check-failures
-        run: |
-          # Extract job names from needs context automatically
-          needs_json='${{ toJson(needs) }}'
-          job_names=$(echo "$needs_json" | jq -r 'keys[]')
-          
-          failed_jobs=()
-          has_failures=false
-          
-          echo "🔍 Checking job results..."
-          echo "📋 All jobs: $(echo "$job_names" | tr '\n' ' ')"
-          
-          # Check each job for failures
-          while IFS= read -r job; do
-            result=$(echo "$needs_json" | jq -r --arg job "$job" '.[$job].result // "unknown"')
-            echo "  • $job: $result"
-            if [[ "$result" == "failure" ]]; then
-              failed_jobs+=("$job")
-              has_failures=true
-              echo "    ❌ FAILED"
-            elif [[ "$result" == "success" ]]; then
-              echo "    ✅ SUCCESS"
-            elif [[ "$result" == "cancelled" ]]; then
-              echo "    ⏹️ CANCELLED"
-            else
-              echo "    ❓ UNKNOWN"
-            fi
-          done <<< "$job_names"
-          
-          # Log summary
-          if [[ "$has_failures" == "true" ]]; then
-            echo "🚨 FAILURE DETECTED!"
-            echo "💥 Failed jobs: ${failed_jobs[*]}"
-            echo "has-failures=true" >> $GITHUB_OUTPUT
-            echo "failed-jobs=${failed_jobs[*]}" >> $GITHUB_OUTPUT
-          else
-            echo "✅ All jobs completed successfully"
-            echo "has-failures=false" >> $GITHUB_OUTPUT
-            echo "failed-jobs=" >> $GITHUB_OUTPUT
-          fi
-          
-          # Check if workflow was manually cancelled
-          if [[ "${{ inputs.commit_message }}" == *"[skip ci]"* ]] || 
-             [[ "${{ inputs.commit_message }}" == *"[ci skip]"* ]]; then
-            echo "⏭️ Workflow was manually cancelled (skip ci detected)"
-            echo "is-cancelled=true" >> $GITHUB_OUTPUT
-          else
-            echo "is-cancelled=false" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Format Failed Jobs List
-        id: format-failed-jobs
-        if: steps.check-failures.outputs.has-failures == 'true'
-        run: |
-          # Format failed jobs list with bullet points
-          if [[ -n "${{ steps.check-failures.outputs.failed-jobs }}" ]]; then
-            failed_jobs_formatted=$(echo "${{ steps.check-failures.outputs.failed-jobs }}" | tr ' ' '\n' | sed 's/^/• /' | tr '\n' '\n')
-            echo "failed-jobs-formatted<<EOF" >> $GITHUB_OUTPUT
-            echo "$failed_jobs_formatted" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          else
-            echo "failed-jobs-formatted=" >> $GITHUB_OUTPUT
-          fi
-
       - name: Send Slack Failure Notification
-        if: steps.check-failures.outputs.has-failures == 'true' && steps.check-failures.outputs.is-cancelled == 'false'
         uses: slackapi/slack-github-action@485a9d42d3a73031f12ec201c457e2162c45d02d # v2.0.0
         with:
           payload: |
@@ -164,7 +114,7 @@ jobs:
                     },
                     {
                       "title": "Failed Jobs",
-                      "value": "${{ steps.format-failed-jobs.outputs.failed-jobs-formatted }}",
+                      "value": "${{ inputs.failed_jobs_formatted }}",
                       "short": false
                     },
                     {
