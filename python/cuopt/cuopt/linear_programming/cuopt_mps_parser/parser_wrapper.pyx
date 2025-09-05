@@ -41,6 +41,7 @@ def type_cast(np_obj, np_type, name):
     np_obj = np_obj.astype(np.dtype(np_type))
     return np_obj
 
+
 @catch_mps_parser_exception
 def ParseMps(mps_file_path, fixed_mps_formats):
     data_model = DataModel()

@@ -24,6 +24,7 @@ from .data_model cimport data_model_view_t, write_mps
 import warnings
 
 import numpy as np
+
 import cudf
 
 from libc.stdint cimport uintptr_t
@@ -320,10 +321,10 @@ cdef class DataModel:
         cdef vector[string] c_var_names
         for s in self.get_variable_names():
             c_var_names.push_back(s.encode())
-  
+
         if len(self.get_variable_names()) != 0:
             c_data_model_view.set_variable_names(
-                c_var_names                
+                c_var_names
             )
 
         cdef vector[string] c_row_names
@@ -336,10 +337,14 @@ cdef class DataModel:
             )
 
         if self.get_problem_name():
-            c_data_model_view.set_problem_name(self.get_problem_name().encode())
+            c_data_model_view.set_problem_name(
+                self.get_problem_name().encode()
+            )
 
         if self.get_objective_name():
-            c_data_model_view.set_objective_name( self.get_objective_name().encode())
+            c_data_model_view.set_objective_name(
+                self.get_objective_name().encode()
+            )
 
         # Set initial solution on the C++ side if set on the Python side
         cdef uintptr_t c_initial_primal_solution = (
@@ -364,4 +369,5 @@ cdef class DataModel:
             self.variable_types, "S1", "variable_types"
         )
         self.set_data_model_view()
-        write_mps(self.c_data_model_view.get()[0], user_problem_file.encode('utf-8'))
+        write_mps(self.c_data_model_view.get()[0],
+                  user_problem_file.encode('utf-8'))

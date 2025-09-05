@@ -13,15 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 from enum import Enum
 
+import cuopt_mps_parser
 import numpy as np
-import copy
 
 import cuopt.linear_programming.data_model as data_model
 import cuopt.linear_programming.solver as solver
 import cuopt.linear_programming.solver_settings as solver_settings
-import cuopt_mps_parser
 
 
 class VType(str, Enum):
@@ -749,10 +749,10 @@ class Problem:
         indices = dm.get_constraint_matrix_indices()
         values = dm.get_constraint_matrix_values()
 
-        num_constrs = len(offsets)-1
+        num_constrs = len(offsets) - 1
         for i in range(num_constrs):
             start = offsets[i]
-            end = offsets[i+1]
+            end = offsets[i + 1]
             c_coeffs = values[start:end]
             c_indices = indices[start:end]
             c_vars = [vars[j] for j in c_indices]
@@ -774,11 +774,21 @@ class Problem:
         self.row_names = []
 
         if self.constraint_csr_matrix is None:
-            csr_dict = {"row_pointers": [0], "column_indices": [], "values": []}
+            csr_dict = {
+                "row_pointers": [0],
+                "column_indices": [],
+                "values": [],
+            }
             for constr in self.constrs:
-                csr_dict["column_indices"].extend(list(constr.vindex_coeff_dict.keys()))
-                csr_dict["values"].extend(list(constr.vindex_coeff_dict.values()))
-                csr_dict["row_pointers"].append(len(csr_dict["column_indices"]))
+                csr_dict["column_indices"].extend(
+                    list(constr.vindex_coeff_dict.keys())
+                )
+                csr_dict["values"].extend(
+                    list(constr.vindex_coeff_dict.values())
+                )
+                csr_dict["row_pointers"].append(
+                    len(csr_dict["column_indices"])
+                )
                 self.rhs.append(constr.RHS)
                 self.row_sense.append(constr.Sense)
                 self.row_names.append(constr.ConstraintName)
@@ -1100,4 +1110,3 @@ class Problem:
 
         # Post Solve
         self.post_solve(solution)
-
