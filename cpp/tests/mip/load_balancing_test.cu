@@ -22,8 +22,8 @@
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <mip/presolve/bounds_presolve.cuh>
-#include <mip/presolve/load_balanced_bounds_presolve.cuh>
-#include <mip/problem/load_balanced_problem.cuh>
+#include <mip/presolve/lb_bounds_presolve.cuh>
+#include <mip/presolve/lb_problem.cuh>
 #include <mps_parser/parser.hpp>
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
@@ -57,15 +57,17 @@ std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_
   detail::problem_t<int, double>& problem, int sample_size)
 {
   auto seed = std::random_device{}();
-  std::cerr << "Tested with seed " << seed << "\n";
+  std::cout << "Tested with seed " << seed << "\n";
   problem.compute_n_integer_vars();
-  auto v_bnd      = host_copy(problem.variable_bounds);
+  auto v_bnds     = host_copy(problem.variable_bounds);
   auto int_var_id = host_copy(problem.integer_indices);
   int_var_id.erase(
-    std::remove_if(
-      int_var_id.begin(),
-      int_var_id.end(),
-      [v_bnd](auto id) { return !(std::isfinite(v_bnd[id].x) && std::isfinite(v_bnd[id].y)); }),
+    std::remove_if(int_var_id.begin(),
+                   int_var_id.end(),
+                   [v_bnds](auto id) {
+                     auto v_bnd = v_bnds[id];
+                     return !(std::isfinite(get_lower(v_bnd)) && std::isfinite(get_upper(v_bnd)));
+                   }),
     int_var_id.end());
   sample_size = std::min(sample_size, static_cast<int>(int_var_id.size()));
   std::vector<int> random_int_vars;
@@ -76,11 +78,11 @@ std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_
   std::vector<double> probe_1(sample_size);
   for (int i = 0; i < static_cast<int>(random_int_vars.size()); ++i) {
     if (i % 2) {
-      probe_0[i] = v_bnd[random_int_vars[i]].x;
-      probe_1[i] = v_bnd[random_int_vars[i]].y;
+      probe_0[i] = get_lower(v_bnds[random_int_vars[i]]);
+      probe_1[i] = get_upper(v_bnds[random_int_vars[i]]);
     } else {
-      probe_1[i] = v_bnd[random_int_vars[i]].x;
-      probe_0[i] = v_bnd[random_int_vars[i]].y;
+      probe_1[i] = get_lower(v_bnds[random_int_vars[i]]);
+      probe_0[i] = get_upper(v_bnds[random_int_vars[i]]);
     }
   }
   return std::make_tuple(std::move(random_int_vars), std::move(probe_0), std::move(probe_1));
@@ -147,8 +149,8 @@ void test_multi_probe(std::string path)
                                                                problem.reverse_constraints,
                                                                true);
   detail::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
-  detail::load_balanced_problem_t<int, double> lb_problem(problem);
-  detail::load_balanced_bounds_presolve_t<int, double> lb_prs(lb_problem, solver.context);
+  detail::lb_problem_t<int, double> lb_problem(problem);
+  detail::lb_bound_presolve_t<int, double> lb_prs(solver.context, lb_problem);
 
   detail::bound_presolve_t<int, double> bnd_prb(solver.context);
 
@@ -164,12 +166,12 @@ void test_multi_probe(std::string path)
     auto h_lb = host_copy(b_lb);
     auto h_ub = host_copy(b_ub);
 
-    lb_prs.solve(probe_first);
+    lb_prs.solve(lb_problem, probe_first);
 
-    auto bnds = host_copy(lb_prs.vars_bnd);
+    auto bnds = host_copy(lb_prs.upd.vars_bnd);
     for (int i = 0; i < (int)h_lb.size(); ++i) {
-      EXPECT_DOUBLE_EQ(bnds[2 * i], h_lb[i]);
-      EXPECT_DOUBLE_EQ(bnds[2 * i + 1], h_ub[i]);
+      EXPECT_DOUBLE_EQ(get_lower(bnds[i]), h_lb[i]);
+      EXPECT_DOUBLE_EQ(get_upper(bnds[i]), h_ub[i]);
     }
   }
 }
@@ -177,7 +179,9 @@ void test_multi_probe(std::string path)
 TEST(presolve, multi_probe)
 {
   std::vector<std::string> test_instances = {
-    "mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
+    //"mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
+    "mip/50v-10-free-bound.mps",
+    "mip/neos5-free-bound.mps"};
   for (const auto& test_instance : test_instances) {
     auto path = make_path_absolute(test_instance);
     test_multi_probe(path);

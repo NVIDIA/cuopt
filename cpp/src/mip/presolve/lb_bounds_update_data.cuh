@@ -26,6 +26,7 @@ namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
 struct lb_bounds_update_data_t {
+  using f_t2 = typename type_2<f_t>::type;
   rmm::device_scalar<i_t> bounds_changed;
   rmm::device_uvector<f_t2> cnst_slack;
   rmm::device_uvector<f_t2> vars_bnd;

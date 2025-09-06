@@ -192,6 +192,8 @@ inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst(
                                     pb.tolerances.relative_tolerance)) {
     return bnd;
   }
+  auto cnst_slack_0x = cnst_ub - min_a;
+  auto cnst_slack_0y = cnst_lb - max_a;
   min_a -= (coeff < 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
   max_a -= (coeff > 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
   auto delta_min_act  = cnst_ub - min_a;

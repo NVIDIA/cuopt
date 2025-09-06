@@ -256,6 +256,8 @@ class vertex_bin_t {
     thrust::fill(handle_ptr->get_thrust_policy(), tempBins_.begin(), tempBins_.end(), 0);
   }
 
+  void setup(const i_t* offsets, i_t vertex_end) { setup(offsets, nullptr, 0, vertex_end); }
+
   void setup(const i_t* offsets, unsigned* active_bitmap, i_t vertex_begin, i_t vertex_end)
   {
     offsets_       = offsets;
