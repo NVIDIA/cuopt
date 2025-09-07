@@ -129,6 +129,23 @@ std::pair<bool, i_t> sub_warp_meta(rmm::cuda_stream_view stream,
   for (size_t i = 1; i < warp_offsets.size(); ++i) {
     warp_offsets[i] = warp_offsets[i - 1] + warp_counts[i - 1];
   }
+
+  if (true) {
+    std::cout << "old warp_offsets and id offsets\n";
+    for (size_t i = 0; i < warp_offsets.size(); ++i) {
+      std::cout << i << "\t";
+    }
+    std::cout << "\n";
+    for (size_t i = 0; i < warp_offsets.size(); ++i) {
+      std::cout << warp_offsets[i] << "\t";
+    }
+    std::cout << "\n";
+    for (size_t i = 0; i < warp_id_offsets.size(); ++i) {
+      std::cout << warp_id_offsets[i] << "\t";
+    }
+    std::cout << "\n";
+    std::cout << "\n";
+  }
   expand_device_copy(d_warp_offsets, warp_offsets, stream);
   expand_device_copy(d_warp_id_offsets, warp_id_offsets, stream);
 

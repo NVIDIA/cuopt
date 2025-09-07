@@ -24,6 +24,7 @@
 #include <mip/presolve/bounds_presolve.cuh>
 #include <mip/presolve/lb_multi_probe.cuh>
 #include <mip/presolve/lb_problem.cuh>
+#include <mip/presolve/lb_kernels/lb_multi_probe_bounds_update_kernels.cuh>
 #include <mip/presolve/multi_probe.cuh>
 #include <mps_parser/parser.hpp>
 #include <raft/core/handle.hpp>
@@ -180,9 +181,45 @@ void bench_multi_probe(std::string path)
   auto probe_tuple       = select_k_random(problem, 100);
   auto bounds_probe_vals = convert_probe_tuple(probe_tuple);
 
-  const int iter_limit = 10;
+  if (false)
+  {
+    multi_probe_prs.skip_0 = false;
+    multi_probe_prs.skip_1 = false;
+    multi_probe_prs.upd_0.init_changed_constraints(&handle_);
+    multi_probe_prs.upd_1.init_changed_constraints(&handle_);
+    lb_multi_probe_prs.upd_0.init_changed_constraints(&handle_);
+    lb_multi_probe_prs.upd_1.init_changed_constraints(&handle_);
+    const int warm_up_iter = 20;
+    for (int i = 0; i < warm_up_iter; ++i) {
+      multi_probe_prs.calculate_activity(problem, &handle_);
+      multi_probe_prs.calculate_bounds_update(problem, &handle_);
+      lb_multi_probe_prs.calculate_constraint_slack_iter(lb_problem, &handle_);
+      lb_multi_probe_prs.calculate_bounds_update(lb_problem, &handle_);
+    }
+  }
+
+  const int iter_limit = 50;
   float multi_time     = 0;
   float lb_multi_time  = 0;
+  {
+    lb_multi_probe_prs.upd_0.init_changed_constraints(&handle_);
+    lb_multi_probe_prs.upd_1.init_changed_constraints(&handle_);
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    lb_multi_probe_prs.calculate_constraint_slack_iter(lb_problem, &handle_);
+    handle_.sync_stream();
+    cudaEventRecord(start, handle_.get_stream());
+    for (int i = 0; i < iter_limit; ++i) {
+      lb_multi_probe_prs.calculate_bounds_update_call(lb_problem, &handle_);
+    }
+    handle_.sync_stream();
+    cudaEventRecord(stop, handle_.get_stream());
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&lb_multi_time, start, stop);
+  }
   {
     multi_probe_prs.skip_0 = false;
     multi_probe_prs.skip_1 = false;
@@ -193,33 +230,20 @@ void bench_multi_probe(std::string path)
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
 
+    multi_probe_prs.calculate_activity(problem, &handle_);
+    handle_.sync_stream();
     cudaEventRecord(start, handle_.get_stream());
     for (int i = 0; i < iter_limit; ++i) {
-      multi_probe_prs.calculate_activity(problem, &handle_);
       multi_probe_prs.calculate_bounds_update(problem, &handle_);
     }
+    handle_.sync_stream();
     cudaEventRecord(stop, handle_.get_stream());
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&multi_time, start, stop);
   }
-  {
-    lb_multi_probe_prs.upd_0.init_changed_constraints(&handle_);
-    lb_multi_probe_prs.upd_1.init_changed_constraints(&handle_);
-
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-
-    cudaEventRecord(start, handle_.get_stream());
-    for (int i = 0; i < iter_limit; ++i) {
-      lb_multi_probe_prs.calculate_constraint_slack_iter(lb_problem, &handle_);
-      lb_multi_probe_prs.calculate_bounds_update(lb_problem, &handle_);
-    }
-    cudaEventRecord(stop, handle_.get_stream());
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&lb_multi_time, start, stop);
-  }
-  std::cout << "speedup " << multi_time / lb_multi_time << "\n";
+  std::cout<<path<<" ";
+  std::cout<<"n_cnst "<<problem.n_constraints<<" n_var "<<problem.n_variables<<" nnz "<<problem.nnz<<"\t";
+  std::cout << "speedup " << multi_time / lb_multi_time << " "<<multi_time<<" "<<lb_multi_time <<"\n";
 }
 
 void test_multi_probe(std::string path)
@@ -303,11 +327,12 @@ TEST(presolve, multi_probe_big)
   //  auto path = make_path_absolute(test_instance);
   //  test_multi_probe(path);
   //}
-  // std::vector<std::string> test_instances = {
-  //  "/home/aatish/rapids/mip_files/miplib/neos-3402454-bohle.mps"};
+  std::vector<std::string> test_instances = {
+  "/home/aatish/rapids/mip_files/miplib/sing44.mps"
+  };
 
-  std::vector<std::string> test_instances = {"/home/aatish/rapids/mip_files/miplib/mas74.mps",
-                                             "/home/aatish/rapids/mip_files/miplib/neos17.mps"};
+  //std::vector<std::string> test_instances = {"/home/aatish/rapids/mip_files/miplib/mas74.mps",
+  //                                           "/home/aatish/rapids/mip_files/miplib/neos17.mps"};
   // std::vector<std::string> test_instances = {
   //   "/home/aatish/rapids/mip_files/miplib/mas74.mps",
   //   "/home/aatish/rapids/mip_files/miplib/neos17.mps",

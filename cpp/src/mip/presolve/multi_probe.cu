@@ -120,16 +120,22 @@ void multi_probe_t<i_t, f_t>::calculate_activity(problem_t<i_t, f_t>& pb,
   // l_j is lower bound of variable j
   // u_j is upper bound of variable j
 
+  {
+  nvtxRangePush("multi_act");
   if (skip_0 ^ skip_1) {
+    std::cout<<"multi 1\n";
     auto& upd                = skip_0 ? upd_1 : upd_0;
     constexpr auto n_threads = 256;
     calc_activity_kernel<i_t, f_t, n_threads>
       <<<pb.n_constraints, n_threads, 0, handle_ptr->get_stream()>>>(pb.view(), upd.view());
   } else {
+    std::cout<<"multi 2\n";
     constexpr auto n_threads = 256;
     calc_activity_kernel<i_t, f_t, n_threads>
       <<<pb.n_constraints, n_threads, 0, handle_ptr->get_stream()>>>(
         pb.view(), upd_0.view(), upd_1.view());
+  }
+  nvtxRangePop();
   }
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
 }
@@ -150,6 +156,8 @@ bool multi_probe_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb,
   constexpr i_t zero       = 0;
   constexpr auto n_threads = 256;
 
+  {
+  nvtxRangePush("lb_multi_bnd");
   if (skip_0 && skip_1) {
     return false;
   } else if (skip_0) {
@@ -182,6 +190,8 @@ bool multi_probe_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb,
 
     skip_0 = (h_bounds_changed_0 == zero);
     skip_1 = (h_bounds_changed_1 == zero);
+  }
+  nvtxRangePop();
   }
 
   return (!skip_0 || !skip_1);

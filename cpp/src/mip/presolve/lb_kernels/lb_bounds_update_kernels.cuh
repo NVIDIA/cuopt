@@ -27,7 +27,8 @@ template <typename i_t, typename f_t, typename upd_view_t>
 inline __device__ auto skip_update(upd_view_t upd, i_t var_idx, f_t int_tol)
 {
   auto old_bounds = upd.vars_bnd[var_idx];
-  auto skip_var   = (!upd.changed_variables[var_idx]) && (old_bounds.x + int_tol >= old_bounds.y);
+  //auto skip_var   = (!upd.changed_variables[var_idx]) && (old_bounds.x + int_tol >= old_bounds.y);
+  auto skip_var   = (old_bounds.x + int_tol >= old_bounds.y);
   return thrust::make_tuple(old_bounds, skip_var);
 }
 
@@ -84,7 +85,7 @@ update_bounds(csr_view_t view, upd_view_t upd, i_t tid, i_t beg, i_t end, f_t2 o
     auto cnst_slack = upd.cnst_slack[cnst_idx];
     //  don't propagate over constraints that are infeasible
     // TODO : write changed_constraints = 0 for infeasible constraints while calculating activity
-    if ((upd.changed_constraints[cnst_idx] == 0) || isnan(cnst_slack.x)) {
+    if (upd.changed_constraints[cnst_idx] == 0) {
       continue;
     } else {
       bounds = update_bounds_per_cnst(coeff, cnst_slack, old_bounds, bounds);
@@ -110,15 +111,15 @@ __global__ void bnd_heavy_update_next_changed_constraints(csr_view_t view, upd_v
 
   auto changed = upd.heavy_bounds_changed[heavy_var_id_offset];
 
-  if (!changed) { return; }
+  //if (!changed) { return; }
 
-  i_t tid          = threadIdx.x;
-  i_t item_off_beg = view.offsets[idx] + view.work_per_block * pseudo_block_id;
-  i_t item_off_end = min(item_off_beg + view.work_per_block, view.offsets[idx + 1]);
+  //i_t tid          = threadIdx.x;
+  //i_t item_off_beg = view.offsets[idx] + view.work_per_block * pseudo_block_id;
+  //i_t item_off_end = min(item_off_beg + view.work_per_block, view.offsets[idx + 1]);
 
-  if (changed) {
-    update_next_changed_constraints<BDIM>(view, upd, tid, item_off_beg, item_off_end);
-  }
+  //if (changed) {
+  //  update_next_changed_constraints<BDIM>(view, upd, tid, item_off_beg, item_off_end);
+  //}
 }
 
 template <typename f_t, int BDIM, typename i_t, typename csr_view_t, typename upd_view_t>
@@ -255,17 +256,17 @@ __device__ void bnd_sub_warp(i_t id_warp_beg,
   bounds = reduce.max_min(bounds);
 
   bool changed;
-  auto mask = __ballot_sync(0xFFFFFFFF, valid_item);
+  //auto mask = __ballot_sync(0xFFFFFFFF, valid_item);
   if (valid_item && head_flag && (!skip_calc)) {
     changed = write_updated_bounds(view, upd, var_idx, is_int, bounds, old_bounds);
   }
-  if (valid_item) {
-    changed = __shfl_sync(mask, changed, 0, MAX_EDGE_PER_CNST);
-    if (changed) {
-      update_next_changed_constraints<MAX_EDGE_PER_CNST>(
-        view, upd, p_tid, item_off_beg, item_off_end);
-    }
-  }
+  //if (valid_item) {
+  //  changed = __shfl_sync(mask, changed, 0, MAX_EDGE_PER_CNST);
+  //  if (changed) {
+  //    update_next_changed_constraints<MAX_EDGE_PER_CNST>(
+  //      view, upd, p_tid, item_off_beg, item_off_end);
+  //  }
+  //}
 }
 
 template <typename f_t, int BDIM, typename i_t, typename csr_view_t, typename upd_view_t>
@@ -319,11 +320,11 @@ __device__ void bnd_warp(i_t id_block_beg,
     storage.vote.changed_0[id_within_block] =
       write_updated_bounds(view, upd, var_idx, is_int, bounds, old_bounds);
   }
-  __syncwarp();
-  bool changed_0 = storage.vote.changed_0[id_within_block];
-  if (valid_item && changed_0) {
-    update_next_changed_constraints<32>(view, upd, p_tid, item_off_beg, item_off_end);
-  }
+  //__syncwarp();
+  //bool changed_0 = storage.vote.changed_0[id_within_block];
+  //if (valid_item && changed_0) {
+  //  update_next_changed_constraints<32>(view, upd, p_tid, item_off_beg, item_off_end);
+  //}
 }
 
 template <typename f_t,
@@ -379,12 +380,12 @@ __device__ void bnd_block(i_t id_block_beg,
       write_updated_bounds(view, upd, var_idx, is_int, bounds, old_bounds);
   }
 
-  __syncthreads();
-  bool changed = storage.vote.changed_0[id_within_block];
-  if (valid_item && changed) {
-    update_next_changed_constraints<PSEUDO_BDIM>(
-      view, upd, reduce.pseudo_thread_id(), item_off_beg, item_off_end);
-  }
+  //__syncthreads();
+  //bool changed = storage.vote.changed_0[id_within_block];
+  //if (valid_item && changed) {
+  //  update_next_changed_constraints<PSEUDO_BDIM>(
+  //    view, upd, reduce.pseudo_thread_id(), item_off_beg, item_off_end);
+  //}
 }
 
 template <typename i_t, typename f_t, int BDIM, typename csr_view_t, typename upd_view_t>

@@ -29,8 +29,9 @@ inline __device__ thrust::pair<bool, bool> skip_cnst(upd_view_t upd_0,
                                                      upd_view_t upd_1,
                                                      i_t cnst_idx)
 {
-  return thrust::make_pair((upd_0.changed_constraints[cnst_idx] == i_t{0}),
-                           (upd_1.changed_constraints[cnst_idx] == i_t{0}));
+  //return thrust::make_pair((upd_0.changed_constraints[cnst_idx] == i_t{0}),
+  //                         (upd_1.changed_constraints[cnst_idx] == i_t{0}));
+  return thrust::make_pair(false, false);
 }
 
 template <typename upd_view_t>
@@ -60,8 +61,8 @@ __device__ thrust::pair<typename type_2<f_t>::type, typename type_2<f_t>::type> 
     auto coeff = view.coefficients[i];
     auto var   = view.col_elem[i];
 
-    atomicExch(&upd_0.changed_variables[var], 1);
-    atomicExch(&upd_1.changed_variables[var], 1);
+    //atomicExch(&upd_0.changed_variables[var], 1);
+    //atomicExch(&upd_1.changed_variables[var], 1);
 
     auto bounds_0      = upd_0.vars_bnd[var];
     auto bounds_1      = upd_1.vars_bnd[var];

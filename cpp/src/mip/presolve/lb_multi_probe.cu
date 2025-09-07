@@ -16,6 +16,7 @@
  */
 
 #include <mip/mip_constants.hpp>
+#include <nvtx3/nvtx3.hpp>
 
 #include <thrust/count.h>
 #include <thrust/extrema.h>
@@ -72,6 +73,9 @@ void lb_multi_probe_t<i_t, f_t>::calculate_constraint_slack_iter(lb_problem_t<i_
   // std::cout << "num_heavy_items " << problem.n_constraints - problem.cnst_csr.heavy_beg_id <<
   // "\n";
   constexpr bool erase_inf_cnst = false;
+  {
+  //raft::common::nvtx::range fun_scope("lb_multi_act");
+  nvtxRangePush("lb_multi_act");
   call_cnst_slack<erase_inf_cnst, i_t, f_t, 512><<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(
     problem.cnst_csr.view(), upd_0.view(), upd_1.view());
   if (problem.cnst_csr.num_blocks_heavy != 0) {
@@ -80,6 +84,20 @@ void lb_multi_probe_t<i_t, f_t>::calculate_constraint_slack_iter(lb_problem_t<i_
       <<<num_heavy_items, 32, 0, handle_ptr->get_stream()>>>(
         problem.cnst_csr.view(), upd_0.view(), upd_1.view());
   }
+  nvtxRangePop();
+  }
+}
+
+template <typename i_t, typename f_t>
+void lb_multi_probe_t<i_t, f_t>::calculate_bounds_update_call(lb_problem_t<i_t, f_t>& problem,
+                                                         const raft::handle_t* handle_ptr)
+{
+  nvtxRangePush("lb_multi_bnd");
+  auto num_blocks = problem.vars_csr.sub_warp_block_count + problem.vars_csr.med_block_count +
+                    problem.vars_csr.num_blocks_heavy;
+  call_bnd_update<i_t, f_t, 512><<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(
+    problem.vars_csr.view(), upd_0.view(), upd_1.view());
+  nvtxRangePop();
 }
 
 template <typename i_t, typename f_t>
@@ -100,12 +118,14 @@ bool lb_multi_probe_t<i_t, f_t>::calculate_bounds_update(lb_problem_t<i_t, f_t>&
   //           << problem.vars_csr.sub_warp_block_count + problem.vars_csr.med_block_count << "\n";
 
   // std::cout << "num_heavy_items " << problem.n_variables - problem.vars_csr.heavy_beg_id << "\n";
+  {
   call_bnd_update<i_t, f_t, 512><<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(
     problem.vars_csr.view(), upd_0.view(), upd_1.view());
-  if (problem.vars_csr.num_blocks_heavy != 0) {
-    bnd_heavy_update_next_changed_constraints<i_t, f_t, 512>
-      <<<problem.vars_csr.num_blocks_heavy, 512, 0, handle_ptr->get_stream()>>>(
-        problem.vars_csr.view(), upd_0.view(), upd_1.view());
+  //if (problem.vars_csr.num_blocks_heavy != 0) {
+  //  bnd_heavy_update_next_changed_constraints<i_t, f_t, 512>
+  //    <<<problem.vars_csr.num_blocks_heavy, 512, 0, handle_ptr->get_stream()>>>(
+  //      problem.vars_csr.view(), upd_0.view(), upd_1.view());
+  //}
   }
   i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
   i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());

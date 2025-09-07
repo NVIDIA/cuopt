@@ -23,7 +23,7 @@
 
 namespace cuopt::linear_programming::detail {
 
-// #define LB_DEBUG
+#define LB_DEBUG
 
 template <typename i_t>
 struct calc_blocks_per_item_t {
@@ -258,6 +258,7 @@ std::tuple<i_t, i_t, i_t> block_meta(rmm::cuda_stream_view stream,
                                      const std::vector<i_t>& bin_offsets,
                                      i_t w_t_r,
                                      i_t heavy_w_cut_off,
+                                     i_t block_size,
                                      bool debug = false)
 {
 #ifdef LB_DEBUG
@@ -274,7 +275,7 @@ std::tuple<i_t, i_t, i_t> block_meta(rmm::cuda_stream_view stream,
   }
   std::cout << "\n";
 #endif
-  i_t block_size = 512;
+  //i_t block_size = 512;
 
   std::vector<i_t> warp_offsets;
   std::vector<i_t> warp_id_offsets;
@@ -298,7 +299,7 @@ std::tuple<i_t, i_t, i_t> block_meta(rmm::cuda_stream_view stream,
 
 #ifdef LB_DEBUG
   if (true) {
-    std::cout << "warp_offsets and id offsets\n";
+    std::cout << "new warp_offsets and id offsets\n";
     for (size_t i = 0; i < warp_offsets.size(); ++i) {
       std::cout << i << "\t";
     }
@@ -310,6 +311,7 @@ std::tuple<i_t, i_t, i_t> block_meta(rmm::cuda_stream_view stream,
     for (size_t i = 0; i < warp_id_offsets.size(); ++i) {
       std::cout << warp_id_offsets[i] << "\t";
     }
+    std::cout << "\n";
     std::cout << "\n";
   }
 #endif

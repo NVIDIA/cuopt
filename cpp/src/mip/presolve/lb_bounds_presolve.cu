@@ -91,11 +91,11 @@ bool lb_bound_presolve_t<i_t, f_t>::calculate_bounds_update(lb_problem_t<i_t, f_
   // std::cout << "num_heavy_items " << problem.n_variables - problem.vars_csr.heavy_beg_id << "\n";
   call_bnd_update<i_t, f_t, 512>
     <<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(problem.vars_csr.view(), upd.view());
-  if (problem.vars_csr.num_blocks_heavy != 0) {
-    bnd_heavy_update_next_changed_constraints<i_t, f_t, 512>
-      <<<problem.vars_csr.num_blocks_heavy, 512, 0, handle_ptr->get_stream()>>>(
-        problem.vars_csr.view(), upd.view());
-  }
+  //if (problem.vars_csr.num_blocks_heavy != 0) {
+  //  bnd_heavy_update_next_changed_constraints<i_t, f_t, 512>
+  //    <<<problem.vars_csr.num_blocks_heavy, 512, 0, handle_ptr->get_stream()>>>(
+  //      problem.vars_csr.view(), upd.view());
+  //}
   i_t h_bounds_changed = upd.bounds_changed.value(handle_ptr->get_stream());
 
   return (h_bounds_changed != 0);

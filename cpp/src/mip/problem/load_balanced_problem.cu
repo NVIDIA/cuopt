@@ -98,7 +98,7 @@ __global__ void variable_data_copy(raft::device_span<i_t> reorg_ids,
 
   if (threadIdx.x == 0) {
     // old indexing to match original bounds presolve random access performance
-    bounds[idx] = f_t2{pb.variable_lower_bounds[idx], pb.variable_upper_bounds[idx]};
+    bounds[idx] = pb.variable_bounds[idx];
     // new indexing to improve sub warp property access
     var_types[new_idx] = pb.variable_types[idx];
   }
@@ -166,7 +166,7 @@ __global__ void check_variable_data(raft::device_span<i_t> reorg_ids,
   auto dst_read_beg = offsets[new_idx];
   auto bnd          = bounds[idx];
   bool bnd_match =
-    (bnd.x == pb.variable_lower_bounds[idx]) && (bnd.y == pb.variable_upper_bounds[idx]);
+    (bnd.x == pb.variable_bounds[idx].x) && (bnd.y == pb.variable_bounds[idx].y);
   auto var_type_match = (var_types[new_idx] == pb.variable_types[idx]);
 
   if (threadIdx.x == 0) {
