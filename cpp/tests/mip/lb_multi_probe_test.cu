@@ -200,8 +200,8 @@ void init_handler(const raft::handle_t* handle_ptr)
 std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_random(
   detail::problem_t<int, double>& problem, int sample_size)
 {
-  auto seed = std::random_device{}();
-  // unsigned long seed = 4266749699ul;
+  // auto seed = std::random_device{}();
+  unsigned long seed = 2503864297ul;
   std::cout << "Tested with seed " << seed << "\n";
   problem.compute_n_integer_vars();
   auto v_bnds     = host_copy(problem.variable_bounds);

@@ -289,7 +289,8 @@ termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t
     // reset for the next calls on the same object
     init_changed_constraints = true;
   }
-  for (i_t iter = 0; iter < settings.iteration_limit; ++iter) {
+  i_t iter = 0;
+  for (iter = 0; iter < settings.iteration_limit; ++iter) {
     if (timer.check_time_limit()) {
       criteria = termination_criterion_t::TIME_LIMIT;
       break;
@@ -312,6 +313,7 @@ termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t
     iter_1 += !skip_1;
   }
   handle_ptr->sync_stream();
+  std::cout << "multi_probe_t iter " << iter << "\n";
   if (compute_stats) { constraint_stats(pb, handle_ptr); }
 
   return criteria;

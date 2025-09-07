@@ -44,8 +44,10 @@ constraint_prop_t<i_t, f_t>::constraint_prop_t(mip_solver_context_t<i_t, f_t>& c
     conditional_bounds_update(*context.problem_ptr),
     set_vars(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     unset_vars(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
-    lb_restore(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
-    ub_restore(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
+    // lb_restore(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
+    // ub_restore(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
+    var_bounds_restore(context.problem_ptr->n_variables,
+                       context.problem_ptr->handle_ptr->get_stream()),
     assignment_restore(context.problem_ptr->n_variables,
                        context.problem_ptr->handle_ptr->get_stream()),
     rng(cuopt::seed_generator::get_seed(), 0, 0)
@@ -474,29 +476,6 @@ struct is_bound_fixed_t {
 };
 
 template <typename i_t, typename f_t>
-struct fix_bounds_t {
-  f_t eps;
-  raft::device_span<f_t> lb;
-  raft::device_span<f_t> ub;
-  raft::device_span<f_t> assign;
-
-  fix_bounds_t(f_t eps_,
-               raft::device_span<f_t> lb_,
-               raft::device_span<f_t> ub_,
-               raft::device_span<f_t> assign_)
-    : eps(eps_), lb(lb_), ub(ub_), assign(assign_)
-  {
-  }
-
-  HDI void operator()(i_t idx)
-  {
-    auto val = assign[idx];
-    lb[idx]  = round(val) - eps;
-    ub[idx]  = round(val) + eps;
-  }
-};
-
-template <typename i_t, typename f_t>
 struct greater_than_threshold_t {
   f_t threshold;
   raft::device_span<f_t> assignment;
@@ -544,6 +523,16 @@ void constraint_prop_t<i_t, f_t>::copy_bounds(
 }
 
 template <typename i_t, typename f_t>
+void constraint_prop_t<i_t, f_t>::copy_bounds(
+  rmm::device_uvector<typename type_2<f_t>::type>& output_bounds,
+  const rmm::device_uvector<typename type_2<f_t>::type>& input_bounds,
+  const raft::handle_t* handle_ptr)
+{
+  raft::copy(
+    output_bounds.data(), input_bounds.data(), input_bounds.size(), handle_ptr->get_stream());
+}
+
+template <typename i_t, typename f_t>
 void constraint_prop_t<i_t, f_t>::copy_bounds(rmm::device_uvector<f_t>& output_lb,
                                               rmm::device_uvector<f_t>& output_ub,
                                               const rmm::device_uvector<f_t>& input_lb,
@@ -573,7 +562,7 @@ void constraint_prop_t<i_t, f_t>::copy_bounds(rmm::device_uvector<f_t>& output_l
 template <typename i_t, typename f_t>
 void constraint_prop_t<i_t, f_t>::save_bounds(solution_t<i_t, f_t>& sol)
 {
-  copy_bounds(lb_restore, ub_restore, sol.problem_ptr->variable_bounds, sol.handle_ptr);
+  copy_bounds(var_bounds_restore, sol.problem_ptr->variable_bounds, sol.handle_ptr);
   raft::copy(assignment_restore.data(),
              sol.assignment.data(),
              sol.assignment.size(),
@@ -583,7 +572,7 @@ void constraint_prop_t<i_t, f_t>::save_bounds(solution_t<i_t, f_t>& sol)
 template <typename i_t, typename f_t>
 void constraint_prop_t<i_t, f_t>::restore_bounds(solution_t<i_t, f_t>& sol)
 {
-  copy_bounds(sol.problem_ptr->variable_bounds, lb_restore, ub_restore, sol.handle_ptr);
+  copy_bounds(sol.problem_ptr->variable_bounds, var_bounds_restore, sol.handle_ptr);
   raft::copy(sol.assignment.data(),
              assignment_restore.data(),
              assignment_restore.size(),
@@ -606,7 +595,8 @@ void constraint_prop_t<i_t, f_t>::restore_original_bounds(solution_t<i_t, f_t>& 
 
 template <typename i_t, typename f_t>
 thrust::pair<f_t, f_t> constraint_prop_t<i_t, f_t>::generate_double_probing_pair(
-  const solution_t<i_t, f_t>& sol,
+  // review note : will remove
+  // sol argument was removed from this function because it was not being used
   const solution_t<i_t, f_t>& orig_sol,
   i_t unset_var_idx,
   const std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>> probing_config,
@@ -647,11 +637,10 @@ thrust::pair<f_t, f_t> constraint_prop_t<i_t, f_t>::generate_double_probing_pair
       }
     }
   } else {
-    std::tie(first_probe, std::ignore, second_probe) = probing_values(sol, orig_sol, unset_var_idx);
+    std::tie(first_probe, std::ignore, second_probe) = probing_values(orig_sol, unset_var_idx);
     // do another draw in bulk rounding, so the second vector is randomly drawn
     if (bulk_rounding) {
-      std::tie(second_probe, std::ignore, std::ignore) =
-        probing_values(sol, orig_sol, unset_var_idx);
+      std::tie(second_probe, std::ignore, std::ignore) = probing_values(orig_sol, unset_var_idx);
     }
   }
   return thrust::make_pair(first_probe, second_probe);
@@ -689,10 +678,10 @@ constraint_prop_t<i_t, f_t>::generate_bulk_rounding_vector(
     // if it is a bulk rounding do
     if (host_vars_to_set.size() > 1) {
       cuda::std::tie(first_probe, second_probe) =
-        generate_double_probing_pair(sol, orig_sol, unset_var_idx, probing_config, true);
+        generate_double_probing_pair(orig_sol, unset_var_idx, probing_config, true);
     } else {
       cuda::std::tie(first_probe, second_probe) =
-        generate_double_probing_pair(sol, orig_sol, unset_var_idx, probing_config, false);
+        generate_double_probing_pair(orig_sol, unset_var_idx, probing_config, false);
     }
     cuopt_assert(
       test_var_out_of_bounds(orig_sol, unset_var_idx, first_probe, int_tol, sol.handle_ptr),
@@ -854,8 +843,9 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
   using crit_t             = termination_criterion_t;
   auto& unset_integer_vars = unset_vars;
   std::mt19937 rng(cuopt::seed_generator::get_seed());
-  lb_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
-  ub_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
+  var_bounds_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
+  // lb_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
+  // ub_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
   assignment_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
   unset_integer_vars.resize(sol.problem_ptr->n_integer_vars, sol.handle_ptr->get_stream());
   curr_host_assignment.resize(sol.problem_ptr->n_variables);
@@ -1080,13 +1070,16 @@ bool constraint_prop_t<i_t, f_t>::apply_round(
 
 template <typename i_t, typename f_t>
 std::tuple<f_t, f_t, f_t> constraint_prop_t<i_t, f_t>::probing_values(
-  const solution_t<i_t, f_t>& sol, const solution_t<i_t, f_t>& orig_sol, i_t idx)
+  // review note : will remove
+  // sol argument was removed from this function because it was not being used
+  const solution_t<i_t, f_t>& orig_sol,
+  i_t idx)
 {
   auto v_lb    = multi_probe.host_lb[idx];
   auto v_ub    = multi_probe.host_ub[idx];
   auto var_val = curr_host_assignment[idx];
 
-  const f_t int_tol  = sol.problem_ptr->tolerances.integrality_tolerance;
+  const f_t int_tol  = orig_sol.problem_ptr->tolerances.integrality_tolerance;
   auto eps           = int_tol;
   auto within_bounds = (v_lb - eps <= var_val) && (var_val <= v_ub + eps);
   // if it is a collapsed var, return immediately one of the bounds
@@ -1117,7 +1110,7 @@ std::tuple<f_t, f_t, f_t> constraint_prop_t<i_t, f_t>::probing_values(
     return std::make_tuple(first_round_val, var_val, second_round_val);
   } else {
     auto orig_v_bnd =
-      orig_sol.problem_ptr->variable_bounds.element(idx, sol.handle_ptr->get_stream());
+      orig_sol.problem_ptr->variable_bounds.element(idx, orig_sol.handle_ptr->get_stream());
     auto orig_v_lb = get_lower(orig_v_bnd);
     auto orig_v_ub = get_upper(orig_v_bnd);
     cuopt_assert(v_lb >= orig_v_lb, "Current lb should be greater than original lb");

@@ -49,6 +49,7 @@ struct probing_config_t {
 
 template <typename i_t, typename f_t>
 struct constraint_prop_t {
+  using f_t2 = typename type_2<f_t>::type;
   constraint_prop_t(mip_solver_context_t<i_t, f_t>& context);
   bool apply_round(solution_t<i_t, f_t>& sol,
                    f_t lp_run_time_after_feasible,
@@ -71,14 +72,11 @@ struct constraint_prop_t {
   void find_set_integer_vars(solution_t<i_t, f_t>& sol, rmm::device_uvector<i_t>& set_vars);
   void find_unset_integer_vars(solution_t<i_t, f_t>& sol, rmm::device_uvector<i_t>& set_vars);
   thrust::pair<f_t, f_t> generate_double_probing_pair(
-    const solution_t<i_t, f_t>& sol,
     const solution_t<i_t, f_t>& orig_sol,
     i_t unset_var_idx,
     const std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>> probing_config,
     bool bulk_rounding);
-  std::tuple<f_t, f_t, f_t> probing_values(const solution_t<i_t, f_t>& sol,
-                                           const solution_t<i_t, f_t>& orig_sol,
-                                           i_t idx);
+  std::tuple<f_t, f_t, f_t> probing_values(const solution_t<i_t, f_t>& orig_sol, i_t idx);
   void update_host_assignment(const solution_t<i_t, f_t>& sol);
   void set_host_bounds(const solution_t<i_t, f_t>& sol);
   bool probe(solution_t<i_t, f_t>& sol,
@@ -95,6 +93,10 @@ struct constraint_prop_t {
   void sort_by_frac(solution_t<i_t, f_t>& sol, raft::device_span<i_t> vars);
   void restore_bounds(solution_t<i_t, f_t>& sol);
   void save_bounds(solution_t<i_t, f_t>& sol);
+
+  void copy_bounds(rmm::device_uvector<typename type_2<f_t>::type>& output_bounds,
+                   const rmm::device_uvector<typename type_2<f_t>::type>& input_bounds,
+                   const raft::handle_t* handle_ptr);
 
   void copy_bounds(rmm::device_uvector<f_t>& output_lb,
                    rmm::device_uvector<f_t>& output_ub,
@@ -147,8 +149,9 @@ struct constraint_prop_t {
   rmm::device_uvector<i_t> set_vars;
   rmm::device_uvector<i_t> unset_vars;
   conditional_bound_strengthening_t<i_t, f_t> conditional_bounds_update;
-  rmm::device_uvector<f_t> lb_restore;
-  rmm::device_uvector<f_t> ub_restore;
+  // rmm::device_uvector<f_t> lb_restore;
+  // rmm::device_uvector<f_t> ub_restore;
+  rmm::device_uvector<f_t2> var_bounds_restore;
   rmm::device_uvector<f_t> assignment_restore;
   std::vector<f_t> curr_host_assignment;
   raft::random::PCGenerator rng;

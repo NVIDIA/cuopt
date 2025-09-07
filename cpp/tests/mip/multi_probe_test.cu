@@ -22,6 +22,8 @@
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <mip/presolve/bounds_presolve.cuh>
+#include <mip/presolve/lb_multi_probe.cuh>
+#include <mip/presolve/lb_problem.cuh>
 #include <mip/presolve/multi_probe.cuh>
 #include <mps_parser/parser.hpp>
 #include <raft/core/handle.hpp>
@@ -55,7 +57,8 @@ void init_handler(const raft::handle_t* handle_ptr)
 std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_random(
   detail::problem_t<int, double>& problem, int sample_size)
 {
-  auto seed = std::random_device{}();
+  // auto seed = std::random_device{}();
+  unsigned long seed = 2503864297ul;
   std::cerr << "Tested with seed " << seed << "\n";
   problem.compute_n_integer_vars();
   auto [v_lb, v_ub] = extract_host_bounds<double>(problem.variable_bounds, problem.handle_ptr);
@@ -146,6 +149,79 @@ multi_probe_results(
     std::move(h_lb_0), std::move(h_ub_0), std::move(h_lb_1), std::move(h_ub_1));
 }
 
+void bench_multi_probe(std::string path)
+{
+  auto memory_resource = make_async();
+  rmm::mr::set_current_device_resource(memory_resource.get());
+  const raft::handle_t handle_{};
+  cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  handle_.sync_stream();
+  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
+  problem_checking_t<int, double>::check_problem_representation(op_problem);
+  detail::problem_t<int, double> problem(op_problem);
+  mip_solver_settings_t<int, double> default_settings{};
+  detail::pdhg_solver_t<int, double> pdhg_solver(problem.handle_ptr, problem);
+  detail::pdlp_initial_scaling_strategy_t<int, double> scaling(&handle_,
+                                                               problem,
+                                                               10,
+                                                               1.0,
+                                                               pdhg_solver,
+                                                               problem.reverse_coefficients,
+                                                               problem.reverse_offsets,
+                                                               problem.reverse_constraints,
+                                                               true);
+  detail::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
+  detail::multi_probe_t<int, double> multi_probe_prs(solver.context);
+
+  detail::lb_problem_t<int, double> lb_problem(problem);
+  detail::lb_multi_probe_t<int, double> lb_multi_probe_prs(solver.context, lb_problem);
+
+  auto probe_tuple       = select_k_random(problem, 100);
+  auto bounds_probe_vals = convert_probe_tuple(probe_tuple);
+
+  const int iter_limit = 10;
+  float multi_time     = 0;
+  float lb_multi_time  = 0;
+  {
+    multi_probe_prs.skip_0 = false;
+    multi_probe_prs.skip_1 = false;
+    multi_probe_prs.upd_0.init_changed_constraints(&handle_);
+    multi_probe_prs.upd_1.init_changed_constraints(&handle_);
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start, handle_.get_stream());
+    for (int i = 0; i < iter_limit; ++i) {
+      multi_probe_prs.calculate_activity(problem, &handle_);
+      multi_probe_prs.calculate_bounds_update(problem, &handle_);
+    }
+    cudaEventRecord(stop, handle_.get_stream());
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&multi_time, start, stop);
+  }
+  {
+    lb_multi_probe_prs.upd_0.init_changed_constraints(&handle_);
+    lb_multi_probe_prs.upd_1.init_changed_constraints(&handle_);
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start, handle_.get_stream());
+    for (int i = 0; i < iter_limit; ++i) {
+      lb_multi_probe_prs.calculate_constraint_slack_iter(lb_problem, &handle_);
+      lb_multi_probe_prs.calculate_bounds_update(lb_problem, &handle_);
+    }
+    cudaEventRecord(stop, handle_.get_stream());
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&lb_multi_time, start, stop);
+  }
+  std::cout << "speedup " << multi_time / lb_multi_time << "\n";
+}
+
 void test_multi_probe(std::string path)
 {
   auto memory_resource = make_async();
@@ -206,14 +282,44 @@ void test_multi_probe(std::string path)
   }
 }
 
-TEST(presolve, multi_probe)
+// TEST(presolve, multi_probe)
+//{
+//   std::vector<std::string> test_instances = {
+//     "mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
+//   for (const auto& test_instance : test_instances) {
+//     std::cout << "Running: " << test_instance << std::endl;
+//     auto path = make_path_absolute(test_instance);
+//     test_multi_probe(path);
+//   }
+// }
+
+TEST(presolve, multi_probe_big)
 {
-  std::vector<std::string> test_instances = {
-    "mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
+  // std::vector<std::string> test_instances = {"mip/50v-10-free-bound.mps",
+  //                                            "mip/neos5-free-bound.mps"};
+  //"mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
+  // for (const auto& test_instance : test_instances) {
+  //  std::cout << "Running: " << test_instance << std::endl;
+  //  auto path = make_path_absolute(test_instance);
+  //  test_multi_probe(path);
+  //}
+  // std::vector<std::string> test_instances = {
+  //  "/home/aatish/rapids/mip_files/miplib/neos-3402454-bohle.mps"};
+
+  std::vector<std::string> test_instances = {"/home/aatish/rapids/mip_files/miplib/mas74.mps",
+                                             "/home/aatish/rapids/mip_files/miplib/neos17.mps"};
+  // std::vector<std::string> test_instances = {
+  //   "/home/aatish/rapids/mip_files/miplib/mas74.mps",
+  //   "/home/aatish/rapids/mip_files/miplib/neos17.mps",
+  //   "/home/aatish/rapids/mip_files/miplib/neos-3402454-bohle.mps",
+  //   "/home/aatish/rapids/mip_files/miplib/sing44.mps",
+  //   "/home/aatish/rapids/mip_files/miplib/square41.mps",
+  //   "/home/aatish/rapids/mip_files/miplib/square47.mps",
+  //   "/home/aatish/rapids/mip_files/miplib/timtab1.mps"};
+
   for (const auto& test_instance : test_instances) {
     std::cout << "Running: " << test_instance << std::endl;
-    auto path = make_path_absolute(test_instance);
-    test_multi_probe(path);
+    bench_multi_probe(test_instance);
   }
 }
 
