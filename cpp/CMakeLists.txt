@@ -73,8 +73,11 @@ set(CUOPT_CXX_FLAGS "")
 set(CUOPT_CUDA_FLAGS "")
 
 if(CMAKE_COMPILER_IS_GNUCXX)
-  list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations -g)
+  # list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations)
+  list(APPEND CUOPT_CXX_FLAGS -Wno-error=deprecated-declarations -g -fsanitize=address,undefined)
 endif(CMAKE_COMPILER_IS_GNUCXX)
+
+add_link_options(-fsanitize=address,undefined)
 
 if(DEFINE_ASSERT)
   add_definitions(-DASSERT_MODE)
@@ -204,9 +207,9 @@ set_target_properties(cuopt
 
 target_compile_definitions(cuopt PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}")
 
-set_source_files_properties(src/dual_simplex/phase2.cpp PROPERTIES
-    COMPILE_OPTIONS -fsanitize=address
-)
+# set_source_files_properties(src/dual_simplex/phase2.cpp PROPERTIES
+#     COMPILE_OPTIONS -fsanitize=address,undefined
+# )
 
 target_compile_options(cuopt
   PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
@@ -221,7 +224,7 @@ SECTIONS
   .nv_fatbin : { *(.nv_fatbin) }
 }
 ]=])
-target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld" -fsanitize=address)
+target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
 
 add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
@@ -402,7 +405,6 @@ if(BUILD_BENCHMARKS)
     PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
   )
-  target_link_options(solve_MPS_file PRIVATE -fsanitize=address)
   target_link_libraries(solve_MPS_file
     PUBLIC
     cuopt
