@@ -158,6 +158,9 @@ class branch_and_bound_t {
   // Global status
   mip_status_t status_;
 
+  i_t node_depth_threshold_;
+
+  // Update the status of the nodes in the search tree.
   void update_tree(mip_node_t<i_t, f_t>* node_ptr, node_status_t status);
 
   // Repairs low-quality solutions from the heuristics, if it is applicable.

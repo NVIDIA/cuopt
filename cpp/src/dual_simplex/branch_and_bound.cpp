@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <limits>
 #include <queue>
 #include <string>
@@ -699,6 +700,7 @@ void branch_and_bound_t<i_t, f_t>::spawn_new_task()
       node_ptr = heap_.top();
       heap_.pop();
     }
+
     mutex_heap_.unlock();
   }
 
@@ -723,18 +725,22 @@ void branch_and_bound_t<i_t, f_t>::spawn_new_task()
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* node_ptr)
+void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_node)
 {
   // Make a copy of the original LP. We will modify its bounds at each leaf
   lp_problem_t leaf_problem = original_lp_;
 
   f_t upper_bound    = get_upper_bound();
-  f_t lower_bound    = node_ptr->lower_bound;
+  f_t lower_bound    = get_lower_bound();
   f_t gap            = upper_bound - lower_bound;
   f_t last_log       = 0;
   i_t nodes_explored = 0;
+  i_t max_depth      = 0;
 
-  while (gap > settings_.absolute_mip_gap_tol &&
+  std::deque<mip_node_t<i_t, f_t>*> stack;
+  stack.push_back(start_node);
+
+  while (stack.size() > 0 && gap > settings_.absolute_mip_gap_tol &&
          relative_gap(upper_bound, lower_bound) > settings_.relative_mip_gap_tol) {
     mip_status_t local_status;
 
@@ -743,15 +749,17 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* node_pt
 
     if (local_status != mip_status_t::UNSET) { break; }
 
-    repair_heuristic_solutions();
+    mip_node_t<i_t, f_t>* node_ptr = stack.front();
+    stack.pop_front();
 
     upper_bound = get_upper_bound();
-    lower_bound = node_ptr->lower_bound;
+    lower_bound = get_lower_bound();
     gap         = upper_bound - lower_bound;
+    max_depth   = std::max(max_depth, node_ptr->depth);
+
+    repair_heuristic_solutions();
 
     if (upper_bound < node_ptr->lower_bound) {
-      // This node was put on the heap earlier but its lower bound is now greater than the current
-      // upper bound
       graphviz_node(settings_, node_ptr, "cutoff", node_ptr->lower_bound);
       update_tree(node_ptr, node_status_t::FATHOMED);
       continue;
@@ -760,27 +768,29 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* node_pt
 #pragma omp atomic read
     nodes_explored = stats_.nodes_explored;
 
-    f_t now            = toc(stats_.start_time);
-    f_t time_since_log = last_log == 0 ? 1.0 : toc(last_log);
-    if (((nodes_explored % 1000 == 0 || gap < 10 * settings_.absolute_mip_gap_tol ||
-          nodes_explored < 1000) &&
-         (time_since_log >= 1)) ||
-        (time_since_log > 60) || now > settings_.time_limit) {
-      f_t global_lb        = get_lower_bound();
-      f_t obj              = compute_user_objective(original_lp_, upper_bound);
-      f_t user_lower       = compute_user_objective(original_lp_, global_lb);
-      std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
+    f_t now = toc(stats_.start_time);
 
-      settings_.log.printf(" %8d %8lu       %+13.6e  %+10.6e   %4d   %7.1e     %s %9.2f\n",
-                           nodes_explored,
-                           heap_.size(),
-                           obj,
-                           user_lower,
-                           node_ptr->depth,
-                           nodes_explored > 0 ? stats_.total_lp_iters / nodes_explored : 0,
-                           gap_user.c_str(),
-                           now);
-      last_log = tic();
+    if (omp_get_thread_num() == 0) {
+      f_t time_since_log = last_log == 0 ? 1.0 : toc(last_log);
+      if (((nodes_explored % 1000 == 0 || gap < 10 * settings_.absolute_mip_gap_tol ||
+            nodes_explored < 1000) &&
+           (time_since_log >= 1)) ||
+          (time_since_log > 60) || now > settings_.time_limit) {
+        f_t obj              = compute_user_objective(original_lp_, upper_bound);
+        f_t user_lower       = compute_user_objective(original_lp_, lower_bound);
+        std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
+
+        settings_.log.printf(" %8d %8lu       %+13.6e  %+10.6e   %4d   %7.1e     %s %9.2f\n",
+                             nodes_explored,
+                             heap_.size(),
+                             obj,
+                             user_lower,
+                             node_ptr->depth,
+                             nodes_explored > 0 ? stats_.total_lp_iters / nodes_explored : 0,
+                             gap_user.c_str(),
+                             now);
+        last_log = tic();
+      }
     }
 
     if (toc(stats_.start_time) > settings_.time_limit) {
@@ -799,28 +809,32 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* node_pt
       break;
     }
 
-    if (node_ptr->status != node_status_t::HAS_CHILDREN) { break; }
+    if (node_ptr->status == node_status_t::HAS_CHILDREN) {
+      // Martin's child selection
+      const i_t branch_var     = node_ptr->get_down_child()->branch_var;
+      const f_t branch_var_val = node_ptr->get_down_child()->fractional_val;
+      const f_t down_val       = std::floor(root_relax_soln_.x[branch_var]);
+      const f_t up_val         = std::ceil(root_relax_soln_.x[branch_var]);
+      const f_t down_dist      = branch_var_val - down_val;
+      const f_t up_dist        = up_val - branch_var_val;
 
-    // Martin's child selection
-    const i_t branch_var     = node_ptr->get_down_child()->branch_var;
-    const f_t branch_var_val = node_ptr->get_down_child()->fractional_val;
-    const f_t down_val       = std::floor(root_relax_soln_.x[branch_var]);
-    const f_t up_val         = std::ceil(root_relax_soln_.x[branch_var]);
-    const f_t down_dist      = branch_var_val - down_val;
-    const f_t up_dist        = up_val - branch_var_val;
+      if (down_dist < up_dist) {
+        stack.push_front(node_ptr->get_up_child());
+        stack.push_front(node_ptr->get_down_child());
+      } else {
+        stack.push_front(node_ptr->get_down_child());
+        stack.push_front(node_ptr->get_up_child());
+      }
+    }
 
-    if (down_dist < up_dist) {
+    if (stack.size() > 0 &&
+        (heap_.size() < 1024 || stack.back()->depth < max_depth - node_depth_threshold_)) {
+      mip_node_t<i_t, f_t>* node = stack.back();
+      stack.pop_back();
+
       mutex_heap_.lock();
-      heap_.push(node_ptr->get_down_child());
+      heap_.push(node);
       mutex_heap_.unlock();
-
-      node_ptr = node_ptr->get_up_child();
-    } else {
-      mutex_heap_.lock();
-      heap_.push(node_ptr->get_up_child());
-      mutex_heap_.unlock();
-
-      node_ptr = node_ptr->get_down_child();
     }
 
     spawn_new_task();
@@ -840,6 +854,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   stats_.nodes_explored = 0;
   stats_.num_nodes      = 1;
   status_               = mip_status_t::UNSET;
+  node_depth_threshold_ = 10;
 
   if (guess_.size() != 0) {
     std::vector<f_t> crushed_guess;
@@ -950,11 +965,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   settings_.log.printf(
     "Explored %d nodes in %.2fs.\n", stats_.nodes_explored, toc(stats_.start_time));
-  settings_.log.printf("Absolute Gap %e Relative Gap %e Objective %.16e Lower Bound %.16e\n",
-                       gap,
-                       gap_rel,
-                       obj,
-                       user_lower);
+  settings_.log.printf("Absolute Gap %e Objective %.16e Lower Bound %.16e\n", gap, obj, user_lower);
 
   if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
     status_ = mip_status_t::OPTIMAL;
