@@ -132,8 +132,9 @@ HDI std::pair<f_t, f_t> feas_score_constraint(
 
     f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx);
 
-    bool old_viol = fj.excess_score(cstr_idx, current_lhs) < -cstr_tolerance;
-    bool new_viol = fj.excess_score(cstr_idx, current_lhs + cstr_coeff * delta) < -cstr_tolerance;
+    bool old_viol = fj.excess_score(cstr_idx, current_lhs, c_lb, c_ub) < -cstr_tolerance;
+    bool new_viol =
+      fj.excess_score(cstr_idx, current_lhs + cstr_coeff * delta, c_lb, c_ub) < -cstr_tolerance;
 
     bool old_sat = old_lhs < rhs + cstr_tolerance;
     bool new_sat = new_lhs < rhs + cstr_tolerance;

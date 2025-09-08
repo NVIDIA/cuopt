@@ -45,6 +45,10 @@ int LocalMIP::LocalSearch(Value _optimalObj, chrono::_V2::system_clock::time_poi
   curStep        = 0;
   auto last_time = chrono::high_resolution_clock::now();
   while (!halted) {
+    auto now_time  = chrono::high_resolution_clock::now();
+    double elapsed = chrono::duration_cast<chrono::duration<double>>(now_time - last_time).count();
+    // if (elapsed > 5) break;
+
     if (DEBUG)
       printf("\nc UNSAT Size: %-10ld; lmin %d\n", localConUtil.unsatConIdxs.size(), minima);
     if (localConUtil.unsatConIdxs.empty()) {

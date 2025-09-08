@@ -511,38 +511,49 @@ class fj_t {
 
       fj_settings_t* settings;
 
-      HDI f_t lower_excess_score(i_t cstr, f_t lhs) const
+      HDI f_t lower_excess_score(i_t cstr, f_t lhs, f_t c_lb) const
       {
-        return raft::min(lhs - pb.constraint_lower_bounds[cstr], (f_t)0);
+        return raft::min(lhs - c_lb, (f_t)0);
       }
 
-      HDI f_t upper_excess_score(i_t cstr, f_t lhs) const
+      HDI f_t upper_excess_score(i_t cstr, f_t lhs, f_t c_ub) const
       {
-        return raft::min(pb.constraint_upper_bounds[cstr] - lhs, (f_t)0);
+        return raft::min(c_ub - lhs, (f_t)0);
       }
 
       // Computes the constraint's contribution to the feasibility score:
       // If the constraint is satisfied by the given LHS value, returns 0.
       // If the constraint is violated by the given LHS value, returns -|lhs-rhs|.
       // caution: is inverted compared to solution_t's excess convention
+      HDI f_t excess_score(i_t cstr, f_t lhs, f_t c_lb, f_t c_ub) const
+      {
+        f_t right_score = upper_excess_score(cstr, lhs, c_ub);
+        if (right_score < 0.) { return right_score; }
+        return lower_excess_score(cstr, lhs, c_lb);
+      }
       HDI f_t excess_score(i_t cstr, f_t lhs) const
       {
-        f_t right_score = upper_excess_score(cstr, lhs);
+        f_t c_lb        = pb.constraint_lower_bounds[cstr];
+        f_t c_ub        = pb.constraint_upper_bounds[cstr];
+        f_t right_score = upper_excess_score(cstr, lhs, c_ub);
         if (right_score < 0.) { return right_score; }
-        return lower_excess_score(cstr, lhs);
+        return lower_excess_score(cstr, lhs, c_lb);
       }
 
       // FJ relies on maintaining a running LHS value for each constraint
       // which may suffer from numerical errors and lead to very slight (~machine epsilon)
       // violations of the actual bounds.
       // Use a slightly tightened tolerance in FJ to account for this.
+      HDI f_t get_corrected_tolerance(i_t cstr, f_t c_lb, f_t c_ub) const
+      {
+        f_t cstr_tolerance = get_cstr_tolerance<i_t, f_t>(
+          c_lb, c_ub, pb.tolerances.absolute_tolerance, pb.tolerances.relative_tolerance);
+        return max((f_t)0, cstr_tolerance - MACHINE_EPSILON);
+      }
       HDI f_t get_corrected_tolerance(i_t cstr) const
       {
-        f_t cstr_tolerance = get_cstr_tolerance<i_t, f_t>(pb.constraint_lower_bounds[cstr],
-                                                          pb.constraint_upper_bounds[cstr],
-                                                          pb.tolerances.absolute_tolerance,
-                                                          pb.tolerances.relative_tolerance);
-        return max((f_t)0, cstr_tolerance - MACHINE_EPSILON);
+        return get_corrected_tolerance(
+          cstr, pb.constraint_lower_bounds[cstr], pb.constraint_upper_bounds[cstr]);
       }
 
       HDI bool cstr_satisfied(i_t cstr, f_t lhs) const

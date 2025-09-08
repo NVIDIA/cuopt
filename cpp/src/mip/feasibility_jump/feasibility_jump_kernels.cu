@@ -113,9 +113,11 @@ DI void update_weights(typename fj_t<i_t, f_t>::climber_data_t::view_t& fj)
   for (i_t i = blockIdx.x; i < fj.violated_constraints.size(); i += gridDim.x) {
     i_t cstr_idx           = fj.violated_constraints.contents[i];
     f_t curr_incumbent_lhs = fj.incumbent_lhs[cstr_idx];
-    f_t curr_lower_excess  = fj.lower_excess_score(cstr_idx, curr_incumbent_lhs);
-    f_t curr_upper_excess  = fj.upper_excess_score(cstr_idx, curr_incumbent_lhs);
-    f_t curr_excess_score  = curr_lower_excess + curr_upper_excess;
+    f_t curr_lower_excess =
+      fj.lower_excess_score(cstr_idx, curr_incumbent_lhs, fj.pb.constraint_lower_bounds[cstr_idx]);
+    f_t curr_upper_excess =
+      fj.upper_excess_score(cstr_idx, curr_incumbent_lhs, fj.pb.constraint_upper_bounds[cstr_idx]);
+    f_t curr_excess_score = curr_lower_excess + curr_upper_excess;
 
     f_t old_weight;
     if (curr_lower_excess < 0.) {

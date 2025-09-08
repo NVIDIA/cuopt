@@ -504,7 +504,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     zero_solution.clamp_within_bounds();
     ls.fj.cpu_solve(zero_solution);
     ls.start_fj_scratch_threads(population);
-    std::this_thread::sleep_for(std::chrono::seconds(10));
+    std::this_thread::sleep_for(std::chrono::seconds(5));
     ls.stop_fj_scratch_threads();
     exit(42);
 

@@ -129,8 +129,18 @@ struct fj_cpu_t {
   i_t candidate_move_hits[3]   = {0};
   i_t candidate_move_misses[3] = {0};
 
+  // vector<bool> is actually likely beneficial here since we're memory bound
+  std::vector<bool> flip_move_computed;
+  ;
   // CSR nnz offset -> (delta, score)
   std::vector<std::pair<f_t, fj_staged_score_t>> cached_mtm_moves;
+
+  // CSC (transposed!) nnz-offset-indexed constraint bounds (lb, ub)
+  // std::pair<f_t, f_t> better compile down to 16 bytes!! GCC do your job!
+  std::vector<std::pair<f_t, f_t>> cached_cstr_bounds;
+
+  std::vector<bool> var_bitmap;
+  std::vector<i_t> iter_mtm_vars;
 };
 
 template <typename i_t, typename f_t>
@@ -205,9 +215,88 @@ static inline bool tabu_check(fj_cpu_t<i_t, f_t>& fj_cpu,
 }
 
 template <typename i_t, typename f_t>
-static fj_staged_score_t compute_score(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta)
+inline std::pair<f_t, f_t> feas_score_constraint_cpu(
+  const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
+  i_t var_idx,
+  f_t delta,
+  i_t cstr_idx,
+  f_t cstr_coeff,
+  f_t c_lb,
+  f_t c_ub,
+  f_t current_lhs)
 {
-  timing_raii_t<i_t, f_t> timer(fj_cpu.compute_score_times);
+  cuopt_assert(isfinite(delta), "invalid delta");
+  cuopt_assert(cstr_coeff != 0 && isfinite(cstr_coeff), "invalid coefficient");
+
+  f_t base_feas    = 0;
+  f_t bonus_robust = 0;
+
+  f_t bounds[2] = {c_lb, c_ub};
+  cuopt_assert(isfinite(c_lb) || isfinite(c_ub), "no range");
+  for (i_t bound_idx = 0; bound_idx < 2; ++bound_idx) {
+    if (!isfinite(bounds[bound_idx])) continue;
+
+    // factor to correct the lhs/rhs to turn a lb <= lhs <= ub constraint into
+    // two virtual leq constraints "lhs <= ub" and "-lhs <= -lb" in order to match
+    // the convention of the paper
+
+    // TODO: broadcast left/right weights to a csr_offset-indexed table? local minimums
+    // usually occur on a rarer basis (around 50 iteratiosn to 1 local minimum)
+    // likely unreasonable and overkill however
+    f_t cstr_weight =
+      bound_idx == 0 ? fj.cstr_left_weights[cstr_idx] : fj.cstr_right_weights[cstr_idx];
+    f_t sign      = bound_idx == 0 ? -1 : 1;
+    f_t rhs       = bounds[bound_idx] * sign;
+    f_t old_lhs   = current_lhs * sign;
+    f_t new_lhs   = (current_lhs + cstr_coeff * delta) * sign;
+    f_t old_slack = rhs - old_lhs;
+    f_t new_slack = rhs - new_lhs;
+
+    cuopt_assert(isfinite(cstr_weight), "invalid weight");
+    cuopt_assert(cstr_weight >= 0, "invalid weight");
+    cuopt_assert(isfinite(old_lhs), "");
+    cuopt_assert(isfinite(new_lhs), "");
+    cuopt_assert(isfinite(old_slack) && isfinite(new_slack), "");
+
+    f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
+
+    bool old_sat = old_lhs < rhs + cstr_tolerance;
+    bool new_sat = new_lhs < rhs + cstr_tolerance;
+
+    // if it would feasibilize this constraint
+    if (!old_sat && new_sat) {
+      base_feas += cstr_weight;
+    }
+    // would cause this constraint to be violated
+    else if (old_sat && !new_sat) {
+      base_feas -= cstr_weight;
+    }
+    // simple improvement
+    else if (!old_sat && !new_sat && old_lhs > new_lhs) {
+      base_feas += (i_t)(cstr_weight / 2);
+    }
+    // simple worsening
+    else if (!old_sat && !new_sat && old_lhs <= new_lhs) {
+      base_feas -= (i_t)(cstr_weight / 2);
+    }
+
+    // robustness score bonus if this would leave some strick slack
+    bool old_stable = old_lhs < rhs - cstr_tolerance;
+    bool new_stable = new_lhs < rhs - cstr_tolerance;
+    if (!old_stable && new_stable) {
+      bonus_robust += cstr_weight;
+    } else if (old_stable && !new_stable) {
+      bonus_robust -= cstr_weight;
+    }
+  }
+
+  return {base_feas, bonus_robust};
+}
+
+template <typename i_t, typename f_t>
+static inline fj_staged_score_t compute_score(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta)
+{
+  // timing_raii_t<i_t, f_t> timer(fj_cpu.compute_score_times);
 
   f_t obj_diff = fj_cpu.h_obj_coeffs[var_idx] * delta;
 
@@ -221,14 +310,13 @@ static fj_staged_score_t compute_score(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, 
   // issue!
   auto [offset_begin, offset_end] = fj_cpu.view.pb.reverse_range_for_var(var_idx);
   for (i_t i = offset_begin; i < offset_end; i++) {
-    auto cstr_idx   = fj_cpu.h_reverse_constraints[i];
-    auto cstr_coeff = fj_cpu.h_reverse_coefficients[i];
+    auto cstr_idx     = fj_cpu.h_reverse_constraints[i];
+    auto cstr_coeff   = fj_cpu.h_reverse_coefficients[i];
+    auto [c_lb, c_ub] = fj_cpu.cached_cstr_bounds[i];
 
-    f_t c_lb = fj_cpu.h_cstr_lb[cstr_idx];
-    f_t c_ub = fj_cpu.h_cstr_ub[cstr_idx];
     cuopt_assert(c_lb <= c_ub, "invalid bounds");
 
-    auto [cstr_base_feas, cstr_bonus_robust] = feas_score_constraint<i_t, f_t>(
+    auto [cstr_base_feas, cstr_bonus_robust] = feas_score_constraint_cpu<i_t, f_t>(
       fj_cpu.view, var_idx, delta, cstr_idx, cstr_coeff, c_lb, c_ub, fj_cpu.h_lhs[cstr_idx]);
 
     base_feas_sum += cstr_base_feas;
@@ -291,9 +379,11 @@ static void update_weights(fj_cpu_t<i_t, f_t>& fj_cpu)
 
   for (auto cstr_idx : fj_cpu.violated_constraints) {
     f_t curr_incumbent_lhs = fj_cpu.h_lhs[cstr_idx];
-    f_t curr_lower_excess  = fj_cpu.view.lower_excess_score(cstr_idx, curr_incumbent_lhs);
-    f_t curr_upper_excess  = fj_cpu.view.upper_excess_score(cstr_idx, curr_incumbent_lhs);
-    f_t curr_excess_score  = curr_lower_excess + curr_upper_excess;
+    f_t curr_lower_excess =
+      fj_cpu.view.lower_excess_score(cstr_idx, curr_incumbent_lhs, fj_cpu.h_cstr_lb[cstr_idx]);
+    f_t curr_upper_excess =
+      fj_cpu.view.upper_excess_score(cstr_idx, curr_incumbent_lhs, fj_cpu.h_cstr_ub[cstr_idx]);
+    f_t curr_excess_score = curr_lower_excess + curr_upper_excess;
 
     f_t old_weight;
     if (curr_lower_excess < 0.) {
@@ -316,6 +406,12 @@ static void update_weights(fj_cpu_t<i_t, f_t>& fj_cpu)
     } else {
       fj_cpu.h_cstr_right_weights[cstr_idx] = new_weight;
       fj_cpu.max_weight                     = max(fj_cpu.max_weight, new_weight);
+    }
+
+    // Invalidate related cached move scores
+    auto [relvar_offset_begin, relvar_offset_end] = fj_cpu.view.pb.range_for_constraint(cstr_idx);
+    for (auto i = relvar_offset_begin; i < relvar_offset_end; i++) {
+      fj_cpu.cached_mtm_moves[i].first = 0;
     }
   }
 
@@ -343,15 +439,16 @@ static void apply_move(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool 
 
   for (auto i = offset_begin; i < offset_end; i++) {
     cuopt_assert(i < (i_t)fj_cpu.h_reverse_constraints.size(), "");
+    auto [c_lb, c_ub] = fj_cpu.cached_cstr_bounds[i];
 
     auto cstr_idx   = fj_cpu.h_reverse_constraints[i];
     auto cstr_coeff = fj_cpu.h_reverse_coefficients[i];
 
     f_t old_lhs        = fj_cpu.h_lhs[cstr_idx];
     f_t new_lhs        = old_lhs + cstr_coeff * delta;
-    f_t old_cost       = fj_cpu.view.excess_score(cstr_idx, old_lhs);
-    f_t new_cost       = fj_cpu.view.excess_score(cstr_idx, new_lhs);
-    f_t cstr_tolerance = fj_cpu.view.get_corrected_tolerance(cstr_idx);
+    f_t old_cost       = fj_cpu.view.excess_score(cstr_idx, old_lhs, c_lb, c_ub);
+    f_t new_cost       = fj_cpu.view.excess_score(cstr_idx, new_lhs, c_lb, c_ub);
+    f_t cstr_tolerance = fj_cpu.view.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
 
     if (new_cost < -cstr_tolerance && !fj_cpu.violated_constraints.count(cstr_idx)) {
       fj_cpu.violated_constraints.insert(cstr_idx);
@@ -413,6 +510,10 @@ static void apply_move(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool 
     fj_cpu.h_tabu_nodec_until[var_idx] = fj_cpu.iterations + tabu_tenure / 2;
     // printf("CPU: tabu noinc_until: %d\n", fj_cpu.h_tabu_noinc_until[var_idx]);
   }
+
+  std::fill(fj_cpu.flip_move_computed.begin(), fj_cpu.flip_move_computed.end(), false);
+  std::fill(fj_cpu.var_bitmap.begin(), fj_cpu.var_bitmap.end(), false);
+  fj_cpu.iter_mtm_vars.clear();
 }
 
 template <typename i_t, typename f_t, MTMMoveType move_type>
@@ -421,10 +522,32 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
 {
   auto& problem = *fj_cpu.fj.pb_ptr;
 
+  raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
+
   // Maps a candidate move to its score
   // std::unordered_set<fj_move_t, fj_move_hash> candidate_moves;
   fj_move_t best_move          = fj_move_t{-1, 0};
   fj_staged_score_t best_score = fj_staged_score_t::invalid();
+
+  // collect all the variables that are involved in the target constraints
+  for (size_t cstr_idx : target_cstrs) {
+    auto [offset_begin, offset_end] = fj_cpu.view.pb.range_for_constraint(cstr_idx);
+    for (auto i = offset_begin; i < offset_end; i++) {
+      i_t var_idx = fj_cpu.h_variables[i];
+      if (fj_cpu.var_bitmap[var_idx]) continue;
+      fj_cpu.iter_mtm_vars.push_back(var_idx);
+      fj_cpu.var_bitmap[var_idx] = true;
+    }
+  }
+  // estimate the amount of nnzs to consider
+  i_t nnz_sum = 0;
+  for (auto var_idx : fj_cpu.iter_mtm_vars) {
+    auto [offset_begin, offset_end] = fj_cpu.view.pb.reverse_range_for_var(var_idx);
+    nnz_sum += offset_end - offset_begin;
+  }
+  // printf("NNZ sum: %d\n", nnz_sum);
+  f_t nnz_pick_probability = 1;
+  if (nnz_sum > 100000) nnz_pick_probability = 100000.0 / nnz_sum;
 
   for (size_t cstr_idx : target_cstrs) {
     f_t cstr_tol = fj_cpu.view.get_corrected_tolerance(cstr_idx);
@@ -443,14 +566,21 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
         continue;
       }
 
+      // random chance to skip this nnz if there are many to consider
+      if (nnz_pick_probability < 1)
+        if (rng.next_float() > nnz_pick_probability) continue;
+
       auto var_idx = fj_cpu.h_variables[i];
-      f_t val      = fj_cpu.h_assignment[var_idx];
-      f_t new_val  = val;
-      f_t delta    = 0;
+
+      f_t val     = fj_cpu.h_assignment[var_idx];
+      f_t new_val = val;
+      f_t delta   = 0;
 
       // Special case for binary variables
       if (fj_cpu.h_is_binary_variable[var_idx]) {
-        new_val = 1 - val;
+        if (fj_cpu.flip_move_computed[var_idx]) continue;
+        fj_cpu.flip_move_computed[var_idx] = true;
+        new_val                            = 1 - val;
       } else {
         auto cstr_coeff = fj_cpu.h_coefficients[i];
 
@@ -648,7 +778,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(fj_cpu_t<i_t, 
     f_t val       = fj_cpu.h_assignment[var_idx];
 
     // special path for binary variables
-    if (fj_cpu.h_is_binary_variable[var_idx] && false) {
+    if (fj_cpu.h_is_binary_variable[var_idx]) {
       cuopt_assert(fj_cpu.view.pb.is_integer(val), "binary variable is not integer");
       cuopt_assert(val == 0 || val == 1, "binary variable is not 0 or 1");
       delta = round(1.0 - 2 * val);
@@ -663,7 +793,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(fj_cpu_t<i_t, 
         auto cstr_coeff    = fj_cpu.view.pb.reverse_coefficients[j];
         f_t c_lb           = fj_cpu.view.pb.constraint_lower_bounds[cstr_idx];
         f_t c_ub           = fj_cpu.view.pb.constraint_upper_bounds[cstr_idx];
-        f_t cstr_tolerance = fj_cpu.view.get_corrected_tolerance(cstr_idx);
+        f_t cstr_tolerance = fj_cpu.view.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
         cuopt_assert(c_lb <= c_ub, "invalid bounds");
         cuopt_assert(fj_cpu.view.cstr_satisfied(cstr_idx, fj_cpu.h_lhs[cstr_idx]),
                      "cstr should be satisfied");
@@ -865,6 +995,20 @@ static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& soluti
   fj_cpu.cached_mtm_moves.resize(fj_cpu.h_coefficients.size(),
                                  std::make_pair(0, fj_staged_score_t::zero()));
 
+  fj_cpu.cached_cstr_bounds.resize(fj_cpu.h_reverse_coefficients.size());
+  for (i_t var_idx = 0; var_idx < (i_t)fj_cpu.view.pb.n_variables; ++var_idx) {
+    auto [offset_begin, offset_end] = fj_cpu.view.pb.reverse_range_for_var(var_idx);
+    for (i_t i = offset_begin; i < offset_end; ++i) {
+      fj_cpu.cached_cstr_bounds[i] =
+        std::make_pair(fj_cpu.h_cstr_lb[fj_cpu.h_reverse_constraints[i]],
+                       fj_cpu.h_cstr_ub[fj_cpu.h_reverse_constraints[i]]);
+    }
+  }
+
+  fj_cpu.flip_move_computed.resize(fj_cpu.view.pb.n_variables, false);
+  fj_cpu.var_bitmap.resize(fj_cpu.view.pb.n_variables, false);
+  fj_cpu.iter_mtm_vars.reserve(fj_cpu.view.pb.n_variables);
+
   init_lhs(fj_cpu);
 }
 
@@ -918,9 +1062,18 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
 
   fprintf(stderr, "running bespoke CPU FJ!\n");
 
-  i_t local_mins  = 0;
-  auto loop_start = std::chrono::high_resolution_clock::now();
-  while (fj_cpu.iterations < 20000) {
+  i_t local_mins       = 0;
+  auto loop_start      = std::chrono::high_resolution_clock::now();
+  auto time_limit      = std::chrono::seconds(5);
+  auto loop_time_start = std::chrono::high_resolution_clock::now();
+  while (fj_cpu.iterations < 20000 * 100) {
+    // Check if 5 seconds have passed
+    auto now = std::chrono::high_resolution_clock::now();
+    if (now - loop_time_start > time_limit) {
+      printf("Time limit of 5 seconds reached, breaking loop at iteration %d\n", fj_cpu.iterations);
+      break;
+    }
+
     fj_move_t move          = fj_move_t{-1, 0};
     fj_staged_score_t score = fj_staged_score_t::invalid();
     // Perform lift moves
@@ -930,23 +1083,24 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
     }
     // Regular MTM
     if (!(score > fj_staged_score_t::zero())) {
-      // put more effort when no feasible has been found yet
-      thrust::tie(move, score) = find_mtm_move_viol(fj_cpu, fj_cpu.feasible_found ? 5000 : 2000);
+      // put maximum effort when no feasible has been found yet
+      thrust::tie(move, score) = find_mtm_move_viol(fj_cpu, 25);
       // if (score > fj_staged_score_t::zero()) printf("MTM viol move, score %d, %d\n",
       // (int)score.base, (int)score.bonus);
     }
     // try with MTM in satisfied constraints
     if (fj_cpu.feasible_found && !(score > fj_staged_score_t::zero())) {
-      thrust::tie(move, score) = find_mtm_move_sat(fj_cpu, 20);
+      thrust::tie(move, score) = find_mtm_move_sat(fj_cpu, 15);
       // if (score > fj_staged_score_t::zero()) printf("sat move, score %d, %d, obj is %g, best obj
       // is %g, viol %zu\n", (int)score.base, (int)score.bonus, fj_cpu.h_incumbent_objective,
       // fj_cpu.h_best_objective, fj_cpu.violated_constraints.size());
     }
     // if we're in the feasible region but haven't found improvements in the last n iterations,
     // perturb
+    bool should_perturb = false;
     if (fj_cpu.violated_constraints.empty() &&
         fj_cpu.iterations - fj_cpu.last_feasible_entrance_iter > 500) {
-      perturb(fj_cpu);
+      should_perturb                     = true;
       fj_cpu.last_feasible_entrance_iter = fj_cpu.iterations;
       printf("PERTURB\n");
     }
@@ -956,11 +1110,12 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
     //   //if (score > fj_staged_score_t::zero()) printf("found flip move\n");
     // }
 
-    if (score > fj_staged_score_t::zero()) {
+    if (score > fj_staged_score_t::zero() && !should_perturb) {
       apply_move(fj_cpu, move.var_idx, move.value, false);
     } else {
       // Local Min
       update_weights(fj_cpu);
+      if (should_perturb) perturb(fj_cpu);
       thrust::tie(move, score) =
         find_mtm_move_viol(fj_cpu, 1, true);  // pick a single random violated constraint
       i_t var_idx = move.var_idx >= 0 ? move.var_idx : 0;
@@ -978,8 +1133,10 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
       }
       apply_move(fj_cpu, var_idx, delta, true);
       // clear cached moves
-      for (auto& cached_move : fj_cpu.cached_mtm_moves)
-        cached_move.first = 0;
+      if (!fj_cpu.violated_constraints.empty()) {
+        for (auto& cached_move : fj_cpu.cached_mtm_moves)
+          cached_move.first = 0;
+      }
       ++local_mins;
     }
     if (fj_cpu.iterations % 100 == 0) {
@@ -999,7 +1156,7 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution)
   auto loop_end = std::chrono::high_resolution_clock::now();
   double total_time =
     std::chrono::duration_cast<std::chrono::duration<double>>(loop_end - loop_start).count();
-  double avg_time_per_iter = total_time / 20000.0;
+  double avg_time_per_iter = total_time / fj_cpu.iterations;
   printf("Average time per iteration: %.8fms\n", avg_time_per_iter * 1000.0);
 
   // exit(0);
