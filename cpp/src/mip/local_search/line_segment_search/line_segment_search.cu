@@ -220,8 +220,8 @@ bool line_segment_search_t<i_t, f_t>::search_line_segment(
     fj.settings.update_weights         = false;
     fj.settings.feasibility_run        = is_feasibility_run;
     fj.settings.time_limit             = std::min(1., timer.remaining_time());
-    // is_feasible                        = fj.solve(solution);
-    is_feasible = ls->do_fj_solve(solution, fj, "line_segment");
+    is_feasible                        = fj.solve(solution);
+    // is_feasible = ls->do_fj_solve(solution, fj, "line_segment");
     if (is_feasibility_run) {
       if (is_feasible) {
         CUOPT_LOG_DEBUG("Line segment found feasible");

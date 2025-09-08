@@ -291,13 +291,17 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   }
   // cudaDeviceSynchronize();
 
+  auto solution_copy = solution;
+
   // Start CPU solver in background thread
   for (auto& cpu_fj : ls_cpu_fj) {
     cpu_fj.start_cpu_solver();
   }
 
-  // Run GPU solver
+  // Run GPU solver and measure execution time
+  auto gpu_fj_start = std::chrono::high_resolution_clock::now();
   in_fj.solve(solution);
+  cudaDeviceSynchronize();
 
   // Give CPU solver some time to run
   if (source != "line_segment") { std::this_thread::sleep_for(std::chrono::milliseconds(250)); }
@@ -306,6 +310,9 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   for (auto& cpu_fj : ls_cpu_fj) {
     cpu_fj.stop_cpu_solver();
   }
+
+  auto gpu_fj_end        = std::chrono::high_resolution_clock::now();
+  double gpu_fj_duration = std::chrono::duration<double>(gpu_fj_end - gpu_fj_start).count();
 
   solution_t<i_t, f_t> solution_cpu(*solution.problem_ptr);
 
@@ -330,6 +337,17 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   static std::unordered_map<std::string, int> total_calls;
   static std::unordered_map<std::string, int> cpu_better;
 
+  // Also run CPU FJ to compare results
+  solution_t<i_t, f_t> solution_cpu_2 = solution_copy;
+  // in_fj.cpu_solve(solution_cpu_2, gpu_fj_duration + 0.5);
+  solution_cpu_2.compute_feasibility();
+
+  CUOPT_LOG_DEBUG(
+    "CPU FJ returns feas %d, obj %g", cpu_feasible, solution_cpu.get_user_objective());
+  CUOPT_LOG_DEBUG("NEW CPU FJ returns feas %d, obj %g",
+                  solution_cpu_2.get_feasible(),
+                  solution_cpu_2.get_user_objective());
+
   CUOPT_LOG_DEBUG("GPU FJ returns feas %d, obj %g", gpu_feasible, solution.get_user_objective());
   CUOPT_LOG_DEBUG("CPU FJ returns feas %d, obj %g, stats %d/%d",
                   cpu_feasible,
@@ -350,6 +368,21 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
     solution.copy_from(solution_cpu);
     cpu_better[source]++;
   }
+  // solution.compute_feasibility();
+
+  // if (solution_cpu_2.get_feasible() && !solution.get_feasible()
+  //  || (solution_cpu_2.get_feasible() && solution_cpu_2.get_objective() <
+  //  solution.get_objective())) {
+  //   CUOPT_LOG_DEBUG("NEW CPU FJ returns better solution! cpu_obj %g, prev_obj %g, stats %d/%d,
+  //   source %s",
+  //                   solution_cpu_2.get_user_objective(),
+  //                   solution.get_user_objective(),
+  //                   total_calls[source],
+  //                   cpu_better[source],
+  //                   source.c_str());
+  //   solution.copy_from(solution_cpu_2);
+  //   cpu_better[source]++;
+  // }
 
   return cpu_feasible;
 }

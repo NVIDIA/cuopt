@@ -208,7 +208,7 @@ class fj_t {
   ~fj_t();
   void reset_cuda_graph();
   i_t solve(solution_t<i_t, f_t>& solution);
-  i_t cpu_solve(solution_t<i_t, f_t>& solution);
+  i_t cpu_solve(solution_t<i_t, f_t>& solution, f_t time_limit = 5);
   i_t alloc_max_climbers(i_t desired_climbers);
   void resize_vectors(const raft::handle_t* handle_ptr);
   void device_init(const rmm::cuda_stream_view& stream);

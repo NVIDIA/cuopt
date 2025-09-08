@@ -418,7 +418,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   population.initialize_population();
   if (check_b_b_preemption()) { return population.best_feasible(); }
   // before probing cache or LP, run FJ to generate initial primal feasible solution
-  if (!from_dir && !fp_only_run && !fj_only_run && false) { generate_quick_feasible_solution(); }
+  if (!from_dir && !fp_only_run && !fj_only_run) { generate_quick_feasible_solution(); }
   const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
   const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
   f_t time_for_probing_cache =
@@ -496,17 +496,17 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   if (check_b_b_preemption()) { return population.best_feasible(); }
   if (!fp_only_run) {
     // run cpu_solve on the same as the other thread: zero solution
-    solution_t<i_t, f_t> zero_solution(*problem_ptr);
-    thrust::fill(zero_solution.handle_ptr->get_thrust_policy(),
-                 zero_solution.assignment.begin(),
-                 zero_solution.assignment.end(),
-                 0.0);
-    zero_solution.clamp_within_bounds();
-    ls.fj.cpu_solve(zero_solution);
-    ls.start_fj_scratch_threads(population);
-    std::this_thread::sleep_for(std::chrono::seconds(5));
-    ls.stop_fj_scratch_threads();
-    exit(42);
+    // solution_t<i_t, f_t> zero_solution(*problem_ptr);
+    // thrust::fill(zero_solution.handle_ptr->get_thrust_policy(),
+    //              zero_solution.assignment.begin(),
+    //              zero_solution.assignment.end(),
+    //              0.0);
+    // zero_solution.clamp_within_bounds();
+    // ls.fj.cpu_solve(zero_solution);
+    // ls.start_fj_scratch_threads(population);
+    // std::this_thread::sleep_for(std::chrono::seconds(5));
+    // ls.stop_fj_scratch_threads();
+    // exit(42);
 
     // generate a population with 5 solutions(FP+FJ)
     generate_initial_solutions();
