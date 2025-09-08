@@ -1496,13 +1496,13 @@ void compute_delta_y(const basis_update_mpf_t<i_t, f_t>& ft,
 }
 
 template <typename i_t, typename f_t>
-void update_dual_variables(const sparse_vector_t<i_t, f_t>& delta_y_sparse,
-                           const std::vector<i_t>& delta_z_indices,
-                           const std::vector<f_t>& delta_z,
-                           f_t step_length,
-                           i_t leaving_index,
-                           std::vector<f_t>& y,
-                           std::vector<f_t>& z)
+i_t update_dual_variables(const sparse_vector_t<i_t, f_t>& delta_y_sparse,
+                          const std::vector<i_t>& delta_z_indices,
+                          const std::vector<f_t>& delta_z,
+                          f_t step_length,
+                          i_t leaving_index,
+                          std::vector<f_t>& y,
+                          std::vector<f_t>& z)
 {
   // Update dual variables
   // y <- y + steplength * delta_y
@@ -1516,8 +1516,17 @@ void update_dual_variables(const sparse_vector_t<i_t, f_t>& delta_y_sparse,
   for (i_t k = 0; k < delta_z_nz; ++k) {
     const i_t j = delta_z_indices[k];
     z[j] += step_length * delta_z[j];
+    if (std::isnan(z[j]) || std::isinf(z[j])) {
+      printf("z[%d] is nan or inf\n", j);
+      return -1;
+    }
   }
   z[leaving_index] += step_length * delta_z[leaving_index];
+  if (std::isnan(z[leaving_index]) || std::isinf(z[leaving_index])) {
+    printf("z[%d] is nan or inf\n", leaving_index);
+    return -1;
+  }
+  return 0;
 }
 
 template <typename i_t, typename f_t>
@@ -2500,6 +2509,7 @@ dual::status_t dual_phase2(i_t phase,
       timers.start_timer();
       f_t slope = direction == 1 ? (lp.lower[leaving_index] - x[leaving_index])
                                  : (x[leaving_index] - lp.upper[leaving_index]);
+      // check if z contains nan or inf
       bound_flipping_ratio_test_t<i_t, f_t> bfrt(settings,
                                                  start_time,
                                                  m,
@@ -2664,8 +2674,12 @@ dual::status_t dual_phase2(i_t phase,
     // Update dual variables
     // y <- y + steplength * delta_y
     // z <- z + steplength * delta_z
-    phase2::update_dual_variables(
+    i_t update_dual_variables_status = phase2::update_dual_variables(
       delta_y_sparse, delta_z_indices, delta_z, step_length, leaving_index, y, z);
+    if (update_dual_variables_status == -1) {
+      settings.log.printf("Numerical issues encountered in update_dual_variables.\n");
+      return dual::status_t::NUMERICAL;
+    }
     timers.vector_time += timers.stop_timer();
 
 #ifdef COMPUTE_DUAL_RESIDUAL
