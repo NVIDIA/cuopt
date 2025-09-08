@@ -26,8 +26,7 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename upd_view_t>
 inline __device__ bool skip_cnst(upd_view_t upd, i_t cnst_idx)
 {
-  //return (upd.changed_constraints[cnst_idx] == i_t{0});
-  return false;
+  return (upd.changed_constraints[cnst_idx] == i_t{0});
 }
 
 template <typename i_t,
@@ -44,7 +43,7 @@ __device__ typename type_2<f_t>::type calc_act(
     auto coeff = view.coefficients[i];
     auto var   = view.col_elem[i];
 
-    //atomicExch(&upd.changed_variables[var], 1);
+    atomicExch(&upd.changed_variables[var], 1);
 
     auto bounds      = upd.vars_bnd[var];
     auto min_contrib = bounds.x;

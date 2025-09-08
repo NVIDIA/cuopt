@@ -23,7 +23,7 @@
 
 namespace cuopt::linear_programming::detail {
 
-#define LB_DEBUG
+// #define LB_DEBUG
 
 template <typename i_t>
 struct calc_blocks_per_item_t {
@@ -275,7 +275,7 @@ std::tuple<i_t, i_t, i_t> block_meta(rmm::cuda_stream_view stream,
   }
   std::cout << "\n";
 #endif
-  //i_t block_size = 512;
+  // i_t block_size = 512;
 
   std::vector<i_t> warp_offsets;
   std::vector<i_t> warp_id_offsets;

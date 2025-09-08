@@ -29,9 +29,9 @@ inline __device__ thrust::pair<bool, bool> skip_cnst(upd_view_t upd_0,
                                                      upd_view_t upd_1,
                                                      i_t cnst_idx)
 {
-  //return thrust::make_pair((upd_0.changed_constraints[cnst_idx] == i_t{0}),
-  //                         (upd_1.changed_constraints[cnst_idx] == i_t{0}));
-  return thrust::make_pair(false, false);
+  return thrust::make_pair((upd_0.changed_constraints[cnst_idx] == i_t{0}),
+                           (upd_1.changed_constraints[cnst_idx] == i_t{0}));
+  // return thrust::make_pair(false, false);
 }
 
 template <typename upd_view_t>
@@ -61,8 +61,8 @@ __device__ thrust::pair<typename type_2<f_t>::type, typename type_2<f_t>::type> 
     auto coeff = view.coefficients[i];
     auto var   = view.col_elem[i];
 
-    //atomicExch(&upd_0.changed_variables[var], 1);
-    //atomicExch(&upd_1.changed_variables[var], 1);
+    atomicExch(&upd_0.changed_variables[var], 1);
+    atomicExch(&upd_1.changed_variables[var], 1);
 
     auto bounds_0      = upd_0.vars_bnd[var];
     auto bounds_1      = upd_1.vars_bnd[var];
@@ -120,11 +120,14 @@ __device__ void cnst_heavy(i_t id_block_beg,
       upd0.tmp_act[heavy_block_id] = thrust::get<0>(act);
       upd1.tmp_act[heavy_block_id] = thrust::get<1>(act);
     }
-  } else {
-    auto& upd = get_valid(skip_calc, upd0, upd1);
-    auto act  = calc_act<i_t, f_t, BDIM>(view, upd, threadIdx.x, item_off_beg, item_off_end);
-    act       = reduce.sum(act);
-    if (threadIdx.x == 0) { upd.tmp_act[heavy_block_id] = act; }
+  } else if (!thrust::get<0>(skip_calc)) {
+    auto act = calc_act<i_t, f_t, BDIM>(view, upd0, threadIdx.x, item_off_beg, item_off_end);
+    act      = reduce.sum(act);
+    if (threadIdx.x == 0) { upd0.tmp_act[heavy_block_id] = act; }
+  } else if (!thrust::get<1>(skip_calc)) {
+    auto act = calc_act<i_t, f_t, BDIM>(view, upd1, threadIdx.x, item_off_beg, item_off_end);
+    act      = reduce.sum(act);
+    if (threadIdx.x == 0) { upd1.tmp_act[heavy_block_id] = act; }
   }
 }
 
@@ -176,16 +179,28 @@ __global__ void finalize_cnst_heavy(csr_view_t view, upd_view_t upd0, upd_view_t
       write_cnst_slack<erase_inf_cnst>(upd0, cnst_idx, cnst_lb_ub, thrust::get<0>(act), eps);
       write_cnst_slack<erase_inf_cnst>(upd1, cnst_idx, cnst_lb_ub, thrust::get<1>(act), eps);
     }
-  } else {
-    auto& upd = get_valid(skip_calc, upd0, upd1);
-    auto act  = f_t2{0., 0.};
+  } else if (!thrust::get<0>(skip_calc)) {
+    auto act = f_t2{0., 0.};
     for (i_t i = threadIdx.x + item_off_beg; i < item_off_end; i += blockDim.x) {
-      auto act_load = upd.tmp_act[i];
+      auto act_load = upd0.tmp_act[i];
       act.x += act_load.x;
       act.y += act_load.y;
     }
     act = reduce.sum(act);
-    if (threadIdx.x == 0) { write_cnst_slack<erase_inf_cnst>(upd, cnst_idx, cnst_lb_ub, act, eps); }
+    if (threadIdx.x == 0) {
+      write_cnst_slack<erase_inf_cnst>(upd0, cnst_idx, cnst_lb_ub, act, eps);
+    }
+  } else if (!thrust::get<1>(skip_calc)) {
+    auto act = f_t2{0., 0.};
+    for (i_t i = threadIdx.x + item_off_beg; i < item_off_end; i += blockDim.x) {
+      auto act_load = upd1.tmp_act[i];
+      act.x += act_load.x;
+      act.y += act_load.y;
+    }
+    act = reduce.sum(act);
+    if (threadIdx.x == 0) {
+      write_cnst_slack<erase_inf_cnst>(upd1, cnst_idx, cnst_lb_ub, act, eps);
+    }
   }
 }
 

@@ -165,8 +165,7 @@ __global__ void check_variable_data(raft::device_span<i_t> reorg_ids,
 
   auto dst_read_beg = offsets[new_idx];
   auto bnd          = bounds[idx];
-  bool bnd_match =
-    (bnd.x == pb.variable_bounds[idx].x) && (bnd.y == pb.variable_bounds[idx].y);
+  bool bnd_match    = (bnd.x == pb.variable_bounds[idx].x) && (bnd.y == pb.variable_bounds[idx].y);
   auto var_type_match = (var_types[new_idx] == pb.variable_types[idx]);
 
   if (threadIdx.x == 0) {

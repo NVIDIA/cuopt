@@ -22,10 +22,10 @@
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <mip/presolve/bounds_presolve.cuh>
-#include <mip/presolve/load_balanced_bounds_presolve.cuh>
-#include <mip/problem/load_balanced_problem.cuh>
 #include <mip/presolve/lb_bounds_presolve.cuh>
 #include <mip/presolve/lb_problem.cuh>
+#include <mip/presolve/load_balanced_bounds_presolve.cuh>
+#include <mip/problem/load_balanced_problem.cuh>
 #include <mps_parser/parser.hpp>
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
@@ -158,7 +158,7 @@ void bench(std::string path)
   detail::load_balanced_problem_t<int, double> lb_problem_old(problem);
   detail::load_balanced_bounds_presolve_t<int, double> lb_prs_old(lb_problem_old, solver.context);
 
-  //detail::bound_presolve_t<int, double> bnd_prb(solver.context);
+  // detail::bound_presolve_t<int, double> bnd_prb(solver.context);
   const int warm_up_iter = 20;
   for (int i = 0; i < warm_up_iter; ++i) {
     bnd_prs.calculate_activity(problem);
@@ -169,9 +169,9 @@ void bench(std::string path)
     lb_prs_old.update_bounds_from_slack(&handle_);
   }
 
-  float bnd_lb_time     = 0;
-  float new_lb_time     = 0;
-  float old_lb_time     = 0;
+  float bnd_lb_time    = 0;
+  float new_lb_time    = 0;
+  float old_lb_time    = 0;
   const int iter_limit = 50;
   {
     bnd_prs.copy_input_bounds(problem);
@@ -228,8 +228,9 @@ void bench(std::string path)
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&old_lb_time, start, stop);
   }
-  std::cout<<path<<" ";
-  std::cout<<"n_cnst "<<problem.n_constraints<<" n_var "<<problem.n_variables<<" nnz "<<problem.nnz<<"\t";
+  std::cout << path << " ";
+  std::cout << "n_cnst " << problem.n_constraints << " n_var " << problem.n_variables << " nnz "
+            << problem.nnz << "\t";
   std::cout << "speedup over old lb " << old_lb_time / new_lb_time << "\n";
   std::cout << "speedup over bnd prs " << bnd_lb_time / new_lb_time << "\n";
 }
@@ -284,34 +285,33 @@ void test_multi_probe(std::string path)
   }
 }
 
-//TEST(presolve, multi_probe)
+// TEST(presolve, multi_probe)
 //{
-//  std::vector<std::string> test_instances = {
-//    //"mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
-//    "mip/50v-10-free-bound.mps",
-//    "mip/neos5-free-bound.mps"};
-//  for (const auto& test_instance : test_instances) {
-//    auto path = make_path_absolute(test_instance);
-//    test_multi_probe(path);
-//  }
-//}
+//   std::vector<std::string> test_instances = {
+//     //"mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
+//     "mip/50v-10-free-bound.mps",
+//     "mip/neos5-free-bound.mps"};
+//   for (const auto& test_instance : test_instances) {
+//     auto path = make_path_absolute(test_instance);
+//     test_multi_probe(path);
+//   }
+// }
 
 TEST(presolve, multi_probe)
 {
-  std::vector<std::string> test_instances = {
-    "/raid/kaatish/miplib/mas74.mps",
-    "/raid/kaatish/miplib/neos17.mps",
-    "/raid/kaatish/miplib/neos-3402454-bohle.mps",
-    "/raid/kaatish/miplib/sing44.mps",
-    "/raid/kaatish/miplib/square41.mps",
-    "/raid/kaatish/miplib/square47.mps",
-    "/raid/kaatish/miplib/supportcase19.mps",
-    "/raid/kaatish/miplib/s100.mps",
-    "/raid/kaatish/miplib/s250r10.mps",
-    "/raid/kaatish/miplib/roi5alpha10n8.mps",
-    "/raid/kaatish/miplib/neos-5114902-kasavu.mps",
-    "/raid/kaatish/miplib/neos-4647030-tutaki.mps",
-    "/raid/kaatish/miplib/timtab1.mps"};
+  std::vector<std::string> test_instances = {"/raid/kaatish/miplib/mas74.mps",
+                                             "/raid/kaatish/miplib/neos17.mps",
+                                             "/raid/kaatish/miplib/neos-3402454-bohle.mps",
+                                             "/raid/kaatish/miplib/sing44.mps",
+                                             "/raid/kaatish/miplib/square41.mps",
+                                             "/raid/kaatish/miplib/square47.mps",
+                                             "/raid/kaatish/miplib/supportcase19.mps",
+                                             "/raid/kaatish/miplib/s100.mps",
+                                             "/raid/kaatish/miplib/s250r10.mps",
+                                             "/raid/kaatish/miplib/roi5alpha10n8.mps",
+                                             "/raid/kaatish/miplib/neos-5114902-kasavu.mps",
+                                             "/raid/kaatish/miplib/neos-4647030-tutaki.mps",
+                                             "/raid/kaatish/miplib/timtab1.mps"};
   for (const auto& test_instance : test_instances) {
     std::cout << "Running: " << test_instance << std::endl;
     bench(test_instance);

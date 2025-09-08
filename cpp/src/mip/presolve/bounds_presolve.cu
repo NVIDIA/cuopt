@@ -185,6 +185,7 @@ termination_criterion_t bound_presolve_t<i_t, f_t>::bound_update_loop(problem_t<
   upd.init_changed_constraints(pb.handle_ptr);
   for (iter = 0; iter < settings.iteration_limit; ++iter) {
     calculate_activity(pb);
+    pb.handle_ptr->sync_stream();
     if (timer.check_time_limit()) {
       criteria = termination_criterion_t::TIME_LIMIT;
       CUOPT_LOG_TRACE("Exiting bounds prop because of time limit at iter %d", iter);
@@ -203,7 +204,6 @@ termination_criterion_t bound_presolve_t<i_t, f_t>::bound_update_loop(problem_t<
   pb.handle_ptr->sync_stream();
   calculate_infeasible_redundant_constraints(pb);
   solve_iter = iter;
-  std::cout << "bounds_presolve_t iter " << iter << "\n";
 
   return criteria;
 }

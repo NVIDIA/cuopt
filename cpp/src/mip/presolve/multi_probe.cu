@@ -121,21 +121,19 @@ void multi_probe_t<i_t, f_t>::calculate_activity(problem_t<i_t, f_t>& pb,
   // u_j is upper bound of variable j
 
   {
-  nvtxRangePush("multi_act");
-  if (skip_0 ^ skip_1) {
-    std::cout<<"multi 1\n";
-    auto& upd                = skip_0 ? upd_1 : upd_0;
-    constexpr auto n_threads = 256;
-    calc_activity_kernel<i_t, f_t, n_threads>
-      <<<pb.n_constraints, n_threads, 0, handle_ptr->get_stream()>>>(pb.view(), upd.view());
-  } else {
-    std::cout<<"multi 2\n";
-    constexpr auto n_threads = 256;
-    calc_activity_kernel<i_t, f_t, n_threads>
-      <<<pb.n_constraints, n_threads, 0, handle_ptr->get_stream()>>>(
-        pb.view(), upd_0.view(), upd_1.view());
-  }
-  nvtxRangePop();
+    nvtxRangePush("multi_act");
+    if (skip_0 ^ skip_1) {
+      auto& upd                = skip_0 ? upd_1 : upd_0;
+      constexpr auto n_threads = 256;
+      calc_activity_kernel<i_t, f_t, n_threads>
+        <<<pb.n_constraints, n_threads, 0, handle_ptr->get_stream()>>>(pb.view(), upd.view());
+    } else {
+      constexpr auto n_threads = 256;
+      calc_activity_kernel<i_t, f_t, n_threads>
+        <<<pb.n_constraints, n_threads, 0, handle_ptr->get_stream()>>>(
+          pb.view(), upd_0.view(), upd_1.view());
+    }
+    nvtxRangePop();
   }
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
 }
@@ -157,41 +155,41 @@ bool multi_probe_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb,
   constexpr auto n_threads = 256;
 
   {
-  nvtxRangePush("multi_bnd");
-  if (skip_0 && skip_1) {
-    return false;
-  } else if (skip_0) {
-    upd_1.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
-    update_bounds_kernel<i_t, f_t, n_threads>
-      <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream()>>>(pb.view(), upd_1.view());
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
-    i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());
-    CUOPT_LOG_TRACE("Bounds changed upd 1 %d", h_bounds_changed_1);
-    skip_1 = (h_bounds_changed_1 == zero);
-  } else if (skip_1) {
-    upd_0.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
-    update_bounds_kernel<i_t, f_t, n_threads>
-      <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream()>>>(pb.view(), upd_0.view());
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
-    i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
-    CUOPT_LOG_TRACE("Bounds changed upd 0 %d", h_bounds_changed_0);
-    skip_0 = (h_bounds_changed_0 == zero);
-  } else {
-    upd_0.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
-    upd_1.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
-    update_bounds_kernel<i_t, f_t, n_threads>
-      <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream()>>>(
-        pb.view(), upd_0.view(), upd_1.view());
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
-    i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
-    CUOPT_LOG_TRACE("Bounds changed upd 0 %d", h_bounds_changed_0);
-    i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());
-    CUOPT_LOG_TRACE("Bounds changed upd 1 %d", h_bounds_changed_1);
+    nvtxRangePush("multi_bnd");
+    if (skip_0 && skip_1) {
+      return false;
+    } else if (skip_0) {
+      upd_1.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
+      update_bounds_kernel<i_t, f_t, n_threads>
+        <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream()>>>(pb.view(), upd_1.view());
+      RAFT_CHECK_CUDA(handle_ptr->get_stream());
+      i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());
+      CUOPT_LOG_TRACE("Bounds changed upd 1 %d", h_bounds_changed_1);
+      skip_1 = (h_bounds_changed_1 == zero);
+    } else if (skip_1) {
+      upd_0.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
+      update_bounds_kernel<i_t, f_t, n_threads>
+        <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream()>>>(pb.view(), upd_0.view());
+      RAFT_CHECK_CUDA(handle_ptr->get_stream());
+      i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
+      CUOPT_LOG_TRACE("Bounds changed upd 0 %d", h_bounds_changed_0);
+      skip_0 = (h_bounds_changed_0 == zero);
+    } else {
+      upd_0.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
+      upd_1.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
+      update_bounds_kernel<i_t, f_t, n_threads>
+        <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream()>>>(
+          pb.view(), upd_0.view(), upd_1.view());
+      RAFT_CHECK_CUDA(handle_ptr->get_stream());
+      i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
+      CUOPT_LOG_TRACE("Bounds changed upd 0 %d", h_bounds_changed_0);
+      i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());
+      CUOPT_LOG_TRACE("Bounds changed upd 1 %d", h_bounds_changed_1);
 
-    skip_0 = (h_bounds_changed_0 == zero);
-    skip_1 = (h_bounds_changed_1 == zero);
-  }
-  nvtxRangePop();
+      skip_0 = (h_bounds_changed_0 == zero);
+      skip_1 = (h_bounds_changed_1 == zero);
+    }
+    nvtxRangePop();
   }
 
   return (!skip_0 || !skip_1);
@@ -322,8 +320,6 @@ termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t
     iter_0 += !skip_0;
     iter_1 += !skip_1;
   }
-  handle_ptr->sync_stream();
-  std::cout << "multi_probe_t iter " << iter << "\n";
   if (compute_stats) { constraint_stats(pb, handle_ptr); }
 
   return criteria;

@@ -130,7 +130,7 @@ void lb_problem_t<i_t, f_t>::csr_data_t::setup(problem_t<i_t, f_t>& problem,
                                      offsets);
 
   i_t w_t_r = 4;
-  //i_t block_size = (type == csr_type_t::CNST? 512 : 256);
+  // i_t block_size = (type == csr_type_t::CNST? 512 : 256);
   i_t block_size = 512;
   std::tie(sub_warp_count, sub_warp_block_count, med_block_count) =
     block_meta(problem.handle_ptr->get_stream(),
