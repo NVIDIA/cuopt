@@ -2843,8 +2843,8 @@ dual::status_t dual_phase2(i_t phase,
       vstatus[leaving_index] = variable_status_t::NONBASIC_FIXED;
     }
     basic_list[basic_leaving_index] = entering_index;
-    settings.log.printf("basic_leaving_index %d leaving %d nonbasic.size %lu\n",
-                        basic_leaving_index,
+    settings.log.printf("nonbasic_entering_index %d leaving %d nonbasic.size %lu\n",
+                        nonbasic_entering_index,
                         leaving_index,
                         nonbasic_list.size());
     nonbasic_list[nonbasic_entering_index] = leaving_index;
