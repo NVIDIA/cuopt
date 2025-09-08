@@ -69,6 +69,8 @@ files:
       - cuda_version
       - notebooks
       - py_version
+      - depends_on_cuopt_server
+      - depends_on_cuopt_sh_client
   checks:
     output: none
     includes:
@@ -817,15 +819,8 @@ dependencies:
     common:
       - output_types: [conda, requirements]
         packages:
-          - breathe
-          - folium
-          - geopandas
           - ipython
-          - matplotlib
           - notebook
-          - polyline
-          - scipy
-          - libgdal<3.9.0
       - output_types: [conda]
         packages:
           - *jsonref
