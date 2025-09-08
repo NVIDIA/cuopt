@@ -34,14 +34,13 @@
 
 namespace cuopt::linear_programming::detail {
 
-static constexpr int TPB_resetmoves                 = raft::WarpSize * 4;
-static constexpr int TPB_heavyvars                  = raft::WarpSize * 16;
-static constexpr int TPB_heavycstrs                 = raft::WarpSize * 4;
-static constexpr int TPB_localmin                   = raft::WarpSize * 4;
-static constexpr int TPB_setval                     = raft::WarpSize * 16;
-static constexpr int TPB_update_changed_constraints = raft::WarpSize * 4;
-static constexpr int TPB_liftmoves                  = raft::WarpSize * 4;
-static constexpr int TPB_loadbalance                = raft::WarpSize * 4;
+static constexpr int TPB_resetmoves  = raft::WarpSize * 4;
+static constexpr int TPB_heavyvars   = raft::WarpSize * 16;
+static constexpr int TPB_heavycstrs  = raft::WarpSize * 4;
+static constexpr int TPB_localmin    = raft::WarpSize * 4;
+static constexpr int TPB_setval      = raft::WarpSize * 16;
+static constexpr int TPB_liftmoves   = raft::WarpSize * 4;
+static constexpr int TPB_loadbalance = raft::WarpSize * 4;
 
 struct fj_hyper_parameters_t {
   // The number of moves to evaluate, if there are many positive-score
@@ -210,10 +209,10 @@ class fj_t {
                     const raft::handle_t* handle_ptr,
                     std::optional<i_t> new_size = std::nullopt);
   i_t host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx = 0);
-  void run_step_device(i_t climber_idx = 0, bool use_graph = false);
+  void run_step_device(i_t climber_idx = 0, bool use_graph = true);
   void run_step_device(const rmm::cuda_stream_view& stream,
                        i_t climber_idx = 0,
-                       bool use_graph  = false);
+                       bool use_graph  = true);
   void refresh_lhs_and_violation(const rmm::cuda_stream_view& stream, i_t climber_idx = 0);
   // load balancing
   void load_balancing_score_update(const rmm::cuda_stream_view& stream, i_t climber_idx = 0);
@@ -254,7 +253,6 @@ class fj_t {
 
   // kernel launch dimensions, computed once inside the constructor
   std::pair<dim3, dim3> setval_launch_dims;
-  std::pair<dim3, dim3> update_changed_constraints_launch_dims;
   std::pair<dim3, dim3> resetmoves_launch_dims;
   std::pair<dim3, dim3> resetmoves_bin_launch_dims;
   std::pair<dim3, dim3> update_weights_launch_dims;
