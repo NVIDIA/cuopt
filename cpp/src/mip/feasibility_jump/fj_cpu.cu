@@ -19,6 +19,7 @@
 
 #include "feasibility_jump.cuh"
 #include "feasibility_jump_impl_common.cuh"
+#include "fj_cpu.cuh"
 
 #include <chrono>
 #include <unordered_set>
@@ -67,81 +68,6 @@ struct fj_move_hash {
     // Combines the two hash values (boost-inspired)
     return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
   }
-};
-
-// NOTE: this seems an easy pick for reflection/xmacros once this is available (C++26?)
-// Maintaining a single source of truth for all members would be nice
-template <typename i_t, typename f_t>
-struct fj_cpu_t {
-  fj_cpu_t(fj_t<i_t, f_t>& fj) : fj(fj) {}
-
-  fj_t<i_t, f_t>& fj;
-  fj_settings_t settings;
-  typename fj_t<i_t, f_t>::climber_data_t::view_t view;
-  // Host copies of device data as struct members
-  std::vector<f_t> h_reverse_coefficients;
-  std::vector<i_t> h_reverse_constraints;
-  std::vector<i_t> h_reverse_offsets;
-  std::vector<f_t> h_coefficients;
-  std::vector<i_t> h_offsets;
-  std::vector<i_t> h_variables;
-  std::vector<f_t> h_obj_coeffs;
-  std::vector<f_t> h_var_lb;
-  std::vector<f_t> h_var_ub;
-  std::vector<f_t> h_cstr_lb;
-  std::vector<f_t> h_cstr_ub;
-  std::vector<var_t> h_var_types;
-  std::vector<i_t> h_is_binary_variable;
-  std::vector<i_t> h_objective_vars;
-  std::vector<i_t> h_binary_indices;
-
-  std::vector<i_t> h_tabu_nodec_until;
-  std::vector<i_t> h_tabu_noinc_until;
-  std::vector<i_t> h_tabu_lastdec;
-  std::vector<i_t> h_tabu_lastinc;
-
-  std::vector<f_t> h_lhs;
-  std::vector<f_t> h_lhs_sumcomp;
-  std::vector<f_t> h_cstr_left_weights;
-  std::vector<f_t> h_cstr_right_weights;
-  f_t max_weight;
-  std::vector<f_t> h_assignment;
-  std::vector<f_t> h_best_assignment;
-  f_t h_objective_weight;
-  f_t h_incumbent_objective;
-  f_t h_best_objective;
-  i_t last_feasible_entrance_iter{0};
-  i_t iterations;
-  std::unordered_set<i_t> violated_constraints;
-  std::unordered_set<i_t> satisfied_constraints;
-  bool feasible_found{false};
-
-  // Timing data structures
-  std::vector<double> find_lift_move_times;
-  std::vector<double> find_mtm_move_viol_times;
-  std::vector<double> find_mtm_move_sat_times;
-  std::vector<double> apply_move_times;
-  std::vector<double> update_weights_times;
-  std::vector<double> compute_score_times;
-
-  i_t hit_count{0};
-  i_t miss_count{0};
-
-  i_t candidate_move_hits[3]   = {0};
-  i_t candidate_move_misses[3] = {0};
-
-  // vector<bool> is actually likely beneficial here since we're memory bound
-  std::vector<bool> flip_move_computed;
-  ;
-  // CSR nnz offset -> (delta, score)
-  std::vector<std::pair<f_t, fj_staged_score_t>> cached_mtm_moves;
-
-  // CSC (transposed!) nnz-offset-indexed constraint bounds (lb, ub)
-  // std::pair<f_t, f_t> better compile down to 16 bytes!! GCC do your job!
-  std::vector<std::pair<f_t, f_t>> cached_cstr_bounds;
-
-  std::vector<bool> var_bitmap;
-  std::vector<i_t> iter_mtm_vars;
 };
 
 template <typename i_t, typename f_t>
@@ -1054,17 +980,24 @@ static void sanity_checks(fj_cpu_t<i_t, f_t>& fj_cpu)
 }
 
 template <typename i_t, typename f_t>
-i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution, f_t in_time_limit)
+std::unique_ptr<fj_cpu_t<i_t, f_t>> fj_t<i_t, f_t>::cpu_solve_init(solution_t<i_t, f_t>& solution)
 {
-  raft::common::nvtx::range scope("fj_cpu");
-
+  raft::common::nvtx::range scope("fj_cpu_init");
+  cpu_fj_halted = false;
   climber_init(0);  // TODO: shouldn't be needed.
 
-  auto& fj = *this;
-  fj_cpu_t fj_cpu{fj};
+  auto& fj    = *this;
+  auto fj_cpu = std::make_unique<fj_cpu_t<i_t, f_t>>(fj);
 
   // Initialize fj_cpu with all the data
-  init_fj_cpu(fj_cpu, solution);
+  init_fj_cpu(*fj_cpu, solution);
+  return fj_cpu;  // move
+}
+
+template <typename i_t, typename f_t>
+bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
+{
+  raft::common::nvtx::range scope("fj_cpu");
 
   fprintf(stderr, "running bespoke CPU FJ!\n");
 
@@ -1072,10 +1005,11 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution, f_t in_time_limit)
   auto loop_start      = std::chrono::high_resolution_clock::now();
   auto time_limit      = std::chrono::milliseconds((int)(in_time_limit * 1000));
   auto loop_time_start = std::chrono::high_resolution_clock::now();
-  while (fj_cpu.iterations < 20000 * 100) {
+  while (!cpu_fj_halted) {
     // Check if 5 seconds have passed
     auto now = std::chrono::high_resolution_clock::now();
-    if (now - loop_time_start > time_limit) {
+    if (in_time_limit < std::numeric_limits<f_t>::infinity() &&
+        now - loop_time_start > time_limit) {
       printf("Time limit of %.4f seconds reached, breaking loop at iteration %d\n",
              time_limit.count() / 1000.f,
              fj_cpu.iterations);
@@ -1175,12 +1109,9 @@ i_t fj_t<i_t, f_t>::cpu_solve(solution_t<i_t, f_t>& solution, f_t in_time_limit)
   // Print final timing statistics
   printf("\n=== Final Timing Statistics ===\n");
   print_timing_stats(fj_cpu);
-
-  solution.copy_new_assignment(fj_cpu.h_best_assignment);
-
   // exit(0);
 
-  return 0;
+  return fj_cpu.feasible_found;
 }
 
 #if MIP_INSTANTIATE_FLOAT

@@ -55,6 +55,7 @@ struct ls_config_t {
   ls_method_t ls_method                   = ls_method_t::RANDOM;
 };
 
+template <typename i_t, typename f_t>
 struct cpu_fj_thread_t {
   cpu_fj_thread_t();
   ~cpu_fj_thread_t();
@@ -74,6 +75,8 @@ struct cpu_fj_thread_t {
   std::atomic<bool> cpu_thread_terminate{false};
   bool cpu_fj_solution_found{false};
   std::unique_ptr<Solver> cpu_solver;
+  std::unique_ptr<fj_cpu_t<i_t, f_t>> fj_cpu;
+  fj_t<i_t, f_t>* fj_ptr{nullptr};
 };
 
 template <typename i_t, typename f_t>
@@ -131,9 +134,9 @@ class local_search_t {
   feasibility_pump_t<i_t, f_t> fp;
   std::mt19937 rng;
 
-  std::array<cpu_fj_thread_t, 1> ls_cpu_fj;
-  std::array<cpu_fj_thread_t, 1> scratch_cpu_fj;
-  cpu_fj_thread_t scratch_cpu_fj_on_lp_opt;
+  std::array<cpu_fj_thread_t<i_t, f_t>, 1> ls_cpu_fj;
+  std::array<cpu_fj_thread_t<i_t, f_t>, 1> scratch_cpu_fj;
+  cpu_fj_thread_t<i_t, f_t> scratch_cpu_fj_on_lp_opt;
   problem_t<i_t, f_t> problem_with_objective_cut;
 };
 

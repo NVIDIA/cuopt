@@ -148,7 +148,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
 
   auto sol = scaled_sol.get_solution(
     is_feasible_before_scaling || is_feasible_after_unscaling, solver.get_solver_stats(), false);
-  detail::print_solution(scaled_problem.handle_ptr, sol.get_solution());
+  // detail::print_solution(scaled_problem.handle_ptr, sol.get_solution());
   return sol;
 }
 

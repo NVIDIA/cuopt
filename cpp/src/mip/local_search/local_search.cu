@@ -28,6 +28,7 @@
 
 #include <mip/feasibility_jump/Local-MIP-integration/code/Solver.h>
 #include <mip/feasibility_jump/Local-MIP-integration/code/LocalMipAdapter.cuh>
+#include <mip/feasibility_jump/fj_cpu.cuh>
 
 #include <cuda_profiler_api.h>
 
@@ -35,19 +36,20 @@
 
 namespace cuopt::linear_programming::detail {
 
-cpu_fj_thread_t::cpu_fj_thread_t()
+template <typename i_t, typename f_t>
+cpu_fj_thread_t<i_t, f_t>::cpu_fj_thread_t()
 {
-  cpu_solver = std::make_unique<Solver>();
-
-  cpu_worker = std::thread(&cpu_fj_thread_t::cpu_worker_thread, this);
+  cpu_worker = std::thread(&cpu_fj_thread_t<i_t, f_t>::cpu_worker_thread, this);
 }
 
-cpu_fj_thread_t::~cpu_fj_thread_t()
+template <typename i_t, typename f_t>
+cpu_fj_thread_t<i_t, f_t>::~cpu_fj_thread_t()
 {
   if (!cpu_thread_terminate) { kill_cpu_solver(); }
 }
 
-void cpu_fj_thread_t::cpu_worker_thread()
+template <typename i_t, typename f_t>
+void cpu_fj_thread_t<i_t, f_t>::cpu_worker_thread()
 {
   while (!cpu_thread_terminate) {
     // Wait for start signal
@@ -61,36 +63,42 @@ void cpu_fj_thread_t::cpu_worker_thread()
     // Run CPU solver
     {
       raft::common::nvtx::range fun_scope("Running CPU FJ");
-      cpu_solver->Run();
+      cpu_fj_solution_found = fj_ptr->cpu_solve(*fj_cpu);
     }
-    cpu_fj_solution_found = cpu_solver->localMIP->isFoundFeasible;
 
     cpu_thread_should_start = false;
     cpu_thread_done         = true;
   }
 }
 
-void cpu_fj_thread_t::kill_cpu_solver()
+template <typename i_t, typename f_t>
+void cpu_fj_thread_t<i_t, f_t>::kill_cpu_solver()
 {
   printf("Killing CPU solver\n");
-  cpu_thread_terminate         = true;
-  cpu_solver->localMIP->halted = true;
+  cpu_thread_terminate = true;
+  if (fj_ptr) fj_ptr->cpu_fj_halted = true;
   cpu_cv.notify_one();
   cpu_worker.join();
 }
 
-void cpu_fj_thread_t::start_cpu_solver()
+template <typename i_t, typename f_t>
+void cpu_fj_thread_t<i_t, f_t>::start_cpu_solver()
 {
   // Reset flags
-  cpu_thread_done              = false;
-  cpu_thread_should_start      = true;
-  cpu_solver->localMIP->halted = false;
+  cpu_thread_done         = false;
+  cpu_thread_should_start = true;
+  fj_ptr->cpu_fj_halted   = false;
   cpu_cv.notify_one();
 }
 
-void cpu_fj_thread_t::stop_cpu_solver() { cpu_solver->localMIP->halted = true; }
+template <typename i_t, typename f_t>
+void cpu_fj_thread_t<i_t, f_t>::stop_cpu_solver()
+{
+  fj_ptr->cpu_fj_halted = true;
+}
 
-bool cpu_fj_thread_t::wait_for_cpu_solver()
+template <typename i_t, typename f_t>
+bool cpu_fj_thread_t<i_t, f_t>::wait_for_cpu_solver()
 {
   while (!cpu_thread_done && !cpu_thread_terminate) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -124,7 +132,7 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
   line_segment_search.ls = this;
 
   for (auto& cpu_fj : ls_cpu_fj) {
-    cpu_fj.cpu_solver = nullptr;
+    cpu_fj.fj_ptr = &fj;
   }
 }
 
@@ -134,109 +142,108 @@ static population_t<int, double>* pop_ptr = nullptr;
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& population)
 {
-  pop_ptr = &population;
+  // pop_ptr = &population;
 
-  for (auto& cpu_fj : scratch_cpu_fj) {
-    cpu_fj.cpu_solver = nullptr;
-    cpu_fj.cpu_solver = std::make_unique<Solver>();
-  }
+  // for (auto& cpu_fj : scratch_cpu_fj) {
+  //   cpu_fj.fj_ptr = &fj;
+  // }
 
-  solution_t<i_t, f_t> solution(*context.problem_ptr);
-  thrust::fill(solution.handle_ptr->get_thrust_policy(),
-               solution.assignment.begin(),
-               solution.assignment.end(),
-               0.0);
-  solution.clamp_within_bounds();
-  i_t counter = 0;
-  for (auto& cpu_fj : scratch_cpu_fj) {
-    cpu_fj.cpu_solver->localMIP->prefix = "******* scratch " + std::to_string(counter) + ": ";
-    cpu_fj.cpu_solver->localMIP->optimum_callback = [this, &population, &cpu_fj]() {
-      std::vector<double> h_vec;
-      GetSolution(*cpu_fj.cpu_solver, h_vec);
-      population.add_external_solution(h_vec, cpu_fj.cpu_solver->localMIP->bestOBJ, "CPUFJ");
-      if (cpu_fj.cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
-        CUOPT_LOG_DEBUG(
-          "******* New local search best obj %g, best overall %g",
-          context.problem_ptr->get_user_obj_from_solver_obj(cpu_fj.cpu_solver->localMIP->bestOBJ),
-          context.problem_ptr->get_user_obj_from_solver_obj(
-            population.is_feasible() ? population.best_feasible().get_objective()
-                                     : std::numeric_limits<f_t>::max()));
-        local_search_best_obj = cpu_fj.cpu_solver->localMIP->bestOBJ;
-      }
-    };
-    cpu_fj.cpu_solver->localMIP->diversity_callback = [this, &population, &cpu_fj]() {
-      std::vector<double> h_vec;
-      f_t obj = GetSolution(*cpu_fj.cpu_solver, h_vec, true);
-      // population.add_external_solution(h_vec, obj, "CPUFJ");
-    };
-    counter++;
-  };
-  // cuopt_func_call(sol.test_feasibility(true))
-  counter = 0;
-  for (auto& cpu_fj : scratch_cpu_fj) {
-    if (counter > 0) solution.assign_random_within_bounds(0.4);
-    LocalMipRead(*cpu_fj.cpu_solver, *context.problem_ptr, solution);
-    if (counter > 0) {
-      cpu_fj.cpu_solver->localMIP->mt.seed(cuopt::seed_generator::get_seed());
-      cpu_fj.cpu_solver->localMIP->RandomizeParams();
-    }
-    counter++;
-  }
-  // default weights
-  cudaDeviceSynchronize();
+  // solution_t<i_t, f_t> solution(*context.problem_ptr);
+  // thrust::fill(solution.handle_ptr->get_thrust_policy(),
+  //              solution.assignment.begin(),
+  //              solution.assignment.end(),
+  //              0.0);
+  // solution.clamp_within_bounds();
+  // i_t counter = 0;
+  // for (auto& cpu_fj : scratch_cpu_fj) {
+  //   cpu_fj.cpu_solver->localMIP->prefix = "******* scratch " + std::to_string(counter) + ": ";
+  //   cpu_fj.cpu_solver->localMIP->optimum_callback = [this, &population, &cpu_fj]() {
+  //     std::vector<double> h_vec;
+  //     GetSolution(*cpu_fj.cpu_solver, h_vec);
+  //     population.add_external_solution(h_vec, cpu_fj.cpu_solver->localMIP->bestOBJ, "CPUFJ");
+  //     if (cpu_fj.cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
+  //       CUOPT_LOG_DEBUG(
+  //         "******* New local search best obj %g, best overall %g",
+  //         context.problem_ptr->get_user_obj_from_solver_obj(cpu_fj.cpu_solver->localMIP->bestOBJ),
+  //         context.problem_ptr->get_user_obj_from_solver_obj(
+  //           population.is_feasible() ? population.best_feasible().get_objective()
+  //                                    : std::numeric_limits<f_t>::max()));
+  //       local_search_best_obj = cpu_fj.cpu_solver->localMIP->bestOBJ;
+  //     }
+  //   };
+  //   cpu_fj.cpu_solver->localMIP->diversity_callback = [this, &population, &cpu_fj]() {
+  //     std::vector<double> h_vec;
+  //     f_t obj = GetSolution(*cpu_fj.cpu_solver, h_vec, true);
+  //     // population.add_external_solution(h_vec, obj, "CPUFJ");
+  //   };
+  //   counter++;
+  // };
+  // // cuopt_func_call(sol.test_feasibility(true))
+  // counter = 0;
+  // for (auto& cpu_fj : scratch_cpu_fj) {
+  //   if (counter > 0) solution.assign_random_within_bounds(0.4);
+  //   LocalMipRead(*cpu_fj.cpu_solver, *context.problem_ptr, solution);
+  //   if (counter > 0) {
+  //     cpu_fj.cpu_solver->localMIP->mt.seed(cuopt::seed_generator::get_seed());
+  //     cpu_fj.cpu_solver->localMIP->RandomizeParams();
+  //   }
+  //   counter++;
+  // }
+  // // default weights
+  // cudaDeviceSynchronize();
 
-  // scratch_cpu_fj[0].cpu_solver->localMIP->relvar_offsets =
-  // host_copy(context.problem_ptr->related_variables_offsets);
-  // //scratch_cpu_fj[0].cpu_solver->localMIP->max_iters = 100000;
-  // scratch_cpu_fj[0].start_cpu_solver();
-  // scratch_cpu_fj[0].wait_for_cpu_solver();
-  // printf("Waiting!\n");
-  // exit(0);
+  // // scratch_cpu_fj[0].cpu_solver->localMIP->relvar_offsets =
+  // // host_copy(context.problem_ptr->related_variables_offsets);
+  // // //scratch_cpu_fj[0].cpu_solver->localMIP->max_iters = 100000;
+  // // scratch_cpu_fj[0].start_cpu_solver();
+  // // scratch_cpu_fj[0].wait_for_cpu_solver();
+  // // printf("Waiting!\n");
+  // // exit(0);
 
-  // TODO: other thread running on LP optimal
-  for (auto& cpu_fj : scratch_cpu_fj) {
-    cpu_fj.start_cpu_solver();
-  }
+  // // TODO: other thread running on LP optimal
+  // for (auto& cpu_fj : scratch_cpu_fj) {
+  //   cpu_fj.start_cpu_solver();
+  // }
 
-  scratch_cpu_fj_on_lp_opt.cpu_solver                   = nullptr;
-  scratch_cpu_fj_on_lp_opt.cpu_solver                   = std::make_unique<Solver>();
-  scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->prefix = "******* scratch on LP optimal: ";
-  scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->optimum_callback = [this, &population]() {
-    std::vector<double> h_vec;
-    GetSolution(*scratch_cpu_fj_on_lp_opt.cpu_solver, h_vec);
-    population.add_external_solution(
-      h_vec, scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ, "CPUFJ");
-    if (scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
-      CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
-                      context.problem_ptr->get_user_obj_from_solver_obj(
-                        scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ),
-                      context.problem_ptr->get_user_obj_from_solver_obj(
-                        population.is_feasible() ? population.best_feasible().get_objective()
-                                                 : std::numeric_limits<f_t>::max()));
-      local_search_best_obj = scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ;
-    }
-  };
-  scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->diversity_callback = [this, &population]() {
-    std::vector<double> h_vec;
-    f_t obj = GetSolution(*scratch_cpu_fj_on_lp_opt.cpu_solver, h_vec, true);
-    population.add_external_solution(h_vec, obj, "CPUFJ");
-  };
-  solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
-  solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
-  solution_lp.round_random_nearest(500);
-  LocalMipRead(*scratch_cpu_fj_on_lp_opt.cpu_solver, *context.problem_ptr, solution_lp);
-  // default weights
-  cudaDeviceSynchronize();
-  // scratch_cpu_fj_on_lp_opt.start_cpu_solver();
+  // scratch_cpu_fj_on_lp_opt.cpu_solver                   = nullptr;
+  // scratch_cpu_fj_on_lp_opt.cpu_solver                   = std::make_unique<Solver>();
+  // scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->prefix = "******* scratch on LP optimal: ";
+  // scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->optimum_callback = [this, &population]() {
+  //   std::vector<double> h_vec;
+  //   GetSolution(*scratch_cpu_fj_on_lp_opt.cpu_solver, h_vec);
+  //   population.add_external_solution(
+  //     h_vec, scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ, "CPUFJ");
+  //   if (scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
+  //     CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
+  //                     context.problem_ptr->get_user_obj_from_solver_obj(
+  //                       scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ),
+  //                     context.problem_ptr->get_user_obj_from_solver_obj(
+  //                       population.is_feasible() ? population.best_feasible().get_objective()
+  //                                                : std::numeric_limits<f_t>::max()));
+  //     local_search_best_obj = scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->bestOBJ;
+  //   }
+  // };
+  // scratch_cpu_fj_on_lp_opt.cpu_solver->localMIP->diversity_callback = [this, &population]() {
+  //   std::vector<double> h_vec;
+  //   f_t obj = GetSolution(*scratch_cpu_fj_on_lp_opt.cpu_solver, h_vec, true);
+  //   population.add_external_solution(h_vec, obj, "CPUFJ");
+  // };
+  // solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
+  // solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
+  // solution_lp.round_random_nearest(500);
+  // LocalMipRead(*scratch_cpu_fj_on_lp_opt.cpu_solver, *context.problem_ptr, solution_lp);
+  // // default weights
+  // cudaDeviceSynchronize();
+  // // scratch_cpu_fj_on_lp_opt.start_cpu_solver();
 }
 
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::stop_fj_scratch_threads()
 {
-  for (auto& cpu_fj : scratch_cpu_fj) {
-    cpu_fj.kill_cpu_solver();
-  }
-  scratch_cpu_fj_on_lp_opt.kill_cpu_solver();
+  // for (auto& cpu_fj : scratch_cpu_fj) {
+  //   cpu_fj.kill_cpu_solver();
+  // }
+  // scratch_cpu_fj_on_lp_opt.kill_cpu_solver();
 }
 
 template <typename i_t, typename f_t>
@@ -279,15 +286,16 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   // }
 
   for (auto& cpu_fj : ls_cpu_fj) {
-    if (cpu_fj.cpu_solver == nullptr) {
-      cpu_fj.cpu_solver = std::make_unique<Solver>();
-      LocalMipRead(*cpu_fj.cpu_solver, *solution.problem_ptr, solution);
-    } else {
-      CopySolution(*cpu_fj.cpu_solver, solution);
-    }
-    CopyWeights(*cpu_fj.cpu_solver, in_fj);
-    cpu_fj.cpu_solver->localMIP->mt.seed(cuopt::seed_generator::get_seed());
-    cpu_fj.cpu_solver->localMIP->RandomizeParams();
+    // if (cpu_fj.cpu_solver == nullptr) {
+    //   cpu_fj.cpu_solver = std::make_unique<Solver>();
+    //   LocalMipRead(*cpu_fj.cpu_solver, *solution.problem_ptr, solution);
+    // } else {
+    //   CopySolution(*cpu_fj.cpu_solver, solution);
+    // }
+    // CopyWeights(*cpu_fj.cpu_solver, in_fj);
+    // cpu_fj.cpu_solver->localMIP->mt.seed(cuopt::seed_generator::get_seed());
+    // cpu_fj.cpu_solver->localMIP->RandomizeParams();
+    cpu_fj.fj_cpu = cpu_fj.fj_ptr->cpu_solve_init(solution);
   }
   // cudaDeviceSynchronize();
 
@@ -321,10 +329,10 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   for (auto& cpu_fj : ls_cpu_fj) {
     bool cpu_sol_found = cpu_fj.wait_for_cpu_solver();
     if (cpu_sol_found) {
-      f_t cpu_obj = cpu_fj.cpu_solver->localMIP->bestOBJ;
+      f_t cpu_obj = cpu_fj.fj_cpu->h_best_objective;
       if (cpu_obj < best_cpu_obj) {
         best_cpu_obj = cpu_obj;
-        GetSolution(*cpu_fj.cpu_solver, solution_cpu);
+        solution_cpu.copy_new_assignment(cpu_fj.fj_cpu->h_best_assignment);
         solution_cpu.compute_feasibility();
       }
     }
@@ -344,9 +352,9 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
 
   CUOPT_LOG_DEBUG(
     "CPU FJ returns feas %d, obj %g", cpu_feasible, solution_cpu.get_user_objective());
-  CUOPT_LOG_DEBUG("NEW CPU FJ returns feas %d, obj %g",
-                  solution_cpu_2.get_feasible(),
-                  solution_cpu_2.get_user_objective());
+  // CUOPT_LOG_DEBUG("NEW CPU FJ returns feas %d, obj %g",
+  //                 solution_cpu_2.get_feasible(),
+  //                 solution_cpu_2.get_user_objective());
 
   CUOPT_LOG_DEBUG("GPU FJ returns feas %d, obj %g", gpu_feasible, solution.get_user_objective());
   CUOPT_LOG_DEBUG("CPU FJ returns feas %d, obj %g, stats %d/%d",

@@ -198,6 +198,9 @@ struct fj_move_candidate_t {
 };
 
 template <typename i_t, typename f_t>
+struct fj_cpu_t;
+
+template <typename i_t, typename f_t>
 class fj_t {
  public:
   using move_score_t      = fj_staged_score_t;
@@ -208,7 +211,9 @@ class fj_t {
   ~fj_t();
   void reset_cuda_graph();
   i_t solve(solution_t<i_t, f_t>& solution);
-  i_t cpu_solve(solution_t<i_t, f_t>& solution, f_t time_limit = 5);
+  std::unique_ptr<fj_cpu_t<i_t, f_t>> cpu_solve_init(solution_t<i_t, f_t>& solution);
+  bool cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu,
+                 f_t time_limit = +std::numeric_limits<f_t>::infinity());
   i_t alloc_max_climbers(i_t desired_climbers);
   void resize_vectors(const raft::handle_t* handle_ptr);
   void device_init(const rmm::cuda_stream_view& stream);
@@ -246,6 +251,8 @@ class fj_t {
   rmm::device_scalar<f_t> objective_weight;
   f_t stop_threshold = 0.;
   rmm::device_uvector<i_t> objective_vars;
+
+  bool cpu_fj_halted = false;
 
   // array to directly map a CSR entry index to the corresponding constraint bound
   // to save on an indirect likely-uncoalesced load
