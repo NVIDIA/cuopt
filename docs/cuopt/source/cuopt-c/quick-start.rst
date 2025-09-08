@@ -20,8 +20,8 @@ This wheel is a Python wrapper around the C++ library and eases installation and
 
     # CUDA 13
     pip install --extra-index-url=https://pypi.nvidia.com \
-      'nvidia-cuda-runtime-cu12==13.0.*' \
-      'libcuopt-cu12==25.10.*'
+      'nvidia-cuda-runtime-cu13==13.0.*' \
+      'libcuopt-cu13==25.10.*'
 
     # CUDA 12
     pip install --extra-index-url=https://pypi.nvidia.com \
