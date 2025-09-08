@@ -299,19 +299,19 @@ void test_multi_probe(std::string path)
 TEST(presolve, multi_probe)
 {
   std::vector<std::string> test_instances = {
-    "/home/aatish/rapids/mip_files/miplib/mas74.mps",
-    "/home/aatish/rapids/mip_files/miplib/neos17.mps",
-    "/home/aatish/rapids/mip_files/miplib/neos-3402454-bohle.mps",
-    "/home/aatish/rapids/mip_files/miplib/sing44.mps",
-    "/home/aatish/rapids/mip_files/miplib/square41.mps",
-    "/home/aatish/rapids/mip_files/miplib/square47.mps",
-    "/home/aatish/rapids/mip_files/miplib/supportcase19.mps",
-    "/home/aatish/rapids/mip_files/miplib/s100.mps",
-    "/home/aatish/rapids/mip_files/miplib/s250r10.mps",
-    "/home/aatish/rapids/mip_files/miplib/roi5alpha10n8.mps",
-    "/home/aatish/rapids/mip_files/miplib/neos-5114902-kasavu.mps",
-    "/home/aatish/rapids/mip_files/miplib/neos-4647030-tutaki.mps",
-    "/home/aatish/rapids/mip_files/miplib/timtab1.mps"};
+    "/raid/kaatish/miplib/mas74.mps",
+    "/raid/kaatish/miplib/neos17.mps",
+    "/raid/kaatish/miplib/neos-3402454-bohle.mps",
+    "/raid/kaatish/miplib/sing44.mps",
+    "/raid/kaatish/miplib/square41.mps",
+    "/raid/kaatish/miplib/square47.mps",
+    "/raid/kaatish/miplib/supportcase19.mps",
+    "/raid/kaatish/miplib/s100.mps",
+    "/raid/kaatish/miplib/s250r10.mps",
+    "/raid/kaatish/miplib/roi5alpha10n8.mps",
+    "/raid/kaatish/miplib/neos-5114902-kasavu.mps",
+    "/raid/kaatish/miplib/neos-4647030-tutaki.mps",
+    "/raid/kaatish/miplib/timtab1.mps"};
   for (const auto& test_instance : test_instances) {
     std::cout << "Running: " << test_instance << std::endl;
     bench(test_instance);

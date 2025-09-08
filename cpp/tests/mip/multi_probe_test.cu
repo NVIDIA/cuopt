@@ -209,10 +209,10 @@ void bench_multi_probe(std::string path)
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
 
-    lb_multi_probe_prs.calculate_constraint_slack_iter(lb_problem, &handle_);
     handle_.sync_stream();
     cudaEventRecord(start, handle_.get_stream());
     for (int i = 0; i < iter_limit; ++i) {
+    lb_multi_probe_prs.calculate_constraint_slack_iter(lb_problem, &handle_);
       lb_multi_probe_prs.calculate_bounds_update_call(lb_problem, &handle_);
     }
     handle_.sync_stream();
@@ -230,10 +230,10 @@ void bench_multi_probe(std::string path)
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
 
-    multi_probe_prs.calculate_activity(problem, &handle_);
     handle_.sync_stream();
     cudaEventRecord(start, handle_.get_stream());
     for (int i = 0; i < iter_limit; ++i) {
+    multi_probe_prs.calculate_activity(problem, &handle_);
       multi_probe_prs.calculate_bounds_update(problem, &handle_);
     }
     handle_.sync_stream();
@@ -327,9 +327,23 @@ TEST(presolve, multi_probe_big)
   //  auto path = make_path_absolute(test_instance);
   //  test_multi_probe(path);
   //}
+  //std::vector<std::string> test_instances = {
+  //"/raid/kaatish/miplib/sing44.mps"
+  //};
   std::vector<std::string> test_instances = {
-  "/home/aatish/rapids/mip_files/miplib/sing44.mps"
-  };
+    "/raid/kaatish/miplib/mas74.mps",
+    "/raid/kaatish/miplib/neos17.mps",
+    "/raid/kaatish/miplib/neos-3402454-bohle.mps",
+    "/raid/kaatish/miplib/sing44.mps",
+    "/raid/kaatish/miplib/square41.mps",
+    "/raid/kaatish/miplib/square47.mps",
+    "/raid/kaatish/miplib/supportcase19.mps",
+    "/raid/kaatish/miplib/s100.mps",
+    "/raid/kaatish/miplib/s250r10.mps",
+    "/raid/kaatish/miplib/roi5alpha10n8.mps",
+    "/raid/kaatish/miplib/neos-5114902-kasavu.mps",
+    "/raid/kaatish/miplib/neos-4647030-tutaki.mps",
+    "/raid/kaatish/miplib/timtab1.mps"};
 
   //std::vector<std::string> test_instances = {"/home/aatish/rapids/mip_files/miplib/mas74.mps",
   //                                           "/home/aatish/rapids/mip_files/miplib/neos17.mps"};

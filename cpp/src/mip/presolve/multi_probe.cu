@@ -157,7 +157,7 @@ bool multi_probe_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb,
   constexpr auto n_threads = 256;
 
   {
-  nvtxRangePush("lb_multi_bnd");
+  nvtxRangePush("multi_bnd");
   if (skip_0 && skip_1) {
     return false;
   } else if (skip_0) {
