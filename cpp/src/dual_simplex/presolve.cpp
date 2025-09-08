@@ -79,29 +79,36 @@ bool bound_strengthening(const std::vector<char>& row_sense,
   csc_matrix_t<i_t, f_t> Arow(1, 1, 1);
   problem.A.transpose(Arow);
 
-  std::vector<f_t> min_activity(m);
-  std::vector<f_t> max_activity(m);
+  std::vector<f_t> delta_min_activity(m);
+  std::vector<f_t> delta_max_activity(m);
   std::vector<f_t> constraint_lb(m);
   std::vector<f_t> constraint_ub(m);
 
-  // FIXME:: Instead of initializing constraint_changed to true, we can only look 
+  // FIXME:: Instead of initializing constraint_changed to true, we can only look
   // at the constraints corresponding to branched variable in branch and bound
-  // This is because, the parent LP already checked for feasibility of the constraints 
+  // This is because, the parent LP already checked for feasibility of the constraints
   // without the branched variable bounds
   std::vector<bool> constraint_changed(m, true);
   std::vector<bool> variable_changed(n, false);
   std::vector<bool> constraint_changed_next(m, false);
 
-  for (i_t i = 0; i < m; ++i) {
-    if (row_sense[i] == 'L') {
-      constraint_ub[i] = problem.rhs[i];
-      constraint_lb[i] = -inf;
-    } else if (row_sense[i] == 'G') {
-      constraint_lb[i] = problem.rhs[i];
-      constraint_ub[i] = inf;
-    } else {
-      constraint_lb[i] = problem.rhs[i];
-      constraint_ub[i] = problem.rhs[i];
+  const bool is_row_sense_empty = row_sense.empty();
+  if (is_row_sense_empty) {
+    std::copy(problem.rhs.begin(), problem.rhs.end(), constraint_lb.begin());
+    std::copy(problem.rhs.begin(), problem.rhs.end(), constraint_ub.begin());
+  } else {
+    //  Set the constraint bounds
+    for (i_t i = 0; i < m; ++i) {
+      if (row_sense[i] == 'E') {
+        constraint_lb[i] = problem.rhs[i];
+        constraint_ub[i] = problem.rhs[i];
+      } else if (row_sense[i] == 'L') {
+        constraint_ub[i] = problem.rhs[i];
+        constraint_lb[i] = -inf;
+      } else {
+        constraint_lb[i] = problem.rhs[i];
+        constraint_ub[i] = inf;
+      }
     }
   }
 
@@ -154,8 +161,8 @@ bool bound_strengthening(const std::vector<char>& row_sense,
         return false;
       }
 
-      min_activity[i] = min_a;
-      max_activity[i] = max_a;
+      delta_min_activity[i] = cnst_ub - min_a;
+      delta_max_activity[i] = cnst_lb - max_a;
     }
 
     i_t num_bounds_changed = 0;
@@ -175,15 +182,12 @@ bool bound_strengthening(const std::vector<char>& row_sense,
 
         if (!constraint_changed[i]) { continue; }
         const f_t a_ik = problem.A.x[p];
-        f_t min_a      = min_activity[i];
-        f_t max_a      = max_activity[i];
-        f_t cnst_lb    = constraint_lb[i];
-        f_t cnst_ub    = constraint_ub[i];
-        min_a -= (a_ik < 0) ? a_ik * old_ub : a_ik * old_lb;
-        max_a -= (a_ik > 0) ? a_ik * old_ub : a_ik * old_lb;
 
-        f_t delta_min_act = cnst_ub - min_a;
-        f_t delta_max_act = cnst_lb - max_a;
+        f_t delta_min_act = delta_min_activity[i];
+        f_t delta_max_act = delta_max_activity[i];
+
+        delta_min_act += (a_ik < 0) ? a_ik * old_ub : a_ik * old_lb;
+        delta_max_act += (a_ik > 0) ? a_ik * old_ub : a_ik * old_lb;
 
         new_lb = std::max(new_lb, update_lb(old_lb, a_ik, delta_min_act, delta_max_act));
         new_ub = std::min(new_ub, update_ub(old_ub, a_ik, delta_min_act, delta_max_act));
@@ -203,8 +207,6 @@ bool bound_strengthening(const std::vector<char>& row_sense,
       new_ub = std::min(new_ub, problem.upper[k]);
 
       if (new_lb > new_ub + 1e-6) {
-        // std::cout << "Iter:: " << iter << ", Infeasible variable after update " << k << ", " <<
-        // new_lb << " > " << new_ub << std::endl;
         settings.log.printf(
           "Iter:: %d, Infeasible variable after update %d, %e > %e\n", iter, k, new_lb, new_ub);
         return false;

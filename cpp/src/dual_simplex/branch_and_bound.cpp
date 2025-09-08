@@ -646,8 +646,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     lp_settings.cut_off    = upper_bound + settings.dual_tol;
     lp_settings.inside_mip = 2;
 
-    // in B&B we only have equality constraints
-    std::vector<char> row_sense(leaf_problem.num_rows, 'E');
+    // in B&B we only have equality constraints, leave it empty for default
+    std::vector<char> row_sense;
     bool feasible = bound_strengthening(row_sense, lp_settings, leaf_problem, var_types);
 
     dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
