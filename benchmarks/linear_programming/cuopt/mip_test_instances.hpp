@@ -18,4 +18,10 @@
 #include <string>
 #include <vector>
 std::vector<std::string> instances = {"supportcase26_presolved.mps",
-                                      "neos-5107597-kakapo_presolved.mps"};
+                                      "neos-5107597-kakapo_presolved.mps",
+                                      "supportcase26_presolved_2.mps",
+                                      "neos-5107597-kakapo_presolved_2.mps",
+                                      "supportcase26_presolved_3.mps",
+                                      "neos-5107597-kakapo_presolved_3.mps",
+                                      "supportcase26_presolved_4.mps",
+                                      "neos-5107597-kakapo_presolved_4.mps"};
