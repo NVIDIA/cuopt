@@ -54,15 +54,21 @@ ARG CUOPT_VER
 ARG PYTHON_SHORT_VER
 
 # Install cuOpt as root to make it available to all users
-RUN cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
+RUN \
+    cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
     cuda_major_minor=$(echo ${CUDA_VER} | cut -d'.' -f1-2) && \
+    if [ "$cuda_suffix" = "cu13" ]; then \
+      nvidia_cuda_runtime_pkg="nvidia-cuda-runtime==${cuda_major_minor}.*"; \
+    else \
+      nvidia_cuda_runtime_pkg="nvidia-cuda-runtime-${cuda_suffix}==${cuda_major_minor}.*"; \
+    fi && \
     python -m pip install \
       --extra-index-url https://pypi.nvidia.com \
       --extra-index-url https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \
       --no-cache-dir \
       "cuopt-server-${cuda_suffix}==${CUOPT_VER}" \
       "cuopt-sh-client==${CUOPT_VER}" \
-      "nvidia-cuda-runtime-${cuda_suffix}==${cuda_major_minor}.*" && \
+      ${nvidia_cuda_runtime_pkg} && \
     python -m pip list
 
 # Remove gcc to save space, gcc was required for building psutils
