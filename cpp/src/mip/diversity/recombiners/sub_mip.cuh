@@ -81,7 +81,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
     fixed_problem.presolve_data.reset_additional_vars(fixed_problem, offspring.handle_ptr);
     fixed_problem.presolve_data.initialize_var_mapping(fixed_problem, offspring.handle_ptr);
-    // trivial_presolve(fixed_problem);
+    trivial_presolve(fixed_problem);
     fixed_problem.check_problem_representation(true);
     // brute force rounding threshold is 8
     const bool run_sub_mip                             = fixed_problem.n_integer_vars > 8;
