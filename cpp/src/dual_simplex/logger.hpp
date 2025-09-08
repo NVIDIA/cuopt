@@ -105,7 +105,7 @@ class logger_t {
 
         size_t len = strlen(buffer);
         if (len > 0 && buffer[len - 1] == '\n') { buffer[len - 1] = '\0'; }
-        CUOPT_LOG_DEBUG(buffer);
+        CUOPT_LOG_TRACE(buffer);
       }
 #else
       if (log_to_console) {
