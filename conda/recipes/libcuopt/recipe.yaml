@@ -57,6 +57,7 @@ cache:
       - cuda-version =${{ cuda_version }}
       - cmake ${{ cmake_version }}
       - ninja
+      - tbb-devel
       - zlib
       - bzip2
     host:
@@ -72,6 +73,7 @@ cache:
       - libcusparse-dev
       - cuda-cudart-dev
       - boost
+      - tbb-devel
       - zlib
       - bzip2
 
