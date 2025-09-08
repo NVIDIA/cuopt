@@ -136,6 +136,8 @@ template <typename i_t, typename f_t>
 bool bound_strengthening(const std::vector<char>& row_sense,
                          const simplex_solver_settings_t<i_t, f_t>& settings,
                          lp_problem_t<i_t, f_t>& problem,
-                         const std::vector<variable_type_t>& var_types = {});
+                         const csc_matrix_t<i_t, f_t>& Arow,
+                         const std::vector<variable_type_t>& var_types = {},
+                         const std::vector<bool>& bounds_changed       = {});
 
 }  // namespace cuopt::linear_programming::dual_simplex

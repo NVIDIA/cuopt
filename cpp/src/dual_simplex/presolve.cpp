@@ -70,14 +70,12 @@ template <typename i_t, typename f_t>
 bool bound_strengthening(const std::vector<char>& row_sense,
                          const simplex_solver_settings_t<i_t, f_t>& settings,
                          lp_problem_t<i_t, f_t>& problem,
-                         const std::vector<variable_type_t>& var_types)
+                         const csc_matrix_t<i_t, f_t>& Arow,
+                         const std::vector<variable_type_t>& var_types,
+                         const std::vector<bool>& bounds_changed)
 {
   const i_t m = problem.num_rows;
   const i_t n = problem.num_cols;
-
-  // FIXME:: pre-compute transpose and store
-  csc_matrix_t<i_t, f_t> Arow(1, 1, 1);
-  problem.A.transpose(Arow);
 
   std::vector<f_t> delta_min_activity(m);
   std::vector<f_t> delta_max_activity(m);
@@ -91,6 +89,20 @@ bool bound_strengthening(const std::vector<char>& row_sense,
   std::vector<bool> constraint_changed(m, true);
   std::vector<bool> variable_changed(n, false);
   std::vector<bool> constraint_changed_next(m, false);
+
+  if (false && !bounds_changed.empty()) {
+    std::fill(constraint_changed.begin(), constraint_changed.end(), false);
+    for (i_t i = 0; i < n; ++i) {
+      if (bounds_changed[i]) {
+        const i_t row_start = problem.A.col_start[i];
+        const i_t row_end   = problem.A.col_start[i + 1];
+        for (i_t p = row_start; p < row_end; ++p) {
+          const i_t j           = problem.A.i[p];
+          constraint_changed[j] = true;
+        }
+      }
+    }
+  }
 
   const bool is_row_sense_empty = row_sense.empty();
   if (is_row_sense_empty) {
@@ -825,7 +837,9 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   constexpr bool run_bound_strengthening = false;
   if constexpr (run_bound_strengthening) {
     settings.log.printf("Running bound strengthening\n");
-    bound_strengthening(row_sense, settings, problem);
+    csc_matrix_t<i_t, f_t> Arow(1, 1, 1);
+    problem.A.transpose(Arow);
+    bound_strengthening(row_sense, settings, problem, Arow);
   }
 
   // The original problem may have a variable without a lower bound
@@ -1216,7 +1230,9 @@ template bool bound_strengthening<int, double>(
   const std::vector<char>& row_sense,
   const simplex_solver_settings_t<int, double>& settings,
   lp_problem_t<int, double>& problem,
-  const std::vector<variable_type_t>& var_types);
+  const csc_matrix_t<int, double>& Arow,
+  const std::vector<variable_type_t>& var_types,
+  const std::vector<bool>& bounds_changed);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex
