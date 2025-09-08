@@ -32,11 +32,11 @@ on:
         description: 'JSON array of architectures to build for'
       cuda_ver:
         type: string
-        default: '["12.9.0"]'
+        default: '["12.9.0", "13.0.0"]'
         description: 'JSON array of CUDA versions to build for'
       python_ver:
         type: string
-        default: '["3.12.11"]'
+        default: '["3.13.7"]'
         description: 'JSON array of Python versions to build for'
       linux_ver:
         type: string
