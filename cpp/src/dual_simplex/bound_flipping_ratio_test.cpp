@@ -119,7 +119,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   const i_t m            = m_;
   const i_t n            = n_;
   const i_t nz           = delta_z_indices_.size();
-  constexpr bool verbose = false;
+  constexpr bool verbose = true;
 
   // Compute the initial set of breakpoints
   std::vector<i_t> indicies(nz);
@@ -139,7 +139,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
     0, num_breakpoints, indicies, ratios, slope, step_length, nonbasic_entering, entering_index);
   bool continue_search = k_idx >= 0 && num_breakpoints > 1 && slope > 0.0;
   if (!continue_search) {
-    if constexpr (0) {
+    if constexpr (1) {
       settings_.log.printf(
         "BFRT stopping. No bound flips. Step length %e Nonbasic entering %d Entering %d pivot %e\n",
         step_length,
@@ -199,7 +199,7 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
                                                         i_t& entering_index)
 {
   std::vector<i_t> bare_idx(num_breakpoints);
-  constexpr bool verbose                = false;
+  constexpr bool verbose                = true;
   const f_t dual_tol                    = settings_.dual_tol;
   const f_t zero_tol                    = settings_.zero_tol;
   const std::vector<f_t>& delta_z       = delta_z_;
