@@ -2525,6 +2525,10 @@ dual::status_t dual_phase2(i_t phase,
                                                  delta_z_indices,
                                                  nonbasic_mark);
       entering_index = bfrt.compute_step_length(step_length, nonbasic_entering_index);
+      if (entering_index == -4) {
+        settings.log.printf("Numerical issues encountered in ratio test.\n");
+        return dual::status_t::NUMERICAL;
+      }
       timers.bfrt_time += timers.stop_timer();
     } else {
       entering_index = phase2::phase2_ratio_test(
