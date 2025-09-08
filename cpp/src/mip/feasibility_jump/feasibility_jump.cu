@@ -75,6 +75,10 @@ fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_, fj_settings_t in_
 {
   setval_launch_dims = get_launch_dims_max_occupancy(
     (void*)update_assignment_kernel<i_t, f_t>, TPB_setval, pb_ptr->handle_ptr);
+  update_changed_constraints_launch_dims =
+    get_launch_dims_max_occupancy((void*)update_changed_constraints_kernel<i_t, f_t>,
+                                  TPB_update_changed_constraints,
+                                  pb_ptr->handle_ptr);
   resetmoves_launch_dims = get_launch_dims_max_occupancy(
     (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED>, TPB_resetmoves, pb_ptr->handle_ptr);
   resetmoves_bin_launch_dims =
@@ -643,7 +647,9 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                                      bool use_graph)
 {
   raft::common::nvtx::range scope("run_step_device");
-  auto [grid_setval, blocks_setval]                 = setval_launch_dims;
+  auto [grid_setval, blocks_setval] = setval_launch_dims;
+  auto [grid_update_changed_constraints, blocks_update_changed_constraints] =
+    update_changed_constraints_launch_dims;
   auto [grid_resetmoves, blocks_resetmoves]         = resetmoves_launch_dims;
   auto [grid_resetmoves_bin, blocks_resetmoves_bin] = resetmoves_bin_launch_dims;
   auto [grid_update_weights, blocks_update_weights] = update_weights_launch_dims;
@@ -795,7 +801,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                        climber_stream);
       cudaLaunchKernel((void*)update_changed_constraints_kernel<i_t, f_t>,
                        1,
-                       blocks_setval,
+                       blocks_update_changed_constraints,
                        kernel_args,
                        0,
                        climber_stream);

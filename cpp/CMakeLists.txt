@@ -73,7 +73,7 @@ set(CUOPT_CXX_FLAGS "")
 set(CUOPT_CUDA_FLAGS "")
 
 if(CMAKE_COMPILER_IS_GNUCXX)
-  list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations)
+  list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations -g)
 endif(CMAKE_COMPILER_IS_GNUCXX)
 
 if(DEFINE_ASSERT)
@@ -107,8 +107,8 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extend
 if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -static-global-template-stub=false")
 endif()
-list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror)
-list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall -Wno-error=non-template-friend)
+# list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror)
+# list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall -Wno-error=non-template-friend)
 list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=-compress-all)
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
   list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=--compress-level=3)
@@ -204,6 +204,10 @@ set_target_properties(cuopt
 
 target_compile_definitions(cuopt PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}")
 
+set_source_files_properties(src/dual_simplex/phase2.cpp PROPERTIES
+    COMPILE_OPTIONS -fsanitize=address
+)
+
 target_compile_options(cuopt
   PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
   "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
@@ -217,7 +221,7 @@ SECTIONS
   .nv_fatbin : { *(.nv_fatbin) }
 }
 ]=])
-target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
+target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld" -fsanitize=address)
 
 add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
@@ -398,6 +402,7 @@ if(BUILD_BENCHMARKS)
     PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
   )
+  target_link_options(solve_MPS_file PRIVATE -fsanitize=address)
   target_link_libraries(solve_MPS_file
     PUBLIC
     cuopt
