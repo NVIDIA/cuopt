@@ -105,16 +105,15 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                "Size mismatch");
   cuopt_assert(problem.original_problem_ptr->get_n_constraints() == scaled_problem.n_constraints,
                "Size mismatch");
-  detail::pdhg_solver_t<i_t, f_t> pdhg_solver(scaled_problem.handle_ptr, scaled_problem);
   detail::pdlp_initial_scaling_strategy_t<i_t, f_t> scaling(
     scaled_problem.handle_ptr,
     scaled_problem,
     pdlp_hyper_params::default_l_inf_ruiz_iterations,
     (f_t)pdlp_hyper_params::default_alpha_pock_chambolle_rescaling,
-    pdhg_solver,
     scaled_problem.reverse_coefficients,
     scaled_problem.reverse_offsets,
     scaled_problem.reverse_constraints,
+    nullptr,
     running_mip);
 
   cuopt_func_call(auto saved_problem = scaled_problem);
