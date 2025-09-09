@@ -20,6 +20,7 @@
 // THIS IS LIKELY THE INNER-MOST INCLUDE
 // FOR COMPILE TIME, WE SHOULD KEEP THE INCLUDES ON THIS HEADER MINIMAL
 
+#include <mip/presolve/lb_problem.cuh>
 #include "host_helper.cuh"
 #include "presolve_data.cuh"
 
@@ -49,6 +50,9 @@ namespace linear_programming::detail {
 
 template <typename i_t, typename f_t>
 class solution_t;
+
+template <typename i_t, typename f_t>
+class lb_problem_t;
 
 constexpr double OBJECTIVE_EPSILON = 1e-7;
 constexpr double MACHINE_EPSILON   = 1e-7;
@@ -115,6 +119,7 @@ class problem_t {
   void write_as_mps(const std::string& path);
   void add_cutting_plane_at_objective(f_t objective);
   void compute_vars_with_objective_coeffs();
+  lb_problem_t<i_t, f_t>& get_load_balanced_problem();
 
   struct view_t {
     DI std::pair<i_t, i_t> reverse_range_for_var(i_t v) const
@@ -277,6 +282,8 @@ class problem_t {
   problem_fixing_helpers_t<i_t, f_t> fixing_helpers;
   bool cutting_plane_added{false};
   std::pair<std::vector<i_t>, std::vector<f_t>> vars_with_objective_coeffs;
+
+  std::unique_ptr<lb_problem_t<i_t, f_t>> lb_problem;
 };
 
 }  // namespace linear_programming::detail

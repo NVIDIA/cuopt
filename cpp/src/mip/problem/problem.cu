@@ -935,6 +935,7 @@ void problem_t<i_t, f_t>::resize_variables(size_t size)
   objective_coefficients.resize(size, handle_ptr->get_stream());
   is_binary_variable.resize(size, handle_ptr->get_stream());
   related_variables_offsets.resize(size, handle_ptr->get_stream());
+  lb_problem.reset(nullptr);
 }
 
 template <typename i_t, typename f_t>
@@ -952,6 +953,7 @@ void problem_t<i_t, f_t>::resize_constraints(size_t matrix_size,
   combined_bounds.resize(constraint_size, handle_ptr->get_stream());
   offsets.resize(constraint_size + 1, handle_ptr->get_stream());
   reverse_offsets.resize(n_variables + 1, handle_ptr->get_stream());
+  lb_problem.reset(nullptr);
 }
 
 // note that these don't change the reverse structure
@@ -1587,6 +1589,14 @@ void problem_t<i_t, f_t>::add_cutting_plane_at_objective(f_t objective)
   insert_constraints(h_constraints);
   compute_transpose_of_problem();
   cuopt_func_call(check_problem_representation(true));
+}
+
+template <typename i_t, typename f_t>
+lb_problem_t<i_t, f_t>& problem_t<i_t, f_t>::get_load_balanced_problem()
+{
+  if (!lb_problem) { lb_problem = std::make_unique<lb_problem_t<i_t, f_t>>(*this); }
+  lb_problem_t<i_t, f_t>* lb_problem_ptr = lb_problem.get();
+  return *lb_problem_ptr;
 }
 
 #if MIP_INSTANTIATE_FLOAT

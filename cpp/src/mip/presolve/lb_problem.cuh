@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/mip/solver_settings.hpp>
+
 #include <mip/problem/problem.cuh>
 #include <raft/core/handle.hpp>
 #include <rmm/device_uvector.hpp>
@@ -65,6 +67,8 @@ class lb_problem_t {
  public:
   using f_t2 = typename type_2<f_t>::type;
   lb_problem_t(problem_t<i_t, f_t>& problem);
+  lb_problem_t(lb_problem_t<i_t, f_t>&& problem) = default;
+  lb_problem_t& operator=(lb_problem_t&&)        = default;
   void setup(problem_t<i_t, f_t>& problem);
 
   struct csr_data_t {

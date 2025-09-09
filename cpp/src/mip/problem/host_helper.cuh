@@ -56,22 +56,18 @@ struct variables_delta_t {
   using f_t2 = typename type_2<f_t>::type;
   std::vector<f_t> objective_coefficients;
   std::vector<f_t2> variable_bounds;
-  std::vector<f_t> lower_bounds;
-  std::vector<f_t> upper_bounds;
   std::vector<var_t> variable_types;
   std::vector<i_t> is_binary_variable;
 
   i_t n_vars;
 
-  i_t size() const { return lower_bounds.size(); }
+  i_t size() const { return variable_bounds.size(); }
 
   // returns the added variable id
   i_t add_variable(f_t lower_bound, f_t upper_bound, f_t obj_weight, var_t var_type)
   {
     cuopt_assert(lower_bound >= 0, "Variable bounds must be non-negative!");
     variable_bounds.push_back(f_t2{lower_bound, upper_bound});
-    lower_bounds.push_back(lower_bound);
-    upper_bounds.push_back(upper_bound);
     objective_coefficients.push_back(obj_weight);
     variable_types.push_back(var_type);
     is_binary_variable.push_back(0);

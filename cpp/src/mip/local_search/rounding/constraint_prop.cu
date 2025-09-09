@@ -842,38 +842,41 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
 {
   using crit_t             = termination_criterion_t;
   auto& unset_integer_vars = unset_vars;
+
+  if (unset_integer_vars.size() == 0) {
+    CUOPT_LOG_ERROR("No integer variables provided in the bounds prop rounding");
+    cuopt_func_call(orig_sol.test_variable_bounds());
+    return orig_sol.compute_feasibility();
+  }
+
   std::mt19937 rng(cuopt::seed_generator::get_seed());
-  var_bounds_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
-  // lb_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
-  // ub_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
-  assignment_restore.resize(sol.problem_ptr->n_variables, sol.handle_ptr->get_stream());
-  unset_integer_vars.resize(sol.problem_ptr->n_integer_vars, sol.handle_ptr->get_stream());
-  curr_host_assignment.resize(sol.problem_ptr->n_variables);
+  var_bounds_restore.resize(orig_sol.problem_ptr->n_variables, orig_sol.handle_ptr->get_stream());
+  assignment_restore.resize(orig_sol.problem_ptr->n_variables, orig_sol.handle_ptr->get_stream());
+  unset_integer_vars.resize(orig_sol.problem_ptr->n_integer_vars,
+                            orig_sol.handle_ptr->get_stream());
+  curr_host_assignment.resize(orig_sol.problem_ptr->n_variables);
+
   // round vals that are close enough
   bounds_update.settings.time_limit      = max_timer.remaining_time();
   bounds_update.settings.iteration_limit = 50;
-  bounds_update.resize(*sol.problem_ptr);
+  bounds_update.resize(*orig_sol.problem_ptr);
   multi_probe.settings.iteration_limit = 50;
   multi_probe.settings.time_limit      = max_timer.remaining_time();
-  multi_probe.resize(*sol.problem_ptr);
+  multi_probe.resize(*orig_sol.problem_ptr);
+
   if (max_timer.check_time_limit()) {
     CUOPT_LOG_DEBUG("Time limit is reached before bounds prop rounding!");
-    sol.round_nearest();
-    expand_device_copy(orig_sol.assignment, sol.assignment, sol.handle_ptr->get_stream());
+    orig_sol.round_nearest();
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();
   }
+
   raft::copy(unset_integer_vars.data(),
-             sol.problem_ptr->integer_indices.data(),
-             sol.problem_ptr->n_integer_vars,
-             sol.handle_ptr->get_stream());
+             orig_sol.problem_ptr->integer_indices.data(),
+             orig_sol.problem_ptr->n_integer_vars,
+             orig_sol.handle_ptr->get_stream());
+
   CUOPT_LOG_DEBUG("Bounds propagation rounding: unset vars %lu", unset_integer_vars.size());
-  if (unset_integer_vars.size() == 0) {
-    CUOPT_LOG_ERROR("No integer variables provided in the bounds prop rounding");
-    expand_device_copy(orig_sol.assignment, sol.assignment, sol.handle_ptr->get_stream());
-    cuopt_func_call(orig_sol.test_variable_bounds());
-    return orig_sol.compute_feasibility();
-  }
   // this is needed for the sort inside of the loop
   bool problem_ii = is_problem_ii(*sol.problem_ptr);
   // if the problem is ii, run the bounds prop in the beginning
