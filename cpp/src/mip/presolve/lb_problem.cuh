@@ -18,6 +18,7 @@
 #pragma once
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
+#include <cuopt/linear_programming/optimization_problem.hpp>
 
 #include <mip/problem/problem.cuh>
 #include <raft/core/handle.hpp>
@@ -28,6 +29,9 @@
 #include <vector>
 
 namespace cuopt::linear_programming::detail {
+
+template <typename i_t, typename f_t>
+class problem_t;
 
 enum class csr_type_t { CNST = 0, VARS = 1 };
 
