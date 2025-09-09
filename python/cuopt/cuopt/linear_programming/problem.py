@@ -1057,7 +1057,7 @@ class Problem:
             v.VariableType = CONTINUOUS
         return relaxed_problem
 
-    def post_solve(self, solution):
+    def populate_solution(self, solution):
         self.Status = solution.get_termination_status()
         self.SolveTime = solution.get_solve_time()
 
@@ -1109,4 +1109,4 @@ class Problem:
         solution = solver.Solve(self.model, settings)
 
         # Post Solve
-        self.post_solve(solution)
+        self.populate_solution(solution)

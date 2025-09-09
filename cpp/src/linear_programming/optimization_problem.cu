@@ -550,7 +550,7 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
   }
 
   // Set constraint bounds (lower and upper)
-  if (get_constraint_lower_bounds().size() != 0 && get_constraint_upper_bounds().size() != 0 ) {
+  if (get_constraint_lower_bounds().size() != 0 && get_constraint_upper_bounds().size() != 0) {
     data_model_view.set_constraint_lower_bounds(constraint_lower_bounds.data(),
                                                 constraint_lower_bounds.size());
     data_model_view.set_constraint_upper_bounds(constraint_upper_bounds.data(),

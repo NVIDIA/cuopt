@@ -293,6 +293,7 @@ def test_read_write_mps_and_relaxation():
 
     # Read MPS and solve
     prob = Problem.readMPS("small_mip.mps")
+    assert prob.Name == "SMALLMIP"
     assert prob.IsMIP
     prob.solve()
 

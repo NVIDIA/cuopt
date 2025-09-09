@@ -25,8 +25,8 @@
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 #include <mps_parser/mps_data_model.hpp>
-#include <vector>
 #include <string>
+#include <vector>
 
 namespace cuopt::linear_programming {
 
