@@ -81,6 +81,8 @@ jobs:
       package-name: cuopt_mps_parser
       package-type: python
       append-cuda-suffix: false
+      # need 1 build per Python version and arch (but CUDA version doesn't matter so choose the latest)
+      matrix_filter: 'group_by([.ARCH, (.PY_VER |split(".") | map(tonumber))])|map(max_by([(.CUDA_VER|split(".")|map(tonumber))]))'
   wheel-publish-cuopt-mps-parser:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
@@ -190,6 +192,8 @@ jobs:
       package-name: cuopt_sh_client
       package-type: python
       append-cuda-suffix: false
+      # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
+      matrix_filter: '[map(select(.ARCH == "amd64")) | min_by((.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber)))]'
   wheel-publish-cuopt-sh-client:
     needs: wheel-build-cuopt-sh-client
     secrets: inherit
