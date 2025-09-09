@@ -107,21 +107,17 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
   fj_settings.feasibility_run = false;
   fj.set_fj_settings(fj_settings);
   bool is_feas   = false;
-  ls_method_t rd = static_cast<ls_method_t>(std::uniform_int_distribution(
-    static_cast<int>(ls_method_t::FJ_LINE_SEGMENT), static_cast<int>(ls_method_t::FP_SEARCH))(rng));
+  ls_method_t rd = static_cast<ls_method_t>(
+    std::uniform_int_distribution(static_cast<int>(ls_method_t::FJ_ANNEALING),
+                                  static_cast<int>(ls_method_t::FJ_LINE_SEGMENT))(rng));
   if (ls_config.ls_method == ls_method_t::FJ_LINE_SEGMENT) {
     rd = ls_method_t::FJ_LINE_SEGMENT;
   } else if (ls_config.ls_method == ls_method_t::FJ_ANNEALING) {
     rd = ls_method_t::FJ_ANNEALING;
-  } else if (ls_config.ls_method == ls_method_t::FP_SEARCH) {
-    rd = ls_method_t::FP_SEARCH;
   }
   if (rd == ls_method_t::FJ_LINE_SEGMENT && lp_optimal_exists) {
     fj.copy_weights(weights, solution.handle_ptr);
     is_feas = run_fj_line_segment(solution, timer, ls_config);
-  } else if (rd == ls_method_t::FP_SEARCH) {
-    timer = timer_t(std::min(3., timer.remaining_time()));
-    // is_feas = run_fp(solution, timer, &weights, false);
   } else {
     fj.copy_weights(weights, solution.handle_ptr);
     is_feas = run_fj_annealing(solution, timer, ls_config);

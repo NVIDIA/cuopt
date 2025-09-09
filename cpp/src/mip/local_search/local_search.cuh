@@ -30,7 +30,6 @@ namespace cuopt::linear_programming::detail {
 enum class ls_method_t : int {
   FJ_ANNEALING = 0,
   FJ_LINE_SEGMENT,
-  FP_SEARCH,
   RANDOM,
   LS_METHODS_SIZE = RANDOM
 };
