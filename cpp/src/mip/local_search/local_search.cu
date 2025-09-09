@@ -250,8 +250,9 @@ bool local_search_t<i_t, f_t>::run_fj_on_zero(solution_t<i_t, f_t>& solution, ti
 template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
                                              timer_t timer,
-                                             std::atomic<bool>& early_exit)
+                                             population_t<i_t, f_t>* population_ptr)
 {
+  cuopt_assert(population_ptr != nullptr, "Population pointer must not be null");
   auto n_vars         = solution.problem_ptr->n_variables;
   auto n_binary_vars  = solution.problem_ptr->get_n_binary_variables();
   auto n_integer_vars = solution.problem_ptr->n_integer_vars;
@@ -262,20 +263,26 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
 
   // TODO return the best solution instead of the last
   if (binary_only || integer_only) {
-    return run_fp(solution, timer);
+    return run_fp(solution, timer, population_ptr);
   } else {
     const i_t n_fp_iterations = 1000000;
     fp.cycle_queue.reset(solution);
     fp.reset();
     fp.resize_vectors(*solution.problem_ptr, solution.handle_ptr);
     for (i_t i = 0; i < n_fp_iterations && !timer.check_time_limit(); ++i) {
-      if (early_exit.load()) { return false; }
+      if (population_ptr->preempt_heuristic_solver_.load()) {
+        CUOPT_LOG_DEBUG("Preempting heuristic solver!");
+        return false;
+      }
       CUOPT_LOG_DEBUG("Running staged FP from beginning it %d", i);
       fp.relax_general_integers(solution);
       timer_t binary_timer(timer.remaining_time() / 3);
       i_t binary_it_counter = 0;
       for (; binary_it_counter < 100; ++binary_it_counter) {
-        if (early_exit.load()) { return false; }
+        if (population_ptr->preempt_heuristic_solver_.load()) {
+          CUOPT_LOG_DEBUG("Preempting heuristic solver!");
+          return false;
+        }
         CUOPT_LOG_DEBUG(
           "Running binary problem from it %d large_restart_it %d", binary_it_counter, i);
         is_feasible = fp.run_single_fp_descent(solution);
@@ -392,7 +399,6 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
 template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                       timer_t timer,
-                                      const weight_t<i_t, f_t>* weights,
                                       population_t<i_t, f_t>* population_ptr)
 {
   cuopt_assert(population_ptr != nullptr, "Population pointer must not be null");
@@ -411,7 +417,8 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                       std::max(std::abs(0.001 * solution.get_objective()), OBJECTIVE_EPSILON);
   problem_with_objective_cut.add_cutting_plane_at_objective(objective_cut);
   // Do the copy here for proper handling of the added constraints weight
-  fj.copy_weights(*weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
+  fj.copy_weights(
+    population_ptr->weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
   solution.problem_ptr = &problem_with_objective_cut;
   solution.resize_to_problem();
   resize_to_new_problem();
@@ -485,11 +492,11 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
 template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::generate_solution(solution_t<i_t, f_t>& solution,
                                                  bool perturb,
-                                                 std::atomic<bool>& early_exit,
+                                                 population_t<i_t, f_t>* population_ptr,
                                                  f_t time_limit)
 {
   raft::common::nvtx::range fun_scope("LS FP Loop");
-
+  cuopt_assert(population_ptr != nullptr, "Population pointer must not be null");
   timer_t timer(time_limit);
   auto n_vars         = solution.problem_ptr->n_variables;
   auto n_binary_vars  = solution.problem_ptr->get_n_binary_variables();
@@ -498,6 +505,10 @@ bool local_search_t<i_t, f_t>::generate_solution(solution_t<i_t, f_t>& solution,
   if (is_feasible) {
     CUOPT_LOG_DEBUG("Solution generated with FJ on LP optimal: is_feasible %d", is_feasible);
     return true;
+  }
+  if (population_ptr->preempt_heuristic_solver_.load()) {
+    CUOPT_LOG_DEBUG("Preempting heuristic solver!");
+    return is_feasible;
   }
   if (!perturb) {
     raft::copy(fj_sol_on_lp_opt.data(),
@@ -515,12 +526,16 @@ bool local_search_t<i_t, f_t>::generate_solution(solution_t<i_t, f_t>& solution,
                solution.assignment.size(),
                solution.handle_ptr->get_stream());
   }
+  if (population_ptr->preempt_heuristic_solver_.load()) {
+    CUOPT_LOG_DEBUG("Preempting heuristic solver!");
+    return is_feasible;
+  }
   fp.timer = timer;
   // continue with the solution with fj on lp optimal
   fp.cycle_queue.reset(solution);
   fp.reset();
   fp.resize_vectors(*solution.problem_ptr, solution.handle_ptr);
-  is_feasible = run_staged_fp(solution, timer, early_exit);
+  is_feasible = run_staged_fp(solution, timer, population_ptr);
   // is_feasible = run_fp(solution, timer);
   CUOPT_LOG_DEBUG("Solution generated with FP: is_feasible %d", is_feasible);
   return is_feasible;

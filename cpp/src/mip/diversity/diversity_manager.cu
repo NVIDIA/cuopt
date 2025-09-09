@@ -178,7 +178,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::generate_solution(f_t time_l
 {
   solution_t<i_t, f_t> sol(*problem_ptr);
   sol.compute_feasibility();
-  ls.generate_solution(sol, random_start, population.early_exit_primal_generation, time_limit);
+  ls.generate_solution(sol, random_start, &population, time_limit);
   return sol;
 }
 
@@ -303,7 +303,7 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::run_fp_alone(solution_t<i_t, f_t>& solution)
 {
   CUOPT_LOG_INFO("Running FP alone!");
-  ls.run_fp(solution, timer, &population.weights, &population);
+  ls.run_fp(solution, timer, &population);
   CUOPT_LOG_INFO("FP alone finished!");
 }
 
