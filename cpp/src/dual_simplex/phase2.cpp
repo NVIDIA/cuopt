@@ -2503,7 +2503,6 @@ dual::status_t dual_phase2(i_t phase,
       timers.start_timer();
       f_t slope = direction == 1 ? (lp.lower[leaving_index] - x[leaving_index])
                                  : (x[leaving_index] - lp.upper[leaving_index]);
-      // check if z contains nan or inf
       bound_flipping_ratio_test_t<i_t, f_t> bfrt(settings,
                                                  start_time,
                                                  m,

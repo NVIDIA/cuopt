@@ -381,7 +381,9 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   solution_copy.problem_ptr = old_problem_ptr;
   solution_copy.resize_to_problem();
   population_ptr->add_solution(std::move(solution_copy));
-  if (population_ptr->current_size() > 1 && i - last_unimproved_iteration > 3) {
+  constexpr i_t iterations_for_stagnation = 3;
+  if (population_ptr->current_size() > 1 &&
+      i - last_unimproved_iteration > iterations_for_stagnation) {
     solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
     population_ptr->run_all_recombiners(best_feasible_copy);
   }
@@ -398,9 +400,10 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                       population_t<i_t, f_t>* population_ptr)
 {
   cuopt_assert(population_ptr != nullptr, "Population pointer must not be null");
-  const i_t n_fp_iterations = 1000000;
-  bool is_feasible          = solution.compute_feasibility();
-  double best_objective     = solution.get_objective();
+  const i_t n_fp_iterations                  = 1000000;
+  constexpr i_t n_sol_in_population_for_exit = 4;
+  bool is_feasible                           = solution.compute_feasibility();
+  double best_objective                      = solution.get_objective();
   rmm::device_uvector<f_t> best_solution(solution.assignment, solution.handle_ptr->get_stream());
   problem_t<i_t, f_t>* old_problem_ptr = solution.problem_ptr;
   fp.timer                             = timer_t(timer.remaining_time());
@@ -443,7 +446,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                       last_unimproved_iteration,
                                       best_solution,
                                       best_objective);
-      if (population_ptr->current_size() >= 4) { break; }
+      if (population_ptr->current_size() >= n_sol_in_population_for_exit) { break; }
     }
     // if not feasible, it means it is a cycle
     else {
@@ -466,7 +469,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                         last_unimproved_iteration,
                                         best_solution,
                                         best_objective);
-        if (population_ptr->current_size() >= 4) { break; }
+        if (population_ptr->current_size() >= n_sol_in_population_for_exit) { break; }
       } else {
         last_unimproved_iteration = i;
       }
