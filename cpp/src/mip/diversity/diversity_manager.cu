@@ -565,13 +565,11 @@ void diversity_manager_t<i_t, f_t>::main_loop()
       population.find_diversity(current_population, diversity_config.use_avg_diversity);
       // if the threshold is lower than the threshold we progress with time
       // set it to the higher threshold
-      // population.var_threshold = max(population.var_threshold, prev_threshold);
       population.add_solutions_from_vec(std::move(current_population));
     } else {
       // increase the threshold/decrease the diversity
       population.adjust_threshold(timer);
     }
-    // population.add_solutions_from_vec(std::move(new_solutions));
     // idea to try, we can average the weights of the new solutions
     population.update_weights();
     population.print();
