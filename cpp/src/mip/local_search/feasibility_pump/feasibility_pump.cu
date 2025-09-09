@@ -61,8 +61,6 @@ feasibility_pump_t<i_t, f_t>::feasibility_pump_t(
                     context.problem_ptr->handle_ptr->get_stream()),
     orig_variable_types(context.problem_ptr->n_variables,
                         context.problem_ptr->handle_ptr->get_stream()),
-    best_excess_solution(context.problem_ptr->n_variables,
-                         context.problem_ptr->handle_ptr->get_stream()),
     lp_optimal_solution(lp_optimal_solution_),
     rng(cuopt::seed_generator::get_seed()),
     timer(20.)
@@ -399,7 +397,6 @@ void feasibility_pump_t<i_t, f_t>::resize_vectors(problem_t<i_t, f_t>& problem,
 {
   last_rounding.resize(problem.n_variables, handle_ptr->get_stream());
   last_projection.resize(problem.n_variables, handle_ptr->get_stream());
-  best_excess_solution.resize(problem.n_variables, handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
@@ -427,20 +424,6 @@ bool feasibility_pump_t<i_t, f_t>::check_distance_cycle(solution_t<i_t, f_t>& so
   }
   last_distances.push_front(distance_to_last_rounding);
   return is_cycle;
-}
-
-template <typename i_t, typename f_t>
-void feasibility_pump_t<i_t, f_t>::save_best_excess_solution(solution_t<i_t, f_t>& solution)
-{
-  f_t sol_excess = solution.get_total_excess();
-  if (sol_excess < best_excess) {
-    CUOPT_LOG_DEBUG("FP: updating excess from %f to %f", best_excess, sol_excess);
-    best_excess = sol_excess;
-    raft::copy(best_excess_solution.data(),
-               solution.assignment.data(),
-               solution.assignment.size(),
-               solution.handle_ptr->get_stream());
-  }
 }
 
 template <typename i_t, typename f_t>
@@ -523,7 +506,6 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
       is_cycle = check_distance_cycle(solution);
       if (is_cycle) {
         is_feasible = round(solution);
-        save_best_excess_solution(solution);
         cuopt_func_call(solution.test_variable_bounds(true));
         if (is_feasible) {
           bool res = solution.compute_feasibility();
@@ -541,7 +523,6 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
     if (n_integers == solution.problem_ptr->n_integer_vars) {
       if (is_feasible) {
         CUOPT_LOG_DEBUG("Feasible solution found after LP with relative tolerance");
-        save_best_excess_solution(solution);
         return true;
       }
       // if the solution is almost on polytope
@@ -562,7 +543,6 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
         n_integers  = solution.compute_number_of_integers();
         if (is_feasible && n_integers == solution.problem_ptr->n_integer_vars) {
           CUOPT_LOG_DEBUG("Feasible solution verified with lower precision!");
-          save_best_excess_solution(solution);
           return true;
         }
       }
@@ -575,7 +555,6 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
       const f_t time_ratio = 0.2;
       is_feasible          = test_fj_feasible(solution, time_ratio * proj_and_round_time);
     }
-    save_best_excess_solution(solution);
     if (timer.check_time_limit()) {
       CUOPT_LOG_DEBUG("FP time limit reached!");
       return false;

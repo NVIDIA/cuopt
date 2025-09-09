@@ -27,7 +27,6 @@
 
 constexpr bool from_dir    = false;
 constexpr bool fj_only_run = false;
-constexpr bool fp_only_run = true;
 
 namespace cuopt::linear_programming::detail {
 
@@ -184,26 +183,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::generate_solution(f_t time_l
 }
 
 template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::generate_add_solution(
-  std::vector<solution_t<i_t, f_t>>& initial_sol_vector, f_t time_limit, bool random_start)
-{
-  // TODO check weights here if they are all similar
-  // do a local search than add it searched solution as well
-  initial_sol_vector.emplace_back(generate_solution(time_limit, random_start));
-}
-
-template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::average_fj_weights(i_t i)
-{
-  thrust::transform(problem_ptr->handle_ptr->get_thrust_policy(),
-                    population.weights.cstr_weights.begin(),
-                    population.weights.cstr_weights.end(),
-                    ls.fj.cstr_weights.begin(),
-                    population.weights.cstr_weights.begin(),
-                    [i] __device__(f_t w1, f_t w2) { return (w1 * i + w2) / (i + 1); });
-}
-
-template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   std::vector<solution_t<i_t, f_t>>& initial_sol_vector)
 {
@@ -232,74 +211,6 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
         init_sol_assignment.size());
     }
   }
-}
-
-// if 60% of the time, exit
-// if 20% of the time finishes and we generate 5 solutions
-template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::generate_initial_solutions()
-{
-  add_user_given_solutions(initial_sol_vector);
-  bool skip_initial_island_generation =
-    initial_sol_vector.size() > diversity_config.n_sol_for_skip_init_gen || from_dir;
-  // allocate maximum of 40% of the time to the initial island generation
-  // aim to generate at least 5 feasible solutions thus spending 8% of the time to generate a
-  // solution if we can generate faster generate up to 10 sols
-  const f_t generation_time_limit =
-    diversity_config.generation_time_limit_ratio * timer.get_time_limit();
-  const f_t max_island_gen_time = diversity_config.max_island_gen_time;
-  f_t total_island_gen_time     = std::min(generation_time_limit, max_island_gen_time);
-  timer_t gen_timer(total_island_gen_time);
-  f_t sol_time_limit = gen_timer.remaining_time();
-  for (i_t i = 0; i < diversity_config.maximum_island_size && !skip_initial_island_generation;
-       ++i) {
-    if (check_b_b_preemption()) { return; }
-    if (i + population.get_external_solution_size() >= 5) { break; }
-    CUOPT_LOG_DEBUG("Generating sol %d", i);
-    bool is_first_sol = (i == 0);
-    if (i == 1) {
-      sol_time_limit = gen_timer.remaining_time() / (diversity_config.initial_island_size - 1);
-    }
-    // in first iteration, definitely generate feasible
-    if (is_first_sol) {
-      sol_time_limit = gen_timer.remaining_time();
-      ls.fj.reset_weights(problem_ptr->handle_ptr->get_stream());
-    }
-    // in other iterations(when there is at least one feasible)
-    else {
-      ls.fj.randomize_weights(problem_ptr->handle_ptr);
-    }
-    generate_add_solution(initial_sol_vector, sol_time_limit, !is_first_sol);
-    if (is_first_sol && initial_sol_vector.back().get_feasible()) {
-      CUOPT_LOG_DEBUG("First FP/FJ solution found at %f with objective %f",
-                      timer.elapsed_time(),
-                      initial_sol_vector.back().get_user_objective());
-    }
-    population.run_solution_callbacks(initial_sol_vector.back());
-    // run ls on the generated solutions
-    solution_t<i_t, f_t> searched_sol(initial_sol_vector.back());
-    ls_config_t<i_t, f_t> ls_config;
-    run_local_search(searched_sol, population.weights, gen_timer, ls_config);
-    population.run_solution_callbacks(searched_sol);
-    initial_sol_vector.emplace_back(std::move(searched_sol));
-    average_fj_weights(i);
-    // run ls on the solutions
-    // if at least initial_island_size solutions are generated and time limit is reached
-    if (i >= diversity_config.initial_island_size || gen_timer.check_time_limit()) { break; }
-  }
-  CUOPT_LOG_DEBUG("Initial unsearched solutions are generated!");
-  i_t actual_island_size = initial_sol_vector.size();
-  population.normalize_weights();
-  // find diversity of the population
-  population.find_diversity(initial_sol_vector, diversity_config.use_avg_diversity);
-  population.add_solutions_from_vec(std::move(initial_sol_vector));
-  population.update_qualities();
-  CUOPT_LOG_DEBUG("Initial population generated, size %d var_threshold %d",
-                  population.current_size(),
-                  population.var_threshold);
-  population.print();
-  auto new_sol_vector = population.get_external_solutions();
-  if (!fj_only_run && !fp_only_run) { recombine_and_ls_with_all(new_sol_vector); }
 }
 
 template <typename i_t, typename f_t>
@@ -425,7 +336,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   population.initialize_population();
   if (check_b_b_preemption()) { return population.best_feasible(); }
   // before probing cache or LP, run FJ to generate initial primal feasible solution
-  if (!from_dir && !fp_only_run && !fj_only_run) { generate_quick_feasible_solution(); }
+  if (!from_dir && !fj_only_run) { generate_quick_feasible_solution(); }
   const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
   const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
   f_t time_for_probing_cache =
@@ -491,10 +402,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   }
   population.allocate_solutions();
   if (check_b_b_preemption()) { return population.best_feasible(); }
-  if (!fp_only_run && !fj_only_run) {
-    // generate a population with 5 solutions(FP+FJ)
-    generate_initial_solutions();
-  }
+
   if (context.settings.benchmark_info_ptr != nullptr) {
     context.settings.benchmark_info_ptr->objective_of_initial_population =
       population.best_feasible().get_user_objective();
@@ -506,12 +414,10 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     return sol;
   }
 
-  if (fp_only_run) {
-    auto sol = generate_solution(timer.remaining_time(), false);
-    population.add_solution(std::move(solution_t<i_t, f_t>(sol)));
-    run_fp_alone(sol);
-    population.update_weights();
-  }
+  auto sol = generate_solution(timer.remaining_time(), false);
+  population.add_solution(std::move(solution_t<i_t, f_t>(sol)));
+  run_fp_alone(sol);
+  population.update_weights();
 
   if (timer.check_time_limit()) {
     auto new_sol_vector = population.get_external_solutions();
