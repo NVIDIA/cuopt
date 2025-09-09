@@ -367,6 +367,31 @@ void local_search_t<i_t, f_t>::resize_to_old_problem(problem_t<i_t, f_t>* old_pr
 }
 
 template <typename i_t, typename f_t>
+void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
+  solution_t<i_t, f_t>& solution,
+  problem_t<i_t, f_t>* old_problem_ptr,
+  population_t<i_t, f_t>* population_ptr,
+  i_t i,
+  i_t last_unimproved_iteration,
+  rmm::device_uvector<f_t>& best_solution,
+  f_t& best_objective)
+{
+  fp.config.alpha = default_alpha;
+  solution_t<i_t, f_t> solution_copy(solution);
+  solution_copy.problem_ptr = old_problem_ptr;
+  solution_copy.resize_to_problem();
+  population_ptr->add_solution(std::move(solution_copy));
+  if (population_ptr->current_size() > 1 && i - last_unimproved_iteration > 3) {
+    solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
+    population_ptr->run_all_recombiners(best_feasible_copy);
+  }
+  auto new_sol_vector = population_ptr->get_external_solutions();
+  population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
+  save_solution_and_add_cutting_plane(
+    population_ptr->best_feasible(), best_solution, best_objective);
+}
+
+template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                       timer_t timer,
                                       const weight_t<i_t, f_t>* weights,
@@ -411,19 +436,13 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     if (is_feasible) {
       CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
                       solution.get_objective());
-      fp.config.alpha = default_alpha;
-      solution_t<i_t, f_t> solution_copy(solution);
-      solution_copy.problem_ptr = old_problem_ptr;
-      solution_copy.resize_to_problem();
-      population_ptr->add_solution(std::move(solution_copy));
-      if (population_ptr->current_size() > 1 && i - last_unimproved_iteration > 3) {
-        solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
-        population_ptr->run_all_recombiners(best_feasible_copy);
-      }
-      auto new_sol_vector = population_ptr->get_external_solutions();
-      population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
-      save_solution_and_add_cutting_plane(
-        population_ptr->best_feasible(), best_solution, best_objective);
+      reset_alpha_and_run_recombiners(solution,
+                                      old_problem_ptr,
+                                      population_ptr,
+                                      i,
+                                      last_unimproved_iteration,
+                                      best_solution,
+                                      best_objective);
       if (population_ptr->current_size() >= 4) { break; }
     }
     // if not feasible, it means it is a cycle
@@ -438,21 +457,15 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
         break;
       }
       if (is_feasible) {
-        CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
+        CUOPT_LOG_DEBUG("Found feasible during restart with obj %f. Continue with FJ!",
                         solution.get_objective());
-        fp.config.alpha = default_alpha;
-        solution_t<i_t, f_t> solution_copy(solution);
-        solution_copy.problem_ptr = old_problem_ptr;
-        solution_copy.resize_to_problem();
-        population_ptr->add_solution(std::move(solution_copy));
-        if (population_ptr->current_size() > 1 && i - last_unimproved_iteration > 3) {
-          solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
-          population_ptr->run_all_recombiners(best_feasible_copy);
-        }
-        auto new_sol_vector = population_ptr->get_external_solutions();
-        population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
-        save_solution_and_add_cutting_plane(
-          population_ptr->best_feasible(), best_solution, best_objective);
+        reset_alpha_and_run_recombiners(solution,
+                                        old_problem_ptr,
+                                        population_ptr,
+                                        i,
+                                        last_unimproved_iteration,
+                                        best_solution,
+                                        best_objective);
         if (population_ptr->current_size() >= 4) { break; }
       } else {
         last_unimproved_iteration = i;
