@@ -254,7 +254,7 @@ bool local_search_t<i_t, f_t>::run_fj_on_zero(solution_t<i_t, f_t>& solution, ti
 template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
                                              timer_t timer,
-                                             bool& early_exit)
+                                             std::atomic<bool>& early_exit)
 {
   auto n_vars         = solution.problem_ptr->n_variables;
   auto n_binary_vars  = solution.problem_ptr->get_n_binary_variables();
@@ -273,13 +273,13 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
     fp.reset();
     fp.resize_vectors(*solution.problem_ptr, solution.handle_ptr);
     for (i_t i = 0; i < n_fp_iterations && !timer.check_time_limit(); ++i) {
-      if (early_exit) { return false; }
+      if (early_exit.load()) { return false; }
       CUOPT_LOG_DEBUG("Running staged FP from beginning it %d", i);
       fp.relax_general_integers(solution);
       timer_t binary_timer(timer.remaining_time() / 3);
       i_t binary_it_counter = 0;
       for (; binary_it_counter < 100; ++binary_it_counter) {
-        if (early_exit) { return false; }
+        if (early_exit.load()) { return false; }
         CUOPT_LOG_DEBUG(
           "Running binary problem from it %d large_restart_it %d", binary_it_counter, i);
         is_feasible = fp.run_single_fp_descent(solution);
@@ -370,29 +370,27 @@ template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                       timer_t timer,
                                       const weight_t<i_t, f_t>* weights,
-                                      bool feasibility_run,
                                       population_t<i_t, f_t>* population_ptr)
 {
+  cuopt_assert(population_ptr != nullptr, "Population pointer must not be null");
   const i_t n_fp_iterations = 1000000;
   bool is_feasible          = solution.compute_feasibility();
   double best_objective     = solution.get_objective();
   rmm::device_uvector<f_t> best_solution(solution.assignment, solution.handle_ptr->get_stream());
   problem_t<i_t, f_t>* old_problem_ptr = solution.problem_ptr;
   fp.timer                             = timer_t(timer.remaining_time());
-  if (!feasibility_run) {
-    // if it has not been initialized yet, create a new problem and move it to the cut problem
-    if (!problem_with_objective_cut.cutting_plane_added) {
-      problem_with_objective_cut = std::move(problem_t<i_t, f_t>(*old_problem_ptr));
-    }
-    f_t objective_cut = solution.get_objective() -
-                        std::max(std::abs(0.001 * solution.get_objective()), OBJECTIVE_EPSILON);
-    problem_with_objective_cut.add_cutting_plane_at_objective(objective_cut);
-    // Do the copy here for proper handling of the added constraints weight
-    fj.copy_weights(*weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
-    solution.problem_ptr = &problem_with_objective_cut;
-    solution.resize_to_problem();
-    resize_to_new_problem();
+  // if it has not been initialized yet, create a new problem and move it to the cut problem
+  if (!problem_with_objective_cut.cutting_plane_added) {
+    problem_with_objective_cut = std::move(problem_t<i_t, f_t>(*old_problem_ptr));
   }
+  f_t objective_cut = solution.get_objective() -
+                      std::max(std::abs(0.001 * solution.get_objective()), OBJECTIVE_EPSILON);
+  problem_with_objective_cut.add_cutting_plane_at_objective(objective_cut);
+  // Do the copy here for proper handling of the added constraints weight
+  fj.copy_weights(*weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
+  solution.problem_ptr = &problem_with_objective_cut;
+  solution.resize_to_problem();
+  resize_to_new_problem();
   i_t last_unimproved_iteration = 0;
   for (i_t i = 0; i < n_fp_iterations && !timer.check_time_limit(); ++i) {
     if (timer.check_time_limit()) {
@@ -400,34 +398,33 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
       break;
     }
     CUOPT_LOG_DEBUG("fp_loop it %d", i);
+    if (population_ptr->preempt_heuristic_solver_.load()) {
+      CUOPT_LOG_DEBUG("Preempting heuristic solver!");
+      break;
+    }
     is_feasible = fp.run_single_fp_descent(solution);
+    if (population_ptr->preempt_heuristic_solver_.load()) {
+      CUOPT_LOG_DEBUG("Preempting heuristic solver!");
+      break;
+    }
     // if feasible return true
     if (is_feasible) {
-      if (feasibility_run) {
-        is_feasible = true;
-        break;
-      } else {
-        CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
-                        solution.get_objective());
-        fp.config.alpha = default_alpha;
-        if (population_ptr) {
-          solution_t<i_t, f_t> solution_copy(solution);
-          solution_copy.problem_ptr = old_problem_ptr;
-          solution_copy.resize_to_problem();
-          population_ptr->add_solution(std::move(solution_copy));
-          if (population_ptr->current_size() > 1 && i - last_unimproved_iteration > 3) {
-            solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
-            population_ptr->run_all_recombiners(best_feasible_copy);
-          }
-          auto new_sol_vector = population_ptr->get_external_solutions();
-          population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
-          save_solution_and_add_cutting_plane(
-            population_ptr->best_feasible(), best_solution, best_objective);
-          if (population_ptr->current_size() >= 4) { break; }
-        } else {
-          save_solution_and_add_cutting_plane(solution, best_solution, best_objective);
-        }
+      CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
+                      solution.get_objective());
+      fp.config.alpha = default_alpha;
+      solution_t<i_t, f_t> solution_copy(solution);
+      solution_copy.problem_ptr = old_problem_ptr;
+      solution_copy.resize_to_problem();
+      population_ptr->add_solution(std::move(solution_copy));
+      if (population_ptr->current_size() > 1 && i - last_unimproved_iteration > 3) {
+        solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
+        population_ptr->run_all_recombiners(best_feasible_copy);
       }
+      auto new_sol_vector = population_ptr->get_external_solutions();
+      population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
+      save_solution_and_add_cutting_plane(
+        population_ptr->best_feasible(), best_solution, best_objective);
+      if (population_ptr->current_size() >= 4) { break; }
     }
     // if not feasible, it means it is a cycle
     else {
@@ -436,54 +433,47 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
         break;
       }
       is_feasible = fp.restart_fp(solution);
+      if (population_ptr->preempt_heuristic_solver_.load()) {
+        CUOPT_LOG_DEBUG("Preempting heuristic solver!");
+        break;
+      }
       if (is_feasible) {
-        if (feasibility_run) {
-          is_feasible = true;
-          break;
-        } else {
-          CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
-                          solution.get_objective());
-          fp.config.alpha = default_alpha;
-          if (population_ptr) {
-            solution_t<i_t, f_t> solution_copy(solution);
-            solution_copy.problem_ptr = old_problem_ptr;
-            solution_copy.resize_to_problem();
-            population_ptr->add_solution(std::move(solution_copy));
-            if (population_ptr->current_size() > 1 && i - last_unimproved_iteration > 3) {
-              solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
-              population_ptr->run_all_recombiners(best_feasible_copy);
-            }
-            auto new_sol_vector = population_ptr->get_external_solutions();
-            population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
-            save_solution_and_add_cutting_plane(
-              population_ptr->best_feasible(), best_solution, best_objective);
-            if (population_ptr->current_size() >= 4) { break; }
-          } else {
-            save_solution_and_add_cutting_plane(solution, best_solution, best_objective);
-          }
+        CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
+                        solution.get_objective());
+        fp.config.alpha = default_alpha;
+        solution_t<i_t, f_t> solution_copy(solution);
+        solution_copy.problem_ptr = old_problem_ptr;
+        solution_copy.resize_to_problem();
+        population_ptr->add_solution(std::move(solution_copy));
+        if (population_ptr->current_size() > 1 && i - last_unimproved_iteration > 3) {
+          solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
+          population_ptr->run_all_recombiners(best_feasible_copy);
         }
+        auto new_sol_vector = population_ptr->get_external_solutions();
+        population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
+        save_solution_and_add_cutting_plane(
+          population_ptr->best_feasible(), best_solution, best_objective);
+        if (population_ptr->current_size() >= 4) { break; }
       } else {
         last_unimproved_iteration = i;
       }
     }
   }
-  if (!feasibility_run) {
-    raft::copy(solution.assignment.data(),
-               best_solution.data(),
-               solution.assignment.size(),
-               solution.handle_ptr->get_stream());
-    solution.problem_ptr = old_problem_ptr;
-    solution.resize_to_problem();
-    resize_to_old_problem(old_problem_ptr);
-    solution.handle_ptr->sync_stream();
-  }
+  raft::copy(solution.assignment.data(),
+             best_solution.data(),
+             solution.assignment.size(),
+             solution.handle_ptr->get_stream());
+  solution.problem_ptr = old_problem_ptr;
+  solution.resize_to_problem();
+  resize_to_old_problem(old_problem_ptr);
+  solution.handle_ptr->sync_stream();
   return is_feasible;
 }
 
 template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::generate_solution(solution_t<i_t, f_t>& solution,
                                                  bool perturb,
-                                                 bool& early_exit,
+                                                 std::atomic<bool>& early_exit,
                                                  f_t time_limit)
 {
   raft::common::nvtx::range fun_scope("LS FP Loop");

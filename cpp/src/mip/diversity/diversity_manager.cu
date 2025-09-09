@@ -274,7 +274,7 @@ void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
 template <typename i_t, typename f_t>
 bool diversity_manager_t<i_t, f_t>::check_b_b_preemption()
 {
-  if (population.preempt_heuristic_solver_) {
+  if (population.preempt_heuristic_solver_.load()) {
     if (population.current_size() == 0) { population.allocate_solutions(); }
     auto new_sol_vector = population.get_external_solutions();
     population.add_solutions_from_vec(std::move(new_sol_vector));
@@ -303,7 +303,7 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::run_fp_alone(solution_t<i_t, f_t>& solution)
 {
   CUOPT_LOG_INFO("Running FP alone!");
-  ls.run_fp(solution, timer, &population.weights, false, &population);
+  ls.run_fp(solution, timer, &population.weights, &population);
   CUOPT_LOG_INFO("FP alone finished!");
 }
 

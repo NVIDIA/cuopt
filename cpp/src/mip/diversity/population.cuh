@@ -176,9 +176,9 @@ class population_t {
   std::mt19937 rng;
   i_t update_iter = 0;
   std::mutex solution_mutex;
-  bool early_exit_primal_generation = false;
-  f_t best_feasible_objective       = std::numeric_limits<f_t>::max();
-  bool preempt_heuristic_solver_    = false;
+  std::atomic<bool> early_exit_primal_generation = false;
+  std::atomic<bool> preempt_heuristic_solver_    = false;
+  f_t best_feasible_objective                    = std::numeric_limits<f_t>::max();
   assignment_hash_map_t<i_t, f_t> population_hash_map;
   cuopt::timer_t timer;
 };
