@@ -405,8 +405,12 @@ static void apply_move(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool 
     fj_cpu.h_best_objective =
       fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
     fj_cpu.h_best_assignment = fj_cpu.h_assignment;
-    printf("CPU: new best objective: %g\n",
+    printf("%sCPU: new best objective: %g\n",
+           fj_cpu.log_prefix.c_str(),
            fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective));
+    if (fj_cpu.improvement_callback) {
+      fj_cpu.improvement_callback(fj_cpu.h_best_objective, fj_cpu.h_assignment);
+    }
     fj_cpu.feasible_found = true;
   }
 
@@ -815,7 +819,11 @@ static void perturb(fj_cpu_t<i_t, f_t>& fj_cpu)
 }
 
 template <typename i_t, typename f_t>
-static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& solution)
+static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu,
+                        solution_t<i_t, f_t>& solution,
+                        const std::vector<f_t>& left_weights,
+                        const std::vector<f_t>& right_weights,
+                        f_t objective_weight)
 {
   auto& fj        = fj_cpu.fj;
   auto& problem   = *solution.problem_ptr;
@@ -847,10 +855,10 @@ static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& soluti
   // fj_cpu.h_cstr_left_weights  = cuopt::host_copy(fj.cstr_left_weights, handle_ptr->get_stream());
   // fj_cpu.h_cstr_right_weights = cuopt::host_copy(fj.cstr_right_weights,
   // handle_ptr->get_stream());
-  fj_cpu.h_cstr_left_weights  = cuopt::host_copy(fj.cstr_weights, handle_ptr->get_stream());
-  fj_cpu.h_cstr_right_weights = cuopt::host_copy(fj.cstr_weights, handle_ptr->get_stream());
+  fj_cpu.h_cstr_left_weights  = left_weights;
+  fj_cpu.h_cstr_right_weights = right_weights;
   fj_cpu.max_weight           = 1.0;
-  fj_cpu.h_objective_weight   = fj.objective_weight.value(handle_ptr->get_stream());
+  fj_cpu.h_objective_weight   = objective_weight;
   fj_cpu.h_assignment         = solution.get_host_assignment();
   fj_cpu.h_best_assignment    = solution.get_host_assignment();
   fj_cpu.h_lhs.resize(fj_cpu.pb_ptr->n_constraints);
@@ -860,6 +868,7 @@ static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& soluti
   fj_cpu.h_tabu_lastdec.resize(fj_cpu.pb_ptr->n_variables, 0);
   fj_cpu.h_tabu_lastinc.resize(fj_cpu.pb_ptr->n_variables, 0);
   fj_cpu.iterations = 0;
+  fj_cpu.settings   = fj_settings_t{};
 
   // set pointers to host copies
   // technically not 'device_span's but raft doesn't have a universal span.
@@ -885,7 +894,7 @@ static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& soluti
   fj_cpu.view.incumbent_objective = &fj_cpu.h_incumbent_objective;
   fj_cpu.view.best_objective      = &fj_cpu.h_best_objective;
 
-  fj_cpu.view.settings = &fj.settings;
+  fj_cpu.view.settings = &fj_cpu.settings;
   fj_cpu.view.pb.constraint_lower_bounds =
     raft::device_span<f_t>(fj_cpu.h_cstr_lb.data(), fj_cpu.h_cstr_lb.size());
   fj_cpu.view.pb.constraint_upper_bounds =
@@ -989,8 +998,12 @@ static void sanity_checks(fj_cpu_t<i_t, f_t>& fj_cpu)
 }
 
 template <typename i_t, typename f_t>
-std::unique_ptr<fj_cpu_t<i_t, f_t>> fj_t<i_t, f_t>::cpu_solve_init(solution_t<i_t, f_t>& solution,
-                                                                   bool randomize_params)
+std::unique_ptr<fj_cpu_t<i_t, f_t>> fj_t<i_t, f_t>::cpu_solve_init(
+  solution_t<i_t, f_t>& solution,
+  const std::vector<f_t>& left_weights,
+  const std::vector<f_t>& right_weights,
+  f_t objective_weight,
+  bool randomize_params)
 {
   raft::common::nvtx::range scope("fj_cpu_init");
 
@@ -998,15 +1011,15 @@ std::unique_ptr<fj_cpu_t<i_t, f_t>> fj_t<i_t, f_t>::cpu_solve_init(solution_t<i_
   auto fj_cpu = std::make_unique<fj_cpu_t<i_t, f_t>>(fj);
 
   // Initialize fj_cpu with all the data
-  init_fj_cpu(*fj_cpu, solution);
+  init_fj_cpu(*fj_cpu, solution, left_weights, right_weights, objective_weight);
   if (randomize_params) {
     auto rng                 = std::mt19937(cuopt::seed_generator::get_seed());
     fj_cpu->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(rng);
     fj_cpu->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
     fj_cpu->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 5000)(rng);
     fj_cpu->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
-    fj_cpu->settings.seed    = cuopt::seed_generator::get_seed();
   }
+  fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
   return fj_cpu;  // move
 }
 
@@ -1026,7 +1039,8 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
     auto now = std::chrono::high_resolution_clock::now();
     if (in_time_limit < std::numeric_limits<f_t>::infinity() &&
         now - loop_time_start > time_limit) {
-      printf("Time limit of %.4f seconds reached, breaking loop at iteration %d\n",
+      printf("%sTime limit of %.4f seconds reached, breaking loop at iteration %d\n",
+             fj_cpu.log_prefix.c_str(),
              time_limit.count() / 1000.f,
              fj_cpu.iterations);
       break;
@@ -1079,16 +1093,14 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
       i_t var_idx = move.var_idx >= 0 ? move.var_idx : 0;
       f_t delta   = move.var_idx >= 0 ? move.value : 0;
       if (move.var_idx < 0 && (fj_cpu.iterations % 50 == 0)) {
-        printf(
-          "no move found, viol %zu lmin: %d, max_weight: %g, objweight: %g, obj %g/%g, diff %g\n",
-          fj_cpu.violated_constraints.size(),
-          local_mins,
-          fj_cpu.max_weight,
-          fj_cpu.h_objective_weight,
-          fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_incumbent_objective),
-          fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective),
-          fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_incumbent_objective) -
-            fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective));
+        // printf(
+        //   "no move found, viol %zu lmin: %d, max_weight: %g, objweight: %g, obj %g/%g, diff
+        //   %g\n", fj_cpu.violated_constraints.size(), local_mins, fj_cpu.max_weight,
+        //   fj_cpu.h_objective_weight,
+        //   fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_incumbent_objective),
+        //   fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective),
+        //   fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_incumbent_objective) -
+        //     fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective));
       }
       apply_move(fj_cpu, var_idx, delta, true);
       // clear cached moves
@@ -1100,13 +1112,20 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
     }
     if (fj_cpu.iterations % 1000 == 0) {
       printf(
-        "iteration: %d, local mins: %d, best_objective: %g, viol: %zu, obj weight %g, maxw %g\n",
+        "%siteration: %d, local mins: %d, best_objective: %g, viol: %zu, obj weight %g, maxw %g\n",
+        fj_cpu.log_prefix.c_str(),
         fj_cpu.iterations,
         local_mins,
         fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective),
         fj_cpu.violated_constraints.size(),
         fj_cpu.h_objective_weight,
         fj_cpu.max_weight);
+    }
+    // send current solution to callback every 3000 steps for diversity
+    if (fj_cpu.iterations % 3000 == 0) {
+      if (fj_cpu.diversity_callback) {
+        fj_cpu.diversity_callback(fj_cpu.h_incumbent_objective, fj_cpu.h_assignment);
+      }
     }
 
     // Print timing statistics every 5000 iterations
@@ -1118,13 +1137,15 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
   double total_time =
     std::chrono::duration_cast<std::chrono::duration<double>>(loop_end - loop_start).count();
   double avg_time_per_iter = total_time / fj_cpu.iterations;
-  printf("Average time per iteration: %.8fms\n", avg_time_per_iter * 1000.0);
+  printf("%sAverage time per iteration: %.8fms\n",
+         fj_cpu.log_prefix.c_str(),
+         avg_time_per_iter * 1000.0);
 
   // exit(0);
 
   // Print final timing statistics
-  printf("\n=== Final Timing Statistics ===\n");
-  print_timing_stats(fj_cpu);
+  // printf("\n=== Final Timing Statistics ===\n");
+  // print_timing_stats(fj_cpu);
   // exit(0);
 
   return fj_cpu.feasible_found;

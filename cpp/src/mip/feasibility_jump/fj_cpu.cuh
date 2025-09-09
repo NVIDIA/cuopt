@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <functional>
 #include <unordered_set>
 #include <vector>
 
@@ -109,7 +110,11 @@ struct fj_cpu_t {
   i_t nnz_samples{50000};
   i_t perturb_interval{100};
 
-  std::atomic<bool> halted = false;
+  std::function<void(f_t, const std::vector<f_t>&)> improvement_callback{nullptr};
+  std::function<void(f_t, const std::vector<f_t>&)> diversity_callback{nullptr};
+  std::string log_prefix{""};
+
+  std::atomic<bool> halted{false};
 };
 
 }  // namespace cuopt::linear_programming::detail

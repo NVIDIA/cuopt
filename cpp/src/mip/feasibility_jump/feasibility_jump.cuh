@@ -212,6 +212,9 @@ class fj_t {
   void reset_cuda_graph();
   i_t solve(solution_t<i_t, f_t>& solution);
   std::unique_ptr<fj_cpu_t<i_t, f_t>> cpu_solve_init(solution_t<i_t, f_t>& solution,
+                                                     const std::vector<f_t>& left_weights,
+                                                     const std::vector<f_t>& right_weights,
+                                                     f_t objective_weight,
                                                      bool randomize_params = false);
   bool cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu,
                  f_t time_limit = +std::numeric_limits<f_t>::infinity());

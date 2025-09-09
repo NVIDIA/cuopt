@@ -94,7 +94,9 @@ class population_t {
    *  \return { -1 = not inserted , others = inserted index}
    */
   i_t add_solution(solution_t<i_t, f_t>&& sol);
-  void add_external_solution(std::vector<f_t>& solution, f_t objective, const std::string& origin);
+  void add_external_solution(const std::vector<f_t>& solution,
+                             f_t objective,
+                             const std::string& origin);
   std::vector<solution_t<i_t, f_t>> get_external_solutions();
   size_t get_external_solution_size();
   void preempt_heuristic_solver();

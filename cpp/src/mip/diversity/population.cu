@@ -133,7 +133,7 @@ size_t population_t<i_t, f_t>::get_external_solution_size()
 }
 
 template <typename i_t, typename f_t>
-void population_t<i_t, f_t>::add_external_solution(std::vector<f_t>& solution,
+void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solution,
                                                    f_t objective,
                                                    const std::string& origin)
 {
