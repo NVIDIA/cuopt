@@ -62,8 +62,7 @@ RUN \
       --extra-index-url https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \
       --no-cache-dir \
       "cuopt-server-${cuda_suffix}==${CUOPT_VER}" \
-      "cuopt-sh-client==${CUOPT_VER}" \
-      ${nvidia_cuda_runtime_pkg} && \
+      "cuopt-sh-client==${CUOPT_VER}" && \
     python -m pip list
 
 # Remove gcc to save space, gcc was required for building psutils
