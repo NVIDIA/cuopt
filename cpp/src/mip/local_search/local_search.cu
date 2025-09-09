@@ -134,6 +134,10 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
   for (auto& cpu_fj : ls_cpu_fj) {
     cpu_fj.fj_ptr = &fj;
   }
+  for (auto& cpu_fj : scratch_cpu_fj) {
+    cpu_fj.fj_ptr = &fj;
+  }
+  scratch_cpu_fj_on_lp_opt.fj_ptr = &fj;
 }
 
 static double local_search_best_obj       = std::numeric_limits<double>::max();
