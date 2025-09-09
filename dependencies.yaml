@@ -19,7 +19,7 @@ files:
   all:
     output: conda
     matrix:
-      cuda: ["12.9"]
+      cuda: ["12.9", "13.0"]
       arch: [x86_64, aarch64]
     includes:
       - build_common
@@ -69,6 +69,8 @@ files:
       - cuda_version
       - notebooks
       - py_version
+      - depends_on_cuopt_server
+      - depends_on_cuopt_sh_client
   checks:
     output: none
     includes:
@@ -282,6 +284,7 @@ dependencies:
       - output_types: conda
         packages:
           - c-compiler
+          - cuda-nvcc
           - cxx-compiler
           - ccache
     specific:
@@ -289,22 +292,14 @@ dependencies:
         matrices:
           - matrix:
               arch: x86_64
-              cuda: "12.*"
             packages:
-              - gcc_linux-64=13.*
+              - gcc_linux-64=14.*
               - sysroot_linux-64==2.28
           - matrix:
               arch: aarch64
-              cuda: "12.*"
             packages:
-              - gcc_linux-aarch64=13.*
+              - gcc_linux-aarch64=14.*
               - sysroot_linux-aarch64==2.28
-      - output_types: conda
-        matrices:
-          - matrix:
-              cuda: "12.*"
-            packages:
-              - cuda-nvcc
   build_cpp:
     common:
       - output_types: conda
@@ -313,21 +308,16 @@ dependencies:
           - cpp-argparse
           - librmm==25.10.*
           - libraft-headers==25.10.*
+          - tbb-devel
+          - zlib
+          - bzip2
   test_cpp:
     common:
       - output_types: [conda]
         packages:
+          - cuda-sanitizer-api
           - gmock
           - gtest
-    specific:
-      - output_types: conda
-        matrices:
-          - matrix:
-              cuda: "12.*"
-            packages:
-              - cuda-sanitizer-api
-          - matrix:
-            packages:
   build_wheels:
     common:
       - output_types: [requirements, pyproject]
@@ -362,27 +352,26 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - numba-cuda>=0.14.0
-          - numba>=0.59.1
+          - numba-cuda>=0.19.1,<0.20.0a0
+          - numba>=0.60.0
           - rapids-dask-dependency==25.10.*,>=0.0.0a0
           - &pandas pandas>=2.0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
-          # This index is needed for cubinlinker, ptxcompiler.
           - --extra-index-url=https://pypi.nvidia.com
           - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
     specific:
-      - output_types: [requirements, pyproject]
+      - output_types: [conda, requirements, pyproject]
         matrices:
           - matrix:
               cuda: "12.*"
-              cuda_suffixed: "true"
             packages:
-              - cupy-cuda12x
-          - matrix: null
+              - cuda-python>=12.9.2,<13.0a0
+          # fallback to CUDA 13 versions if 'cuda' is '13.*' or not provided
+          - matrix:
             packages:
-              - cupy-cuda12x
+              - cuda-python>=13.0.1,<14.0a0
 
   test_python_cuopt_server:
     common:
@@ -450,6 +439,11 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - libcuopt-cu12==25.10.*,>=0.0.0a0
+          - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - libcuopt-cu13==25.10.*,>=0.0.0a0
           - {matrix: null, packages: [*libcuopt_unsuffixed]}
   depends_on_cuopt:
     common:
@@ -469,6 +463,11 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - cuopt-cu12==25.10.*,>=0.0.0a0
+          - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - cuopt-cu13==25.10.*,>=0.0.0a0
           - {matrix: null, packages: [*cuopt_unsuffixed]}
   depends_on_cuopt_server:
     common:
@@ -488,6 +487,11 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - cuopt-server-cu12==25.10.*,>=0.0.0a0
+          - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - cuopt-server-cu13==25.10.*,>=0.0.0a0
           - {matrix: null, packages: [*cuopt_server_unsuffixed]}
   depends_on_cuopt_sh_client:
     common:
@@ -532,12 +536,31 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - librmm-cu12==25.10.*,>=0.0.0a0
+          - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - librmm-cu13==25.10.*,>=0.0.0a0
           - {matrix: null, packages: [*librmm_unsuffixed]}
   depends_on_cupy:
     common:
       - output_types: conda
         packages:
-          - cupy>=12.0.0
+          - cupy>=13.6.0
+    # NOTE: This is intentionally not broken into groups by a 'cuda_suffixed' selector like
+    #       other packages with -cu{nn}x suffixes in this file.
+    #       All RAPIDS wheel builds (including in devcontainers) expect cupy to be suffixed.
+    specific:
+      - output_types: [requirements, pyproject]
+        matrices:
+          - matrix:
+              cuda: "12.*"
+            packages:
+              - cupy-cuda12x>=13.6.0
+          # fallback to CUDA 13 versions if 'cuda' is '13.*' or not provided
+          - matrix:
+            packages:
+              - cupy-cuda13x>=13.6.0
   depends_on_rapids_logger:
     common:
       - output_types: [conda, requirements, pyproject]
@@ -567,6 +590,11 @@ dependencies:
             packages:
               - rmm-cu12==25.10.*,>=0.0.0a0
           - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - rmm-cu13==25.10.*,>=0.0.0a0
+          - matrix:
             packages:
               - *rmm_unsuffixed
 
@@ -587,6 +615,11 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - cudf-cu12==25.10.*,>=0.0.0a0
+          - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - cudf-cu13==25.10.*,>=0.0.0a0
           - matrix:
             packages:
               - *cudf_unsuffixed
@@ -609,6 +642,11 @@ dependencies:
             packages:
               - cuvs-cu12==25.10.*,>=0.0.0a0
           - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - cuvs-cu13==25.10.*,>=0.0.0a0
+          - matrix:
             packages:
               - *cuvs_unsuffixed
 
@@ -630,6 +668,11 @@ dependencies:
             packages:
               - raft-dask-cu12==25.10.*,>=0.0.0a0
           - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - raft-dask-cu13==25.10.*,>=0.0.0a0
+          - matrix:
             packages:
               - *raft_dask_unsuffixed
 
@@ -650,6 +693,11 @@ dependencies:
               cuda_suffixed: "true"
             packages:
               - pylibraft-cu12==25.10.*,>=0.0.0a0
+          - matrix:
+              cuda: "13.*"
+              cuda_suffixed: "true"
+            packages:
+              - pylibraft-cu13==25.10.*,>=0.0.0a0
           - matrix:
             packages:
               - *pylibraft_unsuffixed
@@ -681,26 +729,18 @@ dependencies:
               cuda: "12.9"
             packages:
               - cuda-version=12.9
+          - matrix:
+              cuda: "13.0"
+            packages:
+              - cuda-version=13.0
   cuda:
-    specific:
-      - output_types: conda
-        matrices:
-          - matrix:
-              cuda: "12.[01]"
-            packages:
-              - libcurand-dev
-              - libcusolver-dev
-              - libcusparse-dev
-              - cuda-nvtx-dev
-          - matrix:
-              cuda: "12.*"
-            packages:
-              - libcurand-dev
-              - libcusolver-dev
-              - libcusparse-dev
-              - cuda-nvtx-dev
-              - cuda-nvvm
-              - cuda-crt
+    common:
+      - output_types: [conda]
+        packages:
+          - libcurand-dev
+          - libcusolver-dev
+          - libcusparse-dev
+          - cuda-nvtx-dev
 
   cuda_wheels:
     specific:
@@ -715,6 +755,15 @@ dependencies:
               - nvidia-cusparse-cu12
               - nvidia-cusolver-cu12
               - nvidia-nvtx-cu12
+          - matrix:
+              cuda: "13.*"
+              use_cuda_wheels: "true"
+            packages:
+              - nvidia-cublas-cu13
+              - nvidia-curand-cu13
+              - nvidia-cusparse-cu13
+              - nvidia-cusolver-cu13
+              - nvidia-nvtx-cu13
           # if use_cuda_wheels=false is provided, do not add dependencies on any CUDA wheels
           # (e.g. for DLFW and pip devcontainers)
           - matrix:
@@ -770,15 +819,8 @@ dependencies:
     common:
       - output_types: [conda, requirements]
         packages:
-          - breathe
-          - folium
-          - geopandas
           - ipython
-          - matplotlib
           - notebook
-          - polyline
-          - scipy
-          - libgdal<3.9.0
       - output_types: [conda]
         packages:
           - *jsonref
