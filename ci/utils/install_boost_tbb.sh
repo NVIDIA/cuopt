@@ -17,19 +17,19 @@
 
 set -euo pipefail
 
-# Install Boost
+# Install Boost and TBB
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     if [[ "$ID" == "rocky" ]]; then
-        echo "Detected Rocky Linux. Installing Boost via dnf..."
-        dnf install -y boost-devel
+        echo "Detected Rocky Linux. Installing Boost and TBB via dnf..."
+        dnf install -y boost-devel tbb-devel
         if [[ "$(uname -m)" == "x86_64" ]]; then
             dnf install -y gcc-toolset-14-libquadmath-devel
         fi
     elif [[ "$ID" == "ubuntu" ]]; then
-        echo "Detected Ubuntu. Installing Boost via apt..."
+        echo "Detected Ubuntu. Installing Boost and TBB via apt..."
         apt-get update
-        apt-get install -y libboost-dev
+        apt-get install -y libboost-dev libtbb-dev
     else
         echo "Unknown OS: $ID. Please install Boost development libraries manually."
         exit 1

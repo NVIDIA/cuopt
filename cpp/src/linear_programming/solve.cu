@@ -35,6 +35,7 @@
 
 #include <mps_parser/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/version_info.hpp>
 
 #include <dual_simplex/crossover.hpp>
 #include <dual_simplex/solve.hpp>
@@ -570,6 +571,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
     // Init libraies before to not include it in solve time
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
+
+    print_version_info();
 
     raft::common::nvtx::range fun_scope("Running solver");
 
