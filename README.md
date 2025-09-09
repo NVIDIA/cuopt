@@ -73,7 +73,6 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  nvidia-cuda-runtime-cu12=12.9.* \
   cuopt-server-cu12==25.10.* cuopt-sh-client==25.10.*
 ```
 
