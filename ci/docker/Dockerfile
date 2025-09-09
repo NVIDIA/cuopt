@@ -63,7 +63,6 @@ RUN \
       --no-cache-dir \
       "cuopt-server-${cuda_suffix}==${CUOPT_VER}" \
       "cuopt-sh-client==${CUOPT_VER}" \
-      "cuda-toolkit[cudart]==${cuda_major_minor}.*" \
       ${nvidia_cuda_runtime_pkg} && \
     python -m pip list
 

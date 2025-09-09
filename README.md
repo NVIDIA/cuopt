@@ -82,7 +82,6 @@ For CUDA 13.x:
 ```bash
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
-  nvidia-cuda-runtime==13.0.* \
   cuopt-server-cu13==25.10.* cuopt-sh-client==25.10.*
 ```
 
@@ -91,7 +90,6 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  nvidia-cuda-runtime==13.0.* \
   cuopt-server-cu13==25.10.* cuopt-sh-client==25.10.*
 ```
 
