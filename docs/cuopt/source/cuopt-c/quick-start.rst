@@ -19,14 +19,10 @@ This wheel is a Python wrapper around the C++ library and eases installation and
     pip uninstall cuopt-thin-client
 
     # CUDA 13
-    pip install --extra-index-url=https://pypi.nvidia.com \
-      'nvidia-cuda-runtime==13.0.*' \
-      'libcuopt-cu13==25.10.*'
+    pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu13==25.10.*'
 
     # CUDA 12
-    pip install --extra-index-url=https://pypi.nvidia.com \
-      'nvidia-cuda-runtime-cu12==12.9.*' \
-      'libcuopt-cu12==25.10.*'
+    pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu12==25.10.*'
 
 
 .. note::
@@ -36,12 +32,10 @@ This wheel is a Python wrapper around the C++ library and eases installation and
 
     # CUDA 13
     pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-      'nvidia-cuda-runtime==13.0.*' \
       'libcuopt-cu13==25.10.*'
 
     # CUDA 12
     pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-      'nvidia-cuda-runtime-cu12==12.9.*' \
       'libcuopt-cu12==25.10.*'
 
 Conda
