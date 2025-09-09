@@ -56,7 +56,7 @@ struct fj_hyper_parameters_t {
   int global_move_update_period      = 10;
   int heavy_move_update_period       = 50;
   int sync_period                    = 200;
-  int lhs_refresh_period             = 1000;
+  int lhs_refresh_period             = 500;
   int allow_infeasibility_iterations = 200;
   // The value added to the objective weight everytime a new best solution is
   // found in order to move towards better solutions
@@ -555,7 +555,7 @@ class fj_t {
       {
         f_t cstr_tolerance = get_cstr_tolerance<i_t, f_t>(
           c_lb, c_ub, pb.tolerances.absolute_tolerance, pb.tolerances.relative_tolerance);
-        return max((f_t)0, cstr_tolerance - MACHINE_EPSILON);
+        return max((f_t)1e-12, cstr_tolerance - MACHINE_EPSILON);
       }
       HDI f_t get_corrected_tolerance(i_t cstr) const
       {
