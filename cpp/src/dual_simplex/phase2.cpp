@@ -1516,16 +1516,10 @@ i_t update_dual_variables(const sparse_vector_t<i_t, f_t>& delta_y_sparse,
   for (i_t k = 0; k < delta_z_nz; ++k) {
     const i_t j = delta_z_indices[k];
     z[j] += step_length * delta_z[j];
-    if (std::isnan(z[j]) || std::isinf(z[j])) {
-      printf("z[%d] is nan or inf\n", j);
-      return -1;
-    }
+    if (std::isnan(z[j]) || std::isinf(z[j])) { return -1; }
   }
   z[leaving_index] += step_length * delta_z[leaving_index];
-  if (std::isnan(z[leaving_index]) || std::isinf(z[leaving_index])) {
-    printf("z[%d] is nan or inf\n", leaving_index);
-    return -1;
-  }
+  if (std::isnan(z[leaving_index]) || std::isinf(z[leaving_index])) { return -1; }
   return 0;
 }
 
@@ -2860,11 +2854,7 @@ dual::status_t dual_phase2(i_t phase,
     } else {
       vstatus[leaving_index] = variable_status_t::NONBASIC_FIXED;
     }
-    basic_list[basic_leaving_index] = entering_index;
-    // settings.log.printf("nonbasic_entering_index %d leaving %d nonbasic.size %lu\n",
-    //                     nonbasic_entering_index,
-    //                     leaving_index,
-    //                     nonbasic_list.size());
+    basic_list[basic_leaving_index]        = entering_index;
     nonbasic_list[nonbasic_entering_index] = leaving_index;
     nonbasic_mark[entering_index]          = -1;
     nonbasic_mark[leaving_index]           = nonbasic_entering_index;

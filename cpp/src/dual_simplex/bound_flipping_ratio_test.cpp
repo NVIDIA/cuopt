@@ -145,7 +145,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   if (k_idx == -4) { return -4; }
   bool continue_search = k_idx >= 0 && num_breakpoints > 1 && slope > 0.0;
   if (!continue_search) {
-    if constexpr (1) {
+    if constexpr (0) {
       settings_.log.printf(
         "BFRT stopping. No bound flips. Step length %e Nonbasic entering %d Entering %d pivot %e\n",
         step_length,

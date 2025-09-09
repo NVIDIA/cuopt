@@ -210,10 +210,10 @@ class fj_t {
                     const raft::handle_t* handle_ptr,
                     std::optional<i_t> new_size = std::nullopt);
   i_t host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx = 0);
-  void run_step_device(i_t climber_idx = 0, bool use_graph = false);
+  void run_step_device(i_t climber_idx = 0, bool use_graph = true);
   void run_step_device(const rmm::cuda_stream_view& stream,
                        i_t climber_idx = 0,
-                       bool use_graph  = false);
+                       bool use_graph  = true);
   void refresh_lhs_and_violation(const rmm::cuda_stream_view& stream, i_t climber_idx = 0);
   // load balancing
   void load_balancing_score_update(const rmm::cuda_stream_view& stream, i_t climber_idx = 0);
