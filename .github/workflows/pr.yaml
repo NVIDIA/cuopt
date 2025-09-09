@@ -35,7 +35,6 @@ jobs:
       - conda-python-tests
       - docs-build
       - wheel-build-libcuopt
-      # - conda-notebook-tests
       - wheel-build-cuopt
       - wheel-tests-cuopt
       - wheel-build-cuopt-server
@@ -168,6 +167,8 @@ jobs:
       package-name: cuopt_mps_parser
       package-type: python
       append-cuda-suffix: false
+      # need 1 build per Python version and arch (but CUDA version doesn't matter so choose the latest)
+      matrix_filter: 'group_by([.ARCH, (.PY_VER |split(".") | map(tonumber))])|map(max_by([(.CUDA_VER|split(".")|map(tonumber))]))'
   wheel-build-libcuopt:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
@@ -214,6 +215,9 @@ jobs:
       package-name: cuopt_sh_client
       package-type: python
       append-cuda-suffix: false
+      pure-wheel: true
+      # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
+      matrix_filter: '[map(select(.ARCH == "amd64")) | min_by((.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber)))]'
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt-server, changed-files]
     secrets: inherit

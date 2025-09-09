@@ -21,13 +21,22 @@ set -euo pipefail
 
 CUOPT_VERSION="$(rapids-version)"
 
+rapids-logger "Downloading artifacts from previous jobs"
+CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
+PYTHON_CHANNEL=$(rapids-download-conda-from-github python)
+
 rapids-logger "Generate notebook testing dependencies"
+
+ENV_YAML_DIR="$(mktemp -d)"
+
 rapids-dependency-file-generator \
   --output conda \
   --file-key test_notebooks \
-  --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch);py=${RAPIDS_PY_VERSION}" | tee env.yaml
+  --prepend-channel "${CPP_CHANNEL}" \
+  --prepend-channel "${PYTHON_CHANNEL}" \
+  --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch);py=${RAPIDS_PY_VERSION}" | tee "${ENV_YAML_DIR}/env.yaml"
 
-rapids-mamba-retry env create --yes -f env.yaml -n test
+rapids-mamba-retry env create --yes -f "${ENV_YAML_DIR}/env.yaml" -n test
 
 # Temporarily allow unbound variables for conda activation.
 set +u
@@ -36,25 +45,20 @@ set -u
 
 rapids-print-env
 
-rapids-logger "Downloading artifacts from previous jobs"
-CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
-PYTHON_CHANNEL=$(rapids-download-conda-from-github python)
+EXAMPLES_BRANCH="branch-${CUOPT_VERSION%.*}"
 
-rapids-mamba-retry install \
-  --channel "${CPP_CHANNEL}" \
-  --channel "${PYTHON_CHANNEL}" \
-  "libcuopt=${CUOPT_VERSION}" \
-  "cuopt=${CUOPT_VERSION}" \
-  "cuopt-server=${CUOPT_VERSION}"
+# Remove any existing cuopt-examples directory
 
-pip install python/cuopt_self_hosted/
+rapids-logger "Cloning cuopt-examples repository for branch: ${EXAMPLES_BRANCH}"
+rm -rf cuopt-examples
+git clone --single-branch --branch "${EXAMPLES_BRANCH}" https://github.com/NVIDIA/cuopt-examples.git
 
 NBTEST="$(realpath "$(dirname "$0")/utils/nbtest.sh")"
 NBLIST_PATH="$(realpath "$(dirname "$0")/utils/notebook_list.py")"
-NBLIST=$(python "${NBLIST_PATH}")
-SERVER_WAIT_DELAY=10
 
-pushd notebooks
+pushd cuopt-examples
+
+NBLIST=$(python "${NBLIST_PATH}")
 
 EXITCODE=0
 trap "EXITCODE=1" ERR
@@ -62,20 +66,16 @@ trap "EXITCODE=1" ERR
 rapids-logger "Start cuopt-server"
 
 set +e
-#python -c "from cuopt_server.cuopt_service import run_server; run_server()" &
-
-python -m cuopt_server.cuopt_service &
-export SERVER_PID=$!
-sleep "${SERVER_WAIT_DELAY}"
-curl http://0.0.0.0:5000/cuopt/health
 
 rapids-logger "Start notebooks tests"
 for nb in ${NBLIST}; do
   nvidia-smi
   ${NBTEST} "${nb}"
+  if [ $? -ne 0 ]; then
+    echo "Notebook ${nb} failed to execute. Exiting."
+    exit 1
+  fi
 done
 
 rapids-logger "Notebook test script exiting with value: $EXITCODE"
-kill -s SIGTERM $SERVER_PID
-wait $SERVER_PID
 exit ${EXITCODE}
