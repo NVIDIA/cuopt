@@ -76,7 +76,7 @@ void cpu_fj_thread_t<i_t, f_t>::kill_cpu_solver()
 {
   printf("Killing CPU solver\n");
   cpu_thread_terminate = true;
-  if (fj_ptr) fj_ptr->cpu_fj_halted = true;
+  if (fj_ptr) fj_cpu->halted = true;
   cpu_cv.notify_one();
   cpu_worker.join();
 }
@@ -87,14 +87,14 @@ void cpu_fj_thread_t<i_t, f_t>::start_cpu_solver()
   // Reset flags
   cpu_thread_done         = false;
   cpu_thread_should_start = true;
-  fj_ptr->cpu_fj_halted   = false;
+  fj_cpu->halted          = false;
   cpu_cv.notify_one();
 }
 
 template <typename i_t, typename f_t>
 void cpu_fj_thread_t<i_t, f_t>::stop_cpu_solver()
 {
-  fj_ptr->cpu_fj_halted = true;
+  fj_cpu->halted = true;
 }
 
 template <typename i_t, typename f_t>
@@ -286,16 +286,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   // }
 
   for (auto& cpu_fj : ls_cpu_fj) {
-    // if (cpu_fj.cpu_solver == nullptr) {
-    //   cpu_fj.cpu_solver = std::make_unique<Solver>();
-    //   LocalMipRead(*cpu_fj.cpu_solver, *solution.problem_ptr, solution);
-    // } else {
-    //   CopySolution(*cpu_fj.cpu_solver, solution);
-    // }
-    // CopyWeights(*cpu_fj.cpu_solver, in_fj);
-    // cpu_fj.cpu_solver->localMIP->mt.seed(cuopt::seed_generator::get_seed());
-    // cpu_fj.cpu_solver->localMIP->RandomizeParams();
-    cpu_fj.fj_cpu = cpu_fj.fj_ptr->cpu_solve_init(solution);
+    cpu_fj.fj_cpu = cpu_fj.fj_ptr->cpu_solve_init(solution, true);
   }
   // cudaDeviceSynchronize();
 
@@ -326,17 +317,17 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
 
   f_t best_cpu_obj = std::numeric_limits<f_t>::max();
   // // Wait for CPU solver to finish
-  // for (auto& cpu_fj : ls_cpu_fj) {
-  //   bool cpu_sol_found = cpu_fj.wait_for_cpu_solver();
-  //   if (cpu_sol_found) {
-  //     f_t cpu_obj = cpu_fj.fj_cpu->h_best_objective;
-  //     if (cpu_obj < best_cpu_obj) {
-  //       best_cpu_obj = cpu_obj;
-  //       solution_cpu.copy_new_assignment(cpu_fj.fj_cpu->h_best_assignment);
-  //       solution_cpu.compute_feasibility();
-  //     }
-  //   }
-  // }
+  for (auto& cpu_fj : ls_cpu_fj) {
+    bool cpu_sol_found = cpu_fj.wait_for_cpu_solver();
+    if (cpu_sol_found) {
+      f_t cpu_obj = cpu_fj.fj_cpu->h_best_objective;
+      if (cpu_obj < best_cpu_obj) {
+        best_cpu_obj = cpu_obj;
+        solution_cpu.copy_new_assignment(cpu_fj.fj_cpu->h_best_assignment);
+        solution_cpu.compute_feasibility();
+      }
+    }
+  }
   bool cpu_sol_found = best_cpu_obj < std::numeric_limits<f_t>::max();
 
   bool gpu_feasible = solution.get_feasible();

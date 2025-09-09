@@ -211,7 +211,8 @@ class fj_t {
   ~fj_t();
   void reset_cuda_graph();
   i_t solve(solution_t<i_t, f_t>& solution);
-  std::unique_ptr<fj_cpu_t<i_t, f_t>> cpu_solve_init(solution_t<i_t, f_t>& solution);
+  std::unique_ptr<fj_cpu_t<i_t, f_t>> cpu_solve_init(solution_t<i_t, f_t>& solution,
+                                                     bool randomize_params = false);
   bool cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu,
                  f_t time_limit = +std::numeric_limits<f_t>::infinity());
   i_t alloc_max_climbers(i_t desired_climbers);
@@ -251,8 +252,6 @@ class fj_t {
   rmm::device_scalar<f_t> objective_weight;
   f_t stop_threshold = 0.;
   rmm::device_uvector<i_t> objective_vars;
-
-  bool cpu_fj_halted = false;
 
   // array to directly map a CSR entry index to the corresponding constraint bound
   // to save on an indirect likely-uncoalesced load

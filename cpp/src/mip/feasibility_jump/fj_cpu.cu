@@ -21,7 +21,10 @@
 #include "feasibility_jump_impl_common.cuh"
 #include "fj_cpu.cuh"
 
+#include <utilities/seed_generator.cuh>
+
 #include <chrono>
+#include <random>
 #include <unordered_set>
 #include <vector>
 
@@ -47,27 +50,6 @@ class timing_raii_t {
  private:
   std::vector<double>& times_vec_;
   std::chrono::high_resolution_clock::time_point start_time_;
-};
-
-struct pair_hash {
-  template <class T1, class T2>
-  std::size_t operator()(const std::pair<T1, T2>& p) const
-  {
-    std::size_t h1 = std::hash<T1>{}(p.first);
-    std::size_t h2 = std::hash<T2>{}(p.second);
-    // Combines the two hash values (boost-inspired)
-    return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
-  }
-};
-
-struct fj_move_hash {
-  std::size_t operator()(const fj_move_t& p) const
-  {
-    std::size_t h1 = std::hash<int>{}(p.var_idx);
-    std::size_t h2 = std::hash<double>{}(p.value);
-    // Combines the two hash values (boost-inspired)
-    return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
-  }
 };
 
 template <typename i_t, typename f_t>
@@ -143,7 +125,7 @@ static inline bool tabu_check(fj_cpu_t<i_t, f_t>& fj_cpu,
 
 template <typename i_t, typename f_t>
 inline std::pair<f_t, f_t> feas_score_constraint_cpu(
-  const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
+  const typename fj_t<i_t, f_t>::climber_data_t::view_t& view,
   i_t var_idx,
   f_t delta,
   i_t cstr_idx,
@@ -171,7 +153,7 @@ inline std::pair<f_t, f_t> feas_score_constraint_cpu(
     // usually occur on a rarer basis (around 50 iteratiosn to 1 local minimum)
     // likely unreasonable and overkill however
     f_t cstr_weight =
-      bound_idx == 0 ? fj.cstr_left_weights[cstr_idx] : fj.cstr_right_weights[cstr_idx];
+      bound_idx == 0 ? view.cstr_left_weights[cstr_idx] : view.cstr_right_weights[cstr_idx];
     f_t sign      = bound_idx == 0 ? -1 : 1;
     f_t rhs       = bounds[bound_idx] * sign;
     f_t old_lhs   = current_lhs * sign;
@@ -185,7 +167,7 @@ inline std::pair<f_t, f_t> feas_score_constraint_cpu(
     cuopt_assert(isfinite(new_lhs), "");
     cuopt_assert(isfinite(old_slack) && isfinite(new_slack), "");
 
-    f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
+    f_t cstr_tolerance = view.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
 
     bool old_sat = old_lhs < rhs + cstr_tolerance;
     bool new_sat = new_lhs < rhs + cstr_tolerance;
@@ -321,7 +303,7 @@ static void update_weights(fj_cpu_t<i_t, f_t>& fj_cpu)
 
     cuopt_assert(curr_excess_score < 0, "constraint not violated");
 
-    i_t int_delta = fj_cpu.fj.weight_update_increment;
+    i_t int_delta = 1.0;
     f_t delta     = int_delta;
 
     f_t new_weight = old_weight + delta;
@@ -353,7 +335,7 @@ static void apply_move(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool 
   raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
 
   // cuopt_assert(delta != 0, "delta is zero");
-  if (delta != 0) cuopt_assert(!tabu_check(fj_cpu, var_idx, delta, localmin), "move is tabu");
+  // if (delta != 0) cuopt_assert(!tabu_check(fj_cpu, var_idx, delta, localmin), "move is tabu");
 
   // printf("   [%d] applying move: %d, %g, unsat %zu, incumbent obj %g\n", fj_cpu.iterations,
   // var_idx, delta, fj_cpu.violated_constraints.size(), fj_cpu.h_incumbent_objective);
@@ -405,7 +387,11 @@ static void apply_move(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool 
   }
 
   // update the assignment and objective proper
-  f_t new_val                  = fj_cpu.h_assignment[var_idx] + delta;
+  f_t new_val = fj_cpu.h_assignment[var_idx] + delta;
+  if (fj_cpu.view.pb.is_integer_var(var_idx)) {
+    cuopt_assert(fj_cpu.view.pb.integer_equal(new_val, round(new_val)), "new_val is not integer");
+    new_val = round(new_val);
+  }
   fj_cpu.h_assignment[var_idx] = new_val;
 
   cuopt_assert(fj_cpu.view.pb.check_variable_within_bounds(var_idx, new_val),
@@ -420,7 +406,7 @@ static void apply_move(fj_cpu_t<i_t, f_t>& fj_cpu, i_t var_idx, f_t delta, bool 
       fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
     fj_cpu.h_best_assignment = fj_cpu.h_assignment;
     printf("CPU: new best objective: %g\n",
-           fj_cpu.fj.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective));
+           fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective));
     fj_cpu.feasible_found = true;
   }
 
@@ -448,7 +434,7 @@ template <typename i_t, typename f_t, MTMMoveType move_type>
 static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
   fj_cpu_t<i_t, f_t>& fj_cpu, const std::vector<i_t>& target_cstrs, bool localmin = false)
 {
-  auto& problem = *fj_cpu.fj.pb_ptr;
+  auto& problem = *fj_cpu.pb_ptr;
 
   raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
 
@@ -529,8 +515,8 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
         }
       }
       cuopt_assert(isfinite(new_val), "new_val is not finite");
-      cuopt_assert(new_val >= fj_cpu.h_var_lb[var_idx], "new_val is not greater than lower bound");
-      cuopt_assert(new_val <= fj_cpu.h_var_ub[var_idx], "new_val is not less than upper bound");
+      cuopt_assert(fj_cpu.view.pb.check_variable_within_bounds(var_idx, new_val),
+                   "new_val is not within bounds");
       delta = new_val - val;
       // more permissive tabu in the case of local minima
       if (tabu_check(fj_cpu, var_idx, delta, localmin)) continue;
@@ -601,7 +587,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
 template <typename i_t, typename f_t>
 static thrust::tuple<fj_move_t, fj_staged_score_t> find_flip_move(fj_cpu_t<i_t, f_t>& fj_cpu)
 {
-  auto& problem = *fj_cpu.fj.pb_ptr;
+  auto& problem = *fj_cpu.pb_ptr;
 
   fj_move_t best_move          = fj_move_t{-1, 0};
   fj_staged_score_t best_score = fj_staged_score_t::invalid();
@@ -666,6 +652,9 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_sat(fj_cpu_t<i_
 template <typename i_t, typename f_t>
 static void init_lhs(fj_cpu_t<i_t, f_t>& fj_cpu)
 {
+  printf("%d vs %d\n", (int)fj_cpu.h_lhs.size(), (int)fj_cpu.view.pb.n_constraints);
+  cuopt_assert(fj_cpu.h_lhs.size() == fj_cpu.view.pb.n_constraints, "h_lhs size mismatch");
+
   fj_cpu.violated_constraints.clear();
   fj_cpu.satisfied_constraints.clear();
   for (i_t cstr_idx = 0; cstr_idx < fj_cpu.view.pb.n_constraints; ++cstr_idx) {
@@ -674,6 +663,8 @@ static void init_lhs(fj_cpu_t<i_t, f_t>& fj_cpu)
     for (i_t i = offset_begin; i < offset_end; ++i) {
       lhs += fj_cpu.h_coefficients[i] * fj_cpu.h_assignment[fj_cpu.h_variables[i]];
     }
+    // printf("cstr_idx %d/%d, lhs %d\n", cstr_idx, fj_cpu.view.pb.n_constraints,
+    // (int)fj_cpu.h_lhs.size());
     fj_cpu.h_lhs[cstr_idx] = lhs;
 
     f_t cstr_tolerance = fj_cpu.view.get_corrected_tolerance(cstr_idx);
@@ -689,7 +680,7 @@ static void init_lhs(fj_cpu_t<i_t, f_t>& fj_cpu)
   fj_cpu.h_incumbent_objective = thrust::inner_product(
     fj_cpu.h_assignment.begin(), fj_cpu.h_assignment.end(), fj_cpu.h_obj_coeffs.begin(), 0.);
   printf("initial objective: %g\n",
-         fj_cpu.fj.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_incumbent_objective));
+         fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_incumbent_objective));
 }
 
 template <typename i_t, typename f_t>
@@ -701,6 +692,9 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(fj_cpu_t<i_t, 
   fj_staged_score_t best_score = fj_staged_score_t::zero();
 
   for (auto var_idx : fj_cpu.h_objective_vars) {
+    cuopt_assert(var_idx < fj_cpu.h_obj_coeffs.size(), "var_idx is out of bounds");
+    cuopt_assert(var_idx >= 0, "var_idx is out of bounds");
+
     f_t obj_coeff = fj_cpu.h_obj_coeffs[var_idx];
     f_t delta     = -std::numeric_limits<f_t>::infinity();
     f_t val       = fj_cpu.h_assignment[var_idx];
@@ -708,7 +702,8 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(fj_cpu_t<i_t, 
     // special path for binary variables
     if (fj_cpu.h_is_binary_variable[var_idx]) {
       cuopt_assert(fj_cpu.view.pb.is_integer(val), "binary variable is not integer");
-      cuopt_assert(val == 0 || val == 1, "binary variable is not 0 or 1");
+      cuopt_assert(fj_cpu.view.pb.integer_equal(val, 0) || fj_cpu.view.pb.integer_equal(val, 1),
+                   "Current assignment is not binary!");
       delta = round(1.0 - 2 * val);
       // flip move wouldn't improve
       if (delta * obj_coeff >= 0) continue;
@@ -823,12 +818,13 @@ template <typename i_t, typename f_t>
 static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& solution)
 {
   auto& fj        = fj_cpu.fj;
-  auto& problem   = *fj.pb_ptr;
-  auto handle_ptr = fj_cpu.fj.handle_ptr;
+  auto& problem   = *solution.problem_ptr;
+  auto handle_ptr = solution.handle_ptr;
 
   // build a cpu-based fj_view_t
-  fj_cpu.view = fj.climbers[0]->view();
-
+  fj_cpu.view    = typename fj_t<i_t, f_t>::climber_data_t::view_t{};
+  fj_cpu.view.pb = problem.view();
+  fj_cpu.pb_ptr  = &problem;
   // Get host copies of device data
   fj_cpu.h_reverse_coefficients =
     cuopt::host_copy(problem.reverse_coefficients, handle_ptr->get_stream());
@@ -847,7 +843,6 @@ static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& soluti
   fj_cpu.h_is_binary_variable =
     cuopt::host_copy(problem.is_binary_variable, handle_ptr->get_stream());
   fj_cpu.h_binary_indices = cuopt::host_copy(problem.binary_indices, handle_ptr->get_stream());
-  fj_cpu.h_objective_vars = cuopt::host_copy(fj.objective_vars, handle_ptr->get_stream());
 
   // fj_cpu.h_cstr_left_weights  = cuopt::host_copy(fj.cstr_left_weights, handle_ptr->get_stream());
   // fj_cpu.h_cstr_right_weights = cuopt::host_copy(fj.cstr_right_weights,
@@ -858,12 +853,12 @@ static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& soluti
   fj_cpu.h_objective_weight   = fj.objective_weight.value(handle_ptr->get_stream());
   fj_cpu.h_assignment         = solution.get_host_assignment();
   fj_cpu.h_best_assignment    = solution.get_host_assignment();
-  fj_cpu.h_lhs.resize(fj.pb_ptr->n_constraints);
-  fj_cpu.h_lhs_sumcomp.resize(fj.pb_ptr->n_constraints, 0);
-  fj_cpu.h_tabu_nodec_until.resize(fj.pb_ptr->n_variables, 0);
-  fj_cpu.h_tabu_noinc_until.resize(fj.pb_ptr->n_variables, 0);
-  fj_cpu.h_tabu_lastdec.resize(fj.pb_ptr->n_variables, 0);
-  fj_cpu.h_tabu_lastinc.resize(fj.pb_ptr->n_variables, 0);
+  fj_cpu.h_lhs.resize(fj_cpu.pb_ptr->n_constraints);
+  fj_cpu.h_lhs_sumcomp.resize(fj_cpu.pb_ptr->n_constraints, 0);
+  fj_cpu.h_tabu_nodec_until.resize(fj_cpu.pb_ptr->n_variables, 0);
+  fj_cpu.h_tabu_noinc_until.resize(fj_cpu.pb_ptr->n_variables, 0);
+  fj_cpu.h_tabu_lastdec.resize(fj_cpu.pb_ptr->n_variables, 0);
+  fj_cpu.h_tabu_lastinc.resize(fj_cpu.pb_ptr->n_variables, 0);
   fj_cpu.iterations = 0;
 
   // set pointers to host copies
@@ -885,6 +880,8 @@ static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& soluti
     raft::device_span<i_t>(fj_cpu.h_tabu_lastdec.data(), fj_cpu.h_tabu_lastdec.size());
   fj_cpu.view.tabu_lastinc =
     raft::device_span<i_t>(fj_cpu.h_tabu_lastinc.data(), fj_cpu.h_tabu_lastinc.size());
+  fj_cpu.view.objective_vars =
+    raft::device_span<i_t>(fj_cpu.h_objective_vars.data(), fj_cpu.h_objective_vars.size());
   fj_cpu.view.incumbent_objective = &fj_cpu.h_incumbent_objective;
   fj_cpu.view.best_objective      = &fj_cpu.h_best_objective;
 
@@ -914,12 +911,20 @@ static void init_fj_cpu(fj_cpu_t<i_t, f_t>& fj_cpu, solution_t<i_t, f_t>& soluti
     raft::device_span<i_t>(fj_cpu.h_reverse_offsets.data(), fj_cpu.h_reverse_offsets.size());
   fj_cpu.view.pb.objective_coefficients =
     raft::device_span<f_t>(fj_cpu.h_obj_coeffs.data(), fj_cpu.h_obj_coeffs.size());
+  fj_cpu.h_objective_vars.resize(problem.n_variables);
+  auto end = std::copy_if(
+    thrust::counting_iterator<i_t>(0),
+    thrust::counting_iterator<i_t>(problem.n_variables),
+    fj_cpu.h_objective_vars.begin(),
+    [&fj_cpu](i_t idx) { return !fj_cpu.view.pb.integer_equal(fj_cpu.h_obj_coeffs[idx], (f_t)0); });
+  fj_cpu.h_objective_vars.resize(end - fj_cpu.h_objective_vars.begin());
+  cuopt_assert(fj_cpu.h_objective_vars.size() > 0, "objective_vars empty");
 
   // scratch thread: fill all weights with 1
-  for (i_t cstr_idx = 0; cstr_idx < fj.pb_ptr->n_constraints; ++cstr_idx) {
-    fj_cpu.h_cstr_left_weights[cstr_idx]  = 1;
-    fj_cpu.h_cstr_right_weights[cstr_idx] = 1;
-  }
+  // for (i_t cstr_idx = 0; cstr_idx < fj.pb_ptr->n_constraints; ++cstr_idx) {
+  //   fj_cpu.h_cstr_left_weights[cstr_idx]  = 1;
+  //   fj_cpu.h_cstr_right_weights[cstr_idx] = 1;
+  // }
   // fj_cpu.h_objective_weight = 0;
   fj_cpu.h_best_objective = +std::numeric_limits<f_t>::infinity();
 
@@ -976,21 +981,32 @@ static void sanity_checks(fj_cpu_t<i_t, f_t>& fj_cpu)
     cuopt_assert(
       in_viol != in_sat,
       "Constraint must be in exactly one of violated_constraints or satisfied_constraints");
+
+    cuopt_assert(fj_cpu.h_cstr_left_weights[cstr_idx] >= 0, "Weights should be positive or zero");
+    cuopt_assert(fj_cpu.h_cstr_right_weights[cstr_idx] >= 0, "Weights should be positive or zero");
   }
+  cuopt_assert(fj_cpu.h_objective_weight >= 0, "Objective weight should be positive or zero");
 }
 
 template <typename i_t, typename f_t>
-std::unique_ptr<fj_cpu_t<i_t, f_t>> fj_t<i_t, f_t>::cpu_solve_init(solution_t<i_t, f_t>& solution)
+std::unique_ptr<fj_cpu_t<i_t, f_t>> fj_t<i_t, f_t>::cpu_solve_init(solution_t<i_t, f_t>& solution,
+                                                                   bool randomize_params)
 {
   raft::common::nvtx::range scope("fj_cpu_init");
-  cpu_fj_halted = false;
-  climber_init(0);  // TODO: shouldn't be needed.
 
   auto& fj    = *this;
   auto fj_cpu = std::make_unique<fj_cpu_t<i_t, f_t>>(fj);
 
   // Initialize fj_cpu with all the data
   init_fj_cpu(*fj_cpu, solution);
+  if (randomize_params) {
+    auto rng                 = std::mt19937(cuopt::seed_generator::get_seed());
+    fj_cpu->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(rng);
+    fj_cpu->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
+    fj_cpu->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 5000)(rng);
+    fj_cpu->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
+    fj_cpu->settings.seed    = cuopt::seed_generator::get_seed();
+  }
   return fj_cpu;  // move
 }
 
@@ -1005,7 +1021,7 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
   auto loop_start      = std::chrono::high_resolution_clock::now();
   auto time_limit      = std::chrono::milliseconds((int)(in_time_limit * 1000));
   auto loop_time_start = std::chrono::high_resolution_clock::now();
-  while (!cpu_fj_halted) {
+  while (!fj_cpu.halted) {
     // Check if 5 seconds have passed
     auto now = std::chrono::high_resolution_clock::now();
     if (in_time_limit < std::numeric_limits<f_t>::infinity() &&
@@ -1026,13 +1042,13 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
     // Regular MTM
     if (!(score > fj_staged_score_t::zero())) {
       // put maximum effort when no feasible has been found yet
-      thrust::tie(move, score) = find_mtm_move_viol(fj_cpu, 25);
+      thrust::tie(move, score) = find_mtm_move_viol(fj_cpu, fj_cpu.mtm_viol_samples);
       // if (score > fj_staged_score_t::zero()) printf("MTM viol move, score %d, %d\n",
       // (int)score.base, (int)score.bonus);
     }
     // try with MTM in satisfied constraints
     if (fj_cpu.feasible_found && !(score > fj_staged_score_t::zero())) {
-      thrust::tie(move, score) = find_mtm_move_sat(fj_cpu, 15);
+      thrust::tie(move, score) = find_mtm_move_sat(fj_cpu, fj_cpu.mtm_sat_samples);
       // if (score > fj_staged_score_t::zero()) printf("sat move, score %d, %d, obj is %g, best obj
       // is %g, viol %zu\n", (int)score.base, (int)score.bonus, fj_cpu.h_incumbent_objective,
       // fj_cpu.h_best_objective, fj_cpu.violated_constraints.size());
@@ -1041,7 +1057,7 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
     // perturb
     bool should_perturb = false;
     if (fj_cpu.violated_constraints.empty() &&
-        fj_cpu.iterations - fj_cpu.last_feasible_entrance_iter > 100) {
+        fj_cpu.iterations - fj_cpu.last_feasible_entrance_iter > fj_cpu.perturb_interval) {
       should_perturb                     = true;
       fj_cpu.last_feasible_entrance_iter = fj_cpu.iterations;
       printf("PERTURB\n");
@@ -1069,10 +1085,10 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
           local_mins,
           fj_cpu.max_weight,
           fj_cpu.h_objective_weight,
-          fj_cpu.fj.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_incumbent_objective),
-          fj_cpu.fj.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective),
-          fj_cpu.fj.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_incumbent_objective) -
-            fj_cpu.fj.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective));
+          fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_incumbent_objective),
+          fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective),
+          fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_incumbent_objective) -
+            fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective));
       }
       apply_move(fj_cpu, var_idx, delta, true);
       // clear cached moves
@@ -1087,14 +1103,14 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
         "iteration: %d, local mins: %d, best_objective: %g, viol: %zu, obj weight %g, maxw %g\n",
         fj_cpu.iterations,
         local_mins,
-        fj_cpu.fj.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective),
+        fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective),
         fj_cpu.violated_constraints.size(),
         fj_cpu.h_objective_weight,
         fj_cpu.max_weight);
     }
 
     // Print timing statistics every 5000 iterations
-    if (fj_cpu.iterations % 5000 == 0 && fj_cpu.iterations > 0) { print_timing_stats(fj_cpu); }
+    // if (fj_cpu.iterations % 5000 == 0 && fj_cpu.iterations > 0) { print_timing_stats(fj_cpu); }
     cuopt_func_call(sanity_checks(fj_cpu));
     fj_cpu.iterations++;
   }

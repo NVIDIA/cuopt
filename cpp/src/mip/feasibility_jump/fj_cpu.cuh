@@ -36,6 +36,7 @@ struct fj_cpu_t {
   fj_cpu_t<i_t, f_t>& operator=(fj_cpu_t<i_t, f_t>&& other) = default;
 
   fj_t<i_t, f_t>& fj;
+  problem_t<i_t, f_t>* pb_ptr;
   fj_settings_t settings;
   typename fj_t<i_t, f_t>::climber_data_t::view_t view;
   // Host copies of device data as struct members
@@ -102,6 +103,13 @@ struct fj_cpu_t {
 
   std::vector<bool> var_bitmap;
   std::vector<i_t> iter_mtm_vars;
+
+  i_t mtm_viol_samples{25};
+  i_t mtm_sat_samples{15};
+  i_t nnz_samples{50000};
+  i_t perturb_interval{100};
+
+  std::atomic<bool> halted = false;
 };
 
 }  // namespace cuopt::linear_programming::detail
