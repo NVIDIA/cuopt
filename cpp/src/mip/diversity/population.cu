@@ -139,59 +139,6 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
 
-  // if (origin == "CPUFJ") return;
-
-  // // wait a bit before incorporating CPUFJ solutions
-  // if (origin == "CPUFJ") {
-  //   // CUOPT_LOG_DEBUG("new best, time limit %g, time elapsed %g", timer.get_time_limit(),
-  //   // timer.elapsed_time());
-  //   if (timer.elapsed_time() < timer.get_time_limit() / 6.0) {
-  //     external_solution_queue_backlog.emplace_back(solution);
-  //     external_solution_queue_backlog_obj.emplace_back(objective);
-
-  //     if (external_solution_queue_backlog.size() >= 10) {
-  //       auto worst_obj_it = std::max_element(external_solution_queue_backlog_obj.begin(),
-  //                                            external_solution_queue_backlog_obj.end());
-  //       if (objective > *worst_obj_it) return;
-  //       auto worst_obj_idx =
-  //         std::distance(external_solution_queue_backlog_obj.begin(), worst_obj_it);
-
-  //       external_solution_queue_backlog.erase(external_solution_queue_backlog.begin() +
-  //                                             worst_obj_idx);
-  //       external_solution_queue_backlog_obj.erase(external_solution_queue_backlog_obj.begin() +
-  //                                                 worst_obj_idx);
-  //     }
-  //     return;
-  //   } else {
-  //     if (!external_solution_queue_backlog.empty()) {
-  //       for (size_t i = 0; i < external_solution_queue_backlog.size(); ++i) {
-  //         external_solution_queue.emplace_back(external_solution_queue_backlog[i]);
-  //         external_solution_queue_obj.emplace_back(external_solution_queue_backlog_obj[i]);
-  //         external_solution_queue_origin.emplace_back("CPUFJ");
-  //       }
-  //       external_solution_queue_backlog.clear();
-  //       external_solution_queue_backlog_obj.clear();
-  //     }
-  //   }
-  // }
-
-  // // give priority to B&B solutions for diversity
-  // if (origin == "B&B") {
-  //   // Remove all external solution queue entries whose origin is not "B&B"
-  //   for (size_t idx = 0; idx < external_solution_queue_origin.size();) {
-  //     if (external_solution_queue_origin[idx] != "B&B") {
-  //       CUOPT_LOG_DEBUG("new best solution Removing solution %s from population",
-  //                       external_solution_queue_origin[idx].c_str());
-  //       external_solution_queue.erase(external_solution_queue.begin() + idx);
-  //       external_solution_queue_obj.erase(external_solution_queue_obj.begin() + idx);
-  //       external_solution_queue_origin.erase(external_solution_queue_origin.begin() + idx);
-  //       // Do not increment idx, as the next element shifts into this position
-  //     } else {
-  //       ++idx;
-  //     }
-  //   }
-  // }
-
   if (external_solution_queue.size() >= 30) {
     auto worst_obj_it =
       std::max_element(external_solution_queue_obj.begin(), external_solution_queue_obj.end());
@@ -203,11 +150,11 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
     external_solution_queue_origin.erase(external_solution_queue_origin.begin() + worst_obj_idx);
   }
 
-  // CUOPT_LOG_INFO(
-  //   "%s added a solution to population, solution queue size %lu with objective %g, new best",
-  //   origin.c_str(),
-  //   external_solution_queue.size(),
-  //   problem_ptr->get_user_obj_from_solver_obj(objective));
+  CUOPT_LOG_INFO(
+    "%s added a solution to population, solution queue size %lu with objective %g, new best",
+    origin.c_str(),
+    external_solution_queue.size(),
+    problem_ptr->get_user_obj_from_solver_obj(objective));
   external_solution_queue.emplace_back(solution);
   external_solution_queue_obj.emplace_back(objective);
   external_solution_queue_origin.emplace_back(origin);
@@ -257,6 +204,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
                    external_solution_queue.size());
     external_solution_queue.clear();
     external_solution_queue_obj.clear();
+    external_solution_queue_origin.clear();
   }
   return return_vector;
 }

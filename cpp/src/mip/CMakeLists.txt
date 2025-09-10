@@ -51,8 +51,7 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/problem/load_balanced_problem.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump_kernels.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/solution/solution.cu)
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu.cu)
 
 # Choose which files to include based on build mode
 if(BUILD_LP_ONLY)

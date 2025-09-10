@@ -86,9 +86,6 @@ template <typename i_t, typename f_t>
 bool invoke_simple_rounding(solution_t<i_t, f_t>& solution)
 {
   solution.compute_feasibility();
-  CUOPT_LOG_DEBUG("excess before: %g, int violation before: %g",
-                  solution.get_total_excess(),
-                  solution.compute_max_int_violation());
 
   solution_t<i_t, f_t> sol_copy(*solution.problem_ptr);
   sol_copy.copy_from(solution);

@@ -47,7 +47,7 @@ struct ls_config_t {
   f_t best_objective_of_parents{std::numeric_limits<f_t>::lowest()};
   i_t n_local_mins_for_line_segment       = 50;
   i_t n_points_to_search_for_line_segment = 5;
-  i_t n_local_mins                        = 250;
+  i_t n_local_mins                        = 1000;
   i_t iteration_limit_for_line_segment    = 20 * n_local_mins_for_line_segment;
   i_t iteration_limit                     = 20 * n_local_mins;
   ls_method_t ls_method                   = ls_method_t::RANDOM;

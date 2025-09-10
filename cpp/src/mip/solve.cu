@@ -149,7 +149,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
 
   auto sol = scaled_sol.get_solution(
     is_feasible_before_scaling || is_feasible_after_unscaling, solver.get_solver_stats(), false);
-  // detail::print_solution(scaled_problem.handle_ptr, sol.get_solution());
+  detail::print_solution(scaled_problem.handle_ptr, sol.get_solution());
   return sol;
 }
 
@@ -157,8 +157,7 @@ template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                    mip_solver_settings_t<i_t, f_t> const& settings)
 {
-  // try
-  {
+  try {
     constexpr f_t max_time_limit = 1000000000;
     const f_t time_limit         = settings.time_limit == 0 ? max_time_limit : settings.time_limit;
     if (settings.heuristics_only && time_limit == std::numeric_limits<f_t>::max()) {
@@ -271,16 +270,15 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       sol.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
     }
     return sol;
+  } catch (const cuopt::logic_error& e) {
+    CUOPT_LOG_ERROR("Error in solve_mip: %s", e.what());
+    return mip_solution_t<i_t, f_t>{e, op_problem.get_handle_ptr()->get_stream()};
+  } catch (const std::bad_alloc& e) {
+    CUOPT_LOG_ERROR("Error in solve_mip: %s", e.what());
+    return mip_solution_t<i_t, f_t>{
+      cuopt::logic_error("Memory allocation failed", cuopt::error_type_t::RuntimeError),
+      op_problem.get_handle_ptr()->get_stream()};
   }
-  // } catch (const cuopt::logic_error& e) {
-  //   CUOPT_LOG_ERROR("Error in solve_mip: %s", e.what());
-  //   return mip_solution_t<i_t, f_t>{e, op_problem.get_handle_ptr()->get_stream()};
-  // } catch (const std::bad_alloc& e) {
-  //   CUOPT_LOG_ERROR("Error in solve_mip: %s", e.what());
-  //   return mip_solution_t<i_t, f_t>{
-  //     cuopt::logic_error("Memory allocation failed", cuopt::error_type_t::RuntimeError),
-  //     op_problem.get_handle_ptr()->get_stream()};
-  // }
 }
 
 template <typename i_t, typename f_t>
