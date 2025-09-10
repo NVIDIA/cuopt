@@ -121,6 +121,7 @@ class branch_and_bound_t {
     f_t start_time          = 0.0;
     f_t total_lp_solve_time = 0.0;
     i_t nodes_explored      = 0;
+    i_t nodes_unexplored    = 0;
     f_t total_lp_iters      = 0;
     i_t num_nodes           = 0;
     i_t total_tasks         = 0;

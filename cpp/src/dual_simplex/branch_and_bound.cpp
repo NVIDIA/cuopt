@@ -16,11 +16,11 @@
  */
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <limits>
-#include <queue>
 #include <string>
 #include <vector>
 
@@ -569,9 +569,6 @@ dual::status_t branch_and_bound_t<i_t, f_t>::node_dual_simplex(
 #pragma omp atomic update
   stats_.total_lp_iters += node_iter;
 
-#pragma omp atomic update
-  stats_.nodes_explored++;
-
   return lp_status;
 }
 
@@ -583,8 +580,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
   logger_t log;
   log.log = false;
 
-  f_t lower_bound                              = get_lower_bound();
-  f_t gap                                      = upper_bound - lower_bound;
   std::vector<variable_status_t>& leaf_vstatus = node_ptr->vstatus;
   lp_solution_t<i_t, f_t> leaf_solution(leaf_problem.num_rows, leaf_problem.num_cols);
 
@@ -627,20 +622,24 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
     if (leaf_fractional == 0) {
       bool send_solution = false;
       i_t nodes_explored;
+      i_t nodes_unexplored;
 
 #pragma omp atomic read
       nodes_explored = stats_.nodes_explored;
 
+#pragma omp atomic read
+      nodes_unexplored = stats_.nodes_unexplored;
+
       mutex_upper_.lock();
       if (leaf_objective < upper_bound_) {
         incumbent_.set_incumbent_solution(leaf_objective, leaf_solution.x);
-        upper_bound_ = leaf_objective;
-        gap          = upper_bound_ - lower_bound;
-        f_t obj      = compute_user_objective(original_lp_, upper_bound);
-        f_t lower    = compute_user_objective(original_lp_, lower_bound);
+        upper_bound_    = leaf_objective;
+        f_t lower_bound = get_lower_bound();
+        f_t obj         = compute_user_objective(original_lp_, upper_bound);
+        f_t lower       = compute_user_objective(original_lp_, lower_bound);
         settings_.log.printf("B%8d %8lu       %+13.6e  %+10.6e   %4d   %7.1e     %s %9.2f\n",
                              nodes_explored,
-                             heap_.size(),
+                             nodes_unexplored,
                              obj,
                              lower,
                              node_ptr->depth,
@@ -714,7 +713,13 @@ void branch_and_bound_t<i_t, f_t>::spawn_new_task()
       return;
     }
 
-#pragma omp task
+    // Calculate the distance from the root objective and then use it as the task priority, such
+    // that those that are closer to the root are explored first.
+    f_t lb       = node_ptr->lower_bound;
+    f_t dist     = std::abs(lb) == 0 ? 0 : std::abs((lb - root_objective_) / lb);
+    i_t priority = (1 - dist) * std::numeric_limits<i_t>::max();
+
+#pragma omp task priority(priority)
     explore_subtree(node_ptr);
 
 #pragma omp atomic update
@@ -735,9 +740,9 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
   lp_problem_t leaf_problem = original_lp_;
 
   std::deque<mip_node_t<i_t, f_t>*> stack;
-  stack.push_back(start_node);
+  stack.push_front(start_node);
 
-#ifdef MEASURE_DIVE_TIME
+#ifdef MEASURE_DIVE_STATS
   f_t start_time      = tic();
   bool found_feasible = false;
 #endif
@@ -756,21 +761,27 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
   while (stack.size() > 0 && gap > settings_.absolute_mip_gap_tol &&
          relative_gap(upper_bound, lower_bound) > settings_.relative_mip_gap_tol &&
          local_status == mip_status_t::UNSET) {
+    lower_bound = std::min(stack.front()->lower_bound, stack.back()->lower_bound);
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
-    upper_bound = get_upper_bound();
-    lower_bound = get_lower_bound();
-    gap         = upper_bound - lower_bound;
-    max_depth   = std::max(max_depth, node_ptr->depth);
-
     repair_heuristic_solutions();
+
+#pragma omp atomic update
+    stats_.nodes_explored++;
+
+#pragma omp atomic update
+    stats_.nodes_unexplored--;
 
     if (upper_bound < node_ptr->lower_bound) {
       graphviz_node(settings_, node_ptr, "cutoff", node_ptr->lower_bound);
       update_tree(node_ptr, node_status_t::FATHOMED);
       continue;
     }
+
+    upper_bound = get_upper_bound();
+    gap         = upper_bound - lower_bound;
+    max_depth   = std::max(max_depth, node_ptr->depth);
 
 #pragma omp atomic read
     nodes_explored = stats_.nodes_explored;
@@ -782,13 +793,18 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
           nodes_explored < 1000) &&
          (time_since_log >= 1)) ||
         (time_since_log > 60) || now > settings_.time_limit) {
+      i_t nodes_unexplored;
+
+#pragma omp atomic read
+      nodes_unexplored = stats_.nodes_unexplored;
+
       f_t obj              = compute_user_objective(original_lp_, upper_bound);
       f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
       std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
 
       settings_.log.printf(" %8d %8lu       %+13.6e  %+10.6e   %4d   %7.1e     %s %9.2f\n",
                            nodes_explored,
-                           heap_.size(),
+                           nodes_unexplored,
                            obj,
                            user_lower,
                            node_ptr->depth,
@@ -828,14 +844,17 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
         stack.push_front(node_ptr->get_down_child());
         stack.push_front(node_ptr->get_up_child());
       }
+
+#pragma omp atomic update
+      stats_.nodes_unexplored += 2;
     }
 
-#ifdef MEASURE_DIVE_TIME
+#ifdef MEASURE_DIVE_STATS
     if (node_ptr->status == node_status_t::INTEGER_FEASIBLE) { found_feasible = true; }
 #endif
 
-    if (stack.size() > 0 && (heap_.size() < 2 * max_active_tasks_ ||
-                             stack.front()->depth - stack.back()->depth > node_depth_threshold_)) {
+    if (stack.size() > 0 && (stack.front()->depth - stack.back()->depth > node_depth_threshold_ ||
+                             heap_.size() < 4 * max_active_tasks_)) {
       mip_node_t<i_t, f_t>* node = stack.back();
       stack.pop_back();
 
@@ -853,7 +872,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
 #pragma omp atomic update
   active_tasks_--;
 
-#ifdef MEASURE_DIVE_TIME
+#ifdef MEASURE_DIVE_STATS
 
   f_t task_time = toc(start_time);
 
@@ -884,11 +903,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 {
   logger_t log;
 
-  log.log               = false;
-  status_               = mip_status_t::UNSET;
-  active_tasks_         = 0;
-  max_active_tasks_     = 4 * settings_.num_threads;
-  node_depth_threshold_ = 10;
+  log.log = false;
+  status_ = mip_status_t::UNSET;
 
   stats_.total_lp_iters   = 0;
   stats_.nodes_explored   = 0;
@@ -919,6 +935,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   root_relax_soln_.resize(original_lp_.num_rows, original_lp_.num_cols);
+
+  //
   mip_status_t root_status = solve_root_relaxation();
   if (root_status != mip_status_t::UNSET) { return root_status; }
 
@@ -934,7 +952,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     // We should be done here
     uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
     solution.objective          = incumbent_.objective;
-    solution.lower_bound        = lower_bound_;
+    solution.lower_bound        = get_lower_bound();
     solution.nodes_explored     = 0;
     solution.simplex_iterations = root_relax_soln_.iterations;
     settings_.log.printf("Optimal solution found at root node. Objective %.16e. Time %.2f.\n",
@@ -948,6 +966,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
     return mip_status_t::OPTIMAL;
   }
+
+  active_tasks_         = 0;
+  max_active_tasks_     = 4 * settings_.num_threads;
+  node_depth_threshold_ = 0.2 * num_fractional;
 
 #pragma omp parallel num_threads(settings_.num_threads)
   {
@@ -1003,13 +1025,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   currently_branching_ = false;
 
   f_t upper_bound = get_upper_bound();
-  f_t lower_bound = lower_bound_;
+  f_t lower_bound = heap_.size() == 0 ? search_tree_->lower_bound : get_lower_bound();
   f_t gap         = std::abs(upper_bound - lower_bound);
   f_t obj         = compute_user_objective(original_lp_, upper_bound);
   f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
   f_t gap_rel     = relative_gap(get_upper_bound(), lower_bound);
 
-#ifdef MEASURE_DIVE_TIME
+#ifdef MEASURE_DIVE_STATS
   settings_.log.printf(
     "Total tasks %d, Min task time %.2fs, Max task time %.2fs, Avg task time %.2fs\n",
     stats_.total_tasks,
