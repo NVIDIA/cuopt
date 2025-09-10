@@ -193,6 +193,7 @@ class branch_and_bound_t {
   // Solve the LP relaxation of a leaf node.
   mip_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
                              lp_problem_t<i_t, f_t>& leaf_problem,
+                             csc_matrix_t<i_t, f_t>& Arow,
                              f_t upper_bound);
 
   // Solve the LP relaxation of a leaf node using the dual simplex method.
@@ -200,6 +201,8 @@ class branch_and_bound_t {
                                    lp_problem_t<i_t, f_t>& leaf_problem,
                                    std::vector<variable_status_t>& leaf_vstatus,
                                    lp_solution_t<i_t, f_t>& leaf_solution,
+                                   std::vector<bool>& bounds_changed,
+                                   csc_matrix_t<i_t, f_t>& Arow,
                                    f_t upper_bound);
 };
 

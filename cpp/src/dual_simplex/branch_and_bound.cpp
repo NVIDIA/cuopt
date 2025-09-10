@@ -537,6 +537,8 @@ dual::status_t branch_and_bound_t<i_t, f_t>::node_dual_simplex(
   lp_problem_t<i_t, f_t>& leaf_problem,
   std::vector<variable_status_t>& leaf_vstatus,
   lp_solution_t<i_t, f_t>& leaf_solution,
+  std::vector<bool>& bounds_changed,
+  csc_matrix_t<i_t, f_t>& Arow,
   f_t upper_bound)
 {
   i_t node_iter = 0;
@@ -551,7 +553,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::node_dual_simplex(
   // in B&B we only have equality constraints, leave it empty for default
   std::vector<char> row_sense;
   bool feasible =
-    bound_strengthening(row_sense, lp_settings, leaf_problem, Arow, var_types, bounds_changed);
+    bound_strengthening(row_sense, lp_settings, leaf_problem, Arow, var_types_, bounds_changed);
 
   dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
 
@@ -574,8 +576,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::node_dual_simplex(
     }
 
   } else {
-    settings_.log.printf("Infeasible after bounds strengthening. Fathoming node %d.\n",
-                         stats_.nodes_explored);
+    settings_.log.printf("Infeasible after bounds strengthening. Fathoming node %d.\n", leaf_id);
   }
 
 #pragma omp atomic update
@@ -590,6 +591,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::node_dual_simplex(
 template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
                                                          lp_problem_t<i_t, f_t>& leaf_problem,
+                                                         csc_matrix_t<i_t, f_t>& Arow,
                                                          f_t upper_bound)
 {
   logger_t log;
@@ -607,8 +609,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
   // two vectors at each node and potentially cause memory issues
   node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper, bounds_changed);
 
-  dual::status_t lp_status =
-    node_dual_simplex(node_ptr->node_id, leaf_problem, leaf_vstatus, leaf_solution, upper_bound);
+  dual::status_t lp_status = node_dual_simplex(node_ptr->node_id,
+                                               leaf_problem,
+                                               leaf_vstatus,
+                                               leaf_solution,
+                                               bounds_changed,
+                                               Arow,
+                                               upper_bound);
 
   if (lp_status == dual::status_t::DUAL_UNBOUNDED) {
     node_ptr->lower_bound = inf;
@@ -841,7 +848,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
       break;
     }
 
-    local_status = solve_node_lp(node_ptr, leaf_problem, upper_bound);
+    local_status = solve_node_lp(node_ptr, leaf_problem, Arow, upper_bound);
 
     if (local_status == mip_status_t::NUMERICAL) {
 #pragma omp atomic write
