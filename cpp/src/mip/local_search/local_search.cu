@@ -261,7 +261,6 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
   auto integer_only = (n_binary_vars == 0);
   bool is_feasible  = false;
 
-  // TODO return the best solution instead of the last
   if (binary_only || integer_only) {
     return run_fp(solution, timer, population_ptr);
   } else {
