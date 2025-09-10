@@ -28,15 +28,14 @@ namespace cuopt::linear_programming::detail {
 // NOTE: this seems an easy pick for reflection/xmacros once this is available (C++26?)
 // Maintaining a single source of truth for all members would be nice
 template <typename i_t, typename f_t>
-struct fj_cpu_t {
-  fj_cpu_t(fj_t<i_t, f_t>& fj) : fj(fj) {}
-  fj_cpu_t(const fj_cpu_t<i_t, f_t>& other)                      = delete;
-  fj_cpu_t<i_t, f_t>& operator=(const fj_cpu_t<i_t, f_t>& other) = delete;
+struct fj_cpu_climber_t {
+  fj_cpu_climber_t()                                                             = default;
+  fj_cpu_climber_t(const fj_cpu_climber_t<i_t, f_t>& other)                      = delete;
+  fj_cpu_climber_t<i_t, f_t>& operator=(const fj_cpu_climber_t<i_t, f_t>& other) = delete;
 
-  fj_cpu_t(fj_cpu_t<i_t, f_t>&& other)                      = default;
-  fj_cpu_t<i_t, f_t>& operator=(fj_cpu_t<i_t, f_t>&& other) = default;
+  fj_cpu_climber_t(fj_cpu_climber_t<i_t, f_t>&& other)                      = default;
+  fj_cpu_climber_t<i_t, f_t>& operator=(fj_cpu_climber_t<i_t, f_t>&& other) = default;
 
-  fj_t<i_t, f_t>& fj;
   problem_t<i_t, f_t>* pb_ptr;
   fj_settings_t settings;
   typename fj_t<i_t, f_t>::climber_data_t::view_t view;
@@ -109,6 +108,10 @@ struct fj_cpu_t {
   i_t mtm_sat_samples{15};
   i_t nnz_samples{50000};
   i_t perturb_interval{100};
+
+  i_t log_interval{1000};
+  i_t diversity_callback_interval{3000};
+  i_t timing_stats_interval{5000};
 
   std::function<void(f_t, const std::vector<f_t>&)> improvement_callback{nullptr};
   std::function<void(f_t, const std::vector<f_t>&)> diversity_callback{nullptr};

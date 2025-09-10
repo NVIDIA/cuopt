@@ -198,7 +198,7 @@ struct fj_move_candidate_t {
 };
 
 template <typename i_t, typename f_t>
-struct fj_cpu_t;
+struct fj_cpu_climber_t;
 
 template <typename i_t, typename f_t>
 class fj_t {
@@ -211,12 +211,14 @@ class fj_t {
   ~fj_t();
   void reset_cuda_graph();
   i_t solve(solution_t<i_t, f_t>& solution);
-  std::unique_ptr<fj_cpu_t<i_t, f_t>> cpu_solve_init(solution_t<i_t, f_t>& solution,
-                                                     const std::vector<f_t>& left_weights,
-                                                     const std::vector<f_t>& right_weights,
-                                                     f_t objective_weight,
-                                                     bool randomize_params = false);
-  bool cpu_solve(fj_cpu_t<i_t, f_t>& fj_cpu,
+  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> create_cpu_climber(
+    solution_t<i_t, f_t>& solution,
+    const std::vector<f_t>& left_weights,
+    const std::vector<f_t>& right_weights,
+    f_t objective_weight,
+    fj_settings_t settings = fj_settings_t{},
+    bool randomize_params  = false);
+  bool cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
                  f_t time_limit = +std::numeric_limits<f_t>::infinity());
   i_t alloc_max_climbers(i_t desired_climbers);
   void resize_vectors(const raft::handle_t* handle_ptr);

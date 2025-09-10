@@ -26,8 +26,6 @@
 #include <utilities/seed_generator.cuh>
 #include <utilities/timer.hpp>
 
-#include <mip/feasibility_jump/Local-MIP-integration/code/Solver.h>
-#include <mip/feasibility_jump/Local-MIP-integration/code/LocalMipAdapter.cuh>
 #include <mip/feasibility_jump/fj_cpu.cuh>
 
 #include <cuda_profiler_api.h>
@@ -159,11 +157,12 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
   i_t counter = 0;
   for (auto& cpu_fj : scratch_cpu_fj) {
     if (counter > 0) solution.assign_random_within_bounds(0.4);
-    cpu_fj.fj_cpu = cpu_fj.fj_ptr->cpu_solve_init(solution,
-                                                  default_weights,
-                                                  default_weights,
-                                                  0.,
-                                                  /*randomize=*/counter > 0);
+    cpu_fj.fj_cpu = cpu_fj.fj_ptr->create_cpu_climber(solution,
+                                                      default_weights,
+                                                      default_weights,
+                                                      0.,
+                                                      fj_settings_t{},
+                                                      /*randomize=*/counter > 0);
 
     cpu_fj.fj_cpu->log_prefix           = "******* scratch " + std::to_string(counter) + ": ";
     cpu_fj.fj_cpu->improvement_callback = [this, &population, &cpu_fj](
@@ -196,7 +195,7 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
   solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
   solution_lp.round_random_nearest(500);
   scratch_cpu_fj_on_lp_opt.fj_cpu =
-    fj.cpu_solve_init(solution_lp, default_weights, default_weights, 0.);
+    fj.create_cpu_climber(solution_lp, default_weights, default_weights, 0.);
   scratch_cpu_fj_on_lp_opt.fj_cpu->log_prefix = "******* scratch on LP optimal: ";
   scratch_cpu_fj_on_lp_opt.fj_cpu->improvement_callback =
     [this, &population](f_t obj, const std::vector<f_t>& h_vec) {
@@ -271,10 +270,9 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   auto h_weights          = cuopt::host_copy(in_fj.cstr_weights, solution.handle_ptr->get_stream());
   auto h_objective_weight = in_fj.objective_weight.value(solution.handle_ptr->get_stream());
   for (auto& cpu_fj : ls_cpu_fj) {
-    cpu_fj.fj_cpu =
-      cpu_fj.fj_ptr->cpu_solve_init(solution, h_weights, h_weights, h_objective_weight, true);
+    cpu_fj.fj_cpu = cpu_fj.fj_ptr->create_cpu_climber(
+      solution, h_weights, h_weights, h_objective_weight, fj_settings_t{}, true);
   }
-  // cudaDeviceSynchronize();
 
   auto solution_copy = solution;
 
@@ -322,17 +320,6 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   static std::unordered_map<std::string, int> total_calls;
   static std::unordered_map<std::string, int> cpu_better;
 
-  // Also run CPU FJ to compare results
-  solution_t<i_t, f_t> solution_cpu_2 = solution_copy;
-  // in_fj.cpu_solve(solution_cpu_2, gpu_fj_duration + 0.5);
-  solution_cpu_2.compute_feasibility();
-
-  CUOPT_LOG_DEBUG(
-    "CPU FJ returns feas %d, obj %g", cpu_feasible, solution_cpu.get_user_objective());
-  // CUOPT_LOG_DEBUG("NEW CPU FJ returns feas %d, obj %g",
-  //                 solution_cpu_2.get_feasible(),
-  //                 solution_cpu_2.get_user_objective());
-
   CUOPT_LOG_DEBUG("GPU FJ returns feas %d, obj %g", gpu_feasible, solution.get_user_objective());
   CUOPT_LOG_DEBUG("CPU FJ returns feas %d, obj %g, stats %d/%d",
                   cpu_feasible,
@@ -353,21 +340,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
     solution.copy_from(solution_cpu);
     cpu_better[source]++;
   }
-  // solution.compute_feasibility();
-
-  // if (solution_cpu_2.get_feasible() && !solution.get_feasible()
-  //  || (solution_cpu_2.get_feasible() && solution_cpu_2.get_objective() <
-  //  solution.get_objective())) {
-  //   CUOPT_LOG_DEBUG("NEW CPU FJ returns better solution! cpu_obj %g, prev_obj %g, stats %d/%d,
-  //   source %s",
-  //                   solution_cpu_2.get_user_objective(),
-  //                   solution.get_user_objective(),
-  //                   total_calls[source],
-  //                   cpu_better[source],
-  //                   source.c_str());
-  //   solution.copy_from(solution_cpu_2);
-  //   cpu_better[source]++;
-  // }
+  solution.compute_feasibility();
 
   return cpu_feasible;
 }

@@ -24,8 +24,6 @@
 #include <mip/solver.cuh>
 #include <utilities/timer.hpp>
 
-#include <mip/feasibility_jump/Local-MIP-integration/code/Solver.h>
-
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -74,8 +72,7 @@ struct cpu_fj_thread_t {
   std::atomic<bool> cpu_thread_done{false};
   std::atomic<bool> cpu_thread_terminate{false};
   bool cpu_fj_solution_found{false};
-  std::unique_ptr<Solver> cpu_solver;
-  std::unique_ptr<fj_cpu_t<i_t, f_t>> fj_cpu;
+  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_cpu;
   fj_t<i_t, f_t>* fj_ptr{nullptr};
 };
 
