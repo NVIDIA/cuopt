@@ -574,9 +574,6 @@ dual::status_t branch_and_bound_t<i_t, f_t>::node_dual_simplex(
         leaf_problem, lp_start_time, lp_settings, leaf_solution, leaf_vstatus, leaf_edge_norms);
       lp_status = convert_lp_status_to_dual_status(second_status);
     }
-
-  } else {
-    settings_.log.printf("Infeasible after bounds strengthening. Fathoming node %d.\n", leaf_id);
   }
 
 #pragma omp atomic update
@@ -776,7 +773,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
 #endif
 
   f_t upper_bound    = get_upper_bound();
-  f_t lower_bound    = start_node->lower_bound;
+  f_t lower_bound    = std::min(start_node->lower_bound, get_lower_bound());
   f_t gap            = upper_bound - lower_bound;
   f_t last_log       = 0;
   i_t nodes_explored = 0;
@@ -790,6 +787,11 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
          relative_gap(upper_bound, lower_bound) > settings_.relative_mip_gap_tol &&
          local_status == mip_status_t::UNSET) {
     lower_bound = std::min(stack.front()->lower_bound, stack.back()->lower_bound);
+    lower_bound = std::min(lower_bound, get_lower_bound());
+
+#pragma omp atomic compare
+    lower_bound_ = lower_bound < lower_bound_ ? lower_bound : lower_bound_;
+
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
