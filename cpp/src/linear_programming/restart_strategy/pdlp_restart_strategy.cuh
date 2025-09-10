@@ -158,11 +158,17 @@ class pdlp_restart_strategy_t {
     pdhg_solver_t<i_t, f_t>& pdhg_solver,
     i_t total_number_of_iterations,
     rmm::device_scalar<f_t>& primal_weight,
+    const rmm::device_scalar<f_t>& step_size,
+    rmm::device_scalar<f_t>& primal_step_size,
+    rmm::device_scalar<f_t>& dual_step_size,
     rmm::device_scalar<f_t>& best_primal_weight);
   bool should_cupdlpx_restart(i_t total_number_of_iterations);
   void cupdlpx_restart(const convergence_information_t<i_t, f_t>& current_convergence_information,
                        pdhg_solver_t<i_t, f_t>& pdhg_solver,
                        rmm::device_scalar<f_t>& primal_weight,
+                       const rmm::device_scalar<f_t>& step_size,
+                       rmm::device_scalar<f_t>& primal_step_size,
+                       rmm::device_scalar<f_t>& dual_step_size,
                        rmm::device_scalar<f_t>& best_primal_weight);
 
   bool run_trust_region_restart(pdhg_solver_t<i_t, f_t>& pdhg_solver,

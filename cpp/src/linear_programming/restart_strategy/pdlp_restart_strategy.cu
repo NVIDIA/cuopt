@@ -692,6 +692,9 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
   const convergence_information_t<i_t, f_t>& current_convergence_information,
   pdhg_solver_t<i_t, f_t>& pdhg_solver,
   rmm::device_scalar<f_t>& primal_weight,
+  const rmm::device_scalar<f_t>& step_size,
+  rmm::device_scalar<f_t>& primal_step_size,
+  rmm::device_scalar<f_t>& dual_step_size,
   rmm::device_scalar<f_t>& best_primal_weight)
 {
   // Computing the deltas
@@ -748,15 +751,25 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
                pdlp_hyper_params::restart_k_d * delta_error) *
       current_primal_weight;
     primal_weight.set_value_async(new_primal_weight, stream_view_);
-    primal_weight_last_error_ = error;
+    primal_weight_last_error_      = error;
+    const f_t h_step_size          = step_size.value(stream_view_);
+    const f_t new_primal_step_size = h_step_size / new_primal_weight;
+    const f_t new_dual_step_size   = h_step_size * new_primal_weight;
+    primal_step_size.set_value_async(new_primal_step_size, stream_view_);
+    dual_step_size.set_value_async(new_dual_step_size, stream_view_);
   } else {
 #ifdef CUPDLP_DEBUG_MODE
     printf("Setting new primal weight to best primal weight\n");
 #endif
     const f_t best_primal_weight_value = best_primal_weight.value(stream_view_);
     primal_weight.set_value_async(best_primal_weight_value, stream_view_);
-    primal_weight_error_sum_  = f_t(0.0);
-    primal_weight_last_error_ = f_t(0.0);
+    primal_weight_error_sum_       = f_t(0.0);
+    primal_weight_last_error_      = f_t(0.0);
+    const f_t h_step_size          = step_size.value(stream_view_);
+    const f_t new_primal_step_size = h_step_size / best_primal_weight_value;
+    const f_t new_dual_step_size   = h_step_size * best_primal_weight_value;
+    primal_step_size.set_value_async(new_primal_step_size, stream_view_);
+    dual_step_size.set_value_async(new_dual_step_size, stream_view_);
   }
 
   const f_t primal_dual_residual_gap =
@@ -800,8 +813,6 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
   print("New pdhg_solver.get_dual_solution", pdhg_solver.get_dual_solution());
 #endif
 
-  exit(0);
-
   weighted_average_solution_.iterations_since_last_restart_ = 0;
   last_trial_fixed_point_error_                             = std::numeric_limits<f_t>::infinity();
 }
@@ -812,12 +823,20 @@ bool pdlp_restart_strategy_t<i_t, f_t>::run_cupdlpx_restart(
   pdhg_solver_t<i_t, f_t>& pdhg_solver,
   i_t total_number_of_iterations,
   rmm::device_scalar<f_t>& primal_weight,
+  const rmm::device_scalar<f_t>& step_size,
+  rmm::device_scalar<f_t>& primal_step_size,
+  rmm::device_scalar<f_t>& dual_step_size,
   rmm::device_scalar<f_t>& best_primal_weight)
 {
   bool should_restart = should_cupdlpx_restart(total_number_of_iterations);
   if (should_restart)
-    cupdlpx_restart(
-      current_convergence_information, pdhg_solver, primal_weight, best_primal_weight);
+    cupdlpx_restart(current_convergence_information,
+                    pdhg_solver,
+                    primal_weight,
+                    step_size,
+                    primal_step_size,
+                    dual_step_size,
+                    best_primal_weight);
   return should_restart;
 }
 
@@ -864,6 +883,9 @@ bool pdlp_restart_strategy_t<i_t, f_t>::compute_restart(
                                pdhg_solver,
                                total_number_of_iterations,
                                primal_weight,
+                               step_size,
+                               primal_step_size,
+                               dual_step_size,
                                best_primal_weight);
   } else {
     EXE_CUOPT_FAIL("Bad restart value");

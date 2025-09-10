@@ -378,23 +378,6 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 }
 
 template <typename i_t, typename f_t>
-static i_t conditional_major(uint64_t total_pdlp_iterations)
-{
-  uint64_t step                    = 10;
-  uint64_t threshold               = 1000;
-  constexpr uint64_t max_iteration = 10000000;
-  uint64_t iteration               = 0;
-
-  while (total_pdlp_iterations >= threshold) {
-    ++iteration;
-    step *= 10;
-    threshold *= 10;
-    cuopt_assert(iteration > max_iteration, "Too many iteration in conditional_major");
-  }
-  return step;
-}
-
-template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_scalar<f_t>& primal_step_size,
                                         rmm::device_scalar<f_t>& dual_step_size,
                                         i_t iterations_since_last_restart,
@@ -413,8 +396,8 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_scalar<f_t>& primal_step_siz
     compute_next_primal_dual_solution_reflected(
       primal_step_size,
       dual_step_size,
-      is_major_iteration || ((total_pdlp_iterations + 2) %
-                             conditional_major<i_t, f_t>(total_pdlp_iterations + 2)) == 0);
+      is_major_iteration ||
+        ((total_pdlp_iterations + 2) % conditional_major<i_t>(total_pdlp_iterations + 2)) == 0);
   }
   total_pdhg_iterations_ += 1;
 }

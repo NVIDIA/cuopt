@@ -174,6 +174,9 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
     op_problem_cusparse_view_, current_pdhg_solver.get_dual_tmp_resource(), dual_iterate);
   compute_primal_objective(primal_iterate);
   my_l2_norm<i_t, f_t>(primal_residual_, l2_primal_residual_, handle_ptr_);
+#ifdef CUPDLP_DEBUG_MODE
+  printf("Absolute Primal Residual: %lf\n", l2_primal_residual_.value(stream_view_));
+#endif
   // If per_constraint_residual is false we still need to perform the l2 since it's used in kkt
   if (settings.per_constraint_residual) {
     // Compute the linf of (residual_i - rel * b_i)
@@ -207,6 +210,9 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
                         dual_slack);
   compute_dual_objective(dual_iterate, primal_iterate, dual_slack);
   my_l2_norm<i_t, f_t>(dual_residual_, l2_dual_residual_, handle_ptr_);
+#ifdef CUPDLP_DEBUG_MODE
+  printf("Absolute Dual Residual: %lf\n", l2_dual_residual_.value(stream_view_));
+#endif
   // If per_constraint_residual is false we still need to perform the l2 since it's used in kkt
   if (settings.per_constraint_residual) {
     // Compute the linf of (residual_i - rel * c_i)

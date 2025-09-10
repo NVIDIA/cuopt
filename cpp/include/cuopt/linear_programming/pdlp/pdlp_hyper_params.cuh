@@ -67,5 +67,6 @@ extern double restart_k_p;
 extern double restart_k_i;
 extern double restart_k_d;
 extern double restart_i_smooth;
+extern bool use_conditional_major;
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params

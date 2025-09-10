@@ -1172,10 +1172,15 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
     bool error_occured                      = (step_size_strategy_.get_valid_step_size() == -1);
     bool artificial_restart_check_main_loop = false;
     bool has_restarted                      = false;
+    bool is_conditional_major =
+      (pdlp_hyper_params::use_conditional_major)
+        ? (total_pdlp_iterations_ % conditional_major<i_t>(total_pdlp_iterations_)) == 0
+        : false;
     if (pdlp_hyper_params::artificial_restart_in_main_loop)
       artificial_restart_check_main_loop =
         restart_strategy_.should_do_artificial_restart(total_pdlp_iterations_);
-    if (is_major_iteration || artificial_restart_check_main_loop || error_occured) {
+    if (is_major_iteration || artificial_restart_check_main_loop || error_occured ||
+        is_conditional_major) {
       if (verbose) {
         std::cout << "-------------------------------" << std::endl;
         std::cout << internal_solver_iterations_ << std::endl;
@@ -1251,8 +1256,9 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
       }
 
       if (pdlp_hyper_params::restart_strategy !=
-          static_cast<int>(
-            detail::pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::NO_RESTART)) {
+            static_cast<int>(
+              detail::pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::NO_RESTART) &&
+          (is_major_iteration || artificial_restart_check_main_loop)) {
         has_restarted = restart_strategy_.compute_restart(
           pdhg_solver_,
           unscaled_primal_avg_solution_,

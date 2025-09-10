@@ -69,6 +69,27 @@ struct max_abs_value {
   }
 };
 
+template <typename i_t>
+i_t conditional_major(uint64_t total_pdlp_iterations)
+{
+  uint64_t step      = 10;
+  uint64_t threshold = 1000;
+  uint64_t iteration = 0;
+
+  constexpr uint64_t max_u64 = std::numeric_limits<uint64_t>::max();
+
+  while (total_pdlp_iterations >= threshold) {
+    ++iteration;
+
+    cuopt_assert(step <= max_u64 / 10, "Overflow risk in step during conditional_major");
+    cuopt_assert(threshold <= max_u64 / 10, "Overflow risk in threshold during conditional_major");
+
+    step *= 10;
+    threshold *= 10;
+  }
+  return step;
+}
+
 template <typename f_t>
 struct a_sub_scalar_times_b {
   a_sub_scalar_times_b(const f_t* scalar) : scalar_{scalar} {}

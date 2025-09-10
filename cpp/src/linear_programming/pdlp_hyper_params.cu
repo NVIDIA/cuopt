@@ -91,5 +91,6 @@ double restart_k_p                         = 0.99;
 double restart_k_i                         = 0.01;
 double restart_k_d                         = 0.0;
 double restart_i_smooth                    = 0.3;
+bool use_conditional_major                 = false;
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params

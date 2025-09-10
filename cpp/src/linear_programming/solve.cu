@@ -101,6 +101,7 @@ static void set_Stable1()
   pdlp_hyper_params::use_reflected_primal_dual                                  = false;
   pdlp_hyper_params::use_fixed_point_error                                      = false;
   pdlp_hyper_params::reflection_coefficient                                     = 1.0;
+  pdlp_hyper_params::use_conditional_major                                      = false;
 }
 
 // Even better general setting due to proper primal gradient handling for KKT restart and initial
@@ -143,6 +144,7 @@ static void set_Stable2()
   pdlp_hyper_params::use_reflected_primal_dual                                  = false;
   pdlp_hyper_params::use_fixed_point_error                                      = false;
   pdlp_hyper_params::reflection_coefficient                                     = 1.0;
+  pdlp_hyper_params::use_conditional_major                                      = false;
 }
 
 // TODO how to cite properly cuPDLP+ here?
@@ -185,6 +187,7 @@ static void set_Stable3()
   pdlp_hyper_params::bound_objective_rescaling                                  = true;
   pdlp_hyper_params::use_reflected_primal_dual                                  = true;
   pdlp_hyper_params::use_fixed_point_error                                      = true;
+  pdlp_hyper_params::use_conditional_major                                      = true;
 }
 
 // Legacy/Original/Initial PDLP settings
@@ -226,6 +229,7 @@ static void set_Methodical1()
   pdlp_hyper_params::use_reflected_primal_dual                                  = false;
   pdlp_hyper_params::use_fixed_point_error                                      = false;
   pdlp_hyper_params::reflection_coefficient                                     = 1.0;
+  pdlp_hyper_params::use_conditional_major                                      = false;
 }
 
 // Can be extremly faster but usually leads to more divergence
@@ -268,6 +272,7 @@ static void set_Fast1()
   pdlp_hyper_params::use_reflected_primal_dual                                  = false;
   pdlp_hyper_params::use_fixed_point_error                                      = false;
   pdlp_hyper_params::reflection_coefficient                                     = 1.0;
+  pdlp_hyper_params::use_conditional_major                                      = false;
 }
 
 template <typename i_t, typename f_t>
