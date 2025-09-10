@@ -12,7 +12,7 @@ pip
 
     # CUDA 13
     pip install --extra-index-url=https://pypi.nvidia.com \
-      'nvidia-cuda-runtime-cu13==13.0.*' \
+      'nvidia-cuda-runtime==13.0.*' \
       'cuopt-server-cu13==25.10.*' \
       'cuopt-sh-client==25.10.*'
 
@@ -29,7 +29,7 @@ pip
 
     # CUDA 13
     pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-      'nvidia-cuda-runtime-cu13==13.0.*' \
+      'nvidia-cuda-runtime==13.0.*' \
       'cuopt-server-cu13==25.10.*' \
       'cuopt-sh-client==25.10.*'
 
