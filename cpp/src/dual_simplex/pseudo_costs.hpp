@@ -39,7 +39,7 @@ class pseudo_costs_t {
 
   void update_pseudo_costs(mip_node_t<i_t, f_t>* node_ptr, f_t leaf_objective);
 
-  void initialize(i_t num_variables)
+  void resize(i_t num_variables)
   {
     pseudo_cost_sum_down.resize(num_variables);
     pseudo_cost_sum_up.resize(num_variables);
@@ -71,6 +71,8 @@ class pseudo_costs_t {
   i_t num_strong_branches_completed = 0;
 };
 
+// The strong branching routine should be called inside a
+// OpenMP parallel region.
 template <typename i_t, typename f_t>
 void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       const simplex_solver_settings_t<i_t, f_t>& settings,

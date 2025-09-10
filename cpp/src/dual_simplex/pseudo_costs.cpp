@@ -214,53 +214,61 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       const std::vector<f_t>& edge_norms,
                       pseudo_costs_t<i_t, f_t>& pc)
 {
+#pragma omp single nowait
+  pc.resize(original_lp.num_cols);
+
+#pragma omp single nowait
   pc.strong_branch_down.resize(fractional.size());
+
+#pragma omp single nowait
   pc.strong_branch_up.resize(fractional.size());
 
+#pragma omp single
   pc.num_strong_branches_completed = 0;
 
   if (fractional.size() > settings.num_threads) {
-    int num_threads = settings.num_threads;
-    std::thread threads[num_threads];
+#pragma omp single nowait
     settings.log.printf("Strong branching using %d threads and %ld fractional variables\n",
-                        num_threads,
+                        settings.num_threads,
                         fractional.size());
-    for (int thread_id = 0; thread_id < num_threads; thread_id++) {
-      threads[thread_id] = std::thread(thread_strong_branch<i_t, f_t>,
-                                       thread_id,
-                                       num_threads,
-                                       start_time,
-                                       original_lp,
-                                       settings,
-                                       var_types,
-                                       fractional,
-                                       root_obj,
-                                       root_soln,
-                                       root_vstatus,
-                                       edge_norms,
-                                       std::ref(pc));
+
+#pragma omp parallel for
+    for (int thread_id = 0; thread_id < settings.num_threads; thread_id++) {
+      thread_strong_branch<i_t, f_t>(thread_id,
+                                     settings.num_threads,
+                                     start_time,
+                                     original_lp,
+                                     settings,
+                                     var_types,
+                                     fractional,
+                                     root_obj,
+                                     root_soln,
+                                     root_vstatus,
+                                     edge_norms,
+                                     std::ref(pc));
     }
 
-    for (int thread_id = 0; thread_id < num_threads; thread_id++) {
-      threads[thread_id].join();
-    }
   } else {
-    settings.log.printf("Strong branching on %ld fractional variables\n", fractional.size());
-    strong_branch_helper(0,
-                         0,
-                         static_cast<int>(fractional.size()),
-                         start_time,
-                         original_lp,
-                         settings,
-                         var_types,
-                         fractional,
-                         root_obj,
-                         root_soln,
-                         root_vstatus,
-                         edge_norms,
-                         pc);
+#pragma omp single
+    {
+      settings.log.printf("Strong branching on %ld fractional variables\n", fractional.size());
+      strong_branch_helper(0,
+                           0,
+                           static_cast<int>(fractional.size()),
+                           start_time,
+                           original_lp,
+                           settings,
+                           var_types,
+                           fractional,
+                           root_obj,
+                           root_soln,
+                           root_vstatus,
+                           edge_norms,
+                           pc);
+    }
   }
 
+#pragma omp single
   pc.update_pseudo_costs_from_strong_branching(fractional, root_soln);
 }
 

@@ -753,7 +753,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
     stack.pop_front();
 
     upper_bound = get_upper_bound();
-    lower_bound = node_ptr->lower_bound;
+    lower_bound = get_lower_bound();
     gap         = upper_bound - lower_bound;
     max_depth   = std::max(max_depth, node_ptr->depth);
 
@@ -825,7 +825,8 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
       }
     }
 
-    if (stack.size() > 1024 || (heap_.size() < 1024 && stack.size() > 0)) {
+    if (stack.size() > 0 && (heap_.size() < 2 * max_active_tasks_ ||
+                             stack.front()->depth - stack.back()->depth > node_depth_threshold_)) {
       mip_node_t<i_t, f_t>* node = stack.back();
       stack.pop_back();
 
@@ -851,6 +852,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   stats_.nodes_explored = 0;
   stats_.num_nodes      = 1;
   status_               = mip_status_t::UNSET;
+  active_tasks_         = 0;
+  max_active_tasks_     = 4 * settings_.num_threads;
+  node_depth_threshold_ = 10;
 
   if (guess_.size() != 0) {
     std::vector<f_t> crushed_guess;
@@ -900,44 +904,42 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return mip_status_t::OPTIMAL;
   }
 
-  pc_.initialize(original_lp_.num_cols);
-  strong_branching<i_t, f_t>(original_lp_,
-                             settings_,
-                             stats_.start_time,
-                             var_types_,
-                             root_relax_soln_.x,
-                             fractional,
-                             root_objective_,
-                             root_vstatus_,
-                             edge_norms_,
-                             pc_);
-
-  // Choose variable to branch on
-  i_t branch_var = pc_.variable_selection(
-    fractional, root_relax_soln_.x, original_lp_.lower, original_lp_.upper, log);
-
-  search_tree_ = std::make_unique<mip_node_t<i_t, f_t>>(root_objective_, root_vstatus_);
-  graphviz_node(settings_, search_tree_.get(), "lower bound", root_objective_);
-  branch(search_tree_.get(), branch_var, root_relax_soln_.x[branch_var], root_vstatus_);
-
-  heap_.push(search_tree_->get_down_child());
-  heap_.push(search_tree_->get_up_child());
-
-  settings_.log.printf("Exploring the tree using %d threads\n", settings_.num_threads);
-  settings_.log.printf(
-    "| Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   | "
-    "   Time \n");
-
-#pragma omp atomic write
-  currently_branching_ = true;
-
-  active_tasks_         = 0;
-  max_active_tasks_     = 4 * settings_.num_threads;
-  node_depth_threshold_ = 10;
-
 #pragma omp parallel num_threads(settings_.num_threads)
   {
     mip_status_t local_status;
+
+    strong_branching<i_t, f_t>(original_lp_,
+                               settings_,
+                               stats_.start_time,
+                               var_types_,
+                               root_relax_soln_.x,
+                               fractional,
+                               root_objective_,
+                               root_vstatus_,
+                               edge_norms_,
+                               pc_);
+
+#pragma omp single
+    {
+      // Choose variable to branch on
+      i_t branch_var = pc_.variable_selection(
+        fractional, root_relax_soln_.x, original_lp_.lower, original_lp_.upper, log);
+
+      search_tree_ = std::make_unique<mip_node_t<i_t, f_t>>(root_objective_, root_vstatus_);
+      graphviz_node(settings_, search_tree_.get(), "lower bound", root_objective_);
+      branch(search_tree_.get(), branch_var, root_relax_soln_.x[branch_var], root_vstatus_);
+
+      heap_.push(search_tree_->get_down_child());
+      heap_.push(search_tree_->get_up_child());
+
+      settings_.log.printf("Exploring the tree using %d threads\n", settings_.num_threads);
+      settings_.log.printf(
+        "| Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   | "
+        "   Time \n");
+
+#pragma omp atomic write
+      currently_branching_ = true;
+    }
 
     do {
 #pragma omp barrier
