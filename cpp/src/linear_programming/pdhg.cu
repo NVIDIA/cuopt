@@ -149,6 +149,24 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y()
 }
 
 template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::compute_A_x()
+{
+  // A @ x
+
+  RAFT_CUSPARSE_TRY(
+    raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                       reusable_device_scalar_value_1_.data(),
+                                       cusparse_view_.A,
+                                       cusparse_view_.reflected_primal_solution,
+                                       reusable_device_scalar_value_0_.data(),
+                                       cusparse_view_.dual_gradient,
+                                       CUSPARSE_SPMV_CSR_ALG2,
+                                       (f_t*)cusparse_view_.buffer_non_transpose.data(),
+                                       stream_view_));
+}
+
+template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::compute_primal_projection_with_gradient(
   rmm::device_scalar<f_t>& primal_step_size)
 {
@@ -299,81 +317,88 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
   raft::common::nvtx::range fun_scope("compute_next_primal_dual_solution_reflected");
 
   // Compute next primal solution reflected
-  compute_At_y();
 
   if (should_major) {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
-                            problem_ptr->objective_coefficients.data(),
-                            current_saddle_point_state_.get_current_AtY().data(),
-                            problem_ptr->variable_lower_bounds.data(),
-                            problem_ptr->variable_upper_bounds.data()),
-      thrust::make_zip_iterator(
-        potential_next_primal_solution_.data(), dual_slack_.data(), reflected_primal_.data()),
-      primal_size_h_,
-      primal_reflected_major_projection<f_t>(primal_step_size.data()),
-      stream_view_);
-#ifdef CUPDLP_DEBUG_MODE
-    print("potential_next_primal_solution_", potential_next_primal_solution_);
-    print("reflected_primal_", reflected_primal_);
-    print("dual_slack_", dual_slack_);
-#endif
-  } else {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
-                            problem_ptr->objective_coefficients.data(),
-                            current_saddle_point_state_.get_current_AtY().data(),
-                            problem_ptr->variable_lower_bounds.data(),
-                            problem_ptr->variable_upper_bounds.data()),
-      reflected_primal_.data(),
-      primal_size_h_,
-      primal_reflected_projection<f_t>(primal_step_size.data()),
-      stream_view_);
-#ifdef CUPDLP_DEBUG_MODE
-    print("reflected_primal_", reflected_primal_);
-#endif
-  }
+    if (!graph_all.is_initialized(should_major)) {
+      graph_all.start_capture(should_major);
 
-  // Compute next dual
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
-                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                       reusable_device_scalar_value_1_.data(),
-                                       cusparse_view_.A,
-                                       cusparse_view_.reflected_primal_solution,
-                                       reusable_device_scalar_value_0_.data(),
-                                       cusparse_view_.dual_gradient,
-                                       CUSPARSE_SPMV_CSR_ALG2,
-                                       (f_t*)cusparse_view_.buffer_non_transpose.data(),
-                                       stream_view_));
+      compute_At_y();
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
+                              problem_ptr->objective_coefficients.data(),
+                              current_saddle_point_state_.get_current_AtY().data(),
+                              problem_ptr->variable_lower_bounds.data(),
+                              problem_ptr->variable_upper_bounds.data()),
+        thrust::make_zip_iterator(
+          potential_next_primal_solution_.data(), dual_slack_.data(), reflected_primal_.data()),
+        primal_size_h_,
+        primal_reflected_major_projection<f_t>(primal_step_size.data()),
+        stream_view_);
+#ifdef CUPDLP_DEBUG_MODE
+      print("potential_next_primal_solution_", potential_next_primal_solution_);
+      print("reflected_primal_", reflected_primal_);
+      print("dual_slack_", dual_slack_);
+#endif
 
-  if (should_major) {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
-                            current_saddle_point_state_.get_dual_gradient().data(),
-                            problem_ptr->constraint_lower_bounds.data(),
-                            problem_ptr->constraint_upper_bounds.data()),
-      thrust::make_zip_iterator(potential_next_dual_solution_.data(), reflected_dual_.data()),
-      dual_size_h_,
-      dual_reflected_major_projection<f_t>(dual_step_size.data()),
-      stream_view_);
+      // Compute next dual
+      compute_A_x();
+
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
+                              current_saddle_point_state_.get_dual_gradient().data(),
+                              problem_ptr->constraint_lower_bounds.data(),
+                              problem_ptr->constraint_upper_bounds.data()),
+        thrust::make_zip_iterator(potential_next_dual_solution_.data(), reflected_dual_.data()),
+        dual_size_h_,
+        dual_reflected_major_projection<f_t>(dual_step_size.data()),
+        stream_view_);
+
 #ifdef CUPDLP_DEBUG_MODE
-    print("potential_next_dual_solution_", potential_next_dual_solution_);
-    print("reflected_dual_", reflected_dual_);
+      print("potential_next_dual_solution_", potential_next_dual_solution_);
+      print("reflected_dual_", reflected_dual_);
 #endif
+      graph_all.end_capture(should_major);
+    }
+    graph_all.launch(should_major);
+
   } else {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
-                            current_saddle_point_state_.get_dual_gradient().data(),
-                            problem_ptr->constraint_lower_bounds.data(),
-                            problem_ptr->constraint_upper_bounds.data()),
-      reflected_dual_.data(),
-      dual_size_h_,
-      dual_reflected_projection<f_t>(dual_step_size.data()),
-      stream_view_);
+    if (!graph_all.is_initialized(should_major)) {
+      graph_all.start_capture(should_major);
+
+      compute_At_y();
+
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
+                              problem_ptr->objective_coefficients.data(),
+                              current_saddle_point_state_.get_current_AtY().data(),
+                              problem_ptr->variable_lower_bounds.data(),
+                              problem_ptr->variable_upper_bounds.data()),
+        reflected_primal_.data(),
+        primal_size_h_,
+        primal_reflected_projection<f_t>(primal_step_size.data()),
+        stream_view_);
 #ifdef CUPDLP_DEBUG_MODE
-    print("reflected_dual_", reflected_dual_);
+      print("reflected_primal_", reflected_primal_);
 #endif
+
+      // Compute next dual
+      compute_A_x();
+
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
+                              current_saddle_point_state_.get_dual_gradient().data(),
+                              problem_ptr->constraint_lower_bounds.data(),
+                              problem_ptr->constraint_upper_bounds.data()),
+        reflected_dual_.data(),
+        dual_size_h_,
+        dual_reflected_projection<f_t>(dual_step_size.data()),
+        stream_view_);
+#ifdef CUPDLP_DEBUG_MODE
+      print("reflected_dual_", reflected_dual_);
+#endif
+      graph_all.end_capture(should_major);
+    }
+    graph_all.launch(should_major);
   }
 }
 

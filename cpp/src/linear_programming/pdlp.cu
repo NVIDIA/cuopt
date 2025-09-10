@@ -292,8 +292,12 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
     return current_termination_strategy_.fill_return_problem_solution(
       internal_solver_iterations_,
       pdhg_solver_,
-      pdhg_solver_.get_primal_solution(),
-      pdhg_solver_.get_dual_solution(),
+      (pdlp_hyper_params::use_adaptive_step_size_strategy)
+        ? pdhg_solver_.get_primal_solution()
+        : pdhg_solver_.get_potential_next_primal_solution(),
+      (pdlp_hyper_params::use_adaptive_step_size_strategy)
+        ? pdhg_solver_.get_dual_solution()
+        : pdhg_solver_.get_potential_next_dual_solution(),
       get_filled_warmed_start_data(),
       pdlp_termination_status_t::TimeLimit);
   }
@@ -316,8 +320,12 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
     return current_termination_strategy_.fill_return_problem_solution(
       internal_solver_iterations_,
       pdhg_solver_,
-      pdhg_solver_.get_primal_solution(),
-      pdhg_solver_.get_dual_solution(),
+      (pdlp_hyper_params::use_adaptive_step_size_strategy)
+        ? pdhg_solver_.get_primal_solution()
+        : pdhg_solver_.get_potential_next_primal_solution(),
+      (pdlp_hyper_params::use_adaptive_step_size_strategy)
+        ? pdhg_solver_.get_dual_solution()
+        : pdhg_solver_.get_potential_next_dual_solution(),
       get_filled_warmed_start_data(),
       pdlp_termination_status_t::IterationLimit);
   }
@@ -332,8 +340,12 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
     return current_termination_strategy_.fill_return_problem_solution(
       internal_solver_iterations_,
       pdhg_solver_,
-      pdhg_solver_.get_primal_solution(),
-      pdhg_solver_.get_dual_solution(),
+      (pdlp_hyper_params::use_adaptive_step_size_strategy)
+        ? pdhg_solver_.get_primal_solution()
+        : pdhg_solver_.get_potential_next_primal_solution(),
+      (pdlp_hyper_params::use_adaptive_step_size_strategy)
+        ? pdhg_solver_.get_dual_solution()
+        : pdhg_solver_.get_potential_next_dual_solution(),
       get_filled_warmed_start_data(),
       pdlp_termination_status_t::ConcurrentLimit);
   }
@@ -620,8 +632,12 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
         return current_termination_strategy_.fill_return_problem_solution(
           internal_solver_iterations_,
           pdhg_solver_,
-          pdhg_solver_.get_primal_solution(),
-          pdhg_solver_.get_dual_solution(),
+          (pdlp_hyper_params::use_adaptive_step_size_strategy)
+            ? pdhg_solver_.get_primal_solution()
+            : pdhg_solver_.get_potential_next_primal_solution(),
+          (pdlp_hyper_params::use_adaptive_step_size_strategy)
+            ? pdhg_solver_.get_dual_solution()
+            : pdhg_solver_.get_potential_next_dual_solution(),
           get_filled_warmed_start_data(),
           termination_current);
       } else  // Average has better overall residual
@@ -638,8 +654,12 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
       return current_termination_strategy_.fill_return_problem_solution(
         internal_solver_iterations_,
         pdhg_solver_,
-        pdhg_solver_.get_primal_solution(),
-        pdhg_solver_.get_dual_solution(),
+        (pdlp_hyper_params::use_adaptive_step_size_strategy)
+          ? pdhg_solver_.get_primal_solution()
+          : pdhg_solver_.get_potential_next_primal_solution(),
+        (pdlp_hyper_params::use_adaptive_step_size_strategy)
+          ? pdhg_solver_.get_dual_solution()
+          : pdhg_solver_.get_potential_next_dual_solution(),
         get_filled_warmed_start_data(),
         termination_current);
     } else if (termination_average == pdlp_termination_status_t::PrimalFeasible) {
@@ -680,8 +700,12 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
       return current_termination_strategy_.fill_return_problem_solution(
         internal_solver_iterations_,
         pdhg_solver_,
-        pdhg_solver_.get_primal_solution(),
-        pdhg_solver_.get_dual_solution(),
+        (pdlp_hyper_params::use_adaptive_step_size_strategy)
+          ? pdhg_solver_.get_primal_solution()
+          : pdhg_solver_.get_potential_next_primal_solution(),
+        (pdlp_hyper_params::use_adaptive_step_size_strategy)
+          ? pdhg_solver_.get_dual_solution()
+          : pdhg_solver_.get_potential_next_dual_solution(),
         get_filled_warmed_start_data(),
         termination_current);
     } else {
@@ -731,8 +755,12 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
     return current_termination_strategy_.fill_return_problem_solution(
       internal_solver_iterations_,
       pdhg_solver_,
-      pdhg_solver_.get_primal_solution(),
-      pdhg_solver_.get_dual_solution(),
+      (pdlp_hyper_params::use_adaptive_step_size_strategy)
+        ? pdhg_solver_.get_primal_solution()
+        : pdhg_solver_.get_potential_next_primal_solution(),
+      (pdlp_hyper_params::use_adaptive_step_size_strategy)
+        ? pdhg_solver_.get_dual_solution()
+        : pdhg_solver_.get_potential_next_dual_solution(),
       get_filled_warmed_start_data(),
       termination_current);
   }
@@ -755,8 +783,12 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
       return current_termination_strategy_.fill_return_problem_solution(
         internal_solver_iterations_,
         pdhg_solver_,
-        pdhg_solver_.get_primal_solution(),
-        pdhg_solver_.get_dual_solution(),
+        (pdlp_hyper_params::use_adaptive_step_size_strategy)
+          ? pdhg_solver_.get_primal_solution()
+          : pdhg_solver_.get_potential_next_primal_solution(),
+        (pdlp_hyper_params::use_adaptive_step_size_strategy)
+          ? pdhg_solver_.get_dual_solution()
+          : pdhg_solver_.get_potential_next_dual_solution(),
         termination_current);
     }
     if (termination_average == pdlp_termination_status_t::PrimalInfeasible ||
@@ -791,8 +823,12 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
       return current_termination_strategy_.fill_return_problem_solution(
         internal_solver_iterations_,
         pdhg_solver_,
-        pdhg_solver_.get_primal_solution(),
-        pdhg_solver_.get_dual_solution(),
+        (pdlp_hyper_params::use_adaptive_step_size_strategy)
+          ? pdhg_solver_.get_primal_solution()
+          : pdhg_solver_.get_potential_next_primal_solution(),
+        (pdlp_hyper_params::use_adaptive_step_size_strategy)
+          ? pdhg_solver_.get_dual_solution()
+          : pdhg_solver_.get_potential_next_dual_solution(),
         termination_current);
     }
   }
