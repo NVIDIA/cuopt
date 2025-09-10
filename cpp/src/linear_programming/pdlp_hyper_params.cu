@@ -85,8 +85,11 @@ bool initial_step_size_max_singular_value  = false;
 bool initial_primal_weight_combined_bounds = true;
 bool bound_objective_rescaling             = false;
 bool use_reflected_primal_dual             = false;
-bool use_fixed_point_error = false;
-double reflection_coefficient = 1.0;
-bool use_plus_one = false;
+bool use_fixed_point_error                 = false;
+double reflection_coefficient              = 1.0;
+double restart_k_p                         = 0.99;
+double restart_k_i                         = 0.01;
+double restart_k_d                         = 0.0;
+double restart_i_smooth                    = 0.3;
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params

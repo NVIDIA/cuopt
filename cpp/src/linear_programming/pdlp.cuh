@@ -178,7 +178,7 @@ class pdlp_solver_t {
   // Intentionnaly take a copy to avoid an unintentional modification in the calling context
   const pdlp_solver_settings_t<i_t, f_t> settings_;
 
-  void compute_fixed_error();
+  void compute_fixed_error(bool& has_restarted);
 
   pdlp_warm_start_data_t<i_t, f_t> get_filled_warmed_start_data();
 

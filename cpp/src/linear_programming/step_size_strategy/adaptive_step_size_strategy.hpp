@@ -81,8 +81,8 @@ class adaptive_step_size_strategy_t {
   void compute_interaction_and_movement(rmm::device_uvector<f_t>& tmp_primal,
                                         cusparse_view_t<i_t, f_t>& cusparse_view,
                                         saddle_point_state_t<i_t, f_t>& current_saddle_point_state);
- private:
 
+ private:
   // Stream pool to run different step size computation in parallel
   // Because we already have the main stream, we just need 2 extra streams from this
   rmm::cuda_stream_pool stream_pool_;

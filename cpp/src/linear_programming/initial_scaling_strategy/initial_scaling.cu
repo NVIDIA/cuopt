@@ -135,8 +135,8 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
     f_t(0),
     stream_view_);
 
-  f_t res = f_t(1.0) / (std::sqrt(bound_rescaling_.value(stream_view_)) + f_t(1.0));
-  bound_rescaling_.set_value_async(res, stream_view_);
+  h_bound_rescaling = f_t(1.0) / (std::sqrt(bound_rescaling_.value(stream_view_)) + f_t(1.0));
+  bound_rescaling_.set_value_async(h_bound_rescaling, stream_view_);
 
   detail::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.objective_coefficients,
                                         pdlp_hyper_params::initial_primal_weight_c_scaling,
@@ -144,8 +144,8 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
                                         stream_view_);
 
   // sqrt already applied
-  f_t res2 = f_t(1.0) / (objective_rescaling_.value(stream_view_) + f_t(1.0));
-  objective_rescaling_.set_value_async(res2, stream_view_);
+  h_objective_rescaling = f_t(1.0) / (objective_rescaling_.value(stream_view_) + f_t(1.0));
+  objective_rescaling_.set_value_async(h_objective_rescaling, stream_view_);
 
   // Sync since we are using local variable
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
@@ -519,67 +519,121 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
 
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_solutions(
-  rmm::device_uvector<f_t>& primal_solution, rmm::device_uvector<f_t>& dual_solution) const
+  rmm::device_uvector<f_t>& primal_solution,
+  rmm::device_uvector<f_t>& dual_solution,
+  rmm::device_uvector<f_t>& dual_slack) const
 {
-  // scale solutions
-  raft::linalg::eltwiseDivideCheckZero(primal_solution.data(),
-                                       primal_solution.data(),
-                                       cummulative_variable_scaling_.data(),
-                                       primal_size_h_,
-                                       stream_view_);
+  if (primal_solution.size()) {
+    cuopt_expects(primal_solution.size() == static_cast<size_t>(primal_size_h_),
+                  error_type_t::RuntimeError,
+                  "Scale primal didn't get a vector of size primal");
+    raft::linalg::eltwiseDivideCheckZero(primal_solution.data(),
+                                         primal_solution.data(),
+                                         cummulative_variable_scaling_.data(),
+                                         primal_size_h_,
+                                         stream_view_);
+
+    if (pdlp_hyper_params::bound_objective_rescaling) {
+      raft::linalg::scalarMultiply(primal_solution.data(),
+                                   primal_solution.data(),
+                                   h_bound_rescaling,
+                                   primal_size_h_,
+                                   stream_view_);
+    }
+  }
+
   if (dual_solution.size()) {
+    cuopt_expects(dual_solution.size() == static_cast<size_t>(dual_size_h_),
+                  error_type_t::RuntimeError,
+                  "Unscale dual didn't get a vector of size dual");
     raft::linalg::eltwiseDivideCheckZero(dual_solution.data(),
                                          dual_solution.data(),
                                          cummulative_constraint_matrix_scaling_.data(),
                                          dual_size_h_,
                                          stream_view_);
+    if (pdlp_hyper_params::bound_objective_rescaling) {
+      raft::linalg::scalarMultiply(dual_solution.data(),
+                                   dual_solution.data(),
+                                   h_objective_rescaling,
+                                   dual_size_h_,
+                                   stream_view_);
+    }
   }
+
+  if (dual_slack.size()) {
+    cuopt_expects(dual_slack.size() == static_cast<size_t>(primal_size_h_),
+                  error_type_t::RuntimeError,
+                  "Unscale dual didn't get a vector of size dual");
+    raft::linalg::eltwiseMultiply(dual_slack.data(),
+                                  dual_slack.data(),
+                                  cummulative_variable_scaling_.data(),
+                                  primal_size_h_,
+                                  stream_view_);
+    if (pdlp_hyper_params::bound_objective_rescaling) {
+      raft::linalg::scalarMultiply(
+        dual_slack.data(), dual_slack.data(), h_objective_rescaling, dual_size_h_, stream_view_);
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_solutions(
+  rmm::device_uvector<f_t>& primal_solution, rmm::device_uvector<f_t>& dual_solution) const
+{
+  rmm::device_uvector<f_t> dummy(0, dual_solution.stream());
+  scale_solutions(primal_solution, dual_solution, dummy);
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_solutions(
+  rmm::device_uvector<f_t>& primal_solution) const
+{
+  rmm::device_uvector<f_t> dummy(0, primal_solution.stream());
+  scale_solutions(primal_solution, dummy);
 }
 
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_primal(
   rmm::device_uvector<f_t>& primal_solution) const
 {
-  cuopt_expects(primal_solution.size() == static_cast<size_t>(primal_size_h_),
-                error_type_t::RuntimeError,
-                "Scale primal didn't get a vector of size primal");
-  // scale solutions
-  raft::linalg::eltwiseDivideCheckZero(primal_solution.data(),
-                                       primal_solution.data(),
-                                       cummulative_variable_scaling_.data(),
-                                       primal_size_h_,
-                                       stream_view_);
+  scale_solutions(primal_solution);
 }
 
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_dual(
   rmm::device_uvector<f_t>& dual_solution) const
 {
-  cuopt_expects(dual_solution.size() == static_cast<size_t>(dual_size_h_),
-                error_type_t::RuntimeError,
-                "Scale dual didn't get a vector of size dual");
-  // scale solutions
-  raft::linalg::eltwiseDivideCheckZero(dual_solution.data(),
-                                       dual_solution.data(),
-                                       cummulative_constraint_matrix_scaling_.data(),
-                                       dual_size_h_,
-                                       stream_view_);
+  rmm::device_uvector<f_t> dummy(0, dual_solution.stream());
+  scale_solutions(dummy, dual_solution);
 }
 
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
-  rmm::device_uvector<f_t>& primal_solution, rmm::device_uvector<f_t>& dual_solution) const
+  rmm::device_uvector<f_t>& primal_solution,
+  rmm::device_uvector<f_t>& dual_solution,
+  rmm::device_uvector<f_t>& dual_slack) const
 {
-  // if there are some tails in the solution, don't scale that
-  cuopt_expects(primal_solution.size() == static_cast<size_t>(primal_size_h_),
-                error_type_t::RuntimeError,
-                "Unscale primal didn't get a vector of size primal");
-  // unscale avg solutions
-  raft::linalg::eltwiseMultiply(primal_solution.data(),
-                                primal_solution.data(),
-                                cummulative_variable_scaling_.data(),
-                                primal_size_h_,
-                                stream_view_);
+  if (primal_solution.size()) {
+    cuopt_expects(primal_solution.size() == static_cast<size_t>(primal_size_h_),
+                  error_type_t::RuntimeError,
+                  "Unscale primal didn't get a vector of size primal");
+
+    raft::linalg::eltwiseMultiply(primal_solution.data(),
+                                  primal_solution.data(),
+                                  cummulative_variable_scaling_.data(),
+                                  primal_size_h_,
+                                  stream_view_);
+
+    if (pdlp_hyper_params::bound_objective_rescaling) {
+      cuopt_assert(h_bound_rescaling != f_t(0),
+                   "Numerical error: bound_rescaling_ should never equal 0");
+      raft::linalg::scalarMultiply(primal_solution.data(),
+                                   primal_solution.data(),
+                                   f_t(1.0) / h_bound_rescaling,
+                                   primal_size_h_,
+                                   stream_view_);
+    }
+  }
 
   if (dual_solution.size()) {
     cuopt_expects(dual_solution.size() == static_cast<size_t>(dual_size_h_),
@@ -590,6 +644,31 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
                                   cummulative_constraint_matrix_scaling_.data(),
                                   dual_size_h_,
                                   stream_view_);
+    if (pdlp_hyper_params::bound_objective_rescaling) {
+      raft::linalg::scalarMultiply(dual_solution.data(),
+                                   dual_solution.data(),
+                                   f_t(1.0) / (h_objective_rescaling),
+                                   dual_size_h_,
+                                   stream_view_);
+    }
+  }
+
+  if (dual_slack.size()) {
+    cuopt_expects(dual_slack.size() == static_cast<size_t>(primal_size_h_),
+                  error_type_t::RuntimeError,
+                  "Unscale dual didn't get a vector of size dual");
+    raft::linalg::eltwiseDivideCheckZero(dual_slack.data(),
+                                         dual_slack.data(),
+                                         cummulative_variable_scaling_.data(),
+                                         primal_size_h_,
+                                         stream_view_);
+    if (pdlp_hyper_params::bound_objective_rescaling) {
+      raft::linalg::scalarMultiply(dual_slack.data(),
+                                   dual_slack.data(),
+                                   f_t(1.0) / h_objective_rescaling,
+                                   primal_size_h_,
+                                   stream_view_);
+    }
   }
 }
 
@@ -601,6 +680,14 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
   rmm::device_uvector<f_t> dummy(0, solution.handle_ptr->get_stream());
   solution.is_scaled_ = false;
   unscale_solutions(primal_solution, dummy);
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
+  rmm::device_uvector<f_t>& solution, rmm::device_uvector<f_t>& s) const
+{
+  rmm::device_uvector<f_t> dummy(0, solution.stream());
+  unscale_solutions(solution, s, dummy);
 }
 
 template <typename i_t, typename f_t>

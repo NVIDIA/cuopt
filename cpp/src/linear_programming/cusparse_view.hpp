@@ -43,6 +43,8 @@ class cusparse_view_t {
                   rmm::device_uvector<f_t>& _dual_solution,
                   rmm::device_uvector<f_t>& _tmp_primal,
                   rmm::device_uvector<f_t>& _tmp_dual,
+                  rmm::device_uvector<f_t>& _potential_next_primal,
+                  rmm::device_uvector<f_t>& _potential_next_dual,
                   const rmm::device_uvector<f_t>& _A_T,
                   const rmm::device_uvector<i_t>& _A_T_offsets,
                   const rmm::device_uvector<i_t>& _A_T_indices);

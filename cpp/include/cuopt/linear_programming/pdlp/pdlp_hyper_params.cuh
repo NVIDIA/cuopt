@@ -63,6 +63,9 @@ extern bool bound_objective_rescaling;
 extern bool use_reflected_primal_dual;
 extern bool use_fixed_point_error;
 extern double reflection_coefficient;
-extern bool use_plus_one;
+extern double restart_k_p;
+extern double restart_k_i;
+extern double restart_k_d;
+extern double restart_i_smooth;
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params
