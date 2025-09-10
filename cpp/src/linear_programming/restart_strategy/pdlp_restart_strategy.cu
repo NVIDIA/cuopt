@@ -772,6 +772,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
     dual_step_size.set_value_async(new_dual_step_size, stream_view_);
   }
 
+  // TODO possible error if relative_l2_primal_residual_value == 0
   const f_t primal_dual_residual_gap =
     std::abs(std::log10(relative_l2_dual_residual_value / relative_l2_primal_residual_value));
   if (primal_dual_residual_gap < best_primal_dual_residual_gap_) {

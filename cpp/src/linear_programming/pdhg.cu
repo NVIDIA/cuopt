@@ -367,6 +367,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
     if (!graph_all.is_initialized(should_major)) {
       graph_all.start_capture(should_major);
 
+      // Compute next primal
       compute_At_y();
 
       cub::DeviceTransform::Transform(
