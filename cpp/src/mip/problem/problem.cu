@@ -140,7 +140,8 @@ problem_t<i_t, f_t>::problem_t(
     row_names(problem_.get_row_names()),
     objective_name(problem_.get_objective_name()),
     lp_state(*this, problem_.get_handle_ptr()->get_stream()),
-    fixing_helpers(n_constraints, n_variables, handle_ptr)
+    fixing_helpers(n_constraints, n_variables, handle_ptr),
+    lb_problem(nullptr)
 {
   op_problem_cstr_body(problem_);
   branch_and_bound_callback = nullptr;
@@ -190,7 +191,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     preprocess_called(problem_.preprocess_called),
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
-    vars_with_objective_coeffs(problem_.vars_with_objective_coeffs)
+    vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
+    lb_problem(nullptr)
 {
 }
 
@@ -283,7 +285,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     preprocess_called(problem_.preprocess_called),
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
-    vars_with_objective_coeffs(problem_.vars_with_objective_coeffs)
+    vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
+    lb_problem(nullptr)
 {
 }
 
@@ -935,7 +938,7 @@ void problem_t<i_t, f_t>::resize_variables(size_t size)
   objective_coefficients.resize(size, handle_ptr->get_stream());
   is_binary_variable.resize(size, handle_ptr->get_stream());
   related_variables_offsets.resize(size, handle_ptr->get_stream());
-  lb_problem.reset(nullptr);
+  lb_problem_invalidated = true;
 }
 
 template <typename i_t, typename f_t>
@@ -953,7 +956,7 @@ void problem_t<i_t, f_t>::resize_constraints(size_t matrix_size,
   combined_bounds.resize(constraint_size, handle_ptr->get_stream());
   offsets.resize(constraint_size + 1, handle_ptr->get_stream());
   reverse_offsets.resize(n_variables + 1, handle_ptr->get_stream());
-  lb_problem.reset(nullptr);
+  lb_problem_invalidated = true;
 }
 
 // note that these don't change the reverse structure
@@ -985,6 +988,8 @@ void problem_t<i_t, f_t>::insert_variables(variables_delta_t<i_t, f_t>& h_vars)
   compute_n_integer_vars();
   compute_binary_var_table();
   compute_vars_with_objective_coeffs();
+
+  lb_problem_invalidated = true;
 }
 
 // note that these don't change the reverse structure
@@ -1038,6 +1043,8 @@ void problem_t<i_t, f_t>::insert_constraints(constraints_delta_t<i_t, f_t>& h_co
                "nnz and offset should match!");
   cuopt_assert(offsets.size() == n_constraints + 1, "offset size should match!");
   combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+
+  lb_problem_invalidated = true;
 }
 
 template <typename i_t, typename f_t>
@@ -1247,6 +1254,7 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
   handle_ptr->sync_stream();
   recompute_auxilliary_data();
   check_problem_representation(true);
+  lb_problem_invalidated = true;
 }
 
 template <typename i_t, typename f_t>
@@ -1390,6 +1398,8 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
              h_variable_types.size(),
              handle_ptr->get_stream());
   handle_ptr->sync_stream();
+
+  pb.lb_problem_invalidated = true;
 }
 
 template <typename i_t, typename f_t>
@@ -1430,6 +1440,8 @@ void compute_csr(const std::vector<std::vector<std::pair<i_t, f_t>>>& variable_c
   raft::copy(pb.variables.data(), h_variables.data(), h_variables.size(), handle_ptr->get_stream());
   raft::copy(pb.offsets.data(), h_offsets.data(), h_offsets.size(), handle_ptr->get_stream());
   handle_ptr->sync_stream();
+
+  pb.lb_problem_invalidated = true;
 }
 
 template <typename i_t, typename f_t>
@@ -1451,6 +1463,8 @@ void problem_t<i_t, f_t>::preprocess_problem()
   compute_binary_var_table();
   check_problem_representation(true);
   preprocess_called = true;
+
+  lb_problem_invalidated = true;
 }
 
 template <typename i_t, typename f_t>
@@ -1589,13 +1603,19 @@ void problem_t<i_t, f_t>::add_cutting_plane_at_objective(f_t objective)
   insert_constraints(h_constraints);
   compute_transpose_of_problem();
   cuopt_func_call(check_problem_representation(true));
+
+  lb_problem_invalidated = true;
 }
 
 template <typename i_t, typename f_t>
 lb_problem_t<i_t, f_t>& problem_t<i_t, f_t>::get_load_balanced_problem()
 {
+  if (lb_problem_invalidated) { lb_problem.reset(nullptr); }
+
   if (!lb_problem) { lb_problem = std::make_unique<lb_problem_t<i_t, f_t>>(*this); }
   lb_problem_t<i_t, f_t>* lb_problem_ptr = lb_problem.get();
+
+  lb_problem_invalidated = false;
   return *lb_problem_ptr;
 }
 

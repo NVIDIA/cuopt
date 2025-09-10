@@ -32,39 +32,25 @@ constexpr int MAX_CYCLE_SEQUENCE    = 5;
 
 template <typename i_t, typename f_t>
 struct bounds_t {
-  bounds_t(const raft::handle_t* handle_ptr)
-    : lb(0, handle_ptr->get_stream()), ub(0, handle_ptr->get_stream())
-  {
-  }
+  bounds_t(const raft::handle_t* handle_ptr) : bounds(0, handle_ptr->get_stream()) {}
   void resize(i_t var_size, const raft::handle_t* handle_ptr)
   {
-    lb.resize(var_size, handle_ptr->get_stream());
-    ub.resize(var_size, handle_ptr->get_stream());
+    bounds.resize(var_size, handle_ptr->get_stream());
   }
   void update_from(const problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr)
   {
-    cuopt_assert(lb.size() == pb.variable_bounds.size(), "");
-    cuopt_assert(ub.size() == pb.variable_bounds.size(), "");
-    thrust::transform(
-      handle_ptr->get_thrust_policy(),
-      pb.variable_bounds.begin(),
-      pb.variable_bounds.end(),
-      thrust::make_zip_iterator(thrust::make_tuple(lb.begin(), ub.begin())),
-      [] __device__(auto i) { return thrust::make_tuple(get_lower(i), get_upper(i)); });
+    cuopt_assert(bounds.size() == pb.variable_bounds.size(), "");
+    raft::copy(bounds.data(),
+               pb.variable_bounds.data(),
+               pb.variable_bounds.size(),
+               handle_ptr->get_stream());
   };
   void update_to(problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr)
   {
-    cuopt_assert(lb.size() == pb.variable_bounds.size(), "");
-    cuopt_assert(ub.size() == pb.variable_bounds.size(), "");
-    using f_t2 = typename type_2<f_t>::type;
-    thrust::transform(handle_ptr->get_thrust_policy(),
-                      thrust::make_zip_iterator(thrust::make_tuple(lb.begin(), ub.begin())),
-                      thrust::make_zip_iterator(thrust::make_tuple(lb.end(), ub.end())),
-                      pb.variable_bounds.begin(),
-                      [] __device__(auto i) { return f_t2{thrust::get<0>(i), thrust::get<1>(i)}; });
+    cuopt_assert(bounds.size() == pb.variable_bounds.size(), "");
+    raft::copy(pb.variable_bounds.data(), bounds.data(), bounds.size(), handle_ptr->get_stream());
   };
-  rmm::device_uvector<f_t> lb;
-  rmm::device_uvector<f_t> ub;
+  rmm::device_uvector<typename type_2<f_t>::type> bounds;
 };
 
 template <typename i_t, typename f_t>

@@ -301,6 +301,15 @@ void lb_bound_presolve_t<i_t, f_t>::set_updated_bounds(
     output_bounds.data(), upd.vars_bnd.data(), upd.vars_bnd.size(), handle_ptr->get_stream());
 }
 
+template <typename i_t, typename f_t>
+void lb_bound_presolve_t<i_t, f_t>::calculate_activity_on_problem_bounds(
+  lb_problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr)
+{
+  upd.init_changed_constraints(handle_ptr);
+  copy_input_bounds(pb, handle_ptr);
+  calculate_constraint_slack_iter(pb, handle_ptr);
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template class lb_bound_presolve_t<int, float>;
 #endif

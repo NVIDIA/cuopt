@@ -44,8 +44,6 @@ constraint_prop_t<i_t, f_t>::constraint_prop_t(mip_solver_context_t<i_t, f_t>& c
     conditional_bounds_update(*context.problem_ptr),
     set_vars(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     unset_vars(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
-    // lb_restore(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
-    // ub_restore(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     var_bounds_restore(context.problem_ptr->n_variables,
                        context.problem_ptr->handle_ptr->get_stream()),
     assignment_restore(context.problem_ptr->n_variables,
@@ -119,7 +117,7 @@ void sort_subsections(raft::device_span<i_t> vars,
 
 template <typename i_t, typename f_t>
 __global__ void compute_implied_slack_consumption_per_var(
-  typename problem_t<i_t, f_t>::view_t pb,
+  typename problem_t<i_t, f_t>::view_t orig_pb,
   raft::device_span<i_t> var_indices,
   raft::device_span<f_t> min_activity,
   raft::device_span<f_t> max_activity,
@@ -128,28 +126,27 @@ __global__ void compute_implied_slack_consumption_per_var(
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tols)
 {
   i_t var_idx = var_indices[blockIdx.x];
-  cuopt_assert(pb.is_integer_var(var_idx), "Variable must be integer!");
-  i_t var_offset                       = pb.reverse_offsets[var_idx];
-  i_t var_degree                       = pb.reverse_offsets[var_idx + 1] - var_offset;
+  cuopt_assert(orig_pb.is_integer_var(var_idx), "Variable must be integer!");
+  i_t var_offset                       = orig_pb.reverse_offsets[var_idx];
+  i_t var_degree                       = orig_pb.reverse_offsets[var_idx + 1] - var_offset;
   f_t th_var_implied_slack_consumption = 0.;
-  auto var_bnd                         = pb.variable_bounds[var_idx];
-  f_t lb                               = get_lower(var_bnd);
-  f_t ub                               = get_upper(var_bnd);
   for (i_t i = threadIdx.x; i < var_degree; i += blockDim.x) {
-    auto a        = pb.reverse_coefficients[var_offset + i];
-    auto cnst_idx = pb.reverse_constraints[var_offset + i];
+    auto a        = orig_pb.reverse_coefficients[var_offset + i];
+    auto cnst_idx = orig_pb.reverse_constraints[var_offset + i];
     auto min_a    = min_activity[cnst_idx];
     auto max_a    = max_activity[cnst_idx];
-    auto cnstr_ub = pb.constraint_upper_bounds[cnst_idx];
-    auto cnstr_lb = pb.constraint_lower_bounds[cnst_idx];
-    // don't consider constraints that are infeasible
-    if ((min_a >= cnstr_ub + tols.absolute_tolerance) ||
-        (max_a <= cnstr_lb - tols.absolute_tolerance)) {
-      continue;
-    }
+    auto cnstr_ub = orig_pb.constraint_upper_bounds[cnst_idx];
+    auto cnstr_lb = orig_pb.constraint_lower_bounds[cnst_idx];
 
     auto slack_min_act = cnstr_ub - min_a;
     auto slack_max_act = cnstr_lb - max_a;
+
+    // don't consider constraints that are infeasible
+    if ((0 >= cnstr_ub - min_a + tols.absolute_tolerance) ||
+        (0 <= cnstr_lb - max_a - tols.absolute_tolerance)) {
+      continue;
+    }
+
 #pragma unroll
     for (auto act : {slack_min_act, slack_max_act}) {
       f_t slack_consumption_ratio;
@@ -172,48 +169,48 @@ __global__ void compute_implied_slack_consumption_per_var(
 // sort by the implied percent of slack consumption
 // across all constraints, sum the square roots of implied slack consumption percent
 template <typename i_t, typename f_t>
-void constraint_prop_t<i_t, f_t>::sort_by_implied_slack_consumption(solution_t<i_t, f_t>& sol,
-                                                                    raft::device_span<i_t> vars,
-                                                                    bool problem_ii)
+void constraint_prop_t<i_t, f_t>::sort_by_implied_slack_consumption(
+  problem_t<i_t, f_t>& original_problem, raft::device_span<i_t> vars, bool problem_ii)
 {
   CUOPT_LOG_TRACE("Sorting vars by importance");
-  rmm::device_uvector<f_t> implied_slack_consumption_per_var(vars.size(),
-                                                             sol.handle_ptr->get_stream());
+  rmm::device_uvector<f_t> implied_slack_consumption_per_var(
+    vars.size(), original_problem.handle_ptr->get_stream());
   const i_t block_dim = 128;
   auto min_activity   = selected_update ? make_span(multi_probe.upd_1.min_activity)
                                         : make_span(multi_probe.upd_0.min_activity);
   auto max_activity   = selected_update ? make_span(multi_probe.upd_1.max_activity)
                                         : make_span(multi_probe.upd_0.max_activity);
   compute_implied_slack_consumption_per_var<i_t, f_t>
-    <<<vars.size(), block_dim, 0, sol.handle_ptr->get_stream()>>>(
-      sol.problem_ptr->view(),
+    <<<vars.size(), block_dim, 0, original_problem.handle_ptr->get_stream()>>>(
+      original_problem.view(),
       vars,
       min_activity,
       max_activity,
       make_span(implied_slack_consumption_per_var),
       problem_ii,
       context.settings.get_tolerances());
-  thrust::sort_by_key(sol.handle_ptr->get_thrust_policy(),
+  thrust::sort_by_key(original_problem.handle_ptr->get_thrust_policy(),
                       implied_slack_consumption_per_var.begin(),
                       implied_slack_consumption_per_var.end(),
                       vars.data(),
                       thrust::greater<f_t>{});
-  sol.handle_ptr->sync_stream();
+  original_problem.handle_ptr->sync_stream();
 }
 
 template <typename i_t, typename f_t>
-void constraint_prop_t<i_t, f_t>::sort_by_interval_and_frac(solution_t<i_t, f_t>& sol,
+void constraint_prop_t<i_t, f_t>::sort_by_interval_and_frac(problem_t<i_t, f_t>& problem,
+                                                            rmm::device_uvector<f_t>& assignment,
                                                             raft::device_span<i_t> vars,
                                                             std::mt19937 rng)
 {
   // we can't call this function when the problem is ii. it causes false offset computations
   // TODO add assert that the problem is not ii
-  auto assgn = make_span(sol.assignment);
+  auto assgn = make_span(assignment);
   thrust::stable_sort(
-    sol.handle_ptr->get_thrust_policy(),
+    problem.handle_ptr->get_thrust_policy(),
     vars.begin(),
     vars.end(),
-    [bnds = sol.problem_ptr->variable_bounds.data(), assgn] __device__(i_t v_idx_1, i_t v_idx_2) {
+    [bnds = problem.variable_bounds.data(), assgn] __device__(i_t v_idx_1, i_t v_idx_2) {
       auto bnd_1            = bnds[v_idx_1];
       auto bnd_2            = bnds[v_idx_2];
       f_t bounds_interval_1 = get_upper(bnd_1) - get_lower(bnd_1);
@@ -233,15 +230,18 @@ void constraint_prop_t<i_t, f_t>::sort_by_interval_and_frac(solution_t<i_t, f_t>
   // we will sort this rnd array and the vars in subsections, so that each subsection will be
   // shuffled in total we will have 3(binary, ternary and rest) x 7 intervals = 21 subsections.
   // first extract these subsections from the data
-  rmm::device_uvector<i_t> subsection_offsets(size_of_subsections, sol.handle_ptr->get_stream());
-  thrust::fill(
-    sol.handle_ptr->get_thrust_policy(), subsection_offsets.begin(), subsection_offsets.end(), -1);
-  subsection_offsets.set_element(0, 0, sol.handle_ptr->get_stream());
-  subsection_offsets.set_element(n_subsections, vars.size(), sol.handle_ptr->get_stream());
-  thrust::for_each(sol.handle_ptr->get_thrust_policy(),
+  rmm::device_uvector<i_t> subsection_offsets(size_of_subsections,
+                                              problem.handle_ptr->get_stream());
+  thrust::fill(problem.handle_ptr->get_thrust_policy(),
+               subsection_offsets.begin(),
+               subsection_offsets.end(),
+               -1);
+  subsection_offsets.set_element(0, 0, problem.handle_ptr->get_stream());
+  subsection_offsets.set_element(n_subsections, vars.size(), problem.handle_ptr->get_stream());
+  thrust::for_each(problem.handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator(0),
                    thrust::make_counting_iterator((i_t)vars.size() - 1),
-                   [bnds    = make_span(sol.problem_ptr->variable_bounds),
+                   [bnds    = make_span(problem.variable_bounds),
                     offsets = make_span(subsection_offsets),
                     vars,
                     assgn] __device__(i_t idx) {
@@ -269,7 +269,7 @@ void constraint_prop_t<i_t, f_t>::sort_by_interval_and_frac(solution_t<i_t, f_t>
                      }
                    });
   // if there are any empty sections fill their offsets as the previous offset
-  thrust::for_each(sol.handle_ptr->get_thrust_policy(),
+  thrust::for_each(problem.handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator(0),
                    thrust::make_counting_iterator(1),
                    [offsets = subsection_offsets.data()] __device__(i_t idx) {
@@ -283,12 +283,13 @@ void constraint_prop_t<i_t, f_t>::sort_by_interval_and_frac(solution_t<i_t, f_t>
                      }
                    });
   auto random_vector = get_random_uniform_vector<i_t, f_t>((i_t)vars.size(), rng);
-  rmm::device_uvector<f_t> device_random_vector(random_vector.size(), sol.handle_ptr->get_stream());
+  rmm::device_uvector<f_t> device_random_vector(random_vector.size(),
+                                                problem.handle_ptr->get_stream());
   raft::copy(device_random_vector.data(),
              random_vector.data(),
              random_vector.size(),
-             sol.handle_ptr->get_stream());
-  sort_subsections<i_t, f_t>(vars, device_random_vector, subsection_offsets, sol.handle_ptr);
+             problem.handle_ptr->get_stream());
+  sort_subsections<i_t, f_t>(vars, device_random_vector, subsection_offsets, problem.handle_ptr);
 }
 
 template <typename i_t, typename f_t>
@@ -661,7 +662,6 @@ bool test_var_out_of_bounds(const solution_t<i_t, f_t>& orig_sol,
 template <typename i_t, typename f_t>
 std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>
 constraint_prop_t<i_t, f_t>::generate_bulk_rounding_vector(
-  const solution_t<i_t, f_t>& sol,
   const solution_t<i_t, f_t>& orig_sol,
   const std::vector<i_t>& host_vars_to_set,
   const std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>> probing_config)
@@ -684,33 +684,37 @@ constraint_prop_t<i_t, f_t>::generate_bulk_rounding_vector(
         generate_double_probing_pair(orig_sol, unset_var_idx, probing_config, false);
     }
     cuopt_assert(
-      test_var_out_of_bounds(orig_sol, unset_var_idx, first_probe, int_tol, sol.handle_ptr),
+      test_var_out_of_bounds(orig_sol, unset_var_idx, first_probe, int_tol, orig_sol.handle_ptr),
       "Variable out of original bounds!");
     cuopt_assert(
-      test_var_out_of_bounds(orig_sol, unset_var_idx, second_probe, int_tol, sol.handle_ptr),
+      test_var_out_of_bounds(orig_sol, unset_var_idx, second_probe, int_tol, orig_sol.handle_ptr),
       "Variable out of original bounds!");
     cuopt_assert(orig_sol.problem_ptr->is_integer(first_probe), "Probing value must be an integer");
     cuopt_assert(orig_sol.problem_ptr->is_integer(second_probe),
                  "Probing value must be an integer");
     f_t val_to_round = first_probe;
     // check probing cache if some implied bounds exists
+    // only problem.original_ids is used, therefore, we can use the orig_sol.problem_ptr
     if (use_probing_cache &&
-        bounds_update.probing_cache.contains(*sol.problem_ptr, unset_var_idx)) {
+        bounds_update.probing_cache.contains(*orig_sol.problem_ptr, unset_var_idx)) {
       // check if there are any conflicting bounds
-      val_to_round = bounds_update.probing_cache.get_least_conflicting_rounding(*sol.problem_ptr,
-                                                                                multi_probe.host_lb,
-                                                                                multi_probe.host_ub,
-                                                                                unset_var_idx,
-                                                                                first_probe,
-                                                                                second_probe,
-                                                                                int_tol);
+      // only problem.original_ids and problem.reverse_original_ids are used
+      // therefore, we can use the orig_sol.problem_ptr
+      val_to_round =
+        bounds_update.probing_cache.get_least_conflicting_rounding(*orig_sol.problem_ptr,
+                                                                   multi_probe.host_lb,
+                                                                   multi_probe.host_ub,
+                                                                   unset_var_idx,
+                                                                   first_probe,
+                                                                   second_probe,
+                                                                   int_tol);
       if (val_to_round == second_probe) { second_probe = first_probe; }
     }
     cuopt_assert(
-      test_var_out_of_bounds(orig_sol, unset_var_idx, val_to_round, int_tol, sol.handle_ptr),
+      test_var_out_of_bounds(orig_sol, unset_var_idx, val_to_round, int_tol, orig_sol.handle_ptr),
       "Variable out of original bounds!");
     cuopt_assert(
-      test_var_out_of_bounds(orig_sol, unset_var_idx, second_probe, int_tol, sol.handle_ptr),
+      test_var_out_of_bounds(orig_sol, unset_var_idx, second_probe, int_tol, orig_sol.handle_ptr),
       "Variable out of original bounds!");
     std::get<0>(var_probe_vals)[i] = unset_var_idx;
     std::get<1>(var_probe_vals)[i] = val_to_round;
@@ -730,19 +734,11 @@ void constraint_prop_t<i_t, f_t>::update_host_assignment(const solution_t<i_t, f
              sol.handle_ptr->get_stream());
 }
 
-template <typename f_t, typename f_t2>
-struct extract_bounds_t {
-  __device__ thrust::tuple<f_t, f_t> operator()(f_t2 bounds)
-  {
-    return thrust::make_tuple(get_lower(bounds), get_upper(bounds));
-  }
-};
-
 template <typename i_t, typename f_t>
-void constraint_prop_t<i_t, f_t>::set_host_bounds(const solution_t<i_t, f_t>& sol)
+void constraint_prop_t<i_t, f_t>::set_host_bounds(const problem_t<i_t, f_t>& problem)
 {
   std::tie(multi_probe.host_lb, multi_probe.host_ub) =
-    extract_host_bounds<f_t>(sol.problem_ptr->variable_bounds, sol.handle_ptr);
+    extract_host_bounds<f_t>(problem.variable_bounds, problem.handle_ptr);
 }
 
 template <typename i_t, typename f_t>
@@ -878,6 +874,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
 
   CUOPT_LOG_DEBUG("Bounds propagation rounding: unset vars %lu", unset_integer_vars.size());
   // this is needed for the sort inside of the loop
+  // TODO : replace with lb_problem_t
   bool problem_ii = is_problem_ii(*sol.problem_ptr);
   // if the problem is ii, run the bounds prop in the beginning
   if (problem_ii) {
@@ -886,8 +883,10 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     if (bounds_repaired) {
       CUOPT_LOG_DEBUG("Initial ii is repaired by bounds repair!");
     } else {
+      // TODO : replace with lb_problem_t
       auto term_crit = bounds_update.solve(*sol.problem_ptr);
       if (termination_criterion_t::NO_UPDATE != term_crit) {
+        // TODO : replace with lb_problem_t
         bounds_update.set_updated_bounds(*sol.problem_ptr);
       }
       rounding_ii = true;
@@ -897,9 +896,10 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
   else {
     // this is a sort to have initial shuffling, so that stable sort within will keep the order and
     // some randomness will be achieved
-    sort_by_interval_and_frac(sol, make_span(unset_integer_vars), rng);
+    // TODO : replace with lb_problem_t
+    sort_by_interval_and_frac(*sol.problem_ptr, sol.assignment, make_span(unset_integer_vars), rng);
   }
-  set_host_bounds(sol);
+  set_host_bounds(*sol.problem_ptr);
   size_t set_count               = 0;
   bool timeout_happened          = false;
   i_t n_failed_repair_iterations = 0;
@@ -908,6 +908,8 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     update_host_assignment(sol);
     if (max_timer.check_time_limit()) {
       CUOPT_LOG_DEBUG("Second time limit is reached returning nearest rounding!");
+      // solution assignment is rounded based on tightened/altered variable bounds of
+      // sol.problem_ptr
       sol.round_nearest();
       timeout_happened = true;
       break;
@@ -931,16 +933,19 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     i_t n_vars_to_set = recovery_mode ? 1 : bounds_prop_interval;
     // if we are not at the last stage or if we are in recovery mode, don't sort
     if (n_vars_to_set != 1) {
+      // We primarily need activities to calculate constraint slack for computing implied slack
+      // Therefore sol.problem_ptr is not necessarily needed here
       sort_by_implied_slack_consumption(
-        sol, make_span(unset_integer_vars, set_count, unset_integer_vars.size()), problem_ii);
+        *orig_sol.problem_ptr,
+        make_span(unset_integer_vars, set_count, unset_integer_vars.size()),
+        problem_ii);
     }
     std::vector<i_t> host_vars_to_set(n_vars_to_set);
     raft::copy(host_vars_to_set.data(),
                unset_integer_vars.data() + set_count,
                n_vars_to_set,
                sol.handle_ptr->get_stream());
-    auto var_probe_vals =
-      generate_bulk_rounding_vector(sol, orig_sol, host_vars_to_set, probing_config);
+    auto var_probe_vals = generate_bulk_rounding_vector(orig_sol, host_vars_to_set, probing_config);
     probe(
       sol, orig_sol.problem_ptr, var_probe_vals, &set_count, unset_integer_vars, probing_config);
     if (!(n_failed_repair_iterations >= max_n_failed_repair_iterations) && rounding_ii &&
@@ -964,7 +969,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
         n_iter_in_recovery = 0;
         // during repair procedure some variables might be collapsed
         auto iter =
-          thrust::stable_partition(sol.handle_ptr->get_thrust_policy(),
+          thrust::stable_partition(orig_sol.handle_ptr->get_thrust_policy(),
                                    unset_vars.begin() + set_count,
                                    unset_vars.end(),
                                    is_bound_fixed_t<i_t, f_t, typename type_2<f_t>::type>{
@@ -1151,9 +1156,9 @@ bool constraint_prop_t<i_t, f_t>::handle_fixed_vars(
   rmm::device_uvector<i_t>& unset_vars)
 {
   auto set_count    = *set_count_ptr;
-  const f_t int_tol = sol.problem_ptr->tolerances.integrality_tolerance;
+  const f_t int_tol = original_problem->tolerances.integrality_tolerance;
   // which other variables were affected?
-  auto iter        = thrust::stable_partition(sol.handle_ptr->get_thrust_policy(),
+  auto iter        = thrust::stable_partition(original_problem->handle_ptr->get_thrust_policy(),
                                        unset_vars.begin() + set_count,
                                        unset_vars.end(),
                                        is_bound_fixed_t<i_t, f_t, typename type_2<f_t>::type>{

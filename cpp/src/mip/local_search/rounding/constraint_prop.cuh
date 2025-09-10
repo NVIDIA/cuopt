@@ -56,10 +56,11 @@ struct constraint_prop_t {
                    timer_t& timer,
                    std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>>
                      probing_config = std::nullopt);
-  void sort_by_implied_slack_consumption(solution_t<i_t, f_t>& sol,
+  void sort_by_implied_slack_consumption(problem_t<i_t, f_t>& problem,
                                          raft::device_span<i_t> vars,
                                          bool problem_ii);
-  void sort_by_interval_and_frac(solution_t<i_t, f_t>& sol,
+  void sort_by_interval_and_frac(problem_t<i_t, f_t>& problem,
+                                 rmm::device_uvector<f_t>& assignment,
                                  raft::device_span<i_t> vars,
                                  std::mt19937 rng);
 
@@ -78,7 +79,7 @@ struct constraint_prop_t {
     bool bulk_rounding);
   std::tuple<f_t, f_t, f_t> probing_values(const solution_t<i_t, f_t>& orig_sol, i_t idx);
   void update_host_assignment(const solution_t<i_t, f_t>& sol);
-  void set_host_bounds(const solution_t<i_t, f_t>& sol);
+  void set_host_bounds(const problem_t<i_t, f_t>& problem);
   bool probe(solution_t<i_t, f_t>& sol,
              problem_t<i_t, f_t>* original_problem,
              const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals,
@@ -122,7 +123,6 @@ struct constraint_prop_t {
                    const raft::handle_t* handle_ptr);
   void restore_original_bounds(solution_t<i_t, f_t>& sol, solution_t<i_t, f_t>& orig_sol);
   std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>> generate_bulk_rounding_vector(
-    const solution_t<i_t, f_t>& sol,
     const solution_t<i_t, f_t>& orig_sol,
     const std::vector<i_t>& host_vars_to_set,
     const std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>> probing_config);

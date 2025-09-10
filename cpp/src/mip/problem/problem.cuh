@@ -284,6 +284,7 @@ class problem_t {
   std::pair<std::vector<i_t>, std::vector<f_t>> vars_with_objective_coeffs;
 
   std::unique_ptr<lb_problem_t<i_t, f_t>> lb_problem;
+  bool lb_problem_invalidated{true};
 };
 
 }  // namespace linear_programming::detail
