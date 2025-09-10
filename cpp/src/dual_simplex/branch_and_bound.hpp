@@ -123,6 +123,13 @@ class branch_and_bound_t {
     i_t nodes_explored      = 0;
     f_t total_lp_iters      = 0;
     i_t num_nodes           = 0;
+    i_t total_tasks         = 0;
+    i_t total_dives         = 0;
+    i_t infeasible_dives    = 0;
+    i_t feasible_dives      = 0;
+    f_t max_task_time       = 0.0;
+    f_t min_task_time       = inf;
+    f_t avg_task_time       = 0.0;
   } stats_;
 
   // Mutex for repair

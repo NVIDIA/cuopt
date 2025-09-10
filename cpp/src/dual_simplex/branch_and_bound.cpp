@@ -660,6 +660,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
 
       graphviz_node(settings_, node_ptr, "integer feasible", leaf_objective);
       update_tree(node_ptr, node_status_t::INTEGER_FEASIBLE);
+
     } else if (leaf_objective <= upper_bound + fathom_tol) {
       // Choose fractional variable to branch on
       mutex_pc_.lock();
@@ -721,6 +722,9 @@ void branch_and_bound_t<i_t, f_t>::spawn_new_task()
 
 #pragma omp atomic write
     lower_bound_ = node_ptr->lower_bound;
+
+#pragma omp atomic update
+    stats_.total_tasks++;
   }
 }
 
@@ -730,25 +734,28 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
   // Make a copy of the original LP. We will modify its bounds at each leaf
   lp_problem_t leaf_problem = original_lp_;
 
+  std::deque<mip_node_t<i_t, f_t>*> stack;
+  stack.push_back(start_node);
+
+#ifdef MEASURE_DIVE_TIME
+  f_t start_time      = tic();
+  bool found_feasible = false;
+#endif
+
   f_t upper_bound    = get_upper_bound();
   f_t lower_bound    = start_node->lower_bound;
   f_t gap            = upper_bound - lower_bound;
   f_t last_log       = 0;
   i_t nodes_explored = 0;
   i_t max_depth      = 0;
-
-  std::deque<mip_node_t<i_t, f_t>*> stack;
-  stack.push_back(start_node);
-
-  while (stack.size() > 0 && gap > settings_.absolute_mip_gap_tol &&
-         relative_gap(upper_bound, lower_bound) > settings_.relative_mip_gap_tol) {
-    mip_status_t local_status;
+  mip_status_t local_status;
 
 #pragma omp atomic read
-    local_status = status_;
+  local_status = status_;
 
-    if (local_status != mip_status_t::UNSET) { break; }
-
+  while (stack.size() > 0 && gap > settings_.absolute_mip_gap_tol &&
+         relative_gap(upper_bound, lower_bound) > settings_.relative_mip_gap_tol &&
+         local_status == mip_status_t::UNSET) {
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
@@ -792,8 +799,6 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
     }
 
     if (toc(stats_.start_time) > settings_.time_limit) {
-      settings_.log.printf("Hit time limit. Stoppping\n");
-
 #pragma omp atomic write
       status_ = mip_status_t::TIME_LIMIT;
       break;
@@ -825,6 +830,10 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
       }
     }
 
+#ifdef MEASURE_DIVE_TIME
+    if (node_ptr->status == node_status_t::INTEGER_FEASIBLE) { found_feasible = true; }
+#endif
+
     if (stack.size() > 0 && (heap_.size() < 2 * max_active_tasks_ ||
                              stack.front()->depth - stack.back()->depth > node_depth_threshold_)) {
       mip_node_t<i_t, f_t>* node = stack.back();
@@ -836,10 +845,38 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
     }
 
     spawn_new_task();
+
+#pragma omp atomic read
+    local_status = status_;
   }
 
 #pragma omp atomic update
   active_tasks_--;
+
+#ifdef MEASURE_DIVE_TIME
+
+  f_t task_time = toc(start_time);
+
+#pragma omp atomic update
+  stats_.total_dives++;
+
+  if (found_feasible) {
+#pragma omp atomic update
+    stats_.feasible_dives++;
+  } else {
+#pragma omp atomic update
+    stats_.infeasible_dives++;
+  }
+
+#pragma omp atomic compare
+  stats_.min_task_time = task_time < stats_.min_task_time ? task_time : stats_.min_task_time;
+
+#pragma omp atomic compare
+  stats_.max_task_time = task_time > stats_.max_task_time ? task_time : stats_.max_task_time;
+
+#pragma omp atomic update
+  stats_.avg_task_time += (task_time - stats_.avg_task_time) / stats_.total_tasks;
+#endif
 }
 
 template <typename i_t, typename f_t>
@@ -848,13 +885,21 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   logger_t log;
 
   log.log               = false;
-  stats_.total_lp_iters = 0;
-  stats_.nodes_explored = 0;
-  stats_.num_nodes      = 1;
   status_               = mip_status_t::UNSET;
   active_tasks_         = 0;
   max_active_tasks_     = 4 * settings_.num_threads;
   node_depth_threshold_ = 10;
+
+  stats_.total_lp_iters   = 0;
+  stats_.nodes_explored   = 0;
+  stats_.num_nodes        = 1;
+  stats_.total_tasks      = 0;
+  stats_.total_dives      = 0;
+  stats_.feasible_dives   = 0;
+  stats_.infeasible_dives = 0;
+  stats_.min_task_time    = inf;
+  stats_.max_task_time    = 0;
+  stats_.avg_task_time    = 0;
 
   if (guess_.size() != 0) {
     std::vector<f_t> crushed_guess;
@@ -952,6 +997,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     } while (local_status == mip_status_t::UNSET && heap_.size() > 0);
   }
 
+  if (status_ == mip_status_t::TIME_LIMIT) { settings_.log.printf("Time limit reached.\n"); }
+
 #pragma omp atomic write
   currently_branching_ = false;
 
@@ -961,6 +1008,22 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   f_t obj         = compute_user_objective(original_lp_, upper_bound);
   f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
   f_t gap_rel     = relative_gap(get_upper_bound(), lower_bound);
+
+#ifdef MEASURE_DIVE_TIME
+  settings_.log.printf(
+    "Total tasks %d, Min task time %.2fs, Max task time %.2fs, Avg task time %.2fs\n",
+    stats_.total_tasks,
+    stats_.min_task_time,
+    stats_.max_task_time,
+    stats_.avg_task_time);
+
+  settings_.log.printf("Total dives %d, Feasible dives %d (%.2f%%), Infeasible dives %d (%.2f%%)\n",
+                       stats_.total_dives,
+                       stats_.feasible_dives,
+                       100.0 * stats_.feasible_dives / stats_.total_dives,
+                       stats_.infeasible_dives,
+                       100.0 * stats_.infeasible_dives / stats_.total_dives);
+#endif
 
   settings_.log.printf(
     "Explored %d nodes in %.2fs.\n", stats_.nodes_explored, toc(stats_.start_time));
