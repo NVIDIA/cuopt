@@ -212,7 +212,9 @@ TEST(pdlp_class, run_sub_mittleman)
     // Testing for each solver_mode is ok as it's parsing that is the bottleneck here, not
     // solving
     auto solver_mode_list = {
+      cuopt::linear_programming::pdlp_solver_mode_t::Stable3,
       cuopt::linear_programming::pdlp_solver_mode_t::Stable2,
+      cuopt::linear_programming::pdlp_solver_mode_t::Stable1,
       cuopt::linear_programming::pdlp_solver_mode_t::Methodical1,
       cuopt::linear_programming::pdlp_solver_mode_t::Fast1,
     };

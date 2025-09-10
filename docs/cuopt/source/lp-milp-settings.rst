@@ -93,8 +93,8 @@ PDLP Solver Mode
 ``CUOPT_PDLP_MODE`` controls the mode under which PDLP should operate. The mode will change the way the
 PDLP internally optimizes the problem. The mode choice can drastically impact how fast a
 specific problem will be solved. Users are encouraged to test different modes to see which one
-fits the best their problem. By default, the solver uses ``Stable2``, the best
-overall mode from our experiments. For now, only three modes are available: ``Stable2``,
+fits the best their problem. By default, the solver uses ``Stable3``, the best
+overall mode from our experiments. For now, only three modes are available: ``Stable3``,
 ``Methodical1``, and ``Fast1``.
 
 For now, we do not offer a mechanism to know upfront which solver mode will be the best

@@ -37,6 +37,7 @@ cdef extern from "cuopt/linear_programming/pdlp/solver_settings.hpp" namespace "
     ctypedef enum pdlp_solver_mode_t "cuopt::linear_programming::pdlp_solver_mode_t": # noqa
         Stable1 "cuopt::linear_programming::pdlp_solver_mode_t::Stable1" # noqa
         Stable2 "cuopt::linear_programming::pdlp_solver_mode_t::Stable2" # noqa
+        Stable3 "cuopt::linear_programming::pdlp_solver_mode_t::Stable3" # noqa
         Methodical1 "cuopt::linear_programming::pdlp_solver_mode_t::Methodical1" # noqa
         Fast1 "cuopt::linear_programming::pdlp_solver_mode_t::Fast1" # noqa
 

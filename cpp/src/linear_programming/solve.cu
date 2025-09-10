@@ -147,7 +147,22 @@ static void set_Stable2()
   pdlp_hyper_params::use_conditional_major                                      = false;
 }
 
-// TODO how to cite properly cuPDLP+ here?
+/* 1 - 1 mapping of cuPDLPx(+) function from Haihao and al.
+ * For more information please read:
+ * @article{lu2025cupdlpx,
+ *   title={cuPDLPx: A Further Enhanced GPU-Based First-Order Solver for Linear Programming},
+ *   author={Lu, Haihao and Peng, Zedong and Yang, Jinwen},
+ *   journal={arXiv preprint arXiv:2507.14051},
+ *   year={2025}
+ * }
+ *
+ * @article{lu2024restarted,
+ *   title={Restarted Halpern PDHG for linear programming},
+ *   author={Lu, Haihao and Yang, Jinwen},
+ *   journal={arXiv preprint arXiv:2407.16144},
+ *   year={2024}
+ * }
+ */
 static void set_Stable3()
 {
   pdlp_hyper_params::initial_step_size_scaling                = 1.0;

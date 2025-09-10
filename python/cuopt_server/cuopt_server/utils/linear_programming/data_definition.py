@@ -498,13 +498,15 @@ class SolverConfig(StrictModel):
         "<br>"
         "- Stable1: 0, Legacy stable mode"
         "<br>"
-        "- Stable2: 1, Best overall mode from experiments; "
+        "- Stable2: 1, Legacy stable mode"
+        "<br>"
+        "- Stable3: 2, Best overall mode from experiments; "
         "balances speed and convergence success"
         "<br>"
-        "- Methodical1: 2, Takes slower individual steps, "
+        "- Methodical1: 3, Takes slower individual steps, "
         "but fewer are needed to converge"
         "<br>"
-        "- Fast1: 3, Fastest mode, but with less success in convergence"
+        "- Fast1: 4, Fastest mode, but with less success in convergence"
         "<br>"
         "Note: Not supported for MILP. ",
     )

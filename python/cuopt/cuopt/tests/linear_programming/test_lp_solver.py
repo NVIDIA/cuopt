@@ -302,7 +302,7 @@ def test_solver_settings():
     assert not settings.get_parameter(CUOPT_INFEASIBILITY_DETECTION)
 
     assert settings.get_parameter(CUOPT_PDLP_SOLVER_MODE) == int(
-        PDLPSolverMode.Stable2
+        PDLPSolverMode.Stable3
     )
 
     with pytest.raises(ValueError):
