@@ -29,7 +29,11 @@
 #include <rmm/device_uvector.hpp>
 #include <vector>
 
+#include <cuda_runtime_api.h>
+
 namespace cuopt::linear_programming::detail {
+
+#define CUDA_VER_13_0_UP (CUDART_VERSION >= 13000)
 
 template <typename i_t>
 i_t get_id_offset(const std::vector<i_t>& bin_offsets, i_t degree_cutoff)
@@ -416,7 +420,13 @@ void create_activity_sub_warp(cudaGraph_t act_graph,
     }
 
     cudaGraphAddKernelNode(&act_sub_warp_node, act_graph, NULL, 0, &kernelNodeParams);
-    cudaGraphAddDependencies(act_graph, &act_sub_warp_node, &set_bounds_changed_node, 1);
+    cudaGraphAddDependencies(act_graph,
+                             &act_sub_warp_node,        // "from" nodes
+                             &set_bounds_changed_node,  // "to" nodes
+#if CUDA_VER_13_0_UP
+                             nullptr,  // edge data
+#endif
+                             1);  // number of dependencies
   }
 }
 
@@ -471,7 +481,13 @@ void create_activity_sub_warp(cudaGraph_t act_graph,
     }
 
     cudaGraphAddKernelNode(&act_sub_warp_node, act_graph, NULL, 0, &kernelNodeParams);
-    cudaGraphAddDependencies(act_graph, &act_sub_warp_node, &set_bounds_changed_node, 1);
+    cudaGraphAddDependencies(act_graph,
+                             &act_sub_warp_node,        // "from" nodes
+                             &set_bounds_changed_node,  // "to" nodes
+#if CUDA_VER_13_0_UP
+                             nullptr,  // edge data
+#endif
+                             1);  // number of dependencies
   }
 }
 
@@ -555,7 +571,13 @@ void create_activity_per_block(cudaGraph_t act_graph,
     }
 
     cudaGraphAddKernelNode(&act_block_node, act_graph, NULL, 0, &kernelNodeParams);
-    cudaGraphAddDependencies(act_graph, &act_block_node, &set_bounds_changed_node, 1);
+    cudaGraphAddDependencies(act_graph,
+                             &act_block_node,           // "from" nodes
+                             &set_bounds_changed_node,  // "to" nodes
+#if CUDA_VER_13_0_UP
+                             nullptr,  // edge data
+#endif
+                             1);  // number of dependencies
   }
 }
 
@@ -660,8 +682,20 @@ void create_activity_heavy_cnst(cudaGraph_t act_graph,
       cudaGraphAddKernelNode(&finalize_heavy_node, act_graph, NULL, 0, &kernelNodeParams);
     }
 
-    cudaGraphAddDependencies(act_graph, &act_heavy_node, &finalize_heavy_node, 1);
-    cudaGraphAddDependencies(act_graph, &finalize_heavy_node, &set_bounds_changed_node, 1);
+    cudaGraphAddDependencies(act_graph,
+                             &act_heavy_node,       // "from" nodes
+                             &finalize_heavy_node,  // "to" nodes
+#if CUDA_VER_13_0_UP
+                             nullptr,  // edge data
+#endif
+                             1);  // number of dependencies
+    cudaGraphAddDependencies(act_graph,
+                             &finalize_heavy_node,      // "from" nodes
+                             &set_bounds_changed_node,  // "to" nodes
+#if CUDA_VER_13_0_UP
+                             nullptr,  // edge data
+#endif
+                             1);  // number of dependencies
   }
 }
 
@@ -873,7 +907,13 @@ void create_update_bounds_sub_warp(cudaGraph_t upd_graph,
     cudaGraphAddKernelNode(&upd_bnd_sub_warp_node, upd_graph, NULL, 0, &kernelNodeParams);
     RAFT_CUDA_TRY(cudaGetLastError());
 
-    cudaGraphAddDependencies(upd_graph, &upd_bnd_sub_warp_node, &bounds_changed_node, 1);
+    cudaGraphAddDependencies(upd_graph,
+                             &upd_bnd_sub_warp_node,  // "from" nodes
+                             &bounds_changed_node,    // "to" nodes
+#if CUDA_VER_13_0_UP
+                             nullptr,  // edge data
+#endif
+                             1);  // number of dependencies
     RAFT_CUDA_TRY(cudaGetLastError());
   }
 }
@@ -925,7 +965,13 @@ void create_update_bounds_sub_warp(cudaGraph_t upd_graph,
     cudaGraphAddKernelNode(&upd_bnd_sub_warp_node, upd_graph, NULL, 0, &kernelNodeParams);
     RAFT_CUDA_TRY(cudaGetLastError());
 
-    cudaGraphAddDependencies(upd_graph, &upd_bnd_sub_warp_node, &bounds_changed_node, 1);
+    cudaGraphAddDependencies(upd_graph,
+                             &upd_bnd_sub_warp_node,  // "from" nodes
+                             &bounds_changed_node,    // "to" nodes
+#if CUDA_VER_13_0_UP
+                             nullptr,  // edge data
+#endif
+                             1);  // number of dependencies
     RAFT_CUDA_TRY(cudaGetLastError());
   }
 }
@@ -1003,7 +1049,13 @@ void create_update_bounds_per_block(cudaGraph_t upd_graph,
     cudaGraphAddKernelNode(&upd_bnd_block_node, upd_graph, NULL, 0, &kernelNodeParams);
     RAFT_CUDA_TRY(cudaGetLastError());
 
-    cudaGraphAddDependencies(upd_graph, &upd_bnd_block_node, &bounds_changed_node, 1);
+    cudaGraphAddDependencies(upd_graph,
+                             &upd_bnd_block_node,   // "from" nodes
+                             &bounds_changed_node,  // "to" nodes
+#if CUDA_VER_13_0_UP
+                             nullptr,  // edge data
+#endif
+                             1);  // number of dependencies
     RAFT_CUDA_TRY(cudaGetLastError());
   }
 }
@@ -1097,9 +1149,21 @@ void create_update_bounds_heavy_vars(cudaGraph_t upd_graph,
       cudaGraphAddKernelNode(&finalize_heavy_node, upd_graph, NULL, 0, &kernelNodeParams);
       RAFT_CUDA_TRY(cudaGetLastError());
     }
-    cudaGraphAddDependencies(upd_graph, &upd_bnd_heavy_node, &finalize_heavy_node, 1);
+    cudaGraphAddDependencies(upd_graph,
+                             &upd_bnd_heavy_node,   // "from" nodes
+                             &finalize_heavy_node,  // "to" nodes
+#if CUDA_VER_13_0_UP
+                             nullptr,  // edge data
+#endif
+                             1);  // number of dependencies
     RAFT_CUDA_TRY(cudaGetLastError());
-    cudaGraphAddDependencies(upd_graph, &finalize_heavy_node, &bounds_changed_node, 1);
+    cudaGraphAddDependencies(upd_graph,
+                             &finalize_heavy_node,  // "from" nodes
+                             &bounds_changed_node,  // "to" nodes
+#if CUDA_VER_13_0_UP
+                             nullptr,  // edge data
+#endif
+                             1);  // number of dependencies
     RAFT_CUDA_TRY(cudaGetLastError());
   }
 }

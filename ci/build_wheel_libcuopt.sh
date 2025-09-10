@@ -21,8 +21,8 @@ source rapids-init-pip
 package_name="libcuopt"
 package_dir="python/libcuopt"
 
-# Install Boost
-bash ci/utils/install_boost.sh
+# Install Boost and TBB
+bash ci/utils/install_boost_tbb.sh
 
 export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNING=ON"
 

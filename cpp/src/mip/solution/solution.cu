@@ -35,11 +35,25 @@
 
 namespace cuopt::linear_programming::detail {
 
+template <typename f_t>
+rmm::device_uvector<f_t> get_lower_bounds(
+  rmm::device_uvector<typename type_2<f_t>::type> const& bounds, const raft::handle_t* handle_ptr)
+{
+  using f_t2 = typename type_2<f_t>::type;
+  rmm::device_uvector<f_t> lower_bounds(bounds.size(), handle_ptr->get_stream());
+  thrust::transform(handle_ptr->get_thrust_policy(),
+                    bounds.begin(),
+                    bounds.end(),
+                    lower_bounds.begin(),
+                    [] __device__(auto bnd) { return bnd.x; });
+  return lower_bounds;
+}
+
 template <typename i_t, typename f_t>
 solution_t<i_t, f_t>::solution_t(problem_t<i_t, f_t>& problem_)
   : problem_ptr(&problem_),
     handle_ptr(problem_.handle_ptr),
-    assignment(problem_.variable_lower_bounds, handle_ptr->get_stream()),
+    assignment(std::move(get_lower_bounds<f_t>(problem_.variable_bounds, handle_ptr))),
     lower_excess(problem_.n_constraints, handle_ptr->get_stream()),
     upper_excess(problem_.n_constraints, handle_ptr->get_stream()),
     lower_slack(problem_.n_constraints, handle_ptr->get_stream()),
@@ -220,16 +234,16 @@ void solution_t<i_t, f_t>::assign_random_within_bounds(f_t ratio_of_vars_to_rand
   std::vector<f_t> h_assignment = host_copy(assignment);
   std::uniform_real_distribution<f_t> unif_prob(0, 1);
 
-  auto variable_lower_bounds = cuopt::host_copy(problem_ptr->variable_lower_bounds);
-  auto variable_upper_bounds = cuopt::host_copy(problem_ptr->variable_upper_bounds);
-  auto variable_types        = cuopt::host_copy(problem_ptr->variable_types);
+  auto variable_bounds = cuopt::host_copy(problem_ptr->variable_bounds);
+  auto variable_types  = cuopt::host_copy(problem_ptr->variable_types);
   problem_ptr->handle_ptr->sync_stream();
-  for (size_t i = 0; i < problem_ptr->variable_lower_bounds.size(); ++i) {
+  for (size_t i = 0; i < problem_ptr->variable_bounds.size(); ++i) {
     if (only_integers && variable_types[i] != var_t::INTEGER) { continue; }
     bool skip = unif_prob(rng) > ratio_of_vars_to_random_assign;
     if (skip) { continue; }
-    f_t lower_bound = variable_lower_bounds[i];
-    f_t upper_bound = variable_upper_bounds[i];
+    auto var_bounds  = variable_bounds[i];
+    auto lower_bound = get_lower(var_bounds);
+    auto upper_bound = get_upper(var_bounds);
     if (lower_bound == -std::numeric_limits<f_t>::infinity()) {
       h_assignment[i] = upper_bound;
     } else if (upper_bound == std::numeric_limits<f_t>::infinity()) {
@@ -322,7 +336,7 @@ template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::compute_objective()
 {
   h_obj = compute_objective_from_vec<i_t, f_t>(
-    assignment, problem_ptr->objective_coefficients, handle_ptr->get_stream());
+    assignment, problem_ptr->objective_coefficients, handle_ptr);
   // to save from memory transactions, don't update the device objective
   // when needed we can update the device objective here
   h_user_obj = problem_ptr->get_user_obj_from_solver_obj(h_obj);
@@ -443,10 +457,11 @@ i_t solution_t<i_t, f_t>::calculate_similarity_radius(solution_t<i_t, f_t>& othe
     problem_ptr->integer_indices.end(),
     cuda::proclaim_return_type<bool>(
       [other_ptr, curr_assignment, p_view = problem_ptr->view()] __device__(i_t idx) -> bool {
+        auto var_bounds = p_view.variable_bounds[idx];
         return diverse_equal<f_t>(other_ptr[idx],
                                   curr_assignment[idx],
-                                  p_view.variable_lower_bounds[idx],
-                                  p_view.variable_upper_bounds[idx],
+                                  get_lower(var_bounds),
+                                  get_upper(var_bounds),
                                   p_view.is_integer_var(idx),
                                   p_view.tolerances.integrality_tolerance);
       }));
@@ -542,17 +557,15 @@ template <typename i_t, typename f_t>
 f_t solution_t<i_t, f_t>::compute_max_variable_violation()
 {
   cuopt_assert(problem_ptr->n_variables == assignment.size(), "Size mismatch");
-  cuopt_assert(problem_ptr->n_variables == problem_ptr->variable_lower_bounds.size(),
-               "Size mismatch");
-  cuopt_assert(problem_ptr->n_variables == problem_ptr->variable_upper_bounds.size(),
-               "Size mismatch");
+  cuopt_assert(problem_ptr->n_variables == problem_ptr->variable_bounds.size(), "Size mismatch");
   return thrust::transform_reduce(
     handle_ptr->get_thrust_policy(),
     thrust::make_counting_iterator(0),
     thrust::make_counting_iterator(0) + problem_ptr->n_variables,
     cuda::proclaim_return_type<f_t>([v = view()] __device__(i_t idx) -> f_t {
-      f_t lower_vio = max(0., v.problem.variable_lower_bounds[idx] - v.assignment[idx]);
-      f_t upper_vio = max(0., v.assignment[idx] - v.problem.variable_upper_bounds[idx]);
+      auto var_bounds = v.problem.variable_bounds[idx];
+      f_t lower_vio   = max(0., get_lower(var_bounds) - v.assignment[idx]);
+      f_t upper_vio   = max(0., v.assignment[idx] - get_upper(var_bounds));
       return max(lower_vio, upper_vio);
     }),
     0.,

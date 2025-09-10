@@ -14,12 +14,18 @@
 # limitations under the License.
 
 set(UTIL_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/utilities/seed_generator.cu
-                   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/logger_helper.cpp)
+                   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/logger_helper.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/version_info.cpp)
 
 add_subdirectory(linear_programming)
 add_subdirectory(math_optimization)
 add_subdirectory(mip)
-add_subdirectory(routing)
+
+# Only build routing for full builds, not LP-only builds
+if(NOT SKIP_ROUTING_BUILD)
+  add_subdirectory(routing)
+endif()
+
 add_subdirectory(dual_simplex)
 
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} ${UTIL_SRC_FILES} PARENT_SCOPE)

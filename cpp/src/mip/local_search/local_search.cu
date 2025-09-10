@@ -40,13 +40,11 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
     fj(context),
     // fj_tree(fj),
     constraint_prop(context),
-    lb_constraint_prop(context),
     line_segment_search(fj, constraint_prop),
     fp(context,
        fj,
        // fj_tree,
        constraint_prop,
-       lb_constraint_prop,
        line_segment_search,
        lp_optimal_solution_),
     rng(cuopt::seed_generator::get_seed()),
@@ -390,8 +388,6 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     solution.problem_ptr = &problem_with_objective_cut;
     solution.resize_to_problem();
     resize_vectors(problem_with_objective_cut, solution.handle_ptr);
-    lb_constraint_prop.temp_problem.setup(problem_with_objective_cut);
-    lb_constraint_prop.bounds_update.setup(lb_constraint_prop.temp_problem);
     constraint_prop.bounds_update.resize(problem_with_objective_cut);
   }
   for (i_t i = 0; i < n_fp_iterations && !timer.check_time_limit(); ++i) {
@@ -441,8 +437,6 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     solution.problem_ptr = old_problem_ptr;
     solution.resize_to_problem();
     resize_vectors(*old_problem_ptr, solution.handle_ptr);
-    lb_constraint_prop.temp_problem.setup(*old_problem_ptr);
-    lb_constraint_prop.bounds_update.setup(lb_constraint_prop.temp_problem);
     constraint_prop.bounds_update.resize(*old_problem_ptr);
     solution.handle_ptr->sync_stream();
   }

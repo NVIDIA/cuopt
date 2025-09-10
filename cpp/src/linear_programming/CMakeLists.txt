@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set(LP_SRC_FILES
+# Core LP files always included
+set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/optimization_problem.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/utilities/cython_solve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/problem_checking.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdlp.cu
@@ -34,7 +34,19 @@ set(LP_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/termination_strategy/termination_strategy.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/termination_strategy/infeasibility_information.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/termination_strategy/convergence_information.cu
+)
+
+# C and Python adapter files
+set(LP_ADAPTER_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/utilities/cython_solve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cuopt_c.cpp
 )
+
+# Choose which files to include based on build mode
+if(SKIP_C_PYTHON_ADAPTERS)
+  set(LP_SRC_FILES ${LP_CORE_FILES})
+else()
+  set(LP_SRC_FILES ${LP_CORE_FILES} ${LP_ADAPTER_FILES})
+endif()
 
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} ${LP_SRC_FILES} PARENT_SCOPE)

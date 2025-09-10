@@ -85,12 +85,23 @@ def load_library():
             libcuopt_lib = _load_wheel_installation(soname)
             if libcuopt_lib is None:
                 libcuopt_lib = _load_system_installation(soname)
-        except OSError:
+        except OSError as e:
             # If none of the searches above succeed, just silently return None
             # and rely on other mechanisms (like RPATHs on other DSOs) to
             # help the loader find the library.
-            pass
 
+            import warnings
+
+            warnings.warn(
+                f"Failed to load libcuopt library: {soname}. "
+                f"Error: {str(e)}. "
+                "Falling back to relying on system loader. "
+                "cuOpt functionality may be unavailable. "
+                "This might lead to a generic error such as "
+                "'libcuopt.so missing' if the library cannot be found.",
+                RuntimeWarning,
+            )
+            pass
     # The caller almost never needs to do anything with this library, but no
     # harm in offering the option since this object at least provides a handle
     # to inspect where libcuopt was loaded from.
