@@ -321,8 +321,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   // after every change to the problem, we should resize all the relevant vars
   // we need to encapsulate that to prevent repetitions
   ls.resize_vectors(*problem_ptr, problem_ptr->handle_ptr);
-  ls.lb_constraint_prop.temp_problem.setup(*problem_ptr);
-  ls.lb_constraint_prop.bounds_update.setup(ls.lb_constraint_prop.temp_problem);
+  // ls.lb_constraint_prop.temp_problem.setup(*problem_ptr);
+  // ls.lb_constraint_prop.bounds_update.setup(ls.lb_constraint_prop.temp_problem);
   ls.constraint_prop.bounds_update.resize(*problem_ptr);
   problem_ptr->check_problem_representation(true);
   // have the structure ready for reusing later
@@ -347,8 +347,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
   }
   // careful, assign the correct probing cache
-  ls.lb_constraint_prop.bounds_update.probing_cache.probing_cache =
-    ls.constraint_prop.bounds_update.probing_cache.probing_cache;
+  // ls.lb_constraint_prop.bounds_update.probing_cache.probing_cache =
+  //   ls.constraint_prop.bounds_update.probing_cache.probing_cache;
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
   lp_state_t<i_t, f_t>& lp_state = problem_ptr->lp_state;
@@ -368,6 +368,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     lp_settings.return_first_feasible = false;
     lp_settings.save_state            = true;
     lp_settings.concurrent_halt       = &global_concurrent_halt;
+    lp_settings.has_initial_primal    = false;
     rmm::device_uvector<f_t> lp_optimal_solution_copy(lp_optimal_solution.size(),
                                                       problem_ptr->handle_ptr->get_stream());
     auto lp_result =
@@ -416,6 +417,11 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 
   auto sol = generate_solution(timer.remaining_time(), false);
   population.add_solution(std::move(solution_t<i_t, f_t>(sol)));
+  if (timer.check_time_limit()) {
+    auto new_sol_vector = population.get_external_solutions();
+    population.add_solutions_from_vec(std::move(new_sol_vector));
+    return population.best_feasible();
+  }
   run_fp_alone(sol);
   population.update_weights();
 

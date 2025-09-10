@@ -33,6 +33,7 @@ struct relaxed_lp_settings_t {
   bool return_first_feasible        = false;
   bool save_state                   = true;
   bool per_constraint_residual      = false;
+  bool has_initial_primal           = true;
   std::atomic<int>* concurrent_halt = nullptr;
 };
 
