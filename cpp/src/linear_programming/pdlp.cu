@@ -1359,6 +1359,10 @@ void pdlp_solver_t<i_t, f_t>::halpern_update()
     f_t(restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart() + 1) /
     f_t(restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart() + 2);
 
+#ifdef CUPDLP_DEBUG_MODE
+  printf("halper_update weight %lf\n", weight);
+#endif
+
   // Update primal
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(pdhg_solver_.get_reflected_primal().data(),
@@ -1378,7 +1382,7 @@ void pdlp_solver_t<i_t, f_t>::halpern_update()
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(pdhg_solver_.get_reflected_dual().data(),
                           pdhg_solver_.get_saddle_point_state().get_dual_solution().data(),
-                          restart_strategy_.last_restart_duality_gap_.primal_solution_.data()),
+                          restart_strategy_.last_restart_duality_gap_.dual_solution_.data()),
     pdhg_solver_.get_saddle_point_state().get_dual_solution().data(),
     dual_size_h_,
     [weight, reflection_coefficient = pdlp_hyper_params::reflection_coefficient] __device__(

@@ -145,7 +145,7 @@ static void set_Stable2()
   pdlp_hyper_params::reflection_coefficient                                     = 1.0;
 }
 
-// Same as Stable2 but without adaptive step size strategy
+// TODO how to cite properly cuPDLP+ here?
 static void set_Stable3()
 {
   pdlp_hyper_params::initial_step_size_scaling                = 1.0;
