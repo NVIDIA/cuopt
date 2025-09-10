@@ -136,8 +136,9 @@ class problem_t {
     DI bool check_variable_within_bounds(i_t v, f_t val) const
     {
       const f_t int_tol = tolerances.integrality_tolerance;
+      auto bounds       = variable_bounds[v];
       bool within_bounds =
-        val <= (variable_upper_bounds[v] + int_tol) && val >= (variable_lower_bounds[v] - int_tol);
+        val <= (get_upper(bounds) + int_tol) && val >= (get_lower(bounds) - int_tol);
       return within_bounds;
     }
 
@@ -158,21 +159,21 @@ class problem_t {
     {
       cuopt_assert(var_t::INTEGER != variable_types[v],
                    "Random value can only be called on continuous values");
-      f_t lower_bound = variable_lower_bounds[v];
-      f_t upper_bound = variable_upper_bounds[v];
+      auto bounds = variable_bounds[v];
 
       f_t val;
-      if (isfinite(lower_bound) && isfinite(upper_bound)) {
-        f_t diff = upper_bound - lower_bound;
-        val      = diff * rng.next_float() + lower_bound;
+      if (isfinite(get_lower(bounds)) && isfinite(get_upper(bounds))) {
+        f_t diff = get_upper(bounds) - get_lower(bounds);
+        val      = diff * rng.next_float() + get_lower(bounds);
       } else {
-        auto finite_bound = isfinite(lower_bound) ? lower_bound : upper_bound;
+        auto finite_bound = isfinite(get_lower(bounds)) ? get_lower(bounds) : get_upper(bounds);
         val               = finite_bound;
       }
-      cuopt_assert(isfinite(lower_bound), "Value must be finite");
+      cuopt_assert(isfinite(get_lower(bounds)), "Value must be finite");
       return val;
     }
 
+    using f_t2 = typename type_2<f_t>::type;
     typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
     i_t n_variables;
     i_t n_integer_vars;
@@ -187,8 +188,7 @@ class problem_t {
     raft::device_span<i_t> variables;
     raft::device_span<i_t> offsets;
     raft::device_span<f_t> objective_coefficients;
-    raft::device_span<f_t> variable_lower_bounds;
-    raft::device_span<f_t> variable_upper_bounds;
+    raft::device_span<f_t2> variable_bounds;
     raft::device_span<f_t> constraint_lower_bounds;
     raft::device_span<f_t> constraint_upper_bounds;
     raft::device_span<var_t> variable_types;
@@ -242,8 +242,8 @@ class problem_t {
 
   /** weights in the objective function */
   rmm::device_uvector<f_t> objective_coefficients;
-  rmm::device_uvector<f_t> variable_lower_bounds;
-  rmm::device_uvector<f_t> variable_upper_bounds;
+  using f_t2 = typename type_2<f_t>::type;
+  rmm::device_uvector<f_t2> variable_bounds;
   rmm::device_uvector<f_t> constraint_lower_bounds;
   rmm::device_uvector<f_t> constraint_upper_bounds;
   /* biggest between cstr lower and upper */

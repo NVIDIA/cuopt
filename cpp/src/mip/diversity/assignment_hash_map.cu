@@ -91,6 +91,7 @@ template <typename i_t, typename f_t>
 size_t assignment_hash_map_t<i_t, f_t>::hash_solution(solution_t<i_t, f_t>& solution)
 {
   const int TPB = 1024;
+
   fill_integer_assignment(solution);
   thrust::fill(
     solution.handle_ptr->get_thrust_policy(), reduction_buffer.begin(), reduction_buffer.end(), 0);

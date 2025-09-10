@@ -59,6 +59,36 @@ struct transform_bounds_functor {
 };
 
 template <typename i_t, typename f_t>
+static void set_variable_bounds(detail::problem_t<i_t, f_t>& op_problem)
+{
+  op_problem.variable_bounds.resize(op_problem.n_variables, op_problem.handle_ptr->get_stream());
+  auto vars_bnd = make_span(op_problem.variable_bounds);
+
+  auto orig_problem          = op_problem.original_problem_ptr;
+  auto variable_lower_bounds = make_span(orig_problem->get_variable_lower_bounds());
+  auto variable_upper_bounds = make_span(orig_problem->get_variable_upper_bounds());
+
+  bool default_variable_lb = (orig_problem->get_variable_lower_bounds().is_empty());
+  bool default_variable_ub = (orig_problem->get_variable_upper_bounds().is_empty());
+
+  thrust::for_each(op_problem.handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator<i_t>(0),
+                   thrust::make_counting_iterator<i_t>(op_problem.n_variables),
+                   [vars_bnd,
+                    variable_lower_bounds,
+                    variable_upper_bounds,
+                    default_variable_lb,
+                    default_variable_ub] __device__(auto i) {
+                     using f_t2 = typename type_2<f_t>::type;
+                     auto lb    = f_t{0};
+                     auto ub    = std::numeric_limits<f_t>::infinity();
+                     if (!default_variable_lb) { lb = variable_lower_bounds[i]; }
+                     if (!default_variable_ub) { ub = variable_upper_bounds[i]; }
+                     vars_bnd[i] = f_t2{lb, ub};
+                   });
+}
+
+template <typename i_t, typename f_t>
 static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
 {
   raft::common::nvtx::range scope("set_bounds_if_not_set");
@@ -90,25 +120,7 @@ static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
                       transform_bounds_functor<f_t>());
   }
 
-  // If variable bound was not set, set it to default value
-  if (op_problem.variable_lower_bounds.is_empty() &&
-      !op_problem.objective_coefficients.is_empty()) {
-    op_problem.variable_lower_bounds.resize(op_problem.objective_coefficients.size(),
-                                            op_problem.handle_ptr->get_stream());
-    thrust::fill(op_problem.handle_ptr->get_thrust_policy(),
-                 op_problem.variable_lower_bounds.begin(),
-                 op_problem.variable_lower_bounds.end(),
-                 f_t(0));
-  }
-  if (op_problem.variable_upper_bounds.is_empty() &&
-      !op_problem.objective_coefficients.is_empty()) {
-    op_problem.variable_upper_bounds.resize(op_problem.objective_coefficients.size(),
-                                            op_problem.handle_ptr->get_stream());
-    thrust::fill(op_problem.handle_ptr->get_thrust_policy(),
-                 op_problem.variable_upper_bounds.begin(),
-                 op_problem.variable_upper_bounds.end(),
-                 std::numeric_limits<f_t>::infinity());
-  }
+  set_variable_bounds(op_problem);
   if (op_problem.variable_types.is_empty() && !op_problem.objective_coefficients.is_empty()) {
     op_problem.variable_types.resize(op_problem.objective_coefficients.size(),
                                      op_problem.handle_ptr->get_stream());
@@ -261,11 +273,11 @@ static bool check_var_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
   bool crossing_bounds_detected =
     thrust::any_of(problem.handle_ptr->get_thrust_policy(),
                    thrust::counting_iterator(0),
-                   thrust::counting_iterator((i_t)problem.variable_lower_bounds.size()),
+                   thrust::counting_iterator((i_t)problem.variable_bounds.size()),
                    [tolerance = problem.tolerances.presolve_absolute_tolerance,
-                    lb        = make_span(problem.variable_lower_bounds),
-                    ub        = make_span(problem.variable_upper_bounds)] __device__(i_t index) {
-                     return (lb[index] > ub[index] + tolerance);
+                    var_bnd   = make_span(problem.variable_bounds)] __device__(i_t index) {
+                     auto var_bounds = var_bnd[index];
+                     return (get_lower(var_bounds) > get_upper(var_bounds) + tolerance);
                    });
   return !crossing_bounds_detected;
 }
@@ -292,12 +304,12 @@ static void round_bounds(detail::problem_t<i_t, f_t>& problem)
   thrust::for_each(problem.handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator(0),
                    thrust::make_counting_iterator(problem.n_variables),
-                   [lb    = make_span(problem.variable_lower_bounds),
-                    ub    = make_span(problem.variable_upper_bounds),
-                    types = make_span(problem.variable_types)] __device__(i_t index) {
+                   [bounds = make_span(problem.variable_bounds),
+                    types  = make_span(problem.variable_types)] __device__(i_t index) {
                      if (types[index] == var_t::INTEGER) {
-                       lb[index] = ceil(lb[index]);
-                       ub[index] = floor(ub[index]);
+                       using f_t2    = typename type_2<f_t>::type;
+                       auto bnd      = bounds[index];
+                       bounds[index] = f_t2{ceil(get_lower(bnd)), floor(get_upper(bnd))};
                      }
                    });
 }

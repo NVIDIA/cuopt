@@ -77,13 +77,17 @@ struct a_sub_scalar_times_b {
   const f_t* scalar_;
 };
 
-template <typename f_t>
+template <typename f_t, typename f_t2>
 struct primal_projection {
   primal_projection(const f_t* step_size) : step_size_(step_size) {}
 
-  __device__ __forceinline__ thrust::tuple<f_t, f_t, f_t> operator()(
-    f_t primal, f_t obj_coeff, f_t AtY, f_t lower, f_t upper)
+  __device__ __forceinline__ thrust::tuple<f_t, f_t, f_t> operator()(f_t primal,
+                                                                     f_t obj_coeff,
+                                                                     f_t AtY,
+                                                                     f_t2 bounds)
   {
+    f_t lower    = get_lower(bounds);
+    f_t upper    = get_upper(bounds);
     f_t gradient = obj_coeff - AtY;
     f_t next     = primal - (*step_size_ * gradient);
     next         = raft::max<f_t>(raft::min<f_t>(next, upper), lower);
@@ -129,10 +133,18 @@ struct a_divides_sqrt_b_bounded {
 };
 
 template <typename f_t>
-struct clamp {
+struct constraint_clamp {
   __device__ f_t operator()(f_t value, f_t lower, f_t upper)
   {
     return raft::min<f_t>(raft::max<f_t>(value, lower), upper);
+  }
+};
+
+template <typename f_t, typename f_t2>
+struct clamp {
+  __device__ f_t operator()(f_t value, f_t2 bounds)
+  {
+    return raft::min<f_t>(raft::max<f_t>(value, get_lower(bounds)), get_upper(bounds));
   }
 };
 
@@ -177,34 +189,68 @@ struct violation {
   }
 };
 
-template <typename f_t>
+template <typename f_t, typename f_t2>
 struct max_violation {
   max_violation() {}
-  __device__ f_t operator()(const thrust::tuple<f_t, f_t, f_t>& t) const
+  __device__ f_t operator()(const thrust::tuple<f_t, f_t2>& t) const
   {
-    const f_t value = thrust::get<0>(t);
-    const f_t lower = thrust::get<1>(t);
-    const f_t upper = thrust::get<2>(t);
-    f_t local_max   = f_t(0.0);
+    const f_t value   = thrust::get<0>(t);
+    const f_t2 bounds = thrust::get<1>(t);
+    const f_t lower   = get_lower(bounds);
+    const f_t upper   = get_upper(bounds);
+    f_t local_max     = f_t(0.0);
     if (isfinite(lower)) { local_max = raft::max(local_max, -value); }
     if (isfinite(upper)) { local_max = raft::max(local_max, value); }
     return local_max;
   }
 };
 
-template <typename f_t>
-struct bound_value_gradient {
-  __device__ f_t operator()(f_t value, f_t lower, f_t upper)
+template <typename f_t, typename f_t2>
+struct divide_check_zero {
+  __device__ f_t2 operator()(f_t2 bounds, f_t value)
   {
+    if (value == f_t{0}) {
+      return f_t2{0, 0};
+    } else {
+      return f_t2{get_lower(bounds) / value, get_upper(bounds) / value};
+    }
+  }
+};
+
+template <typename f_t, typename f_t2>
+struct bound_value_gradient {
+  __device__ f_t operator()(f_t value, f_t2 bounds)
+  {
+    f_t lower = get_lower(bounds);
+    f_t upper = get_upper(bounds);
     if (value > f_t(0) && value < f_t(0)) { return 0; }
     return value > f_t(0) ? lower : upper;
   }
 };
 
 template <typename f_t>
-struct bound_value_reduced_cost_product {
+struct constraint_bound_value_reduced_cost_product {
   __device__ f_t operator()(f_t value, f_t lower, f_t upper)
   {
+    f_t bound_value = f_t(0);
+    if (value > f_t(0)) {
+      // A positive reduced cost is associated with a binding lower bound.
+      bound_value = lower;
+    } else if (value < f_t(0)) {
+      // A negative reduced cost is associated with a binding upper bound.
+      bound_value = upper;
+    }
+    f_t val = isfinite(bound_value) ? value * bound_value : f_t(0);
+    return val;
+  }
+};
+
+template <typename f_t, typename f_t2>
+struct bound_value_reduced_cost_product {
+  __device__ f_t operator()(f_t value, f_t2 variable_bounds)
+  {
+    f_t lower       = get_lower(variable_bounds);
+    f_t upper       = get_upper(variable_bounds);
     f_t bound_value = f_t(0);
     if (value > f_t(0)) {
       // A positive reduced cost is associated with a binding lower bound.
