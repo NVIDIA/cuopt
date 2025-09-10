@@ -528,7 +528,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
 {
   logger_t log;
   log.log                                      = false;
-  f_t gap                                      = upper_bound - lower_bound;
   std::vector<variable_status_t>& leaf_vstatus = node_ptr->vstatus;
   lp_solution_t<i_t, f_t> leaf_solution(leaf_problem.num_rows, leaf_problem.num_cols);
 
@@ -599,6 +598,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
     constexpr f_t fathom_tol = 1e-5;
     if (leaf_fractional == 0) {
       bool send_solution = false;
+      f_t gap            = upper_bound - lower_bound;
 
       mutex_upper_.lock();
       if (leaf_objective < upper_bound_) {
@@ -949,7 +949,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return mip_status_t::OPTIMAL;
   }
 
-  pc_.initialize(original_lp_.num_cols);
+  pc_.resize(original_lp_.num_cols);
   strong_branching<i_t, f_t>(original_lp_,
                              settings_,
                              stats_.start_time,
@@ -1003,8 +1003,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
     if (settings_.bnb_search_strategy ==
         bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
-      // TODO: Instead of waiting, we should send a signal that we are already done in the main
-      // thread
       diving_thread.get();
     }
   }
