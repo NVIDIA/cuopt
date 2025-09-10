@@ -20,7 +20,9 @@
 #include <linear_programming/utils.cuh>
 #include <mip/mip_constants.hpp>
 
-#include <utilities/copy_helpers.hpp>  // TODO remove once debug is done
+#ifdef CUPDLP_DEBUG_MODE
+#include <utilities/copy_helpers.hpp>
+#endif
 
 #include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>

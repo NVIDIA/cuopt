@@ -76,7 +76,7 @@ i_t conditional_major(uint64_t total_pdlp_iterations)
   uint64_t threshold = 1000;
   uint64_t iteration = 0;
 
-  constexpr uint64_t max_u64 = std::numeric_limits<uint64_t>::max();
+  [[maybe_unused]] constexpr uint64_t max_u64 = std::numeric_limits<uint64_t>::max();
 
   while (total_pdlp_iterations >= threshold) {
     ++iteration;
