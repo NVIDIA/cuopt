@@ -21,6 +21,7 @@
 #include "problem_kernels.cuh"
 
 #include <utilities/copy_helpers.hpp>
+#include <utilities/cuda_helpers.cuh>
 #include <utilities/macros.cuh>
 
 #include <linear_programming/utils.cuh>
@@ -798,16 +799,21 @@ void problem_t<i_t, f_t>::compute_related_variables(double time_limit)
 
   handle_ptr->sync_stream();
 
+  // previously used constants were based on 40GB of memory. Scale accordingly on smaller GPUs
+  // We can't rely on querying free memory or allocation try/catch
+  // since this would break determinism guarantees (GPU may be shared by other processes)
+  f_t size_factor = std::min(1.0, cuopt::get_device_memory_size() / 1e9 / 40.0);
+
   // TODO: determine optimal number of slices based on available GPU memory? This used to be 2e9 /
   // n_variables
-  i_t max_slice_size = 6e8 / n_variables;
+  i_t max_slice_size = 6e8 * size_factor / n_variables;
 
   rmm::device_uvector<i_t> varmap(max_slice_size * n_variables, handle_ptr->get_stream());
   rmm::device_uvector<i_t> offsets(max_slice_size * n_variables, handle_ptr->get_stream());
 
   related_variables.resize(0, handle_ptr->get_stream());
   // TODO: this used to be 1e8
-  related_variables.reserve(1e8, handle_ptr->get_stream());  // reserve space
+  related_variables.reserve(1e8 * size_factor, handle_ptr->get_stream());  // reserve space
   related_variables_offsets.resize(n_variables + 1, handle_ptr->get_stream());
   related_variables_offsets.set_element_to_zero_async(0, handle_ptr->get_stream());
 
@@ -851,7 +857,7 @@ void problem_t<i_t, f_t>::compute_related_variables(double time_limit)
     auto current_time = std::chrono::high_resolution_clock::now();
     // if the related variable array would wind up being too large for available memory, abort
     // TODO this used to be 1e9
-    if (related_variables.size() > 1e9 ||
+    if (related_variables.size() > 1e9 * size_factor ||
         std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count() >
           time_limit) {
       CUOPT_LOG_DEBUG(
