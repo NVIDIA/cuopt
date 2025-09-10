@@ -95,6 +95,17 @@ struct constraint_prop_t {
   void sort_by_frac(solution_t<i_t, f_t>& sol, raft::device_span<i_t> vars);
   void restore_bounds(solution_t<i_t, f_t>& sol);
   void save_bounds(solution_t<i_t, f_t>& sol);
+
+  void copy_bounds(rmm::device_uvector<f_t>& output_lb,
+                   rmm::device_uvector<f_t>& output_ub,
+                   const rmm::device_uvector<typename type_2<f_t>::type>& input_bounds,
+                   const raft::handle_t* handle_ptr);
+
+  void copy_bounds(rmm::device_uvector<typename type_2<f_t>::type>& output_bounds,
+                   const rmm::device_uvector<f_t>& input_lb,
+                   const rmm::device_uvector<f_t>& input_ub,
+                   const raft::handle_t* handle_ptr);
+
   void copy_bounds(rmm::device_uvector<f_t>& output_lb,
                    rmm::device_uvector<f_t>& output_ub,
                    const rmm::device_uvector<f_t>& input_lb,

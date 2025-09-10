@@ -47,8 +47,7 @@ struct fj_cpu_climber_t {
   std::vector<i_t> h_offsets;
   std::vector<i_t> h_variables;
   std::vector<f_t> h_obj_coeffs;
-  std::vector<f_t> h_var_lb;
-  std::vector<f_t> h_var_ub;
+  std::vector<typename type_2<f_t>::type> h_var_bounds;
   std::vector<f_t> h_cstr_lb;
   std::vector<f_t> h_cstr_ub;
   std::vector<var_t> h_var_types;

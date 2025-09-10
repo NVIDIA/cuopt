@@ -183,8 +183,9 @@ template <typename i_t, typename f_t>
 HDI f_t get_breakthrough_move(typename fj_t<i_t, f_t>::climber_data_t::view_t fj, i_t var_idx)
 {
   f_t obj_coeff = fj.pb.objective_coefficients[var_idx];
-  f_t v_lb      = fj.pb.variable_lower_bounds[var_idx];
-  f_t v_ub      = fj.pb.variable_upper_bounds[var_idx];
+  auto bounds   = fj.pb.variable_bounds[var_idx];
+  f_t v_lb      = get_lower(bounds);
+  f_t v_ub      = get_upper(bounds);
   cuopt_assert(isfinite(v_lb) || isfinite(v_ub), "unexpected free variable");
   cuopt_assert(v_lb <= v_ub, "invalid bounds");
   cuopt_assert(fj.pb.check_variable_within_bounds(var_idx, fj.incumbent_assignment[var_idx]),

@@ -152,10 +152,12 @@ i_t bounds_repair_t<i_t, f_t>::compute_best_shift(problem_t<i_t, f_t>& problem,
         shift_amount = (down_vio / var_coeff);
       }
       if (shift_amount != 0.) {
-        f_t var_lb   = pb_v.variable_lower_bounds[var_idx];
-        f_t var_ub   = pb_v.variable_upper_bounds[var_idx];
-        f_t o_var_lb = o_pb_v.variable_lower_bounds[var_idx];
-        f_t o_var_ub = o_pb_v.variable_upper_bounds[var_idx];
+        auto var_bnd   = pb_v.variable_bounds[var_idx];
+        auto o_var_bnd = o_pb_v.variable_bounds[var_idx];
+        f_t var_lb     = get_lower(var_bnd);
+        f_t var_ub     = get_upper(var_bnd);
+        f_t o_var_lb   = get_lower(o_var_bnd);
+        f_t o_var_ub   = get_upper(o_var_bnd);
         cuopt_assert(var_lb + pb_v.tolerances.integrality_tolerance >= o_var_lb, "");
         cuopt_assert(o_var_ub + pb_v.tolerances.integrality_tolerance >= var_ub, "");
         // round the shift amount of integer
@@ -211,8 +213,9 @@ __global__ void compute_damages_kernel(typename problem_t<i_t, f_t>::view_t prob
 {
   i_t var_idx                     = candidates.variable_index[blockIdx.x];
   f_t shift_amount                = candidates.bound_shift[blockIdx.x];
-  f_t v_lb                        = problem.variable_lower_bounds[var_idx];
-  f_t v_ub                        = problem.variable_upper_bounds[var_idx];
+  auto v_bnd                      = problem.variable_bounds[var_idx];
+  f_t v_lb                        = get_lower(v_bnd);
+  f_t v_ub                        = get_upper(v_bnd);
   f_t th_damage                   = 0.;
   i_t n_infeasible_cstr_delta     = 0;
   auto [offset_begin, offset_end] = problem.reverse_range_for_var(var_idx);
@@ -348,37 +351,37 @@ void bounds_repair_t<i_t, f_t>::apply_move(problem_t<i_t, f_t>& problem,
                                            problem_t<i_t, f_t>& original_problem,
                                            i_t move_idx)
 {
-  run_device_lambda(
-    handle_ptr->get_stream(),
-    [move_idx,
-     candidates       = candidates.view(),
-     problem          = problem.view(),
-     original_problem = original_problem.view()] __device__() {
-      i_t var_idx     = candidates.variable_index[move_idx];
-      f_t shift_value = candidates.bound_shift[move_idx];
-      DEVICE_LOG_TRACE("Applying move on var %d with shift %f lb %f ub %f o_lb %f o_ub %f \n",
-                       var_idx,
-                       shift_value,
-                       problem.variable_lower_bounds[var_idx],
-                       problem.variable_upper_bounds[var_idx],
-                       original_problem.variable_lower_bounds[var_idx],
-                       original_problem.variable_upper_bounds[var_idx]);
-      if (problem.integer_equal(problem.variable_lower_bounds[var_idx],
-                                problem.variable_upper_bounds[var_idx])) {
-        *candidates.at_least_one_singleton_moved = 1;
-      }
+  run_device_lambda(handle_ptr->get_stream(),
+                    [move_idx,
+                     candidates       = candidates.view(),
+                     problem          = problem.view(),
+                     original_problem = original_problem.view()] __device__() {
+                      i_t var_idx     = candidates.variable_index[move_idx];
+                      f_t shift_value = candidates.bound_shift[move_idx];
+                      auto bounds     = problem.variable_bounds[var_idx];
+                      DEVICE_LOG_TRACE(
+                        "Applying move on var %d with shift %f lb %f ub %f o_lb %f o_ub %f \n",
+                        var_idx,
+                        shift_value,
+                        get_lower(bounds),
+                        get_upper(bounds),
+                        get_lower(original_problem.variable_bounds[var_idx]),
+                        get_upper(original_problem.variable_bounds[var_idx]));
+                      if (problem.integer_equal(get_lower(bounds), get_upper(bounds))) {
+                        *candidates.at_least_one_singleton_moved = 1;
+                      }
 
-      problem.variable_lower_bounds[var_idx] += shift_value;
-      problem.variable_upper_bounds[var_idx] += shift_value;
-      cuopt_assert(
-        original_problem.variable_lower_bounds[var_idx] <=
-          problem.variable_lower_bounds[var_idx] + problem.tolerances.integrality_tolerance,
-        "");
-      cuopt_assert(original_problem.variable_upper_bounds[var_idx] +
-                       problem.tolerances.integrality_tolerance >=
-                     problem.variable_upper_bounds[var_idx],
-                   "");
-    });
+                      get_lower(bounds) += shift_value;
+                      get_upper(bounds) += shift_value;
+                      problem.variable_bounds[var_idx] = bounds;
+                      cuopt_assert(get_lower(original_problem.variable_bounds[var_idx]) <=
+                                     get_lower(bounds) + problem.tolerances.integrality_tolerance,
+                                   "");
+                      cuopt_assert(get_upper(original_problem.variable_bounds[var_idx]) +
+                                       problem.tolerances.integrality_tolerance >=
+                                     get_upper(bounds),
+                                   "");
+                    });
 }
 
 template <typename i_t, typename f_t>

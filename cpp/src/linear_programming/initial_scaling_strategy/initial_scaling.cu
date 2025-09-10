@@ -375,18 +375,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
     primal_size_h_,
     stream_view_);
 
-  raft::linalg::eltwiseDivideCheckZero(
-    const_cast<rmm::device_uvector<f_t>&>(op_problem_scaled_.variable_lower_bounds).data(),
-    op_problem_scaled_.variable_lower_bounds.data(),
-    cummulative_variable_scaling_.data(),
-    primal_size_h_,
-    stream_view_);
-  raft::linalg::eltwiseDivideCheckZero(
-    const_cast<rmm::device_uvector<f_t>&>(op_problem_scaled_.variable_upper_bounds).data(),
-    op_problem_scaled_.variable_upper_bounds.data(),
-    cummulative_variable_scaling_.data(),
-    primal_size_h_,
-    stream_view_);
+  using f_t2 = typename type_2<f_t>::type;
+  cub::DeviceTransform::Transform(cuda::std::make_tuple(op_problem_scaled_.variable_bounds.data(),
+                                                        cummulative_variable_scaling_.data()),
+                                  op_problem_scaled_.variable_bounds.data(),
+                                  primal_size_h_,
+                                  divide_check_zero<f_t, f_t2>(),
+                                  stream_view_);
 
   raft::linalg::eltwiseMultiply(
     const_cast<rmm::device_uvector<f_t>&>(op_problem_scaled_.constraint_lower_bounds).data(),

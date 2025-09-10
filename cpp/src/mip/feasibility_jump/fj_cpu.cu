@@ -432,8 +432,10 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
           new_val = val + delta;
         }
         // fallback
-        if (new_val < fj_cpu.h_var_lb[var_idx] || new_val > fj_cpu.h_var_ub[var_idx]) {
-          new_val = cstr_coeff * sign > 0 ? fj_cpu.h_var_lb[var_idx] : fj_cpu.h_var_ub[var_idx];
+        if (new_val < get_lower(fj_cpu.h_var_bounds[var_idx]) ||
+            new_val > get_upper(fj_cpu.h_var_bounds[var_idx])) {
+          new_val = cstr_coeff * sign > 0 ? get_lower(fj_cpu.h_var_bounds[var_idx])
+                                          : get_upper(fj_cpu.h_var_bounds[var_idx]);
         }
       }
       cuopt_assert(isfinite(new_val), "new_val is not finite");
@@ -586,8 +588,8 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_lift_move(
       // flip move wouldn't improve
       if (delta * obj_coeff >= 0) continue;
     } else {
-      f_t lfd_lb                      = fj_cpu.h_var_lb[var_idx] - val;
-      f_t lfd_ub                      = fj_cpu.h_var_ub[var_idx] - val;
+      f_t lfd_lb                      = get_lower(fj_cpu.h_var_bounds[var_idx]) - val;
+      f_t lfd_ub                      = get_upper(fj_cpu.h_var_bounds[var_idx]) - val;
       auto [offset_begin, offset_end] = fj_cpu.view.pb.reverse_range_for_var(var_idx);
       for (i_t j = offset_begin; j < offset_end; j += 1) {
         auto cstr_idx      = fj_cpu.view.pb.reverse_constraints[j];
@@ -676,8 +678,8 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
 
   for (auto var_idx : sampled_vars) {
-    f_t lb  = ceil(std::max(fj_cpu.h_var_lb[var_idx], -1e7));
-    f_t ub  = floor(std::min(fj_cpu.h_var_ub[var_idx], 1e7));
+    f_t lb  = ceil(std::max(get_lower(fj_cpu.h_var_bounds[var_idx]), -1e7));
+    f_t ub  = floor(std::min(get_upper(fj_cpu.h_var_bounds[var_idx]), 1e7));
     f_t val = lb + (ub - lb) * rng.next_double();
     if (fj_cpu.view.pb.is_integer_var(var_idx)) {
       val = std::round(val);
@@ -716,8 +718,7 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.h_offsets         = cuopt::host_copy(problem.offsets, handle_ptr->get_stream());
   fj_cpu.h_variables       = cuopt::host_copy(problem.variables, handle_ptr->get_stream());
   fj_cpu.h_obj_coeffs = cuopt::host_copy(problem.objective_coefficients, handle_ptr->get_stream());
-  fj_cpu.h_var_lb     = cuopt::host_copy(problem.variable_lower_bounds, handle_ptr->get_stream());
-  fj_cpu.h_var_ub     = cuopt::host_copy(problem.variable_upper_bounds, handle_ptr->get_stream());
+  fj_cpu.h_var_bounds = cuopt::host_copy(problem.variable_bounds, handle_ptr->get_stream());
   fj_cpu.h_cstr_lb    = cuopt::host_copy(problem.constraint_lower_bounds, handle_ptr->get_stream());
   fj_cpu.h_cstr_ub    = cuopt::host_copy(problem.constraint_upper_bounds, handle_ptr->get_stream());
   fj_cpu.h_var_types  = cuopt::host_copy(problem.variable_types, handle_ptr->get_stream());
@@ -768,10 +769,8 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     raft::device_span<f_t>(fj_cpu.h_cstr_lb.data(), fj_cpu.h_cstr_lb.size());
   fj_cpu.view.pb.constraint_upper_bounds =
     raft::device_span<f_t>(fj_cpu.h_cstr_ub.data(), fj_cpu.h_cstr_ub.size());
-  fj_cpu.view.pb.variable_lower_bounds =
-    raft::device_span<f_t>(fj_cpu.h_var_lb.data(), fj_cpu.h_var_lb.size());
-  fj_cpu.view.pb.variable_upper_bounds =
-    raft::device_span<f_t>(fj_cpu.h_var_ub.data(), fj_cpu.h_var_ub.size());
+  fj_cpu.view.pb.variable_bounds = raft::device_span<typename type_2<f_t>::type>(
+    fj_cpu.h_var_bounds.data(), fj_cpu.h_var_bounds.size());
   fj_cpu.view.pb.variable_types =
     raft::device_span<var_t>(fj_cpu.h_var_types.data(), fj_cpu.h_var_types.size());
   fj_cpu.view.pb.is_binary_variable =

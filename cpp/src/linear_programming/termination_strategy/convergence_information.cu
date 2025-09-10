@@ -336,7 +336,7 @@ void convergence_information_t<i_t, f_t>::compute_dual_objective(
                           problem_ptr->constraint_lower_bounds.data(),
                           problem_ptr->constraint_upper_bounds.data(),
                           dual_size_h_,
-                          bound_value_reduced_cost_product<f_t>(),
+                          constraint_bound_value_reduced_cost_product<f_t>(),
                           stream_view_);
 
   cub::DeviceReduce::Sum(rmm_tmp_buffer_.data(),
@@ -371,13 +371,13 @@ void convergence_information_t<i_t, f_t>::compute_reduced_cost_from_primal_gradi
 {
   raft::common::nvtx::range fun_scope("compute_reduced_cost_from_primal_gradient");
 
-  raft::linalg::ternaryOp(bound_value_.data(),
-                          primal_gradient.data(),
-                          problem_ptr->variable_lower_bounds.data(),
-                          problem_ptr->variable_upper_bounds.data(),
-                          primal_size_h_,
-                          bound_value_gradient<f_t>(),
-                          stream_view_);
+  using f_t2 = typename type_2<f_t>::type;
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(primal_gradient.data(), problem_ptr->variable_bounds.data()),
+    bound_value_.data(),
+    primal_size_h_,
+    bound_value_gradient<f_t, f_t2>(),
+    stream_view_);
 
   if (pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals) {
     raft::linalg::ternaryOp(reduced_cost_.data(),
@@ -402,15 +402,15 @@ void convergence_information_t<i_t, f_t>::compute_reduced_costs_dual_objective_c
 {
   raft::common::nvtx::range fun_scope("compute_reduced_costs_dual_objective_contribution");
 
+  using f_t2 = typename type_2<f_t>::type;
   // if reduced cost is positive -> lower bound, negative -> upper bounds, 0 -> 0
   // if bound_val is not finite let element be -inf, otherwise bound_value*reduced_cost
-  raft::linalg::ternaryOp(bound_value_.data(),
-                          reduced_cost_.data(),
-                          problem_ptr->variable_lower_bounds.data(),
-                          problem_ptr->variable_upper_bounds.data(),
-                          primal_size_h_,
-                          bound_value_reduced_cost_product<f_t>(),
-                          stream_view_);
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(reduced_cost_.data(), problem_ptr->variable_bounds.data()),
+    bound_value_.data(),
+    primal_size_h_,
+    bound_value_reduced_cost_product<f_t, f_t2>(),
+    stream_view_);
 
   // sum over bound_value*reduced_cost, but should be -inf if any element is -inf
   cub::DeviceReduce::Sum(rmm_tmp_buffer_.data(),

@@ -36,13 +36,12 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
                   i_t n_vars,
                   fj_t<i_t, f_t>& fj,
                   constraint_prop_t<i_t, f_t>& constraint_prop,
-                  lb_constraint_prop_t<i_t, f_t>& lb_constraint_prop,
                   line_segment_search_t<i_t, f_t>& line_segment_search,
                   rmm::device_uvector<f_t>& lp_optimal_solution,
                   const raft::handle_t* handle_ptr)
     : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr),
       vars_to_fix(n_vars, handle_ptr->get_stream()),
-      fp(context, fj, constraint_prop, lb_constraint_prop, line_segment_search, lp_optimal_solution)
+      fp(context, fj, constraint_prop, line_segment_search, lp_optimal_solution)
   {
   }
 

@@ -64,7 +64,6 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                   context.problem_ptr->n_variables,
                   ls.fj,
                   ls.constraint_prop,
-                  ls.lb_constraint_prop,
                   ls.line_segment_search,
                   lp_optimal_solution,
                   context.problem_ptr->handle_ptr),
@@ -324,6 +323,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     cuopt::scope_guard([&]() { stats.total_solve_time = timer.elapsed_time(); });
   // after every change to the problem, we should resize all the relevant vars
   // we need to encapsulate that to prevent repetitions
+
   ls.resize_vectors(*problem_ptr, problem_ptr->handle_ptr);
   // ls.lb_constraint_prop.temp_problem.setup(*problem_ptr);
   // ls.lb_constraint_prop.bounds_update.setup(ls.lb_constraint_prop.temp_problem);
@@ -331,6 +331,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   problem_ptr->check_problem_representation(true);
   // have the structure ready for reusing later
   problem_ptr->compute_integer_fixed_problem();
+
   // test problem is not ii
   cuopt_func_call(
     ls.constraint_prop.bounds_update.calculate_activity_on_problem_bounds(*problem_ptr));

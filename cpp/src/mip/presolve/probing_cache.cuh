@@ -17,8 +17,6 @@
 
 #pragma once
 
-#include <mip/presolve/load_balanced_bounds_presolve.cuh>
-#include <mip/problem/load_balanced_problem.cuh>
 #include "bounds_presolve.cuh"
 
 #include <mip/utils.cuh>
@@ -29,12 +27,6 @@ namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
 class bound_presolve_t;
-
-template <typename i_t, typename f_t>
-class load_balanced_bounds_presolve_t;
-
-template <typename i_t, typename f_t>
-class load_balanced_problem_t;
 
 /*
   Probing cache is a set of implied bounds when we set a variable to some value.
@@ -135,11 +127,6 @@ class lb_probing_cache_t {
 template <typename i_t, typename f_t>
 void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,
-                           timer_t timer);
-
-template <typename i_t, typename f_t>
-void compute_probing_cache(load_balanced_bounds_presolve_t<i_t, f_t>& bound_presolve,
-                           load_balanced_problem_t<i_t, f_t>& problem,
                            timer_t timer);
 
 }  // namespace cuopt::linear_programming::detail
