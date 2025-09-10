@@ -89,7 +89,6 @@ class local_search_t {
   fj_t<i_t, f_t> fj;
   // fj_tree_t<i_t, f_t> fj_tree;
   constraint_prop_t<i_t, f_t> constraint_prop;
-  lb_constraint_prop_t<i_t, f_t> lb_constraint_prop;
   line_segment_search_t<i_t, f_t> line_segment_search;
   feasibility_pump_t<i_t, f_t> fp;
   std::mt19937 rng;

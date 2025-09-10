@@ -28,7 +28,10 @@
 #include <raft/core/handle.hpp>
 
 #include <rmm/mr/device/cuda_async_memory_resource.hpp>
+#include <rmm/mr/device/limiting_resource_adaptor.hpp>
+#include <rmm/mr/device/logging_resource_adaptor.hpp>
 #include <rmm/mr/device/pool_memory_resource.hpp>
+#include <rmm/mr/device/tracking_resource_adaptor.hpp>
 
 #include <rmm/mr/device/owning_wrapper.hpp>
 
@@ -151,8 +154,7 @@ int run_single_file(std::string file_path,
                     int num_cpu_threads,
                     bool write_log_file,
                     bool log_to_console,
-                    double time_limit,
-                    cuopt::linear_programming::bnb_search_strategy_t search_strategy)
+                    double time_limit)
 {
   const raft::handle_t handle_{};
   cuopt::linear_programming::mip_solver_settings_t<int, double> settings;
@@ -168,8 +170,6 @@ int run_single_file(std::string file_path,
       settings.log_file    = log_file;
     }
   }
-
-  settings.bnb_search_strategy = search_strategy;
 
   constexpr bool input_mps_strict = false;
   cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model;
@@ -255,12 +255,13 @@ void run_single_file_mp(std::string file_path,
                         int num_cpu_threads,
                         bool write_log_file,
                         bool log_to_console,
-                        double time_limit,
-                        cuopt::linear_programming::bnb_search_strategy_t search_strategy)
+                        double time_limit)
 {
   std::cout << "running file " << file_path << " on gpu : " << device << std::endl;
   auto memory_resource = make_async();
-  rmm::mr::set_current_device_resource(memory_resource.get());
+  auto limiting_adaptor =
+    rmm::mr::limiting_resource_adaptor(memory_resource.get(), 6ULL * 1024ULL * 1024ULL * 1024ULL);
+  rmm::mr::set_current_device_resource(&limiting_adaptor);
   int sol_found = run_single_file(file_path,
                                   device,
                                   batch_id,
@@ -270,8 +271,7 @@ void run_single_file_mp(std::string file_path,
                                   num_cpu_threads,
                                   write_log_file,
                                   log_to_console,
-                                  time_limit,
-                                  search_strategy);
+                                  time_limit);
   // this is a bad design to communicate the result but better than adding complexity of IPC or
   // pipes
   exit(sol_found);
@@ -345,9 +345,14 @@ int main(int argc, char* argv[])
     .scan<'g', double>()
     .default_value(std::numeric_limits<double>::max());
 
-  program.add_argument("--search-strategy")
-    .help("Search strategy used in B&B (bfs/bfs-diving/dfs)")
-    .default_value(std::string("bfs"));
+  program.add_argument("--memory-limit")
+    .help("memory limit in MB")
+    .scan<'g', double>()
+    .default_value(0.0);
+
+  program.add_argument("--track-allocations")
+    .help("track allocations (t/f)")
+    .default_value(std::string("f"));
 
   // Parse arguments
   try {
@@ -371,24 +376,12 @@ int main(int argc, char* argv[])
   std::string result_file;
   int batch_num = -1;
 
-  bool heuristics_only            = program.get<std::string>("--heuristics-only")[0] == 't';
-  int num_cpu_threads             = program.get<int>("--num-cpu-threads");
-  bool write_log_file             = program.get<std::string>("--write-log-file")[0] == 't';
-  bool log_to_console             = program.get<std::string>("--log-to-console")[0] == 't';
-  std::string search_strategy_cli = program.get<std::string>("--search-strategy");
-
-  cuopt::linear_programming::bnb_search_strategy_t search_strategy;
-  if (search_strategy_cli == "bfs") {
-    search_strategy = cuopt::linear_programming::bnb_search_strategy_t::BEST_FIRST;
-  } else if (search_strategy_cli == "bfs-diving") {
-    search_strategy =
-      cuopt::linear_programming::bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING;
-  } else if (search_strategy_cli == "dfs") {
-    search_strategy = cuopt::linear_programming::bnb_search_strategy_t::DEPTH_FIRST;
-  } else {
-    std::cerr << "Invalid search strategy: " << search_strategy_cli << std::endl;
-    exit(1);
-  }
+  bool heuristics_only   = program.get<std::string>("--heuristics-only")[0] == 't';
+  int num_cpu_threads    = program.get<int>("--num-cpu-threads");
+  bool write_log_file    = program.get<std::string>("--write-log-file")[0] == 't';
+  bool log_to_console    = program.get<std::string>("--log-to-console")[0] == 't';
+  double memory_limit    = program.get<double>("--memory-limit");
+  bool track_allocations = program.get<std::string>("--track-allocations")[0] == 't';
 
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
@@ -473,8 +466,7 @@ int main(int argc, char* argv[])
                                num_cpu_threads,
                                write_log_file,
                                log_to_console,
-                               time_limit,
-                               search_strategy);
+                               time_limit);
           } else if (sys_pid < 0) {
             std::cerr << "Fork failed!" << std::endl;
             exit(1);
@@ -493,7 +485,17 @@ int main(int argc, char* argv[])
     merge_result_files(out_dir, result_file, n_gpus, batch_num);
   } else {
     auto memory_resource = make_async();
-    rmm::mr::set_current_device_resource(memory_resource.get());
+    if (memory_limit > 0) {
+      auto limiting_adaptor =
+        rmm::mr::limiting_resource_adaptor(memory_resource.get(), memory_limit * 1024ULL * 1024ULL);
+      rmm::mr::set_current_device_resource(&limiting_adaptor);
+    } else if (track_allocations) {
+      rmm::mr::tracking_resource_adaptor tracking_adaptor(memory_resource.get(),
+                                                          /*capture_stacks=*/true);
+      rmm::mr::set_current_device_resource(&tracking_adaptor);
+    } else {
+      rmm::mr::set_current_device_resource(memory_resource.get());
+    }
     run_single_file(path,
                     0,
                     0,
@@ -503,8 +505,7 @@ int main(int argc, char* argv[])
                     num_cpu_threads,
                     write_log_file,
                     log_to_console,
-                    time_limit,
-                    search_strategy);
+                    time_limit);
   }
 
   return 0;

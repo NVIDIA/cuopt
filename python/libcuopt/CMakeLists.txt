@@ -69,6 +69,8 @@ set(rpaths
   "$ORIGIN/../../nvidia/curand/lib"
   "$ORIGIN/../../nvidia/cusolver/lib"
   "$ORIGIN/../../nvidia/cusparse/lib"
+  # For CUDA 13.x
+  "$ORIGIN/../../nvidia/cu13/lib"
 )
 
 set_property(TARGET cuopt PROPERTY INSTALL_RPATH ${rpaths} APPEND)

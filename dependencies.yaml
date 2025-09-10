@@ -69,6 +69,8 @@ files:
       - cuda_version
       - notebooks
       - py_version
+      - depends_on_cuopt_server
+      - depends_on_cuopt_sh_client
   checks:
     output: none
     includes:
@@ -748,20 +750,12 @@ dependencies:
               cuda: "12.*"
               use_cuda_wheels: "true"
             packages:
-              - nvidia-cublas-cu12
-              - nvidia-curand-cu12
-              - nvidia-cusparse-cu12
-              - nvidia-cusolver-cu12
-              - nvidia-nvtx-cu12
+              - cuda-toolkit[cublas,curand,cusolver,cusparse,nvtx]==12.*
           - matrix:
               cuda: "13.*"
               use_cuda_wheels: "true"
             packages:
-              - nvidia-cublas-cu13
-              - nvidia-curand-cu13
-              - nvidia-cusparse-cu13
-              - nvidia-cusolver-cu13
-              - nvidia-nvtx-cu13
+              - cuda-toolkit[cublas,curand,cusolver,cusparse,nvtx]==13.*
           # if use_cuda_wheels=false is provided, do not add dependencies on any CUDA wheels
           # (e.g. for DLFW and pip devcontainers)
           - matrix:
@@ -817,15 +811,8 @@ dependencies:
     common:
       - output_types: [conda, requirements]
         packages:
-          - breathe
-          - folium
-          - geopandas
           - ipython
-          - matplotlib
           - notebook
-          - polyline
-          - scipy
-          - libgdal<3.9.0
       - output_types: [conda]
         packages:
           - *jsonref

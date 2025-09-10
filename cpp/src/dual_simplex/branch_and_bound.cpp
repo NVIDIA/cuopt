@@ -545,22 +545,37 @@ dual::status_t branch_and_bound_t<i_t, f_t>::node_dual_simplex(
   std::vector<f_t> leaf_edge_norms      = edge_norms_;  // = node.steepest_edge_norms;
   simplex_solver_settings_t lp_settings = settings_;
   lp_settings.set_log(false);
-  lp_settings.cut_off      = upper_bound + settings_.dual_tol;
-  lp_settings.inside_mip   = 2;
-  dual::status_t lp_status = dual_phase2(2,
-                                         0,
-                                         lp_start_time,
-                                         leaf_problem,
-                                         lp_settings,
-                                         leaf_vstatus,
-                                         leaf_solution,
-                                         node_iter,
-                                         leaf_edge_norms);
-  if (lp_status == dual::status_t::NUMERICAL) {
-    settings_.log.printf("Numerical issue node %d. Resolving from scratch.\n", leaf_id);
-    lp_status_t second_status = solve_linear_program_advanced(
-      leaf_problem, lp_start_time, lp_settings, leaf_solution, leaf_vstatus, leaf_edge_norms);
-    lp_status = convert_lp_status_to_dual_status(second_status);
+  lp_settings.cut_off    = upper_bound + settings_.dual_tol;
+  lp_settings.inside_mip = 2;
+
+  // in B&B we only have equality constraints, leave it empty for default
+  std::vector<char> row_sense;
+  bool feasible =
+    bound_strengthening(row_sense, lp_settings, leaf_problem, Arow, var_types, bounds_changed);
+
+  dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
+
+  if (feasible) {
+    lp_status = dual_phase2(2,
+                            0,
+                            lp_start_time,
+                            leaf_problem,
+                            lp_settings,
+                            leaf_vstatus,
+                            leaf_solution,
+                            node_iter,
+                            leaf_edge_norms);
+
+    if (lp_status == dual::status_t::NUMERICAL) {
+      settings_.log.printf("Numerical issue node %d. Resolving from scratch.\n", leaf_id);
+      lp_status_t second_status = solve_linear_program_advanced(
+        leaf_problem, lp_start_time, lp_settings, leaf_solution, leaf_vstatus, leaf_edge_norms);
+      lp_status = convert_lp_status_to_dual_status(second_status);
+    }
+
+  } else {
+    settings_.log.printf("Infeasible after bounds strengthening. Fathoming node %d.\n",
+                         stats_.nodes_explored);
   }
 
 #pragma omp atomic update
@@ -586,7 +601,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
   // Set the correct bounds for the leaf problem
   leaf_problem.lower = original_lp_.lower;
   leaf_problem.upper = original_lp_.upper;
-  node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper);
+  std::vector<bool> bounds_changed(leaf_problem.num_cols, false);
+  // Technically, we can get the already strengthened bounds from the node/parent instead of
+  // getting it from the original problem and re-strengthening. But this requires storing
+  // two vectors at each node and potentially cause memory issues
+  node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper, bounds_changed);
 
   dual::status_t lp_status =
     node_dual_simplex(node_ptr->node_id, leaf_problem, leaf_vstatus, leaf_solution, upper_bound);
@@ -738,6 +757,8 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
 {
   // Make a copy of the original LP. We will modify its bounds at each leaf
   lp_problem_t leaf_problem = original_lp_;
+  csc_matrix_t<i_t, f_t> Arow(1, 1, 1);
+  leaf_problem.A.transpose(Arow);
 
   std::deque<mip_node_t<i_t, f_t>*> stack;
   stack.push_front(start_node);

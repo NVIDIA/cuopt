@@ -27,9 +27,7 @@ dependencies:
 - doxygen=1.9.1
 - exhale
 - fastapi
-- folium
 - gcc_linux-aarch64=14.*
-- geopandas
 - gmock
 - gtest
 - httpx
@@ -38,11 +36,9 @@ dependencies:
 - libcurand-dev
 - libcusolver-dev
 - libcusparse-dev
-- libgdal<3.9.0
 - libraft-headers==25.10.*
 - librmm==25.10.*
 - make
-- matplotlib
 - msgpack-numpy==0.4.8
 - msgpack-python==1.1.0
 - myst-nb
@@ -56,7 +52,6 @@ dependencies:
 - pandas>=2.0
 - pexpect
 - pip
-- polyline
 - pre-commit
 - psutil>=5.9,<6.0a0
 - pylibraft==25.10.*,>=0.0.0a0
@@ -71,7 +66,6 @@ dependencies:
 - requests
 - rmm==25.10.*,>=0.0.0a0
 - scikit-build-core>=0.10.0
-- scipy
 - sphinx
 - sphinx-copybutton
 - sphinx-design

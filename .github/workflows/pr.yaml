@@ -35,7 +35,6 @@ jobs:
       - conda-python-tests
       - docs-build
       - wheel-build-libcuopt
-      # - conda-notebook-tests
       - wheel-build-cuopt
       - wheel-tests-cuopt
       - wheel-build-cuopt-server

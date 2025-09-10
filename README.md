@@ -33,7 +33,7 @@ This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) projec
 
 ### CUDA/GPU requirements
 
-* CUDA 12.0+
+* CUDA 12.0+ or CUDA 13.0+
 * NVIDIA driver >= 525.60.13 (Linux) and >= 527.41 (Windows)
 * Volta architecture or better (Compute Capability >=7.0)
 
@@ -77,6 +77,25 @@ pip install --pre \
   cuopt-server-cu12==25.10.* cuopt-sh-client==25.10.*
 ```
 
+For CUDA 13.x:
+
+```bash
+pip install \
+  --extra-index-url=https://pypi.nvidia.com \
+  nvidia-cuda-runtime==13.0.* \
+  cuopt-server-cu13==25.10.* cuopt-sh-client==25.10.*
+```
+
+Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
+```bash
+pip install --pre \
+  --extra-index-url=https://pypi.nvidia.com \
+  --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
+  nvidia-cuda-runtime==13.0.* \
+  cuopt-server-cu13==25.10.* cuopt-sh-client==25.10.*
+```
+
+
 ### Conda
 
 cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forge/miniforge)):
@@ -95,10 +114,14 @@ of our latest development branch. Just replace `-c rapidsai` with `-c rapidsai-n
 Users can pull the cuOpt container from the NVIDIA container registry.
 
 ```bash
+# For CUDA 12.x
 docker pull nvidia/cuopt:latest-cuda12.9-py312
+
+# For CUDA 13.x
+docker pull nvidia/cuopt:latest-cuda13.0-py312
 ```
 
-Note: The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.9-py312`` tag. For example, to use cuOpt 25.5.0, you can use the ``25.5.0-cuda12.8-py312`` tag. Please refer to `cuOpt dockerhub page <https://hub.docker.com/r/nvidia/cuopt>`_ for the list of available tags.
+Note: The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.9-py312`` or ``<version>-cuda13.0-py312`` tag. For example, to use cuOpt 25.5.0, you can use the ``25.5.0-cuda12.8-py312`` or ``25.5.0-cuda13.0-py312`` tag. Please refer to `cuOpt dockerhub page <https://hub.docker.com/r/nvidia/cuopt>`_ for the list of available tags.
 
 More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub).
 
