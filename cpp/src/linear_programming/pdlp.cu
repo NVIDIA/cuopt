@@ -1397,6 +1397,8 @@ void pdlp_solver_t<i_t, f_t>::take_constant_step(bool is_major_iteration)
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::halpern_update()
 {
+  raft::common::nvtx::range fun_scope("halpern_update");
+
   const f_t weight =
     f_t(restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart() + 1) /
     f_t(restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart() + 2);

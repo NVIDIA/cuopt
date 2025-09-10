@@ -613,6 +613,8 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
   rmm::device_uvector<f_t>& dual_solution,
   rmm::device_uvector<f_t>& dual_slack) const
 {
+  raft::common::nvtx::range fun_scope("unscale_solutions");
+
   if (primal_solution.size()) {
     cuopt_expects(primal_solution.size() == static_cast<size_t>(primal_size_h_),
                   error_type_t::RuntimeError,
