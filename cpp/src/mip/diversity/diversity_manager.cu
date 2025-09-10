@@ -763,6 +763,7 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>& solution,
                                                          f_t objective)
 {
+  return;
   CUOPT_LOG_DEBUG("Setting simplex solution with objective %f", objective);
   using sol_t = solution_t<i_t, f_t>;
   context.handle_ptr->sync_stream();
