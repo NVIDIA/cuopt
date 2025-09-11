@@ -757,6 +757,7 @@ TEST(mps_parser, good_mps_file_partial_bounds)
   EXPECT_EQ(10.0, mps.variable_upper_bounds[1]);
 }
 
+#ifdef MPS_PARSER_WITH_BZIP2
 TEST(mps_parser, good_mps_file_bzip2_compressed)
 {
   auto mps = read_from_mps("linear_programming/good-mps-1.mps.bz2");
@@ -792,7 +793,9 @@ TEST(mps_parser, good_mps_file_bzip2_compressed)
   EXPECT_EQ(0.2, mps.c_values[0]);
   EXPECT_EQ(0.1, mps.c_values[1]);
 }
+#endif  // MPS_PARSER_WITH_BZIP2
 
+#ifdef MPS_PARSER_WITH_ZLIB
 TEST(mps_parser, good_mps_file_zlib_compressed)
 {
   auto mps = read_from_mps("linear_programming/good-mps-1.mps.gz");
@@ -828,6 +831,7 @@ TEST(mps_parser, good_mps_file_zlib_compressed)
   EXPECT_EQ(0.2, mps.c_values[0]);
   EXPECT_EQ(0.1, mps.c_values[1]);
 }
+#endif  // MPS_PARSER_WITH_ZLIB
 
 // ================================================================================================
 // QPS (Quadratic Programming) Support Tests
