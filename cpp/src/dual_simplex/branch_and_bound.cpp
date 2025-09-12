@@ -896,46 +896,48 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return mip_status_t::OPTIMAL;
   }
 
+  strong_branching<i_t, f_t>(original_lp_,
+                             settings_,
+                             stats_.start_time,
+                             var_types_,
+                             root_relax_soln_.x,
+                             fractional,
+                             root_objective_,
+                             root_vstatus_,
+                             edge_norms_,
+                             pc_);
+
+  if (toc(stats_.start_time) > settings_.time_limit) {
+    settings_.log.printf("Hit time limit\n");
+    return mip_status_t::TIME_LIMIT;
+  }
+
+  // Choose variable to branch on
+  i_t branch_var = pc_.variable_selection(
+    fractional, root_relax_soln_.x, original_lp_.lower, original_lp_.upper, log);
+
+  search_tree_ = std::make_unique<mip_node_t<i_t, f_t>>(root_objective_, root_vstatus_);
+  graphviz_node(settings_, search_tree_.get(), "lower bound", root_objective_);
+  branch(search_tree_.get(), branch_var, root_relax_soln_.x[branch_var], root_vstatus_);
+
+  heap_.push(search_tree_->get_down_child());
+  heap_.push(search_tree_->get_up_child());
+
+  settings_.log.printf("Exploring the tree using %d threads\n", settings_.num_threads);
+  settings_.log.printf(
+    "| Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   | "
+    "   Time \n");
+
   node_depth_threshold_ = 10;
   i_t active_tasks_     = 0;
+
+#pragma omp atomic write
+  currently_branching_ = true;
 
 #pragma omp parallel num_threads(settings_.num_threads)
   {
     mip_status_t local_status;
     i_t active;
-
-    strong_branching<i_t, f_t>(original_lp_,
-                               settings_,
-                               stats_.start_time,
-                               var_types_,
-                               root_relax_soln_.x,
-                               fractional,
-                               root_objective_,
-                               root_vstatus_,
-                               edge_norms_,
-                               pc_);
-
-#pragma omp single
-    {
-      // Choose variable to branch on
-      i_t branch_var = pc_.variable_selection(
-        fractional, root_relax_soln_.x, original_lp_.lower, original_lp_.upper, log);
-
-      search_tree_ = std::make_unique<mip_node_t<i_t, f_t>>(root_objective_, root_vstatus_);
-      graphviz_node(settings_, search_tree_.get(), "lower bound", root_objective_);
-      branch(search_tree_.get(), branch_var, root_relax_soln_.x[branch_var], root_vstatus_);
-
-      heap_.push(search_tree_->get_down_child());
-      heap_.push(search_tree_->get_up_child());
-
-      settings_.log.printf("Exploring the tree using %d threads\n", settings_.num_threads);
-      settings_.log.printf(
-        "| Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   | "
-        "   Time \n");
-
-#pragma omp atomic write
-      currently_branching_ = true;
-    }
 
     do {
       mip_node_t<i_t, f_t>* node_ptr = nullptr;
