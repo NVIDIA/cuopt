@@ -101,8 +101,7 @@ class branch_and_bound_t {
   std::vector<i_t> new_slacks_;
   std::vector<variable_type_t> var_types_;
 
-  // Global variable for lower bound
-  f_t lower_bound_;
+  std::vector<f_t> lower_bounds_;
 
   // Mutex for upper bound
   omp_mutex_t mutex_upper_;
@@ -124,13 +123,6 @@ class branch_and_bound_t {
     i_t nodes_unexplored    = 0;
     f_t total_lp_iters      = 0;
     i_t num_nodes           = 0;
-    i_t total_tasks         = 0;
-    i_t total_dives         = 0;
-    i_t infeasible_dives    = 0;
-    i_t feasible_dives      = 0;
-    f_t max_task_time       = 0.0;
-    f_t min_task_time       = inf;
-    f_t avg_task_time       = 0.0;
   } stats_;
 
   // Mutex for repair
@@ -155,14 +147,6 @@ class branch_and_bound_t {
   omp_mutex_t mutex_heap_;
   heap_t heap_;
 
-  // Number of active tasks.
-  i_t active_tasks_;
-
-  // Maximum number of active tasks. We may go slight over
-  // since reading the value of active_tasks_ and incrementing it
-  // are done in separated atomic operations.
-  i_t max_active_tasks_;
-
   // Global status
   mip_status_t status_;
 
@@ -174,10 +158,6 @@ class branch_and_bound_t {
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
-  // Spawn a new task to explore a subtree if there are any nodes on the heap
-  // and if the number of active tasks is less than the maximum number of active tasks.
-  void spawn_new_task();
-
   // Explore the search tree using the best-first search strategy.
   void explore_subtree(mip_node_t<i_t, f_t>* start_node);
 
@@ -186,9 +166,6 @@ class branch_and_bound_t {
               i_t branch_var,
               f_t branch_var_val,
               const std::vector<variable_status_t>& parent_vstatus);
-
-  // Solve the LP relaxation of the root node.
-  mip_status_t solve_root_relaxation();
 
   // Solve the LP relaxation of a leaf node.
   mip_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,

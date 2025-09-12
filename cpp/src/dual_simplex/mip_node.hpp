@@ -34,7 +34,6 @@ enum class node_status_t : int {
   INFEASIBLE       = 3,  // Node is infeasible
   FATHOMED         = 4,  // Node objective is greater than the upper bound
   HAS_CHILDREN     = 5,  // Node has children to explore
-  REMOVED          = 6,  // Node will be removed from the tree
 };
 
 bool inactive_status(node_status_t status);
@@ -156,8 +155,8 @@ class mip_node_t {
       // Propagate to parent
       mip_node_t* parent_ptr = parent;
       while (parent_ptr != nullptr) {
-        if (parent_ptr->is_inactive() && parent_ptr->status != node_status_t::REMOVED) {
-          parent_ptr->status = node_status_t::REMOVED;
+        if (parent_ptr->is_inactive()) {
+          parent_ptr->status = node_status_t::FATHOMED;
           parent_ptr->update_bound();
           stack.push_back(parent_ptr);
         } else {
