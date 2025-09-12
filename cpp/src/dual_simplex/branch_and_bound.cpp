@@ -557,6 +557,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
   logger_t log;
   log.log = false;
 
+  f_t abs_fathom_tol = settings_.absolute_mip_gap_tol / 10;
+  f_t rel_fathom_tol = settings_.relative_mip_gap_tol;
+
   std::vector<variable_status_t>& leaf_vstatus = node_ptr->vstatus;
   lp_solution_t<i_t, f_t> leaf_solution(leaf_problem.num_rows, leaf_problem.num_cols);
 
@@ -645,8 +648,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
       graphviz_node(settings_, node_ptr, "integer feasible", leaf_objective);
       update_tree(node_ptr, node_status_t::INTEGER_FEASIBLE);
 
-    } else if (upper_bound - leaf_objective > settings_.absolute_mip_gap_tol &&
-               relative_gap(upper_bound, leaf_objective) > settings_.relative_mip_gap_tol) {
+    } else if (leaf_objective <= upper_bound + abs_fathom_tol &&
+               relative_gap(upper_bound, leaf_objective) > rel_fathom_tol) {
       // Choose fractional variable to branch on
       mutex_pc_.lock();
       const i_t branch_var = pc_.variable_selection(
@@ -698,9 +701,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
 #pragma omp atomic write
   lower_bounds_[tid] = lower_bound;
 
-  while (stack.size() > 0 && gap > settings_.absolute_mip_gap_tol &&
-         relative_gap(upper_bound, lower_bound) > settings_.relative_mip_gap_tol &&
-         local_status == mip_status_t::UNSET) {
+  while (stack.size() > 0 && local_status == mip_status_t::UNSET) {
     repair_heuristic_solutions();
 
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
@@ -753,6 +754,13 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
 #pragma omp atomic write
       status_ = mip_status_t::TIME_LIMIT;
       break;
+    }
+
+    if (gap < settings_.absolute_mip_gap_tol ||
+        relative_gap(upper_bound, lower_bound) < settings_.relative_mip_gap_tol) {
+      graphviz_node(settings_, node_ptr, "cutoff", node_ptr->lower_bound);
+      update_tree(node_ptr, node_status_t::FATHOMED);
+      continue;
     }
 
     local_status = solve_node_lp(node_ptr, leaf_problem, Arow, upper_bound);
