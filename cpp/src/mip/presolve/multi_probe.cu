@@ -315,8 +315,10 @@ termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t
     }
     // next_changed are updated, fill current changed with zero and swap
     // swap next and current changed constraints
-    if (!skip_0) { upd_0.prepare_for_next_iteration(handle_ptr); }
-    if (!skip_1) { upd_1.prepare_for_next_iteration(handle_ptr); }
+    if (iter != settings.iteration_limit - 1) {
+      if (!skip_0) { upd_0.prepare_for_next_iteration(handle_ptr); }
+      if (!skip_1) { upd_1.prepare_for_next_iteration(handle_ptr); }
+    }
     iter_0 += !skip_0;
     iter_1 += !skip_1;
   }

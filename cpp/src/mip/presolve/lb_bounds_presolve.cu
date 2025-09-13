@@ -63,6 +63,7 @@ void lb_bound_presolve_t<i_t, f_t>::calculate_constraint_slack_iter(
   // std::cout << "num_heavy_items " << problem.n_constraints - problem.cnst_csr.heavy_beg_id <<
   // "\n";
   constexpr bool erase_inf_cnst = false;
+  nvtxRangePush("lb_multi_act");
   call_cnst_slack<erase_inf_cnst, i_t, f_t, 512>
     <<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(problem.cnst_csr.view(), upd.view());
   if (problem.cnst_csr.num_blocks_heavy != 0) {
@@ -70,6 +71,7 @@ void lb_bound_presolve_t<i_t, f_t>::calculate_constraint_slack_iter(
     finalize_cnst_heavy<erase_inf_cnst, i_t, f_t, 32>
       <<<num_heavy_items, 32, 0, handle_ptr->get_stream()>>>(problem.cnst_csr.view(), upd.view());
   }
+  nvtxRangePop();
 }
 
 template <typename i_t, typename f_t>
@@ -89,6 +91,7 @@ bool lb_bound_presolve_t<i_t, f_t>::calculate_bounds_update(lb_problem_t<i_t, f_
   //           << problem.vars_csr.sub_warp_block_count + problem.vars_csr.med_block_count << "\n";
 
   // std::cout << "num_heavy_items " << problem.n_variables - problem.vars_csr.heavy_beg_id << "\n";
+  nvtxRangePush("lb_multi_bnd");
   call_bnd_update<i_t, f_t, 512>
     <<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(problem.vars_csr.view(), upd.view());
   if (problem.vars_csr.num_blocks_heavy != 0) {
@@ -96,6 +99,7 @@ bool lb_bound_presolve_t<i_t, f_t>::calculate_bounds_update(lb_problem_t<i_t, f_
       <<<problem.vars_csr.num_blocks_heavy, 512, 0, handle_ptr->get_stream()>>>(
         problem.vars_csr.view(), upd.view());
   }
+  nvtxRangePop();
   i_t h_bounds_changed = upd.bounds_changed.value(handle_ptr->get_stream());
 
   return (h_bounds_changed != 0);
@@ -299,15 +303,6 @@ void lb_bound_presolve_t<i_t, f_t>::set_updated_bounds(
                "size of variable upper bound mismatch");
   raft::copy(
     output_bounds.data(), upd.vars_bnd.data(), upd.vars_bnd.size(), handle_ptr->get_stream());
-}
-
-template <typename i_t, typename f_t>
-void lb_bound_presolve_t<i_t, f_t>::calculate_activity_on_problem_bounds(
-  lb_problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr)
-{
-  upd.init_changed_constraints(handle_ptr);
-  copy_input_bounds(pb, handle_ptr);
-  calculate_constraint_slack_iter(pb, handle_ptr);
 }
 
 #if MIP_INSTANTIATE_FLOAT

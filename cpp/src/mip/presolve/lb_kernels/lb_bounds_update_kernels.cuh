@@ -76,18 +76,18 @@ update_bounds(csr_view_t view, upd_view_t upd, i_t tid, i_t beg, i_t end, f_t2 o
   f_t2 bounds = old_bounds;
 
   for (i_t i = tid + beg; i < end; i += MAX_EDGE_PER_VAR) {
-    auto coeff    = view.coefficients[i];
     auto cnst_idx = view.col_elem[i];
 
     // cnst_slack[cnst_idx].x now has cnst_ub - min_a
     // cnst_slack[cnst_idx].y now has cnst_lb - max_a
-    auto cnst_slack = upd.cnst_slack[cnst_idx];
     //  don't propagate over constraints that are infeasible
     // TODO : write changed_constraints = 0 for infeasible constraints while calculating activity
     if (upd.changed_constraints[cnst_idx] == 0) {
       continue;
     } else {
-      bounds = update_bounds_per_cnst(coeff, cnst_slack, old_bounds, bounds);
+      auto coeff      = view.coefficients[i];
+      auto cnst_slack = upd.cnst_slack[cnst_idx];
+      bounds          = update_bounds_per_cnst(coeff, cnst_slack, old_bounds, bounds);
     }
   }
 
@@ -261,8 +261,8 @@ __device__ void bnd_sub_warp(i_t id_warp_beg,
 
   bounds = reduce.max_min(bounds);
 
-  bool changed;
-  auto mask = __ballot_sync(0xFFFFFFFF, valid_item);
+  bool changed = false;
+  auto mask    = __ballot_sync(0xFFFFFFFF, valid_item);
   if (valid_item && head_flag && (!skip_calc)) {
     changed = write_updated_bounds(view, upd, var_idx, is_int, bounds, old_bounds);
   }
@@ -327,7 +327,7 @@ __device__ void bnd_warp(i_t id_block_beg,
       write_updated_bounds(view, upd, var_idx, is_int, bounds, old_bounds);
   }
   __syncwarp();
-  bool changed_0 = storage.vote.changed_0[id_within_block];
+  bool changed_0 = storage.vote.changed_0[id_within_block] && (!skip_calc);
   if (valid_item && changed_0) {
     update_next_changed_constraints<32>(view, upd, p_tid, item_off_beg, item_off_end);
   }
@@ -387,7 +387,7 @@ __device__ void bnd_block(i_t id_block_beg,
   }
 
   __syncthreads();
-  bool changed = storage.vote.changed_0[id_within_block];
+  bool changed = storage.vote.changed_0[id_within_block] && (!skip_calc);
   if (valid_item && changed) {
     update_next_changed_constraints<PSEUDO_BDIM>(
       view, upd, reduce.pseudo_thread_id(), item_off_beg, item_off_end);

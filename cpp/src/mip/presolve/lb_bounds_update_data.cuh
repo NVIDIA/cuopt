@@ -52,6 +52,29 @@ struct lb_bounds_update_data_t {
     raft::device_span<i_t> heavy_bounds_changed;
   };
 
+  struct heavy_view_t {
+    using f_t2 = typename type_2<f_t>::type;
+    i_t* bounds_changed;
+    raft::device_span<f_t2> cnst_slack;
+    raft::device_span<f_t2> vars_bnd;
+    raft::device_span<i_t> changed_constraints;
+    raft::device_span<i_t> next_changed_constraints;
+    raft::device_span<i_t> changed_variables;
+
+    raft::device_span<i_t> heavy_bounds_changed_agg;
+    raft::device_span<i_t> heavy_bounds_changed;
+  };
+
+  struct bnd_upd_view_t {
+    using f_t2 = typename type_2<f_t>::type;
+    i_t* bounds_changed;
+    raft::device_span<f_t2> cnst_slack;
+    raft::device_span<f_t2> vars_bnd;
+    raft::device_span<i_t> changed_constraints;
+    raft::device_span<i_t> next_changed_constraints;
+    raft::device_span<i_t> changed_variables;
+  };
+
   lb_bounds_update_data_t(lb_problem_t<i_t, f_t>& problem);
   void copy(lb_problem_t<i_t, f_t>& problem);
   void resize(lb_problem_t<i_t, f_t>& problem);
@@ -65,6 +88,8 @@ struct lb_bounds_update_data_t {
   void disable_changed_constraints(const raft::handle_t* handle_ptr);
   void prepare_for_next_iteration(const raft::handle_t* handle_ptr);
   view_t view();
+  bnd_upd_view_t bnd_upd_view();
+  heavy_view_t heavy_view();
 };
 
 }  // namespace cuopt::linear_programming::detail

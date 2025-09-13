@@ -32,6 +32,21 @@
 
 namespace cuopt::linear_programming::detail {
 
+template <typename i_t>
+i_t get_id(const std::vector<i_t>& bin_offsets, i_t degree_beg)
+{
+  return bin_offsets[ceil_log_2(degree_beg)];
+}
+
+template <typename i_t>
+std::pair<i_t, i_t> get_id_range(const std::vector<i_t>& bin_offsets,
+                                 i_t degree_beg,
+                                 i_t degree_end)
+{
+  return std::make_pair(bin_offsets[ceil_log_2(degree_beg)],
+                        bin_offsets[ceil_log_2(degree_end) + 1]);
+}
+
 template <typename i_t, typename f_t>
 lb_multi_probe_t<i_t, f_t>::lb_multi_probe_t(mip_solver_context_t<i_t, f_t>& context_,
                                              lb_problem_t<i_t, f_t>& problem,
@@ -72,10 +87,20 @@ void lb_multi_probe_t<i_t, f_t>::calculate_constraint_slack_iter(lb_problem_t<i_
 
   // std::cout << "num_heavy_items " << problem.n_constraints - problem.cnst_csr.heavy_beg_id <<
   // "\n";
+  nvtxRangePush("lb_multi_act");
   constexpr bool erase_inf_cnst = false;
-  {
-    // raft::common::nvtx::range fun_scope("lb_multi_act");
-    nvtxRangePush("lb_multi_act");
+  if (skip_0 ^ skip_1) {
+    // handle_ptr->sync_stream();
+    //  raft::common::nvtx::range fun_scope("lb_multi_act");
+    auto& upd = skip_0 ? upd_1 : upd_0;
+    call_cnst_slack<erase_inf_cnst, i_t, f_t, 512>
+      <<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(problem.cnst_csr.view(), upd.view());
+    if (problem.cnst_csr.num_blocks_heavy != 0) {
+      auto num_heavy_items = problem.n_constraints - problem.cnst_csr.heavy_beg_id;
+      finalize_cnst_heavy<erase_inf_cnst, i_t, f_t, 32>
+        <<<num_heavy_items, 32, 0, handle_ptr->get_stream()>>>(problem.cnst_csr.view(), upd.view());
+    }
+  } else {
     call_cnst_slack<erase_inf_cnst, i_t, f_t, 512>
       <<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(
         problem.cnst_csr.view(), upd_0.view(), upd_1.view());
@@ -85,31 +110,38 @@ void lb_multi_probe_t<i_t, f_t>::calculate_constraint_slack_iter(lb_problem_t<i_
         <<<num_heavy_items, 32, 0, handle_ptr->get_stream()>>>(
           problem.cnst_csr.view(), upd_0.view(), upd_1.view());
     }
-    nvtxRangePop();
   }
+  nvtxRangePop();
 }
 
 template <typename i_t, typename f_t>
 void lb_multi_probe_t<i_t, f_t>::calculate_bounds_update_call(lb_problem_t<i_t, f_t>& problem,
                                                               const raft::handle_t* handle_ptr)
 {
+  handle_ptr->sync_stream();
   nvtxRangePush("lb_multi_bnd");
+
   auto num_blocks = problem.vars_csr.sub_warp_block_count + problem.vars_csr.med_block_count +
                     problem.vars_csr.num_blocks_heavy;
   call_bnd_update<i_t, f_t, 512><<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(
     problem.vars_csr.view(), upd_0.view(), upd_1.view());
+  if (problem.vars_csr.num_blocks_heavy != 0) {
+    bnd_heavy_update_next_changed_constraints<i_t, f_t, 512>
+      <<<problem.vars_csr.num_blocks_heavy, 512, 0, handle_ptr->get_stream()>>>(
+        problem.vars_csr.view(), upd_0.view(), upd_1.view());
+  }
+
+  handle_ptr->sync_stream();
   nvtxRangePop();
 }
 
 template <typename i_t, typename f_t>
-std::tuple<bool, bool> lb_multi_probe_t<i_t, f_t>::calculate_bounds_update(
-  lb_problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
+bool lb_multi_probe_t<i_t, f_t>::calculate_bounds_update(lb_problem_t<i_t, f_t>& problem,
+                                                         const raft::handle_t* handle_ptr)
 {
+  nvtxRangePush("lb_multi_bnd");
   constexpr i_t zero = 0;
-  upd_0.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
-  upd_1.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
-  handle_ptr->sync_stream();
-  auto num_blocks = problem.vars_csr.sub_warp_block_count + problem.vars_csr.med_block_count +
+  auto num_blocks    = problem.vars_csr.sub_warp_block_count + problem.vars_csr.med_block_count +
                     problem.vars_csr.num_blocks_heavy;
   // std::cout << "call_bnd_update sub_warp_block_count " << problem.vars_csr.sub_warp_block_count
   //           << "\n";
@@ -120,24 +152,64 @@ std::tuple<bool, bool> lb_multi_probe_t<i_t, f_t>::calculate_bounds_update(
   //           << problem.vars_csr.sub_warp_block_count + problem.vars_csr.med_block_count << "\n";
 
   // std::cout << "num_heavy_items " << problem.n_variables - problem.vars_csr.heavy_beg_id << "\n";
-  call_bnd_update<i_t, f_t, 512><<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(
-    problem.vars_csr.view(), upd_0.view(), upd_1.view());
-  if (problem.vars_csr.num_blocks_heavy != 0) {
-    bnd_heavy_update_next_changed_constraints<i_t, f_t, 512>
-      <<<problem.vars_csr.num_blocks_heavy, 512, 0, handle_ptr->get_stream()>>>(
-        problem.vars_csr.view(), upd_0.view(), upd_1.view());
-  }
-  i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
-  i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());
+  if (skip_0 && skip_1) {
+    return false;
+  } else if (skip_0) {
+    upd_1.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
+    call_bnd_update<i_t, f_t, 512>
+      <<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(problem.vars_csr.view(), upd_1.view());
+    if (problem.vars_csr.num_blocks_heavy != 0) {
+      bnd_heavy_update_next_changed_constraints<i_t, f_t, 512>
+        <<<problem.vars_csr.num_blocks_heavy, 512, 0, handle_ptr->get_stream()>>>(
+          problem.vars_csr.view(), upd_1.view());
+    }
+    i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());
+    skip_1                 = (h_bounds_changed_1 == zero);
 
-  // return (h_bounds_changed_0 != 0) || (h_bounds_changed_1 != 0);
-  return std::make_tuple((h_bounds_changed_0 == 0), (h_bounds_changed_1 == 0));
+  } else if (skip_1) {
+    upd_0.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
+    call_bnd_update<i_t, f_t, 512>
+      <<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(problem.vars_csr.view(), upd_0.view());
+    if (problem.vars_csr.num_blocks_heavy != 0) {
+      bnd_heavy_update_next_changed_constraints<i_t, f_t, 512>
+        <<<problem.vars_csr.num_blocks_heavy, 512, 0, handle_ptr->get_stream()>>>(
+          problem.vars_csr.view(), upd_0.view());
+    }
+    i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
+    skip_0                 = (h_bounds_changed_0 == zero);
+
+  } else {
+    upd_0.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
+    upd_1.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
+    call_bnd_update<i_t, f_t, 512><<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(
+      problem.vars_csr.view(), upd_0.view(), upd_1.view());
+    if (problem.vars_csr.num_blocks_heavy != 0) {
+      bnd_heavy_update_next_changed_constraints<i_t, f_t, 512>
+        <<<problem.vars_csr.num_blocks_heavy, 512, 0, handle_ptr->get_stream()>>>(
+          problem.vars_csr.view(), upd_0.view(), upd_1.view());
+    }
+    i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
+    i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());
+    skip_0                 = (h_bounds_changed_0 == zero);
+    skip_1                 = (h_bounds_changed_1 == zero);
+  }
+  // i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
+  // i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());
+
+  nvtxRangePop();
+  // std::cout<<"lb_mlt h_bounds_changed_0 "<<h_bounds_changed_0<<" h_bounds_changed_1 "<<"
+  // "<<h_bounds_changed_1<<"\n";
+  //  return (h_bounds_changed_0 != 0) || (h_bounds_changed_1 != 0);
+  // return std::make_tuple((h_bounds_changed_0 == 0), (h_bounds_changed_1 == 0));
+  return (!skip_0 || !skip_1);
 }
 
 template <typename i_t, typename f_t>
 termination_criterion_t lb_multi_probe_t<i_t, f_t>::bound_update_loop(
   lb_problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr, timer_t timer)
 {
+  skip_0                           = false;
+  skip_1                           = false;
   termination_criterion_t criteria = termination_criterion_t::ITERATION_LIMIT;
   if (init_changed_constraints) {
     // all changed constraints are 1, next are zero
@@ -155,8 +227,8 @@ termination_criterion_t lb_multi_probe_t<i_t, f_t>::bound_update_loop(
     }
     // calculate activity for both probes
     calculate_constraint_slack_iter(pb, handle_ptr);
-    auto [skip_0, skip_1] = calculate_bounds_update(pb, handle_ptr);
-    if (skip_0 && skip_1) {
+    auto proceed = calculate_bounds_update(pb, handle_ptr);
+    if (!proceed) {
       if (iter == 0) {
         criteria = termination_criterion_t::NO_UPDATE;
       } else {
@@ -166,8 +238,10 @@ termination_criterion_t lb_multi_probe_t<i_t, f_t>::bound_update_loop(
     }
     // next_changed are updated, fill current changed with zero and swap
     // swap next and current changed constraints
-    if (!skip_0) { upd_0.prepare_for_next_iteration(handle_ptr); }
-    if (!skip_1) { upd_1.prepare_for_next_iteration(handle_ptr); }
+    if (iter != settings.iteration_limit - 1) {
+      if (!skip_0) { upd_0.prepare_for_next_iteration(handle_ptr); }
+      if (!skip_1) { upd_1.prepare_for_next_iteration(handle_ptr); }
+    }
   }
   if (compute_stats) { constraint_stats(pb, handle_ptr); }
   return criteria;

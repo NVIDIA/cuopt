@@ -81,6 +81,37 @@ void lb_bounds_update_data_t<i_t, f_t>::resize(const raft::handle_t* handle_ptr,
 }
 
 template <typename i_t, typename f_t>
+typename lb_bounds_update_data_t<i_t, f_t>::bnd_upd_view_t
+lb_bounds_update_data_t<i_t, f_t>::bnd_upd_view()
+{
+  bnd_upd_view_t v;
+  v.bounds_changed           = bounds_changed.data();
+  v.cnst_slack               = make_span(cnst_slack);
+  v.vars_bnd                 = make_span(vars_bnd);
+  v.changed_constraints      = make_span(changed_constraints);
+  v.next_changed_constraints = make_span(next_changed_constraints);
+  v.changed_variables        = make_span(changed_variables);
+  return v;
+}
+
+template <typename i_t, typename f_t>
+typename lb_bounds_update_data_t<i_t, f_t>::heavy_view_t
+lb_bounds_update_data_t<i_t, f_t>::heavy_view()
+{
+  heavy_view_t v;
+  v.bounds_changed           = bounds_changed.data();
+  v.cnst_slack               = make_span(cnst_slack);
+  v.vars_bnd                 = make_span(vars_bnd);
+  v.changed_constraints      = make_span(changed_constraints);
+  v.next_changed_constraints = make_span(next_changed_constraints);
+  v.changed_variables        = make_span(changed_variables);
+
+  v.heavy_bounds_changed_agg = make_span(heavy_bounds_changed_agg);
+  v.heavy_bounds_changed     = make_span(heavy_bounds_changed);
+  return v;
+}
+
+template <typename i_t, typename f_t>
 typename lb_bounds_update_data_t<i_t, f_t>::view_t lb_bounds_update_data_t<i_t, f_t>::view()
 {
   view_t v;

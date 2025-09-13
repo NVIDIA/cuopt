@@ -71,24 +71,69 @@ __device__ thrust::pair<f_t2, f_t2> update_bounds(csr_view_t view,
 
     // cnst_slack[cnst_idx].x now has cnst_ub - min_a
     // cnst_slack[cnst_idx].y now has cnst_lb - max_a
-    auto cnst_slack_0 = upd_0.cnst_slack[cnst_idx];
     //  don't propagate over constraints that are infeasible
     // TODO : write changed_constraints = 0 for infeasible constraints while calculating activity
-    bool skip_cnst_0 = ((upd_0.changed_constraints[cnst_idx] == 0) || isnan(cnst_slack_0.x));
+    bool skip_cnst_0 = (upd_0.changed_constraints[cnst_idx] == 0);
     if (!skip_cnst_0) {
-      bounds_0 = update_bounds_per_cnst(coeff, cnst_slack_0, old_bounds_0, bounds_0);
+      auto cnst_slack_0 = upd_0.cnst_slack[cnst_idx];
+      bounds_0          = update_bounds_per_cnst(coeff, cnst_slack_0, old_bounds_0, bounds_0);
     }
 
-    auto cnst_slack_1 = upd_1.cnst_slack[cnst_idx];
-    bool skip_cnst_1  = ((upd_1.changed_constraints[cnst_idx] == 0) || isnan(cnst_slack_1.x));
+    bool skip_cnst_1 = (upd_1.changed_constraints[cnst_idx] == 0);
     //  don't propagate over constraints that are infeasible
     // TODO : write changed_constraints = 0 for infeasible constraints while calculating activity
     if (!skip_cnst_1) {
-      bounds_1 = update_bounds_per_cnst(coeff, cnst_slack_1, old_bounds_1, bounds_1);
+      auto cnst_slack_1 = upd_1.cnst_slack[cnst_idx];
+      bounds_1          = update_bounds_per_cnst(coeff, cnst_slack_1, old_bounds_1, bounds_1);
     }
   }
 
   return thrust::make_pair(bounds_0, bounds_1);
+}
+
+template <typename i_t,
+          typename f_t,
+          int BDIM,
+          typename csr_view_t,
+          typename upd_view_t,
+          typename heavy_data_view_t>
+__global__ void bnd_heavy_update_next_changed_constraints(csr_view_t view,
+                                                          upd_view_t upd0,
+                                                          upd_view_t upd1,
+                                                          heavy_data_view_t heavy_data)
+{
+  auto heavy_var_id_offset = view.heavy_vertex_ids[blockIdx.x];
+  auto pseudo_block_id     = view.heavy_pseudo_block_ids[blockIdx.x];
+  auto idx                 = heavy_var_id_offset + view.heavy_beg_id;
+
+  auto var_idx = view.reorg_ids[idx];
+
+  auto bounds_updated_0 = upd0.heavy_bounds_changed_agg[heavy_var_id_offset];
+  auto bounds_updated_1 = upd1.heavy_bounds_changed_agg[heavy_var_id_offset];
+
+  if (bounds_updated_0 && (pseudo_block_id == 0) && (threadIdx.x == 0)) {
+    atomicAdd(upd0.bounds_changed, 1);
+  }
+  if (bounds_updated_1 && (pseudo_block_id == 0) && (threadIdx.x == 0)) {
+    atomicAdd(upd1.bounds_changed, 1);
+  }
+
+  auto changed_0 = upd0.heavy_bounds_changed[heavy_var_id_offset];
+  auto changed_1 = upd1.heavy_bounds_changed[heavy_var_id_offset];
+
+  if (!(changed_0 || changed_1)) { return; }
+
+  i_t tid          = threadIdx.x;
+  i_t item_off_beg = view.offsets[idx] + heavy_data.work_per_block * pseudo_block_id;
+  i_t item_off_end = min(item_off_beg + heavy_data.work_per_block, view.offsets[idx + 1]);
+
+  if (changed_0 && changed_1) {
+    update_next_changed_constraints<BDIM>(view, upd0, upd1, tid, item_off_beg, item_off_end);
+  } else if (changed_0) {
+    update_next_changed_constraints<BDIM>(view, upd0, tid, item_off_beg, item_off_end);
+  } else if (changed_1) {
+    update_next_changed_constraints<BDIM>(view, upd1, tid, item_off_beg, item_off_end);
+  }
 }
 
 template <typename i_t, typename f_t, int BDIM, typename csr_view_t, typename upd_view_t>
@@ -228,6 +273,8 @@ __device__ void bnd_sub_warp(i_t id_warp_beg,
   i_t var_idx = -1;
   bool is_int = false;
 
+  if (threadIdx.x == 0) { storage.vote.changed_0[0] = 0; }
+
   thrust::pair<f_t2, f_t2> old_bounds = thrust::make_pair(
     f_t2{-std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
     f_t2{-std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()});
@@ -241,7 +288,10 @@ __device__ void bnd_sub_warp(i_t id_warp_beg,
       skip_update(upd0, upd1, var_idx, view.tolerances.integrality_tolerance);
     is_int = (view.var_types[idx] == var_t::INTEGER);
     bounds = old_bounds;
+    if (!skip_both(skip_calc)) { storage.vote.changed_0[0] = 1; }
   }
+  __syncthreads();
+  if (storage.vote.changed_0[0] == 0) { return; }
 
   i_t p_tid      = lane_id & (MAX_EDGE_PER_CNST - 1);
   bool head_flag = (p_tid == 0);
@@ -277,7 +327,7 @@ __device__ void bnd_sub_warp(i_t id_warp_beg,
 
   bounds = reduce.max_min(bounds);
 
-  bool changed_0, changed_1;
+  bool changed_0 = false, changed_1 = false;
   auto mask = __ballot_sync(0xFFFFFFFF, valid_item);
   if (valid_item && head_flag && (!thrust::get<0>(skip_calc))) {
     changed_0 = write_updated_bounds(
@@ -409,6 +459,8 @@ __device__ void bnd_block(i_t id_block_beg,
   i_t var_idx;
   bool is_int = false;
 
+  if (threadIdx.x == 0) { storage.vote.changed_0[0] = 0; }
+
   thrust::pair<f_t2, f_t2> old_bounds = thrust::make_pair(
     f_t2{-std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
     f_t2{-std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()});
@@ -421,7 +473,10 @@ __device__ void bnd_block(i_t id_block_beg,
       skip_update(upd0, upd1, var_idx, view.tolerances.integrality_tolerance);
     is_int = (view.var_types[idx] == var_t::INTEGER);
     bounds = old_bounds;
+    if (!skip_both(skip_calc)) { storage.vote.changed_0[0] = 1; }
   }
+  __syncthreads();
+  if (storage.vote.changed_0[0] == 0) { return; }
 
   using reduce_t = partial_block_reduce_t<f_t, BDIM, PSEUDO_BDIM>;
   // using storage_t = typename reduce_t::storage_t;
@@ -554,5 +609,283 @@ __global__ void call_bnd_update(csr_view_t view, upd_view_t upd0, upd_view_t upd
     call_bnd_block<i_t, f_t, BDIM>(view, upd0, upd1, storage);
   }
 }
+
+#if 0
+template <typename f_t,
+          int BDIM,
+          int MAX_EDGE_PER_CNST,
+          typename i_t,
+          typename csr_view_t,
+          typename upd_view_t>
+__device__ void bnd_sub_warp(
+  i_t id_warp_beg, i_t id_range_end, csr_view_t view, upd_view_t upd0, upd_view_t upd1)
+{
+  using f_t2 = typename type_2<f_t>::type;
+
+  i_t lane_id = (threadIdx.x & 31);
+  i_t idx     = id_warp_beg + (lane_id / MAX_EDGE_PER_CNST);
+  i_t var_idx = -1;
+  bool is_int = false;
+
+  thrust::pair<f_t2, f_t2> old_bounds = thrust::make_pair(
+    f_t2{-std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
+    f_t2{-std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()});
+
+  //__shared__ int early_exit;
+  // if (threadIdx.x == 0) { early_exit = 1; }
+  //__syncthreads();
+
+  thrust::pair<f_t2, f_t2> bounds;
+  bool valid_item                    = (idx < id_range_end);
+  thrust::pair<bool, bool> skip_calc = thrust::make_pair(!valid_item, !valid_item);
+  if (valid_item) {
+    var_idx = view.reorg_ids[idx];
+    thrust::tie(old_bounds, skip_calc) =
+      skip_update(upd0, upd1, var_idx, view.tolerances.integrality_tolerance);
+    is_int = (view.var_types[idx] == var_t::INTEGER);
+    bounds = old_bounds;
+    // if (!skip_both(skip_calc)) { atomicExch(&early_exit, 0); }
+  }
+  //__syncthreads();
+
+  // if (early_exit) { return; }
+
+  i_t p_tid      = lane_id & (MAX_EDGE_PER_CNST - 1);
+  bool head_flag = (p_tid == 0);
+
+  using reduce_t = warp_reduce_t<f_t, MAX_EDGE_PER_CNST, BDIM>;
+  // using storage_t = typename reduce_t::storage_t;
+  __shared__ warp_storage_t<f_t, BDIM> storage;
+  reduce_t reduce(warp_storage<MAX_EDGE_PER_CNST>(storage));
+
+  i_t item_off_beg, item_off_end;
+  if (valid_item && both_valid(skip_calc)) {
+    item_off_beg = view.offsets[idx];
+    item_off_end = view.offsets[idx + 1];
+    bounds       = update_bounds<i_t, MAX_EDGE_PER_CNST>(view,
+                                                   upd0,
+                                                   upd1,
+                                                   p_tid,
+                                                   item_off_beg,
+                                                   item_off_end,
+                                                   thrust::get<0>(old_bounds),
+                                                   thrust::get<1>(old_bounds));
+  } else if (valid_item && (!thrust::get<0>(skip_calc))) {
+    item_off_beg           = view.offsets[idx];
+    item_off_end           = view.offsets[idx + 1];
+    thrust::get<0>(bounds) = update_bounds<i_t, MAX_EDGE_PER_CNST>(
+      view, upd0, p_tid, item_off_beg, item_off_end, thrust::get<0>(old_bounds));
+  } else if (valid_item && (!thrust::get<1>(skip_calc))) {
+    item_off_beg           = view.offsets[idx];
+    item_off_end           = view.offsets[idx + 1];
+    thrust::get<1>(bounds) = update_bounds<i_t, MAX_EDGE_PER_CNST>(
+      view, upd1, p_tid, item_off_beg, item_off_end, thrust::get<1>(old_bounds));
+  }
+
+  bounds = reduce.max_min(bounds);
+
+  bool changed_0 = false, changed_1 = false;
+  auto mask = __ballot_sync(0xFFFFFFFF, valid_item);
+  if (valid_item && head_flag && (!thrust::get<0>(skip_calc))) {
+    changed_0 = write_updated_bounds(
+      view, upd0, var_idx, is_int, thrust::get<0>(bounds), thrust::get<0>(old_bounds));
+  }
+  if (valid_item && head_flag && (!thrust::get<1>(skip_calc))) {
+    changed_1 = write_updated_bounds(
+      view, upd1, var_idx, is_int, thrust::get<1>(bounds), thrust::get<1>(old_bounds));
+  }
+  if (valid_item) {
+    changed_0 = __shfl_sync(mask, changed_0, 0, MAX_EDGE_PER_CNST);
+    changed_1 = __shfl_sync(mask, changed_1, 0, MAX_EDGE_PER_CNST);
+    if (changed_0 && changed_1) {
+      update_next_changed_constraints<MAX_EDGE_PER_CNST>(
+        view, upd0, upd1, p_tid, item_off_beg, item_off_end);
+    } else if (changed_0) {
+      update_next_changed_constraints<MAX_EDGE_PER_CNST>(
+        view, upd0, p_tid, item_off_beg, item_off_end);
+    } else if (changed_1) {
+      update_next_changed_constraints<MAX_EDGE_PER_CNST>(
+        view, upd1, p_tid, item_off_beg, item_off_end);
+    }
+  }
+}
+
+template <typename i_t, typename f_t, int BDIM, typename csr_view_t, typename upd_view_t>
+__global__ void bnd_block(i_t id_block_beg, csr_view_t view, upd_view_t upd0, upd_view_t upd1)
+{
+  using f_t2 = typename type_2<f_t>::type;
+
+  i_t idx      = id_block_beg + blockIdx.x;
+  auto var_idx = view.reorg_ids[idx];
+
+  auto [old_bounds, skip_calc] =
+    skip_update(upd0, upd1, var_idx, view.tolerances.integrality_tolerance);
+
+  bool is_int = (view.var_types[idx] == var_t::INTEGER);
+
+  if (skip_both(skip_calc)) { return; }
+
+  using reduce_t  = block_reduce_t<f_t, BDIM>;
+  using storage_t = typename reduce_t::storage_t;
+  __shared__ storage_t storage;
+  reduce_t reduce(storage);
+
+  i_t item_off_beg, item_off_end;
+  __shared__ bool changed_0, changed_1;
+  if (both_valid(skip_calc)) {
+    item_off_beg = view.offsets[idx];
+    item_off_end = view.offsets[idx + 1];
+    auto bounds  = update_bounds<i_t, BDIM>(view,
+                                           upd0,
+                                           upd1,
+                                           threadIdx.x,
+                                           item_off_beg,
+                                           item_off_end,
+                                           thrust::get<0>(old_bounds),
+                                           thrust::get<1>(old_bounds));
+    bounds       = reduce.max_min(bounds);
+    if (threadIdx.x == 0) {
+      changed_0 = write_updated_bounds(
+        view, upd0, var_idx, is_int, thrust::get<0>(bounds), thrust::get<0>(old_bounds));
+      changed_1 = write_updated_bounds(
+        view, upd1, var_idx, is_int, thrust::get<1>(bounds), thrust::get<1>(old_bounds));
+    }
+  } else if (!thrust::get<0>(skip_calc)) {
+    item_off_beg = view.offsets[idx];
+    item_off_end = view.offsets[idx + 1];
+    auto bounds  = update_bounds<i_t, BDIM>(
+      view, upd0, threadIdx.x, item_off_beg, item_off_end, thrust::get<0>(old_bounds));
+    bounds = reduce.max_min(bounds);
+    if (threadIdx.x == 0) {
+      changed_0 =
+        write_updated_bounds(view, upd0, var_idx, is_int, bounds, thrust::get<0>(old_bounds));
+    }
+  } else if (!thrust::get<1>(skip_calc)) {
+    item_off_beg = view.offsets[idx];
+    item_off_end = view.offsets[idx + 1];
+    auto bounds  = update_bounds<i_t, BDIM>(
+      view, upd1, threadIdx.x, item_off_beg, item_off_end, thrust::get<1>(old_bounds));
+    bounds = reduce.max_min(bounds);
+    if (threadIdx.x == 0) {
+      changed_1 =
+        write_updated_bounds(view, upd1, var_idx, is_int, bounds, thrust::get<1>(old_bounds));
+    }
+  }
+  __syncthreads();
+
+  if (changed_0 && changed_1) {
+    update_next_changed_constraints<BDIM, i_t>(
+      view, upd0, upd1, threadIdx.x, item_off_beg, item_off_end);
+  }
+  if (changed_0) {
+    update_next_changed_constraints<BDIM, i_t>(view, upd0, threadIdx.x, item_off_beg, item_off_end);
+  }
+  if (changed_1) {
+    update_next_changed_constraints<BDIM, i_t>(view, upd1, threadIdx.x, item_off_beg, item_off_end);
+  }
+}
+
+template <typename i_t,
+          typename f_t,
+          int BDIM,
+          typename csr_view_t,
+          typename upd_view_t,
+          typename heavy_data_view_t>
+__global__ void bnd_heavy(csr_view_t view,
+                          upd_view_t upd0,
+                          upd_view_t upd1,
+                          heavy_data_view_t heavy_data)
+{
+  auto heavy_var_id_offset = heavy_data.heavy_vertex_ids[blockIdx.x];
+  auto idx                 = heavy_var_id_offset + heavy_data.heavy_beg_id;
+
+  auto var_idx = view.reorg_ids[idx];
+  auto [old_bounds, skip_calc] =
+    skip_update(upd0, upd1, var_idx, view.tolerances.integrality_tolerance);
+
+  if (skip_both(skip_calc)) { return; }
+
+  bool is_int = (view.var_types[idx] == var_t::INTEGER);
+
+  auto pseudo_block_id = heavy_data.heavy_pseudo_block_ids[blockIdx.x];
+  i_t item_off_beg     = view.offsets[idx] + heavy_data.work_per_block * pseudo_block_id;
+  i_t item_off_end     = min(item_off_beg + heavy_data.work_per_block, view.offsets[idx + 1]);
+
+  using reduce_t  = block_reduce_t<f_t, BDIM>;
+  using storage_t = typename reduce_t::storage_t;
+  __shared__ storage_t storage;
+  reduce_t reduce(storage);
+
+  if (both_valid(skip_calc)) {
+    auto bounds = update_bounds<i_t, BDIM>(view,
+                                           upd0,
+                                           upd1,
+                                           threadIdx.x,
+                                           item_off_beg,
+                                           item_off_end,
+                                           thrust::get<0>(old_bounds),
+                                           thrust::get<1>(old_bounds));
+    bounds      = reduce.max_min(bounds);
+    if (threadIdx.x == 0) {
+      write_updated_bounds_heavy(view,
+                                 upd0,
+                                 var_idx,
+                                 heavy_var_id_offset,
+                                 is_int,
+                                 thrust::get<0>(bounds),
+                                 thrust::get<0>(old_bounds));
+      write_updated_bounds_heavy(view,
+                                 upd1,
+                                 var_idx,
+                                 heavy_var_id_offset,
+                                 is_int,
+                                 thrust::get<1>(bounds),
+                                 thrust::get<1>(old_bounds));
+    }
+  } else if (!thrust::get<0>(skip_calc)) {
+    auto bounds = update_bounds<i_t, BDIM>(
+      view, upd0, threadIdx.x, item_off_beg, item_off_end, thrust::get<0>(old_bounds));
+    bounds = reduce.max_min(bounds);
+    if (threadIdx.x == 0) {
+      write_updated_bounds_heavy(
+        view, upd0, var_idx, heavy_var_id_offset, is_int, bounds, thrust::get<0>(old_bounds));
+    }
+  } else if (!thrust::get<1>(skip_calc)) {
+    auto bounds = update_bounds<i_t, BDIM>(
+      view, upd1, threadIdx.x, item_off_beg, item_off_end, thrust::get<1>(old_bounds));
+    bounds = reduce.max_min(bounds);
+    if (threadIdx.x == 0) {
+      write_updated_bounds_heavy(
+        view, upd1, var_idx, heavy_var_id_offset, is_int, bounds, thrust::get<1>(old_bounds));
+    }
+  }
+}
+
+template <typename i_t,
+          typename f_t,
+          int BDIM,
+          typename csr_view_t,
+          typename upd_view_t,
+          typename warp_data_t>
+__global__ void call_bnd_sub_warp(csr_view_t view,
+                                  upd_view_t upd0,
+                                  upd_view_t upd1,
+                                  warp_data_t warp_data)
+{
+  auto [id_warp_beg, id_range_end, t_p_v] = get_sub_warp_bin<i_t>(warp_data);
+
+  if (t_p_v == 1) {
+    bnd_sub_warp<f_t, BDIM, 1>(id_warp_beg, id_range_end, view, upd0, upd1);
+  } else if (t_p_v == 2) {
+    bnd_sub_warp<f_t, BDIM, 2>(id_warp_beg, id_range_end, view, upd0, upd1);
+  } else if (t_p_v == 4) {
+    bnd_sub_warp<f_t, BDIM, 4>(id_warp_beg, id_range_end, view, upd0, upd1);
+  } else if (t_p_v == 8) {
+    bnd_sub_warp<f_t, BDIM, 8>(id_warp_beg, id_range_end, view, upd0, upd1);
+  } else if (t_p_v == 16) {
+    bnd_sub_warp<f_t, BDIM, 16>(id_warp_beg, id_range_end, view, upd0, upd1);
+  }
+}
+#endif
 
 }  // namespace cuopt::linear_programming::detail

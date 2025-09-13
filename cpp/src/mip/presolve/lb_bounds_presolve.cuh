@@ -56,8 +56,7 @@ class lb_bound_presolve_t {
 
   void calculate_constraint_slack_iter(lb_problem_t<i_t, f_t>& pb,
                                        const raft::handle_t* handle_ptr);
-  void calculate_activity_on_problem_bounds(lb_problem_t<i_t, f_t>& pb,
-                                            const raft::handle_t* handle_ptr);
+  // void calculate_activity_on_problem_bounds(problem_t<i_t, f_t>& pb);
   bool calculate_bounds_update(lb_problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
   void set_updated_bounds(lb_problem_t<i_t, f_t>& pb);
   void set_updated_bounds(const raft::handle_t* handle_ptr, raft::device_span<f_t2> output_bounds);
