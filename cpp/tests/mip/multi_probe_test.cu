@@ -176,7 +176,7 @@ void bench_multi_probe(std::string path)
   detail::multi_probe_t<int, double> multi_probe_prs(solver.context);
 
   detail::lb_problem_t<int, double> lb_problem(problem);
-  detail::lb_multi_probe_t<int, double> lb_multi_probe_prs(solver.context, lb_problem);
+  detail::lb_multi_probe_t<int, double> lb_multi_probe_prs(solver.context);
 
   auto probe_tuple       = select_k_random(problem, 100);
   auto bounds_probe_vals = convert_probe_tuple(probe_tuple);

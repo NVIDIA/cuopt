@@ -152,8 +152,9 @@ void bench(std::string path)
                                                                true);
   detail::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
   detail::bound_presolve_t<int, double> bnd_prs(solver.context);
-  detail::lb_problem_t<int, double> lb_problem(problem);
-  detail::lb_bound_presolve_t<int, double> lb_prs(solver.context, lb_problem);
+
+  detail::lb_bound_presolve_t<int, double> lb_prs(solver.context);
+  detail::lb_problem_t<int, double>& lb_problem = problem.get_load_balanced_problem();
 
   detail::load_balanced_problem_t<int, double> lb_problem_old(problem);
   detail::load_balanced_bounds_presolve_t<int, double> lb_prs_old(lb_problem_old, solver.context);
@@ -193,7 +194,7 @@ void bench(std::string path)
     cudaEventElapsedTime(&bnd_lb_time, start, stop);
   }
   {
-    lb_prs.copy_input_bounds(lb_problem, &handle_);
+    lb_prs.copy_input_bounds(problem, &handle_);
     lb_prs.upd.init_changed_constraints(&handle_);
 
     cudaEvent_t start, stop;
@@ -258,8 +259,8 @@ void test_multi_probe(std::string path)
                                                                problem.reverse_constraints,
                                                                true);
   detail::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
-  detail::lb_problem_t<int, double> lb_problem(problem);
-  detail::lb_bound_presolve_t<int, double> lb_prs(solver.context, lb_problem);
+  detail::lb_problem_t<int, double>& lb_problem = problem.get_load_balanced_problem();
+  detail::lb_bound_presolve_t<int, double> lb_prs(solver.context);
 
   detail::bound_presolve_t<int, double> bnd_prb(solver.context);
 
@@ -275,7 +276,7 @@ void test_multi_probe(std::string path)
     auto h_lb = host_copy(b_lb);
     auto h_ub = host_copy(b_ub);
 
-    lb_prs.solve(lb_problem, probe_first);
+    lb_prs.solve(problem, probe_first);
 
     auto bnds = host_copy(lb_prs.upd.vars_bnd);
     for (int i = 0; i < (int)h_lb.size(); ++i) {

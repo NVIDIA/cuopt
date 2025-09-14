@@ -33,14 +33,13 @@ namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
 lb_bound_presolve_t<i_t, f_t>::lb_bound_presolve_t(mip_solver_context_t<i_t, f_t>& context_,
-                                                   lb_problem_t<i_t, f_t>& problem,
                                                    settings_t in_settings)
-  : context(context_), upd(problem), settings(in_settings)
+  : context(context_), upd(*context.problem_ptr), settings(in_settings)
 {
 }
 
 template <typename i_t, typename f_t>
-void lb_bound_presolve_t<i_t, f_t>::resize(lb_problem_t<i_t, f_t>& problem)
+void lb_bound_presolve_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
 {
   upd.resize(problem);
   host_bounds.resize(problem.n_variables);
@@ -177,16 +176,16 @@ termination_criterion_t lb_bound_presolve_t<i_t, f_t>::bound_update_loop(
 }
 
 template <typename i_t, typename f_t>
-void lb_bound_presolve_t<i_t, f_t>::copy_input_bounds(lb_problem_t<i_t, f_t>& pb,
+void lb_bound_presolve_t<i_t, f_t>::copy_input_bounds(problem_t<i_t, f_t>& pb,
                                                       const raft::handle_t* handle_ptr)
 {
-  cuopt_assert(upd.vars_bnd.size() == pb.vars_bnd.size(), "size of variable bound mismatch");
+  cuopt_assert(upd.vars_bnd.size() == pb.variable_bounds.size(), "size of variable bound mismatch");
   raft::copy(
-    upd.vars_bnd.data(), pb.vars_bnd.data(), upd.vars_bnd.size(), handle_ptr->get_stream());
+    upd.vars_bnd.data(), pb.variable_bounds.data(), upd.vars_bnd.size(), handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
-termination_criterion_t lb_bound_presolve_t<i_t, f_t>::solve(lb_problem_t<i_t, f_t>& pb,
+termination_criterion_t lb_bound_presolve_t<i_t, f_t>::solve(problem_t<i_t, f_t>& pb,
                                                              f_t var_lb,
                                                              f_t var_ub,
                                                              i_t var_idx)
@@ -197,12 +196,12 @@ termination_criterion_t lb_bound_presolve_t<i_t, f_t>::solve(lb_problem_t<i_t, f
   using f_t2   = typename type_2<f_t>::type;
   f_t2 var_val = f_t2{var_lb, var_ub};
   upd.vars_bnd.set_element_async(var_idx, var_val, handle_ptr->get_stream());
-  return bound_update_loop(pb, handle_ptr, timer);
+  return bound_update_loop(pb.get_load_balanced_problem(), handle_ptr, timer);
 }
 
 template <typename i_t, typename f_t>
 termination_criterion_t lb_bound_presolve_t<i_t, f_t>::solve(
-  lb_problem_t<i_t, f_t>& pb,
+  problem_t<i_t, f_t>& pb,
   const std::vector<thrust::pair<i_t, f_t>>& var_probe_val_pairs,
   bool use_host_bounds)
 {
@@ -215,25 +214,25 @@ termination_criterion_t lb_bound_presolve_t<i_t, f_t>::solve(
   }
   set_bounds(make_span(upd.vars_bnd), var_probe_val_pairs, handle_ptr);
 
-  return bound_update_loop(pb, handle_ptr, timer);
+  return bound_update_loop(pb.get_load_balanced_problem(), handle_ptr, timer);
 }
 
 template <typename i_t, typename f_t>
 termination_criterion_t lb_bound_presolve_t<i_t, f_t>::solve(
-  lb_problem_t<i_t, f_t>& pb, raft::device_span<typename type_2<f_t>::type> input_bounds)
+  problem_t<i_t, f_t>& pb, raft::device_span<typename type_2<f_t>::type> input_bounds)
 {
   timer_t timer(settings.time_limit);
   auto& handle_ptr = pb.handle_ptr;
   if (input_bounds.size() == 0) {
-    cuopt_assert(upd.vars_bnd.size() == pb.vars_bnd.size(), "size of variable bound mismatch");
+    cuopt_assert(upd.vars_bnd.size() == pb.variable_bounds.size(), "size of variable bound mismatch");
     raft::copy(
-      upd.vars_bnd.data(), pb.vars_bnd.data(), upd.vars_bnd.size(), handle_ptr->get_stream());
+      upd.vars_bnd.data(), pb.variable_bounds.data(), upd.vars_bnd.size(), handle_ptr->get_stream());
   } else {
     cuopt_assert(input_bounds.size() == upd.vars_bnd.size(), "size of variable bound mismatch");
     raft::copy(
       upd.vars_bnd.data(), input_bounds.data(), input_bounds.size(), handle_ptr->get_stream());
   }
-  return bound_update_loop(pb, handle_ptr, timer);
+  return bound_update_loop(pb.get_load_balanced_problem(), handle_ptr, timer);
 }
 
 template <typename i_t, typename f_t, typename f_t2>
@@ -286,9 +285,9 @@ bool lb_bound_presolve_t<i_t, f_t>::calculate_infeasible_redundant_constraints(
 }
 
 template <typename i_t, typename f_t>
-void lb_bound_presolve_t<i_t, f_t>::set_updated_bounds(lb_problem_t<i_t, f_t>& pb)
+void lb_bound_presolve_t<i_t, f_t>::set_updated_bounds(problem_t<i_t, f_t>& pb)
 {
-  set_updated_bounds(pb.handle_ptr, cuopt::make_span(pb.vars_bnd));
+  set_updated_bounds(pb.handle_ptr, cuopt::make_span(pb.variable_bounds));
   // TODO?
   // auto* orig_prob_ptr = pb.pb;
   // orig_prob_ptr->compute_n_integer_vars();

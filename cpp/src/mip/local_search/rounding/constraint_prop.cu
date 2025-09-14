@@ -1054,7 +1054,11 @@ bool constraint_prop_t<i_t, f_t>::apply_round(
   temp_sol.problem_ptr       = &p;
   f_t bounds_prop_start_time = max_timer.remaining_time();
   cuopt_func_call(temp_sol.test_variable_bounds(false));
+
+  temp_sol.problem_ptr->lb_problem.swap(sol.problem_ptr->lb_problem);
   bool sol_found = find_integer(temp_sol, sol, lp_run_time_after_feasible, timer, probing_config);
+  temp_sol.problem_ptr->lb_problem.swap(sol.problem_ptr->lb_problem);
+
   f_t bounds_prop_end_time = max_timer.remaining_time();
   repair_stats.total_time_spent_on_bounds_prop += bounds_prop_start_time - bounds_prop_end_time;
 

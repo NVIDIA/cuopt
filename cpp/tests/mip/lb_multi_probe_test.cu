@@ -301,18 +301,18 @@ multi_probe_results(
 
 std::tuple<std::vector<double2>, std::vector<double2>> multi_probe_results(
   detail::lb_multi_probe_t<int, double>& prb,
-  detail::lb_problem_t<int, double>& lb_problem,
+  detail::problem_t<int, double>& problem,
   const std::tuple<std::vector<int>, std::vector<double>, std::vector<double>>& probe_tuple)
 {
   {
     nvtxRangePush("lb_solve");
-    prb.solve(lb_problem, probe_tuple);
+    prb.solve(problem, probe_tuple);
     nvtxRangePop();
   }
-  rmm::device_uvector<double2> m_bnd_0(lb_problem.n_variables, lb_problem.handle_ptr->get_stream());
-  rmm::device_uvector<double2> m_bnd_1(lb_problem.n_variables, lb_problem.handle_ptr->get_stream());
-  prb.set_updated_bounds(lb_problem.handle_ptr, make_span(m_bnd_0), 0);
-  prb.set_updated_bounds(lb_problem.handle_ptr, make_span(m_bnd_1), 1);
+  rmm::device_uvector<double2> m_bnd_0(problem.n_variables, problem.handle_ptr->get_stream());
+  rmm::device_uvector<double2> m_bnd_1(problem.n_variables, problem.handle_ptr->get_stream());
+  prb.set_updated_bounds(problem.handle_ptr, make_span(m_bnd_0), 0);
+  prb.set_updated_bounds(problem.handle_ptr, make_span(m_bnd_1), 1);
 
   auto h_bnd_0 = host_copy(m_bnd_0);
   auto h_bnd_1 = host_copy(m_bnd_1);
@@ -680,7 +680,7 @@ void test_multi_probe(std::string path)
   problem.preprocess_problem();
   detail::trivial_presolve(problem);
 
-  detail::lb_problem_t<int, double> lb_problem(problem);
+  detail::lb_problem_t<int, double>& lb_problem = problem.get_load_balanced_problem();
   mip_solver_settings_t<int, double> default_settings{};
   detail::pdhg_solver_t<int, double> pdhg_solver(problem.handle_ptr, problem);
   detail::pdlp_initial_scaling_strategy_t<int, double> scaling(&handle_,
@@ -712,10 +712,10 @@ void test_multi_probe(std::string path)
     handle_.sync_stream();
   }
 
-  detail::lb_multi_probe_t<int, double> lb_multi(solver.context, lb_problem);
+  detail::lb_multi_probe_t<int, double> lb_multi(solver.context);
   {
     // setup lb multi_probe
-    lb_multi.copy_problem_into_probing_buffers(lb_problem, &handle_);
+    lb_multi.copy_problem_into_probing_buffers(problem, &handle_);
 
     lb_multi.upd_0.init_changed_constraints(&handle_);
     lb_multi.upd_1.init_changed_constraints(&handle_);
@@ -781,8 +781,8 @@ void test_lb_multi_probe(std::string path)
 
   // auto orig_var_bounds = host_copy(problem.variable_bounds);
 
-  detail::lb_problem_t<int, double> lb_problem(problem);
-  detail::lb_multi_probe_t<int, double> lb_multi_probe_prs(solver.context, lb_problem);
+  detail::lb_problem_t<int, double>& lb_problem = problem.get_load_balanced_problem();
+  detail::lb_multi_probe_t<int, double> lb_multi_probe_prs(solver.context);
 
   detail::load_balanced_problem_t<int, double> lb_prb_old(problem);
   detail::load_balanced_bounds_presolve_t<int, double> lb_prs_old(lb_prb_old, solver.context);
@@ -798,7 +798,7 @@ void test_lb_multi_probe(std::string path)
 
   for (int i = 0; i < 10; ++i) {
     multi_probe_prs.solve(problem, probe_tuple);
-    lb_multi_probe_prs.solve(lb_problem, probe_tuple);
+    lb_multi_probe_prs.solve(problem, probe_tuple);
     lb_prs_old.solve(std::get<0>(bounds_probe_vals));
     lb_prs_old.solve(std::get<1>(bounds_probe_vals));
   }
@@ -807,7 +807,7 @@ void test_lb_multi_probe(std::string path)
     multi_probe_results(multi_probe_prs, problem, probe_tuple);
   std::cout << "call multi_probe_results\n";
   std::cout << std::endl;
-  auto [m_bnd_0, m_bnd_1] = multi_probe_results(lb_multi_probe_prs, lb_problem, probe_tuple);
+  auto [m_bnd_0, m_bnd_1] = multi_probe_results(lb_multi_probe_prs, problem, probe_tuple);
   {
     nvtxRangePush("old_lb_solve");
     lb_prs_old.solve(std::get<0>(bounds_probe_vals));

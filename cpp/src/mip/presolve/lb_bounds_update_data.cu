@@ -25,7 +25,7 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
-lb_bounds_update_data_t<i_t, f_t>::lb_bounds_update_data_t(lb_problem_t<i_t, f_t>& problem)
+lb_bounds_update_data_t<i_t, f_t>::lb_bounds_update_data_t(problem_t<i_t, f_t>& problem)
   : bounds_changed(problem.handle_ptr->get_stream()),
     cnst_slack(0, problem.handle_ptr->get_stream()),
     vars_bnd(0, problem.handle_ptr->get_stream()),
@@ -40,23 +40,24 @@ lb_bounds_update_data_t<i_t, f_t>::lb_bounds_update_data_t(lb_problem_t<i_t, f_t
 }
 
 template <typename i_t, typename f_t>
-void lb_bounds_update_data_t<i_t, f_t>::copy(lb_problem_t<i_t, f_t>& problem)
+void lb_bounds_update_data_t<i_t, f_t>::copy(problem_t<i_t, f_t>& problem)
 {
   // TODO : remove resize?
   resize(problem);
   raft::copy(
-    vars_bnd.data(), problem.vars_bnd.data(), vars_bnd.size(), problem.handle_ptr->get_stream());
+    vars_bnd.data(), problem.variable_bounds.data(), vars_bnd.size(), problem.handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
-void lb_bounds_update_data_t<i_t, f_t>::resize(lb_problem_t<i_t, f_t>& problem)
+void lb_bounds_update_data_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
 {
-  auto num_heavy_vars = problem.n_variables - problem.vars_csr.heavy_beg_id;
+  auto& lb_problem = problem.get_load_balanced_problem();
+  auto num_heavy_vars = lb_problem.n_variables - lb_problem.vars_csr.heavy_beg_id;
   resize(problem.handle_ptr,
-         problem.n_constraints,
-         problem.n_variables,
-         problem.cnst_csr.num_blocks_heavy,
-         problem.vars_csr.num_blocks_heavy,
+         lb_problem.n_constraints,
+         lb_problem.n_variables,
+         lb_problem.cnst_csr.num_blocks_heavy,
+         lb_problem.vars_csr.num_blocks_heavy,
          num_heavy_vars);
 }
 

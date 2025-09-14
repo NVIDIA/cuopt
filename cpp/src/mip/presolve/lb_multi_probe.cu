@@ -49,14 +49,13 @@ std::pair<i_t, i_t> get_id_range(const std::vector<i_t>& bin_offsets,
 
 template <typename i_t, typename f_t>
 lb_multi_probe_t<i_t, f_t>::lb_multi_probe_t(mip_solver_context_t<i_t, f_t>& context_,
-                                             lb_problem_t<i_t, f_t>& problem,
                                              settings_t in_settings)
-  : context(context_), upd_0(problem), upd_1(problem), settings(in_settings)
+  : context(context_), upd_0(*context.problem_ptr), upd_1(*context.problem_ptr), settings(in_settings)
 {
 }
 
 template <typename i_t, typename f_t>
-void lb_multi_probe_t<i_t, f_t>::resize(lb_problem_t<i_t, f_t>& problem)
+void lb_multi_probe_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
 {
   upd_0.resize(problem);
   upd_1.resize(problem);
@@ -65,10 +64,10 @@ void lb_multi_probe_t<i_t, f_t>::resize(lb_problem_t<i_t, f_t>& problem)
 
 template <typename i_t, typename f_t>
 void lb_multi_probe_t<i_t, f_t>::copy_problem_into_probing_buffers(
-  lb_problem_t<i_t, f_t>& lb_problem, const raft::handle_t* handle_ptr)
+  problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
 {
-  upd_0.copy(lb_problem);
-  upd_1.copy(lb_problem);
+  upd_0.copy(problem);
+  upd_1.copy(problem);
 }
 
 template <typename i_t, typename f_t>
@@ -348,7 +347,7 @@ void lb_multi_probe_t<i_t, f_t>::set_bounds(
 template <typename i_t, typename f_t>
 void lb_multi_probe_t<i_t, f_t>::set_interval_bounds(
   const std::tuple<i_t, std::pair<f_t, f_t>, std::pair<f_t, f_t>>& var_interval_vals,
-  lb_problem_t<i_t, f_t>& pb,
+  problem_t<i_t, f_t>& problem,
   const raft::handle_t* handle_ptr)
 {
   using f_t2                              = typename type_2<f_t>::type;
@@ -367,11 +366,10 @@ void lb_multi_probe_t<i_t, f_t>::set_interval_bounds(
                       upd_1_v.vars_bnd[probe_var] = f_t2{lb_1, ub_1};
                     });
   // init changed constraints
-  auto* orig_prob_ptr = pb.pb;
   i_t var_offset_begin =
-    orig_prob_ptr->reverse_offsets.element(probe_var, handle_ptr->get_stream());
+    problem.reverse_offsets.element(probe_var, handle_ptr->get_stream());
   i_t var_offset_end =
-    orig_prob_ptr->reverse_offsets.element(probe_var + 1, handle_ptr->get_stream());
+    problem.reverse_offsets.element(probe_var + 1, handle_ptr->get_stream());
   thrust::fill(handle_ptr->get_thrust_policy(),
                upd_0.changed_constraints.begin(),
                upd_0.changed_constraints.end(),
@@ -390,8 +388,8 @@ void lb_multi_probe_t<i_t, f_t>::set_interval_bounds(
                0);
   // set changed constraints from the vars
   thrust::for_each(handle_ptr->get_thrust_policy(),
-                   orig_prob_ptr->reverse_constraints.begin() + var_offset_begin,
-                   orig_prob_ptr->reverse_constraints.begin() + var_offset_end,
+                   problem.reverse_constraints.begin() + var_offset_begin,
+                   problem.reverse_constraints.begin() + var_offset_end,
                    [upd_0_v = upd_0.view(), upd_1_v = upd_1.view()] __device__(auto i) {
                      upd_0_v.changed_constraints[i] = 1;
                      upd_1_v.changed_constraints[i] = 1;
@@ -403,7 +401,7 @@ void lb_multi_probe_t<i_t, f_t>::set_interval_bounds(
 
 template <typename i_t, typename f_t>
 termination_criterion_t lb_multi_probe_t<i_t, f_t>::solve(
-  lb_problem_t<i_t, f_t>& pb,
+  problem_t<i_t, f_t>& pb,
   const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals,
   bool use_host_bounds)
 {
@@ -416,12 +414,12 @@ termination_criterion_t lb_multi_probe_t<i_t, f_t>::solve(
   }
   set_bounds(var_probe_vals, handle_ptr);
 
-  return bound_update_loop(pb, handle_ptr, timer);
+  return bound_update_loop(pb.get_load_balanced_problem(), handle_ptr, timer);
 }
 
 template <typename i_t, typename f_t>
 termination_criterion_t lb_multi_probe_t<i_t, f_t>::solve_for_interval(
-  lb_problem_t<i_t, f_t>& pb,
+  problem_t<i_t, f_t>& pb,
   const std::tuple<i_t, std::pair<f_t, f_t>, std::pair<f_t, f_t>>& var_interval_vals,
   const raft::handle_t* handle_ptr)
 {
@@ -430,7 +428,7 @@ termination_criterion_t lb_multi_probe_t<i_t, f_t>::solve_for_interval(
   copy_problem_into_probing_buffers(pb, handle_ptr);
   set_interval_bounds(var_interval_vals, pb, handle_ptr);
 
-  return bound_update_loop(pb, handle_ptr, timer);
+  return bound_update_loop(pb.get_load_balanced_problem(), handle_ptr, timer);
 }
 
 template <typename i_t, typename f_t, typename f_t2>
@@ -524,11 +522,11 @@ void lb_multi_probe_t<i_t, f_t>::set_updated_bounds(
 }
 
 template <typename i_t, typename f_t>
-void lb_multi_probe_t<i_t, f_t>::set_updated_bounds(lb_problem_t<i_t, f_t>& pb,
+void lb_multi_probe_t<i_t, f_t>::set_updated_bounds(problem_t<i_t, f_t>& pb,
                                                     i_t select_update,
                                                     const raft::handle_t* handle_ptr)
 {
-  set_updated_bounds(handle_ptr, make_span(pb.vars_bnd), select_update);
+  set_updated_bounds(handle_ptr, make_span(pb.variable_bounds), select_update);
 }
 
 #if MIP_INSTANTIATE_FLOAT

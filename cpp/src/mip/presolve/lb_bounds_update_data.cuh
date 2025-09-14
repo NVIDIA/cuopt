@@ -75,9 +75,9 @@ struct lb_bounds_update_data_t {
     raft::device_span<i_t> changed_variables;
   };
 
-  lb_bounds_update_data_t(lb_problem_t<i_t, f_t>& problem);
-  void copy(lb_problem_t<i_t, f_t>& problem);
-  void resize(lb_problem_t<i_t, f_t>& problem);
+  lb_bounds_update_data_t(problem_t<i_t, f_t>& problem);
+  void copy(problem_t<i_t, f_t>& problem);
+  void resize(problem_t<i_t, f_t>& problem);
   void resize(const raft::handle_t* handle_ptr,
               i_t n_constraints,
               i_t n_variables,

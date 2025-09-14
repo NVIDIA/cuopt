@@ -39,17 +39,16 @@ class lb_multi_probe_t {
   };
 
   lb_multi_probe_t(mip_solver_context_t<i_t, f_t>& context_,
-                   lb_problem_t<i_t, f_t>& problem,
                    settings_t settings = settings_t{});
-  void resize(lb_problem_t<i_t, f_t>& problem);
+  void resize(problem_t<i_t, f_t>& problem);
 
   termination_criterion_t solve(
-    lb_problem_t<i_t, f_t>& pb,
+    problem_t<i_t, f_t>& pb,
     const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals,
     bool use_host_bounds = false);
 
   termination_criterion_t solve_for_interval(
-    lb_problem_t<i_t, f_t>& pb,
+    problem_t<i_t, f_t>& pb,
     const std::tuple<i_t, std::pair<f_t, f_t>, std::pair<f_t, f_t>>& var_interval_vals,
     const raft::handle_t* handle_ptr);
 
@@ -58,7 +57,7 @@ class lb_multi_probe_t {
   // void calculate_activity(problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
   bool calculate_bounds_update(lb_problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
   void calculate_bounds_update_call(lb_problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
-  void set_updated_bounds(lb_problem_t<i_t, f_t>& pb,
+  void set_updated_bounds(problem_t<i_t, f_t>& pb,
                           i_t select_update,
                           const raft::handle_t* handle_ptr);
   void set_updated_bounds(const raft::handle_t* handle_ptr,
@@ -69,13 +68,13 @@ class lb_multi_probe_t {
                                             timer_t timer);
   void set_interval_bounds(
     const std::tuple<i_t, std::pair<f_t, f_t>, std::pair<f_t, f_t>>& var_interval_vals,
-    lb_problem_t<i_t, f_t>& pb,
+    problem_t<i_t, f_t>& pb,
     const raft::handle_t* handle_ptr);
   void set_bounds(
     const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals,
     const raft::handle_t* handle_ptr);
   void constraint_stats(lb_problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
-  void copy_problem_into_probing_buffers(lb_problem_t<i_t, f_t>& pb,
+  void copy_problem_into_probing_buffers(problem_t<i_t, f_t>& pb,
                                          const raft::handle_t* handle_ptr);
   void update_host_bounds(const raft::handle_t* handle_ptr,
                           const raft::device_span<f_t2> variable_bounds);
