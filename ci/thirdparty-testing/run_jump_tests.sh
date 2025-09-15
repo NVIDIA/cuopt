@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -20,7 +22,7 @@ set -euo pipefail
 if ! command -v julia &> /dev/null; then
     rapids-logger "Installing Julia using official installer..."
     # Pass 'yes' to the installer to accept any prompts automatically
-    curl -fsSL https://install.julialang.org | sh -s -- --yes 
+    curl -fsSL https://install.julialang.org | sh -s -- --yes
     # Add Julia to PATH for current session
     export PATH="$HOME/.juliaup/bin:$PATH"
     # Also add to .bashrc for future sessions
