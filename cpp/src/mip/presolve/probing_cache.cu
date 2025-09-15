@@ -175,7 +175,7 @@ void inline insert_current_probing_to_cache(i_t var_idx,
       }
       cuopt_assert(get_lower(modified_bounds[impacted_var_idx]) >= get_lower(original_var_bounds),
                    "Lower bound must be greater than or equal to original lower bound");
-      cuopt_assert(modified_ub[impacted_var_idx] <= get_upper(original_var_bounds),
+      cuopt_assert(get_upper(modified_bounds[impacted_var_idx]) <= get_upper(original_var_bounds),
                    "Upper bound must be less than or equal to original upper bound");
       cached_bound_t<f_t> new_bound{get_lower(modified_bounds[impacted_var_idx]),
                                     get_upper(modified_bounds[impacted_var_idx])};
