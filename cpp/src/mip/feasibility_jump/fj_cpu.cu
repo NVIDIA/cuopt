@@ -340,13 +340,13 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   if (delta > 0) {
     fj_cpu.h_tabu_lastinc[var_idx]     = fj_cpu.iterations;
     fj_cpu.h_tabu_nodec_until[var_idx] = fj_cpu.iterations + tabu_tenure;
-    // fj_cpu.h_tabu_noinc_until[var_idx] = fj_cpu.iterations + tabu_tenure / 2;
-    //  CUOPT_LOG_TRACE("CPU: tabu nodec_until: %d\n", fj_cpu.h_tabu_nodec_until[var_idx]);
+    fj_cpu.h_tabu_noinc_until[var_idx] = fj_cpu.iterations + tabu_tenure / 2;
+    // CUOPT_LOG_TRACE("CPU: tabu nodec_until: %d\n", fj_cpu.h_tabu_nodec_until[var_idx]);
   } else {
     fj_cpu.h_tabu_lastdec[var_idx]     = fj_cpu.iterations;
     fj_cpu.h_tabu_noinc_until[var_idx] = fj_cpu.iterations + tabu_tenure;
-    // fj_cpu.h_tabu_nodec_until[var_idx] = fj_cpu.iterations + tabu_tenure / 2;
-    //  CUOPT_LOG_TRACE("CPU: tabu noinc_until: %d\n", fj_cpu.h_tabu_noinc_until[var_idx]);
+    fj_cpu.h_tabu_nodec_until[var_idx] = fj_cpu.iterations + tabu_tenure / 2;
+    // CUOPT_LOG_TRACE("CPU: tabu noinc_until: %d\n", fj_cpu.h_tabu_noinc_until[var_idx]);
   }
 
   std::fill(fj_cpu.flip_move_computed.begin(), fj_cpu.flip_move_computed.end(), false);
@@ -880,7 +880,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
     auto rng                 = std::mt19937(cuopt::seed_generator::get_seed());
     fj_cpu->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(rng);
     fj_cpu->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
-    fj_cpu->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(rng);
+    fj_cpu->nnz_samples      = std::uniform_int_distribution<i_t>(20000, 150000)(rng);
     fj_cpu->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
   }
   fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
