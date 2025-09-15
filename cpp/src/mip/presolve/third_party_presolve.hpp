@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/enums.h>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 
 namespace cuopt::linear_programming::detail {
@@ -29,10 +30,12 @@ class third_party_presolve_t {
   std::pair<optimization_problem_t<i_t, f_t>, bool> apply(
     optimization_problem_t<i_t, f_t> const& op_problem,
     problem_category_t category,
+    presolve_method_t presolve_method,
     f_t absolute_tolerance,
     f_t relative_tolerance,
     double time_limit,
-    i_t num_cpu_threads = 0);
+    std::function<bool(void)> presolve_stop_callback = nullptr,
+    i_t num_cpu_threads                              = 0);
 
   void undo(rmm::device_uvector<f_t>& primal_solution,
             rmm::device_uvector<f_t>& dual_solution,

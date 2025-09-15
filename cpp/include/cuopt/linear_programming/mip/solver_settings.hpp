@@ -20,6 +20,7 @@
 #include <vector>
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/linear_programming/enums.h>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
 #include <raft/core/device_span.hpp>
@@ -99,7 +100,9 @@ class mip_solver_settings_t {
   /** Initial primal solutions */
   std::vector<std::shared_ptr<rmm::device_uvector<f_t>>> initial_solutions;
   bool mip_scaling = true;
-  bool presolve    = true;
+
+  presolve_method_t presolve_method = presolve_method_t::FULL;
+
   // this is for extracting info from different places of the solver during
   // benchmarks
   benchmark_info_t* benchmark_info_ptr = nullptr;

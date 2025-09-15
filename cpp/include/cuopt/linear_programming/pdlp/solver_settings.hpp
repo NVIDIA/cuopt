@@ -18,6 +18,7 @@
 #pragma once
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/linear_programming/enums.h>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
 #include <optional>
 #include <raft/core/device_span.hpp>
@@ -209,7 +210,7 @@ class pdlp_solver_settings_t {
   bool crossover{false};
   bool save_best_primal_so_far{false};
   bool first_primal_feasible{false};
-  bool presolve{false};
+  presolve_method_t presolve_method = presolve_method_t::DUAL_PRESERVING;
   method_t method{method_t::Concurrent};
   // For concurrent termination
   std::atomic<i_t>* concurrent_halt;

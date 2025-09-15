@@ -219,8 +219,10 @@ TEST(pdlp_class, run_sub_mittleman)
     for (auto solver_mode : solver_mode_list) {
       auto settings             = pdlp_solver_settings_t<int, double>{};
       settings.pdlp_solver_mode = solver_mode;
-      for (auto [presolve, epsilon] : {std::pair{true, 1e-1}, std::pair{false, 1e-6}}) {
-        settings.presolve = presolve;
+      for (auto [presolve, epsilon] :
+           {std::pair{cuopt::linear_programming::presolve_method_t::FULL, 1e-1},
+            std::pair{cuopt::linear_programming::presolve_method_t::NONE, 1e-6}}) {
+        settings.presolve_method = presolve;
         const raft::handle_t handle_{};
         optimization_problem_solution_t<int, double> solution =
           solve_lp(&handle_, op_problem, settings);
@@ -232,7 +234,10 @@ TEST(pdlp_class, run_sub_mittleman)
                               solution.get_primal_solution(),
                               solution.get_additional_termination_information().primal_objective,
                               epsilon);
-        test_constraint_sanity(op_problem, solution, epsilon, presolve);
+        test_constraint_sanity(op_problem,
+                               solution,
+                               epsilon,
+                               presolve != cuopt::linear_programming::presolve_method_t::NONE);
       }
     }
   }

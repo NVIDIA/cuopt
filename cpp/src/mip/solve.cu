@@ -185,22 +185,24 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
     detail::problem_t<i_t, f_t> problem(op_problem, settings.get_tolerances());
 
-    auto run_presolve = settings.presolve;
+    auto run_presolve = settings.presolve_method != presolve_method_t::NONE;
     run_presolve      = run_presolve && settings.get_mip_callbacks().empty();
 
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
 
     if (run_presolve) {
-      // allocate not more than 10% of the time limit to presolve.
+      // allocate not more than 10% of the time limit to presolve, also not more than 60 seconds
       // Note that this is not the presolve time, but the time limit for presolve.
-      const double presolve_time_limit = 0.1 * time_limit;
+      const double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
       presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
       auto [reduced_op_problem, feasible] =
         presolver->apply(op_problem,
                          cuopt::linear_programming::problem_category_t::MIP,
+                         settings.presolve_method,
                          settings.tolerances.absolute_tolerance,
                          settings.tolerances.relative_tolerance,
                          presolve_time_limit,
+                         nullptr,
                          settings.num_cpu_threads);
       if (!feasible) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,

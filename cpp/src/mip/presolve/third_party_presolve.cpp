@@ -93,16 +93,18 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
 
   auto constr_bounds_empty = h_constr_lb.empty() && h_constr_ub.empty();
   if (constr_bounds_empty) {
+    h_constr_lb.resize(h_row_types.size());
+    h_constr_ub.resize(h_row_types.size());
     for (size_t i = 0; i < h_row_types.size(); ++i) {
       if (h_row_types[i] == 'L') {
-        h_constr_lb.push_back(-std::numeric_limits<f_t>::infinity());
-        h_constr_ub.push_back(h_bounds[i]);
+        h_constr_lb[i] = -std::numeric_limits<f_t>::infinity();
+        h_constr_ub[i] = h_bounds[i];
       } else if (h_row_types[i] == 'G') {
-        h_constr_lb.push_back(h_bounds[i]);
-        h_constr_ub.push_back(std::numeric_limits<f_t>::infinity());
+        h_constr_lb[i] = h_bounds[i];
+        h_constr_ub[i] = std::numeric_limits<f_t>::infinity();
       } else if (h_row_types[i] == 'E') {
-        h_constr_lb.push_back(h_bounds[i]);
-        h_constr_ub.push_back(h_bounds[i]);
+        h_constr_lb[i] = h_bounds[i];
+        h_constr_ub[i] = h_bounds[i];
       }
     }
   }
@@ -129,7 +131,7 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
   }
 
   std::vector<papilo::RowFlags> h_row_flags(h_constr_lb.size());
-  std::vector<std::tuple<i_t, i_t, f_t>> h_entries;
+  std::vector<std::tuple<i_t, i_t, f_t>> h_entries(nnz);
   // Add constraints row by row
   for (size_t i = 0; i < h_constr_lb.size(); ++i) {
     // Get row entries
@@ -137,8 +139,8 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
     i_t row_end     = h_offsets[i + 1];
     i_t num_entries = row_end - row_start;
     for (size_t j = 0; j < num_entries; ++j) {
-      h_entries.push_back(
-        std::make_tuple(i, h_variables[row_start + j], h_coefficients[row_start + j]));
+      h_entries[row_start + j] =
+        std::make_tuple(i, h_variables[row_start + j], h_coefficients[row_start + j]);
     }
 
     if (h_constr_lb[i] == -std::numeric_limits<f_t>::infinity()) {
@@ -165,7 +167,7 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
 
   auto problem = builder.build();
 
-  if (h_entries.size()) {
+  if (nnz > 0) {
     auto constexpr const sorted_entries = true;
     auto csr_storage = papilo::SparseStorage<f_t>(h_entries, num_rows, num_cols, sorted_entries);
     problem.setConstraintMatrix(csr_storage, h_constr_lb, h_constr_ub, h_row_flags);
@@ -304,7 +306,9 @@ void check_postsolve_status(const papilo::PostsolveStatus& status)
 }
 
 template <typename f_t>
-void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t category)
+void set_presolve_methods(papilo::Presolve<f_t>& presolver,
+                          problem_category_t category,
+                          presolve_method_t presolve_method)
 {
   using uptr = std::unique_ptr<papilo::PresolveMethod<f_t>>;
 
@@ -328,10 +332,16 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t c
   presolver.addPresolveMethod(uptr(new papilo::DominatedCols<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::Probing<f_t>()));
 
-  presolver.addPresolveMethod(uptr(new papilo::DualInfer<f_t>));
-  presolver.addPresolveMethod(uptr(new papilo::SimpleSubstitution<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::Sparsify<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::Substitution<f_t>()));
+  if (presolve_method == presolve_method_t::FULL) {
+    presolver.addPresolveMethod(uptr(new papilo::DualInfer<f_t>()));
+    presolver.addPresolveMethod(uptr(new papilo::SimpleSubstitution<f_t>()));
+    presolver.addPresolveMethod(uptr(new papilo::Substitution<f_t>()));
+
+    // Sparsify is too slow for LPs, mainly because of the large number of variables
+    if (category == problem_category_t::MIP) {
+      presolver.addPresolveMethod(uptr(new papilo::Sparsify<f_t>()));
+    }
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -340,21 +350,28 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
                           f_t absolute_tolerance,
                           f_t relative_tolerance,
                           double time_limit,
+                          std::function<bool(void)> presolve_stop_callback,
                           i_t num_cpu_threads)
 {
   presolver.getPresolveOptions().tlim    = time_limit;
   presolver.getPresolveOptions().threads = num_cpu_threads;  //  user setting or  0 (automatic)
+  if (presolve_stop_callback) {
+    presolver.getPresolveOptions().early_exit_callback = presolve_stop_callback;
+  }
 }
 
 template <typename i_t, typename f_t>
 std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_t>::apply(
   optimization_problem_t<i_t, f_t> const& op_problem,
   problem_category_t category,
+  presolve_method_t presolve_method,
   f_t absolute_tolerance,
   f_t relative_tolerance,
   double time_limit,
+  std::function<bool(void)> presolve_stop_callback,
   i_t num_cpu_threads)
 {
+  cuopt::timer_t presolve_timer(time_limit);
   cuopt_expects(
     presolve_calls_ == 0, error_type_t::ValidationError, "Presolve can only be called once");
   presolve_calls_++;
@@ -366,10 +383,28 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
                  papilo_problem.getNCols(),
                  papilo_problem.getConstraintMatrix().getNnz());
 
+  // INSERT_YOUR_CODE
+  // Check the timing so far and subtract it from the specified time_limit
+  double elapsed           = presolve_timer.elapsed_time();
+  double time_for_presolve = presolve_timer.remaining_time();
+  if (time_for_presolve == 0.0) {
+    CUOPT_LOG_INFO("Presolve time limit reached, skipping presolve");
+    return std::make_pair(optimization_problem_t<i_t, f_t>(op_problem), true);
+  }
+  if (presolve_stop_callback && presolve_stop_callback()) {
+    CUOPT_LOG_INFO("Presolve stop callback triggered, skipping presolve");
+    return std::make_pair(optimization_problem_t<i_t, f_t>(op_problem), true);
+  }
+
   papilo::Presolve<f_t> presolver;
-  set_presolve_methods<f_t>(presolver, category);
-  set_presolve_options<i_t, f_t>(
-    presolver, category, absolute_tolerance, relative_tolerance, time_limit, num_cpu_threads);
+  set_presolve_methods<f_t>(presolver, category, presolve_method);
+  set_presolve_options<i_t, f_t>(presolver,
+                                 category,
+                                 absolute_tolerance,
+                                 relative_tolerance,
+                                 time_for_presolve,
+                                 presolve_stop_callback,
+                                 num_cpu_threads);
 
   // Disable papilo logs
   presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);

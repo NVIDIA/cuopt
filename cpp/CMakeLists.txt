@@ -173,7 +173,9 @@ endif()
 FetchContent_Declare(
   papilo
   GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
-  GIT_TAG "v2.4.3"
+  GIT_TAG "4e42b8acec6f1169c4545ab206df1f3dc2d9c7f0"
+  GIT_SHALLOW FALSE
+  GIT_PROGRESS TRUE
   SYSTEM
 )
 
