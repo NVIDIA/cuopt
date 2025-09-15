@@ -542,7 +542,7 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
         is_feasible = solution.get_feasible();
         n_integers  = solution.compute_number_of_integers();
         if (is_feasible && n_integers == solution.problem_ptr->n_integer_vars) {
-          CUOPT_LOG_DEBUG("Feasible solution verified with lower precision!");
+          CUOPT_LOG_DEBUG("Feasible solution verified with LP!");
           return true;
         }
       }

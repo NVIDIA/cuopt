@@ -89,7 +89,7 @@ class diversity_manager_t {
   diversity_config_t diversity_config;
   population_t<i_t, f_t> population;
   rmm::device_uvector<f_t> lp_optimal_solution;
-  bool simplex_solution_exists{false};
+  std::atomic<bool> simplex_solution_exists{false};
   local_search_t<i_t, f_t> ls;
   cuopt::timer_t timer;
   bound_prop_recombiner_t<i_t, f_t> bound_prop_recombiner;

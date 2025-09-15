@@ -392,6 +392,7 @@ install(TARGETS cuopt_cli
 )
 
 option(BUILD_BENCHMARKS "Build benchmarks" ON)
+set(BUILD_MIP_BENCHMARKS ON)
 if(BUILD_BENCHMARKS)
   add_executable(solve_MPS_file ../benchmarks/linear_programming/cuopt/run_mip.cpp)
   target_compile_options(solve_MPS_file

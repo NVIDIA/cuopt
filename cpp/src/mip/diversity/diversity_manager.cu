@@ -354,11 +354,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   lp_state_t<i_t, f_t>& lp_state = problem_ptr->lp_state;
   // resize because some constructor might be called before the presolve
   lp_state.resize(*problem_ptr, problem_ptr->handle_ptr->get_stream());
-  bool bb_thread_solution_exists = false;
-  {
-    std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
-    bb_thread_solution_exists = simplex_solution_exists;
-  }  // Mutex is unlocked here
+  bool bb_thread_solution_exists = simplex_solution_exists.load();
   if (bb_thread_solution_exists) {
     ls.lp_optimal_exists = true;
   } else if (!fj_only_run) {
@@ -375,7 +371,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
       get_relaxed_lp_solution(*problem_ptr, lp_optimal_solution_copy, lp_state, lp_settings);
     {
       std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
-      if (!simplex_solution_exists) {
+      if (!simplex_solution_exists.load()) {
         raft::copy(lp_optimal_solution.data(),
                    lp_optimal_solution_copy.data(),
                    lp_optimal_solution.size(),
@@ -769,7 +765,6 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>& solution,
                                                          f_t objective)
 {
-  return;
   CUOPT_LOG_DEBUG("Setting simplex solution with objective %f", objective);
   using sol_t = solution_t<i_t, f_t>;
   context.handle_ptr->sync_stream();
