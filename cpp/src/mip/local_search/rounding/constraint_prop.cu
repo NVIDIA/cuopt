@@ -119,8 +119,7 @@ template <typename i_t, typename f_t>
 __global__ void compute_implied_slack_consumption_per_var(
   typename problem_t<i_t, f_t>::view_t orig_pb,
   raft::device_span<i_t> var_indices,
-  raft::device_span<f_t> min_activity,
-  raft::device_span<f_t> max_activity,
+  raft::device_span<typename type_2<f_t>::type> cnst_slack,
   raft::device_span<f_t> implied_var_slack_consumption,
   bool is_problem_ii,
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tols)
@@ -133,17 +132,14 @@ __global__ void compute_implied_slack_consumption_per_var(
   for (i_t i = threadIdx.x; i < var_degree; i += blockDim.x) {
     auto a        = orig_pb.reverse_coefficients[var_offset + i];
     auto cnst_idx = orig_pb.reverse_constraints[var_offset + i];
-    auto min_a    = min_activity[cnst_idx];
-    auto max_a    = max_activity[cnst_idx];
-    auto cnstr_ub = orig_pb.constraint_upper_bounds[cnst_idx];
-    auto cnstr_lb = orig_pb.constraint_lower_bounds[cnst_idx];
+    auto slack    = cnst_slack[cnst_idx];
 
-    auto slack_min_act = cnstr_ub - min_a;
-    auto slack_max_act = cnstr_lb - max_a;
+    auto slack_min_act = get_lower(slack);
+    auto slack_max_act = get_upper(slack);
 
     // don't consider constraints that are infeasible
-    if ((0 >= cnstr_ub - min_a + tols.absolute_tolerance) ||
-        (0 <= cnstr_lb - max_a - tols.absolute_tolerance)) {
+    if ((0 >= slack_min_act + tols.absolute_tolerance) ||
+        (0 <= slack_max_act - tols.absolute_tolerance)) {
       continue;
     }
 
@@ -176,16 +172,13 @@ void constraint_prop_t<i_t, f_t>::sort_by_implied_slack_consumption(
   rmm::device_uvector<f_t> implied_slack_consumption_per_var(
     vars.size(), original_problem.handle_ptr->get_stream());
   const i_t block_dim = 128;
-  auto min_activity   = selected_update ? make_span(multi_probe.upd_1.min_activity)
-                                        : make_span(multi_probe.upd_0.min_activity);
-  auto max_activity   = selected_update ? make_span(multi_probe.upd_1.max_activity)
-                                        : make_span(multi_probe.upd_0.max_activity);
+  auto cnst_slack     = selected_update ? make_span(multi_probe.upd_1.cnst_slack)
+                                        : make_span(multi_probe.upd_0.cnst_slack);
   compute_implied_slack_consumption_per_var<i_t, f_t>
     <<<vars.size(), block_dim, 0, original_problem.handle_ptr->get_stream()>>>(
       original_problem.view(),
       vars,
-      min_activity,
-      max_activity,
+      cnst_slack,
       make_span(implied_slack_consumption_per_var),
       problem_ii,
       context.settings.get_tolerances());
@@ -662,6 +655,7 @@ bool test_var_out_of_bounds(const solution_t<i_t, f_t>& orig_sol,
 template <typename i_t, typename f_t>
 std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>
 constraint_prop_t<i_t, f_t>::generate_bulk_rounding_vector(
+  const solution_t<i_t, f_t>& sol,
   const solution_t<i_t, f_t>& orig_sol,
   const std::vector<i_t>& host_vars_to_set,
   const std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>> probing_config)
@@ -694,16 +688,12 @@ constraint_prop_t<i_t, f_t>::generate_bulk_rounding_vector(
                  "Probing value must be an integer");
     f_t val_to_round = first_probe;
     // check probing cache if some implied bounds exists
-    // only problem.original_ids is used, therefore, we can use the orig_sol.problem_ptr
     if (use_probing_cache &&
-        bounds_update.probing_cache.contains(*orig_sol.problem_ptr, unset_var_idx)) {
+        bounds_update.probing_cache.contains(*sol.problem_ptr, unset_var_idx)) {
       // check if there are any conflicting bounds
-      // only problem.original_ids and problem.reverse_original_ids are used
-      // therefore, we can use the orig_sol.problem_ptr
       val_to_round =
-        bounds_update.probing_cache.get_least_conflicting_rounding(*orig_sol.problem_ptr,
-                                                                   multi_probe.host_lb,
-                                                                   multi_probe.host_ub,
+        bounds_update.probing_cache.get_least_conflicting_rounding(*sol.problem_ptr,
+                                                                   multi_probe.host_bounds,
                                                                    unset_var_idx,
                                                                    first_probe,
                                                                    second_probe,
@@ -737,8 +727,10 @@ void constraint_prop_t<i_t, f_t>::update_host_assignment(const solution_t<i_t, f
 template <typename i_t, typename f_t>
 void constraint_prop_t<i_t, f_t>::set_host_bounds(const problem_t<i_t, f_t>& problem)
 {
-  std::tie(multi_probe.host_lb, multi_probe.host_ub) =
-    extract_host_bounds<f_t>(problem.variable_bounds, problem.handle_ptr);
+  raft::copy(multi_probe.host_bounds.data(),
+             problem.variable_bounds.data(),
+             problem.variable_bounds.size(),
+             problem.handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
@@ -768,7 +760,7 @@ bool constraint_prop_t<i_t, f_t>::run_repair_procedure(problem_t<i_t, f_t>& prob
   // select the first probing value
   i_t select = 0;
   multi_probe.set_updated_bounds(problem, select, handle_ptr);
-  bounds_update.copy_input_bounds(problem);
+  bounds_update.copy_input_bounds(problem, handle_ptr);
   repair_stats.repair_attempts++;
   f_t repair_start_time                = timer.remaining_time();
   i_t n_of_repairs_needed_for_feasible = 0;
@@ -822,8 +814,9 @@ bool constraint_prop_t<i_t, f_t>::run_repair_procedure(problem_t<i_t, f_t>& prob
 template <typename i_t, typename f_t>
 bool constraint_prop_t<i_t, f_t>::is_problem_ii(problem_t<i_t, f_t>& problem)
 {
-  bounds_update.calculate_activity_on_problem_bounds(problem);
-  bounds_update.calculate_infeasible_redundant_constraints(problem);
+  bounds_update.calculate_constraint_slack_on_problem_bounds(problem);
+  bounds_update.calculate_infeasible_redundant_constraints(problem.get_load_balanced_problem(),
+                                                           problem.handle_ptr);
   bool problem_ii = bounds_update.infeas_constraints_count > 0;
   return problem_ii;
 }
@@ -945,7 +938,8 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
                unset_integer_vars.data() + set_count,
                n_vars_to_set,
                sol.handle_ptr->get_stream());
-    auto var_probe_vals = generate_bulk_rounding_vector(orig_sol, host_vars_to_set, probing_config);
+    auto var_probe_vals =
+      generate_bulk_rounding_vector(sol, orig_sol, host_vars_to_set, probing_config);
     probe(
       sol, orig_sol.problem_ptr, var_probe_vals, &set_count, unset_integer_vars, probing_config);
     if (!(n_failed_repair_iterations >= max_n_failed_repair_iterations) && rounding_ii &&
@@ -1025,7 +1019,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
                            orig_sol,
                            orig_sol.problem_ptr->integer_indices,
                            lp_settings,
-                           static_cast<bound_presolve_t<i_t, f_t>*>(nullptr));
+                           static_cast<lb_bound_presolve_t<i_t, f_t>*>(nullptr));
   }
   bool res_feasible = orig_sol.compute_feasibility();
   orig_sol.handle_ptr->sync_stream();
@@ -1087,8 +1081,9 @@ std::tuple<f_t, f_t, f_t> constraint_prop_t<i_t, f_t>::probing_values(
   const solution_t<i_t, f_t>& orig_sol,
   i_t idx)
 {
-  auto v_lb    = multi_probe.host_lb[idx];
-  auto v_ub    = multi_probe.host_ub[idx];
+  auto v_bnd   = multi_probe.host_bounds[idx];
+  auto v_lb    = get_lower(v_bnd);
+  auto v_ub    = get_upper(v_bnd);
   auto var_val = curr_host_assignment[idx];
 
   const f_t int_tol  = orig_sol.problem_ptr->tolerances.integrality_tolerance;

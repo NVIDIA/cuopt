@@ -47,10 +47,11 @@ void lb_bound_presolve_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
 
 template <typename i_t, typename f_t>
 void lb_bound_presolve_t<i_t, f_t>::calculate_constraint_slack_iter(
-  lb_problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
+  lb_problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr, bool calc_activity)
 {
   auto num_blocks = problem.cnst_csr.sub_warp_block_count + problem.cnst_csr.med_block_count +
                     problem.cnst_csr.num_blocks_heavy;
+  nvtxRangePush("lb_multi_act");
   // std::cout << "call_cnst_slack sub_warp_block_count " << problem.cnst_csr.sub_warp_block_count
   //           << "\n";
   // std::cout << "call_cnst_slack med_block_count " << problem.cnst_csr.med_block_count << "\n";
@@ -61,14 +62,24 @@ void lb_bound_presolve_t<i_t, f_t>::calculate_constraint_slack_iter(
 
   // std::cout << "num_heavy_items " << problem.n_constraints - problem.cnst_csr.heavy_beg_id <<
   // "\n";
-  constexpr bool erase_inf_cnst = false;
-  nvtxRangePush("lb_multi_act");
-  call_cnst_slack<erase_inf_cnst, i_t, f_t, 512>
-    <<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(problem.cnst_csr.view(), upd.view());
-  if (problem.cnst_csr.num_blocks_heavy != 0) {
-    auto num_heavy_items = problem.n_constraints - problem.cnst_csr.heavy_beg_id;
-    finalize_cnst_heavy<erase_inf_cnst, i_t, f_t, 32>
-      <<<num_heavy_items, 32, 0, handle_ptr->get_stream()>>>(problem.cnst_csr.view(), upd.view());
+  if (calc_activity) {
+    constexpr bool calc_act = true;
+    call_cnst_slack<calc_act, i_t, f_t, 512>
+      <<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(problem.cnst_csr.view(), upd.view());
+    if (problem.cnst_csr.num_blocks_heavy != 0) {
+      auto num_heavy_items = problem.n_constraints - problem.cnst_csr.heavy_beg_id;
+      finalize_cnst_heavy<calc_act, i_t, f_t, 32>
+        <<<num_heavy_items, 32, 0, handle_ptr->get_stream()>>>(problem.cnst_csr.view(), upd.view());
+    }
+  } else {
+    constexpr bool calc_act = false;
+    call_cnst_slack<calc_act, i_t, f_t, 512>
+      <<<num_blocks, 512, 0, handle_ptr->get_stream()>>>(problem.cnst_csr.view(), upd.view());
+    if (problem.cnst_csr.num_blocks_heavy != 0) {
+      auto num_heavy_items = problem.n_constraints - problem.cnst_csr.heavy_beg_id;
+      finalize_cnst_heavy<calc_act, i_t, f_t, 32>
+        <<<num_heavy_items, 32, 0, handle_ptr->get_stream()>>>(problem.cnst_csr.view(), upd.view());
+    }
   }
   nvtxRangePop();
 }
@@ -176,6 +187,56 @@ termination_criterion_t lb_bound_presolve_t<i_t, f_t>::bound_update_loop(
 }
 
 template <typename i_t, typename f_t>
+void lb_bound_presolve_t<i_t, f_t>::calculate_constraint_slack_on_problem_bounds(
+  problem_t<i_t, f_t>& pb)
+{
+  auto& handle_ptr = pb.handle_ptr;
+  upd.init_changed_constraints(handle_ptr);
+  copy_input_bounds(pb, handle_ptr);
+  calculate_constraint_slack_iter(pb.get_load_balanced_problem(), handle_ptr);
+}
+
+template <typename i_t, typename f_t>
+void lb_bound_presolve_t<i_t, f_t>::calculate_activity_on_problem_bounds(problem_t<i_t, f_t>& pb)
+{
+  auto& handle_ptr = pb.handle_ptr;
+  upd.init_changed_constraints(handle_ptr);
+  copy_input_bounds(pb, handle_ptr);
+  bool calc_activity = true;
+  calculate_constraint_slack_iter(pb.get_load_balanced_problem(), handle_ptr, true);
+}
+
+template <typename i_t, typename f_t>
+void lb_bound_presolve_t<i_t, f_t>::calc_and_set_updated_constraint_bounds(problem_t<i_t, f_t>& pb)
+{
+  calculate_activity_on_problem_bounds(pb);
+
+  thrust::for_each(pb.handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(pb.n_constraints),
+                   [pb         = pb.view(),
+                    cnst_slack = make_span(upd.cnst_slack),
+                    cnst_lb    = make_span(pb.constraint_lower_bounds),
+                    cnst_ub    = make_span(pb.constraint_upper_bounds)] __device__(i_t idx) {
+                     auto activity = cnst_slack[idx];
+                     auto min_a    = get_lower(activity);
+                     auto max_a    = get_upper(activity);
+                     auto c_lb     = cnst_lb[idx];
+                     auto c_ub     = cnst_ub[idx];
+                     auto new_c_lb = max(c_lb, min_a);
+                     auto new_c_ub = min(c_ub, max_a);
+                     i_t infeas    = check_infeasibility<i_t, f_t>(
+                       min_a, max_a, new_c_lb, new_c_ub, pb.tolerances.presolve_absolute_tolerance);
+                     if (!infeas && (new_c_lb > new_c_ub)) {
+                       new_c_lb = (new_c_lb + new_c_ub) / 2;
+                       new_c_ub = new_c_lb;
+                     }
+                     cnst_lb[idx] = new_c_lb;
+                     cnst_ub[idx] = new_c_ub;
+                   });
+}
+
+template <typename i_t, typename f_t>
 void lb_bound_presolve_t<i_t, f_t>::copy_input_bounds(problem_t<i_t, f_t>& pb,
                                                       const raft::handle_t* handle_ptr)
 {
@@ -224,9 +285,12 @@ termination_criterion_t lb_bound_presolve_t<i_t, f_t>::solve(
   timer_t timer(settings.time_limit);
   auto& handle_ptr = pb.handle_ptr;
   if (input_bounds.size() == 0) {
-    cuopt_assert(upd.vars_bnd.size() == pb.variable_bounds.size(), "size of variable bound mismatch");
-    raft::copy(
-      upd.vars_bnd.data(), pb.variable_bounds.data(), upd.vars_bnd.size(), handle_ptr->get_stream());
+    cuopt_assert(upd.vars_bnd.size() == pb.variable_bounds.size(),
+                 "size of variable bound mismatch");
+    raft::copy(upd.vars_bnd.data(),
+               pb.variable_bounds.data(),
+               upd.vars_bnd.size(),
+               handle_ptr->get_stream());
   } else {
     cuopt_assert(input_bounds.size() == upd.vars_bnd.size(), "size of variable bound mismatch");
     raft::copy(
@@ -264,14 +328,21 @@ template <typename i_t, typename f_t>
 bool lb_bound_presolve_t<i_t, f_t>::calculate_infeasible_redundant_constraints(
   lb_problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr)
 {
+  return calculate_infeasible_redundant_constraints(*pb.pb, handle_ptr);
+}
+
+template <typename i_t, typename f_t>
+bool lb_bound_presolve_t<i_t, f_t>::calculate_infeasible_redundant_constraints(
+  problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr)
+{
+  if (handle_ptr == nullptr) { handle_ptr = pb.handle_ptr; }
   using f_t2          = typename type_2<f_t>::type;
-  auto* orig_prob_ptr = pb.pb;
   auto upd_cnst_slack = upd.view().cnst_slack;
   auto detect_iter    = thrust::make_transform_iterator(
     thrust::make_zip_iterator(thrust::make_tuple(upd_cnst_slack.begin(),
-                                                 orig_prob_ptr->constraint_lower_bounds.begin(),
-                                                 orig_prob_ptr->constraint_upper_bounds.begin())),
-    detect_infeas_t<i_t, f_t, f_t2>{orig_prob_ptr->tolerances});
+                                                 pb.constraint_lower_bounds.begin(),
+                                                 pb.constraint_upper_bounds.begin())),
+    detect_infeas_t<i_t, f_t, f_t2>{pb.tolerances});
 
   infeas_constraints_count =
     thrust::reduce(handle_ptr->get_thrust_policy(), detect_iter, detect_iter + pb.n_constraints);

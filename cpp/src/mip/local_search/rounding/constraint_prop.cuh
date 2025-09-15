@@ -18,9 +18,9 @@
 #pragma once
 
 #include <mip/local_search/rounding/bounds_repair.cuh>
-#include <mip/presolve/bounds_presolve.cuh>
 #include <mip/presolve/conditional_bound_strengthening.cuh>
-#include <mip/presolve/multi_probe.cuh>
+#include <mip/presolve/lb_bounds_presolve.cuh>
+#include <mip/presolve/lb_multi_probe.cuh>
 #include <mip/solution/solution.cuh>
 #include <mip/solver.cuh>
 #include <raft/random/rng_device.cuh>
@@ -123,6 +123,7 @@ struct constraint_prop_t {
                    const raft::handle_t* handle_ptr);
   void restore_original_bounds(solution_t<i_t, f_t>& sol, solution_t<i_t, f_t>& orig_sol);
   std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>> generate_bulk_rounding_vector(
+    const solution_t<i_t, f_t>& sol,
     const solution_t<i_t, f_t>& orig_sol,
     const std::vector<i_t>& host_vars_to_set,
     const std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>> probing_config);
@@ -143,8 +144,8 @@ struct constraint_prop_t {
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t> temp_problem;
   solution_t<i_t, f_t> temp_sol;
-  bound_presolve_t<i_t, f_t> bounds_update;
-  multi_probe_t<i_t, f_t> multi_probe;
+  lb_bound_presolve_t<i_t, f_t> bounds_update;
+  lb_multi_probe_t<i_t, f_t> multi_probe;
   bounds_repair_t<i_t, f_t> bounds_repair;
   rmm::device_uvector<i_t> set_vars;
   rmm::device_uvector<i_t> unset_vars;

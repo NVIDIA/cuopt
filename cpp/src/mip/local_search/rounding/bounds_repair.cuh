@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <mip/presolve/bounds_presolve.cuh>
+#include <mip/presolve/lb_bounds_presolve.cuh>
 #include <mip/problem/problem.cuh>
 #include <mip/solution/solution.cuh>
 #include <utilities/copy_helpers.hpp>
@@ -104,7 +104,7 @@ struct candidates_t {
 template <typename i_t, typename f_t>
 class bounds_repair_t {
  public:
-  bounds_repair_t(const problem_t<i_t, f_t>& p, bound_presolve_t<i_t, f_t>& bound_presolve);
+  bounds_repair_t(const problem_t<i_t, f_t>& p, lb_bound_presolve_t<i_t, f_t>& bound_presolve);
   void resize(const problem_t<i_t, f_t>& problem);
   void reset();
   f_t get_ii_violation(problem_t<i_t, f_t>& problem);
@@ -127,7 +127,7 @@ class bounds_repair_t {
                         f_t best_damage,
                         i_t n_candidates);
 
-  bound_presolve_t<i_t, f_t>& bound_presolve;
+  lb_bound_presolve_t<i_t, f_t>& bound_presolve;
   candidates_t<i_t, f_t> candidates;
   bounds_t<i_t, f_t> best_bounds;
   rmm::device_uvector<f_t> cstr_violations_up;

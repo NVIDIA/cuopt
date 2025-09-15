@@ -19,7 +19,7 @@
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
-#include <mip/presolve/bounds_presolve.cuh>
+#include <mip/presolve/lb_bounds_presolve.cuh>
 #include <mip/problem/problem.cuh>
 #include <mip/solution/solution.cuh>
 #include "lp_state.cuh"
@@ -54,8 +54,8 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
                             solution_t<i_t, f_t>& solution,
                             const rmm::device_uvector<i_t>& variables_to_fix,
                             relaxed_lp_settings_t& settings,
-                            bound_presolve_t<i_t, f_t>* bound_presolve = nullptr,
-                            bool check_fixed_assignment_feasibility    = false,
-                            bool use_integer_fixed_problem             = false);
+                            lb_bound_presolve_t<i_t, f_t>* bound_presolve = nullptr,
+                            bool check_fixed_assignment_feasibility       = false,
+                            bool use_integer_fixed_problem                = false);
 
 }  // namespace cuopt::linear_programming::detail

@@ -44,14 +44,16 @@ void lb_bounds_update_data_t<i_t, f_t>::copy(problem_t<i_t, f_t>& problem)
 {
   // TODO : remove resize?
   resize(problem);
-  raft::copy(
-    vars_bnd.data(), problem.variable_bounds.data(), vars_bnd.size(), problem.handle_ptr->get_stream());
+  raft::copy(vars_bnd.data(),
+             problem.variable_bounds.data(),
+             vars_bnd.size(),
+             problem.handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
 void lb_bounds_update_data_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
 {
-  auto& lb_problem = problem.get_load_balanced_problem();
+  auto& lb_problem    = problem.get_load_balanced_problem();
   auto num_heavy_vars = lb_problem.n_variables - lb_problem.vars_csr.heavy_beg_id;
   resize(problem.handle_ptr,
          lb_problem.n_constraints,

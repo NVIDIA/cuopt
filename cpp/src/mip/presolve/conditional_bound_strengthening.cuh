@@ -20,7 +20,7 @@
 #include <mip/problem/problem.cuh>
 #include <mip/solution/solution.cuh>
 #include <mip/utils.cuh>
-#include "bounds_presolve.cuh"
+#include "lb_bounds_presolve.cuh"
 
 #include <utilities/timer.hpp>
 
@@ -44,7 +44,7 @@ class conditional_bound_strengthening_t {
   // FIXME:: For now, just update constraint bounds
   // Implement parameterization logic to improve the variable bounds
   void update_constraint_bounds(problem_t<i_t, f_t>& problem,
-                                bound_presolve_t<i_t, f_t>& bounds_update);
+                                lb_bound_presolve_t<i_t, f_t>& bounds_update);
 
   void resize(problem_t<i_t, f_t>& problem);
 

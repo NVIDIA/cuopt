@@ -108,7 +108,7 @@ class lb_problem_t {
     csr_data_view_t<i_t, f_t> view();
   };
 
-  const problem_t<i_t, f_t>* pb;
+  problem_t<i_t, f_t>* pb;
   const raft::handle_t* handle_ptr;
 
   csr_data_t cnst_csr;

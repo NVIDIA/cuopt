@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include "bounds_presolve.cuh"
+#include "lb_bounds_presolve.cuh"
 
 #include <mip/utils.cuh>
 
@@ -26,7 +26,7 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
-class bound_presolve_t;
+class lb_bound_presolve_t;
 
 /*
   Probing cache is a set of implied bounds when we set a variable to some value.
@@ -80,19 +80,16 @@ template <typename i_t, typename f_t>
 class probing_cache_t {
  public:
   bool contains(problem_t<i_t, f_t>& problem, i_t var_id);
-  void update_bounds_with_selected(std::vector<f_t>& host_lb,
-                                   std::vector<f_t>& host_ub,
+  void update_bounds_with_selected(std::vector<typename type_2<f_t>::type>& host_bounds,
                                    const cache_entry_t<i_t, f_t>& cache_entry,
                                    const std::vector<i_t>& reverse_original_ids);
-  i_t check_number_of_conflicting_vars(const std::vector<f_t>& host_lb,
-                                       const std::vector<f_t>& host_ub,
+  i_t check_number_of_conflicting_vars(const std::vector<typename type_2<f_t>::type>& host_bounds,
                                        const cache_entry_t<i_t, f_t>& cache_entry,
                                        f_t integrality_tolerance,
                                        const std::vector<i_t>& reverse_original_ids);
   // check if there are any conflicting bounds
   f_t get_least_conflicting_rounding(problem_t<i_t, f_t>& problem,
-                                     std::vector<f_t>& host_lb,
-                                     std::vector<f_t>& host_ub,
+                                     std::vector<typename type_2<f_t>::type>& host_bounds,
                                      i_t var_id_on_problem,
                                      f_t first_probe,
                                      f_t second_probe,
@@ -125,7 +122,7 @@ class lb_probing_cache_t {
 };
 
 template <typename i_t, typename f_t>
-void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
+void compute_probing_cache(lb_bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,
                            timer_t timer);
 

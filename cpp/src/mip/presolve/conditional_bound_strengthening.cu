@@ -59,7 +59,7 @@ void conditional_bound_strengthening_t<i_t, f_t>::resize(problem_t<i_t, f_t>& pr
 
 template <typename i_t, typename f_t>
 void conditional_bound_strengthening_t<i_t, f_t>::update_constraint_bounds(
-  problem_t<i_t, f_t>& problem, bound_presolve_t<i_t, f_t>& bounds_update)
+  problem_t<i_t, f_t>& problem, lb_bound_presolve_t<i_t, f_t>& bounds_update)
 {
   // initialize constraint pairs
   resize(problem);

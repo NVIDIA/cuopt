@@ -18,7 +18,7 @@
 #include "probing_cache.cuh"
 
 #include <mip/mip_constants.hpp>
-#include <mip/presolve/multi_probe.cuh>
+#include <mip/presolve/lb_multi_probe.cuh>
 #include <mip/utils.cuh>
 
 #include <omp.h>
@@ -30,8 +30,7 @@ namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
 i_t probing_cache_t<i_t, f_t>::check_number_of_conflicting_vars(
-  const std::vector<f_t>& host_lb,
-  const std::vector<f_t>& host_ub,
+  const std::vector<typename type_2<f_t>::type>& host_bounds,
   const cache_entry_t<i_t, f_t>& cache_entry,
   f_t integrality_tolerance,
   const std::vector<i_t>& reverse_original_ids)
@@ -41,8 +40,8 @@ i_t probing_cache_t<i_t, f_t>::check_number_of_conflicting_vars(
     i_t var_idx_in_current_problem = reverse_original_ids[var_idx];
     // -1 means that variable was fixed and doesn't exists in the current problem
     if (var_idx_in_current_problem == -1) { continue; }
-    if (host_lb[var_idx_in_current_problem] - integrality_tolerance > bound.ub ||
-        host_ub[var_idx_in_current_problem] < bound.lb - integrality_tolerance) {
+    if (get_lower(host_bounds[var_idx_in_current_problem]) - integrality_tolerance > bound.ub ||
+        get_upper(host_bounds[var_idx_in_current_problem]) < bound.lb - integrality_tolerance) {
       ++n_conflicting_var;
     }
   }
@@ -51,8 +50,7 @@ i_t probing_cache_t<i_t, f_t>::check_number_of_conflicting_vars(
 
 template <typename i_t, typename f_t>
 void probing_cache_t<i_t, f_t>::update_bounds_with_selected(
-  std::vector<f_t>& host_lb,
-  std::vector<f_t>& host_ub,
+  std::vector<typename type_2<f_t>::type>& host_bounds,
   const cache_entry_t<i_t, f_t>& cache_entry,
   const std::vector<i_t>& reverse_original_ids)
 {
@@ -61,25 +59,25 @@ void probing_cache_t<i_t, f_t>::update_bounds_with_selected(
     i_t var_idx_in_current_problem = reverse_original_ids[var_idx];
     // -1 means that variable was fixed and doesn't exists in the current problem
     if (var_idx_in_current_problem == -1) { continue; }
-    if (host_lb[var_idx_in_current_problem] < bound.lb) {
-      host_lb[var_idx_in_current_problem] = bound.lb;
+    if (get_lower(host_bounds[var_idx_in_current_problem]) < bound.lb) {
+      get_lower(host_bounds[var_idx_in_current_problem]) = bound.lb;
       n_bounds_updated++;
     }
-    if (host_ub[var_idx_in_current_problem] > bound.ub) {
-      host_ub[var_idx_in_current_problem] = bound.ub;
+    if (get_upper(host_bounds[var_idx_in_current_problem]) > bound.ub) {
+      get_upper(host_bounds[var_idx_in_current_problem]) = bound.ub;
       n_bounds_updated++;
     }
   }
 }
 
 template <typename i_t, typename f_t>
-f_t probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(problem_t<i_t, f_t>& problem,
-                                                              std::vector<f_t>& host_lb,
-                                                              std::vector<f_t>& host_ub,
-                                                              i_t var_id_on_problem,
-                                                              f_t first_probe,
-                                                              f_t second_probe,
-                                                              f_t integrality_tolerance)
+f_t probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(
+  problem_t<i_t, f_t>& problem,
+  std::vector<typename type_2<f_t>::type>& host_bounds,
+  i_t var_id_on_problem,
+  f_t first_probe,
+  f_t second_probe,
+  f_t integrality_tolerance)
 {
   // get the var id where the probing cache was computed
   i_t var_id      = problem.original_ids[var_id_on_problem];
@@ -97,15 +95,14 @@ f_t probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(problem_t<i_t, f_t
   i_t n_conflicting_vars = 0;
   // first probe found some interval
   if (hit_interval_for_first_probe != -1) {
-    n_conflicting_vars = check_number_of_conflicting_vars(host_lb,
-                                                          host_ub,
+    n_conflicting_vars = check_number_of_conflicting_vars(host_bounds,
                                                           cache_row[hit_interval_for_first_probe],
                                                           integrality_tolerance,
                                                           problem.reverse_original_ids);
     if (n_conflicting_vars == 0) {
       CUOPT_LOG_TRACE("No conflicting vars, returning first probe");
       update_bounds_with_selected(
-        host_lb, host_ub, cache_row[hit_interval_for_first_probe], problem.reverse_original_ids);
+        host_bounds, cache_row[hit_interval_for_first_probe], problem.reverse_original_ids);
       return first_probe;
     }
   }
@@ -120,8 +117,7 @@ f_t probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(problem_t<i_t, f_t
   // cutoff point second probe has a hit but it is not the same as first probe
   i_t other_interval_idx = 1 - hit_interval_for_first_probe;
   i_t n_conflicting_vars_other_probe =
-    check_number_of_conflicting_vars(host_lb,
-                                     host_ub,
+    check_number_of_conflicting_vars(host_bounds,
                                      cache_row[other_interval_idx],
                                      integrality_tolerance,
                                      problem.reverse_original_ids);
@@ -134,7 +130,7 @@ f_t probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(problem_t<i_t, f_t
       first_probe,
       n_conflicting_vars_other_probe);
     update_bounds_with_selected(
-      host_lb, host_ub, cache_row[other_interval_idx], problem.reverse_original_ids);
+      host_bounds, cache_row[other_interval_idx], problem.reverse_original_ids);
     if (other_interval_idx == hit_interval_for_second_probe) {
       CUOPT_LOG_DEBUG("Better value on second probe val %f", second_probe);
       return second_probe;
@@ -145,7 +141,7 @@ f_t probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(problem_t<i_t, f_t
     }
   }
   update_bounds_with_selected(
-    host_lb, host_ub, cache_row[hit_interval_for_first_probe], problem.reverse_original_ids);
+    host_bounds, cache_row[hit_interval_for_first_probe], problem.reverse_original_ids);
   return first_probe;
 }
 
@@ -158,10 +154,9 @@ bool probing_cache_t<i_t, f_t>::contains(problem_t<i_t, f_t>& problem, i_t var_i
 template <typename i_t, typename f_t, typename f_t2>
 void inline insert_current_probing_to_cache(i_t var_idx,
                                             const val_interval_t<i_t, f_t>& probe_val,
-                                            bound_presolve_t<i_t, f_t>& bound_presolve,
+                                            lb_bound_presolve_t<i_t, f_t>& bound_presolve,
                                             const std::vector<f_t2>& original_bounds,
-                                            const std::vector<f_t>& modified_lb,
-                                            const std::vector<f_t>& modified_ub,
+                                            const std::vector<f_t2>& modified_bounds,
                                             const std::vector<i_t>& h_integer_indices,
                                             std::atomic<size_t>& n_implied_singletons)
 {
@@ -171,17 +166,19 @@ void inline insert_current_probing_to_cache(i_t var_idx,
   cache_item.val_interval = probe_val;
   for (auto impacted_var_idx : h_integer_indices) {
     auto original_var_bounds = original_bounds[impacted_var_idx];
-    if (get_lower(original_var_bounds) != modified_lb[impacted_var_idx] ||
-        get_upper(original_var_bounds) != modified_ub[impacted_var_idx]) {
-      if (integer_equal<f_t>(
-            modified_lb[impacted_var_idx], modified_ub[impacted_var_idx], int_tol)) {
+    if (get_lower(original_var_bounds) != get_lower(modified_bounds[impacted_var_idx]) ||
+        get_upper(original_var_bounds) != get_upper(modified_bounds[impacted_var_idx])) {
+      if (integer_equal<f_t>(get_lower(modified_bounds[impacted_var_idx]),
+                             get_upper(modified_bounds[impacted_var_idx]),
+                             int_tol)) {
         ++n_implied_singletons;
       }
-      cuopt_assert(modified_lb[impacted_var_idx] >= get_lower(original_var_bounds),
+      cuopt_assert(get_lower(modified_bounds[impacted_var_idx]) >= get_lower(original_var_bounds),
                    "Lower bound must be greater than or equal to original lower bound");
       cuopt_assert(modified_ub[impacted_var_idx] <= get_upper(original_var_bounds),
                    "Upper bound must be less than or equal to original upper bound");
-      cached_bound_t<f_t> new_bound{modified_lb[impacted_var_idx], modified_ub[impacted_var_idx]};
+      cached_bound_t<f_t> new_bound{get_lower(modified_bounds[impacted_var_idx]),
+                                    get_upper(modified_bounds[impacted_var_idx])};
       cache_item.var_to_cached_bound_map.insert({impacted_var_idx, new_bound});
     }
   }
@@ -199,8 +196,7 @@ void inline insert_current_probing_to_cache(i_t var_idx,
 
 template <typename i_t, typename f_t>
 __global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t pb,
-                                          raft::device_span<f_t> min_activity,
-                                          raft::device_span<f_t> max_activity,
+                                          raft::device_span<typename type_2<f_t>::type> cnst_slack,
                                           raft::device_span<f_t> var_slack,
                                           raft::device_span<bool> different_coefficient,
                                           raft::device_span<f_t> max_excess_per_var,
@@ -218,16 +214,11 @@ __global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t p
   for (i_t i = threadIdx.x; i < var_degree; i += blockDim.x) {
     auto a = pb.reverse_coefficients[var_offset + i];
     if (std::signbit(a) != std::signbit(first_coeff)) { different_coeff = true; }
-    auto cnst_idx = pb.reverse_constraints[var_offset + i];
-    auto min_a    = min_activity[cnst_idx];
-    auto max_a    = max_activity[cnst_idx];
-    auto cnstr_ub = pb.constraint_upper_bounds[cnst_idx];
-    auto cnstr_lb = pb.constraint_lower_bounds[cnst_idx];
-    min_a -= (a < 0) ? a * ub : a * lb;
-    auto delta_min_act = cnstr_ub - min_a;
+    auto cnst_idx      = pb.reverse_constraints[var_offset + i];
+    auto slack         = cnst_slack[cnst_idx];
+    auto delta_min_act = get_lower(slack) + ((a < 0) ? a * ub : a * lb);
     th_var_unit_slack  = min(th_var_unit_slack, (delta_min_act / a));
-    max_a -= (a > 0) ? a * ub : a * lb;
-    auto delta_max_act = cnstr_lb - max_a;
+    auto delta_max_act = get_upper(slack) + ((a > 0) ? a * ub : a * lb);
     th_var_unit_slack  = min(th_var_unit_slack, (delta_max_act / a));
     // if (var_idx == 0) {
     //   printf("\ncmp_min_slack cnst %d\n diff %f %f\n cnstr_ub %f min_a %f delta_min %f\n cnstr_lb
@@ -257,21 +248,14 @@ __global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t p
   for (i_t i = threadIdx.x; i < var_degree; i += blockDim.x) {
     auto a        = pb.reverse_coefficients[var_offset + i];
     auto cnst_idx = pb.reverse_constraints[var_offset + i];
-    auto min_a    = min_activity[cnst_idx];
-    auto max_a    = max_activity[cnst_idx];
-    auto cnstr_ub = pb.constraint_upper_bounds[cnst_idx];
-    auto cnstr_lb = pb.constraint_lower_bounds[cnst_idx];
-    min_a -= (a < 0) ? a * ub : a * lb;
-    f_t var_max_act = (a > 0) ? a * ub : a * lb;
-    f_t excess      = max(0., min_a + var_max_act - cnstr_ub);
+    auto slack    = cnst_slack[cnst_idx];
+    f_t diff      = (a < 0) ? a * (lb - ub) : a * (ub - lb);
+    f_t excess    = max(0., diff - get_lower(slack));
     if (excess > 0) {
       th_max_excess = max(th_max_excess, excess);
       th_n_of_excess++;
     }
-    // now add max activity of this var to see the excess
-    max_a -= (a > 0) ? a * ub : a * lb;
-    f_t var_min_act = (a < 0) ? a * ub : a * lb;
-    excess          = max(0., cnstr_lb - (max_a + var_min_act));
+    excess = max(0., get_upper(slack) + diff);
     if (excess > 0) {
       th_max_excess = max(th_max_excess, excess);
       th_n_of_excess++;
@@ -294,7 +278,7 @@ __global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t p
 // excesses(or slack) in all constraints by setting to lb and ub
 template <typename i_t, typename f_t>
 inline std::vector<i_t> compute_prioritized_integer_indices(
-  bound_presolve_t<i_t, f_t>& bound_presolve, problem_t<i_t, f_t>& problem)
+  lb_bound_presolve_t<i_t, f_t>& bound_presolve, problem_t<i_t, f_t>& problem)
 {
   // sort the variables according to the min slack they have across constraints
   // we also need to consider the variable range
@@ -324,7 +308,7 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
                max_n_violated_per_constraint.end(),
                0);
   // compute min and max activity first
-  bound_presolve.calculate_activity_on_problem_bounds(problem);
+  bound_presolve.calculate_constraint_slack_on_problem_bounds(problem);
   bool res = bound_presolve.calculate_infeasible_redundant_constraints(problem);
   cuopt_assert(res, "The activity computation must be feasible during probing cache!");
   CUOPT_LOG_DEBUG("prioritized integer_indices n_integer_vars %d", problem.n_integer_vars);
@@ -332,8 +316,7 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
   compute_min_slack_per_var<i_t, f_t>
     <<<problem.n_integer_vars, 128, 0, problem.handle_ptr->get_stream()>>>(
       problem.view(),
-      make_span(bound_presolve.upd.min_activity),
-      make_span(bound_presolve.upd.max_activity),
+      make_span(bound_presolve.upd.cnst_slack),
       make_span(min_slack_per_var),
       make_span(different_coefficient),
       make_span(max_excess_per_var),
@@ -363,9 +346,9 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
 
 template <typename i_t, typename f_t, typename f_t2>
 void compute_cache_for_var(i_t var_idx,
-                           bound_presolve_t<i_t, f_t>& bound_presolve,
+                           lb_bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,
-                           multi_probe_t<i_t, f_t>& multi_probe_presolve,
+                           lb_multi_probe_t<i_t, f_t>& multi_probe_presolve,
                            const std::vector<f_t2>& h_var_bounds,
                            const std::vector<i_t>& h_integer_indices,
                            std::atomic<size_t>& n_of_implied_singletons,
@@ -375,8 +358,7 @@ void compute_cache_for_var(i_t var_idx,
   RAFT_CUDA_TRY(cudaSetDevice(device_id));
   // test if we need per thread handle
   raft::handle_t handle{};
-  std::vector<f_t> h_improved_lower_bounds(h_var_bounds.size());
-  std::vector<f_t> h_improved_upper_bounds(h_var_bounds.size());
+  std::vector<f_t2> h_improved_bounds(h_var_bounds.size());
   std::pair<val_interval_t<i_t, f_t>, val_interval_t<i_t, f_t>> probe_vals;
   auto bounds = h_var_bounds[var_idx];
   f_t lb      = get_lower(bounds);
@@ -439,22 +421,15 @@ void compute_cache_for_var(i_t var_idx,
     // save the impacted bounds
     if (bounds_presolve_result != termination_criterion_t::NO_UPDATE) {
       const auto& probe_val = i == 0 ? probe_vals.first : probe_vals.second;
-      auto& d_lb = i == 0 ? multi_probe_presolve.upd_0.lb : multi_probe_presolve.upd_1.lb;
-      auto& d_ub = i == 0 ? multi_probe_presolve.upd_0.ub : multi_probe_presolve.upd_1.ub;
-      raft::copy(h_improved_lower_bounds.data(),
-                 d_lb.data(),
-                 h_improved_lower_bounds.size(),
-                 handle.get_stream());
-      raft::copy(h_improved_upper_bounds.data(),
-                 d_ub.data(),
-                 h_improved_upper_bounds.size(),
-                 handle.get_stream());
+      auto& d_bnds =
+        i == 0 ? multi_probe_presolve.upd_0.vars_bnd : multi_probe_presolve.upd_1.vars_bnd;
+      raft::copy(
+        h_improved_bounds.data(), d_bnds.data(), h_improved_bounds.size(), handle.get_stream());
       insert_current_probing_to_cache(var_idx,
                                       probe_val,
                                       bound_presolve,
                                       h_var_bounds,
-                                      h_improved_lower_bounds,
-                                      h_improved_upper_bounds,
+                                      h_improved_bounds,
                                       h_integer_indices,
                                       n_of_implied_singletons);
     }
@@ -463,7 +438,7 @@ void compute_cache_for_var(i_t var_idx,
 }
 
 template <typename i_t, typename f_t>
-void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
+void compute_probing_cache(lb_bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,
                            timer_t timer)
 {
@@ -482,7 +457,7 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   omp_set_num_threads(max_threads);
 
   // Create a vector of multi_probe_t objects
-  std::vector<multi_probe_t<i_t, f_t>> multi_probe_presolve_pool;
+  std::vector<lb_multi_probe_t<i_t, f_t>> multi_probe_presolve_pool;
 
   // Initialize multi_probe_presolve_pool
   for (size_t i = 0; i < max_threads; i++) {
@@ -526,10 +501,11 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   bound_presolve.settings = {};
 }
 
-#define INSTANTIATE(F_TYPE)                                                                        \
-  template void compute_probing_cache<int, F_TYPE>(bound_presolve_t<int, F_TYPE> & bound_presolve, \
-                                                   problem_t<int, F_TYPE> & problem,               \
-                                                   timer_t timer);                                 \
+#define INSTANTIATE(F_TYPE)                            \
+  template void compute_probing_cache<int, F_TYPE>(    \
+    lb_bound_presolve_t<int, F_TYPE> & bound_presolve, \
+    problem_t<int, F_TYPE> & problem,                  \
+    timer_t timer);                                    \
   template class probing_cache_t<int, F_TYPE>;
 
 #if MIP_INSTANTIATE_FLOAT

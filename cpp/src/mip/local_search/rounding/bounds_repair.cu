@@ -30,7 +30,7 @@ namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
 bounds_repair_t<i_t, f_t>::bounds_repair_t(const problem_t<i_t, f_t>& pb,
-                                           bound_presolve_t<i_t, f_t>& bound_presolve_)
+                                           lb_bound_presolve_t<i_t, f_t>& bound_presolve_)
   : bound_presolve(bound_presolve_),
     candidates(pb.handle_ptr),
     best_bounds(pb.handle_ptr),
@@ -67,7 +67,7 @@ void bounds_repair_t<i_t, f_t>::reset()
 template <typename i_t, typename f_t>
 f_t bounds_repair_t<i_t, f_t>::get_ii_violation(problem_t<i_t, f_t>& problem)
 {
-  bound_presolve.calculate_activity_on_problem_bounds(problem);
+  bound_presolve.calculate_constraint_slack_on_problem_bounds(problem);
   // calculate the violation and mark of violated constraints
   thrust::for_each(
     handle_ptr->get_thrust_policy(),
@@ -75,8 +75,7 @@ f_t bounds_repair_t<i_t, f_t>::get_ii_violation(problem_t<i_t, f_t>& problem)
     thrust::make_counting_iterator(0) + problem.n_constraints,
     [pb_v                 = problem.view(),
      violated_cstr_map    = violated_cstr_map.data(),
-     min_act              = bound_presolve.upd.min_activity.data(),
-     max_act              = bound_presolve.upd.max_activity.data(),
+     cnst_slack           = make_span(bound_presolve.upd.cnst_slack),
      cstr_violations_up   = cstr_violations_up.data(),
      cstr_violations_down = cstr_violations_down.data(),
      total_vio            = total_vio.data()] __device__(i_t cstr_idx) {
@@ -84,8 +83,9 @@ f_t bounds_repair_t<i_t, f_t>::get_ii_violation(problem_t<i_t, f_t>& problem)
       f_t cnst_ub = pb_v.constraint_upper_bounds[cstr_idx];
       f_t eps     = get_cstr_tolerance<i_t, f_t>(
         cnst_lb, cnst_ub, pb_v.tolerances.absolute_tolerance, pb_v.tolerances.relative_tolerance);
-      f_t curr_cstr_violation_up   = max(0., min_act[cstr_idx] - (cnst_ub + eps));
-      f_t curr_cstr_violation_down = max(0., cnst_lb - eps - max_act[cstr_idx]);
+      auto slack                   = cnst_slack[cstr_idx];
+      f_t curr_cstr_violation_up   = max(0., -get_lower(slack) - eps);
+      f_t curr_cstr_violation_down = max(0., get_upper(slack) - eps);
       f_t violation                = max(curr_cstr_violation_up, curr_cstr_violation_down);
       if (violation >= ROUNDOFF_TOLERANCE) {
         violated_cstr_map[cstr_idx] = 1;
@@ -208,8 +208,7 @@ __global__ void compute_damages_kernel(typename problem_t<i_t, f_t>::view_t prob
                                        typename candidates_t<i_t, f_t>::view_t candidates,
                                        raft::device_span<f_t> cstr_violations_up,
                                        raft::device_span<f_t> cstr_violations_down,
-                                       raft::device_span<f_t> minimum_activity,
-                                       raft::device_span<f_t> maximum_activity)
+                                       raft::device_span<typename type_2<f_t>::type> cnst_slack)
 {
   i_t var_idx                     = candidates.variable_index[blockIdx.x];
   f_t shift_amount                = candidates.bound_shift[blockIdx.x];
@@ -233,14 +232,23 @@ __global__ void compute_damages_kernel(typename problem_t<i_t, f_t>::view_t prob
     f_t cnst_lb             = problem.constraint_lower_bounds[c];
     f_t cnst_ub             = problem.constraint_upper_bounds[c];
     f_t shift_in_activities = shift_amount * coeff;
-    f_t new_min_act         = minimum_activity[c] + shift_in_activities;
-    f_t new_max_act         = maximum_activity[c] + shift_in_activities;
+    auto slack              = cnst_slack[c];
     f_t eps                 = get_cstr_tolerance<i_t, f_t>(cnst_lb,
                                            cnst_ub,
                                            problem.tolerances.absolute_tolerance,
                                            problem.tolerances.relative_tolerance);
-    f_t new_violations_up   = max(0., new_min_act - (cnst_ub + eps));
-    f_t new_violations_down = max(0., cnst_lb - eps - new_max_act);
+    // Given
+    // f_t new_min_act         = minimum_activity[c] + shift_in_activities;
+    // f_t new_max_act         = maximum_activity[c] + shift_in_activities;
+    //
+    // f_t new_violations_up   = max(0., new_min_act - (cnst_ub + eps));
+    // f_t new_violations_down = max(0., cnst_lb - eps - new_max_act);
+    //  becomes
+    // f_t new_violations_up   = max(0., shift_in_activities - (cnst_ub - min_act) - eps);
+    // f_t new_violations_down = max(0., (cnst_lb - max_act) - shift_in_activities - eps);
+    //  becomes
+    f_t new_violations_up   = max(0., shift_in_activities - get_lower(slack) - eps);
+    f_t new_violations_down = max(0., get_upper(slack) - shift_in_activities - eps);
     f_t new_vio             = max(new_violations_up, new_violations_down);
     i_t curr_cstr_delta = i_t(curr_vio < ROUNDOFF_TOLERANCE) - i_t(new_vio < ROUNDOFF_TOLERANCE);
     n_infeasible_cstr_delta += curr_cstr_delta;
@@ -262,13 +270,12 @@ void bounds_repair_t<i_t, f_t>::compute_damages(problem_t<i_t, f_t>& problem, i_
   CUOPT_LOG_TRACE("Bounds repair: Computing damanges!");
   // TODO check performance, we can apply load balancing here
   const i_t TPB = 256;
-  compute_damages_kernel<i_t, f_t><<<n_candidates, TPB, 0, handle_ptr->get_stream()>>>(
-    problem.view(),
-    candidates.view(),
-    make_span(cstr_violations_up),
-    make_span(cstr_violations_down),
-    make_span(bound_presolve.upd.min_activity),
-    make_span(bound_presolve.upd.max_activity));
+  compute_damages_kernel<i_t, f_t>
+    <<<n_candidates, TPB, 0, handle_ptr->get_stream()>>>(problem.view(),
+                                                         candidates.view(),
+                                                         make_span(cstr_violations_up),
+                                                         make_span(cstr_violations_down),
+                                                         make_span(bound_presolve.upd.cnst_slack));
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
   auto sort_iterator = thrust::make_zip_iterator(
     thrust::make_tuple(candidates.cstr_delta.data(), candidates.damage.data()));

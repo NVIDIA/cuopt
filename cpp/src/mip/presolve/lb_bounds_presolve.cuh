@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include "probing_cache.cuh"
+
 #include <mip/presolve/lb_problem.cuh>
 #include <mip/solution/solution.cuh>
 #include <mip/solver.cuh>
@@ -30,6 +32,9 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
+class probing_cache_t;
+
+template <typename i_t, typename f_t>
 class lb_bound_presolve_t {
  public:
   using f_t2 = typename type_2<f_t>::type;
@@ -38,24 +43,24 @@ class lb_bound_presolve_t {
     i_t iteration_limit{std::numeric_limits<i_t>::max()};
   };
 
-  lb_bound_presolve_t(mip_solver_context_t<i_t, f_t>& context,
-                      settings_t settings = settings_t{});
+  lb_bound_presolve_t(mip_solver_context_t<i_t, f_t>& context, settings_t settings = settings_t{});
   void resize(problem_t<i_t, f_t>& problem);
 
   // This is a single bounds accepting solve
   // when we need to accept a vector, we can use input_lb version
   termination_criterion_t solve(problem_t<i_t, f_t>& pb, f_t lb, f_t ub, i_t var_idx);
 
-  termination_criterion_t solve(problem_t<i_t, f_t>& pb,
-                                raft::device_span<f_t2> input_bounds = {});
+  termination_criterion_t solve(problem_t<i_t, f_t>& pb, raft::device_span<f_t2> input_bounds = {});
 
   termination_criterion_t solve(problem_t<i_t, f_t>& pb,
                                 const std::vector<thrust::pair<i_t, f_t>>& var_probe_val_pairs,
                                 bool use_host_bounds = false);
 
   void calculate_constraint_slack_iter(lb_problem_t<i_t, f_t>& pb,
-                                       const raft::handle_t* handle_ptr);
-  // void calculate_activity_on_problem_bounds(problem_t<i_t, f_t>& pb);
+                                       const raft::handle_t* handle_ptr,
+                                       bool calc_activity = false);
+  void calculate_constraint_slack_on_problem_bounds(problem_t<i_t, f_t>& pb);
+  void calculate_activity_on_problem_bounds(problem_t<i_t, f_t>& pb);
   bool calculate_bounds_update(lb_problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
   void set_updated_bounds(problem_t<i_t, f_t>& pb);
   void set_updated_bounds(const raft::handle_t* handle_ptr, raft::device_span<f_t2> output_bounds);
@@ -65,20 +70,22 @@ class lb_bound_presolve_t {
   void set_bounds(raft::device_span<f_t2> vars_bnd,
                   const std::vector<thrust::pair<i_t, f_t>>& var_probe_vals,
                   const raft::handle_t* handle_ptr);
+  bool calculate_infeasible_redundant_constraints(problem_t<i_t, f_t>& pb,
+                                                  const raft::handle_t* handle_ptr = nullptr);
   bool calculate_infeasible_redundant_constraints(lb_problem_t<i_t, f_t>& pb,
                                                   const raft::handle_t* handle_ptr);
   void update_host_bounds(const raft::handle_t* handle_ptr,
                           const raft::device_span<f_t2> variable_bounds);
   void update_device_bounds(const raft::handle_t* handle_ptr);
   void copy_input_bounds(problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
-  // void calc_and_set_updated_constraint_bounds(lb_problem_t<i_t, f_t>& pb);
+  void calc_and_set_updated_constraint_bounds(problem_t<i_t, f_t>& pb);
 
   mip_solver_context_t<i_t, f_t>& context;
   lb_bounds_update_data_t<i_t, f_t> upd;
   std::vector<f_t2> host_bounds;
   settings_t settings;
   i_t infeas_constraints_count = 0;
-  // probing_cache_t<i_t, f_t> probing_cache;
+  probing_cache_t<i_t, f_t> probing_cache;
   i_t solve_iter;
 };
 

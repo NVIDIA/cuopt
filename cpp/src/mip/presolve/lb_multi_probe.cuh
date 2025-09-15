@@ -38,8 +38,7 @@ class lb_multi_probe_t {
     i_t iteration_limit{std::numeric_limits<i_t>::max()};
   };
 
-  lb_multi_probe_t(mip_solver_context_t<i_t, f_t>& context_,
-                   settings_t settings = settings_t{});
+  lb_multi_probe_t(mip_solver_context_t<i_t, f_t>& context_, settings_t settings = settings_t{});
   void resize(problem_t<i_t, f_t>& problem);
 
   termination_criterion_t solve(
@@ -74,8 +73,7 @@ class lb_multi_probe_t {
     const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals,
     const raft::handle_t* handle_ptr);
   void constraint_stats(lb_problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
-  void copy_problem_into_probing_buffers(problem_t<i_t, f_t>& pb,
-                                         const raft::handle_t* handle_ptr);
+  void copy_problem_into_probing_buffers(problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr);
   void update_host_bounds(const raft::handle_t* handle_ptr,
                           const raft::device_span<f_t2> variable_bounds);
   void update_device_bounds(const raft::handle_t* handle_ptr);

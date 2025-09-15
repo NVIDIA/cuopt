@@ -58,18 +58,18 @@ __device__ typename type_2<f_t>::type calc_act(
   return act;
 }
 
-template <bool erase_inf_cnst, typename i_t, typename f_t, typename f_t2, typename upd_view_t>
+template <bool calc_act, typename i_t, typename f_t, typename f_t2, typename upd_view_t>
 inline __device__ void write_cnst_slack(
   upd_view_t view, i_t cnst_idx, f_t2 cnst_lb_ub, f_t2 act, f_t eps)
 {
-  auto cnst_prop = f_t2{cnst_lb_ub.y - act.x, cnst_lb_ub.x - act.y};
-  // if constexpr (erase_inf_cnst) {
-  if ((0 > cnst_prop.x + eps) || (eps < cnst_prop.y)) {
-    // cnst_prop.x = std::numeric_limits<f_t>::quiet_NaN();
-    view.changed_constraints[cnst_idx] = 0;
+  auto cnst_slack = f_t2{cnst_lb_ub.y - act.x, cnst_lb_ub.x - act.y};
+  if ((0 > cnst_slack.x + eps) || (eps < cnst_slack.y)) { view.changed_constraints[cnst_idx] = 0; }
+
+  if constexpr (calc_act) {
+    view.cnst_slack[cnst_idx] = act;
+  } else {
+    view.cnst_slack[cnst_idx] = cnst_slack;
   }
-  //}
-  view.cnst_slack[cnst_idx] = cnst_prop;
 }
 
 template <typename f_t, int BDIM, typename i_t, typename csr_view_t, typename upd_view_t>

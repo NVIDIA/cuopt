@@ -121,7 +121,7 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
                             rmm::device_uvector<f_t>& fixed_assignment,
                             rmm::device_uvector<i_t>& variable_map,
                             relaxed_lp_settings_t& settings,
-                            bound_presolve_t<i_t, f_t>* bound_presolve,
+                            lb_bound_presolve_t<i_t, f_t>* bound_presolve,
                             bool check_fixed_assignment_feasibility)
 {
   if (check_fixed_assignment_feasibility) {
@@ -171,7 +171,7 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
                             solution_t<i_t, f_t>& solution,
                             const rmm::device_uvector<i_t>& variables_to_fix,
                             relaxed_lp_settings_t& settings,
-                            bound_presolve_t<i_t, f_t>* bound_presolve,
+                            lb_bound_presolve_t<i_t, f_t>* bound_presolve,
                             bool check_fixed_assignment_feasibility,
                             bool use_integer_fixed_problem)
 {
@@ -217,7 +217,7 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
     solution_t<int, F_TYPE> & solution,                                                       \
     const rmm::device_uvector<int>& variables_to_fix,                                         \
     relaxed_lp_settings_t& settings,                                                          \
-    bound_presolve_t<int, F_TYPE>* bound_presolve,                                            \
+    lb_bound_presolve_t<int, F_TYPE>* bound_presolve,                                         \
     bool check_fixed_assignment_feasibility,                                                  \
     bool use_integer_fixed_problem);
 

@@ -411,7 +411,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 
   // test problem is not ii
   cuopt_func_call(
-    ls.constraint_prop.bounds_update.calculate_activity_on_problem_bounds(*problem_ptr));
+    ls.constraint_prop.bounds_update.calculate_constraint_slack_on_problem_bounds(*problem_ptr));
   cuopt_assert(
     ls.constraint_prop.bounds_update.calculate_infeasible_redundant_constraints(*problem_ptr),
     "The problem must not be ii");

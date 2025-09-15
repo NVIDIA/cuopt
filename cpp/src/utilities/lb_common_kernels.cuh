@@ -21,6 +21,12 @@
 
 namespace cuopt::linear_programming::detail {
 
+template <typename i_t, typename f_t>
+inline __device__ bool check_infeasibility(f_t min_a, f_t max_a, f_t cnst_lb, f_t cnst_ub, f_t eps)
+{
+  return (min_a > cnst_ub + eps) || (max_a < cnst_lb - eps);
+}
+
 inline __device__ bool skip_both(thrust::pair<bool, bool>& skip_flag)
 {
   return thrust::get<0>(skip_flag) && thrust::get<1>(skip_flag);

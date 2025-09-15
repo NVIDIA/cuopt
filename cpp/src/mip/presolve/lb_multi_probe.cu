@@ -50,7 +50,10 @@ std::pair<i_t, i_t> get_id_range(const std::vector<i_t>& bin_offsets,
 template <typename i_t, typename f_t>
 lb_multi_probe_t<i_t, f_t>::lb_multi_probe_t(mip_solver_context_t<i_t, f_t>& context_,
                                              settings_t in_settings)
-  : context(context_), upd_0(*context.problem_ptr), upd_1(*context.problem_ptr), settings(in_settings)
+  : context(context_),
+    upd_0(*context.problem_ptr),
+    upd_1(*context.problem_ptr),
+    settings(in_settings)
 {
 }
 
@@ -63,8 +66,8 @@ void lb_multi_probe_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
 }
 
 template <typename i_t, typename f_t>
-void lb_multi_probe_t<i_t, f_t>::copy_problem_into_probing_buffers(
-  problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
+void lb_multi_probe_t<i_t, f_t>::copy_problem_into_probing_buffers(problem_t<i_t, f_t>& problem,
+                                                                   const raft::handle_t* handle_ptr)
 {
   upd_0.copy(problem);
   upd_1.copy(problem);
@@ -366,10 +369,8 @@ void lb_multi_probe_t<i_t, f_t>::set_interval_bounds(
                       upd_1_v.vars_bnd[probe_var] = f_t2{lb_1, ub_1};
                     });
   // init changed constraints
-  i_t var_offset_begin =
-    problem.reverse_offsets.element(probe_var, handle_ptr->get_stream());
-  i_t var_offset_end =
-    problem.reverse_offsets.element(probe_var + 1, handle_ptr->get_stream());
+  i_t var_offset_begin = problem.reverse_offsets.element(probe_var, handle_ptr->get_stream());
+  i_t var_offset_end   = problem.reverse_offsets.element(probe_var + 1, handle_ptr->get_stream());
   thrust::fill(handle_ptr->get_thrust_policy(),
                upd_0.changed_constraints.begin(),
                upd_0.changed_constraints.end(),
