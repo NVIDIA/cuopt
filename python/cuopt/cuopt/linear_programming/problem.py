@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from enum import Enum
-
+import time
 import numpy as np
 
 import cuopt.linear_programming.data_model as data_model
@@ -950,6 +950,10 @@ class Problem:
         >>> problem.solve()
         """
 
+        # Move optional timing marker to the beginning of the
+        # routine
+        dm = data_model.DataModel()
+        
         # iterate through the constraints and construct the constraint matrix
         n = len(self.vars)
         self.row_pointers = [0]
@@ -975,7 +979,6 @@ class Problem:
             self.upper_bound[j] = self.vars[j].getUpperBound()
 
         # Initialize datamodel
-        dm = data_model.DataModel()
         dm.set_csr_constraint_matrix(
             np.array(self.values),
             np.array(self.column_indicies),
