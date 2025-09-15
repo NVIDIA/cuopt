@@ -1041,20 +1041,21 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
 
   // Project initial primal solution
   if (pdlp_hyper_params::project_initial_primal) {
-    raft::linalg::ternaryOp(pdhg_solver_.get_primal_solution().data(),
-                            pdhg_solver_.get_primal_solution().data(),
-                            op_problem_scaled_.variable_lower_bounds.data(),
-                            op_problem_scaled_.variable_upper_bounds.data(),
-                            primal_size_h_,
-                            clamp<f_t>(),
-                            stream_view_);
-    raft::linalg::ternaryOp(unscaled_primal_avg_solution_.data(),
-                            unscaled_primal_avg_solution_.data(),
-                            op_problem_scaled_.variable_lower_bounds.data(),
-                            op_problem_scaled_.variable_upper_bounds.data(),
-                            primal_size_h_,
-                            clamp<f_t>(),
-                            stream_view_);
+    using f_t2 = typename type_2<f_t>::type;
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(pdhg_solver_.get_primal_solution().data(),
+                            op_problem_scaled_.variable_bounds.data()),
+      pdhg_solver_.get_primal_solution().data(),
+      primal_size_h_,
+      clamp<f_t, f_t2>(),
+      stream_view_);
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(unscaled_primal_avg_solution_.data(),
+                            op_problem_scaled_.variable_bounds.data()),
+      unscaled_primal_avg_solution_.data(),
+      primal_size_h_,
+      clamp<f_t, f_t2>(),
+      stream_view_);
   }
 
   if (verbose) {

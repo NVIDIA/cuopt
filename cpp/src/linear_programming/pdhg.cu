@@ -143,18 +143,18 @@ void pdhg_solver_t<i_t, f_t>::compute_primal_projection_with_gradient(
   // project by max(min(x[i], upperbound[i]),lowerbound[i])
   // compute delta_primal x'-x
 
+  using f_t2 = typename type_2<f_t>::type;
   // All is fused in a single call to limit number of read / write in memory
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
                           problem_ptr->objective_coefficients.data(),
                           current_saddle_point_state_.get_current_AtY().data(),
-                          problem_ptr->variable_lower_bounds.data(),
-                          problem_ptr->variable_upper_bounds.data()),
+                          problem_ptr->variable_bounds.data()),
     thrust::make_zip_iterator(potential_next_primal_solution_.data(),
                               current_saddle_point_state_.get_delta_primal().data(),
                               tmp_primal_.data()),
     primal_size_h_,
-    primal_projection<f_t>(primal_step_size.data()),
+    primal_projection<f_t, f_t2>(primal_step_size.data()),
     stream_view_);
 }
 
