@@ -276,23 +276,23 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
 
   auto solution_copy = solution;
 
-  // // Start CPU solver in background thread
-  // for (auto& cpu_fj : ls_cpu_fj) {
-  //   cpu_fj.start_cpu_solver();
-  // }
+  // Start CPU solver in background thread
+  for (auto& cpu_fj : ls_cpu_fj) {
+    cpu_fj.start_cpu_solver();
+  }
 
   // Run GPU solver and measure execution time
   auto gpu_fj_start = std::chrono::high_resolution_clock::now();
   in_fj.solve(solution);
   cudaDeviceSynchronize();
 
-  // // Give CPU solver some time to run
-  // if (source != "line_segment") { std::this_thread::sleep_for(std::chrono::milliseconds(250)); }
+  // Give CPU solver some time to run
+  if (source != "line_segment") { std::this_thread::sleep_for(std::chrono::milliseconds(250)); }
 
-  // // Stop CPU solver
-  // for (auto& cpu_fj : ls_cpu_fj) {
-  //   cpu_fj.stop_cpu_solver();
-  // }
+  // Stop CPU solver
+  for (auto& cpu_fj : ls_cpu_fj) {
+    cpu_fj.stop_cpu_solver();
+  }
 
   auto gpu_fj_end        = std::chrono::high_resolution_clock::now();
   double gpu_fj_duration = std::chrono::duration<double>(gpu_fj_end - gpu_fj_start).count();
@@ -300,18 +300,18 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   solution_t<i_t, f_t> solution_cpu(*solution.problem_ptr);
 
   f_t best_cpu_obj = std::numeric_limits<f_t>::max();
-  // // // Wait for CPU solver to finish
-  // for (auto& cpu_fj : ls_cpu_fj) {
-  //   bool cpu_sol_found = cpu_fj.wait_for_cpu_solver();
-  //   if (cpu_sol_found) {
-  //     f_t cpu_obj = cpu_fj.fj_cpu->h_best_objective;
-  //     if (cpu_obj < best_cpu_obj) {
-  //       best_cpu_obj = cpu_obj;
-  //       solution_cpu.copy_new_assignment(cpu_fj.fj_cpu->h_best_assignment);
-  //       solution_cpu.compute_feasibility();
-  //     }
-  //   }
-  // }
+  // // Wait for CPU solver to finish
+  for (auto& cpu_fj : ls_cpu_fj) {
+    bool cpu_sol_found = cpu_fj.wait_for_cpu_solver();
+    if (cpu_sol_found) {
+      f_t cpu_obj = cpu_fj.fj_cpu->h_best_objective;
+      if (cpu_obj < best_cpu_obj) {
+        best_cpu_obj = cpu_obj;
+        solution_cpu.copy_new_assignment(cpu_fj.fj_cpu->h_best_assignment);
+        solution_cpu.compute_feasibility();
+      }
+    }
+  }
   bool cpu_sol_found = best_cpu_obj < std::numeric_limits<f_t>::max();
 
   bool gpu_feasible = solution.get_feasible();

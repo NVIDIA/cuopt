@@ -495,7 +495,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
   if (!fp_only_run) {
-    // ls.start_fj_scratch_threads(population);
+    ls.start_fj_scratch_threads(population);
 
     // generate a population with 5 solutions(FP+FJ)
     generate_initial_solutions();
@@ -523,12 +523,12 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   }
 
   if (timer.check_time_limit()) {
-    // ls.stop_fj_scratch_threads();
+    ls.stop_fj_scratch_threads();
     return population.best_feasible();
   }
   main_loop();
 
-  // ls.stop_fj_scratch_threads();
+  ls.stop_fj_scratch_threads();
 
   return population.best_feasible();
 };
