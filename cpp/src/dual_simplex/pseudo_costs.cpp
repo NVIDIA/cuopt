@@ -172,6 +172,8 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   {
     i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
 
+    // Here we are creating more tasks than the number of threads
+    // such that they can be scheduled dynamically to the threads.
 #pragma omp for schedule(dynamic, 1)
     for (i_t k = 0; k < n; k++) {
       i_t start = std::floor(k * fractional.size() / n);

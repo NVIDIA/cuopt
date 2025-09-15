@@ -40,7 +40,9 @@ enum class mip_status_t {
   TIME_LIMIT = 3,
   NODE_LIMIT = 4,
   NUMERICAL  = 5,
-  UNSET      = 6
+  UNSET      = 6,
+  RUNNING    = 7,
+  FINISHED   = 8
 };
 
 // Since we are using OpenMP, we omp_lock_t instead of std::mutex.
@@ -83,8 +85,9 @@ class branch_and_bound_t {
                        std::vector<f_t>& repaired_solution) const;
 
   f_t get_upper_bound();
-
   f_t get_lower_bound();
+  mip_status_t get_status();
+  i_t get_heap_size();
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
@@ -111,9 +114,6 @@ class branch_and_bound_t {
 
   // Global variable for incumbent. The incumbent should be updated with the upper bound
   mip_solution_t<i_t, f_t> incumbent_;
-
-  // Global variable for indicating if the solver is running or not.
-  bool currently_branching_;
 
   // Structure with the general info of the solver.
   struct stats_t {

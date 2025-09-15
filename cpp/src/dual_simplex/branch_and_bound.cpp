@@ -198,7 +198,8 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     lower_bounds_(settings_.num_threads, -inf),
     incumbent_(1),
     root_relax_soln_(1, 1),
-    pc_(1)
+    pc_(1),
+    status_(mip_status_t::UNSET)
 {
   stats_.start_time = tic();
   convert_user_problem(original_problem_, settings_, original_lp_, new_slacks_);
@@ -207,9 +208,6 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   mutex_upper_.lock();
   upper_bound_ = inf;
   mutex_upper_.unlock();
-
-#pragma omp atomic write
-  currently_branching_ = false;
 }
 
 template <typename i_t, typename f_t>
@@ -221,6 +219,8 @@ f_t branch_and_bound_t<i_t, f_t>::get_upper_bound()
   return upper_bound;
 }
 
+// Calculates the global lower bound considering
+// the lower bounds in each thread and the top of the heap.
 template <typename i_t, typename f_t>
 f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
 {
@@ -230,6 +230,7 @@ f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
   if (heap_.size() > 0) { lower_bound = heap_.top()->lower_bound; }
   mutex_heap_.unlock();
 
+  // This should be reasonable fast for a moderate number of threads.
   for (i_t i = 0; i < settings_.num_threads; ++i) {
     f_t local_lb;
 #pragma omp atomic read
@@ -238,6 +239,26 @@ f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
   }
 
   return lower_bound;
+}
+
+template <typename i_t, typename f_t>
+mip_status_t branch_and_bound_t<i_t, f_t>::get_status()
+{
+  mip_status_t status;
+
+#pragma omp atomic read
+  status = status_;
+
+  return status;
+}
+
+template <typename i_t, typename f_t>
+i_t branch_and_bound_t<i_t, f_t>::get_heap_size()
+{
+  mutex_heap_.lock();
+  i_t size = heap_.size();
+  mutex_heap_.unlock();
+  return size;
 }
 
 template <typename f_t>
@@ -309,12 +330,7 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
   mutex_upper_.unlock();
 
   if (is_feasible) {
-    bool currently_branching;
-
-#pragma omp atomic read
-    currently_branching = currently_branching_;
-
-    if (currently_branching) {
+    if (get_status() == mip_status_t::RUNNING) {
       f_t user_obj    = compute_user_objective(original_lp_, obj);
       f_t user_lower  = compute_user_objective(original_lp_, get_lower_bound());
       std::string gap = user_mip_gap<f_t>(user_obj, user_lower);
@@ -671,7 +687,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
     return mip_status_t::NUMERICAL;
   }
 
-  return mip_status_t::UNSET;
+  return mip_status_t::RUNNING;
 }
 
 template <typename i_t, typename f_t>
@@ -682,6 +698,10 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
   csc_matrix_t<i_t, f_t> Arow(1, 1, 1);
   leaf_problem.A.transpose(Arow);
 
+  // Keep a local stack of the nodes to explore. Since we are following
+  // a depth-first search strategy, the depth of the last node is
+  // lowest among all nodes in the stack. We are using a deque here in
+  // order to push/pop nodes from both sides of the stack efficiently.
   std::deque<mip_node_t<i_t, f_t>*> stack;
   stack.push_front(start_node);
 
@@ -693,21 +713,24 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
   f_t last_log         = 0;
   i_t nodes_explored   = 0;
   i_t nodes_unexplored = 0;
-  mip_status_t local_status;
-
-#pragma omp atomic read
-  local_status = status_;
 
 #pragma omp atomic write
   lower_bounds_[tid] = lower_bound;
 
-  while (stack.size() > 0 && local_status == mip_status_t::UNSET) {
+  while (stack.size() > 0 && get_status() == mip_status_t::RUNNING) {
     repair_heuristic_solutions();
 
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
+    // Note that we do not know the true lower bound of the last node in the stack
+    // or the current node. Instead, they contain the lower bound of the parent.
+    lower_bound = stack.size() > 0 ? stack.back()->lower_bound : node_ptr->lower_bound;
     upper_bound = get_upper_bound();
+    gap         = upper_bound - lower_bound;
+
+#pragma omp atomic write
+    lower_bounds_[tid] = lower_bound;
 
 #pragma omp atomic capture
     nodes_explored = stats_.nodes_explored++;
@@ -715,17 +738,12 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
 #pragma omp atomic capture
     nodes_unexplored = stats_.nodes_unexplored--;
 
-    if (upper_bound < node_ptr->lower_bound) {
+    if (upper_bound < node_ptr->lower_bound ||
+        relative_gap(upper_bound, lower_bound) < settings_.relative_mip_gap_tol) {
       graphviz_node(settings_, node_ptr, "cutoff", node_ptr->lower_bound);
       update_tree(node_ptr, node_status_t::FATHOMED);
       continue;
     }
-
-    lower_bound = stack.size() > 0 ? stack.back()->lower_bound : node_ptr->lower_bound;
-    gap         = upper_bound - lower_bound;
-
-#pragma omp atomic write
-    lower_bounds_[tid] = lower_bound;
 
     f_t now = toc(stats_.start_time);
 
@@ -756,16 +774,10 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
       break;
     }
 
-    if (gap < settings_.absolute_mip_gap_tol ||
-        relative_gap(upper_bound, lower_bound) < settings_.relative_mip_gap_tol) {
-      graphviz_node(settings_, node_ptr, "cutoff", node_ptr->lower_bound);
-      update_tree(node_ptr, node_status_t::FATHOMED);
-      continue;
-    }
-
-    local_status = solve_node_lp(node_ptr, leaf_problem, Arow, upper_bound);
-
-    if (local_status == mip_status_t::NUMERICAL) {
+    // We are just checking for numerical issues during the LP solve, otherwise
+    // lp_status is set to RUNNING.
+    mip_status_t lp_status = solve_node_lp(node_ptr, leaf_problem, Arow, upper_bound);
+    if (lp_status == mip_status_t::NUMERICAL) {
 #pragma omp atomic write
       status_ = mip_status_t::NUMERICAL;
       break;
@@ -792,8 +804,11 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
       stats_.nodes_unexplored += 2;
     }
 
+    // We move the nodes from the local stack to the global heap when the depth difference from the
+    // node at the first and last node in the stack is greater than the threshold or
+    // the global heap contains too few nodes.
     if (stack.size() > 2 && (stack.front()->depth - stack.back()->depth > node_depth_threshold_ ||
-                             heap_.size() < 4 * settings_.num_threads)) {
+                             get_heap_size() < 4 * settings_.num_threads)) {
       mip_node_t<i_t, f_t>* node = stack.back();
       stack.pop_back();
 
@@ -801,9 +816,6 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
       heap_.push(node);
       mutex_heap_.unlock();
     }
-
-#pragma omp atomic read
-    local_status = status_;
   }
 }
 
@@ -940,16 +952,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   i_t active_tasks_     = 0;
 
 #pragma omp atomic write
-  currently_branching_ = true;
+  status_ = mip_status_t::RUNNING;
 
 #pragma omp parallel num_threads(settings_.num_threads)
   {
-    mip_status_t local_status;
     i_t active;
 
     do {
       mip_node_t<i_t, f_t>* node_ptr = nullptr;
 
+      // If there any node left in the heap, we pop the top node and explore it.
       mutex_heap_.lock();
       if (heap_.size() > 0) {
         node_ptr = heap_.top();
@@ -976,20 +988,17 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
 
 #pragma omp atomic read
-      local_status = status_;
-
-#pragma omp atomic read
       active = active_tasks_;
 
-    } while (local_status == mip_status_t::UNSET && (active > 0 || heap_.size() > 0));
+    } while (get_status() == mip_status_t::RUNNING && (active > 0 || get_heap_size() > 0));
   }
 
   if (status_ == mip_status_t::TIME_LIMIT) { settings_.log.printf("Time limit reached.\n"); }
 
 #pragma omp atomic write
-  currently_branching_ = false;
+  status_ = mip_status_t::FINISHED;
 
-  f_t lower_bound = heap_.size() > 0 ? get_lower_bound() : search_tree_->lower_bound;
+  f_t lower_bound = get_heap_size() > 0 ? get_lower_bound() : search_tree_->lower_bound;
   f_t upper_bound = get_upper_bound();
   f_t gap         = std::abs(upper_bound - lower_bound);
   f_t obj         = compute_user_objective(original_lp_, upper_bound);
@@ -1016,7 +1025,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
   }
 
-  if (heap_.size() == 0 && upper_bound == inf) {
+  if (get_heap_size() == 0 && upper_bound == inf) {
     settings_.log.printf("Integer infeasible.\n");
     status_ = mip_status_t::INFEASIBLE;
     if (settings_.heuristic_preemption_callback != nullptr) {
@@ -1029,7 +1038,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   solution.lower_bound        = lower_bound;
   solution.nodes_explored     = stats_.nodes_explored;
   solution.simplex_iterations = stats_.total_lp_iters;
-  return status_;
+  return get_status();
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
