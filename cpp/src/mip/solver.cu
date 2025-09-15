@@ -133,6 +133,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     pdlp_solver_settings_t<i_t, f_t> settings{};
     settings.time_limit = timer_.remaining_time();
     settings.method     = method_t::Concurrent;
+    // already applied presolve
+    settings.presolve_method = presolve_method_t::NONE;
 
     auto opt_sol = solve_lp_with_method<i_t, f_t>(
       *context.problem_ptr->original_problem_ptr, *context.problem_ptr, settings);
