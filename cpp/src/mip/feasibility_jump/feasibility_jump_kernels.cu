@@ -438,16 +438,15 @@ DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
   auto best_score_info = fj_t<i_t, f_t>::move_score_info_t::invalid();
 
   // fixed variables
-  if (fj.pb.integer_equal(fj.pb.variable_lower_bounds[var_idx],
-                          fj.pb.variable_upper_bounds[var_idx])) {
-    return std::make_pair(fj.pb.variable_lower_bounds[var_idx],
-                          fj_t<i_t, f_t>::move_score_info_t::invalid());
+  auto bounds = fj.pb.variable_bounds[var_idx];
+  if (fj.pb.integer_equal(get_lower(bounds), get_upper(bounds))) {
+    return std::make_pair(get_lower(bounds), fj_t<i_t, f_t>::move_score_info_t::invalid());
   }
 
   f_t old_val   = fj.incumbent_assignment[var_idx];
   f_t obj_coeff = fj.pb.objective_coefficients[var_idx];
-  f_t v_lb      = fj.pb.variable_lower_bounds[var_idx];
-  f_t v_ub      = fj.pb.variable_upper_bounds[var_idx];
+  f_t v_lb      = get_lower(bounds);
+  f_t v_ub      = get_upper(bounds);
   raft::random::PCGenerator rng(fj.settings->seed + *fj.iterations, 0, 0);
   cuopt_assert(isfinite(v_lb) || isfinite(v_ub), "unexpected free variable");
 
@@ -549,9 +548,9 @@ DI void update_jump_value(typename fj_t<i_t, f_t>::climber_data_t::view_t fj, i_
         cuopt_assert(fj.pb.integer_equal(fj.incumbent_assignment[var_idx], 0) ||
                        fj.pb.integer_equal(fj.incumbent_assignment[var_idx], 1),
                      "Current assignment is not binary!");
-        cuopt_assert(
-          fj.pb.variable_lower_bounds[var_idx] == 0 && fj.pb.variable_upper_bounds[var_idx] == 1,
-          "");
+        cuopt_assert(get_lower(fj.pb.variable_bounds[var_idx]) == 0 &&
+                       get_upper(fj.pb.variable_bounds[var_idx]) == 1,
+                     "");
         cuopt_assert(
           fj.pb.check_variable_within_bounds(var_idx, fj.incumbent_assignment[var_idx] + delta),
           "Var not within bounds!");
@@ -566,8 +565,9 @@ DI void update_jump_value(typename fj_t<i_t, f_t>::climber_data_t::view_t fj, i_
   } else {
     delta = round(1.0 - 2 * fj.incumbent_assignment[var_idx]);
     if (threadIdx.x == 0) {
-      cuopt_assert(
-        fj.pb.variable_lower_bounds[var_idx] == 0 && fj.pb.variable_upper_bounds[var_idx] == 1, "");
+      cuopt_assert(get_lower(fj.pb.variable_bounds[var_idx]) == 0 &&
+                     get_upper(fj.pb.variable_bounds[var_idx]) == 1,
+                   "");
       cuopt_assert(
         fj.pb.check_variable_within_bounds(var_idx, fj.incumbent_assignment[var_idx] + delta),
         "Var not within bounds!");
@@ -795,7 +795,8 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
       }
     }
 
-    i_t var_range = fj.pb.variable_upper_bounds[var_idx] - fj.pb.variable_lower_bounds[var_idx];
+    auto bounds          = fj.pb.variable_bounds[var_idx];
+    i_t var_range        = get_upper(bounds) - get_lower(bounds);
     double delta_rel_err = fabs(fj.jump_move_delta[var_idx]) / var_range;
     if (delta_rel_err < fj.settings->parameters.small_move_tabu_threshold) {
       *fj.small_move_tabu = *fj.iterations;
@@ -807,8 +808,8 @@ __global__ void update_assignment_kernel(typename fj_t<i_t, f_t>::climber_data_t
       "err_range %.2g%%, infeas %.2g, total viol %d\n",
       *fj.iterations,
       var_idx,
-      fj.pb.variable_lower_bounds[var_idx],
-      fj.pb.variable_upper_bounds[var_idx],
+      get_lower(fj.pb.variable_bounds[var_idx]),
+      get_upper(fj.pb.variable_bounds[var_idx]),
       fj.incumbent_assignment[var_idx],
       fj.jump_move_delta[var_idx],
       fj.incumbent_assignment[var_idx] + fj.jump_move_delta[var_idx],
@@ -891,8 +892,9 @@ DI void update_lift_moves(typename fj_t<i_t, f_t>::climber_data_t::view_t fj)
     f_t obj_coeff = fj.pb.objective_coefficients[var_idx];
     f_t delta     = -std::numeric_limits<f_t>::infinity();
 
-    f_t th_lower_delta = fj.pb.variable_lower_bounds[var_idx] - fj.incumbent_assignment[var_idx];
-    f_t th_upper_delta = fj.pb.variable_upper_bounds[var_idx] - fj.incumbent_assignment[var_idx];
+    auto bounds                     = fj.pb.variable_bounds[var_idx];
+    f_t th_lower_delta              = get_lower(bounds) - fj.incumbent_assignment[var_idx];
+    f_t th_upper_delta              = get_upper(bounds) - fj.incumbent_assignment[var_idx];
     auto [offset_begin, offset_end] = fj.pb.reverse_range_for_var(var_idx);
     for (i_t j = threadIdx.x + offset_begin; j < offset_end; j += blockDim.x) {
       auto cstr_idx      = fj.pb.reverse_constraints[j];
@@ -992,8 +994,9 @@ template <typename i_t, typename f_t>
 DI f_t get_breakthrough_move(typename fj_t<i_t, f_t>::climber_data_t::view_t fj, i_t var_idx)
 {
   f_t obj_coeff = fj.pb.objective_coefficients[var_idx];
-  f_t v_lb      = fj.pb.variable_lower_bounds[var_idx];
-  f_t v_ub      = fj.pb.variable_upper_bounds[var_idx];
+  auto bounds   = fj.pb.variable_bounds[var_idx];
+  f_t v_lb      = get_lower(bounds);
+  f_t v_ub      = get_upper(bounds);
   cuopt_assert(isfinite(v_lb) || isfinite(v_ub), "unexpected free variable");
   cuopt_assert(v_lb <= v_ub, "invalid bounds");
   cuopt_assert(fj.pb.check_variable_within_bounds(var_idx, fj.incumbent_assignment[var_idx]),
@@ -1217,8 +1220,8 @@ __device__ void compute_mtm_moves(typename fj_t<i_t, f_t>::climber_data_t::view_
 
     bool exclude_from_search = false;
     // "fixed" variables are to be excluded (as they cannot take any other value)
-    exclude_from_search |= fj.pb.integer_equal(fj.pb.variable_lower_bounds[var_idx],
-                                               fj.pb.variable_upper_bounds[var_idx]);
+    auto bounds = fj.pb.variable_bounds[var_idx];
+    exclude_from_search |= fj.pb.integer_equal(get_lower(bounds), get_upper(bounds));
 
     if (exclude_from_search) {
       if (threadIdx.x == 0) {
@@ -1272,7 +1275,8 @@ __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::
       auto var_idx    = fj.candidate_variables.contents[setidx];
       auto move_score = fj.jump_move_scores[var_idx];
 
-      i_t var_range = fj.pb.variable_upper_bounds[var_idx] - fj.pb.variable_lower_bounds[var_idx];
+      auto bounds          = fj.pb.variable_bounds[var_idx];
+      i_t var_range        = get_upper(bounds) - get_lower(bounds);
       double delta_rel_err = fabs(fj.jump_move_delta[var_idx]) / var_range;
       // tabu for small moves to avoid very long descents/numerical issues
       if (delta_rel_err < fj.settings->parameters.small_move_tabu_threshold &&
@@ -1319,16 +1323,16 @@ __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::
     *fj.selected_var                 = selected_var;
     if (selected_var != std::numeric_limits<i_t>::max()) {
 #if FJ_SINGLE_STEP
-      i_t var_range =
-        fj.pb.variable_upper_bounds[selected_var] - fj.pb.variable_lower_bounds[selected_var];
+      auto bounds          = fj.pb.variable_bounds[selected_var];
+      i_t var_range        = get_upper(bounds) - get_lower(bounds);
       double delta_rel_err = fabs(fj.jump_move_delta[selected_var]) / var_range * 100;
       DEVICE_LOG_INFO(
         "=---- FJ: selected %d [%g/%g] %c :%.4g+{%.4g}=%.4g score {%g,%g}, d_obj %.2g+%.2g->%.2g, "
         "delta_rel_err %.2g%%, "
         "infeas %.2g, total viol %d, out of %d\n",
         selected_var,
-        fj.pb.variable_lower_bounds[selected_var],
-        fj.pb.variable_upper_bounds[selected_var],
+        get_lower(bounds),
+        get_upper(bounds),
         fj.pb.variable_types[selected_var] == var_t::INTEGER ? 'I' : 'C',
         fj.incumbent_assignment[selected_var],
         fj.jump_move_delta[selected_var],
@@ -1553,9 +1557,10 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
 
       // if no move was found, fallback to round-nearest
       if (fj.pb.integer_equal(delta, 0)) {
-        delta = round_nearest(fj.incumbent_assignment[selected],
-                              fj.pb.variable_lower_bounds[selected],
-                              fj.pb.variable_upper_bounds[selected],
+        auto bounds = fj.pb.variable_bounds[selected];
+        delta       = round_nearest(fj.incumbent_assignment[selected],
+                              get_lower(bounds),
+                              get_upper(bounds),
                               fj.pb.tolerances.integrality_tolerance,
                               rng) -
                 fj.incumbent_assignment[selected];
@@ -1564,10 +1569,11 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
       if (FIRST_THREAD) {
         fj.jump_move_delta[selected] = delta;
         *fj.selected_var             = selected;
+        auto bounds                  = fj.pb.variable_bounds[*fj.selected_var];
         DEVICE_LOG_TRACE("selected_var: %d bounds [%.4g/%.4g], delta %g, old val %g\n",
                          *fj.selected_var,
-                         fj.pb.variable_lower_bounds[*fj.selected_var],
-                         fj.pb.variable_upper_bounds[*fj.selected_var],
+                         get_lower(bounds),
+                         get_upper(bounds),
                          fj.jump_move_delta[*fj.selected_var],
                          fj.incumbent_assignment[*fj.selected_var]);
       }

@@ -155,12 +155,11 @@ bool probing_cache_t<i_t, f_t>::contains(problem_t<i_t, f_t>& problem, i_t var_i
   return probing_cache.count(problem.original_ids[var_id]) > 0;
 }
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename f_t2>
 void inline insert_current_probing_to_cache(i_t var_idx,
                                             const val_interval_t<i_t, f_t>& probe_val,
                                             bound_presolve_t<i_t, f_t>& bound_presolve,
-                                            const std::vector<f_t>& original_lb,
-                                            const std::vector<f_t>& original_ub,
+                                            const std::vector<f_t2>& original_bounds,
                                             const std::vector<f_t>& modified_lb,
                                             const std::vector<f_t>& modified_ub,
                                             const std::vector<i_t>& h_integer_indices,
@@ -171,15 +170,16 @@ void inline insert_current_probing_to_cache(i_t var_idx,
   cache_entry_t<i_t, f_t> cache_item;
   cache_item.val_interval = probe_val;
   for (auto impacted_var_idx : h_integer_indices) {
-    if (original_lb[impacted_var_idx] != modified_lb[impacted_var_idx] ||
-        original_ub[impacted_var_idx] != modified_ub[impacted_var_idx]) {
+    auto original_var_bounds = original_bounds[impacted_var_idx];
+    if (get_lower(original_var_bounds) != modified_lb[impacted_var_idx] ||
+        get_upper(original_var_bounds) != modified_ub[impacted_var_idx]) {
       if (integer_equal<f_t>(
             modified_lb[impacted_var_idx], modified_ub[impacted_var_idx], int_tol)) {
         ++n_implied_singletons;
       }
-      cuopt_assert(modified_lb[impacted_var_idx] >= original_lb[impacted_var_idx],
+      cuopt_assert(modified_lb[impacted_var_idx] >= get_lower(original_var_bounds),
                    "Lower bound must be greater than or equal to original lower bound");
-      cuopt_assert(modified_ub[impacted_var_idx] <= original_ub[impacted_var_idx],
+      cuopt_assert(modified_ub[impacted_var_idx] <= get_upper(original_var_bounds),
                    "Upper bound must be less than or equal to original upper bound");
       cached_bound_t<f_t> new_bound{modified_lb[impacted_var_idx], modified_ub[impacted_var_idx]};
       cache_item.var_to_cached_bound_map.insert({impacted_var_idx, new_bound});
@@ -210,8 +210,9 @@ __global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t p
   i_t var_offset        = pb.reverse_offsets[var_idx];
   i_t var_degree        = pb.reverse_offsets[var_idx + 1] - var_offset;
   f_t th_var_unit_slack = std::numeric_limits<f_t>::max();
-  f_t lb                = pb.variable_lower_bounds[var_idx];
-  f_t ub                = pb.variable_upper_bounds[var_idx];
+  auto var_bounds       = pb.variable_bounds[var_idx];
+  f_t lb                = get_lower(var_bounds);
+  f_t ub                = get_upper(var_bounds);
   f_t first_coeff       = pb.reverse_coefficients[var_offset];
   bool different_coeff  = false;
   for (i_t i = threadIdx.x; i < var_degree; i += blockDim.x) {
@@ -360,13 +361,12 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
   return h_priority_indices;
 }
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename f_t2>
 void compute_cache_for_var(i_t var_idx,
                            bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,
                            multi_probe_t<i_t, f_t>& multi_probe_presolve,
-                           const std::vector<f_t>& h_var_lower_bounds,
-                           const std::vector<f_t>& h_var_upper_bounds,
+                           const std::vector<f_t2>& h_var_bounds,
                            const std::vector<i_t>& h_integer_indices,
                            std::atomic<size_t>& n_of_implied_singletons,
                            std::atomic<size_t>& n_of_cached_probings,
@@ -375,11 +375,12 @@ void compute_cache_for_var(i_t var_idx,
   RAFT_CUDA_TRY(cudaSetDevice(device_id));
   // test if we need per thread handle
   raft::handle_t handle{};
-  std::vector<f_t> h_improved_lower_bounds(h_var_lower_bounds.size());
-  std::vector<f_t> h_improved_upper_bounds(h_var_upper_bounds.size());
+  std::vector<f_t> h_improved_lower_bounds(h_var_bounds.size());
+  std::vector<f_t> h_improved_upper_bounds(h_var_bounds.size());
   std::pair<val_interval_t<i_t, f_t>, val_interval_t<i_t, f_t>> probe_vals;
-  f_t lb = h_var_lower_bounds[var_idx];
-  f_t ub = h_var_upper_bounds[var_idx];
+  auto bounds = h_var_bounds[var_idx];
+  f_t lb      = get_lower(bounds);
+  f_t ub      = get_upper(bounds);
   for (i_t i = 0; i < 2; ++i) {
     auto& probe_val = i == 0 ? probe_vals.first : probe_vals.second;
     // if binary, probe both values
@@ -451,8 +452,7 @@ void compute_cache_for_var(i_t var_idx,
       insert_current_probing_to_cache(var_idx,
                                       probe_val,
                                       bound_presolve,
-                                      h_var_lower_bounds,
-                                      h_var_upper_bounds,
+                                      h_var_bounds,
                                       h_improved_lower_bounds,
                                       h_improved_upper_bounds,
                                       h_integer_indices,
@@ -470,9 +470,8 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // we dont want to compute the probing cache for all variables for time and computation resources
   auto priority_indices = compute_prioritized_integer_indices(bound_presolve, problem);
   CUOPT_LOG_DEBUG("Computing probing cache");
-  auto h_integer_indices        = host_copy(problem.integer_indices);
-  const auto h_var_upper_bounds = host_copy(problem.variable_upper_bounds);
-  const auto h_var_lower_bounds = host_copy(problem.variable_lower_bounds);
+  auto h_integer_indices  = host_copy(problem.integer_indices);
+  const auto h_var_bounds = host_copy(problem.variable_bounds);
   // TODO adjust the iteration limit depending on the total time limit and time it takes for single
   // var
   bound_presolve.settings.iteration_limit = 50;
@@ -512,8 +511,7 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                                       bound_presolve,
                                       problem,
                                       multi_probe_presolve,
-                                      h_var_lower_bounds,
-                                      h_var_upper_bounds,
+                                      h_var_bounds,
                                       h_integer_indices,
                                       n_of_implied_singletons,
                                       n_of_cached_probings,

@@ -66,3 +66,5 @@ docs/cuopt/build
 
 # generated version file
 cpp/include/cuopt/semantic_version.hpp
+!datasets/quadratic_programming
+!datasets/quadratic_programming/**

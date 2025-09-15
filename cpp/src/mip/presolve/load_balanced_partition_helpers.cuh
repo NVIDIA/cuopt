@@ -27,45 +27,6 @@
 
 namespace cuopt::linear_programming::detail {
 
-template <typename T>
-struct type_2 {
-  using type = void;
-};
-
-template <>
-struct type_2<int> {
-  using type = int2;
-};
-
-template <>
-struct type_2<float> {
-  using type = float2;
-};
-
-template <>
-struct type_2<double> {
-  using type = double2;
-};
-
-template <typename T>
-raft::device_span<typename type_2<T>::type> make_span_2(rmm::device_uvector<T>& container)
-{
-  // TODO : ceildiv or throw assert
-  using T2 = typename type_2<T>::type;
-  return raft::device_span<T2>(reinterpret_cast<T2*>(container.data()),
-                               sizeof(T) * container.size() / sizeof(T2));
-}
-
-template <typename T>
-raft::device_span<const typename type_2<T>::type> make_span_2(
-  rmm::device_uvector<T> const& container)
-{
-  // TODO : ceildiv or throw assert
-  using T2 = typename type_2<T>::type;
-  return raft::device_span<const T2>(reinterpret_cast<const T2*>(container.data()),
-                                     sizeof(T) * container.size() / sizeof(T2));
-}
-
 template <typename degree_t>
 constexpr int BitsPWrd = sizeof(degree_t) * 8;
 

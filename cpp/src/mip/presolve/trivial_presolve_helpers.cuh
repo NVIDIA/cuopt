@@ -30,40 +30,34 @@ struct non_zero_degree_t {
   __device__ i_t operator()(i_t i) { return offsets[i] != offsets[i + 1]; }
 };
 
-template <typename f_t>
+template <typename f_t, typename f_t2>
 struct is_variable_free_t {
   f_t tol;
-  raft::device_span<f_t> lb;
-  raft::device_span<f_t> ub;
-  is_variable_free_t(f_t tol_, raft::device_span<f_t> lb_, raft::device_span<f_t> ub_)
-    : tol(tol_), lb(lb_), ub(ub_)
-  {
-  }
+  raft::device_span<f_t2> bnd;
+  is_variable_free_t(f_t tol_, raft::device_span<f_t2> bnd_) : tol(tol_), bnd(bnd_) {}
   template <typename tuple_t>
   __device__ bool operator()(tuple_t edge)
   {
-    auto var = thrust::get<2>(edge);
-    return abs(ub[var] - lb[var]) > tol;
+    auto var    = thrust::get<2>(edge);
+    auto bounds = bnd[var];
+    return abs(get_upper(bounds) - get_lower(bounds)) > tol;
   }
 };
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename f_t2>
 struct assign_fixed_var_t {
   raft::device_span<i_t> is_var_used;
-  raft::device_span<f_t> variable_lower_bounds;
-  raft::device_span<f_t> variable_upper_bounds;
+  raft::device_span<f_t2> variable_bounds;
   raft::device_span<f_t> objective_coefficients;
   raft::device_span<i_t> variable_mapping;
   raft::device_span<f_t> fixed_assignment;
   assign_fixed_var_t(raft::device_span<i_t> is_var_used_,
-                     raft::device_span<f_t> variable_lower_bounds_,
-                     raft::device_span<f_t> variable_upper_bounds_,
+                     raft::device_span<f_t2> variable_bounds_,
                      raft::device_span<f_t> objective_coefficients_,
                      raft::device_span<i_t> variable_mapping_,
                      raft::device_span<f_t> fixed_assignment_)
     : is_var_used(is_var_used_),
-      variable_lower_bounds(variable_lower_bounds_),
-      variable_upper_bounds(variable_upper_bounds_),
+      variable_bounds(variable_bounds_),
       objective_coefficients(objective_coefficients_),
       variable_mapping(variable_mapping_),
       fixed_assignment(fixed_assignment_)
@@ -74,39 +68,38 @@ struct assign_fixed_var_t {
   {
     if (!is_var_used[i]) {
       auto orig_v_idx = variable_mapping[i];
+      auto bounds     = variable_bounds[i];
       fixed_assignment[orig_v_idx] =
-        (objective_coefficients[i] > 0) ? variable_lower_bounds[i] : variable_upper_bounds[i];
+        (objective_coefficients[i] > 0) ? get_lower(bounds) : get_upper(bounds);
     }
   }
 };
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename f_t2>
 struct elem_multi_t {
   raft::device_span<f_t> coefficients;
   raft::device_span<i_t> variables;
   raft::device_span<f_t> obj_coefficients;
-  raft::device_span<f_t> variable_lower_bounds;
-  raft::device_span<f_t> variable_upper_bounds;
+  raft::device_span<f_t2> variable_bounds;
   elem_multi_t(raft::device_span<f_t> coefficients_,
                raft::device_span<i_t> variables_,
                raft::device_span<f_t> obj_coefficients_,
-               raft::device_span<f_t> variable_lower_bounds_,
-               raft::device_span<f_t> variable_upper_bounds_)
+               raft::device_span<f_t2> variable_bounds_)
     : coefficients(coefficients_),
       variables(variables_),
       obj_coefficients(obj_coefficients_),
-      variable_lower_bounds(variable_lower_bounds_),
-      variable_upper_bounds(variable_upper_bounds_)
+      variable_bounds(variable_bounds_)
   {
   }
 
   __device__ f_t operator()(i_t i) const
   {
-    auto var = variables[i];
+    auto var    = variables[i];
+    auto bounds = variable_bounds[var];
     if (obj_coefficients[var] > 0) {
-      return variable_lower_bounds[var] * coefficients[i];
+      return get_lower(bounds) * coefficients[i];
     } else {
-      return variable_upper_bounds[var] * coefficients[i];
+      return get_upper(bounds) * coefficients[i];
     }
   }
 };
@@ -136,18 +129,16 @@ struct update_constraint_bounds_t {
   }
 };
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename f_t2>
 struct unused_var_obj_offset_t {
   raft::device_span<i_t> var_map;
   raft::device_span<f_t> objective_coefficients;
-  raft::device_span<f_t> lb;
-  raft::device_span<f_t> ub;
+  raft::device_span<f_t2> bnd;
 
   unused_var_obj_offset_t(raft::device_span<i_t> var_map_,
                           raft::device_span<f_t> objective_coefficients_,
-                          raft::device_span<f_t> lb_,
-                          raft::device_span<f_t> ub_)
-    : var_map(var_map_), objective_coefficients(objective_coefficients_), lb(lb_), ub(ub_)
+                          raft::device_span<f_t2> bnd_)
+    : var_map(var_map_), objective_coefficients(objective_coefficients_), bnd(bnd_)
   {
   }
 
@@ -156,7 +147,8 @@ struct unused_var_obj_offset_t {
     auto obj_coeff = objective_coefficients[i];
     // in case both bounds are infinite
     if (obj_coeff == 0.) return 0.;
-    auto obj_off = (obj_coeff > 0) ? obj_coeff * lb[i] : obj_coeff * ub[i];
+    auto bounds  = bnd[i];
+    auto obj_off = (obj_coeff > 0) ? obj_coeff * get_lower(bounds) : obj_coeff * get_upper(bounds);
     return var_map[i] ? 0. : obj_off;
   }
 };
