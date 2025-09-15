@@ -35,7 +35,6 @@
 #include <limits>
 #include <string>
 #include <vector>
-#include "cuopt/linear_programming/mip/solver_settings.hpp"
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -189,6 +188,34 @@ dual::status_t convert_lp_status_to_dual_status(lp_status_t status)
 }
 
 }  // namespace
+
+template <typename i_t, typename f_t>
+branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
+  const user_problem_t<i_t, f_t>& user_problem,
+  const simplex_solver_settings_t<i_t, f_t>& solver_settings)
+  : original_problem_(user_problem),
+    settings_(solver_settings),
+    original_lp_(1, 1, 1),
+    incumbent_(1),
+    root_relax_soln_(1, 1),
+    pc_(1)
+{
+  stats_.start_time = tic();
+  convert_user_problem(original_problem_, settings_, original_lp_, new_slacks_);
+  full_variable_types(original_problem_, original_lp_, var_types_);
+
+  mutex_upper_.lock();
+  upper_bound_ = inf;
+  mutex_upper_.unlock();
+
+  mutex_lower_.lock();
+  lower_bound_ = -inf;
+  mutex_lower_.unlock();
+
+  mutex_branching_.lock();
+  currently_branching_ = false;
+  mutex_branching_.unlock();
+}
 
 template <typename i_t, typename f_t>
 f_t branch_and_bound_t<i_t, f_t>::get_upper_bound()
@@ -370,34 +397,6 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
 }
 
 template <typename i_t, typename f_t>
-branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
-  const user_problem_t<i_t, f_t>& user_problem,
-  const simplex_solver_settings_t<i_t, f_t>& solver_settings)
-  : original_problem_(user_problem),
-    settings_(solver_settings),
-    original_lp_(1, 1, 1),
-    incumbent_(1),
-    root_relax_soln_(1, 1),
-    pc_(1)
-{
-  stats_.start_time = tic();
-  convert_user_problem(original_problem_, settings_, original_lp_, new_slacks_);
-  full_variable_types(original_problem_, original_lp_, var_types_);
-
-  mutex_upper_.lock();
-  upper_bound_ = inf;
-  mutex_upper_.unlock();
-
-  mutex_lower_.lock();
-  lower_bound_ = -inf;
-  mutex_lower_.unlock();
-
-  mutex_branching_.lock();
-  currently_branching_ = false;
-  mutex_branching_.unlock();
-}
-
-template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions(f_t lower_bound,
                                                               mip_solution_t<i_t, f_t>& solution)
 {
@@ -473,12 +472,15 @@ void branch_and_bound_t<i_t, f_t>::branch(mip_node_t<i_t, f_t>* parent_node,
 }
 
 template <typename i_t, typename f_t>
-mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
-                                                         lp_problem_t<i_t, f_t>& leaf_problem,
-                                                         f_t upper_bound,
-                                                         f_t lower_bound,
-                                                         i_t nodes_explored,
-                                                         i_t unexplored_nodes)
+mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
+  mip_node_t<i_t, f_t>* node_ptr,
+  lp_problem_t<i_t, f_t>& leaf_problem,
+  csc_matrix_t<i_t, f_t>& Arow,
+  const std::vector<variable_type_t>& var_types,
+  f_t upper_bound,
+  f_t lower_bound,
+  i_t nodes_explored,
+  i_t unexplored_nodes)
 {
   logger_t log;
   log.log                                      = false;
@@ -488,7 +490,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
   // Set the correct bounds for the leaf problem
   leaf_problem.lower = original_lp_.lower;
   leaf_problem.upper = original_lp_.upper;
-  node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper);
+
+  std::vector<bool> bounds_changed(original_lp_.num_cols, false);
+  // Technically, we can get the already strengthened bounds from the node/parent instead of
+  // getting it from the original problem and re-strengthening. But this requires storing
+  // two vectors at each node and potentially cause memory issues
+  node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper, bounds_changed);
 
   i_t node_iter = 0;
   assert(leaf_vstatus.size() == leaf_problem.num_cols);
@@ -496,23 +503,33 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
   std::vector<f_t> leaf_edge_norms      = edge_norms_;  // = node.steepest_edge_norms;
   simplex_solver_settings_t lp_settings = settings_;
   lp_settings.set_log(false);
-  lp_settings.cut_off      = upper_bound + settings_.dual_tol;
-  lp_settings.inside_mip   = 2;
-  dual::status_t lp_status = dual_phase2(2,
-                                         0,
-                                         lp_start_time,
-                                         leaf_problem,
-                                         lp_settings,
-                                         leaf_vstatus,
-                                         leaf_solution,
-                                         node_iter,
-                                         leaf_edge_norms);
-  if (lp_status == dual::status_t::NUMERICAL) {
-    settings_.log.printf("Numerical issue node %d. Resolving from scratch.\n",
-                         stats_.nodes_explored.load());
-    lp_status_t second_status = solve_linear_program_advanced(
-      leaf_problem, lp_start_time, lp_settings, leaf_solution, leaf_vstatus, leaf_edge_norms);
-    lp_status = convert_lp_status_to_dual_status(second_status);
+  lp_settings.cut_off    = upper_bound + settings_.dual_tol;
+  lp_settings.inside_mip = 2;
+
+  // in B&B we only have equality constraints, leave it empty for default
+  std::vector<char> row_sense;
+  bool feasible =
+    bound_strengthening(row_sense, lp_settings, leaf_problem, Arow, var_types, bounds_changed);
+
+  dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
+
+  // If the problem is infeasible after bounds strengthening, we don't need to solve the LP
+  if (feasible) {
+    lp_status = dual_phase2(2,
+                            0,
+                            lp_start_time,
+                            leaf_problem,
+                            lp_settings,
+                            leaf_vstatus,
+                            leaf_solution,
+                            node_iter,
+                            leaf_edge_norms);
+    if (lp_status == dual::status_t::NUMERICAL) {
+      settings_.log.printf("Numerical issue node %d. Resolving from scratch.\n", nodes_explored);
+      lp_status_t second_status = solve_linear_program_advanced(
+        leaf_problem, lp_start_time, lp_settings, leaf_solution, leaf_vstatus, leaf_edge_norms);
+      lp_status = convert_lp_status_to_dual_status(second_status);
+    }
   }
 
   mutex_stats_.lock();
@@ -521,12 +538,17 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
   mutex_stats_.unlock();
 
   if (lp_status == dual::status_t::DUAL_UNBOUNDED) {
+    if (!feasible) {
+      settings_.log.printf("Infeasible after bounds strengthening. Fathoming node %d.\n",
+                           nodes_explored);
+    }
     node_ptr->lower_bound = inf;
     std::vector<mip_node_t<i_t, f_t>*> stack;
     node_ptr->set_status(node_status_t::INFEASIBLE, stack);
     graphviz_node(settings_, node_ptr, "infeasible", 0.0);
     remove_fathomed_nodes(stack);
     // Node was infeasible. Do not branch
+
   } else if (lp_status == dual::status_t::CUTOFF) {
     node_ptr->lower_bound = upper_bound;
     std::vector<mip_node_t<i_t, f_t>*> stack;
@@ -646,6 +668,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
 
   // Make a copy of the original LP. We will modify its bounds at each leaf
   lp_problem_t leaf_problem = original_lp_;
+  csc_matrix_t<i_t, f_t> Arow(1, 1, 1);
+  original_lp_.A.transpose(Arow);
 
   f_t lower_bound    = get_lower_bound();
   f_t gap            = get_upper_bound() - lower_bound;
@@ -706,8 +730,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
       break;
     }
 
-    status =
-      solve_node_lp(node_ptr, leaf_problem, upper_bound, lower_bound, nodes_explored, heap.size());
+    status = solve_node_lp(node_ptr,
+                           leaf_problem,
+                           Arow,
+                           var_types_,
+                           upper_bound,
+                           lower_bound,
+                           nodes_explored,
+                           heap.size());
 
     if (status == mip_status_t::NUMERICAL) { break; }
 
@@ -756,6 +786,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::dive(i_t branch_var, mip_solution_t<i
   // Make a copy of the original LP. We will modify its bounds at each leaf
   lp_problem_t leaf_problem = original_lp_;
 
+  csc_matrix_t<i_t, f_t> Arow(1, 1, 1);
+  original_lp_.A.transpose(Arow);
+
   f_t lower_bound    = get_lower_bound();
   f_t gap            = get_upper_bound() - lower_bound;
   i_t nodes_explored = 0;
@@ -786,8 +819,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::dive(i_t branch_var, mip_solution_t<i
       break;
     }
 
-    status = solve_node_lp(
-      node_ptr, leaf_problem, upper_bound, lower_bound, nodes_explored, node_stack.size());
+    status = solve_node_lp(node_ptr,
+                           leaf_problem,
+                           Arow,
+                           var_types_,
+                           upper_bound,
+                           lower_bound,
+                           nodes_explored,
+                           node_stack.size());
     if (status == mip_status_t::NUMERICAL) { break; }
 
     if (node_ptr->status == node_status_t::HAS_CHILDREN) {

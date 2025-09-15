@@ -152,12 +152,11 @@ class branch_and_bound_t {
               f_t branch_var_val,
               const std::vector<variable_status_t>& parent_vstatus);
 
-  // Solve the LP relaxation of the root node.
-  mip_status_t solve_root_relaxation();
-
   // Solve the LP relaxation of a leaf node.
   mip_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
                              lp_problem_t<i_t, f_t>& leaf_problem,
+                             csc_matrix_t<i_t, f_t>& Arow,
+                             const std::vector<variable_type_t>& var_types,
                              f_t upper_bound,
                              f_t lower_bound,
                              i_t nodes_explored,
