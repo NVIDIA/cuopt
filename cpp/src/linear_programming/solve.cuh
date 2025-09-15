@@ -35,6 +35,7 @@ cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_wi
   const optimization_problem_t<i_t, f_t>& op_problem,
   detail::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
+  const timer_t& timer,
   bool is_batch_mode = false);
 
 }  // namespace cuopt::linear_programming
