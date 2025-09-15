@@ -29,6 +29,12 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
+enum class search_strategy_t {
+  BEST_FIRST                           = 0,
+  DEPTH_FIRST                          = 1,
+  MULTITHREADED_BEST_FIRST_WITH_DIVING = 2,
+};
+
 template <typename i_t, typename f_t>
 struct simplex_solver_settings_t {
  public:
@@ -115,8 +121,8 @@ struct simplex_solver_settings_t {
   std::atomic<i_t>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt
 
-  bnb_search_strategy_t bnb_search_strategy =
-    bnb_search_strategy_t::BEST_FIRST;  // Search strategy for B&B
+  search_strategy_t bnb_search_strategy =
+    search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING;  // Search strategy for B&B
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

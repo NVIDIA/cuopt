@@ -62,7 +62,6 @@
 #define CUOPT_SOLUTION_FILE               "solution_file"
 #define CUOPT_NUM_CPU_THREADS             "num_cpu_threads"
 #define CUOPT_USER_PROBLEM_FILE           "user_problem_file"
-#define CUOPT_BNB_SEARCH_STRATEGY         "bnb_search_strategy"
 
 /* @brief LP/MIP termination status constants */
 #define CUOPT_TERIMINATION_STATUS_NO_TERMINATION   0
@@ -115,10 +114,5 @@
 #define CUOPT_VALIDATION_ERROR 4
 #define CUOPT_OUT_OF_MEMORY    5
 #define CUOPT_RUNTIME_ERROR    6
-
-/* @brief BNB search strategy constants */
-#define CUOPT_BNB_SEARCH_STRATEGY_BEST_FIRST                           0
-#define CUOPT_BNB_SEARCH_STRATEGY_DEPTH_FIRST                          1
-#define CUOPT_BNB_SEARCH_STRATEGY_MULTITHREADED_BEST_FIRST_WITH_DIVING 2
 
 #endif  // CUOPT_CONSTANTS_H

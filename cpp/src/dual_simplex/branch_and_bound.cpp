@@ -473,52 +473,6 @@ void branch_and_bound_t<i_t, f_t>::branch(mip_node_t<i_t, f_t>* parent_node,
 }
 
 template <typename i_t, typename f_t>
-mip_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation()
-{
-  settings_.log.printf("Solving LP root relaxation\n");
-  simplex_solver_settings_t lp_settings = settings_;
-  lp_settings.inside_mip                = 1;
-  lp_status_t root_status               = solve_linear_program_advanced(
-    original_lp_, stats_.start_time, lp_settings, root_relax_soln_, root_vstatus_, edge_norms_);
-  stats_.total_lp_solve_time = toc(stats_.start_time);
-  assert(root_vstatus_.size() == original_lp_.num_cols);
-  if (root_status == lp_status_t::INFEASIBLE) {
-    settings_.log.printf("MIP Infeasible\n");
-    if (settings_.heuristic_preemption_callback != nullptr) {
-      settings_.heuristic_preemption_callback();
-    }
-    return mip_status_t::INFEASIBLE;
-  }
-  if (root_status == lp_status_t::UNBOUNDED) {
-    settings_.log.printf("MIP Unbounded\n");
-    if (settings_.heuristic_preemption_callback != nullptr) {
-      settings_.heuristic_preemption_callback();
-    }
-    return mip_status_t::UNBOUNDED;
-  }
-  if (root_status == lp_status_t::TIME_LIMIT) {
-    settings_.log.printf("Hit time limit\n");
-    return mip_status_t::TIME_LIMIT;
-  }
-  set_uninitialized_steepest_edge_norms(original_lp_.num_cols, edge_norms_);
-
-  std::vector<i_t> fractional;
-
-  root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
-  if (settings_.set_simplex_solution_callback != nullptr) {
-    std::vector<f_t> original_x;
-    uncrush_primal_solution(original_problem_, original_lp_, root_relax_soln_.x, original_x);
-    settings_.set_simplex_solution_callback(original_x,
-                                            compute_user_objective(original_lp_, root_objective_));
-  }
-  mutex_lower_.lock();
-  lower_bound_ = root_objective_;
-  mutex_lower_.unlock();
-
-  return mip_status_t::UNSET;
-}
-
-template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
                                                          lp_problem_t<i_t, f_t>& leaf_problem,
                                                          f_t upper_bound,
@@ -747,7 +701,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
     }
 
     if (toc(stats_.start_time) > settings_.time_limit) {
-      settings_.log.printf("Hit time limit. Stoppping\n");
+      settings_.log.printf("Hit time limit. Stopping\n");
       status = mip_status_t::TIME_LIMIT;
       break;
     }
@@ -804,12 +758,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::dive(i_t branch_var, mip_solution_t<i
 
   f_t lower_bound    = get_lower_bound();
   f_t gap            = get_upper_bound() - lower_bound;
-  f_t last_log       = 0;
   i_t nodes_explored = 0;
 
-  while (gap > settings_.absolute_mip_gap_tol &&
-         relative_gap(get_upper_bound(), lower_bound) > settings_.relative_mip_gap_tol &&
-         node_stack.size() > 0) {
+  while (node_stack.size() > 0) {
     repair_heuristic_solutions(lower_bound, solution);
 
     // Get a node off the stack
@@ -817,39 +768,20 @@ mip_status_t branch_and_bound_t<i_t, f_t>::dive(i_t branch_var, mip_solution_t<i
     node_stack.pop_back();
     nodes_explored++;
 
-    f_t upper_bound      = get_upper_bound();
-    lower_bound          = get_lower_bound();
-    gap                  = upper_bound - lower_bound;
-    const i_t leaf_depth = node_ptr->depth;
+    f_t upper_bound = get_upper_bound();
+    lower_bound     = get_lower_bound();
+    gap             = upper_bound - lower_bound;
 
-    f_t now            = toc(stats_.start_time);
-    f_t time_since_log = last_log == 0 ? 1.0 : toc(last_log);
-
-    if (settings_.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
-      if ((nodes_explored % 1000 == 0 || gap < 10 * settings_.absolute_mip_gap_tol ||
-           nodes_explored < 1000) &&
-            (time_since_log >= 1) ||
-          (time_since_log > 60) || now > settings_.time_limit) {
-        settings_.log.printf(" %8d %8lu       %+13.6e  %+10.6e   %4d   %7.1e     %s %9.2f\n",
-                             nodes_explored,
-                             node_stack.size(),
-                             compute_user_objective(original_lp_, upper_bound),
-                             compute_user_objective(original_lp_, lower_bound),
-                             leaf_depth,
-                             nodes_explored > 0 ? stats_.total_lp_iters / nodes_explored : 0,
-                             user_mip_gap<f_t>(compute_user_objective(original_lp_, upper_bound),
-                                               compute_user_objective(original_lp_, lower_bound))
-                               .c_str(),
-                             now);
-        last_log = tic();
-      }
+    if (gap < settings_.absolute_mip_gap_tol &&
+        relative_gap(get_upper_bound(), lower_bound) < settings_.relative_mip_gap_tol) {
+      std::vector<mip_node_t<i_t, f_t>*> stack;
+      node_ptr->set_status(node_status_t::FATHOMED, stack);
+      graphviz_node(settings_, node_ptr, "cutoff", node_ptr->lower_bound);
+      remove_fathomed_nodes(stack);
+      continue;
     }
 
     if (toc(stats_.start_time) > settings_.time_limit) {
-      if (settings_.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
-        settings_.log.printf("Hit time limit. Stoppping\n");
-      }
-
       status = mip_status_t::TIME_LIMIT;
       break;
     }
@@ -877,7 +809,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::dive(i_t branch_var, mip_solution_t<i
     }
   }
 
-  if (settings_.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
+  if (settings_.bnb_search_strategy == search_strategy_t::DEPTH_FIRST) {
     stats_.nodes_unexplored = node_stack.size();
     stats_.nodes_explored   = nodes_explored;
 
@@ -919,8 +851,44 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   root_relax_soln_.resize(original_lp_.num_rows, original_lp_.num_cols);
-  mip_status_t root_status = solve_root_relaxation();
-  if (root_status != mip_status_t::UNSET) { return root_status; }
+
+  settings_.log.printf("Solving LP root relaxation\n");
+  simplex_solver_settings_t lp_settings = settings_;
+  lp_settings.inside_mip                = 1;
+  lp_status_t root_status               = solve_linear_program_advanced(
+    original_lp_, stats_.start_time, lp_settings, root_relax_soln_, root_vstatus_, edge_norms_);
+  stats_.total_lp_solve_time = toc(stats_.start_time);
+  assert(root_vstatus_.size() == original_lp_.num_cols);
+  if (root_status == lp_status_t::INFEASIBLE) {
+    settings_.log.printf("MIP Infeasible\n");
+    if (settings_.heuristic_preemption_callback != nullptr) {
+      settings_.heuristic_preemption_callback();
+    }
+    return mip_status_t::INFEASIBLE;
+  }
+  if (root_status == lp_status_t::UNBOUNDED) {
+    settings_.log.printf("MIP Unbounded\n");
+    if (settings_.heuristic_preemption_callback != nullptr) {
+      settings_.heuristic_preemption_callback();
+    }
+    return mip_status_t::UNBOUNDED;
+  }
+  if (root_status == lp_status_t::TIME_LIMIT) {
+    settings_.log.printf("Hit time limit\n");
+    return mip_status_t::TIME_LIMIT;
+  }
+  set_uninitialized_steepest_edge_norms(original_lp_.num_cols, edge_norms_);
+
+  root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
+  if (settings_.set_simplex_solution_callback != nullptr) {
+    std::vector<f_t> original_x;
+    uncrush_primal_solution(original_problem_, original_lp_, root_relax_soln_.x, original_x);
+    settings_.set_simplex_solution_callback(original_x,
+                                            compute_user_objective(original_lp_, root_objective_));
+  }
+  mutex_lower_.lock();
+  lower_bound_ = root_objective_;
+  mutex_lower_.unlock();
 
   std::vector<i_t> fractional;
   const i_t num_fractional =
@@ -972,10 +940,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   stats_.nodes_unexplored = 0;
   stats_.num_nodes        = 1;
 
-  if (settings_.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
+  if (settings_.bnb_search_strategy == search_strategy_t::DEPTH_FIRST) {
     settings_.log.printf("Using depth first search\n");
   } else if (settings_.bnb_search_strategy ==
-             bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
+             search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
     settings_.log.printf("Using best first search with diving\n");
   } else {
     settings_.log.printf("Using best first search\n");
@@ -989,20 +957,18 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   currently_branching_ = true;
   mutex_branching_.unlock();
 
-  if (settings_.bnb_search_strategy == bnb_search_strategy_t::DEPTH_FIRST) {
+  if (settings_.bnb_search_strategy == search_strategy_t::DEPTH_FIRST) {
     status = dive(branch_var, solution);
   } else {
     std::future<mip_status_t> diving_thread;
 
-    if (settings_.bnb_search_strategy ==
-        bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
+    if (settings_.bnb_search_strategy == search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
       diving_thread = std::async(std::launch::async, [&]() { return dive(branch_var, solution); });
     }
 
     status = explore_tree(branch_var, solution);
 
-    if (settings_.bnb_search_strategy ==
-        bnb_search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
+    if (settings_.bnb_search_strategy == search_strategy_t::MULTITHREADED_BEST_FIRST_WITH_DIVING) {
       diving_thread.get();
     }
   }
