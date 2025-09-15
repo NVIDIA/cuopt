@@ -140,3 +140,4 @@ Review the [CONTRIBUTING.md](CONTRIBUTING.md) file for information on how to con
 - [Examples and Notebooks](https://github.com/NVIDIA/cuopt-examples)
 - [Test cuopt with NVIDIA Launchable](https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ): Examples notebooks are pulled and hosted on [NVIDIA Launchable](https://docs.nvidia.com/brev/latest/).
 - [Test cuopt on Google Colab](https://colab.research.google.com/github/nvidia/cuopt-examples/): Examples notebooks can be opened in Google Colab. Please note that you need to choose a `Runtime` as `GPU` in order to run the notebooks.
+- [cuOpt Examples and Tutorial Videos](https://docs.nvidia.com/cuopt/user-guide/latest/resources.html#cuopt-examples-and-tutorials-videos)
