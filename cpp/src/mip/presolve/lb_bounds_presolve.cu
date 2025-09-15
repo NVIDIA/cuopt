@@ -203,7 +203,7 @@ void lb_bound_presolve_t<i_t, f_t>::calculate_activity_on_problem_bounds(problem
   upd.init_changed_constraints(handle_ptr);
   copy_input_bounds(pb, handle_ptr);
   bool calc_activity = true;
-  calculate_constraint_slack_iter(pb.get_load_balanced_problem(), handle_ptr, true);
+  calculate_constraint_slack_iter(pb.get_load_balanced_problem(), handle_ptr, calc_activity);
 }
 
 template <typename i_t, typename f_t>

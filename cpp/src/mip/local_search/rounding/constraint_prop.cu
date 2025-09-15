@@ -589,8 +589,7 @@ void constraint_prop_t<i_t, f_t>::restore_original_bounds(solution_t<i_t, f_t>& 
 
 template <typename i_t, typename f_t>
 thrust::pair<f_t, f_t> constraint_prop_t<i_t, f_t>::generate_double_probing_pair(
-  // review note : will remove
-  // sol argument was removed from this function because it was not being used
+  const solution_t<i_t, f_t>& sol,
   const solution_t<i_t, f_t>& orig_sol,
   i_t unset_var_idx,
   const std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>> probing_config,
@@ -631,10 +630,11 @@ thrust::pair<f_t, f_t> constraint_prop_t<i_t, f_t>::generate_double_probing_pair
       }
     }
   } else {
-    std::tie(first_probe, std::ignore, second_probe) = probing_values(orig_sol, unset_var_idx);
+    std::tie(first_probe, std::ignore, second_probe) = probing_values(sol, orig_sol, unset_var_idx);
     // do another draw in bulk rounding, so the second vector is randomly drawn
     if (bulk_rounding) {
-      std::tie(second_probe, std::ignore, std::ignore) = probing_values(orig_sol, unset_var_idx);
+      std::tie(second_probe, std::ignore, std::ignore) =
+        probing_values(sol, orig_sol, unset_var_idx);
     }
   }
   return thrust::make_pair(first_probe, second_probe);
@@ -672,16 +672,16 @@ constraint_prop_t<i_t, f_t>::generate_bulk_rounding_vector(
     // if it is a bulk rounding do
     if (host_vars_to_set.size() > 1) {
       cuda::std::tie(first_probe, second_probe) =
-        generate_double_probing_pair(orig_sol, unset_var_idx, probing_config, true);
+        generate_double_probing_pair(sol, orig_sol, unset_var_idx, probing_config, true);
     } else {
       cuda::std::tie(first_probe, second_probe) =
-        generate_double_probing_pair(orig_sol, unset_var_idx, probing_config, false);
+        generate_double_probing_pair(sol, orig_sol, unset_var_idx, probing_config, false);
     }
     cuopt_assert(
-      test_var_out_of_bounds(orig_sol, unset_var_idx, first_probe, int_tol, orig_sol.handle_ptr),
+      test_var_out_of_bounds(orig_sol, unset_var_idx, first_probe, int_tol, sol.handle_ptr),
       "Variable out of original bounds!");
     cuopt_assert(
-      test_var_out_of_bounds(orig_sol, unset_var_idx, second_probe, int_tol, orig_sol.handle_ptr),
+      test_var_out_of_bounds(orig_sol, unset_var_idx, second_probe, int_tol, sol.handle_ptr),
       "Variable out of original bounds!");
     cuopt_assert(orig_sol.problem_ptr->is_integer(first_probe), "Probing value must be an integer");
     cuopt_assert(orig_sol.problem_ptr->is_integer(second_probe),
@@ -701,10 +701,10 @@ constraint_prop_t<i_t, f_t>::generate_bulk_rounding_vector(
       if (val_to_round == second_probe) { second_probe = first_probe; }
     }
     cuopt_assert(
-      test_var_out_of_bounds(orig_sol, unset_var_idx, val_to_round, int_tol, orig_sol.handle_ptr),
+      test_var_out_of_bounds(orig_sol, unset_var_idx, val_to_round, int_tol, sol.handle_ptr),
       "Variable out of original bounds!");
     cuopt_assert(
-      test_var_out_of_bounds(orig_sol, unset_var_idx, second_probe, int_tol, orig_sol.handle_ptr),
+      test_var_out_of_bounds(orig_sol, unset_var_idx, second_probe, int_tol, sol.handle_ptr),
       "Variable out of original bounds!");
     std::get<0>(var_probe_vals)[i] = unset_var_idx;
     std::get<1>(var_probe_vals)[i] = val_to_round;
@@ -1076,10 +1076,7 @@ bool constraint_prop_t<i_t, f_t>::apply_round(
 
 template <typename i_t, typename f_t>
 std::tuple<f_t, f_t, f_t> constraint_prop_t<i_t, f_t>::probing_values(
-  // review note : will remove
-  // sol argument was removed from this function because it was not being used
-  const solution_t<i_t, f_t>& orig_sol,
-  i_t idx)
+  const solution_t<i_t, f_t>& sol, const solution_t<i_t, f_t>& orig_sol, i_t idx)
 {
   auto v_bnd   = multi_probe.host_bounds[idx];
   auto v_lb    = get_lower(v_bnd);
@@ -1117,7 +1114,7 @@ std::tuple<f_t, f_t, f_t> constraint_prop_t<i_t, f_t>::probing_values(
     return std::make_tuple(first_round_val, var_val, second_round_val);
   } else {
     auto orig_v_bnd =
-      orig_sol.problem_ptr->variable_bounds.element(idx, orig_sol.handle_ptr->get_stream());
+      orig_sol.problem_ptr->variable_bounds.element(idx, sol.handle_ptr->get_stream());
     auto orig_v_lb = get_lower(orig_v_bnd);
     auto orig_v_ub = get_upper(orig_v_bnd);
     cuopt_assert(v_lb >= orig_v_lb, "Current lb should be greater than original lb");
@@ -1157,7 +1154,7 @@ bool constraint_prop_t<i_t, f_t>::handle_fixed_vars(
   auto set_count    = *set_count_ptr;
   const f_t int_tol = original_problem->tolerances.integrality_tolerance;
   // which other variables were affected?
-  auto iter        = thrust::stable_partition(original_problem->handle_ptr->get_thrust_policy(),
+  auto iter        = thrust::stable_partition(sol.handle_ptr->get_thrust_policy(),
                                        unset_vars.begin() + set_count,
                                        unset_vars.end(),
                                        is_bound_fixed_t<i_t, f_t, typename type_2<f_t>::type>{

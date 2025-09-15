@@ -73,11 +73,14 @@ struct constraint_prop_t {
   void find_set_integer_vars(solution_t<i_t, f_t>& sol, rmm::device_uvector<i_t>& set_vars);
   void find_unset_integer_vars(solution_t<i_t, f_t>& sol, rmm::device_uvector<i_t>& set_vars);
   thrust::pair<f_t, f_t> generate_double_probing_pair(
+    const solution_t<i_t, f_t>& sol,
     const solution_t<i_t, f_t>& orig_sol,
     i_t unset_var_idx,
     const std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>> probing_config,
     bool bulk_rounding);
-  std::tuple<f_t, f_t, f_t> probing_values(const solution_t<i_t, f_t>& orig_sol, i_t idx);
+  std::tuple<f_t, f_t, f_t> probing_values(const solution_t<i_t, f_t>& sol,
+                                           const solution_t<i_t, f_t>& orig_sol,
+                                           i_t idx);
   void update_host_assignment(const solution_t<i_t, f_t>& sol);
   void set_host_bounds(const problem_t<i_t, f_t>& problem);
   bool probe(solution_t<i_t, f_t>& sol,
