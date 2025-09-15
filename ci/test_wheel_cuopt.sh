@@ -75,3 +75,6 @@ RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capt
 
 # run cvxpy integration tests
 ./ci/thirdparty-testing/run_cvxpy_tests.sh
+
+# run jump tests
+./ci/thirdparty-testing/run_jump_tests.sh
