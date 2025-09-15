@@ -102,141 +102,7 @@ convert_probe_tuple(std::tuple<std::vector<int>, std::vector<double>, std::vecto
   return std::make_pair(std::move(probe_first), std::move(probe_second));
 }
 
-std::tuple<std::vector<double>, std::vector<double>, std::vector<double>, std::vector<double>>
-bounds_probe_results(detail::bound_presolve_t<int, double>& bnd_prb_0,
-                     detail::bound_presolve_t<int, double>& bnd_prb_1,
-                     detail::problem_t<int, double>& problem,
-                     const std::pair<std::vector<thrust::pair<int, double>>,
-                                     std::vector<thrust::pair<int, double>>>& probe)
-{
-  auto& probe_first  = std::get<0>(probe);
-  auto& probe_second = std::get<1>(probe);
-  rmm::device_uvector<double> b_lb_0(problem.n_variables, problem.handle_ptr->get_stream());
-  rmm::device_uvector<double> b_ub_0(problem.n_variables, problem.handle_ptr->get_stream());
-  rmm::device_uvector<double> b_lb_1(problem.n_variables, problem.handle_ptr->get_stream());
-  rmm::device_uvector<double> b_ub_1(problem.n_variables, problem.handle_ptr->get_stream());
-  bnd_prb_0.solve(problem, probe_first);
-  bnd_prb_0.set_updated_bounds(problem.handle_ptr, make_span(b_lb_0), make_span(b_ub_0));
-  bnd_prb_1.solve(problem, probe_second);
-  bnd_prb_1.set_updated_bounds(problem.handle_ptr, make_span(b_lb_1), make_span(b_ub_1));
-
-  auto h_lb_0 = host_copy(b_lb_0);
-  auto h_ub_0 = host_copy(b_ub_0);
-  auto h_lb_1 = host_copy(b_lb_1);
-  auto h_ub_1 = host_copy(b_ub_1);
-  return std::make_tuple(
-    std::move(h_lb_0), std::move(h_ub_0), std::move(h_lb_1), std::move(h_ub_1));
-}
-
-void bench(std::string path)
-{
-  auto memory_resource = make_async();
-  rmm::mr::set_current_device_resource(memory_resource.get());
-  const raft::handle_t handle_{};
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
-  handle_.sync_stream();
-  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
-  problem_checking_t<int, double>::check_problem_representation(op_problem);
-  detail::problem_t<int, double> problem(op_problem);
-  mip_solver_settings_t<int, double> default_settings{};
-  detail::pdhg_solver_t<int, double> pdhg_solver(problem.handle_ptr, problem);
-  detail::pdlp_initial_scaling_strategy_t<int, double> scaling(&handle_,
-                                                               problem,
-                                                               10,
-                                                               1.0,
-                                                               pdhg_solver,
-                                                               problem.reverse_coefficients,
-                                                               problem.reverse_offsets,
-                                                               problem.reverse_constraints,
-                                                               true);
-  detail::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
-  detail::bound_presolve_t<int, double> bnd_prs(solver.context);
-
-  detail::lb_bound_presolve_t<int, double> lb_prs(solver.context);
-  detail::lb_problem_t<int, double>& lb_problem = problem.get_load_balanced_problem();
-
-  detail::load_balanced_problem_t<int, double> lb_problem_old(problem);
-  detail::load_balanced_bounds_presolve_t<int, double> lb_prs_old(lb_problem_old, solver.context);
-
-  // detail::bound_presolve_t<int, double> bnd_prb(solver.context);
-  const int warm_up_iter = 20;
-  for (int i = 0; i < warm_up_iter; ++i) {
-    bnd_prs.calculate_activity(problem);
-    bnd_prs.calculate_bounds_update(problem);
-    lb_prs.calculate_constraint_slack_iter(lb_problem, &handle_);
-    lb_prs.calculate_bounds_update(lb_problem, &handle_);
-    lb_prs_old.calculate_constraint_slack_iter(&handle_);
-    lb_prs_old.update_bounds_from_slack(&handle_);
-  }
-
-  float bnd_lb_time    = 0;
-  float new_lb_time    = 0;
-  float old_lb_time    = 0;
-  const int iter_limit = 50;
-  {
-    bnd_prs.copy_input_bounds(problem);
-    bnd_prs.upd.init_changed_constraints(&handle_);
-
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-
-    cudaEventRecord(start, handle_.get_stream());
-
-    for (int i = 0; i < iter_limit; ++i) {
-      bnd_prs.calculate_activity(problem);
-      bnd_prs.calculate_bounds_update(problem);
-    }
-
-    cudaEventRecord(stop, handle_.get_stream());
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&bnd_lb_time, start, stop);
-  }
-  {
-    lb_prs.copy_input_bounds(problem, &handle_);
-    lb_prs.upd.init_changed_constraints(&handle_);
-
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-
-    cudaEventRecord(start, handle_.get_stream());
-
-    for (int i = 0; i < iter_limit; ++i) {
-      lb_prs.calculate_constraint_slack_iter(lb_problem, &handle_);
-      lb_prs.calculate_bounds_update(lb_problem, &handle_);
-    }
-
-    cudaEventRecord(stop, handle_.get_stream());
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&new_lb_time, start, stop);
-  }
-  {
-    lb_prs_old.copy_input_bounds(lb_problem_old);
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-
-    cudaEventRecord(start, handle_.get_stream());
-
-    for (int i = 0; i < iter_limit; ++i) {
-      lb_prs_old.calculate_constraint_slack_iter(&handle_);
-      lb_prs_old.update_bounds_from_slack(&handle_);
-    }
-
-    cudaEventRecord(stop, handle_.get_stream());
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&old_lb_time, start, stop);
-  }
-  std::cout << path << " ";
-  std::cout << "n_cnst " << problem.n_constraints << " n_var " << problem.n_variables << " nnz "
-            << problem.nnz << "\t";
-  std::cout << "speedup over old lb " << old_lb_time / new_lb_time << "\n";
-  std::cout << "speedup over bnd prs " << bnd_lb_time / new_lb_time << "\n";
-}
-
-void test_multi_probe(std::string path)
+void test_lb_bounds(std::string path)
 {
   auto memory_resource = make_async();
   rmm::mr::set_current_device_resource(memory_resource.get());
@@ -286,36 +152,13 @@ void test_multi_probe(std::string path)
   }
 }
 
-// TEST(presolve, multi_probe)
-//{
-//   std::vector<std::string> test_instances = {
-//     //"mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
-//     "mip/50v-10-free-bound.mps",
-//     "mip/neos5-free-bound.mps"};
-//   for (const auto& test_instance : test_instances) {
-//     auto path = make_path_absolute(test_instance);
-//     test_multi_probe(path);
-//   }
-// }
-
-TEST(presolve, multi_probe)
+TEST(presolve, lb_bounds)
 {
-  std::vector<std::string> test_instances = {"/raid/kaatish/miplib/mas74.mps",
-                                             "/raid/kaatish/miplib/neos17.mps",
-                                             "/raid/kaatish/miplib/neos-3402454-bohle.mps",
-                                             "/raid/kaatish/miplib/sing44.mps",
-                                             "/raid/kaatish/miplib/square41.mps",
-                                             "/raid/kaatish/miplib/square47.mps",
-                                             "/raid/kaatish/miplib/supportcase19.mps",
-                                             "/raid/kaatish/miplib/s100.mps",
-                                             "/raid/kaatish/miplib/s250r10.mps",
-                                             "/raid/kaatish/miplib/roi5alpha10n8.mps",
-                                             "/raid/kaatish/miplib/neos-5114902-kasavu.mps",
-                                             "/raid/kaatish/miplib/neos-4647030-tutaki.mps",
-                                             "/raid/kaatish/miplib/timtab1.mps"};
+  std::vector<std::string> test_instances = {
+    "mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
   for (const auto& test_instance : test_instances) {
-    std::cout << "Running: " << test_instance << std::endl;
-    bench(test_instance);
+    auto path = make_path_absolute(test_instance);
+    test_lb_bounds(path);
   }
 }
 
