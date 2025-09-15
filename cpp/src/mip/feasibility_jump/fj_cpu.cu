@@ -878,10 +878,10 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   fj_cpu->settings = settings;
   if (randomize_params) {
     auto rng                 = std::mt19937(cuopt::seed_generator::get_seed());
-    fj_cpu->mtm_viol_samples = std::uniform_int_distribution<i_t>(15, 50)(rng);
+    fj_cpu->mtm_viol_samples = std::uniform_int_distribution<i_t>(150, 500)(rng);
     fj_cpu->mtm_sat_samples  = std::uniform_int_distribution<i_t>(10, 30)(rng);
     fj_cpu->nnz_samples      = std::uniform_int_distribution<i_t>(2000, 15000)(rng);
-    fj_cpu->perturb_interval = std::uniform_int_distribution<i_t>(500, 5000)(rng);
+    fj_cpu->perturb_interval = std::uniform_int_distribution<i_t>(50, 500)(rng);
   }
   fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
   return fj_cpu;  // move
