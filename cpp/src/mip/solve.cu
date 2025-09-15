@@ -185,7 +185,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
     detail::problem_t<i_t, f_t> problem(op_problem, settings.get_tolerances());
 
-    run_presolve = run_presolve && settings.get_mip_callbacks().empty();
+    bool run_presolve = settings.presolve_method != presolve_method_t::NONE;
+    run_presolve      = run_presolve && settings.get_mip_callbacks().empty();
 
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
 
