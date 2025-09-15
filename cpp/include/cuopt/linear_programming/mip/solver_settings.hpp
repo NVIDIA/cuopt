@@ -101,7 +101,7 @@ class mip_solver_settings_t {
   std::vector<std::shared_ptr<rmm::device_uvector<f_t>>> initial_solutions;
   bool mip_scaling = true;
 
-  presolve_method_t presolve_method = presolve_method_t::FULL;
+  presolve_method_t presolve_method = presolve_method_t::DEFAULT;
 
   // this is for extracting info from different places of the solver during
   // benchmarks

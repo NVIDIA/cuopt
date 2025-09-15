@@ -106,9 +106,10 @@
 #define CUOPT_METHOD_PDLP         1
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
 
-#define CUOPT_PRESOLVE_METHOD_NONE            0
-#define CUOPT_PRESOLVE_METHOD_FULL            1
-#define CUOPT_PRESOLVE_METHOD_DUAL_PRESERVING 2
+#define CUOPT_PRESOLVE_METHOD_DEFAULT         0
+#define CUOPT_PRESOLVE_METHOD_NONE            1
+#define CUOPT_PRESOLVE_METHOD_FULL            2
+#define CUOPT_PRESOLVE_METHOD_DUAL_PRESERVING 3
 
 /* @brief Status codes constants */
 #define CUOPT_SUCCESS          0
