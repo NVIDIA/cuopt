@@ -82,13 +82,16 @@ class diversity_manager_t {
                         timer_t& timer,
                         ls_config_t<i_t, f_t>& ls_config);
 
-  void set_simplex_solution(const std::vector<f_t>& solution, f_t objective);
+  void set_simplex_solution(const std::vector<f_t>& solution,
+                            const std::vector<f_t>& dual_solution,
+                            f_t objective);
 
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;
   diversity_config_t diversity_config;
   population_t<i_t, f_t> population;
   rmm::device_uvector<f_t> lp_optimal_solution;
+  rmm::device_uvector<f_t> lp_dual_optimal_solution;
   std::atomic<bool> simplex_solution_exists{false};
   local_search_t<i_t, f_t> ls;
   cuopt::timer_t timer;

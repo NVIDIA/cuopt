@@ -52,6 +52,8 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                diversity_config.initial_infeasibility_weight * context.problem_ptr->n_constraints),
     lp_optimal_solution(context.problem_ptr->n_variables,
                         context.problem_ptr->handle_ptr->get_stream()),
+    lp_dual_optimal_solution(context.problem_ptr->n_constraints,
+                             context.problem_ptr->handle_ptr->get_stream()),
     ls(context, lp_optimal_solution),
     timer(diversity_config.default_time_limit),
     bound_prop_recombiner(context,
@@ -238,6 +240,8 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   }
   stats.presolve_time = presolve_timer.elapsed_time();
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
+  lp_dual_optimal_solution.resize(problem_ptr->n_constraints,
+                                  problem_ptr->handle_ptr->get_stream());
   problem_ptr->handle_ptr->sync_stream();
   return true;
 }
@@ -375,6 +379,16 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
         raft::copy(lp_optimal_solution.data(),
                    lp_optimal_solution_copy.data(),
                    lp_optimal_solution.size(),
+                   problem_ptr->handle_ptr->get_stream());
+      } else {
+        // copy the lp state
+        raft::copy(lp_state.prev_primal.data(),
+                   lp_optimal_solution.data(),
+                   lp_optimal_solution.size(),
+                   problem_ptr->handle_ptr->get_stream());
+        raft::copy(lp_state.prev_dual.data(),
+                   lp_dual_optimal_solution.data(),
+                   lp_dual_optimal_solution.size(),
                    problem_ptr->handle_ptr->get_stream());
       }
     }
@@ -763,14 +777,16 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
 
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>& solution,
+                                                         const std::vector<f_t>& dual_solution,
                                                          f_t objective)
 {
   CUOPT_LOG_DEBUG("Setting simplex solution with objective %f", objective);
   using sol_t = solution_t<i_t, f_t>;
+  cudaSetDevice(context.handle_ptr->get_device());
   context.handle_ptr->sync_stream();
-  RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
   cuopt_func_call(sol_t new_sol(*problem_ptr));
   cuopt_assert(new_sol.assignment.size() == solution.size(), "Assignment size mismatch");
+  cuopt_assert(problem_ptr->n_constraints == dual_solution.size(), "Dual assignment size mismatch");
   cuopt_func_call(new_sol.copy_new_assignment(solution));
   cuopt_func_call(new_sol.compute_feasibility());
   cuopt_assert(integer_equal(new_sol.get_user_objective(), objective, 1e-3), "Objective mismatch");
@@ -781,6 +797,10 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
   // the operations are ordered as long as they are on the same stream
   raft::copy(
     lp_optimal_solution.data(), solution.data(), solution.size(), context.handle_ptr->get_stream());
+  raft::copy(lp_dual_optimal_solution.data(),
+             dual_solution.data(),
+             dual_solution.size(),
+             context.handle_ptr->get_stream());
   set_new_user_bound(objective);
   context.handle_ptr->sync_stream();
 }

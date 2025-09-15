@@ -434,8 +434,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if (settings.set_simplex_solution_callback != nullptr) {
     std::vector<f_t> original_x;
     uncrush_primal_solution(original_problem, original_lp, root_relax_soln.x, original_x);
-    settings.set_simplex_solution_callback(original_x,
-                                           compute_user_objective(original_lp, root_objective));
+    std::vector<f_t> original_dual;
+    std::vector<f_t> original_z;
+    uncrush_dual_solution(original_problem,
+                          original_lp,
+                          root_relax_soln.y,
+                          root_relax_soln.z,
+                          original_dual,
+                          original_z);
+    settings.set_simplex_solution_callback(
+      original_x, original_dual, compute_user_objective(original_lp, root_objective));
   }
   mutex_lower.lock();
   f_t lower_bound = lower_bound_ = root_objective;

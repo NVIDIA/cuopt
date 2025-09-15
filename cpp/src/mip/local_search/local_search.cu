@@ -199,6 +199,7 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
                lp_optimal_solution.data(),
                solution.assignment.size(),
                solution.handle_ptr->get_stream());
+    cuopt_func_call(solution.test_variable_bounds(false));
   }
   if (perturb) {
     CUOPT_LOG_DEBUG("Perturbating solution on initial fj on optimal run!");
@@ -391,6 +392,14 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   }
   auto new_sol_vector = population_ptr->get_external_solutions();
   population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
+  if (!cutting_plane_added_for_active_run) {
+    fj.copy_weights(
+      population_ptr->weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
+    solution.problem_ptr = &problem_with_objective_cut;
+    solution.resize_to_problem();
+    resize_to_new_problem();
+    cutting_plane_added_for_active_run = true;
+  }
   save_solution_and_add_cutting_plane(
     population_ptr->best_feasible(), best_solution, best_objective);
 }
@@ -404,7 +413,9 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
   const i_t n_fp_iterations                  = 1000000;
   constexpr i_t n_sol_in_population_for_exit = 4;
   bool is_feasible                           = solution.compute_feasibility();
-  double best_objective                      = solution.get_objective();
+  cutting_plane_added_for_active_run         = is_feasible;
+  double best_objective =
+    is_feasible ? solution.get_objective() : std::numeric_limits<double>::max();
   rmm::device_uvector<f_t> best_solution(solution.assignment, solution.handle_ptr->get_stream());
   problem_t<i_t, f_t>* old_problem_ptr = solution.problem_ptr;
   fp.timer                             = timer_t(timer.remaining_time());
@@ -412,15 +423,17 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
   if (!problem_with_objective_cut.cutting_plane_added) {
     problem_with_objective_cut = std::move(problem_t<i_t, f_t>(*old_problem_ptr));
   }
-  f_t objective_cut = solution.get_objective() -
-                      std::max(std::abs(0.001 * solution.get_objective()), OBJECTIVE_EPSILON);
-  problem_with_objective_cut.add_cutting_plane_at_objective(objective_cut);
-  // Do the copy here for proper handling of the added constraints weight
-  fj.copy_weights(
-    population_ptr->weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
-  solution.problem_ptr = &problem_with_objective_cut;
-  solution.resize_to_problem();
-  resize_to_new_problem();
+  if (is_feasible) {
+    f_t objective_cut =
+      best_objective - std::max(std::abs(0.001 * best_objective), OBJECTIVE_EPSILON);
+    problem_with_objective_cut.add_cutting_plane_at_objective(objective_cut);
+    // Do the copy here for proper handling of the added constraints weight
+    fj.copy_weights(
+      population_ptr->weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
+    solution.problem_ptr = &problem_with_objective_cut;
+    solution.resize_to_problem();
+    resize_to_new_problem();
+  }
   i_t last_unimproved_iteration = 0;
   for (i_t i = 0; i < n_fp_iterations && !timer.check_time_limit(); ++i) {
     if (timer.check_time_limit()) {

@@ -104,6 +104,7 @@ class local_search_t {
   feasibility_pump_t<i_t, f_t> fp;
   std::mt19937 rng;
   problem_t<i_t, f_t> problem_with_objective_cut;
+  bool cutting_plane_added_for_active_run{false};
 };
 
 }  // namespace cuopt::linear_programming::detail
