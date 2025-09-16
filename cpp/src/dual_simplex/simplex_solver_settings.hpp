@@ -17,7 +17,6 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/types.hpp>
 
