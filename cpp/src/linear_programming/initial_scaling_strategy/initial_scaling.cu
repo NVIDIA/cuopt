@@ -480,20 +480,16 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
       stream_view_);
 
     cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(op_problem_scaled_.variable_lower_bounds.data(),
-                            op_problem_scaled_.variable_upper_bounds.data(),
+      cuda::std::make_tuple(op_problem_scaled_.variable_bounds.data(),
                             op_problem_scaled_.objective_coefficients.data()),
-      thrust::make_zip_iterator(op_problem_scaled_.variable_lower_bounds.data(),
-                                op_problem_scaled_.variable_upper_bounds.data(),
+      thrust::make_zip_iterator(op_problem_scaled_.variable_bounds.data(),
                                 op_problem_scaled_.objective_coefficients.data()),
-      op_problem_scaled_.variable_upper_bounds.size(),
+      op_problem_scaled_.variable_bounds.size(),
       [bound_rescaling     = bound_rescaling_.data(),
-       objective_rescaling = objective_rescaling_.data()] __device__(f_t variable_lower_bound,
-                                                                     f_t variable_upper_bound,
+       objective_rescaling = objective_rescaling_.data()] __device__(f_t2 variable_bounds,
                                                                      f_t objective_coefficient)
-        -> thrust::tuple<f_t, f_t, f_t> {
-        return {variable_lower_bound * *bound_rescaling,
-                variable_upper_bound * *bound_rescaling,
+        -> thrust::tuple<f_t2, f_t> {
+        return {{variable_bounds.x * *bound_rescaling, variable_bounds.y * *bound_rescaling},
                 objective_coefficient * *objective_rescaling};
       },
       stream_view_);

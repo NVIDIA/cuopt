@@ -252,13 +252,16 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution(
 
 template <typename f_t>
 struct primal_reflected_major_projection {
+  using f_t2 = typename type_2<f_t>::type;
   primal_reflected_major_projection(const f_t* scalar) : scalar_{scalar} {}
-  HDI thrust::tuple<f_t, f_t, f_t> operator()(
-    f_t current_primal, f_t objective, f_t Aty, f_t lower, f_t upper)
+  HDI thrust::tuple<f_t, f_t, f_t> operator()(f_t current_primal,
+                                              f_t objective,
+                                              f_t Aty,
+                                              f_t2 bounds)
   {
     cuopt_assert(*scalar_ != f_t(0.0), "Scalar can't be 0");
     const f_t next         = current_primal - *scalar_ * (objective - Aty);
-    const f_t next_clamped = raft::max<f_t>(raft::min<f_t>(next, upper), lower);
+    const f_t next_clamped = raft::max<f_t>(raft::min<f_t>(next, bounds.y), bounds.x);
     return {
       next_clamped, (next_clamped - next) / *scalar_, f_t(2.0) * next_clamped - current_primal};
   }
@@ -267,11 +270,12 @@ struct primal_reflected_major_projection {
 
 template <typename f_t>
 struct primal_reflected_projection {
+  using f_t2 = typename type_2<f_t>::type;
   primal_reflected_projection(const f_t* scalar) : scalar_{scalar} {}
-  HDI f_t operator()(f_t current_primal, f_t objective, f_t Aty, f_t lower, f_t upper)
+  HDI f_t operator()(f_t current_primal, f_t objective, f_t Aty, f_t2 bounds)
   {
     const f_t next         = current_primal - *scalar_ * (objective - Aty);
-    const f_t next_clamped = raft::max<f_t>(raft::min<f_t>(next, upper), lower);
+    const f_t next_clamped = raft::max<f_t>(raft::min<f_t>(next, bounds.y), bounds.x);
     return f_t(2.0) * next_clamped - current_primal;
   }
   const f_t* scalar_;
@@ -329,8 +333,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
         cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
                               problem_ptr->objective_coefficients.data(),
                               current_saddle_point_state_.get_current_AtY().data(),
-                              problem_ptr->variable_lower_bounds.data(),
-                              problem_ptr->variable_upper_bounds.data()),
+                              problem_ptr->variable_bounds.data()),
         thrust::make_zip_iterator(
           potential_next_primal_solution_.data(), dual_slack_.data(), reflected_primal_.data()),
         primal_size_h_,
@@ -374,8 +377,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
         cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
                               problem_ptr->objective_coefficients.data(),
                               current_saddle_point_state_.get_current_AtY().data(),
-                              problem_ptr->variable_lower_bounds.data(),
-                              problem_ptr->variable_upper_bounds.data()),
+                              problem_ptr->variable_bounds.data()),
         reflected_primal_.data(),
         primal_size_h_,
         primal_reflected_projection<f_t>(primal_step_size.data()),
