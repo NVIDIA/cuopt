@@ -332,14 +332,9 @@ template <typename i_t, typename f_t>
 struct find_unset_int_t {
   // This functor should be called only on integer variables
   f_t eps;
-  raft::device_span<f_t> var_lb;
-  raft::device_span<f_t> var_ub;
   raft::device_span<f_t> assignment;
-  find_unset_int_t(f_t eps_,
-                   raft::device_span<f_t> lb_,
-                   raft::device_span<f_t> ub_,
-                   raft::device_span<f_t> assignment_)
-    : eps(eps_), var_lb(lb_), var_ub(ub_), assignment(assignment_)
+  find_unset_int_t(f_t eps_, raft::device_span<f_t> assignment_)
+    : eps(eps_), assignment(assignment_)
   {
   }
 
@@ -838,8 +833,6 @@ void constraint_prop_t<i_t, f_t>::find_unset_integer_vars(solution_t<i_t, f_t>& 
                     sol.problem_ptr->integer_indices.end(),
                     unset_vars.begin(),
                     find_unset_int_t<i_t, f_t>{sol.problem_ptr->tolerances.integrality_tolerance,
-                                               make_span(sol.problem_ptr->variable_lower_bounds),
-                                               make_span(sol.problem_ptr->variable_upper_bounds),
                                                make_span(sol.assignment)});
   unset_vars.resize(iter - unset_vars.begin(), sol.handle_ptr->get_stream());
 }
@@ -900,9 +893,10 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
         unset_integer_vars.begin() + n_to_round,
         [sol = sol.view(), seed = cuopt::seed_generator::get_seed()] __device__(i_t var_idx) {
           raft::random::PCGenerator rng(seed, var_idx, 0);
+          auto var_bnd            = sol.problem.variable_bounds[var_idx];
           sol.assignment[var_idx] = round_nearest(sol.assignment[var_idx],
-                                                  sol.problem.variable_lower_bounds[var_idx],
-                                                  sol.problem.variable_upper_bounds[var_idx],
+                                                  get_lower(var_bnd),
+                                                  get_upper(var_bnd),
                                                   sol.problem.tolerances.integrality_tolerance,
                                                   rng);
         });

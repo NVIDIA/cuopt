@@ -64,7 +64,6 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                   context.problem_ptr->n_variables,
                   ls.fj,
                   ls.constraint_prop,
-                  ls.lb_constraint_prop,
                   ls.line_segment_search,
                   lp_optimal_solution,
                   context.problem_ptr->handle_ptr),
