@@ -35,7 +35,6 @@
 #include <cstdlib>
 #include <queue>
 #include <string>
-#include "cuopt/linear_programming/mip/solver_settings.hpp"
 
 namespace cuopt::linear_programming::dual_simplex {
 
