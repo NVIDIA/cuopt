@@ -409,7 +409,8 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
   // Disable papilo logs
   presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
 
-  auto result = presolver.apply(papilo_problem);
+  bool store_dual_postsolve = presolve_method == presolve_method_t::DUAL_PRESERVING;
+  auto result = presolver.apply(papilo_problem, store_dual_postsolve);
   check_presolve_status(result.status);
   if (result.status == papilo::PresolveStatus::kInfeasible ||
       result.status == papilo::PresolveStatus::kUnbndOrInfeas) {
