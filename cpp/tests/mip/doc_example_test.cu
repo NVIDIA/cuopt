@@ -160,14 +160,13 @@ TEST(docs, user_problem_file)
   // Get solution values
   const auto& sol_values = solution.get_solution();
   // x should be approximately 37 and integer
-  for(int i=0; i<problem2.get_n_variables(); i++) {
-    if(problem2.get_variable_names()[i] == "x")  {
+  for (int i = 0; i < problem2.get_n_variables(); i++) {
+    if (problem2.get_variable_names()[i] == "x") {
       EXPECT_NEAR(37.0, sol_values.element(i, handle_.get_stream()), 0.1);
       EXPECT_NEAR(std::round(sol_values.element(i, handle_.get_stream())),
                   sol_values.element(i, handle_.get_stream()),
                   settings.tolerances.integrality_tolerance);  // Check x is integer
-    }
-    else { // y should be approximately 39.5
+    } else {                                                   // y should be approximately 39.5
       EXPECT_NEAR(39.5, sol_values.element(i, handle_.get_stream()), 0.1);
     }
   }

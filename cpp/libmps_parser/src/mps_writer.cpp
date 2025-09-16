@@ -180,9 +180,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
       if (objective_coefficients[var_id] != 0.0) {
         mps_file << "    " << col_name << " "
                  << (problem_.get_objective_name().empty() ? "OBJ" : problem_.get_objective_name())
-                 << " "
-                 << objective_coefficients[var_id]
-                 << "\n";
+                 << " " << objective_coefficients[var_id] << "\n";
       }
     }
     if (is_integral) mps_file << "    MARK0001  'MARKER'                 'INTEND'\n";
