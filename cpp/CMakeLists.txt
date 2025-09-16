@@ -422,6 +422,7 @@ endif()
 
 
 option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
+set(BUILD_MIP_BENCHMARKS ON)
 if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
   add_executable(solve_MIP ../benchmarks/linear_programming/cuopt/run_mip.cpp)
   target_compile_options(solve_MIP
