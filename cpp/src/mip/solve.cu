@@ -82,9 +82,9 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                      thrust::make_counting_iterator(0),
                      thrust::make_counting_iterator(problem.n_variables),
                      [sol = solution.assignment.data(), pb = problem.view()] __device__(i_t index) {
-                       sol[index] = pb.objective_coefficients[index] > 0
-                                      ? pb.variable_lower_bounds[index]
-                                      : pb.variable_upper_bounds[index];
+                       auto bounds = pb.variable_bounds[index];
+                       sol[index]  = pb.objective_coefficients[index] > 0 ? get_lower(bounds)
+                                                                          : get_upper(bounds);
                      });
     problem.post_process_solution(solution);
     solution.compute_objective();  // just to ensure h_user_obj is set

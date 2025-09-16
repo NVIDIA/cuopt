@@ -100,8 +100,8 @@ void test_elim_var_remap(std::string test_instance)
   auto fixed_vars = select_k_random(problem.n_variables - 1, 5);
   for (auto& v : fixed_vars) {
     double v_val = -v - 1;
-    problem.variable_lower_bounds.set_element(v, v_val, handle_.get_stream());
-    problem.variable_upper_bounds.set_element(v, v_val, handle_.get_stream());
+    double2 val  = double2{v_val, v_val};
+    problem.variable_bounds.set_element(v, val, handle_.get_stream());
     full_assignment.set_element(v, v_val, handle_.get_stream());
   }
   // Set free var assignments to 0
@@ -182,8 +182,8 @@ void test_elim_var_solution(std::string test_instance)
   auto fixed_vars = select_k_random(standardized_problem.n_variables - 1, 5);
   for (auto& v : fixed_vars) {
     double v_val = opt_sol_1.get_solution().element(v, handle_.get_stream());
-    sub_problem.variable_lower_bounds.set_element(v, v_val, handle_.get_stream());
-    sub_problem.variable_upper_bounds.set_element(v, v_val, handle_.get_stream());
+    double2 val  = double2{v_val, v_val};
+    sub_problem.variable_bounds.set_element(v, val, handle_.get_stream());
   }
 
   handle_.sync_stream();

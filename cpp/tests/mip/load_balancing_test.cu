@@ -59,15 +59,14 @@ std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_
   auto seed = std::random_device{}();
   std::cerr << "Tested with seed " << seed << "\n";
   problem.compute_n_integer_vars();
-  auto v_lb       = host_copy(problem.variable_lower_bounds);
-  auto v_ub       = host_copy(problem.variable_upper_bounds);
+  auto v_bnd      = host_copy(problem.variable_bounds);
   auto int_var_id = host_copy(problem.integer_indices);
-  int_var_id.erase(std::remove_if(int_var_id.begin(),
-                                  int_var_id.end(),
-                                  [v_lb, v_ub](auto id) {
-                                    return !(std::isfinite(v_lb[id]) && std::isfinite(v_ub[id]));
-                                  }),
-                   int_var_id.end());
+  int_var_id.erase(
+    std::remove_if(
+      int_var_id.begin(),
+      int_var_id.end(),
+      [v_bnd](auto id) { return !(std::isfinite(v_bnd[id].x) && std::isfinite(v_bnd[id].y)); }),
+    int_var_id.end());
   sample_size = std::min(sample_size, static_cast<int>(int_var_id.size()));
   std::vector<int> random_int_vars;
   std::mt19937 m{seed};
@@ -77,11 +76,11 @@ std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_
   std::vector<double> probe_1(sample_size);
   for (int i = 0; i < static_cast<int>(random_int_vars.size()); ++i) {
     if (i % 2) {
-      probe_0[i] = v_lb[random_int_vars[i]];
-      probe_1[i] = v_ub[random_int_vars[i]];
+      probe_0[i] = v_bnd[random_int_vars[i]].x;
+      probe_1[i] = v_bnd[random_int_vars[i]].y;
     } else {
-      probe_1[i] = v_lb[random_int_vars[i]];
-      probe_0[i] = v_ub[random_int_vars[i]];
+      probe_1[i] = v_bnd[random_int_vars[i]].x;
+      probe_0[i] = v_bnd[random_int_vars[i]].y;
     }
   }
   return std::make_tuple(std::move(random_int_vars), std::move(probe_0), std::move(probe_1));

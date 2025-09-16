@@ -87,7 +87,7 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   // before LP flush the logs as it takes quite some time
   cuopt::default_logger().flush();
   // temporarily add timer
-  auto start_time = std::chrono::high_resolution_clock::now();
+  auto start_time = timer_t(pdlp_settings.time_limit);
   lp_solver.set_inside_mip(true);
   auto solver_response = lp_solver.run_solver(start_time);
 

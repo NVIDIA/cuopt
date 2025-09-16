@@ -402,13 +402,13 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     cuopt::scope_guard([&]() { stats.total_solve_time = timer.elapsed_time(); });
   // after every change to the problem, we should resize all the relevant vars
   // we need to encapsulate that to prevent repetitions
+
   ls.resize_vectors(*problem_ptr, problem_ptr->handle_ptr);
-  ls.lb_constraint_prop.temp_problem.setup(*problem_ptr);
-  ls.lb_constraint_prop.bounds_update.setup(ls.lb_constraint_prop.temp_problem);
   ls.constraint_prop.bounds_update.resize(*problem_ptr);
   problem_ptr->check_problem_representation(true);
   // have the structure ready for reusing later
   problem_ptr->compute_integer_fixed_problem();
+
   // test problem is not ii
   cuopt_func_call(
     ls.constraint_prop.bounds_update.calculate_activity_on_problem_bounds(*problem_ptr));
@@ -428,9 +428,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   if (!fj_only_run) {
     compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
   }
-  // careful, assign the correct probing cache
-  ls.lb_constraint_prop.bounds_update.probing_cache.probing_cache =
-    ls.constraint_prop.bounds_update.probing_cache.probing_cache;
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
   lp_state_t<i_t, f_t>& lp_state = problem_ptr->lp_state;
@@ -482,6 +479,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     // in case the pdlp returned var boudns that are out of bounds
     clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
   }
+
   population.allocate_solutions();
   if (check_b_b_preemption()) { return population.best_feasible(); }
   if (!fp_only_run) {
@@ -505,7 +503,9 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   }
 
   if (timer.check_time_limit()) { return population.best_feasible(); }
+
   main_loop();
+
   return population.best_feasible();
 };
 

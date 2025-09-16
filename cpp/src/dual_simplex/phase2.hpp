@@ -38,7 +38,22 @@ enum class status_t {
   CONCURRENT_LIMIT = 6,
   UNSET            = 7
 };
+
+static std::string status_to_string(status_t status)
+{
+  switch (status) {
+    case status_t::OPTIMAL: return "OPTIMAL";
+    case status_t::DUAL_UNBOUNDED: return "DUAL_UNBOUNDED";
+    case status_t::NUMERICAL: return "NUMERICAL";
+    case status_t::CUTOFF: return "CUTOFF";
+    case status_t::TIME_LIMIT: return "TIME_LIMIT";
+    case status_t::ITERATION_LIMIT: return "ITERATION_LIMIT";
+    case status_t::CONCURRENT_LIMIT: return "CONCURRENT_LIMIT";
+    case status_t::UNSET: return "UNSET";
+  }
+  return "UNKNOWN";
 }
+}  // namespace dual
 
 template <typename i_t, typename f_t>
 dual::status_t dual_phase2(i_t phase,

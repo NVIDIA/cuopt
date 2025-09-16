@@ -201,9 +201,9 @@ __global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t p
     if (std::signbit(a) != std::signbit(first_coeff)) { different_coeff = true; }
     auto cnst_idx      = pb.reverse_constraints[var_offset + i];
     auto cnstr_slack   = cnst_slack[cnst_idx];
-    auto delta_min_act = cnstr_slack.x + ((a < 0) ? a * ub : a * lb);
+    auto delta_min_act = get_lower(cnstr_slack) + ((a < 0) ? a * ub : a * lb);
     th_var_unit_slack  = min(th_var_unit_slack, (delta_min_act / a));
-    auto delta_max_act = cnstr_slack.y + ((a > 0) ? a * ub : a * lb);
+    auto delta_max_act = get_upper(cnstr_slack) + ((a > 0) ? a * ub : a * lb);
     th_var_unit_slack  = min(th_var_unit_slack, (delta_max_act / a));
   }
   __shared__ f_t shmem[raft::WarpSize];
@@ -232,7 +232,7 @@ __global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t p
       th_max_excess = max(th_max_excess, excess);
       th_n_of_excess++;
     }
-    excess = max(0., cnstr_slack.y + diff);
+    excess = max(0., get_upper(cnstr_slack) + diff);
     if (excess > 0) {
       th_max_excess = max(th_max_excess, excess);
       th_n_of_excess++;
