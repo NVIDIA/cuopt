@@ -359,6 +359,13 @@ bool solution_t<i_t, f_t>::round_random_nearest(i_t n_target_random_rounds)
 }
 
 template <typename i_t, typename f_t>
+bool solution_t<i_t, f_t>::round_simple()
+{
+  invoke_simple_rounding(*this);
+  return compute_feasibility();
+}
+
+template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::correct_integer_precision()
 {
   invoke_correct_integers(*this, problem_ptr->tolerances.integrality_tolerance);

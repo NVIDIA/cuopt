@@ -411,7 +411,10 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     // in case the pdlp returned var boudns that are out of bounds
     clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
   }
+
   population.allocate_solutions();
+  ls.start_fj_scratch_threads(population);
+
   if (check_b_b_preemption()) { return population.best_feasible(); }
 
   if (context.settings.benchmark_info_ptr != nullptr) {
@@ -441,6 +444,9 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     return population.best_feasible();
   }
   main_loop();
+
+  ls.stop_fj_scratch_threads();
+
   return population.best_feasible();
 };
 

@@ -149,6 +149,10 @@ void fj_t<i_t, f_t>::randomize_weights(const raft::handle_t* handle_ptr)
   f_t h_max_weight = *std::max_element(h_cstr_vec.begin(), h_cstr_vec.end());
   max_cstr_weight.set_value_async(h_max_weight, handle_ptr->get_stream());
   raft::copy(cstr_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
+  raft::copy(
+    cstr_left_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
+  raft::copy(
+    cstr_right_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
   handle_ptr->sync_stream();
 }
 
@@ -1061,6 +1065,7 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
   resize_vectors(solution.handle_ptr);
 
   bool is_initial_feasible = solution.compute_feasibility();
+  auto initial_solution    = solution;
   // if we're in rounding mode, split the time/iteration limit between the first and second stage
   cuopt_assert(settings.parameters.rounding_second_stage_split >= 0 &&
                  settings.parameters.rounding_second_stage_split <= 1,
@@ -1132,11 +1137,11 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
   bool is_new_feasible = solution.compute_feasibility();
 
   if (is_initial_feasible && !is_new_feasible) {
-    CUOPT_LOG_ERROR(
-      "Feasibility jump caused feasible solution to become infeasible\n"
-      "Best excess is %g",
+    CUOPT_LOG_WARN(
+      "Feasibility jump caused feasible solution to become infeasible: Best excess is %g",
       climbers[0]->best_excess.value(handle_ptr->get_stream()));
-    cuopt_assert(false, "Feasibility jump caused feasible solution to become infeasible");
+    solution.copy_from(initial_solution);
+    cuopt_assert(solution.compute_feasibility(), "Reverted solution should be feasible");
   }
 
   return is_new_feasible;

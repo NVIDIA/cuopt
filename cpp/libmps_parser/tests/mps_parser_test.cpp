@@ -757,4 +757,145 @@ TEST(mps_parser, good_mps_file_partial_bounds)
   EXPECT_EQ(10.0, mps.variable_upper_bounds[1]);
 }
 
+TEST(mps_parser, good_mps_file_bzip2_compressed)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-1.mps.bz2");
+  EXPECT_EQ("good-1", mps.problem_name);
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(3., mps.A_values[0][0]);
+  EXPECT_EQ(4., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(2.7, mps.A_values[1][0]);
+  EXPECT_EQ(10.1, mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(5.4, mps.b_values[0]);
+  EXPECT_EQ(4.9, mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(0.2, mps.c_values[0]);
+  EXPECT_EQ(0.1, mps.c_values[1]);
+}
+
+TEST(mps_parser, good_mps_file_zlib_compressed)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-1.mps.gz");
+  EXPECT_EQ("good-1", mps.problem_name);
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(3., mps.A_values[0][0]);
+  EXPECT_EQ(4., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(2.7, mps.A_values[1][0]);
+  EXPECT_EQ(10.1, mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(5.4, mps.b_values[0]);
+  EXPECT_EQ(4.9, mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(0.2, mps.c_values[0]);
+  EXPECT_EQ(0.1, mps.c_values[1]);
+}
+
+// ================================================================================================
+// QPS (Quadratic Programming) Support Tests
+// ================================================================================================
+
+// QPS-specific tests for quadratic programming support
+TEST(qps_parser, quadratic_objective_basic)
+{
+  // Create a simple QPS test to verify quadratic objective parsing
+  // This would require actual QPS test files - for now, test the API
+  mps_data_model_t<int, double> model;
+
+  // Test setting quadratic objective matrix
+  std::vector<double> Q_values = {2.0, 1.0, 1.0, 2.0};  // 2x2 matrix
+  std::vector<int> Q_indices   = {0, 1, 0, 1};
+  std::vector<int> Q_offsets   = {0, 2, 4};  // CSR offsets
+
+  model.set_quadratic_objective_matrix(Q_values.data(),
+                                       Q_values.size(),
+                                       Q_indices.data(),
+                                       Q_indices.size(),
+                                       Q_offsets.data(),
+                                       Q_offsets.size());
+
+  // Verify the data was stored correctly
+  EXPECT_TRUE(model.has_quadratic_objective());
+  EXPECT_EQ(4, model.get_quadratic_objective_values().size());
+  EXPECT_EQ(2.0, model.get_quadratic_objective_values()[0]);
+  EXPECT_EQ(1.0, model.get_quadratic_objective_values()[1]);
+}
+
+// Test actual QPS files from the dataset
+TEST(qps_parser, test_qps_files)
+{
+  // Test QP_Test_1.qps if it exists
+  if (file_exists("quadratic_programming/QP_Test_1.qps")) {
+    auto parsed_data = parse_mps<int, double>(
+      cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_1.qps", false);
+
+    EXPECT_EQ("QP_Test_1", parsed_data.get_problem_name());
+    EXPECT_EQ(2, parsed_data.get_n_variables());    // C------1 and C------2
+    EXPECT_EQ(1, parsed_data.get_n_constraints());  // R------1
+    EXPECT_TRUE(parsed_data.has_quadratic_objective());
+
+    // Check variable bounds
+    const auto& lower_bounds = parsed_data.get_variable_lower_bounds();
+    const auto& upper_bounds = parsed_data.get_variable_upper_bounds();
+
+    EXPECT_NEAR(2.0, lower_bounds[0], tolerance);    // C------1 lower bound
+    EXPECT_NEAR(50.0, upper_bounds[0], tolerance);   // C------1 upper bound
+    EXPECT_NEAR(-50.0, lower_bounds[1], tolerance);  // C------2 lower bound
+    EXPECT_NEAR(50.0, upper_bounds[1], tolerance);   // C------2 upper bound
+  }
+
+  // Test QP_Test_2.qps if it exists
+  if (file_exists("quadratic_programming/QP_Test_2.qps")) {
+    auto parsed_data = parse_mps<int, double>(
+      cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_2.qps", false);
+
+    EXPECT_EQ("QP_Test_2", parsed_data.get_problem_name());
+    EXPECT_EQ(3, parsed_data.get_n_variables());    // C------1, C------2, C------3
+    EXPECT_EQ(1, parsed_data.get_n_constraints());  // R------1
+    EXPECT_TRUE(parsed_data.has_quadratic_objective());
+
+    // Check that quadratic objective matrix has values
+    const auto& Q_values = parsed_data.get_quadratic_objective_values();
+    EXPECT_GT(Q_values.size(), 0) << "Quadratic objective should have non-zero elements";
+  }
+}
+
 }  // namespace cuopt::mps_parser

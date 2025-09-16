@@ -54,7 +54,8 @@ ARG CUOPT_VER
 ARG PYTHON_SHORT_VER
 
 # Install cuOpt as root to make it available to all users
-RUN cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
+RUN \
+    cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
     cuda_major_minor=$(echo ${CUDA_VER} | cut -d'.' -f1-2) && \
     python -m pip install \
       --extra-index-url https://pypi.nvidia.com \
@@ -62,7 +63,8 @@ RUN cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
       --no-cache-dir \
       "cuopt-server-${cuda_suffix}==${CUOPT_VER}" \
       "cuopt-sh-client==${CUOPT_VER}" \
-      "nvidia-cuda-runtime-${cuda_suffix}==${cuda_major_minor}.*" && \
+      "cuda-toolkit[cudart]==${cuda_major_minor}.*" \
+      ${nvidia_cuda_runtime_pkg} && \
     python -m pip list
 
 # Remove gcc to save space, gcc was required for building psutils
@@ -107,7 +109,7 @@ RUN mkdir -p /opt/cuopt && \
 WORKDIR /opt/cuopt
 
 # Copy all static files in a single layer
-COPY ./LICENSE ./VERSION ./THIRD_PARTY_LICENSES /opt/cuopt/
+COPY ./LICENSE ./VERSION ./THIRD_PARTY_LICENSES ./COMMIT_SHA /opt/cuopt/
 
 # Copy CUDA libraries from the cuda-libs stage
 COPY --from=cuda-libs /usr/local/cuda/lib64/libnvrtc* /usr/local/cuda/lib64/

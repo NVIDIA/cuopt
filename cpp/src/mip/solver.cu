@@ -73,7 +73,7 @@ struct branch_and_bound_solution_helper_t {
 
   void solution_callback(std::vector<f_t>& solution, f_t objective)
   {
-    dm->population.add_external_solution(solution, objective);
+    dm->population.add_external_solution(solution, objective, "B&B");
   }
 
   void set_simplex_solution(std::vector<f_t>& solution,
@@ -129,6 +129,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     return sol;
   }
 
+  // CPU FJ EXPERIMENTS
+  int bb_threads = std::thread::hardware_concurrency() / 2 - dm.ls.ls_threads();
+
   // if the problem was reduced to a LP: run concurrent LP
   if (context.problem_ptr->n_integer_vars == 0) {
     CUOPT_LOG_INFO("Problem reduced to a LP, running concurrent LP");
@@ -174,6 +177,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     if (context.settings.num_cpu_threads != -1) {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
     }
+    branch_and_bound_settings.num_threads = std::max(1, bb_threads);
+    CUOPT_LOG_INFO("Using %d CPU threads for B&B", branch_and_bound_settings.num_threads);
 
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =

@@ -152,13 +152,31 @@ size_t population_t<i_t, f_t>::get_external_solution_size()
 }
 
 template <typename i_t, typename f_t>
-void population_t<i_t, f_t>::add_external_solution(std::vector<f_t>& solution, f_t objective)
+void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solution,
+                                                   f_t objective,
+                                                   const std::string& origin)
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
-  CUOPT_LOG_INFO("B&B added a solution to population, solution queue size %lu with objective %g",
-                 external_solution_queue.size(),
-                 problem_ptr->get_user_obj_from_solver_obj(objective));
+
+  if (external_solution_queue.size() >= 30) {
+    auto worst_obj_it =
+      std::max_element(external_solution_queue_obj.begin(), external_solution_queue_obj.end());
+    if (objective > *worst_obj_it) return;
+    auto worst_obj_idx = std::distance(external_solution_queue_obj.begin(), worst_obj_it);
+
+    external_solution_queue.erase(external_solution_queue.begin() + worst_obj_idx);
+    external_solution_queue_obj.erase(external_solution_queue_obj.begin() + worst_obj_idx);
+    external_solution_queue_origin.erase(external_solution_queue_origin.begin() + worst_obj_idx);
+  }
+
+  CUOPT_LOG_INFO(
+    "%s added a solution to population, solution queue size %lu with objective %g, new best",
+    origin.c_str(),
+    external_solution_queue.size(),
+    problem_ptr->get_user_obj_from_solver_obj(objective));
   external_solution_queue.emplace_back(solution);
+  external_solution_queue_obj.emplace_back(objective);
+  external_solution_queue_origin.emplace_back(origin);
   if (external_solution_queue.size() >= 5) { early_exit_primal_generation = true; }
 }
 
@@ -176,17 +194,36 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
   std::vector<solution_t<i_t, f_t>> return_vector;
+  i_t counter = 0;
   for (auto h_solution_vec : external_solution_queue) {
     solution_t<i_t, f_t> sol(*problem_ptr);
     sol.copy_new_assignment(h_solution_vec);
     sol.compute_feasibility();
+    if (!sol.get_feasible()) {
+      CUOPT_LOG_ERROR(
+        "External solution %d is infeasible, excess %g, obj %g, int viol %g, var viol %g, cstr "
+        "viol %g, n_feasible %d/%d, integers %d/%d",
+        counter,
+        sol.get_total_excess(),
+        sol.get_user_objective(),
+        sol.compute_max_int_violation(),
+        sol.compute_max_variable_violation(),
+        sol.compute_max_constraint_violation(),
+        sol.n_feasible_constraints.value(sol.handle_ptr->get_stream()),
+        problem_ptr->n_constraints,
+        sol.compute_number_of_integers(),
+        problem_ptr->n_integer_vars);
+    }
     sol.handle_ptr->sync_stream();
     return_vector.emplace_back(std::move(sol));
+    counter++;
   }
   if (external_solution_queue.size() > 0) {
     CUOPT_LOG_INFO("Consuming B&B solutions, solution queue size %lu",
                    external_solution_queue.size());
     external_solution_queue.clear();
+    external_solution_queue_obj.clear();
+    external_solution_queue_origin.clear();
   }
   return return_vector;
 }
@@ -286,7 +323,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       cuopt_assert(std::abs(outside_sol.get_user_objective() - outside_sol_objective) <= 1e-6,
                    "External solution objective mismatch");
       auto h_outside_sol = outside_sol.get_host_assignment();
-      add_external_solution(h_outside_sol, outside_sol.get_objective());
+      add_external_solution(h_outside_sol, outside_sol.get_objective(), "injected");
     }
   }
 }
@@ -329,7 +366,7 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
   raft::common::nvtx::range fun_scope("add_solution");
   population_hash_map.insert(sol);
   double sol_cost = sol.get_quality(weights);
-  CUOPT_LOG_TRACE("Adding solution with quality %f and objective %f n_integers %d!",
+  CUOPT_LOG_DEBUG("Adding solution with quality %f and objective %f n_integers %d!",
                   sol_cost,
                   sol.get_user_objective(),
                   sol.n_assigned_integers);
@@ -376,6 +413,7 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
 
     int inserted_pos = insert_index(std::pair<size_t, double>((size_t)hint, sol_cost));
     cuopt_assert(test_invariant(), "Population invariant doesn't hold");
+    test_invariant();
     return inserted_pos;
 
   } else if (sol_cost + OBJECTIVE_EPSILON < indices[index].second) {
@@ -389,10 +427,12 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
 
     int inserted_pos = insert_index(std::pair<size_t, double>((size_t)free, sol_cost));
     cuopt_assert(test_invariant(), "Population invariant doesn't hold");
+    test_invariant();
     return inserted_pos;
   }
   CUOPT_LOG_TRACE("Adding solution failed!");
   cuopt_assert(test_invariant(), "Population invariant doesn't hold");
+  test_invariant();
   return -1;
 }
 

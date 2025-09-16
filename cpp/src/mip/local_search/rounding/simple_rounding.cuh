@@ -25,6 +25,9 @@ template <typename i_t, typename f_t>
 void invoke_round_nearest(solution_t<i_t, f_t>& solution);
 
 template <typename i_t, typename f_t>
+bool invoke_simple_rounding(solution_t<i_t, f_t>& solution);
+
+template <typename i_t, typename f_t>
 void invoke_random_round_nearest(solution_t<i_t, f_t>& solution, i_t n_target_random_rounds);
 
 template <typename i_t, typename f_t>
