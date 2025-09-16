@@ -27,7 +27,7 @@ REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -s -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -44,7 +44,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    -g               - build for debug
    -a               - Enable assertion (by default in debug mode)
    -b               - Build with benchmark settings
-   -s               - Build with sanitizer
+   -fsanitize       - Build with sanitizer
    -n               - no install step
    --no-fetch-rapids  - don't fetch rapids dependencies
    -l=              - log level. Options are: TRACE | DEBUG | INFO | WARN | ERROR | CRITICAL | OFF. Default=INFO
@@ -237,7 +237,7 @@ if hasArg --build-lp-only; then
     BUILD_LP_ONLY=1
     SKIP_ROUTING_BUILD=1  # Automatically skip routing when building LP-only
 fi
-if hasArg -s; then
+if hasArg -fsanitize; then
     BUILD_SANITIZER=1
 fi
 if hasArg --skip-c-python-adapters; then
