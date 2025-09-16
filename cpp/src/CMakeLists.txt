@@ -15,7 +15,8 @@
 
 set(UTIL_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/utilities/seed_generator.cu
                    ${CMAKE_CURRENT_SOURCE_DIR}/utilities/logger_helper.cpp
-                   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/version_info.cpp)
+                   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/version_info.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/timestamp_utils.cpp)
 
 add_subdirectory(linear_programming)
 add_subdirectory(math_optimization)
