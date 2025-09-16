@@ -409,9 +409,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   assert(root_vstatus.size() == original_lp.num_cols);
   if (root_status == lp_status_t::INFEASIBLE) {
     settings.log.printf("MIP Infeasible\n");
-    if (settings.heuristic_preemption_callback != nullptr) {
-      settings.heuristic_preemption_callback();
-    }
+    // FIXME: rarely dual simplex detects infeasible whereas it is feasible.
+    // to add a small safety net, check if there is a primal solution already.
+    // Uncomment this if the issue with cost266-UUE is resolved
+    // if (settings.heuristic_preemption_callback != nullptr) {
+    //   settings.heuristic_preemption_callback();
+    // }
     return mip_status_t::INFEASIBLE;
   }
   if (root_status == lp_status_t::UNBOUNDED) {
