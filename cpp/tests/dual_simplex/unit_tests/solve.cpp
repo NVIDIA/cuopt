@@ -27,7 +27,6 @@
 #include <dual_simplex/user_problem.hpp>
 
 #include <mps_parser/parser.hpp>
-#include "cuopt/linear_programming/mip/solver_settings.hpp"
 
 namespace cuopt::linear_programming::dual_simplex::test {
 
