@@ -70,12 +70,12 @@ library features. The following instructions are for building with a conda envir
 
 CUDA/GPU Runtime:
 
-* CUDA 12.9
+* CUDA 12.0 or higher
 * Volta architecture or better ([Compute Capability](https://docs.nvidia.com/deploy/cuda-compatibility/) >=7.0)
 
 Python:
 
-* Python >=3.10.x, <= 3.12.x
+* Python >=3.10.x, <= 3.13.x
 
 OS:
 
@@ -110,7 +110,7 @@ Please install conda if you don't have it already. You can install [miniforge](h
 # create the conda environment (assuming in base `cuopt` directory)
 # note: cuOpt currently doesn't support `channel_priority: strict`;
 # use `channel_priority: flexible` instead
-conda env create --name cuopt_dev --file conda/environments/all_cuda-128_arch-x86_64.yaml
+conda env create --name cuopt_dev --file conda/environments/all_cuda-130_arch-x86_64.yaml
 # activate the environment
 conda activate cuopt_dev
 ```

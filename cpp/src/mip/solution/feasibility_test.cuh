@@ -55,8 +55,8 @@ __global__ void test_variable_bounds_kernel(typename solution_t<i_t, f_t>::view_
     printf("inf var %d val %f l %f u %f integer %d\n",
            v,
            val,
-           sol.problem.variable_lower_bounds[v],
-           sol.problem.variable_upper_bounds[v],
+           get_lower(sol.problem.variable_bounds[v]),
+           get_upper(sol.problem.variable_bounds[v]),
            sol.problem.is_integer_var(v));
   }
   cuopt_assert(isfinite(val), "assignment should be finite!");
@@ -72,8 +72,8 @@ __global__ void test_variable_bounds_kernel(typename solution_t<i_t, f_t>::view_
     printf("oob var %d val %f l %f u %f integer %d\n",
            v,
            val,
-           sol.problem.variable_lower_bounds[v],
-           sol.problem.variable_upper_bounds[v],
+           get_lower(sol.problem.variable_bounds[v]),
+           get_upper(sol.problem.variable_bounds[v]),
            sol.problem.is_integer_var(v));
   }
   cuopt_assert(feasible, "Variables should be feasible");

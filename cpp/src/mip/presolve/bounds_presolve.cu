@@ -212,14 +212,7 @@ void bound_presolve_t<i_t, f_t>::calculate_activity_on_problem_bounds(problem_t<
 {
   auto& handle_ptr = pb.handle_ptr;
   upd.init_changed_constraints(handle_ptr);
-  cuopt_assert(upd.lb.size() == pb.variable_lower_bounds.size(),
-               "size of variable lower bound mismatch");
-  raft::copy(
-    upd.lb.data(), pb.variable_lower_bounds.data(), upd.lb.size(), handle_ptr->get_stream());
-  cuopt_assert(upd.ub.size() == pb.variable_upper_bounds.size(),
-               "size of variable upper bound mismatch");
-  raft::copy(
-    upd.ub.data(), pb.variable_upper_bounds.data(), upd.ub.size(), handle_ptr->get_stream());
+  copy_input_bounds(pb);
   calculate_activity(pb);
 }
 
@@ -228,14 +221,15 @@ void bound_presolve_t<i_t, f_t>::copy_input_bounds(problem_t<i_t, f_t>& pb)
 {
   auto& handle_ptr = pb.handle_ptr;
 
-  cuopt_assert(upd.lb.size() == pb.variable_lower_bounds.size(),
-               "size of variable lower bound mismatch");
-  raft::copy(
-    upd.lb.data(), pb.variable_lower_bounds.data(), upd.lb.size(), handle_ptr->get_stream());
-  cuopt_assert(upd.ub.size() == pb.variable_upper_bounds.size(),
-               "size of variable upper bound mismatch");
-  raft::copy(
-    upd.ub.data(), pb.variable_upper_bounds.data(), upd.ub.size(), handle_ptr->get_stream());
+  cuopt_assert(upd.lb.size() == pb.variable_bounds.size(), "size of variable lower bound mismatch");
+  cuopt_assert(upd.ub.size() == pb.variable_bounds.size(), "size of variable upper bound mismatch");
+
+  thrust::transform(
+    handle_ptr->get_thrust_policy(),
+    pb.variable_bounds.begin(),
+    pb.variable_bounds.end(),
+    thrust::make_zip_iterator(thrust::make_tuple(upd.lb.begin(), upd.ub.begin())),
+    [] __device__(auto i) { return thrust::make_tuple(get_lower(i), get_upper(i)); });
 }
 
 template <typename i_t, typename f_t>
@@ -271,30 +265,11 @@ termination_criterion_t bound_presolve_t<i_t, f_t>::solve(
 }
 
 template <typename i_t, typename f_t>
-termination_criterion_t bound_presolve_t<i_t, f_t>::solve(problem_t<i_t, f_t>& pb,
-                                                          raft::device_span<f_t> input_lb,
-                                                          raft::device_span<f_t> input_ub)
+termination_criterion_t bound_presolve_t<i_t, f_t>::solve(problem_t<i_t, f_t>& pb)
 {
   timer_t timer(settings.time_limit);
   auto& handle_ptr = pb.handle_ptr;
-  if (input_lb.size() == 0) {
-    cuopt_assert(upd.lb.size() == pb.variable_lower_bounds.size(),
-                 "size of variable lower bound mismatch");
-    raft::copy(
-      upd.lb.data(), pb.variable_lower_bounds.data(), upd.lb.size(), handle_ptr->get_stream());
-  } else {
-    cuopt_assert(input_lb.size() == upd.lb.size(), "size of variable lower bound mismatch");
-    raft::copy(upd.lb.data(), input_lb.data(), input_lb.size(), handle_ptr->get_stream());
-  }
-  if (input_ub.size() == 0) {
-    cuopt_assert(upd.ub.size() == pb.variable_upper_bounds.size(),
-                 "size of variable upper bound mismatch");
-    raft::copy(
-      upd.ub.data(), pb.variable_upper_bounds.data(), upd.ub.size(), handle_ptr->get_stream());
-  } else {
-    cuopt_assert(input_ub.size() == upd.ub.size(), "size of variable lower bound mismatch");
-    raft::copy(upd.ub.data(), input_ub.data(), upd.ub.size(), handle_ptr->get_stream());
-  }
+  copy_input_bounds(pb);
   return bound_update_loop(pb, timer);
 }
 
@@ -329,9 +304,7 @@ bool bound_presolve_t<i_t, f_t>::calculate_infeasible_redundant_constraints(prob
 template <typename i_t, typename f_t>
 void bound_presolve_t<i_t, f_t>::set_updated_bounds(problem_t<i_t, f_t>& pb)
 {
-  set_updated_bounds(pb.handle_ptr,
-                     cuopt::make_span(pb.variable_lower_bounds),
-                     cuopt::make_span(pb.variable_upper_bounds));
+  set_updated_bounds(pb.handle_ptr, cuopt::make_span(pb.variable_bounds));
   pb.compute_n_integer_vars();
   pb.compute_binary_var_table();
 }
@@ -345,6 +318,21 @@ void bound_presolve_t<i_t, f_t>::set_updated_bounds(const raft::handle_t* handle
   cuopt_assert(upd.lb.size() == output_lb.size(), "size of variable lower bound mismatch");
   raft::copy(output_lb.data(), upd.lb.data(), upd.lb.size(), handle_ptr->get_stream());
   raft::copy(output_ub.data(), upd.ub.data(), upd.ub.size(), handle_ptr->get_stream());
+}
+
+template <typename i_t, typename f_t>
+void bound_presolve_t<i_t, f_t>::set_updated_bounds(
+  const raft::handle_t* handle_ptr, raft::device_span<typename type_2<f_t>::type> output_bounds)
+{
+  cuopt_assert(upd.ub.size() == output_bounds.size(), "size of variable upper bound mismatch");
+  cuopt_assert(upd.lb.size() == output_bounds.size(), "size of variable lower bound mismatch");
+  thrust::transform(handle_ptr->get_thrust_policy(),
+                    thrust::make_zip_iterator(thrust::make_tuple(upd.lb.begin(), upd.ub.begin())),
+                    thrust::make_zip_iterator(thrust::make_tuple(upd.lb.end(), upd.ub.end())),
+                    output_bounds.begin(),
+                    [] __device__(auto i) {
+                      return typename type_2<f_t>::type{thrust::get<0>(i), thrust::get<1>(i)};
+                    });
 }
 
 template <typename i_t, typename f_t>

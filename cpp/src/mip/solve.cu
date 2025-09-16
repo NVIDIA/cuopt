@@ -31,6 +31,7 @@
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <linear_programming/utils.cuh>
 #include <utilities/timer.hpp>
+#include <utilities/version_info.hpp>
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
@@ -81,9 +82,9 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                      thrust::make_counting_iterator(0),
                      thrust::make_counting_iterator(problem.n_variables),
                      [sol = solution.assignment.data(), pb = problem.view()] __device__(i_t index) {
-                       sol[index] = pb.objective_coefficients[index] > 0
-                                      ? pb.variable_lower_bounds[index]
-                                      : pb.variable_upper_bounds[index];
+                       auto bounds = pb.variable_bounds[index];
+                       sol[index]  = pb.objective_coefficients[index] > 0 ? get_lower(bounds)
+                                                                          : get_upper(bounds);
                      });
     problem.post_process_solution(solution);
     solution.compute_objective();  // just to ensure h_user_obj is set
@@ -170,6 +171,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
 
+    print_version_info();
+
     raft::common::nvtx::range fun_scope("Running solver");
 
     // This is required as user might forget to set some fields
@@ -197,7 +200,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                          cuopt::linear_programming::problem_category_t::MIP,
                          settings.tolerances.absolute_tolerance,
                          settings.tolerances.relative_tolerance,
-                         presolve_time_limit);
+                         presolve_time_limit,
+                         settings.num_cpu_threads);
       if (!feasible) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
                                         solver_stats_t<i_t, f_t>{},

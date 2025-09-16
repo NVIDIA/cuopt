@@ -6,6 +6,14 @@ Resources
 `Sample Notebooks <https://github.com/NVIDIA/cuopt-examples/>`_
 ----------------------------------------------------------------------------------
 
+
+cuOpt Examples and Tutorials Videos
+-----------------------------------
+
+.. dropdown::
+
+    - `Quick Start to GPU-Accelerated Large-Scale Logistics and Supply Chain Optimization with NVIDIA cuOpt <https://www.youtube.com/watch?v=CVtqcUmW9nU>`_
+
 `Test cuopt with NVIDIA Launchable <https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ>`_
 ------------------------------------------------------------------------------------------------------------------------------
 
