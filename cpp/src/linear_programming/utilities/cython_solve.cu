@@ -109,6 +109,14 @@ data_model_to_optimization_problem(
     op_problem.set_variable_types(enum_variable_types.data(), enum_variable_types.size());
   }
 
+  if (data_model->get_variable_names().size() != 0) {
+    op_problem.set_variable_names(data_model->get_variable_names());
+  }
+
+  if (data_model->get_row_names().size() != 0) {
+    op_problem.set_row_names(data_model->get_row_names());
+  }
+
   return op_problem;
 }
 

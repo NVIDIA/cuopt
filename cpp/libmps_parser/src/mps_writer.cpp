@@ -181,8 +181,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
         mps_file << "    " << col_name << " "
                  << (problem_.get_objective_name().empty() ? "OBJ" : problem_.get_objective_name())
                  << " "
-                 << (problem_.get_sense() ? -objective_coefficients[var_id]
-                                          : objective_coefficients[var_id])
+                 << objective_coefficients[var_id]
                  << "\n";
       }
     }
