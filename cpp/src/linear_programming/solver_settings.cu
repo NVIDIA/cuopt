@@ -41,14 +41,20 @@ pdlp_solver_settings_t<i_t, f_t>::pdlp_solver_settings_t(const pdlp_solver_setti
     iteration_limit(other.iteration_limit),
     time_limit(other.time_limit),
     pdlp_solver_mode(other.pdlp_solver_mode),
+    log_to_console(other.log_to_console),
     log_file(other.log_file),
     sol_file(other.sol_file),
+    user_problem_file(other.user_problem_file),
     per_constraint_residual(other.per_constraint_residual),
     crossover(other.crossover),
     save_best_primal_so_far(other.save_best_primal_so_far),
     first_primal_feasible(other.first_primal_feasible),
+    presolve_method(other.presolve_method),
+    method(other.method),
+    concurrent_halt(other.concurrent_halt),
+    presolve_status(other.presolve_status),
     pdlp_warm_start_data_(other.pdlp_warm_start_data_, stream_view),
-    concurrent_halt(other.concurrent_halt)
+    pdlp_warm_start_data_view_(other.pdlp_warm_start_data_view_)
 {
 }
 

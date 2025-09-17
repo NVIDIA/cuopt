@@ -21,7 +21,7 @@
 
 namespace cuopt::linear_programming {
 
-enum class presolve_method_t {
+enum presolve_method_t : int {
   DEFAULT         = CUOPT_PRESOLVE_METHOD_DEFAULT,
   NONE            = CUOPT_PRESOLVE_METHOD_NONE,
   FULL            = CUOPT_PRESOLVE_METHOD_FULL,

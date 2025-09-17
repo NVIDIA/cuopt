@@ -210,11 +210,11 @@ class pdlp_solver_settings_t {
   bool crossover{false};
   bool save_best_primal_so_far{false};
   bool first_primal_feasible{false};
-  presolve_method_t presolve_method = presolve_method_t::DEFAULT;
+  presolve_method_t presolve_method{presolve_method_t::DEFAULT};
   method_t method{method_t::Concurrent};
   // For concurrent termination
-  std::atomic<i_t>* concurrent_halt;
-  std::atomic<i_t>* presolve_status;
+  std::atomic<i_t>* concurrent_halt{nullptr};
+  std::atomic<i_t>* presolve_status{nullptr};
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
 
  private:

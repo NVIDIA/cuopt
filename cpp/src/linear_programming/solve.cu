@@ -501,9 +501,13 @@ void run_presolve_thread(optimization_problem_t<i_t, f_t> const& op_problem,
                          detail::third_party_presolve_t<i_t, f_t>& presolver)
 {
   if (get_presolve_method(settings) != presolve_method_t::NONE) {
+    f_t start_time = dual_simplex::tic();
+    CUOPT_LOG_INFO("Running presolve a separate thread");
     auto [temp_problem, temp_presolver] = run_presolve(op_problem, settings);
     reduced_op_problem.copy_from(temp_problem, op_problem.get_handle_ptr()->get_stream());
-    presolver = temp_presolver;
+    presolver    = temp_presolver;
+    f_t end_time = dual_simplex::toc(start_time);
+    CUOPT_LOG_INFO("Presolve finished in %.3fs", end_time);
   }
 
   settings.presolve_status->store(1, std::memory_order_release);
@@ -609,6 +613,12 @@ void run_dual_simplex_thread_on_op_problem(optimization_problem_t<i_t, f_t> cons
 {
   wait_for(settings.presolve_status);
 
+  auto presolve_method = get_presolve_method(settings);
+  if (presolve_method != presolve_method_t::NONE) {
+    CUOPT_LOG_INFO("Running dual simplex on the presolved problem");
+  } else {
+    CUOPT_LOG_INFO("Running dual simplex on the original problem");
+  }
   // convert op_problem to problem and then to dual simplex problem
   detail::problem_t<i_t, f_t> problem(op_problem);
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
@@ -669,8 +679,12 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   if (should_pdlp_run_on_presolved_problem(settings_pdlp)) {
     // Wait for presolve to finish
     wait_for(settings_pdlp.presolve_status);
+    CUOPT_LOG_INFO("Running PDLP on the presolved problem");
     sol_pdlp = run_pdlp(reduced_op_problem, settings_pdlp, is_batch_mode, false);
   } else {
+    if (get_presolve_method(settings_pdlp) != presolve_method_t::NONE) {
+      CUOPT_LOG_INFO("Running PDLP on the original problem");
+    }
     sol_pdlp = run_pdlp(op_problem, settings_pdlp, is_batch_mode, false);
   }
 
