@@ -43,7 +43,15 @@ git clone https://github.com/jump-dev/cuOpt.jl $CUOPT_JL_DIR
 # set weird permissions, run tests as root (bad)
 cd $CUOPT_JL_DIR || exit 1
 
-# export LD_LIBRARY_PATH=/usr/local/lib/python3.13/dist-packages/libcuopt/lib64/:${LD_LIBRARY_PATH}
+# Find libcuopt.so and add its directory to LD_LIBRARY_PATH
+LIBCUOPT_PATH=$(find / -name "libcuopt.so" -type f 2>/dev/null | head -1)
+if [ -n "$LIBCUOPT_PATH" ]; then
+    LIBCUOPT_DIR=$(dirname "$LIBCUOPT_PATH")
+    export LD_LIBRARY_PATH="${LIBCUOPT_DIR}:${LD_LIBRARY_PATH}"
+    rapids-logger "Found libcuopt.so at $LIBCUOPT_PATH, added directory to LD_LIBRARY_PATH: $LIBCUOPT_DIR"
+else
+    rapids-logger "Warning: libcuopt.so not found in root filesystem"
+fi
 
 # use Julia to instantiate and run tests for the package
 julia --project=. -e '
