@@ -115,6 +115,8 @@ class optimization_problem_t {
   optimization_problem_t(raft::handle_t const* handle_ptr);
   optimization_problem_t(const optimization_problem_t<i_t, f_t>& other);
 
+  void copy_from(const optimization_problem_t<i_t, f_t>& other, rmm::cuda_stream_view stream_view);
+
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
 
   /**

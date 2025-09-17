@@ -16,6 +16,7 @@
  */
 
 #include <cuopt/error.hpp>
+#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 #include <linear_programming/pdlp.cuh>
 #include <linear_programming/restart_strategy/pdlp_restart_strategy.cuh>
 #include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
@@ -223,6 +224,28 @@ void setup_device_symbols(rmm::cuda_stream_view stream_view)
 }
 
 std::atomic<int> global_concurrent_halt;
+std::atomic<int> global_presolve_status;
+
+template <typename i_t, typename f_t>
+presolve_method_t get_presolve_method(pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  if (settings.presolve_method != presolve_method_t::DEFAULT) { return settings.presolve_method; }
+
+  if (settings.method == method_t::PDLP) { return presolve_method_t::NONE; }
+
+  return presolve_method_t::DUAL_PRESERVING;
+}
+
+template <typename i_t, typename f_t>
+bool should_pdlp_run_on_presolved_problem(pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  if (settings.method == method_t::PDLP || settings.method == method_t::Concurrent) {
+    return settings.presolve_method != presolve_method_t::NONE &&
+           settings.presolve_method != presolve_method_t::DEFAULT;
+  }
+
+  return false;
+}
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
@@ -455,6 +478,117 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
 }
 
 template <typename i_t, typename f_t>
+std::tuple<optimization_problem_t<i_t, f_t>, detail::third_party_presolve_t<i_t, f_t>> run_presolve(
+  optimization_problem_t<i_t, f_t> const& op_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  double presolve_time_limit = std::min(0.1 * settings.time_limit, 60.0);
+  detail::third_party_presolve_t<i_t, f_t> presolver;
+  auto [reduced_problem, feasible] =
+    presolver.apply(op_problem,
+                    cuopt::linear_programming::problem_category_t::LP,
+                    settings.presolve_method,
+                    settings.tolerances.absolute_primal_tolerance,
+                    settings.tolerances.relative_primal_tolerance,
+                    presolve_time_limit);
+  return std::make_tuple(reduced_problem, presolver);
+}
+
+template <typename i_t, typename f_t>
+void run_presolve_thread(optimization_problem_t<i_t, f_t> const& op_problem,
+                         pdlp_solver_settings_t<i_t, f_t>& settings,
+                         optimization_problem_t<i_t, f_t>& reduced_op_problem,
+                         detail::third_party_presolve_t<i_t, f_t>& presolver)
+{
+  if (get_presolve_method(settings) != presolve_method_t::NONE) {
+    auto [temp_problem, temp_presolver] = run_presolve(op_problem, settings);
+    reduced_op_problem.copy_from(temp_problem, op_problem.get_handle_ptr()->get_stream());
+    presolver = temp_presolver;
+  }
+
+  settings.presolve_status->store(1, std::memory_order_release);
+
+  return;
+}
+
+void wait_for(std::atomic<int>* status_ptr)
+{
+  while (status_ptr != nullptr && status_ptr->load(std::memory_order_acquire) == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> run_post_solve(
+  optimization_problem_solution_t<i_t, f_t>& reduced_sol,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  optimization_problem_t<i_t, f_t> const& op_problem,
+  detail::third_party_presolve_t<i_t, f_t>& presolver,
+  raft::handle_t const* handle_ptr)
+{
+  auto primal_solution =
+    cuopt::device_copy(reduced_sol.get_primal_solution(), handle_ptr->get_stream());
+  auto dual_solution =
+    cuopt::device_copy(reduced_sol.get_dual_solution(), handle_ptr->get_stream());
+  auto reduced_costs = cuopt::device_copy(reduced_sol.get_reduced_cost(), handle_ptr->get_stream());
+  bool status_to_skip = false;
+  presolver.undo(primal_solution,
+                 dual_solution,
+                 reduced_costs,
+                 cuopt::linear_programming::problem_category_t::LP,
+                 status_to_skip,
+                 handle_ptr->get_stream());
+
+  auto additional_info = reduced_sol.get_additional_termination_information();
+
+  return optimization_problem_solution_t<i_t, f_t>(primal_solution,
+                                                   dual_solution,
+                                                   reduced_costs,
+                                                   reduced_sol.get_pdlp_warm_start_data(),
+                                                   op_problem.get_objective_name(),
+                                                   op_problem.get_variable_names(),
+                                                   op_problem.get_row_names(),
+                                                   additional_info,
+                                                   reduced_sol.get_termination_status());
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> run_pdlp(
+  optimization_problem_t<i_t, f_t> const& op_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool is_batch_mode,
+  bool enable_presolve)
+{
+  if (enable_presolve) {
+    auto [reduced_op_problem, presolver] = run_presolve(op_problem, settings);
+    detail::problem_t<i_t, f_t> reduced_problem(reduced_op_problem);
+    auto sol_reduced_pdlp = run_pdlp(reduced_problem, settings, is_batch_mode);
+    return run_post_solve<i_t, f_t>(
+      sol_reduced_pdlp, settings, op_problem, presolver, op_problem.get_handle_ptr());
+  }
+
+  detail::problem_t<i_t, f_t> problem(op_problem);
+  return run_pdlp(problem, settings, is_batch_mode);
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
+  optimization_problem_t<i_t, f_t> const& op_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool enable_presolve)
+{
+  if (enable_presolve) {
+    auto [reduced_op_problem, presolver] = run_presolve(op_problem, settings);
+    detail::problem_t<i_t, f_t> reduced_problem(reduced_op_problem);
+    auto sol_reduced_dual_simplex = run_dual_simplex(reduced_problem, settings);
+    return run_post_solve<i_t, f_t>(
+      sol_reduced_dual_simplex, settings, op_problem, presolver, op_problem.get_handle_ptr());
+  }
+  detail::problem_t<i_t, f_t> problem(op_problem);
+  return run_dual_simplex(problem, settings);
+}
+
+template <typename i_t, typename f_t>
 void run_dual_simplex_thread(
   dual_simplex::user_problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
@@ -466,6 +600,126 @@ void run_dual_simplex_thread(
   sol_ptr = std::make_unique<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>(
     run_dual_simplex(problem, settings));
+}
+
+template <typename i_t, typename f_t>
+void run_dual_simplex_thread_on_op_problem(optimization_problem_t<i_t, f_t> const& op_problem,
+                                           pdlp_solver_settings_t<i_t, f_t>& settings,
+                                           optimization_problem_solution_t<i_t, f_t>& reduced_sol)
+{
+  wait_for(settings.presolve_status);
+
+  // convert op_problem to problem and then to dual simplex problem
+  detail::problem_t<i_t, f_t> problem(op_problem);
+  dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
+    cuopt_problem_to_simplex_problem<i_t, f_t>(problem);
+  auto sol_dual_simplex = run_dual_simplex(dual_simplex_problem, settings);
+
+  auto sol = convert_dual_simplex_sol(problem,
+                                      std::get<0>(sol_dual_simplex),
+                                      std::get<1>(sol_dual_simplex),
+                                      std::get<2>(sol_dual_simplex),
+                                      std::get<3>(sol_dual_simplex),
+                                      std::get<4>(sol_dual_simplex));
+  reduced_sol.copy_from(op_problem.get_handle_ptr(), sol);
+
+  return;
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> run_concurrent(
+  optimization_problem_t<i_t, f_t> const& op_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool is_batch_mode)
+{
+  CUOPT_LOG_INFO("Running concurrent\n");
+  f_t start_time = dual_simplex::tic();
+
+  // Copy the settings so that we can set the concurrent halt pointer
+  pdlp_solver_settings_t<i_t, f_t> settings_pdlp(settings,
+                                                 op_problem.get_handle_ptr()->get_stream());
+
+  // Set the concurrent halt pointer
+  global_concurrent_halt.store(0, std::memory_order_release);
+  global_presolve_status.store(0, std::memory_order_release);
+  settings_pdlp.concurrent_halt = &global_concurrent_halt;
+  settings_pdlp.presolve_status = &global_presolve_status;
+
+  optimization_problem_t<i_t, f_t> reduced_op_problem(op_problem);
+  detail::third_party_presolve_t<i_t, f_t> presolver;
+
+  // Launch presolve on a separate thread
+  std::thread presolve_thread(run_presolve_thread<i_t, f_t>,
+                              std::ref(op_problem),
+                              std::ref(settings_pdlp),
+                              std::ref(reduced_op_problem),
+                              std::ref(presolver));
+
+  // Launch dual simplex on a separate thread
+  optimization_problem_solution_t<i_t, f_t> dual_simplex_reduced_sol(
+    pdlp_termination_status_t::NoTermination, op_problem.get_handle_ptr()->get_stream());
+  std::thread dual_simplex_thread(run_dual_simplex_thread_on_op_problem<i_t, f_t>,
+                                  std::ref(reduced_op_problem),
+                                  std::ref(settings_pdlp),
+                                  std::ref(dual_simplex_reduced_sol));
+
+  // Run pdlp in the main thread
+  optimization_problem_solution_t<i_t, f_t> sol_pdlp(pdlp_termination_status_t::NoTermination,
+                                                     op_problem.get_handle_ptr()->get_stream());
+  if (should_pdlp_run_on_presolved_problem(settings_pdlp)) {
+    // Wait for presolve to finish
+    wait_for(settings_pdlp.presolve_status);
+    sol_pdlp = run_pdlp(reduced_op_problem, settings_pdlp, is_batch_mode, false);
+  } else {
+    sol_pdlp = run_pdlp(op_problem, settings_pdlp, is_batch_mode, false);
+  }
+
+  // Wait for dual simplex thread to finish
+  dual_simplex_thread.join();
+
+  // Wait for presolve thread to finish
+  presolve_thread.join();
+
+  f_t end_time = dual_simplex::toc(start_time);
+  CUOPT_LOG_INFO("Concurrent time:  %.3fs", end_time);
+  bool do_post_solve         = false;
+  const auto presolve_method = get_presolve_method(settings_pdlp);
+  // Check status to see if we should return the pdlp solution or the dual simplex solution
+  if (dual_simplex_reduced_sol.get_termination_status() == pdlp_termination_status_t::Optimal ||
+      dual_simplex_reduced_sol.get_termination_status() ==
+        pdlp_termination_status_t::PrimalInfeasible ||
+      dual_simplex_reduced_sol.get_termination_status() ==
+        pdlp_termination_status_t::DualInfeasible) {
+    CUOPT_LOG_INFO("Solved with dual simplex");
+    sol_pdlp.copy_from(op_problem.get_handle_ptr(), dual_simplex_reduced_sol);
+    sol_pdlp.set_solve_time(end_time);
+    CUOPT_LOG_INFO("Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs",
+                   sol_pdlp.get_termination_status_string().c_str(),
+                   sol_pdlp.get_objective_value(),
+                   sol_pdlp.get_additional_termination_information().number_of_steps_taken,
+                   end_time);
+    do_post_solve = presolve_method != presolve_method_t::NONE;
+  } else if (sol_pdlp.get_termination_status() == pdlp_termination_status_t::Optimal) {
+    CUOPT_LOG_INFO("Solved with PDLP");
+    do_post_solve = should_pdlp_run_on_presolved_problem(settings_pdlp) &&
+                    presolve_method != presolve_method_t::NONE;
+  } else if (sol_pdlp.get_termination_status() == pdlp_termination_status_t::ConcurrentLimit) {
+    CUOPT_LOG_INFO("Using dual simplex solve info");
+    sol_pdlp.copy_from(op_problem.get_handle_ptr(), dual_simplex_reduced_sol);
+    sol_pdlp.set_solve_time(end_time);
+    do_post_solve = presolve_method != presolve_method_t::NONE;
+  } else {
+    CUOPT_LOG_INFO("Using PDLP solve info");
+    // return sol_pdlp;
+    do_post_solve = should_pdlp_run_on_presolved_problem(settings_pdlp);
+  }
+
+  if (do_post_solve) {
+    return run_post_solve<i_t, f_t>(
+      sol_pdlp, settings_pdlp, op_problem, presolver, op_problem.get_handle_ptr());
+  } else {
+    return sol_pdlp;
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -558,6 +812,23 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
 }
 
 template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> solve_lp_with_method_on_op_problem(
+  optimization_problem_t<i_t, f_t>& op_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool is_batch_mode)
+{
+  auto presolve_method = get_presolve_method(settings);
+  if (settings.method == method_t::DualSimplex) {
+    return run_dual_simplex(op_problem, settings, presolve_method != presolve_method_t::NONE);
+  } else if (settings.method == method_t::Concurrent) {
+    return run_concurrent(op_problem, settings, is_batch_mode);
+  } else {
+    return run_pdlp(
+      op_problem, settings, is_batch_mode, presolve_method != presolve_method_t::NONE);
+  }
+}
+
+template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f_t>& op_problem,
                                                    pdlp_solver_settings_t<i_t, f_t> const& settings,
                                                    bool problem_checking,
@@ -583,98 +854,12 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
       problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
     }
 
-    auto presolve_timer = cuopt::timer_t(settings.time_limit);
-    detail::problem_t<i_t, f_t> problem(op_problem);
-
-    double presolve_time = 0.0;
-    std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
-    auto run_presolve = settings.presolve_method != presolve_method_t::NONE;
-    run_presolve = run_presolve && settings.get_pdlp_warm_start_data().total_pdlp_iterations_ == -1;
-    if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
-
-    if (run_presolve) {
-      // allocate no more than 10% of the time limit to presolve, also not more than 60 seconds
-      // Note that this is not the presolve time, but the time limit for presolve.
-      const double presolve_time_limit = std::min(0.1 * settings.time_limit, 60.0);
-      presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
-      auto [reduced_problem, feasible] =
-        presolver->apply(op_problem,
-                         cuopt::linear_programming::problem_category_t::LP,
-                         settings.presolve_method,
-                         settings.tolerances.absolute_primal_tolerance,
-                         settings.tolerances.relative_primal_tolerance,
-                         presolve_time_limit);
-      if (!feasible) {
-        return optimization_problem_solution_t<i_t, f_t>(
-          pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
-      }
-      problem       = detail::problem_t<i_t, f_t>(reduced_problem);
-      presolve_time = presolve_timer.elapsed_time();
-      CUOPT_LOG_INFO("Third party presolve time: %f", presolve_time);
-    }
-
-    if (settings.user_problem_file != "") {
-      CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      problem.write_as_mps(settings.user_problem_file);
-    }
-
-    CUOPT_LOG_INFO(
-      "Solving a problem with %d constraints %d variables (%d integers) and %d nonzeros",
-      problem.n_constraints,
-      problem.n_variables,
-      problem.n_integer_vars,
-      problem.nnz);
-    CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
-                   problem.presolve_data.objective_offset,
-                   problem.presolve_data.objective_scaling_factor);
-
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
 
     setup_device_symbols(op_problem.get_handle_ptr()->get_stream());
 
-    auto solution = solve_lp_with_method(op_problem, problem, settings, is_batch_mode);
-
-    if (run_presolve) {
-      auto primal_solution = cuopt::device_copy(solution.get_primal_solution(),
-                                                op_problem.get_handle_ptr()->get_stream());
-      auto dual_solution =
-        cuopt::device_copy(solution.get_dual_solution(), op_problem.get_handle_ptr()->get_stream());
-      auto reduced_costs =
-        cuopt::device_copy(solution.get_reduced_cost(), op_problem.get_handle_ptr()->get_stream());
-      bool status_to_skip = false;
-
-      presolver->undo(primal_solution,
-                      dual_solution,
-                      reduced_costs,
-                      cuopt::linear_programming::problem_category_t::LP,
-                      status_to_skip,
-                      op_problem.get_handle_ptr()->get_stream());
-
-      thrust::fill(rmm::exec_policy(op_problem.get_handle_ptr()->get_stream()),
-                   dual_solution.data(),
-                   dual_solution.data() + dual_solution.size(),
-                   std::numeric_limits<f_t>::signaling_NaN());
-      thrust::fill(rmm::exec_policy(op_problem.get_handle_ptr()->get_stream()),
-                   reduced_costs.data(),
-                   reduced_costs.data() + reduced_costs.size(),
-                   std::numeric_limits<f_t>::signaling_NaN());
-
-      auto full_stats = solution.get_additional_termination_information();
-      // add third party presolve time to cuopt presolve time
-      full_stats.solve_time += presolve_time;
-
-      // Create a new solution with the full problem solution
-      solution = optimization_problem_solution_t<i_t, f_t>(primal_solution,
-                                                           dual_solution,
-                                                           reduced_costs,
-                                                           solution.get_pdlp_warm_start_data(),
-                                                           op_problem.get_objective_name(),
-                                                           op_problem.get_variable_names(),
-                                                           op_problem.get_row_names(),
-                                                           full_stats,
-                                                           solution.get_termination_status());
-    }
+    auto solution = solve_lp_with_method_on_op_problem(op_problem, settings, is_batch_mode);
 
     if (settings.sol_file != "") {
       CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());

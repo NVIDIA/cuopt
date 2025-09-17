@@ -20,6 +20,7 @@
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <mip/mip_constants.hpp>
+#include <utilities/copy_helpers.hpp>
 
 #include <raft/common/nvtx.hpp>
 #include <raft/util/cuda_utils.cuh>
@@ -58,32 +59,42 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* h
 }
 
 template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::copy_from(const optimization_problem_t<i_t, f_t>& other,
+                                                 rmm::cuda_stream_view stream_view)
+{
+  maximize_      = other.get_sense();
+  n_vars_        = other.get_n_variables();
+  n_constraints_ = other.get_n_constraints();
+
+  cuopt::device_copy(A_, other.get_constraint_matrix_values(), stream_view);
+  cuopt::device_copy(A_indices_, other.get_constraint_matrix_indices(), stream_view);
+  cuopt::device_copy(A_offsets_, other.get_constraint_matrix_offsets(), stream_view);
+  cuopt::device_copy(b_, other.get_constraint_bounds(), stream_view);
+  cuopt::device_copy(c_, other.get_objective_coefficients(), stream_view);
+
+  objective_scaling_factor_ = other.get_objective_scaling_factor();
+  objective_offset_         = other.get_objective_offset();
+
+  cuopt::device_copy(variable_lower_bounds_, other.get_variable_lower_bounds(), stream_view);
+  cuopt::device_copy(variable_upper_bounds_, other.get_variable_upper_bounds(), stream_view);
+  cuopt::device_copy(constraint_lower_bounds_, other.get_constraint_lower_bounds(), stream_view);
+  cuopt::device_copy(constraint_upper_bounds_, other.get_constraint_upper_bounds(), stream_view);
+  cuopt::device_copy(row_types_, other.get_row_types(), stream_view);
+  cuopt::device_copy(variable_types_, other.get_variable_types(), stream_view);
+
+  objective_name_   = other.get_objective_name();
+  problem_name_     = other.get_problem_name();
+  problem_category_ = other.get_problem_category();
+  var_names_        = other.get_variable_names();
+  row_names_        = other.get_row_names();
+}
+
+template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t>::optimization_problem_t(
   const optimization_problem_t<i_t, f_t>& other)
-  : handle_ptr_(other.get_handle_ptr()),
-    stream_view_(handle_ptr_->get_stream()),
-    maximize_{other.get_sense()},
-    n_vars_{other.get_n_variables()},
-    n_constraints_{other.get_n_constraints()},
-    A_{other.get_constraint_matrix_values(), stream_view_},
-    A_indices_{other.get_constraint_matrix_indices(), stream_view_},
-    A_offsets_{other.get_constraint_matrix_offsets(), stream_view_},
-    b_{other.get_constraint_bounds(), stream_view_},
-    c_{other.get_objective_coefficients(), stream_view_},
-    objective_scaling_factor_{other.get_objective_scaling_factor()},
-    objective_offset_{other.get_objective_offset()},
-    variable_lower_bounds_{other.get_variable_lower_bounds(), stream_view_},
-    variable_upper_bounds_{other.get_variable_upper_bounds(), stream_view_},
-    constraint_lower_bounds_{other.get_constraint_lower_bounds(), stream_view_},
-    constraint_upper_bounds_{other.get_constraint_upper_bounds(), stream_view_},
-    row_types_{other.get_row_types(), stream_view_},
-    variable_types_{other.get_variable_types(), stream_view_},
-    objective_name_{other.get_objective_name()},
-    problem_name_{other.get_problem_name()},
-    problem_category_{other.get_problem_category()},
-    var_names_{other.get_variable_names()},
-    row_names_{other.get_row_names()}
+  : optimization_problem_t(other.get_handle_ptr())
 {
+  copy_from(other, stream_view_);
 }
 
 template <typename i_t, typename f_t>

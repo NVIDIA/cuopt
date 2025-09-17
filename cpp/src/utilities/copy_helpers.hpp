@@ -237,6 +237,23 @@ inline void device_copy(rmm::device_uvector<T>& device_vec,
 }
 
 /**
+ * @brief Simple utility function to copy device vector to device
+ *
+ * @tparam T
+ * @param[in] device_vec
+ * @param[in] src_vec
+ * @param[in] stream_view
+ */
+template <typename T>
+inline void device_copy(rmm::device_uvector<T>& device_vec,
+                        rmm::device_uvector<T> const& src_vec,
+                        rmm::cuda_stream_view stream_view)
+{
+  device_vec.resize(src_vec.size(), stream_view);
+  raft::copy(device_vec.data(), src_vec.data(), src_vec.size(), stream_view);
+}
+
+/**
  * @brief Simple utility function to copy std::vector to device
  *
  * @tparam T
