@@ -214,7 +214,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      problem.write_as_mps(settings.user_problem_file);
+      op_problem.write_to_mps(settings.user_problem_file);
     }
 
     // this is for PDLP, i think this should be part of pdlp solver

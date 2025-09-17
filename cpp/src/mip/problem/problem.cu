@@ -140,6 +140,7 @@ problem_t<i_t, f_t>::problem_t(
     var_names(problem_.get_variable_names()),
     row_names(problem_.get_row_names()),
     objective_name(problem_.get_objective_name()),
+    objective_offset(problem_.get_objective_offset()),
     lp_state(*this, problem_.get_handle_ptr()->get_stream()),
     fixing_helpers(n_constraints, n_variables, handle_ptr)
 {
