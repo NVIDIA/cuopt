@@ -27,7 +27,7 @@ REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -44,6 +44,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    -g               - build for debug
    -a               - Enable assertion (by default in debug mode)
    -b               - Build with benchmark settings
+   -fsanitize       - Build with sanitizer
    -n               - no install step
    --no-fetch-rapids  - don't fetch rapids dependencies
    -l=              - log level. Options are: TRACE | DEBUG | INFO | WARN | ERROR | CRITICAL | OFF. Default=INFO
@@ -85,6 +86,7 @@ BUILD_DISABLE_DEPRECATION_WARNING=ON
 BUILD_ALL_GPU_ARCH=0
 BUILD_CI_ONLY=0
 BUILD_LP_ONLY=0
+BUILD_SANITIZER=0
 SKIP_C_PYTHON_ADAPTERS=0
 SKIP_TESTS_BUILD=0
 SKIP_ROUTING_BUILD=0
@@ -235,6 +237,9 @@ if hasArg --build-lp-only; then
     BUILD_LP_ONLY=1
     SKIP_ROUTING_BUILD=1  # Automatically skip routing when building LP-only
 fi
+if hasArg -fsanitize; then
+    BUILD_SANITIZER=1
+fi
 if hasArg --skip-c-python-adapters; then
     SKIP_C_PYTHON_ADAPTERS=1
 fi
@@ -345,6 +350,7 @@ if buildAll || hasArg libcuopt; then
           -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
           -DFETCH_RAPIDS=${FETCH_RAPIDS} \
           -DBUILD_LP_ONLY=${BUILD_LP_ONLY} \
+          -DBUILD_SANITIZER=${BUILD_SANITIZER} \
           -DSKIP_C_PYTHON_ADAPTERS=${SKIP_C_PYTHON_ADAPTERS} \
           -DBUILD_TESTS=$((1 - ${SKIP_TESTS_BUILD})) \
           -DSKIP_ROUTING_BUILD=${SKIP_ROUTING_BUILD} \

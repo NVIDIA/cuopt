@@ -42,7 +42,6 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <linear_programming/utilities/problem_checking.cuh>
-#include <utilities/timer.hpp>
 
 #include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -321,15 +320,15 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
 template <typename i_t, typename f_t>
 std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>
 run_dual_simplex(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
-                 pdlp_solver_settings_t<i_t, f_t> const& settings)
+                 pdlp_solver_settings_t<i_t, f_t> const& settings,
+                 const timer_t& timer)
 {
-  auto start_solver = std::chrono::high_resolution_clock::now();
-
+  timer_t timer_dual_simplex(timer.remaining_time());
   f_t norm_user_objective = dual_simplex::vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = dual_simplex::vector_norm2<i_t, f_t>(user_problem.rhs);
 
   dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-  dual_simplex_settings.time_limit      = settings.time_limit;
+  dual_simplex_settings.time_limit      = timer.remaining_time();
   dual_simplex_settings.iteration_limit = settings.iteration_limit;
   dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
   if (dual_simplex_settings.concurrent_halt != nullptr) {
@@ -341,10 +340,9 @@ run_dual_simplex(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   auto status =
     dual_simplex::solve_linear_program<i_t, f_t>(user_problem, dual_simplex_settings, solution);
 
-  auto end      = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
-
-  CUOPT_LOG_INFO("Dual simplex finished in %.2f seconds", duration.count() / 1000.0);
+  CUOPT_LOG_INFO("Dual simplex finished in %.2f seconds, total time %.2f",
+                 timer_dual_simplex.elapsed_time(),
+                 timer.elapsed_time());
 
   if (settings.concurrent_halt != nullptr && (status == dual_simplex::lp_status_t::OPTIMAL ||
                                               status == dual_simplex::lp_status_t::UNBOUNDED ||
@@ -353,17 +351,19 @@ run_dual_simplex(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
     settings.concurrent_halt->store(1, std::memory_order_release);
   }
 
-  return {std::move(solution), status, duration.count() / 1000.0, norm_user_objective, norm_rhs};
+  return {std::move(solution), status, timer.elapsed_time(), norm_user_objective, norm_rhs};
 }
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
-  detail::problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
+  detail::problem_t<i_t, f_t>& problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  const timer_t& timer)
 {
   // Convert data structures to dual simplex format and back
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
     cuopt_problem_to_simplex_problem<i_t, f_t>(problem);
-  auto sol_dual_simplex = run_dual_simplex(dual_simplex_problem, settings);
+  auto sol_dual_simplex = run_dual_simplex(dual_simplex_problem, settings, timer);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
                                   std::get<1>(sol_dual_simplex),
@@ -376,7 +376,7 @@ template <typename i_t, typename f_t>
 static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   detail::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
-  const std::chrono::high_resolution_clock::time_point& start_time,
+  const timer_t& timer,
   bool is_batch_mode)
 {
   if (problem.n_constraints == 0) {
@@ -385,26 +385,28 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
                                                      problem.handle_ptr->get_stream()};
   }
   detail::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode);
-  return solver.run_solver(start_time);
+  return solver.run_solver(timer);
 }
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& problem,
                                                    pdlp_solver_settings_t<i_t, f_t> const& settings,
+                                                   const timer_t& timer,
                                                    bool is_batch_mode)
 {
   auto start_solver = std::chrono::high_resolution_clock::now();
   f_t start_time    = dual_simplex::tic();
-  auto sol          = run_pdlp_solver(problem, settings, start_solver, is_batch_mode);
-  auto end          = std::chrono::high_resolution_clock::now();
-  auto duration     = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
-  sol.set_solve_time(duration.count() / 1000.0);
+  timer_t timer_pdlp(timer.remaining_time());
+  auto sol             = run_pdlp_solver(problem, settings, timer, is_batch_mode);
+  auto pdlp_solve_time = timer_pdlp.elapsed_time();
+  sol.set_solve_time(timer.elapsed_time());
   CUOPT_LOG_INFO("PDLP finished");
   if (sol.get_termination_status() != pdlp_termination_status_t::ConcurrentLimit) {
-    CUOPT_LOG_INFO("Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs",
+    CUOPT_LOG_INFO("Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs, Total time %.3fs",
                    sol.get_termination_status_string().c_str(),
                    sol.get_objective_value(),
                    sol.get_additional_termination_information().number_of_steps_taken,
+                   pdlp_solve_time,
                    sol.get_solve_time());
   }
 
@@ -417,7 +419,7 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     dual_simplex::lp_solution_t<i_t, f_t> initial_solution(1, 1);
     translate_to_crossover_problem(problem, sol, lp, initial_solution);
     dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-    dual_simplex_settings.time_limit      = settings.time_limit;
+    dual_simplex_settings.time_limit      = timer.remaining_time();
     dual_simplex_settings.iteration_limit = settings.iteration_limit;
     dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
     dual_simplex::lp_solution_t<i_t, f_t> vertex_solution(lp.num_rows, lp.num_cols);
@@ -606,12 +608,13 @@ void run_dual_simplex_thread(
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   std::unique_ptr<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>&
-    sol_ptr)
+    sol_ptr,
+  const timer_t& timer)
 {
   // We will return the solution from the thread as a unique_ptr
   sol_ptr = std::make_unique<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>(
-    run_dual_simplex(problem, settings));
+    run_dual_simplex(problem, settings, timer));
 }
 
 template <typename i_t, typename f_t>
@@ -755,10 +758,11 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   const optimization_problem_t<i_t, f_t>& op_problem,
   detail::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
+  const timer_t& timer,
   bool is_batch_mode)
 {
   CUOPT_LOG_INFO("Running concurrent\n");
-  f_t start_time = dual_simplex::tic();
+  timer_t timer_concurrent(timer.remaining_time());
 
   // Copy the settings so that we can set the concurrent halt pointer
   pdlp_solver_settings_t<i_t, f_t> settings_pdlp(settings,
@@ -780,10 +784,11 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   std::thread dual_simplex_thread(run_dual_simplex_thread<i_t, f_t>,
                                   std::ref(dual_simplex_problem),
                                   std::ref(settings_pdlp),
-                                  std::ref(sol_dual_simplex_ptr));
+                                  std::ref(sol_dual_simplex_ptr),
+                                  std::ref(timer));
 
   // Run pdlp in the main thread
-  auto sol_pdlp = run_pdlp(problem, settings_pdlp, is_batch_mode);
+  auto sol_pdlp = run_pdlp(problem, settings_pdlp, timer, is_batch_mode);
 
   // Wait for dual simplex thread to finish
   dual_simplex_thread.join();
@@ -796,8 +801,9 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
                                                    std::get<3>(*sol_dual_simplex_ptr),
                                                    std::get<4>(*sol_dual_simplex_ptr));
 
-  f_t end_time = dual_simplex::toc(start_time);
-  CUOPT_LOG_INFO("Concurrent time:  %.3fs", end_time);
+  f_t end_time = timer.elapsed_time();
+  CUOPT_LOG_INFO(
+    "Concurrent time:  %.3fs, total time %.3fs", timer_concurrent.elapsed_time(), end_time);
   // Check status to see if we should return the pdlp solution or the dual simplex solution
   if (sol_dual_simplex.get_termination_status() == pdlp_termination_status_t::Optimal ||
       sol_dual_simplex.get_termination_status() == pdlp_termination_status_t::PrimalInfeasible ||
@@ -828,14 +834,15 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
   const optimization_problem_t<i_t, f_t>& op_problem,
   detail::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
+  const timer_t& timer,
   bool is_batch_mode)
 {
   if (settings.method == method_t::DualSimplex) {
-    return run_dual_simplex(problem, settings);
+    return run_dual_simplex(problem, settings, timer);
   } else if (settings.method == method_t::Concurrent) {
-    return run_concurrent(op_problem, problem, settings, is_batch_mode);
+    return run_concurrent(op_problem, problem, settings, timer, is_batch_mode);
   } else {
-    return run_pdlp(problem, settings, is_batch_mode);
+    return run_pdlp(problem, settings, timer, is_batch_mode);
   }
 }
 
@@ -1006,6 +1013,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     const optimization_problem_t<int, F_TYPE>& op_problem,                             \
     detail::problem_t<int, F_TYPE>& problem,                                           \
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                               \
+    const timer_t& timer,                                                              \
     bool is_batch_mode);                                                               \
                                                                                        \
   template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem( \

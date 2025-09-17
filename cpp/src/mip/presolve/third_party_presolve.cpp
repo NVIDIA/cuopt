@@ -369,6 +369,7 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
   if (presolve_stop_callback) {
     presolver.getPresolveOptions().early_exit_callback = presolve_stop_callback;
   }
+  presolver.getPresolveOptions().feastol = 1e-5;
 }
 
 template <typename i_t, typename f_t>
