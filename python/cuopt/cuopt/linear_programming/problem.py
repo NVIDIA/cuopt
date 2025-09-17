@@ -13,8 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 from enum import Enum
 
+import cuopt_mps_parser
 import numpy as np
 
 import cuopt.linear_programming.data_model as data_model
@@ -699,12 +701,11 @@ class Problem:
         self.Status = -1
         self.ObjValue = float("nan")
 
+        self.model = None
         self.solved = False
         self.rhs = None
         self.row_sense = None
-        self.row_pointers = None
-        self.column_indicies = None
-        self.values = None
+        self.constraint_csr_matrix = None
         self.lower_bound = None
         self.upper_bound = None
         self.var_type = None
@@ -713,6 +714,124 @@ class Problem:
         def __init__(self, mdict):
             for key, value in mdict.items():
                 setattr(self, key, value)
+
+    def _from_data_model(self, dm):
+        self.Name = dm.get_problem_name()
+        obj_coeffs = dm.get_objective_coefficients()
+        obj_constant = dm.get_objective_offset()
+        num_vars = len(obj_coeffs)
+        sense = dm.get_sense()
+        if sense:
+            sense = MAXIMIZE
+        else:
+            sense = MINIMIZE
+        v_lb = dm.get_variable_lower_bounds()
+        v_ub = dm.get_variable_upper_bounds()
+        v_types = dm.get_variable_types()
+        v_names = dm.get_variable_names().tolist()
+
+        # Add all Variables and Objective Coefficients
+        for i in range(num_vars):
+            v_name = ""
+            if v_names:
+                v_name = v_names[i]
+            self.addVariable(v_lb[i], v_ub[i], vtype=v_types[i], name=v_name)
+        vars = self.getVariables()
+        expr = LinearExpression(vars, obj_coeffs, obj_constant)
+        self.setObjective(expr, sense)
+
+        # Add all Constraints
+        c_lb = dm.get_constraint_lower_bounds()
+        c_ub = dm.get_constraint_upper_bounds()
+        c_b = dm.get_constraint_bounds()
+        c_names = dm.get_row_names()
+        offsets = dm.get_constraint_matrix_offsets()
+        indices = dm.get_constraint_matrix_indices()
+        values = dm.get_constraint_matrix_values()
+
+        num_constrs = len(offsets) - 1
+        for i in range(num_constrs):
+            start = offsets[i]
+            end = offsets[i + 1]
+            c_coeffs = values[start:end]
+            c_indices = indices[start:end]
+            c_vars = [vars[j] for j in c_indices]
+            expr = LinearExpression(c_vars, c_coeffs, 0.0)
+            if c_lb[i] == c_ub[i]:
+                self.addConstraint(expr == c_b[i], name=c_names[i])
+            elif c_lb[i] == c_b[i]:
+                self.addConstraint(expr >= c_b[i], name=c_names[i])
+            elif c_ub[i] == c_b[i]:
+                self.addConstraint(expr <= c_b[i], name=c_names[i])
+            else:
+                raise Exception("Couldn't initialize constraints")
+
+    def _to_data_model(self):
+        # iterate through the constraints and construct the constraint matrix
+        n = len(self.vars)
+        self.rhs = []
+        self.row_sense = []
+        self.row_names = []
+
+        if self.constraint_csr_matrix is None:
+            csr_dict = {
+                "row_pointers": [0],
+                "column_indices": [],
+                "values": [],
+            }
+            for constr in self.constrs:
+                csr_dict["column_indices"].extend(
+                    list(constr.vindex_coeff_dict.keys())
+                )
+                csr_dict["values"].extend(
+                    list(constr.vindex_coeff_dict.values())
+                )
+                csr_dict["row_pointers"].append(
+                    len(csr_dict["column_indices"])
+                )
+                self.rhs.append(constr.RHS)
+                self.row_sense.append(constr.Sense)
+                self.row_names.append(constr.ConstraintName)
+            self.constraint_csr_matrix = csr_dict
+
+        else:
+            for constr in self.constrs:
+                self.rhs.append(constr.RHS)
+                self.row_sense.append(constr.Sense)
+
+        self.objective = np.zeros(n)
+        self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
+        self.var_type = np.empty(n, dtype="S1")
+        self.var_names = []
+
+        for j in range(n):
+            self.objective[j] = self.vars[j].getObjectiveCoefficient()
+            self.var_type[j] = self.vars[j].getVariableType()
+            self.lower_bound[j] = self.vars[j].getLowerBound()
+            self.upper_bound[j] = self.vars[j].getUpperBound()
+            self.var_names.append(self.vars[j].VariableName)
+
+        # Initialize datamodel
+        dm = data_model.DataModel()
+        dm.set_csr_constraint_matrix(
+            np.array(self.constraint_csr_matrix["values"]),
+            np.array(self.constraint_csr_matrix["column_indices"]),
+            np.array(self.constraint_csr_matrix["row_pointers"]),
+        )
+        if self.ObjSense == -1:
+            dm.set_maximize(True)
+        dm.set_constraint_bounds(np.array(self.rhs))
+        dm.set_row_types(np.array(self.row_sense, dtype="S1"))
+        dm.set_objective_coefficients(self.objective)
+        dm.set_objective_offset(self.ObjConstant)
+        dm.set_variable_lower_bounds(self.lower_bound)
+        dm.set_variable_upper_bounds(self.upper_bound)
+        dm.set_variable_types(self.var_type)
+        dm.set_variable_names(self.var_names)
+        dm.set_row_names(self.row_names)
+        dm.set_problem_name(self.Name)
+
+        self.model = dm
 
     def reset_solved_values(self):
         # Resets all post solve values
@@ -724,6 +843,8 @@ class Problem:
             constr.Slack = float("nan")
             constr.DualValue = float("nan")
 
+        self.model = None
+        self.constraint_csr_matrix = None
         self.ObjValue = float("nan")
         self.solved = False
 
@@ -823,7 +944,7 @@ class Problem:
             case int() | float():
                 for var in self.vars:
                     var.setObjectiveCoefficient(0.0)
-                self.ObjCon = float(expr)
+                self.ObjConstant = float(expr)
             case Variable():
                 for var in self.vars:
                     var.setObjectiveCoefficient(0.0)
@@ -832,6 +953,7 @@ class Problem:
             case LinearExpression():
                 for var, coeff in expr.zipVarCoefficients():
                     self.vars[var.getIndex()].setObjectiveCoefficient(coeff)
+                self.ObjConstant = expr.getConstant()
             case _:
                 raise ValueError(
                     "Objective must be a LinearExpression or a constant"
@@ -855,6 +977,22 @@ class Problem:
         Get a list of all the Constraints in a problem.
         """
         return self.constrs
+
+    @classmethod
+    def readMPS(cls, mps_file):
+        """
+        Initiliaze a problem from an MPS file.
+        """
+        problem = cls()
+        data_model = cuopt_mps_parser.ParseMps(mps_file)
+        problem._from_data_model(data_model)
+        problem.model = data_model
+        return problem
+
+    def writeMPS(self, mps_file):
+        if self.model is None:
+            self._to_data_model()
+        self.model.writeMPS(mps_file)
 
     @property
     def NumVariables(self):
@@ -887,6 +1025,8 @@ class Problem:
         Computes and returns the CSR representation of the
         constraint matrix.
         """
+        if self.constraint_csr_matrix is not None:
+            return self.dict_to_object(self.constraint_csr_matrix)
         csr_dict = {"row_pointers": [0], "column_indices": [], "values": []}
         for constr in self.constrs:
             csr_dict["column_indices"].extend(
@@ -894,6 +1034,7 @@ class Problem:
             )
             csr_dict["values"].extend(list(constr.vindex_coeff_dict.values()))
             csr_dict["row_pointers"].append(len(csr_dict["column_indices"]))
+        self.constraint_csr_matrix = csr_dict
         return self.dict_to_object(csr_dict)
 
     def get_incumbent_values(self, solution, vars):
@@ -905,7 +1046,18 @@ class Problem:
             values.append(solution[var.index])
         return values
 
-    def post_solve(self, solution):
+    def relax(self):
+        """
+        Relax a MIP problem into an LP problem and return the relaxed model.
+        """
+        self.reset_solved_values()
+        relaxed_problem = copy.deepcopy(self)
+        vars = relaxed_problem.getVariables()
+        for v in vars:
+            v.VariableType = CONTINUOUS
+        return relaxed_problem
+
+    def populate_solution(self, solution):
         self.Status = solution.get_termination_status()
         self.SolveTime = solution.get_solve_time()
 
@@ -950,48 +1102,11 @@ class Problem:
         >>> problem.solve()
         """
 
-        # iterate through the constraints and construct the constraint matrix
-        n = len(self.vars)
-        self.row_pointers = [0]
-        self.column_indicies = []
-        self.values = []
-        self.rhs = []
-        self.row_sense = []
-        for constr in self.constrs:
-            self.column_indicies.extend(list(constr.vindex_coeff_dict.keys()))
-            self.values.extend(list(constr.vindex_coeff_dict.values()))
-            self.row_pointers.append(len(self.column_indicies))
-            self.rhs.append(constr.RHS)
-            self.row_sense.append(constr.Sense)
-
-        self.objective = np.zeros(n)
-        self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
-        self.var_type = np.empty(n, dtype="S1")
-
-        for j in range(n):
-            self.objective[j] = self.vars[j].getObjectiveCoefficient()
-            self.var_type[j] = self.vars[j].getVariableType()
-            self.lower_bound[j] = self.vars[j].getLowerBound()
-            self.upper_bound[j] = self.vars[j].getUpperBound()
-
-        # Initialize datamodel
-        dm = data_model.DataModel()
-        dm.set_csr_constraint_matrix(
-            np.array(self.values),
-            np.array(self.column_indicies),
-            np.array(self.row_pointers),
-        )
-        if self.ObjSense == -1:
-            dm.set_maximize(True)
-        dm.set_constraint_bounds(np.array(self.rhs))
-        dm.set_row_types(np.array(self.row_sense, dtype="S1"))
-        dm.set_objective_coefficients(self.objective)
-        dm.set_variable_lower_bounds(self.lower_bound)
-        dm.set_variable_upper_bounds(self.upper_bound)
-        dm.set_variable_types(self.var_type)
+        if self.model is None:
+            self._to_data_model()
 
         # Call Solver
-        solution = solver.Solve(dm, settings)
+        solution = solver.Solve(self.model, settings)
 
         # Post Solve
-        self.post_solve(solution)
+        self.populate_solution(solution)

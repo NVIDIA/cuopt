@@ -112,7 +112,6 @@ class problem_t {
   void get_host_user_problem(
     cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const;
 
-  void write_as_mps(const std::string& path);
   void add_cutting_plane_at_objective(f_t objective);
   void compute_vars_with_objective_coeffs();
 
@@ -266,6 +265,7 @@ class problem_t {
   std::vector<std::string> row_names{};
   /** name of the objective (only a single objective is currently allowed) */
   std::string objective_name;
+  f_t objective_offset;
   bool is_scaled_{false};
   bool preprocess_called{false};
   // this LP state keeps the warm start data of some solution of

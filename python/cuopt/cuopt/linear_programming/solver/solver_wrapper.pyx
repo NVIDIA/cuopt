@@ -154,127 +154,6 @@ def type_cast(cudf_obj, np_type, name):
     return cudf_obj
 
 
-cdef set_data_model_view(DataModel data_model_obj):
-    cdef data_model_view_t[int, double]* c_data_model_view = (
-        data_model_obj.c_data_model_view.get()
-    )
-
-    # Set data_model_obj fields on the C++ side if set on the Python side
-    cdef uintptr_t c_A_values = (
-        get_data_ptr(data_model_obj.get_constraint_matrix_values())
-    )
-    cdef uintptr_t c_A_indices = (
-        get_data_ptr(data_model_obj.get_constraint_matrix_indices())
-    )
-    cdef uintptr_t c_A_offsets = (
-        get_data_ptr(data_model_obj.get_constraint_matrix_offsets())
-    )
-    if data_model_obj.get_constraint_matrix_values().shape[0] != 0 and data_model_obj.get_constraint_matrix_indices().shape[0] != 0 and data_model_obj.get_constraint_matrix_offsets().shape[0] != 0: # noqa
-        c_data_model_view.set_csr_constraint_matrix(
-            <const double *> c_A_values,
-            data_model_obj.get_constraint_matrix_values().shape[0],
-            <const int *> c_A_indices,
-            data_model_obj.get_constraint_matrix_indices().shape[0],
-            <const int *> c_A_offsets,
-            data_model_obj.get_constraint_matrix_offsets().shape[0]
-        )
-
-    cdef uintptr_t c_b = (
-        get_data_ptr(data_model_obj.get_constraint_bounds())
-    )
-    if data_model_obj.get_constraint_bounds().shape[0] != 0:
-        c_data_model_view.set_constraint_bounds(
-            <const double *> c_b,
-            data_model_obj.get_constraint_bounds().shape[0]
-        )
-
-    cdef uintptr_t c_c = (
-        get_data_ptr(data_model_obj.get_objective_coefficients())
-    )
-    if data_model_obj.get_objective_coefficients().shape[0] != 0:
-        c_data_model_view.set_objective_coefficients(
-            <const double *> c_c,
-            data_model_obj.get_objective_coefficients().shape[0]
-        )
-
-    c_data_model_view.set_objective_scaling_factor(
-        <double> data_model_obj.get_objective_scaling_factor()
-    )
-    c_data_model_view.set_objective_offset(
-        <double> data_model_obj.get_objective_offset()
-    )
-    c_data_model_view.set_maximize(<bool> data_model_obj.maximize)
-
-    cdef uintptr_t c_variable_lower_bounds = (
-        get_data_ptr(data_model_obj.get_variable_lower_bounds())
-    )
-    if data_model_obj.get_variable_lower_bounds().shape[0] != 0:
-        c_data_model_view.set_variable_lower_bounds(
-            <const double *> c_variable_lower_bounds,
-            data_model_obj.get_variable_lower_bounds().shape[0]
-        )
-
-    cdef uintptr_t c_variable_upper_bounds = (
-        get_data_ptr(data_model_obj.get_variable_upper_bounds())
-    )
-    if data_model_obj.get_variable_upper_bounds().shape[0] != 0:
-        c_data_model_view.set_variable_upper_bounds(
-            <const double *> c_variable_upper_bounds,
-            data_model_obj.get_variable_upper_bounds().shape[0]
-        )
-    cdef uintptr_t c_constraint_lower_bounds = (
-        get_data_ptr(data_model_obj.get_constraint_lower_bounds())
-    )
-    if data_model_obj.get_constraint_lower_bounds().shape[0] != 0:
-        c_data_model_view.set_constraint_lower_bounds(
-            <const double *> c_constraint_lower_bounds,
-            data_model_obj.get_constraint_lower_bounds().shape[0]
-        )
-    cdef uintptr_t c_constraint_upper_bounds = (
-        get_data_ptr(data_model_obj.get_constraint_upper_bounds())
-    )
-    if data_model_obj.get_constraint_upper_bounds().shape[0] != 0:
-        c_data_model_view.set_constraint_upper_bounds(
-            <const double *> c_constraint_upper_bounds,
-            data_model_obj.get_constraint_upper_bounds().shape[0]
-        )
-    cdef uintptr_t c_row_types = (
-        get_data_ptr(data_model_obj.get_ascii_row_types())
-    )
-    if data_model_obj.get_ascii_row_types().shape[0] != 0:
-        c_data_model_view.set_row_types(
-            <const char *> c_row_types,
-            data_model_obj.get_ascii_row_types().shape[0]
-        )
-
-    cdef uintptr_t c_var_types = (
-        get_data_ptr(data_model_obj.get_variable_types())
-    )
-    if data_model_obj.get_variable_types().shape[0] != 0:
-        c_data_model_view.set_variable_types(
-            <const char *> c_var_types,
-            data_model_obj.get_variable_types().shape[0]
-        )
-
-    # Set initial solution on the C++ side if set on the Python side
-    cdef uintptr_t c_initial_primal_solution = (
-        get_data_ptr(data_model_obj.get_initial_primal_solution())
-    )
-    if data_model_obj.get_initial_primal_solution().shape[0] != 0:
-        c_data_model_view.set_initial_primal_solution(
-            <const double *> c_initial_primal_solution,
-            data_model_obj.get_initial_primal_solution().shape[0]
-        )
-    cdef uintptr_t c_initial_dual_solution = (
-        get_data_ptr(data_model_obj.get_initial_dual_solution())
-    )
-    if data_model_obj.get_initial_dual_solution().shape[0] != 0:
-        c_data_model_view.set_initial_dual_solution(
-            <const double *> c_initial_dual_solution,
-            data_model_obj.get_initial_dual_solution().shape[0]
-        )
-
-
 cdef set_solver_setting(
         unique_ptr[solver_settings_t[int, double]]& unique_solver_settings,
         settings,
@@ -675,7 +554,7 @@ def Solve(py_data_model_obj, settings, mip=False):
     set_solver_setting(
         unique_solver_settings, settings, data_model_obj, mip
     )
-    set_data_model_view(data_model_obj)
+    data_model_obj.set_data_model_view()
 
     return create_solution(move(call_solve(
         data_model_obj.c_data_model_view.get(),
@@ -683,8 +562,10 @@ def Solve(py_data_model_obj, settings, mip=False):
     )), data_model_obj)
 
 
-cdef insert_vector(DataModel data_model_obj,
-                   vector[data_model_view_t[int, double] *]& data_model_views):
+cdef set_and_insert_vector(
+        DataModel data_model_obj,
+        vector[data_model_view_t[int, double] *]& data_model_views):
+    data_model_obj.set_data_model_view()
     data_model_views.push_back(data_model_obj.c_data_model_view.get())
 
 
@@ -699,8 +580,7 @@ def BatchSolve(py_data_model_list, settings):
     cdef vector[data_model_view_t[int, double] *] data_model_views
 
     for data_model_obj in py_data_model_list:
-        set_data_model_view(<DataModel>data_model_obj)
-        insert_vector(<DataModel>data_model_obj, data_model_views)
+        set_and_insert_vector(<DataModel>data_model_obj, data_model_views)
 
     cdef pair[
         vector[unique_ptr[solver_ret_t]],
