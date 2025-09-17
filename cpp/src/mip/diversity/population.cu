@@ -63,16 +63,6 @@ template <typename i_t>
 i_t get_max_var_threshold(i_t n_vars)
 {
   return n_vars - sqrt(n_vars);
-  if (n_vars < 50) {
-    return std::max(1, n_vars - 2);
-  } else if (n_vars < 80) {
-    return n_vars - 6;
-  } else if (n_vars < 200) {
-    return n_vars - 15;
-  } else if (n_vars < 1000) {
-    return n_vars - 40;
-  }
-  return n_vars - 60;
 }
 
 template <typename i_t, typename f_t>
