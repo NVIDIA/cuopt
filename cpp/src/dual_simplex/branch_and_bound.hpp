@@ -152,6 +152,8 @@ class branch_and_bound_t {
 
   i_t node_depth_threshold_;
 
+  i_t active_tasks_;
+
   // Update the status of the nodes in the search tree.
   void update_tree(mip_node_t<i_t, f_t>* node_ptr, node_status_t status);
 
@@ -160,6 +162,8 @@ class branch_and_bound_t {
 
   // Explore the search tree using the best-first search strategy.
   void explore_subtree(mip_node_t<i_t, f_t>* start_node);
+
+  void best_first_thread();
 
   // Branch the current node, creating two children.
   void branch(mip_node_t<i_t, f_t>* parent_node,

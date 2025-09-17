@@ -680,10 +680,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(mip_node_t<i_t, f_t>* n
       graphviz_node(settings_, node_ptr, "fathomed", leaf_objective);
       update_tree(node_ptr, node_status_t::FATHOMED);
     }
+  } else if (lp_status == dual::status_t::TIME_LIMIT) {
+    graphviz_node(settings_, node_ptr, "timeout", 0.0);
+    return mip_status_t::TIME_LIMIT;
+
   } else {
     graphviz_node(settings_, node_ptr, "numerical", 0.0);
-    settings_.log.printf("Encountered LP status %d. This indicates a numerical issue.\n",
-                         lp_status);
+    settings_.log.printf("Encountered LP status %d on node %d. This indicates a numerical issue.\n",
+                         lp_status,
+                         node_ptr->node_id);
     return mip_status_t::NUMERICAL;
   }
 
@@ -774,12 +779,12 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
       break;
     }
 
-    // We are just checking for numerical issues during the LP solve, otherwise
+    // We are just checking for numerical issues or timeout during the LP solve, otherwise
     // lp_status is set to RUNNING.
     mip_status_t lp_status = solve_node_lp(node_ptr, leaf_problem, Arow, upper_bound);
-    if (lp_status == mip_status_t::NUMERICAL) {
+    if (lp_status == mip_status_t::TIME_LIMIT) {
 #pragma omp atomic write
-      status_ = mip_status_t::NUMERICAL;
+      status_ = lp_status;
       break;
     }
 
@@ -807,8 +812,10 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
     // We move the nodes from the local stack to the global heap when the depth difference from the
     // node at the first and last node in the stack is greater than the threshold or
     // the global heap contains too few nodes.
-    if (stack.size() > 2 && (stack.front()->depth - stack.back()->depth > node_depth_threshold_ ||
-                             get_heap_size() < 4 * settings_.num_threads)) {
+    // if (stack.size() > 2 && (stack.front()->depth - stack.back()->depth > node_depth_threshold_
+    // ||
+    //                          get_heap_size() < 4 * settings_.num_threads)) {
+    if (stack.size() > 0) {
       mip_node_t<i_t, f_t>* node = stack.back();
       stack.pop_back();
 
@@ -817,6 +824,55 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(mip_node_t<i_t, f_t>* start_n
       mutex_heap_.unlock();
     }
   }
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::best_first_thread()
+{
+  i_t active;
+  f_t lower_bound;
+  f_t upper_bound;
+  f_t gap;
+
+  do {
+    mip_node_t<i_t, f_t>* node_ptr = nullptr;
+
+    // If there any node left in the heap, we pop the top node and explore it.
+    mutex_heap_.lock();
+    if (heap_.size() > 0) {
+      node_ptr = heap_.top();
+      heap_.pop();
+    }
+    mutex_heap_.unlock();
+
+    if (node_ptr != nullptr) {
+      if (get_upper_bound() < node_ptr->lower_bound) {
+        // This node was put on the heap earlier but its lower bound is now greater than the
+        // current upper bound
+        graphviz_node(settings_, node_ptr, "cutoff", node_ptr->lower_bound);
+        update_tree(node_ptr, node_status_t::FATHOMED);
+        continue;
+      }
+
+#pragma omp atomic update
+      active_tasks_++;
+
+      explore_subtree(node_ptr);
+
+#pragma omp atomic update
+      active_tasks_--;
+    }
+
+#pragma omp atomic read
+    active = active_tasks_;
+
+    lower_bound = get_lower_bound();
+    upper_bound = get_upper_bound();
+    gap         = upper_bound - lower_bound;
+
+  } while (get_status() == mip_status_t::RUNNING && gap > settings_.absolute_mip_gap_tol &&
+           relative_gap(upper_bound, lower_bound) > settings_.relative_mip_gap_tol &&
+           (active > 0 || get_heap_size() > 0));
 }
 
 template <typename i_t, typename f_t>
@@ -831,6 +887,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   stats_.nodes_explored   = 0;
   stats_.nodes_unexplored = 2;
   stats_.num_nodes        = 0;
+  node_depth_threshold_   = 10;
+  active_tasks_           = 0;
 
   if (guess_.size() != 0) {
     std::vector<f_t> crushed_guess;
@@ -948,52 +1006,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     "| Explored | Unexplored | Objective   |    Bound    | Depth | Iter/Node |  Gap   | "
     "   Time \n");
 
-  node_depth_threshold_ = 10;
-  i_t active_tasks_     = 0;
-
 #pragma omp atomic write
   status_ = mip_status_t::RUNNING;
 
 #pragma omp parallel num_threads(settings_.num_threads)
   {
-    i_t active;
-
-    do {
-      mip_node_t<i_t, f_t>* node_ptr = nullptr;
-
-      // If there any node left in the heap, we pop the top node and explore it.
-      mutex_heap_.lock();
-      if (heap_.size() > 0) {
-        node_ptr = heap_.top();
-        heap_.pop();
-      }
-      mutex_heap_.unlock();
-
-      if (node_ptr != nullptr) {
-        if (get_upper_bound() < node_ptr->lower_bound) {
-          // This node was put on the heap earlier but its lower bound is now greater than the
-          // current upper bound
-          graphviz_node(settings_, node_ptr, "cutoff", node_ptr->lower_bound);
-          update_tree(node_ptr, node_status_t::FATHOMED);
-          continue;
-        }
-
-#pragma omp atomic update
-        active_tasks_++;
-
-        explore_subtree(node_ptr);
-
-#pragma omp atomic update
-        active_tasks_--;
-      }
-
-#pragma omp atomic read
-      active = active_tasks_;
-
-    } while (get_status() == mip_status_t::RUNNING && (active > 0 || get_heap_size() > 0));
+    best_first_thread();
   }
-
-  if (status_ == mip_status_t::TIME_LIMIT) { settings_.log.printf("Time limit reached.\n"); }
 
 #pragma omp atomic write
   status_ = mip_status_t::FINISHED;
@@ -1004,6 +1023,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   f_t obj         = compute_user_objective(original_lp_, upper_bound);
   f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
   f_t gap_rel     = relative_gap(get_upper_bound(), lower_bound);
+
+  if (status_ == mip_status_t::TIME_LIMIT) { settings_.log.printf("Time limit reached.\n"); }
 
   settings_.log.printf(
     "Explored %d nodes in %.2fs.\n", stats_.nodes_explored, toc(stats_.start_time));
