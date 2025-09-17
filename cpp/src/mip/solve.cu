@@ -82,9 +82,9 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                      thrust::make_counting_iterator(0),
                      thrust::make_counting_iterator(problem.n_variables),
                      [sol = solution.assignment.data(), pb = problem.view()] __device__(i_t index) {
-                       sol[index] = pb.objective_coefficients[index] > 0
-                                      ? pb.variable_lower_bounds[index]
-                                      : pb.variable_upper_bounds[index];
+                       auto bounds = pb.variable_bounds[index];
+                       sol[index]  = pb.objective_coefficients[index] > 0 ? get_lower(bounds)
+                                                                          : get_upper(bounds);
                      });
     problem.post_process_solution(solution);
     solution.compute_objective();  // just to ensure h_user_obj is set
@@ -214,7 +214,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      problem.write_as_mps(settings.user_problem_file);
+      op_problem.write_to_mps(settings.user_problem_file);
     }
 
     // this is for PDLP, i think this should be part of pdlp solver

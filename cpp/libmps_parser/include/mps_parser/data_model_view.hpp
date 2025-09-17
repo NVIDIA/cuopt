@@ -187,6 +187,20 @@ class data_model_view_t {
    */
   void set_problem_name(const std::string& problem_name);
   /**
+   * @brief Set the variables names.
+   * @note Setting before calling the solver is optional.
+   *
+   * @param[in] variable_names Variable names values.
+   */
+  void set_variable_names(const std::vector<std::string>& variables_names);
+  /**
+   * @brief Set the row names.
+   * @note Setting before calling the solver is optional.
+   *
+   * @param[in] row_names Row names value.
+   */
+  void set_row_names(const std::vector<std::string>& row_names);
+  /**
    * @brief Set the constraints lower bounds.
    * @note Setting before calling the solver is optional if you set the row type, else it's
    * mandatory along with the upper bounds.
@@ -351,6 +365,19 @@ class data_model_view_t {
   span<f_t const> get_initial_dual_solution() const noexcept;
 
   /**
+   * @brief Get the variable names
+   *
+   * @return span<std::string const>
+   */
+  const std::vector<std::string>& get_variable_names() const noexcept;
+  /**
+   * @brief Get the row names
+   *
+   * @return span<std::string const>
+   */
+  const std::vector<std::string>& get_row_names() const noexcept;
+
+  /**
    * @brief Get the problem name
    *
    * @return std::string
@@ -404,6 +431,8 @@ class data_model_view_t {
   span<char const> row_types_;
   std::string objective_name_;
   std::string problem_name_;
+  std::vector<std::string> variable_names_;
+  std::vector<std::string> row_names_;
   span<f_t const> constraint_lower_bounds_;
   span<f_t const> constraint_upper_bounds_;
 

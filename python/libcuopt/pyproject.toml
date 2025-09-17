@@ -46,6 +46,7 @@ dependencies = [
     "cuopt-mps-parser==25.10.*,>=0.0.0a0",
     "librmm==25.10.*,>=0.0.0a0",
     "nvidia-cublas",
+    "nvidia-cudart",
     "nvidia-curand",
     "nvidia-cusolver",
     "nvidia-cusparse",

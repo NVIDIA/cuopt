@@ -129,5 +129,7 @@ def ParseMps(mps_file_path, fixed_mps_formats):
         data_model.set_row_types(row_types)
     data_model.set_variable_names(var_names_)
     data_model.set_row_names(row_names_)
+    data_model.set_objective_name(dm_ret.objective_name_.decode())
+    data_model.set_problem_name(dm_ret.problem_name_.decode())
 
     return data_model

@@ -304,6 +304,13 @@ class optimization_problem_t {
    */
   void set_row_names(const std::vector<std::string>& row_names);
 
+  /**
+   * @brief Write the problem to an MPS formatted file
+   *
+   * @param[in] mps_file_path Path to the MPS file to write
+   */
+  void write_to_mps(const std::string& mps_file_path);
+
   i_t get_n_variables() const;
   i_t get_n_constraints() const;
   i_t get_nnz() const;

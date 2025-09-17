@@ -79,6 +79,7 @@ Optional Arguments:
     --batch-num        Batch number
     --n-batches        Number of batches
     --log-to-console   Log to console
+    --model-list       File containing a list of models to run
     -h, --help         Show this help message and exit
 
 Examples:
@@ -168,6 +169,11 @@ while [[ $# -gt 0 ]]; do
             LOG_TO_CONSOLE="$2"
             shift 2
             ;;
+        --model-list)
+            echo "MODEL_LIST: $2"
+            MODEL_LIST="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1"
             print_help
@@ -194,7 +200,7 @@ PRESOLVE=${PRESOLVE:-true}
 BATCH_NUM=${BATCH_NUM:-0}
 N_BATCHES=${N_BATCHES:-1}
 LOG_TO_CONSOLE=${LOG_TO_CONSOLE:-true}
-
+MODEL_LIST=${MODEL_LIST:-}
 # Determine GPU list
 if [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
     IFS=',' read -ra GPU_LIST <<< "$CUDA_VISIBLE_DEVICES"
@@ -206,8 +212,49 @@ else
 fi
 GPU_COUNT=${#GPU_LIST[@]}
 
-# Gather all mps files into an array
-mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps)
+# Ensure all entries in MODEL_LIST have .mps extension
+if [[ -n "$MODEL_LIST" && -f "$MODEL_LIST" ]]; then
+    # Create a temporary file to store the updated model list
+    TMP_MODEL_LIST=$(mktemp)
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Skip empty lines
+        [[ -z "$line" ]] && continue
+        # If the line does not end with .mps, append it
+        if [[ "$line" != *.mps ]]; then
+            echo "${line}.mps" >> "$TMP_MODEL_LIST"
+        else
+            echo "$line" >> "$TMP_MODEL_LIST"
+        fi
+    done < "$MODEL_LIST"
+    # Overwrite the original MODEL_LIST with the updated one
+    mv "$TMP_MODEL_LIST" "$MODEL_LIST"
+fi
+
+
+# Gather all mps files into an array, either from the model list or from the directory
+if [[ -n "$MODEL_LIST" ]]; then
+    if [[ ! -f "$MODEL_LIST" ]]; then
+        echo "Model list file not found: $MODEL_LIST"
+        exit 1
+    fi
+    mapfile -t mps_files < <(grep -v '^\s*$' "$MODEL_LIST" | sed "s|^|$MPS_DIR/|")
+    # Optionally, check that all files exist
+    missing_files=()
+    for f in "${mps_files[@]}"; do
+        if [[ ! -f "$f" ]]; then
+            missing_files+=("$f")
+        fi
+    done
+    if (( ${#missing_files[@]} > 0 )); then
+        echo "The following files from the model list do not exist in $MPS_DIR:"
+        for f in "${missing_files[@]}"; do
+            echo "  $f"
+        done
+        exit 1
+    fi
+else
+    mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps)
+fi
 
 # Calculate batch size and start/end indices
 batch_size=$(( (${#mps_files[@]} + N_BATCHES - 1) / N_BATCHES ))

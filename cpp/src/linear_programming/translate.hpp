@@ -81,9 +81,9 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
     }
   }
   user_problem.num_range_rows = user_problem.range_rows.size();
-  user_problem.lower          = cuopt::host_copy(model.variable_lower_bounds);
-  user_problem.upper          = cuopt::host_copy(model.variable_upper_bounds);
-  user_problem.problem_name   = model.original_problem_ptr->get_problem_name();
+  std::tie(user_problem.lower, user_problem.upper) =
+    extract_host_bounds<f_t>(model.variable_bounds, model.handle_ptr);
+  user_problem.problem_name = model.original_problem_ptr->get_problem_name();
   if (model.row_names.size() > 0) {
     user_problem.row_names.resize(m);
     for (int i = 0; i < m; ++i) {
@@ -164,8 +164,7 @@ void translate_to_crossover_problem(const detail::problem_t<i_t, f_t>& problem,
   lp.obj_constant = problem.presolve_data.objective_offset;
   lp.obj_scale    = problem.presolve_data.objective_scaling_factor;
 
-  std::vector<f_t> lower = cuopt::host_copy(problem.variable_lower_bounds);
-  std::vector<f_t> upper = cuopt::host_copy(problem.variable_upper_bounds);
+  auto [lower, upper] = extract_host_bounds<f_t>(problem.variable_bounds, problem.handle_ptr);
 
   std::vector<f_t> constraint_lower = cuopt::host_copy(problem.constraint_lower_bounds);
   std::vector<f_t> constraint_upper = cuopt::host_copy(problem.constraint_upper_bounds);

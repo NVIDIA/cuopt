@@ -46,7 +46,6 @@ feasibility_pump_t<i_t, f_t>::feasibility_pump_t(
   fj_t<i_t, f_t>& fj_,
   //  fj_tree_t<i_t, f_t>& fj_tree_,
   constraint_prop_t<i_t, f_t>& constraint_prop_,
-  lb_constraint_prop_t<i_t, f_t>& lb_constraint_prop_,
   line_segment_search_t<i_t, f_t>& line_segment_search_,
   rmm::device_uvector<f_t>& lp_optimal_solution_)
   : context(context_),
@@ -55,7 +54,6 @@ feasibility_pump_t<i_t, f_t>::feasibility_pump_t(
     line_segment_search(line_segment_search_),
     cycle_queue(*context.problem_ptr),
     constraint_prop(constraint_prop_),
-    lb_constraint_prop(lb_constraint_prop_),
     last_rounding(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     last_projection(context.problem_ptr->n_variables,
                     context.problem_ptr->handle_ptr->get_stream()),
@@ -147,11 +145,9 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
                                                                 bool longer_lp_run)
 {
   CUOPT_LOG_DEBUG("linear projection of fp");
-  auto h_assignment            = solution.get_host_assignment();
-  auto h_variable_upper_bounds = cuopt::host_copy(solution.problem_ptr->variable_upper_bounds,
-                                                  solution.handle_ptr->get_stream());
-  auto h_variable_lower_bounds = cuopt::host_copy(solution.problem_ptr->variable_lower_bounds,
-                                                  solution.handle_ptr->get_stream());
+  auto h_assignment = solution.get_host_assignment();
+  auto h_variable_bounds =
+    cuopt::host_copy(solution.problem_ptr->variable_bounds, solution.handle_ptr->get_stream());
   auto h_last_projection = cuopt::host_copy(last_projection, solution.handle_ptr->get_stream());
   const f_t int_tol      = context.settings.tolerances.integrality_tolerance;
   constraints_delta_t<i_t, f_t> h_constraints;
@@ -164,23 +160,24 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
   f_t obj_offset = 0;
   // for each integer add the variable and the distance constraints
   for (auto i : h_integer_indices) {
-    if (solution.problem_ptr->integer_equal(h_assignment[i], h_variable_upper_bounds[i])) {
-      obj_offset += h_variable_upper_bounds[i];
+    auto h_var_bounds = h_variable_bounds[i];
+    if (solution.problem_ptr->integer_equal(h_assignment[i], get_upper(h_var_bounds))) {
+      obj_offset += get_upper(h_var_bounds);
       // set the objective weight to -1,  u - x
       obj_coefficients[i] = -1;
-    } else if (solution.problem_ptr->integer_equal(h_assignment[i], h_variable_lower_bounds[i])) {
-      obj_offset -= h_variable_lower_bounds[i];
+    } else if (solution.problem_ptr->integer_equal(h_assignment[i], get_lower(h_var_bounds))) {
+      obj_offset -= get_lower(h_var_bounds);
       // set the objective weight to +1,  x - l
       obj_coefficients[i] = 1;
     } else {
       // objective weight is 1
       const f_t obj_weight = 1.;
       // the distance should always be positive
-      i_t var_id = h_variables.add_variable(
-        0,
-        (h_variable_upper_bounds[i] - h_variable_lower_bounds[i]) + int_tol,
-        obj_weight,
-        var_t::CONTINUOUS);
+      i_t var_id =
+        h_variables.add_variable(0,
+                                 (get_upper(h_var_bounds) - get_lower(h_var_bounds)) + int_tol,
+                                 obj_weight,
+                                 var_t::CONTINUOUS);
       obj_coefficients.push_back(obj_weight);
       f_t dist_val = abs(h_assignment[i] - h_last_projection[i]);
       // if it is out of bounds, because of the approximation issues,or init issues
@@ -442,8 +439,7 @@ void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& 
   orig_variable_types.resize(solution.problem_ptr->n_variables, solution.handle_ptr->get_stream());
 
   auto var_types  = make_span(solution.problem_ptr->variable_types);
-  auto var_lb     = make_span(solution.problem_ptr->variable_lower_bounds);
-  auto var_ub     = make_span(solution.problem_ptr->variable_upper_bounds);
+  auto var_bnds   = make_span(solution.problem_ptr->variable_bounds);
   auto copy_types = make_span(orig_variable_types);
 
   raft::copy(orig_variable_types.data(),
@@ -454,11 +450,11 @@ void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& 
     solution.handle_ptr->get_thrust_policy(),
     thrust::make_counting_iterator<i_t>(0),
     thrust::make_counting_iterator<i_t>(solution.problem_ptr->n_variables),
-    [var_types, var_lb, var_ub, copy_types, pb = solution.problem_ptr->view()] __device__(
-      auto v_idx) {
+    [var_types, var_bnds, copy_types, pb = solution.problem_ptr->view()] __device__(auto v_idx) {
       auto orig_v_type = var_types[v_idx];
-      auto lb          = var_lb[v_idx];
-      auto ub          = var_ub[v_idx];
+      auto var_bounds  = var_bnds[v_idx];
+      auto lb          = get_lower(var_bounds);
+      auto ub          = get_upper(var_bounds);
       bool var_binary  = (pb.integer_equal(lb, 0) && pb.integer_equal(ub, 1));
       auto copy_type =
         (orig_v_type == var_t::INTEGER) && var_binary ? var_t::INTEGER : var_t::CONTINUOUS;
