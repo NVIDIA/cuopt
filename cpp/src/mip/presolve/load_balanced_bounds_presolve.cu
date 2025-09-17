@@ -86,7 +86,7 @@ load_balanced_bounds_presolve_t<i_t, f_t>::load_balanced_bounds_presolve_t(
     warp_vars_id_offsets(0, problem_.handle_ptr->get_stream()),
     context(context_)
 {
-  // setup(problem_);
+  setup(problem_);
 }
 
 template <typename i_t, typename f_t>

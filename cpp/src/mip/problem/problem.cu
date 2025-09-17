@@ -1578,7 +1578,7 @@ void problem_t<i_t, f_t>::compute_vars_with_objective_coeffs()
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::add_cutting_plane_at_objective(f_t objective)
 {
-  CUOPT_LOG_INFO("Adding cutting plane at objective %f", objective);
+  CUOPT_LOG_DEBUG("Adding cutting plane at objective %f", objective);
   if (cutting_plane_added) {
     // modify the RHS
     i_t last_constraint = n_constraints - 1;
