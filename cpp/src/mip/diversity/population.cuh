@@ -174,11 +174,20 @@ class population_t {
   weight_t<i_t, f_t> weights;
   std::vector<std::pair<size_t, f_t>> indices;
   std::vector<std::pair<bool, solution_t<i_t, f_t>>> solutions;
-  std::vector<std::vector<f_t>> external_solution_queue;
-  std::vector<f_t> external_solution_queue_obj;
-  std::vector<std::vector<f_t>> external_solution_queue_backlog;
-  std::vector<f_t> external_solution_queue_backlog_obj;
-  std::vector<std::string> external_solution_queue_origin;
+
+  struct external_solution_t {
+    external_solution_t() = default;
+    external_solution_t(const std::vector<f_t>& solution, f_t objective, const std::string& origin)
+      : solution(solution), objective(objective), origin(origin)
+    {
+    }
+    std::vector<f_t> solution;
+    f_t objective;
+    std::string origin;
+  };
+
+  std::vector<external_solution_t> external_solution_queue;
+  std::vector<external_solution_t> external_solution_queue_cpufj;
   std::mt19937 rng;
   i_t update_iter = 0;
   std::mutex solution_mutex;
