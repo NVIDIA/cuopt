@@ -287,7 +287,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   cudaDeviceSynchronize();
 
   // Give CPU solver some time to run
-  if (source != "line_segment") { std::this_thread::sleep_for(std::chrono::milliseconds(250)); }
+  // if (source != "line_segment") { std::this_thread::sleep_for(std::chrono::milliseconds(250)); }
 
   // Stop CPU solver
   for (auto& cpu_fj : ls_cpu_fj) {
