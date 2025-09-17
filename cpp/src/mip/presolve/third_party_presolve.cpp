@@ -34,7 +34,8 @@ static int presolve_calls_ = 0;
 static bool maximize_      = false;
 
 template <typename i_t, typename f_t>
-papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem)
+papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem,
+                                          std::function<bool(void)> presolve_stop_callback)
 {
   // Build papilo problem from optimization problem
   papilo::ProblemBuilder<f_t> builder;
@@ -84,6 +85,8 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
   std::vector<var_t> h_var_types(var_types.size());
   raft::copy(h_var_types.data(), var_types.data(), var_types.size(), stream_view);
 
+  if (presolve_stop_callback && presolve_stop_callback()) { return papilo::Problem<f_t>(); }
+
   maximize_ = op_problem.get_sense();
   if (maximize_) {
     for (size_t i = 0; i < h_obj_coeffs.size(); ++i) {
@@ -108,6 +111,8 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
       }
     }
   }
+
+  if (presolve_stop_callback && presolve_stop_callback()) { return papilo::Problem<f_t>(); }
 
   builder.setNumCols(num_cols);
   builder.setNumRows(num_rows);
@@ -158,6 +163,8 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
     if (h_constr_ub[i] == std::numeric_limits<f_t>::infinity()) { h_constr_ub[i] = 0; }
   }
 
+  if (presolve_stop_callback && presolve_stop_callback()) { return papilo::Problem<f_t>(); }
+
   for (size_t i = 0; i < h_var_lb.size(); ++i) {
     builder.setColLbInf(i, h_var_lb[i] == -std::numeric_limits<f_t>::infinity());
     builder.setColUbInf(i, h_var_ub[i] == std::numeric_limits<f_t>::infinity());
@@ -166,11 +173,14 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
   }
 
   auto problem = builder.build();
+  if (presolve_stop_callback && presolve_stop_callback()) { return papilo::Problem<f_t>(); }
 
   if (nnz > 0) {
     auto constexpr const sorted_entries = true;
     auto csr_storage = papilo::SparseStorage<f_t>(h_entries, num_rows, num_cols, sorted_entries);
+    if (presolve_stop_callback && presolve_stop_callback()) { return papilo::Problem<f_t>(); }
     problem.setConstraintMatrix(csr_storage, h_constr_lb, h_constr_ub, h_row_flags);
+    if (presolve_stop_callback && presolve_stop_callback()) { return papilo::Problem<f_t>(); }
 
     papilo::ConstraintMatrix<f_t>& matrix = problem.getConstraintMatrix();
     for (int i = 0; i < problem.getNRows(); ++i) {
@@ -376,12 +386,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
     presolve_calls_ == 0, error_type_t::ValidationError, "Presolve can only be called once");
   presolve_calls_++;
 
-  papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem);
-
-  CUOPT_LOG_INFO("Unpresolved problem:: %d constraints, %d variables, %d nonzeros",
-                 papilo_problem.getNRows(),
-                 papilo_problem.getNCols(),
-                 papilo_problem.getConstraintMatrix().getNnz());
+  papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem, presolve_stop_callback);
 
   // INSERT_YOUR_CODE
   // Check the timing so far and subtract it from the specified time_limit
@@ -395,6 +400,11 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
     CUOPT_LOG_INFO("Presolve stop callback triggered, skipping presolve");
     return std::make_pair(optimization_problem_t<i_t, f_t>(op_problem), true);
   }
+
+  CUOPT_LOG_INFO("Unpresolved problem:: %d constraints, %d variables, %d nonzeros",
+                 op_problem.get_n_constraints(),
+                 op_problem.get_n_variables(),
+                 op_problem.get_nnz());
 
   papilo::Presolve<f_t> presolver;
   set_presolve_methods<f_t>(presolver, category, presolve_method);
@@ -410,7 +420,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
   presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
 
   bool store_dual_postsolve = presolve_method == presolve_method_t::DUAL_PRESERVING;
-  auto result = presolver.apply(papilo_problem, store_dual_postsolve);
+  auto result               = presolver.apply(papilo_problem, store_dual_postsolve);
   check_presolve_status(result.status);
   if (result.status == papilo::PresolveStatus::kInfeasible ||
       result.status == papilo::PresolveStatus::kUnbndOrInfeas) {

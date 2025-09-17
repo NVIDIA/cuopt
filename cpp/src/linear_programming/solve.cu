@@ -480,7 +480,8 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
 template <typename i_t, typename f_t>
 std::tuple<optimization_problem_t<i_t, f_t>, detail::third_party_presolve_t<i_t, f_t>> run_presolve(
   optimization_problem_t<i_t, f_t> const& op_problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings)
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  std::function<bool(void)> presolve_stop_callback = nullptr)
 {
   double presolve_time_limit = std::min(0.1 * settings.time_limit, 60.0);
   detail::third_party_presolve_t<i_t, f_t> presolver;
@@ -490,7 +491,8 @@ std::tuple<optimization_problem_t<i_t, f_t>, detail::third_party_presolve_t<i_t,
                     settings.presolve_method,
                     settings.tolerances.absolute_primal_tolerance,
                     settings.tolerances.relative_primal_tolerance,
-                    presolve_time_limit);
+                    presolve_time_limit,
+                    presolve_stop_callback);
   return std::make_tuple(reduced_problem, presolver);
 }
 
@@ -503,7 +505,12 @@ void run_presolve_thread(optimization_problem_t<i_t, f_t> const& op_problem,
   if (get_presolve_method(settings) != presolve_method_t::NONE) {
     f_t start_time = dual_simplex::tic();
     CUOPT_LOG_INFO("Running presolve a separate thread");
-    auto [temp_problem, temp_presolver] = run_presolve(op_problem, settings);
+    auto presolve_stop_callback = [&settings]() {
+      return settings.concurrent_halt &&
+             settings.concurrent_halt->load(std::memory_order_acquire) == 1;
+    };
+    auto [temp_problem, temp_presolver] =
+      run_presolve(op_problem, settings, presolve_stop_callback);
     reduced_op_problem.copy_from(temp_problem, op_problem.get_handle_ptr()->get_stream());
     presolver    = temp_presolver;
     f_t end_time = dual_simplex::toc(start_time);
@@ -619,6 +626,12 @@ void run_dual_simplex_thread_on_op_problem(optimization_problem_t<i_t, f_t> cons
   } else {
     CUOPT_LOG_INFO("Running dual simplex on the original problem");
   }
+
+  if (settings.concurrent_halt && settings.concurrent_halt->load(std::memory_order_acquire) == 1) {
+    CUOPT_LOG_INFO("Concurrent halt triggered, skipping dual simplex");
+    return;
+  }
+
   // convert op_problem to problem and then to dual simplex problem
   detail::problem_t<i_t, f_t> problem(op_problem);
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
