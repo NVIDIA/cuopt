@@ -619,11 +619,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
       CUOPT_LOG_INFO("Third party presolve time: %f", presolve_time);
     }
 
-    if (settings.user_problem_file != "") {
-      CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      problem.write_as_mps(settings.user_problem_file);
-    }
-
     CUOPT_LOG_INFO(
       "Solving a problem with %d constraints %d variables (%d integers) and %d nonzeros",
       problem.n_constraints,
@@ -633,6 +628,11 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
     CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
                    problem.presolve_data.objective_offset,
                    problem.presolve_data.objective_scaling_factor);
+
+    if (settings.user_problem_file != "") {
+      CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
+      op_problem.write_to_mps(settings.user_problem_file);
+    }
 
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }

@@ -20,6 +20,8 @@
 # cython: language_level = 3
 
 from libcpp cimport bool
+from libcpp.string cimport string
+from libcpp.vector cimport vector
 
 
 cdef extern from "mps_parser/data_model_view.hpp" namespace "cuopt::mps_parser" nogil: # noqa
@@ -56,3 +58,14 @@ cdef extern from "mps_parser/data_model_view.hpp" namespace "cuopt::mps_parser" 
             i_t size) except +
         void set_row_types(const char* row_types, i_t size) except +
         void set_variable_types(const char* var_types, i_t size) except +
+        void set_variable_names(const vector[string] variables_names) except +
+        void set_row_names(const vector[string] row_names) except +
+        void set_problem_name(const string problem_name) except +
+        void set_objective_name(const string objective_name) except +
+
+
+cdef extern from "mps_parser/writer.hpp" namespace "cuopt::mps_parser" nogil: # noqa
+
+    cdef void write_mps(
+        const data_model_view_t[int, double] data_model,
+        const string user_problem_file) except +
