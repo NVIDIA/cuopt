@@ -135,7 +135,7 @@ TEST(docs, user_problem_file)
 
   settings.time_limit        = test_time_limit;
   settings.user_problem_file = user_problem_path;
-  settings.presolve_method   = cuopt::linear_programming::presolve_method_t::NONE;
+  settings.presolve_method   = cuopt::linear_programming::presolve_method_t::OFF;
   EXPECT_EQ(solve_mip(&handle_, problem, settings).get_termination_status(),
             mip_termination_status_t::Optimal);
 

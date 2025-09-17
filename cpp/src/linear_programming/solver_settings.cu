@@ -50,6 +50,7 @@ pdlp_solver_settings_t<i_t, f_t>::pdlp_solver_settings_t(const pdlp_solver_setti
     save_best_primal_so_far(other.save_best_primal_so_far),
     first_primal_feasible(other.first_primal_feasible),
     presolve_method(other.presolve_method),
+    dual_postsolve(other.dual_postsolve),
     method(other.method),
     concurrent_halt(other.concurrent_halt),
     presolve_status(other.presolve_status),

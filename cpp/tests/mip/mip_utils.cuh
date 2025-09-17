@@ -124,10 +124,10 @@ static std::tuple<mip_termination_status_t, double, double> test_mps_file(
     cuopt::mps_parser::parse_mps<int, double>(path, false);
   handle_.sync_stream();
   mip_solver_settings_t<int, double> settings;
-  settings.time_limit      = time_limit;
-  settings.heuristics_only = heuristics_only;
-  settings.presolve_method = presolve ? cuopt::linear_programming::presolve_method_t::FULL
-                                      : cuopt::linear_programming::presolve_method_t::NONE;
+  settings.time_limit                  = time_limit;
+  settings.heuristics_only             = heuristics_only;
+  settings.presolve_method             = presolve ? cuopt::linear_programming::presolve_method_t::ON
+                                                  : cuopt::linear_programming::presolve_method_t::OFF;
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
   return std::make_tuple(solution.get_termination_status(),
                          solution.get_objective_value(),

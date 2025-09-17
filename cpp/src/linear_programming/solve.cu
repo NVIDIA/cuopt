@@ -231,16 +231,16 @@ presolve_method_t get_presolve_method(pdlp_solver_settings_t<i_t, f_t> const& se
 {
   if (settings.presolve_method != presolve_method_t::DEFAULT) { return settings.presolve_method; }
 
-  if (settings.method == method_t::PDLP) { return presolve_method_t::NONE; }
+  if (settings.method == method_t::PDLP) { return presolve_method_t::OFF; }
 
-  return presolve_method_t::DUAL_PRESERVING;
+  return presolve_method_t::ON;
 }
 
 template <typename i_t, typename f_t>
 bool should_pdlp_run_on_presolved_problem(pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
   if (settings.method == method_t::PDLP || settings.method == method_t::Concurrent) {
-    return settings.presolve_method != presolve_method_t::NONE &&
+    return settings.presolve_method != presolve_method_t::OFF &&
            settings.presolve_method != presolve_method_t::DEFAULT;
   }
 
@@ -489,6 +489,7 @@ std::tuple<optimization_problem_t<i_t, f_t>, detail::third_party_presolve_t<i_t,
     presolver.apply(op_problem,
                     cuopt::linear_programming::problem_category_t::LP,
                     settings.presolve_method,
+                    settings.dual_postsolve,
                     settings.tolerances.absolute_primal_tolerance,
                     settings.tolerances.relative_primal_tolerance,
                     presolve_time_limit,
@@ -502,7 +503,7 @@ void run_presolve_thread(optimization_problem_t<i_t, f_t> const& op_problem,
                          optimization_problem_t<i_t, f_t>& reduced_op_problem,
                          detail::third_party_presolve_t<i_t, f_t>& presolver)
 {
-  if (get_presolve_method(settings) != presolve_method_t::NONE) {
+  if (get_presolve_method(settings) != presolve_method_t::OFF) {
     f_t start_time = dual_simplex::tic();
     CUOPT_LOG_INFO("Running presolve a separate thread");
     auto presolve_stop_callback = [&settings]() {
@@ -621,7 +622,7 @@ void run_dual_simplex_thread_on_op_problem(optimization_problem_t<i_t, f_t> cons
   wait_for(settings.presolve_status);
 
   auto presolve_method = get_presolve_method(settings);
-  if (presolve_method != presolve_method_t::NONE) {
+  if (presolve_method != presolve_method_t::OFF) {
     CUOPT_LOG_INFO("Running dual simplex on the presolved problem");
   } else {
     CUOPT_LOG_INFO("Running dual simplex on the original problem");
@@ -695,7 +696,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     CUOPT_LOG_INFO("Running PDLP on the presolved problem");
     sol_pdlp = run_pdlp(reduced_op_problem, settings_pdlp, is_batch_mode, false);
   } else {
-    if (get_presolve_method(settings_pdlp) != presolve_method_t::NONE) {
+    if (get_presolve_method(settings_pdlp) != presolve_method_t::OFF) {
       CUOPT_LOG_INFO("Running PDLP on the original problem");
     }
     sol_pdlp = run_pdlp(op_problem, settings_pdlp, is_batch_mode, false);
@@ -725,16 +726,16 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
                    sol_pdlp.get_objective_value(),
                    sol_pdlp.get_additional_termination_information().number_of_steps_taken,
                    end_time);
-    do_post_solve = presolve_method != presolve_method_t::NONE;
+    do_post_solve = presolve_method != presolve_method_t::OFF;
   } else if (sol_pdlp.get_termination_status() == pdlp_termination_status_t::Optimal) {
     CUOPT_LOG_INFO("Solved with PDLP");
     do_post_solve = should_pdlp_run_on_presolved_problem(settings_pdlp) &&
-                    presolve_method != presolve_method_t::NONE;
+                    presolve_method != presolve_method_t::OFF;
   } else if (sol_pdlp.get_termination_status() == pdlp_termination_status_t::ConcurrentLimit) {
     CUOPT_LOG_INFO("Using dual simplex solve info");
     sol_pdlp.copy_from(op_problem.get_handle_ptr(), dual_simplex_reduced_sol);
     sol_pdlp.set_solve_time(end_time);
-    do_post_solve = presolve_method != presolve_method_t::NONE;
+    do_post_solve = presolve_method != presolve_method_t::OFF;
   } else {
     CUOPT_LOG_INFO("Using PDLP solve info");
     // return sol_pdlp;
@@ -846,12 +847,11 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method_on_op_problem(
 {
   auto presolve_method = get_presolve_method(settings);
   if (settings.method == method_t::DualSimplex) {
-    return run_dual_simplex(op_problem, settings, presolve_method != presolve_method_t::NONE);
+    return run_dual_simplex(op_problem, settings, presolve_method != presolve_method_t::OFF);
   } else if (settings.method == method_t::Concurrent) {
     return run_concurrent(op_problem, settings, is_batch_mode);
   } else {
-    return run_pdlp(
-      op_problem, settings, is_batch_mode, presolve_method != presolve_method_t::NONE);
+    return run_pdlp(op_problem, settings, is_batch_mode, presolve_method != presolve_method_t::OFF);
   }
 }
 

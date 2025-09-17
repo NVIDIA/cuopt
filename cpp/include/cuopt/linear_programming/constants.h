@@ -51,6 +51,7 @@
 #define CUOPT_LOG_TO_CONSOLE              "log_to_console"
 #define CUOPT_CROSSOVER                   "crossover"
 #define CUOPT_PRESOLVE                    "presolve"
+#define CUOPT_DUAL_POSTSOLVE              "dual_postsolve"
 #define CUOPT_MIP_ABSOLUTE_TOLERANCE      "mip_absolute_tolerance"
 #define CUOPT_MIP_RELATIVE_TOLERANCE      "mip_relative_tolerance"
 #define CUOPT_MIP_INTEGRALITY_TOLERANCE   "mip_integrality_tolerance"
@@ -106,10 +107,12 @@
 #define CUOPT_METHOD_PDLP         1
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
 
-#define CUOPT_PRESOLVE_METHOD_DEFAULT         0
-#define CUOPT_PRESOLVE_METHOD_NONE            1
-#define CUOPT_PRESOLVE_METHOD_FULL            2
-#define CUOPT_PRESOLVE_METHOD_DUAL_PRESERVING 3
+#define CUOPT_PRESOLVE_DEFAULT 0
+#define CUOPT_PRESOLVE_OFF     1
+#define CUOPT_PRESOLVE_ON      2
+
+#define CUOPT_DUAL_POSTSOLVE_ON  0
+#define CUOPT_DUAL_POSTSOLVE_OFF 1
 
 /* @brief Status codes constants */
 #define CUOPT_SUCCESS          0

@@ -318,7 +318,8 @@ void check_postsolve_status(const papilo::PostsolveStatus& status)
 template <typename f_t>
 void set_presolve_methods(papilo::Presolve<f_t>& presolver,
                           problem_category_t category,
-                          presolve_method_t presolve_method)
+                          presolve_method_t presolve_method,
+                          bool dual_postsolve)
 {
   using uptr = std::unique_ptr<papilo::PresolveMethod<f_t>>;
 
@@ -342,7 +343,7 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver,
   presolver.addPresolveMethod(uptr(new papilo::DominatedCols<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::Probing<f_t>()));
 
-  if (presolve_method == presolve_method_t::FULL) {
+  if (!dual_postsolve) {
     presolver.addPresolveMethod(uptr(new papilo::DualInfer<f_t>()));
     presolver.addPresolveMethod(uptr(new papilo::SimpleSubstitution<f_t>()));
     presolver.addPresolveMethod(uptr(new papilo::Substitution<f_t>()));
@@ -375,6 +376,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
   optimization_problem_t<i_t, f_t> const& op_problem,
   problem_category_t category,
   presolve_method_t presolve_method,
+  bool dual_postsolve,
   f_t absolute_tolerance,
   f_t relative_tolerance,
   double time_limit,
@@ -407,7 +409,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
                  op_problem.get_nnz());
 
   papilo::Presolve<f_t> presolver;
-  set_presolve_methods<f_t>(presolver, category, presolve_method);
+  set_presolve_methods<f_t>(presolver, category, presolve_method, dual_postsolve);
   set_presolve_options<i_t, f_t>(presolver,
                                  category,
                                  absolute_tolerance,
@@ -419,8 +421,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
   // Disable papilo logs
   presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
 
-  bool store_dual_postsolve = presolve_method == presolve_method_t::DUAL_PRESERVING;
-  auto result               = presolver.apply(papilo_problem, store_dual_postsolve);
+  auto result = presolver.apply(papilo_problem, dual_postsolve);
   check_presolve_status(result.status);
   if (result.status == papilo::PresolveStatus::kInfeasible ||
       result.status == papilo::PresolveStatus::kUnbndOrInfeas) {

@@ -22,10 +22,9 @@
 namespace cuopt::linear_programming {
 
 enum presolve_method_t : int {
-  DEFAULT         = CUOPT_PRESOLVE_METHOD_DEFAULT,
-  NONE            = CUOPT_PRESOLVE_METHOD_NONE,
-  FULL            = CUOPT_PRESOLVE_METHOD_FULL,
-  DUAL_PRESERVING = CUOPT_PRESOLVE_METHOD_DUAL_PRESERVING
+  DEFAULT = CUOPT_PRESOLVE_DEFAULT,
+  OFF     = CUOPT_PRESOLVE_OFF,
+  ON      = CUOPT_PRESOLVE_ON,
 };
 
 }  // namespace cuopt::linear_programming

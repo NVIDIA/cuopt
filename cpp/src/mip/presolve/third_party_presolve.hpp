@@ -31,6 +31,7 @@ class third_party_presolve_t {
     optimization_problem_t<i_t, f_t> const& op_problem,
     problem_category_t category,
     presolve_method_t presolve_method,
+    bool dual_postsolve,
     f_t absolute_tolerance,
     f_t relative_tolerance,
     double time_limit,
