@@ -1513,14 +1513,10 @@ i_t update_dual_variables(const sparse_vector_t<i_t, f_t>& delta_y_sparse,
   // z <- z + steplength * delta_z
   const i_t delta_z_nz = delta_z_indices.size();
   for (i_t k = 0; k < delta_z_nz; ++k) {
-    const i_t j  = delta_z_indices[k];
-    const f_t zj = z[j] + step_length * delta_z[j];
-    z[j]         = zj;
-    // if (!std::isfinite(zj)) { return -1; }
+    const i_t j = delta_z_indices[k];
+    z[j] += step_length * delta_z[j];
   }
-  const f_t z_leaving = z[leaving_index] + step_length * delta_z[leaving_index];
-  z[leaving_index]    = z_leaving;
-  // if (!std::isfinite(z_leaving)) { return -1; }
+  z[leaving_index] += step_length * delta_z[leaving_index];
   return 0;
 }
 
