@@ -44,6 +44,8 @@ cdef extern from "mps_parser/mps_data_model.hpp" namespace "cuopt::mps_parser": 
         vector[string] var_names_
         vector[string] row_names_
         vector[char] row_types_
+        string objective_name_
+        string problem_name_
 
 cdef extern from "mps_parser/utilities/cython_mps_parser.hpp" namespace "cuopt::cython": # noqa
 

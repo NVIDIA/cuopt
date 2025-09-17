@@ -26,6 +26,7 @@ from cuopt.linear_programming.problem import (
     CONTINUOUS,
     INTEGER,
     MAXIMIZE,
+    MINIMIZE,
     CType,
     Problem,
     VType,
@@ -263,6 +264,53 @@ def test_constraint_matrix():
     assert csr.values == exp_values
     assert sense == exp_sense
     assert rhs == exp_rhs
+
+
+def test_read_write_mps_and_relaxation():
+
+    # Create MIP model
+    m = Problem("SMALLMIP")
+
+    # Vars: continuous, nonnegative by default
+    x1 = m.addVariable(name="x1", lb=0.0, vtype=INTEGER)
+    x2 = m.addVariable(name="x2", lb=0.0, ub=4.0, vtype=INTEGER)
+    x3 = m.addVariable(name="x3", lb=0.0, ub=6.0, vtype=INTEGER)
+    x4 = m.addVariable(name="x4", lb=0.0, vtype=INTEGER)
+    x5 = m.addVariable(name="x5", lb=0.0, vtype=INTEGER)
+
+    # Objective (minimize)
+    m.setObjective(2 * x1 + 3 * x2 + x3 + 1 * x4 + 4 * x5, MINIMIZE)
+
+    # Constraints (5 total)
+    m.addConstraint(x1 + x2 + x3 <= 10, name="c1")
+    m.addConstraint(2 * x1 + x3 - x4 >= 3, name="c2")
+    m.addConstraint(x2 + 3 * x5 == 7, name="c3")
+    m.addConstraint(x4 + x5 <= 8, name="c4")
+    m.addConstraint(x1 + x2 + x3 + x4 + x5 >= 5, name="c5")
+
+    # Write MPS
+    m.writeMPS("small_mip.mps")
+
+    # Read MPS and solve
+    prob = Problem.readMPS("small_mip.mps")
+    assert prob.Name == "SMALLMIP"
+    assert prob.IsMIP
+    prob.solve()
+
+    expected_values_mip = [1.0, 1.0, 1.0, 0.0, 2.0]
+    assert prob.Status.name == "Optimal"
+    for i, v in enumerate(prob.getVariables()):
+        assert v.getValue() == pytest.approx(expected_values_mip[i])
+
+    # Relax the Problem into LP and solve
+    lp_prob = prob.relax()
+    assert not lp_prob.IsMIP
+    lp_prob.solve()
+
+    expected_values_lp = [0.33333333, 0.0, 2.33333333, 0.0, 2.33333333]
+    assert lp_prob.Status.name == "Optimal"
+    for i, v in enumerate(lp_prob.getVariables()):
+        assert v.getValue() == pytest.approx(expected_values_lp[i])
 
 
 def test_incumbent_solutions():
