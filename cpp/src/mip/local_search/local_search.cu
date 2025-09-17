@@ -167,7 +167,7 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
     cpu_fj.fj_cpu->log_prefix           = "******* scratch " + std::to_string(counter) + ": ";
     cpu_fj.fj_cpu->improvement_callback = [this, &population, &cpu_fj](
                                             f_t obj, const std::vector<f_t>& h_vec) {
-      population.add_external_solution(h_vec, obj, "CPUFJ");
+      // population.add_external_solution(h_vec, obj, "CPUFJ");
       if (obj < local_search_best_obj) {
         CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
                         context.problem_ptr->get_user_obj_from_solver_obj(obj),
