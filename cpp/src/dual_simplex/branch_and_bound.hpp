@@ -28,6 +28,7 @@
 #include <dual_simplex/types.hpp>
 
 #include <omp.h>
+#include <mutex>
 #include <queue>
 #include <vector>
 
@@ -43,18 +44,6 @@ enum class mip_status_t {
   UNSET      = 6,
   RUNNING    = 7,
   FINISHED   = 8
-};
-
-// Since we are using OpenMP, we omp_lock_t instead of std::mutex.
-class omp_mutex_t {
- public:
-  omp_mutex_t() { omp_init_lock(&lock_); }
-  ~omp_mutex_t() { omp_destroy_lock(&lock_); }
-  void lock() { omp_set_lock(&lock_); }
-  void unlock() { omp_unset_lock(&lock_); }
-
- private:
-  omp_lock_t lock_;
 };
 
 template <typename i_t, typename f_t>
@@ -104,10 +93,8 @@ class branch_and_bound_t {
   std::vector<i_t> new_slacks_;
   std::vector<variable_type_t> var_types_;
 
-  std::vector<f_t> lower_bounds_;
-
   // Mutex for upper bound
-  omp_mutex_t mutex_upper_;
+  std::mutex mutex_upper_;
 
   // Global variable for upper bound
   f_t upper_bound_;
@@ -126,7 +113,7 @@ class branch_and_bound_t {
   } stats_;
 
   // Mutex for repair
-  omp_mutex_t mutex_repair_;
+  std::mutex mutex_repair_;
   std::vector<std::vector<f_t>> repair_queue_;
 
   // Variables for the root node in the search tree.
@@ -137,20 +124,18 @@ class branch_and_bound_t {
 
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;
-  omp_mutex_t mutex_pc_;
+  std::mutex mutex_pc_;
 
   // Search tree
-  omp_mutex_t mutex_search_tree_;
+  std::mutex mutex_search_tree_;
   std::unique_ptr<mip_node_t<i_t, f_t>> search_tree_;
 
   // Heap storing the nodes to be explored.
-  omp_mutex_t mutex_heap_;
+  std::mutex mutex_heap_;
   heap_t heap_;
 
   // Global status
   mip_status_t status_;
-
-  i_t node_depth_threshold_;
 
   i_t active_tasks_;
 
