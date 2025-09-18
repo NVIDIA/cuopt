@@ -231,40 +231,6 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
                                            fj_t<i_t, f_t>& in_fj,
                                            const std::string& source)
 {
-  // if (pop_ptr && pop_ptr->is_feasible() &&
-  //     pop_ptr->best_feasible().get_objective() < local_search_best_obj && false) {
-  //   CUOPT_LOG_DEBUG(
-  //     "******* Local search obj %g vs best overall %g, should perform a restart (new best)",
-  //     context.problem_ptr->get_user_obj_from_solver_obj(local_search_best_obj),
-  //     context.problem_ptr->get_user_obj_from_solver_obj(pop_ptr->best_feasible().get_objective()));
-  //   local_search_best_obj = pop_ptr->best_feasible().get_objective();
-
-  //   scratch_cpu_fj[1].stop_cpu_solver();
-  //   scratch_cpu_fj[1].wait_for_cpu_solver();
-  //   scratch_cpu_fj[1].cpu_solver                   = nullptr;
-  //   scratch_cpu_fj[1].cpu_solver                   = std::make_unique<Solver>();
-  //   scratch_cpu_fj[1].cpu_solver->localMIP->prefix = "******* scratch " + std::to_string(1) + ":
-  //   "; scratch_cpu_fj[1].cpu_solver->localMIP->optimum_callback = [this]() {
-  //     std::vector<double> h_vec;
-  //     GetSolution(*scratch_cpu_fj[1].cpu_solver, h_vec);
-  //     pop_ptr->add_external_solution(
-  //       h_vec, scratch_cpu_fj[1].cpu_solver->localMIP->bestOBJ, "CPUFJ");
-  //     if (scratch_cpu_fj[1].cpu_solver->localMIP->bestOBJ < local_search_best_obj) {
-  //       local_search_best_obj = scratch_cpu_fj[1].cpu_solver->localMIP->bestOBJ;
-  //       CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
-  //                       context.problem_ptr->get_user_obj_from_solver_obj(
-  //                         scratch_cpu_fj[1].cpu_solver->localMIP->bestOBJ),
-  //                       context.problem_ptr->get_user_obj_from_solver_obj(
-  //                         pop_ptr->is_feasible() ? pop_ptr->best_feasible().get_objective()
-  //                                                : std::numeric_limits<f_t>::max()));
-  //     }
-  //   };
-  //   LocalMipRead(*scratch_cpu_fj[1].cpu_solver,
-  //                *pop_ptr->best_feasible().problem_ptr,
-  //                pop_ptr->best_feasible());
-  //   scratch_cpu_fj[1].start_cpu_solver();
-  // }
-
   auto h_weights          = cuopt::host_copy(in_fj.cstr_weights, solution.handle_ptr->get_stream());
   auto h_objective_weight = in_fj.objective_weight.value(solution.handle_ptr->get_stream());
   for (auto& cpu_fj : ls_cpu_fj) {

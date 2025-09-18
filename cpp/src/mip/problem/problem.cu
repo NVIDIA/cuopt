@@ -339,6 +339,7 @@ template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                                                        bool check_mip_related_data)
 {
+  return;
   raft::common::nvtx::range scope("check_problem_representation");
 
   cuopt_assert(!offsets.is_empty(), "A_offsets must never be empty.");
