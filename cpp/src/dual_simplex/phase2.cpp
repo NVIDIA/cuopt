@@ -1515,10 +1515,8 @@ i_t update_dual_variables(const sparse_vector_t<i_t, f_t>& delta_y_sparse,
   for (i_t k = 0; k < delta_z_nz; ++k) {
     const i_t j = delta_z_indices[k];
     z[j] += step_length * delta_z[j];
-    if (std::isnan(z[j]) || std::isinf(z[j])) { return -1; }
   }
   z[leaving_index] += step_length * delta_z[leaving_index];
-  if (std::isnan(z[leaving_index]) || std::isinf(z[leaving_index])) { return -1; }
   return 0;
 }
 
