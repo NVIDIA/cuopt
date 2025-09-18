@@ -650,6 +650,7 @@ template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::resize_to_new_problem()
 {
   resize_vectors(problem_with_objective_cut, problem_with_objective_cut.handle_ptr);
+  // hint for next PR in case load balanced is reintroduced
   // lb_constraint_prop.temp_problem.setup(problem_with_objective_cut);
   // lb_constraint_prop.bounds_update.setup(lb_constraint_prop.temp_problem);
   constraint_prop.bounds_update.resize(problem_with_objective_cut);
@@ -659,6 +660,7 @@ template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::resize_to_old_problem(problem_t<i_t, f_t>* old_problem_ptr)
 {
   resize_vectors(*old_problem_ptr, old_problem_ptr->handle_ptr);
+  // hint for next PR in case load balanced is reintroduced
   // lb_constraint_prop.temp_problem.setup(*old_problem_ptr);
   // lb_constraint_prop.bounds_update.setup(lb_constraint_prop.temp_problem);
   constraint_prop.bounds_update.resize(*old_problem_ptr);

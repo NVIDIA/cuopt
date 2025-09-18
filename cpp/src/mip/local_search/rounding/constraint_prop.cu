@@ -893,9 +893,10 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
         unset_integer_vars.begin() + n_to_round,
         [sol = sol.view(), seed = cuopt::seed_generator::get_seed()] __device__(i_t var_idx) {
           raft::random::PCGenerator rng(seed, var_idx, 0);
+          auto var_bnd            = sol.problem.variable_bounds[var_idx];
           sol.assignment[var_idx] = round_nearest(sol.assignment[var_idx],
-                                                  get_lower(sol.problem.variable_bounds[var_idx]),
-                                                  get_upper(sol.problem.variable_bounds[var_idx]),
+                                                  get_lower(var_bnd),
+                                                  get_upper(var_bnd),
                                                   sol.problem.tolerances.integrality_tolerance,
                                                   rng);
         });
