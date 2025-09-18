@@ -211,7 +211,6 @@ int run_single_file(std::string file_path,
   settings.tolerances.relative_tolerance = 1e-12;
   settings.tolerances.absolute_tolerance = 1e-6;
   settings.presolve                      = true;
-  settings.num_cpu_threads               = 8;
   cuopt::linear_programming::benchmark_info_t benchmark_info;
   settings.benchmark_info_ptr = &benchmark_info;
   auto start_run_solver       = std::chrono::high_resolution_clock::now();
@@ -261,9 +260,7 @@ void run_single_file_mp(std::string file_path,
 {
   std::cout << "running file " << file_path << " on gpu : " << device << std::endl;
   auto memory_resource = make_async();
-  auto limiting_adaptor =
-    rmm::mr::limiting_resource_adaptor(memory_resource.get(), 6ULL * 1024ULL * 1024ULL * 1024ULL);
-  rmm::mr::set_current_device_resource(&limiting_adaptor);
+  rmm::mr::set_current_device_resource(memory_resource.get());
   int sol_found = run_single_file(file_path,
                                   device,
                                   batch_id,
