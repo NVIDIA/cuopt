@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include "diversity_manager.cuh"
 #include "population.cuh"
 
 #include <thrust/for_each.h>
@@ -38,21 +39,30 @@ constexpr double halving_skip_ratio          = 0.75;
 template <typename i_t, typename f_t>
 population_t<i_t, f_t>::population_t(std::string const& name_,
                                      mip_solver_context_t<i_t, f_t>& context_,
+                                     diversity_manager_t<i_t, f_t>& dm_,
                                      int var_threshold_,
                                      size_t max_solutions_,
                                      f_t infeasibility_weight_)
   : name(name_),
     context(context_),
     problem_ptr(context.problem_ptr),
+    dm(dm_),
     var_threshold(var_threshold_),
     max_solutions(max_solutions_),
     infeasibility_importance(infeasibility_weight_),
     weights(0, context.problem_ptr->handle_ptr),
     rng(cuopt::seed_generator::get_seed()),
     early_exit_primal_generation(false),
+    population_hash_map(*problem_ptr),
     timer(0)
 {
   best_feasible_objective = std::numeric_limits<f_t>::max();
+}
+
+template <typename i_t>
+i_t get_max_var_threshold(i_t n_vars)
+{
+  return n_vars - sqrt(n_vars);
 }
 
 template <typename i_t, typename f_t>
@@ -67,8 +77,7 @@ void population_t<i_t, f_t>::allocate_solutions()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::initialize_population()
 {
-  var_threshold =
-    std::max(problem_ptr->n_variables - var_threshold, (problem_ptr->n_variables / 10) * 8);
+  var_threshold = get_max_var_threshold(problem_ptr->n_integer_vars);
   solutions.reserve(max_solutions);
   indices.reserve(max_solutions);
   // indices[0] always points to solutions[0] - a special place for feasible solution
@@ -308,6 +317,7 @@ template <typename i_t, typename f_t>
 i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
 {
   raft::common::nvtx::range fun_scope("add_solution");
+  population_hash_map.insert(sol);
   double sol_cost = sol.get_quality(weights);
   CUOPT_LOG_TRACE("Adding solution with quality %f and objective %f n_integers %d!",
                   sol_cost,
@@ -576,21 +586,6 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::population_to_vector()
   return sol_vec;
 }
 
-template <typename i_t>
-i_t get_max_var_threshold(i_t n_vars)
-{
-  if (n_vars < 50) {
-    return std::max(1, n_vars - 1);
-  } else if (n_vars < 80) {
-    return n_vars - 2;
-  } else if (n_vars < 200) {
-    return n_vars - 4;
-  } else if (n_vars < 1000) {
-    return n_vars - 8;
-  }
-  return n_vars - 10;
-}
-
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::halve_the_population()
 {
@@ -754,6 +749,14 @@ void population_t<i_t, f_t>::print()
     i++;
   }
   CUOPT_LOG_DEBUG(" -------------- ");
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::run_all_recombiners(solution_t<i_t, f_t>& sol)
+{
+  std::vector<solution_t<i_t, f_t>> sol_vec;
+  sol_vec.emplace_back(std::move(solution_t<i_t, f_t>(sol)));
+  dm.recombine_and_ls_with_all(sol_vec, true);
 }
 
 #if MIP_INSTANTIATE_FLOAT

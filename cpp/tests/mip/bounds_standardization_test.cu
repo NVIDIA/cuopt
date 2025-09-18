@@ -78,8 +78,9 @@ void test_bounds_standardization_test(std::string test_instance)
 
   mip_solver_settings_t<int, double> default_settings{};
   detail::relaxed_lp_settings_t lp_settings;
-  lp_settings.time_limit = 120.;
-  lp_settings.tolerance  = default_settings.tolerances.absolute_tolerance;
+  lp_settings.time_limit              = 120.;
+  lp_settings.tolerance               = default_settings.tolerances.absolute_tolerance;
+  lp_settings.per_constraint_residual = false;
 
   // run the problem through pdlp
   auto result_1 = detail::get_relaxed_lp_solution(standardized_problem, solution_1, lp_settings);

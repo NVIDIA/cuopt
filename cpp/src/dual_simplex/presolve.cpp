@@ -1134,6 +1134,7 @@ void uncrush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
                            std::vector<f_t>& user_y,
                            std::vector<f_t>& user_z)
 {
+  user_y.resize(user_problem.num_rows);
   // Reduced costs are uncrushed just like the primal solution
   uncrush_primal_solution(user_problem, problem, z, user_z);
 

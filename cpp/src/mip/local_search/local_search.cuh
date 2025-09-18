@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <mip/diversity/population.cuh>
 #include <mip/local_search/feasibility_pump/feasibility_pump.cuh>
 #include <mip/local_search/line_segment_search/line_segment_search.cuh>
 #include <mip/solution/solution.cuh>
@@ -29,7 +30,6 @@ namespace cuopt::linear_programming::detail {
 enum class ls_method_t : int {
   FJ_ANNEALING = 0,
   FJ_LINE_SEGMENT,
-  FP_SEARCH,
   RANDOM,
   LS_METHODS_SIZE = RANDOM
 };
@@ -55,7 +55,7 @@ class local_search_t {
   void generate_fast_solution(solution_t<i_t, f_t>& solution, timer_t timer);
   bool generate_solution(solution_t<i_t, f_t>& solution,
                          bool perturb,
-                         bool& early_exit,
+                         population_t<i_t, f_t>* population_ptr,
                          f_t time_limit = 300.);
   bool run_fj_until_timer(solution_t<i_t, f_t>& solution,
                           const weight_t<i_t, f_t>& weights,
@@ -72,15 +72,25 @@ class local_search_t {
                            const ls_config_t<i_t, f_t>& ls_config);
   bool run_fj_on_zero(solution_t<i_t, f_t>& solution, timer_t timer);
   bool check_fj_on_lp_optimal(solution_t<i_t, f_t>& solution, bool perturb, timer_t timer);
-  bool run_staged_fp(solution_t<i_t, f_t>& solution, timer_t timer, bool& early_exit);
+  bool run_staged_fp(solution_t<i_t, f_t>& solution,
+                     timer_t timer,
+                     population_t<i_t, f_t>* population_ptr);
   bool run_fp(solution_t<i_t, f_t>& solution,
               timer_t timer,
-              const weight_t<i_t, f_t>* weights = nullptr,
-              bool feasibility_run              = true);
+              population_t<i_t, f_t>* population_ptr = nullptr);
   void resize_vectors(problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr);
   void save_solution_and_add_cutting_plane(solution_t<i_t, f_t>& solution,
                                            rmm::device_uvector<f_t>& best_solution,
                                            f_t& best_objective);
+  void resize_to_new_problem();
+  void resize_to_old_problem(problem_t<i_t, f_t>* old_problem_ptr);
+  void reset_alpha_and_run_recombiners(solution_t<i_t, f_t>& solution,
+                                       problem_t<i_t, f_t>* old_problem_ptr,
+                                       population_t<i_t, f_t>* population_ptr,
+                                       i_t i,
+                                       i_t last_unimproved_iteration,
+                                       rmm::device_uvector<f_t>& best_solution,
+                                       f_t& best_objective);
 
   mip_solver_context_t<i_t, f_t>& context;
   rmm::device_uvector<f_t>& lp_optimal_solution;
@@ -93,6 +103,7 @@ class local_search_t {
   feasibility_pump_t<i_t, f_t> fp;
   std::mt19937 rng;
   problem_t<i_t, f_t> problem_with_objective_cut;
+  bool cutting_plane_added_for_active_run{false};
 };
 
 }  // namespace cuopt::linear_programming::detail
