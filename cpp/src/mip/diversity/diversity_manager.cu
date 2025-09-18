@@ -413,9 +413,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   }
 
   population.allocate_solutions();
+  population.add_solutions_from_vec(std::move(initial_sol_vector));
   ls.start_fj_scratch_threads(population);
-
-  // population.add_solutions_from_vec(std::move(initial_sol_vector));
   if (check_b_b_preemption()) { return population.best_feasible(); }
 
   if (context.settings.benchmark_info_ptr != nullptr) {
