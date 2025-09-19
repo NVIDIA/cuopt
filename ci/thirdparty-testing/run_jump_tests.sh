@@ -34,11 +34,9 @@ fi
 # Confirm Julia install
 julia --version
 
-CUOPT_JL_DIR=/tmp/cuOpt.jl
-rm -rf $CUOPT_JL_DIR
-
-# clone the jump-dev/cuOpt.jl repo (main branch)
-git clone https://github.com/jump-dev/cuOpt.jl $CUOPT_JL_DIR
+CUOPT_JL_DIR="$(mktemp -d)/cuOpt.jl"
+rapids-logger "Cloning cuOpt.jl into ${CUOPT_JL_DIR}"
+git clone --verbose https://github.com/jump-dev/cuOpt.jl.git "${CUOPT_JL_DIR}"
 
 # set weird permissions, run tests as root (bad)
 cd $CUOPT_JL_DIR || exit 1

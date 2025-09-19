@@ -21,7 +21,7 @@ set -euo pipefail
 # so those constraints will affect all future 'pip install' calls
 source rapids-init-pip
 
-git clone --verbose https://github.com/jump-dev/cuOpt.jl /tmp/cuOpt.jl
+#git clone --verbose git@github.com:jump-dev/cuOpt.jl.git /tmp/cuOpt.jl
 #cd /tmp/cuOpt.jl
 
 # Download the packages built in the previous step
