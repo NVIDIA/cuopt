@@ -24,13 +24,13 @@ namespace cuopt::linear_programming::detail {
 // Activity calculation
 
 template <typename f_t>
-inline __device__ f_t min_act_of_var(f_t coeff, f_t var_lb, f_t var_ub)
+inline __host__ __device__ f_t min_act_of_var(f_t coeff, f_t var_lb, f_t var_ub)
 {
   return (coeff < 0.) ? coeff * var_ub : coeff * var_lb;
 }
 
 template <typename f_t>
-inline __device__ f_t max_act_of_var(f_t coeff, f_t var_lb, f_t var_ub)
+inline __host__ __device__ f_t max_act_of_var(f_t coeff, f_t var_lb, f_t var_ub)
 {
   return (coeff < 0.) ? coeff * var_lb : coeff * var_ub;
 }

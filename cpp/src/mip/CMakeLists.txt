@@ -45,9 +45,12 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/multi_probe.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/probing_cache.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/trivial_presolve.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/gf2_presolve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump_kernels.cu
 )
+
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/presolve/gf2_presolve.cu DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g;-O0")
 
 # Choose which files to include based on build mode
 if(BUILD_LP_ONLY)
