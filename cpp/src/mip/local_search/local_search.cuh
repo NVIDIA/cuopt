@@ -133,13 +133,12 @@ class local_search_t {
   bool lp_optimal_exists{false};
   rmm::device_uvector<f_t> fj_sol_on_lp_opt;
   fj_t<i_t, f_t> fj;
-  // fj_tree_t<i_t, f_t> fj_tree;
   constraint_prop_t<i_t, f_t> constraint_prop;
   line_segment_search_t<i_t, f_t> line_segment_search;
   feasibility_pump_t<i_t, f_t> fp;
   std::mt19937 rng;
 
-  std::array<cpu_fj_thread_t<i_t, f_t>, 8> ls_cpu_fj;
+  std::array<cpu_fj_thread_t<i_t, f_t>, 4> ls_cpu_fj;
   std::array<cpu_fj_thread_t<i_t, f_t>, 1> scratch_cpu_fj;
   cpu_fj_thread_t<i_t, f_t> scratch_cpu_fj_on_lp_opt;
   problem_t<i_t, f_t> problem_with_objective_cut;
