@@ -1278,6 +1278,7 @@ void problem_t<i_t, f_t>::compute_integer_fixed_problem()
     return;
   }
   rmm::device_uvector<f_t> assignment(n_variables, handle_ptr->get_stream());
+  thrust::fill(handle_ptr->get_thrust_policy(), assignment.begin(), assignment.end(), 0.);
   integer_fixed_problem = std::make_shared<problem_t<i_t, f_t>>(get_problem_after_fixing_vars(
     assignment, integer_indices, integer_fixed_variable_map, handle_ptr));
   integer_fixed_problem->check_problem_representation(true);

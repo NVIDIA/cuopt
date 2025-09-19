@@ -85,9 +85,8 @@ if(CMAKE_COMPILER_IS_GNUCXX)
 endif(CMAKE_COMPILER_IS_GNUCXX)
 
 # To use sanitizer with cuda runtime, one must follow a few steps:
-# 1. Find libasan.so with "gcc -print-file-name=libasan.so"
-# 2. Run the binary with env var set: LD_PRELOAD=$PATH_TO_LIBASAN ASAN_OPTIONS='protect_shadow_gap=0:replace_intrin=0'
-# 3. (Optional) To run with a debugger (gdb or cuda-gdb) use the additional ASAN option alloc_dealloc_mismatch=0
+# 1. Run the binary with env var set: LD_PRELOAD="$(gcc -print-file-name=libasan.so)" ASAN_OPTIONS='protect_shadow_gap=0:replace_intrin=0'
+# 2. (Optional) To run with a debugger (gdb or cuda-gdb) use the additional ASAN option alloc_dealloc_mismatch=0
 if(BUILD_SANITIZER)
   list(APPEND CUOPT_CXX_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer -g -Wno-error=maybe-uninitialized)
   add_link_options(-fsanitize=address,undefined)
