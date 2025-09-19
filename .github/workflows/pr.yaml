@@ -29,6 +29,7 @@ jobs:
     needs:
       - changed-files
       - checks
+      - wheel-tests-jump
       - wheel-build-libcuopt
       - wheel-build-cuopt
       - wheel-tests-cuopt
@@ -105,6 +106,13 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@branch-25.10
     with:
       enable_check_generated_files: false
+
+  wheel-tests-jump:
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@branch-25.10
+    with:
+      build_type: pull-request
+      script: ci/test_wheel_jump.sh
 
   wheel-build-cuopt-mps-parser:
     secrets: inherit

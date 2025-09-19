@@ -37,9 +37,12 @@ julia --version
 CUOPT_JL_DIR="$(mktemp -d)/cuOpt.jl"
 rapids-logger "Cloning cuOpt.jl into ${CUOPT_JL_DIR}"
 git clone --verbose https://github.com/jump-dev/cuOpt.jl.git "${CUOPT_JL_DIR}"
+rapids-logger "CuOpt.jl cloned into ${CUOPT_JL_DIR}"
 
 # set weird permissions, run tests as root (bad)
 cd $CUOPT_JL_DIR || exit 1
+
+rapids-logger "Changed directory to ${CUOPT_JL_DIR}"
 
 # Find libcuopt.so and add its directory to LD_LIBRARY_PATH
 LIBCUOPT_PATH=$(find / -name "libcuopt.so" -type f 2>/dev/null | head -1)
@@ -50,6 +53,8 @@ if [ -n "$LIBCUOPT_PATH" ]; then
 else
     rapids-logger "Warning: libcuopt.so not found in root filesystem"
 fi
+
+rapids-logger "Running Julia tests for cuOpt.jl"
 
 # use Julia to instantiate and run tests for the package
 julia --project=. -e '
