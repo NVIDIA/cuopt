@@ -22,7 +22,7 @@ set -euo pipefail
 source rapids-init-pip
 
 git clone --verbose https://github.com/jump-dev/cuOpt.jl /tmp/cuOpt.jl
-cd /tmp/cuOpt.jl
+#cd /tmp/cuOpt.jl
 
 # Download the packages built in the previous step
 RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
