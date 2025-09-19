@@ -45,9 +45,14 @@ cd $CUOPT_JL_DIR || exit 1
 rapids-logger "Changed directory to ${CUOPT_JL_DIR}"
 
 # Find libcuopt.so and add its directory to LD_LIBRARY_PATH
-LIBCUOPT_PATH=$(find / -name "libcuopt.so" -type f 2>/dev/null | head -1)
+LIBCUOPT_PATH=$(find /pyenv/ -name "libcuopt.so" -type f 2>/dev/null | head -1)
+
+rapids-logger "LIBCUOPT_PATH: $LIBCUOPT_PATH"
+
 if [ -n "$LIBCUOPT_PATH" ]; then
+    rapids-logger "LIBCUOPT_PATH: $LIBCUOPT_PATH"
     LIBCUOPT_DIR=$(dirname "$LIBCUOPT_PATH")
+    rapids-logger "LIBCUOPT_DIR: $LIBCUOPT_DIR"
     export LD_LIBRARY_PATH="${LIBCUOPT_DIR}:${LD_LIBRARY_PATH}"
     rapids-logger "Found libcuopt.so at $LIBCUOPT_PATH, added directory to LD_LIBRARY_PATH: $LIBCUOPT_DIR"
 else
