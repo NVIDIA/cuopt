@@ -74,7 +74,7 @@ void cpu_fj_thread_t<i_t, f_t>::kill_cpu_solver()
 {
   printf("Killing CPU solver\n");
   cpu_thread_terminate = true;
-  if (fj_ptr) fj_cpu->halted = true;
+  if (fj_cpu) fj_cpu->halted = true;
   cpu_cv.notify_one();
   cpu_worker.join();
 }
@@ -82,6 +82,7 @@ void cpu_fj_thread_t<i_t, f_t>::kill_cpu_solver()
 template <typename i_t, typename f_t>
 void cpu_fj_thread_t<i_t, f_t>::start_cpu_solver()
 {
+  cuopt_assert(fj_cpu != nullptr, "fj_cpu must not be null");
   // Reset flags
   cpu_thread_done         = false;
   cpu_thread_should_start = true;

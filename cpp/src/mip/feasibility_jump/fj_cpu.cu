@@ -467,7 +467,6 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       fj_cpu.h_best_objective < std::numeric_limits<f_t>::infinity() &&
       fj_cpu.h_incumbent_objective >=
         fj_cpu.h_best_objective + fj_cpu.settings.parameters.breakthrough_move_epsilon) {
-    cuopt_assert(fj_cpu.h_objective_vars.size() > 0, "This MIP is quite odd...");
     for (auto var_idx : fj_cpu.h_objective_vars) {
       f_t old_val = fj_cpu.h_assignment[var_idx];
       f_t new_val = get_breakthrough_move<i_t, f_t>(fj_cpu.view, var_idx);
@@ -795,7 +794,6 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     fj_cpu.h_objective_vars.begin(),
     [&fj_cpu](i_t idx) { return !fj_cpu.view.pb.integer_equal(fj_cpu.h_obj_coeffs[idx], (f_t)0); });
   fj_cpu.h_objective_vars.resize(end - fj_cpu.h_objective_vars.begin());
-  cuopt_assert(fj_cpu.h_objective_vars.size() > 0, "objective_vars empty");
 
   fj_cpu.h_best_objective = +std::numeric_limits<f_t>::infinity();
 
