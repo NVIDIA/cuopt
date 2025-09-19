@@ -21,6 +21,7 @@ import threading
 import time
 import zlib
 from enum import Enum
+from types import NoneType
 from uuid import UUID
 
 import cuopt_mps_parser
@@ -294,14 +295,17 @@ class CuOptServiceSelfHostClient:
     http_general_timeout: int
             The time in seconds that http will wait before timing out
             on a general request such as a job status check. Default is 30s.
+            Set to None to never timeout.
     data_send_timeout: int
             The time in seconds that http will wait before timing out
-            on a problem submission to the server. If set to None,
-            the http_general_timeout value will be used. Default is None.
+            on a problem submission to the server. If set to -1,
+            the http_general_timeout value will be used. Default is -1.
+            Set to None to never timeout.
     result_receive_timeout: int
             The time in seconds that http will wait before timing out
-            on receiving a result from the server. If set to None,
-            the http_general_timeout value will be used. Default is None.
+            on receiving a result from the server. If set to -1,
+            the http_general_timeout value will be used. Default is -1.
+            Set to None to never timeout.
     """
 
     # Initialize the CuOptServiceSelfHostClient
@@ -318,8 +322,8 @@ class CuOptServiceSelfHostClient:
         timeout_exception=True,
         result_type=mime_type.MSGPACK,
         http_general_timeout=30,
-        data_send_timeout=None,
-        result_receive_timeout=None,
+        data_send_timeout=-1,
+        result_receive_timeout=-1,
     ):
         self.timeout_exception = timeout_exception
         self.ip = ip
@@ -327,17 +331,20 @@ class CuOptServiceSelfHostClient:
         self.only_validate = only_validate
         self.accept_type = result_type
 
-        if not isinstance(http_general_timeout, (int, float)):
-            http_general_timeout = 30
+        if not isinstance(http_general_timeout, (NoneType, int, float)):
+            raise ValueError("Incompatible value for http_general_timeout")
+
         self.http_general_timeout = http_general_timeout
         self.data_send_timeout = (
             data_send_timeout
-            if isinstance(data_send_timeout, (int, float))
+            if isinstance(data_send_timeout, (NoneType, int, float))
+            and data_send_timeout != -1
             else self.http_general_timeout
         )
         self.result_receive_timeout = (
             result_receive_timeout
-            if isinstance(result_receive_timeout, (int, float))
+            if isinstance(result_receive_timeout, (NoneType, int, float))
+            and result_receive_timeout != -1
             else self.http_general_timeout
         )
 

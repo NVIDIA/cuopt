@@ -598,7 +598,8 @@ def main():
         type=int,
         default=30,
         help="Timeout in seconds for http requests. May need to be increased "
-        "for large datasets or slow networks. Default is 30s.",
+        "for large datasets or slow networks. Default is 30s. "
+        "Set to None to never timeout.",
     )
 
     args = parser.parse_args()
