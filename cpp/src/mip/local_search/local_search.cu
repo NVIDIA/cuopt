@@ -125,8 +125,6 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
     rng(cuopt::seed_generator::get_seed()),
     problem_with_objective_cut(*context.problem_ptr, context.problem_ptr->handle_ptr)
 {
-  line_segment_search.ls = this;
-
   for (auto& cpu_fj : ls_cpu_fj) {
     cpu_fj.fj_ptr = &fj;
   }
@@ -165,7 +163,7 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
     cpu_fj.fj_cpu->log_prefix           = "******* scratch " + std::to_string(counter) + ": ";
     cpu_fj.fj_cpu->improvement_callback = [this, &population, &cpu_fj](
                                             f_t obj, const std::vector<f_t>& h_vec) {
-      population.add_external_solution(h_vec, obj, "CPUFJ");
+      population.add_external_solution(h_vec, obj, external_solution_origin_t::CPUFJ);
       if (obj < local_search_best_obj) {
         CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
                         context.problem_ptr->get_user_obj_from_solver_obj(obj),
@@ -175,13 +173,9 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
         local_search_best_obj = obj;
       }
     };
-    cpu_fj.fj_cpu->diversity_callback = [this, &population, &cpu_fj](
-                                          f_t obj, const std::vector<f_t>& h_vec) {
-      // population.add_external_solution(h_vec, obj, "CPUFJ");
-    };
     counter++;
   };
-  // cuopt_func_call(sol.test_feasibility(true))
+
   // default weights
   cudaDeviceSynchronize();
 
@@ -197,7 +191,7 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
   scratch_cpu_fj_on_lp_opt.fj_cpu->log_prefix = "******* scratch on LP optimal: ";
   scratch_cpu_fj_on_lp_opt.fj_cpu->improvement_callback =
     [this, &population](f_t obj, const std::vector<f_t>& h_vec) {
-      population.add_external_solution(h_vec, obj, "CPUFJ");
+      population.add_external_solution(h_vec, obj, external_solution_origin_t::CPUFJ);
       if (obj < local_search_best_obj) {
         CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
                         context.problem_ptr->get_user_obj_from_solver_obj(obj),
@@ -207,10 +201,6 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
         local_search_best_obj = obj;
       }
     };
-  scratch_cpu_fj_on_lp_opt.fj_cpu->diversity_callback = [this, &population](
-                                                          f_t obj, const std::vector<f_t>& h_vec) {
-    // population.add_external_solution(h_vec, obj, "CPUFJ");
-  };
 
   // default weights
   cudaDeviceSynchronize();
@@ -249,9 +239,6 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   auto gpu_fj_start = std::chrono::high_resolution_clock::now();
   in_fj.solve(solution);
   cudaDeviceSynchronize();
-
-  // Give CPU solver some time to run
-  // if (source != "line_segment") { std::this_thread::sleep_for(std::chrono::milliseconds(250)); }
 
   // Stop CPU solver
   for (auto& cpu_fj : ls_cpu_fj) {
