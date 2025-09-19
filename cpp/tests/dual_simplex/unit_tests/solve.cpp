@@ -159,6 +159,7 @@ TEST(dual_simplex, burglar)
   for (int j = 0; j < num_items; ++j) {
     user_problem.var_types[j] = cuopt::linear_programming::dual_simplex::variable_type_t::INTEGER;
   }
+
   cuopt::linear_programming::dual_simplex::simplex_solver_settings_t<int, double> settings;
   std::vector<double> solution(num_items);
   EXPECT_EQ((cuopt::linear_programming::dual_simplex::solve(user_problem, settings, solution)), 0);
