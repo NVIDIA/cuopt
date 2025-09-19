@@ -438,7 +438,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
                                           : get_upper(fj_cpu.h_var_bounds[var_idx]);
         }
       }
-      cuopt_assert(isfinite(new_val), "new_val is not finite");
+      if (!isfinite(new_val)) continue;
       cuopt_assert(fj_cpu.view.pb.check_variable_within_bounds(var_idx, new_val),
                    "new_val is not within bounds");
       delta = new_val - val;
