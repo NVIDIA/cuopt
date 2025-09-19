@@ -137,8 +137,18 @@ class branch_and_bound_t {
   pseudo_costs_t<i_t, f_t> pc_;
   std::mutex mutex_pc_;
 
+  // Update the status of the nodes in the search tree.
+  void update_tree(mip_node_t<i_t, f_t>* node_ptr, node_status_t status);
+
+  // Update the incumbent solution with the new feasible solution.
+  // found during branch and bound.
+  void add_feasible_solution(f_t leaf_objective,
+                             const std::vector<f_t>& leaf_solution,
+                             i_t leaf_depth,
+                             char symbol);
+
   // Repairs low-quality solutions from the heuristics, if it is applicable.
-  void repair_heuristic_solutions(f_t lower_bound, mip_solution_t<i_t, f_t>& solution);
+  void repair_heuristic_solutions();
 
   // Explore the search tree using the best-first search strategy.
   mip_status_t explore_tree(i_t branch_var, mip_solution_t<i_t, f_t>& solution);
@@ -157,10 +167,17 @@ class branch_and_bound_t {
                              lp_problem_t<i_t, f_t>& leaf_problem,
                              csc_matrix_t<i_t, f_t>& Arow,
                              const std::vector<variable_type_t>& var_types,
-                             f_t upper_bound,
-                             f_t lower_bound,
-                             i_t nodes_explored,
-                             i_t unexplored_nodes);
+                             f_t upper_bound);
+
+  // Solve the LP relaxation of a leaf node using the dual simplex method.
+  dual::status_t node_dual_simplex(i_t leaf_id,
+                                   lp_problem_t<i_t, f_t>& leaf_problem,
+                                   std::vector<variable_status_t>& leaf_vstatus,
+                                   lp_solution_t<i_t, f_t>& leaf_solution,
+                                   std::vector<bool>& bounds_changed,
+                                   csc_matrix_t<i_t, f_t>& Arow,
+                                   f_t upper_bound,
+                                   logger_t& log);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

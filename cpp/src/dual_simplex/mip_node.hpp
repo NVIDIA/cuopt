@@ -146,8 +146,6 @@ class mip_node_t {
     }
   }
 
-  void set_status(node_status_t new_status) { status = new_status; }
-
   // outputs a stack containing inactive nodes in the tree that can be freed
   void set_status(node_status_t node_status, std::vector<mip_node_t*>& stack)
   {
