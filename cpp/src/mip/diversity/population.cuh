@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include "assignment_hash_map.cuh"
 #include "population.cuh"
 
 #include <mip/solution/solution.cuh>
@@ -30,11 +31,16 @@
 
 namespace cuopt::linear_programming::detail {
 
+// forward declare
+template <typename i_t, typename f_t>
+class diversity_manager_t;
+
 template <typename i_t, typename f_t>
 class population_t {
  public:
   population_t(std::string const& name,
                mip_solver_context_t<i_t, f_t>& context,
+               diversity_manager_t<i_t, f_t>& dm,
                int var_threshold_,
                size_t max_solutions_,
                f_t infeasibility_weight_);
@@ -64,6 +70,7 @@ class population_t {
   // initializes the population lazily. after presolve and var removals
   void initialize_population();
   bool is_better_than_best_feasible(solution_t<i_t, f_t>& sol);
+  void run_all_recombiners(solution_t<i_t, f_t>& sol);
 
   void allocate_solutions();
 
@@ -154,6 +161,7 @@ class population_t {
   std::string name;
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;
+  diversity_manager_t<i_t, f_t>& dm;
   i_t var_threshold;
   i_t initial_threshold;
   double population_start_time;
@@ -168,9 +176,10 @@ class population_t {
   std::mt19937 rng;
   i_t update_iter = 0;
   std::mutex solution_mutex;
-  bool early_exit_primal_generation = false;
-  f_t best_feasible_objective       = std::numeric_limits<f_t>::max();
-  bool preempt_heuristic_solver_    = false;
+  std::atomic<bool> early_exit_primal_generation = false;
+  std::atomic<bool> preempt_heuristic_solver_    = false;
+  f_t best_feasible_objective                    = std::numeric_limits<f_t>::max();
+  assignment_hash_map_t<i_t, f_t> population_hash_map;
   cuopt::timer_t timer;
 };
 

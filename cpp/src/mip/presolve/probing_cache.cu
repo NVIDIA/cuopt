@@ -478,7 +478,7 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   bound_presolve.settings.time_limit      = timer.remaining_time();
 
   // Set the number of threads
-  const size_t max_threads = 10;
+  const size_t max_threads = 8;
   omp_set_num_threads(max_threads);
 
   // Create a vector of multi_probe_t objects

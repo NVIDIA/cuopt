@@ -52,7 +52,9 @@ class diversity_manager_t {
   // main loop of diversity improvements
   void main_loop();
   // randomly chooses a recombiner and returns the offspring
-  std::pair<solution_t<i_t, f_t>, bool> recombine(solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b);
+  std::pair<solution_t<i_t, f_t>, bool> recombine(solution_t<i_t, f_t>& a,
+                                                  solution_t<i_t, f_t>& b,
+                                                  recombiner_enum_t recombiner_type);
   bool regenerate_solutions();
   void generate_add_solution(std::vector<solution_t<i_t, f_t>>& initial_sol_vector,
                              f_t time_limit,
@@ -62,10 +64,13 @@ class diversity_manager_t {
   std::vector<solution_t<i_t, f_t>> generate_more_solutions();
   void add_user_given_solutions(std::vector<solution_t<i_t, f_t>>& initial_sol_vector);
   population_t<i_t, f_t>* get_population_pointer() { return &population; }
-  void recombine_and_ls_with_all(std::vector<solution_t<i_t, f_t>>& solutions);
-  void recombine_and_ls_with_all(solution_t<i_t, f_t>& solution);
+  void recombine_and_ls_with_all(std::vector<solution_t<i_t, f_t>>& solutions,
+                                 bool add_only_feasible = false);
+  void recombine_and_ls_with_all(solution_t<i_t, f_t>& solution, bool add_only_feasible = false);
   std::pair<solution_t<i_t, f_t>, solution_t<i_t, f_t>> recombine_and_local_search(
-    solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b);
+    solution_t<i_t, f_t>& a,
+    solution_t<i_t, f_t>& b,
+    recombiner_enum_t recombiner_type = recombiner_enum_t::SIZE);
   void set_new_user_bound(f_t new_user_bound);
   void generate_quick_feasible_solution();
   bool check_b_b_preemption();
@@ -77,14 +82,17 @@ class diversity_manager_t {
                         timer_t& timer,
                         ls_config_t<i_t, f_t>& ls_config);
 
-  void set_simplex_solution(const std::vector<f_t>& solution, f_t objective);
+  void set_simplex_solution(const std::vector<f_t>& solution,
+                            const std::vector<f_t>& dual_solution,
+                            f_t objective);
 
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;
   diversity_config_t diversity_config;
   population_t<i_t, f_t> population;
   rmm::device_uvector<f_t> lp_optimal_solution;
-  bool simplex_solution_exists{false};
+  rmm::device_uvector<f_t> lp_dual_optimal_solution;
+  std::atomic<bool> simplex_solution_exists{false};
   local_search_t<i_t, f_t> ls;
   cuopt::timer_t timer;
   bound_prop_recombiner_t<i_t, f_t> bound_prop_recombiner;
@@ -98,7 +106,7 @@ class diversity_manager_t {
   std::vector<solution_t<i_t, f_t>> initial_sol_vector;
   mab_t mab_recombiner;
   mab_t mab_ls;
-  assignment_hash_map_t<i_t, f_t> assignment_hash_map;
+  assignment_hash_map_t<i_t, f_t> ls_hash_map;
   // mutex for the simplex solution update
   std::mutex relaxed_solution_mutex;
   // atomic for signalling pdlp to stop

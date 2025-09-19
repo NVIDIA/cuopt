@@ -55,10 +55,10 @@ class pdlp_initial_scaling_strategy_t {
                                   problem_t<i_t, f_t>& op_problem_scaled,
                                   i_t number_of_ruiz_iterations,
                                   f_t alpha,
-                                  pdhg_solver_t<i_t, f_t>& pdhg_solver,
                                   rmm::device_uvector<f_t>& A_T,
                                   rmm::device_uvector<i_t>& A_T_offsets,
                                   rmm::device_uvector<i_t>& A_T_indices,
+                                  pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr,
                                   bool running_mip = false);
 
   void scale_problem();
@@ -98,7 +98,7 @@ class pdlp_initial_scaling_strategy_t {
 
   rmm::device_uvector<f_t> cummulative_constraint_matrix_scaling_;
   rmm::device_uvector<f_t> cummulative_variable_scaling_;
-  pdhg_solver_t<i_t, f_t>& pdhg_solver_;
+  pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr_;
   rmm::device_uvector<f_t>& A_T_;
   rmm::device_uvector<i_t>& A_T_offsets_;
   rmm::device_uvector<i_t>& A_T_indices_;

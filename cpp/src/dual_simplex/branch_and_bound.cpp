@@ -648,7 +648,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
   mip_status_t status = mip_status_t::UNSET;
   logger_t log;
   log.log = false;
-
   auto compare = [](mip_node_t<i_t, f_t>* a, mip_node_t<i_t, f_t>* b) {
     return a->lower_bound >
            b->lower_bound;  // True if a comes before b, elements that come before are output last
@@ -900,9 +899,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   assert(root_vstatus_.size() == original_lp_.num_cols);
   if (root_status == lp_status_t::INFEASIBLE) {
     settings_.log.printf("MIP Infeasible\n");
-    if (settings_.heuristic_preemption_callback != nullptr) {
-      settings_.heuristic_preemption_callback();
-    }
+    // FIXME: rarely dual simplex detects infeasible whereas it is feasible.
+    // to add a small safety net, check if there is a primal solution already.
+    // Uncomment this if the issue with cost266-UUE is resolved
+    // if (settings.heuristic_preemption_callback != nullptr) {
+    //   settings.heuristic_preemption_callback();
+    // }
     return mip_status_t::INFEASIBLE;
   }
   if (root_status == lp_status_t::UNBOUNDED) {
@@ -919,11 +921,19 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   set_uninitialized_steepest_edge_norms(original_lp_.num_cols, edge_norms_);
 
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
-  if (settings_.set_simplex_solution_callback != nullptr) {
+  if (settings.set_simplex_solution_callback != nullptr) {
     std::vector<f_t> original_x;
     uncrush_primal_solution(original_problem_, original_lp_, root_relax_soln_.x, original_x);
-    settings_.set_simplex_solution_callback(original_x,
-                                            compute_user_objective(original_lp_, root_objective_));
+    std::vector<f_t> original_dual;
+    std::vector<f_t> original_z;
+    uncrush_dual_solution(original_problem_,
+                          original_lp_,
+                          root_relax_soln_.y,
+                          root_relax_soln_.z,
+                          original_dual,
+                          original_z);
+    settings.set_simplex_solution_callback(
+      original_x, original_dual, compute_user_objective(original_lp_, root_objective_));
   }
   mutex_lower_.lock();
   lower_bound_ = root_objective_;

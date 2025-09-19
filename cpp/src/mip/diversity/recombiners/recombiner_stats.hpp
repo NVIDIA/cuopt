@@ -23,6 +23,11 @@ namespace cuopt::linear_programming::detail {
 
 enum class recombiner_enum_t : int { BOUND_PROP = 0, FP, LINE_SEGMENT, SUB_MIP, SIZE };
 
+constexpr std::array<recombiner_enum_t, 4> recombiner_types = {recombiner_enum_t::BOUND_PROP,
+                                                               recombiner_enum_t::FP,
+                                                               recombiner_enum_t::LINE_SEGMENT,
+                                                               recombiner_enum_t::SUB_MIP};
+
 struct recombine_stats {
   int attempts;
   int success;
