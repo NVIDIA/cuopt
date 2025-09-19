@@ -22,6 +22,9 @@
 #include <cuopt/linear_programming/utilities/cython_solve.hpp>
 #include <mip/logger.hpp>
 #include <mps_parser/data_model_view.hpp>
+#include <mps_parser/mps_data_model.hpp>
+#include <mps_parser/writer.hpp>
+#include <utilities/copy_helpers.hpp>
 
 #include <raft/common/nvtx.hpp>
 #include <raft/core/handle.hpp>
@@ -104,6 +107,14 @@ data_model_to_optimization_problem(
       enum_variable_types.begin(),
       [](const auto val) -> var_t { return val == 'I' ? var_t::INTEGER : var_t::CONTINUOUS; });
     op_problem.set_variable_types(enum_variable_types.data(), enum_variable_types.size());
+  }
+
+  if (data_model->get_variable_names().size() != 0) {
+    op_problem.set_variable_names(data_model->get_variable_names());
+  }
+
+  if (data_model->get_row_names().size() != 0) {
+    op_problem.set_row_names(data_model->get_row_names());
   }
 
   return op_problem;

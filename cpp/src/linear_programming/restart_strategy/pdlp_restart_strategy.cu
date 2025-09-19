@@ -1388,6 +1388,14 @@ median breakpoint is evaluated, eliminating half of the components.  The process
 is iterated until the argmin is identified.
 */
 
+template <typename f_t, typename f_t2>
+struct extract_bounds_t {
+  __device__ thrust::tuple<f_t, f_t> operator()(f_t2 bounds)
+  {
+    return thrust::make_tuple(get_lower(bounds), get_upper(bounds));
+  }
+};
+
 template <typename i_t, typename f_t>
 void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
   localized_duality_gap_container_t<i_t, f_t>& duality_gap,
@@ -1451,10 +1459,13 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
     // component becomes fixed by its bounds
 
     // Copying primal / dual bound before sorting them according to threshold
-    raft::copy(
-      lower_bound_.data(), problem_ptr->variable_lower_bounds.data(), primal_size_h_, stream_view_);
-    raft::copy(
-      upper_bound_.data(), problem_ptr->variable_upper_bounds.data(), primal_size_h_, stream_view_);
+    using f_t2 = typename type_2<f_t>::type;
+    cub::DeviceTransform::Transform(
+      problem_ptr->variable_bounds.data(),
+      thrust::make_zip_iterator(thrust::make_tuple(lower_bound_.data(), upper_bound_.data())),
+      primal_size_h_,
+      extract_bounds_t<f_t, f_t2>(),
+      stream_view_);
     raft::copy(lower_bound_.data() + primal_size_h_,
                transformed_constraint_lower_bounds_.data(),
                dual_size_h_,
@@ -1632,13 +1643,13 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
                            a_add_scalar_times_b<f_t>(target_threshold_.data()),
                            stream_view_);
     // project by max(min(x[i], upperbound[i]),lowerbound[i]) for primal part
-    raft::linalg::ternaryOp(duality_gap.primal_solution_tr_.data(),
-                            duality_gap.primal_solution_tr_.data(),
-                            problem_ptr->variable_lower_bounds.data(),
-                            problem_ptr->variable_upper_bounds.data(),
-                            primal_size_h_,
-                            clamp<f_t>(),
-                            stream_view_);
+    using f_t2 = typename type_2<f_t>::type;
+    cub::DeviceTransform::Transform(cuda::std::make_tuple(duality_gap.primal_solution_tr_.data(),
+                                                          problem_ptr->variable_bounds.data()),
+                                    duality_gap.primal_solution_tr_.data(),
+                                    primal_size_h_,
+                                    clamp<f_t, f_t2>(),
+                                    stream_view_);
 
     // project by max(min(y[i], upperbound[i]),lowerbound[i])
     raft::linalg::ternaryOp(duality_gap.dual_solution_tr_.data(),
@@ -1646,7 +1657,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
                             transformed_constraint_lower_bounds_.data(),
                             transformed_constraint_upper_bounds_.data(),
                             dual_size_h_,
-                            clamp<f_t>(),
+                            constraint_clamp<f_t>(),
                             stream_view_);
     // }
   }

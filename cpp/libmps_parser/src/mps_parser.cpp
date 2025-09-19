@@ -26,8 +26,192 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <sstream>
 #include <string>
+
+#ifdef MPS_PARSER_WITH_BZIP2
+#include <bzlib.h>
+#endif  // MPS_PARSER_WITH_BZIP2
+
+#ifdef MPS_PARSER_WITH_ZLIB
+#include <zlib.h>
+#endif  // MPS_PARSER_WITH_ZLIB
+
+#if defined(MPS_PARSER_WITH_BZIP2) || defined(MPS_PARSER_WITH_ZLIB)
+#include <dlfcn.h>
+#endif  // MPS_PARSER_WITH_BZIP2 || MPS_PARSER_WITH_ZLIB
+
+namespace {
+using cuopt::mps_parser::error_type_t;
+using cuopt::mps_parser::mps_parser_expects;
+using cuopt::mps_parser::mps_parser_expects_fatal;
+
+struct FcloseDeleter {
+  void operator()(FILE* fp)
+  {
+    mps_parser_expects_fatal(
+      fclose(fp) == 0, error_type_t::ValidationError, "Error closing MPS file!");
+  }
+};
+}  // end namespace
+
+#ifdef MPS_PARSER_WITH_BZIP2
+namespace {
+using BZ2_bzReadOpen_t  = decltype(&BZ2_bzReadOpen);
+using BZ2_bzReadClose_t = decltype(&BZ2_bzReadClose);
+using BZ2_bzRead_t      = decltype(&BZ2_bzRead);
+
+std::vector<char> bz2_file_to_string(const std::string& file)
+{
+  struct DlCloseDeleter {
+    void operator()(void* fp)
+    {
+      mps_parser_expects_fatal(
+        dlclose(fp) == 0, error_type_t::ValidationError, "Error closing libbz2.so!");
+    }
+  };
+  struct BzReadCloseDeleter {
+    void operator()(void* f)
+    {
+      int bzerror;
+      if (f != nullptr) fptr(&bzerror, f);
+      mps_parser_expects_fatal(
+        bzerror == BZ_OK, error_type_t::ValidationError, "Error closing bzip2 file!");
+    }
+    BZ2_bzReadClose_t fptr = nullptr;
+  };
+
+  std::unique_ptr<void, DlCloseDeleter> lbz2handle{dlopen("libbz2.so", RTLD_LAZY)};
+  mps_parser_expects(
+    lbz2handle != nullptr,
+    error_type_t::ValidationError,
+    "Could not open .mps.bz2 file since libbz2.so was not found. In order to open .mps.bz2 files "
+    "directly, please ensure libbzip2 is installed. Alternatively, decompress the .mps.bz2 file "
+    "manually and open the uncompressed .mps file. Given path: %s",
+    file.c_str());
+
+  BZ2_bzReadOpen_t BZ2_bzReadOpen =
+    reinterpret_cast<BZ2_bzReadOpen_t>(dlsym(lbz2handle.get(), "BZ2_bzReadOpen"));
+  BZ2_bzReadClose_t BZ2_bzReadClose =
+    reinterpret_cast<BZ2_bzReadClose_t>(dlsym(lbz2handle.get(), "BZ2_bzReadClose"));
+  BZ2_bzRead_t BZ2_bzRead = reinterpret_cast<BZ2_bzRead_t>(dlsym(lbz2handle.get(), "BZ2_bzRead"));
+  mps_parser_expects(
+    BZ2_bzReadOpen != nullptr && BZ2_bzReadClose != nullptr && BZ2_bzRead != nullptr,
+    error_type_t::ValidationError,
+    "Error loading libbzip2! Library version might be incompatible. Please decompress the .mps.bz2 "
+    "file manually and open the uncompressed .mps file. Given path: %s",
+    file.c_str());
+
+  std::unique_ptr<FILE, FcloseDeleter> fp{fopen(file.c_str(), "rb")};
+  mps_parser_expects(fp != nullptr,
+                     error_type_t::ValidationError,
+                     "Error opening MPS file! Given path: %s",
+                     file.c_str());
+  int bzerror = BZ_OK;
+  std::unique_ptr<void, BzReadCloseDeleter> bzfile{
+    BZ2_bzReadOpen(&bzerror, fp.get(), 0, 0, nullptr, 0), {BZ2_bzReadClose}};
+  mps_parser_expects(bzerror == BZ_OK,
+                     error_type_t::ValidationError,
+                     "Could not open bzip2 compressed file! Given path: %s",
+                     file.c_str());
+
+  std::vector<char> buf;
+  const size_t readbufsize = 1ull << 24;  // 16MiB - just a guess.
+  std::vector<char> readbuf(readbufsize);
+  while (bzerror == BZ_OK) {
+    const size_t bytes_read = BZ2_bzRead(&bzerror, bzfile.get(), readbuf.data(), readbuf.size());
+    if (bzerror == BZ_OK || bzerror == BZ_STREAM_END) {
+      buf.insert(buf.end(), begin(readbuf), begin(readbuf) + bytes_read);
+    }
+  }
+  buf.push_back('\0');
+  mps_parser_expects(bzerror == BZ_STREAM_END,
+                     error_type_t::ValidationError,
+                     "Error in bzip2 decompression of MPS file! Given path: %s",
+                     file.c_str());
+  return buf;
+}
+}  // end namespace
+#endif  // MPS_PARSER_WITH_BZIP2
+
+#ifdef MPS_PARSER_WITH_ZLIB
+namespace {
+using gzopen_t    = decltype(&gzopen);
+using gzclose_r_t = decltype(&gzclose_r);
+using gzbuffer_t  = decltype(&gzbuffer);
+using gzread_t    = decltype(&gzread);
+using gzerror_t   = decltype(&gzerror);
+std::vector<char> zlib_file_to_string(const std::string& file)
+{
+  struct DlCloseDeleter {
+    void operator()(void* fp)
+    {
+      mps_parser_expects_fatal(
+        dlclose(fp) == 0, error_type_t::ValidationError, "Error closing libbz2.so!");
+    }
+  };
+  struct GzCloseDeleter {
+    void operator()(gzFile_s* f)
+    {
+      int err = fptr(f);
+      mps_parser_expects_fatal(
+        err == Z_OK, error_type_t::ValidationError, "Error closing gz file!");
+    }
+    gzclose_r_t fptr = nullptr;
+  };
+
+  std::unique_ptr<void, DlCloseDeleter> lzhandle{dlopen("libz.so.1", RTLD_LAZY)};
+  mps_parser_expects(
+    lzhandle != nullptr,
+    error_type_t::ValidationError,
+    "Could not open .mps.gz file since libz.so was not found. In order to open .mps.gz files "
+    "directly, please ensure zlib is installed. Alternatively, decompress the .mps.gz file "
+    "manually and open the uncompressed .mps file. Given path: %s",
+    file.c_str());
+  gzopen_t gzopen       = reinterpret_cast<gzopen_t>(dlsym(lzhandle.get(), "gzopen"));
+  gzclose_r_t gzclose_r = reinterpret_cast<gzclose_r_t>(dlsym(lzhandle.get(), "gzclose_r"));
+  gzbuffer_t gzbuffer   = reinterpret_cast<gzbuffer_t>(dlsym(lzhandle.get(), "gzbuffer"));
+  gzread_t gzread       = reinterpret_cast<gzread_t>(dlsym(lzhandle.get(), "gzread"));
+  gzerror_t gzerror     = reinterpret_cast<gzerror_t>(dlsym(lzhandle.get(), "gzerror"));
+  mps_parser_expects(
+    gzopen != nullptr && gzclose_r != nullptr && gzbuffer != nullptr && gzread != nullptr &&
+      gzerror != nullptr,
+    error_type_t::ValidationError,
+    "Error loading zlib! Library version might be incompatible. Please decompress the .mps.gz file "
+    "manually and open the uncompressed .mps file. Given path: %s",
+    file.c_str());
+  std::unique_ptr<gzFile_s, GzCloseDeleter> gzfp{gzopen(file.c_str(), "rb"), {gzclose_r}};
+  mps_parser_expects(gzfp != nullptr,
+                     error_type_t::ValidationError,
+                     "Error opening compressed MPS file! Given path: %s",
+                     file.c_str());
+  int zlib_status = gzbuffer(gzfp.get(), 1 << 20);  // 1 MiB
+  mps_parser_expects(zlib_status == Z_OK,
+                     error_type_t::ValidationError,
+                     "Could not set zlib internal buffer size for decompression! Given path: %s",
+                     file.c_str());
+  std::vector<char> buf;
+  const size_t readbufsize = 1ull << 24;  // 16MiB
+  std::vector<char> readbuf(readbufsize);
+  int bytes_read = -1;
+  while (bytes_read != 0) {
+    bytes_read = gzread(gzfp.get(), readbuf.data(), readbuf.size());
+    if (bytes_read > 0) { buf.insert(buf.end(), begin(readbuf), begin(readbuf) + bytes_read); }
+    if (bytes_read < 0) {
+      gzerror(gzfp.get(), &zlib_status);
+      break;
+    }
+  }
+  buf.push_back('\0');
+  mps_parser_expects(zlib_status == Z_OK,
+                     error_type_t::ValidationError,
+                     "Error in zlib decompression of MPS file! Given path: %s",
+                     file.c_str());
+  return buf;
+}
+}  // end namespace
+#endif  // MPS_PARSER_WITH_ZLIB
 
 namespace cuopt::mps_parser {
 
@@ -264,12 +448,95 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   problem.set_variable_types(std::move(var_types));
   problem.set_row_names(std::move(row_names));
   problem.set_maximize(maximize);
+
+  // Helper function to build CSR format using double transpose (O(m+n+nnz) instead of
+  // O(nnz*log(nnz))) For QUADOBJ: handles upper triangular input by expanding to full symmetric
+  // matrix
+  auto build_csr_via_transpose = [](const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
+                                    i_t num_rows,
+                                    i_t num_cols,
+                                    bool is_quadobj = false) {
+    struct CSRResult {
+      std::vector<f_t> values;
+      std::vector<i_t> indices;
+      std::vector<i_t> offsets;
+    };
+
+    if (entries.empty()) {
+      CSRResult result;
+      result.offsets.resize(num_rows + 1, 0);
+      return result;
+    }
+
+    // First transpose: build CSC format (entries sorted by column)
+    std::vector<std::vector<std::pair<i_t, f_t>>> csc_data(num_cols);
+    for (const auto& entry : entries) {
+      i_t row = std::get<0>(entry);
+      i_t col = std::get<1>(entry);
+      f_t val = std::get<2>(entry);
+
+      // For QUADOBJ (upper triangular), add both (row,col) and (col,row) if off-diagonal
+      csc_data[col].emplace_back(row, val);
+      if (is_quadobj && row != col) { csc_data[row].emplace_back(col, val); }
+    }
+
+    // Second transpose: convert CSC to CSR (entries sorted by row, columns within rows sorted)
+    std::vector<std::vector<std::pair<i_t, f_t>>> csr_data(num_rows);
+    for (i_t col = 0; col < num_cols; ++col) {
+      for (const auto& [row, val] : csc_data[col]) {
+        csr_data[row].emplace_back(col, val);
+      }
+    }
+
+    // Build final CSR format
+    CSRResult result;
+    result.offsets.reserve(num_rows + 1);
+    result.offsets.push_back(0);
+
+    for (i_t row = 0; row < num_rows; ++row) {
+      for (const auto& [col, val] : csr_data[row]) {
+        result.values.push_back(val);
+        result.indices.push_back(col);
+      }
+      result.offsets.push_back(result.values.size());
+    }
+
+    return result;
+  };
+
+  // Process QUADOBJ data if present (upper triangular format)
+  if (!quadobj_entries.empty()) {
+    // Convert quadratic objective entries to CSR format using double transpose
+    // QUADOBJ stores upper triangular elements, so we expand to full symmetric matrix
+    i_t num_vars    = static_cast<i_t>(var_names.size());
+    auto csr_result = build_csr_via_transpose(quadobj_entries, num_vars, num_vars, true);
+
+    // Use optimized double transpose method - O(m+n+nnz) instead of O(nnz*log(nnz))
+    problem.set_quadratic_objective_matrix(csr_result.values.data(),
+                                           csr_result.values.size(),
+                                           csr_result.indices.data(),
+                                           csr_result.indices.size(),
+                                           csr_result.offsets.data(),
+                                           csr_result.offsets.size());
+  }
 }
 
 template <typename i_t, typename f_t>
 std::vector<char> mps_parser_t<i_t, f_t>::file_to_string(const std::string& file)
 {
   // raft::common::nvtx::range fun_scope("file to string");
+
+#ifdef MPS_PARSER_WITH_BZIP2
+  if (file.size() > 4 && file.substr(file.size() - 4, 4) == ".bz2") {
+    return bz2_file_to_string(file);
+  }
+#endif  // MPS_PARSER_WITH_BZIP2
+
+#ifdef MPS_PARSER_WITH_ZLIB
+  if (file.size() > 3 && file.substr(file.size() - 3, 3) == ".gz") {
+    return zlib_file_to_string(file);
+  }
+#endif  // MPS_PARSER_WITH_ZLIB
 
   // Faster than using C++ I/O
   FILE* fp = fopen(file.c_str(), "r");
@@ -426,6 +693,16 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_ranges_   = false;
         inside_objname_  = true;
         inside_objsense_ = false;
+      } else if (line.find("QUADOBJ", 0, 7) == 0) {
+        encountered_sections.insert("QUADOBJ");
+        inside_rows_     = false;
+        inside_columns_  = false;
+        inside_rhs_      = false;
+        inside_bounds_   = false;
+        inside_ranges_   = false;
+        inside_objname_  = false;
+        inside_objsense_ = false;
+        inside_quadobj_  = true;
       } else if (line.find("ENDATA", 0, 6) == 0) {
         encountered_sections.insert("ENDATA");
         break;
@@ -462,6 +739,8 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
       parse_objsense(line);
     } else if (inside_objname_) {
       parse_objname(line);
+    } else if (inside_quadobj_) {
+      parse_quadobj(line);
     } else {
       mps_parser_expects(false,
                          error_type_t::ValidationError,
@@ -976,6 +1255,55 @@ void mps_parser_t<i_t, f_t>::parse_objname(std::string_view line)
     // Since OBJNAME always is before ROWS, this objective name will keep priority
     objective_name = name;
   }
+}
+
+template <typename i_t, typename f_t>
+void mps_parser_t<i_t, f_t>::parse_quadobj(std::string_view line)
+{
+  // Parse QUADOBJ section for quadratic objective terms
+  // Format: variable1 variable2 value
+
+  std::string var1_name, var2_name;
+  f_t value;
+
+  if (fixed_mps_format) {
+    mps_parser_expects(line.size() >= 25,
+                       error_type_t::ValidationError,
+                       "QUADOBJ should have at least 3 entities! line=%s",
+                       std::string(line).c_str());
+
+    var1_name = std::string(trim(line.substr(4, 8)));   // max of 8 chars allowed
+    var2_name = std::string(trim(line.substr(14, 8)));  // max of 8 chars allowed
+    if (var1_name[0] == '$' || var2_name[0] == '$') return;
+
+    i_t pos = 24;
+    value   = get_numerical_bound<false>(line, pos);
+  } else {
+    std::stringstream ss{std::string(line)};
+    ss >> var1_name >> var2_name >> value;
+    if (var1_name[0] == '$' || var2_name[0] == '$') return;
+  }
+
+  // Find variable indices
+  auto var1_it = var_names_map.find(var1_name);
+  auto var2_it = var_names_map.find(var2_name);
+
+  mps_parser_expects(var1_it != var_names_map.end(),
+                     error_type_t::ValidationError,
+                     "Variable '%s' not found in QUADOBJ! line=%s",
+                     var1_name.c_str(),
+                     std::string(line).c_str());
+  mps_parser_expects(var2_it != var_names_map.end(),
+                     error_type_t::ValidationError,
+                     "Variable '%s' not found in QUADOBJ! line=%s",
+                     var2_name.c_str(),
+                     std::string(line).c_str());
+
+  i_t var1_id = var1_it->second;
+  i_t var2_id = var2_it->second;
+
+  // Store quadratic objective entry (QUADOBJ stores upper triangular elements only)
+  quadobj_entries.emplace_back(var1_id, var2_id, value);
 }
 
 template <typename i_t, typename f_t>

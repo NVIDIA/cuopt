@@ -86,8 +86,9 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
           f_t second_val      = round(avg_val) == other_val ? guiding_val : round(avg_val);
           probing_values[idx] = thrust::make_pair(other_val, second_val);
           // assign some floating value, so that they can be rounded by bounds prop
-          f_t lb = guiding_view.problem.variable_lower_bounds[idx];
-          f_t ub = guiding_view.problem.variable_upper_bounds[idx];
+          auto bounds = guiding_view.problem.variable_bounds[idx];
+          f_t lb      = get_lower(bounds);
+          f_t ub      = get_upper(bounds);
           if (integer_equal<f_t>(lb, ub, int_tol)) {
             cuopt_assert(false, "The var values must be different in A and B!");
           } else if (isfinite(lb)) {

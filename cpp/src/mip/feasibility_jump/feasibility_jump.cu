@@ -75,6 +75,10 @@ fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_, fj_settings_t in_
 {
   setval_launch_dims = get_launch_dims_max_occupancy(
     (void*)update_assignment_kernel<i_t, f_t>, TPB_setval, pb_ptr->handle_ptr);
+  update_changed_constraints_launch_dims =
+    get_launch_dims_max_occupancy((void*)update_changed_constraints_kernel<i_t, f_t>,
+                                  TPB_update_changed_constraints,
+                                  pb_ptr->handle_ptr);
   resetmoves_launch_dims = get_launch_dims_max_occupancy(
     (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED>, TPB_resetmoves, pb_ptr->handle_ptr);
   resetmoves_bin_launch_dims =
@@ -291,8 +295,8 @@ void fj_t<i_t, f_t>::device_init(const rmm::cuda_stream_view& stream)
 
                      cuopt_assert(var_idx < pb.is_binary_variable.size(), "");
                      if (pb.is_binary_variable[var_idx]) {
-                       cuopt_assert(pb.variable_lower_bounds[var_idx] == 0 &&
-                                      pb.variable_upper_bounds[var_idx] == 1,
+                       cuopt_assert(get_lower(pb.variable_bounds[var_idx]) == 0 &&
+                                      get_upper(pb.variable_bounds[var_idx]) == 1,
                                     "invalid bounds for binary variable");
                      }
                    });
@@ -392,9 +396,9 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
         incumbent_assignment[var_idx] = round(incumbent_assignment[var_idx]);
       }
       // clamp to bounds
+      auto bounds = pb.variable_bounds[var_idx];
       incumbent_assignment[var_idx] =
-        max(pb.variable_lower_bounds[var_idx],
-            min(pb.variable_upper_bounds[var_idx], incumbent_assignment[var_idx]));
+        max(get_lower(bounds), min(get_upper(bounds), incumbent_assignment[var_idx]));
     });
 
   thrust::for_each(
@@ -643,7 +647,9 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                                      bool use_graph)
 {
   raft::common::nvtx::range scope("run_step_device");
-  auto [grid_setval, blocks_setval]                 = setval_launch_dims;
+  auto [grid_setval, blocks_setval] = setval_launch_dims;
+  auto [grid_update_changed_constraints, blocks_update_changed_constraints] =
+    update_changed_constraints_launch_dims;
   auto [grid_resetmoves, blocks_resetmoves]         = resetmoves_launch_dims;
   auto [grid_resetmoves_bin, blocks_resetmoves_bin] = resetmoves_bin_launch_dims;
   auto [grid_update_weights, blocks_update_weights] = update_weights_launch_dims;
@@ -795,7 +801,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                        climber_stream);
       cudaLaunchKernel((void*)update_changed_constraints_kernel<i_t, f_t>,
                        1,
-                       blocks_setval,
+                       blocks_update_changed_constraints,
                        kernel_args,
                        0,
                        climber_stream);
@@ -1102,6 +1108,7 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
       settings.iteration_limit * settings.parameters.rounding_second_stage_split;
 
     round_remaining_fractionals(solution);
+
     // if time limit exceeded: round all remaining fractionals if any by nearest rounding.
     if (climbers[0]->fractional_variables.set_size.value(handle_ptr->get_stream()) > 0) {
       solution.round_nearest();

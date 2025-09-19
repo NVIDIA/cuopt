@@ -69,7 +69,7 @@ struct constraint_prop_t {
                     std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>>
                       probing_config = std::nullopt);
   void find_set_integer_vars(solution_t<i_t, f_t>& sol, rmm::device_uvector<i_t>& set_vars);
-  void find_unset_integer_vars(solution_t<i_t, f_t>& sol, rmm::device_uvector<i_t>& set_vars);
+  void find_unset_integer_vars(solution_t<i_t, f_t>& sol, rmm::device_uvector<i_t>& unset_vars);
   thrust::pair<f_t, f_t> generate_double_probing_pair(
     const solution_t<i_t, f_t>& sol,
     const solution_t<i_t, f_t>& orig_sol,
@@ -95,6 +95,17 @@ struct constraint_prop_t {
   void sort_by_frac(solution_t<i_t, f_t>& sol, raft::device_span<i_t> vars);
   void restore_bounds(solution_t<i_t, f_t>& sol);
   void save_bounds(solution_t<i_t, f_t>& sol);
+
+  void copy_bounds(rmm::device_uvector<f_t>& output_lb,
+                   rmm::device_uvector<f_t>& output_ub,
+                   const rmm::device_uvector<typename type_2<f_t>::type>& input_bounds,
+                   const raft::handle_t* handle_ptr);
+
+  void copy_bounds(rmm::device_uvector<typename type_2<f_t>::type>& output_bounds,
+                   const rmm::device_uvector<f_t>& input_lb,
+                   const rmm::device_uvector<f_t>& input_ub,
+                   const raft::handle_t* handle_ptr);
+
   void copy_bounds(rmm::device_uvector<f_t>& output_lb,
                    rmm::device_uvector<f_t>& output_ub,
                    const rmm::device_uvector<f_t>& input_lb,
@@ -151,6 +162,9 @@ struct constraint_prop_t {
   bool use_probing_cache = true;
   static repair_stats_t repair_stats;
   bool single_rounding_only = false;
+  bool round_all_vars       = true;
+  // this is second timer that can continue but without recovery mode
+  f_t max_time_for_bounds_prop = 5.;
 };
 
 }  // namespace cuopt::linear_programming::detail

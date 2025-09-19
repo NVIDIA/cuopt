@@ -1,6 +1,12 @@
 numpy_version:
   - ">=1.21,<1.25"
 
+c_compiler_version:
+  - 14
+
+cxx_compiler_version:
+  - 14
+
 c_stdlib:
   - sysroot
 

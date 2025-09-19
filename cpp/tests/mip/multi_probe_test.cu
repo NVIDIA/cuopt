@@ -58,15 +58,15 @@ std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_
   auto seed = std::random_device{}();
   std::cerr << "Tested with seed " << seed << "\n";
   problem.compute_n_integer_vars();
-  auto v_lb       = host_copy(problem.variable_lower_bounds);
-  auto v_ub       = host_copy(problem.variable_upper_bounds);
-  auto int_var_id = host_copy(problem.integer_indices);
-  int_var_id.erase(std::remove_if(int_var_id.begin(),
-                                  int_var_id.end(),
-                                  [v_lb, v_ub](auto id) {
-                                    return !(std::isfinite(v_lb[id]) && std::isfinite(v_ub[id]));
-                                  }),
-                   int_var_id.end());
+  auto [v_lb, v_ub] = extract_host_bounds<double>(problem.variable_bounds, problem.handle_ptr);
+  auto int_var_id   = host_copy(problem.integer_indices);
+  int_var_id.erase(
+    std::remove_if(int_var_id.begin(),
+                   int_var_id.end(),
+                   [v_lb_sp = v_lb, v_ub_sp = v_ub](auto id) {
+                     return !(std::isfinite(v_lb_sp[id]) && std::isfinite(v_ub_sp[id]));
+                   }),
+    int_var_id.end());
   sample_size = std::min(sample_size, static_cast<int>(int_var_id.size()));
   std::vector<int> random_int_vars;
   std::mt19937 m{seed};
@@ -158,15 +158,14 @@ void test_multi_probe(std::string path)
   problem_checking_t<int, double>::check_problem_representation(op_problem);
   detail::problem_t<int, double> problem(op_problem);
   mip_solver_settings_t<int, double> default_settings{};
-  detail::pdhg_solver_t<int, double> pdhg_solver(problem.handle_ptr, problem);
   detail::pdlp_initial_scaling_strategy_t<int, double> scaling(&handle_,
                                                                problem,
                                                                10,
                                                                1.0,
-                                                               pdhg_solver,
                                                                problem.reverse_coefficients,
                                                                problem.reverse_offsets,
                                                                problem.reverse_constraints,
+                                                               nullptr,
                                                                true);
   detail::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
   detail::bound_presolve_t<int, double> bnd_prb_0(solver.context);

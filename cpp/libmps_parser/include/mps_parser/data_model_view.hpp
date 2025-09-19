@@ -187,6 +187,20 @@ class data_model_view_t {
    */
   void set_problem_name(const std::string& problem_name);
   /**
+   * @brief Set the variables names.
+   * @note Setting before calling the solver is optional.
+   *
+   * @param[in] variable_names Variable names values.
+   */
+  void set_variable_names(const std::vector<std::string>& variables_names);
+  /**
+   * @brief Set the row names.
+   * @note Setting before calling the solver is optional.
+   *
+   * @param[in] row_names Row names value.
+   */
+  void set_row_names(const std::vector<std::string>& row_names);
+  /**
    * @brief Set the constraints lower bounds.
    * @note Setting before calling the solver is optional if you set the row type, else it's
    * mandatory along with the upper bounds.
@@ -228,6 +242,30 @@ class data_model_view_t {
    * @param size Size of the initial_dual_solution array.
    */
   void set_initial_dual_solution(const f_t* initial_dual_solution, i_t size);
+
+  /**
+   * @brief Set the quadratic objective matrix (Q) in CSR format for QPS files.
+   *
+   * @note This is used for quadratic programming problems where the objective
+   * function contains quadratic terms: (1/2) * x^T * Q * x + c^T * x
+   * cuOpt does not own or copy this data.
+   *
+   * @param[in] Q_values Device memory pointer to values of the CSR representation of the quadratic
+   * objective matrix
+   * @param size_values Size of the Q_values array
+   * @param[in] Q_indices Device memory pointer to indices of the CSR representation of the
+   * quadratic objective matrix
+   * @param size_indices Size of the Q_indices array
+   * @param[in] Q_offsets Device memory pointer to offsets of the CSR representation of the
+   * quadratic objective matrix
+   * @param size_offsets Size of the Q_offsets array
+   */
+  void set_quadratic_objective_matrix(const f_t* Q_values,
+                                      i_t size_values,
+                                      const i_t* Q_indices,
+                                      i_t size_indices,
+                                      const i_t* Q_offsets,
+                                      i_t size_offsets);
 
   /**
    * @brief Get the sense value (false:minimize, true:maximize)
@@ -327,6 +365,19 @@ class data_model_view_t {
   span<f_t const> get_initial_dual_solution() const noexcept;
 
   /**
+   * @brief Get the variable names
+   *
+   * @return span<std::string const>
+   */
+  const std::vector<std::string>& get_variable_names() const noexcept;
+  /**
+   * @brief Get the row names
+   *
+   * @return span<std::string const>
+   */
+  const std::vector<std::string>& get_row_names() const noexcept;
+
+  /**
    * @brief Get the problem name
    *
    * @return std::string
@@ -338,6 +389,32 @@ class data_model_view_t {
    * @return std::string
    */
   std::string get_objective_name() const noexcept;
+
+  // QPS-specific getters
+  /**
+   * @brief Get the quadratic objective matrix values
+   *
+   * @return span<f_t const>
+   */
+  span<f_t const> get_quadratic_objective_values() const noexcept;
+  /**
+   * @brief Get the quadratic objective matrix indices
+   *
+   * @return span<i_t const>
+   */
+  span<i_t const> get_quadratic_objective_indices() const noexcept;
+  /**
+   * @brief Get the quadratic objective matrix offsets
+   *
+   * @return span<i_t const>
+   */
+  span<i_t const> get_quadratic_objective_offsets() const noexcept;
+  /**
+   * @brief Check if the problem has quadratic objective terms
+   *
+   * @return bool
+   */
+  bool has_quadratic_objective() const noexcept;
 
  private:
   bool maximize_{false};
@@ -354,12 +431,19 @@ class data_model_view_t {
   span<char const> row_types_;
   std::string objective_name_;
   std::string problem_name_;
+  std::vector<std::string> variable_names_;
+  std::vector<std::string> row_names_;
   span<f_t const> constraint_lower_bounds_;
   span<f_t const> constraint_upper_bounds_;
 
   // TODO move to solver_settings in next release
   span<f_t const> initial_primal_solution_;
   span<f_t const> initial_dual_solution_;
+
+  // QPS-specific data members for quadratic programming support
+  span<f_t const> Q_objective_;
+  span<i_t const> Q_objective_indices_;
+  span<i_t const> Q_objective_offsets_;
 
 };  // class data_model_view_t
 

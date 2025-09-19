@@ -8,14 +8,34 @@ Installation
 pip
 ---
 
-For CUDA 12.x:
-
 .. code-block:: bash
 
-    pip install --extra-index-url=https://pypi.nvidia.com cuopt-server-cu12==25.10.* cuopt-sh-client==25.10.* nvidia-cuda-runtime-cu12==12.9.*
+    # CUDA 13
+    pip install --extra-index-url=https://pypi.nvidia.com \
+      'nvidia-cuda-runtime==13.0.*' \
+      'cuopt-server-cu13==25.10.*' \
+      'cuopt-sh-client==25.10.*'
+
+    # CUDA 12
+    pip install --extra-index-url=https://pypi.nvidia.com \
+      'nvidia-cuda-runtime-cu12==12.9.*' \
+      'cuopt-server-cu12==25.10.*' \
+      'cuopt-sh-client==25.10.*'
 
 .. note::
    For development wheels which are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/`.
+
+.. code-block:: bash
+
+    # CUDA 13
+    pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
+      'cuopt-server-cu13==25.10.*' \
+      'cuopt-sh-client==25.10.*'
+
+    # CUDA 12
+    pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
+      'cuopt-server-cu12==25.10.*' \
+      'cuopt-sh-client==25.10.*'
 
 Conda
 -----
@@ -37,19 +57,19 @@ NVIDIA cuOpt is also available as a container from Docker Hub:
 
 .. code-block:: bash
 
-    docker pull nvidia/cuopt:latest-cuda12.9-py3.12
+    docker pull nvidia/cuopt:latest-cuda12.9-py3.13
 
 .. note::
-   The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.9-py3.12`` tag. For example, to use cuOpt 25.5.0, you can use the ``25.5.0-cuda12.9-py3.12`` tag. Please refer to `cuOpt dockerhub page <https://hub.docker.com/r/nvidia/cuopt>`_ for the list of available tags.
+   The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.9-py3.13`` tag. For example, to use cuOpt 25.10.0, you can use the ``25.10.0-cuda12.9-py3.13`` tag. Please refer to `cuOpt dockerhub page <https://hub.docker.com/r/nvidia/cuopt/tags>`_ for the list of available tags.
 
 The container includes both the Python API and self-hosted server components. To run the container:
 
 .. code-block:: bash
 
-    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cuda12.9-py3.12
+    docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cuda12.9-py3.13
 
 .. note::
-   The nightly version of cuOpt is available as ``[VERSION]a-cuda12.9-py3.12`` tag. For example, to use cuOpt 25.8.0a, you can use the ``25.8.0a-cuda12.9-py3.12`` tag.
+   The nightly version of cuOpt is available as ``[VERSION]a-cuda12.9-py3.13`` tag. For example, to use cuOpt 25.10.0a, you can use the ``25.10.0a-cuda12.9-py3.13`` tag. Also the cuda version and python version might change in the future. Please refer to `cuOpt dockerhub page <https://hub.docker.com/r/nvidia/cuopt/tags>`_ for the list of available tags.
 
 .. note::
    Make sure you have the NVIDIA Container Toolkit installed on your system to enable GPU support in containers. See the `installation guide <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html>`_ for details.

@@ -15,7 +15,7 @@
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: 'v5.0.0'
+    rev: 'v6.0.0'
     hooks:
       - id: end-of-file-fixer
         exclude: ^(datasets|helmchart)/.*\.(mps|json|yaml|yml|txt)$
@@ -75,17 +75,17 @@ repos:
         types_or: [file]
         args: ['-fallback-style=none', '-style=file', '-i']
   - repo: https://github.com/rapidsai/dependency-file-generator
-    rev: v1.18.1
+    rev: v1.20.0
     hooks:
       - id: rapids-dependency-file-generator
-        args: ["--clean"]
+        args: ["--clean", "--warn-all", "--strict"]
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.10.0.1
     hooks:
       - id: shellcheck
         args: ["--severity=warning"]
   - repo: https://github.com/rapidsai/pre-commit-hooks
-    rev: v0.6.0
+    rev: v0.7.0
     hooks:
       - id: verify-copyright
         files: |

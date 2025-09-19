@@ -39,17 +39,17 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
   problem_t<i_t, f_t>& op_problem_scaled,
   i_t number_of_ruiz_iterations,
   f_t alpha,
-  pdhg_solver_t<i_t, f_t>& pdhg_solver,
   rmm::device_uvector<f_t>& A_T,
   rmm::device_uvector<i_t>& A_T_offsets,
   rmm::device_uvector<i_t>& A_T_indices,
+  pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr,
   bool running_mip)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     primal_size_h_(op_problem_scaled.n_variables),
     dual_size_h_(op_problem_scaled.n_constraints),
     op_problem_scaled_(op_problem_scaled),
-    pdhg_solver_(pdhg_solver),
+    pdhg_solver_ptr_(pdhg_solver_ptr),
     A_T_(A_T),
     A_T_offsets_(A_T_offsets),
     A_T_indices_(A_T_indices),
@@ -375,18 +375,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
     primal_size_h_,
     stream_view_);
 
-  raft::linalg::eltwiseDivideCheckZero(
-    const_cast<rmm::device_uvector<f_t>&>(op_problem_scaled_.variable_lower_bounds).data(),
-    op_problem_scaled_.variable_lower_bounds.data(),
-    cummulative_variable_scaling_.data(),
-    primal_size_h_,
-    stream_view_);
-  raft::linalg::eltwiseDivideCheckZero(
-    const_cast<rmm::device_uvector<f_t>&>(op_problem_scaled_.variable_upper_bounds).data(),
-    op_problem_scaled_.variable_upper_bounds.data(),
-    cummulative_variable_scaling_.data(),
-    primal_size_h_,
-    stream_view_);
+  using f_t2 = typename type_2<f_t>::type;
+  cub::DeviceTransform::Transform(cuda::std::make_tuple(op_problem_scaled_.variable_bounds.data(),
+                                                        cummulative_variable_scaling_.data()),
+                                  op_problem_scaled_.variable_bounds.data(),
+                                  primal_size_h_,
+                                  divide_check_zero<f_t, f_t2>(),
+                                  stream_view_);
 
   raft::linalg::eltwiseMultiply(
     const_cast<rmm::device_uvector<f_t>&>(op_problem_scaled_.constraint_lower_bounds).data(),
@@ -403,7 +398,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
 
   op_problem_scaled_.is_scaled_ = true;
   if (!running_mip_) {
-    scale_solutions(pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution());
+    scale_solutions(pdhg_solver_ptr_->get_primal_solution(), pdhg_solver_ptr_->get_dual_solution());
   }
 }
 

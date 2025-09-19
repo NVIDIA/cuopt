@@ -93,6 +93,11 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::single_pass(i_t start,
   }
   step_length       = min_val;
   nonbasic_entering = candidate;
+  // this should be temporary, find root causes where the candidate is not filled
+  if (nonbasic_entering == -1) {
+    // -1,-2 and -3 are reserved for other things
+    return -4;
+  }
   const i_t j = entering_index = nonbasic_list_[nonbasic_entering];
 
   constexpr bool verbose = false;
@@ -137,6 +142,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
 
   i_t k_idx = single_pass(
     0, num_breakpoints, indicies, ratios, slope, step_length, nonbasic_entering, entering_index);
+  if (k_idx == -4) { return -4; }
   bool continue_search = k_idx >= 0 && num_breakpoints > 1 && slope > 0.0;
   if (!continue_search) {
     if constexpr (0) {

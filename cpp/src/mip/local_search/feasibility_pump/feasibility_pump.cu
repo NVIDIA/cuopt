@@ -46,7 +46,6 @@ feasibility_pump_t<i_t, f_t>::feasibility_pump_t(
   fj_t<i_t, f_t>& fj_,
   //  fj_tree_t<i_t, f_t>& fj_tree_,
   constraint_prop_t<i_t, f_t>& constraint_prop_,
-  lb_constraint_prop_t<i_t, f_t>& lb_constraint_prop_,
   line_segment_search_t<i_t, f_t>& line_segment_search_,
   rmm::device_uvector<f_t>& lp_optimal_solution_)
   : context(context_),
@@ -55,14 +54,11 @@ feasibility_pump_t<i_t, f_t>::feasibility_pump_t(
     line_segment_search(line_segment_search_),
     cycle_queue(*context.problem_ptr),
     constraint_prop(constraint_prop_),
-    lb_constraint_prop(lb_constraint_prop_),
     last_rounding(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     last_projection(context.problem_ptr->n_variables,
                     context.problem_ptr->handle_ptr->get_stream()),
     orig_variable_types(context.problem_ptr->n_variables,
                         context.problem_ptr->handle_ptr->get_stream()),
-    best_excess_solution(context.problem_ptr->n_variables,
-                         context.problem_ptr->handle_ptr->get_stream()),
     lp_optimal_solution(lp_optimal_solution_),
     rng(cuopt::seed_generator::get_seed()),
     timer(20.)
@@ -147,11 +143,9 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
                                                                 bool longer_lp_run)
 {
   CUOPT_LOG_DEBUG("linear projection of fp");
-  auto h_assignment            = solution.get_host_assignment();
-  auto h_variable_upper_bounds = cuopt::host_copy(solution.problem_ptr->variable_upper_bounds,
-                                                  solution.handle_ptr->get_stream());
-  auto h_variable_lower_bounds = cuopt::host_copy(solution.problem_ptr->variable_lower_bounds,
-                                                  solution.handle_ptr->get_stream());
+  auto h_assignment = solution.get_host_assignment();
+  auto h_variable_bounds =
+    cuopt::host_copy(solution.problem_ptr->variable_bounds, solution.handle_ptr->get_stream());
   auto h_last_projection = cuopt::host_copy(last_projection, solution.handle_ptr->get_stream());
   const f_t int_tol      = context.settings.tolerances.integrality_tolerance;
   constraints_delta_t<i_t, f_t> h_constraints;
@@ -164,23 +158,24 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
   f_t obj_offset = 0;
   // for each integer add the variable and the distance constraints
   for (auto i : h_integer_indices) {
-    if (solution.problem_ptr->integer_equal(h_assignment[i], h_variable_upper_bounds[i])) {
-      obj_offset += h_variable_upper_bounds[i];
+    auto h_var_bounds = h_variable_bounds[i];
+    if (solution.problem_ptr->integer_equal(h_assignment[i], get_upper(h_var_bounds))) {
+      obj_offset += get_upper(h_var_bounds);
       // set the objective weight to -1,  u - x
       obj_coefficients[i] = -1;
-    } else if (solution.problem_ptr->integer_equal(h_assignment[i], h_variable_lower_bounds[i])) {
-      obj_offset -= h_variable_lower_bounds[i];
+    } else if (solution.problem_ptr->integer_equal(h_assignment[i], get_lower(h_var_bounds))) {
+      obj_offset -= get_lower(h_var_bounds);
       // set the objective weight to +1,  x - l
       obj_coefficients[i] = 1;
     } else {
       // objective weight is 1
       const f_t obj_weight = 1.;
       // the distance should always be positive
-      i_t var_id = h_variables.add_variable(
-        0,
-        (h_variable_upper_bounds[i] - h_variable_lower_bounds[i]) + int_tol,
-        obj_weight,
-        var_t::CONTINUOUS);
+      i_t var_id =
+        h_variables.add_variable(0,
+                                 (get_upper(h_var_bounds) - get_lower(h_var_bounds)) + int_tol,
+                                 obj_weight,
+                                 var_t::CONTINUOUS);
       obj_coefficients.push_back(obj_weight);
       f_t dist_val = abs(h_assignment[i] - h_last_projection[i]);
       // if it is out of bounds, because of the approximation issues,or init issues
@@ -260,9 +255,16 @@ bool feasibility_pump_t<i_t, f_t>::round(solution_t<i_t, f_t>& solution)
 {
   bool result;
   CUOPT_LOG_DEBUG("Rounding the point");
-  timer_t bounds_prop_timer(std::min(2., timer.remaining_time()));
-  const f_t lp_run_time_after_feasible = std::min(3., timer.remaining_time() / 20.);
+  timer_t bounds_prop_timer(std::min(0.5, timer.remaining_time()));
+  const f_t lp_run_time_after_feasible     = 0.;
+  bool old_var                             = constraint_prop.round_all_vars;
+  f_t old_time                             = constraint_prop.max_time_for_bounds_prop;
+  constraint_prop.round_all_vars           = false;
+  constraint_prop.max_time_for_bounds_prop = 0.7;
   result = constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
+  constraint_prop.round_all_vars           = old_var;
+  constraint_prop.max_time_for_bounds_prop = old_time;
+  // result = solution.round_nearest();
   cuopt_func_call(solution.test_variable_bounds(true));
   // copy the last rounding
   raft::copy(last_rounding.data(),
@@ -392,7 +394,6 @@ void feasibility_pump_t<i_t, f_t>::resize_vectors(problem_t<i_t, f_t>& problem,
 {
   last_rounding.resize(problem.n_variables, handle_ptr->get_stream());
   last_projection.resize(problem.n_variables, handle_ptr->get_stream());
-  best_excess_solution.resize(problem.n_variables, handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
@@ -423,27 +424,12 @@ bool feasibility_pump_t<i_t, f_t>::check_distance_cycle(solution_t<i_t, f_t>& so
 }
 
 template <typename i_t, typename f_t>
-void feasibility_pump_t<i_t, f_t>::save_best_excess_solution(solution_t<i_t, f_t>& solution)
-{
-  f_t sol_excess = solution.get_total_excess();
-  if (sol_excess < best_excess) {
-    CUOPT_LOG_DEBUG("FP: updating excess from %f to %f", best_excess, sol_excess);
-    best_excess = sol_excess;
-    raft::copy(best_excess_solution.data(),
-               solution.assignment.data(),
-               solution.assignment.size(),
-               solution.handle_ptr->get_stream());
-  }
-}
-
-template <typename i_t, typename f_t>
 void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& solution)
 {
   orig_variable_types.resize(solution.problem_ptr->n_variables, solution.handle_ptr->get_stream());
 
   auto var_types  = make_span(solution.problem_ptr->variable_types);
-  auto var_lb     = make_span(solution.problem_ptr->variable_lower_bounds);
-  auto var_ub     = make_span(solution.problem_ptr->variable_upper_bounds);
+  auto var_bnds   = make_span(solution.problem_ptr->variable_bounds);
   auto copy_types = make_span(orig_variable_types);
 
   raft::copy(orig_variable_types.data(),
@@ -454,11 +440,11 @@ void feasibility_pump_t<i_t, f_t>::relax_general_integers(solution_t<i_t, f_t>& 
     solution.handle_ptr->get_thrust_policy(),
     thrust::make_counting_iterator<i_t>(0),
     thrust::make_counting_iterator<i_t>(solution.problem_ptr->n_variables),
-    [var_types, var_lb, var_ub, copy_types, pb = solution.problem_ptr->view()] __device__(
-      auto v_idx) {
+    [var_types, var_bnds, copy_types, pb = solution.problem_ptr->view()] __device__(auto v_idx) {
       auto orig_v_type = var_types[v_idx];
-      auto lb          = var_lb[v_idx];
-      auto ub          = var_ub[v_idx];
+      auto var_bounds  = var_bnds[v_idx];
+      auto lb          = get_lower(var_bounds);
+      auto ub          = get_upper(var_bounds);
       bool var_binary  = (pb.integer_equal(lb, 0) && pb.integer_equal(ub, 1));
       auto copy_type =
         (orig_v_type == var_t::INTEGER) && var_binary ? var_t::INTEGER : var_t::CONTINUOUS;
@@ -516,7 +502,6 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
       is_cycle = check_distance_cycle(solution);
       if (is_cycle) {
         is_feasible = round(solution);
-        save_best_excess_solution(solution);
         cuopt_func_call(solution.test_variable_bounds(true));
         if (is_feasible) {
           bool res = solution.compute_feasibility();
@@ -534,7 +519,6 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
     if (n_integers == solution.problem_ptr->n_integer_vars) {
       if (is_feasible) {
         CUOPT_LOG_DEBUG("Feasible solution found after LP with relative tolerance");
-        save_best_excess_solution(solution);
         return true;
       }
       // if the solution is almost on polytope
@@ -554,8 +538,7 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
         is_feasible = solution.get_feasible();
         n_integers  = solution.compute_number_of_integers();
         if (is_feasible && n_integers == solution.problem_ptr->n_integer_vars) {
-          CUOPT_LOG_DEBUG("Feasible solution verified with lower precision!");
-          save_best_excess_solution(solution);
+          CUOPT_LOG_DEBUG("Feasible solution verified with LP!");
           return true;
         }
       }
@@ -568,7 +551,6 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
       const f_t time_ratio = 0.2;
       is_feasible          = test_fj_feasible(solution, time_ratio * proj_and_round_time);
     }
-    save_best_excess_solution(solution);
     if (timer.check_time_limit()) {
       CUOPT_LOG_DEBUG("FP time limit reached!");
       return false;
