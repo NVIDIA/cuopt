@@ -16,17 +16,77 @@
  */
 
 #include "gf2_presolve.hpp"
+
+#include <mip/mip_constants.hpp>
+
 #include <cmath>
 #include <unordered_map>
-#include <unordered_set>
 
+#if GF2_PRESOLVE_DEBUG
 #define NOT_GF2(reason, ...)                                                  \
-  {                                                                           \
+  do {                                                                        \
     printf("NO : Cons %d is not gf2: " reason "\n", cstr_idx, ##__VA_ARGS__); \
     goto not_valid;                                                           \
-  }
+  } while (0)
+#else
+#define NOT_GF2(reason, ...) \
+  do {                       \
+    goto not_valid;          \
+  } while (0)
+#endif
 
 namespace cuopt::linear_programming::detail {
+
+// this is kind-of a stopgap implementation (as in practice MIPLIB2017 only contains a couple of GF2
+// problems and they're small) but cuDSS could be used for this since A is likely to be sparse and
+// low-bandwidth (i think?) unlikely to occur in real-world problems however. doubt it'd be worth
+// the effort trashes A and b, return true if solved
+static bool gf2_solve(std::vector<std::vector<int>>& A, std::vector<int>& b, std::vector<int>& x)
+{
+  int i, j, k;
+  const int N = A.size();
+  for (i = 0; i < N; i++) {
+    // Find pivot
+    int pivot = -1;
+    for (j = i; j < N; j++) {
+      if (A[j][i]) {
+        pivot = j;
+        break;
+      }
+    }
+    if (pivot == -1) return false;  // No solution
+
+    // Swap current row with pivot row if needed
+    if (pivot != i) {
+      for (k = 0; k < N; k++) {
+        int temp    = A[i][k];
+        A[i][k]     = A[pivot][k];
+        A[pivot][k] = temp;
+      }
+      int temp = b[i];
+      b[i]     = b[pivot];
+      b[pivot] = temp;
+    }
+
+    // Eliminate downwards
+    for (j = i + 1; j < N; j++) {
+      if (A[j][i]) {
+        for (k = i; k < N; k++)
+          A[j][k] ^= A[i][k];
+        b[j] ^= b[i];
+      }
+    }
+  }
+
+  // Back-substitution
+  for (i = N - 1; i >= 0; i--) {
+    x[i] = b[i];
+    for (j = i + 1; j < N; j++)
+      x[i] ^= (A[i][j] & x[j]);
+    if (!A[i][i] && x[i]) return false;  // No solution
+  }
+  return true;  // Success
+}
 
 template <typename f_t>
 papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& problem,
@@ -132,20 +192,14 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
   }
 
   // If no GF2 constraints found, return unchanged
-  if (gf2_constraints.empty()) {
-    printf("No GF2 constraints found\n");
-    exit(0);
-    return papilo::PresolveStatus::kUnchanged;
-  }
+  if (gf2_constraints.empty()) { return papilo::PresolveStatus::kUnchanged; }
+
+  // Skip if that would cause computational explosion (O(n^3) with simple gaussian elimination)
+  if (gf2_constraints.size() > 1000) { return papilo::PresolveStatus::kUnchanged; }
 
   // Validate structure
   if (gf2_key_vars.size() != gf2_constraints.size() ||
       gf2_bin_vars.size() != gf2_constraints.size()) {
-    printf("GF2 constraints: %d, %d, %d\n",
-           gf2_key_vars.size(),
-           gf2_bin_vars.size(),
-           gf2_constraints.size());
-    exit(0);
     return papilo::PresolveStatus::kUnchanged;
   }
 
@@ -156,7 +210,9 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
   }
 
   // Build binary matrix
-  BinaryMatrix A(gf2_constraints.size(), gf2_constraints.size());
+  // Could be a flat vector but. oh well. in practice N is small
+  std::vector<std::vector<int>> A(gf2_constraints.size(),
+                                  std::vector<int>(gf2_constraints.size(), 0));
   std::vector<int> b(gf2_constraints.size());
   for (const auto& cons : gf2_constraints) {
     for (auto [bin_var, _] : cons.bin_vars) {
@@ -165,32 +221,24 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
     b[cons.cstr_idx] = cons.rhs;
   }
 
-  auto [inverse, rank] = A.inverse_and_rank();
-  if (rank != (int)gf2_constraints.size()) {
-    printf("Non-invertible, rank: %d/%d\n", rank, gf2_constraints.size());
-    exit(0);
-    return papilo::PresolveStatus::kUnchanged;  // Non-invertible
-  }
-
-  auto solution = inverse.dot(b);
+  std::vector<int> solution(gf2_constraints.size());
+  bool feasible = gf2_solve(A, b, solution);
+  if (!feasible) { return papilo::PresolveStatus::kInfeasible; }
 
   std::unordered_map<size_t, f_t> fixings;
-
   // Fix binary variables
   for (size_t sol_idx = 0; sol_idx < gf2_constraints.size(); ++sol_idx) {
     fixings[gf2_bin_vars_invmap[sol_idx]] = solution[sol_idx];
   }
 
-  // Compute fixings for key variables
+  // Compute fixings for key variables by solving for the constraint
   for (const auto& cons : gf2_constraints) {
     auto [key_var_idx, key_var_coeff] = cons.key_var;
     f_t constraint_rhs                = lhs_values[cons.cstr_idx];  // equality constraint
-    f_t lhs                           = 0.0;
+    f_t lhs                           = -constraint_rhs;
     for (auto [bin_var, coeff] : cons.bin_vars) {
       lhs += fixings[bin_var] * coeff;
     }
-    lhs -= constraint_rhs;
-
     fixings[key_var_idx] = std::round(-lhs / key_var_coeff);
   }
 
@@ -204,13 +252,19 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
     status = papilo::PresolveStatus::kReduced;
   }
 
-  printf("GF2 presolved!!\n");
-
   return status;
 }
 
-// Explicit template instantiations
-template class GF2Presolve<double>;
-template class GF2Presolve<float>;
+#define INSTANTIATE(F_TYPE) template class GF2Presolve<F_TYPE>;
+
+#if MIP_INSTANTIATE_FLOAT
+INSTANTIATE(float)
+#endif
+
+#if MIP_INSTANTIATE_DOUBLE
+INSTANTIATE(double)
+#endif
+
+#undef INSTANTIATE
 
 }  // namespace cuopt::linear_programming::detail

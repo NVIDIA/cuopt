@@ -356,9 +356,6 @@ void trivial_presolve(problem_t<i_t, f_t>& problem)
   // The problem has been solved by presolve. Mark its empty status as valid
   if (problem.n_variables == 0) { problem.empty = true; }
   problem.check_problem_representation(true);
-
-  problem.recompute_auxilliary_data(
-    false);  // check problem representation later once cstr bounds are computed
 }
 
 }  // namespace cuopt::linear_programming::detail
