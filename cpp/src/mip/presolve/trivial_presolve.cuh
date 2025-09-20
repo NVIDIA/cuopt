@@ -346,6 +346,8 @@ void test_reverse_matches(const problem_t<i_t, f_t>& pb)
 template <typename i_t, typename f_t>
 void trivial_presolve(problem_t<i_t, f_t>& problem)
 {
+  gf2_presolve(problem);
+
   cuopt_expects(problem.preprocess_called,
                 error_type_t::RuntimeError,
                 "preprocess_problem should be called before running the solver");
@@ -358,7 +360,6 @@ void trivial_presolve(problem_t<i_t, f_t>& problem)
   if (problem.n_variables == 0) { problem.empty = true; }
   problem.check_problem_representation(true);
 
-  gf2_presolve(problem);
   problem.recompute_auxilliary_data(
     false);  // check problem representation later once cstr bounds are computed
 }
