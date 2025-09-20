@@ -19,7 +19,6 @@
 
 #include <cuopt/error.hpp>
 #include <linear_programming/utils.cuh>
-#include <mip/presolve/gf2_presolve.cuh>
 #include <mip/presolve/trivial_presolve_helpers.cuh>
 #include <mip/problem/problem.cuh>
 #include <utilities/copy_helpers.hpp>
@@ -346,8 +345,6 @@ void test_reverse_matches(const problem_t<i_t, f_t>& pb)
 template <typename i_t, typename f_t>
 void trivial_presolve(problem_t<i_t, f_t>& problem)
 {
-  gf2_presolve(problem);
-
   cuopt_expects(problem.preprocess_called,
                 error_type_t::RuntimeError,
                 "preprocess_problem should be called before running the solver");
