@@ -17,6 +17,7 @@
 
 #include <mip/mip_constants.hpp>
 #include <mip/relaxed_lp/relaxed_lp.cuh>
+#include <mip/utils.cuh>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/seed_generator.cuh>
 #include "constraint_prop.cuh"
@@ -331,21 +332,16 @@ template <typename i_t, typename f_t>
 struct find_unset_int_t {
   // This functor should be called only on integer variables
   f_t eps;
-  raft::device_span<f_t> var_lb;
-  raft::device_span<f_t> var_ub;
   raft::device_span<f_t> assignment;
-  find_unset_int_t(f_t eps_,
-                   raft::device_span<f_t> lb_,
-                   raft::device_span<f_t> ub_,
-                   raft::device_span<f_t> assignment_)
-    : eps(eps_), var_lb(lb_), var_ub(ub_), assignment(assignment_)
+  find_unset_int_t(f_t eps_, raft::device_span<f_t> assignment_)
+    : eps(eps_), assignment(assignment_)
   {
   }
 
   HDI bool operator()(i_t idx)
   {
     auto var_val = assignment[idx];
-    bool is_set  = is_integer<f_t>(var_val);
+    bool is_set  = is_integer<f_t>(var_val, eps);
     return !is_set;
   }
 };
@@ -827,6 +823,21 @@ bool constraint_prop_t<i_t, f_t>::run_repair_procedure(problem_t<i_t, f_t>& prob
 }
 
 template <typename i_t, typename f_t>
+void constraint_prop_t<i_t, f_t>::find_unset_integer_vars(solution_t<i_t, f_t>& sol,
+                                                          rmm::device_uvector<i_t>& unset_vars)
+{
+  unset_vars.resize(sol.problem_ptr->n_integer_vars, sol.handle_ptr->get_stream());
+  auto iter =
+    thrust::copy_if(sol.handle_ptr->get_thrust_policy(),
+                    sol.problem_ptr->integer_indices.begin(),
+                    sol.problem_ptr->integer_indices.end(),
+                    unset_vars.begin(),
+                    find_unset_int_t<i_t, f_t>{sol.problem_ptr->tolerances.integrality_tolerance,
+                                               make_span(sol.assignment)});
+  unset_vars.resize(iter - unset_vars.begin(), sol.handle_ptr->get_stream());
+}
+
+template <typename i_t, typename f_t>
 bool constraint_prop_t<i_t, f_t>::is_problem_ii(problem_t<i_t, f_t>& problem)
 {
   bounds_update.calculate_activity_on_problem_bounds(problem);
@@ -865,10 +876,35 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();
   }
-  raft::copy(unset_integer_vars.data(),
-             sol.problem_ptr->integer_indices.data(),
-             sol.problem_ptr->n_integer_vars,
-             sol.handle_ptr->get_stream());
+  if (round_all_vars) {
+    raft::copy(unset_integer_vars.data(),
+               sol.problem_ptr->integer_indices.data(),
+               sol.problem_ptr->n_integer_vars,
+               sol.handle_ptr->get_stream());
+  } else {
+    find_unset_integer_vars(sol, unset_integer_vars);
+    sort_by_frac(sol, make_span(unset_integer_vars));
+    // round first unset_integer_vars.size() - 50, leave last 50 to be rounded by the algo
+    i_t n_to_round = std::max(unset_integer_vars.size() - 50, 0lu);
+    if (n_to_round > 0) {
+      thrust::for_each(
+        sol.handle_ptr->get_thrust_policy(),
+        unset_integer_vars.begin(),
+        unset_integer_vars.begin() + n_to_round,
+        [sol = sol.view(), seed = cuopt::seed_generator::get_seed()] __device__(i_t var_idx) {
+          raft::random::PCGenerator rng(seed, var_idx, 0);
+          auto var_bnd            = sol.problem.variable_bounds[var_idx];
+          sol.assignment[var_idx] = round_nearest(sol.assignment[var_idx],
+                                                  get_lower(var_bnd),
+                                                  get_upper(var_bnd),
+                                                  sol.problem.tolerances.integrality_tolerance,
+                                                  rng);
+        });
+      find_unset_integer_vars(sol, unset_integer_vars);
+    }
+    set_bounds_on_fixed_vars(sol);
+  }
+
   CUOPT_LOG_DEBUG("Bounds propagation rounding: unset vars %lu", unset_integer_vars.size());
   if (unset_integer_vars.size() == 0) {
     CUOPT_LOG_ERROR("No integer variables provided in the bounds prop rounding");
@@ -1009,7 +1045,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
   // if the constraint is not ii, run LP
   if ((multi_probe.infeas_constraints_count_0 == 0 ||
        multi_probe.infeas_constraints_count_1 == 0) &&
-      !timeout_happened) {
+      !timeout_happened && lp_run_time_after_feasible > 0) {
     relaxed_lp_settings_t lp_settings;
     lp_settings.time_limit            = lp_run_time_after_feasible;
     lp_settings.tolerance             = orig_sol.problem_ptr->tolerances.absolute_tolerance;
@@ -1034,10 +1070,7 @@ bool constraint_prop_t<i_t, f_t>::apply_round(
   std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>> probing_config)
 {
   raft::common::nvtx::range fun_scope("constraint prop round");
-
-  // this is second timer that can continue but without recovery mode
-  const f_t max_time_for_bounds_prop = 5.;
-  max_timer                          = timer_t{max_time_for_bounds_prop};
+  max_timer = timer_t{max_time_for_bounds_prop};
   if (check_brute_force_rounding(sol)) { return true; }
   recovery_mode      = false;
   rounding_ii        = false;

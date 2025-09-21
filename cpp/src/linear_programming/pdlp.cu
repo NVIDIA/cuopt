@@ -80,10 +80,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                               op_problem_scaled_,
                               pdlp_hyper_params::default_l_inf_ruiz_iterations,
                               (f_t)pdlp_hyper_params::default_alpha_pock_chambolle_rescaling,
-                              pdhg_solver_,
                               op_problem_scaled_.reverse_coefficients,
                               op_problem_scaled_.reverse_offsets,
-                              op_problem_scaled_.reverse_constraints},
+                              op_problem_scaled_.reverse_constraints,
+                              &pdhg_solver_},
     average_op_problem_evaluation_cusparse_view_{handle_ptr_,
                                                  op_problem,
                                                  unscaled_primal_avg_solution_,
@@ -262,22 +262,14 @@ void pdlp_solver_t<i_t, f_t>::set_initial_dual_solution(
     initial_dual_.data(), initial_dual_solution.data(), initial_dual_solution.size(), stream_view_);
 }
 
-static bool time_limit_reached(const std::chrono::high_resolution_clock::time_point& start_time,
-                               double seconds)
-{
-  auto current_time = std::chrono::high_resolution_clock::now();
-  auto elapsed =
-    std::chrono::duration_cast<std::chrono::milliseconds>(current_time - start_time).count();
-
-  return elapsed >= (seconds * 1000.0);
-}
+static bool time_limit_reached(const timer_t& timer) { return timer.check_time_limit(); }
 
 template <typename i_t, typename f_t>
 std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>::check_limits(
-  const std::chrono::high_resolution_clock::time_point& start_time)
+  const timer_t& timer)
 {
   // Check for time limit
-  if (time_limit_reached(start_time, settings_.time_limit)) {
+  if (time_limit_reached(timer)) {
     if (settings_.save_best_primal_so_far) {
 #ifdef PDLP_VERBOSE_MODE
       RAFT_CUDA_TRY(cudaDeviceSynchronize());
@@ -512,14 +504,10 @@ pdlp_warm_start_data_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::get_filled_warmed_star
 }
 
 template <typename i_t, typename f_t>
-void pdlp_solver_t<i_t, f_t>::print_termination_criteria(
-  const std::chrono::high_resolution_clock::time_point& start_time, bool is_average)
+void pdlp_solver_t<i_t, f_t>::print_termination_criteria(const timer_t& timer, bool is_average)
 {
   if (!inside_mip_) {
-    const auto current_time = std::chrono::high_resolution_clock::now();
-    const f_t elapsed =
-      std::chrono::duration_cast<std::chrono::milliseconds>(current_time - start_time).count() /
-      1000.0;
+    auto elapsed = timer.elapsed_time();
     if (is_average) {
       average_termination_strategy_.print_termination_criteria(total_pdlp_iterations_, elapsed);
     } else {
@@ -530,13 +518,13 @@ void pdlp_solver_t<i_t, f_t>::print_termination_criteria(
 
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::print_final_termination_criteria(
-  const std::chrono::high_resolution_clock::time_point& start_time,
+  const timer_t& timer,
   const convergence_information_t<i_t, f_t>& convergence_information,
   const pdlp_termination_status_t& termination_status,
   bool is_average)
 {
   if (!inside_mip_) {
-    print_termination_criteria(start_time, is_average);
+    print_termination_criteria(timer, is_average);
     CUOPT_LOG_INFO(
       "LP Solver status:                %s",
       optimization_problem_solution_t<i_t, f_t>::get_termination_status_string(termination_status)
@@ -559,7 +547,7 @@ void pdlp_solver_t<i_t, f_t>::print_final_termination_criteria(
 
 template <typename i_t, typename f_t>
 std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>::check_termination(
-  const std::chrono::high_resolution_clock::time_point& start_time)
+  const timer_t& timer)
 {
   raft::common::nvtx::range fun_scope("Check termination");
 
@@ -612,8 +600,8 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   // enough) We still need to check iteration and time limit prior without breaking the logic below
   // of first checking termination before the limit
   if (total_pdlp_iterations_ <= 1) {
-    print_termination_criteria(start_time);
-    return check_limits(start_time);
+    print_termination_criteria(timer);
+    return check_limits(timer);
   }
 
   // First check for pdlp_termination_reason_t::Optimality and handle the first primal feasible case
@@ -694,9 +682,8 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
       std::cout << "Optimal. End total number of iteration current=" << internal_solver_iterations_
                 << std::endl;
 #endif
-      print_final_termination_criteria(start_time,
-                                       current_termination_strategy_.get_convergence_information(),
-                                       termination_current);
+      print_final_termination_criteria(
+        timer, current_termination_strategy_.get_convergence_information(), termination_current);
       return current_termination_strategy_.fill_return_problem_solution(
         internal_solver_iterations_,
         pdhg_solver_,
@@ -713,7 +700,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
       std::cout << "Optimal. End total number of iteration average=" << internal_solver_iterations_
                 << std::endl;
 #endif
-      print_final_termination_criteria(start_time,
+      print_final_termination_criteria(timer,
                                        average_termination_strategy_.get_convergence_information(),
                                        termination_average,
                                        true);
@@ -733,7 +720,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
     std::cout << "Optimal. End total number of iteration average=" << internal_solver_iterations_
               << std::endl;
 #endif
-    print_final_termination_criteria(start_time,
+    print_final_termination_criteria(timer,
                                      average_termination_strategy_.get_convergence_information(),
                                      termination_average,
                                      true);
@@ -751,7 +738,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
               << std::endl;
 #endif
     print_final_termination_criteria(
-      start_time, current_termination_strategy_.get_convergence_information(), termination_current);
+      timer, current_termination_strategy_.get_convergence_information(), termination_current);
     return current_termination_strategy_.fill_return_problem_solution(
       internal_solver_iterations_,
       pdhg_solver_,
@@ -777,9 +764,8 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
       std::cout << "Current Infeasible. End total number of iteration current="
                 << internal_solver_iterations_ << std::endl;
 #endif
-      print_final_termination_criteria(start_time,
-                                       current_termination_strategy_.get_convergence_information(),
-                                       termination_current);
+      print_final_termination_criteria(
+        timer, current_termination_strategy_.get_convergence_information(), termination_current);
       return current_termination_strategy_.fill_return_problem_solution(
         internal_solver_iterations_,
         pdhg_solver_,
@@ -797,7 +783,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
       std::cout << "Average Infeasible. End total number of iteration current="
                 << internal_solver_iterations_ << std::endl;
 #endif
-      print_final_termination_criteria(start_time,
+      print_final_termination_criteria(timer,
                                        average_termination_strategy_.get_convergence_information(),
                                        termination_average,
                                        true);
@@ -817,9 +803,8 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
       std::cout << "Infeasible. End total number of iteration current="
                 << internal_solver_iterations_ << std::endl;
 #endif
-      print_final_termination_criteria(start_time,
-                                       current_termination_strategy_.get_convergence_information(),
-                                       termination_current);
+      print_final_termination_criteria(
+        timer, current_termination_strategy_.get_convergence_information(), termination_current);
       return current_termination_strategy_.fill_return_problem_solution(
         internal_solver_iterations_,
         pdhg_solver_,
@@ -841,7 +826,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
               << internal_solver_iterations_ << std::endl;
 #endif
     print_final_termination_criteria(
-      start_time, current_termination_strategy_.get_convergence_information(), termination_current);
+      timer, current_termination_strategy_.get_convergence_information(), termination_current);
     return optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::NumericalError,
                                                      stream_view_};
   }
@@ -853,10 +838,10 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
                               average_termination_strategy_,
                               termination_current,
                               termination_average);
-  if (total_pdlp_iterations_ % 1000 == 0) { print_termination_criteria(start_time); }
+  if (total_pdlp_iterations_ % 1000 == 0) { print_termination_criteria(timer); }
 
   // No reason to terminate
-  return check_limits(start_time);
+  return check_limits(timer);
 }
 
 template <typename f_t>
@@ -1095,8 +1080,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(bool& has_restarted)
 }
 
 template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
-  const std::chrono::high_resolution_clock::time_point& start_time)
+optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(const timer_t& timer)
 {
   bool verbose;
 #ifdef PDLP_VERBOSE_MODE
@@ -1273,8 +1257,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(
       }
 
       // Check for termination
-      std::optional<optimization_problem_solution_t<i_t, f_t>> solution =
-        check_termination(start_time);
+      std::optional<optimization_problem_solution_t<i_t, f_t>> solution = check_termination(timer);
 
       if (solution.has_value()) { return std::move(solution.value()); }
 

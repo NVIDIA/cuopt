@@ -22,7 +22,7 @@ namespace cuopt::linear_programming::detail {
 struct diversity_config_t {
   double time_ratio_on_init_lp              = 0.1;
   double max_time_on_lp                     = 30;
-  double time_ratio_of_probing_cache        = 0.10;
+  double time_ratio_of_probing_cache        = 0.04;
   double max_time_on_probing                = 60;
   size_t max_iterations_without_improvement = 15;
   int max_var_diff                          = 256;
@@ -38,7 +38,7 @@ struct diversity_config_t {
   double max_fast_sol_time                  = 10;
   double lp_run_time_if_feasible            = 15.;
   double lp_run_time_if_infeasible          = 1;
-  bool halve_population                     = true;
+  bool halve_population                     = false;
 };
 
 }  // namespace cuopt::linear_programming::detail

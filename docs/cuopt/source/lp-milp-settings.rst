@@ -280,14 +280,14 @@ Absolute Tolerance
 
 ``CUOPT_MIP_ABSOLUTE_TOLERANCE`` controls the MIP absolute tolerance.
 
-Note: the default value is ``1e-4``.
+Note: the default value is ``1e-6``.
 
 Relative Tolerance
 ^^^^^^^^^^^^^^^^^^
 
 ``CUOPT_MIP_RELATIVE_TOLERANCE`` controls the MIP relative tolerance.
 
-Note: the default value is ``1e-6``.
+Note: the default value is ``1e-12``.
 
 
 Integrality Tolerance

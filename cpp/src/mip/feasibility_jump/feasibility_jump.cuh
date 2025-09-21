@@ -34,13 +34,14 @@
 
 namespace cuopt::linear_programming::detail {
 
-static constexpr int TPB_resetmoves  = raft::WarpSize * 4;
-static constexpr int TPB_heavyvars   = raft::WarpSize * 16;
-static constexpr int TPB_heavycstrs  = raft::WarpSize * 4;
-static constexpr int TPB_localmin    = raft::WarpSize * 4;
-static constexpr int TPB_setval      = raft::WarpSize * 16;
-static constexpr int TPB_liftmoves   = raft::WarpSize * 4;
-static constexpr int TPB_loadbalance = raft::WarpSize * 4;
+static constexpr int TPB_resetmoves                 = raft::WarpSize * 4;
+static constexpr int TPB_heavyvars                  = raft::WarpSize * 16;
+static constexpr int TPB_heavycstrs                 = raft::WarpSize * 4;
+static constexpr int TPB_localmin                   = raft::WarpSize * 4;
+static constexpr int TPB_setval                     = raft::WarpSize * 16;
+static constexpr int TPB_update_changed_constraints = raft::WarpSize * 4;
+static constexpr int TPB_liftmoves                  = raft::WarpSize * 4;
+static constexpr int TPB_loadbalance                = raft::WarpSize * 4;
 
 struct fj_hyper_parameters_t {
   // The number of moves to evaluate, if there are many positive-score
@@ -253,6 +254,7 @@ class fj_t {
 
   // kernel launch dimensions, computed once inside the constructor
   std::pair<dim3, dim3> setval_launch_dims;
+  std::pair<dim3, dim3> update_changed_constraints_launch_dims;
   std::pair<dim3, dim3> resetmoves_launch_dims;
   std::pair<dim3, dim3> resetmoves_bin_launch_dims;
   std::pair<dim3, dim3> update_weights_launch_dims;

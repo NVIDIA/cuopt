@@ -126,7 +126,7 @@ i_t create_heavy_item_block_segments(rmm::cuda_stream_view stream,
     thrust::for_each(
       rmm::exec_policy(stream),
       thrust::make_counting_iterator<i_t>(0),
-      thrust::make_counting_iterator<i_t>(item_block_segments.size()),
+      thrust::make_counting_iterator<i_t>(item_block_segments.size() - 1),
       heavy_vertex_meta_t<i_t>{
         make_span(item_block_segments), make_span(vertex_id), make_span(pseudo_block_id)});
     thrust::inclusive_scan(rmm::exec_policy(stream),
