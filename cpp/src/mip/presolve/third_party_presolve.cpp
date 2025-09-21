@@ -330,7 +330,7 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t c
 
   presolver.addPresolveMethod(uptr(new papilo::DualInfer<f_t>));
   presolver.addPresolveMethod(uptr(new papilo::SimpleSubstitution<f_t>()));
-  // presolver.addPresolveMethod(uptr(new papilo::Sparsify<f_t>()));
+  presolver.addPresolveMethod(uptr(new papilo::Sparsify<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::Substitution<f_t>()));
 }
 
@@ -345,13 +345,6 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
   presolver.getPresolveOptions().tlim    = time_limit;
   presolver.getPresolveOptions().threads = num_cpu_threads;  //  user setting or  0 (automatic)
   presolver.getPresolveOptions().feastol = 1e-5;
-
-  presolver.getPresolveOptions().threads                    = 1;
-  presolver.getPresolveOptions().useabsfeas                 = false;
-  presolver.getPresolveOptions().substitutebinarieswithints = false;
-  presolver.getPresolveOptions().maxfillinpersubstitution   = 3;
-  presolver.getPresolveOptions().maxshiftperrow             = 10;
-  presolver.getPresolveOptions().detectlindep               = false;
 }
 
 template <typename i_t, typename f_t>
