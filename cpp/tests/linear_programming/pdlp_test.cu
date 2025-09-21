@@ -689,11 +689,13 @@ TEST(pdlp_class, per_constraint_test)
 
     auto& current_termination_strategy = solver.get_current_termination_strategy();
     pdlp_termination_status_t termination_average =
-      current_termination_strategy.evaluate_termination_criteria(solver.pdhg_solver_,
-                                                                 d_initial_primal,
-                                                                 d_initial_primal,
-                                                                 problem.combined_bounds,
-                                                                 problem.objective_coefficients);
+      current_termination_strategy.evaluate_termination_criteria(
+        solver.pdhg_solver_,
+        d_initial_primal,
+        d_initial_primal,
+        solver.pdhg_solver_.get_dual_slack(),
+        problem.combined_bounds,
+        problem.objective_coefficients);
 
     EXPECT_TRUE(termination_average != pdlp_termination_status_t::Optimal);
   }
@@ -708,11 +710,13 @@ TEST(pdlp_class, per_constraint_test)
 
     auto& current_termination_strategy = solver.get_current_termination_strategy();
     pdlp_termination_status_t termination_average =
-      current_termination_strategy.evaluate_termination_criteria(solver.pdhg_solver_,
-                                                                 d_initial_primal,
-                                                                 d_initial_primal,
-                                                                 problem.combined_bounds,
-                                                                 problem.objective_coefficients);
+      current_termination_strategy.evaluate_termination_criteria(
+        solver.pdhg_solver_,
+        d_initial_primal,
+        d_initial_primal,
+        solver.pdhg_solver_.get_dual_slack(),
+        problem.combined_bounds,
+        problem.objective_coefficients);
     EXPECT_EQ(current_termination_strategy.get_convergence_information()
                 .get_relative_linf_primal_residual()
                 .value(handle.get_stream()),
