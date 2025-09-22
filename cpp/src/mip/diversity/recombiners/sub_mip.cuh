@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include "cuopt/linear_programming/mip/solver_settings.hpp"
 #include "recombiner.cuh"
 
 #include <dual_simplex/branch_and_bound.hpp>
@@ -115,6 +116,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
                                                            f_t objective) {
         this->solution_callback(solution, objective);
       };
+
       // disable B&B logs, so that it is not interfering with the main B&B thread
       branch_and_bound_settings.log.log = false;
       dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(branch_and_bound_problem,

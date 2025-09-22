@@ -784,9 +784,12 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
       variable_lower_bounds[i] = 0;
       variable_upper_bounds[i] = 1;
     }
-    mps_parser_expects(variable_lower_bounds[i] <= variable_upper_bounds[i],
-                       error_type_t::ValidationError,
-                       "MPS Parser Internal Error - Please contact cuOpt team");
+    if (variable_lower_bounds[i] > variable_upper_bounds[i]) {
+      printf("WARNING: Variable %d has crossing bounds: %f > %f\n",
+             i,
+             variable_lower_bounds[i],
+             variable_upper_bounds[i]);
+    }
   }
 }
 

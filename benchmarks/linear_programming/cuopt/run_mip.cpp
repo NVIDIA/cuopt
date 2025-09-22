@@ -17,6 +17,7 @@
 #include "initial_solution_reader.hpp"
 #include "mip_test_instances.hpp"
 
+#include <cstdio>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
@@ -24,7 +25,6 @@
 #include <cuopt/logger.hpp>
 #include <mps_parser/parser.hpp>
 
-#include <omp.h>
 #include <raft/core/handle.hpp>
 
 #include <rmm/mr/device/cuda_async_memory_resource.hpp>
