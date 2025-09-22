@@ -395,8 +395,13 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       if (auto& cached_move = fj_cpu.cached_mtm_moves[i]; cached_move.first != 0) {
         if (best_score < cached_move.second) {
           auto var_idx = fj_cpu.h_variables[i];
-          best_score   = cached_move.second;
-          best_move    = fj_move_t{var_idx, cached_move.first};
+          if (fj_cpu.view.pb.check_variable_within_bounds(
+                var_idx, fj_cpu.h_assignment[var_idx] + cached_move.first)) {
+            best_score = cached_move.second;
+            best_move  = fj_move_t{var_idx, cached_move.first};
+          }
+          // cuopt_assert(fj_cpu.view.pb.check_variable_within_bounds(var_idx,
+          // fj_cpu.h_assignment[var_idx] + cached_move.first), "best move not within bounds");
         }
         fj_cpu.hit_count++;
         continue;
@@ -931,17 +936,16 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_l
     } else {
       // Local Min
       update_weights(fj_cpu);
-      if (should_perturb) perturb(fj_cpu);
+      if (should_perturb) {
+        perturb(fj_cpu);
+        for (auto& cached_move : fj_cpu.cached_mtm_moves)
+          cached_move.first = 0;
+      }
       thrust::tie(move, score) =
         find_mtm_move_viol(fj_cpu, 1, true);  // pick a single random violated constraint
       i_t var_idx = move.var_idx >= 0 ? move.var_idx : 0;
       f_t delta   = move.var_idx >= 0 ? move.value : 0;
       apply_move(fj_cpu, var_idx, delta, true);
-      // clear cached moves
-      if (!fj_cpu.violated_constraints.empty()) {
-        for (auto& cached_move : fj_cpu.cached_mtm_moves)
-          cached_move.first = 0;
-      }
       ++local_mins;
     }
     if (fj_cpu.iterations % fj_cpu.log_interval == 0) {
