@@ -233,7 +233,7 @@ jobs:
     runs-on: ubuntu-latest
     # ref: https://docs.github.com/en/actions/reference/security/secure-use#use-an-intermediate-environment-variable
     env:
-      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
       INPUT_BRANCH: "${{ inputs.branch }}"
       INPUT_BUILD_TYPE: "${{ inputs.build_type }}"
       INPUT_DATE: "${{ inputs.date }}"
