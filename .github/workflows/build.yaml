@@ -228,8 +228,7 @@ jobs:
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client
       - wheel-publish-libcuopt
-    if: ${{ inputs.trigger-tests }}
-    secrets: inherit
+    if: inputs.trigger-tests == 'true'
     runs-on: ubuntu-latest
     # ref: https://docs.github.com/en/actions/reference/security/secure-use#use-an-intermediate-environment-variable
     env:
@@ -239,7 +238,7 @@ jobs:
       INPUT_DATE: "${{ inputs.date }}"
       INPUT_SHA: "${{ inputs.sha }}"
     steps:
-      trigger-test-workflow:
+      - name: trigger-test-workflow
         # Assumes the branch you want to test is the same one you want to source 'test.yaml' from.
         # If that ever changes, will need to set '--ref' and 'build_type=' from different sources.
         run: |
