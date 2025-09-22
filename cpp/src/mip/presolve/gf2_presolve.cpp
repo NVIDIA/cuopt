@@ -243,6 +243,7 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
   }
 
   papilo::PresolveStatus status = papilo::PresolveStatus::kUnchanged;
+ TransactionGuard rg{reductions};
   for (const auto& [var_idx, fixing] : fixings) {
     if (num.isZero(fixing)) {
       reductions.fixCol(var_idx, 0);
