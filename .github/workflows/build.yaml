@@ -70,7 +70,7 @@ jobs:
   cpp-build:
     name: cpp-build
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/conda-cpp-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -81,7 +81,7 @@ jobs:
     name: python-build
     needs: [cpp-build]
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/conda-python-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -92,7 +92,7 @@ jobs:
     name: upload-conda
     needs: [cpp-build, python-build]
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/conda-upload-packages.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/conda-upload-packages.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -101,7 +101,7 @@ jobs:
   wheel-build-cuopt-mps-parser:
     name: wheel-build-cuopt-mps-parser
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -117,7 +117,7 @@ jobs:
     name: wheel-publish-cuopt-mps-parser
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-publish.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -129,7 +129,7 @@ jobs:
     name: wheel-build-libcuopt
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -143,7 +143,7 @@ jobs:
     name: wheel-publish-libcuopt
     needs: wheel-build-libcuopt
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-publish.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -155,7 +155,7 @@ jobs:
     name: wheel-build-cuopt
     needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt]
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -168,7 +168,7 @@ jobs:
     name: wheel-publish-cuopt
     needs: wheel-build-cuopt
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-publish.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -180,7 +180,7 @@ jobs:
     name: wheel-build-cuopt-server
     needs: wheel-build-cuopt
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -193,7 +193,7 @@ jobs:
     name: wheel-publish-cuopt-server
     needs: wheel-build-cuopt-server
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-publish.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -205,7 +205,7 @@ jobs:
     name: docs-build
     needs: [python-build]
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/custom-job.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       node_type: "gpu-l4-latest-1"
@@ -221,7 +221,7 @@ jobs:
     name: wheel-build-cuopt-sh-client
     needs: wheel-build-cuopt
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}
@@ -237,7 +237,7 @@ jobs:
     name: wheel-publish-cuopt-sh-client
     needs: wheel-build-cuopt-sh-client
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-publish.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@cuopt-testing
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       branch: ${{ inputs.branch }}

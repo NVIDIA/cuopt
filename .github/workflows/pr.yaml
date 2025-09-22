@@ -43,10 +43,10 @@ jobs:
       - wheel-build-cuopt-sh-client
       - test-self-hosted-server
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/pr-builder.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@cuopt-testing
   changed-files:
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/changed-files.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@cuopt-testing
     with:
       files_yaml: |
         test_cpp:
@@ -111,21 +111,21 @@ jobs:
           - '!python/nvcf_client/**'
   checks:
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/checks.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@cuopt-testing
     with:
       enable_check_generated_files: false
 
   conda-cpp-build:
     needs: checks
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/conda-cpp-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@cuopt-testing
     with:
       build_type: pull-request
       script: ci/build_cpp.sh
   conda-cpp-tests:
     needs: [conda-cpp-build, changed-files]
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/conda-cpp-tests.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@cuopt-testing
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
       build_type: pull-request
@@ -133,14 +133,14 @@ jobs:
   conda-python-build:
     needs: conda-cpp-build
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/conda-python-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@cuopt-testing
     with:
       build_type: pull-request
       script: ci/build_python.sh
   conda-python-tests:
     needs: [conda-python-build, changed-files]
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/conda-python-tests.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@cuopt-testing
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python
     with:
       run_codecov: false
@@ -149,7 +149,7 @@ jobs:
   docs-build:
     needs: conda-python-build
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/custom-job.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@cuopt-testing
     with:
       build_type: pull-request
       node_type: "gpu-l4-latest-1"
@@ -160,7 +160,7 @@ jobs:
       script: "ci/build_docs.sh"
   wheel-build-cuopt-mps-parser:
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt_mps_parser.sh
@@ -172,7 +172,7 @@ jobs:
   wheel-build-libcuopt:
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
     with:
       # build for every combination of arch and CUDA version, but only for the latest Python
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
@@ -183,7 +183,7 @@ jobs:
   wheel-build-cuopt:
     needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt]
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt.sh
@@ -192,7 +192,7 @@ jobs:
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, wheel-build-cuopt-sh-client, changed-files]
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-test.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@cuopt-testing
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt
     with:
       build_type: pull-request
@@ -200,7 +200,7 @@ jobs:
   wheel-build-cuopt-server:
     needs: wheel-build-cuopt
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt_server.sh
@@ -208,7 +208,7 @@ jobs:
       package-type: python
   wheel-build-cuopt-sh-client:
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuopt-testing
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt_sh_client.sh
@@ -221,7 +221,7 @@ jobs:
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt-server, changed-files]
     secrets: inherit
-    uses: jameslamb/shared-workflows/.github/workflows/wheels-test.yaml@cuopt-testing
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@cuopt-testing
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt_server
     with:
       build_type: pull-request
