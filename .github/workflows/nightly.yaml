@@ -24,8 +24,10 @@ jobs:
           export DATE=$(date +%F)
           export SHA=$(gh api -q '.commit.sha' "repos/nvidia/cuopt/branches/${CUOPT_BRANCH}")
 
+          # TODO: set '--ref' back to CUOPT_BRANCH
           gh workflow run build.yaml    \
             --repo NVIDIA/cuopt         \
+            --ref 'trigger-nightly-tests-after-builds' \
             -f branch="${CUOPT_BRANCH}" \
             -f build_type=nightly       \
             -f date="${DATE}"           \
