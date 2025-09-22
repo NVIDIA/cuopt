@@ -228,7 +228,7 @@ jobs:
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client
       - wheel-publish-libcuopt
-    if: inputs.trigger-tests == 'true'
+    if: inputs.trigger-tests
     runs-on: ubuntu-latest
     # ref: https://docs.github.com/en/actions/reference/security/secure-use#use-an-intermediate-environment-variable
     env:
