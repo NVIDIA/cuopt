@@ -93,7 +93,7 @@ TEST(c_api, solve_time_bb_preemption)
             CUOPT_SUCCESS);
   EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
   EXPECT_GT(solve_time, 0);  // solve time should not be equal to 0, even on very simple instances
-                             // solved by B&B before the diversity solver has time to run
+  // solved by B&B before the diversity solver has time to run
 }
 
 TEST(c_api, bad_parameter_name) { EXPECT_EQ(test_bad_parameter_name(), CUOPT_INVALID_ARGUMENT); }
@@ -111,4 +111,12 @@ TEST(c_api, test_ranged_problem)
   EXPECT_EQ(test_ranged_problem(&termination_status, &objective), CUOPT_SUCCESS);
   EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
   EXPECT_NEAR(objective, 32.0, 1e-3);
+}
+
+TEST(c_api, test_invalid_bounds)
+{
+  // Test LP codepath
+  EXPECT_EQ(test_invalid_bounds(false), CUOPT_SUCCESS);
+  // Test MIP codepath
+  EXPECT_EQ(test_invalid_bounds(true), CUOPT_SUCCESS);
 }
