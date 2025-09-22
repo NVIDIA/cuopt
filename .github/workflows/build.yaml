@@ -158,6 +158,9 @@ jobs:
       script: ci/build_wheel_cuopt_server.sh
       package-name: cuopt_server
       package-type: python
+      pure-wheel: true
+      # Only need 1 package per CUDA major version. This selects "ARCH=amd64 + the latest supported Python, 1 job per major CUDA version".
+      matrix_filter: map(select(.ARCH == "amd64")) | group_by(.CUDA_VER|split(".")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(".")|map(tonumber)), (.CUDA_VER|split(".")|map(tonumber))]))
   wheel-publish-cuopt-server:
     needs: wheel-build-cuopt-server
     secrets: inherit
@@ -196,6 +199,7 @@ jobs:
       package-name: cuopt_sh_client
       package-type: python
       append-cuda-suffix: false
+      pure-wheel: true
       # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
       matrix_filter: '[map(select(.ARCH == "amd64")) | min_by((.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber)))]'
   wheel-publish-cuopt-sh-client:
