@@ -34,6 +34,7 @@ INSTANCES=(
     "neos5"
     "swath1"
     "enlight_hard"
+    "supportcase22"
 )
 
 BASE_URL="https://miplib.zib.de/WebData/instances"
