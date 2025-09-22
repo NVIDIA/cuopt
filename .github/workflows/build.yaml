@@ -68,7 +68,7 @@ concurrency:
 
 jobs:
   cpp-build:
-    name: cpp-build (${{ inputs.branch }})
+    name: cpp-build
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@cuopt-testing
     with:

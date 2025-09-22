@@ -65,6 +65,9 @@ permissions:
 
 jobs:
   compute-matrix:
+    # Setting 'name' here helps differentiate jobs in the GitHub UI,
+    # especially when this workflow is >=2 levels deep (e.g. called by a workflow called by another workflow).
+    name: build-test-publish-images (compute-matrix)
     runs-on: ubuntu-latest
     container:
       image: rapidsai/ci-conda:25.10-latest
@@ -156,20 +159,20 @@ jobs:
           registry: "nvcr.io"
           username: "$oauthtoken"
           password: ${{ secrets.CUOPT_NGC_DOCKER_KEY }}
-      - name: Trim CUDA and Python versions
-        id: trim
-        run: |
-          echo "CUDA_SHORT=$(echo '${{ matrix.CUDA_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
-          echo "PYTHON_SHORT=$(echo '${{ matrix.PYTHON_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
-      - name: Create multiarch manifest
-        shell: bash
-        env:
-          CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
-          CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
-          PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
-          IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
-          BUILD_TYPE: ${{ inputs.build_type }}
-        run: bash ci/docker/create_multiarch_manifest.sh
+      # - name: Trim CUDA and Python versions
+      #   id: trim
+      #   run: |
+      #     echo "CUDA_SHORT=$(echo '${{ matrix.CUDA_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+      #     echo "PYTHON_SHORT=$(echo '${{ matrix.PYTHON_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+      # - name: Create multiarch manifest
+      #   shell: bash
+      #   env:
+      #     CUOPT_VER: ${{ needs.compute-matrix.outputs.CUOPT_VER }}
+      #     CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
+      #     PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
+      #     IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
+      #     BUILD_TYPE: ${{ inputs.build_type }}
+      #   run: bash ci/docker/create_multiarch_manifest.sh
 
   test-images:
     name: Test images
