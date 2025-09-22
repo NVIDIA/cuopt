@@ -1029,6 +1029,20 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(bool& has_restarted)
 #ifdef CUPDLP_DEBUG_MODE
   printf("Computing compute_fixed_point_error \n");
 #endif
+  printf("reflected dual? %d\n", pdlp_hyper_params::use_reflected_primal_dual);
+  cuopt_assert(pdhg_solver_.get_reflected_primal().size() == primal_size_h_,
+               "reflected_primal_ size mismatch");
+  cuopt_assert(pdhg_solver_.get_reflected_dual().size() == dual_size_h_,
+               "reflected_dual_ size mismatch");
+  cuopt_assert(pdhg_solver_.get_primal_solution().size() == primal_size_h_,
+               "primal_solution_ size mismatch");
+  cuopt_assert(pdhg_solver_.get_dual_solution().size() == dual_size_h_,
+               "dual_solution_ size mismatch");
+  cuopt_assert(pdhg_solver_.get_saddle_point_state().get_delta_primal().size() == primal_size_h_,
+               "delta_primal_ size mismatch");
+  cuopt_assert(pdhg_solver_.get_saddle_point_state().get_delta_dual().size() == dual_size_h_,
+               "delta_dual_ size mismatch");
+
   // Computing the deltas
   cub::DeviceTransform::Transform(cuda::std::make_tuple(pdhg_solver_.get_reflected_primal().data(),
                                                         pdhg_solver_.get_primal_solution().data()),
@@ -1317,12 +1331,14 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     take_step(total_pdlp_iterations_,
               (total_pdlp_iterations_ + 1) % pdlp_hyper_params::major_iteration == 0);
 
-    if (pdlp_hyper_params::use_fixed_point_error &&
-          (total_pdlp_iterations_ + 1) % pdlp_hyper_params::major_iteration == 0 ||
-        has_restarted)
-      compute_fixed_error(has_restarted);  // May set has_restarted to false
+    if (pdlp_hyper_params::use_reflected_primal_dual) {
+      if (pdlp_hyper_params::use_fixed_point_error &&
+            (total_pdlp_iterations_ + 1) % pdlp_hyper_params::major_iteration == 0 ||
+          has_restarted)
+        compute_fixed_error(has_restarted);  // May set has_restarted to false
 
-    if (pdlp_hyper_params::use_reflected_primal_dual) halpern_update();
+      halpern_update();
+    }
 
     ++total_pdlp_iterations_;
     ++internal_solver_iterations_;
