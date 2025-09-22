@@ -310,6 +310,7 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t c
   using uptr = std::unique_ptr<papilo::PresolveMethod<f_t>>;
 
   // cuopt custom presolvers
+if (category == problem_category_t::MIP)
   presolver.addPresolveMethod(uptr(new cuopt::linear_programming::detail::GF2Presolve<f_t>()));
 
   // fast presolvers
