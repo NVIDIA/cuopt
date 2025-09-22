@@ -148,7 +148,6 @@ jobs:
       package-name: cuopt
       package-type: python
   wheel-build-cuopt-server:
-    needs: wheel-build-cuopt
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
     with:
@@ -186,7 +185,6 @@ jobs:
       container_image: "rapidsai/ci-conda:25.10-latest"
       script: "ci/build_docs.sh"
   wheel-build-cuopt-sh-client:
-    needs: wheel-build-cuopt
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
     with:
@@ -212,7 +210,10 @@ jobs:
       package-name: cuopt_sh_client
       package-type: python
   build-images:
-    needs: [wheel-publish-cuopt, wheel-publish-cuopt-server]
+    needs:
+      - wheel-publish-cuopt
+      - wheel-publish-cuopt-server
+      - wheel-publish-sh-client
     uses: ./.github/workflows/build_test_publish_images.yaml
     secrets: inherit
     with:

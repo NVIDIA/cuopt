@@ -198,7 +198,7 @@ jobs:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
   wheel-build-cuopt-server:
-    needs: wheel-build-cuopt
+    needs: checks
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
     with:
