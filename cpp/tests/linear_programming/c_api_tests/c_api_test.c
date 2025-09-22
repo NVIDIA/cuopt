@@ -874,7 +874,7 @@ DONE:
 }
 
 // Test invalid bounds scenario (what MOI wrapper was producing)
-cuopt_int_t test_invalid_bounds()
+cuopt_int_t test_invalid_bounds(cuopt_int_t test_mip)
 {
   cuOptOptimizationProblem problem = NULL;
   cuOptSolverSettings settings = NULL;
@@ -923,6 +923,7 @@ cuopt_int_t test_invalid_bounds()
 
   // Variable types (binary)
   char variable_types[] = {CUOPT_INTEGER};  // Binary variable
+  if (!test_mip) variable_types[0] = CUOPT_CONTINUOUS;
 
   cuopt_int_t status;
   cuopt_float_t time;

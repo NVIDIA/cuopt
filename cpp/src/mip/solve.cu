@@ -215,7 +215,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                         op_problem.get_handle_ptr()->get_stream());
       }
 
-      problem       = detail::problem_t<i_t, f_t>(reduced_op_problem, settings.get_tolerances());
+      problem       = detail::problem_t<i_t, f_t>(reduced_op_problem);
       presolve_time = timer.elapsed_time();
       CUOPT_LOG_INFO("Third party presolve time: %f", presolve_time);
     }

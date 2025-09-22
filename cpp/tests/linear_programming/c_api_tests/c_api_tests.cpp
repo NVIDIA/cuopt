@@ -113,4 +113,10 @@ TEST(c_api, test_ranged_problem)
   EXPECT_NEAR(objective, 32.0, 1e-3);
 }
 
-TEST(c_api, test_invalid_bounds) { EXPECT_EQ(test_invalid_bounds(), CUOPT_SUCCESS); }
+TEST(c_api, test_invalid_bounds)
+{
+  // Test LP codepath
+  EXPECT_EQ(test_invalid_bounds(false), CUOPT_SUCCESS);
+  // Test MIP codepath
+  EXPECT_EQ(test_invalid_bounds(true), CUOPT_SUCCESS);
+}
