@@ -25,7 +25,7 @@ jobs:
           export SHA=$(gh api -q '.commit.sha' "repos/nvidia/cuopt/branches/${CUOPT_BRANCH}")
 
           gh workflow run build.yaml    \
-            --repos NVIDIA/cuopt        \
+            --repo NVIDIA/cuopt         \
             -f branch="${CUOPT_BRANCH}" \
             -f build_type=nightly       \
             -f date="${DATE}"           \
