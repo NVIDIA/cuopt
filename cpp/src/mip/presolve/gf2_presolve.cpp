@@ -168,13 +168,6 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
         gf2_key_vars.insert({var_idx, gf2_key_vars.size()});
       } else {
         // Binary variable
-        f_t var_lb = col_flags[var_idx].test(papilo::ColFlag::kLbInf)
-                       ? -std::numeric_limits<f_t>::infinity()
-                       : lower_bounds[var_idx];
-        f_t var_ub = col_flags[var_idx].test(papilo::ColFlag::kUbInf)
-                       ? std::numeric_limits<f_t>::infinity()
-                       : upper_bounds[var_idx];
-
         constraint_bin_vars.push_back({var_idx, coeff});
         gf2_bin_vars.insert({var_idx, gf2_bin_vars.size()});
       }
@@ -243,7 +236,7 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
   }
 
   papilo::PresolveStatus status = papilo::PresolveStatus::kUnchanged;
- TransactionGuard rg{reductions};
+  papilo::TransactionGuard rg{reductions};
   for (const auto& [var_idx, fixing] : fixings) {
     if (num.isZero(fixing)) {
       reductions.fixCol(var_idx, 0);
