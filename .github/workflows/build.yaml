@@ -213,7 +213,7 @@ jobs:
     needs:
       - wheel-publish-cuopt
       - wheel-publish-cuopt-server
-      - wheel-publish-sh-client
+      - wheel-publish-cuopt-sh-client
     uses: ./.github/workflows/build_test_publish_images.yaml
     secrets: inherit
     with:
