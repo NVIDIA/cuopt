@@ -77,7 +77,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha }}
           fetch-depth: 0 # unshallow fetch for setuptools-scm
           persist-credentials: false
           ref: ${{ inputs.sha }}
