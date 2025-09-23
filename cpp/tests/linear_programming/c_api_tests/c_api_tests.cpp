@@ -71,7 +71,7 @@ INSTANTIATE_TEST_SUITE_P(
                     5,
                     CUOPT_METHOD_DUAL_SIMPLEX),  // LP, Dual Simplex
     std::make_tuple("/linear_programming/square41/square41.mps", 5, CUOPT_METHOD_PDLP),  // LP, PDLP
-    std::make_tuple("/mip/enlight_hard.mps", 5, CUOPT_METHOD_DUAL_SIMPLEX)               // MIP
+    std::make_tuple("/mip/supportcase22.mps", 5, CUOPT_METHOD_DUAL_SIMPLEX)              // MIP
     ));
 
 TEST(c_api, iteration_limit)

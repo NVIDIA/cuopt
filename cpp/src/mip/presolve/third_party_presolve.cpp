@@ -18,6 +18,7 @@
 #include <cuopt/error.hpp>
 #include <cuopt/logger.hpp>
 #include <mip/mip_constants.hpp>
+#include <mip/presolve/gf2_presolve.hpp>
 #include <mip/presolve/third_party_presolve.hpp>
 #include <utilities/timer.hpp>
 
@@ -306,6 +307,10 @@ template <typename f_t>
 void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t category)
 {
   using uptr = std::unique_ptr<papilo::PresolveMethod<f_t>>;
+
+  // cuopt custom presolvers
+  if (category == problem_category_t::MIP)
+    presolver.addPresolveMethod(uptr(new cuopt::linear_programming::detail::GF2Presolve<f_t>()));
 
   // fast presolvers
   presolver.addPresolveMethod(uptr(new papilo::SingletonCols<f_t>()));
