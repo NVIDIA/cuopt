@@ -48,6 +48,7 @@ def status(args):
         self_signed_cert=args.self_signed_cert,
         timeout_exception=False,
         result_type=result_types[args.result_type],
+        http_general_timeout=args.http_timeout,
     )
 
     try:
@@ -73,6 +74,7 @@ def delete_request(args):
         self_signed_cert=args.self_signed_cert,
         timeout_exception=False,
         result_type=result_types[args.result_type],
+        http_general_timeout=args.http_timeout,
     )
 
     try:
@@ -104,6 +106,7 @@ def upload_solution(args):
         self_signed_cert=args.self_signed_cert,
         timeout_exception=False,
         result_type=result_types[args.result_type],
+        http_general_timeout=args.http_timeout,
     )
 
     try:
@@ -129,6 +132,7 @@ def delete_solution(args):
         self_signed_cert=args.self_signed_cert,
         timeout_exception=False,
         result_type=result_types[args.result_type],
+        http_general_timeout=args.http_timeout,
     )
 
     try:
@@ -220,6 +224,7 @@ def solve(args):
         only_validate=args.only_validation,
         timeout_exception=False,
         result_type=result_types[args.result_type],
+        http_general_timeout=args.http_timeout,
     )
 
     try:
@@ -587,6 +592,16 @@ def main():
         help="Upload a solution to be cached on the server. The reqId "
         "returned may be used as an initial solution for VRP.",
     )
+    parser.add_argument(
+        "-ht",
+        "--http-timeout",
+        type=int,
+        default=30,
+        help="Timeout in seconds for http requests. May need to be increased "
+        "for large datasets or slow networks. Default is 30s. "
+        "Set to None to never timeout.",
+    )
+
     args = parser.parse_args()
     set_log_level(levels[args.log_level])
     if args.version:
