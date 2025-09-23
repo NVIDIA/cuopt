@@ -155,7 +155,6 @@ jobs:
       package-name: cuopt
       package-type: python
   wheel-build-cuopt-server:
-    needs: wheel-build-cuopt
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
     with:
@@ -166,6 +165,9 @@ jobs:
       script: ci/build_wheel_cuopt_server.sh
       package-name: cuopt_server
       package-type: python
+      pure-wheel: true
+      # Only need 1 package per CUDA major version. This selects "ARCH=amd64 + the latest supported Python, 1 job per major CUDA version".
+      matrix_filter: map(select(.ARCH == "amd64")) | group_by(.CUDA_VER|split(".")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(".")|map(tonumber)), (.CUDA_VER|split(".")|map(tonumber))]))
   wheel-publish-cuopt-server:
     needs: wheel-build-cuopt-server
     secrets: inherit
@@ -193,7 +195,6 @@ jobs:
       container_image: "rapidsai/ci-conda:25.10-latest"
       script: "ci/build_docs.sh"
   wheel-build-cuopt-sh-client:
-    needs: wheel-build-cuopt
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
     with:
@@ -253,7 +254,10 @@ jobs:
             -f sha="${INPUT_SHA}"
 
   build-images:
-    needs: [wheel-publish-cuopt, wheel-publish-cuopt-server]
+    needs:
+      - wheel-publish-cuopt
+      - wheel-publish-cuopt-server
+      - wheel-publish-cuopt-sh-client
     uses: ./.github/workflows/build_test_publish_images.yaml
     secrets: inherit
     with:
