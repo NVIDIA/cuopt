@@ -78,7 +78,7 @@ inline rapids_logger::logger& default_logger()
     logger_.set_pattern(default_pattern());
 #endif
     logger_.set_level(default_level());
-    logger_.flush_on(rapids_logger::level_enum::info);
+    logger_.flush_on(rapids_logger::level_enum::debug);
 
     return logger_;
   }();
@@ -100,7 +100,7 @@ inline void reset_default_logger()
   default_logger().set_pattern(default_pattern());
 #endif
   default_logger().set_level(default_level());
-  default_logger().flush_on(rapids_logger::level_enum::info);
+  default_logger().flush_on(rapids_logger::level_enum::debug);
 }
 
 }  // namespace cuopt

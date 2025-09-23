@@ -110,6 +110,12 @@ TEST(termination_status, lower_bound_bb_timeout)
   EXPECT_GE(lb, obj_val);
 }
 
+TEST(termination_status, crossing_bounds_infeasible)
+{
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/crossing_var_bounds.mps", 0.5, false);
+  EXPECT_EQ(termination_status, mip_termination_status_t::Infeasible);
+}
+
 TEST(termination_status, bb_infeasible_test)
 {
   // First, check that presolve doesn't reduce the problem to infeasibility

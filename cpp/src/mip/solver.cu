@@ -76,9 +76,11 @@ struct branch_and_bound_solution_helper_t {
     dm->population.add_external_solution(solution, objective);
   }
 
-  void set_simplex_solution(std::vector<f_t>& solution, f_t objective)
+  void set_simplex_solution(std::vector<f_t>& solution,
+                            std::vector<f_t>& dual_solution,
+                            f_t objective)
   {
-    dm->set_simplex_solution(solution, objective);
+    dm->set_simplex_solution(solution, dual_solution, objective);
   }
 
   void preempt_heuristic_solver() { dm->population.preempt_heuristic_solver(); }
@@ -187,7 +189,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       std::bind(&branch_and_bound_solution_helper_t<i_t, f_t>::set_simplex_solution,
                 &solution_helper,
                 std::placeholders::_1,
-                std::placeholders::_2);
+                std::placeholders::_2,
+                std::placeholders::_3);
 
     // Create the branch and bound object
     branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(

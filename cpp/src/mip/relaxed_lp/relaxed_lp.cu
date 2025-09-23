@@ -56,10 +56,10 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   pdlp_settings.tolerances.relative_dual_tolerance   = settings.tolerance / 100.;
   pdlp_settings.time_limit                           = settings.time_limit;
   pdlp_settings.concurrent_halt                      = settings.concurrent_halt;
-  if (settings.return_first_feasible) { pdlp_settings.per_constraint_residual = true; }
-  pdlp_settings.first_primal_feasible = settings.return_first_feasible;
+  pdlp_settings.per_constraint_residual              = settings.per_constraint_residual;
+  pdlp_settings.first_primal_feasible                = settings.return_first_feasible;
   pdlp_solver_t<i_t, f_t> lp_solver(op_problem, pdlp_settings);
-  if (settings.save_state) {
+  if (settings.has_initial_primal) {
     i_t prev_size = lp_state.prev_dual.size();
     CUOPT_LOG_DEBUG(
       "setting initial primal solution of size %d dual size %d problem vars %d cstrs %d",

@@ -18,6 +18,7 @@
 #include <cuopt/error.hpp>
 #include <cuopt/logger.hpp>
 #include <mip/mip_constants.hpp>
+#include <mip/presolve/gf2_presolve.hpp>
 #include <mip/presolve/third_party_presolve.hpp>
 #include <utilities/timer.hpp>
 
@@ -30,8 +31,7 @@
 namespace cuopt::linear_programming::detail {
 
 static papilo::PostsolveStorage<double> post_solve_storage_;
-static int presolve_calls_ = 0;
-static bool maximize_      = false;
+static bool maximize_ = false;
 
 template <typename i_t, typename f_t>
 papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem)
@@ -308,6 +308,10 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t c
 {
   using uptr = std::unique_ptr<papilo::PresolveMethod<f_t>>;
 
+  // cuopt custom presolvers
+  if (category == problem_category_t::MIP)
+    presolver.addPresolveMethod(uptr(new cuopt::linear_programming::detail::GF2Presolve<f_t>()));
+
   // fast presolvers
   presolver.addPresolveMethod(uptr(new papilo::SingletonCols<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::CoefficientStrengthening<f_t>()));
@@ -356,10 +360,6 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
   double time_limit,
   i_t num_cpu_threads)
 {
-  cuopt_expects(
-    presolve_calls_ == 0, error_type_t::ValidationError, "Presolve can only be called once");
-  presolve_calls_++;
-
   papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem);
 
   CUOPT_LOG_INFO("Unpresolved problem:: %d constraints, %d variables, %d nonzeros",
@@ -379,7 +379,6 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
   check_presolve_status(result.status);
   if (result.status == papilo::PresolveStatus::kInfeasible ||
       result.status == papilo::PresolveStatus::kUnbndOrInfeas) {
-    --presolve_calls_;
     return std::make_pair(optimization_problem_t<i_t, f_t>(op_problem.get_handle_ptr()), false);
   }
   post_solve_storage_ = result.postsolve;
@@ -404,9 +403,6 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
                                             bool status_to_skip,
                                             rmm::cuda_stream_view stream_view)
 {
-  --presolve_calls_;
-  cuopt_expects(
-    presolve_calls_ == 0, error_type_t::ValidationError, "Postsolve can only be called once");
   if (status_to_skip) { return; }
   std::vector<f_t> primal_sol_vec_h(primal_solution.size());
   raft::copy(primal_sol_vec_h.data(), primal_solution.data(), primal_solution.size(), stream_view);
