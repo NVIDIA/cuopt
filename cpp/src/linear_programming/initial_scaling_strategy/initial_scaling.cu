@@ -562,7 +562,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_solutions(
                                   stream_view_);
     if (pdlp_hyper_params::bound_objective_rescaling) {
       raft::linalg::scalarMultiply(
-        dual_slack.data(), dual_slack.data(), h_objective_rescaling, dual_size_h_, stream_view_);
+        dual_slack.data(), dual_slack.data(), h_objective_rescaling, primal_size_h_, stream_view_);
     }
   }
 }
