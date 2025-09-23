@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+#include <omp.h>
+#include <algorithm>
 #include <dual_simplex/branch_and_bound.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/logger.hpp>
@@ -222,10 +224,18 @@ f_t branch_and_bound_t<i_t, f_t>::get_upper_bound()
 template <typename i_t, typename f_t>
 f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
 {
-  f_t lower_bound = root_objective_;
+  f_t lower_bound = inf;
   mutex_heap_.lock();
   if (heap_.size() > 0) { lower_bound = heap_.top()->lower_bound; }
   mutex_heap_.unlock();
+
+  for (i_t i = 0; i < lower_bounds_.size(); ++i) {
+    f_t lb;
+#pragma omp atomic read
+    lb          = lower_bounds_[i];
+    lower_bound = std::min(lb, lower_bound);
+  }
+
   return lower_bound;
 }
 
@@ -759,6 +769,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
   f_t last_log         = 0;
   i_t nodes_explored   = 0;
   i_t nodes_unexplored = 0;
+  i_t tid              = omp_get_thread_num();
 
   while (stack.size() > 0 && get_status() == mip_status_t::RUNNING) {
     repair_heuristic_solutions();
@@ -769,6 +780,9 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
     lower_bound = node_ptr->lower_bound;
     upper_bound = get_upper_bound();
     gap         = upper_bound - lower_bound;
+
+#pragma omp atomic write
+    lower_bounds_[tid] = lower_bound;
 
 #pragma omp atomic capture
     nodes_explored = stats_.nodes_explored++;
@@ -1028,6 +1042,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   set_uninitialized_steepest_edge_norms<i_t, f_t>(edge_norms_);
 
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
+  lower_bounds_.assign(settings_.num_bfs_threads, root_objective_);
+
   if (settings_.set_simplex_solution_callback != nullptr) {
     std::vector<f_t> original_x;
     uncrush_primal_solution(original_problem_, original_lp_, root_relax_soln_.x, original_x);

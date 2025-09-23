@@ -124,6 +124,8 @@ class branch_and_bound_t {
   std::vector<i_t> new_slacks_;
   std::vector<variable_type_t> var_types_;
 
+  std::vector<f_t> lower_bounds_;
+
   // Mutex for upper bound
   std::mutex mutex_upper_;
 
