@@ -34,11 +34,11 @@ requirements:
     - cuopt =${{ version }}
     - fastapi >=0.104.1
     - jsonref =1.1.0
-    - httpx
     - msgpack-python =1.1.0
     - msgpack-numpy =0.4.8
     - numpy >=1.23,<3.0a0
     - pandas>=2
+    - psutil>=5.9,<6.0a0
     - python
     - uvicorn ${{ uvicorn_version }}
 
