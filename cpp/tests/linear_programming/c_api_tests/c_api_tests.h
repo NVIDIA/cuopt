@@ -39,6 +39,7 @@ cuopt_int_t test_missing_file();
 cuopt_int_t test_infeasible_problem();
 cuopt_int_t test_bad_parameter_name();
 cuopt_int_t test_ranged_problem(cuopt_int_t* termination_status_ptr, cuopt_float_t* objective_ptr);
+cuopt_int_t test_invalid_bounds(cuopt_int_t test_mip);
 
 #ifdef __cplusplus
 }
