@@ -205,6 +205,7 @@ jobs:
       package-name: cuopt_sh_client
       package-type: python
       append-cuda-suffix: false
+      pure-wheel: true
       # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
       matrix_filter: '[map(select(.ARCH == "amd64")) | min_by((.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber)))]'
   wheel-publish-cuopt-sh-client:
@@ -239,12 +240,12 @@ jobs:
       INPUT_SHA: "${{ inputs.sha }}"
     steps:
       - name: trigger-test-workflow
-        # Assumes the branch you want to test is the same one you want to source 'test.yaml' from.
-        # If that ever changes, will need to set '--ref' and 'build_type=' from different sources.
         run: |
+          # NOTE: '--ref' is the branch to pull the workflow file from, 'branch' input is the branch
+          #       to pull the actual cuOpt source code from
           gh workflow run                       \
             --repo NVIDIA/cuopt                 \
-            --ref "${INPUT_BRANCH}"             \
+            --ref "${{ github.ref }}"           \
             'test.yaml'                         \
             -f branch="${INPUT_BRANCH}"         \
             -f build_type="${INPUT_BUILD_TYPE}" \

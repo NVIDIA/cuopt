@@ -24,10 +24,11 @@ jobs:
           export DATE=$(date +%F)
           export SHA=$(gh api -q '.commit.sha' "repos/nvidia/cuopt/branches/${CUOPT_BRANCH}")
 
-          # TODO: set '--ref' back to CUOPT_BRANCH
+          # NOTE: '--ref' is the branch to pull the workflow file from, 'branch' input is the branch
+          #       to pull the actual cuOpt source code from
           gh workflow run build.yaml    \
             --repo NVIDIA/cuopt         \
-            --ref 'trigger-nightly-tests-after-builds' \
+            --ref "${{ github.ref }}"   \
             -f branch="${CUOPT_BRANCH}" \
             -f build_type=nightly       \
             -f date="${DATE}"           \
