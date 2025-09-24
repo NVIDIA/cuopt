@@ -21,12 +21,10 @@ set -euo pipefail
 # so those constraints will affect all future 'pip install' calls
 source rapids-init-pip
 
-#git clone --verbose git@github.com:jump-dev/cuOpt.jl.git /tmp/cuOpt.jl
-#cd /tmp/cuOpt.jl
-
 # Download the packages built in the previous step
 RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
 CUOPT_MPS_PARSER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python)
+CUOPT_SH_CLIENT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_sh_client" RAPIDS_PY_WHEEL_PURE="1" rapids-download-wheels-from-github python)
 CUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python)
 LIBCUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github cpp)
 
@@ -35,6 +33,7 @@ LIBCUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" r
 cat > "${PIP_CONSTRAINT}" <<EOF
 cuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${CUOPT_WHEELHOUSE}/cuopt_${RAPIDS_PY_CUDA_SUFFIX}-*.whl)
 cuopt-mps-parser @ file://$(echo ${CUOPT_MPS_PARSER_WHEELHOUSE}/cuopt_mps_parser-*.whl)
+cuopt-sh-client @ file://$(echo ${CUOPT_SH_CLIENT_WHEELHOUSE}/cuopt_sh_client-*.whl)
 libcuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${LIBCUOPT_WHEELHOUSE}/libcuopt_${RAPIDS_PY_CUDA_SUFFIX}-*.whl)
 EOF
 
@@ -44,6 +43,7 @@ rapids-pip-retry install \
     --constraint "${PIP_CONSTRAINT}" \
     "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
     "$(echo "${CUOPT_WHEELHOUSE}"/cuopt*.whl)[test]" \
+    "${CUOPT_SH_CLIENT_WHEELHOUSE}"/cuopt_sh_client*.whl \
     "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl
 
 python -c "import cuopt"
@@ -56,25 +56,25 @@ elif command -v dnf &> /dev/null; then
     dnf -y install file unzip
 fi
 
-#./datasets/linear_programming/download_pdlp_test_dataset.sh
-#./datasets/mip/download_miplib_test_dataset.sh
-#cd ./datasets
-#./get_test_data.sh --solomon
-#./get_test_data.sh --tsp
-#cd -
+./datasets/linear_programming/download_pdlp_test_dataset.sh
+./datasets/mip/download_miplib_test_dataset.sh
+cd ./datasets
+./get_test_data.sh --solomon
+./get_test_data.sh --tsp
+cd -
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 
 # Please enable this once ISSUE https://github.com/NVIDIA/cuopt/issues/94 is fixed
 # Run CLI tests
-#timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
+timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 
 # Run Python tests
-#RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt/cuopt/tests/
+RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt/cuopt/tests/
 
 # run cvxpy integration tests
-#./ci/thirdparty-testing/run_cvxpy_tests.sh
+./ci/thirdparty-testing/run_cvxpy_tests.sh
 
 # run jump tests
 ./ci/thirdparty-testing/run_jump_tests.sh

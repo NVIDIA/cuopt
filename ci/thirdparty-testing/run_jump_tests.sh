@@ -36,18 +36,12 @@ julia --version
 
 CUOPT_JL_DIR="$(mktemp -d)/cuOpt.jl"
 rapids-logger "Cloning cuOpt.jl into ${CUOPT_JL_DIR}"
-git clone --verbose https://github.com/jump-dev/cuOpt.jl.git "${CUOPT_JL_DIR}"
-rapids-logger "CuOpt.jl cloned into ${CUOPT_JL_DIR}"
+git clone --branch fix_get_for_parameters https://github.com/jump-dev/cuOpt.jl.git "${CUOPT_JL_DIR}"
 
-# set weird permissions, run tests as root (bad)
 cd $CUOPT_JL_DIR || exit 1
-
-rapids-logger "Changed directory to ${CUOPT_JL_DIR}"
 
 # Find libcuopt.so and add its directory to LD_LIBRARY_PATH
 LIBCUOPT_PATH=$(find /pyenv/ -name "libcuopt.so" -type f 2>/dev/null | head -1)
-
-rapids-logger "LIBCUOPT_PATH: $LIBCUOPT_PATH"
 
 if [ -n "$LIBCUOPT_PATH" ]; then
     rapids-logger "LIBCUOPT_PATH: $LIBCUOPT_PATH"
@@ -73,6 +67,3 @@ end
 println("Running Pkg.test() for cuOpt.jl -- this will spew output and may fail loudly");
 Pkg.test(; coverage=true)
 '
-
-# awkward "success" message even if anything failed
-rapids-logger "All done! If anything broke, that was probably intended. ¯\_(ツ)_/¯"
