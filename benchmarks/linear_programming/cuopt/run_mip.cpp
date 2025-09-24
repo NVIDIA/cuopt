@@ -17,6 +17,7 @@
 #include "initial_solution_reader.hpp"
 #include "mip_test_instances.hpp"
 
+#include <cstdio>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
@@ -24,7 +25,6 @@
 #include <cuopt/logger.hpp>
 #include <mps_parser/parser.hpp>
 
-#include <omp.h>
 #include <raft/core/handle.hpp>
 
 #include <rmm/mr/device/cuda_async_memory_resource.hpp>
@@ -210,6 +210,7 @@ int run_single_file(std::string file_path,
   settings.log_to_console                = log_to_console;
   settings.tolerances.relative_tolerance = 1e-12;
   settings.tolerances.absolute_tolerance = 1e-6;
+  settings.presolve                      = true;
   cuopt::linear_programming::benchmark_info_t benchmark_info;
   settings.benchmark_info_ptr = &benchmark_info;
   auto start_run_solver       = std::chrono::high_resolution_clock::now();
@@ -259,9 +260,7 @@ void run_single_file_mp(std::string file_path,
 {
   std::cout << "running file " << file_path << " on gpu : " << device << std::endl;
   auto memory_resource = make_async();
-  auto limiting_adaptor =
-    rmm::mr::limiting_resource_adaptor(memory_resource.get(), 6ULL * 1024ULL * 1024ULL * 1024ULL);
-  rmm::mr::set_current_device_resource(&limiting_adaptor);
+  rmm::mr::set_current_device_resource(memory_resource.get());
   int sol_found = run_single_file(file_path,
                                   device,
                                   batch_id,

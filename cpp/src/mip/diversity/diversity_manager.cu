@@ -27,7 +27,6 @@
 
 constexpr bool from_dir    = false;
 constexpr bool fj_only_run = false;
-constexpr bool fp_only_run = false;
 
 namespace cuopt::linear_programming::detail {
 
@@ -47,19 +46,27 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     diversity_config(),
     population("population",
                context,
+               *this,
                diversity_config.max_var_diff,
                diversity_config.max_solutions,
                diversity_config.initial_infeasibility_weight * context.problem_ptr->n_constraints),
     lp_optimal_solution(context.problem_ptr->n_variables,
                         context.problem_ptr->handle_ptr->get_stream()),
+    lp_dual_optimal_solution(context.problem_ptr->n_constraints,
+                             context.problem_ptr->handle_ptr->get_stream()),
     ls(context, lp_optimal_solution),
     timer(diversity_config.default_time_limit),
     bound_prop_recombiner(context,
                           context.problem_ptr->n_variables,
                           ls.constraint_prop,
                           context.problem_ptr->handle_ptr),
-    fp_recombiner(
-      context, context.problem_ptr->n_variables, ls.fp, context.problem_ptr->handle_ptr),
+    fp_recombiner(context,
+                  context.problem_ptr->n_variables,
+                  ls.fj,
+                  ls.constraint_prop,
+                  ls.line_segment_search,
+                  lp_optimal_solution,
+                  context.problem_ptr->handle_ptr),
     line_segment_recombiner(context,
                             context.problem_ptr->n_variables,
                             ls.line_segment_search,
@@ -73,7 +80,7 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
                    recombiner_alpha,
                    "recombiner"),
     mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), ls_alpha, "ls"),
-    assignment_hash_map(*context.problem_ptr)
+    ls_hash_map(*context.problem_ptr)
 {
   // Read configuration ID from environment variable
   int max_config = -1;
@@ -110,9 +117,9 @@ bool diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solut
 {
   i_t ls_mab_option = mab_ls.select_mab_option();
   mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
-  assignment_hash_map.insert(solution);
+  ls_hash_map.insert(solution);
   constexpr i_t skip_solutions_threshold = 3;
-  if (assignment_hash_map.check_skip_solution(solution, skip_solutions_threshold)) { return false; }
+  if (ls_hash_map.check_skip_solution(solution, skip_solutions_threshold)) { return false; }
   ls.run_local_search(solution, weights, timer, ls_config);
   return true;
 }
@@ -172,28 +179,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::generate_solution(f_t time_l
 {
   solution_t<i_t, f_t> sol(*problem_ptr);
   sol.compute_feasibility();
-  ls.generate_solution(sol, random_start, population.early_exit_primal_generation, time_limit);
+  ls.generate_solution(sol, random_start, &population, time_limit);
   return sol;
-}
-
-template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::generate_add_solution(
-  std::vector<solution_t<i_t, f_t>>& initial_sol_vector, f_t time_limit, bool random_start)
-{
-  // TODO check weights here if they are all similar
-  // do a local search than add it searched solution as well
-  initial_sol_vector.emplace_back(generate_solution(time_limit, random_start));
-}
-
-template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::average_fj_weights(i_t i)
-{
-  thrust::transform(problem_ptr->handle_ptr->get_thrust_policy(),
-                    population.weights.cstr_weights.begin(),
-                    population.weights.cstr_weights.end(),
-                    ls.fj.cstr_weights.begin(),
-                    population.weights.cstr_weights.begin(),
-                    [i] __device__(f_t w1, f_t w2) { return (w1 * i + w2) / (i + 1); });
 }
 
 template <typename i_t, typename f_t>
@@ -227,74 +214,6 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   }
 }
 
-// if 60% of the time, exit
-// if 20% of the time finishes and we generate 5 solutions
-template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::generate_initial_solutions()
-{
-  add_user_given_solutions(initial_sol_vector);
-  bool skip_initial_island_generation =
-    initial_sol_vector.size() > diversity_config.n_sol_for_skip_init_gen || from_dir;
-  // allocate maximum of 40% of the time to the initial island generation
-  // aim to generate at least 5 feasible solutions thus spending 8% of the time to generate a
-  // solution if we can generate faster generate up to 10 sols
-  const f_t generation_time_limit =
-    diversity_config.generation_time_limit_ratio * timer.get_time_limit();
-  const f_t max_island_gen_time = diversity_config.max_island_gen_time;
-  f_t total_island_gen_time     = std::min(generation_time_limit, max_island_gen_time);
-  timer_t gen_timer(total_island_gen_time);
-  f_t sol_time_limit = gen_timer.remaining_time();
-  for (i_t i = 0; i < diversity_config.maximum_island_size && !skip_initial_island_generation;
-       ++i) {
-    if (check_b_b_preemption()) { return; }
-    if (i + population.get_external_solution_size() >= 5) { break; }
-    CUOPT_LOG_DEBUG("Generating sol %d", i);
-    bool is_first_sol = (i == 0);
-    if (i == 1) {
-      sol_time_limit = gen_timer.remaining_time() / (diversity_config.initial_island_size - 1);
-    }
-    // in first iteration, definitely generate feasible
-    if (is_first_sol) {
-      sol_time_limit = gen_timer.remaining_time();
-      ls.fj.reset_weights(problem_ptr->handle_ptr->get_stream());
-    }
-    // in other iterations(when there is at least one feasible)
-    else {
-      ls.fj.randomize_weights(problem_ptr->handle_ptr);
-    }
-    generate_add_solution(initial_sol_vector, sol_time_limit, !is_first_sol);
-    if (is_first_sol && initial_sol_vector.back().get_feasible()) {
-      CUOPT_LOG_DEBUG("First FP/FJ solution found at %f with objective %f",
-                      timer.elapsed_time(),
-                      initial_sol_vector.back().get_user_objective());
-    }
-    population.run_solution_callbacks(initial_sol_vector.back());
-    // run ls on the generated solutions
-    solution_t<i_t, f_t> searched_sol(initial_sol_vector.back());
-    ls_config_t<i_t, f_t> ls_config;
-    run_local_search(searched_sol, population.weights, gen_timer, ls_config);
-    population.run_solution_callbacks(searched_sol);
-    initial_sol_vector.emplace_back(std::move(searched_sol));
-    average_fj_weights(i);
-    // run ls on the solutions
-    // if at least initial_island_size solutions are generated and time limit is reached
-    if (i >= diversity_config.initial_island_size || gen_timer.check_time_limit()) { break; }
-  }
-  CUOPT_LOG_DEBUG("Initial unsearched solutions are generated!");
-  i_t actual_island_size = initial_sol_vector.size();
-  population.normalize_weights();
-  // find diversity of the population
-  population.find_diversity(initial_sol_vector, diversity_config.use_avg_diversity);
-  population.add_solutions_from_vec(std::move(initial_sol_vector));
-  population.update_qualities();
-  CUOPT_LOG_DEBUG("Initial population generated, size %d var_threshold %d",
-                  population.current_size(),
-                  population.var_threshold);
-  population.print();
-  auto new_sol_vector = population.get_external_solutions();
-  if (!fj_only_run && !fp_only_run) { recombine_and_ls_with_all(new_sol_vector); }
-}
-
 template <typename i_t, typename f_t>
 bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
 {
@@ -320,7 +239,13 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   }
   stats.presolve_time = presolve_timer.elapsed_time();
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
+  lp_dual_optimal_solution.resize(problem_ptr->n_constraints,
+                                  problem_ptr->handle_ptr->get_stream());
   problem_ptr->handle_ptr->sync_stream();
+  CUOPT_LOG_INFO("After trivial presolve #constraints %d #variables %d objective offset %f.",
+                 problem_ptr->n_constraints,
+                 problem_ptr->n_variables,
+                 problem_ptr->presolve_data.objective_offset);
   return true;
 }
 
@@ -356,7 +281,7 @@ void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
 template <typename i_t, typename f_t>
 bool diversity_manager_t<i_t, f_t>::check_b_b_preemption()
 {
-  if (population.preempt_heuristic_solver_) {
+  if (population.preempt_heuristic_solver_.load()) {
     if (population.current_size() == 0) { population.allocate_solutions(); }
     auto new_sol_vector = population.get_external_solutions();
     population.add_solutions_from_vec(std::move(new_sol_vector));
@@ -385,7 +310,7 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::run_fp_alone(solution_t<i_t, f_t>& solution)
 {
   CUOPT_LOG_INFO("Running FP alone!");
-  ls.run_fp(solution, timer, &population.weights, false);
+  ls.run_fp(solution, timer, &population);
   CUOPT_LOG_INFO("FP alone finished!");
 }
 
@@ -418,7 +343,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   population.initialize_population();
   if (check_b_b_preemption()) { return population.best_feasible(); }
   // before probing cache or LP, run FJ to generate initial primal feasible solution
-  if (!from_dir && !fp_only_run && !fj_only_run) { generate_quick_feasible_solution(); }
+  if (!from_dir && !fj_only_run) { generate_quick_feasible_solution(); }
   const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
   const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
   f_t time_for_probing_cache =
@@ -433,11 +358,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   lp_state_t<i_t, f_t>& lp_state = problem_ptr->lp_state;
   // resize because some constructor might be called before the presolve
   lp_state.resize(*problem_ptr, problem_ptr->handle_ptr->get_stream());
-  bool bb_thread_solution_exists = false;
-  {
-    std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
-    bb_thread_solution_exists = simplex_solution_exists;
-  }  // Mutex is unlocked here
+  bool bb_thread_solution_exists = simplex_solution_exists.load();
   if (bb_thread_solution_exists) {
     ls.lp_optimal_exists = true;
   } else if (!fj_only_run) {
@@ -447,16 +368,27 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     lp_settings.return_first_feasible = false;
     lp_settings.save_state            = true;
     lp_settings.concurrent_halt       = &global_concurrent_halt;
+    lp_settings.has_initial_primal    = false;
     rmm::device_uvector<f_t> lp_optimal_solution_copy(lp_optimal_solution.size(),
                                                       problem_ptr->handle_ptr->get_stream());
     auto lp_result =
       get_relaxed_lp_solution(*problem_ptr, lp_optimal_solution_copy, lp_state, lp_settings);
     {
       std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
-      if (!simplex_solution_exists) {
+      if (!simplex_solution_exists.load()) {
         raft::copy(lp_optimal_solution.data(),
                    lp_optimal_solution_copy.data(),
                    lp_optimal_solution.size(),
+                   problem_ptr->handle_ptr->get_stream());
+      } else {
+        // copy the lp state
+        raft::copy(lp_state.prev_primal.data(),
+                   lp_optimal_solution.data(),
+                   lp_optimal_solution.size(),
+                   problem_ptr->handle_ptr->get_stream());
+        raft::copy(lp_state.prev_dual.data(),
+                   lp_dual_optimal_solution.data(),
+                   lp_dual_optimal_solution.size(),
                    problem_ptr->handle_ptr->get_stream());
       }
     }
@@ -481,29 +413,35 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   }
 
   population.allocate_solutions();
+  population.add_solutions_from_vec(std::move(initial_sol_vector));
   if (check_b_b_preemption()) { return population.best_feasible(); }
-  if (!fp_only_run) {
-    // generate a population with 5 solutions(FP+FJ)
-    generate_initial_solutions();
-  }
+
   if (context.settings.benchmark_info_ptr != nullptr) {
     context.settings.benchmark_info_ptr->objective_of_initial_population =
       population.best_feasible().get_user_objective();
   }
 
   if (fj_only_run) {
-    run_fj_alone(population.best_feasible());
-    return population.best_feasible();
-  }
-
-  if (fp_only_run) {
-    auto sol = generate_solution(timer.remaining_time(), false);
-    run_fp_alone(sol);
+    solution_t<i_t, f_t> sol(*problem_ptr);
+    run_fj_alone(sol);
     return sol;
   }
 
-  if (timer.check_time_limit()) { return population.best_feasible(); }
+  auto sol = generate_solution(timer.remaining_time(), false);
+  population.add_solution(std::move(solution_t<i_t, f_t>(sol)));
+  if (timer.check_time_limit()) {
+    auto new_sol_vector = population.get_external_solutions();
+    population.add_solutions_from_vec(std::move(new_sol_vector));
+    return population.best_feasible();
+  }
+  run_fp_alone(sol);
+  population.update_weights();
 
+  if (timer.check_time_limit()) {
+    auto new_sol_vector = population.get_external_solutions();
+    population.add_solutions_from_vec(std::move(new_sol_vector));
+    return population.best_feasible();
+  }
   main_loop();
 
   return population.best_feasible();
@@ -557,24 +495,33 @@ void diversity_manager_t<i_t, f_t>::set_new_user_bound(f_t new_bound)
 }
 
 template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(solution_t<i_t, f_t>& solution)
+void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(solution_t<i_t, f_t>& solution,
+                                                              bool add_only_feasible)
 {
   raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
+  if (population.population_hash_map.check_skip_solution(solution, 1)) { return; }
   auto population_vector = population.population_to_vector();
   for (auto& curr_sol : population_vector) {
-    if (check_b_b_preemption()) { return; }
-    if (curr_sol.get_feasible()) {
-      auto [offspring, lp_offspring] = recombine_and_local_search(curr_sol, solution);
-      i_t inserted_pos_1             = population.add_solution(std::move(lp_offspring));
-      i_t inserted_pos_2             = population.add_solution(std::move(offspring));
-      if (timer.check_time_limit()) { return; }
+    for (const auto recombiner_type : recombiner_types) {
+      if (check_b_b_preemption()) { return; }
+      if (curr_sol.get_feasible()) {
+        auto [offspring, lp_offspring] =
+          recombine_and_local_search(curr_sol, solution, recombiner_type);
+        if (!add_only_feasible || lp_offspring.get_feasible()) {
+          population.add_solution(std::move(lp_offspring));
+        }
+        if (!add_only_feasible || offspring.get_feasible()) {
+          population.add_solution(std::move(offspring));
+        }
+        if (timer.check_time_limit()) { return; }
+      }
     }
   }
 }
 
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
-  std::vector<solution_t<i_t, f_t>>& solutions)
+  std::vector<solution_t<i_t, f_t>>& solutions, bool add_only_feasible)
 {
   raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
   if (solutions.size() > 0) {
@@ -593,10 +540,10 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
       // TODO try if running LP with integers fixed makes it feasible
       if (ls_solution.get_feasible()) {
         CUOPT_LOG_DEBUG("External LS searched solution feasible, running recombiners!");
-        recombine_and_ls_with_all(ls_solution);
+        recombine_and_ls_with_all(ls_solution, add_only_feasible);
       } else {
         CUOPT_LOG_DEBUG("External solution feasible, running recombiners!");
-        recombine_and_ls_with_all(sol);
+        recombine_and_ls_with_all(sol, add_only_feasible);
       }
     }
   }
@@ -607,6 +554,7 @@ void diversity_manager_t<i_t, f_t>::main_loop()
 {
   population.start_threshold_adjustment();
   recombine_stats.reset();
+  population.print();
   while (true) {
     if (check_b_b_preemption()) { break; }
     CUOPT_LOG_DEBUG("Running a new step");
@@ -636,13 +584,11 @@ void diversity_manager_t<i_t, f_t>::main_loop()
       population.find_diversity(current_population, diversity_config.use_avg_diversity);
       // if the threshold is lower than the threshold we progress with time
       // set it to the higher threshold
-      // population.var_threshold = max(population.var_threshold, prev_threshold);
       population.add_solutions_from_vec(std::move(current_population));
     } else {
       // increase the threshold/decrease the diversity
       population.adjust_threshold(timer);
     }
-    // population.add_solutions_from_vec(std::move(new_solutions));
     // idea to try, we can average the weights of the new solutions
     population.update_weights();
     population.print();
@@ -678,7 +624,8 @@ void diversity_manager_t<i_t, f_t>::check_better_than_both(solution_t<i_t, f_t>&
 template <typename i_t, typename f_t>
 std::pair<solution_t<i_t, f_t>, solution_t<i_t, f_t>>
 diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& sol1,
-                                                          solution_t<i_t, f_t>& sol2)
+                                                          solution_t<i_t, f_t>& sol2,
+                                                          recombiner_enum_t recombiner_type)
 {
   raft::common::nvtx::range fun_scope("recombine_and_local_search");
   CUOPT_LOG_DEBUG("Recombining sol cost:feas %f : %d and %f : %d",
@@ -689,7 +636,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   double best_objective_of_parents  = std::min(sol1.get_objective(), sol2.get_objective());
   bool at_least_one_parent_feasible = sol1.get_feasible() || sol2.get_feasible();
   // randomly choose among 3 recombiners
-  auto [offspring, success] = recombine(sol1, sol2);
+  auto [offspring, success] = recombine(sol1, sol2, recombiner_type);
   if (!success) {
     // add the attempt
     mab_recombiner.add_mab_reward(static_cast<int>(recombine_stats.get_last_attempt()),
@@ -761,11 +708,11 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
     population.best().get_quality(population.weights),
     offspring_qual,
     recombiner_work_normalized_reward_t(recombine_stats.get_last_recombiner_time()));
-  // mab_ls.add_mab_reward(mab_ls_config_t<i_t, f_t>::last_ls_mab_option,
-  //                       best_quality_of_parents,
-  //                       population.best_feasible().get_quality(population.weights),
-  //                       offspring_qual,
-  //                       ls_work_normalized_reward_t(mab_ls_config_t<i_t, f_t>::last_lm_config));
+  mab_ls.add_mab_reward(mab_ls_config_t<i_t, f_t>::last_ls_mab_option,
+                        best_quality_of_parents,
+                        population.best_feasible().get_quality(population.weights),
+                        offspring_qual,
+                        ls_work_normalized_reward_t(mab_ls_config_t<i_t, f_t>::last_lm_config));
   if (context.settings.benchmark_info_ptr != nullptr) {
     check_better_than_both(offspring, sol1, sol2);
     check_better_than_both(lp_offspring, sol1, sol2);
@@ -775,7 +722,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
 
 template <typename i_t, typename f_t>
 std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
-  solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b)
+  solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b, recombiner_enum_t recombiner_type)
 {
   recombiner_enum_t recombiner;
   if (run_only_ls_recombiner) {
@@ -787,7 +734,12 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
   } else if (run_only_sub_mip_recombiner) {
     recombiner = recombiner_enum_t::SUB_MIP;
   } else {
-    recombiner = static_cast<recombiner_enum_t>(mab_recombiner.select_mab_option());
+    // only run the given recombiner unless it is defult
+    if (recombiner_type == recombiner_enum_t::SIZE) {
+      recombiner = static_cast<recombiner_enum_t>(mab_recombiner.select_mab_option());
+    } else {
+      recombiner = recombiner_type;
+    }
   }
   recombine_stats.add_attempt((recombiner_enum_t)recombiner);
   recombine_stats.start_recombiner_time();
@@ -828,14 +780,16 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
 
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>& solution,
+                                                         const std::vector<f_t>& dual_solution,
                                                          f_t objective)
 {
   CUOPT_LOG_DEBUG("Setting simplex solution with objective %f", objective);
   using sol_t = solution_t<i_t, f_t>;
+  cudaSetDevice(context.handle_ptr->get_device());
   context.handle_ptr->sync_stream();
-  RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
   cuopt_func_call(sol_t new_sol(*problem_ptr));
   cuopt_assert(new_sol.assignment.size() == solution.size(), "Assignment size mismatch");
+  cuopt_assert(problem_ptr->n_constraints == dual_solution.size(), "Dual assignment size mismatch");
   cuopt_func_call(new_sol.copy_new_assignment(solution));
   cuopt_func_call(new_sol.compute_feasibility());
   cuopt_assert(integer_equal(new_sol.get_user_objective(), objective, 1e-3), "Objective mismatch");
@@ -846,6 +800,10 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
   // the operations are ordered as long as they are on the same stream
   raft::copy(
     lp_optimal_solution.data(), solution.data(), solution.size(), context.handle_ptr->get_stream());
+  raft::copy(lp_dual_optimal_solution.data(),
+             dual_solution.data(),
+             dual_solution.size(),
+             context.handle_ptr->get_stream());
   set_new_user_bound(objective);
   context.handle_ptr->sync_stream();
 }
