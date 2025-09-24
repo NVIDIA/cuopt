@@ -78,6 +78,21 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(raft::handle_t const* handle_ptr,
     graph_prim_proj_gradient_dual{stream_view_, is_batch_mode},
     d_total_pdhg_iterations_{0, stream_view_}
 {
+  thrust::fill(handle_ptr->get_thrust_policy(), tmp_primal_.data(), tmp_primal_.end(), f_t(0));
+  thrust::fill(handle_ptr->get_thrust_policy(), tmp_dual_.data(), tmp_dual_.end(), f_t(0));
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               potential_next_primal_solution_.data(),
+               potential_next_primal_solution_.end(),
+               f_t(0));
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               potential_next_dual_solution_.data(),
+               potential_next_dual_solution_.end(),
+               f_t(0));
+  thrust::fill(
+    handle_ptr->get_thrust_policy(), reflected_primal_.data(), reflected_primal_.end(), f_t(0));
+  thrust::fill(
+    handle_ptr->get_thrust_policy(), reflected_dual_.data(), reflected_dual_.end(), f_t(0));
+  thrust::fill(handle_ptr->get_thrust_policy(), dual_slack_.data(), dual_slack_.end(), f_t(0));
 }
 
 template <typename i_t, typename f_t>

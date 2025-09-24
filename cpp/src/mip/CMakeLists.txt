@@ -17,6 +17,7 @@
 # Files necessary for Linear Programming functionality
 set(MIP_LP_NECESSARY_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/problem/problem.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/problem/write_mps.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/local_search/rounding/simple_rounding.cu

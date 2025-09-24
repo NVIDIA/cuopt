@@ -58,6 +58,7 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   pdlp_settings.concurrent_halt                      = settings.concurrent_halt;
   pdlp_settings.per_constraint_residual              = settings.per_constraint_residual;
   pdlp_settings.first_primal_feasible                = settings.return_first_feasible;
+  pdlp_settings.pdlp_solver_mode                     = pdlp_solver_mode_t::Stable3;
   // TODO: set Stable3 here?
   pdlp_solver_t<i_t, f_t> lp_solver(op_problem, pdlp_settings);
   if (settings.has_initial_primal) {

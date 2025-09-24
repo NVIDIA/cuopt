@@ -68,6 +68,9 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
   std::cout << "Initializing initial_scaling_strategy" << std::endl;
 #endif
+
+  if (!running_mip_) cuopt_assert(pdhg_solver_ptr_ != nullptr, "PDHG solver pointer is null");
+
   // start with all one for scaling vectors
   RAFT_CUDA_TRY(cudaMemsetAsync(
     iteration_constraint_matrix_scaling_.data(), 0.0, sizeof(f_t) * dual_size_h_, stream_view_));
@@ -98,6 +101,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::compute_scaling_vectors(
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
 {
+  // TODO: test bound obj scaling w/ MIP
   rmm::device_buffer d_temp_storage;
   size_t bytes;
 
@@ -456,7 +460,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
     dual_size_h_,
     stream_view_);
 
-  if (pdlp_hyper_params::bound_objective_rescaling) {
+  if (pdlp_hyper_params::bound_objective_rescaling && !running_mip_) {
     // Coefficients are computed on the already scaled values
     bound_objective_rescaling();
 
@@ -524,7 +528,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_solutions(
                                          primal_size_h_,
                                          stream_view_);
 
-    if (pdlp_hyper_params::bound_objective_rescaling) {
+    if (pdlp_hyper_params::bound_objective_rescaling && !running_mip_) {
       raft::linalg::scalarMultiply(primal_solution.data(),
                                    primal_solution.data(),
                                    h_bound_rescaling,
@@ -542,7 +546,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_solutions(
                                          cummulative_constraint_matrix_scaling_.data(),
                                          dual_size_h_,
                                          stream_view_);
-    if (pdlp_hyper_params::bound_objective_rescaling) {
+    if (pdlp_hyper_params::bound_objective_rescaling && !running_mip_) {
       raft::linalg::scalarMultiply(dual_solution.data(),
                                    dual_solution.data(),
                                    h_objective_rescaling,
@@ -560,7 +564,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_solutions(
                                   cummulative_variable_scaling_.data(),
                                   primal_size_h_,
                                   stream_view_);
-    if (pdlp_hyper_params::bound_objective_rescaling) {
+    if (pdlp_hyper_params::bound_objective_rescaling && !running_mip_) {
       raft::linalg::scalarMultiply(
         dual_slack.data(), dual_slack.data(), h_objective_rescaling, primal_size_h_, stream_view_);
     }
@@ -610,6 +614,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
     cuopt_expects(primal_solution.size() == static_cast<size_t>(primal_size_h_),
                   error_type_t::RuntimeError,
                   "Unscale primal didn't get a vector of size primal");
+    cuopt_assert(cummulative_variable_scaling_.size() == static_cast<size_t>(primal_size_h_), "");
 
     raft::linalg::eltwiseMultiply(primal_solution.data(),
                                   primal_solution.data(),
@@ -617,7 +622,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
                                   primal_size_h_,
                                   stream_view_);
 
-    if (pdlp_hyper_params::bound_objective_rescaling) {
+    if (pdlp_hyper_params::bound_objective_rescaling && !running_mip_) {
       cuopt_assert(h_bound_rescaling != f_t(0),
                    "Numerical error: bound_rescaling_ should never equal 0");
       raft::linalg::scalarMultiply(primal_solution.data(),
@@ -632,12 +637,14 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
     cuopt_expects(dual_solution.size() == static_cast<size_t>(dual_size_h_),
                   error_type_t::RuntimeError,
                   "Unscale dual didn't get a vector of size dual");
+    cuopt_assert(cummulative_constraint_matrix_scaling_.size() == static_cast<size_t>(dual_size_h_),
+                 "");
     raft::linalg::eltwiseMultiply(dual_solution.data(),
                                   dual_solution.data(),
                                   cummulative_constraint_matrix_scaling_.data(),
                                   dual_size_h_,
                                   stream_view_);
-    if (pdlp_hyper_params::bound_objective_rescaling) {
+    if (pdlp_hyper_params::bound_objective_rescaling && !running_mip_) {
       raft::linalg::scalarMultiply(dual_solution.data(),
                                    dual_solution.data(),
                                    f_t(1.0) / (h_objective_rescaling),
@@ -655,7 +662,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
                                          cummulative_variable_scaling_.data(),
                                          primal_size_h_,
                                          stream_view_);
-    if (pdlp_hyper_params::bound_objective_rescaling) {
+    if (pdlp_hyper_params::bound_objective_rescaling && !running_mip_) {
       raft::linalg::scalarMultiply(dual_slack.data(),
                                    dual_slack.data(),
                                    f_t(1.0) / h_objective_rescaling,
