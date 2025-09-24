@@ -181,7 +181,9 @@ endif()
 FetchContent_Declare(
   papilo
   GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
-  GIT_TAG "v2.4.3"
+  # Get the latest commit from development branch
+  GIT_TAG "bd1222a6b6608283d31a0fea6735695345bcd936"
+  GIT_PROGRESS TRUE
   SYSTEM
 )
 

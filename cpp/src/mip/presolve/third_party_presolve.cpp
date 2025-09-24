@@ -34,7 +34,8 @@ static papilo::PostsolveStorage<double> post_solve_storage_;
 static bool maximize_ = false;
 
 template <typename i_t, typename f_t>
-papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem)
+papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem, 
+  problem_category_t category)
 {
   // Build papilo problem from optimization problem
   papilo::ProblemBuilder<f_t> builder;
@@ -167,7 +168,10 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
 
   if (h_entries.size()) {
     auto constexpr const sorted_entries = true;
-    auto csr_storage = papilo::SparseStorage<f_t>(h_entries, num_rows, num_cols, sorted_entries);
+    // MIP reductions like clique merging and substituition require more fillin
+    const double spare_ratio = category == problem_category_t::MIP ? 4.0 : 2.0;
+    const int min_inter_row_space = category == problem_category_t::MIP ? 30 : 4;
+    auto csr_storage = papilo::SparseStorage<f_t>(h_entries, num_rows, num_cols, sorted_entries, spare_ratio, min_inter_row_space);
     problem.setConstraintMatrix(csr_storage, h_constr_lb, h_constr_ub, h_row_flags);
 
     papilo::ConstraintMatrix<f_t>& matrix = problem.getConstraintMatrix();
@@ -308,10 +312,6 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t c
 {
   using uptr = std::unique_ptr<papilo::PresolveMethod<f_t>>;
 
-  // cuopt custom presolvers
-  if (category == problem_category_t::MIP)
-    presolver.addPresolveMethod(uptr(new cuopt::linear_programming::detail::GF2Presolve<f_t>()));
-
   // fast presolvers
   presolver.addPresolveMethod(uptr(new papilo::SingletonCols<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::CoefficientStrengthening<f_t>()));
@@ -336,6 +336,24 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t c
   presolver.addPresolveMethod(uptr(new papilo::SimpleSubstitution<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::Sparsify<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::Substitution<f_t>()));
+
+
+  if (category == problem_category_t::MIP) {
+    // cuOpt custom GF2 presolver
+    presolver.addPresolveMethod(uptr(new cuopt::linear_programming::detail::GF2Presolve<f_t>()));
+
+    // clique merging presolver that is part of development branch of papilo
+    const int max_edges_parallel = 1000000;
+    const int max_edges_sequential = 100000;
+    const int max_clique_size = 100;
+    const int max_greedy_calls = 20000;
+    // const int max_calls = 50; // FIXME:: make this change once the papilo PR is merged
+    papilo::CliqueMerging<f_t> clique_merging;
+    clique_merging.setEnabled(true); // This is currently disabled in the papilo presolver
+    clique_merging.setParameters(max_edges_parallel, max_edges_sequential, max_clique_size, max_greedy_calls /* , max_calls */);
+    presolver.addPresolveMethod(
+      uptr(new papilo::CliqueMerging<f_t>(std::move(clique_merging))));
+  }  
 }
 
 template <typename i_t, typename f_t>
@@ -360,7 +378,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
   double time_limit,
   i_t num_cpu_threads)
 {
-  papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem);
+  papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem, category);
 
   CUOPT_LOG_INFO("Unpresolved problem:: %d constraints, %d variables, %d nonzeros",
                  papilo_problem.getNRows(),
