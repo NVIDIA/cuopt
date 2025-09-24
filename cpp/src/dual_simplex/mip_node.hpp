@@ -19,11 +19,11 @@
 
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/types.hpp>
+#include <utilities/omp_helpers.hpp>
 
 #include <cmath>
 #include <list>
 #include <memory>
-#include <mutex>
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -202,6 +202,10 @@ class mip_node_t {
     }
   }
 
+  // This method creates a copy of the current node
+  // with its parent set to `nullptr`, `node_id = 0`
+  // and `depth = 0` such that it is the root
+  // of a separated tree.
   mip_node_t<i_t, f_t> detach_copy() const
   {
     mip_node_t<i_t, f_t> copy(lower_bound, vstatus);
@@ -242,13 +246,13 @@ void remove_fathomed_nodes(std::vector<mip_node_t<i_t, f_t>*>& stack)
 template <typename i_t, typename f_t>
 class node_compare_t {
  public:
-  bool operator()(mip_node_t<i_t, f_t>& a, mip_node_t<i_t, f_t>& b) const
+  bool operator()(const mip_node_t<i_t, f_t>& a, const mip_node_t<i_t, f_t>& b) const
   {
     return a.lower_bound >
            b.lower_bound;  // True if a comes before b, elements that come before are output last
   }
 
-  bool operator()(mip_node_t<i_t, f_t>* a, mip_node_t<i_t, f_t>* b) const
+  bool operator()(const mip_node_t<i_t, f_t>* a, const mip_node_t<i_t, f_t>* b) const
   {
     return a->lower_bound >
            b->lower_bound;  // True if a comes before b, elements that come before are output last
@@ -264,7 +268,7 @@ class search_tree_t {
   }
 
   search_tree_t(mip_node_t<i_t, f_t>&& node, logger_t& log)
-    : root(std::forward<mip_node_t<i_t, f_t>&&>(node)), num_nodes(0), log(log)
+    : root(std::move(node)), num_nodes(0), log(log)
   {
   }
 
@@ -272,25 +276,20 @@ class search_tree_t {
 
   void update_tree(mip_node_t<i_t, f_t>* node_ptr, node_status_t status)
   {
-    std::lock_guard<std::mutex> lock(mutex);
+    mutex.lock();
     std::vector<mip_node_t<i_t, f_t>*> stack;
     node_ptr->set_status(status, stack);
     remove_fathomed_nodes(stack);
+    mutex.unlock();
   }
 
   void branch(mip_node_t<i_t, f_t>* parent_node,
-              i_t branch_var,
-              f_t branch_var_val,
+              const i_t branch_var,
+              const f_t branch_var_val,
               const std::vector<variable_status_t>& parent_vstatus,
               const lp_problem_t<i_t, f_t>& original_lp)
   {
-    i_t id;
-
-#pragma omp atomic capture
-    {
-      id = num_nodes;
-      num_nodes += 2;
-    }
+    i_t id = num_nodes.fetch_add(2);
 
     // down child
     auto down_child = std::make_unique<mip_node_t<i_t, f_t>>(
@@ -309,18 +308,18 @@ class search_tree_t {
                               std::move(up_child));  // child pointers moved into the tree
   }
 
-  void graphviz_node(mip_node_t<i_t, f_t>* node_ptr, std::string label, f_t val)
+  void graphviz_node(const mip_node_t<i_t, f_t>* node_ptr, const std::string label, const f_t val)
   {
     if (write_graphviz) {
       log.printf("Node%d [label=\"%s %.16e\"]\n", node_ptr->node_id, label.c_str(), val);
     }
   }
 
-  void graphviz_edge(mip_node_t<i_t, f_t>* origin_ptr,
-                     mip_node_t<i_t, f_t>* dest_ptr,
-                     i_t branch_var,
-                     i_t branch_dir,
-                     f_t bound)
+  void graphviz_edge(const mip_node_t<i_t, f_t>* origin_ptr,
+                     const mip_node_t<i_t, f_t>* dest_ptr,
+                     const i_t branch_var,
+                     const i_t branch_dir,
+                     const f_t bound)
   {
     if (write_graphviz) {
       log.printf("Node%d -> Node%d [label=\"x%d %s %e\"]\n",
@@ -333,8 +332,8 @@ class search_tree_t {
   }
 
   mip_node_t<i_t, f_t> root;
-  std::mutex mutex;
-  i_t num_nodes;
+  omp_mutex_t mutex;
+  omp_atomic_t<i_t> num_nodes;
   logger_t log;
 
   static constexpr int write_graphviz = false;

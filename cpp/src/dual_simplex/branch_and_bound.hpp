@@ -25,24 +25,24 @@
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
 #include <dual_simplex/types.hpp>
+#include <utilities/omp_helpers.hpp>
 
 #include <omp.h>
-#include <mutex>
 #include <queue>
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
 
 enum class mip_status_t {
-  OPTIMAL    = 0,
-  UNBOUNDED  = 1,
-  INFEASIBLE = 2,
-  TIME_LIMIT = 3,
-  NODE_LIMIT = 4,
-  NUMERICAL  = 5,
-  UNSET      = 6,
-  RUNNING    = 7,
-  FINISHED   = 8
+  OPTIMAL    = 0,  // The optimal integer solution was found
+  UNBOUNDED  = 1,  // The problem is unbounded
+  INFEASIBLE = 2,  // The problem is infeasible
+  TIME_LIMIT = 3,  // The solver reached a time limit
+  NODE_LIMIT = 4,  // The maximum number of nodes was reached (not implemented)
+  NUMERICAL  = 5,  // The solver encountered a numerical error
+  RUNNING    = 6,  // The solver is currently exploring the tree
+  COMPLETED  = 7,  // The solver finished exploring the tree
+  UNSET      = 8,  // The status is not set
 };
 
 template <typename i_t, typename f_t>
@@ -55,7 +55,6 @@ template <typename i_t, typename f_t>
 class dive_queue_t {
  private:
   std::vector<mip_node_t<i_t, f_t>> buffer;
-  std::mutex mutex;
   static constexpr i_t max_size_ = 8192;
 
  public:
@@ -63,7 +62,7 @@ class dive_queue_t {
 
   void push(mip_node_t<i_t, f_t>&& node)
   {
-    buffer.push_back(std::forward<mip_node_t<i_t, f_t>&&>(node));
+    buffer.push_back(std::move(node));
     std::push_heap(buffer.begin(), buffer.end(), node_compare_t<i_t, f_t>());
     if (buffer.size() > max_size()) { buffer.pop_back(); }
   }
@@ -105,9 +104,7 @@ class branch_and_bound_t {
 
   f_t get_upper_bound();
   f_t get_lower_bound();
-  mip_status_t get_status();
   i_t get_heap_size();
-  i_t get_active_subtrees();
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
@@ -124,10 +121,11 @@ class branch_and_bound_t {
   std::vector<i_t> new_slacks_;
   std::vector<variable_type_t> var_types_;
 
-  std::vector<f_t> lower_bounds_;
+  // Local lower bounds for each thread
+  std::vector<omp_atomic_t<f_t>> lower_bounds_;
 
   // Mutex for upper bound
-  std::mutex mutex_upper_;
+  omp_mutex_t mutex_upper_;
 
   // Global variable for upper bound
   f_t upper_bound_;
@@ -137,15 +135,15 @@ class branch_and_bound_t {
 
   // Structure with the general info of the solver.
   struct stats_t {
-    f_t start_time          = 0.0;
-    f_t total_lp_solve_time = 0.0;
-    i_t nodes_explored      = 0;
-    i_t nodes_unexplored    = 0;
-    f_t total_lp_iters      = 0;
+    f_t start_time                        = 0.0;
+    omp_atomic_t<f_t> total_lp_solve_time = 0.0;
+    omp_atomic_t<i_t> nodes_explored      = 0;
+    omp_atomic_t<i_t> nodes_unexplored    = 0;
+    omp_atomic_t<f_t> total_lp_iters      = 0;
   } stats_;
 
   // Mutex for repair
-  std::mutex mutex_repair_;
+  omp_mutex_t mutex_repair_;
   std::vector<std::vector<f_t>> repair_queue_;
 
   // Variables for the root node in the search tree.
@@ -156,21 +154,21 @@ class branch_and_bound_t {
 
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;
-  std::mutex mutex_pc_;
+  omp_mutex_t mutex_pc_;
 
   // Heap storing the nodes to be explored.
-  std::mutex mutex_heap_;
+  omp_mutex_t mutex_heap_;
   mip_node_heap_t<mip_node_t<i_t, f_t>*> heap_;
 
-  // Global status
-  mip_status_t status_;
-
   // Count the number of subtrees that are currently being explored.
-  i_t active_subtrees_;
+  omp_atomic_t<i_t> active_subtrees_;
 
   // Queue for storing the promising node for performing dives.
-  std::mutex mutex_dive_queue_;
+  omp_mutex_t mutex_dive_queue_;
   dive_queue_t<i_t, f_t> dive_queue_;
+
+  // Global status
+  omp_atomic_t<mip_status_t> status_;
 
   // Update the incumbent solution with the new feasible solution.
   // found during branch and bound.
