@@ -901,7 +901,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                                                                                        \
   template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem( \
     raft::handle_t const* handle_ptr,                                                  \
-    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);
+    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);               \
+  template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE> const& settings);
 
 #if MIP_INSTANTIATE_FLOAT
 INSTANTIATE(float)
