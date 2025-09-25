@@ -60,8 +60,8 @@ class omp_atomic_t {
   // but it works for any numerical types.
   T operator++() { return fetch_add(T(1)) + 1; }
   T operator++(int) { return fetch_add(T(1)); }
-  T operator--() { return fetch_add(T(1)) - 1; }
-  T operator--(int) { return fetch_add(T(1)); }
+  T operator--() { return fetch_sub(T(1)) - 1; }
+  T operator--(int) { return fetch_sub(T(1)); }
 
   T load()
   {

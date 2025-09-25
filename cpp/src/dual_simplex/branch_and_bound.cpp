@@ -174,6 +174,26 @@ f_t relative_gap(f_t obj_value, f_t lower_bound)
   return user_mip_gap;
 }
 
+template <typename i_t, typename f_t>
+f_t user_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lower_bound)
+{
+  f_t user_obj         = compute_user_objective(lp, obj_value);
+  f_t user_lower_bound = compute_user_objective(lp, lower_bound);
+  return user_obj - user_lower_bound;
+}
+
+template <typename i_t, typename f_t>
+f_t user_relative_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lower_bound)
+{
+  f_t user_obj         = compute_user_objective(lp, obj_value);
+  f_t user_lower_bound = compute_user_objective(lp, lower_bound);
+  f_t user_mip_gap     = user_obj == 0.0
+                           ? (user_lower_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity())
+                           : std::abs(user_obj - user_lower_bound) / std::abs(user_obj);
+  if (std::isnan(user_mip_gap)) { return std::numeric_limits<f_t>::infinity(); }
+  return user_mip_gap;
+}
+
 template <typename f_t>
 std::string user_mip_gap(f_t obj_value, f_t lower_bound)
 {
@@ -242,6 +262,14 @@ i_t branch_and_bound_t<i_t, f_t>::get_heap_size()
   i_t size = heap_.size();
   mutex_heap_.unlock();
   return size;
+}
+
+template <typename i_t, typename f_t>
+bool branch_and_bound_t<i_t, f_t>::check_gap_convergence(f_t lower_bound, f_t upper_bound)
+{
+  f_t gap_rel = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  f_t gap_abs = user_gap(original_lp_, upper_bound, lower_bound);
+  return gap_rel < settings_.relative_mip_gap_tol || gap_abs < settings_.absolute_mip_gap_tol;
 }
 
 template <typename i_t, typename f_t>
@@ -542,7 +570,6 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(search_tree_t<i_t, f_t
   pc_log.log = false;
 
   f_t abs_fathom_tol = settings_.absolute_mip_gap_tol / 10;
-  f_t rel_fathom_tol = settings_.relative_mip_gap_tol;
 
   std::vector<variable_status_t>& leaf_vstatus = node_ptr->vstatus;
   lp_solution_t<i_t, f_t> leaf_solution(leaf_problem.num_rows, leaf_problem.num_cols);
@@ -601,8 +628,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(search_tree_t<i_t, f_t
       search_tree.update_tree(node_ptr, node_status_t::INTEGER_FEASIBLE);
       return node_status_t::INTEGER_FEASIBLE;
 
-    } else if (leaf_objective <= upper_bound + abs_fathom_tol &&
-               relative_gap(upper_bound, leaf_objective) > rel_fathom_tol) {
+    } else if (leaf_objective <= upper_bound + abs_fathom_tol) {
       // Choose fractional variable to branch on
       mutex_pc_.lock();
       const i_t branch_var = pc_.variable_selection(
@@ -654,8 +680,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
   nodes_explored   = (stats_.nodes_explored++);
   nodes_unexplored = (stats_.nodes_unexplored--);
 
-  if (upper_bound < node->lower_bound ||
-      relative_gap(upper_bound, lower_bound) < settings_.relative_mip_gap_tol) {
+  if (check_gap_convergence(lower_bound, upper_bound)) {
     search_tree->graphviz_node(node, "cutoff", node->lower_bound);
     search_tree->update_tree(node, node_status_t::FATHOMED);
     return;
@@ -742,8 +767,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
     nodes_explored     = stats_.nodes_explored++;
     nodes_unexplored   = stats_.nodes_unexplored--;
 
-    if (upper_bound < node_ptr->lower_bound ||
-        relative_gap(upper_bound, lower_bound) < settings_.relative_mip_gap_tol) {
+    if (check_gap_convergence(lower_bound, upper_bound)) {
       search_tree.graphviz_node(node_ptr, "cutoff", node_ptr->lower_bound);
       search_tree.update_tree(node_ptr, node_status_t::FATHOMED);
       continue;
@@ -819,10 +843,6 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(search_tree_t<i_t, f_t>& se
                                                      lp_problem_t<i_t, f_t>& leaf_problem,
                                                      csc_matrix_t<i_t, f_t>& Arow)
 {
-  f_t lower_bound = -inf;
-  f_t upper_bound = inf;
-  f_t gap         = inf;
-
   do {
     mip_node_t<i_t, f_t>* node_ptr = nullptr;
 
@@ -850,12 +870,8 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(search_tree_t<i_t, f_t>& se
       active_subtrees_--;
     }
 
-    lower_bound = get_lower_bound();
-    upper_bound = get_upper_bound();
-    gap         = upper_bound - lower_bound;
-
-  } while (status_ == mip_status_t::RUNNING && gap > settings_.absolute_mip_gap_tol &&
-           relative_gap(upper_bound, lower_bound) > settings_.relative_mip_gap_tol &&
+  } while (status_ == mip_status_t::RUNNING &&
+           !check_gap_convergence(get_lower_bound(), get_upper_bound()) &&
            (active_subtrees_ > 0 || get_heap_size() > 0));
 
   // Check if the solver exited naturally, or was due to a timeout or numerical error.
@@ -888,10 +904,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
         stack.pop_front();
         f_t upper_bound = get_upper_bound();
 
-        if (upper_bound < node_ptr->lower_bound ||
-            relative_gap(upper_bound, node_ptr->lower_bound) < settings_.relative_mip_gap_tol) {
-          continue;
-        }
+        if (check_gap_convergence(node_ptr->lower_bound, upper_bound)) { continue; }
 
         node_status_t node_status =
           solve_node_lp(subtree, node_ptr, leaf_problem, Arow, upper_bound, log, 'D');
@@ -1056,8 +1069,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                        settings_.num_threads - settings_.num_bfs_threads);
   settings_.log.printf(
     "|   Explored   |   Unexplored   |  Objective   |    Bound    |  Depth  | Iter/Node |   Gap   "
-    "| "
-    "   Time  \n");
+    "|    Time  \n");
 
   status_ = mip_status_t::RUNNING;
 
@@ -1099,7 +1111,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   f_t gap         = upper_bound - lower_bound;
   f_t obj         = compute_user_objective(original_lp_, upper_bound);
   f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
-  f_t gap_rel     = relative_gap(upper_bound, lower_bound);
+  f_t gap_rel     = user_relative_gap(original_lp_, upper_bound, lower_bound);
 
   settings_.log.printf(
     "Explored %d nodes in %.2fs.\n", stats_.nodes_explored, toc(stats_.start_time));
