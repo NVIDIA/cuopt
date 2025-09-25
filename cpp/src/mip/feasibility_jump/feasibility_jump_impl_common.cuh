@@ -61,7 +61,7 @@ HDI thrust::tuple<f_t, f_t, f_t, f_t> get_mtm_for_constraint(
 
   // process each bound as two separate constraints
   f_t bounds[2] = {c_lb, c_ub};
-  cuopt_assert(isfinite(bounds[0]) || isfinite(bounds[1]), "");
+  cuopt_assert(isfinite(bounds[0]) || isfinite(bounds[1]), "bounds are not finite");
 
   for (i_t bound_idx = 0; bound_idx < 2; ++bound_idx) {
     if (!isfinite(bounds[bound_idx])) continue;
