@@ -701,8 +701,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::explore_tree(i_t branch_var,
   f_t gap         = get_upper_bound() - lower_bound;
   f_t last_log    = 0;
 
-  while (gap > settings_.absolute_mip_gap_tol &&
-         relative_gap(get_upper_bound(), lower_bound) > settings_.relative_mip_gap_tol &&
+  f_t user_upper_bound = compute_user_objective(original_lp_, get_upper_bound());
+  f_t user_lower_bound = compute_user_objective(original_lp_, lower_bound);
+  f_t rel_gap          = relative_gap(user_upper_bound, user_lower_bound);
+  while (gap > settings_.absolute_mip_gap_tol && rel_gap > settings_.relative_mip_gap_tol &&
          heap.size() > 0) {
     repair_heuristic_solutions();
 
@@ -817,12 +819,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::dive(i_t branch_var, mip_solution_t<i
     node_stack.pop_back();
     nodes_explored++;
 
-    f_t upper_bound = get_upper_bound();
-    lower_bound     = get_lower_bound();
-    gap             = upper_bound - lower_bound;
-
-    if (gap < settings_.absolute_mip_gap_tol &&
-        relative_gap(get_upper_bound(), lower_bound) < settings_.relative_mip_gap_tol) {
+    f_t upper_bound      = get_upper_bound();
+    lower_bound          = get_lower_bound();
+    gap                  = upper_bound - lower_bound;
+    f_t user_upper_bound = compute_user_objective(original_lp_, get_upper_bound());
+    f_t user_lower_bound = compute_user_objective(original_lp_, lower_bound);
+    f_t rel_gap          = relative_gap(user_upper_bound, user_lower_bound);
+    if (gap < settings_.absolute_mip_gap_tol && rel_gap < settings_.relative_mip_gap_tol) {
       update_tree(node_ptr, node_status_t::FATHOMED);
       continue;
     }
@@ -1003,22 +1006,24 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   currently_branching_ = false;
   mutex_branching_.unlock();
 
+  f_t user_upper_bound = compute_user_objective(original_lp_, get_upper_bound());
+  f_t user_lower_bound = compute_user_objective(original_lp_, lower_bound_);
   settings_.log.printf(
     "Explored %d nodes in %.2fs.\nAbsolute Gap %e Objective %.16e Lower Bound %.16e\n",
     stats_.nodes_explored.load(),
     toc(stats_.start_time),
     gap_,
-    compute_user_objective(original_lp_, get_upper_bound()),
-    compute_user_objective(original_lp_, lower_bound_));
+    user_upper_bound,
+    user_lower_bound);
 
   if (gap_ <= settings_.absolute_mip_gap_tol ||
-      relative_gap(get_upper_bound(), lower_bound_) <= settings_.relative_mip_gap_tol) {
+      relative_gap(user_upper_bound, user_lower_bound) <= settings_.relative_mip_gap_tol) {
     status = mip_status_t::OPTIMAL;
     if (gap_ > 0 && gap_ <= settings_.absolute_mip_gap_tol) {
       settings_.log.printf("Optimal solution found within absolute MIP gap tolerance (%.1e)\n",
                            settings_.absolute_mip_gap_tol);
     } else if (gap_ > 0 &&
-               relative_gap(get_upper_bound(), lower_bound_) <= settings_.relative_mip_gap_tol) {
+               relative_gap(user_upper_bound, user_lower_bound) <= settings_.relative_mip_gap_tol) {
       settings_.log.printf("Optimal solution found within relative MIP gap tolerance (%.1e)\n",
                            settings_.relative_mip_gap_tol);
     } else {
