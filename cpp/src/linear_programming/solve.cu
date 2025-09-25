@@ -121,7 +121,7 @@ static void set_Stable2()
   pdlp_hyper_params::major_iteration                                            = 40;
   pdlp_hyper_params::min_iteration_restart                                      = 10;
   pdlp_hyper_params::restart_strategy                                           = 1;
-  pdlp_hyper_params::never_restart_to_average                                   = true;
+  pdlp_hyper_params::never_restart_to_average                                   = false;
   pdlp_hyper_params::host_default_reduction_exponent                            = 0.3;
   pdlp_hyper_params::host_default_growth_exponent                               = 0.6;
   pdlp_hyper_params::host_default_primal_weight_update_smoothing                = 0.5;
@@ -137,8 +137,8 @@ static void set_Stable2()
   pdlp_hyper_params::update_step_size_on_initial_solution                       = false;
   pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = false;
   pdlp_hyper_params::project_initial_primal                                     = true;
-  pdlp_hyper_params::use_adaptive_step_size_strategy                            = false;
-  pdlp_hyper_params::initial_step_size_max_singular_value                       = true;
+  pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
+  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
   pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
   pdlp_hyper_params::bound_objective_rescaling                                  = false;
   pdlp_hyper_params::use_reflected_primal_dual                                  = false;
