@@ -393,7 +393,6 @@ dependencies:
       - output_types: [conda, requirements, pyproject]
         packages:
           - fastapi
-          - httpx
           - *jsonref
           - *msgpack_numpy
           - *pandas
