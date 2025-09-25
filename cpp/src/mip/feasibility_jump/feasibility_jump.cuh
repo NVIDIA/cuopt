@@ -538,7 +538,7 @@ class fj_t {
       // If the constraint is satisfied by the given LHS value, returns 0.
       // If the constraint is violated by the given LHS value, returns -|lhs-rhs|.
       // caution: is inverted compared to solution_t's excess convention
-      HDI f_t excess_score(i_t cstr, f_t lhs, f_t c_lb, f_t c_ub) const
+      HDI f_t excess_score(i_t cstr, f_t cnstr_value, f_t c_lb, f_t c_ub) const
       {
         f_t right_score = upper_excess_score(cstr, lhs, c_ub);
         if (right_score < 0.) { return right_score; }
