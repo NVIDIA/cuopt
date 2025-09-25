@@ -30,7 +30,6 @@ dependencies:
 - gcc_linux-aarch64=14.*
 - gmock
 - gtest
-- httpx
 - ipython
 - jsonref==1.1.0
 - libcurand-dev

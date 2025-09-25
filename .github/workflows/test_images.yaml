@@ -35,6 +35,7 @@ on:
 jobs:
 
   prepare:
+    name: test-images (prepare)
     runs-on: ubuntu-latest
     outputs:
       CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
@@ -50,6 +51,7 @@ jobs:
           echo "PYTHON_SHORT=$PYTHON_SHORT" >> $GITHUB_OUTPUT
 
   test:
+    name: test-images (${{ inputs.ARCH }}, ${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ needs.prepare.outputs.CUDA_SHORT }}-py${{ needs.prepare.outputs.PYTHON_SHORT }})
     runs-on: "linux-${{ inputs.ARCH }}-gpu-a100-latest-1"
     needs: prepare
     container:

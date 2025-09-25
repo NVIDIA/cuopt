@@ -41,6 +41,13 @@ on:
         description: "build_type: one of [branch, nightly, pull-request]"
         type: string
         default: nightly
+      # Triggering 'test.yaml' from inside 'build.yaml' allows the use of the 'needs:' mechanism
+      # to ensure tests only start runniing once the builds they need are complete.
+      trigger-tests:
+        description: |
+          If 'true', trigger the test workflow after all builds complete.
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -213,6 +220,39 @@ jobs:
       date: ${{ inputs.date }}
       package-name: cuopt_sh_client
       package-type: python
+  tests:
+    # Docker image build / tests aren't necessary for the 'test.yaml' workflow,
+    # so 'test.yaml' can be triggered without waiting for those.
+    needs:
+      - upload-conda
+      - wheel-publish-cuopt
+      - wheel-publish-cuopt-mps-parser
+      - wheel-publish-cuopt-server
+      - wheel-publish-cuopt-sh-client
+      - wheel-publish-libcuopt
+    if: inputs.trigger-tests
+    runs-on: ubuntu-latest
+    # ref: https://docs.github.com/en/actions/reference/security/secure-use#use-an-intermediate-environment-variable
+    env:
+      GH_TOKEN: ${{ github.token }}
+      INPUT_BRANCH: "${{ inputs.branch }}"
+      INPUT_BUILD_TYPE: "${{ inputs.build_type }}"
+      INPUT_DATE: "${{ inputs.date }}"
+      INPUT_SHA: "${{ inputs.sha }}"
+    steps:
+      - name: trigger-test-workflow
+        run: |
+          # NOTE: '--ref' is the branch to pull the workflow file from, 'branch' input is the branch
+          #       to pull the actual cuOpt source code from
+          gh workflow run                       \
+            --repo NVIDIA/cuopt                 \
+            --ref "${{ github.ref }}"           \
+            'test.yaml'                         \
+            -f branch="${INPUT_BRANCH}"         \
+            -f build_type="${INPUT_BUILD_TYPE}" \
+            -f date="${INPUT_DATE}"             \
+            -f sha="${INPUT_SHA}"
+
   build-images:
     needs:
       - wheel-publish-cuopt
