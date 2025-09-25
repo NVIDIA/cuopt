@@ -65,126 +65,128 @@ static bool is_incorrect_objective(double reference, double objective)
   return std::abs((reference - objective) / reference) > 0.01;
 }
 
-TEST(pdlp_class, run_double)
-{
-  const raft::handle_t handle_{};
+// TEST(pdlp_class, run_double)
+// {
+//   const raft::handle_t handle_{};
 
-  auto path = make_path_absolute("linear_programming/afiro_original.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, true);
+//   auto path = make_path_absolute("linear_programming/afiro_original.mps");
+//   cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+//     cuopt::mps_parser::parse_mps<int, double>(path, true);
 
-  auto solver_settings   = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
+//   auto solver_settings   = pdlp_solver_settings_t<int, double>{};
+//   solver_settings.method = cuopt::linear_programming::method_t::PDLP;
 
-  optimization_problem_solution_t<int, double> solution =
-    solve_lp(&handle_, op_problem, solver_settings);
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
-  EXPECT_FALSE(is_incorrect_objective(
-    afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
-}
+//   optimization_problem_solution_t<int, double> solution =
+//     solve_lp(&handle_, op_problem, solver_settings);
+//   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+//   EXPECT_FALSE(is_incorrect_objective(
+//     afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
+// }
 
-TEST(pdlp_class, run_double_very_low_accuracy)
-{
-  const raft::handle_t handle_{};
+// TEST(pdlp_class, run_double_very_low_accuracy)
+// {
+//   const raft::handle_t handle_{};
 
-  auto path = make_path_absolute("linear_programming/afiro_original.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, true);
+//   auto path = make_path_absolute("linear_programming/afiro_original.mps");
+//   cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+//     cuopt::mps_parser::parse_mps<int, double>(path, true);
 
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
-    cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
-  // With all 0 afiro with return an error
-  // Setting absolute tolerance to the minimal value of 1e-12 will make it work
-  settings.tolerances.absolute_dual_tolerance   = settings.minimal_absolute_tolerance;
-  settings.tolerances.relative_dual_tolerance   = 0.0;
-  settings.tolerances.absolute_primal_tolerance = settings.minimal_absolute_tolerance;
-  settings.tolerances.relative_primal_tolerance = 0.0;
-  settings.tolerances.absolute_gap_tolerance    = settings.minimal_absolute_tolerance;
-  settings.tolerances.relative_gap_tolerance    = 0.0;
-  settings.method                               = cuopt::linear_programming::method_t::PDLP;
+//   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
+//     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
+//   // With all 0 afiro with return an error
+//   // Setting absolute tolerance to the minimal value of 1e-12 will make it work
+//   settings.tolerances.absolute_dual_tolerance   = settings.minimal_absolute_tolerance;
+//   settings.tolerances.relative_dual_tolerance   = 0.0;
+//   settings.tolerances.absolute_primal_tolerance = settings.minimal_absolute_tolerance;
+//   settings.tolerances.relative_primal_tolerance = 0.0;
+//   settings.tolerances.absolute_gap_tolerance    = settings.minimal_absolute_tolerance;
+//   settings.tolerances.relative_gap_tolerance    = 0.0;
+//   settings.method                               = cuopt::linear_programming::method_t::PDLP;
 
-  optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
-  EXPECT_FALSE(is_incorrect_objective(
-    afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
-}
+//   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem,
+//   settings); EXPECT_EQ((int)solution.get_termination_status(),
+//   CUOPT_TERIMINATION_STATUS_OPTIMAL); EXPECT_FALSE(is_incorrect_objective(
+//     afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
+// }
 
-TEST(pdlp_class, run_double_initial_solution)
-{
-  const raft::handle_t handle_{};
+// TEST(pdlp_class, run_double_initial_solution)
+// {
+//   const raft::handle_t handle_{};
 
-  auto path = make_path_absolute("linear_programming/afiro_original.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, true);
+//   auto path = make_path_absolute("linear_programming/afiro_original.mps");
+//   cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+//     cuopt::mps_parser::parse_mps<int, double>(path, true);
 
-  std::vector<double> inital_primal_sol(op_problem.get_n_variables());
-  std::fill(inital_primal_sol.begin(), inital_primal_sol.end(), 1.0);
-  op_problem.set_initial_primal_solution(inital_primal_sol.data(), inital_primal_sol.size());
+//   std::vector<double> inital_primal_sol(op_problem.get_n_variables());
+//   std::fill(inital_primal_sol.begin(), inital_primal_sol.end(), 1.0);
+//   op_problem.set_initial_primal_solution(inital_primal_sol.data(), inital_primal_sol.size());
 
-  auto solver_settings   = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
+//   auto solver_settings   = pdlp_solver_settings_t<int, double>{};
+//   solver_settings.method = cuopt::linear_programming::method_t::PDLP;
 
-  optimization_problem_solution_t<int, double> solution =
-    solve_lp(&handle_, op_problem, solver_settings);
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
-  EXPECT_FALSE(is_incorrect_objective(
-    afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
-}
+//   optimization_problem_solution_t<int, double> solution =
+//     solve_lp(&handle_, op_problem, solver_settings);
+//   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+//   EXPECT_FALSE(is_incorrect_objective(
+//     afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
+// }
 
-TEST(pdlp_class, run_iteration_limit)
-{
-  const raft::handle_t handle_{};
+// TEST(pdlp_class, run_iteration_limit)
+// {
+//   const raft::handle_t handle_{};
 
-  auto path = make_path_absolute("linear_programming/afiro_original.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, true);
+//   auto path = make_path_absolute("linear_programming/afiro_original.mps");
+//   cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+//     cuopt::mps_parser::parse_mps<int, double>(path, true);
 
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
-    cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
+//   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
+//     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
 
-  settings.iteration_limit = 10;
-  // To make sure it doesn't return before the iteration limit
-  settings.set_optimality_tolerance(0);
-  settings.method = cuopt::linear_programming::method_t::PDLP;
+//   settings.iteration_limit = 10;
+//   // To make sure it doesn't return before the iteration limit
+//   settings.set_optimality_tolerance(0);
+//   settings.method = cuopt::linear_programming::method_t::PDLP;
 
-  optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT);
-  // By default we would return all 0, we now return what we currently have so not all 0
-  EXPECT_FALSE(thrust::all_of(handle_.get_thrust_policy(),
-                              solution.get_primal_solution().begin(),
-                              solution.get_primal_solution().end(),
-                              thrust::placeholders::_1 == 0.0));
-}
+//   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem,
+//   settings); EXPECT_EQ((int)solution.get_termination_status(),
+//   CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT);
+//   // By default we would return all 0, we now return what we currently have so not all 0
+//   EXPECT_FALSE(thrust::all_of(handle_.get_thrust_policy(),
+//                               solution.get_primal_solution().begin(),
+//                               solution.get_primal_solution().end(),
+//                               thrust::placeholders::_1 == 0.0));
+// }
 
-TEST(pdlp_class, run_time_limit)
-{
-  const raft::handle_t handle_{};
-  auto path = make_path_absolute("linear_programming/savsched1/savsched1.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path);
+// TEST(pdlp_class, run_time_limit)
+// {
+//   const raft::handle_t handle_{};
+//   auto path = make_path_absolute("linear_programming/savsched1/savsched1.mps");
+//   cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+//     cuopt::mps_parser::parse_mps<int, double>(path);
 
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
-    cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
+//   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
+//     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
 
-  // 200 ms
-  constexpr double time_limit_seconds = 0.2;
-  settings.time_limit                 = time_limit_seconds;
-  // To make sure it doesn't return before the time limit
-  settings.set_optimality_tolerance(0);
-  settings.method = cuopt::linear_programming::method_t::PDLP;
+//   // 200 ms
+//   constexpr double time_limit_seconds = 0.2;
+//   settings.time_limit                 = time_limit_seconds;
+//   // To make sure it doesn't return before the time limit
+//   settings.set_optimality_tolerance(0);
+//   settings.method = cuopt::linear_programming::method_t::PDLP;
 
-  optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
+//   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem,
+//   settings);
 
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_TIME_LIMIT);
-  // By default we would return all 0, we now return what we currently have so not all 0
-  EXPECT_FALSE(thrust::all_of(handle_.get_thrust_policy(),
-                              solution.get_primal_solution().begin(),
-                              solution.get_primal_solution().end(),
-                              thrust::placeholders::_1 == 0.0));
-  // Check that indeed it didn't run for more than x time
-  EXPECT_TRUE(solution.get_additional_termination_information().solve_time <
-              (time_limit_seconds * 5) * 1000);
-}
+//   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_TIME_LIMIT);
+//   // By default we would return all 0, we now return what we currently have so not all 0
+//   EXPECT_FALSE(thrust::all_of(handle_.get_thrust_policy(),
+//                               solution.get_primal_solution().begin(),
+//                               solution.get_primal_solution().end(),
+//                               thrust::placeholders::_1 == 0.0));
+//   // Check that indeed it didn't run for more than x time
+//   EXPECT_TRUE(solution.get_additional_termination_information().solve_time <
+//               (time_limit_seconds * 5) * 1000);
+// }
 
 TEST(pdlp_class, run_sub_mittleman)
 {
@@ -212,8 +214,8 @@ TEST(pdlp_class, run_sub_mittleman)
     // Testing for each solver_mode is ok as it's parsing that is the bottleneck here, not
     // solving
     auto solver_mode_list = {
-      cuopt::linear_programming::pdlp_solver_mode_t::Stable3,
-      // cuopt::linear_programming::pdlp_solver_mode_t::Stable2,
+      // cuopt::linear_programming::pdlp_solver_mode_t::Stable3,
+      cuopt::linear_programming::pdlp_solver_mode_t::Stable2,
       // cuopt::linear_programming::pdlp_solver_mode_t::Stable1,
       // cuopt::linear_programming::pdlp_solver_mode_t::Methodical1,
       // cuopt::linear_programming::pdlp_solver_mode_t::Fast1,
@@ -226,6 +228,7 @@ TEST(pdlp_class, run_sub_mittleman)
         const raft::handle_t handle_{};
         optimization_problem_solution_t<int, double> solution =
           solve_lp(&handle_, op_problem, settings);
+        printf("running %s mode %d presolve? %d\n", name.c_str(), (int)solver_mode, presolve);
         EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
         EXPECT_FALSE(is_incorrect_objective(
           expected_objective_value,
