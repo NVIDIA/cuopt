@@ -86,7 +86,7 @@ Step 2: Once given access, users can find `cuOpt container <https://catalog.ngc.
 Step 3: Access NGC registry:
 
 * Log into NGC using the invite and choose the appropriate NGC org.
-* Generate an NGC API key from settings. If you have not generated an API Key, you can generate it by going to the Setup option in your profile and choose Get API Key. Store this or generate a new one next time. More information can be found `here <https://docs.nvidia.com/ngc/ngc-private-registry-user-guide/index.html#generating-api-key>`_.
+* Generate an NGC API key from settings. If you have not generated an API Key, you can generate it by going to the Setup option in your profile and choose Get API Key. Store this or generate a new one next time. More information can be found `here <https://docs.nvidia.com/ngc/latest/ngc-private-registry-user-guide.html#generating-a-personal-api-key>`_.
 
 Step 4: Pull the container:
 
