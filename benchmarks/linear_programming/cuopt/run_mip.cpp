@@ -298,7 +298,7 @@ int main(int argc, char* argv[])
 {
   argparse::ArgumentParser program("solve_MIP");
 
-  // Define all arguments with appropriate defaults and help messages 1
+  // Define all arguments with appropriate defaults and help messages 2
   program.add_argument("--path").help("input path").required();
 
   program.add_argument("--run-dir")
