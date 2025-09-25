@@ -36,7 +36,7 @@ julia --version
 
 CUOPT_JL_DIR="$(mktemp -d)/cuOpt.jl"
 rapids-logger "Cloning cuOpt.jl into ${CUOPT_JL_DIR}"
-git clone --branch fix_get_for_parameters https://github.com/jump-dev/cuOpt.jl.git "${CUOPT_JL_DIR}"
+git clone https://github.com/jump-dev/cuOpt.jl.git "${CUOPT_JL_DIR}"
 
 cd $CUOPT_JL_DIR || exit 1
 
