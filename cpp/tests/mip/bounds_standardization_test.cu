@@ -76,8 +76,6 @@ void test_bounds_standardization_test(std::string test_instance)
   detail::trivial_presolve(standardized_problem);
   detail::solution_t<int, double> solution_1(standardized_problem);
 
-  standardized_problem.write_as_mps("standardized.mps");
-
   mip_solver_settings_t<int, double> default_settings{};
   detail::relaxed_lp_settings_t lp_settings;
   lp_settings.time_limit              = 120.;
@@ -119,8 +117,6 @@ TEST(mip_solve, bounds_standardization_test)
 {
   std::vector<std::string> test_instances = {
     "mip/50v-10-free-bound.mps", "mip/neos5-free-bound.mps", "mip/neos5.mps"};
-  // std::vector<std::string> test_instances = {
-  //   "mip/neos5.mps"};
   for (const auto& test_instance : test_instances) {
     test_bounds_standardization_test(test_instance);
   }

@@ -29,7 +29,7 @@ inline constexpr int primal_stride = 1;
 inline constexpr int dual_stride   = 1;
 // }
 
-#define PDLP_DEBUG_MODE
+// #define PDLP_DEBUG_MODE
 
 // #define CUPDLP_DEBUG_MODE
 
