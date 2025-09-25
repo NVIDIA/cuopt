@@ -567,8 +567,6 @@ dual::status_t branch_and_bound_t<i_t, f_t>::node_dual_simplex(
         leaf_problem, lp_start_time, lp_settings, leaf_solution, leaf_vstatus, leaf_edge_norms);
       lp_status = convert_lp_status_to_dual_status(second_status);
     }
-  } else {
-    log.printf("Infeasible after bounds strengthening. Fathoming node %d.\n", leaf_id);
   }
 
   mutex_stats_.lock();
