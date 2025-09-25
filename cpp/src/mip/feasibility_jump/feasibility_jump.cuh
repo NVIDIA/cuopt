@@ -98,7 +98,7 @@ enum class fj_mode_t {
   EXIT_NON_IMPROVING  // iterate until we are don't improve the best
 };
 
-enum MTMMoveType { FJ_MTM_VIOLATED, FJ_MTM_SATISFIED, FJ_MTM_ALL };
+enum class MTMMoveType { FJ_MTM_VIOLATED, FJ_MTM_SATISFIED, FJ_MTM_ALL };
 
 enum class fj_load_balancing_mode_t { ALWAYS_ON, AUTO, ALWAYS_OFF };
 
