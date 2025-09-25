@@ -291,7 +291,29 @@ void print(std::string_view const name, std::vector<T> const& container)
 template <typename T>
 void print(std::string_view const name, rmm::device_uvector<T> const& container)
 {
-  raft::print_device_vector(name.data(), container.data(), container.size(), std::cout);
+  // raft::print_device_vector(name.data(), container.data(), container.size(), std::cout);
+  //  auto host_vec = cuopt::host_copy(container, rmm::cuda_stream_default);
+  //  std::string str = std::string(name.data());
+  //  printf("%s=[", str.c_str());
+  //  for (int i = 0; i < (int)host_vec.size(); ++i) {
+  //    if (host_vec[i] <= 1e-16 && host_vec[i] >= -1e-16)
+  //      printf("0");
+  //    else
+  //        printf("%lf", host_vec[i]);
+  //    printf(",");
+  //  }
+  //  printf("]\n");
+
+  uint32_t hash   = 2166136261u;  // FNV-1a 32-bit offset basis
+  auto h_contents = cuopt::host_copy(container, rmm::cuda_stream_default);
+  std::vector<uint8_t> byte_contents(h_contents.size() * sizeof(T));
+  std::memcpy(byte_contents.data(), h_contents.data(), h_contents.size() * sizeof(T));
+  for (size_t i = 0; i < byte_contents.size(); ++i) {
+    hash ^= byte_contents[i];
+    hash *= 16777619u;
+  }
+  std::string name_str = std::string(name.data());
+  printf("%s=%x\n", name_str.c_str(), hash);
 }
 
 template <typename T>

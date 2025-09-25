@@ -31,6 +31,7 @@ class ping_pong_graph_t {
   ping_pong_graph_t(rmm::cuda_stream_view stream_view, bool is_batch_mode = false)
     : stream_view_(stream_view), is_batch_mode_(is_batch_mode)
   {
+    is_batch_mode_ = true;
   }
 
   ~ping_pong_graph_t()

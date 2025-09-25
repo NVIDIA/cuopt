@@ -186,6 +186,14 @@ __global__ void compute_step_sizes_from_movement_and_interaction(
   *step_size_strategy_view.step_size = step_size_;
   cuopt_assert(!isnan(step_size_), "step size can't be nan");
   cuopt_assert(!isinf(step_size_), "step size can't be inf");
+
+  printf("primweight %g, norm_squared_delta_primal %g, norm_squared_delta_dual %g\n",
+         primal_weight_,
+         *step_size_strategy_view.norm_squared_delta_primal,
+         *step_size_strategy_view.norm_squared_delta_dual);
+  static int counter = 0;
+  counter++;
+  if (counter >= 80) __trap();
 }
 
 template <typename i_t, typename f_t>
@@ -325,6 +333,8 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
                                     primal_stride,
                                     interaction_.data(),
                                     stream_view_));
+
+  print("delta primal", current_saddle_point_state.get_delta_primal());
 
   // Compute movement
   //  compute euclidean norm squared which is
