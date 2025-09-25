@@ -35,7 +35,7 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 class diversity_manager_t;
 
-enum class external_solution_origin_t { BRANCH_AND_BOUND, CPUFJ, INJECTED };
+enum class solution_origin_t { BRANCH_AND_BOUND, CPUFJ, EXTERNAL };
 
 constexpr const char* external_solution_origin_to_string(external_solution_origin_t origin)
 {
