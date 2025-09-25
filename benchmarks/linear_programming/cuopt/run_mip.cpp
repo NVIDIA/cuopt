@@ -36,6 +36,7 @@
 #include <rmm/mr/device/owning_wrapper.hpp>
 
 #include <fcntl.h>
+#include <omp.h>
 #include <sys/file.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -381,6 +382,8 @@ int main(int argc, char* argv[])
   bool log_to_console    = program.get<std::string>("--log-to-console")[0] == 't';
   double memory_limit    = program.get<double>("--memory-limit");
   bool track_allocations = program.get<std::string>("--track-allocations")[0] == 't';
+
+  if (num_cpu_threads < 0) { num_cpu_threads = omp_get_max_threads() / n_gpus; }
 
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
