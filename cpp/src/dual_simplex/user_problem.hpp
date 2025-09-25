@@ -57,6 +57,9 @@ struct user_problem_t {
   f_t obj_constant;
   f_t obj_scale;  // 1.0 for min, -1.0 for max
   std::vector<variable_type_t> var_types;
+  std::vector<i_t> Q_offsets;
+  std::vector<i_t> Q_indices;
+  std::vector<f_t> Q_values;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

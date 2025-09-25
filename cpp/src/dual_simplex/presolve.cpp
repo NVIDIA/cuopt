@@ -2310,7 +2310,7 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
                           lp_problem_t<i_t, f_t>& problem,
                           std::vector<i_t>& new_slacks)
 {
-  constexpr bool verbose = false;
+  constexpr bool verbose = true;
   if (verbose) {
     printf("Converting problem with %d rows and %d columns and %d nonzeros\n",
            user_problem.num_rows,
@@ -2378,6 +2378,24 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
 
   if (less_rows > 0) {
     convert_less_than_to_equal(user_problem, row_sense, problem, less_rows, new_slacks);
+  }
+
+  if (user_problem.Q_values.size() > 0) {
+    printf("Converting problem with %d quadratic nonzeros\n", user_problem.Q_values.size());
+    printf("problem.num_cols: %d user_problem.num_cols: %d\n", problem.num_cols, user_problem.num_cols);
+    problem.Q.m = problem.num_cols;
+    problem.Q.n = problem.num_cols;
+    problem.Q.nz_max = user_problem.Q_values.size();
+    problem.Q.row_start.resize(problem.num_cols + 1);
+    for (i_t j = 0; j < user_problem.num_cols; j++) {
+      problem.Q.row_start[j] = user_problem.Q_offsets[j];
+    }
+    i_t nz = user_problem.Q_offsets[user_problem.num_cols];
+    for (i_t j = user_problem.num_cols; j <= problem.num_cols; j++) {
+      problem.Q.row_start[j] = nz;
+    }
+    problem.Q.j = user_problem.Q_indices;
+    problem.Q.x = user_problem.Q_values;
   }
 
   // Add artifical variables
@@ -2506,7 +2524,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     problem.num_cols = num_cols;
   }
 
-  if (settings.barrier_presolve && settings.folding != 0) {
+  if (settings.barrier_presolve && settings.folding != 0 && problem.Q.n == 0) {
     folding(problem, settings, presolve_info);
   }
 
