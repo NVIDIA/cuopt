@@ -37,6 +37,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include "cuopt/logger_macros.hpp"
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -316,7 +317,7 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
       std::string gap = user_mip_gap<f_t>(user_obj, user_lower);
 
       settings_.log.printf(
-        "H                            %+13.6e  %+10.6e                        %s %9.2f\n",
+        "H                           %+13.6e    %+10.6e                        %s %9.2f\n",
         user_obj,
         user_lower,
         gap.c_str(),
@@ -465,7 +466,7 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(f_t leaf_objective,
     f_t lower_bound = get_lower_bound();
     f_t obj         = compute_user_objective(original_lp_, upper_bound_);
     f_t lower       = compute_user_objective(original_lp_, lower_bound);
-    settings_.log.printf("%c%10d %10lu       %+13.6e  %+10.6e   %6d   %7.1e     %s %9.2f\n",
+    settings_.log.printf("%c%10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
                          symbol,
                          nodes_explored,
                          nodes_unexplored,
@@ -694,7 +695,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
     f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
     std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
 
-    settings_.log.printf(" %10d %10lu       %+13.6e  %+10.6e   %6d   %7.1e     %s %9.2f\n",
+    settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
                          nodes_explored,
                          nodes_unexplored,
                          obj,
@@ -785,8 +786,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
         f_t obj              = compute_user_objective(original_lp_, upper_bound);
         f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
         std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
-
-        settings_.log.printf(" %10d %10lu       %+13.6e  %+10.6e   %6d   %7.1e     %s %9.2f\n",
+        settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
                              nodes_explored,
                              nodes_unexplored,
                              obj,
@@ -1064,12 +1064,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   search_tree.branch(
     &search_tree.root, branch_var, root_relax_soln_.x[branch_var], root_vstatus_, original_lp_);
 
-  settings_.log.printf("Exploring the B&B tree using %d threads (%d are diving threads)\n",
+  settings_.log.printf("Exploring the B&B tree using %d threads (%d diving threads)\n",
                        settings_.num_threads,
-                       settings_.num_threads - settings_.num_bfs_threads);
+                       settings_.num_diving_threads);
   settings_.log.printf(
-    "|   Explored   |   Unexplored   |  Objective   |    Bound    |  Depth  | Iter/Node |   Gap   "
-    "|    Time  \n");
+    " | Explored | Unexplored |    Objective    |     Bound     | Depth | Iter/Node |   Gap    "
+    "|  Time  |\n");
 
   status_ = mip_status_t::RUNNING;
 
