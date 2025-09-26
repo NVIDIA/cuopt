@@ -345,6 +345,8 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver,
     presolver.addPresolveMethod(uptr(new papilo::SimpleSubstitution<f_t>()));
     presolver.addPresolveMethod(uptr(new papilo::Sparsify<f_t>()));
     presolver.addPresolveMethod(uptr(new papilo::Substitution<f_t>()));
+  } else {
+    CUOPT_LOG_INFO("Disabling the presolver methods that do not support dual postsolve");
   }
 }
 
@@ -374,7 +376,8 @@ void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
     // produce any reductions, the algorithm stops. To avoid stopping the algorithm, we set a
     // minimum badge size to a huge value. The time limit makes sure that we exit if it takes too
     // long
-    params.setParameter("probing.minbadgesize", ncols / 2);
+    int min_badgesize = std::max(ncols / 2, 32);
+    params.setParameter("probing.minbadgesize", min_badgesize);
     params.setParameter("cliquemerging.enabled", true);
     params.setParameter("cliquemerging.maxcalls", 50);
   }
