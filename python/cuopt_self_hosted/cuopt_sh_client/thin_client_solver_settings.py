@@ -63,9 +63,9 @@ class PDLPSolverMode(IntEnum):
 
     Stable1 = 0
     Stable2 = auto()
-    Stable3 = auto()
     Methodical1 = auto()
     Fast1 = auto()
+    Stable3 = auto()
 
     def __str__(self):
         """Convert the solver mode to a string.
