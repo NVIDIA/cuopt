@@ -37,7 +37,6 @@
 #include <optional>
 #include <string>
 #include <vector>
-#include "cuopt/logger_macros.hpp"
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -176,14 +175,6 @@ f_t relative_gap(f_t obj_value, f_t lower_bound)
 }
 
 template <typename i_t, typename f_t>
-f_t user_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lower_bound)
-{
-  f_t user_obj         = compute_user_objective(lp, obj_value);
-  f_t user_lower_bound = compute_user_objective(lp, lower_bound);
-  return user_obj - user_lower_bound;
-}
-
-template <typename i_t, typename f_t>
 f_t user_relative_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lower_bound)
 {
   f_t user_obj         = compute_user_objective(lp, obj_value);
@@ -266,10 +257,10 @@ i_t branch_and_bound_t<i_t, f_t>::get_heap_size()
 }
 
 template <typename i_t, typename f_t>
-bool branch_and_bound_t<i_t, f_t>::check_gap_convergence(f_t lower_bound, f_t upper_bound)
+bool branch_and_bound_t<i_t, f_t>::check_gap(f_t lower_bound, f_t upper_bound)
 {
   f_t gap_rel = user_relative_gap(original_lp_, upper_bound, lower_bound);
-  f_t gap_abs = user_gap(original_lp_, upper_bound, lower_bound);
+  f_t gap_abs = upper_bound - lower_bound;
   return gap_rel < settings_.relative_mip_gap_tol || gap_abs < settings_.absolute_mip_gap_tol;
 }
 
@@ -674,14 +665,13 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
 
   f_t lower_bound      = node->lower_bound;
   f_t upper_bound      = get_upper_bound();
-  f_t gap              = upper_bound - lower_bound;
   i_t nodes_explored   = 0;
   i_t nodes_unexplored = 0;
 
   nodes_explored   = (stats_.nodes_explored++);
   nodes_unexplored = (stats_.nodes_unexplored--);
 
-  if (check_gap_convergence(lower_bound, upper_bound)) {
+  if (check_gap(lower_bound, upper_bound)) {
     search_tree->graphviz_node(node, "cutoff", node->lower_bound);
     search_tree->update_tree(node, node_status_t::FATHOMED);
     return;
@@ -689,8 +679,8 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
 
   f_t now = toc(stats_.start_time);
 
-  if (nodes_explored % 1000 == 0 || gap < 10 * settings_.absolute_mip_gap_tol ||
-      nodes_explored < 1000) {
+  if (nodes_explored % 1000 == 0 ||
+      (upper_bound - lower_bound) < 10 * settings_.absolute_mip_gap_tol || nodes_explored < 1000) {
     f_t obj              = compute_user_objective(original_lp_, upper_bound);
     f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
     std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
@@ -746,9 +736,6 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
   stack.push_front(start_node);
 
   // It contains the lower bound of the parent for now
-  f_t lower_bound      = start_node->lower_bound;
-  f_t upper_bound      = get_upper_bound();
-  f_t gap              = upper_bound - lower_bound;
   f_t last_log         = 0;
   i_t nodes_explored   = 0;
   i_t nodes_unexplored = 0;
@@ -760,43 +747,39 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
-    lower_bound = node_ptr->lower_bound;
-    upper_bound = get_upper_bound();
-    gap         = upper_bound - lower_bound;
+    f_t lower_bound = node_ptr->lower_bound;
+    f_t upper_bound = get_upper_bound();
 
     lower_bounds_[tid] = lower_bound;
     nodes_explored     = stats_.nodes_explored++;
     nodes_unexplored   = stats_.nodes_unexplored--;
 
-    if (check_gap_convergence(lower_bound, upper_bound)) {
+    if (check_gap(lower_bound, upper_bound)) {
       search_tree.graphviz_node(node_ptr, "cutoff", node_ptr->lower_bound);
       search_tree.update_tree(node_ptr, node_status_t::FATHOMED);
       continue;
     }
 
-    f_t now = toc(stats_.start_time);
-
-#pragma omp single nowait
-    {
-      f_t time_since_log = last_log == 0 ? 1.0 : toc(last_log);
-      if (((nodes_explored % 1000 == 0 || gap < 10 * settings_.absolute_mip_gap_tol ||
-            nodes_explored < 1000) &&
-           (time_since_log >= 1)) ||
-          (time_since_log > 60) || now > settings_.time_limit) {
-        f_t obj              = compute_user_objective(original_lp_, upper_bound);
-        f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
-        std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
-        settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
-                             nodes_explored,
-                             nodes_unexplored,
-                             obj,
-                             user_lower,
-                             node_ptr->depth,
-                             nodes_explored > 0 ? stats_.total_lp_iters / nodes_explored : 0,
-                             gap_user.c_str(),
-                             now);
-        last_log = tic();
-      }
+    f_t now            = toc(stats_.start_time);
+    f_t time_since_log = last_log == 0 ? 1.0 : toc(last_log);
+    if (((nodes_explored % 1000 == 0 ||
+          (upper_bound - lower_bound) < 10 * settings_.absolute_mip_gap_tol ||
+          nodes_explored < 1000) &&
+         (time_since_log >= 1)) ||
+        (time_since_log > 60) || now > settings_.time_limit) {
+      f_t obj              = compute_user_objective(original_lp_, upper_bound);
+      f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
+      std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
+      settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
+                           nodes_explored,
+                           nodes_unexplored,
+                           obj,
+                           user_lower,
+                           node_ptr->depth,
+                           nodes_explored > 0 ? stats_.total_lp_iters / nodes_explored : 0,
+                           gap_user.c_str(),
+                           now);
+      last_log = tic();
     }
 
     if (toc(stats_.start_time) > settings_.time_limit) {
@@ -870,8 +853,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(search_tree_t<i_t, f_t>& se
       active_subtrees_--;
     }
 
-  } while (status_ == mip_status_t::RUNNING &&
-           !check_gap_convergence(get_lower_bound(), get_upper_bound()) &&
+  } while (status_ == mip_status_t::RUNNING && !check_gap(get_lower_bound(), get_upper_bound()) &&
            (active_subtrees_ > 0 || get_heap_size() > 0));
 
   // Check if the solver exited naturally, or was due to a timeout or numerical error.
@@ -904,7 +886,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
         stack.pop_front();
         f_t upper_bound = get_upper_bound();
 
-        if (check_gap_convergence(node_ptr->lower_bound, upper_bound)) { continue; }
+        if (check_gap(node_ptr->lower_bound, upper_bound)) { continue; }
 
         node_status_t node_status =
           solve_node_lp(subtree, node_ptr, leaf_problem, Arow, upper_bound, log, 'D');

@@ -107,7 +107,7 @@ class branch_and_bound_t {
   i_t get_heap_size();
 
   // Check if the gap and relative gap are below the tolerance.
-  bool check_gap_convergence(f_t lower_bound, f_t upper_bound);
+  bool check_gap(f_t lower_bound, f_t upper_bound);
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
