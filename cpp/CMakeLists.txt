@@ -181,7 +181,12 @@ endif()
 FetchContent_Declare(
   papilo
   GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
-  # Get the latest commit from development branch
+  # We would want to get the main branch. However, the main branch
+  # does not have some of the presolvers and settings that we need
+  # Mainly, probing and clique merging.
+  # This is the reason we are using the development branch
+  # commit from Sep 26, 2025. Once these changes are merged into the main branch,
+  #we can switch to the main branch.
   GIT_TAG "34a40781fa14f8870cb6368cffb6c0eda2f47511"
   GIT_PROGRESS TRUE
   SYSTEM
