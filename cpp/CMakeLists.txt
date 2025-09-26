@@ -178,7 +178,7 @@ else()
   find_package(RAFT REQUIRED)
 endif()
 
-# Pull in papilo from a specific commit, since cuOpt uses it as header only, 
+# Pull in papilo from a specific commit, since cuOpt uses it as header only,
 # we do not need to build it.
 include(ExternalProject)
 
