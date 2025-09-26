@@ -392,7 +392,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
                  papilo_problem.getNCols(),
                  papilo_problem.getConstraintMatrix().getNnz());
 
-  CUOPT_LOG_INFO("Calling Papilo presolver");                 
+  CUOPT_LOG_INFO("Calling Papilo presolver");
   papilo::Presolve<f_t> presolver;
   set_presolve_methods<f_t>(presolver, category);
   set_presolve_options<i_t, f_t>(
