@@ -441,6 +441,55 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
 }
 
 template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& solution,
+                                                      f_t lower_bound)
+{
+  if (status_ == mip_status_t::TIME_LIMIT) {
+    settings_.log.printf("Time limit reached. Stopping the solver...\n");
+  }
+
+  f_t upper_bound = get_upper_bound();
+  f_t gap         = upper_bound - lower_bound;
+  f_t obj         = compute_user_objective(original_lp_, upper_bound);
+  f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
+  f_t gap_rel     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+
+  settings_.log.printf(
+    "Explored %d nodes in %.2fs.\n", stats_.nodes_explored, toc(stats_.start_time));
+  settings_.log.printf("Absolute Gap %e Objective %.16e Lower Bound %.16e\n", gap, obj, user_lower);
+
+  if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
+    status_ = mip_status_t::OPTIMAL;
+    if (gap > 0 && gap <= settings_.absolute_mip_gap_tol) {
+      settings_.log.printf("Optimal solution found within absolute MIP gap tolerance (%.1e)\n",
+                           settings_.absolute_mip_gap_tol);
+    } else if (gap > 0 && gap_rel <= settings_.relative_mip_gap_tol) {
+      settings_.log.printf("Optimal solution found within relative MIP gap tolerance (%.1e)\n",
+                           settings_.relative_mip_gap_tol);
+    } else {
+      settings_.log.printf("Optimal solution found.\n");
+    }
+    if (settings_.heuristic_preemption_callback != nullptr) {
+      settings_.heuristic_preemption_callback();
+    }
+  }
+
+  if (stats_.nodes_explored > 0 && stats_.nodes_unexplored == 0 && upper_bound == inf) {
+    settings_.log.printf("Integer infeasible.\n");
+    status_ = mip_status_t::INFEASIBLE;
+    if (settings_.heuristic_preemption_callback != nullptr) {
+      settings_.heuristic_preemption_callback();
+    }
+  }
+
+  uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
+  solution.objective          = incumbent_.objective;
+  solution.lower_bound        = lower_bound;
+  solution.nodes_explored     = stats_.nodes_explored;
+  solution.simplex_iterations = stats_.total_lp_iters;
+}
+
+template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::add_feasible_solution(f_t leaf_objective,
                                                          const std::vector<f_t>& leaf_solution,
                                                          i_t leaf_depth,
@@ -922,7 +971,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   stats_.total_lp_iters   = 0;
   stats_.nodes_explored   = 0;
-  stats_.nodes_unexplored = 2;
+  stats_.nodes_unexplored = 0;
   active_subtrees_        = 0;
 
   if (guess_.size() != 0) {
@@ -949,6 +998,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   lp_settings.inside_mip                = 1;
   lp_status_t root_status               = solve_linear_program_advanced(
     original_lp_, stats_.start_time, lp_settings, root_relax_soln_, root_vstatus_, edge_norms_);
+  stats_.total_lp_iters      = root_relax_soln_.iterations;
   stats_.total_lp_solve_time = toc(stats_.start_time);
   assert(root_vstatus_.size() == original_lp_.num_cols);
   if (root_status == lp_status_t::INFEASIBLE) {
@@ -968,9 +1018,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
     return mip_status_t::UNBOUNDED;
   }
+
   if (root_status == lp_status_t::TIME_LIMIT) {
-    settings_.log.printf("Time limit reached. Stopping the solver...\n");
-    return mip_status_t::TIME_LIMIT;
+    status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, -inf);
+    return status_;
   }
 
   set_uninitialized_steepest_edge_norms<i_t, f_t>(edge_norms_);
@@ -1011,6 +1063,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     settings_.log.printf("Optimal solution found at root node. Objective %.16e. Time %.2f.\n",
                          compute_user_objective(original_lp_, root_objective_),
                          toc(stats_.start_time));
+
     if (settings_.solution_callback != nullptr) {
       settings_.solution_callback(solution.x, solution.objective);
     }
@@ -1033,8 +1086,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                              pc_);
 
   if (toc(stats_.start_time) > settings_.time_limit) {
-    settings_.log.printf("Time limit reached. Stopping the solver...\n");
-    return mip_status_t::TIME_LIMIT;
+    status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return status_;
   }
 
   // Choose variable to branch on
@@ -1045,6 +1099,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   search_tree.graphviz_node(&search_tree.root, "lower bound", root_objective_);
   search_tree.branch(
     &search_tree.root, branch_var, root_relax_soln_.x[branch_var], root_vstatus_, original_lp_);
+  stats_.nodes_unexplored = 2;
 
   settings_.log.printf("Exploring the B&B tree using %d threads (%d diving threads)\n",
                        settings_.num_threads,
@@ -1084,50 +1139,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
   }
 
-  if (status_ == mip_status_t::TIME_LIMIT) {
-    settings_.log.printf("Time limit reached. Stopping the solver...\n");
-  }
-
   f_t lower_bound = heap_.size() > 0 ? heap_.top()->lower_bound : search_tree.get_lower_bound();
-  f_t upper_bound = get_upper_bound();
-  f_t gap         = upper_bound - lower_bound;
-  f_t obj         = compute_user_objective(original_lp_, upper_bound);
-  f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
-  f_t gap_rel     = user_relative_gap(original_lp_, upper_bound, lower_bound);
-
-  settings_.log.printf(
-    "Explored %d nodes in %.2fs.\n", stats_.nodes_explored, toc(stats_.start_time));
-  settings_.log.printf("Absolute Gap %e Objective %.16e Lower Bound %.16e\n", gap, obj, user_lower);
-
-  if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
-    status_ = mip_status_t::OPTIMAL;
-    if (gap > 0 && gap <= settings_.absolute_mip_gap_tol) {
-      settings_.log.printf("Optimal solution found within absolute MIP gap tolerance (%.1e)\n",
-                           settings_.absolute_mip_gap_tol);
-    } else if (gap > 0 && gap_rel <= settings_.relative_mip_gap_tol) {
-      settings_.log.printf("Optimal solution found within relative MIP gap tolerance (%.1e)\n",
-                           settings_.relative_mip_gap_tol);
-    } else {
-      settings_.log.printf("Optimal solution found.\n");
-    }
-    if (settings_.heuristic_preemption_callback != nullptr) {
-      settings_.heuristic_preemption_callback();
-    }
-  }
-
-  if (get_heap_size() == 0 && upper_bound == inf) {
-    settings_.log.printf("Integer infeasible.\n");
-    status_ = mip_status_t::INFEASIBLE;
-    if (settings_.heuristic_preemption_callback != nullptr) {
-      settings_.heuristic_preemption_callback();
-    }
-  }
-
-  uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
-  solution.objective          = incumbent_.objective;
-  solution.lower_bound        = lower_bound;
-  solution.nodes_explored     = stats_.nodes_explored;
-  solution.simplex_iterations = stats_.total_lp_iters;
+  set_final_solution(solution, lower_bound);
   return status_;
 }
 

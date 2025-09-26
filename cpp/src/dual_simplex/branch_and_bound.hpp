@@ -173,6 +173,9 @@ class branch_and_bound_t {
   // Global status
   omp_atomic_t<mip_status_t> status_;
 
+  // Set the final solution.
+  void set_final_solution(mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
+
   // Update the incumbent solution with the new feasible solution.
   // found during branch and bound.
   void add_feasible_solution(f_t leaf_objective,
