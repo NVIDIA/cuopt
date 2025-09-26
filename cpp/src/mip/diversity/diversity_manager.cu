@@ -314,6 +314,13 @@ void diversity_manager_t<i_t, f_t>::run_fp_alone(solution_t<i_t, f_t>& solution)
   CUOPT_LOG_INFO("FP alone finished!");
 }
 
+template <typename i_t, typename f_t>
+struct ls_cpufj_raii_guard_t {
+  ls_cpufj_raii_guard_t(local_search_t<i_t, f_t>& ls) : ls(ls) {}
+  ~ls_cpufj_raii_guard_t() { ls.stop_cpufj_scratch_threads(); }
+  local_search_t<i_t, f_t>& ls;
+};
+
 // returns the best feasible solution
 template <typename i_t, typename f_t>
 solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
@@ -342,6 +349,12 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     "The problem must not be ii");
   population.initialize_population();
   if (check_b_b_preemption()) { return population.best_feasible(); }
+
+  // Run CPUFJ early to find quick initial solutions
+  population.allocate_solutions();
+  ls_cpufj_raii_guard_t ls_cpufj_raii_guard(ls);  // RAII to stop cpufj threads on solve stop
+  ls.start_cpufj_scratch_threads(population);
+
   // before probing cache or LP, run FJ to generate initial primal feasible solution
   // TODO: commenting this out decreases the gap on trento1.mps dramatically. figure out why?
   // if (!from_dir && !fj_only_run) { generate_quick_feasible_solution(); }
@@ -350,12 +363,18 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   f_t time_for_probing_cache =
     std::min(max_time_on_probing, time_limit * time_ratio_of_probing_cache);
   timer_t probing_timer{time_for_probing_cache};
-  if (check_b_b_preemption()) { return population.best_feasible(); }
+  if (check_b_b_preemption()) {
+    ls.stop_cpufj_scratch_threads();
+    return population.best_feasible();
+  }
   if (!fj_only_run) {
     compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
   }
 
-  if (check_b_b_preemption()) { return population.best_feasible(); }
+  if (check_b_b_preemption()) {
+    ls.stop_cpufj_scratch_threads();
+    return population.best_feasible();
+  }
   lp_state_t<i_t, f_t>& lp_state = problem_ptr->lp_state;
   // resize because some constructor might be called before the presolve
   lp_state.resize(*problem_ptr, problem_ptr->handle_ptr->get_stream());
@@ -413,10 +432,12 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
   }
 
-  population.allocate_solutions();
   population.add_solutions_from_vec(std::move(initial_sol_vector));
-  ls.start_cpufj_scratch_threads(population);
-  if (check_b_b_preemption()) { return population.best_feasible(); }
+
+  if (check_b_b_preemption()) {
+    ls.stop_cpufj_scratch_threads();
+    return population.best_feasible();
+  }
 
   if (context.settings.benchmark_info_ptr != nullptr) {
     context.settings.benchmark_info_ptr->objective_of_initial_population =
@@ -432,6 +453,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   auto sol = generate_solution(timer.remaining_time(), false);
   population.add_solution(std::move(solution_t<i_t, f_t>(sol)));
   if (timer.check_time_limit()) {
+    ls.stop_cpufj_scratch_threads();
     auto new_sol_vector = population.get_external_solutions();
     population.add_solutions_from_vec(std::move(new_sol_vector));
     return population.best_feasible();
