@@ -613,6 +613,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
       auto [reduced_problem, feasible] =
         presolver->apply(op_problem,
                          cuopt::linear_programming::problem_category_t::LP,
+                         settings.dual_postsolve,
                          settings.tolerances.absolute_primal_tolerance,
                          settings.tolerances.relative_primal_tolerance,
                          presolve_time_limit);

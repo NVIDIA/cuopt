@@ -309,7 +309,9 @@ void check_postsolve_status(const papilo::PostsolveStatus& status)
 }
 
 template <typename f_t>
-void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t category)
+void set_presolve_methods(papilo::Presolve<f_t>& presolver,
+                          problem_category_t category,
+                          bool dual_postsolve)
 {
   using uptr = std::unique_ptr<papilo::PresolveMethod<f_t>>;
 
@@ -336,12 +338,14 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t c
   // exhaustive presolvers
   presolver.addPresolveMethod(uptr(new papilo::ImplIntDetection<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::DominatedCols<f_t>()));
-
-  presolver.addPresolveMethod(uptr(new papilo::DualInfer<f_t>));
-  presolver.addPresolveMethod(uptr(new papilo::SimpleSubstitution<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::Sparsify<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::Substitution<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::Probing<f_t>()));
+
+  if (!dual_postsolve) {
+    presolver.addPresolveMethod(uptr(new papilo::DualInfer<f_t>()));
+    presolver.addPresolveMethod(uptr(new papilo::SimpleSubstitution<f_t>()));
+    presolver.addPresolveMethod(uptr(new papilo::Sparsify<f_t>()));
+    presolver.addPresolveMethod(uptr(new papilo::Substitution<f_t>()));
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -380,6 +384,7 @@ template <typename i_t, typename f_t>
 std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_t>::apply(
   optimization_problem_t<i_t, f_t> const& op_problem,
   problem_category_t category,
+  bool dual_postsolve,
   f_t absolute_tolerance,
   f_t relative_tolerance,
   double time_limit,
@@ -393,8 +398,9 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
                  papilo_problem.getConstraintMatrix().getNnz());
 
   CUOPT_LOG_INFO("Calling Papilo presolver");
+  if (category == problem_category_t::MIP) { dual_postsolve = false; }
   papilo::Presolve<f_t> presolver;
-  set_presolve_methods<f_t>(presolver, category);
+  set_presolve_methods<f_t>(presolver, category, dual_postsolve);
   set_presolve_options<i_t, f_t>(
     presolver, category, absolute_tolerance, relative_tolerance, time_limit, num_cpu_threads);
   set_presolve_parameters<f_t>(
@@ -451,9 +457,12 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
   check_postsolve_status(status);
 
   primal_solution.resize(full_sol.primal.size(), stream_view);
-  dual_solution.resize(full_sol.primal.size(), stream_view);
-  reduced_costs.resize(full_sol.primal.size(), stream_view);
+  dual_solution.resize(full_sol.dual.size(), stream_view);
+  reduced_costs.resize(full_sol.reducedCosts.size(), stream_view);
   raft::copy(primal_solution.data(), full_sol.primal.data(), full_sol.primal.size(), stream_view);
+  raft::copy(dual_solution.data(), full_sol.dual.data(), full_sol.dual.size(), stream_view);
+  raft::copy(
+    reduced_costs.data(), full_sol.reducedCosts.data(), full_sol.reducedCosts.size(), stream_view);
 }
 
 #if MIP_INSTANTIATE_FLOAT
