@@ -622,7 +622,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
       }
       problem       = detail::problem_t<i_t, f_t>(reduced_problem);
       presolve_time = lp_timer.elapsed_time();
-      CUOPT_LOG_INFO("Third party presolve time: %f", presolve_time);
+      CUOPT_LOG_INFO("Papilo presolve time: %f", presolve_time);
     }
 
     CUOPT_LOG_INFO(

@@ -363,6 +363,7 @@ void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
                              int nrows,
                              int ncols)
 {
+  // It looks like a copy. But this copy has the pointers to relevant variables in papilo
   auto params = presolver.getParameters();
   if (category == problem_category_t::MIP) {
     // Papilo has work unit measurements for probing. Because of this when the first batch fails to
@@ -391,6 +392,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
                  papilo_problem.getNCols(),
                  papilo_problem.getConstraintMatrix().getNnz());
 
+  CUOPT_LOG_INFO("Calling Papilo presolver");                 
   papilo::Presolve<f_t> presolver;
   set_presolve_methods<f_t>(presolver, category);
   set_presolve_options<i_t, f_t>(
