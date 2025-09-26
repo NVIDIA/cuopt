@@ -92,6 +92,8 @@ def get_std_data_for_lp():
                 "primal_infeasible": 0.00000001,
                 "dual_infeasible": 0.00000001,
                 "integrality_tolerance": 0.00001,
+                "presolve": True,
+                "dual_postsolve": True,
             },
         },
     }
