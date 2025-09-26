@@ -34,7 +34,6 @@ if(BUILD_TESTS)
       cuopt
       GTest::gmock
       GTest::gtest
-      papilo-core
   )
 endif()
 

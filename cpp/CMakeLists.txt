@@ -431,7 +431,6 @@ if(NOT BUILD_LP_ONLY)
     cuopt
     OpenMP::OpenMP_CXX
     PRIVATE
-    #papilo-core
   )
   set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
@@ -455,7 +454,6 @@ if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     cuopt
     OpenMP::OpenMP_CXX
     PRIVATE
-    #papilo-core
   )
 endif()
 
@@ -471,7 +469,6 @@ if(BUILD_LP_BENCHMARKS)
     cuopt
     OpenMP::OpenMP_CXX
     PRIVATE
-    #papilo-core
   )
 endif()
 
