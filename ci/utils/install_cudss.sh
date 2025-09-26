@@ -17,6 +17,10 @@
 
 set -euo pipefail
 
+if [ "$CUDA_VERSION" != "13.0" ]; then
+    echo "Skipping cudss installation for CUDA version $CUDA_VERSION"
+    exit 0
+fi
 # Clean metadata & install cudss
 if command -v dnf &> /dev/null; then
     dnf clean all

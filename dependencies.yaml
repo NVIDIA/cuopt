@@ -712,22 +712,27 @@ dependencies:
               cuda: "12.2"
             packages:
               - cuda-version=12.2
+              - libcudss-dev
           - matrix:
               cuda: "12.4"
             packages:
               - cuda-version=12.4
+              - libcudss-dev
           - matrix:
               cuda: "12.5"
             packages:
               - cuda-version=12.5
+              - libcudss-dev
           - matrix:
               cuda: "12.8"
             packages:
               - cuda-version=12.8
+              - libcudss-dev
           - matrix:
               cuda: "12.9"
             packages:
               - cuda-version=12.9
+              - libcudss-dev
           - matrix:
               cuda: "13.0"
             packages:
@@ -738,7 +743,6 @@ dependencies:
         packages:
           - libcurand-dev
           - libcusolver-dev
-          - libcudss-dev
           - libcusparse-dev
           - cuda-nvtx-dev
 
@@ -755,7 +759,7 @@ dependencies:
               cuda: "13.*"
               use_cuda_wheels: "true"
             packages:
-              - cuda-toolkit[cublas,cudart,cudss,curand,cusolver,cusparse,nvtx]==13.*
+              - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*
           # if use_cuda_wheels=false is provided, do not add dependencies on any CUDA wheels
           # (e.g. for DLFW and pip devcontainers)
           - matrix:
