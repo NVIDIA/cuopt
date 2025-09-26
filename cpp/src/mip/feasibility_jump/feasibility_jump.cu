@@ -80,11 +80,13 @@ fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_, fj_settings_t in_
                                   TPB_update_changed_constraints,
                                   pb_ptr->handle_ptr);
   resetmoves_launch_dims = get_launch_dims_max_occupancy(
-    (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED>, TPB_resetmoves, pb_ptr->handle_ptr);
-  resetmoves_bin_launch_dims =
-    get_launch_dims_max_occupancy((void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED, true>,
-                                  TPB_resetmoves,
-                                  pb_ptr->handle_ptr);
+    (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED>,
+    TPB_resetmoves,
+    pb_ptr->handle_ptr);
+  resetmoves_bin_launch_dims = get_launch_dims_max_occupancy(
+    (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>,
+    TPB_resetmoves,
+    pb_ptr->handle_ptr);
   update_weights_launch_dims = get_launch_dims_max_occupancy(
     (void*)handle_local_minimum_kernel<i_t, f_t>, TPB_localmin, pb_ptr->handle_ptr);
   lift_move_launch_dims = get_launch_dims_max_occupancy(
@@ -726,7 +728,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
         } else {
           if (is_binary_pb) {
             cudaLaunchCooperativeKernel(
-              (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED, true>,
+              (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>,
               grid_resetmoves_bin,
               blocks_resetmoves_bin,
               reset_moves_args,
@@ -734,7 +736,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
               climber_stream);
           } else {
             cudaLaunchCooperativeKernel(
-              (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED, false>,
+              (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>,
               grid_resetmoves,
               blocks_resetmoves,
               reset_moves_args,

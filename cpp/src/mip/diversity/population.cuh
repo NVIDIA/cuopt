@@ -37,12 +37,12 @@ class diversity_manager_t;
 
 enum class solution_origin_t { BRANCH_AND_BOUND, CPUFJ, EXTERNAL };
 
-constexpr const char* external_solution_origin_to_string(external_solution_origin_t origin)
+constexpr const char* solution_origin_to_string(solution_origin_t origin)
 {
   switch (origin) {
-    case external_solution_origin_t::BRANCH_AND_BOUND: return "B&B";
-    case external_solution_origin_t::CPUFJ: return "CPUFJ";
-    case external_solution_origin_t::INJECTED: return "injected";
+    case solution_origin_t::BRANCH_AND_BOUND: return "B&B";
+    case solution_origin_t::CPUFJ: return "CPUFJ";
+    case solution_origin_t::EXTERNAL: return "injected";
     default: return "unknown";
   }
 }
@@ -115,7 +115,7 @@ class population_t {
   i_t add_solution(solution_t<i_t, f_t>&& sol);
   void add_external_solution(const std::vector<f_t>& solution,
                              f_t objective,
-                             external_solution_origin_t origin);
+                             solution_origin_t origin);
   std::vector<solution_t<i_t, f_t>> get_external_solutions();
   size_t get_external_solution_size();
   void preempt_heuristic_solver();
@@ -189,15 +189,13 @@ class population_t {
 
   struct external_solution_t {
     external_solution_t() = default;
-    external_solution_t(const std::vector<f_t>& solution,
-                        f_t objective,
-                        external_solution_origin_t origin)
+    external_solution_t(const std::vector<f_t>& solution, f_t objective, solution_origin_t origin)
       : solution(solution), objective(objective), origin(origin)
     {
     }
     std::vector<f_t> solution;
     f_t objective;
-    external_solution_origin_t origin;
+    solution_origin_t origin;
   };
 
   std::vector<external_solution_t> external_solution_queue;

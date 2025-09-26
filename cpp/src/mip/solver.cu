@@ -73,8 +73,7 @@ struct branch_and_bound_solution_helper_t {
 
   void solution_callback(std::vector<f_t>& solution, f_t objective)
   {
-    dm->population.add_external_solution(
-      solution, objective, external_solution_origin_t::BRANCH_AND_BOUND);
+    dm->population.add_external_solution(solution, objective, solution_origin_t::BRANCH_AND_BOUND);
   }
 
   void set_simplex_solution(std::vector<f_t>& solution,

@@ -540,9 +540,9 @@ class fj_t {
       // caution: is inverted compared to solution_t's excess convention
       HDI f_t excess_score(i_t cstr, f_t cnstr_value, f_t c_lb, f_t c_ub) const
       {
-        f_t right_score = upper_excess_score(cstr, lhs, c_ub);
+        f_t right_score = upper_excess_score(cstr, cnstr_value, c_ub);
         if (right_score < 0.) { return right_score; }
-        return lower_excess_score(cstr, lhs, c_lb);
+        return lower_excess_score(cstr, cnstr_value, c_lb);
       }
       HDI f_t excess_score(i_t cstr, f_t lhs) const
       {

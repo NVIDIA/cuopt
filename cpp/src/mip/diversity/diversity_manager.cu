@@ -229,14 +229,14 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     trivial_presolve(*problem_ptr);
     if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   }
-  // if (!problem_ptr->empty) {
-  //   // do the resizing no-matter what, bounds presolve might not change the bounds but initial
-  //   // trivial presolve might have
-  //   ls.constraint_prop.bounds_update.resize(*problem_ptr);
-  //   ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
-  //     *problem_ptr, ls.constraint_prop.bounds_update);
-  //   if (!check_bounds_sanity(*problem_ptr)) { return false; }
-  // }
+  if (!problem_ptr->empty) {
+    // do the resizing no-matter what, bounds presolve might not change the bounds but initial
+    // trivial presolve might have
+    ls.constraint_prop.bounds_update.resize(*problem_ptr);
+    ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
+      *problem_ptr, ls.constraint_prop.bounds_update);
+    if (!check_bounds_sanity(*problem_ptr)) { return false; }
+  }
   stats.presolve_time = presolve_timer.elapsed_time();
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
   lp_dual_optimal_solution.resize(problem_ptr->n_constraints,
@@ -415,7 +415,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 
   population.allocate_solutions();
   population.add_solutions_from_vec(std::move(initial_sol_vector));
-  ls.start_fj_scratch_threads(population);
+  ls.start_cpufj_scratch_threads(population);
   if (check_b_b_preemption()) { return population.best_feasible(); }
 
   if (context.settings.benchmark_info_ptr != nullptr) {
@@ -440,14 +440,14 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   population.update_weights();
 
   if (timer.check_time_limit()) {
-    ls.stop_fj_scratch_threads();
+    ls.stop_cpufj_scratch_threads();
     auto new_sol_vector = population.get_external_solutions();
     population.add_solutions_from_vec(std::move(new_sol_vector));
     return population.best_feasible();
   }
   main_loop();
 
-  ls.stop_fj_scratch_threads();
+  ls.stop_cpufj_scratch_threads();
 
   return population.best_feasible();
 };

@@ -98,7 +98,7 @@ __global__ void update_best_solution_kernel(typename fj_t<i_t, f_t>::climber_dat
 
 template <typename i_t,
           typename f_t,
-          MTMMoveType move_type = FJ_MTM_VIOLATED,
+          MTMMoveType move_type = MTMMoveType::FJ_MTM_VIOLATED,
           bool is_binary_pb     = false>
 __global__ void compute_mtm_moves_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
                                          bool ForceRefresh = false);

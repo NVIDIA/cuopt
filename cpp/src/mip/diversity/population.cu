@@ -144,11 +144,11 @@ size_t population_t<i_t, f_t>::get_external_solution_size()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solution,
                                                    f_t objective,
-                                                   external_solution_origin_t origin)
+                                                   solution_origin_t origin)
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
 
-  if (origin == external_solution_origin_t::CPUFJ) {
+  if (origin == solution_origin_t::CPUFJ) {
     external_solution_queue_cpufj.emplace_back(solution, objective, origin);
   } else {
     external_solution_queue.emplace_back(solution, objective, origin);
@@ -169,7 +169,7 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
   }
 
   CUOPT_LOG_INFO("%s added a solution to population, solution queue size %lu with objective %g",
-                 external_solution_origin_to_string(origin),
+                 solution_origin_to_string(origin),
                  external_solution_queue.size(),
                  problem_ptr->get_user_obj_from_solver_obj(objective));
   if (external_solution_queue.size() >= 5) { early_exit_primal_generation = true; }
@@ -195,10 +195,10 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
     for (auto& h_entry : queue) {
       // ignore CPUFJ solutions if they're not better than the best feasible.
       // It seems they worsen results on some instances despite the potential for improved diversity
-      if (h_entry.origin == external_solution_origin_t::CPUFJ &&
+      if (h_entry.origin == solution_origin_t::CPUFJ &&
           h_entry.objective > new_best_feasible_objective) {
         continue;
-      } else if (h_entry.origin != external_solution_origin_t::CPUFJ &&
+      } else if (h_entry.origin != solution_origin_t::CPUFJ &&
                  h_entry.objective > new_best_feasible_objective) {
         new_best_feasible_objective = h_entry.objective;
       }
@@ -331,7 +331,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                    "External solution objective mismatch");
       auto h_outside_sol = outside_sol.get_host_assignment();
       add_external_solution(
-        h_outside_sol, outside_sol.get_objective(), external_solution_origin_t::INJECTED);
+        h_outside_sol, outside_sol.get_objective(), solution_origin_t::EXTERNAL);
     }
   }
 }

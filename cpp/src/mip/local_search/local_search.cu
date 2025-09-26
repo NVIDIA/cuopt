@@ -139,7 +139,7 @@ static double local_search_best_obj       = std::numeric_limits<double>::max();
 static population_t<int, double>* pop_ptr = nullptr;
 
 template <typename i_t, typename f_t>
-void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& population)
+void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t>& population)
 {
   pop_ptr = &population;
 
@@ -164,7 +164,7 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
     cpu_fj.fj_cpu->log_prefix           = "******* scratch " + std::to_string(counter) + ": ";
     cpu_fj.fj_cpu->improvement_callback = [this, &population, &cpu_fj](
                                             f_t obj, const std::vector<f_t>& h_vec) {
-      population.add_external_solution(h_vec, obj, external_solution_origin_t::CPUFJ);
+      population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
       if (obj < local_search_best_obj) {
         CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
                         context.problem_ptr->get_user_obj_from_solver_obj(obj),
@@ -192,7 +192,7 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
   scratch_cpu_fj_on_lp_opt.fj_cpu->log_prefix = "******* scratch on LP optimal: ";
   scratch_cpu_fj_on_lp_opt.fj_cpu->improvement_callback =
     [this, &population](f_t obj, const std::vector<f_t>& h_vec) {
-      population.add_external_solution(h_vec, obj, external_solution_origin_t::CPUFJ);
+      population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
       if (obj < local_search_best_obj) {
         CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
                         context.problem_ptr->get_user_obj_from_solver_obj(obj),
@@ -209,7 +209,7 @@ void local_search_t<i_t, f_t>::start_fj_scratch_threads(population_t<i_t, f_t>& 
 }
 
 template <typename i_t, typename f_t>
-void local_search_t<i_t, f_t>::stop_fj_scratch_threads()
+void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 {
   for (auto& cpu_fj : scratch_cpu_fj) {
     cpu_fj.kill_cpu_solver();
@@ -239,7 +239,6 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   // Run GPU solver and measure execution time
   auto gpu_fj_start = std::chrono::high_resolution_clock::now();
   in_fj.solve(solution);
-  cudaDeviceSynchronize();
 
   // Stop CPU solver
   for (auto& cpu_fj : ls_cpu_fj) {

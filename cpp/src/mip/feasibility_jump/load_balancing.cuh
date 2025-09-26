@@ -139,7 +139,7 @@ __global__ void load_balancing_prepare_iteration(const __grid_constant__
 
     for (i_t i = blockIdx.x + range.first; i < range.second; i += gridDim.x) {
       i_t var_idx = fj.pb.related_variables[i];
-      update_jump_value<i_t, f_t, FJ_MTM_VIOLATED, false>(fj, var_idx);
+      update_jump_value<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>(fj, var_idx);
     }
 
     if (FIRST_THREAD) *fj.load_balancing_skip = true;
