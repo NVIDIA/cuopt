@@ -178,8 +178,12 @@ else()
   find_package(RAFT REQUIRED)
 endif()
 
-FetchContent_Declare(
-  papilo
+# Pull in papilo from a specific commit, since cuOpt uses it as header only, 
+# we do not need to build it.
+include(ExternalProject)
+
+ExternalProject_Add(
+  papilo-source
   GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
   # We would want to get the main branch. However, the main branch
   # does not have some of the presolvers and settings that we need
@@ -189,15 +193,18 @@ FetchContent_Declare(
   #we can switch to the main branch.
   GIT_TAG "34a40781fa14f8870cb6368cffb6c0eda2f47511"
   GIT_PROGRESS TRUE
-  SYSTEM
+  CONFIGURE_COMMAND ""
+  BUILD_COMMAND ""
+  INSTALL_COMMAND ""
+  UPDATE_COMMAND ""
+  PATCH_COMMAND ""
 )
 
-find_package(TBB REQUIRED)
-set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
-set(PAPILO_NO_BINARIES ON)
-option(LUSOL "Disable LUSOL" OFF)
+# Get the source directory
+ExternalProject_Get_Property(papilo-source SOURCE_DIR)
+set(papilo_SOURCE_DIR ${SOURCE_DIR})
 
-FetchContent_MakeAvailable(papilo)
+find_package(TBB REQUIRED)
 
 include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 # generate logging macros
@@ -249,7 +256,7 @@ add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
 # - include paths ---------------------------------------------------------------------------------
 
-target_include_directories(cuopt SYSTEM PRIVATE "${papilo_SOURCE_DIR}/src" "${papilo_BINARY_DIR}")
+target_include_directories(cuopt SYSTEM PRIVATE "${papilo_SOURCE_DIR}/src")
 
 target_include_directories(cuopt
   PRIVATE
@@ -424,7 +431,7 @@ if(NOT BUILD_LP_ONLY)
     cuopt
     OpenMP::OpenMP_CXX
     PRIVATE
-    papilo-core
+    #papilo-core
   )
   set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
@@ -448,7 +455,7 @@ if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     cuopt
     OpenMP::OpenMP_CXX
     PRIVATE
-    papilo-core
+    #papilo-core
   )
 endif()
 
@@ -464,7 +471,7 @@ if(BUILD_LP_BENCHMARKS)
     cuopt
     OpenMP::OpenMP_CXX
     PRIVATE
-    papilo-core
+    #papilo-core
   )
 endif()
 
