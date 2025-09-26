@@ -21,11 +21,11 @@ import ssl
 import subprocess
 
 
-# From: http://plato.asu.edu/bench.html
+# From: https://plato.asu.edu/bench.html
 # Folder containg instances:
 # - https://miplib2010.zib.de/miplib2010.php
 # - https://www.netlib.org/lp/data/
-# - http://old.sztaki.hu/~meszaros/public_ftp/lptestset/ (and it's subfolders)
+# - https://old.sztaki.hu/~meszaros/public_ftp/lptestset/ (and it's subfolders)
 # - https://plato.asu.edu/ftp/lptestset/ (and it's subfolders)
 # - https://miplib.zib.de/tag_benchmark.html
 # - https://miplib.zib.de/tag_collection.html
@@ -83,7 +83,7 @@ LPFeasibleMittelmannSet = [
 ]
 
 MittelmannInstances = {
-    "emps": "http://old.sztaki.hu/~meszaros/public_ftp/lptestset/emps.c",
+    "emps": "https://old.sztaki.hu/~meszaros/public_ftp/lptestset/emps.c",
     "problems" : {
         "irish-electricity" : [
             "https://plato.asu.edu/ftp/lptestset/irish-electricity.mps.bz2",
@@ -94,88 +94,88 @@ MittelmannInstances = {
             "mps"
         ],
         "16_n14" : [
-            "http://plato.asu.edu/ftp/lptestset/network/16_n14.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/network/16_n14.mps.bz2",
             "mps"
         ],
         "Dual2_5000" : [
-            "http://plato.asu.edu/ftp/lptestset/Dual2_5000.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/Dual2_5000.mps.bz2",
             "mps"
         ],
         "L1_six1000" : [
-            "http://plato.asu.edu/ftp/lptestset/L1_sixm1000obs.bz2",
+            "https://plato.asu.edu/ftp/lptestset/L1_sixm1000obs.bz2",
             "netlib"
         ],
         "L1_sixm" : ["", "mps"],
         "L1_sixm1000obs" : [
-            "http://plato.asu.edu/ftp/lptestset/L1_sixm1000obs.bz2",
+            "https://plato.asu.edu/ftp/lptestset/L1_sixm1000obs.bz2",
             "netlib"
         ],
         "L1_sixm250" : ["", "netlib"],
         "L1_sixm250obs" : [
-            "http://plato.asu.edu/ftp/lptestset/L1_sixm250obs.bz2",
+            "https://plato.asu.edu/ftp/lptestset/L1_sixm250obs.bz2",
             "netlib"
         ],
         "L2CTA3D" : [
-            "http://plato.asu.edu/ftp/lptestset/L2CTA3D.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/L2CTA3D.mps.bz2",
             "mps"
         ],
         "Linf_520c" : [
-            "http://plato.asu.edu/ftp/lptestset/Linf_520c.bz2",
+            "https://plato.asu.edu/ftp/lptestset/Linf_520c.bz2",
             "netlib"
         ],
         "Primal2_1000" : [
-            "http://plato.asu.edu/ftp/lptestset/Primal2_1000.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/Primal2_1000.mps.bz2",
             "mps"
         ],
         "a2864" : [
-            "http://plato.asu.edu/ftp/lptestset/a2864.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/a2864.mps.bz2",
             "mps"
         ],
         "bdry2" : [
-            "http://plato.asu.edu/ftp/lptestset/bdry2.bz2",
+            "https://plato.asu.edu/ftp/lptestset/bdry2.bz2",
             "netlib"
         ],
         "braun" : ["", "mps"],
         "cont1" : [
-            "http://plato.asu.edu/ftp/lptestset/misc/cont1.bz2",
+            "https://plato.asu.edu/ftp/lptestset/misc/cont1.bz2",
             "netlib"
         ],
         "cont11" : [
-            "http://plato.asu.edu/ftp/lptestset/misc/cont11.bz2",
+            "https://plato.asu.edu/ftp/lptestset/misc/cont11.bz2",
             "netlib"
         ],
         "datt256" : [
-            "http://plato.asu.edu/ftp/lptestset/datt256_lp.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/datt256_lp.mps.bz2",
             "mps"
         ],
         "datt256_lp" : [
-            "http://plato.asu.edu/ftp/lptestset/datt256_lp.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/datt256_lp.mps.bz2",
             "mps"
         ],
         "degme" : [
-            "http://old.sztaki.hu/~meszaros/public_ftp/lptestset/New/degme.gz",
+            "https://old.sztaki.hu/~meszaros/public_ftp/lptestset/New/degme.gz",
             "netlib"
         ],
         "dlr1" : [
-            "http://plato.asu.edu/ftp/lptestset/dlr1.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/dlr1.mps.bz2",
             "mps"
         ],
         "dlr2" : [
-            "http://plato.asu.edu/ftp/lptestset/dlr2.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/dlr2.mps.bz2",
             "mps"
         ],
         "energy1" : ["", "mps"], # Kept secret by Mittlemman
         "energy2" : ["", "mps"],
         "ex10" : [
-            "http://plato.asu.edu/ftp/lptestset/ex10.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/ex10.mps.bz2",
             "mps"
         ],
         "fhnw-binschedule1" : [
-            "http://plato.asu.edu/ftp/lptestset/fhnw-binschedule1.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/fhnw-binschedule1.mps.bz2",
             "mps"
         ],
         "fome13" : [
-            "http://plato.asu.edu/ftp/lptestset/fome/fome13.bz2",
+            "https://plato.asu.edu/ftp/lptestset/fome/fome13.bz2",
             "netlib"
         ],
         "gamora" : ["", "mps"], # Kept secret by Mittlemman
@@ -195,106 +195,106 @@ MittelmannInstances = {
         "goto32_512_4" : ["", "mps"],
         "goto32_512_5" : ["", "mps"],
         "graph40-40" : [
-            "http://plato.asu.edu/ftp/lptestset/graph40-40.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/graph40-40.mps.bz2",
             "mps"
         ],
         "graph40-40_lp" : [
-            "http://plato.asu.edu/ftp/lptestset/graph40-40.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/graph40-40.mps.bz2",
             "mps"
         ],
         "groot" : ["", "mps"], # Kept secret by Mittlemman
         "heimdall" : ["", "mps"], # Kept secret by Mittlemman
         "hulk" : ["", "mps"], # Kept secret by Mittlemman
         "i_n13" : [
-            "http://plato.asu.edu/ftp/lptestset/network/i_n13.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/network/i_n13.mps.bz2",
             "mps"
         ],
         "irish-e" : ["", "mps"],
         "karted" : [
-            "http://old.sztaki.hu/~meszaros/public_ftp/lptestset/New/karted.gz",
+            "https://old.sztaki.hu/~meszaros/public_ftp/lptestset/New/karted.gz",
             "netlib"
         ],
         "lo10" : [
-            "http://plato.asu.edu/ftp/lptestset/network/lo10.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/network/lo10.mps.bz2",
             "mps"
         ],
         "loki" : ["", "mps"], # Kept secret by Mittlemman
         "long15" : [
-            "http://plato.asu.edu/ftp/lptestset/network/long15.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/network/long15.mps.bz2",
             "mps"
         ],
         "nebula" : ["", "mps"], # Kept secret by Mittlemman
         "neos" : [
-            "http://plato.asu.edu/ftp/lptestset/misc/neos.bz2",
+            "https://plato.asu.edu/ftp/lptestset/misc/neos.bz2",
             "netlib"
         ],
         "neos-3025225" : [
-            "http://plato.asu.edu/ftp/lptestset/neos-3025225.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/neos-3025225.mps.bz2",
             "mps"
         ],
         "neos-3025225_lp" : [
-            "http://plato.asu.edu/ftp/lptestset/neos-3025225.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/neos-3025225.mps.bz2",
             "mps"
         ],
         "neos-5251015" : [
-            "http://plato.asu.edu/ftp/lptestset/neos-5251015.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/neos-5251015.mps.bz2",
             "mps"
         ],
         "neos-5251015_lp" : [
-            "http://plato.asu.edu/ftp/lptestset/neos-5251015.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/neos-5251015.mps.bz2",
             "mps"
         ],
         "neos3" : [
-            "http://plato.asu.edu/ftp/lptestset/misc/neos3.bz2",
+            "https://plato.asu.edu/ftp/lptestset/misc/neos3.bz2",
             "netlib"
         ],
         "neos-5052403-cygnet" : [
-            "http://plato.asu.edu/ftp/lptestset/neos-5052403-cygnet.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/neos-5052403-cygnet.mps.bz2",
             "mps"
         ],
         "neos5251015_lp" : [
-            "http://plato.asu.edu/ftp/lptestset/neos-5251015.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/neos-5251015.mps.bz2",
             "mps"
         ],
         "neos5251915" : [
-            "http://plato.asu.edu/ftp/lptestset/neos-5251015.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/neos-5251015.mps.bz2",
             "mps"
         ],
         "netlarge1" : [
-            "http://plato.asu.edu/ftp/lptestset/network/netlarge1.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/network/netlarge1.mps.bz2",
             "mps"
         ],
         "netlarge2" : [
-            "http://plato.asu.edu/ftp/lptestset/network/netlarge2.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/network/netlarge2.mps.bz2",
             "mps"
         ],
         "netlarge3" : [
-            "http://plato.asu.edu/ftp/lptestset/network/netlarge3.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/network/netlarge3.mps.bz2",
             "mps"
         ],
         "netlarge6" : [
-            "http://plato.asu.edu/ftp/lptestset/network/netlarge6.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/network/netlarge6.mps.bz2",
             "mps"
         ],
         "ns1687037" : [
-            "http://plato.asu.edu/ftp/lptestset/misc/ns1687037.bz2",
+            "https://plato.asu.edu/ftp/lptestset/misc/ns1687037.bz2",
             "netlib"
         ],
         "ns1688926" : [
-            "http://plato.asu.edu/ftp/lptestset/misc/ns1688926.bz2",
+            "https://plato.asu.edu/ftp/lptestset/misc/ns1688926.bz2",
             "netlib"
         ],
         "nug08-3rd" : [
-            "http://plato.asu.edu/ftp/lptestset/nug/nug08-3rd.bz2",
+            "https://plato.asu.edu/ftp/lptestset/nug/nug08-3rd.bz2",
             "netlib"
         ],
         "pds-100" : [
-            "http://plato.asu.edu/ftp/lptestset/pds/pds-100.bz2",
+            "https://plato.asu.edu/ftp/lptestset/pds/pds-100.bz2",
             "netlib"
         ],
         "psched3-3" : ["", "mps"],
         "qap15" : [
-            "http://plato.asu.edu/ftp/lptestset/qap15.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/qap15.mps.bz2",
             "mps"
         ],
         "rail02" : [
@@ -302,35 +302,35 @@ MittelmannInstances = {
             "mps"
         ],
         "rail4284" : [
-            "http://plato.asu.edu/ftp/lptestset/rail/rail4284.bz2",
+            "https://plato.asu.edu/ftp/lptestset/rail/rail4284.bz2",
             "netlib"
         ],
         "rmine15" : [
-            "http://plato.asu.edu/ftp/lptestset/rmine15.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/rmine15.mps.bz2",
             "mps"
         ],
         "s100" : [
-            "http://plato.asu.edu/ftp/lptestset/s100.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/s100.mps.bz2",
             "mps"
         ],
         "s250r10" : [
-            "http://plato.asu.edu/ftp/lptestset/s250r10.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/s250r10.mps.bz2",
             "mps"
         ],
         "s82" : [
-            "http://plato.asu.edu/ftp/lptestset/s82.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/s82.mps.bz2",
             "mps"
         ],
         "savsched1" : [
-            "http://plato.asu.edu/ftp/lptestset/savsched1.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/savsched1.mps.bz2",
             "mps"
         ],
         "scpm1" : [
-            "http://plato.asu.edu/ftp/lptestset/scpm1.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/scpm1.mps.bz2",
             "mps"
         ],
         "set-cover-model" : [
-            "http://plato.asu.edu/ftp/lptestset/set-cover-model.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/set-cover-model.mps.bz2",
             "mps"
         ],
         "shs1023" : [
@@ -338,19 +338,19 @@ MittelmannInstances = {
             "mps"
         ],
         "square15" : [
-            "http://plato.asu.edu/ftp/lptestset/network/square15.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/network/square15.mps.bz2",
             "mps"
         ],
         "square41" : [
-            "http://plato.asu.edu/ftp/lptestset/square41.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/square41.mps.bz2",
             "mps"
         ],
         "stat96v2" : [
-            "http://old.sztaki.hu/~meszaros/public_ftp/lptestset/misc/stat96v2.gz",
+            "https://old.sztaki.hu/~meszaros/public_ftp/lptestset/misc/stat96v2.gz",
             "netlib"
         ],
         "stormG2_1000" : [
-            "http://plato.asu.edu/ftp/lptestset/misc/stormG2_1000.bz2",
+            "https://plato.asu.edu/ftp/lptestset/misc/stormG2_1000.bz2",
             "netlib"
         ],
         "storm_1000" : ["", "mps"],
@@ -359,15 +359,15 @@ MittelmannInstances = {
             "mps"
         ],
         "supportcase10" : [
-            "http://plato.asu.edu/ftp/lptestset/supportcase10.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/supportcase10.mps.bz2",
             "mps"
         ],
         "support19" : [
-            "http://plato.asu.edu/ftp/lptestset/supportcase19.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/supportcase19.mps.bz2",
             "mps"
         ],
         "supportcase19" : [
-            "http://plato.asu.edu/ftp/lptestset/supportcase19.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/supportcase19.mps.bz2",
             "mps"
         ],
         "test03" : ["", "mps"], # Kept secret by Mittlemman
@@ -388,15 +388,15 @@ MittelmannInstances = {
         "thor" : ["", "mps"],  # Kept secret by Mittlemman
         "tpl-tub-ws" : ["", "mps"],
         "tpl-tub-ws1617" : [
-            "http://plato.asu.edu/ftp/lptestset/tpl-tub-ws1617.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/tpl-tub-ws1617.mps.bz2",
             "mps"
         ],
         "wide15" : [
-            "http://plato.asu.edu/ftp/lptestset/network/wide15.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/network/wide15.mps.bz2",
             "mps"
         ],
         "woodlands09" : [
-            "http://plato.asu.edu/ftp/lptestset/woodlands09.mps.bz2",
+            "https://plato.asu.edu/ftp/lptestset/woodlands09.mps.bz2",
             "mps"
         ]
     },
@@ -550,7 +550,7 @@ MittelmannInstances = {
             "square15",
             "wide15"
         ],
-        # <=100s in bench: http://plato.asu.edu/ftp/lpbar.html
+        # <=100s in bench: https://plato.asu.edu/ftp/lpbar.html
         "L0" : [
             "ex10",
             "datt256",
@@ -693,11 +693,11 @@ def extract(file, dir, type):
         raise Exception(f"Unknown file extension found for extraction {file}")
     # download emps and compile
     # Disable emps for now
-    if type == "netlib" and False:
+    if type == "netlib":
         url = MittelmannInstances["emps"]
         file = os.path.join(dir, "emps.c")
         download(url, file)
-        subprocess.run(f"cd {dir} && gcc emps.c -o emps",
+        subprocess.run(f"cd {dir} && gcc -Wno-implicit-int emps.c -o emps",
                         shell=True)
         # determine output file and run emps
         subprocess.run(f"cd {dir} && ./emps {unzippedfile} > {outfile}",
