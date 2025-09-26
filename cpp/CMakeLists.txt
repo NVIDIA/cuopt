@@ -182,7 +182,7 @@ FetchContent_Declare(
   papilo
   GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
   # Get the latest commit from development branch
-  GIT_TAG "bd1222a6b6608283d31a0fea6735695345bcd936"
+  GIT_TAG "34a40781fa14f8870cb6368cffb6c0eda2f47511"
   GIT_PROGRESS TRUE
   SYSTEM
 )
