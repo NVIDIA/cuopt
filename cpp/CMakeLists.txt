@@ -200,7 +200,21 @@ include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 rapids_cpm_rapids_logger(BUILD_EXPORT_SET cuopt-exports INSTALL_EXPORT_SET cuopt-exports)
 create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
 
-find_package(CUDSS REQUIRED)
+# Check CUDA version and create CUDSS toggle variable
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+  set(ENABLE_CUDSS OFF CACHE BOOL "Enable CUDSS usage (disabled for CUDA 13+)")
+  message(STATUS "CUDSS disabled for CUDA version ${CMAKE_CUDA_COMPILER_VERSION}")
+else()
+  set(ENABLE_CUDSS ON CACHE BOOL "Enable CUDSS usage")
+  message(STATUS "CUDSS enabled for CUDA version ${CMAKE_CUDA_COMPILER_VERSION}")
+endif()
+
+# Only find CUDSS if it's enabled
+if(ENABLE_CUDSS)
+  find_package(CUDSS REQUIRED)
+else()
+  message(STATUS "CUDSS usage disabled - skipping CUDSS package search")
+endif()
 
 if(BUILD_TESTS)
   include(cmake/thirdparty/get_gtest.cmake)
@@ -246,7 +260,9 @@ endif()
 add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
 # - include paths ---------------------------------------------------------------------------------
-message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
+if(ENABLE_CUDSS)
+  message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
+endif()
 
 target_include_directories(cuopt SYSTEM PRIVATE "${papilo_SOURCE_DIR}/src" "${papilo_BINARY_DIR}")
 
@@ -254,14 +270,14 @@ target_include_directories(cuopt
   PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
-  "${CUDSS_INCLUDE}"
+  $<$<BOOL:${ENABLE_CUDSS}>:${CUDSS_INCLUDE}>
   PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include>"
   INTERFACE
   "$<INSTALL_INTERFACE:include>"
-  ${CUDSS_INCLUDE}
+  $<$<BOOL:${ENABLE_CUDSS}>:${CUDSS_INCLUDE}>
 )
 
 # ##################################################################################################
@@ -280,8 +296,8 @@ set(CMAKE_LIBRARY_PATH ${CMAKE_CURRENT_BINARY_DIR}/libmps_parser/)
 
 
 
-# Pass CUDSS_MT_LIB_FILE as a compile definition
-target_compile_definitions(cuopt PRIVATE CUDSS_MT_LIB_FILE="${CUDSS_MT_LIB_FILE}")
+# Pass CUDSS_MT_LIB_FILE as a compile definition (only if CUDSS is enabled)
+target_compile_definitions(cuopt PRIVATE $<$<BOOL:${ENABLE_CUDSS}>:CUDSS_MT_LIB_FILE="${CUDSS_MT_LIB_FILE}">)
 
 
 execute_process(
@@ -297,7 +313,8 @@ list(JOIN CMAKE_CUDA_ARCHITECTURES "," JOINED_CUDA_ARCHITECTURES) # ';' breaks c
 target_compile_definitions(cuopt PUBLIC
   CUOPT_GIT_COMMIT_HASH="${GIT_COMMIT_HASH}"
   CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
-  CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}")
+  CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}"
+  ENABLE_CUDSS=${ENABLE_CUDSS})
 
 target_link_libraries(cuopt
   PUBLIC
@@ -308,10 +325,10 @@ target_link_libraries(cuopt
   CCCL::CCCL
   raft::raft
   cuopt::mps_parser
-  ${CUDSS_LIB_FILE}
+  $<$<BOOL:${ENABLE_CUDSS}>:${CUDSS_LIB_FILE}>
   PRIVATE
   ${CUOPT_PRIVATE_CUDA_LIBS}
-  )
+)
 
 
 # ##################################################################################################
@@ -417,13 +434,15 @@ target_compile_options(cuopt_cli
   "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
 )
 
+target_compile_definitions(cuopt_cli PRIVATE ENABLE_CUDSS=${ENABLE_CUDSS})
+
 target_include_directories(cuopt_cli
   PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
   PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
-  ${CUDSS_INCLUDE}
+  $<$<BOOL:${ENABLE_CUDSS}>:${CUDSS_INCLUDE}>
   "$<INSTALL_INTERFACE:include>"
 )
 
@@ -431,7 +450,7 @@ target_link_libraries(cuopt_cli
   PUBLIC
   cuopt
   OpenMP::OpenMP_CXX
-  ${CUDSS_LIBRARIES}
+  $<$<BOOL:${ENABLE_CUDSS}>:${CUDSS_LIBRARIES}>
   PRIVATE
   papilo-core
 )
@@ -452,6 +471,7 @@ if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
   )
+  target_compile_definitions(solve_MIP PRIVATE ENABLE_CUDSS=${ENABLE_CUDSS})
   target_link_libraries(solve_MIP
     PUBLIC
     cuopt
@@ -468,6 +488,7 @@ if(BUILD_LP_BENCHMARKS)
     PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
   )
+  target_compile_definitions(solve_LP PRIVATE ENABLE_CUDSS=${ENABLE_CUDSS})
   target_link_libraries(solve_LP
     PUBLIC
     cuopt
