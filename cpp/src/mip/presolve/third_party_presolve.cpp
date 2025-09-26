@@ -365,9 +365,10 @@ void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
 {
   auto params = presolver.getParameters();
   if (category == problem_category_t::MIP) {
-    // Papilo has work unit measurements for probing. Because of htis when the first batch fails to
+    // Papilo has work unit measurements for probing. Because of this when the first batch fails to
     // produce any reductions, the algorithm stops. To avoid stopping the algorithm, we set a
-    // minimum badge size to a huge value time limit makes sure that we exit it takes too long
+    // minimum badge size to a huge value. The time limit makes sure that we exit if it takes too
+    // long
     params.setParameter("probing.minbadgesize", ncols / 2);
     params.setParameter("cliquemerging.enabled", true);
     params.setParameter("cliquemerging.maxcalls", 50);
