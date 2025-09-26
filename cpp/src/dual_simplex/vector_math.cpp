@@ -15,9 +15,9 @@
  * limitations under the License.
  */
 
-#include <dual_simplex/vector_math.hpp>
-
+#include <dual_simplex/pinned_host_allocator.hpp>
 #include <dual_simplex/types.hpp>
+#include <dual_simplex/vector_math.hpp>
 
 #include <cassert>
 #include <cmath>
@@ -38,8 +38,8 @@ f_t vector_norm_inf(const std::vector<f_t>& x)
   return a;
 }
 
-template <typename i_t, typename f_t>
-f_t vector_norm2_squared(const std::vector<f_t>& x)
+template <typename i_t, typename f_t, typename Allocator>
+f_t vector_norm2_squared(const std::vector<f_t, Allocator>& x)
 {
   i_t n   = x.size();
   f_t sum = 0.0;
@@ -49,10 +49,21 @@ f_t vector_norm2_squared(const std::vector<f_t>& x)
   return sum;
 }
 
-template <typename i_t, typename f_t>
-f_t vector_norm2(const std::vector<f_t>& x)
+template <typename i_t, typename f_t, typename Allocator>
+f_t vector_norm2(const std::vector<f_t, Allocator>& x)
 {
-  return std::sqrt(vector_norm2_squared<i_t, f_t>(x));
+  return std::sqrt(vector_norm2_squared<i_t, f_t, Allocator>(x));
+}
+
+template <typename i_t, typename f_t>
+f_t vector_norm1(const std::vector<f_t>& x)
+{
+  i_t n   = x.size();
+  f_t sum = 0.0;
+  for (i_t j = 0; j < n; ++j) {
+    sum += std::abs(x[j]);
+  }
+  return sum;
 }
 
 template <typename i_t, typename f_t>
@@ -176,9 +187,18 @@ i_t inverse_permutation(const std::vector<i_t>& p, std::vector<i_t>& pinv)
 
 template double vector_norm_inf<int, double>(const std::vector<double>& x);
 
-template double vector_norm2_squared<int, double>(const std::vector<double>& x);
+template double vector_norm2_squared<int, double, std::allocator<double>>(
+  const std::vector<double, std::allocator<double>>& x);
 
-template double vector_norm2<int, double>(const std::vector<double>& x);
+template double vector_norm2<int, double, std::allocator<double>>(
+  const std::vector<double, std::allocator<double>>& x);
+
+template double vector_norm2_squared<int, double, PinnedHostAllocator<double>>(
+  const std::vector<double, PinnedHostAllocator<double>>&);
+template double vector_norm2<int, double, PinnedHostAllocator<double>>(
+  const std::vector<double, PinnedHostAllocator<double>>&);
+
+template double vector_norm1<int, double>(const std::vector<double>& x);
 
 template double dot<int, double>(const std::vector<double>& x, const std::vector<double>& y);
 

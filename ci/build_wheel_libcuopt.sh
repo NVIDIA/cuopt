@@ -34,6 +34,24 @@ else
     echo "Building in release mode"
 fi
 
+# Install cudss
+bash ci/utils/install_cudss.sh
+
+# Clean metadata & install cudss
+if command -v dnf &> /dev/null; then
+    dnf clean all
+    # Adding static library just to please CMAKE requirements
+    dnf -y install libcudss0-static-cuda-12 libcudss0-devel-cuda-12 libcudss0-cuda-12
+elif command -v apt-get &> /dev/null; then
+    apt-get update
+    apt-get install -y libcudss-devel
+else
+    echo "Neither dnf nor apt-get found. Cannot install cudss dependencies."
+    exit 1
+fi
+# dnf -y install libcudss0-devel-cuda-12
+
+
 rapids-logger "Generating build requirements"
 
 CUOPT_MPS_PARSER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python)
@@ -62,6 +80,7 @@ EXCLUDE_ARGS=(
   --exclude "libraft.so"
   --exclude "libcublas.so.*"
   --exclude "libcublasLt.so.*"
+  --exclude "libcudss.so.*"
   --exclude "libcurand.so.*"
   --exclude "libcusolver.so.*"
   --exclude "libcusparse.so.*"

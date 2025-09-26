@@ -28,6 +28,7 @@ namespace cuopt::linear_programming::dual_simplex {
 template <typename i_t, typename f_t>
 class sparse_vector_t {
  public:
+  sparse_vector_t() : n(0), i({}), x({}) {}
   // Construct a sparse vector of dimension n with nz nonzero coefficients
   sparse_vector_t(i_t n, i_t nz) : n(n), i(nz), x(nz) {}
   // Construct a sparse vector from a dense vector.

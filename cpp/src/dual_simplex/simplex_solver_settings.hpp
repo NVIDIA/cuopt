@@ -43,6 +43,12 @@ struct simplex_solver_settings_t {
       tight_tol(1e-10),
       fixed_tol(1e-10),
       zero_tol(1e-12),
+      barrier_relative_feasibility_tol(1e-8),
+      barrier_relative_optimality_tol(1e-8),
+      barrier_relative_complementarity_tol(1e-8),
+      barrier_relaxed_feasibility_tol(1e-4),
+      barrier_relaxed_optimality_tol(1e-4),
+      barrier_relaxed_complementarity_tol(1e-4),
       cut_off(std::numeric_limits<f_t>::infinity()),
       steepest_edge_ratio(0.5),
       steepest_edge_primal_tol(1e-9),
@@ -56,6 +62,13 @@ struct simplex_solver_settings_t {
       use_left_looking_lu(false),
       eliminate_singletons(true),
       print_presolve_stats(true),
+      barrier_presolve(false),
+      cudss_deterministic(false),
+      barrier(false),
+      eliminate_dense_columns(true),
+      folding(-1),
+      augmented(false),
+      crossover(false),
       refactor_frequency(100),
       iteration_log_frequency(1000),
       first_iteration_log(2),
@@ -85,7 +98,14 @@ struct simplex_solver_settings_t {
   f_t tight_tol;             // A tight tolerance used to check for infeasibility
   f_t fixed_tol;             // If l <= x <= u with u - l < fixed_tol a variable is consider fixed
   f_t zero_tol;              // Values below this tolerance are considered numerically zero
-  f_t cut_off;               // If the dual objective is greater than the cutoff we stop
+  f_t barrier_relative_feasibility_tol;  // Relative feasibility tolerance for barrier method
+  f_t barrier_relative_optimality_tol;   // Relative optimality tolerance for barrier method
+  f_t
+    barrier_relative_complementarity_tol;   // Relative complementarity tolerance for barrier method
+  f_t barrier_relaxed_feasibility_tol;      // Relative feasibility tolerance for barrier method
+  f_t barrier_relaxed_optimality_tol;       // Relative optimality tolerance for barrier method
+  f_t barrier_relaxed_complementarity_tol;  // Relative complementarity tolerance for barrier method
+  f_t cut_off;  // If the dual objective is greater than the cutoff we stop
   f_t
     steepest_edge_ratio;  // the ratio of computed steepest edge mismatch from updated steepest edge
   f_t steepest_edge_primal_tol;  // Primal tolerance divided by steepest edge norm
@@ -99,9 +119,16 @@ struct simplex_solver_settings_t {
   bool relaxation;                 // true to only solve the LP relaxation of a MIP
   bool
     use_left_looking_lu;  // true to use left looking LU factorization, false to use right looking
-  bool eliminate_singletons;    // true to eliminate singletons from the basis
-  bool print_presolve_stats;    // true to print presolve stats
-  i_t refactor_frequency;       // number of basis updates before refactorization
+  bool eliminate_singletons;  // true to eliminate singletons from the basis
+  bool print_presolve_stats;  // true to print presolve stats
+  bool barrier_presolve;      // true to use barrier presolve
+  bool cudss_deterministic;   // true to use cuDSS deterministic mode, false for non-deterministic
+  bool barrier;               // true to use barrier method, false to use dual simplex method
+  bool eliminate_dense_columns;  // true to eliminate dense columns from A*D*A^T
+  i_t folding;                   // -1 automatic, 0 don't fold, 1 fold
+  i_t augmented;           // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system
+  bool crossover;          // true to do crossover, false to not
+  i_t refactor_frequency;  // number of basis updates before refactorization
   i_t iteration_log_frequency;  // number of iterations between log updates
   i_t first_iteration_log;      // number of iterations to log at beginning of solve
   i_t num_threads;              // number of threads to use
@@ -111,8 +138,8 @@ struct simplex_solver_settings_t {
   std::function<void()> heuristic_preemption_callback;
   std::function<void(std::vector<f_t>&, std::vector<f_t>&, f_t)> set_simplex_solution_callback;
   mutable logger_t log;
-  std::atomic<i_t>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
-                                      // continue, 1 if solver should halt
+  volatile int* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
+                                  // continue, 1 if solver should halt
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

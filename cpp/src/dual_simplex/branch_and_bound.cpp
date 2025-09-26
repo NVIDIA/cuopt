@@ -226,7 +226,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   const simplex_solver_settings_t<i_t, f_t>& solver_settings)
   : original_problem_(user_problem),
     settings_(solver_settings),
-    original_lp_(1, 1, 1),
+    original_lp_(user_problem.handle_ptr, 1, 1, 1),
     incumbent_(1),
     root_relax_soln_(1, 1),
     pc_(1)

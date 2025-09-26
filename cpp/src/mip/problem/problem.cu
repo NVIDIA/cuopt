@@ -1470,10 +1470,7 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   user_problem.num_cols  = n;
   user_problem.objective = cuopt::host_copy(objective_coefficients);
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A;
-  csr_A.m         = m;
-  csr_A.n         = n;
-  csr_A.nz_max    = nz;
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.x         = cuopt::host_copy(coefficients);
   csr_A.j         = cuopt::host_copy(variables);
   csr_A.row_start = cuopt::host_copy(offsets);

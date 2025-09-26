@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION &
+ * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ template <typename i_t, typename f_t>
 static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
   detail::problem_t<i_t, f_t>& model)
 {
-  dual_simplex::user_problem_t<i_t, f_t> user_problem;
+  dual_simplex::user_problem_t<i_t, f_t> user_problem(model.handle_ptr);
 
   int m                  = model.n_constraints;
   int n                  = model.n_variables;
@@ -39,10 +39,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
   user_problem.num_cols  = n;
   user_problem.objective = cuopt::host_copy(model.objective_coefficients);
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A;
-  csr_A.m         = m;
-  csr_A.n         = n;
-  csr_A.nz_max    = nz;
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.x         = cuopt::host_copy(model.coefficients);
   csr_A.j         = cuopt::host_copy(model.variables);
   csr_A.row_start = cuopt::host_copy(model.offsets);
@@ -121,10 +118,8 @@ void translate_to_crossover_problem(const detail::problem_t<i_t, f_t>& problem,
 
   std::vector<f_t> pdlp_objective = cuopt::host_copy(problem.objective_coefficients);
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A;
-  csr_A.m         = problem.n_constraints;
-  csr_A.n         = problem.n_variables;
-  csr_A.nz_max    = problem.nnz;
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(
+    problem.n_constraints, problem.n_variables, problem.nnz);
   csr_A.x         = cuopt::host_copy(problem.coefficients);
   csr_A.j         = cuopt::host_copy(problem.variables);
   csr_A.row_start = cuopt::host_copy(problem.offsets);

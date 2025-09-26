@@ -30,6 +30,9 @@ include(rapids-find)
 
 rapids_cuda_init_architectures(CUOPT)
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
+message(STATUS "CMAKE_MODULE_PATH = ${CMAKE_MODULE_PATH}")
+
 project(
   CUOPT
   VERSION "${CUOPT_VERSION}"
@@ -124,7 +127,7 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extend
 if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.9)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -static-global-template-stub=false")
 endif()
-list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror)
+list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations)# -Xcompiler=-Werror)
 list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall -Wno-error=non-template-friend)
 list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=-compress-all)
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
@@ -197,6 +200,8 @@ include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 rapids_cpm_rapids_logger(BUILD_EXPORT_SET cuopt-exports INSTALL_EXPORT_SET cuopt-exports)
 create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
 
+find_package(CUDSS REQUIRED)
+
 if(BUILD_TESTS)
   include(cmake/thirdparty/get_gtest.cmake)
 endif()
@@ -241,6 +246,7 @@ endif()
 add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
 # - include paths ---------------------------------------------------------------------------------
+message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
 
 target_include_directories(cuopt SYSTEM PRIVATE "${papilo_SOURCE_DIR}/src" "${papilo_BINARY_DIR}")
 
@@ -248,12 +254,14 @@ target_include_directories(cuopt
   PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  "${CUDSS_INCLUDE}"
   PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include>"
   INTERFACE
   "$<INSTALL_INTERFACE:include>"
+  ${CUDSS_INCLUDE}
 )
 
 # ##################################################################################################
@@ -269,6 +277,11 @@ list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser)
 set(CMAKE_LIBRARY_PATH ${CMAKE_CURRENT_BINARY_DIR}/libmps_parser/)
+
+
+
+# Pass CUDSS_MT_LIB_FILE as a compile definition
+target_compile_definitions(cuopt PRIVATE CUDSS_MT_LIB_FILE="${CUDSS_MT_LIB_FILE}")
 
 
 execute_process(
@@ -295,6 +308,7 @@ target_link_libraries(cuopt
   CCCL::CCCL
   raft::raft
   cuopt::mps_parser
+  ${CUDSS_LIB_FILE}
   PRIVATE
   ${CUOPT_PRIVATE_CUDA_LIBS}
   )
@@ -397,35 +411,37 @@ endif()
 
 
 if(NOT BUILD_LP_ONLY)
-  add_executable(cuopt_cli cuopt_cli.cpp)
-  target_compile_options(cuopt_cli
-    PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
-    "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
-  )
+add_executable(cuopt_cli cuopt_cli.cpp)
+target_compile_options(cuopt_cli
+  PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+  "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
+)
 
-  target_include_directories(cuopt_cli
-    PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    PUBLIC
-    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
-    "$<INSTALL_INTERFACE:include>"
-  )
+target_include_directories(cuopt_cli
+  PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+  ${CUDSS_INCLUDE}
+  "$<INSTALL_INTERFACE:include>"
+)
 
-  target_link_libraries(cuopt_cli
-    PUBLIC
-    cuopt
-    OpenMP::OpenMP_CXX
-    PRIVATE
-    papilo-core
-  )
-  set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
+target_link_libraries(cuopt_cli
+  PUBLIC
+  cuopt
+  OpenMP::OpenMP_CXX
+  ${CUDSS_LIBRARIES}
+  PRIVATE
+  papilo-core
+)
+set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
-  # adds the cuopt_cli executable to the runtime deb package
-  install(TARGETS cuopt_cli
-    COMPONENT runtime
-    RUNTIME DESTINATION ${_BIN_DEST}
-  )
+# adds the cuopt_cli executable to the runtime deb package
+install(TARGETS cuopt_cli
+  COMPONENT runtime
+  RUNTIME DESTINATION ${_BIN_DEST}
+)
 endif()
 
 

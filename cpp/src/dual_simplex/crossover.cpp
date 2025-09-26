@@ -78,7 +78,7 @@ void compare_vstatus_with_lists(i_t m,
     const i_t j = basic_list[k];
     assert(vstatus[j] == variable_status_t::BASIC);
   }
-  for (i_t k = 0; k < n - m; ++k) {
+  for (i_t k = 0; k < std::min(static_cast<i_t>(nonbasic_list.size()), n - m); ++k) {
     const i_t j = nonbasic_list[k];
     assert(vstatus[j] == variable_status_t::NONBASIC_LOWER ||
            vstatus[j] == variable_status_t::NONBASIC_UPPER ||
@@ -290,7 +290,7 @@ f_t dual_ratio_test(const lp_problem_t<i_t, f_t>& lp,
 
 template <typename i_t, typename f_t>
 void compute_dual_solution_from_basis(const lp_problem_t<i_t, f_t>& lp,
-                                      basis_update_t<i_t, f_t>& ft,
+                                      basis_update_mpf_t<i_t, f_t>& ft,
                                       const std::vector<i_t>& basic_list,
                                       const std::vector<i_t>& nonbasic_list,
                                       std::vector<f_t>& y,
@@ -299,13 +299,16 @@ void compute_dual_solution_from_basis(const lp_problem_t<i_t, f_t>& lp,
   const i_t m = lp.num_rows;
   const i_t n = lp.num_cols;
 
-  y.resize(m);
+  y.resize(m, 0.0);
   std::vector<f_t> cB(m);
   for (i_t k = 0; k < m; ++k) {
     const i_t j = basic_list[k];
     cB[k]       = lp.objective[j];
   }
-  ft.b_transpose_solve(cB, y);
+  sparse_vector_t<i_t, f_t> cB_sparse(cB);
+  sparse_vector_t<i_t, f_t> y_sparse(m, 1);
+  ft.b_transpose_solve(cB_sparse, y_sparse);
+  y_sparse.scatter(y);
 
   // We want A'y + z = c
   // A = [ B N ]
@@ -338,7 +341,7 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
               const simplex_solver_settings_t<i_t, f_t>& settings,
               f_t start_time,
               lp_solution_t<i_t, f_t>& solution,
-              basis_update_t<i_t, f_t>& ft,
+              basis_update_mpf_t<i_t, f_t>& ft,
               std::vector<i_t>& basic_list,
               std::vector<i_t>& nonbasic_list,
               std::vector<i_t>& superbasic_list,
@@ -400,12 +403,24 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
     superbasic_list_index.pop_back();
 
     f_t delta_zs = -z[s];
-    std::vector<f_t> es(m);
-    es[basic_leaving_index] = -delta_zs;
+    sparse_vector_t<i_t, f_t> es_sparse(m, 1);
+    es_sparse.i[0] = basic_leaving_index;
+    es_sparse.x[0] = -delta_zs;
 
     // B^T delta_y = -delta_zs*es
     std::vector<f_t> delta_y(m);
-    ft.b_transpose_solve(es, delta_y);
+    sparse_vector_t<i_t, f_t> delta_y_sparse(m, 1);
+    sparse_vector_t<i_t, f_t> UTsol_sparse(m, 1);
+    ft.b_transpose_solve(es_sparse, delta_y_sparse, UTsol_sparse);
+    delta_y_sparse.scatter(delta_y);
+
+    // We solved B^T delta_y = -delta_zs*es, but for the update we need
+    // U^T*etilde = es.
+    // We have that B^T = U^T*L^T so B^T delta_y = U^T*etilde = -delta_zs*es
+    // So we need to divide by -delta_zs
+    for (i_t k = 0; k < UTsol_sparse.i.size(); ++k) {
+      UTsol_sparse.x[k] /= -delta_zs;
+    }
 
     // delta_zN = -N^T delta_y
     std::vector<f_t> delta_zN(n - m);
@@ -478,14 +493,14 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
           : (vstatus[s] == variable_status_t::NONBASIC_UPPER ? z[s] > 1e-6 : 0));
 #endif
       // Refactor or Update
-      bool should_refactor = ft.num_updates() > 100;
+      bool should_refactor = ft.num_updates() > settings.refactor_frequency;
       if (!should_refactor) {
-        std::vector<f_t> abar(m);
-        lp.A.load_a_column(entering_index, abar);
-        std::vector<f_t> utilde(m);
-        permute_vector(ft.row_permutation(), abar, utilde);
-        ft.l_solve(utilde);
-        i_t recommend_refactor = ft.update(utilde, basic_leaving_index);
+        sparse_vector_t<i_t, f_t> abar_sparse(lp.A, entering_index);
+        sparse_vector_t<i_t, f_t> utilde_sparse(m, 1);
+        // permute abar_sparse and store in utilde_sparse
+        abar_sparse.inverse_permute_vector(ft.inverse_row_permutation(), utilde_sparse);
+        ft.l_solve(utilde_sparse);
+        i_t recommend_refactor = ft.update(utilde_sparse, UTsol_sparse, basic_leaving_index);
         should_refactor        = recommend_refactor == 1;
       }
 
@@ -528,8 +543,7 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Crossover time exceeded\n");
       return -1;
     }
-    if (settings.concurrent_halt != nullptr &&
-        settings.concurrent_halt->load(std::memory_order_acquire) == 1) {
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Concurrent halt\n");
       return -2;
     }
@@ -561,7 +575,7 @@ f_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
                       const simplex_solver_settings_t<i_t, f_t>& settings,
                       const std::vector<i_t>& basic_list,
                       const std::vector<f_t>& x,
-                      const std::vector<f_t>& delta_xB,
+                      const sparse_vector_t<i_t, f_t>& delta_xB,
                       i_t& leaving_index,
                       i_t& basic_leaving_index,
                       i_t& bound)
@@ -570,34 +584,34 @@ f_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
   const i_t n             = lp.num_cols;
   f_t step_length         = 1.0;
   constexpr f_t pivot_tol = 1e-9;
-  for (i_t k = 0; k < m; ++k) {
-    const i_t j = basic_list[k];
-    if (x[j] <= lp.upper[j] && delta_xB[k] > pivot_tol && lp.upper[j] < inf) {
-      const f_t ratio = (lp.upper[j] - x[j]) / delta_xB[k];
+  for (i_t k = 0; k < delta_xB.i.size(); ++k) {
+    const i_t j = basic_list[delta_xB.i[k]];
+    if (x[j] <= lp.upper[j] && delta_xB.x[k] > pivot_tol && lp.upper[j] < inf) {
+      const f_t ratio = (lp.upper[j] - x[j]) / delta_xB.x[k];
       if (ratio < step_length) {
         step_length         = ratio;
         leaving_index       = j;
-        basic_leaving_index = k;
+        basic_leaving_index = delta_xB.i[k];
         bound               = 1;
         if (step_length < 0) {
           settings.log.debug("Step length %e is negative. delta x %e upper %e x %e\n",
                              step_length,
-                             delta_xB[k],
+                             delta_xB.x[k],
                              lp.upper[j],
                              x[j]);
         }
       }
-    } else if (x[j] >= lp.lower[j] && delta_xB[k] < -pivot_tol && lp.lower[j] > -inf) {
-      const f_t ratio = (lp.lower[j] - x[j]) / delta_xB[k];
+    } else if (x[j] >= lp.lower[j] && delta_xB.x[k] < -pivot_tol && lp.lower[j] > -inf) {
+      const f_t ratio = (lp.lower[j] - x[j]) / delta_xB.x[k];
       if (ratio < step_length) {
         step_length         = ratio;
         leaving_index       = j;
-        basic_leaving_index = k;
+        basic_leaving_index = delta_xB.i[k];
         bound               = -1;
         if (step_length < 0) {
           settings.log.debug("Step length %e is negative. delta x %e lower %e x %e\n",
                              step_length,
-                             delta_xB[k],
+                             delta_xB.x[k],
                              lp.lower[j],
                              x[j]);
         }
@@ -612,7 +626,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
                 const simplex_solver_settings_t<i_t, f_t>& settings,
                 f_t start_time,
                 lp_solution_t<i_t, f_t>& solution,
-                basis_update_t<i_t, f_t>& ft,
+                basis_update_mpf_t<i_t, f_t>& ft,
                 std::vector<i_t>& basic_list,
                 std::vector<i_t>& nonbasic_list,
                 std::vector<i_t>& superbasic_list,
@@ -634,26 +648,28 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
     const i_t s = superbasic_list.back();
 
     // Load A(:, s) into As
-    std::vector<f_t> As(m);
-    lp.A.load_a_column(s, As);
-
-    std::vector<f_t> w(m);
-    std::vector<f_t> utilde(m);
+    sparse_vector_t<i_t, f_t> As_sparse(lp.A, s);
+    sparse_vector_t<i_t, f_t> w_sparse(m, 0);
+    sparse_vector_t<i_t, f_t> utilde_sparse(m, 0);
     // Solve B*w = As, w = -delta_xB/delta_xs
-    ft.b_solve(As, w, utilde);
-#ifdef PARANOID
+    ft.b_solve(As_sparse, w_sparse, utilde_sparse);
+#ifdef CHECK_RESIDUAL
     {
+      std::vector<f_t> w(m);
+      w_sparse.to_dense(w);
       std::vector<f_t> r(m);
       b_multiply(lp, basic_list, w, r);
-      for (Int i = 0; i < m; ++i) {
+      std::vector<f_t> As(m);
+      lp.A.load_a_column(s, As);
+      for (i_t i = 0; i < m; ++i) {
         r[i] -= As[i];
       }
-      printf("|| B*w - As || %e\n", vector_norm_inf(r));
+      printf("|| B*w - As || %e\n", vector_norm_inf<i_t, f_t>(r));
     }
 #endif
 
     // Perform two ratio tests
-    std::array<std::vector<f_t>, 2> delta_xB_trials;
+    std::array<sparse_vector_t<i_t, f_t>, 2> delta_xB_trials;
     std::array<f_t, 2> delta_xs_trials;
     std::array<f_t, 2> step_length_trials;
     std::array<i_t, 2> leaving_index_trials;
@@ -673,10 +689,10 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
       delta_xs_trials[push] = push == 0 ? lp.lower[s] - x[s] : lp.upper[s] - x[s];
       const f_t delta_xs    = delta_xs_trials[push];
       // Compute delta_xB_trial = -delta_xs * w
-      std::vector<f_t>& delta_xB_trial = delta_xB_trials[push];
-      delta_xB_trial.resize(m);
-      for (i_t i = 0; i < m; ++i) {
-        delta_xB_trial[i] = -w[i] * delta_xs;
+      sparse_vector_t<i_t, f_t>& delta_xB_trial = delta_xB_trials[push];
+      delta_xB_trial                            = w_sparse;
+      for (i_t k = 0; k < w_sparse.i.size(); ++k) {
+        delta_xB_trial.x[k] = -w_sparse.x[k] * delta_xs;
       }
       leaving_index_trials[push]       = -1;
       basic_leaving_index_trials[push] = -1;
@@ -694,14 +710,14 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
     if (best == -1) { best = step_length_trials[0] > step_length_trials[1] ? 0 : 1; }
     assert(best != -1);
 
-    f_t delta_xs               = delta_xs_trials[best];
-    std::vector<f_t>& delta_xB = delta_xB_trials[best];
-    i_t leaving_index          = leaving_index_trials[best];
-    i_t basic_leaving_index    = basic_leaving_index_trials[best];
-    f_t step_length            = step_length_trials[best];
-    i_t bound                  = bound_trials[best];
+    f_t delta_xs                        = delta_xs_trials[best];
+    sparse_vector_t<i_t, f_t>& delta_xB = delta_xB_trials[best];
+    i_t leaving_index                   = leaving_index_trials[best];
+    i_t basic_leaving_index             = basic_leaving_index_trials[best];
+    f_t step_length                     = step_length_trials[best];
+    i_t bound                           = bound_trials[best];
 
-#ifdef PARANOID
+#ifdef CHECK_DIRECTION
     {
       std::vector<f_t> delta_x(n, 0.0);
       for (Int k = 0; k < m; ++k) {
@@ -716,17 +732,19 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
 #endif
 
     // xB <- xB + step_length * delta_xB
-    for (i_t k = 0; k < m; ++k) {
-      const i_t j = basic_list[k];
-      x[j] += step_length * delta_xB[k];
+    for (i_t k = 0; k < delta_xB.i.size(); ++k) {
+      const i_t j = basic_list[delta_xB.i[k]];
+      x[j] += step_length * delta_xB.x[k];
     }
     // x_s <- x_s + step_length * delta_xs
     x[s] += step_length * delta_xs;
 
+#ifdef COMPUTE_RESIDUAL
     // Compute r = b - A*x
     std::vector<f_t> residual = lp.rhs;
     matrix_vector_multiply(lp.A, -1.0, x, 1.0, residual);
     f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
+#endif
 
     if (leaving_index != -1) {
       // Move superbasic variable into the basis
@@ -755,7 +773,13 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
       // Refactor or Update
       bool should_refactor = ft.num_updates() > 100;
       if (!should_refactor) {
-        i_t recommend_refactor = ft.update(utilde, basic_leaving_index);
+        sparse_vector_t<i_t, f_t> es_sparse(m, 1);
+        es_sparse.i[0] = basic_leaving_index;
+        es_sparse.x[0] = 1.0;
+        sparse_vector_t<i_t, f_t> UTsol_sparse(m, 1);
+        sparse_vector_t<i_t, f_t> solution_sparse(m, 1);
+        ft.b_transpose_solve(es_sparse, solution_sparse, UTsol_sparse);
+        i_t recommend_refactor = ft.update(utilde_sparse, UTsol_sparse, basic_leaving_index);
         should_refactor        = recommend_refactor == 1;
       }
 
@@ -810,8 +834,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Crossover time limit exceeded\n");
       return -1;
     }
-    if (settings.concurrent_halt != nullptr &&
-        settings.concurrent_halt->load(std::memory_order_acquire) == 1) {
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Concurrent halt\n");
       return -2;
     }
@@ -1134,13 +1157,12 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     settings.log.printf("Time limit exceeded\n");
     return crossover_status_t::TIME_LIMIT;
   }
-  if (settings.concurrent_halt != nullptr &&
-      settings.concurrent_halt->load(std::memory_order_acquire) == 1) {
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
     settings.log.printf("Concurrent halt\n");
     return crossover_status_t::CONCURRENT_LIMIT;
   }
 
-  basis_update_t ft(L, U, p);
+  basis_update_mpf_t ft(L, U, p, settings.refactor_frequency);
   verify_basis<i_t, f_t>(m, n, vstatus);
   compare_vstatus_with_lists<i_t, f_t>(m, n, basic_list, nonbasic_list, vstatus);
   i_t dual_push_status = dual_push(
@@ -1221,8 +1243,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Time limit exceeded\n");
       return crossover_status_t::TIME_LIMIT;
     }
-    if (settings.concurrent_halt != nullptr &&
-        settings.concurrent_halt->load(std::memory_order_acquire) == 1) {
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Concurrent halt\n");
       return crossover_status_t::CONCURRENT_LIMIT;
     }
@@ -1237,7 +1258,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     primal_feasible = primal_infeas <= primal_tol && primal_res <= primal_tol;
     dual_feasible   = dual_infeas <= dual_tol && dual_res <= dual_tol;
   } else {
-    lp_problem_t<i_t, f_t> phase1_problem(1, 1, 1);
+    lp_problem_t<i_t, f_t> phase1_problem(lp.handle_ptr, 1, 1, 1);
     create_phase1_problem(lp, phase1_problem);
     std::vector<variable_status_t> phase1_vstatus(n);
     i_t num_basic_phase1    = 0;
@@ -1350,8 +1371,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
         settings.log.printf("Time limit exceeded\n");
         return crossover_status_t::TIME_LIMIT;
       }
-      if (settings.concurrent_halt != nullptr &&
-          settings.concurrent_halt->load(std::memory_order_acquire) == 1) {
+      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Concurrent halt\n");
         return crossover_status_t::CONCURRENT_LIMIT;
       }

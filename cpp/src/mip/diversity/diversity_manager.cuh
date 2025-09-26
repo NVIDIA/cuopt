@@ -110,7 +110,7 @@ class diversity_manager_t {
   // mutex for the simplex solution update
   std::mutex relaxed_solution_mutex;
   // atomic for signalling pdlp to stop
-  std::atomic<int> global_concurrent_halt{0};
+  volatile int global_concurrent_halt{0};
 
   bool run_only_ls_recombiner{false};
   bool run_only_bp_recombiner{false};

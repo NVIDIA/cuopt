@@ -21,6 +21,8 @@
 #include <dual_simplex/sparse_matrix.hpp>
 #include <dual_simplex/types.hpp>
 
+#include <raft/core/handle.hpp>
+
 #include <string>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -33,7 +35,11 @@ enum class variable_type_t : int8_t {
 
 template <typename i_t, typename f_t>
 struct user_problem_t {
-  user_problem_t() : A(1, 1, 1), obj_constant(0.0), obj_scale(1.0) {}
+  user_problem_t(raft::handle_t const* handle_ptr_)
+    : handle_ptr(handle_ptr_), A(1, 1, 1), obj_constant(0.0), obj_scale(1.0)
+  {
+  }
+  raft::handle_t const* handle_ptr;
   i_t num_rows;
   i_t num_cols;
   std::vector<f_t> objective;

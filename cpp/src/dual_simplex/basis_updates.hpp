@@ -322,6 +322,7 @@ class basis_update_mpf_t {
   i_t num_updates() const { return num_updates_; }
 
   const std::vector<i_t>& row_permutation() const { return row_permutation_; }
+  const std::vector<i_t>& inverse_row_permutation() const { return inverse_row_permutation_; }
 
   void compute_transposes()
   {

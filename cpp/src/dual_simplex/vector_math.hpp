@@ -26,12 +26,16 @@ template <typename i_t, typename f_t>
 f_t vector_norm_inf(const std::vector<f_t>& x);
 
 // Computes || x ||_2^2
-template <typename i_t, typename f_t>
-f_t vector_norm2_squared(const std::vector<f_t>& x);
+template <typename i_t, typename f_t, typename Allocator>
+f_t vector_norm2_squared(const std::vector<f_t, Allocator>& x);
 
 // Computes || x ||_2
+template <typename i_t, typename f_t, typename Allocator>
+f_t vector_norm2(const std::vector<f_t, Allocator>& x);
+
+// Computes || x ||_1
 template <typename i_t, typename f_t>
-f_t vector_norm2(const std::vector<f_t>& x);
+f_t vector_norm1(const std::vector<f_t>& x);
 
 // Computes x'*y
 template <typename i_t, typename f_t>

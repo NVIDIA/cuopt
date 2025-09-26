@@ -1895,6 +1895,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const std::vector<f_t>& utilde,
 }
 
 // Takes in utilde such that L*utilde = abar, where abar is the column to add to the basis
+// and etilde such that U'*etilde = e_leaving
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde,
                                          sparse_vector_t<i_t, f_t>& etilde,

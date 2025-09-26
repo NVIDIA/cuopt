@@ -69,6 +69,7 @@ cache:
       - librmm =${{ dep_minor_version }}
       - rapids-logger =0.1
       - cuda-nvtx-dev
+      - libcudss-dev
       - libcurand-dev
       - libcusparse-dev
       - cuda-cudart-dev
@@ -149,6 +150,7 @@ outputs:
         - rapids-logger =0.1
         - librmm =${{ dep_minor_version }}
         - cuda-cudart-dev
+        - libcudss-dev
         - libcublas
         - libcusparse-dev
       run:
@@ -199,6 +201,7 @@ outputs:
         - gmock ${{ gtest_version }}
         - gtest ${{ gtest_version }}
         - cuda-cudart-dev
+        - libcudss-dev
         - libcublas
         - libcusparse-dev
       run:

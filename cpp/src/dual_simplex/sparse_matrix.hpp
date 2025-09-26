@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
+ * All rights reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,10 +28,12 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
-class csr_matrix_t;  // Forward declaration of CSR matrix needed to define CSC matrix
+class csr_matrix_t;  // Forward declaration of CSR matrix needed to define CSC
+                     // matrix
 
 template <typename i_t, typename f_t>
-class sparse_vector_t;  // Forward declaration of sparse vector needed to define CSC matrix
+class sparse_vector_t;  // Forward declaration of sparse vector needed to define
+                        // CSC matrix
 
 // A sparse matrix stored in compressed sparse column format
 template <typename i_t, typename f_t>
@@ -40,6 +42,16 @@ class csc_matrix_t {
   csc_matrix_t(i_t rows, i_t cols, i_t nz)
     : m(rows), n(cols), nz_max(nz), col_start(n + 1), i(nz_max), x(nz_max)
   {
+  }
+
+  void resize(i_t rows, i_t cols, i_t nz)
+  {
+    m      = rows;
+    n      = cols;
+    nz_max = nz;
+    col_start.resize(n + 1);
+    i.resize(nz_max);
+    x.resize(nz_max);
   }
 
   // Adjust to i and x vectors for a new number of nonzeros
@@ -63,13 +75,16 @@ class csc_matrix_t {
   // Compute the transpose of A
   i_t transpose(csc_matrix_t<i_t, f_t>& AT) const;
 
-  // Append a dense column to the matrix. Assumes the matrix has already been resized accordingly
+  // Append a dense column to the matrix. Assumes the matrix has already been
+  // resized accordingly
   void append_column(const std::vector<f_t>& x);
 
-  // Append a sparse column to the matrix. Assumes the matrix has already been resized accordingly
+  // Append a sparse column to the matrix. Assumes the matrix has already been
+  // resized accordingly
   void append_column(const sparse_vector_t<i_t, f_t>& x);
 
-  // Append a sparse column to the matrix. Assumes the matrix has already been resized accordingly
+  // Append a sparse column to the matrix. Assumes the matrix has already been
+  // resized accordingly
   void append_column(i_t nz, i_t* i, f_t* x);
 
   // Remove columns from the matrix
@@ -87,8 +102,23 @@ class csc_matrix_t {
   // Prints the matrix to a file
   void print_matrix(FILE* fid) const;
 
+  // Ensures no repeated row indices within a column
+  void check_matrix() const;
+
+  // Writes the matrix to a file in Matrix Market format
+  void write_matrix_market(FILE* fid) const;
+
   // Compute || A ||_1 = max_j (sum {i = 1 to m} | A(i, j) | )
   f_t norm1() const;
+
+  // Compare two matrices
+  void compare(csc_matrix_t<i_t, f_t> const& B) const;
+
+  // Perform column scaling of the matrix
+  template <typename Allocator>
+  void scale_columns(const std::vector<f_t, Allocator>& scale);
+
+  size_t hash() const;
 
   i_t m;                       // number of rows
   i_t n;                       // number of columns
@@ -105,11 +135,19 @@ class csc_matrix_t {
 template <typename i_t, typename f_t>
 class csr_matrix_t {
  public:
+  csr_matrix_t(i_t rows, i_t cols, i_t nz)
+    : m(rows), n(cols), nz_max(nz), row_start(m + 1), j(nz_max), x(nz_max)
+  {
+  }
+
   // Convert the CSR matrix to CSC
   i_t to_compressed_col(csc_matrix_t<i_t, f_t>& Acol) const;
 
   // Create a new matrix with the marked rows removed
   i_t remove_rows(std::vector<i_t>& row_marker, csr_matrix_t<i_t, f_t>& Aout) const;
+
+  // Ensures no repeated column indices within a row
+  void check_matrix() const;
 
   i_t nz_max;                  // maximum number of nonzero entries
   i_t m;                       // number of rows
@@ -173,20 +211,74 @@ f_t sparse_dot(const std::vector<i_t>& xind,
                const csc_matrix_t<i_t, f_t>& Y,
                i_t y_col);
 
-// y <- alpha*A*x + beta*y
-template <typename i_t, typename f_t>
-i_t matrix_vector_multiply(const csc_matrix_t<i_t, f_t>& A,
-                           f_t alpha,
-                           const std::vector<f_t>& x,
-                           f_t beta,
-                           std::vector<f_t>& y);
-
 // y <- alpha*A'*x + beta*y
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename AllocatorA, typename AllocatorB>
 i_t matrix_transpose_vector_multiply(const csc_matrix_t<i_t, f_t>& A,
                                      f_t alpha,
-                                     const std::vector<f_t>& x,
+                                     const std::vector<f_t, AllocatorA>& x,
                                      f_t beta,
-                                     std::vector<f_t>& y);
+                                     std::vector<f_t, AllocatorB>& y)
+{
+  i_t m = A.m;
+  i_t n = A.n;
+  assert(y.size() == n);
+  assert(x.size() == m);
+
+  // y <- beta * y
+  if (beta != 1.0) {
+    for (i_t j = 0; j < n; ++j) {
+      y[j] *= beta;
+    }
+  }
+
+  // y <- alpha * AT*x + y
+  for (i_t j = 0; j < n; ++j) {
+    f_t dot       = 0.0;
+    i_t col_start = A.col_start[j];
+    i_t col_end   = A.col_start[j + 1];
+    for (i_t p = col_start; p < col_end; ++p) {
+      dot += A.x[p] * x[A.i[p]];
+    }
+    y[j] += alpha * dot;
+  }
+
+  return 0;
+}
+
+// y <- alpha*A*x + beta*y
+template <typename i_t, typename f_t, typename AllocatorA, typename AllocatorB>
+i_t matrix_vector_multiply(const csc_matrix_t<i_t, f_t>& A,
+                           f_t alpha,
+                           const std::vector<f_t, AllocatorA>& x,
+                           f_t beta,
+                           std::vector<f_t, AllocatorB>& y)
+{
+  // y <- alpha*A*x + beta*y
+  i_t m = A.m;
+  i_t n = A.n;
+  assert(y.size() == m);
+  assert(x.size() == n);
+
+  // y <- alpha * sum_j A(:, j)*x_j + beta * y
+
+  // y <- beta * y
+  if (beta != 1.0) {
+    for (i_t i = 0; i < m; ++i) {
+      y[i] *= beta;
+    }
+  }
+
+  // y <- alpha * sum_j A(:, j)*x_j + y
+  for (i_t j = 0; j < n; ++j) {
+    i_t col_start = A.col_start[j];
+    i_t col_end   = A.col_start[j + 1];
+    for (i_t p = col_start; p < col_end; ++p) {
+      i_t i = A.i[p];
+      y[i] += alpha * A.x[p] * x[j];
+    }
+  }
+
+  return 0;
+}
 
 }  // namespace cuopt::linear_programming::dual_simplex

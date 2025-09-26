@@ -268,8 +268,7 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
       entering_index = -2;
       return;
     }
-    if (settings_.concurrent_halt != nullptr &&
-        settings_.concurrent_halt->load(std::memory_order_acquire) == 1) {
+    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       entering_index = -3;
       return;
     }

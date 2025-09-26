@@ -33,7 +33,8 @@ namespace cuopt::linear_programming::dual_simplex::test {
 TEST(dual_simplex, chess_set)
 {
   namespace dual_simplex = cuopt::linear_programming::dual_simplex;
-  dual_simplex::user_problem_t<int, double> user_problem;
+  raft::handle_t handle{};
+  dual_simplex::user_problem_t<int, double> user_problem(&handle);
   // maximize   5*xs + 20*xl
   // subject to  1*xs +  3*xl <= 200
   //             3*xs +  2*xl <= 160
@@ -114,7 +115,8 @@ TEST(dual_simplex, burglar)
   //           sum_i weight[i] * take[i] <= max_weight
   //           take[i] binary for all i
 
-  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem;
+  raft::handle_t handle{};
+  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem(&handle);
   constexpr int m  = 1;
   constexpr int n  = num_items;
   constexpr int nz = num_items;
@@ -188,7 +190,8 @@ TEST(dual_simplex, empty_columns)
   //           sum_i weight[i] * take[i] <= max_weight
   //           take[i] binary for all i
 
-  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem;
+  raft::handle_t handle{};
+  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem(&handle);
   constexpr int m  = 1;
   constexpr int n  = num_items;
   constexpr int nz = num_items - 1;
@@ -269,7 +272,8 @@ TEST(dual_simplex, dual_variable_greater_than)
   //             x0 + 2x1 >= 3
   //             x0, x1 >= 0
 
-  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem;
+  raft::handle_t handle{};
+  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem(&handle);
   constexpr int m  = 2;
   constexpr int n  = 2;
   constexpr int nz = 4;

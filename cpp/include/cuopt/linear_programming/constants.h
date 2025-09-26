@@ -50,6 +50,10 @@
 #define CUOPT_LOG_FILE                    "log_file"
 #define CUOPT_LOG_TO_CONSOLE              "log_to_console"
 #define CUOPT_CROSSOVER                   "crossover"
+#define CUOPT_FOLDING                     "folding"
+#define CUOPT_AUGMENTED                   "augmented"
+#define CUOPT_ELIMINATE_DENSE_COLUMNS     "eliminate_dense_columns"
+#define CUOPT_CUDSS_DETERMINISTIC         "cudss_deterministic"
 #define CUOPT_PRESOLVE                    "presolve"
 #define CUOPT_MIP_ABSOLUTE_TOLERANCE      "mip_absolute_tolerance"
 #define CUOPT_MIP_RELATIVE_TOLERANCE      "mip_relative_tolerance"
@@ -105,6 +109,7 @@
 #define CUOPT_METHOD_CONCURRENT   0
 #define CUOPT_METHOD_PDLP         1
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
+#define CUOPT_METHOD_BARRIER      3
 
 /* @brief Status codes constants */
 #define CUOPT_SUCCESS          0

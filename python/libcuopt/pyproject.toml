@@ -47,6 +47,7 @@ dependencies = [
     "librmm==25.10.*,>=0.0.0a0",
     "nvidia-cublas",
     "nvidia-cudart",
+    "nvidia-cudss",
     "nvidia-curand",
     "nvidia-cusolver",
     "nvidia-cusparse",
@@ -65,6 +66,7 @@ libcuopt = "libcuopt"
 select = [
     "distro-too-large-compressed",
 ]
+
 max_allowed_size_compressed = '900M'
 
 [project.scripts]

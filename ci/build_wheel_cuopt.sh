@@ -20,6 +20,9 @@ set -euo pipefail
 
 source rapids-init-pip
 
+# Install cudss
+bash ci/utils/install_cudss.sh
+
 package_dir="python/cuopt"
 export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNINGS=ON";
 
