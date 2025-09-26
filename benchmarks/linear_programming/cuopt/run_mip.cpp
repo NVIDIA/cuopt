@@ -210,7 +210,6 @@ int run_single_file(std::string file_path,
   settings.log_to_console                = log_to_console;
   settings.tolerances.relative_tolerance = 1e-12;
   settings.tolerances.absolute_tolerance = 1e-6;
-  settings.presolve                      = true;
   cuopt::linear_programming::benchmark_info_t benchmark_info;
   settings.benchmark_info_ptr = &benchmark_info;
   auto start_run_solver       = std::chrono::high_resolution_clock::now();
@@ -298,7 +297,7 @@ int main(int argc, char* argv[])
 {
   argparse::ArgumentParser program("solve_MIP");
 
-  // Define all arguments with appropriate defaults and help messages 2
+  // Define all arguments with appropriate defaults and help messages
   program.add_argument("--path").help("input path").required();
 
   program.add_argument("--run-dir")

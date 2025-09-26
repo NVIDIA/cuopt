@@ -506,7 +506,7 @@ pdlp_warm_start_data_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::get_filled_warmed_star
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::print_termination_criteria(const timer_t& timer, bool is_average)
 {
-  if (!inside_mip_ || true) {
+  if (!inside_mip_) {
     auto elapsed = timer.elapsed_time();
     if (is_average) {
       average_termination_strategy_.print_termination_criteria(total_pdlp_iterations_, elapsed);
@@ -523,7 +523,7 @@ void pdlp_solver_t<i_t, f_t>::print_final_termination_criteria(
   const pdlp_termination_status_t& termination_status,
   bool is_average)
 {
-  if (!inside_mip_ || true) {
+  if (!inside_mip_) {
     print_termination_criteria(timer, is_average);
     CUOPT_LOG_INFO(
       "LP Solver status:                %s",
@@ -1187,7 +1187,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   bool warm_start_was_given =
     settings_.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.size() != 0;
 
-  if (!inside_mip_ || true) {
+  if (!inside_mip_) {
     CUOPT_LOG_INFO(
       "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
   }
