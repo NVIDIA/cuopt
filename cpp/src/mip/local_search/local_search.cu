@@ -72,7 +72,6 @@ void cpu_fj_thread_t<i_t, f_t>::cpu_worker_thread()
 template <typename i_t, typename f_t>
 void cpu_fj_thread_t<i_t, f_t>::kill_cpu_solver()
 {
-  printf("Killing CPU solver\n");
   cpu_thread_terminate = true;
   if (fj_cpu) fj_cpu->halted = true;
   cpu_cv.notify_one();

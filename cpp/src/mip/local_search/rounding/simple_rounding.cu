@@ -90,59 +90,10 @@ bool invoke_simple_rounding(solution_t<i_t, f_t>& solution)
   solution_t<i_t, f_t> sol_copy(*solution.problem_ptr);
   sol_copy.copy_from(solution);
 
-  rmm::device_uvector<i_t> up_locks(solution.problem_ptr->n_variables,
-                                    solution.handle_ptr->get_stream());
-  rmm::device_uvector<i_t> down_locks(solution.problem_ptr->n_variables,
-                                      solution.handle_ptr->get_stream());
-  thrust::fill(solution.handle_ptr->get_thrust_policy(), up_locks.begin(), up_locks.end(), 0);
-  thrust::fill(solution.handle_ptr->get_thrust_policy(), down_locks.begin(), down_locks.end(), 0);
-
-  thrust::for_each(
-    solution.handle_ptr->get_thrust_policy(),
-    solution.problem_ptr->integer_indices.begin(),
-    solution.problem_ptr->integer_indices.end(),
-    [pb             = solution.problem_ptr->view(),
-     assignment_ptr = solution.assignment.data(),
-     v_up_locks     = up_locks.data(),
-     v_down_locks   = down_locks.data(),
-     orig_lower_bounds =
-       solution.problem_ptr->original_problem_ptr->get_constraint_lower_bounds().data(),
-     orig_upper_bounds = solution.problem_ptr->original_problem_ptr->get_constraint_upper_bounds()
-                           .data()] __device__(i_t idx) {
-      i_t up_locks   = 0;
-      i_t down_locks = 0;
-      bool is_int    = pb.is_integer(assignment_ptr[idx]);
-
-      auto [offset_begin, offset_end] = pb.reverse_range_for_var(idx);
-      for (i_t i = offset_begin; i < offset_end; i += 1) {
-        auto cstr_idx   = pb.reverse_constraints[i];
-        auto cstr_coeff = pb.reverse_coefficients[i];
-
-        // boxed constraint. can't be rounded safely
-        if (std::isfinite(pb.constraint_lower_bounds[cstr_idx]) &&
-            std::isfinite(pb.constraint_upper_bounds[cstr_idx])) {
-          up_locks += 1;
-          down_locks += 1;
-          continue;
-        }
-
-        f_t sign = std::isfinite(pb.constraint_upper_bounds[cstr_idx]) ? 1 : -1;
-
-        if (cstr_coeff * sign > 0) {
-          up_locks += 1;
-        } else {
-          down_locks += 1;
-        }
-      }
-
-      v_up_locks[idx]   = up_locks;
-      v_down_locks[idx] = down_locks;
-    });
-
   rmm::device_scalar<bool> successful(true, solution.handle_ptr->get_stream());
   i_t TPB = 128;
-  simple_rounding_kernel<i_t, f_t><<<2048, TPB, 0, solution.handle_ptr->get_stream()>>>(
-    solution.view(), make_span(up_locks), make_span(down_locks), successful.data());
+  simple_rounding_kernel<i_t, f_t>
+    <<<2048, TPB, 0, solution.handle_ptr->get_stream()>>>(solution.view(), successful.data());
   if (!successful.value(solution.handle_ptr->get_stream())) {
     CUOPT_LOG_DEBUG("Simple rounding failed");
     solution.copy_from(sol_copy);
