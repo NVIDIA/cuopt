@@ -78,6 +78,13 @@ Crossover
 Crossover allows you to obtain a high-quality basic solution from the results of a PDLP solve. More details can be found :ref:`here <crossover>`.
 
 
+Presolve
+--------
+
+Presolve procedure is applied to the problem before the solver is called. It can be used to reduce the problem size and improve solve time. It is enabled by default for MIP problems, and disabled by default for LP problems.
+Furthermore, for LP problems, when the dual solution is not needed, additional presolve procedures can be applied to further improve solve times. This is achived by turned off dual postsolve.
+
+
 Logging
 -------
 
