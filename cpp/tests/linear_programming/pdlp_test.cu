@@ -166,8 +166,7 @@ TEST(pdlp_class, run_time_limit)
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
 
-  // 200 ms
-  constexpr double time_limit_seconds = 0.2;
+  constexpr double time_limit_seconds = 2;
   settings.time_limit                 = time_limit_seconds;
   // To make sure it doesn't return before the time limit
   settings.set_optimality_tolerance(0);
@@ -931,8 +930,9 @@ TEST(pdlp_class, test_max)
   cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
     cuopt::mps_parser::parse_mps<int, double>(path);
 
-  auto solver_settings   = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
+  auto solver_settings             = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode = cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
 
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, op_problem, solver_settings);

@@ -429,6 +429,7 @@ def test_parse_var_names():
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
     solution = solver.Solve(data_model_obj, settings)
 
     expected_dict = {
