@@ -131,7 +131,7 @@ def test_iteration_limit_solver():
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
-    settings.set_optimality_tolerance(0)
+    settings.set_optimality_tolerance(1e-12)
     settings.set_parameter(CUOPT_ITERATION_LIMIT, 1)
     # Setting both to make sure the lowest one is picked
     settings.set_parameter(CUOPT_TIME_LIMIT, 99999999)
@@ -153,9 +153,8 @@ def test_time_limit_solver():
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
-    settings.set_optimality_tolerance(0)
-    # 600 ms
-    time_limit_seconds = 0.6
+    settings.set_optimality_tolerance(1e-12)
+    time_limit_seconds = 1
     settings.set_parameter(CUOPT_TIME_LIMIT, time_limit_seconds)
     # Setting both to make sure the lowest one is picked
     settings.set_parameter(CUOPT_ITERATION_LIMIT, 99999999)
