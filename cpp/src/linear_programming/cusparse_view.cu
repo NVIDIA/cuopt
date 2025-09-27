@@ -219,8 +219,12 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     &tmp_primal, op_problem_scaled.n_variables, _tmp_primal.data()));
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
     &tmp_dual, op_problem_scaled.n_constraints, _tmp_dual.data()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &reflected_primal_solution, op_problem_scaled.n_variables, _reflected_primal_solution.data()));
+  if (pdlp_hyper_params::use_reflected_primal_dual) {
+    cuopt_assert(_reflected_primal_solution.size() > 0, "Reflected primal solution empty");
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&reflected_primal_solution,
+                                                                op_problem_scaled.n_variables,
+                                                                _reflected_primal_solution.data()));
+  }
 
   const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
   const rmm::device_scalar<f_t> beta{1, handle_ptr->get_stream()};
