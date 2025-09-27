@@ -791,7 +791,6 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
   i_t tid              = omp_get_thread_num();
 
   while (stack.size() > 0 && status_ == mip_status_t::RUNNING) {
-
     repair_heuristic_solutions();
 
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
@@ -946,7 +945,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
 
         } else if (node_status == node_status_t::HAS_CHILDREN) {
           auto [first, second] = child_selection(node_ptr);
-          
+
           if (dive_queue_.size() < 4 * settings_.num_diving_threads) {
             mutex_dive_queue_.lock();
             dive_queue_.push(second->detach_copy());
@@ -1135,7 +1134,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
     if (omp_get_thread_num() < settings_.num_bfs_threads) {
       best_first_thread(search_tree, leaf_problem, Arow);
-      
+
     } else {
       diving_thread(leaf_problem, Arow);
     }
