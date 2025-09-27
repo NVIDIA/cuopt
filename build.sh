@@ -206,7 +206,7 @@ if hasArg -v; then
     VERBOSE_FLAG="-v"
 fi
 if hasArg -g; then
-    BUILD_TYPE=RelWithDebInfo
+    BUILD_TYPE=Debug
     DEFINE_ASSERT=true
 fi
 if hasArg -a; then
@@ -326,8 +326,7 @@ if buildAll || hasArg libmps_parser; then
     cmake -DDEFINE_ASSERT=${DEFINE_ASSERT} \
           -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
           "${CACHE_ARGS[@]}" \
-	  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-	  "${REPODIR}"/cpp/libmps_parser/
+          "${REPODIR}"/cpp/libmps_parser/
 
     if hasArg -n; then
         cmake --build "${LIBMPS_PARSER_BUILD_DIR}" ${VERBOSE_FLAG}
@@ -349,16 +348,13 @@ if buildAll || hasArg libcuopt; then
           -DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES} \
           -DDISABLE_DEPRECATION_WARNING=${BUILD_DISABLE_DEPRECATION_WARNING} \
           -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
-          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-	      -DFETCH_RAPIDS=${FETCH_RAPIDS} \
+          -DFETCH_RAPIDS=${FETCH_RAPIDS} \
           -DBUILD_LP_ONLY=${BUILD_LP_ONLY} \
           -DBUILD_SANITIZER=${BUILD_SANITIZER} \
           -DSKIP_C_PYTHON_ADAPTERS=${SKIP_C_PYTHON_ADAPTERS} \
           -DBUILD_TESTS=$((1 - ${SKIP_TESTS_BUILD})) \
           -DSKIP_ROUTING_BUILD=${SKIP_ROUTING_BUILD} \
           -DWRITE_FATBIN=${WRITE_FATBIN} \
-          -DHOST_LINEINFO=${HOST_LINEINFO} \
-          -DBUILD_MIP_BENCHMARKS=ON \
           "${CACHE_ARGS[@]}" \
           "${EXTRA_CMAKE_ARGS[@]}" \
           "${REPODIR}"/cpp
