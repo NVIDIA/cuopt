@@ -58,7 +58,8 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
     reusable_device_scalar_value_0_{f_t(0.0), stream_view_},
     graph(stream_view_, is_batch_mode)
 {
-  valid_step_size_ = make_unique_cuda_host_pinned<i_t>();
+  valid_step_size_  = make_unique_cuda_host_pinned<i_t>();
+  *valid_step_size_ = 0;
 }
 
 void set_adaptive_step_size_hyper_parameters(rmm::cuda_stream_view stream_view)

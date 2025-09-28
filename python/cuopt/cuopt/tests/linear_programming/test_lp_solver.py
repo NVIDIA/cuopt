@@ -123,6 +123,7 @@ def test_very_low_tolerance():
     assert solution.get_solve_time() <= expected_time * 5
 
 
+# TODO: should test all LP solver modes?
 def test_iteration_limit_solver():
 
     file_path = (
@@ -154,7 +155,7 @@ def test_time_limit_solver():
 
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-12)
-    time_limit_seconds = 1
+    time_limit_seconds = 0.3
     settings.set_parameter(CUOPT_TIME_LIMIT, time_limit_seconds)
     # Setting both to make sure the lowest one is picked
     settings.set_parameter(CUOPT_ITERATION_LIMIT, 99999999)

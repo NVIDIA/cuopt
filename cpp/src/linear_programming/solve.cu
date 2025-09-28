@@ -732,6 +732,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
       op_problem.write_to_mps(settings.user_problem_file);
     }
 
+    // Initialize static variablr hyperparameters to Stable3 by default
+    set_Stable3();
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
 
