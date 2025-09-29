@@ -93,7 +93,7 @@ static cuopt::linear_programming::pdlp_solver_mode_t string_to_pdlp_solver_mode(
     return cuopt::linear_programming::pdlp_solver_mode_t::Fast1;
   else if (mode == "Stable3")
     return cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
-  return cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
+  return cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
 }
 
 static cuopt::linear_programming::pdlp_solver_settings_t<int, double> create_solver_settings(

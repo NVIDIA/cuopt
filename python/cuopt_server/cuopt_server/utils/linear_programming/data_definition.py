@@ -493,7 +493,7 @@ class SolverConfig(StrictModel):
         "Note: Not supported for MILP. ",
     )
     pdlp_solver_mode: Optional[int] = Field(
-        default=1,
+        default=4,
         description="Solver mode to use for PDLP:"
         "<br>"
         "- Stable1: 0, Legacy stable mode"
