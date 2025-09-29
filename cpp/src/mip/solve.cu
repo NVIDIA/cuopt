@@ -90,6 +90,8 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     solution.compute_objective();  // just to ensure h_user_obj is set
     auto stats           = solver_stats_t<i_t, f_t>{};
     stats.solution_bound = solution.get_user_objective();
+    // log the objective for scripts which need it
+    CUOPT_LOG_INFO("Best feasible: %f", solution.get_user_objective());
     return solution.get_solution(true, stats, false);
   }
   // problem contains unpreprocessed data

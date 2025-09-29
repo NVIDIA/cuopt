@@ -73,7 +73,7 @@ struct branch_and_bound_solution_helper_t {
 
   void solution_callback(std::vector<f_t>& solution, f_t objective)
   {
-    dm->population.add_external_solution(solution, objective);
+    dm->population.add_external_solution(solution, objective, solution_origin_t::BRANCH_AND_BOUND);
   }
 
   void set_simplex_solution(std::vector<f_t>& solution,
@@ -177,6 +177,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     } else {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
     }
+    CUOPT_LOG_INFO("Using %d CPU threads for B&B", branch_and_bound_settings.num_threads);
 
     i_t num_threads                              = branch_and_bound_settings.num_threads;
     i_t num_bfs_threads                          = std::max(1, num_threads / 4);

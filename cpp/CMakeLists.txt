@@ -56,6 +56,7 @@ option(BUILD_LP_ONLY "Build only linear programming components, exclude routing 
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
 option(WRITE_FATBIN "Enable fatbin writing" ON)
+option(HOST_LINEINFO "Build with debug line information for host code" OFF)
 
 message(VERBOSE "cuOpt: Enable nvcc -lineinfo: ${CMAKE_CUDA_LINEINFO}")
 message(VERBOSE "cuOpt: Build cuOpt unit-tests: ${BUILD_TESTS}")
@@ -64,6 +65,7 @@ message(VERBOSE "cuOpt: Disable OpenMP: ${DISABLE_OPENMP}")
 message(VERBOSE "cuOpt: Build LP-only mode: ${BUILD_LP_ONLY}")
 message(VERBOSE "cuOpt: Skip C/Python adapters: ${SKIP_C_PYTHON_ADAPTERS}")
 message(VERBOSE "cuOpt: Skip routing build: ${SKIP_ROUTING_BUILD}")
+message(VERBOSE "cuOpt: Build with debug line information for host code: ${HOST_LINEINFO}")
 message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
 
 # ##################################################################################################
@@ -203,6 +205,9 @@ endif()
 
 set(CUOPT_SRC_FILES )
 add_subdirectory(src)
+if (HOST_LINEINFO)
+  set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
+endif()
 add_library(cuopt SHARED
   ${CUOPT_SRC_FILES}
 )

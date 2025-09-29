@@ -80,11 +80,13 @@ fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_, fj_settings_t in_
                                   TPB_update_changed_constraints,
                                   pb_ptr->handle_ptr);
   resetmoves_launch_dims = get_launch_dims_max_occupancy(
-    (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED>, TPB_resetmoves, pb_ptr->handle_ptr);
-  resetmoves_bin_launch_dims =
-    get_launch_dims_max_occupancy((void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED, true>,
-                                  TPB_resetmoves,
-                                  pb_ptr->handle_ptr);
+    (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED>,
+    TPB_resetmoves,
+    pb_ptr->handle_ptr);
+  resetmoves_bin_launch_dims = get_launch_dims_max_occupancy(
+    (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>,
+    TPB_resetmoves,
+    pb_ptr->handle_ptr);
   update_weights_launch_dims = get_launch_dims_max_occupancy(
     (void*)handle_local_minimum_kernel<i_t, f_t>, TPB_localmin, pb_ptr->handle_ptr);
   lift_move_launch_dims = get_launch_dims_max_occupancy(
@@ -149,6 +151,10 @@ void fj_t<i_t, f_t>::randomize_weights(const raft::handle_t* handle_ptr)
   f_t h_max_weight = *std::max_element(h_cstr_vec.begin(), h_cstr_vec.end());
   max_cstr_weight.set_value_async(h_max_weight, handle_ptr->get_stream());
   raft::copy(cstr_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
+  raft::copy(
+    cstr_left_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
+  raft::copy(
+    cstr_right_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
   handle_ptr->sync_stream();
 }
 
@@ -722,7 +728,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
         } else {
           if (is_binary_pb) {
             cudaLaunchCooperativeKernel(
-              (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED, true>,
+              (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>,
               grid_resetmoves_bin,
               blocks_resetmoves_bin,
               reset_moves_args,
@@ -730,7 +736,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
               climber_stream);
           } else {
             cudaLaunchCooperativeKernel(
-              (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED, false>,
+              (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>,
               grid_resetmoves,
               blocks_resetmoves,
               reset_moves_args,
@@ -1061,6 +1067,7 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
   resize_vectors(solution.handle_ptr);
 
   bool is_initial_feasible = solution.compute_feasibility();
+  auto initial_solution    = solution;
   // if we're in rounding mode, split the time/iteration limit between the first and second stage
   cuopt_assert(settings.parameters.rounding_second_stage_split >= 0 &&
                  settings.parameters.rounding_second_stage_split <= 1,
@@ -1133,11 +1140,11 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
   bool is_new_feasible = solution.compute_feasibility();
 
   if (is_initial_feasible && !is_new_feasible) {
-    CUOPT_LOG_ERROR(
-      "Feasibility jump caused feasible solution to become infeasible\n"
-      "Best excess is %g",
+    CUOPT_LOG_WARN(
+      "Feasibility jump caused feasible solution to become infeasible: Best excess is %g",
       climbers[0]->best_excess.value(handle_ptr->get_stream()));
-    cuopt_assert(false, "Feasibility jump caused feasible solution to become infeasible");
+    solution.copy_from(initial_solution);
+    cuopt_assert(solution.compute_feasibility(), "Reverted solution should be feasible");
   }
 
   return is_new_feasible;

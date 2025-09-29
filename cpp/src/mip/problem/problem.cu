@@ -85,7 +85,7 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
   check_bounds_sanity(*this);
 
   // Check before any modifications
-  check_problem_representation(false, false);
+  cuopt_func_call(check_problem_representation(false, false));
   // If maximization problem, convert the problem
   if (maximize) convert_to_maximization_problem(*this);
   if (is_mip) {
@@ -97,7 +97,7 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
   }
   compute_transpose_of_problem();
   // Check after modifications
-  check_problem_representation(true, is_mip);
+  cuopt_func_call(check_problem_representation(true, is_mip));
   combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
 }
 
@@ -712,7 +712,7 @@ void problem_t<i_t, f_t>::recompute_auxilliary_data(bool check_representation)
   // TODO: speedup compute related variables
   const double time_limit = 30.;
   compute_related_variables(time_limit);
-  if (check_representation) check_problem_representation(true);
+  if (check_representation) cuopt_func_call(check_problem_representation(true));
 }
 
 template <typename i_t, typename f_t>
@@ -1251,7 +1251,7 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
   combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
   handle_ptr->sync_stream();
   recompute_auxilliary_data();
-  check_problem_representation(true);
+  cuopt_func_call(check_problem_representation(true));
 }
 
 template <typename i_t, typename f_t>
@@ -1281,7 +1281,7 @@ void problem_t<i_t, f_t>::compute_integer_fixed_problem()
   thrust::fill(handle_ptr->get_thrust_policy(), assignment.begin(), assignment.end(), 0.);
   integer_fixed_problem = std::make_shared<problem_t<i_t, f_t>>(get_problem_after_fixing_vars(
     assignment, integer_indices, integer_fixed_variable_map, handle_ptr));
-  integer_fixed_problem->check_problem_representation(true);
+  cuopt_func_call(integer_fixed_problem->check_problem_representation(true));
   integer_fixed_problem->lp_state.resize(*integer_fixed_problem, handle_ptr->get_stream());
 }
 
@@ -1306,7 +1306,7 @@ void problem_t<i_t, f_t>::fill_integer_fixed_problem(rmm::device_uvector<f_t>& a
   integer_fixed_problem->fix_given_variables(*this, assignment, integer_indices, handle_ptr);
   combine_constraint_bounds<i_t, f_t>(*integer_fixed_problem,
                                       integer_fixed_problem->combined_bounds);
-  integer_fixed_problem->check_problem_representation(true);
+  cuopt_func_call(integer_fixed_problem->check_problem_representation(true));
 }
 
 template <typename i_t, typename f_t>
@@ -1445,7 +1445,7 @@ void problem_t<i_t, f_t>::preprocess_problem()
   standardize_bounds(variable_constraint_map, *this);
   compute_csr(variable_constraint_map, *this);
   compute_transpose_of_problem();
-  check_problem_representation(true, false);
+  cuopt_func_call(check_problem_representation(true, false));
   presolve_data.initialize_var_mapping(*this, handle_ptr);
   integer_indices.resize(n_variables, handle_ptr->get_stream());
   is_binary_variable.resize(n_variables, handle_ptr->get_stream());
@@ -1455,7 +1455,7 @@ void problem_t<i_t, f_t>::preprocess_problem()
   std::iota(reverse_original_ids.begin(), reverse_original_ids.end(), 0);
   compute_n_integer_vars();
   compute_binary_var_table();
-  check_problem_representation(true);
+  cuopt_func_call(check_problem_representation(true));
   preprocess_called = true;
 }
 
@@ -1556,7 +1556,7 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   }
 }
 template <typename i_t, typename f_t>
-f_t problem_t<i_t, f_t>::get_user_obj_from_solver_obj(f_t solver_obj)
+f_t problem_t<i_t, f_t>::get_user_obj_from_solver_obj(f_t solver_obj) const
 {
   return presolve_data.objective_scaling_factor * (solver_obj + presolve_data.objective_offset);
 }
