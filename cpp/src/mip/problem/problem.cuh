@@ -77,8 +77,6 @@ class problem_t {
                               rmm::device_uvector<i_t>& variable_map,
                               const raft::handle_t* handle_ptr);
 
-  void write_as_mps(const std::string& path);
-
   i_t get_n_binary_variables();
   void check_problem_representation(bool check_transposed       = false,
                                     bool check_mip_related_data = true);
