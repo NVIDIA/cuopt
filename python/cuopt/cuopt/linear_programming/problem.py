@@ -46,7 +46,7 @@ class CType(str, Enum):
     Constraint Sense Types can be directly used as a constant.
     LE is CType.LE
     GE is CType.GE
-    EQ is CType EQ
+    EQ is CType.EQ
     """
 
     LE = "L"
@@ -80,7 +80,7 @@ class Variable:
     cuOpt variable object initialized with details of the variable
     such as lower bound, upper bound, type and name.
     Variables are always associated with a problem and can be
-    created using problem.addVariable (See problem class).
+    created using :py:meth:`Problem.addVariable`.
 
     Parameters
     ----------
@@ -557,7 +557,7 @@ class Constraint:
     the sense of the constraint, and the right-hand side of
     the constraint.
     Constraints are associated with a problem and can be
-    created using problem.addConstraint (See problem class).
+    created using :py:meth:`Problem.addConstraint`.
 
     Parameters
     ----------
@@ -696,10 +696,10 @@ class Problem:
         self.vars = []
         self.constrs = []
         self.ObjSense = MINIMIZE
-        self.Obj = None
         self.ObjConstant = 0.0
         self.Status = -1
         self.ObjValue = float("nan")
+        self.warmstart_data = None
 
         self.model = None
         self.solved = False
@@ -791,7 +791,10 @@ class Problem:
                 )
                 self.rhs.append(constr.RHS)
                 self.row_sense.append(constr.Sense)
-                self.row_names.append(constr.ConstraintName)
+                constr_name = constr.ConstraintName
+                if constr_name == "":
+                    constr_name = "R" + str(constr.index)
+                self.row_names.append(constr_name)
             self.constraint_csr_matrix = csr_dict
 
         else:
@@ -809,7 +812,10 @@ class Problem:
             self.var_type[j] = self.vars[j].getVariableType()
             self.lower_bound[j] = self.vars[j].getLowerBound()
             self.upper_bound[j] = self.vars[j].getUpperBound()
-            self.var_names.append(self.vars[j].VariableName)
+            var_name = self.vars[j].VariableName
+            if var_name == "":
+                var_name = "C" + str(self.vars[j].index)
+            self.var_names.append(var_name)
 
         # Initialize datamodel
         dm = data_model.DataModel()
@@ -833,6 +839,14 @@ class Problem:
 
         self.model = dm
 
+    def update(self):
+        """
+        Update the problem. This is mandatory if attributes of
+        existing Variables, Constraints or Objective has been
+        modified.
+        """
+        self.reset_solved_values()
+
     def reset_solved_values(self):
         # Resets all post solve values
         for var in self.vars:
@@ -846,6 +860,7 @@ class Problem:
         self.model = None
         self.constraint_csr_matrix = None
         self.ObjValue = float("nan")
+        self.warmstart_data = None
         self.solved = False
 
     def addVariable(
@@ -861,10 +876,15 @@ class Problem:
             Lower bound of the variable. Defaults to  0.
         ub : float
             Upper bound of the variable. Defaults to infinity.
-        vtype : enum
+        vtype : enum :py:class:`VType`
             vtype.CONTINUOUS or vtype.INTEGER. Defaults to CONTINUOUS.
         name : string
             Name of the variable. Optional.
+
+        Returns
+        -------
+        variable : :py:class:`Variable`
+            Variable object added to the problem.
 
         Examples
         --------
@@ -888,7 +908,7 @@ class Problem:
 
         Parameters
         ----------
-        constr : Constraint
+        constr : :py:class:`Constraint`
             Constructed using LinearExpressions (See Examples)
         name : string
             Name of the variable. Optional.
@@ -912,6 +932,43 @@ class Problem:
                 self.constrs.append(constr)
             case _:
                 raise ValueError("addConstraint requires a Constraint object")
+        return constr
+
+    def updateConstraint(self, constr, coeffs=[], rhs=None):
+        """
+        Updates a previously added constraint. Values that can be updated are
+        constraint coefficients and RHS.
+
+        Parameters
+        ----------
+        constr : :py:class:`Constraint`
+            Constraint to be updated.
+        coeffs : List[Tuple[:py:class:`Variable`, coefficient]]
+            List of Tuples containing variable and corresponding coefficient.
+            Optional.
+        rhs : int|float
+            New RHS value for the constraint.
+
+        Examples
+        --------
+        >>> problem = problem.Problem("MIP_model")
+        >>> x = problem.addVariable(lb=0.0, vtype=INTEGER)
+        >>> y = problem.addVariable(lb=0.0, vtype=INTEGER)
+        >>> c1 = problem.addConstraint(2 * x + y <= 7, name="c1")
+        >>> c2 = problem.addConstraint(x + y <= 5, name="c2")
+        >>> problem.updateConstraint(c1, coeffs=[(x, 1)], rhs=10)
+        """
+        self.reset_solved_values()
+        if isinstance(constr, Constraint):
+            if isinstance(coeffs, dict):
+                coeffs = coeffs.items()
+            for var, coeff in coeffs:
+                idx = var.index
+                constr.vindex_coeff_dict[idx] = coeff
+            if rhs:
+                constr.RHS = rhs
+        else:
+            raise ValueError("Object to update must be a Constraint")
 
     def setObjective(self, expr, sense=MINIMIZE):
         """
@@ -920,9 +977,9 @@ class Problem:
 
         Parameters
         ----------
-        expr : LinearExpression or Variable or Constant
+        expr : :py:class:`LinearExpression` or :py:class:`Variable` or Constant
             Objective expression that needs maximization or minimization.
-        sense : enum
+        sense : enum :py:class:`sense`
             Sets whether the problem is a maximization or a minimization
             problem. Values passed can either be MINIMIZE or MAXIMIZE.
             Defaults to MINIMIZE.
@@ -951,14 +1008,81 @@ class Problem:
                     if var.getIndex() == expr.getIndex():
                         var.setObjectiveCoefficient(1.0)
             case LinearExpression():
+                for var in self.vars:
+                    var.setObjectiveCoefficient(0.0)
                 for var, coeff in expr.zipVarCoefficients():
-                    self.vars[var.getIndex()].setObjectiveCoefficient(coeff)
+                    c_val = self.vars[var.getIndex()].getObjectiveCoefficient()
+                    sum_coeff = coeff + c_val
+                    self.vars[var.getIndex()].setObjectiveCoefficient(
+                        sum_coeff
+                    )
                 self.ObjConstant = expr.getConstant()
             case _:
                 raise ValueError(
                     "Objective must be a LinearExpression or a constant"
                 )
-        self.Obj = expr
+
+    def updateObjective(self, coeffs=[], constant=None, sense=None):
+        """
+        Updates the objective of the problem. Values that can be updated are
+        objective coefficients, constant and sense.
+
+        Parameters
+        ----------
+        coeffs : List[Tuple[:py:class:`Variable`, coefficient]]
+            List of Tuples containing variable and corresponding coefficient.
+            Optional.
+        constant : int|float
+            New Objective constant for the problem. Optional.
+        sense : enum :py:class:`sense`
+            Sets the objective sense to either maximize or minimize. Optional.
+
+        Examples
+        --------
+        >>> problem = problem.Problem("MIP_model")
+        >>> x = problem.addVariable(lb=0.0, vtype=INTEGER)
+        >>> y = problem.addVariable(lb=0.0, vtype=INTEGER)
+        >>> problem.setObjective(4*x + y + 4, MAXIMIZE)
+        >>> problem.updateObjective(coeffs=[(x1, 1.0), (x2, 3.0)], constant=5,
+                sense=MINIMIZE)
+        """
+        self.reset_solved_values()
+        if isinstance(coeffs, dict):
+            coeffs = coeffs.items()
+        for var, coeff in coeffs:
+            var.setObjectiveCoefficient(coeff)
+        if constant:
+            self.ObjConstant = constant
+        if sense:
+            self.ObjSense = sense
+
+    def get_incumbent_values(self, solution, vars):
+        """
+        Extract incumbent values of the vars from a problem solution.
+        """
+        values = []
+        for var in vars:
+            values.append(solution[var.index])
+        return values
+
+    def get_pdlp_warm_start_data(self):
+        """
+        Note: Applicable to only LP.
+        Allows to retrieve the warm start data from the PDLP solver
+        once the problem is solved.
+        This data can be used to warmstart the next PDLP solve by setting it
+        in :py:meth:`cuopt.linear_programming.solver_settings.SolverSettings.set_pdlp_warm_start_data`  # noqa
+
+        Examples
+        --------
+        >>> problem = problem.Problem.readMPS("LP.mps")
+        >>> problem.solve()
+        >>> warmstart_data = problem.get_pdlp_warm_start_data()
+        >>> settings.set_pdlp_warm_start_data(warmstart_data)
+        >>> updated_problem = problem.Problem.readMPS("updated_LP.mps")
+        >>> updated_problem.solve(settings)
+        """
+        return self.warmstart_data
 
     def getObjective(self):
         """
@@ -972,16 +1096,36 @@ class Problem:
         """
         return self.vars
 
+    def getVariable(self, identifier):
+        """
+        Get a Variable by its index or name.
+        """
+        for v in self.vars:
+            if v.index == identifier or v.VariableName == identifier:
+                return v
+
     def getConstraints(self):
         """
         Get a list of all the Constraints in a problem.
         """
         return self.constrs
 
+    def getConstraint(self, identifier):
+        """
+        Get a Constraint by its index or name.
+        """
+        for c in self.constrs:
+            if c.index == identifier or c.ConstraintName == identifier:
+                return c
+
     @classmethod
     def readMPS(cls, mps_file):
         """
-        Initiliaze a problem from an MPS file.
+        Initiliaze a problem from an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
+
+        Examples
+        --------
+        >>> problem = problem.Problem.readMPS("model.mps")
         """
         problem = cls()
         data_model = cuopt_mps_parser.ParseMps(mps_file)
@@ -990,6 +1134,13 @@ class Problem:
         return problem
 
     def writeMPS(self, mps_file):
+        """
+        Write the problem into an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
+
+        Examples
+        --------
+        >>> problem.writeMPS("model.mps")
+        """
         if self.model is None:
             self._to_data_model()
         self.model.writeMPS(mps_file)
@@ -1020,6 +1171,14 @@ class Problem:
                 return True
         return False
 
+    @property
+    def Obj(self):
+        # Returns objective expression of the problem.
+        coeffs = []
+        for var in self.vars:
+            coeffs.append(var.getObjectiveCoefficient())
+        return LinearExpression(self.vars, coeffs, self.ObjConstant)
+
     def getCSR(self):
         """
         Computes and returns the CSR representation of the
@@ -1037,18 +1196,15 @@ class Problem:
         self.constraint_csr_matrix = csr_dict
         return self.dict_to_object(csr_dict)
 
-    def get_incumbent_values(self, solution, vars):
-        """
-        Extract incumbent values of the vars from a problem solution.
-        """
-        values = []
-        for var in vars:
-            values.append(solution[var.index])
-        return values
-
     def relax(self):
         """
         Relax a MIP problem into an LP problem and return the relaxed model.
+        The relaxed model has all variable types set to CONTINUOUS.
+
+        Examples
+        --------
+        >>> mip_problem = problem.Problem.readMPS("MIP.mps")
+        >>> lp_problem = problem.relax()
         """
         self.reset_solved_values()
         relaxed_problem = copy.deepcopy(self)
@@ -1060,6 +1216,7 @@ class Problem:
     def populate_solution(self, solution):
         self.Status = solution.get_termination_status()
         self.SolveTime = solution.get_solve_time()
+        self.warmstart_data = solution.get_pdlp_warm_start_data()
 
         IsMIP = False
         if solution.problem_category == 0:
