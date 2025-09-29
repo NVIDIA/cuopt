@@ -502,8 +502,8 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
 #ifdef CUPDLP_DEBUG_MODE
   print("constraint_lower_bound", op_problem_scaled_.constraint_lower_bounds);
   print("constraint_upper_bound", op_problem_scaled_.constraint_upper_bounds);
-  print("variable_lower_bound", op_problem_scaled_.variable_lower_bounds);
-  print("variable_upper_bound", op_problem_scaled_.variable_upper_bounds);
+  // print("variable_lower_bound", op_problem_scaled_.variable_lower_bounds);
+  // print("variable_upper_bound", op_problem_scaled_.variable_upper_bounds);
   print("objective_vector", op_problem_scaled_.objective_coefficients);
 #endif
   op_problem_scaled_.is_scaled_ = true;

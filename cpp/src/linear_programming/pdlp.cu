@@ -1524,7 +1524,9 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
 
     const auto& cusparse_view_ = pdhg_solver_.get_cusparse_view();
 
+    int sing_iters = 0;
     for (int i = 0; i < max_iterations; ++i) {
+      ++sing_iters;
       // d_q = d_z
       raft::copy(d_q.data(), d_z.data(), m, stream_view_);
       // norm_q = l2_norm(d_q)
@@ -1588,6 +1590,9 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
 
       if (residual_norm.value(stream_view_) < tolerance) break;
     }
+#ifdef CUPDLP_DEBUG_MODE
+    printf("iter_count %d\n", sing_iters);
+#endif
 
     constexpr f_t scaling_factor = 0.998;
     const f_t step_size          = scaling_factor / std::sqrt(sigma_max_sq.value(stream_view_));

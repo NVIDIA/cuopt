@@ -178,7 +178,8 @@ TEST(LPTest, TestSampleLP2)
   // Set up solver settings
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings{};
   settings.set_optimality_tolerance(1e-2);
-  settings.method = cuopt::linear_programming::method_t::PDLP;
+  settings.method     = cuopt::linear_programming::method_t::PDLP;
+  settings.time_limit = 5;
 
   // Solve
   auto result = cuopt::linear_programming::solve_lp(&handle, problem, settings);

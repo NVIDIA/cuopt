@@ -345,19 +345,26 @@ void convergence_information_t<i_t, f_t>::compute_dual_residual(
   // gradient is recomputed with the dual solution that has been computed since the gradient was
   // last computed
   //  c-K^Ty -> copy c to gradient first
-  raft::copy(
-    tmp_primal.data(), problem_ptr->objective_coefficients.data(), primal_size_h_, stream_view_);
+  thrust::fill(handle_ptr_->get_thrust_policy(), tmp_primal.begin(), tmp_primal.end(), f_t(0));
 
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                                       reusable_device_scalar_value_neg_1_.data(),
+                                                       reusable_device_scalar_value_1_.data(),
                                                        cusparse_view.A_T,
                                                        cusparse_view.dual_solution,
-                                                       reusable_device_scalar_value_1_.data(),
+                                                       reusable_device_scalar_value_0_.data(),
                                                        cusparse_view.tmp_primal,
                                                        CUSPARSE_SPMV_CSR_ALG2,
                                                        (f_t*)cusparse_view.buffer_transpose.data(),
                                                        stream_view_));
+
+  // Substract with the objective vector manually to avoid possible cusparse bug w/ nonzero beta and
+  // len(X)=1
+  raft::linalg::eltwiseSub(tmp_primal.data(),
+                           problem_ptr->objective_coefficients.data(),
+                           tmp_primal.data(),
+                           primal_size_h_,
+                           stream_view_);
 
   if (pdlp_hyper_params::use_reflected_primal_dual) {
     cub::DeviceTransform::Transform(cuda::std::make_tuple(tmp_primal.data(), dual_slack.data()),
