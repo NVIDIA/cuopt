@@ -249,7 +249,7 @@ add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
 # - include paths ---------------------------------------------------------------------------------
 
-target_include_directories(cuopt SYSTEM PRIVATE "${papilo_SOURCE_DIR}/src")
+target_include_directories(cuopt SYSTEM PRIVATE "${papilo_SOURCE_DIR}/src" "${papilo_BINARY_DIR}")
 
 target_include_directories(cuopt
   PRIVATE
