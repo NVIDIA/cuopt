@@ -728,21 +728,24 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
 
   f_t now = toc(stats_.start_time);
 
-  if (nodes_explored % 1000 == 0 ||
-      (upper_bound - lower_bound) < 10 * settings_.absolute_mip_gap_tol || nodes_explored < 1000) {
-    f_t obj              = compute_user_objective(original_lp_, upper_bound);
-    f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
-    std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
+  if (omp_get_thread_num() == 0) {
+    if (nodes_explored % 1000 == 0 ||
+        (upper_bound - lower_bound) < 10 * settings_.absolute_mip_gap_tol ||
+        nodes_explored < 1000) {
+      f_t obj              = compute_user_objective(original_lp_, upper_bound);
+      f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
+      std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
 
-    settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
-                         nodes_explored,
-                         nodes_unexplored,
-                         obj,
-                         user_lower,
-                         node->depth,
-                         nodes_explored > 0 ? stats_.total_lp_iters / nodes_explored : 0,
-                         gap_user.c_str(),
-                         now);
+      settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
+                           nodes_explored,
+                           nodes_unexplored,
+                           obj,
+                           user_lower,
+                           node->depth,
+                           nodes_explored > 0 ? stats_.total_lp_iters / nodes_explored : 0,
+                           gap_user.c_str(),
+                           now);
+    }
   }
 
   if (toc(stats_.start_time) > settings_.time_limit) {
