@@ -257,14 +257,6 @@ i_t branch_and_bound_t<i_t, f_t>::get_heap_size()
 }
 
 template <typename i_t, typename f_t>
-bool branch_and_bound_t<i_t, f_t>::check_gap(f_t lower_bound, f_t upper_bound)
-{
-  f_t gap_rel = user_relative_gap(original_lp_, upper_bound, lower_bound);
-  f_t gap_abs = upper_bound - lower_bound;
-  return gap_rel < settings_.relative_mip_gap_tol || gap_abs < settings_.absolute_mip_gap_tol;
-}
-
-template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solution)
 {
   if (solution.size() != original_problem_.num_cols) {
@@ -714,13 +706,15 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
 
   f_t lower_bound      = node->lower_bound;
   f_t upper_bound      = get_upper_bound();
+  f_t rel_gap          = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  f_t abs_gap          = upper_bound - lower_bound;
   i_t nodes_explored   = 0;
   i_t nodes_unexplored = 0;
 
   nodes_explored   = (stats_.nodes_explored++);
   nodes_unexplored = (stats_.nodes_unexplored--);
 
-  if (check_gap(lower_bound, upper_bound)) {
+  if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
     search_tree->graphviz_node(node, "cutoff", node->lower_bound);
     search_tree->update_tree(node, node_status_t::FATHOMED);
     return;
@@ -729,8 +723,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
   f_t now = toc(stats_.start_time);
 
   if (omp_get_thread_num() == 0) {
-    if (nodes_explored % 1000 == 0 ||
-        (upper_bound - lower_bound) < 10 * settings_.absolute_mip_gap_tol ||
+    if (nodes_explored % 1000 == 0 || abs_gap < 10 * settings_.absolute_mip_gap_tol ||
         nodes_explored < 1000) {
       f_t obj              = compute_user_objective(original_lp_, upper_bound);
       f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
@@ -801,12 +794,14 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
 
     f_t lower_bound = node_ptr->lower_bound;
     f_t upper_bound = get_upper_bound();
+    f_t abs_gap     = upper_bound - lower_bound;
+    f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
 
     lower_bounds_[tid] = lower_bound;
     nodes_explored     = stats_.nodes_explored++;
     nodes_unexplored   = stats_.nodes_unexplored--;
 
-    if (check_gap(lower_bound, upper_bound)) {
+    if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
       search_tree.graphviz_node(node_ptr, "cutoff", node_ptr->lower_bound);
       search_tree.update_tree(node_ptr, node_status_t::FATHOMED);
       continue;
@@ -814,8 +809,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
 
     f_t now            = toc(stats_.start_time);
     f_t time_since_log = last_log == 0 ? 1.0 : toc(last_log);
-    if (((nodes_explored % 1000 == 0 ||
-          (upper_bound - lower_bound) < 10 * settings_.absolute_mip_gap_tol ||
+    if (((nodes_explored % 1000 == 0 || abs_gap < 10 * settings_.absolute_mip_gap_tol ||
           nodes_explored < 1000) &&
          (time_since_log >= 1)) ||
         (time_since_log > 60) || now > settings_.time_limit) {
@@ -846,7 +840,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
 
     if (node_status == node_status_t::TIME_LIMIT) {
       status_ = mip_status_t::TIME_LIMIT;
-      return;
+      break;
 
     } else if (node_status == node_status_t::HAS_CHILDREN) {
       if (stack.size() > 0) {
@@ -871,6 +865,14 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
       stack.push_front(first);
     }
   }
+
+  if (stack.size() != 0)
+    printf("%d : stack size = %ld, status = %d, node id = %d, node lb = %f\n",
+           omp_get_thread_num(),
+           stack.size(),
+           (int)status_.load(),
+           stack.front()->node_id,
+           stack.front()->lower_bound);
 }
 
 template <typename i_t, typename f_t>
@@ -878,6 +880,11 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(search_tree_t<i_t, f_t>& se
                                                      lp_problem_t<i_t, f_t>& leaf_problem,
                                                      csc_matrix_t<i_t, f_t>& Arow)
 {
+  f_t lower_bound = -inf;
+  f_t upper_bound = inf;
+  f_t abs_gap     = inf;
+  f_t rel_gap     = inf;
+
   do {
     mip_node_t<i_t, f_t>* node_ptr = nullptr;
 
@@ -905,11 +912,20 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(search_tree_t<i_t, f_t>& se
       active_subtrees_--;
     }
 
-  } while (status_ == mip_status_t::RUNNING && !check_gap(get_lower_bound(), get_upper_bound()) &&
+    lower_bound = get_lower_bound();
+    upper_bound = get_upper_bound();
+    abs_gap     = upper_bound - lower_bound;
+    rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+
+  } while (status_ == mip_status_t::RUNNING && abs_gap > settings_.absolute_mip_gap_tol &&
+           rel_gap > settings_.relative_mip_gap_tol &&
            (active_subtrees_ > 0 || get_heap_size() > 0));
 
-  // Check if the solver exited naturally, or was due to a timeout or numerical error.
-  if (status_ == mip_status_t::RUNNING) { status_ = mip_status_t::COMPLETED; }
+  // Check if it is the last thread that exited the loop and no
+  // timeout or numerical error has happen.
+  if (status_ == mip_status_t::RUNNING && active_subtrees_ == 0) {
+    status_ = mip_status_t::COMPLETED;
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -937,8 +953,11 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
         mip_node_t<i_t, f_t>* node_ptr = stack.front();
         stack.pop_front();
         f_t upper_bound = get_upper_bound();
+        f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, node_ptr->lower_bound);
 
-        if (check_gap(node_ptr->lower_bound, upper_bound)) { continue; }
+        if (node_ptr->lower_bound > upper_bound || rel_gap > settings_.relative_mip_gap_tol) {
+          continue;
+        }
 
         node_status_t node_status =
           solve_node_lp(subtree, node_ptr, leaf_problem, Arow, upper_bound, log, 'D');
