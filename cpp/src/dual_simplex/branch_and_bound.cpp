@@ -865,14 +865,6 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
       stack.push_front(first);
     }
   }
-
-  if (stack.size() != 0)
-    printf("%d : stack size = %ld, status = %d, node id = %d, node lb = %f\n",
-           omp_get_thread_num(),
-           stack.size(),
-           (int)status_.load(),
-           stack.front()->node_id,
-           stack.front()->lower_bound);
 }
 
 template <typename i_t, typename f_t>
