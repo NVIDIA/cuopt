@@ -19,8 +19,6 @@ set -euo pipefail
 
 . /opt/conda/etc/profile.d/conda.sh
 
-#CUOPT_VERSION="$(rapids-version)"
-
 rapids-logger "Downloading artifacts from previous jobs"
 CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
 PYTHON_CHANNEL=$(rapids-download-conda-from-github python)
@@ -32,12 +30,6 @@ rapids-dependency-file-generator \
   --prepend-channel "${CPP_CHANNEL}" \
   --prepend-channel "${PYTHON_CHANNEL}" \
   --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch);py=${RAPIDS_PY_VERSION}" | tee env.yaml
-
-#rapids-logger "Listing local channels"
-#ls ${CPP_CHANNEL}/linux-64
-#ls ${CPP_CHANNEL}/noarch
-#ls ${PYTHON_CHANNEL}/linux-64
-#ls ${PYTHON_CHANNEL}/noarch
 
 rapids-mamba-retry env create --yes --verbose -f env.yaml -n test
 
