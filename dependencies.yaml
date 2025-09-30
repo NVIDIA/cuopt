@@ -60,6 +60,11 @@ files:
     output: none
     includes:
       - py_version
+      - depends_on_libcuopt
+      - depends_on_cuopt
+      - depends_on_cuopt_server
+      - depends_on_cuopt_sh_client
+      - depends_on_mps_parser
       - test_python_common
       - test_python_cuopt
       - test_python_cuopt_server
