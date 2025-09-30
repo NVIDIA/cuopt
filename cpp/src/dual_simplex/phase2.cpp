@@ -1495,13 +1495,13 @@ void compute_delta_y(const basis_update_mpf_t<i_t, f_t>& ft,
 }
 
 template <typename i_t, typename f_t>
-void update_dual_variables(const sparse_vector_t<i_t, f_t>& delta_y_sparse,
-                           const std::vector<i_t>& delta_z_indices,
-                           const std::vector<f_t>& delta_z,
-                           f_t step_length,
-                           i_t leaving_index,
-                           std::vector<f_t>& y,
-                           std::vector<f_t>& z)
+i_t update_dual_variables(const sparse_vector_t<i_t, f_t>& delta_y_sparse,
+                          const std::vector<i_t>& delta_z_indices,
+                          const std::vector<f_t>& delta_z,
+                          f_t step_length,
+                          i_t leaving_index,
+                          std::vector<f_t>& y,
+                          std::vector<f_t>& z)
 {
   // Update dual variables
   // y <- y + steplength * delta_y
@@ -1517,6 +1517,7 @@ void update_dual_variables(const sparse_vector_t<i_t, f_t>& delta_y_sparse,
     z[j] += step_length * delta_z[j];
   }
   z[leaving_index] += step_length * delta_z[leaving_index];
+  return 0;
 }
 
 template <typename i_t, typename f_t>
@@ -2514,6 +2515,10 @@ dual::status_t dual_phase2(i_t phase,
                                                  delta_z_indices,
                                                  nonbasic_mark);
       entering_index = bfrt.compute_step_length(step_length, nonbasic_entering_index);
+      if (entering_index == -4) {
+        settings.log.printf("Numerical issues encountered in ratio test.\n");
+        return dual::status_t::NUMERICAL;
+      }
       timers.bfrt_time += timers.stop_timer();
     } else {
       entering_index = phase2::phase2_ratio_test(
@@ -2663,8 +2668,12 @@ dual::status_t dual_phase2(i_t phase,
     // Update dual variables
     // y <- y + steplength * delta_y
     // z <- z + steplength * delta_z
-    phase2::update_dual_variables(
+    i_t update_dual_variables_status = phase2::update_dual_variables(
       delta_y_sparse, delta_z_indices, delta_z, step_length, leaving_index, y, z);
+    if (update_dual_variables_status == -1) {
+      settings.log.printf("Numerical issues encountered in update_dual_variables.\n");
+      return dual::status_t::NUMERICAL;
+    }
     timers.vector_time += timers.stop_timer();
 
 #ifdef COMPUTE_DUAL_RESIDUAL

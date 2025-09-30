@@ -56,6 +56,7 @@ option(BUILD_LP_ONLY "Build only linear programming components, exclude routing 
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
 option(WRITE_FATBIN "Enable fatbin writing" ON)
+option(HOST_LINEINFO "Build with debug line information for host code" OFF)
 
 message(VERBOSE "cuOpt: Enable nvcc -lineinfo: ${CMAKE_CUDA_LINEINFO}")
 message(VERBOSE "cuOpt: Build cuOpt unit-tests: ${BUILD_TESTS}")
@@ -64,6 +65,7 @@ message(VERBOSE "cuOpt: Disable OpenMP: ${DISABLE_OPENMP}")
 message(VERBOSE "cuOpt: Build LP-only mode: ${BUILD_LP_ONLY}")
 message(VERBOSE "cuOpt: Skip C/Python adapters: ${SKIP_C_PYTHON_ADAPTERS}")
 message(VERBOSE "cuOpt: Skip routing build: ${SKIP_ROUTING_BUILD}")
+message(VERBOSE "cuOpt: Build with debug line information for host code: ${HOST_LINEINFO}")
 message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
 
 # ##################################################################################################
@@ -83,6 +85,14 @@ set(CUOPT_CUDA_FLAGS "")
 if(CMAKE_COMPILER_IS_GNUCXX)
   list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations)
 endif(CMAKE_COMPILER_IS_GNUCXX)
+
+# To use sanitizer with cuda runtime, one must follow a few steps:
+# 1. Run the binary with env var set: LD_PRELOAD="$(gcc -print-file-name=libasan.so)" ASAN_OPTIONS='protect_shadow_gap=0:replace_intrin=0'
+# 2. (Optional) To run with a debugger (gdb or cuda-gdb) use the additional ASAN option alloc_dealloc_mismatch=0
+if(BUILD_SANITIZER)
+  list(APPEND CUOPT_CXX_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer -g -Wno-error=maybe-uninitialized)
+  add_link_options(-fsanitize=address,undefined)
+endif(BUILD_SANITIZER)
 
 if(DEFINE_ASSERT)
   add_definitions(-DASSERT_MODE)
@@ -195,6 +205,9 @@ endif()
 
 set(CUOPT_SRC_FILES )
 add_subdirectory(src)
+if (HOST_LINEINFO)
+  set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
+endif()
 add_library(cuopt SHARED
   ${CUOPT_SRC_FILES}
 )

@@ -159,7 +159,7 @@ TEST(ErrorTest, TestError)
 
   // Set constraint bounds
   std::vector<double> lower_bounds = {1.0};
-  std::vector<double> upper_bounds = {0.0};
+  std::vector<double> upper_bounds = {1.0, 1.0};
   problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
   problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
 

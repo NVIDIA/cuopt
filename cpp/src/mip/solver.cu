@@ -73,12 +73,14 @@ struct branch_and_bound_solution_helper_t {
 
   void solution_callback(std::vector<f_t>& solution, f_t objective)
   {
-    dm->population.add_external_solution(solution, objective);
+    dm->population.add_external_solution(solution, objective, solution_origin_t::BRANCH_AND_BOUND);
   }
 
-  void set_simplex_solution(std::vector<f_t>& solution, f_t objective)
+  void set_simplex_solution(std::vector<f_t>& solution,
+                            std::vector<f_t>& dual_solution,
+                            f_t objective)
   {
-    dm->set_simplex_solution(solution, objective);
+    dm->set_simplex_solution(solution, dual_solution, objective);
   }
 
   void preempt_heuristic_solver() { dm->population.preempt_heuristic_solver(); }
@@ -132,10 +134,11 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     CUOPT_LOG_INFO("Problem reduced to a LP, running concurrent LP");
     pdlp_solver_settings_t<i_t, f_t> settings{};
     settings.time_limit = timer_.remaining_time();
+    auto lp_timer       = timer_t(settings.time_limit);
     settings.method     = method_t::Concurrent;
 
     auto opt_sol = solve_lp_with_method<i_t, f_t>(
-      *context.problem_ptr->original_problem_ptr, *context.problem_ptr, settings);
+      *context.problem_ptr->original_problem_ptr, *context.problem_ptr, settings, lp_timer);
 
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.copy_new_assignment(host_copy(opt_sol.get_primal_solution()));
@@ -172,6 +175,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     if (context.settings.num_cpu_threads != -1) {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
     }
+    CUOPT_LOG_INFO("Using %d CPU threads for B&B", branch_and_bound_settings.num_threads);
 
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =
@@ -186,7 +190,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       std::bind(&branch_and_bound_solution_helper_t<i_t, f_t>::set_simplex_solution,
                 &solution_helper,
                 std::placeholders::_1,
-                std::placeholders::_2);
+                std::placeholders::_2,
+                std::placeholders::_3);
 
     // Create the branch and bound object
     branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(

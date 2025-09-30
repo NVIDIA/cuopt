@@ -199,6 +199,19 @@ void data_model_view_t<i_t, f_t>::set_problem_name(const std::string& problem_na
 }
 
 template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::set_variable_names(
+  const std::vector<std::string>& variables_names)
+{
+  variable_names_ = variables_names;
+}
+
+template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::set_row_names(const std::vector<std::string>& row_names)
+{
+  row_names_ = row_names;
+}
+
+template <typename i_t, typename f_t>
 span<const f_t> data_model_view_t<i_t, f_t>::get_constraint_matrix_values() const noexcept
 {
   return A_;
@@ -304,6 +317,18 @@ template <typename i_t, typename f_t>
 bool data_model_view_t<i_t, f_t>::get_sense() const noexcept
 {
   return maximize_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<std::string>& data_model_view_t<i_t, f_t>::get_variable_names() const noexcept
+{
+  return variable_names_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<std::string>& data_model_view_t<i_t, f_t>::get_row_names() const noexcept
+{
+  return row_names_;
 }
 
 // QPS-specific getter implementations

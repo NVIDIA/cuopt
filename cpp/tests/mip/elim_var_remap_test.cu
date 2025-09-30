@@ -163,8 +163,9 @@ void test_elim_var_solution(std::string test_instance)
 
   detail::solution_t<int, double> solution_1(standardized_problem);
   detail::relaxed_lp_settings_t lp_settings;
-  lp_settings.time_limit = 120.;
-  lp_settings.tolerance  = default_settings.tolerances.absolute_tolerance;
+  lp_settings.time_limit              = 120.;
+  lp_settings.tolerance               = default_settings.tolerances.absolute_tolerance;
+  lp_settings.per_constraint_residual = false;
   // run the problem through pdlp
   auto result_1 = detail::get_relaxed_lp_solution(standardized_problem, solution_1, lp_settings);
   solution_1.compute_feasibility();
@@ -192,8 +193,9 @@ void test_elim_var_solution(std::string test_instance)
 
   detail::solution_t<int, double> solution_2(sub_problem);
   detail::relaxed_lp_settings_t lp_settings_2;
-  lp_settings_2.time_limit = 120.;
-  lp_settings_2.tolerance  = default_settings.tolerances.absolute_tolerance;
+  lp_settings_2.time_limit              = 120.;
+  lp_settings_2.tolerance               = default_settings.tolerances.absolute_tolerance;
+  lp_settings_2.per_constraint_residual = false;
   // run the problem through pdlp
   auto result_2 = detail::get_relaxed_lp_solution(sub_problem, solution_2, lp_settings_2);
   solution_2.compute_feasibility();

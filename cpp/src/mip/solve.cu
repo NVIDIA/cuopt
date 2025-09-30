@@ -90,6 +90,8 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     solution.compute_objective();  // just to ensure h_user_obj is set
     auto stats           = solver_stats_t<i_t, f_t>{};
     stats.solution_bound = solution.get_user_objective();
+    // log the objective for scripts which need it
+    CUOPT_LOG_INFO("Best feasible: %f", solution.get_user_objective());
     return solution.get_solution(true, stats, false);
   }
   // problem contains unpreprocessed data
@@ -106,16 +108,15 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                "Size mismatch");
   cuopt_assert(problem.original_problem_ptr->get_n_constraints() == scaled_problem.n_constraints,
                "Size mismatch");
-  detail::pdhg_solver_t<i_t, f_t> pdhg_solver(scaled_problem.handle_ptr, scaled_problem);
   detail::pdlp_initial_scaling_strategy_t<i_t, f_t> scaling(
     scaled_problem.handle_ptr,
     scaled_problem,
     pdlp_hyper_params::default_l_inf_ruiz_iterations,
     (f_t)pdlp_hyper_params::default_alpha_pock_chambolle_rescaling,
-    pdhg_solver,
     scaled_problem.reverse_coefficients,
     scaled_problem.reverse_offsets,
     scaled_problem.reverse_constraints,
+    nullptr,
     running_mip);
 
   cuopt_func_call(auto saved_problem = scaled_problem);
@@ -157,12 +158,13 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 {
   try {
     constexpr f_t max_time_limit = 1000000000;
-    const f_t time_limit         = settings.time_limit == 0 ? max_time_limit : settings.time_limit;
-    if (settings.heuristics_only && time_limit == std::numeric_limits<f_t>::max()) {
-      CUOPT_LOG_ERROR("Time limit cannot be infinity when heuristics only is set");
-      cuopt_expects(false,
-                    error_type_t::RuntimeError,
-                    "Time limit cannot be infinity when heuristics only is set");
+    f_t time_limit =
+      (settings.time_limit == 0 || settings.time_limit == std::numeric_limits<f_t>::infinity())
+        ? max_time_limit
+        : settings.time_limit;
+    if (settings.heuristics_only && (time_limit == std::numeric_limits<f_t>::max() ||
+                                     time_limit == std::numeric_limits<f_t>::infinity())) {
+      time_limit = max_time_limit;
     }
 
     // Create log stream for file logging and add it to default logger
@@ -178,6 +180,13 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     // This is required as user might forget to set some fields
     problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
+
+    // Check for crossing bounds. Return infeasible if there are any
+    if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
+      return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
+                                      solver_stats_t<i_t, f_t>{},
+                                      op_problem.get_handle_ptr()->get_stream());
+    }
 
     auto timer = cuopt::timer_t(time_limit);
 
@@ -214,7 +223,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      problem.write_as_mps(settings.user_problem_file);
+      op_problem.write_to_mps(settings.user_problem_file);
     }
 
     // this is for PDLP, i think this should be part of pdlp solver

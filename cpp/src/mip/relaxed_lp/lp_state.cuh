@@ -31,14 +31,10 @@ class lp_state_t {
   lp_state_t(problem_t<i_t, f_t>& problem, rmm::cuda_stream_view stream)
     : prev_primal(problem.n_variables, stream), prev_dual(problem.n_constraints, stream)
   {
-    thrust::fill(problem.handle_ptr->get_thrust_policy(),
-                 prev_primal.data(),
-                 prev_primal.data() + problem.n_variables,
-                 0);
-    thrust::fill(problem.handle_ptr->get_thrust_policy(),
-                 prev_dual.data(),
-                 prev_dual.data() + problem.n_constraints,
-                 0);
+    thrust::fill(
+      rmm::exec_policy(stream), prev_primal.data(), prev_primal.data() + problem.n_variables, 0);
+    thrust::fill(
+      rmm::exec_policy(stream), prev_dual.data(), prev_dual.data() + problem.n_constraints, 0);
   }
 
   lp_state_t(problem_t<i_t, f_t>& problem) : lp_state_t(problem, problem.handle_ptr->get_stream())

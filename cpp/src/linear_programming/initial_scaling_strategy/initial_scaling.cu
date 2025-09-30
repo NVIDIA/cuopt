@@ -39,17 +39,17 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
   problem_t<i_t, f_t>& op_problem_scaled,
   i_t number_of_ruiz_iterations,
   f_t alpha,
-  pdhg_solver_t<i_t, f_t>& pdhg_solver,
   rmm::device_uvector<f_t>& A_T,
   rmm::device_uvector<i_t>& A_T_offsets,
   rmm::device_uvector<i_t>& A_T_indices,
+  pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr,
   bool running_mip)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     primal_size_h_(op_problem_scaled.n_variables),
     dual_size_h_(op_problem_scaled.n_constraints),
     op_problem_scaled_(op_problem_scaled),
-    pdhg_solver_(pdhg_solver),
+    pdhg_solver_ptr_(pdhg_solver_ptr),
     A_T_(A_T),
     A_T_offsets_(A_T_offsets),
     A_T_indices_(A_T_indices),
@@ -398,7 +398,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
 
   op_problem_scaled_.is_scaled_ = true;
   if (!running_mip_) {
-    scale_solutions(pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution());
+    scale_solutions(pdhg_solver_ptr_->get_primal_solution(), pdhg_solver_ptr_->get_dual_solution());
   }
 }
 

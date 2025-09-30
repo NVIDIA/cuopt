@@ -20,6 +20,7 @@
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/types.hpp>
 
+#include <atomic>
 #include <cmath>
 #include <list>
 #include <memory>
@@ -33,6 +34,7 @@ enum class node_status_t : int {
   INTEGER_FEASIBLE = 2,  // Node has an integer feasible solution
   INFEASIBLE       = 3,  // Node is infeasible
   FATHOMED         = 4,  // Node objective is greater than the upper bound
+  HAS_CHILDREN     = 5,  // Node has children to explore
 };
 
 bool inactive_status(node_status_t status);
@@ -40,7 +42,7 @@ bool inactive_status(node_status_t status);
 template <typename i_t, typename f_t>
 class mip_node_t {
  public:
-  mip_node_t(f_t root_lower_bound, std::vector<variable_status_t>& basis)
+  mip_node_t(f_t root_lower_bound, const std::vector<variable_status_t>& basis)
     : status(node_status_t::ACTIVE),
       lower_bound(root_lower_bound),
       depth(0),
@@ -53,13 +55,14 @@ class mip_node_t {
     children[0] = nullptr;
     children[1] = nullptr;
   }
+
   mip_node_t(const lp_problem_t<i_t, f_t>& problem,
              mip_node_t* parent_node,
              i_t node_num,
              i_t branch_variable,
              i_t branch_direction,
              f_t branch_var_value,
-             std::vector<variable_status_t>& basis)
+             const std::vector<variable_status_t>& basis)
     : status(node_status_t::ACTIVE),
       lower_bound(parent_node->lower_bound),
       depth(parent_node->depth + 1),
@@ -102,6 +105,10 @@ class mip_node_t {
       parent_ptr                             = parent_ptr->parent;
     }
   }
+
+  mip_node_t* get_down_child() const { return children[0].get(); }
+
+  mip_node_t* get_up_child() const { return children[1].get(); }
 
   void add_children(std::unique_ptr<mip_node_t>&& down_child,
                     std::unique_ptr<mip_node_t>&& up_child)

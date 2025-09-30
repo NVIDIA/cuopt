@@ -137,7 +137,6 @@ class feasibility_pump_t {
   bool check_distance_cycle(solution_t<i_t, f_t>& solution);
   void reset();
   void resize_vectors(problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr);
-  void save_best_excess_solution(solution_t<i_t, f_t>& solution);
   bool random_round_with_fj(solution_t<i_t, f_t>& solution, timer_t& round_timer);
   bool round_multiple_points(solution_t<i_t, f_t>& solution);
   void relax_general_integers(solution_t<i_t, f_t>& solution);
@@ -156,7 +155,6 @@ class feasibility_pump_t {
   rmm::device_uvector<f_t> last_projection;
   rmm::device_uvector<var_t> orig_variable_types;
   f_t best_excess;
-  rmm::device_uvector<f_t> best_excess_solution;
   rmm::device_uvector<f_t>& lp_optimal_solution;
   std::mt19937 rng;
   std::deque<f_t> last_distances;
