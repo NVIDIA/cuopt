@@ -76,7 +76,7 @@ class PDLPSolverMode(IntEnum):
 
     Attributes
     ----------
-    Stable2
+    Stable3
         Best overall mode from experiments; balances speed and convergence
         success. If you want to use the legacy version, use Stable1.
     Methodical1
@@ -86,13 +86,14 @@ class PDLPSolverMode(IntEnum):
 
     Notes
     -----
-    Default mode is Stable2.
+    Default mode is Stable3.
     """
 
     Stable1 = 0
     Stable2 = auto()
     Methodical1 = auto()
     Fast1 = auto()
+    Stable3 = auto()
 
     def __str__(self):
         """Convert the solver mode to a string.

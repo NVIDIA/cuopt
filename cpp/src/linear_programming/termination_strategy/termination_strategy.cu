@@ -81,6 +81,7 @@ pdlp_termination_status_t pdlp_termination_strategy_t<i_t, f_t>::evaluate_termin
   pdhg_solver_t<i_t, f_t>& current_pdhg_solver,
   rmm::device_uvector<f_t>& primal_iterate,
   rmm::device_uvector<f_t>& dual_iterate,
+  [[maybe_unused]] const rmm::device_uvector<f_t>& dual_slack,
   const rmm::device_uvector<f_t>& combined_bounds,
   const rmm::device_uvector<f_t>& objective_coefficients)
 {
@@ -89,6 +90,7 @@ pdlp_termination_status_t pdlp_termination_strategy_t<i_t, f_t>::evaluate_termin
   convergence_information_.compute_convergence_information(current_pdhg_solver,
                                                            primal_iterate,
                                                            dual_iterate,
+                                                           dual_slack,
                                                            combined_bounds,
                                                            objective_coefficients,
                                                            settings_);

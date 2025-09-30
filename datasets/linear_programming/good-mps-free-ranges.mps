@@ -24,7 +24,6 @@ COLUMNS
   VAR2    COST      0.1
  VAR2  ROW1      4         ROW2      10.1
     VAR2      ROW3      0.2       ROW4      0.4
-        VAR2 ROW3      0.2            ROW4      0.4
     VAR2                  ROW5   1.4  ROW6                             2.4
 RHS
  RHS1       ROW1   5.4       ROW2        1.5
