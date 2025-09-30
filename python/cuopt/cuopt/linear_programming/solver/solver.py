@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
 import os
+import time
 
 from cuopt.linear_programming.solver import solver_wrapper
 from cuopt.linear_programming.solver_settings import SolverSettings
@@ -82,7 +82,11 @@ def Solve(data_model, solver_settings=None):
     >>> print(solution.get_vars()["var_name"])
     """
 
-    emit_stamps = os.environ.get("CUOPT_EXTRA_TIMESTAMPS", False) in (True, "True", "true")
+    emit_stamps = os.environ.get("CUOPT_EXTRA_TIMESTAMPS", False) in (
+        True,
+        "True",
+        "true",
+    )
     if emit_stamps:
         print(f"CUOPT_SOLVE_START: {time.time()}")
 

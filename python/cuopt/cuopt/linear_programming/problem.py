@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import copy
 from enum import Enum
-import time
 
 import cuopt_mps_parser
 import numpy as np
@@ -769,7 +769,7 @@ class Problem:
 
     def _to_data_model(self):
         dm = data_model.DataModel()
-        
+
         # iterate through the constraints and construct the constraint matrix
         n = len(self.vars)
         self.rhs = []

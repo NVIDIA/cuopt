@@ -27,10 +27,9 @@
 
 #include <cuopt/version_config.hpp>
 
-#include <memory>
 #include <cstdlib>
+#include <memory>
 #include <string>
-
 
 using namespace cuopt::mps_parser;
 using namespace cuopt::linear_programming;
@@ -118,9 +117,8 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
                                const char* variable_types,
                                cuOptOptimizationProblem* problem_ptr)
 {
-
   cuopt::utilities::printTimestamp("CUOPT_CREATE_PROBLEM");
-  
+
   if (problem_ptr == nullptr || objective_coefficients == nullptr ||
       constraint_matrix_row_offsets == nullptr || constraint_matrix_column_indices == nullptr ||
       constraint_matrix_coefficent_values == nullptr || constraint_sense == nullptr ||
@@ -176,9 +174,8 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
                                      const char* variable_types,
                                      cuOptOptimizationProblem* problem_ptr)
 {
-
   cuopt::utilities::printTimestamp("CUOPT_CREATE_PROBLEM");
-  
+
   if (problem_ptr == nullptr || objective_coefficients == nullptr ||
       constraint_matrix_row_offsets == nullptr || constraint_matrix_column_indices == nullptr ||
       constraint_matrix_coefficent_values == nullptr || constraint_lower_bounds == nullptr ||
@@ -627,7 +624,7 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
     *solution_ptr = static_cast<cuOptSolution>(solution_and_stream_view);
 
     cuopt::utilities::printTimestamp("CUOPT_SOLVE_RETURN");
-    
+
     return static_cast<cuopt_int_t>(
       solution_and_stream_view->mip_solution_ptr->get_error_status().get_error_type());
   } else {

@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
 import os
+import time
 
 from . import data_model_wrapper
 from .utilities import catch_cuopt_exception
@@ -154,7 +154,11 @@ class DataModel(data_model_wrapper.DataModel):
     """
 
     def __init__(self):
-        if os.environ.get("CUOPT_EXTRA_TIMESTAMPS", False) in (True, "True", "true"):
+        if os.environ.get("CUOPT_EXTRA_TIMESTAMPS", False) in (
+            True,
+            "True",
+            "true",
+        ):
             print(f"CUOPT_CREATE_PROBLEM: {time.time()}")
         super().__init__()
 
