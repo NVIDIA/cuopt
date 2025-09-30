@@ -22,6 +22,9 @@
 #include <linear_programming/restart_strategy/pdlp_restart_strategy.cuh>
 #include <linear_programming/utils.cuh>
 #include <mip/mip_constants.hpp>
+#ifdef CUPDLP_DEBUG_MODE
+#include <utilities/copy_helpers.hpp>
+#endif
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/common/nvtx.hpp>
@@ -276,7 +279,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::get_average_solutions(rmm::device_uvecto
 }
 
 template <typename i_t, typename f_t>
-void pdlp_restart_strategy_t<i_t, f_t>::run_trust_region_restart(
+bool pdlp_restart_strategy_t<i_t, f_t>::run_trust_region_restart(
   pdhg_solver_t<i_t, f_t>& pdhg_solver,
   rmm::device_uvector<f_t>& primal_solution_avg,
   rmm::device_uvector<f_t>& dual_solution_avg,
@@ -295,7 +298,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::run_trust_region_restart(
 #ifdef PDLP_VERBOSE_MODE
     std::cout << "    No internal iteration, can't restart yet, returning:" << std::endl;
 #endif
-    return;
+    return false;
   }
 
   // make the step sizes into the norm weights that will be used throughout the computations
@@ -362,6 +365,8 @@ void pdlp_restart_strategy_t<i_t, f_t>::run_trust_region_restart(
     reset_internal();
     weighted_average_solution_.reset_weighted_average_solution();
   }
+
+  return restart;
 }
 
 template <typename f_t>
@@ -642,7 +647,202 @@ bool pdlp_restart_strategy_t<i_t, f_t>::run_kkt_restart(
 }
 
 template <typename i_t, typename f_t>
-void pdlp_restart_strategy_t<i_t, f_t>::compute_restart(
+bool pdlp_restart_strategy_t<i_t, f_t>::should_cupdlpx_restart(i_t total_number_of_iterations)
+{
+  bool should_restart = false;
+
+  if (total_number_of_iterations == pdlp_hyper_params::major_iteration) {
+#ifdef CUPDLP_DEBUG_MODE
+    printf("forced restart at first major\n");
+#endif
+    should_restart = true;
+  } else if (total_number_of_iterations > pdlp_hyper_params::major_iteration) {
+    cuopt_assert(initial_fixed_point_error_ != std::numeric_limits<f_t>::signaling_NaN(),
+                 "Numerical error: initial_fixed_point_error_ should not be at nan at this stage");
+    cuopt_assert(fixed_point_error_ != std::numeric_limits<f_t>::signaling_NaN(),
+                 "Numerical error: fixed_point_error_ should not be at nan at this stage");
+    if (fixed_point_error_ <= pdlp_hyper_params::host_default_sufficient_reduction_for_restart *
+                                initial_fixed_point_error_) {
+#ifdef CUPDLP_DEBUG_MODE
+
+      printf("sufficient restart\n");
+#endif
+      should_restart = true;
+    } else if (fixed_point_error_ <=
+                 pdlp_hyper_params::host_default_necessary_reduction_for_restart *
+                   initial_fixed_point_error_ &&
+               fixed_point_error_ > last_trial_fixed_point_error_) {
+#ifdef CUPDLP_DEBUG_MODE
+      printf("neseccary restart\n");
+#endif
+      should_restart = true;
+    } else if (should_do_artificial_restart(total_number_of_iterations)) {
+#ifdef CUPDLP_DEBUG_MODE
+      printf("artificial restart\n");
+#endif
+      should_restart = true;
+    }
+  }
+  last_trial_fixed_point_error_ = fixed_point_error_;
+  return should_restart;
+}
+
+template <typename i_t, typename f_t>
+void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
+  const convergence_information_t<i_t, f_t>& current_convergence_information,
+  pdhg_solver_t<i_t, f_t>& pdhg_solver,
+  rmm::device_scalar<f_t>& primal_weight,
+  const rmm::device_scalar<f_t>& step_size,
+  rmm::device_scalar<f_t>& primal_step_size,
+  rmm::device_scalar<f_t>& dual_step_size,
+  rmm::device_scalar<f_t>& best_primal_weight)
+{
+  // Computing the deltas
+  distance_squared_moved_from_last_restart_period(
+    pdhg_solver.get_potential_next_primal_solution(),
+    last_restart_duality_gap_.primal_solution_,
+    pdhg_solver.get_primal_tmp_resource(),
+    primal_size_h_,
+    1,
+    last_restart_duality_gap_.primal_distance_traveled_);
+  distance_squared_moved_from_last_restart_period(
+    pdhg_solver.get_potential_next_dual_solution(),
+    last_restart_duality_gap_.dual_solution_,
+    pdhg_solver.get_dual_tmp_resource(),
+    dual_size_h_,
+    1,
+    last_restart_duality_gap_.dual_distance_traveled_);
+
+  const f_t l2_primal_distance =
+    std::sqrt(last_restart_duality_gap_.primal_distance_traveled_.value(stream_view_));
+  const f_t l2_dual_distance =
+    std::sqrt(last_restart_duality_gap_.dual_distance_traveled_.value(stream_view_));
+
+#ifdef CUPDLP_DEBUG_MODE
+  printf("l2 primal distance: %lf l2 dual distance %lf\n", l2_primal_distance, l2_dual_distance);
+  printf("relative L2 primal residual %lf relative L2 dual residual %lf\n",
+         current_convergence_information.get_relative_l2_primal_residual_value(),
+         current_convergence_information.get_relative_l2_dual_residual_value());
+#endif
+
+  const f_t relative_l2_dual_residual_value =
+    current_convergence_information.get_relative_l2_dual_residual_value();
+  const f_t relative_l2_primal_residual_value =
+    current_convergence_information.get_relative_l2_primal_residual_value();
+  const f_t ratio_infeas = (relative_l2_primal_residual_value == f_t(0.0))
+                             ? std::numeric_limits<f_t>::infinity()
+                             : relative_l2_dual_residual_value / relative_l2_primal_residual_value;
+
+  if (l2_primal_distance > f_t(1e-16) && l2_dual_distance > f_t(1e-16) &&
+      l2_primal_distance < f_t(1e12) && l2_dual_distance < f_t(1e12) && ratio_infeas > f_t(1e-8) &&
+      ratio_infeas < f_t(1e8)) {
+#ifdef CUPDLP_DEBUG_MODE
+    printf("Compute new primal weight\n");
+#endif
+    const f_t current_primal_weight = primal_weight.value(stream_view_);
+    const f_t error =
+      std::log(l2_dual_distance) - std::log(l2_primal_distance) - std::log(current_primal_weight);
+    primal_weight_error_sum_ *= pdlp_hyper_params::restart_i_smooth;
+    primal_weight_error_sum_ += error;
+    const f_t delta_error = error - primal_weight_last_error_;
+    const f_t new_primal_weight =
+      std::exp(pdlp_hyper_params::restart_k_p * error +
+               pdlp_hyper_params::restart_k_i * primal_weight_error_sum_ +
+               pdlp_hyper_params::restart_k_d * delta_error) *
+      current_primal_weight;
+    primal_weight.set_value_async(new_primal_weight, stream_view_);
+    primal_weight_last_error_      = error;
+    const f_t h_step_size          = step_size.value(stream_view_);
+    const f_t new_primal_step_size = h_step_size / new_primal_weight;
+    const f_t new_dual_step_size   = h_step_size * new_primal_weight;
+    primal_step_size.set_value_async(new_primal_step_size, stream_view_);
+    dual_step_size.set_value_async(new_dual_step_size, stream_view_);
+  } else {
+#ifdef CUPDLP_DEBUG_MODE
+    printf("Setting new primal weight to best primal weight\n");
+#endif
+    const f_t best_primal_weight_value = best_primal_weight.value(stream_view_);
+    primal_weight.set_value_async(best_primal_weight_value, stream_view_);
+    primal_weight_error_sum_       = f_t(0.0);
+    primal_weight_last_error_      = f_t(0.0);
+    const f_t h_step_size          = step_size.value(stream_view_);
+    const f_t new_primal_step_size = h_step_size / best_primal_weight_value;
+    const f_t new_dual_step_size   = h_step_size * best_primal_weight_value;
+    primal_step_size.set_value_async(new_primal_step_size, stream_view_);
+    dual_step_size.set_value_async(new_dual_step_size, stream_view_);
+  }
+
+  // TODO possible error if relative_l2_primal_residual_value == 0
+  const f_t primal_dual_residual_gap =
+    std::abs(std::log10(relative_l2_dual_residual_value / relative_l2_primal_residual_value));
+  if (primal_dual_residual_gap < best_primal_dual_residual_gap_) {
+    best_primal_dual_residual_gap_ = primal_dual_residual_gap;
+    const f_t new_primal_weight    = primal_weight.value(stream_view_);
+    best_primal_weight.set_value_async(new_primal_weight, stream_view_);
+  }
+
+#ifdef CUPDLP_DEBUG_MODE
+  printf("New primal weight %lf\n", primal_weight.value(stream_view_));
+  printf("New best_primal_weight %lf\n", best_primal_weight.value(stream_view_));
+  printf("New primal_weight_error_sum_ %lf\n", primal_weight_error_sum_);
+  printf("New primal_weight_last_error_ %lf\n", primal_weight_last_error_);
+  printf("New best_primal_dual_residual_gap_ %lf\n", best_primal_dual_residual_gap_);
+#endif
+
+  raft::copy(last_restart_duality_gap_.primal_solution_.data(),
+             pdhg_solver.get_potential_next_primal_solution().data(),
+             primal_size_h_,
+             stream_view_);
+  raft::copy(pdhg_solver.get_primal_solution().data(),
+             pdhg_solver.get_potential_next_primal_solution().data(),
+             primal_size_h_,
+             stream_view_);
+  raft::copy(last_restart_duality_gap_.dual_solution_.data(),
+             pdhg_solver.get_potential_next_dual_solution().data(),
+             dual_size_h_,
+             stream_view_);
+  raft::copy(pdhg_solver.get_dual_solution().data(),
+             pdhg_solver.get_potential_next_dual_solution().data(),
+             dual_size_h_,
+             stream_view_);
+
+#ifdef CUPDLP_DEBUG_MODE
+  print("New last_restart_duality_gap_.primal_solution_",
+        last_restart_duality_gap_.primal_solution_);
+  print("New pdhg_solver.get_primal_solution", pdhg_solver.get_primal_solution());
+  print("New last_restart_duality_gap_.dual_solution_", last_restart_duality_gap_.dual_solution_);
+  print("New pdhg_solver.get_dual_solution", pdhg_solver.get_dual_solution());
+#endif
+
+  weighted_average_solution_.iterations_since_last_restart_ = 0;
+  last_trial_fixed_point_error_                             = std::numeric_limits<f_t>::infinity();
+}
+
+template <typename i_t, typename f_t>
+bool pdlp_restart_strategy_t<i_t, f_t>::run_cupdlpx_restart(
+  const convergence_information_t<i_t, f_t>& current_convergence_information,
+  pdhg_solver_t<i_t, f_t>& pdhg_solver,
+  i_t total_number_of_iterations,
+  rmm::device_scalar<f_t>& primal_weight,
+  const rmm::device_scalar<f_t>& step_size,
+  rmm::device_scalar<f_t>& primal_step_size,
+  rmm::device_scalar<f_t>& dual_step_size,
+  rmm::device_scalar<f_t>& best_primal_weight)
+{
+  bool should_restart = should_cupdlpx_restart(total_number_of_iterations);
+  if (should_restart)
+    cupdlpx_restart(current_convergence_information,
+                    pdhg_solver,
+                    primal_weight,
+                    step_size,
+                    primal_step_size,
+                    dual_step_size,
+                    best_primal_weight);
+  return should_restart;
+}
+
+template <typename i_t, typename f_t>
+bool pdlp_restart_strategy_t<i_t, f_t>::compute_restart(
   pdhg_solver_t<i_t, f_t>& pdhg_solver,
   rmm::device_uvector<f_t>& primal_solution_avg,
   rmm::device_uvector<f_t>& dual_solution_avg,
@@ -652,34 +852,51 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_restart(
   rmm::device_scalar<f_t>& primal_weight,
   const rmm::device_scalar<f_t>& step_size,
   const convergence_information_t<i_t, f_t>& current_convergence_information,
-  const convergence_information_t<i_t, f_t>& average_convergence_information)
+  const convergence_information_t<i_t, f_t>& average_convergence_information,
+  [[maybe_unused]] rmm::device_scalar<f_t>& best_primal_weight)
 {
   raft::common::nvtx::range fun_scope("compute_restart");
 
   if (is_KKT_restart<i_t, f_t>()) {
-    run_kkt_restart(pdhg_solver,
-                    primal_solution_avg,
-                    dual_solution_avg,
-                    current_convergence_information,
-                    average_convergence_information,
-                    primal_step_size,
-                    dual_step_size,
-                    primal_weight,
-                    step_size,
-                    total_number_of_iterations);
+    return run_kkt_restart(pdhg_solver,
+                           primal_solution_avg,
+                           dual_solution_avg,
+                           current_convergence_information,
+                           average_convergence_information,
+                           primal_step_size,
+                           dual_step_size,
+                           primal_weight,
+                           step_size,
+                           total_number_of_iterations);
   } else if (pdlp_hyper_params::restart_strategy ==
              static_cast<int>(restart_strategy_t::TRUST_REGION_RESTART)) {
-    run_trust_region_restart(pdhg_solver,
-                             primal_solution_avg,
-                             dual_solution_avg,
-                             total_number_of_iterations,
-                             primal_step_size,
-                             dual_step_size,
-                             primal_weight,
-                             step_size);
+    return run_trust_region_restart(pdhg_solver,
+                                    primal_solution_avg,
+                                    dual_solution_avg,
+                                    total_number_of_iterations,
+                                    primal_step_size,
+                                    dual_step_size,
+                                    primal_weight,
+                                    step_size);
+  } else if (pdlp_hyper_params::restart_strategy ==
+             static_cast<int>(restart_strategy_t::CUPDLPX_RESTART)) {
+    return run_cupdlpx_restart(current_convergence_information,
+                               pdhg_solver,
+                               total_number_of_iterations,
+                               primal_weight,
+                               step_size,
+                               primal_step_size,
+                               dual_step_size,
+                               best_primal_weight);
   } else {
     EXE_CUOPT_FAIL("Bad restart value");
   }
+}
+
+template <typename i_t, typename f_t>
+void pdlp_restart_strategy_t<i_t, f_t>::increment_iteration_since_last_restart()
+{
+  ++weighted_average_solution_.iterations_since_last_restart_;
 }
 
 template <typename i_t, typename f_t>

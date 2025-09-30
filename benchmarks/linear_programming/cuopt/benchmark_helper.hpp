@@ -134,6 +134,8 @@ void fill_pdlp_hyper_params(const std::string& pdlp_hyper_params_path)
        handle_some_primal_gradients_on_finite_bounds_as_residuals},
     {"project_initial_primal",
      &cuopt::linear_programming::pdlp_hyper_params::project_initial_primal},
+    {"use_adaptive_step_size_strategy",
+     &cuopt::linear_programming::pdlp_hyper_params::use_adaptive_step_size_strategy},
   };
 
   while (std::getline(file, line)) {

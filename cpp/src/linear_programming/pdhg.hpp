@@ -39,9 +39,13 @@ class pdhg_solver_t {
   cusparse_view_t<i_t, f_t>& get_cusparse_view();
   rmm::device_uvector<f_t>& get_primal_tmp_resource();
   rmm::device_uvector<f_t>& get_dual_tmp_resource();
+  rmm::device_uvector<f_t>& get_potential_next_primal_solution();
+  rmm::device_uvector<f_t>& get_dual_slack();
   const rmm::device_uvector<f_t>& get_potential_next_primal_solution() const;
   rmm::device_uvector<f_t>& get_potential_next_dual_solution();
   const rmm::device_uvector<f_t>& get_potential_next_dual_solution() const;
+  const rmm::device_uvector<f_t>& get_reflected_dual() const;
+  const rmm::device_uvector<f_t>& get_reflected_primal() const;
   i_t get_total_pdhg_iterations();
   rmm::device_scalar<i_t>& get_d_total_pdhg_iterations();
   rmm::device_uvector<f_t>& get_primal_solution();
@@ -51,7 +55,8 @@ class pdhg_solver_t {
                  rmm::device_scalar<f_t>& dual_step_size,
                  i_t iterations_since_last_restart,
                  bool last_restart_was_average,
-                 i_t total_pdlp_iterations);
+                 i_t total_pdlp_iterations,
+                 bool is_major_iteration);
   void update_solution(cusparse_view_t<i_t, f_t>& current_op_problem_evaluation_cusparse_view_);
 
   i_t total_pdhg_iterations_;
@@ -63,10 +68,14 @@ class pdhg_solver_t {
                                          rmm::device_scalar<f_t>& dual_step_size,
                                          i_t total_pdlp_iterations);
   void compute_next_dual_solution(rmm::device_scalar<f_t>& dual_step_size);
+  void compute_next_primal_dual_solution_reflected(rmm::device_scalar<f_t>& primal_step_size,
+                                                   rmm::device_scalar<f_t>& dual_step_size,
+                                                   bool should_major);
 
   void compute_primal_projection_with_gradient(rmm::device_scalar<f_t>& primal_step_size);
   void compute_primal_projection(rmm::device_scalar<f_t>& primal_step_size);
   void compute_At_y();
+  void compute_A_x();
 
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
@@ -84,6 +93,11 @@ class pdhg_solver_t {
   rmm::device_uvector<f_t> potential_next_primal_solution_;
   rmm::device_uvector<f_t> potential_next_dual_solution_;
 
+  rmm::device_uvector<f_t> dual_slack_;
+  rmm::device_uvector<f_t> reflected_primal_;
+  rmm::device_uvector<f_t> reflected_dual_;
+
+  // Important that vectors passed down to the cusparse_view are allocated before
   cusparse_view_t<i_t, f_t> cusparse_view_;
 
   const rmm::device_scalar<f_t> reusable_device_scalar_value_1_;

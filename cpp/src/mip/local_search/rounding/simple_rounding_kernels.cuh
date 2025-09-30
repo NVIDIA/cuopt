@@ -25,6 +25,58 @@
 
 namespace cuopt::linear_programming::detail {
 
+template <typename i_t, typename f_t>
+__global__ void simple_rounding_kernel(typename solution_t<i_t, f_t>::view_t solution,
+                                       bool* successful)
+{
+  if (TH_ID_X >= solution.problem.n_integer_vars) { return; }
+  i_t var_id   = solution.problem.integer_indices[TH_ID_X];
+  f_t curr_val = solution.assignment[var_id];
+  if (solution.problem.is_integer(curr_val)) { return; }
+
+  i_t up_locks   = 0;
+  i_t down_locks = 0;
+
+  auto [offset_begin, offset_end] = solution.problem.reverse_range_for_var(var_id);
+  for (i_t i = offset_begin; i < offset_end; i += 1) {
+    auto cstr_idx   = solution.problem.reverse_constraints[i];
+    auto cstr_coeff = solution.problem.reverse_coefficients[i];
+
+    // boxed constraint. can't be rounded safely
+    if (std::isfinite(solution.problem.constraint_lower_bounds[cstr_idx]) &&
+        std::isfinite(solution.problem.constraint_upper_bounds[cstr_idx])) {
+      up_locks += 1;
+      down_locks += 1;
+      continue;
+    }
+
+    f_t sign = std::isfinite(solution.problem.constraint_upper_bounds[cstr_idx]) ? 1 : -1;
+
+    if (cstr_coeff * sign > 0) {
+      up_locks += 1;
+    } else {
+      down_locks += 1;
+    }
+  }
+
+  bool can_round_up   = up_locks == 0;
+  bool can_round_down = down_locks == 0;
+
+  if (can_round_up && can_round_down) {
+    if (solution.problem.objective_coefficients[var_id] > 0) {
+      solution.assignment[var_id] = floor(curr_val);
+    } else {
+      solution.assignment[var_id] = ceil(curr_val);
+    }
+  } else if (can_round_up) {
+    solution.assignment[var_id] = ceil(curr_val);
+  } else if (can_round_down) {
+    solution.assignment[var_id] = floor(curr_val);
+  } else {
+    *successful = false;
+  }
+}
+
 // rounds each integer variable to the nearest integer value that doesn't violate the bounds
 template <typename i_t, typename f_t>
 __global__ void nearest_rounding_kernel(typename solution_t<i_t, f_t>::view_t solution,

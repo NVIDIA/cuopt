@@ -493,18 +493,20 @@ class SolverConfig(StrictModel):
         "Note: Not supported for MILP. ",
     )
     pdlp_solver_mode: Optional[int] = Field(
-        default=1,
+        default=4,
         description="Solver mode to use for PDLP:"
         "<br>"
         "- Stable1: 0, Legacy stable mode"
         "<br>"
-        "- Stable2: 1, Best overall mode from experiments; "
-        "balances speed and convergence success"
+        "- Stable2: 1, Legacy stable mode"
         "<br>"
         "- Methodical1: 2, Takes slower individual steps, "
         "but fewer are needed to converge"
         "<br>"
         "- Fast1: 3, Fastest mode, but with less success in convergence"
+        "<br>"
+        "- Stable3: 4, Best overall mode from experiments; "
+        "balances speed and convergence success"
         "<br>"
         "Note: Not supported for MILP. ",
     )

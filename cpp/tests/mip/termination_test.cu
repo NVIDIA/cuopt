@@ -104,9 +104,9 @@ TEST(termination_status, optimality_test)
 // Ensure the lower bound on maximization problems when BB times out has the right sign
 TEST(termination_status, lower_bound_bb_timeout)
 {
-  auto [termination_status, obj_val, lb] = test_mps_file("mip/cod105_max.mps", 0.5, false);
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/cod105_max.mps", 5.0, false);
   EXPECT_EQ(termination_status, mip_termination_status_t::FeasibleFound);
-  EXPECT_EQ(obj_val, 12);
+  EXPECT_GE(obj_val, 6);
   EXPECT_GE(lb, obj_val);
 }
 

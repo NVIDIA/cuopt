@@ -47,6 +47,14 @@ localized_duality_gap_container_t<i_t, f_t>::localized_duality_gap_container_t(
     dual_solution_tr_{is_KKT_restart<i_t, f_t>() ? 0 : static_cast<size_t>(dual_size),
                       handle_ptr->get_stream()}
 {
+  RAFT_CUDA_TRY(cudaMemsetAsync(primal_solution_.data(),
+                                f_t(0.0),
+                                sizeof(f_t) * primal_solution_.size(),
+                                handle_ptr->get_stream()));
+  RAFT_CUDA_TRY(cudaMemsetAsync(dual_solution_.data(),
+                                f_t(0.0),
+                                sizeof(f_t) * dual_solution_.size(),
+                                handle_ptr->get_stream()));
 }
 
 template <typename i_t, typename f_t>

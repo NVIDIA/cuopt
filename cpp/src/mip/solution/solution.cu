@@ -287,6 +287,13 @@ void solution_t<i_t, f_t>::compute_constraints()
 {
   if (problem_ptr->n_constraints == 0) { return; }
 
+  cuopt_assert(problem_ptr->n_constraints == problem_ptr->constraint_upper_bounds.size(),
+               "invalid assignment size");
+  // TODO: investigate why sometimes the sizes are incorrectly set before the kernel call
+  constraint_value.resize(problem_ptr->n_constraints, handle_ptr->get_stream());
+  lower_excess.resize(problem_ptr->n_constraints, handle_ptr->get_stream());
+  upper_excess.resize(problem_ptr->n_constraints, handle_ptr->get_stream());
+
   i_t TPB = 64;
   compute_constraint_values<i_t, f_t>
     <<<problem_ptr->n_constraints, TPB, 0, handle_ptr->get_stream()>>>(view());
@@ -369,6 +376,13 @@ template <typename i_t, typename f_t>
 bool solution_t<i_t, f_t>::round_random_nearest(i_t n_target_random_rounds)
 {
   invoke_random_round_nearest(*this, n_target_random_rounds);
+  return compute_feasibility();
+}
+
+template <typename i_t, typename f_t>
+bool solution_t<i_t, f_t>::round_simple()
+{
+  invoke_simple_rounding(*this);
   return compute_feasibility();
 }
 

@@ -54,10 +54,11 @@ static void parse_arguments(argparse::ArgumentParser& program)
     .default_value(1e-4)
     .scan<'g', double>();
 
+  // TODO replace all comments with Stable2 with Stable3
   program.add_argument("--pdlp-solver-mode")
-    .help("Solver mode for PDLP. Possible values: Stable2 (default), Methodical1, Fast1")
-    .default_value("Stable2")
-    .choices("Stable2", "Methodical1", "Fast1");
+    .help("Solver mode for PDLP. Possible values: Stable3 (default), Methodical1, Fast1")
+    .default_value("Stable3")
+    .choices("Stable3", "Methodical1", "Fast1");
 
   program.add_argument("--method")
     .help(
@@ -90,7 +91,9 @@ static cuopt::linear_programming::pdlp_solver_mode_t string_to_pdlp_solver_mode(
     return cuopt::linear_programming::pdlp_solver_mode_t::Methodical1;
   else if (mode == "Fast1")
     return cuopt::linear_programming::pdlp_solver_mode_t::Fast1;
-  return cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
+  else if (mode == "Stable3")
+    return cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
+  return cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
 }
 
 static cuopt::linear_programming::pdlp_solver_settings_t<int, double> create_solver_settings(
