@@ -19,7 +19,7 @@ set -euo pipefail
 
 . /opt/conda/etc/profile.d/conda.sh
 
-CUOPT_VERSION="$(rapids-version)"
+#CUOPT_VERSION="$(rapids-version)"
 
 CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
 
