@@ -412,11 +412,11 @@ dependencies:
         packages:
           - *msgpack_python
           - pip
-          - psutil>=5.9,<6.0a0
+          - psutil>=6.0.0
       - output_types: [requirements, pyproject]
         packages:
           - *msgpack
-          - psutil==5.9.6
+          - psutil>=6.0.0
 
   run_cuopt_sh_client:
     common:
