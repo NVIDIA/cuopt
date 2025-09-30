@@ -81,20 +81,6 @@ def get_std_data_for_lp():
         "variable_names": ["x", "y"],
         "solver_config": {
             "time_limit": 5,
-            "tolerances": {
-                "optimality": 0.0001,
-                "absolute_primal": 0.0001,
-                "absolute_dual": 0.0001,
-                "absolute_gap": 0.0001,
-                "relative_primal": 0.0001,
-                "relative_dual": 0.0001,
-                "relative_gap": 0.0001,
-                "primal_infeasible": 0.00000001,
-                "dual_infeasible": 0.00000001,
-                "integrality_tolerance": 0.00001,
-                "presolve": True,
-                "dual_postsolve": True,
-            },
         },
     }
 
