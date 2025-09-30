@@ -48,7 +48,7 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/trivial_presolve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump_kernels.cu
-)
+  ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu.cu)
 
 # Choose which files to include based on build mode
 if(BUILD_LP_ONLY)

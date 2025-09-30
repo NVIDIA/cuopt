@@ -64,9 +64,9 @@ TEST(SolverSettingsTest, TestSetGet)
   EXPECT_TRUE(solver_settings.detect_infeasibility);
 
   // To avoid the "," inside the macros which are interpreted as extra parameters
-  auto Stable2 = cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
+  auto Stable3 = cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
   auto Fast1   = cuopt::linear_programming::pdlp_solver_mode_t::Fast1;
-  EXPECT_EQ(solver_settings.pdlp_solver_mode, Stable2);
+  EXPECT_EQ(solver_settings.pdlp_solver_mode, Stable3);
   solver_settings.pdlp_solver_mode = Fast1;
   EXPECT_EQ(solver_settings.pdlp_solver_mode, Fast1);
 

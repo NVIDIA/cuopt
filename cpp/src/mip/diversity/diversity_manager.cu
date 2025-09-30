@@ -229,13 +229,16 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     trivial_presolve(*problem_ptr);
     if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   }
-  if (!problem_ptr->empty) {
-    // do the resizing no-matter what, bounds presolve might not change the bounds but initial
-    // trivial presolve might have
-    ls.constraint_prop.bounds_update.resize(*problem_ptr);
-    ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
-      *problem_ptr, ls.constraint_prop.bounds_update);
-    if (!check_bounds_sanity(*problem_ptr)) { return false; }
+  // May overconstrain if Papilo presolve has been run before
+  if (!context.settings.presolve) {
+    if (!problem_ptr->empty) {
+      // do the resizing no-matter what, bounds presolve might not change the bounds but initial
+      // trivial presolve might have
+      ls.constraint_prop.bounds_update.resize(*problem_ptr);
+      ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
+        *problem_ptr, ls.constraint_prop.bounds_update);
+      if (!check_bounds_sanity(*problem_ptr)) { return false; }
+    }
   }
   stats.presolve_time = presolve_timer.elapsed_time();
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());
@@ -314,6 +317,13 @@ void diversity_manager_t<i_t, f_t>::run_fp_alone(solution_t<i_t, f_t>& solution)
   CUOPT_LOG_INFO("FP alone finished!");
 }
 
+template <typename i_t, typename f_t>
+struct ls_cpufj_raii_guard_t {
+  ls_cpufj_raii_guard_t(local_search_t<i_t, f_t>& ls) : ls(ls) {}
+  ~ls_cpufj_raii_guard_t() { ls.stop_cpufj_scratch_threads(); }
+  local_search_t<i_t, f_t>& ls;
+};
+
 // returns the best feasible solution
 template <typename i_t, typename f_t>
 solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
@@ -342,8 +352,15 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     "The problem must not be ii");
   population.initialize_population();
   if (check_b_b_preemption()) { return population.best_feasible(); }
+
+  // Run CPUFJ early to find quick initial solutions
+  population.allocate_solutions();
+  ls_cpufj_raii_guard_t ls_cpufj_raii_guard(ls);  // RAII to stop cpufj threads on solve stop
+  ls.start_cpufj_scratch_threads(population);
+
   // before probing cache or LP, run FJ to generate initial primal feasible solution
-  if (!from_dir && !fj_only_run) { generate_quick_feasible_solution(); }
+  // TODO: commenting this out decreases the gap on trento1.mps dramatically. figure out why?
+  // if (!from_dir && !fj_only_run) { generate_quick_feasible_solution(); }
   const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
   const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
   f_t time_for_probing_cache =
@@ -412,8 +429,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
   }
 
-  population.allocate_solutions();
   population.add_solutions_from_vec(std::move(initial_sol_vector));
+
   if (check_b_b_preemption()) { return population.best_feasible(); }
 
   if (context.settings.benchmark_info_ptr != nullptr) {

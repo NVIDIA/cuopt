@@ -99,6 +99,9 @@ class pdlp_solver_t {
 
   void set_inside_mip(bool inside_mip);
 
+  void compute_initial_step_size();
+  void compute_initial_primal_weight();
+
  private:
   void print_termination_criteria(const timer_t& timer, bool is_average = false);
   void print_final_termination_criteria(
@@ -106,8 +109,6 @@ class pdlp_solver_t {
     const convergence_information_t<i_t, f_t>& convergence_information,
     const pdlp_termination_status_t& termination_status,
     bool is_average = false);
-  void compute_initial_step_size();
-  void compute_initial_primal_weight();
   std::optional<optimization_problem_solution_t<i_t, f_t>> check_termination(const timer_t& timer);
   std::optional<optimization_problem_solution_t<i_t, f_t>> check_limits(const timer_t& timer);
   void record_best_primal_so_far(const detail::pdlp_termination_strategy_t<i_t, f_t>& current,
@@ -115,7 +116,10 @@ class pdlp_solver_t {
                                  const pdlp_termination_status_t& termination_current,
                                  const pdlp_termination_status_t& termination_average);
 
-  void take_step(i_t total_pdlp_iterations);
+  void take_step([[maybe_unused]] i_t total_pdlp_iterations,
+                 [[maybe_unused]] bool is_major_iteration);
+  void take_adaptive_step(i_t total_pdlp_iterations, bool is_major_iteration);
+  void take_constant_step(bool is_major_iteration);
 
   /**
    * @brief Update current primal & dual solution by setting new solutions and triggering a
@@ -157,6 +161,7 @@ class pdlp_solver_t {
   primal and dual distances traveled since the last restart.
   */
   rmm::device_scalar<f_t> primal_weight_;
+  rmm::device_scalar<f_t> best_primal_weight_;
   rmm::device_scalar<f_t> step_size_;
 
   // Step size strategy
@@ -165,10 +170,13 @@ class pdlp_solver_t {
  public:
   // Inner solver
   detail::pdhg_solver_t<i_t, f_t> pdhg_solver_;
+  void halpern_update();
 
  private:
   // Intentionnaly take a copy to avoid an unintentional modification in the calling context
   const pdlp_solver_settings_t<i_t, f_t> settings_;
+
+  void compute_fixed_error(bool& has_restarted);
 
   pdlp_warm_start_data_t<i_t, f_t> get_filled_warmed_start_data();
 

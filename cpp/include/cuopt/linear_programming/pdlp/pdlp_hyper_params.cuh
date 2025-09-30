@@ -56,5 +56,17 @@ extern bool update_primal_weight_on_initial_solution;
 extern bool update_step_size_on_initial_solution;
 extern bool handle_some_primal_gradients_on_finite_bounds_as_residuals;
 extern bool project_initial_primal;
+extern bool use_adaptive_step_size_strategy;
+extern bool initial_step_size_max_singular_value;
+extern bool initial_primal_weight_combined_bounds;
+extern bool bound_objective_rescaling;
+extern bool use_reflected_primal_dual;
+extern bool use_fixed_point_error;
+extern double reflection_coefficient;
+extern double restart_k_p;
+extern double restart_k_i;
+extern double restart_k_d;
+extern double restart_i_smooth;
+extern bool use_conditional_major;
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params

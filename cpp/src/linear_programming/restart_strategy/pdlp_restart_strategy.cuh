@@ -95,6 +95,7 @@ class pdlp_restart_strategy_t {
     NO_RESTART           = 0,
     KKT_RESTART          = 1,
     TRUST_REGION_RESTART = 2,
+    CUPDLPX_RESTART      = 3,
   };
 
   pdlp_restart_strategy_t(raft::handle_t const* handle_ptr,
@@ -110,6 +111,8 @@ class pdlp_restart_strategy_t {
                         const rmm::device_scalar<f_t>& gap,
                         const rmm::device_scalar<f_t>& primal_weight);
 
+  void increment_iteration_since_last_restart();
+
   void update_distance(pdhg_solver_t<i_t, f_t>& pdhg_solver,
                        rmm::device_scalar<f_t>& primal_weight,
                        rmm::device_scalar<f_t>& primal_step_size,
@@ -124,7 +127,7 @@ class pdlp_restart_strategy_t {
   void get_average_solutions(rmm::device_uvector<f_t>& avg_primal,
                              rmm::device_uvector<f_t>& avg_dual);
 
-  void compute_restart(pdhg_solver_t<i_t, f_t>& pdhg_solver,
+  bool compute_restart(pdhg_solver_t<i_t, f_t>& pdhg_solver,
                        rmm::device_uvector<f_t>& primal_solution_avg,
                        rmm::device_uvector<f_t>& dual_solution_avg,
                        const i_t total_number_of_iterations,
@@ -133,7 +136,8 @@ class pdlp_restart_strategy_t {
                        rmm::device_scalar<f_t>& primal_weight,
                        const rmm::device_scalar<f_t>& step_size,  // To update primal/dual step size
                        const convergence_information_t<i_t, f_t>& current_convergence_information,
-                       const convergence_information_t<i_t, f_t>& average_convergence_information);
+                       const convergence_information_t<i_t, f_t>& average_convergence_information,
+                       [[maybe_unused]] rmm::device_scalar<f_t>& best_primal_weight);
 
   /**
    * @brief Gets the device-side view (with raw pointers), for ease of access
@@ -149,7 +153,25 @@ class pdlp_restart_strategy_t {
   i_t should_do_artificial_restart(i_t total_number_of_iterations) const;
 
  private:
-  void run_trust_region_restart(pdhg_solver_t<i_t, f_t>& pdhg_solver,
+  bool run_cupdlpx_restart(
+    const convergence_information_t<i_t, f_t>& current_convergence_information,
+    pdhg_solver_t<i_t, f_t>& pdhg_solver,
+    i_t total_number_of_iterations,
+    rmm::device_scalar<f_t>& primal_weight,
+    const rmm::device_scalar<f_t>& step_size,
+    rmm::device_scalar<f_t>& primal_step_size,
+    rmm::device_scalar<f_t>& dual_step_size,
+    rmm::device_scalar<f_t>& best_primal_weight);
+  bool should_cupdlpx_restart(i_t total_number_of_iterations);
+  void cupdlpx_restart(const convergence_information_t<i_t, f_t>& current_convergence_information,
+                       pdhg_solver_t<i_t, f_t>& pdhg_solver,
+                       rmm::device_scalar<f_t>& primal_weight,
+                       const rmm::device_scalar<f_t>& step_size,
+                       rmm::device_scalar<f_t>& primal_step_size,
+                       rmm::device_scalar<f_t>& dual_step_size,
+                       rmm::device_scalar<f_t>& best_primal_weight);
+
+  bool run_trust_region_restart(pdhg_solver_t<i_t, f_t>& pdhg_solver,
                                 rmm::device_uvector<f_t>& primal_solution_avg,
                                 rmm::device_uvector<f_t>& dual_solution_avg,
                                 const i_t total_number_of_iterations,
@@ -323,6 +345,14 @@ class pdlp_restart_strategy_t {
   f_t last_restart_kkt_score   = f_t(0.0);
 
   bool last_restart_was_average_ = false;
+
+  // Needed for cuPDLP+ restart
+  f_t fixed_point_error_             = std::numeric_limits<f_t>::signaling_NaN();
+  f_t initial_fixed_point_error_     = std::numeric_limits<f_t>::signaling_NaN();
+  f_t last_trial_fixed_point_error_  = std::numeric_limits<f_t>::infinity();
+  f_t primal_weight_error_sum_       = f_t(0.0);
+  f_t primal_weight_last_error_      = f_t(0.0);
+  f_t best_primal_dual_residual_gap_ = std::numeric_limits<f_t>::infinity();
 };
 
 template <typename i_t, typename f_t>

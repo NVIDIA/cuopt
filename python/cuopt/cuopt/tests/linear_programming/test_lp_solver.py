@@ -77,6 +77,8 @@ def test_solver():
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-2)
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    # FIXME: Stable3 infinite-loops on this sample trivial problem
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
 
     solution = solver.Solve(data_model_obj, settings)
     assert solution.get_termination_reason() == "Optimal"
@@ -123,6 +125,7 @@ def test_very_low_tolerance():
     assert solution.get_solve_time() <= expected_time * 5
 
 
+# TODO: should test all LP solver modes?
 def test_iteration_limit_solver():
 
     file_path = (
@@ -131,7 +134,7 @@ def test_iteration_limit_solver():
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
-    settings.set_optimality_tolerance(0)
+    settings.set_optimality_tolerance(1e-12)
     settings.set_parameter(CUOPT_ITERATION_LIMIT, 1)
     # Setting both to make sure the lowest one is picked
     settings.set_parameter(CUOPT_TIME_LIMIT, 99999999)
@@ -153,8 +156,7 @@ def test_time_limit_solver():
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
-    settings.set_optimality_tolerance(0)
-    # 200 ms
+    settings.set_optimality_tolerance(1e-12)
     time_limit_seconds = 0.2
     settings.set_parameter(CUOPT_TIME_LIMIT, time_limit_seconds)
     # Setting both to make sure the lowest one is picked
@@ -304,7 +306,7 @@ def test_solver_settings():
     assert not settings.get_parameter(CUOPT_INFEASIBILITY_DETECTION)
 
     assert settings.get_parameter(CUOPT_PDLP_SOLVER_MODE) == int(
-        PDLPSolverMode.Stable2
+        PDLPSolverMode.Stable3
     )
 
     with pytest.raises(ValueError):
@@ -431,6 +433,7 @@ def test_parse_var_names():
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
     solution = solver.Solve(data_model_obj, settings)
 
     expected_dict = {

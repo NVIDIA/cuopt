@@ -18,6 +18,7 @@
 #include <linear_programming/pdlp_constants.hpp>
 #include <linear_programming/termination_strategy/convergence_information.hpp>
 #include <linear_programming/utils.cuh>
+
 #include <mip/mip_constants.hpp>
 
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
@@ -61,15 +62,18 @@ convergence_information_t<i_t, f_t>::convergence_information_t(
     nb_violated_constraints_{0, stream_view_},
     gap_{0.0, stream_view_},
     abs_objective_{0.0, stream_view_},
-    l2_primal_variable_{0.0, stream_view_},
-    l2_dual_variable_{0.0, stream_view_},
     primal_residual_{static_cast<size_t>(dual_size_h_), stream_view_},
     dual_residual_{static_cast<size_t>(primal_size_h_), stream_view_},
     reduced_cost_{static_cast<size_t>(primal_size_h_), stream_view_},
     bound_value_{static_cast<size_t>(std::max(primal_size_h_, dual_size_h_)), stream_view_},
+    primal_slack_{
+      (pdlp_hyper_params::use_reflected_primal_dual) ? static_cast<size_t>(dual_size_h_) : 0,
+      stream_view_},
     reusable_device_scalar_value_1_{1.0, stream_view_},
     reusable_device_scalar_value_0_{0.0, stream_view_},
-    reusable_device_scalar_value_neg_1_{-1.0, stream_view_}
+    reusable_device_scalar_value_neg_1_{-1.0, stream_view_},
+    dual_dot_{stream_view_},
+    sum_primal_slack_{stream_view_}
 {
   combine_constraint_bounds(
     *problem_ptr,
@@ -79,7 +83,15 @@ convergence_information_t<i_t, f_t>::convergence_information_t(
   // constant throughout solving, so precompute
   my_l2_norm<i_t, f_t>(
     problem_ptr->objective_coefficients, l2_norm_primal_linear_objective_, handle_ptr_);
-  my_l2_norm<i_t, f_t>(primal_residual_, l2_norm_primal_right_hand_side_, handle_ptr_);
+
+  if (pdlp_hyper_params::initial_primal_weight_combined_bounds)
+    my_l2_norm<i_t, f_t>(primal_residual_, l2_norm_primal_right_hand_side_, handle_ptr_);
+  else {
+    compute_sum_bounds(problem_ptr->constraint_lower_bounds,
+                       problem_ptr->constraint_upper_bounds,
+                       l2_norm_primal_right_hand_side_,
+                       handle_ptr_->get_stream());
+  }
 
   void* d_temp_storage        = NULL;
   size_t temp_storage_bytes_1 = 0;
@@ -151,15 +163,20 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   pdhg_solver_t<i_t, f_t>& current_pdhg_solver,
   rmm::device_uvector<f_t>& primal_iterate,
   rmm::device_uvector<f_t>& dual_iterate,
+  [[maybe_unused]] const rmm::device_uvector<f_t>& dual_slack,
   const rmm::device_uvector<f_t>& combined_bounds,
   const rmm::device_uvector<f_t>& objective_coefficients,
   const pdlp_solver_settings_t<i_t, f_t>& settings)
 {
   raft::common::nvtx::range fun_scope("compute_convergence_information");
 
-  compute_primal_residual(op_problem_cusparse_view_, current_pdhg_solver.get_dual_tmp_resource());
+  compute_primal_residual(
+    op_problem_cusparse_view_, current_pdhg_solver.get_dual_tmp_resource(), dual_iterate);
   compute_primal_objective(primal_iterate);
   my_l2_norm<i_t, f_t>(primal_residual_, l2_primal_residual_, handle_ptr_);
+#ifdef CUPDLP_DEBUG_MODE
+  printf("Absolute Primal Residual: %lf\n", l2_primal_residual_.value(stream_view_));
+#endif
   // If per_constraint_residual is false we still need to perform the l2 since it's used in kkt
   if (settings.per_constraint_residual) {
     // Compute the linf of (residual_i - rel * b_i)
@@ -186,12 +203,16 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
         thrust::maximum<f_t>());
     }
   }
-  my_l2_norm<i_t, f_t>(primal_iterate, l2_primal_variable_, handle_ptr_);
 
-  compute_dual_residual(
-    op_problem_cusparse_view_, current_pdhg_solver.get_primal_tmp_resource(), primal_iterate);
-  compute_dual_objective(dual_iterate);
+  compute_dual_residual(op_problem_cusparse_view_,
+                        current_pdhg_solver.get_primal_tmp_resource(),
+                        primal_iterate,
+                        dual_slack);
+  compute_dual_objective(dual_iterate, primal_iterate, dual_slack);
   my_l2_norm<i_t, f_t>(dual_residual_, l2_dual_residual_, handle_ptr_);
+#ifdef CUPDLP_DEBUG_MODE
+  printf("Absolute Dual Residual: %lf\n", l2_dual_residual_.value(stream_view_));
+#endif
   // If per_constraint_residual is false we still need to perform the l2 since it's used in kkt
   if (settings.per_constraint_residual) {
     // Compute the linf of (residual_i - rel * c_i)
@@ -206,7 +227,6 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
       neutral,
       thrust::maximum<f_t>());
   }
-  my_l2_norm<i_t, f_t>(dual_iterate, l2_dual_variable_, handle_ptr_);
 
   compute_remaining_stats_kernel<i_t, f_t><<<1, 1, 0, stream_view_>>>(this->view());
   RAFT_CUDA_TRY(cudaPeekAtLastError());
@@ -218,9 +238,17 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
     cudaMemsetAsync(dual_residual_.data(), 0.0, sizeof(f_t) * dual_residual_.size(), stream_view_));
 }
 
+template <typename f_t>
+DI f_t finite_or_zero(f_t in)
+{
+  return isfinite(in) ? in : f_t(0.0);
+}
+
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_primal_residual(
-  cusparse_view_t<i_t, f_t>& cusparse_view, rmm::device_uvector<f_t>& tmp_dual)
+  cusparse_view_t<i_t, f_t>& cusparse_view,
+  rmm::device_uvector<f_t>& tmp_dual,
+  [[maybe_unused]] const rmm::device_uvector<f_t>& dual_iterate)
 {
   raft::common::nvtx::range fun_scope("compute_primal_residual");
 
@@ -237,14 +265,31 @@ void convergence_information_t<i_t, f_t>::compute_primal_residual(
                                        (f_t*)cusparse_view.buffer_non_transpose.data(),
                                        stream_view_));
 
-  // The constraint bound violations for the first part of the residual
-  raft::linalg::ternaryOp<f_t, violation<f_t>>(primal_residual_.data(),
-                                               tmp_dual.data(),
-                                               problem_ptr->constraint_lower_bounds.data(),
-                                               problem_ptr->constraint_upper_bounds.data(),
-                                               dual_size_h_,
-                                               violation<f_t>(),
-                                               stream_view_);
+  if (!pdlp_hyper_params::use_reflected_primal_dual) {
+    // The constraint bound violations for the first part of the residual
+    raft::linalg::ternaryOp<f_t, violation<f_t>>(primal_residual_.data(),
+                                                 tmp_dual.data(),
+                                                 problem_ptr->constraint_lower_bounds.data(),
+                                                 problem_ptr->constraint_upper_bounds.data(),
+                                                 dual_size_h_,
+                                                 violation<f_t>(),
+                                                 stream_view_);
+  } else {
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(tmp_dual.data(),
+                            problem_ptr->constraint_lower_bounds.data(),
+                            problem_ptr->constraint_upper_bounds.data(),
+                            dual_iterate.data()),
+      thrust::make_zip_iterator(primal_residual_.data(), primal_slack_.data()),
+      primal_residual_.size(),
+      [] __device__(f_t Ax, f_t lower, f_t upper, f_t dual) -> thrust::tuple<f_t, f_t> {
+        const f_t clamped_Ax = raft::max(lower, raft::min(Ax, upper));
+        return {Ax - clamped_Ax,
+                raft::max(dual, f_t(0.0)) * finite_or_zero(lower) +
+                  raft::min(dual, f_t(0.0)) * finite_or_zero(upper)};
+      },
+      stream_view_);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -281,13 +326,18 @@ void convergence_information_t<i_t, f_t>::compute_primal_objective(
                                   problem_ptr->presolve_data.objective_offset);
     RAFT_CUDA_TRY(cudaPeekAtLastError());
   }
+
+#ifdef CUPDLP_DEBUG_MODE
+  printf("Primal objective %lf\n", primal_objective_.value(stream_view_));
+#endif
 }
 
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_dual_residual(
   cusparse_view_t<i_t, f_t>& cusparse_view,
   rmm::device_uvector<f_t>& tmp_primal,
-  rmm::device_uvector<f_t>& primal_solution)
+  rmm::device_uvector<f_t>& primal_solution,
+  [[maybe_unused]] const rmm::device_uvector<f_t>& dual_slack)
 {
   raft::common::nvtx::range fun_scope("compute_dual_residual");
   // compute objective product (Q*x) if QP
@@ -295,33 +345,50 @@ void convergence_information_t<i_t, f_t>::compute_dual_residual(
   // gradient is recomputed with the dual solution that has been computed since the gradient was
   // last computed
   //  c-K^Ty -> copy c to gradient first
-  raft::copy(
-    tmp_primal.data(), problem_ptr->objective_coefficients.data(), primal_size_h_, stream_view_);
+  thrust::fill(handle_ptr_->get_thrust_policy(), tmp_primal.begin(), tmp_primal.end(), f_t(0));
 
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                                       reusable_device_scalar_value_neg_1_.data(),
+                                                       reusable_device_scalar_value_1_.data(),
                                                        cusparse_view.A_T,
                                                        cusparse_view.dual_solution,
-                                                       reusable_device_scalar_value_1_.data(),
+                                                       reusable_device_scalar_value_0_.data(),
                                                        cusparse_view.tmp_primal,
                                                        CUSPARSE_SPMV_CSR_ALG2,
                                                        (f_t*)cusparse_view.buffer_transpose.data(),
                                                        stream_view_));
 
-  compute_reduced_cost_from_primal_gradient(tmp_primal, primal_solution);
-
-  // primal_gradient - reduced_costs
-  raft::linalg::eltwiseSub(dual_residual_.data(),
-                           tmp_primal.data(),  // primal_gradient
-                           reduced_cost_.data(),
+  // Substract with the objective vector manually to avoid possible cusparse bug w/ nonzero beta and
+  // len(X)=1
+  raft::linalg::eltwiseSub(tmp_primal.data(),
+                           problem_ptr->objective_coefficients.data(),
+                           tmp_primal.data(),
                            primal_size_h_,
                            stream_view_);
+
+  if (pdlp_hyper_params::use_reflected_primal_dual) {
+    cub::DeviceTransform::Transform(cuda::std::make_tuple(tmp_primal.data(), dual_slack.data()),
+                                    dual_residual_.data(),
+                                    dual_residual_.size(),
+                                    cuda::std::minus<>{},
+                                    stream_view_);
+  } else {
+    compute_reduced_cost_from_primal_gradient(tmp_primal, primal_solution);
+
+    // primal_gradient - reduced_costs
+    raft::linalg::eltwiseSub(dual_residual_.data(),
+                             tmp_primal.data(),  // primal_gradient
+                             reduced_cost_.data(),
+                             primal_size_h_,
+                             stream_view_);
+  }
 }
 
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_dual_objective(
-  rmm::device_uvector<f_t>& dual_solution)
+  rmm::device_uvector<f_t>& dual_solution,
+  [[maybe_unused]] const rmm::device_uvector<f_t>& primal_solution,
+  [[maybe_unused]] const rmm::device_uvector<f_t>& dual_slack)
 {
   raft::common::nvtx::range fun_scope("compute_dual_objective");
 
@@ -331,28 +398,49 @@ void convergence_information_t<i_t, f_t>::compute_dual_objective(
   // the value of y term in the objective of the dual problem, see[]
   //  (l^c)^T[y]_+ − (u^c)^T[y]_− in the dual objective
 
-  raft::linalg::ternaryOp(bound_value_.data(),
-                          dual_solution.data(),
-                          problem_ptr->constraint_lower_bounds.data(),
-                          problem_ptr->constraint_upper_bounds.data(),
-                          dual_size_h_,
-                          constraint_bound_value_reduced_cost_product<f_t>(),
-                          stream_view_);
+  if (!pdlp_hyper_params::use_reflected_primal_dual) {
+    raft::linalg::ternaryOp(bound_value_.data(),
+                            dual_solution.data(),
+                            problem_ptr->constraint_lower_bounds.data(),
+                            problem_ptr->constraint_upper_bounds.data(),
+                            dual_size_h_,
+                            constraint_bound_value_reduced_cost_product<f_t>(),
+                            stream_view_);
 
-  cub::DeviceReduce::Sum(rmm_tmp_buffer_.data(),
-                         size_of_buffer_,
-                         bound_value_.begin(),
-                         dual_objective_.data(),
-                         dual_size_h_,
-                         stream_view_);
-
-  compute_reduced_costs_dual_objective_contribution();
-
-  raft::linalg::eltwiseAdd(dual_objective_.data(),
+    cub::DeviceReduce::Sum(rmm_tmp_buffer_.data(),
+                           size_of_buffer_,
+                           bound_value_.begin(),
                            dual_objective_.data(),
-                           reduced_cost_dual_objective_.data(),
-                           1,
+                           dual_size_h_,
                            stream_view_);
+
+    compute_reduced_costs_dual_objective_contribution();
+
+    raft::linalg::eltwiseAdd(dual_objective_.data(),
+                             dual_objective_.data(),
+                             reduced_cost_dual_objective_.data(),
+                             1,
+                             stream_view_);
+  } else {
+    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
+                                                    primal_size_h_,
+                                                    dual_slack.data(),
+                                                    primal_stride,
+                                                    primal_solution.data(),
+                                                    primal_stride,
+                                                    dual_dot_.data(),
+                                                    stream_view_));
+
+    cub::DeviceReduce::Sum(rmm_tmp_buffer_.data(),
+                           size_of_buffer_,
+                           primal_slack_.begin(),
+                           sum_primal_slack_.data(),
+                           dual_size_h_,
+                           stream_view_);
+
+    const f_t sum = dual_dot_.value(stream_view_) + sum_primal_slack_.value(stream_view_);
+    dual_objective_.set_value_async(sum, stream_view_);
+  }
 
   // dual_objective = 1 * (dual_objective + 0) = dual_objective
   if (problem_ptr->presolve_data.objective_scaling_factor != 1 ||
@@ -363,6 +451,10 @@ void convergence_information_t<i_t, f_t>::compute_dual_objective(
                                   problem_ptr->presolve_data.objective_offset);
     RAFT_CUDA_TRY(cudaPeekAtLastError());
   }
+
+#ifdef CUPDLP_DEBUG_MODE
+  printf("Dual objective %lf\n", dual_objective_.value(stream_view_));
+#endif
 }
 
 template <typename i_t, typename f_t>
@@ -510,9 +602,6 @@ typename convergence_information_t<i_t, f_t>::view_t convergence_information_t<i
 
   v.gap           = gap_.data();
   v.abs_objective = abs_objective_.data();
-
-  v.l2_primal_variable = l2_primal_variable_.data();
-  v.l2_dual_variable   = l2_dual_variable_.data();
 
   v.primal_residual = primal_residual_.data();
   v.dual_residual   = dual_residual_.data();
