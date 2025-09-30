@@ -33,11 +33,11 @@ rapids-dependency-file-generator \
   --prepend-channel "${PYTHON_CHANNEL}" \
   --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch);py=${RAPIDS_PY_VERSION}" | tee env.yaml
 
-rapids-logger "Listing local channels"
-ls ${CPP_CHANNEL}/linux-64
-ls ${CPP_CHANNEL}/noarch
-ls ${PYTHON_CHANNEL}/linux-64
-ls ${PYTHON_CHANNEL}/noarch
+#rapids-logger "Listing local channels"
+#ls ${CPP_CHANNEL}/linux-64
+#ls ${CPP_CHANNEL}/noarch
+#ls ${PYTHON_CHANNEL}/linux-64
+#ls ${PYTHON_CHANNEL}/noarch
 
 rapids-mamba-retry env create --yes --verbose -f env.yaml -n test
 
