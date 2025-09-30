@@ -84,7 +84,7 @@ New Features (25.05)
 - Added concurrent mode that runs PDLP and Dual Simplex together
 - Added crossover from PDLP to Dual Simplex
 - Added a C API for LP and MILP
-- PDLP: Faster iterations and new more robust default PDLPSolverMode Stable3
+- PDLP: Faster iterations and new more robust default PDLPSolverMode Stable2
 - Added support for writing out mps file containing user problem. Useful for debugging
 
 Breaking Changes (25.05)
