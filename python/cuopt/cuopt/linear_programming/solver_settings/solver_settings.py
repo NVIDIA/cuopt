@@ -27,6 +27,8 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_LOG_FILE,
     CUOPT_LOG_TO_CONSOLE,
     CUOPT_METHOD,
+    CUOPT_PRESOLVE,
+    CUOPT_DUAL_POSTSOLVE,
     CUOPT_MIP_ABSOLUTE_GAP,
     CUOPT_MIP_ABSOLUTE_TOLERANCE,
     CUOPT_MIP_HEURISTICS_ONLY,
@@ -376,6 +378,8 @@ class SolverSettings:
             "iteration_limit": self.get_parameter(CUOPT_ITERATION_LIMIT),
             "pdlp_solver_mode": self.get_parameter(CUOPT_PDLP_SOLVER_MODE),
             "method": self.get_parameter(CUOPT_METHOD),
+            "presolve": self.get_parameter(CUOPT_PRESOLVE),
+            "dual_postsolve": self.get_parameter(CUOPT_DUAL_POSTSOLVE),
             "mip_scaling": self.get_parameter(CUOPT_MIP_SCALING),
             "mip_heuristics_only": self.get_parameter(
                 CUOPT_MIP_HEURISTICS_ONLY
