@@ -240,8 +240,8 @@ f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
   if (heap_.size() > 0) { lower_bound = heap_.top()->lower_bound; }
   mutex_heap_.unlock();
 
-  for (i_t i = 0; i < lower_bounds_.size(); ++i) {
-    lower_bound = std::min(lower_bounds_[i].load(), lower_bound);
+  for (i_t i = 0; i < local_lower_bounds_.size(); ++i) {
+    lower_bound = std::min(local_lower_bounds_[i].load(), lower_bound);
   }
 
   return lower_bound;
@@ -797,9 +797,9 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(search_tree_t<i_t, f_t>& sear
     f_t abs_gap     = upper_bound - lower_bound;
     f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
 
-    lower_bounds_[tid] = lower_bound;
-    nodes_explored     = stats_.nodes_explored++;
-    nodes_unexplored   = stats_.nodes_unexplored--;
+    local_lower_bounds_[tid] = lower_bound;
+    nodes_explored           = stats_.nodes_explored++;
+    nodes_unexplored         = stats_.nodes_unexplored--;
 
     if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
       search_tree.graphviz_node(node_ptr, "cutoff", node_ptr->lower_bound);
@@ -1050,7 +1050,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   set_uninitialized_steepest_edge_norms<i_t, f_t>(edge_norms_);
 
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
-  lower_bounds_.assign(settings_.num_bfs_threads, root_objective_);
+  local_lower_bounds_.assign(settings_.num_bfs_threads, root_objective_);
 
   if (settings_.set_simplex_solution_callback != nullptr) {
     std::vector<f_t> original_x;
