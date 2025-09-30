@@ -43,18 +43,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(argparse)
 
-# Force CMake to use the system Modules first
-#set(CMAKE_MODULE_PATH
-#    "${CMAKE_MODULE_PATH}"
-#    "/usr/share/cmake/Modules" # system modules
-#)
-
-# Use module mode (system boost-devel has no BoostConfig.cmake)
-#set(Boost_NO_BOOST_CMAKE ON CACHE BOOL "" FORCE)
-#set(BOOST_ROOT "/usr" CACHE PATH "" FORCE)
-#set(BOOST_INCLUDEDIR "/usr/include" CACHE PATH "" FORCE)
-#set(BOOST_LIBRARYDIR "/usr/lib64" CACHE PATH "" FORCE)
-
 
 find_package(Boost 1.65 REQUIRED)
 if(Boost_FOUND)

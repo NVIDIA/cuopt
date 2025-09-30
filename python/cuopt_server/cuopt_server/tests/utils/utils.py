@@ -331,7 +331,7 @@ def cuoptproc(request):
     global cuoptmain
     env = {
         "CUOPT_SERVER_IP": "0.0.0.0",
-        "CUOPT_SERVER_PORT": "5556",
+        "CUOPT_SERVER_PORT": "5555",
         "CUOPT_SERVER_LOG_LEVEL": "debug",
     }
     cuoptmain = Popen([python_path, server_script, server_module], env=env)
