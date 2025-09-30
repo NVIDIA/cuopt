@@ -189,7 +189,7 @@ class branch_and_bound_t {
                            mip_node_t<i_t, f_t>* node,
                            lp_problem_t<i_t, f_t>& leaf_problem,
                            csc_matrix_t<i_t, f_t>& Arow,
-                           i_t max_depth);
+                           i_t initial_heap_size);
 
   // Explore the search tree using the best-first search with plunging strategy.
   void explore_subtree(search_tree_t<i_t, f_t>& search_tree,
