@@ -44,10 +44,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(argparse)
 
 # Force CMake to use the system Modules first
-set(CMAKE_MODULE_PATH
-    "${CMAKE_MODULE_PATH}"
-    "/usr/share/cmake/Modules" # system modules
-)
+#set(CMAKE_MODULE_PATH
+#    "${CMAKE_MODULE_PATH}"
+#    "/usr/share/cmake/Modules" # system modules
+#)
 
 # Use module mode (system boost-devel has no BoostConfig.cmake)
 #set(Boost_NO_BOOST_CMAKE ON CACHE BOOL "" FORCE)
@@ -56,12 +56,14 @@ set(CMAKE_MODULE_PATH
 #set(BOOST_LIBRARYDIR "/usr/lib64" CACHE PATH "" FORCE)
 
 
-find_package(Boost 1.65 REQUIRED COMPONENTS system filesystem thread)
+find_package(Boost 1.65 REQUIRED)
 if(Boost_FOUND)
     message(STATUS "Found Boost ${Boost_VERSION} in ${Boost_INCLUDE_DIRS}")
 else()
     message(FATAL_ERROR "Boost not found. Please install boost-devel.")
 endif()
+
+include_directories(${Boost_INCLUDE_DIRS})
 
 set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
 set(PAPILO_NO_BINARIES ON)
