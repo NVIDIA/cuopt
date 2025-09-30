@@ -69,6 +69,27 @@ struct max_abs_value {
   }
 };
 
+template <typename i_t>
+i_t conditional_major(uint64_t total_pdlp_iterations)
+{
+  uint64_t step      = 10;
+  uint64_t threshold = 1000;
+  uint64_t iteration = 0;
+
+  [[maybe_unused]] constexpr uint64_t max_u64 = std::numeric_limits<uint64_t>::max();
+
+  while (total_pdlp_iterations >= threshold) {
+    ++iteration;
+
+    cuopt_assert(step <= max_u64 / 10, "Overflow risk in step during conditional_major");
+    cuopt_assert(threshold <= max_u64 / 10, "Overflow risk in threshold during conditional_major");
+
+    step *= 10;
+    threshold *= 10;
+  }
+  return step;
+}
+
 template <typename f_t>
 struct a_sub_scalar_times_b {
   a_sub_scalar_times_b(const f_t* scalar) : scalar_{scalar} {}
@@ -172,6 +193,53 @@ void inline combine_constraint_bounds(const problem_t<i_t, f_t>& op_problem,
                            combine_finite_abs_bounds<f_t>(),
                            op_problem.handle_ptr->get_stream());
   }
+}
+
+template <typename f_t>
+void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_bounds,
+                               const rmm::device_uvector<f_t>& constraint_upper_bounds,
+                               rmm::device_scalar<f_t>& out,
+                               rmm::cuda_stream_view stream_view)
+{
+  rmm::device_buffer d_temp_storage;
+  size_t bytes;
+  auto main_op = [] HD(const thrust::tuple<f_t, f_t> t) {
+    const f_t lower = thrust::get<0>(t);
+    const f_t upper = thrust::get<1>(t);
+    f_t sum         = 0;
+    if (isfinite(lower) && (lower != upper)) sum += lower * lower;
+    if (isfinite(upper)) sum += upper * upper;
+    return sum;
+  };
+  cub::DeviceReduce::TransformReduce(
+    nullptr,
+    bytes,
+    thrust::make_zip_iterator(constraint_lower_bounds.data(), constraint_upper_bounds.data()),
+    out.data(),
+    constraint_lower_bounds.size(),
+    cuda::std::plus<>{},
+    main_op,
+    f_t(0),
+    stream_view);
+
+  d_temp_storage.resize(bytes, stream_view);
+
+  cub::DeviceReduce::TransformReduce(
+    d_temp_storage.data(),
+    bytes,
+    thrust::make_zip_iterator(constraint_lower_bounds.data(), constraint_upper_bounds.data()),
+    out.data(),
+    constraint_lower_bounds.size(),
+    cuda::std::plus<>{},
+    main_op,
+    f_t(0),
+    stream_view);
+
+  const f_t res = std::sqrt(out.value(stream_view));
+  out.set_value_async(res, stream_view);
+
+  // Sync since we are using local variable
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
 }
 
 template <typename f_t>

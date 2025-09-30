@@ -94,6 +94,14 @@ static void set_Stable1()
   pdlp_hyper_params::update_step_size_on_initial_solution                       = false;
   pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = true;
   pdlp_hyper_params::project_initial_primal                                     = false;
+  pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
+  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
+  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
+  pdlp_hyper_params::bound_objective_rescaling                                  = false;
+  pdlp_hyper_params::use_reflected_primal_dual                                  = false;
+  pdlp_hyper_params::use_fixed_point_error                                      = false;
+  pdlp_hyper_params::reflection_coefficient                                     = 1.0;
+  pdlp_hyper_params::use_conditional_major                                      = false;
 }
 
 // Even better general setting due to proper primal gradient handling for KKT restart and initial
@@ -129,6 +137,72 @@ static void set_Stable2()
   pdlp_hyper_params::update_step_size_on_initial_solution                       = false;
   pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = false;
   pdlp_hyper_params::project_initial_primal                                     = true;
+  pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
+  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
+  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
+  pdlp_hyper_params::bound_objective_rescaling                                  = false;
+  pdlp_hyper_params::use_reflected_primal_dual                                  = false;
+  pdlp_hyper_params::use_fixed_point_error                                      = false;
+  pdlp_hyper_params::reflection_coefficient                                     = 1.0;
+  pdlp_hyper_params::use_conditional_major                                      = false;
+}
+
+/* 1 - 1 mapping of cuPDLPx(+) function from Haihao and al.
+ * For more information please read:
+ * @article{lu2025cupdlpx,
+ *   title={cuPDLPx: A Further Enhanced GPU-Based First-Order Solver for Linear Programming},
+ *   author={Lu, Haihao and Peng, Zedong and Yang, Jinwen},
+ *   journal={arXiv preprint arXiv:2507.14051},
+ *   year={2025}
+ * }
+ *
+ * @article{lu2024restarted,
+ *   title={Restarted Halpern PDHG for linear programming},
+ *   author={Lu, Haihao and Yang, Jinwen},
+ *   journal={arXiv preprint arXiv:2407.16144},
+ *   year={2024}
+ * }
+ */
+static void set_Stable3()
+{
+  pdlp_hyper_params::initial_step_size_scaling                = 1.0;
+  pdlp_hyper_params::default_l_inf_ruiz_iterations            = 10;
+  pdlp_hyper_params::do_pock_chambolle_scaling                = true;
+  pdlp_hyper_params::do_ruiz_scaling                          = true;
+  pdlp_hyper_params::default_alpha_pock_chambolle_rescaling   = 1.0;
+  pdlp_hyper_params::default_artificial_restart_threshold     = 0.36;
+  pdlp_hyper_params::compute_initial_step_size_before_scaling = false;
+  pdlp_hyper_params::compute_initial_primal_weight_before_scaling =
+    true;  // TODO this is maybe why he disabled primal weight when bound rescaling is on, because
+           // TODO try with false
+  pdlp_hyper_params::initial_primal_weight_c_scaling = 1.0;
+  pdlp_hyper_params::initial_primal_weight_b_scaling = 1.0;
+  pdlp_hyper_params::major_iteration                 = 200;  // TODO Try with something smaller
+  pdlp_hyper_params::min_iteration_restart           = 0;
+  pdlp_hyper_params::restart_strategy                = 3;
+  pdlp_hyper_params::never_restart_to_average        = true;
+  pdlp_hyper_params::host_default_reduction_exponent = 0.3;
+  pdlp_hyper_params::host_default_growth_exponent    = 0.6;
+  pdlp_hyper_params::host_default_primal_weight_update_smoothing                = 0.5;
+  pdlp_hyper_params::host_default_sufficient_reduction_for_restart              = 0.2;
+  pdlp_hyper_params::host_default_necessary_reduction_for_restart               = 0.8;
+  pdlp_hyper_params::host_primal_importance                                     = 1.0;
+  pdlp_hyper_params::host_primal_distance_smoothing                             = 0.5;
+  pdlp_hyper_params::host_dual_distance_smoothing                               = 0.5;
+  pdlp_hyper_params::compute_last_restart_before_new_primal_weight              = true;
+  pdlp_hyper_params::artificial_restart_in_main_loop                            = false;
+  pdlp_hyper_params::rescale_for_restart                                        = true;
+  pdlp_hyper_params::update_primal_weight_on_initial_solution                   = false;
+  pdlp_hyper_params::update_step_size_on_initial_solution                       = false;
+  pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = false;
+  pdlp_hyper_params::project_initial_primal                                     = true;
+  pdlp_hyper_params::use_adaptive_step_size_strategy                            = false;
+  pdlp_hyper_params::initial_step_size_max_singular_value                       = true;
+  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = false;
+  pdlp_hyper_params::bound_objective_rescaling                                  = true;
+  pdlp_hyper_params::use_reflected_primal_dual                                  = true;
+  pdlp_hyper_params::use_fixed_point_error                                      = true;
+  pdlp_hyper_params::use_conditional_major                                      = true;
 }
 
 // Legacy/Original/Initial PDLP settings
@@ -163,6 +237,14 @@ static void set_Methodical1()
   pdlp_hyper_params::update_step_size_on_initial_solution                       = false;
   pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = true;
   pdlp_hyper_params::project_initial_primal                                     = false;
+  pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
+  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
+  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
+  pdlp_hyper_params::bound_objective_rescaling                                  = false;
+  pdlp_hyper_params::use_reflected_primal_dual                                  = false;
+  pdlp_hyper_params::use_fixed_point_error                                      = false;
+  pdlp_hyper_params::reflection_coefficient                                     = 1.0;
+  pdlp_hyper_params::use_conditional_major                                      = false;
 }
 
 // Can be extremly faster but usually leads to more divergence
@@ -198,6 +280,14 @@ static void set_Fast1()
   pdlp_hyper_params::update_step_size_on_initial_solution                       = false;
   pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = true;
   pdlp_hyper_params::project_initial_primal                                     = false;
+  pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
+  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
+  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
+  pdlp_hyper_params::bound_objective_rescaling                                  = false;
+  pdlp_hyper_params::use_reflected_primal_dual                                  = false;
+  pdlp_hyper_params::use_fixed_point_error                                      = false;
+  pdlp_hyper_params::reflection_coefficient                                     = 1.0;
+  pdlp_hyper_params::use_conditional_major                                      = false;
 }
 
 template <typename i_t, typename f_t>
@@ -211,6 +301,8 @@ void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t> const& settings)
     set_Methodical1();
   else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Fast1)
     set_Fast1();
+  else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Stable3)
+    set_Stable3();
 }
 
 void setup_device_symbols(rmm::cuda_stream_view stream_view)
@@ -809,7 +901,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                                                                                        \
   template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem( \
     raft::handle_t const* handle_ptr,                                                  \
-    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);
+    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);               \
+  template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE> const& settings);
 
 #if MIP_INSTANTIATE_FLOAT
 INSTANTIATE(float)

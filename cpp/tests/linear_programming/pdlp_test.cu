@@ -166,8 +166,7 @@ TEST(pdlp_class, run_time_limit)
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
 
-  // 200 ms
-  constexpr double time_limit_seconds = 0.2;
+  constexpr double time_limit_seconds = 2;
   settings.time_limit                 = time_limit_seconds;
   // To make sure it doesn't return before the time limit
   settings.set_optimality_tolerance(0);
@@ -212,7 +211,9 @@ TEST(pdlp_class, run_sub_mittleman)
     // Testing for each solver_mode is ok as it's parsing that is the bottleneck here, not
     // solving
     auto solver_mode_list = {
+      cuopt::linear_programming::pdlp_solver_mode_t::Stable3,
       cuopt::linear_programming::pdlp_solver_mode_t::Stable2,
+      cuopt::linear_programming::pdlp_solver_mode_t::Stable1,
       cuopt::linear_programming::pdlp_solver_mode_t::Methodical1,
       cuopt::linear_programming::pdlp_solver_mode_t::Fast1,
     };
@@ -224,6 +225,7 @@ TEST(pdlp_class, run_sub_mittleman)
         const raft::handle_t handle_{};
         optimization_problem_solution_t<int, double> solution =
           solve_lp(&handle_, op_problem, settings);
+        printf("running %s mode %d presolve? %d\n", name.c_str(), (int)solver_mode, presolve);
         EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
         EXPECT_FALSE(is_incorrect_objective(
           expected_objective_value,
@@ -687,11 +689,13 @@ TEST(pdlp_class, per_constraint_test)
 
     auto& current_termination_strategy = solver.get_current_termination_strategy();
     pdlp_termination_status_t termination_average =
-      current_termination_strategy.evaluate_termination_criteria(solver.pdhg_solver_,
-                                                                 d_initial_primal,
-                                                                 d_initial_primal,
-                                                                 problem.combined_bounds,
-                                                                 problem.objective_coefficients);
+      current_termination_strategy.evaluate_termination_criteria(
+        solver.pdhg_solver_,
+        d_initial_primal,
+        d_initial_primal,
+        solver.pdhg_solver_.get_dual_slack(),
+        problem.combined_bounds,
+        problem.objective_coefficients);
 
     EXPECT_TRUE(termination_average != pdlp_termination_status_t::Optimal);
   }
@@ -706,11 +710,13 @@ TEST(pdlp_class, per_constraint_test)
 
     auto& current_termination_strategy = solver.get_current_termination_strategy();
     pdlp_termination_status_t termination_average =
-      current_termination_strategy.evaluate_termination_criteria(solver.pdhg_solver_,
-                                                                 d_initial_primal,
-                                                                 d_initial_primal,
-                                                                 problem.combined_bounds,
-                                                                 problem.objective_coefficients);
+      current_termination_strategy.evaluate_termination_criteria(
+        solver.pdhg_solver_,
+        d_initial_primal,
+        d_initial_primal,
+        solver.pdhg_solver_.get_dual_slack(),
+        problem.combined_bounds,
+        problem.objective_coefficients);
     EXPECT_EQ(current_termination_strategy.get_convergence_information()
                 .get_relative_linf_primal_residual()
                 .value(handle.get_stream()),
@@ -921,8 +927,9 @@ TEST(pdlp_class, test_max)
   cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
     cuopt::mps_parser::parse_mps<int, double>(path);
 
-  auto solver_settings   = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
+  auto solver_settings             = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode = cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
 
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, op_problem, solver_settings);

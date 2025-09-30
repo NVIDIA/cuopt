@@ -78,5 +78,19 @@ bool update_step_size_on_initial_solution = false;
 bool handle_some_primal_gradients_on_finite_bounds_as_residuals = false;
 // Whether to project initial primal values using variable bounds
 bool project_initial_primal = true;
+// Whether to use adaptive step size strategy
+bool use_adaptive_step_size_strategy = true;
+// All hyperparameters needed to have the same heuristics cuPDLP+
+bool initial_step_size_max_singular_value  = false;
+bool initial_primal_weight_combined_bounds = true;
+bool bound_objective_rescaling             = false;
+bool use_reflected_primal_dual             = false;
+bool use_fixed_point_error                 = false;
+double reflection_coefficient              = 1.0;
+double restart_k_p                         = 0.99;
+double restart_k_i                         = 0.01;
+double restart_k_d                         = 0.0;
+double restart_i_smooth                    = 0.3;
+bool use_conditional_major                 = false;
 
 }  // namespace cuopt::linear_programming::pdlp_hyper_params

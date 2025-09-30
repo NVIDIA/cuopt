@@ -122,13 +122,13 @@ int run_single_file(const std::string& file_path,
     (op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP ||
      op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::IP);
 
-  auto initial_solution =
-    initial_solution_file.empty()
-      ? std::vector<double>()
-      : cuopt::linear_programming::solution_reader_t::get_variable_values_from_sol_file(
-          initial_solution_file, mps_data_model.get_variable_names());
-
   try {
+    auto initial_solution =
+      initial_solution_file.empty()
+        ? std::vector<double>()
+        : cuopt::linear_programming::solution_reader_t::get_variable_values_from_sol_file(
+            initial_solution_file, mps_data_model.get_variable_names());
+
     if (is_mip && !solve_relaxation) {
       auto& mip_settings = settings.get_mip_settings();
       if (initial_solution.size() > 0) {

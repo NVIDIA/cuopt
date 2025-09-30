@@ -172,6 +172,7 @@ These constants are used to configure `CUOPT_PDLP_SOLVER_MODE` via :c:func:`cuOp
 
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE1
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE2
+.. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE3
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_METHODICAL1
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_FAST1
 
