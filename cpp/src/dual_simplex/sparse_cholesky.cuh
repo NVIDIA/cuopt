@@ -183,9 +183,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
     if (cudss_mt_lib_file != nullptr) {
       settings.log.printf("cuDSS Threading layer       : %s\n", cudss_mt_lib_file);
-      CUDSS_CALL_AND_CHECK_EXIT(cudssSetThreadingLayer(handle, cudss_mt_lib_file),
-                                status,
-                                "cudssSetThreadingLayer");
+      CUDSS_CALL_AND_CHECK_EXIT(
+        cudssSetThreadingLayer(handle, cudss_mt_lib_file), status, "cudssSetThreadingLayer");
     }
 
     CUDSS_CALL_AND_CHECK_EXIT(cudssConfigCreate(&solverConfig), status, "cudssConfigCreate");
