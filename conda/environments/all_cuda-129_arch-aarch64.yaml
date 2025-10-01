@@ -52,7 +52,7 @@ dependencies:
 - pexpect
 - pip
 - pre-commit
-- psutil>=5.9,<6.0a0
+- psutil>=6.0.0
 - pylibraft==25.10.*,>=0.0.0a0
 - pyrsistent
 - pytest-cov
