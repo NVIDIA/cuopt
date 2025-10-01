@@ -182,6 +182,15 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
   for (auto& cpu_fj : scratch_cpu_fj) {
     cpu_fj.start_cpu_solver();
   }
+}
+
+template <typename i_t, typename f_t>
+void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
+  population_t<i_t, f_t>& population)
+{
+  pop_ptr = &population;
+
+  std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
 
   solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
   solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
