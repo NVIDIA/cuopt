@@ -696,6 +696,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
 
   nodes_explored   = (stats_.nodes_explored++);
   nodes_unexplored = (stats_.nodes_unexplored--);
+  stats_.nodes_since_last_log++;
 
   if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
     search_tree->graphviz_node(settings_.log, node, "cutoff", node->lower_bound);
@@ -706,10 +707,9 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
   f_t now = toc(stats_.start_time);
 
   if (omp_get_thread_num() == 0) {
-    stats_.nodes_since_last_log++;
     f_t time_since_last_log = stats_.last_log == 0 ? 1.0 : toc(stats_.last_log);
 
-    if (((stats_.nodes_since_last_log > 10 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
+    if (((stats_.nodes_since_last_log >= 10 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
          (time_since_last_log >= 1)) ||
         (time_since_last_log > 30) || now > settings_.time_limit) {
       f_t obj              = compute_user_objective(original_lp_, upper_bound);
@@ -725,6 +725,8 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
                            nodes_explored > 0 ? stats_.total_lp_iters / nodes_explored : 0,
                            gap_user.c_str(),
                            now);
+
+      stats_.nodes_since_last_log = 0;
     }
   }
 
@@ -789,6 +791,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t id,
     local_lower_bounds_[id] = lower_bound;
     i_t nodes_explored      = stats_.nodes_explored++;
     i_t nodes_unexplored    = stats_.nodes_unexplored--;
+    stats_.nodes_since_last_log++;
 
     if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
       search_tree.graphviz_node(settings_.log, node_ptr, "cutoff", node_ptr->lower_bound);
@@ -799,7 +802,6 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t id,
     f_t now = toc(stats_.start_time);
 
     if (id == 0) {
-      stats_.nodes_since_last_log++;
       f_t time_since_last_log = stats_.last_log == 0 ? 1.0 : toc(stats_.last_log);
 
       if (((stats_.nodes_since_last_log >= 1000 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
