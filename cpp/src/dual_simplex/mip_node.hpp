@@ -262,17 +262,12 @@ class node_compare_t {
 template <typename i_t, typename f_t>
 class search_tree_t {
  public:
-  search_tree_t(f_t root_lower_bound, const std::vector<variable_status_t>& basis, logger_t& log)
-    : root(root_lower_bound, basis), num_nodes(0), log(log)
+  search_tree_t(f_t root_lower_bound, const std::vector<variable_status_t>& basis)
+    : root(root_lower_bound, basis), num_nodes(0)
   {
   }
 
-  search_tree_t(mip_node_t<i_t, f_t>&& node, logger_t& log)
-    : root(std::move(node)), num_nodes(0), log(log)
-  {
-  }
-
-  f_t get_lower_bound() const { return root.lower_bound; }
+  search_tree_t(mip_node_t<i_t, f_t>&& node) : root(std::move(node)), num_nodes(0) {}
 
   void update_tree(mip_node_t<i_t, f_t>* node_ptr, node_status_t status)
   {
@@ -287,7 +282,8 @@ class search_tree_t {
               const i_t branch_var,
               const f_t branch_var_val,
               const std::vector<variable_status_t>& parent_vstatus,
-              const lp_problem_t<i_t, f_t>& original_lp)
+              const lp_problem_t<i_t, f_t>& original_lp,
+              logger_t& log)
   {
     i_t id = num_nodes.fetch_add(2);
 
@@ -295,27 +291,31 @@ class search_tree_t {
     auto down_child = std::make_unique<mip_node_t<i_t, f_t>>(
       original_lp, parent_node, ++id, branch_var, 0, branch_var_val, parent_vstatus);
 
-    graphviz_edge(parent_node, down_child.get(), branch_var, 0, std::floor(branch_var_val));
+    graphviz_edge(log, parent_node, down_child.get(), branch_var, 0, std::floor(branch_var_val));
 
     // up child
     auto up_child = std::make_unique<mip_node_t<i_t, f_t>>(
       original_lp, parent_node, ++id, branch_var, 1, branch_var_val, parent_vstatus);
 
-    graphviz_edge(parent_node, up_child.get(), branch_var, 1, std::ceil(branch_var_val));
+    graphviz_edge(log, parent_node, up_child.get(), branch_var, 1, std::ceil(branch_var_val));
 
     assert(parent_vstatus.size() == original_lp.num_cols);
     parent_node->add_children(std::move(down_child),
                               std::move(up_child));  // child pointers moved into the tree
   }
 
-  void graphviz_node(const mip_node_t<i_t, f_t>* node_ptr, const std::string label, const f_t val)
+  void graphviz_node(logger_t& log,
+                     const mip_node_t<i_t, f_t>* node_ptr,
+                     const std::string label,
+                     const f_t val)
   {
     if (write_graphviz) {
       log.printf("Node%d [label=\"%s %.16e\"]\n", node_ptr->node_id, label.c_str(), val);
     }
   }
 
-  void graphviz_edge(const mip_node_t<i_t, f_t>* origin_ptr,
+  void graphviz_edge(logger_t& log,
+                     const mip_node_t<i_t, f_t>* origin_ptr,
                      const mip_node_t<i_t, f_t>* dest_ptr,
                      const i_t branch_var,
                      const i_t branch_dir,
@@ -334,7 +334,6 @@ class search_tree_t {
   mip_node_t<i_t, f_t> root;
   omp_mutex_t mutex;
   omp_atomic_t<i_t> num_nodes;
-  logger_t log;
 
   static constexpr int write_graphviz = false;
 };

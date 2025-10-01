@@ -79,7 +79,6 @@ void strong_branch_helper(i_t start,
                                           solution,
                                           iter,
                                           child_edge_norms);
-      // const f_t lp_solve_time                = toc(lp_start_time);
 
       f_t obj = std::numeric_limits<f_t>::infinity();
       if (status == dual::status_t::DUAL_UNBOUNDED) {
@@ -126,9 +125,7 @@ void strong_branch_helper(i_t start,
     }
     if (toc(start_time) > settings.time_limit) { break; }
 
-    pc.strong_branches_completed.lock();
     const i_t completed = pc.num_strong_branches_completed++;
-    pc.strong_branches_completed.unlock();
 
     if (thread_id == 0 && toc(last_log) > 10) {
       last_log = tic();
@@ -211,6 +208,7 @@ template <typename i_t, typename f_t>
 void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_ptr,
                                                    f_t leaf_objective)
 {
+  mutex.lock();
   const f_t change_in_obj = leaf_objective - node_ptr->lower_bound;
   const f_t frac          = node_ptr->branch_dir == 0
                               ? node_ptr->fractional_val - std::floor(node_ptr->fractional_val)
@@ -222,6 +220,7 @@ void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_pt
     pseudo_cost_sum_up[node_ptr->branch_var] += change_in_obj / frac;
     pseudo_cost_num_up[node_ptr->branch_var]++;
   }
+  mutex.unlock();
 }
 
 template <typename i_t, typename f_t>
@@ -260,10 +259,10 @@ void pseudo_costs_t<i_t, f_t>::initialized(i_t& num_initialized_down,
 template <typename i_t, typename f_t>
 i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractional,
                                                  const std::vector<f_t>& solution,
-                                                 const std::vector<f_t>& lower,
-                                                 const std::vector<f_t>& upper,
-                                                 logger_t& log) const
+                                                 logger_t& log)
 {
+  mutex.lock();
+
   const i_t num_fractional = fractional.size();
   std::vector<f_t> pseudo_cost_up(num_fractional);
   std::vector<f_t> pseudo_cost_down(num_fractional);
@@ -315,6 +314,8 @@ i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractio
 
   log.printf(
     "pc branching on %d. Value %e. Score %e\n", branch_var, solution[branch_var], score[select]);
+
+  mutex.unlock();
 
   return branch_var;
 }
