@@ -19,15 +19,14 @@ set -euo pipefail
 
 . /opt/conda/etc/profile.d/conda.sh
 
-CUOPT_VERSION="$(rapids-version)"
+CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
 
 rapids-logger "Generate C++ testing dependencies"
 rapids-dependency-file-generator \
   --output conda \
   --file-key test_cpp \
+  --prepend-channel "${CPP_CHANNEL}" \
   --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch)" | tee env.yaml
-
-CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
 
 rapids-mamba-retry env create --yes -f env.yaml -n test --channel "${CPP_CHANNEL}"
 
@@ -40,11 +39,6 @@ RAPIDS_TESTS_DIR=${RAPIDS_TESTS_DIR:-"${PWD}/test-results"}/
 mkdir -p "${RAPIDS_TESTS_DIR}"
 
 rapids-print-env
-
-rapids-mamba-retry install \
-  --channel "${CPP_CHANNEL}" \
-  "libcuopt=${CUOPT_VERSION}" \
-  "libcuopt-tests=${CUOPT_VERSION}"
 
 rapids-logger "Check GPU usage"
 nvidia-smi
