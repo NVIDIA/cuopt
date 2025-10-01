@@ -177,13 +177,13 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     char* env_value               = std::getenv("CUDSS_THREADING_LIB");
     if (env_value != nullptr) {
       cudss_mt_lib_file = env_value;
-    } else if (CUDSS_MT_LIB_FILE != nullptr) {
-      cudss_mt_lib_file = CUDSS_MT_LIB_FILE;
+    } else {
+      cudss_mt_lib_file = "libcudss_mtlayer_gomp.so";
     }
 
     if (cudss_mt_lib_file != nullptr) {
       settings.log.printf("cuDSS Threading layer       : %s\n", cudss_mt_lib_file);
-      CUDSS_CALL_AND_CHECK_EXIT(cudssSetThreadingLayer(handle, "libcudss_mtlayer_gomp.so"),
+      CUDSS_CALL_AND_CHECK_EXIT(cudssSetThreadingLayer(handle, cudss_mt_lib_file),
                                 status,
                                 "cudssSetThreadingLayer");
     }

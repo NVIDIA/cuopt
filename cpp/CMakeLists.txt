@@ -314,7 +314,6 @@ target_link_libraries(cuopt
   raft::raft
   cuopt::mps_parser
   ${CUDSS_LIB_FILE}
-  ${CUDSS_MT_LIB_FILE}
   PRIVATE
   ${CUOPT_PRIVATE_CUDA_LIBS}
   )
