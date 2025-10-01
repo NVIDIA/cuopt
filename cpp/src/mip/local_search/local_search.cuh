@@ -83,6 +83,7 @@ class local_search_t {
                  rmm::device_uvector<f_t>& lp_optimal_solution_);
 
   void start_cpufj_scratch_threads(population_t<i_t, f_t>& population);
+  void start_cpufj_lptopt_scratch_threads(population_t<i_t, f_t>& population);
   void stop_cpufj_scratch_threads();
   void generate_fast_solution(solution_t<i_t, f_t>& solution, timer_t timer);
   bool generate_solution(solution_t<i_t, f_t>& solution,
