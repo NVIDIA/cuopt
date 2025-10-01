@@ -438,6 +438,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t
 {
   mip_status_t mip_status = mip_status_t::UNSET;
 
+  if (status_ == mip_exploration_status_t::NUMERICAL) {
+    settings_.log.printf("Numerical issue encountered. Stopping the solver...\n");
+    mip_status = mip_status_t::NUMERICAL;
+  }
+
   if (status_ == mip_exploration_status_t::TIME_LIMIT) {
     settings_.log.printf("Time limit reached. Stopping the solver...\n");
     mip_status = mip_status_t::TIME_LIMIT;
@@ -980,10 +985,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   log.log = false;
   status_ = mip_exploration_status_t::UNSET;
 
-  stats_.total_lp_iters   = 0;
-  stats_.nodes_explored   = 0;
-  stats_.nodes_unexplored = 0;
-  active_subtrees_        = 0;
+  stats_.total_lp_iters       = 0;
+  stats_.nodes_explored       = 0;
+  stats_.nodes_unexplored     = 0;
+  stats_.nodes_since_last_log = 0;
+  stats_.last_log             = 0.0;
+  active_subtrees_            = 0;
 
   if (guess_.size() != 0) {
     std::vector<f_t> crushed_guess;
