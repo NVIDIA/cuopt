@@ -45,6 +45,7 @@ EXCLUDE_ARGS=(
   --exclude "libcublas.so.*"
   --exclude "libcublasLt.so.*"
   --exclude "libcurand.so.*"
+  --exclude "libcudss.so.*"
   --exclude "libcusolver.so.*"
   --exclude "libcusparse.so.*"
   --exclude "libcuopt.so"
