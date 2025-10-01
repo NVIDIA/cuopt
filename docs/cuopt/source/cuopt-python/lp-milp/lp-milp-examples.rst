@@ -309,3 +309,78 @@ The response is as follows:
     Solve time: 0.16 seconds
     Final solution: x=36.0, y=40.99999999999999
     Final objective value: 303.00
+
+Working with PDLP Warmstart Data
+--------------------------------
+
+Warmstart data allows to restart PDLP with a previous solution context. This should be used when you solve a new problem which is similar to the previous one.
+
+.. note::
+    Warmstart data is only available for Linear Programming (LP) problems, not for Mixed Integer Linear Programming (MILP) problems.
+
+.. code-block:: python
+
+    from cuopt.linear_programming.problem import Problem, CONTINUOUS, MAXIMIZE
+    from cuopt.linear_programming.solver.solver_parameters import CUOPT_METHOD
+    from cuopt.linear_programming.solver_settings import SolverSettings, SolverMethod
+
+    # Create a new problem
+    problem = Problem("Simple LP")
+
+    # Add variables
+    x = problem.addVariable(lb=0, vtype=CONTINUOUS, name="x")
+    y = problem.addVariable(lb=0, vtype=CONTINUOUS, name="y")
+
+    # Add constraints
+    problem.addConstraint(4*x + 10*y <= 130, name="c1")
+    problem.addConstraint(8*x - 3*y >= 40, name="c2")
+
+    # Set objective function
+    problem.setObjective(2*x + y, sense=MAXIMIZE)
+
+    # Configure solver settings
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+
+    # Solve the problem
+    problem.solve(settings)
+
+    # Get the warmstart data
+    warmstart_data = problem.get_pdlp_warm_start_data()
+
+    print(warmstart_data.current_primal_solution)
+    # Create a new problem
+    new_problem = Problem("Warmstart LP")
+
+    # Add variables
+    x = new_problem.addVariable(lb=0, vtype=CONTINUOUS, name="x")
+    y = new_problem.addVariable(lb=0, vtype=CONTINUOUS, name="y")
+
+    # Add constraints
+    new_problem.addConstraint(4*x + 10*y <= 100, name="c1")
+    new_problem.addConstraint(8*x - 3*y >= 50, name="c2")
+
+    # Set objective function
+    new_problem.setObjective(2*x + y, sense=MAXIMIZE)
+
+    # Configure solver settings
+    settings.set_pdlp_warm_start_data(warmstart_data)
+
+    # Solve the problem
+    new_problem.solve(settings)
+
+    # Check solution status
+    if new_problem.Status.name == "Optimal":
+        print(f"Optimal solution found in {new_problem.SolveTime:.2f} seconds")
+        print(f"x = {x.getValue()}")
+        print(f"y = {y.getValue()}")
+        print(f"Objective value = {new_problem.ObjValue}")
+
+The response is as follows:
+
+.. code-block:: text
+
+    Optimal solution found in 0.01 seconds
+    x = 25.000000000639382
+    y = 0.0
+    Objective value = 50.000000001278764

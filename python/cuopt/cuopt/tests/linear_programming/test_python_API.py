@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import math
+import os
 
 import pytest
 
@@ -32,6 +33,16 @@ from cuopt.linear_programming.problem import (
     VType,
     sense,
 )
+from cuopt.linear_programming.solver.solver_parameters import (
+    CUOPT_INFEASIBILITY_DETECTION,
+    CUOPT_PDLP_SOLVER_MODE,
+)
+from cuopt.linear_programming.solver_settings import PDLPSolverMode
+
+RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
+if RAPIDS_DATASET_ROOT_DIR is None:
+    RAPIDS_DATASET_ROOT_DIR = os.getcwd()
+    RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
 
 
 def test_model():
@@ -80,7 +91,9 @@ def test_model():
     assert expr.getCoefficients() == expected_obj_coeff
     assert expr.getConstant() == 50
     assert prob.ObjSense == sense.MAXIMIZE
-    assert prob.getObjective() is expr
+    assert prob.getObjective().vars == [x, y]
+    assert prob.getObjective().coefficients == [5, 3]
+    assert prob.getObjective().constant == prob.ObjConstant
 
     # Initialize Settings
     settings = SolverSettings()
@@ -284,8 +297,8 @@ def test_read_write_mps_and_relaxation():
     # Constraints (5 total)
     m.addConstraint(x1 + x2 + x3 <= 10, name="c1")
     m.addConstraint(2 * x1 + x3 - x4 >= 3, name="c2")
-    m.addConstraint(x2 + 3 * x5 == 7, name="c3")
-    m.addConstraint(x4 + x5 <= 8, name="c4")
+    m.addConstraint(x2 + 3 * x5 == 7)
+    m.addConstraint(x4 + x5 <= 8)
     m.addConstraint(x1 + x2 + x3 + x4 + x5 >= 5, name="c5")
 
     # Write MPS
@@ -374,3 +387,65 @@ def test_incumbent_solutions():
         assert 2 * x_val + 4 * y_val >= 230
         assert 3 * x_val + 2 * y_val <= 190
         assert 5 * x_val + 3 * y_val == cost
+
+
+def test_warm_start():
+    file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/a2864/a2864.mps"
+    problem = Problem.readMPS(file_path)
+
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
+    settings.set_optimality_tolerance(1e-3)
+    settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
+
+    problem.solve(settings)
+    iterations_first_solve = problem.SolutionStats.nb_iterations
+
+    settings.set_optimality_tolerance(1e-2)
+    problem.solve(settings)
+    iterations_second_solve = problem.SolutionStats.nb_iterations
+
+    settings.set_optimality_tolerance(1e-3)
+    warmstart_data = problem.get_pdlp_warm_start_data()
+    settings.set_pdlp_warm_start_data(warmstart_data)
+    problem.solve(settings)
+
+    iterations_third_solve = problem.SolutionStats.nb_iterations
+
+    assert (
+        iterations_third_solve + iterations_second_solve
+        == iterations_first_solve
+    )
+
+
+def test_problem_update():
+    prob = Problem()
+    x1 = prob.addVariable(vtype=INTEGER, lb=0, name="x1")
+    x2 = prob.addVariable(vtype=INTEGER, lb=0, name="x2")
+
+    prob.addConstraint(2 * x1 + x2 <= 7, name="c1")
+    prob.addConstraint(x1 + x2 <= 5, name="c2")
+
+    prob.setObjective(4 * x1 + 5 * x2 + 4 - 4 * x2, MAXIMIZE)
+    prob.solve()
+
+    assert prob.ObjValue == pytest.approx(17)
+
+    prob.updateObjective(coeffs=[(x1, 1.0), (x2, 3.0)])
+    prob.solve()
+    assert prob.ObjValue == pytest.approx(19)
+
+    c1 = prob.getConstraint("c1")
+    c2 = prob.getConstraint(1)
+
+    prob.updateConstraint(c1, coeffs=[(x1, 1)], rhs=10)
+    prob.updateConstraint(c2, rhs=10)
+    prob.solve()
+    assert prob.ObjValue == pytest.approx(34)
+
+    assert prob.getVariable("x1").Value == pytest.approx(0)
+    assert prob.getVariable("x2").Value == pytest.approx(10)
+
+    prob.updateObjective(constant=5, sense=MINIMIZE)
+    prob.solve()
+    assert prob.ObjValue == pytest.approx(5)
