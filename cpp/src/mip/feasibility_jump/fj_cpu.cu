@@ -708,6 +708,9 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   auto& problem   = *solution.problem_ptr;
   auto handle_ptr = solution.handle_ptr;
 
+  auto sol_copy = solution;
+  clamp_within_var_bounds(sol_copy.assignment, &problem, handle_ptr);
+
   // build a cpu-based fj_view_t
   fj_cpu.view    = typename fj_t<i_t, f_t>::climber_data_t::view_t{};
   fj_cpu.view.pb = problem.view();
@@ -734,8 +737,9 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.h_cstr_right_weights = right_weights;
   fj_cpu.max_weight           = 1.0;
   fj_cpu.h_objective_weight   = objective_weight;
-  fj_cpu.h_assignment         = solution.get_host_assignment();
-  fj_cpu.h_best_assignment    = solution.get_host_assignment();
+  auto h_assignment           = sol_copy.get_host_assignment();
+  fj_cpu.h_assignment         = h_assignment;
+  fj_cpu.h_best_assignment    = std::move(h_assignment);
   fj_cpu.h_lhs.resize(fj_cpu.pb_ptr->n_constraints);
   fj_cpu.h_lhs_sumcomp.resize(fj_cpu.pb_ptr->n_constraints, 0);
   fj_cpu.h_tabu_nodec_until.resize(fj_cpu.pb_ptr->n_variables, 0);
