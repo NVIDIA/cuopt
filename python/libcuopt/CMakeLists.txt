@@ -67,6 +67,7 @@ set(rpaths
   "$ORIGIN/../../librmm/lib64"
   "$ORIGIN/../../nvidia/cublas/lib"
   "$ORIGIN/../../nvidia/cu12/lib"
+  "$ORIGIN/../../nvidia/cudss/lib"
   "$ORIGIN/../../nvidia/curand/lib"
   "$ORIGIN/../../nvidia/cusolver/lib"
   "$ORIGIN/../../nvidia/cusparse/lib"

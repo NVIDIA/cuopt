@@ -178,7 +178,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     if (env_value != nullptr) {
       cudss_mt_lib_file = env_value;
     } else {
-      cudss_mt_lib_file = "libcudss_mtlayer_gomp.so";
+      cudss_mt_lib_file = "libcudss_mtlayer_gomp.so.0";
     }
 
     if (cudss_mt_lib_file != nullptr) {
