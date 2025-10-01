@@ -24,6 +24,7 @@ fi
 # Clean metadata & install cudss
 if command -v dnf &> /dev/null; then
     dnf clean all
+    dnf -y update
     # Adding static library just to please CMAKE requirements
     dnf -y install libcudss0-static-cuda-12 libcudss0-devel-cuda-12 libcudss0-cuda-12
 elif command -v apt-get &> /dev/null; then
