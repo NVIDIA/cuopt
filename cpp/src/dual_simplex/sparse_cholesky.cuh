@@ -162,9 +162,13 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     cudssGetProperty(PATCH_LEVEL, &patch);
     settings.log.printf("cuDSS Version               : %d.%d.%d\n", major, minor, patch);
 
+    CU_CHECK(cuDriverGetVersion(&driver_version));
+    settings_.log.printf("CUDA Driver Version         : %d\n", driver_version);
+
     cuda_error = cudaSuccess;
     status     = CUDSS_STATUS_SUCCESS;
-    if (settings_.concurrent_halt != nullptr) {
+
+    if (settings_.concurrent_halt != nullptr && driver_version >= 13000) {
       // 1. Set up the GPU resources
       CUdevResource initial_device_GPU_resources = {};
       CU_CHECK(cuDeviceGetDevResource(
@@ -340,7 +344,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK_EXIT(cudssConfigDestroy(solverConfig), status, "cudssConfigDestroy");
     CUDSS_CALL_AND_CHECK_EXIT(cudssDestroy(handle), status, "cudssDestroy");
     CUDA_CALL_AND_CHECK_EXIT(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
-    if (settings_.concurrent_halt != nullptr) {
+    if (settings_.concurrent_halt != nullptr && driver_version >= 13000) {
       RAFT_CHECK_CUDA(cudaStreamDestroy(stream));
       CU_CHECK(cuGreenCtxDestroy(barrier_green_ctx));
       handle_ptr_->get_stream().synchronize();
@@ -795,6 +799,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   f_t* csr_values_d;
   f_t* x_values_d;
   f_t* b_values_d;
+  i_t driver_version;
 
   const simplex_solver_settings_t<i_t, f_t>& settings_;
   CUgreenCtx barrier_green_ctx;
