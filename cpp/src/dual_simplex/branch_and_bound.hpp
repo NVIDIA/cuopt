@@ -198,7 +198,7 @@ class branch_and_bound_t {
   void exploration_ramp_up(search_tree_t<i_t, f_t>* search_tree,
                            mip_node_t<i_t, f_t>* node,
                            lp_problem_t<i_t, f_t>& leaf_problem,
-                           csc_matrix_t<i_t, f_t>& Arow,
+                           const csc_matrix_t<i_t, f_t>& Arow,
                            i_t initial_heap_size);
 
   // Explore the search tree using the best-first search with plunging strategy.
@@ -206,27 +206,27 @@ class branch_and_bound_t {
                        search_tree_t<i_t, f_t>& search_tree,
                        mip_node_t<i_t, f_t>* start_node,
                        lp_problem_t<i_t, f_t>& leaf_problem,
-                       csc_matrix_t<i_t, f_t>& Arow);
+                       const csc_matrix_t<i_t, f_t>& Arow);
 
   // Each "main" thread pops a node from the global heap and then performs a plunge
   // (i.e., a shallow dive) into the subtree determined by the node.
   void best_first_thread(i_t id,
                          search_tree_t<i_t, f_t>& search_tree,
                          lp_problem_t<i_t, f_t>& leaf_problem,
-                         csc_matrix_t<i_t, f_t>& Arow);
+                         const csc_matrix_t<i_t, f_t>& Arow);
 
   // Each diving thread pops the first node from the dive queue and then performs
   // a deep dive into the subtree determined by the node.
-  void diving_thread(lp_problem_t<i_t, f_t>& leaf_problem, csc_matrix_t<i_t, f_t>& Arow);
+  void diving_thread(lp_problem_t<i_t, f_t>& leaf_problem, const csc_matrix_t<i_t, f_t>& Arow);
 
-  // Solve the LP relaxation of a leaf node.
-  node_status_t solve_node_lp_and_update_tree(search_tree_t<i_t, f_t>& search_tree,
-                                              mip_node_t<i_t, f_t>* node_ptr,
-                                              lp_problem_t<i_t, f_t>& leaf_problem,
-                                              csc_matrix_t<i_t, f_t>& Arow,
-                                              f_t upper_bound,
-                                              logger_t& log,
-                                              char symbol);
+  // Solve the LP relaxation of a leaf node and update the tree.
+  node_status_t solve_node(search_tree_t<i_t, f_t>& search_tree,
+                           mip_node_t<i_t, f_t>* node_ptr,
+                           lp_problem_t<i_t, f_t>& leaf_problem,
+                           const csc_matrix_t<i_t, f_t>& Arow,
+                           f_t upper_bound,
+                           logger_t& log,
+                           char symbol);
 
   // Sort the children based on the Martin's criteria.
   std::pair<mip_node_t<i_t, f_t>*, mip_node_t<i_t, f_t>*> child_selection(

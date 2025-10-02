@@ -335,7 +335,7 @@ class search_tree_t {
   omp_mutex_t mutex;
   omp_atomic_t<i_t> num_nodes;
 
-  static constexpr int write_graphviz = false;
+  static constexpr bool write_graphviz = false;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
