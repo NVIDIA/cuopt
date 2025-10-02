@@ -685,7 +685,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
                                                        i_t initial_heap_size)
 {
   if (status_ != mip_exploration_status_t::RUNNING) { return; }
-  repair_heuristic_solutions();
+  if (omp_get_thread_num() == 0) { repair_heuristic_solutions(); }
 
   f_t lower_bound      = node->lower_bound;
   f_t upper_bound      = get_upper_bound();
@@ -744,6 +744,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
   } else if (node_status == node_status_t::HAS_CHILDREN) {
     stats_.nodes_unexplored += 2;
 
+    // If we haven't generated enough nodes to keep the threads busy, continue the ramp up phase
     if (stats_.nodes_unexplored < initial_heap_size) {
 #pragma omp task
       exploration_ramp_up(
@@ -753,6 +754,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
       exploration_ramp_up(search_tree, node->get_up_child(), leaf_problem, Arow, initial_heap_size);
 
     } else {
+      // We've generated enough nodes, push further nodes onto the heap
       mutex_heap_.lock();
       heap_.push(node->get_down_child());
       heap_.push(node->get_up_child());
@@ -772,7 +774,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t id,
   stack.push_front(start_node);
 
   while (stack.size() > 0 && status_ == mip_exploration_status_t::RUNNING) {
-    repair_heuristic_solutions();
+    if (omp_get_thread_num() == 0) { repair_heuristic_solutions(); }
 
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
@@ -919,8 +921,12 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(i_t id,
 
   // Check if it is the last thread that exited the loop and no
   // timeout or numerical error has happen.
-  if (status_ == mip_exploration_status_t::RUNNING && active_subtrees_ == 0) {
-    status_ = mip_exploration_status_t::COMPLETED;
+  if (status_ == mip_exploration_status_t::RUNNING) {
+    if (active_subtrees_ == 0) {
+      status_ = mip_exploration_status_t::COMPLETED;
+    } else {
+      local_lower_bounds_[id] = inf;
+    }
   }
 }
 
@@ -967,6 +973,10 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
           stack.push_front(second);
           stack.push_front(first);
 
+          // If the diving thread is consuming the nodes faster than the
+          // best first search, then we split the current subtree at the
+          // lowest possible point and move to the queue, so it can
+          // be picked by another thread.
           if (dive_queue_.size() < min_diving_queue_size_) {
             mutex_dive_queue_.lock();
             mip_node_t<i_t, f_t>* new_node = stack.back();
@@ -1116,9 +1126,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                      original_lp_,
                      log);
 
-  settings_.log.printf("Exploring the B&B tree using %d threads (%d diving threads)\n",
-                       settings_.num_threads,
-                       settings_.num_diving_threads);
+  settings_.log.printf(
+    "Exploring the B&B tree using %d best-first threads and %d diving threads (%d threads)\n",
+    settings_.num_bfs_threads,
+    settings_.num_diving_threads,
+    settings_.num_threads);
+
   settings_.log.printf(
     " | Explored | Unexplored |    Objective    |     Bound     | Depth | Iter/Node |   Gap    "
     "|  Time  |\n");
@@ -1129,7 +1142,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   stats_.nodes_explored       = 0;
   stats_.nodes_unexplored     = 2;
   stats_.nodes_since_last_log = 0;
-  stats_.last_log             = 0.0;
+  stats_.last_log             = tic();
   active_subtrees_            = 0;
   min_diving_queue_size_      = 4 * settings_.num_diving_threads;
   status_                     = mip_exploration_status_t::RUNNING;

@@ -62,7 +62,7 @@ template <typename i_t, typename f_t>
 class dive_queue_t {
  private:
   std::vector<mip_node_t<i_t, f_t>> buffer;
-  static constexpr i_t max_size_ = 8192;
+  static constexpr i_t max_size_ = 2048;
 
  public:
   dive_queue_t() { buffer.reserve(max_size_); }
