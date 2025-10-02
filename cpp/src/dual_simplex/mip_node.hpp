@@ -214,6 +214,7 @@ class mip_node_t {
     copy.branch_var_lower = branch_var_lower;
     copy.branch_var_upper = branch_var_upper;
     copy.fractional_val   = fractional_val;
+    copy.node_id          = node_id;
     return copy;
   }
 

@@ -958,7 +958,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
         f_t upper_bound = get_upper_bound();
         f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, node_ptr->lower_bound);
 
-        if (node_ptr->lower_bound > upper_bound || rel_gap > settings_.relative_mip_gap_tol) {
+        if (node_ptr->lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
           continue;
         }
 
