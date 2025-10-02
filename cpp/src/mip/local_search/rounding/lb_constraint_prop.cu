@@ -770,7 +770,6 @@ bool lb_constraint_prop_t<i_t, f_t>::find_integer(
 {
   RAFT_CHECK_CUDA(problem.handle_ptr->get_stream());
   if (orig_sol.problem_ptr->n_integer_vars == 0) {
-    CUOPT_LOG_ERROR("No integer variables provided in the bounds prop rounding");
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();
   }
