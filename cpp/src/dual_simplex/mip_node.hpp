@@ -280,7 +280,7 @@ class search_tree_t {
 
   void branch(mip_node_t<i_t, f_t>* parent_node,
               const i_t branch_var,
-              const f_t branch_var_val,
+              const f_t fractional_val,
               const std::vector<variable_status_t>& parent_vstatus,
               const lp_problem_t<i_t, f_t>& original_lp,
               logger_t& log)
@@ -289,15 +289,15 @@ class search_tree_t {
 
     // down child
     auto down_child = std::make_unique<mip_node_t<i_t, f_t>>(
-      original_lp, parent_node, ++id, branch_var, 0, branch_var_val, parent_vstatus);
+      original_lp, parent_node, ++id, branch_var, 0, fractional_val, parent_vstatus);
 
-    graphviz_edge(log, parent_node, down_child.get(), branch_var, 0, std::floor(branch_var_val));
+    graphviz_edge(log, parent_node, down_child.get(), branch_var, 0, std::floor(fractional_val));
 
     // up child
     auto up_child = std::make_unique<mip_node_t<i_t, f_t>>(
-      original_lp, parent_node, ++id, branch_var, 1, branch_var_val, parent_vstatus);
+      original_lp, parent_node, ++id, branch_var, 1, fractional_val, parent_vstatus);
 
-    graphviz_edge(log, parent_node, up_child.get(), branch_var, 1, std::ceil(branch_var_val));
+    graphviz_edge(log, parent_node, up_child.get(), branch_var, 1, std::ceil(fractional_val));
 
     assert(parent_vstatus.size() == original_lp.num_cols);
     parent_node->add_children(std::move(down_child),

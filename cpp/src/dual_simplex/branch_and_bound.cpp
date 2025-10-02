@@ -540,8 +540,9 @@ branch_and_bound_t<i_t, f_t>::child_selection(mip_node_t<i_t, f_t>* node_ptr)
   const f_t up_val         = std::ceil(root_relax_soln_.x[branch_var]);
   const f_t down_dist      = branch_var_val - down_val;
   const f_t up_dist        = up_val - branch_var_val;
+  constexpr f_t eps        = 1e-6;
 
-  if (down_dist < up_dist) {
+  if (down_dist < up_dist + eps) {
     return std::make_pair(node_ptr->get_down_child(), node_ptr->get_up_child());
 
   } else {
@@ -782,8 +783,8 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t id,
     f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
 
     // This is based on three assumptions:
-    // - The stack only contains sibling nodes, i.e., the current node and its siblings, if it
-    // exists
+    // - The stack only contains sibling nodes, i.e., the current node and it sibling (if
+    // applicable)
     // - The current node and its siblings uses the lower bound of the parent before solving the LP
     // relaxation
     // - The lower bound of the parent is lower or equal to its children
@@ -938,7 +939,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
     if (dive_queue_.size() > 0) { start_node = dive_queue_.pop(); }
     mutex_dive_queue_.unlock();
 
-    if (start_node) {
+    if (start_node.has_value()) {
       if (get_upper_bound() < start_node->lower_bound) { continue; }
 
       search_tree_t<i_t, f_t> subtree(std::move(start_node.value()));
@@ -966,7 +967,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
           stack.push_front(second);
           stack.push_front(first);
 
-          if (dive_queue_.size() < 4 * settings_.num_diving_threads) {
+          if (dive_queue_.size() < min_diving_queue_size_) {
             mutex_dive_queue_.lock();
             mip_node_t<i_t, f_t>* new_node = stack.back();
             stack.pop_back();
@@ -1130,6 +1131,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   stats_.nodes_since_last_log = 0;
   stats_.last_log             = 0.0;
   active_subtrees_            = 0;
+  min_diving_queue_size_      = 4 * settings_.num_diving_threads;
   status_                     = mip_exploration_status_t::RUNNING;
 
 #pragma omp parallel num_threads(settings_.num_threads)
