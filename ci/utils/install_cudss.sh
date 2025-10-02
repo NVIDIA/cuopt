@@ -17,15 +17,16 @@
 
 set -euo pipefail
 
-if [ "$CUDA_VERSION" == "13.0" ]; then
-    echo "Skipping cudss installation for CUDA version $CUDA_VERSION"
-    exit 0
-fi
 # Clean metadata & install cudss
 if command -v dnf &> /dev/null; then
     dnf clean all
+    dnf -y update
     # Adding static library just to please CMAKE requirements
-    dnf -y install libcudss0-static-cuda-12 libcudss0-devel-cuda-12 libcudss0-cuda-12
+    if [ "$CUDA_VERSION" == "13.0" ]; then
+        dnf -y install libcudss0-static-cuda-13 libcudss0-devel-cuda-13 libcudss0-cuda-13
+    else
+        dnf -y install libcudss0-static-cuda-12 libcudss0-devel-cuda-12 libcudss0-cuda-12
+    fi
 elif command -v apt-get &> /dev/null; then
     apt-get update
     apt-get install -y libcudss-devel
