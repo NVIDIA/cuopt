@@ -3,6 +3,101 @@ Release Notes
 =====================
 
 ====================
+Release Notes 25.10
+====================
+
+New Features (25.10)
+--------------------
+
+- Added a new PDLP Solver mode code Stable3, the new default.
+- This library now supports the QPS format, which is an extension of the standard MPS format for representing quadratic programming problems.
+- Add root node presolve using Papilo
+
+Breaking Changes (25.10)
+------------------------
+
+- Added a new PDLP Solver mode code Stable3, the new default.
+
+
+Improvements (25.10)
+--------------------
+
+- Fix issue stemming because Rocky 8.10 is EOL and replaced by 8.11
+- Combine conda install for local and channel based artifacts into one env create call
+- Enable miplib datasets which were disabled, and also update README
+- ``cuopt-server``: update dependencies (drop httpx, add psutil)
+- Build pure-Python wheels without waiting for dependencies
+- Avoid triggering nightly tests until builds are complete
+- GF(2) presolve reduction for ``enlight_hard.mps``
+- CPUFJ for local search + simple rounding
+- Add jump testing to nightly testing
+- Compression tests are not run when compression is disabled
+- Add sanitizer build option
+- Doc update for container version update, and add ``nvidia-cuda-runtime`` as a dependency
+- Heuristic Improvements: balance between generation and improvement heuristics
+- Loosen presolve tolerance and update timers to report cumulative presolve/solve time
+- CUDA 13 support: follow-ups
+- Warn in case a dependent library is not found in libcuopt load
+- Combined variable bounds
+- Enable parallelism for root node presolve
+- Print cuOpt version / machine info before solving
+- Implement node presolve
+- Build and test with CUDA 13.0.0
+- Add Commit Sha to container for reference
+- use GCC 14, consolidate dependency groups, update pre-commit hooks
+- Decompression for ``.mps.gz`` and ``.mps.bz2`` files
+- Enable singleton stuffing and use Papilo default params
+- Fix high GPU memory usage
+- Add support for nightly ``cuopt-examples`` notebook testing
+- Reduce hard-coded version usage in repo
+- Make infeasibility checks consistent between the main solver and presolver
+- Add read/write MPS and relaxation to python API
+- Add maximization support for root node presolve
+- Container to work on all different users including root
+- Changes to download LP and MILP datasets, and also disable cvxpy testing for 3.10
+- Faster engine compile time
+- Performance tweak for ``dual_simplex/right_looking_lu``
+- Fix pre-commit for trailing whitespace and end of file
+- Simple diving for Branch-and-Bound
+- Bump libcuopt size to 775MiB
+- Merge update version and fix version format bugs
+- Support CUDA 12.9
+- Adding actions to automate auto issue assignment and reminder on inactivity
+- Sub-MIP recombiner and B&B global variable changes
+- FP as a local search
+- Update rapids-build-backend to 0.4.1
+- Branch 25.10 merge branch 25.08
+
+Bug Fixes (25.10)
+-----------------
+
+- Fix variables out of bounds caused by CPUFJ LP scratch thread
+- Fix the maybe-uninitialized compilation error
+- Fix linking errors in the test suite when disabling C adaptor
+- Compute relative gap with respect to user objectives
+- Add http timeout values for general, send, and receive to client
+- Fix bug in ``fixed_problem_computation``
+- Remove ``limiting_resource_adaptor`` leftover
+- Add support for cuda13 container and fix cuda13 lib issues in wheel
+- Return Infeasible if the user problem contains crossing bounds
+- Fix out-of-bound access in ``clean_up_infeasibilities``
+- Skip downloading netlib data
+- Empty columns with infinite bounds are not removed
+
+
+Documentation (25.10)
+---------------------
+
+- Add tutorial video links to Decompression
+- Add warmstart, model update, update docs
+- add docs on CI workflow inputs
+- Add name to drop-down for video link
+- Add video link to the docs and to the Readme
+- Add documentation on nightly installation commands
+- Fix version in version tab, change log, and fix typos
+
+
+====================
 Release Notes 25.08
 ====================
 
