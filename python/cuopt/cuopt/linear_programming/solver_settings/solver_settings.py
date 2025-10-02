@@ -212,6 +212,7 @@ class SolverSettings:
         ----------
         eps_optimal : float64
             Tolerance to optimality
+
         Notes
         -----
         Default value is 1e-4.
@@ -235,7 +236,8 @@ class SolverSettings:
         Parameters
         ----------
         pdlp_warm_start_data : PDLPWarmStartData
-            PDLP warm start data.
+            PDLP warm start data obtained from a previous solve.
+            Refer :py:meth:`cuopt.linear_programming.problem.Problem.get_pdlp_warm_start_data`  # noqa
 
         Notes
         -----
@@ -246,11 +248,7 @@ class SolverSettings:
 
         Examples
         --------
-        >>> solution = solver.Solve(first_problem, settings)
-        >>> settings.set_pdlp_warm_start_data(
-        >>>     solution.get_pdlp_warm_start_data()
-        >>> )
-        >>> solution = solver.Solve(second_problem, settings)
+        >>> settings.set_pdlp_warm_start_data(pdlp_warm_start_data)
         """
         self.pdlp_warm_start_data = pdlp_warm_start_data
 
@@ -322,11 +320,7 @@ class SolverSettings:
 
         Returns
         -------
-        pdlp_warm_start_data
-
-        Notes
-        -----
-        ...
+        pdlp_warm_start_data:
 
         """
         return self.pdlp_warm_start_data

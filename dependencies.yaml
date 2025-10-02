@@ -55,11 +55,17 @@ files:
       - cuda
       - cuda_version
       - test_cpp
+      - test_cpp_cuopt
       - depends_on_libcuopt
   test_python:
     output: none
     includes:
       - py_version
+      - depends_on_libcuopt
+      - depends_on_cuopt
+      - depends_on_cuopt_server
+      - depends_on_cuopt_sh_client
+      - depends_on_mps_parser
       - test_python_common
       - test_python_cuopt
       - test_python_cuopt_server
@@ -318,6 +324,11 @@ dependencies:
           - cuda-sanitizer-api
           - gmock
           - gtest
+  test_cpp_cuopt:
+    common:
+      - output_types: [conda]
+        packages:
+          - libcuopt-tests==25.10.*,>=0.0.0a0
   build_wheels:
     common:
       - output_types: [requirements, pyproject]
@@ -401,11 +412,11 @@ dependencies:
         packages:
           - *msgpack_python
           - pip
-          - psutil>=5.9,<6.0a0
+          - psutil>=6.0.0
       - output_types: [requirements, pyproject]
         packages:
           - *msgpack
-          - psutil==5.9.6
+          - psutil>=6.0.0
 
   run_cuopt_sh_client:
     common:

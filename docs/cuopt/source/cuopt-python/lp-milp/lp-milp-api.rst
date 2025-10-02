@@ -2,6 +2,30 @@
 LP and MILP API Reference
 =========================
 
+.. autoclass:: cuopt.linear_programming.problem.Problem
+   :members:
+   :undoc-members:
+   :exclude-members: reset_solved_values, populate_solution, dict_to_object, NumNZs, NumVariables, NumConstraints, IsMIP
+
+.. autoclass:: cuopt.linear_programming.problem.Variable
+   :members:
+   :undoc-members:
+   :exclude-members:
+
+.. autoclass:: cuopt.linear_programming.problem.LinearExpression
+   :members:
+   :undoc-members:
+
+.. autoclass:: cuopt.linear_programming.problem.Constraint
+   :members:
+   :undoc-members:
+   :exclude-members: compute_slack
+
+.. autoclass:: cuopt.linear_programming.solver_settings.SolverSettings
+   :members:
+   :undoc-members:
+   :exclude-members: to_base_type, toDict
+
 .. autoclass:: cuopt.linear_programming.problem.VType
    :members:
    :member-order: bysource
@@ -17,28 +41,5 @@ LP and MILP API Reference
 .. autoclass:: cuopt.linear_programming.problem.sense
    :members:
    :member-order: bysource
+   :undoc-members:
    :exclude-members: __new__, __init__, _generate_next_value_, as_integer_ratio, bit_count, bit_length, conjugate, denominator, from_bytes, imag, is_integer, numerator, real, to_bytes
-   :no-inherited-members:
-
-.. autoclass:: cuopt.linear_programming.problem.Problem
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :exclude-members: reset_solved_values, post_solve, dict_to_object, NumNZs, NumVariables, NumConstraints, IsMIP
-
-.. autoclass:: cuopt.linear_programming.problem.Variable
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :exclude-members:
-
-.. autoclass:: cuopt.linear_programming.problem.LinearExpression
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. autoclass:: cuopt.linear_programming.problem.Constraint
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :exclude-members: compute_slack

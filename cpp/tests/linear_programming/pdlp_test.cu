@@ -222,6 +222,7 @@ TEST(pdlp_class, run_sub_mittleman)
       settings.pdlp_solver_mode = solver_mode;
       for (auto [presolve, epsilon] : {std::pair{true, 1e-1}, std::pair{false, 1e-6}}) {
         settings.presolve = presolve;
+        settings.method   = cuopt::linear_programming::method_t::PDLP;
         const raft::handle_t handle_{};
         optimization_problem_solution_t<int, double> solution =
           solve_lp(&handle_, op_problem, settings);

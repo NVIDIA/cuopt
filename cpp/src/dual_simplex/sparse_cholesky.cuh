@@ -162,9 +162,14 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     cudssGetProperty(PATCH_LEVEL, &patch);
     settings.log.printf("cuDSS Version               : %d.%d.%d\n", major, minor, patch);
 
+    CU_CHECK(cuDriverGetVersion(&driver_version));
+    settings_.log.printf("CUDA Driver Version         : %d\n", driver_version);
+
     cuda_error = cudaSuccess;
     status     = CUDSS_STATUS_SUCCESS;
-    if (settings_.concurrent_halt != nullptr) {
+
+    if (settings_.concurrent_halt != nullptr && driver_version >= 13000) {
+#if CUDART_VERSION >= 13000
       // 1. Set up the GPU resources
       CUdevResource initial_device_GPU_resources = {};
       CU_CHECK(cuDeviceGetDevResource(
@@ -206,14 +211,19 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
         resource.sm.smCount);
 #endif
 
+      // Only perform this if CUDA version is more than 13
+      // (all resource splitting and descriptor creation already above)
+      // No additional code needed here as the logic is already guarded above.
       // 4. Create the green context and stream for that green context
       // CUstream barrier_green_ctx_stream;
       i_t stream_priority;
-      RAFT_CHECK_CUDA(cudaStreamGetPriority(handle_ptr_->get_stream(), &stream_priority));
+      cudaStream_t cuda_stream = handle_ptr_->get_stream();
+      RAFT_CHECK_CUDA(cudaStreamGetPriority(cuda_stream, &stream_priority));
       CU_CHECK(cuGreenCtxCreate(
         &barrier_green_ctx, resource_desc, handle_ptr_->get_device(), CU_GREEN_CTX_DEFAULT_STREAM));
       CU_CHECK(cuGreenCtxStreamCreate(
         &stream, barrier_green_ctx, CU_STREAM_NON_BLOCKING, stream_priority));
+#endif
     } else {
       stream = handle_ptr_->get_stream();
     }
@@ -339,9 +349,11 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK_EXIT(cudssConfigDestroy(solverConfig), status, "cudssConfigDestroy");
     CUDSS_CALL_AND_CHECK_EXIT(cudssDestroy(handle), status, "cudssDestroy");
     CUDA_CALL_AND_CHECK_EXIT(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
-    if (settings_.concurrent_halt != nullptr) {
+    if (settings_.concurrent_halt != nullptr && driver_version >= 13000) {
       CU_CHECK(cuStreamDestroy(stream));
+#if CUDART_VERSION >= 13000
       CU_CHECK(cuGreenCtxDestroy(barrier_green_ctx));
+#endif
       handle_ptr_->get_stream().synchronize();
     }
   }
@@ -794,6 +806,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   f_t* csr_values_d;
   f_t* x_values_d;
   f_t* b_values_d;
+  i_t driver_version;
 
   const simplex_solver_settings_t<i_t, f_t>& settings_;
   CUgreenCtx barrier_green_ctx;
