@@ -397,6 +397,7 @@ bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution,
                                                 timer_t timer,
                                                 const ls_config_t<i_t, f_t>& ls_config)
 {
+  raft::common::nvtx::range fun_scope("run_fj_annealing");
   auto prev_settings = fj.settings;
 
   solution.compute_feasibility();
@@ -426,6 +427,7 @@ bool local_search_t<i_t, f_t>::run_fj_line_segment(solution_t<i_t, f_t>& solutio
                                                    timer_t timer,
                                                    const ls_config_t<i_t, f_t>& ls_config)
 {
+  raft::common::nvtx::range fun_scope("run_fj_line_segment");
   rmm::device_uvector<f_t> starting_point(solution.assignment, solution.handle_ptr->get_stream());
   line_segment_search.settings.best_of_parents_cost = ls_config.best_objective_of_parents;
   line_segment_search.settings.parents_infeasible   = !ls_config.at_least_one_parent_feasible;
@@ -447,6 +449,7 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
                                                       bool perturb,
                                                       timer_t timer)
 {
+  raft::common::nvtx::range fun_scope("check_fj_on_lp_optimal");
   if (lp_optimal_exists) {
     raft::copy(solution.assignment.data(),
                lp_optimal_solution.data(),
@@ -487,6 +490,7 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
 template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::run_fj_on_zero(solution_t<i_t, f_t>& solution, timer_t timer)
 {
+  raft::common::nvtx::range fun_scope("run_fj_on_zero");
   thrust::fill(solution.handle_ptr->get_thrust_policy(),
                solution.assignment.begin(),
                solution.assignment.end(),
@@ -506,6 +510,7 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
                                              timer_t timer,
                                              population_t<i_t, f_t>* population_ptr)
 {
+  raft::common::nvtx::range fun_scope("run_staged_fp");
   cuopt_assert(population_ptr != nullptr, "Population pointer must not be null");
   auto n_vars         = solution.problem_ptr->n_variables;
   auto n_binary_vars  = solution.problem_ptr->get_n_binary_variables();
@@ -592,6 +597,7 @@ template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::save_solution_and_add_cutting_plane(
   solution_t<i_t, f_t>& solution, rmm::device_uvector<f_t>& best_solution, f_t& best_objective)
 {
+  raft::common::nvtx::range fun_scope("save_solution_and_add_cutting_plane");
   if (solution.get_objective() < best_objective) {
     raft::copy(best_solution.data(),
                solution.assignment.data(),
@@ -634,6 +640,7 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   rmm::device_uvector<f_t>& best_solution,
   f_t& best_objective)
 {
+  raft::common::nvtx::range fun_scope("reset_alpha_and_run_recombiners");
   fp.config.alpha = default_alpha;
   solution_t<i_t, f_t> solution_copy(solution);
   solution_copy.problem_ptr = old_problem_ptr;
@@ -664,6 +671,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                       timer_t timer,
                                       population_t<i_t, f_t>* population_ptr)
 {
+  raft::common::nvtx::range fun_scope("run_fp");
   cuopt_assert(population_ptr != nullptr, "Population pointer must not be null");
   const i_t n_fp_iterations                  = 1000000;
   constexpr i_t n_sol_in_population_for_exit = 4;
@@ -762,7 +770,7 @@ bool local_search_t<i_t, f_t>::generate_solution(solution_t<i_t, f_t>& solution,
                                                  population_t<i_t, f_t>* population_ptr,
                                                  f_t time_limit)
 {
-  raft::common::nvtx::range fun_scope("LS FP Loop");
+  raft::common::nvtx::range fun_scope("generate_solution");
   cuopt_assert(population_ptr != nullptr, "Population pointer must not be null");
   timer_t timer(time_limit);
   auto n_vars         = solution.problem_ptr->n_variables;

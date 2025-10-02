@@ -47,6 +47,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     rmm::device_uvector<thrust::pair<f_t, f_t>>& probing_values,
     i_t n_vars_from_other)
   {
+    raft::common::nvtx::range fun_scope("get_probing_values_for_infeasible");
     auto guiding_view   = guiding.view();
     auto other_view     = other.view();
     auto offspring_view = offspring.view();
@@ -110,6 +111,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
                                        i_t n_vars_from_other,
                                        rmm::device_uvector<i_t>& variable_map)
   {
+    raft::common::nvtx::range fun_scope("get_probing_values_for_feasible");
     cuopt_assert(n_vars_from_other == offspring.problem_ptr->n_integer_vars,
                  "The number of vars from other should match!");
     auto guiding_view   = guiding.view();

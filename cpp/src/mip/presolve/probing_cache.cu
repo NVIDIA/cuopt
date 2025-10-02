@@ -467,6 +467,7 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,
                            timer_t timer)
 {
+  raft::common::nvtx::range fun_scope("compute_probing_cache");
   // we dont want to compute the probing cache for all variables for time and computation resources
   auto priority_indices = compute_prioritized_integer_indices(bound_presolve, problem);
   CUOPT_LOG_DEBUG("Computing probing cache");

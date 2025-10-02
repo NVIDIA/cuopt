@@ -115,6 +115,7 @@ bool diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solut
                                                      timer_t& timer,
                                                      ls_config_t<i_t, f_t>& ls_config)
 {
+  raft::common::nvtx::range fun_scope("run_local_search");
   i_t ls_mab_option = mab_ls.select_mab_option();
   mab_ls_config_t<i_t, f_t>::get_local_search_and_lm_from_config(ls_mab_option, ls_config);
   ls_hash_map.insert(solution);
@@ -128,6 +129,7 @@ bool diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solut
 template <typename i_t, typename f_t>
 bool diversity_manager_t<i_t, f_t>::regenerate_solutions()
 {
+  raft::common::nvtx::range fun_scope("regenerate_solutions");
   f_t time_limit     = 5;
   i_t counter        = 0;
   const i_t min_size = 2;
@@ -150,6 +152,7 @@ bool diversity_manager_t<i_t, f_t>::regenerate_solutions()
 template <typename i_t, typename f_t>
 std::vector<solution_t<i_t, f_t>> diversity_manager_t<i_t, f_t>::generate_more_solutions()
 {
+  raft::common::nvtx::range fun_scope("generate_more_solutions");
   std::vector<solution_t<i_t, f_t>> solutions;
   timer_t total_time_to_generate = timer_t(timer.remaining_time() / 5.);
   f_t time_limit                 = std::min(60., total_time_to_generate.remaining_time());
@@ -177,6 +180,7 @@ template <typename i_t, typename f_t>
 solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::generate_solution(f_t time_limit,
                                                                       bool random_start)
 {
+  raft::common::nvtx::range fun_scope("generate_solution");
   solution_t<i_t, f_t> sol(*problem_ptr);
   sol.compute_feasibility();
   ls.generate_solution(sol, random_start, &population, time_limit);
@@ -187,6 +191,7 @@ template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   std::vector<solution_t<i_t, f_t>>& initial_sol_vector)
 {
+  raft::common::nvtx::range fun_scope("add_user_given_solutions");
   for (const auto& init_sol : context.settings.initial_solutions) {
     solution_t<i_t, f_t> sol(*problem_ptr);
     rmm::device_uvector<f_t> init_sol_assignment(*init_sol, sol.handle_ptr->get_stream());
@@ -217,6 +222,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
 template <typename i_t, typename f_t>
 bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
 {
+  raft::common::nvtx::range fun_scope("run_presolve");
   CUOPT_LOG_INFO("Running presolve!");
   timer_t presolve_timer(time_limit);
   auto term_crit = ls.constraint_prop.bounds_update.solve(*problem_ptr);
@@ -255,6 +261,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
 {
+  raft::common::nvtx::range fun_scope("generate_quick_feasible_solution");
   solution_t<i_t, f_t> solution(*problem_ptr);
   // min 1 second, max 10 seconds
   const f_t generate_fast_solution_time =
@@ -328,6 +335,7 @@ struct ls_cpufj_raii_guard_t {
 template <typename i_t, typename f_t>
 solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 {
+  raft::common::nvtx::range fun_scope("run_solver");
   population.timer     = timer;
   const f_t time_limit = timer.remaining_time();
   const f_t lp_time_limit =
@@ -444,7 +452,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     run_fj_alone(sol);
     return sol;
   }
-
+  // cudaProfilerStop();
+  // exit(0);
   auto sol = generate_solution(timer.remaining_time(), false);
   population.add_solution(std::move(solution_t<i_t, f_t>(sol)));
   if (timer.check_time_limit()) {
@@ -570,6 +579,7 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::main_loop()
 {
+  raft::common::nvtx::range fun_scope("main_loop");
   population.start_threshold_adjustment();
   recombine_stats.reset();
   population.print();

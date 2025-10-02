@@ -45,6 +45,8 @@
 #include <raft/common/nvtx.hpp>
 #include <raft/core/handle.hpp>
 
+#include <cuda_profiler_api.h>
+
 namespace cuopt::linear_programming {
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
@@ -70,6 +72,8 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                                  mip_solver_settings_t<i_t, f_t> const& settings,
                                  cuopt::timer_t& timer)
 {
+  raft::common::nvtx::range fun_scope("run_mip");
+  cudaProfilerStart();
   auto constexpr const running_mip = true;
 
   pdlp_hyper_params::update_primal_weight_on_initial_solution = false;
