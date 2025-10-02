@@ -237,7 +237,7 @@ f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
 {
   f_t lower_bound = lower_bound_ceiling_.load();
   mutex_heap_.lock();
-  if (heap_.size() > 0) { lower_bound = heap_.top()->lower_bound; }
+  if (heap_.size() > 0) { lower_bound = std::min(heap_.top()->lower_bound, lower_bound); }
   mutex_heap_.unlock();
 
   for (i_t i = 0; i < local_lower_bounds_.size(); ++i) {
