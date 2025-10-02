@@ -22,6 +22,8 @@ if [ -f /etc/os-release ]; then
     . /etc/os-release
     if [[ "$ID" == "rocky" ]]; then
         echo "Detected Rocky Linux. Installing Boost and TBB via dnf..."
+        dnf clean all
+        dnf -y update
         dnf install -y boost-devel tbb-devel
         if [[ "$(uname -m)" == "x86_64" ]]; then
             dnf install -y gcc-toolset-14-libquadmath-devel
