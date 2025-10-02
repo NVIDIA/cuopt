@@ -202,7 +202,7 @@ void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_
                                rmm::cuda_stream_view stream_view)
 {
   rmm::device_buffer d_temp_storage;
-  size_t bytes;
+  size_t bytes = 0;
   auto main_op = [] HD(const thrust::tuple<f_t, f_t> t) {
     const f_t lower = thrust::get<0>(t);
     const f_t upper = thrust::get<1>(t);
