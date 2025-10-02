@@ -344,7 +344,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK_EXIT(cudssDestroy(handle), status, "cudssDestroy");
     CUDA_CALL_AND_CHECK_EXIT(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
     if (settings_.concurrent_halt != nullptr && driver_version >= 13000) {
-      RAFT_CHECK_CUDA(cudaStreamDestroy(stream));
+      CU_CHECK(cuStreamDestroy(stream));
       CU_CHECK(cuGreenCtxDestroy(barrier_green_ctx));
       handle_ptr_->get_stream().synchronize();
     }
