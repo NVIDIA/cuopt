@@ -1006,9 +1006,7 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   }
 
   // Add artifical variables
-  if (!settings.barrier_presolve) {
-    add_artifical_variables(problem, equality_rows, new_slacks);
-  }
+  if (!settings.barrier_presolve) { add_artifical_variables(problem, equality_rows, new_slacks); }
 }
 
 template <typename i_t, typename f_t>

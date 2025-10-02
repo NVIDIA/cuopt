@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-if [ "$CUDA_VERSION" != "13.0" ]; then
+if [ "$CUDA_VERSION" == "13.0" ]; then
     echo "Skipping cudss installation for CUDA version $CUDA_VERSION"
     exit 0
 fi
