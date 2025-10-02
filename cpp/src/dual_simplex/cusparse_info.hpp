@@ -45,10 +45,10 @@ struct cusparse_info_t {
 
   ~cusparse_info_t()
   {
-//    RAFT_CUSPARSE_TRY(cusparseSpGEMM_destroyDescr(spgemm_descr));
-//    RAFT_CUSPARSE_TRY(cusparseDestroySpMat(matA_descr));
- //   RAFT_CUSPARSE_TRY(cusparseDestroySpMat(matDAT_descr));
- //   RAFT_CUSPARSE_TRY(cusparseDestroySpMat(matADAT_descr));
+    //    RAFT_CUSPARSE_TRY(cusparseSpGEMM_destroyDescr(spgemm_descr));
+    //    RAFT_CUSPARSE_TRY(cusparseDestroySpMat(matA_descr));
+    //   RAFT_CUSPARSE_TRY(cusparseDestroySpMat(matDAT_descr));
+    //   RAFT_CUSPARSE_TRY(cusparseDestroySpMat(matADAT_descr));
   }
 
   cusparseSpMatDescr_t matA_descr;
