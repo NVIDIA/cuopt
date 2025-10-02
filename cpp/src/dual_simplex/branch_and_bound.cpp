@@ -235,7 +235,7 @@ f_t branch_and_bound_t<i_t, f_t>::get_upper_bound()
 template <typename i_t, typename f_t>
 f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
 {
-  f_t lower_bound = inf;
+  f_t lower_bound = lower_bound_ceiling_.load();
   mutex_heap_.lock();
   if (heap_.size() > 0) { lower_bound = heap_.top()->lower_bound; }
   mutex_heap_.unlock();
@@ -669,10 +669,14 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(search_tree_t<i_t, f_t>& 
 
   } else {
     search_tree.graphviz_node(log, node_ptr, "numerical", 0.0);
-    log.printf("Encountered LP status %d on node %d. This indicates a numerical issue.\n",
+    lower_bound_ceiling_.fetch_min(node_ptr->lower_bound);
+    log.printf("LP returned status %d on node %d. This indicates a numerical issue.\n",
                lp_status,
                node_ptr->node_id);
+    log.printf("The maximum lower bound is set to %+10.6e.\n",
+               compute_user_objective(original_lp_, lower_bound_ceiling_.load()));
     search_tree.update_tree(node_ptr, node_status_t::NUMERICAL);
+
     return node_status_t::NUMERICAL;
   }
 }
@@ -790,6 +794,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t id,
     // - The current node and its siblings uses the lower bound of the parent before solving the LP
     // relaxation
     // - The lower bound of the parent is lower or equal to its children
+    assert(id < local_lower_bounds_.size());
     local_lower_bounds_[id] = lower_bound;
     i_t nodes_explored      = stats_.nodes_explored++;
     i_t nodes_unexplored    = stats_.nodes_unexplored--;
@@ -1146,6 +1151,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   active_subtrees_            = 0;
   min_diving_queue_size_      = 4 * settings_.num_diving_threads;
   status_                     = mip_exploration_status_t::RUNNING;
+  lower_bound_ceiling_        = inf;
 
 #pragma omp parallel num_threads(settings_.num_threads)
   {

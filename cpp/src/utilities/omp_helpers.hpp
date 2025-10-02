@@ -101,8 +101,10 @@ class omp_atomic_t {
 
   T fetch_sub(T inc) { return fetch_add(-inc); }
 
-// OpenMP only supports atomic CAS operations in v5.1
-#if _OPENMP == 202011
+// Atomic CAS are only supported in OpenMP v5.1
+// (gcc 12+ or clang 14+), however, nvcc (or the host compiler) cannot
+// parse it correctly yet
+#ifndef __NVCC__
 
   T fetch_min(T other)
   {

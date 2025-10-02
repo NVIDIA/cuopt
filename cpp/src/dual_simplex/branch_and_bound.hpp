@@ -178,8 +178,12 @@ class branch_and_bound_t {
   dive_queue_t<i_t, f_t> dive_queue_;
   i_t min_diving_queue_size_;
 
-  // Global status
+  // Global status of the solver.
   omp_atomic_t<mip_exploration_status_t> status_;
+
+  // In case, a best-first thread encounters a numerical issue when solving a node,
+  // its blocks the progression of the lower bound.
+  omp_atomic_t<f_t> lower_bound_ceiling_;
 
   // Set the final solution.
   mip_status_t set_final_solution(mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
