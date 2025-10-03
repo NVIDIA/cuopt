@@ -23,7 +23,6 @@ Breaking Changes (25.10)
 Improvements (25.10)
 --------------------
 
-- Fix issue stemming because Rocky 8.10 is EOL and replaced by 8.11
 - Enable miplib datasets which were disabled, and also update README
 - ``cuopt-server``: update dependencies (drop httpx, add psutil)
 - Implement GF(2) presolve reduction
