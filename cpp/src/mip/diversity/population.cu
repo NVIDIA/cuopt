@@ -168,10 +168,10 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
     external_solution_queue_cpufj.erase(external_solution_queue_cpufj.begin() + worst_obj_idx);
   }
 
-  CUOPT_LOG_INFO("%s added a solution to population, solution queue size %lu with objective %g",
-                 solution_origin_to_string(origin),
-                 external_solution_queue.size(),
-                 problem_ptr->get_user_obj_from_solver_obj(objective));
+  CUOPT_LOG_DEBUG("%s added a solution to population, solution queue size %lu with objective %g",
+                  solution_origin_to_string(origin),
+                  external_solution_queue.size(),
+                  problem_ptr->get_user_obj_from_solver_obj(objective));
   if (external_solution_queue.size() >= 5) { early_exit_primal_generation = true; }
 }
 
@@ -227,8 +227,8 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
     }
   }
   if (external_solution_queue.size() > 0) {
-    CUOPT_LOG_INFO("Consuming B&B solutions, solution queue size %lu",
-                   external_solution_queue.size());
+    CUOPT_LOG_DEBUG("Consuming B&B solutions, solution queue size %lu",
+                    external_solution_queue.size());
     external_solution_queue.clear();
   }
   external_solution_queue_cpufj.clear();
