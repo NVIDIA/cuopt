@@ -19,8 +19,7 @@ set -euo pipefail
 
 # Clean metadata & install cudss
 if command -v dnf &> /dev/null; then
-    dnf clean all
-    dnf -y update
+    #bash ci/utils/update_rocky_linux_vault_repos.sh
     # Adding static library just to please CMAKE requirements
     if [ "$CUDA_VERSION" == "13.0" ]; then
         dnf -y install libcudss0-static-cuda-13 libcudss0-devel-cuda-13 libcudss0-cuda-13
