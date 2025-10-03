@@ -55,7 +55,7 @@ if RAPIDS_DATASET_ROOT_DIR is None:
     RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
 
 
-"""def test_solver():
+def test_solver():
 
     data_model_obj = data_model.DataModel()
 
@@ -608,7 +608,7 @@ def test_dual_simplex():
     assert solution.get_termination_status() == LPTerminationStatus.Optimal
     assert solution.get_primal_objective() == pytest.approx(-464.7531)
     assert not solution.get_solved_by_pdlp()
-"""
+
 
 def test_barrier():
     # maximize   5*xs + 20*xl
@@ -640,7 +640,8 @@ def test_barrier():
     assert solution.get_termination_reason() == "Optimal"
     assert solution.get_primal_objective() == pytest.approx(1333.33, 2)
 
-"""def test_heuristics_only():
+
+def test_heuristics_only():
 
     file_path = RAPIDS_DATASET_ROOT_DIR + "/mip/swath1.mps"
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
@@ -740,4 +741,3 @@ def test_write_files():
                 assert float(line.split()[-1]) == pytest.approx(80)
 
     os.remove("afiro.sol")
-"""
