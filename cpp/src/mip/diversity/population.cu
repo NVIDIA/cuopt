@@ -172,6 +172,10 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
                   solution_origin_to_string(origin),
                   external_solution_queue.size(),
                   problem_ptr->get_user_obj_from_solver_obj(objective));
+  if (objective < best_feasible_objective) {
+    CUOPT_LOG_DEBUG("Found new best solution %g in external queue",
+                    problem_ptr->get_user_obj_from_solver_obj(objective));
+  }
   if (external_solution_queue.size() >= 5) { early_exit_primal_generation = true; }
 }
 
