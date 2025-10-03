@@ -723,32 +723,26 @@ dependencies:
               cuda: "12.2"
             packages:
               - cuda-version=12.2
-              - libcudss-dev
           - matrix:
               cuda: "12.4"
             packages:
               - cuda-version=12.4
-              - libcudss-dev
           - matrix:
               cuda: "12.5"
             packages:
               - cuda-version=12.5
-              - libcudss-dev
           - matrix:
               cuda: "12.8"
             packages:
               - cuda-version=12.8
-              - libcudss-dev
           - matrix:
               cuda: "12.9"
             packages:
               - cuda-version=12.9
-              - libcudss-dev
           - matrix:
               cuda: "13.0"
             packages:
               - cuda-version=13.0
-              - libcudss-dev
   cuda:
     common:
       - output_types: [conda]
@@ -757,6 +751,7 @@ dependencies:
           - libcusolver-dev
           - libcusparse-dev
           - cuda-nvtx-dev
+          - libcudss-dev >=0.7
 
   cuda_wheels:
     specific:

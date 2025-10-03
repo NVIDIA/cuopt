@@ -69,10 +69,11 @@ cache:
       - librmm =${{ dep_minor_version }}
       - rapids-logger =0.1
       - cuda-nvtx-dev
-      - libcudss-dev
+      - libcudss-dev >=0.7
       - libcurand-dev
       - libcusparse-dev
       - cuda-cudart-dev
+      - cuda-driver-dev
       - boost
       - tbb-devel
       - zlib
@@ -112,6 +113,7 @@ outputs:
           - cuda-version
           - gtest
           - libcurand
+          - libcudss
           - libcusparse
           - librmm
           - libzlib
@@ -150,6 +152,7 @@ outputs:
         - rapids-logger =0.1
         - librmm =${{ dep_minor_version }}
         - cuda-cudart-dev
+        - cuda-driver-dev
         - libcudss-dev
         - libcublas
         - libcusparse-dev
@@ -159,6 +162,7 @@ outputs:
         - boost
         - librmm =${{ dep_minor_version }}
         - cuda-nvrtc
+        - libcudss
       ignore_run_exports:
         by_name:
           - cuda-cudart
@@ -218,6 +222,7 @@ outputs:
           - gtest
           - libcurand
           - libcusparse
+          - libcudss
           - librmm
           - libboost
           - libboost_iostreams
