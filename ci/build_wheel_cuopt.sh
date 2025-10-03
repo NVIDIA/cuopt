@@ -47,6 +47,7 @@ EXCLUDE_ARGS=(
   --exclude "libcudss.so.*"
   --exclude "libcurand.so.*"
   --exclude "libcusolver.so.*"
+  --exclude "libcuda.so.1"
   --exclude "libcusparse.so.*"
   --exclude "libcuopt.so"
   --exclude "libmps_parser.so"

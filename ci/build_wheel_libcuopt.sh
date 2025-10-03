@@ -83,7 +83,7 @@ EXCLUDE_ARGS=(
   --exclude "libcudss.so.*"
   --exclude "libcurand.so.*"
   --exclude "libcusolver.so.*"
-  --exclude "libcuda.so.*"
+  --exclude "libcuda.so.1"
   --exclude "libcusparse.so.*"
   --exclude "libnvJitLink*.so*"
   --exclude "librapids_logger.so"
