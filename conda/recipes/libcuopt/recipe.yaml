@@ -206,8 +206,8 @@ outputs:
         - gmock ${{ gtest_version }}
         - gtest ${{ gtest_version }}
         - cuda-cudart-dev
-        - libcudss-dev
         - libcublas
+        - libcudss-dev
         - libcusparse-dev
       run:
         - gmock ${{ gtest_version }}
