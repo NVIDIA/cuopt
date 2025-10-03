@@ -169,9 +169,9 @@ outputs:
           - cuda-nvtx
           - cuda-version
           - gtest
+          - libcudss
           - libcurand
           - libcusparse
-          - libcudss
           - librmm
           - libboost
           - libboost_iostreams
