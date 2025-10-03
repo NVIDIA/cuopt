@@ -164,6 +164,7 @@ outputs:
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
         - boost
         - librmm =${{ dep_minor_version }}
+        - libcudss
         - cuda-nvrtc
       ignore_run_exports:
         by_name:
