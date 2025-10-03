@@ -545,6 +545,14 @@ class SolverConfig(StrictModel):
         "Presolve can reduce problem size and improve solve time. "
         "Default is True for MIP problems and False for LP problems.",
     )
+    dual_postsolve: Optional[bool] = Field(
+        default=None,
+        description="Set True to enable dual postsolve, False to disable dual postsolve. "  # noqa
+        "Dual postsolve can improve solve time at the expense of not having "
+        "access to the dual solution. "
+        "Default is True for LP problems when presolve is enabled. "
+        "This is not relevant for MIP problems.",
+    )
     log_to_console: Optional[bool] = Field(
         default=True,
         description="Set True to write logs to console, False to "

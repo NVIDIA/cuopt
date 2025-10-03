@@ -202,11 +202,13 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     if (run_presolve) {
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
-      const double presolve_time_limit = 0.1 * time_limit;
+      const double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
+      const bool dual_postsolve        = false;
       presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
       auto [reduced_op_problem, feasible] =
         presolver->apply(op_problem,
                          cuopt::linear_programming::problem_category_t::MIP,
+                         dual_postsolve,
                          settings.tolerances.absolute_tolerance,
                          settings.tolerances.relative_tolerance,
                          presolve_time_limit,
@@ -219,7 +221,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
       problem       = detail::problem_t<i_t, f_t>(reduced_op_problem);
       presolve_time = timer.elapsed_time();
-      CUOPT_LOG_INFO("Third party presolve time: %f", presolve_time);
+      CUOPT_LOG_INFO("Papilo presolve time: %f", presolve_time);
     }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());

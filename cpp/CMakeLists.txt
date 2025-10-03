@@ -183,7 +183,14 @@ endif()
 FetchContent_Declare(
   papilo
   GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
-  GIT_TAG "v2.4.3"
+  # We would want to get the main branch. However, the main branch
+  # does not have some of the presolvers and settings that we need
+  # Mainly, probing and clique merging.
+  # This is the reason we are using the development branch
+  # commit from Sep 26, 2025. Once these changes are merged into the main branch,
+  #we can switch to the main branch.
+  GIT_TAG "34a40781fa14f8870cb6368cffb6c0eda2f47511"
+  GIT_PROGRESS TRUE
   SYSTEM
 )
 
@@ -422,7 +429,6 @@ if(NOT BUILD_LP_ONLY)
     cuopt
     OpenMP::OpenMP_CXX
     PRIVATE
-    papilo-core
   )
   set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
@@ -446,7 +452,6 @@ if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     cuopt
     OpenMP::OpenMP_CXX
     PRIVATE
-    papilo-core
   )
 endif()
 
@@ -462,7 +467,6 @@ if(BUILD_LP_BENCHMARKS)
     cuopt
     OpenMP::OpenMP_CXX
     PRIVATE
-    papilo-core
   )
 endif()
 

@@ -27,6 +27,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
     CUOPT_CROSSOVER,
     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
+    CUOPT_DUAL_POSTSOLVE,
     CUOPT_FIRST_PRIMAL_FEASIBLE,
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_ITERATION_LIMIT,
@@ -396,6 +397,11 @@ def create_solver(LP_data, warmstart_data):
         if solver_config.presolve is not None:
             solver_settings.set_parameter(
                 CUOPT_PRESOLVE, solver_config.presolve
+            )
+
+        if solver_config.dual_postsolve is not None:
+            solver_settings.set_parameter(
+                CUOPT_DUAL_POSTSOLVE, solver_config.dual_postsolve
             )
 
         if solver_config.log_to_console is not None:
