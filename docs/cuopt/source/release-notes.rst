@@ -28,7 +28,7 @@ Improvements (25.10)
 - ``cuopt-server``: update dependencies (drop httpx, add psutil)
 - Build pure-Python wheels without waiting for dependencies
 - Avoid triggering nightly tests until builds are complete
-- GF(2) presolve reduction for ``enlight_hard.mps``
+- Implement GF(2) presolve reduction
 - CPUFJ for local search + simple rounding
 - Add nightly testing of cuOpt jump interface
 - Compression tests are not run when compression is disabled
