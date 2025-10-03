@@ -225,7 +225,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
         &stream, barrier_green_ctx, CU_STREAM_NON_BLOCKING, stream_priority));
 #endif
     } else {
-      stream = handle_ptr_->get_stream();
+      // Convert runtime API stream to driver API stream for consistency
+      cudaStream_t cuda_stream = handle_ptr_->get_stream();
+      stream = reinterpret_cast<CUstream>(cuda_stream);
     }
 
     CUDSS_CALL_AND_CHECK_EXIT(cudssCreate(&handle), status, "cudssCreate");
