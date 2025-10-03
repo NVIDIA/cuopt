@@ -82,7 +82,7 @@ set(rpaths
   "$ORIGIN/../../nvidia/cusparse/lib"
   # CUDA version-specific paths
   $<$<VERSION_GREATER_EQUAL:${CMAKE_CUDA_COMPILER_VERSION},13.0>:"$ORIGIN/../../nvidia/cu13/lib">
-  $<$<VERSION_GREATER_EQUAL:${CMAKE_CUDA_COMPILER_VERSION},12.0>:"$ORIGIN/../../nvidia/cu12/lib">
+  $<$<AND:$<VERSION_GREATER_EQUAL:${CMAKE_CUDA_COMPILER_VERSION},12.0>,$<VERSION_LESS:${CMAKE_CUDA_COMPILER_VERSION},13.0>>:"$ORIGIN/../../nvidia/cu12/lib">
 )
 
 set_property(TARGET cuopt PROPERTY INSTALL_RPATH ${rpaths} APPEND)
