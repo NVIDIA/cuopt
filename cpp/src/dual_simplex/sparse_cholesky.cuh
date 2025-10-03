@@ -26,7 +26,6 @@
 
 #include <raft/common/nvtx.hpp>
 
-
 #include "cuda.h"
 #include "cudss.h"
 
@@ -44,7 +43,6 @@ class sparse_cholesky_base_t {
   virtual i_t solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x)       = 0;
   virtual void set_positive_definite(bool positive_definite)                        = 0;
 };
-
 
 #define CUDSS_EXAMPLE_FREE \
   do {                     \
@@ -811,6 +809,5 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   CUgreenCtx barrier_green_ctx;
   CUstream stream;
 };
-
 
 }  // namespace cuopt::linear_programming::dual_simplex
