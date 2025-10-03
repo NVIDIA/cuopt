@@ -159,6 +159,9 @@ def test_time_limit_solver():
     settings.set_optimality_tolerance(1e-12)
     time_limit_seconds = 0.2
     settings.set_parameter(CUOPT_TIME_LIMIT, time_limit_seconds)
+    # Solver mode isn't what's tested here.
+    # Set it to Stable2 as CI is more reliable with this mode
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
     # Setting both to make sure the lowest one is picked
     settings.set_parameter(CUOPT_ITERATION_LIMIT, 99999999)
 

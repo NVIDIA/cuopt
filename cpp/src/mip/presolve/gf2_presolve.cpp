@@ -37,6 +37,12 @@
 
 namespace cuopt::linear_programming::detail {
 
+template <typename i_t>
+static inline i_t positive_modulo(i_t i, i_t n)
+{
+  return (i % n + n) % n;
+}
+
 // this is kind-of a stopgap implementation (as in practice MIPLIB2017 only contains a couple of GF2
 // problems and they're small) but cuDSS could be used for this since A is likely to be sparse and
 // low-bandwidth (i think?) unlikely to occur in real-world problems however. doubt it'd be worth
@@ -178,7 +184,7 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
     gf2_constraints.emplace_back((size_t)cstr_idx,
                                  std::move(constraint_bin_vars),
                                  std::pair<size_t, f_t>{key_var_idx, key_var_coeff},
-                                 ((size_t)rhs) % 2);
+                                 positive_modulo((int)rhs, 2));
     continue;
   not_valid:
     continue;
