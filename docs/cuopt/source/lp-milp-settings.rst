@@ -65,6 +65,11 @@ Presolve
 ^^^^^^^^
 ``CUOPT_PRESOLVE`` controls whether presolve is enabled. Presolve can reduce problem size and improve solve time. Enabled by default for MIP, disabled by default for LP.
 
+Dual Postsolve
+^^^^^^^^^^^^^^
+``CUOPT_DUAL_POSTSOLVE`` controls whether dual postsolve is enabled. Disabling dual postsolve can improve solve time at the expense of not having
+access to the dual solution. Enabled by default for LP when presolve is enabled. This is not relevant for MIP problems.
+
 Linear Programming
 ------------------
 
