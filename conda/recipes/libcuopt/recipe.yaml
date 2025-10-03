@@ -153,8 +153,8 @@ outputs:
         - librmm =${{ dep_minor_version }}
         - cuda-cudart-dev
         - cuda-driver-dev
-        - libcudss-dev
         - libcublas
+        - libcudss-dev
         - libcusparse-dev
       run:
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
