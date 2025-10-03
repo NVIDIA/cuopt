@@ -164,7 +164,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     status     = CUDSS_STATUS_SUCCESS;
 
     if (settings_.concurrent_halt != nullptr && driver_version >= 13000) {
-#if CUDART_VERSION >= 13000
+#if defined(SPLIT_SM_FOR_BARRIER) && CUDART_VERSION >= 13000
       // 1. Set up the GPU resources
       CUdevResource initial_device_GPU_resources = {};
       CU_CHECK(cuDeviceGetDevResource(
@@ -214,7 +214,10 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       i_t stream_priority;
       cudaStream_t cuda_stream    = handle_ptr_->get_stream();
       cudaError_t priority_result = cudaStreamGetPriority(cuda_stream, &stream_priority);
-      RAFT_CHECK_CUDA(priority_result);
+      if (priority_result != cudaSuccess) {
+        settings_.log.printf("Failed to get stream priority: %s\n", cudaGetErrorString(priority_result));
+        return -1;
+      }
       CU_CHECK(cuGreenCtxCreate(
         &barrier_green_ctx, resource_desc, handle_ptr_->get_device(), CU_GREEN_CTX_DEFAULT_STREAM));
       CU_CHECK(cuGreenCtxStreamCreate(
