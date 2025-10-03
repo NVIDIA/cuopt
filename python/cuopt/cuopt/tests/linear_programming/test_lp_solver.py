@@ -610,6 +610,37 @@ def test_dual_simplex():
     assert not solution.get_solved_by_pdlp()
 
 
+def test_barrier():
+    # maximize   5*xs + 20*xl
+    # subject to  1*xs +  3*xl <= 200
+    #             3*xs +  2*xl <= 160
+
+    data_model_obj = data_model.DataModel()
+
+    A_values = np.array([1.0, 3.0, 3.0, 2.0])
+    A_indices = np.array([0, 1, 0, 1])
+    A_offsets = np.array([0, 2, 4])
+    data_model_obj.set_csr_constraint_matrix(A_values, A_indices, A_offsets)
+
+    b = np.array([200, 160])
+    data_model_obj.set_constraint_bounds(b)
+
+    c = np.array([5, 20])
+    data_model_obj.set_objective_coefficients(c)
+
+    row_types = np.array(["L", "L"])
+
+    data_model_obj.set_row_types(row_types)
+    data_model_obj.set_maximize(True)
+
+    settings = solver_settings.SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+
+    solution = solver.Solve(data_model_obj, settings)
+    assert solution.get_termination_reason() == "Optimal"
+    assert solution.get_primal_objective() == pytest.approx(1333.33, 2)
+
+
 def test_heuristics_only():
 
     file_path = RAPIDS_DATASET_ROOT_DIR + "/mip/swath1.mps"
