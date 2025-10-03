@@ -9,57 +9,56 @@ Release Notes 25.10
 New Features (25.10)
 --------------------
 
-- Added a new PDLP Solver mode code Stable3, and new default is also concurrent mode with PDLP, dual simplex, barrier.
-- Barrier method for LPs with cuDSS sparse Cholesky / LDLT on the GPU.
-- This library now supports the QPS format, which is an extension of the standard MPS format for representing quadratic programming problems.
-- Add root node presolve using Papilo
+- New barrier method for solving LPs. Uses cuDSS for sparse Cholesky / LDT. 
+- Concurrent mode for LPs now uses PDLP, dual simplex, and barrier
+- New PDLP solver mode Stable3.
+- MIP presolve using Papilo (enabled by default). LP presolve using Papilo (optional).
+- Parallel branch and bound on the CPU: multiple best-first search and diving threads
 
 Breaking Changes (25.10)
 ------------------------
 
-- Added a new PDLP Solver mode code Stable3, and new default is also concurrent mode with PDLP, dual simplex, barrier.
+- New PDLP Solver mode Stable3 is the default
 
 
 Improvements (25.10)
 --------------------
 
+- CPUFJ for local search + simple rounding
+- FP as a local search
+- Sub-MIP recombiner and B&B global variable changes
+- Implement GF(2) presolve reduction
+- Implement node presolve
+- CUDA 13/12.9 support
+- Build and test with CUDA 13.0.0
+- Add read/write MPS and relaxation to python API
+- Decompression for ``.mps.gz`` and ``.mps.bz2`` files
+- Enable parallelism for root node presolve
+- Enable singleton stuffing and use Papilo default params
+- Make infeasibility checks consistent between the main solver and presolver
+- Add maximization support for root node presolve
+- Performance improvement in dual simplex's right-looking LU factorization
+- Fix high GPU memory usage
+- Print cuOpt version / machine info before solving
 - Enable miplib datasets which were disabled, and also update README
 - ``cuopt-server``: update dependencies (drop httpx, add psutil)
-- Implement GF(2) presolve reduction
-- CPUFJ for local search + simple rounding
 - Add nightly testing of cuOpt jump interface
 - Compression tests are not run when compression is disabled
-- Add sanitizer build option
-- Doc update for container version update, and add ``nvidia-cuda-runtime`` as a dependency
-- Heuristic Improvements: balance between generation and improvement heuristics
+- Add sanitizer build option- Heuristic Improvements: balance between generation and improvement heuristics
 - Loosen presolve tolerance and update timers to report cumulative presolve/solve time
-- CUDA 13 support: follow-ups
 - Warn in case a dependent library is not found in libcuopt load
 - Combined variable bounds
-- Enable parallelism for root node presolve
-- Print cuOpt version / machine info before solving
-- Implement node presolve
-- Build and test with CUDA 13.0.0
 - Add Commit Sha to container for reference
 - use GCC 14, consolidate dependency groups, update pre-commit hooks
-- Decompression for ``.mps.gz`` and ``.mps.bz2`` files
-- Enable singleton stuffing and use Papilo default params
-- Fix high GPU memory usage
 - Add support for nightly ``cuopt-examples`` notebook testing
 - Reduce hard-coded version usage in repo
-- Make infeasibility checks consistent between the main solver and presolver
-- Add read/write MPS and relaxation to python API
-- Add maximization support for root node presolve
 - Container to work on all different users including root
 - Changes to download LP and MILP datasets, and also disable cvxpy testing for 3.10
 - Faster engine compile time
-- Performance tweak for ``dual_simplex/right_looking_lu``
 - Fix pre-commit for trailing whitespace and end of file
-- Simple diving for Branch-and-Bound
 - Merge update version and fix version format bugs
-- Support CUDA 12.9
-- Sub-MIP recombiner and B&B global variable changes
-- FP as a local search
+- This library now supports the QPS format, which is an extension of the standard MPS format for representing quadratic programming problems.
+
 
 Bug Fixes (25.10)
 -----------------
@@ -87,6 +86,7 @@ Documentation (25.10)
 - Add video link to the docs and to the Readme
 - Add documentation on nightly installation commands
 - Fix version in version tab, change log, and fix typos
+- Doc update for container version update, and add ``nvidia-cuda-runtime`` as a dependency
 
 
 ====================
