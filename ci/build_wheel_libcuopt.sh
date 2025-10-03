@@ -80,6 +80,7 @@ EXCLUDE_ARGS=(
   --exclude "libraft.so"
   --exclude "libcublas.so.*"
   --exclude "libcublasLt.so.*"
+  --exclude "libcuda.so.1"
   --exclude "libcudss.so.*"
   --exclude "libcurand.so.*"
   --exclude "libcusolver.so.*"
