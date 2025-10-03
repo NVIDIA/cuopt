@@ -21,8 +21,9 @@
 #include <dual_simplex/mip_node.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/types.hpp>
+#include <utilities/omp_helpers.hpp>
 
-#include <mutex>
+#include <omp.h>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -54,9 +55,7 @@ class pseudo_costs_t {
 
   i_t variable_selection(const std::vector<i_t>& fractional,
                          const std::vector<f_t>& solution,
-                         const std::vector<f_t>& lower,
-                         const std::vector<f_t>& upper,
-                         logger_t& log) const;
+                         logger_t& log);
 
   void update_pseudo_costs_from_strong_branching(const std::vector<i_t>& fractional,
                                                  const std::vector<f_t>& root_soln);
@@ -67,8 +66,8 @@ class pseudo_costs_t {
   std::vector<f_t> strong_branch_down;
   std::vector<f_t> strong_branch_up;
 
-  std::mutex strong_branches_completed;
-  i_t num_strong_branches_completed = 0;
+  omp_mutex_t mutex;
+  omp_atomic_t<i_t> num_strong_branches_completed = 0;
 };
 
 template <typename i_t, typename f_t>
