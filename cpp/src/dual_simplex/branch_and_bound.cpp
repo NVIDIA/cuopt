@@ -495,7 +495,7 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::add_feasible_solution(f_t leaf_objective,
                                                          const std::vector<f_t>& leaf_solution,
                                                          i_t leaf_depth,
-                                                         char symbol)
+                                                         char thread_type)
 {
   bool send_solution   = false;
   i_t nodes_explored   = stats_.nodes_explored;
@@ -509,7 +509,7 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(f_t leaf_objective,
     f_t obj         = compute_user_objective(original_lp_, upper_bound_);
     f_t lower       = compute_user_objective(original_lp_, lower_bound);
     settings_.log.printf("%c%10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
-                         symbol,
+                         thread_type,
                          nodes_explored,
                          nodes_unexplored,
                          obj,
@@ -557,7 +557,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(search_tree_t<i_t, f_t>& 
                                                        const csc_matrix_t<i_t, f_t>& Arow,
                                                        f_t upper_bound,
                                                        logger_t& log,
-                                                       char symbol)
+                                                       char thread_type)
 {
   f_t abs_fathom_tol = settings_.absolute_mip_gap_tol / 10;
 
@@ -641,7 +641,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(search_tree_t<i_t, f_t>& 
 
     if (leaf_num_fractional == 0) {
       // Found a integer feasible solution
-      add_feasible_solution(leaf_objective, leaf_solution.x, node_ptr->depth, symbol);
+      add_feasible_solution(leaf_objective, leaf_solution.x, node_ptr->depth, thread_type);
       search_tree.graphviz_node(log, node_ptr, "integer feasible", leaf_objective);
       search_tree.update_tree(node_ptr, node_status_t::INTEGER_FEASIBLE);
       return node_status_t::INTEGER_FEASIBLE;
@@ -668,15 +668,19 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(search_tree_t<i_t, f_t>& 
     return node_status_t::TIME_LIMIT;
 
   } else {
-    search_tree.graphviz_node(log, node_ptr, "numerical", 0.0);
-    lower_bound_ceiling_.fetch_min(node_ptr->lower_bound);
-    log.printf("LP returned status %d on node %d. This indicates a numerical issue.\n",
-               lp_status,
-               node_ptr->node_id);
-    log.printf("The maximum lower bound is set to %+10.6e.\n",
-               compute_user_objective(original_lp_, lower_bound_ceiling_.load()));
-    search_tree.update_tree(node_ptr, node_status_t::NUMERICAL);
+    if (thread_type == 'B') {
+      lower_bound_ceiling_.fetch_min(node_ptr->lower_bound);
+      log.printf(
+        "LP returned status %d on node %d. This indicates a numerical issue. The best bound is set "
+        "to "
+        "%+10.6e.\n",
+        lp_status,
+        node_ptr->node_id,
+        compute_user_objective(original_lp_, lower_bound_ceiling_.load()));
+    }
 
+    search_tree.graphviz_node(log, node_ptr, "numerical", 0.0);
+    search_tree.update_tree(node_ptr, node_status_t::NUMERICAL);
     return node_status_t::NUMERICAL;
   }
 }

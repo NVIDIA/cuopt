@@ -193,7 +193,7 @@ class branch_and_bound_t {
   void add_feasible_solution(f_t leaf_objective,
                              const std::vector<f_t>& leaf_solution,
                              i_t leaf_depth,
-                             char symbol);
+                             char thread_type);
 
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
@@ -231,7 +231,7 @@ class branch_and_bound_t {
                            const csc_matrix_t<i_t, f_t>& Arow,
                            f_t upper_bound,
                            logger_t& log,
-                           char symbol);
+                           char thread_type);
 
   // Sort the children based on the Martin's criteria.
   std::pair<mip_node_t<i_t, f_t>*, mip_node_t<i_t, f_t>*> child_selection(
