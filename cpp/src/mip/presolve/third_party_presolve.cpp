@@ -118,6 +118,9 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
   if (!h_var_lb.empty() && !h_var_ub.empty()) {
     builder.setColLbAll(h_var_lb);
     builder.setColUbAll(h_var_ub);
+    if (op_problem.get_variable_names().size() == h_var_lb.size()) {
+      builder.setColNameAll(op_problem.get_variable_names());
+    }
   }
 
   for (size_t i = 0; i < h_var_types.size(); ++i) {
