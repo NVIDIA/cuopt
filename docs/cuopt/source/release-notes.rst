@@ -9,25 +9,23 @@ Release Notes 25.10
 New Features (25.10)
 --------------------
 
-- Added a new PDLP Solver mode code Stable3, the new default.
+- Added a new PDLP Solver mode code Stable3, and new default is also concurrent mode with PDLP, dual simplex, barrier.
+- Barrier method for LPs with cuDSS sparse Cholesky / LDLT on the GPU.
 - This library now supports the QPS format, which is an extension of the standard MPS format for representing quadratic programming problems.
 - Add root node presolve using Papilo
 
 Breaking Changes (25.10)
 ------------------------
 
-- Added a new PDLP Solver mode code Stable3, the new default.
+- Added a new PDLP Solver mode code Stable3, and new default is also concurrent mode with PDLP, dual simplex, barrier.
 
 
 Improvements (25.10)
 --------------------
 
 - Fix issue stemming because Rocky 8.10 is EOL and replaced by 8.11
-- Combine conda install for local and channel based artifacts into one env create call
 - Enable miplib datasets which were disabled, and also update README
 - ``cuopt-server``: update dependencies (drop httpx, add psutil)
-- Build pure-Python wheels without waiting for dependencies
-- Avoid triggering nightly tests until builds are complete
 - Implement GF(2) presolve reduction
 - CPUFJ for local search + simple rounding
 - Add nightly testing of cuOpt jump interface
@@ -59,14 +57,10 @@ Improvements (25.10)
 - Performance tweak for ``dual_simplex/right_looking_lu``
 - Fix pre-commit for trailing whitespace and end of file
 - Simple diving for Branch-and-Bound
-- Bump libcuopt size to 775MiB
 - Merge update version and fix version format bugs
 - Support CUDA 12.9
-- Adding actions to automate auto issue assignment and reminder on inactivity
 - Sub-MIP recombiner and B&B global variable changes
 - FP as a local search
-- Update rapids-build-backend to 0.4.1
-- Branch 25.10 merge branch 25.08
 
 Bug Fixes (25.10)
 -----------------
@@ -81,7 +75,6 @@ Bug Fixes (25.10)
 - Add support for cuda13 container and fix cuda13 lib issues in wheel
 - Return Infeasible if the user problem contains crossing bounds
 - Fix out-of-bound access in ``clean_up_infeasibilities``
-- Skip downloading netlib data
 - Empty columns with infinite bounds are not removed
 
 
