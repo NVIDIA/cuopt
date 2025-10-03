@@ -89,6 +89,8 @@ outputs:
           cmake --install cpp/libmps_parser/build
       dynamic_linking:
         overlinking_behavior: "error"
+        missing_dso_allowlist:
+          - libcuda.so.1
       prefix_detection:
         ignore:
           # See https://github.com/rapidsai/build-planning/issues/160
@@ -136,6 +138,8 @@ outputs:
           cmake --install cpp/build
       dynamic_linking:
         overlinking_behavior: "error"
+        missing_dso_allowlist:
+          - libcuda.so.1
       prefix_detection:
         ignore:
           # See https://github.com/rapidsai/build-planning/issues/160
@@ -154,7 +158,7 @@ outputs:
         - cuda-cudart-dev
         - cuda-driver-dev
         - libcublas
-        - libcudss-dev
+        - libcudss-dev >=0.7
         - libcusparse-dev
       run:
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
@@ -193,6 +197,8 @@ outputs:
         content: |
           cmake --install cpp/build --component testing
       dynamic_linking:
+        missing_dso_allowlist:
+          - libcuda.so.1
         overlinking_behavior: "error"
       string: cuda${{ cuda_major }}_${{ date_string }}_${{ head_rev }}
     requirements:
@@ -207,7 +213,7 @@ outputs:
         - gtest ${{ gtest_version }}
         - cuda-cudart-dev
         - libcublas
-        - libcudss-dev
+        - libcudss-dev >=0.7
         - libcusparse-dev
       run:
         - gmock ${{ gtest_version }}
