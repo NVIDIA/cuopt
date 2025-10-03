@@ -74,15 +74,15 @@ target_link_libraries(cuopt_cli PRIVATE
 set(rpaths
   "$ORIGIN/../lib64"
   "$ORIGIN/../../rapids_logger/lib64"
-  "$ORIGIN/../../nvidia/cu12/lib"
   "$ORIGIN/../../librmm/lib64"
   "$ORIGIN/../../nvidia/cudss/lib"
   "$ORIGIN/../../nvidia/cublas/lib"
   "$ORIGIN/../../nvidia/curand/lib"
   "$ORIGIN/../../nvidia/cusolver/lib"
   "$ORIGIN/../../nvidia/cusparse/lib"
-  # For CUDA 13.x
-  "$ORIGIN/../../nvidia/cu13/lib"
+  # CUDA version-specific paths
+  $<$<VERSION_GREATER_EQUAL:${CMAKE_CUDA_COMPILER_VERSION},13.0>:"$ORIGIN/../../nvidia/cu13/lib">
+  $<$<VERSION_GREATER_EQUAL:${CMAKE_CUDA_COMPILER_VERSION},12.0>:"$ORIGIN/../../nvidia/cu12/lib">
 )
 
 set_property(TARGET cuopt PROPERTY INSTALL_RPATH ${rpaths} APPEND)
