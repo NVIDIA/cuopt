@@ -215,7 +215,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudaStream_t cuda_stream    = handle_ptr_->get_stream();
       cudaError_t priority_result = cudaStreamGetPriority(cuda_stream, &stream_priority);
       if (priority_result != cudaSuccess) {
-        settings_.log.printf("Failed to get stream priority: %s\n", cudaGetErrorString(priority_result));
+        settings_.log.printf("Failed to get stream priority: %s\n",
+                             cudaGetErrorString(priority_result));
         return -1;
       }
       CU_CHECK(cuGreenCtxCreate(
