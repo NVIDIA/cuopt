@@ -41,6 +41,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_MIP_RELATIVE_TOLERANCE,
     CUOPT_MIP_SCALING,
     CUOPT_NUM_CPU_THREADS,
+    CUOPT_ORDERING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PER_CONSTRAINT_RESIDUAL,
     CUOPT_PRESOLVE,
@@ -388,6 +389,7 @@ class SolverSettings:
             "augmented": self.get_parameter(CUOPT_AUGMENTED),
             "folding": self.get_parameter(CUOPT_FOLDING),
             "dualize": self.get_parameter(CUOPT_DUALIZE),
+            "ordering": self.get_parameter(CUOPT_ORDERING),
             "eliminate_dense_columns": self.get_parameter(
                 CUOPT_ELIMINATE_DENSE_COLUMNS
             ),

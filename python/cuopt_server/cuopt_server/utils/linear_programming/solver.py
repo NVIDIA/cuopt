@@ -47,6 +47,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_MIP_RELATIVE_TOLERANCE,
     CUOPT_MIP_SCALING,
     CUOPT_NUM_CPU_THREADS,
+    CUOPT_ORDERING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PER_CONSTRAINT_RESIDUAL,
     CUOPT_PRESOLVE,
@@ -446,6 +447,10 @@ def create_solver(LP_data, warmstart_data):
             solver_settings.set_parameter(CUOPT_FOLDING, solver_config.folding)
         if solver_config.dualize != "":
             solver_settings.set_parameter(CUOPT_DUALIZE, solver_config.dualize)
+        if solver_config.ordering != "":
+            solver_settings.set_parameter(
+                CUOPT_ORDERING, solver_config.ordering
+            )
         if solver_config.eliminate_dense_columns is not None:
             solver_settings.set_parameter(
                 CUOPT_ELIMINATE_DENSE_COLUMNS,

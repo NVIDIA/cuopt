@@ -53,6 +53,7 @@
 #define CUOPT_FOLDING                     "folding"
 #define CUOPT_AUGMENTED                   "augmented"
 #define CUOPT_DUALIZE                     "dualize"
+#define CUOPT_ORDERING                    "ordering"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS     "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC         "cudss_deterministic"
 #define CUOPT_PRESOLVE                    "presolve"
