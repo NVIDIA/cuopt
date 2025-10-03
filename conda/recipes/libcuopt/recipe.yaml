@@ -113,6 +113,8 @@ outputs:
           - gtest
           - libcurand
           - libcusparse
+          - libcudss
+          - libcuda
           - librmm
           - libzlib
           - libbz2
@@ -168,6 +170,7 @@ outputs:
           - libcurand
           - libcusparse
           - libcudss
+          - libcuda
           - librmm
           - libboost
           - libboost_iostreams
@@ -217,6 +220,8 @@ outputs:
           - cuda-version
           - gtest
           - libcurand
+          - libcuda
+          - libcudss
           - libcusparse
           - librmm
           - libboost
