@@ -30,7 +30,7 @@ Improvements (25.10)
 - Avoid triggering nightly tests until builds are complete
 - GF(2) presolve reduction for ``enlight_hard.mps``
 - CPUFJ for local search + simple rounding
-- Add jump testing to nightly testing
+- Add nightly testing of cuOpt jump interface
 - Compression tests are not run when compression is disabled
 - Add sanitizer build option
 - Doc update for container version update, and add ``nvidia-cuda-runtime`` as a dependency
