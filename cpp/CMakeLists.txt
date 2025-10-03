@@ -288,9 +288,13 @@ set(CUOPT_PRIVATE_CUDA_LIBS
 
 list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
 
+
+set_property(TARGET cuopt APPEND PROPERTY
+  RAPIDS_LINK_LIBS_EXCLUSIONS "libcuda.so.1"
+)
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser)
 set(CMAKE_LIBRARY_PATH ${CMAKE_CURRENT_BINARY_DIR}/libmps_parser/)
-
 
 
 # Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
