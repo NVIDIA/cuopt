@@ -907,7 +907,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
 
   CUOPT_LOG_DEBUG("Bounds propagation rounding: unset vars %lu", unset_integer_vars.size());
   if (unset_integer_vars.size() == 0) {
-    CUOPT_LOG_ERROR("No integer variables provided in the bounds prop rounding");
+    CUOPT_LOG_DEBUG("No integer variables provided in the bounds prop rounding");
     expand_device_copy(orig_sol.assignment, sol.assignment, sol.handle_ptr->get_stream());
     cuopt_func_call(orig_sol.test_variable_bounds());
     return orig_sol.compute_feasibility();

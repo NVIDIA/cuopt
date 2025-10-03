@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import copy
 from enum import Enum
 
@@ -767,6 +768,8 @@ class Problem:
                 raise Exception("Couldn't initialize constraints")
 
     def _to_data_model(self):
+        dm = data_model.DataModel()
+
         # iterate through the constraints and construct the constraint matrix
         n = len(self.vars)
         self.rhs = []
@@ -818,7 +821,6 @@ class Problem:
             self.var_names.append(var_name)
 
         # Initialize datamodel
-        dm = data_model.DataModel()
         dm.set_csr_constraint_matrix(
             np.array(self.constraint_csr_matrix["values"]),
             np.array(self.constraint_csr_matrix["column_indices"]),
