@@ -28,8 +28,9 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_AUGMENTED,
     CUOPT_CROSSOVER,
     CUOPT_CUDSS_DETERMINISTIC,
-    CUOPT_DUAL_INFEASIBLE_TOLERANCE,
     CUOPT_DUALIZE,
+    CUOPT_DUAL_INFEASIBLE_TOLERANCE,
+    CUOPT_DUAL_POSTSOLVE,
     CUOPT_ELIMINATE_DENSE_COLUMNS,
     CUOPT_FIRST_PRIMAL_FEASIBLE,
     CUOPT_FOLDING,
@@ -401,6 +402,11 @@ def create_solver(LP_data, warmstart_data):
         if solver_config.presolve is not None:
             solver_settings.set_parameter(
                 CUOPT_PRESOLVE, solver_config.presolve
+            )
+
+        if solver_config.dual_postsolve is not None:
+            solver_settings.set_parameter(
+                CUOPT_DUAL_POSTSOLVE, solver_config.dual_postsolve
             )
 
         if solver_config.log_to_console is not None:

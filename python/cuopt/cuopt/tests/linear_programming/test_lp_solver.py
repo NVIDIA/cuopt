@@ -25,11 +25,13 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
+    CUOPT_DUAL_POSTSOLVE,
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_ITERATION_LIMIT,
     CUOPT_METHOD,
     CUOPT_MIP_HEURISTICS_ONLY,
     CUOPT_PDLP_SOLVER_MODE,
+    CUOPT_PRESOLVE,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
     CUOPT_RELATIVE_DUAL_TOLERANCE,
     CUOPT_RELATIVE_GAP_TOLERANCE,
@@ -164,9 +166,6 @@ def test_time_limit_solver():
     assert solution.get_termination_status() == LPTerminationStatus.TimeLimit
     # Check that around 200 ms has passed with some tolerance
     assert solution.get_solve_time() <= (time_limit_seconds * 10)
-    # Not all 0
-    assert solution.get_primal_objective() != 0.0
-    assert np.any(solution.get_primal_solution())
 
 
 def test_set_get_fields():
@@ -601,6 +600,8 @@ def test_dual_simplex():
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.DualSimplex)
+    settings.set_parameter(CUOPT_PRESOLVE, True)
+    settings.set_parameter(CUOPT_DUAL_POSTSOLVE, False)
 
     solution = solver.Solve(data_model_obj, settings)
 

@@ -112,7 +112,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_ELIMINATE_DENSE_COLUMNS, &pdlp_settings.eliminate_dense_columns, true},
     {CUOPT_CUDSS_DETERMINISTIC, &pdlp_settings.cudss_deterministic, false},
     {CUOPT_PRESOLVE, &pdlp_settings.presolve, false},
-    {CUOPT_PRESOLVE, &mip_settings.presolve, true}
+    {CUOPT_PRESOLVE, &mip_settings.presolve, true},
+    {CUOPT_DUAL_POSTSOLVE, &pdlp_settings.dual_postsolve, true}
   };
   // String parameters
   string_parameters = {

@@ -43,6 +43,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(argparse)
 
+
+find_package(Boost 1.65 REQUIRED)
+if(Boost_FOUND)
+    message(STATUS "Found Boost ${Boost_VERSION} in ${Boost_INCLUDE_DIRS}")
+else()
+    message(FATAL_ERROR "Boost not found. Please install boost-devel.")
+endif()
+
+include_directories(${Boost_INCLUDE_DIRS})
+
 set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
 set(PAPILO_NO_BINARIES ON)
 option(LUSOL "Disable LUSOL" OFF)
