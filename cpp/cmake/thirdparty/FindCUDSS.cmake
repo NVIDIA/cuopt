@@ -47,13 +47,8 @@ if (DEFINED ENV{CUDSS_DIR} AND NOT "$ENV{CUDSS_DIR}" STREQUAL "")
   mark_as_advanced(CUDSS_INCLUDE CUDSS_LIBRARIES)
 
 else()
- if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0")
-  message(STATUS "CUDSS 0.6 not supported for CUDA 13.0")
-  set(CUDSS_INCLUDE "")
-  set(CUDSS_LIBRARIES "")
-  set(CUDSS_MT_LIB_FILE "")
- else()
-  find_package(cudss REQUIRED CONFIG)
+ # Request CUDSS version >= 0.7
+  find_package(cudss 0.7 REQUIRED CONFIG)
 
   # Print all details of the cudss package
   message(STATUS "cudss package details:")
@@ -74,5 +69,4 @@ else()
   set(CUDSS_MT_LIB_FILE "${cudss_LIBRARY_DIR}/libcudss_mtlayer_gomp.so.0")
   message(STATUS "Using cudss library: ${CUDSS_LIB_FILE}")
   message(STATUS "Using cudss MT library: ${CUDSS_MT_LIB_FILE}")
- endif()
 endif()
