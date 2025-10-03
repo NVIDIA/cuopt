@@ -747,11 +747,12 @@ dependencies:
     common:
       - output_types: [conda]
         packages:
+          - libcudss-dev >=0.7
           - libcurand-dev
           - libcusolver-dev
           - libcusparse-dev
           - cuda-nvtx-dev
-          - libcudss-dev >=0.7
+
 
   cuda_wheels:
     specific:
@@ -780,10 +781,10 @@ dependencies:
             packages:
               - nvidia-cudart
               - nvidia-cublas
+              - nvidia-cudss
               - nvidia-curand
               - nvidia-cusparse
               - nvidia-cusolver
-              - nvidia-cudss
               - nvidia-nvtx
   develop:
     common:
