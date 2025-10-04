@@ -25,7 +25,7 @@ sed -i 's|^mirrorlist=|#mirrorlist=|g' ${REPO_DIR}/Rocky-*.repo || true
 sed -i 's|^baseurl=http.*|#&|g' ${REPO_DIR}/Rocky-*.repo || true
 
 # Write new repo definitions
-cat <<'EOF' | sudo tee ${REPO_DIR}/Rocky-Vault.repo
+cat <<'EOF' | tee ${REPO_DIR}/Rocky-Vault.repo
 [baseos]
 name=Rocky Linux 8.10 - BaseOS (vault)
 baseurl=https://dl.rockylinux.org/vault/rocky/8.10/BaseOS/$basearch/os/
