@@ -20,7 +20,7 @@ set -euo pipefail
 # Clean metadata & install cudss
 if command -v dnf &> /dev/null; then
     # Adding static library just to please CMAKE requirements
-    if [ "$CUDA_VERSION" == "13.0" ]; then
+    if [ "$(echo "$CUDA_VERSION" | cut -d. -f1)" -ge 13 ] && [ "$(echo "$CUDA_VERSION" | cut -d. -f1)" -lt 14 ]; then
         dnf -y install libcudss0-static-cuda-13 libcudss0-devel-cuda-13 libcudss0-cuda-13
     else
         dnf -y install libcudss0-static-cuda-12 libcudss0-devel-cuda-12 libcudss0-cuda-12
