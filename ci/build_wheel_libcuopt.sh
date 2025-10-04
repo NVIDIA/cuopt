@@ -21,6 +21,11 @@ source rapids-init-pip
 package_name="libcuopt"
 package_dir="python/libcuopt"
 
+# Install rockylinux repo
+if command -v dnf &> /dev/null; then
+    bash ci/utils/update_rockylinux_repo.sh
+fi
+
 # Install Boost and TBB
 bash ci/utils/install_boost_tbb.sh
 

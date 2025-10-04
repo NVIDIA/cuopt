@@ -20,6 +20,11 @@ set -euo pipefail
 
 source rapids-init-pip
 
+# Install rockylinux repo
+if command -v dnf &> /dev/null; then
+    bash ci/utils/update_rockylinux_repo.sh
+fi
+
 # Install cudss
 bash ci/utils/install_cudss.sh
 
