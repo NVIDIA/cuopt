@@ -21,8 +21,8 @@ set -euxo pipefail
 REPO_DIR="/etc/yum.repos.d"
 
 # Disable existing Rocky repos
-sudo sed -i 's|^mirrorlist=|#mirrorlist=|g' ${REPO_DIR}/Rocky-*.repo || true
-sudo sed -i 's|^baseurl=http.*|#&|g' ${REPO_DIR}/Rocky-*.repo || true
+sed -i 's|^mirrorlist=|#mirrorlist=|g' ${REPO_DIR}/Rocky-*.repo || true
+sed -i 's|^baseurl=http.*|#&|g' ${REPO_DIR}/Rocky-*.repo || true
 
 # Write new repo definitions
 cat <<'EOF' | sudo tee ${REPO_DIR}/Rocky-Vault.repo
@@ -49,5 +49,5 @@ gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-rockyofficial
 EOF
 
 # Clean up caches and refresh
-sudo dnf clean all
-sudo dnf makecache
+dnf clean all
+dnf makecache
