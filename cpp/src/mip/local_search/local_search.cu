@@ -230,44 +230,44 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
                                            fj_t<i_t, f_t>& in_fj,
                                            const std::string& source)
 {
-  CUOPT_LOG_DEBUG(
-    "best overall: %g/%g", pop_ptr->best_feasible().get_objective(), local_search_best_obj);
-  if (pop_ptr && pop_ptr->is_feasible() &&
-      pop_ptr->best_feasible().get_objective() < local_search_best_obj) {
-    std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
+  // CUOPT_LOG_DEBUG(
+  //   "best overall: %g/%g", pop_ptr->best_feasible().get_objective(), local_search_best_obj);
+  // if (pop_ptr && pop_ptr->is_feasible() &&
+  //     pop_ptr->best_feasible().get_objective() < local_search_best_obj) {
+  //   std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
 
-    CUOPT_LOG_DEBUG(
-      "******* Local search obj %g vs best overall %g, should perform a restart (new best)",
-      context.problem_ptr->get_user_obj_from_solver_obj(local_search_best_obj),
-      context.problem_ptr->get_user_obj_from_solver_obj(pop_ptr->best_feasible().get_objective()));
-    local_search_best_obj = pop_ptr->best_feasible().get_objective();
+  //   CUOPT_LOG_DEBUG(
+  //     "******* Local search obj %g vs best overall %g, should perform a restart (new best)",
+  //     context.problem_ptr->get_user_obj_from_solver_obj(local_search_best_obj),
+  //     context.problem_ptr->get_user_obj_from_solver_obj(pop_ptr->best_feasible().get_objective()));
+  //   local_search_best_obj = pop_ptr->best_feasible().get_objective();
 
-    scratch_cpu_fj[1].stop_cpu_solver();
-    scratch_cpu_fj[1].wait_for_cpu_solver();
+  //   scratch_cpu_fj[1].stop_cpu_solver();
+  //   scratch_cpu_fj[1].wait_for_cpu_solver();
 
-    scratch_cpu_fj[1].fj_cpu =
-      scratch_cpu_fj[1].fj_ptr->create_cpu_climber(pop_ptr->best_feasible(),
-                                                   default_weights,
-                                                   default_weights,
-                                                   0.,
-                                                   fj_settings_t{},
-                                                   /*randomize=*/true);
+  //   scratch_cpu_fj[1].fj_cpu =
+  //     scratch_cpu_fj[1].fj_ptr->create_cpu_climber(pop_ptr->best_feasible(),
+  //                                                  default_weights,
+  //                                                  default_weights,
+  //                                                  0.,
+  //                                                  fj_settings_t{},
+  //                                                  /*randomize=*/true);
 
-    scratch_cpu_fj[1].fj_cpu->log_prefix           = "******* scratch restard: ";
-    scratch_cpu_fj[1].fj_cpu->improvement_callback = [this](f_t obj,
-                                                            const std::vector<f_t>& h_vec) {
-      pop_ptr->add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
-      if (obj < local_search_best_obj) {
-        CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
-                        context.problem_ptr->get_user_obj_from_solver_obj(obj),
-                        context.problem_ptr->get_user_obj_from_solver_obj(
-                          pop_ptr->is_feasible() ? pop_ptr->best_feasible().get_objective()
-                                                 : std::numeric_limits<f_t>::max()));
-        local_search_best_obj = obj;
-      }
-    };
-    scratch_cpu_fj[1].start_cpu_solver();
-  }
+  //   scratch_cpu_fj[1].fj_cpu->log_prefix           = "******* scratch restard: ";
+  //   scratch_cpu_fj[1].fj_cpu->improvement_callback = [this](f_t obj,
+  //                                                           const std::vector<f_t>& h_vec) {
+  //     pop_ptr->add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
+  //     if (obj < local_search_best_obj) {
+  //       CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
+  //                       context.problem_ptr->get_user_obj_from_solver_obj(obj),
+  //                       context.problem_ptr->get_user_obj_from_solver_obj(
+  //                         pop_ptr->is_feasible() ? pop_ptr->best_feasible().get_objective()
+  //                                                : std::numeric_limits<f_t>::max()));
+  //       local_search_best_obj = obj;
+  //     }
+  //   };
+  //   scratch_cpu_fj[1].start_cpu_solver();
+  // }
 
   auto h_weights          = cuopt::host_copy(in_fj.cstr_weights, solution.handle_ptr->get_stream());
   auto h_objective_weight = in_fj.objective_weight.value(solution.handle_ptr->get_stream());
