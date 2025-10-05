@@ -336,6 +336,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK_EXIT(cudssConfigDestroy(solverConfig), status, "cudssConfigDestroy");
     CUDSS_CALL_AND_CHECK_EXIT(cudssDestroy(handle), status, "cudssDestroy");
     CUDA_CALL_AND_CHECK_EXIT(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
+#ifdef SPLIT_SM_FOR_BARRIER
     if (settings_.concurrent_halt != nullptr && driver_version >= 13000) {
       CU_CHECK(cuStreamDestroy(stream));
 #if CUDART_VERSION >= 13000
@@ -343,6 +344,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 #endif
       handle_ptr_->get_stream().synchronize();
     }
+#endif
   }
 
   i_t analyze(device_csr_matrix_t<i_t, f_t>& Arow) override
