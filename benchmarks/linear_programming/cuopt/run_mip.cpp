@@ -221,7 +221,7 @@ int run_single_file(std::string file_path,
     benchmark_info.objective_of_initial_population,
     benchmark_info.last_improvement_of_best_feasible,
     benchmark_info.last_improvement_after_recombination);
-  // solution.write_to_sol_file(base_filename + ".sol", handle_.get_stream()); 4
+  // solution.write_to_sol_file(base_filename + ".sol", handle_.get_stream());
   std::chrono::milliseconds duration;
   auto end = std::chrono::high_resolution_clock::now();
   duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_run_solver);
