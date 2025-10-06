@@ -78,7 +78,7 @@ Method
 Crossover
 ---------
 
-Crossover allows you to obtain a high-quality basic solution from the results of a PDLP or barrier solve. When enabled, crossover converts an interior-point solution to a vertex solution (basic solution) with high accuracy. More details can be found :ref:`here <crossover>`.
+Crossover allows you to obtain a high-quality basic solution from the results of a PDLP or barrier solve. When enabled, crossover converts these solutions to a vertex solution (basic solution) with high accuracy. More details can be found :ref:`here <crossover>`.
 
 
 Presolve
