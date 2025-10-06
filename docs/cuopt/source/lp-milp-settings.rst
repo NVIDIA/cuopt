@@ -147,12 +147,12 @@ Crossover
 
 ``CUOPT_CROSSOVER`` controls whether PDLP or barrier should crossover to a basic solution after an optimal solution is found.
 Changing this value has a significant impact on accuracy and runtime.
-By default the solutions provided by PDLP and barrier are interior-point solutions that may have many variables that lie
+By default the solutions provided by PDLP and barrier do not lie at a vertex and thus may have many variables that lie
 between their bounds. Enabling crossover allows the user to obtain a high-quality basic solution
 that lies at a vertex of the feasible region. If n is the number of variables, and m is the number of
 constraints, n - m variables will be on their bounds in a basic solution.
 
-Note: the default value is false. Crossover has been updated to use hypersparse solves for improved performance.
+Note: the default value is false. 
 
 Save Best Primal So Far
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -187,21 +187,21 @@ The following settings control the behavior of the barrier (interior-point) meth
 Folding
 """""""
 
-``CUOPT_FOLDING`` controls whether to fold the linear program. Folding can reduce problem size by exploiting problem structure.
+``CUOPT_FOLDING`` controls whether to fold the linear program. Folding can reduce problem size by exploiting symmetry in the problem.
 
 * ``-1``: Automatic (default) - cuOpt decides whether to fold based on problem characteristics
-* ``0``: Folding disabled
-* ``1``: Folding enabled
+* ``0``: Disable folding
+* ``1``: Force folding to run
 
 Note: the default value is ``-1`` (automatic).
 
 Dualize
 """""""
 
-``CUOPT_DUALIZE`` controls whether to dualize the linear program in presolve. Dualizing can improve solve time for problems where the dual has better structure.
+``CUOPT_DUALIZE`` controls whether to dualize the linear program in presolve. Dualizing can improve solve time for problems, with inequality constraints, where there are more constraints than variables.
 
 * ``-1``: Automatic (default) - cuOpt decides whether to dualize based on problem characteristics
-* ``0``: Don't dualize
+* ``0``: Don't attempt to dualize
 * ``1``: Force dualize
 
 Note: the default value is ``-1`` (automatic).
@@ -209,7 +209,7 @@ Note: the default value is ``-1`` (automatic).
 Ordering
 """"""""
 
-``CUOPT_ORDERING`` controls the ordering algorithm used by cuDSS for sparse factorizations. The ordering can significantly impact solve performance.
+``CUOPT_ORDERING`` controls the ordering algorithm used by cuDSS for sparse factorizations. The ordering can significantly impact solver run time.
 
 * ``-1``: Automatic (default) - cuOpt selects the best ordering
 * ``0``: cuDSS default ordering
@@ -222,7 +222,7 @@ Augmented System
 
 ``CUOPT_AUGMENTED`` controls which linear system to solve in the barrier method.
 
-* ``-1``: Automatic (default) - cuOpt selects the best formulation
+* ``-1``: Automatic (default) - cuOpt selects the best linear system
 * ``0``: Solve the ADAT system (normal equations)
 * ``1``: Solve the augmented system
 
@@ -232,9 +232,12 @@ Eliminate Dense Columns
 """"""""""""""""""""""""
 
 ``CUOPT_ELIMINATE_DENSE_COLUMNS`` controls whether to eliminate dense columns from the constraint matrix before solving. Eliminating dense columns can improve performance by reducing fill-in during factorization.
+However, extra solves must be performed at each iteration.
 
 * ``true``: Eliminate dense columns (default)
 * ``false``: Don't eliminate dense columns
+
+This setting only has an effect when the ADAT (normal equation) system is solved.
 
 Note: the default value is ``true``.
 
