@@ -78,19 +78,18 @@ We now describe the parameter settings used to control cuOpt's Linear Programmin
 Method
 ^^^^^^
 
-``CUOPT_METHOD`` controls the method to solve the linear programming problem. Three methods are available:
+``CUOPT_METHOD`` controls the method to solve the linear programming problem. Four methods are available:
 
-* ``Concurrent``: Use both PDLP and dual simplex in parallel.
+* ``Concurrent``: Use PDLP, dual simplex, and barrier in parallel (default).
 * ``PDLP``: Use the PDLP method.
 * ``Dual Simplex``: Use the dual simplex method.
+* ``Barrier``: Use the barrier (interior-point) method.
 
-Note: The default method is ``Concurrent``.
+Note: The default method is ``Concurrent``, which now includes barrier along with PDLP and dual simplex.
 
 C API users should use the constants defined in :ref:`method-constants` for this parameter.
 
 Server Thin client users should use the :class:`cuopt_sh_client.SolverMethod` for this parameter.
-
-
 
 PDLP Solver Mode
 ^^^^^^^^^^^^^^^^
@@ -146,14 +145,14 @@ Note: the default value is false.
 Crossover
 ^^^^^^^^^
 
-``CUOPT_CROSSOVER`` controls whether PDLP should crossover to a basic solution after a optimal solution is found.
+``CUOPT_CROSSOVER`` controls whether PDLP or barrier should crossover to a basic solution after an optimal solution is found.
 Changing this value has a significant impact on accuracy and runtime.
-By default the solutions provided by PDLP are low accuracy and may have many variables that lie
+By default the solutions provided by PDLP and barrier are interior-point solutions that may have many variables that lie
 between their bounds. Enabling crossover allows the user to obtain a high-quality basic solution
 that lies at a vertex of the feasible region. If n is the number of variables, and m is the number of
 constraints, n - m variables will be on their bounds in a basic solution.
 
-Note: the default value is false.
+Note: the default value is false. Crossover has been updated to use hypersparse solves for improved performance.
 
 Save Best Primal So Far
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -179,6 +178,75 @@ Per Constraint Residual
 ``CUOPT_PER_CONSTRAINT_RESIDUAL`` controls whether PDLP should compute the primal & dual residual per constraint instead of globally.
 
 Note: the default value is false.
+
+Barrier Solver Settings
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+The following settings control the behavior of the barrier (interior-point) method:
+
+Folding
+"""""""
+
+``CUOPT_FOLDING`` controls whether to fold the linear program. Folding can reduce problem size by exploiting problem structure.
+
+* ``-1``: Automatic (default) - cuOpt decides whether to fold based on problem characteristics
+* ``0``: Folding disabled
+* ``1``: Folding enabled
+
+Note: the default value is ``-1`` (automatic).
+
+Dualize
+"""""""
+
+``CUOPT_DUALIZE`` controls whether to dualize the linear program in presolve. Dualizing can improve solve time for problems where the dual has better structure.
+
+* ``-1``: Automatic (default) - cuOpt decides whether to dualize based on problem characteristics
+* ``0``: Don't dualize
+* ``1``: Force dualize
+
+Note: the default value is ``-1`` (automatic).
+
+Ordering
+""""""""
+
+``CUOPT_ORDERING`` controls the ordering algorithm used by cuDSS for sparse factorizations. The ordering can significantly impact solve performance.
+
+* ``-1``: Automatic (default) - cuOpt selects the best ordering
+* ``0``: cuDSS default ordering
+* ``1``: AMD (Approximate Minimum Degree) ordering
+
+Note: the default value is ``-1`` (automatic).
+
+Augmented System
+""""""""""""""""
+
+``CUOPT_AUGMENTED`` controls which linear system to solve in the barrier method.
+
+* ``-1``: Automatic (default) - cuOpt selects the best formulation
+* ``0``: Solve the ADAT system (normal equations)
+* ``1``: Solve the augmented system
+
+Note: the default value is ``-1`` (automatic). The augmented system may be more stable for some problems, while ADAT may be faster for others.
+
+Eliminate Dense Columns
+""""""""""""""""""""""""
+
+``CUOPT_ELIMINATE_DENSE_COLUMNS`` controls whether to eliminate dense columns from the constraint matrix before solving. Eliminating dense columns can improve performance by reducing fill-in during factorization.
+
+* ``true``: Eliminate dense columns (default)
+* ``false``: Don't eliminate dense columns
+
+Note: the default value is ``true``.
+
+cuDSS Deterministic Mode
+"""""""""""""""""""""""""
+
+``CUOPT_CUDSS_DETERMINISTIC`` controls whether cuDSS operates in deterministic mode. Deterministic mode ensures reproducible results across runs but may be slower.
+
+* ``true``: Use deterministic mode
+* ``false``: Use non-deterministic mode (default)
+
+Note: the default value is ``false``. Enable deterministic mode if reproducibility is more important than performance.
 
 Absolute Primal Tolerance
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -329,3 +397,5 @@ If the Best Objective and the Dual Bound are both zero the gap is zero. If the b
 gap is infinity.
 
 Note: the default value is ``1e-4``.
+
+
