@@ -40,7 +40,6 @@ Improvements (25.10)
 - Performance improvement in dual simplex's right-looking LU factorization
 - Fix high GPU memory usage
 - Print cuOpt version / machine info before solving
-- Enable miplib datasets which were disabled, and also update README
 - ``cuopt-server``: update dependencies (drop httpx, add psutil)
 - Add nightly testing of cuOpt jump interface
 - Compression tests are not run when compression is disabled
