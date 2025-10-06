@@ -68,9 +68,9 @@ How cuOpt Solves the Linear Programming Problem
 ------------------------------------------------
 cuOpt includes three LP solving methods:
 
-* **PDLP**: Based on `PDLP <https://arxiv.org/abs/2106.04756>`__, a First-Order Method (FOM) for solving large-scale LPs. This solver implements gradient descent, enhanced by heuristics, performing massively parallel operations efficiently by leveraging NVIDIA GPUs.
+* **PDLP**: Based on `PDLP <https://arxiv.org/abs/2106.04756>`__, a First-Order Method (FOM) for solving large-scale LPs. This solver implements primal-dual hybrid gradient enhanced by heuristics. Sparse matrix-vector products are perfomed efficiently on NVIDIA GPUs.
 
-* **Barrier (Interior-Point)**: A primal-dual interior-point method that uses GPU-accelerated sparse Cholesky and LDLT solves via cuDSS, and sparse matrix operations via cuSparse. The barrier method includes advanced techniques like folding, dense column elimination, and color refinement for weighted graphs.
+* **Barrier (Interior-Point)**: A primal-dual interior-point method that uses GPU-accelerated sparse Cholesky and LDLT solves via cuDSS, and sparse matrix operations via cuSparse. 
 
 * **Dual Simplex**: A CPU-based dual simplex solver for small to medium-sized problems.
 
