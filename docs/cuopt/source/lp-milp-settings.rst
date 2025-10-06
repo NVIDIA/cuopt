@@ -222,7 +222,7 @@ Augmented System
 
 ``CUOPT_AUGMENTED`` controls which linear system to solve in the barrier method.
 
-* ``-1``: Automatic (default) - cuOpt selects the best linear system
+* ``-1``: Automatic (default) - cuOpt selects the best linear system to solve
 * ``0``: Solve the ADAT system (normal equations)
 * ``1``: Solve the augmented system
 
