@@ -9,7 +9,7 @@ Release Notes 25.10
 New Features (25.10)
 --------------------
 
-- New barrier method for solving LPs. Uses cuDSS for sparse Cholesky / LDT. 
+- New barrier method for solving LPs. Uses cuDSS for sparse Cholesky / LDT.
 - Concurrent mode for LPs now uses PDLP, dual simplex, and barrier
 - New PDLP solver mode Stable3.
 - MIP presolve using Papilo (enabled by default). LP presolve using Papilo (optional).
