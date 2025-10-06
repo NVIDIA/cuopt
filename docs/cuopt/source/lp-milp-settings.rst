@@ -152,7 +152,7 @@ between their bounds. Enabling crossover allows the user to obtain a high-qualit
 that lies at a vertex of the feasible region. If n is the number of variables, and m is the number of
 constraints, n - m variables will be on their bounds in a basic solution.
 
-Note: the default value is false. 
+Note: the default value is false.
 
 Save Best Primal So Far
 ^^^^^^^^^^^^^^^^^^^^^^^
