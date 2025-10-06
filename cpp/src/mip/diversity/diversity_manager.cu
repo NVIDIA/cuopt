@@ -416,8 +416,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
                    lp_dual_optimal_solution.size(),
                    problem_ptr->handle_ptr->get_stream());
       }
+      problem_ptr->handle_ptr->sync_stream();
     }
-    problem_ptr->handle_ptr->sync_stream();
     ls.lp_optimal_exists = true;
     if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
       set_new_user_bound(lp_result.get_objective_value());
@@ -822,8 +822,8 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
   cuopt_func_call(new_sol.compute_feasibility());
   cuopt_assert(integer_equal(new_sol.get_user_objective(), objective, 1e-3), "Objective mismatch");
   std::lock_guard<std::mutex> lock(relaxed_solution_mutex);
-  simplex_solution_exists = true;
-  global_concurrent_halt  = 1;
+  simplex_solution_exists.store(true, std::memory_order_release);
+  global_concurrent_halt.store(1, std::memory_order_release);
   // it is safe to use lp_optimal_solution while executing the copy operation
   // the operations are ordered as long as they are on the same stream
   raft::copy(
