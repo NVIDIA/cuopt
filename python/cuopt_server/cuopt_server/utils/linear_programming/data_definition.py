@@ -536,33 +536,33 @@ class SolverConfig(StrictModel):
         description="Set the number of CPU threads to use for branch and bound.",  # noqa
     )
     augmented: Optional[int] = Field(
-        default=None,
+        default=-1,
         description="Set the types of system solved by the barrier solver."
         " -1 for automatic, 0 for ADAT, 1 for augmented system",
     )
     folding: Optional[int] = Field(
-        default=None,
+        default=-1,
         description="Set if folding should be used on a linear program."
         " -1 for automatic, 0 to not fold, 1 to force folding",
     )
     dualize: Optional[int] = Field(
-        default=None,
+        default=-1,
         description="Set if dualization should be used on a linear program."
         " -1 for automatic, 0 to turn off dualization, 1 to force dualization",
     )
     ordering: Optional[int] = Field(
-        default=None,
+        default=-1,
         description="Set the type of ordering to use for the barrier solver."
         "-1 for automatic, 0 to use cuDSS default ordering, 1 to use AMD",
     )
     eliminate_dense_columns: Optional[bool] = Field(
-        default=None,
+        default=True,
         description="Set if dense columns should be eliminated from the "
         "constraint matrix in the barrier solver. "
         "True to eliminate, False to not eliminate",
     )
     cudss_deterministic: Optional[bool] = Field(
-        default=None,
+        default=False,
         description="Set if cuDSS should use deterministic mode. "
         "True to use deterministic mode, False to not use deterministic mode",
     )
