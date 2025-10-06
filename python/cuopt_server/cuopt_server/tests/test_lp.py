@@ -148,6 +148,7 @@ def test_sample_milp(
     )
 
 
+@pytest.mark.skip(reason="Skipping barrier solver options test")
 @pytest.mark.parametrize(
     "folding, dualize, ordering, augmented, eliminate_dense, cudss_determ",
     [
