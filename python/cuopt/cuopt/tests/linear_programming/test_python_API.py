@@ -34,10 +34,20 @@ from cuopt.linear_programming.problem import (
     sense,
 )
 from cuopt.linear_programming.solver.solver_parameters import (
+    CUOPT_AUGMENTED,
+    CUOPT_CUDSS_DETERMINISTIC,
+    CUOPT_DUALIZE,
+    CUOPT_ELIMINATE_DENSE_COLUMNS,
+    CUOPT_FOLDING,
     CUOPT_INFEASIBILITY_DETECTION,
+    CUOPT_METHOD,
+    CUOPT_ORDERING,
     CUOPT_PDLP_SOLVER_MODE,
 )
-from cuopt.linear_programming.solver_settings import PDLPSolverMode
+from cuopt.linear_programming.solver_settings import (
+    PDLPSolverMode,
+    SolverMethod,
+)
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:
@@ -449,3 +459,98 @@ def test_problem_update():
     prob.updateObjective(constant=5, sense=MINIMIZE)
     prob.solve()
     assert prob.ObjValue == pytest.approx(5)
+
+
+def test_barrier_solver():
+    """
+    Test the barrier solver with different configurations.
+
+    Problem:
+        maximize   5*xs + 20*xl
+        subject to  1*xs +  3*xl <= 200
+                    3*xs +  2*xl <= 160
+                    xs, xl >= 0
+
+    Expected Solution:
+        Optimal objective: 1333.33
+        xs = 0, xl = 66.67 (corner solution where constraint 1 is binding)
+    """
+    prob = Problem("Barrier Test")
+
+    # Add variables
+    xs = prob.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xs")
+    xl = prob.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xl")
+
+    # Add constraints
+    prob.addConstraint(xs + 3 * xl <= 200, name="constraint1")
+    prob.addConstraint(3 * xs + 2 * xl <= 160, name="constraint2")
+
+    # Set objective: maximize 5*xs + 20 * xl
+    prob.setObjective(5 * xs + 20 * xl, sense=MAXIMIZE)
+
+    # Test 1: Default barrier settings
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings.set_parameter("time_limit", 10)
+
+    prob.solve(settings)
+
+    assert prob.solved
+    assert prob.Status.name == "Optimal"
+    assert prob.ObjValue == pytest.approx(1333.33, rel=0.01)
+    assert xs.Value == pytest.approx(0.0, abs=1e-4)
+    assert xl.Value == pytest.approx(66.67, rel=0.01)
+
+    # Test 2: Barrier with forced settings
+    settings_forced = SolverSettings()
+    settings_forced.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings_forced.set_parameter(CUOPT_FOLDING, 1)  # Force folding
+    settings_forced.set_parameter(CUOPT_DUALIZE, 1)  # Force dualize
+    settings_forced.set_parameter(CUOPT_ORDERING, 1)  # AMD ordering
+    settings_forced.set_parameter(CUOPT_AUGMENTED, 1)  # Augmented system
+    settings_forced.set_parameter(CUOPT_ELIMINATE_DENSE_COLUMNS, True)
+    settings_forced.set_parameter(CUOPT_CUDSS_DETERMINISTIC, True)
+    settings_forced.set_parameter("time_limit", 10)
+
+    prob.solve(settings_forced)
+
+    assert prob.solved
+    assert prob.Status.name == "Optimal"
+    assert prob.ObjValue == pytest.approx(1333.33, rel=0.01)
+
+    # Test 3: Barrier with features disabled
+    settings_disabled = SolverSettings()
+    settings_disabled.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings_disabled.set_parameter(CUOPT_FOLDING, 0)  # No folding
+    settings_disabled.set_parameter(CUOPT_DUALIZE, 0)  # No dualization
+    settings_disabled.set_parameter(CUOPT_ORDERING, 0)  # cuDSS default
+    settings_disabled.set_parameter(CUOPT_AUGMENTED, 0)  # ADAT system
+    settings_disabled.set_parameter(CUOPT_ELIMINATE_DENSE_COLUMNS, False)
+    settings_disabled.set_parameter(CUOPT_CUDSS_DETERMINISTIC, False)
+    settings_disabled.set_parameter("time_limit", 10)
+
+    prob.solve(settings_disabled)
+
+    assert prob.solved
+    assert prob.Status.name == "Optimal"
+    assert prob.ObjValue == pytest.approx(1333.33, rel=0.01)
+
+    # Test 4: Barrier with automatic settings (default -1 values)
+    settings_auto = SolverSettings()
+    settings_auto.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings_auto.set_parameter(CUOPT_FOLDING, -1)  # Automatic
+    settings_auto.set_parameter(CUOPT_DUALIZE, -1)  # Automatic
+    settings_auto.set_parameter(CUOPT_ORDERING, -1)  # Automatic
+    settings_auto.set_parameter(CUOPT_AUGMENTED, -1)  # Automatic
+    settings_auto.set_parameter("time_limit", 10)
+
+    prob.solve(settings_auto)
+
+    assert prob.solved
+    assert prob.Status.name == "Optimal"
+    assert prob.ObjValue == pytest.approx(1333.33, rel=0.01)
+
+    # Verify constraint slacks are non-negative
+    for c in prob.getConstraints():
+        # For <= constraints with optimal solution, slack should be >= 0
+        assert c.Slack >= -1e-6  # Allow small numerical tolerance

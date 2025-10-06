@@ -146,3 +146,65 @@ def test_sample_milp(
         res.json()["response"]["solver_response"],
         expected_status,
     )
+
+
+@pytest.mark.parametrize(
+    "folding, dualize, ordering, augmented, eliminate_dense, cudss_determ",
+    [
+        # Test automatic settings (default)
+        (-1, -1, -1, -1, True, False),
+        # Test folding off, no dualization, cuDSS default ordering, ADAT system
+        (0, 0, 0, 0, True, False),
+        # Test folding on, force dualization, AMD ordering, augmented system
+        (1, 1, 1, 1, True, True),
+        # Test mixed settings: automatic folding, no dualize, AMD, augmented
+        (-1, 0, 1, 1, False, False),
+        # Test no folding, automatic dualize, cuDSS default, ADAT
+        (0, -1, 0, 0, True, True),
+    ],
+)
+def test_barrier_solver_options(
+    cuoptproc,  # noqa
+    folding,
+    dualize,
+    ordering,
+    augmented,
+    eliminate_dense,
+    cudss_determ,
+):
+    """
+    Test the barrier solver (method=3) with various configuration options:
+    - folding: (-1) automatic, (0) off, (1) on
+    - dualize: (-1) automatic, (0) don't dualize, (1) force dualize
+    - ordering: (-1) automatic, (0) cuDSS default, (1) AMD
+    - augmented: (-1) automatic, (0) ADAT, (1) augmented system
+    - eliminate_dense_columns: True to eliminate, False to not
+    - cudss_deterministic: True for deterministic, False for nondeterministic
+    """
+    data = get_std_data_for_lp()
+
+    # Use barrier solver (method=3)
+    data["solver_config"]["method"] = 3
+
+    # Configure barrier solver options
+    data["solver_config"]["folding"] = folding
+    data["solver_config"]["dualize"] = dualize
+    data["solver_config"]["ordering"] = ordering
+    data["solver_config"]["augmented"] = augmented
+    data["solver_config"]["eliminate_dense_columns"] = eliminate_dense
+    data["solver_config"]["cudss_deterministic"] = cudss_determ
+
+    res = get_lp(client, data)
+
+    assert res.status_code == 200
+
+    print("\n=== Barrier Solver Test Configuration ===")
+    print(f"folding={folding}, dualize={dualize}, ordering={ordering}")
+    print(f"augmented={augmented}, eliminate_dense={eliminate_dense}")
+    print(f"cudss_deterministic={cudss_determ}")
+    print(res.json())
+
+    validate_lp_result(
+        res.json()["response"]["solver_response"],
+        LPTerminationStatus.Optimal.name,
+    )
