@@ -1620,8 +1620,7 @@ __global__ void compute_weights_initial_primal_weight_from_squared_norms(const f
            c_vec_norm_,
            pdlp_hyper_params::primal_importance);
 #endif
-    *primal_weight =
-      pdlp_hyper_params::primal_importance * ((c_vec_norm_ + 1.0) / (b_vec_norm_ + 1.0));
+    *primal_weight      = pdlp_hyper_params::primal_importance * (c_vec_norm_ / b_vec_norm_);
     *best_primal_weight = *primal_weight;
   } else {
     *primal_weight      = pdlp_hyper_params::primal_importance;

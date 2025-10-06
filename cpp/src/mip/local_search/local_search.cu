@@ -176,9 +176,6 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
     counter++;
   };
 
-  // default weights
-  cudaDeviceSynchronize();
-
   for (auto& cpu_fj : scratch_cpu_fj) {
     cpu_fj.start_cpu_solver();
   }
