@@ -397,5 +397,3 @@ If the Best Objective and the Dual Bound are both zero the gap is zero. If the b
 gap is infinity.
 
 Note: the default value is ``1e-4``.
-
-
