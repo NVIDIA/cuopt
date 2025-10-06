@@ -85,7 +85,7 @@ Method
 * ``Dual Simplex``: Use the dual simplex method.
 * ``Barrier``: Use the barrier (interior-point) method.
 
-Note: The default method is ``Concurrent``, which now includes barrier along with PDLP and dual simplex.
+Note: The default method is ``Concurrent``.
 
 C API users should use the constants defined in :ref:`method-constants` for this parameter.
 
