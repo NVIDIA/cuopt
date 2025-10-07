@@ -23,10 +23,10 @@
 #include "dual_simplex/tic_toc.hpp"
 
 #include <cuda_runtime.h>
+#include <utilities/driver_helpers.cuh>
 
 #include <raft/common/nvtx.hpp>
 
-#include "cuda.h"
 #include "cudss.h"
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -157,37 +157,46 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     cudssGetProperty(PATCH_LEVEL, &patch);
     settings.log.printf("cuDSS Version               : %d.%d.%d\n", major, minor, patch);
 
-    CU_CHECK(cuDriverGetVersion(&driver_version));
-    settings_.log.printf("CUDA Driver Version         : %d\n", driver_version);
-
     cuda_error = cudaSuccess;
     status     = CUDSS_STATUS_SUCCESS;
 
-    if (settings_.concurrent_halt != nullptr && driver_version >= 13000) {
-#if defined(SPLIT_SM_FOR_BARRIER) && CUDART_VERSION >= 13000
+    if (CUDART_VERSION >= 13000 && settings_.concurrent_halt != nullptr) {
+      cuGetErrorString_func = cuopt::detail::get_driver_entry_point("cuGetErrorString");
       // 1. Set up the GPU resources
       CUdevResource initial_device_GPU_resources = {};
-      CU_CHECK(cuDeviceGetDevResource(
-        handle_ptr_->get_device(), &initial_device_GPU_resources, CU_DEV_RESOURCE_TYPE_SM));
+      auto cuDeviceGetDevResource_func =
+        cuopt::detail::get_driver_entry_point("cuDeviceGetDevResource");
+      CU_CHECK(reinterpret_cast<decltype(::cuDeviceGetDevResource)*>(cuDeviceGetDevResource_func)(
+                 handle_ptr_->get_device(), &initial_device_GPU_resources, CU_DEV_RESOURCE_TYPE_SM),
+               reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
+
 #ifdef DEBUG
-      std::cout << "Initial GPU resources retrieved via cuDeviceGetDevResource() have type "
-                << initial_device_GPU_resources.type << " and SM count "
-                << initial_device_GPU_resources.sm.smCount << std::endl;
+      settings.log.printf(
+        "   Initial GPU resources retrieved via "
+        "cuDeviceGetDevResource() have type "
+        "%d and SM count %d\n",
+        initial_device_GPU_resources.type,
+        initial_device_GPU_resources.sm.smCount);
 #endif
 
       // 2. Partition the GPU resources
       auto total_SMs   = initial_device_GPU_resources.sm.smCount;
       auto barrier_sms = raft::alignTo(static_cast<i_t>(total_SMs * 0.75f), 8);
-      CUdevResource input;
       CUdevResource resource;
+      auto cuDevSmResourceSplitByCount_func =
+        cuopt::detail::get_driver_entry_point("cuDevSmResourceSplitByCount");
       auto n_groups  = 1u;
       auto use_flags = CU_DEV_SM_RESOURCE_SPLIT_IGNORE_SM_COSCHEDULING;  // or 0
-      CU_CHECK(cuDevSmResourceSplitByCount(
-        &resource, &n_groups, &initial_device_GPU_resources, nullptr, use_flags, barrier_sms));
+      CU_CHECK(
+        reinterpret_cast<decltype(::cuDevSmResourceSplitByCount)*>(
+          cuDevSmResourceSplitByCount_func)(
+          &resource, &n_groups, &initial_device_GPU_resources, nullptr, use_flags, barrier_sms),
+        reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
 #ifdef DEBUG
-      printf(
-        "   Resources were split into %d resource groups (had requested %d) with %d SMs each (had "
-        "requested %d)\n",
+      settings.log.printf(
+        "   Resources were split into %d resource groups (had "
+        "requested %d) with %d SMs each (had "
+        "requested % d)\n",
         n_groups,
         n_groups,
         resource.sm.smCount,
@@ -196,34 +205,42 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       // 3. Create the resource descriptor
       auto constexpr const n_resource_desc = 1;
       CUdevResourceDesc resource_desc;
-      CU_CHECK(cuDevResourceGenerateDesc(&resource_desc, &resource, n_resource_desc));
+      auto cuDevResourceGenerateDesc_func =
+        cuopt::detail::get_driver_entry_point("cuDevResourceGenerateDesc");
+      CU_CHECK(reinterpret_cast<decltype(::cuDevResourceGenerateDesc)*>(
+                 cuDevResourceGenerateDesc_func)(&resource_desc, &resource, n_resource_desc),
+               reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
 #ifdef DEBUG
-      printf(
-        "   For the resource descriptor of barrier green context we will combine %d resources of "
-        "%d "
-        "SMs each\n",
+      settings.log.printf(
+        "   For the resource descriptor of barrier green context "
+        "we will combine %d resources of "
+        "%d SMs each\n",
         n_resource_desc,
         resource.sm.smCount);
 #endif
 
       // Only perform this if CUDA version is more than 13
-      // (all resource splitting and descriptor creation already above)
-      // No additional code needed here as the logic is already guarded above.
-      // 4. Create the green context and stream for that green context
-      // CUstream barrier_green_ctx_stream;
+      // (all resource splitting and descriptor creation already
+      // above) No additional code needed here as the logic is
+      // already guarded above.
+      // 4. Create the green context and stream for that green
+      // context CUstream barrier_green_ctx_stream;
       i_t stream_priority;
       cudaStream_t cuda_stream    = handle_ptr_->get_stream();
       cudaError_t priority_result = cudaStreamGetPriority(cuda_stream, &stream_priority);
       RAFT_CUDA_TRY(priority_result);
-      CU_CHECK(cuGreenCtxCreate(
-        &barrier_green_ctx, resource_desc, handle_ptr_->get_device(), CU_GREEN_CTX_DEFAULT_STREAM));
-      CU_CHECK(cuGreenCtxStreamCreate(
-        &stream, barrier_green_ctx, CU_STREAM_NON_BLOCKING, stream_priority));
-#endif
-    } else {
-      // Convert runtime API stream to driver API stream for consistency
-      cudaStream_t cuda_stream = handle_ptr_->get_stream();
-      stream                   = reinterpret_cast<CUstream>(cuda_stream);
+      auto cuGreenCtxCreate_func = cuopt::detail::get_driver_entry_point("cuGreenCtxCreate");
+      CU_CHECK(reinterpret_cast<decltype(::cuGreenCtxCreate)*>(cuGreenCtxCreate_func)(
+                 &barrier_green_ctx,
+                 resource_desc,
+                 handle_ptr_->get_device(),
+                 CU_GREEN_CTX_DEFAULT_STREAM),
+               reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
+      auto cuGreenCtxStreamCreate_func =
+        cuopt::detail::get_driver_entry_point("cuGreenCtxStreamCreate");
+      CU_CHECK(reinterpret_cast<decltype(::cuGreenCtxStreamCreate)*>(cuGreenCtxStreamCreate_func)(
+                 &stream, barrier_green_ctx, CU_STREAM_NON_BLOCKING, stream_priority),
+               reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
     }
 
     CUDSS_CALL_AND_CHECK_EXIT(cudssCreate(&handle), status, "cudssCreate");
@@ -336,12 +353,15 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK_EXIT(cudssConfigDestroy(solverConfig), status, "cudssConfigDestroy");
     CUDSS_CALL_AND_CHECK_EXIT(cudssDestroy(handle), status, "cudssDestroy");
     CUDA_CALL_AND_CHECK_EXIT(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
-#ifdef SPLIT_SM_FOR_BARRIER
-    if (settings_.concurrent_halt != nullptr && driver_version >= 13000) {
-      CU_CHECK(cuStreamDestroy(stream));
 #if CUDART_VERSION >= 13000
-      CU_CHECK(cuGreenCtxDestroy(barrier_green_ctx));
-#endif
+    if (settings_.concurrent_halt != nullptr) {
+      auto cuStreamDestroy_func = cuopt::detail::get_driver_entry_point("cuStreamDestroy");
+      CU_CHECK(reinterpret_cast<decltype(::cuStreamDestroy)*>(cuStreamDestroy_func)(stream),
+               reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
+      auto cuGreenCtxDestroy_func = cuopt::detail::get_driver_entry_point("cuGreenCtxDestroy");
+      CU_CHECK(
+        reinterpret_cast<decltype(::cuGreenCtxDestroy)*>(cuGreenCtxDestroy_func)(barrier_green_ctx),
+        reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
       handle_ptr_->get_stream().synchronize();
     }
 #endif
@@ -473,7 +493,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
     auto d_nnz = Arow.row_start.element(Arow.m, Arow.row_start.stream());
     if (nnz != d_nnz) {
-      printf("Error: nnz %d != A_in.col_start[A_in.n] %d\n", nnz, d_nnz);
+      settings_.log.printf("Error: nnz %d != A_in.col_start[A_in.n] %d\n", nnz, d_nnz);
       exit(1);
     }
 
@@ -796,11 +816,11 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   f_t* csr_values_d;
   f_t* x_values_d;
   f_t* b_values_d;
-  i_t driver_version;
 
   const simplex_solver_settings_t<i_t, f_t>& settings_;
   CUgreenCtx barrier_green_ctx;
   CUstream stream;
+  void* cuGetErrorString_func;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
