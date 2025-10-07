@@ -1,0 +1,14 @@
+diff --git a/src/papilo/core/Presolve.hpp b/src/papilo/core/Presolve.hpp
+index 7420744c..c0a53f48 100644
+--- a/src/papilo/core/Presolve.hpp
++++ b/src/papilo/core/Presolve.hpp
+@@ -1275,7 +1275,8 @@ Presolve<REAL>::applyPostponed( ProblemUpdate<REAL>& probUpdate, const Timer& pr
+ {
+    probUpdate.setPostponeSubstitutions( false );
+
+-   for( int presolver = 0; presolver != (int) presolvers.size(); ++presolver )
++   // postponedReductionToPresolver may be smaller than presolvers.size() if preempted by a time limit
++   for( int presolver = 0; presolver + 1 < (int)postponedReductionToPresolver.size(); ++presolver )
+    {
+       int first = postponedReductionToPresolver[presolver];
+       int last = postponedReductionToPresolver[presolver + 1];

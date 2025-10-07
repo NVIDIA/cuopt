@@ -194,6 +194,7 @@ FetchContent_Declare(
   #we can switch to the main branch.
   GIT_TAG "34a40781fa14f8870cb6368cffb6c0eda2f47511"
   GIT_PROGRESS TRUE
+  PATCH_COMMAND git apply ${CMAKE_CURRENT_SOURCE_DIR}/cmake/thirdparty/papilo-segfault-timeout.patch
   SYSTEM
 )
 
