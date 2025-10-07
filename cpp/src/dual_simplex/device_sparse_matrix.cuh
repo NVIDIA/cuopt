@@ -173,18 +173,20 @@ class device_csc_matrix_t {
     col_index.resize(x.size(), stream);
     RAFT_CUDA_TRY(cudaMemsetAsync(col_index.data(), 0, sizeof(i_t) * col_index.size(), stream));
     // Scatter 1 when there is a col start in col_index
-    thrust::for_each(
-      rmm::exec_policy(stream),
-      thrust::make_counting_iterator(i_t(1)),                                  // Skip the first 0
-      thrust::make_counting_iterator(static_cast<i_t>(col_start.size() - 1)),  // Skip the end index
-      [span_col_start = cuopt::make_span(col_start),
-       span_col_index = cuopt::make_span(col_index)] __device__(i_t i) {
-        span_col_index[span_col_start[i]] = 1;
-      });
+    if (col_start.size() > 2) {
+      thrust::for_each(rmm::exec_policy(stream),
+                       thrust::make_counting_iterator(i_t(1)),  // Skip the first 0
+                       thrust::make_counting_iterator(
+                         static_cast<i_t>(col_start.size() - 1)),  // Skip the end index
+                       [span_col_start = cuopt::make_span(col_start),
+                        span_col_index = cuopt::make_span(col_index)] __device__(i_t i) {
+                         span_col_index[span_col_start[i]] = 1;
+                       });
+    }
 
     // Inclusive cumulative sum to have the corresponding column for each entry
     rmm::device_buffer d_temp_storage;
-    size_t temp_storage_bytes;
+    size_t temp_storage_bytes{0};
     cub::DeviceScan::InclusiveSum(
       nullptr, temp_storage_bytes, col_index.data(), col_index.data(), col_index.size(), stream);
     d_temp_storage.resize(temp_storage_bytes, stream);
