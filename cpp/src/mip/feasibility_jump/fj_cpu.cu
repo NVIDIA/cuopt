@@ -135,7 +135,7 @@ static bool check_variable_feasibility(const typename fj_t<i_t, f_t>::climber_da
     if (!feasible) return false;
     if (check_integer && fj.pb.is_integer_var(var_idx) &&
         !fj.pb.is_integer(fj.incumbent_assignment[var_idx]))
-      return false;  // 1
+      return false;
   }
   return true;
 }
