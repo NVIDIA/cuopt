@@ -461,7 +461,7 @@ def test_problem_update():
     assert prob.ObjValue == pytest.approx(5)
 
 
-@pytest.mark.skip(reason="Skipping barrier solver test")
+# @pytest.mark.skip(reason="Skipping barrier solver test")
 def test_barrier_solver():
     """
     Test the barrier solver with different configurations.
