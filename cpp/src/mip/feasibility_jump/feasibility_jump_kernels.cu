@@ -35,24 +35,6 @@ namespace cg = cooperative_groups;
 
 namespace cuopt::linear_programming::detail {
 
-template <typename i_t, typename f_t, typename Iterator>
-static DI f_t KahanBabushkaNeumaierSum(Iterator begin, Iterator end)
-{
-  f_t sum = 0;
-  f_t c   = 0;
-  for (Iterator it = begin; it != end; ++it) {
-    f_t delta = *it;
-    f_t t     = sum + delta;
-    if (fabs(sum) > fabs(delta)) {
-      c += (sum - t) + delta;
-    } else {
-      c += (delta - t) + sum;
-    }
-    sum = t;
-  }
-  return sum + c;
-}
-
 template <typename i_t, typename f_t>
 DI thrust::pair<f_t, f_t> move_objective_score(
   const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj, i_t var_idx, f_t delta)
@@ -176,7 +158,7 @@ __global__ void init_lhs_and_violation(typename fj_t<i_t, f_t>::climber_data_t::
         return fj.pb.coefficients[j] * fj.incumbent_assignment[fj.pb.variables[j]];
       });
     fj.incumbent_lhs[cstr_idx] =
-      KahanBabushkaNeumaierSum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
+      fj_kahan_babushka_neumaier_sum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
     fj.incumbent_lhs_sumcomp[cstr_idx] = 0;
 
     f_t th_violation       = fj.excess_score(cstr_idx, fj.incumbent_lhs[cstr_idx]);
@@ -457,7 +439,8 @@ DI bool check_feasibility(const typename fj_t<i_t, f_t>::climber_data_t::view_t&
         return fj.pb.coefficients[j] * fj.incumbent_assignment[fj.pb.variables[j]];
       });
 
-    f_t lhs = KahanBabushkaNeumaierSum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
+    f_t lhs =
+      fj_kahan_babushka_neumaier_sum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
     cuopt_assert(fj.cstr_satisfied(cIdx, lhs), "constraint violated");
   }
   cuopt_func_call((check_variable_feasibility<i_t, f_t>(fj, check_integer)));
