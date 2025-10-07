@@ -25,8 +25,6 @@ import warnings
 
 import numpy as np
 
-import cudf
-
 from libc.stdint cimport uintptr_t
 from libcpp.memory cimport unique_ptr
 from libcpp.utility cimport move
@@ -46,13 +44,11 @@ def type_cast(np_obj, np_type, name):
 
 
 def get_data_ptr(array):
-    if isinstance(array, cudf.Series):
-        return array.__cuda_array_interface__['data'][0]
-    elif isinstance(array, np.ndarray):
+    if isinstance(array, np.ndarray):
         return array.__array_interface__['data'][0]
     else:
         raise Exception(
-            "get_data_ptr must be called with cudf.Series or np.ndarray"
+            "get_data_ptr must be called with np.ndarray"
         )
 
 
