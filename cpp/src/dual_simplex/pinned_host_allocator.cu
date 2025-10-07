@@ -57,6 +57,11 @@ bool operator!=(const PinnedHostAllocator<T>&, const PinnedHostAllocator<U>&) no
 template class PinnedHostAllocator<double>;
 template double vector_norm_inf<int, double, PinnedHostAllocator<double>>(
   const std::vector<double, PinnedHostAllocator<double>>& x);
+
+template bool operator==(const PinnedHostAllocator<double>&,
+                         const PinnedHostAllocator<double>&) noexcept;
+template bool operator!=(const PinnedHostAllocator<double>&,
+                         const PinnedHostAllocator<double>&) noexcept;
 #endif
 template class PinnedHostAllocator<int>;
 

@@ -868,8 +868,8 @@ class iteration_data_t {
       return chol->solve(d_b, d_x);
     } else {
       // TMP until this is ported to the GPU
-      dense_vector_t<i_t, f_t> b = host_copy(d_b);
-      dense_vector_t<i_t, f_t> x = host_copy(d_x);
+      dense_vector_t<i_t, f_t> b = host_copy(d_b, stream_view_);
+      dense_vector_t<i_t, f_t> x = host_copy(d_x, stream_view_);
 
       i_t out = solve_adat(b, x);
 
