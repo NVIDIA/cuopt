@@ -338,7 +338,6 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   if (fj_cpu.h_incumbent_objective < fj_cpu.h_best_objective &&
       fj_cpu.violated_constraints.empty()) {
     // recompute the LHS values to cancel out accumulation errors, then check if feasibility remains
-    // 1
     recompute_lhs(fj_cpu);
 
     if (fj_cpu.violated_constraints.empty() && check_variable_feasibility<i_t, f_t>(fj_cpu.view)) {
