@@ -1099,7 +1099,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   for (i_t j = 0; j < problem.num_cols; j++) {
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
-  if (free_variables > 0) {
+  if (settings.barrier_presolve && free_variables > 0) {
 #ifdef PRINT_INFO
     settings.log.printf("%d free variables\n", free_variables);
 #endif
