@@ -584,6 +584,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(search_tree_t<i_t, f_t>& 
   lp_settings.set_log(false);
   lp_settings.cut_off    = upper_bound + settings_.dual_tol;
   lp_settings.inside_mip = 2;
+  lp_settings.time_limit = settings_.time_limit - toc(stats_.start_time);
 
   // in B&B we only have equality constraints, leave it empty for default
   std::vector<char> row_sense;
@@ -739,7 +740,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
     }
   }
 
-  if (toc(stats_.start_time) > settings_.time_limit) {
+  if (now > settings_.time_limit) {
     status_ = mip_exploration_status_t::TIME_LIMIT;
     return;
   }
@@ -836,9 +837,9 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t id,
       }
     }
 
-    if (toc(stats_.start_time) > settings_.time_limit) {
+    if (now > settings_.time_limit) {
       status_ = mip_exploration_status_t::TIME_LIMIT;
-      break;
+      return;
     }
 
     node_status_t node_status =
@@ -846,7 +847,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t id,
 
     if (node_status == node_status_t::TIME_LIMIT) {
       status_ = mip_exploration_status_t::TIME_LIMIT;
-      break;
+      return;
 
     } else if (node_status == node_status_t::HAS_CHILDREN) {
       // The stack should only contain the children of the current parent.
@@ -972,11 +973,13 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
           continue;
         }
 
+        if (toc(stats_.start_time) > settings_.time_limit) { return; }
+
         node_status_t node_status =
           solve_node(subtree, node_ptr, leaf_problem, Arow, upper_bound, log, 'D');
 
         if (node_status == node_status_t::TIME_LIMIT) {
-          break;
+          return;
 
         } else if (node_status == node_status_t::HAS_CHILDREN) {
           auto [first, second] = child_selection(node_ptr);
