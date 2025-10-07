@@ -1490,7 +1490,8 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   }
 
   if (presolve_info.removed_variables.size() > 0) {
-    settings.log.printf("Post-solve: Handling removed variables %d\n", presolve_info.removed_variables.size());
+    settings.log.printf("Post-solve: Handling removed variables %d\n",
+                        presolve_info.removed_variables.size());
     // We removed some variables, so we need to map the crushed solution back to the original
     // variables
     const i_t n = presolve_info.removed_variables.size() + presolve_info.remaining_variables.size();
@@ -1517,7 +1518,8 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   }
 
   if (presolve_info.removed_constraints.size() > 0) {
-    settings.log.printf("Post-solve: Handling removed constraints %d\n", presolve_info.removed_constraints.size());
+    settings.log.printf("Post-solve: Handling removed constraints %d\n",
+                        presolve_info.removed_constraints.size());
     // We removed some constraints, so we need to map the crushed solution back to the original
     // constraints
     const i_t m =
@@ -1536,10 +1538,9 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     input_y = input_y_copy;
   }
 
-
-
   if (presolve_info.removed_lower_bounds.size() > 0) {
-    settings.log.printf("Post-solve: Handling removed lower bounds %d\n", presolve_info.removed_lower_bounds.size());
+    settings.log.printf("Post-solve: Handling removed lower bounds %d\n",
+                        presolve_info.removed_lower_bounds.size());
     // We removed some lower bounds so we need to map the crushed solution back to the original
     // variables
     for (i_t j = 0; j < input_x.size(); j++) {
