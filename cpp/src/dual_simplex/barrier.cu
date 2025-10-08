@@ -1619,7 +1619,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   }
 
   dense_vector_t<i_t, f_t> dual_res(lp.num_cols);
-  if (1) {
+  if (settings.barrier_dual_initial_point == -1 || settings.barrier_dual_initial_point == 0) {
     // Use the dual starting point suggested by the paper
     // On Implementing Mehrotra’s Predictor–Corrector Interior-Point Method for Linear Programming
     // Irvin J. Lustig, Roy E. Marsten, and David F. Shanno

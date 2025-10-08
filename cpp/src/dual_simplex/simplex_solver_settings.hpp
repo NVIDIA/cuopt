@@ -70,6 +70,7 @@ struct simplex_solver_settings_t {
       augmented(0),
       dualize(-1),
       ordering(-1),
+      barrier_dual_initial_point(-1),
       crossover(false),
       refactor_frequency(100),
       iteration_log_frequency(1000),
@@ -131,6 +132,7 @@ struct simplex_solver_settings_t {
   i_t augmented;           // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system
   i_t dualize;             // -1 automatic, 0 to not dualize, 1 to dualize
   i_t ordering;            // -1 automatic, 0 to use nested dissection, 1 to use AMD
+  i_t barrier_dual_initial_point;  // -1 automatic, 0 to use Lustig, Marsten, and Shanno initial point, 1 to use initial point form dual least squares problem
   bool crossover;          // true to do crossover, false to not
   i_t refactor_frequency;  // number of basis updates before refactorization
   i_t iteration_log_frequency;  // number of iterations between log updates

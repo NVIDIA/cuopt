@@ -77,6 +77,7 @@ cdef extern from "cuopt/linear_programming/constants.h": # noqa
     cdef const char* c_CUOPT_ELIMINATE_DENSE_COLUMNS "CUOPT_ELIMINATE_DENSE_COLUMNS" # noqa
     cdef const char* c_CUOPT_CUDSS_DETERMINISTIC "CUOPT_CUDSS_DETERMINISTIC" # noqa
     cdef const char* c_CUOPT_ORDERING "CUOPT_ORDERING" # noqa
+    cdef const char* c_CUOPT_BARRIER_DUAL_INITIAL_POINT "CUOPT_BARRIER_DUAL_INITIAL_POINT" # noqa
 
 # Create Python string constants from C string literals
 CUOPT_ABSOLUTE_DUAL_TOLERANCE = c_CUOPT_ABSOLUTE_DUAL_TOLERANCE.decode('utf-8') # noqa
@@ -117,3 +118,4 @@ CUOPT_DUALIZE = c_CUOPT_DUALIZE.decode('utf-8') # noqa
 CUOPT_ELIMINATE_DENSE_COLUMNS = c_CUOPT_ELIMINATE_DENSE_COLUMNS.decode('utf-8') # noqa
 CUOPT_CUDSS_DETERMINISTIC = c_CUOPT_CUDSS_DETERMINISTIC.decode('utf-8') # noqa
 CUOPT_ORDERING = c_CUOPT_ORDERING.decode('utf-8') # noqa
+CUOPT_BARRIER_DUAL_INITIAL_POINT = c_CUOPT_BARRIER_DUAL_INITIAL_POINT.decode('utf-8') # noqa

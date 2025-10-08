@@ -451,6 +451,11 @@ def create_solver(LP_data, warmstart_data):
             solver_settings.set_parameter(
                 CUOPT_ORDERING, solver_config.ordering
             )
+        if solver_config.barrier_dual_initial_point != "":
+            solver_settings.set_parameter(
+                CUOPT_BARRIER_DUAL_INITIAL_POINT,
+                solver_config.barrier_dual_initial_point,
+            )
         if solver_config.eliminate_dense_columns is not None:
             solver_settings.set_parameter(
                 CUOPT_ELIMINATE_DENSE_COLUMNS,
