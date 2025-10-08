@@ -73,13 +73,13 @@ export RAPIDS_DATASET_ROOT_DIR
 # Run Python tests
 # Set environment variables to handle OpenMP and UCX threading issues
 # Disable UCX debug logging to avoid interference with cleanup
-export UCX_LOG_LEVEL=debug
+#export UCX_LOG_LEVEL=debug
 # Set UCX to handle signals gracefully and avoid spinlock issues
-#export UCX_HANDLE_ERRORS=bt
+export UCX_HANDLE_ERRORS=bt
 #export UCX_ERROR_SIGNALS="SIGSEGV,SIGBUS,SIGFPE"
 # Ensure proper OpenMP threading behavior
-#export OMP_NUM_THREADS=1
-#export OMP_WAIT_POLICY=passive
+export OMP_NUM_THREADS=1
+export OMP_WAIT_POLICY=passive
 # Disable CUDA launch blocking to allow proper async cleanup
 #export CUDA_LAUNCH_BLOCKING=0
 RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest -s --verbose --capture=no ./python/cuopt/cuopt/tests/linear_programming/test_python_API.py::test_barrier_solver_settings
