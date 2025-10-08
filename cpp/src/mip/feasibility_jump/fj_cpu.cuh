@@ -75,6 +75,8 @@ struct fj_cpu_climber_t {
   std::unordered_set<i_t> violated_constraints;
   std::unordered_set<i_t> satisfied_constraints;
   bool feasible_found{false};
+  bool trigger_early_lhs_recomputation{false};
+  f_t total_violations{0};
 
   // Timing data structures
   std::vector<double> find_lift_move_times;
