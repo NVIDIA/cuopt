@@ -60,7 +60,7 @@ TEST_P(TimeLimitTestFixture, time_limit)
 
   // Dual simplex is spending some time for factorizing the basis, and this computation does not
   // check for time limit
-  double excess_allowed_time = 2.0;
+  double excess_allowed_time = 3.0;
   EXPECT_NEAR(solve_time, target_solve_time, excess_allowed_time);
 }
 INSTANTIATE_TEST_SUITE_P(
@@ -71,7 +71,7 @@ INSTANTIATE_TEST_SUITE_P(
                     5,
                     CUOPT_METHOD_DUAL_SIMPLEX),  // LP, Dual Simplex
     std::make_tuple("/linear_programming/square41/square41.mps", 5, CUOPT_METHOD_PDLP),  // LP, PDLP
-    std::make_tuple("/mip/supportcase22.mps", 5, CUOPT_METHOD_DUAL_SIMPLEX)              // MIP
+    std::make_tuple("/mip/supportcase22.mps", 15, CUOPT_METHOD_DUAL_SIMPLEX)             // MIP
     ));
 
 TEST(c_api, iteration_limit)

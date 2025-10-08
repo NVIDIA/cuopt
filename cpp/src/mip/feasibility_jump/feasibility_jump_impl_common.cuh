@@ -19,6 +19,24 @@
 
 namespace cuopt::linear_programming::detail {
 
+template <typename i_t, typename f_t, typename Iterator>
+HDI f_t fj_kahan_babushka_neumaier_sum(Iterator begin, Iterator end)
+{
+  f_t sum = 0;
+  f_t c   = 0;
+  for (Iterator it = begin; it != end; ++it) {
+    f_t delta = *it;
+    f_t t     = sum + delta;
+    if (fabs(sum) > fabs(delta)) {
+      c += (sum - t) + delta;
+    } else {
+      c += (delta - t) + sum;
+    }
+    sum = t;
+  }
+  return sum + c;
+}
+
 // Returns the current slack, and the variable delta that would nullify this slack ("tighten" it)
 template <typename i_t, typename f_t>
 HDI thrust::tuple<f_t, f_t> get_mtm_for_bound(
