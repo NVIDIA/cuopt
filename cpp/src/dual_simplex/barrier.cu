@@ -1028,7 +1028,7 @@ class iteration_data_t {
       }
     }
 
-    std::vector<i_t> histogram_row(m, 0);
+    std::vector<i_t> histogram_row(n, 0);
     max_row_nz = 0;
     for (i_t k = 0; k < m; k++) {
       histogram_row[row_nz[k]]++;
