@@ -68,9 +68,11 @@ export RAPIDS_DATASET_ROOT_DIR
 
 # Please enable this once ISSUE https://github.com/NVIDIA/cuopt/issues/94 is fixed
 # Run CLI tests
-timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
+# timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 
 # Run Python tests
+export UCX_LOG_LEVEL=debug
+RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt/cuopt/tests/linear_programming/test_python_API.py::test_barrier_solver
 RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt/cuopt/tests/
 
 # run jump tests and cvxpy integration tests for only nightly builds

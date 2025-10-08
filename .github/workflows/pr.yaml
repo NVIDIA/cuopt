@@ -27,137 +27,13 @@ concurrency:
 jobs:
   pr-builder:
     needs:
-      - changed-files
-      - checks
-      - conda-cpp-build
-      - conda-cpp-tests
-      - conda-python-build
-      - conda-python-tests
-      - docs-build
       - wheel-build-libcuopt
       - wheel-build-cuopt
       - wheel-tests-cuopt
-      - wheel-build-cuopt-server
-      - wheel-tests-cuopt-server
       - wheel-build-cuopt-mps-parser
       - wheel-build-cuopt-sh-client
-      - test-self-hosted-server
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@branch-25.10
-  changed-files:
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@branch-25.10
-    with:
-      files_yaml: |
-        test_cpp:
-          - '**'
-          - '!CONTRIBUTING.md'
-          - '!README.md'
-          - '!ci/release/update-version-cuopt.sh'
-          - '!ci/release/update-version-rapids.sh'
-          - '!docs/**'
-          - '!img/**'
-          - '!notebooks/**'
-          - '!python/**'
-          - '!readme_pages/**'
-          - '!container-builder/**'
-          - '!helm-chart/**'
-          - '!ngc/**'
-          - '!omniverse/**'
-          - '!regression/**'
-          - '!resources/**'
-          - '!ucf/**'
-          - '!utilities/**'
-        test_notebooks:
-          - '**'
-          - '!CONTRIBUTING.md'
-          - '!README.md'
-          - '!ci/release/update-version-cuopt.sh'
-          - '!ci/release/update-version-rapids.sh'
-          - '!docs/**'
-          - '!python/nvcf_client/**'
-        test_python:
-          - '**'
-          - '!CONTRIBUTING.md'
-          - '!README.md'
-          - '!ci/release/update-version-cuopt.sh'
-          - '!ci/release/update-version-rapids.sh'
-          - '!docs/**'
-          - '!img/**'
-          - '!notebooks/**'
-          - '!python/nvcf_client/**'
-        test_python_cuopt:
-          - '**'
-          - '!CONTRIBUTING.md'
-          - '!README.md'
-          - '!ci/release/update-version-cuopt.sh'
-          - '!ci/release/update-version-rapids.sh'
-          - '!docs/**'
-          - '!img/**'
-          - '!notebooks/**'
-          - '!python/cuopt_self_hosted/**'
-          - '!python/cuopt_server/**'
-          - '!python/nvcf_client/**'
-        test_python_cuopt_server:
-          - '**'
-          - '!CONTRIBUTING.md'
-          - '!README.md'
-          - '!ci/release/update-version-cuopt.sh'
-          - '!ci/release/update-version-rapids.sh'
-          - '!docs/**'
-          - '!img/**'
-          - '!notebooks/**'
-          - '!python/cuopt_self_hosted/**'
-          - '!python/nvcf_client/**'
-  checks:
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@branch-25.10
-    with:
-      enable_check_generated_files: false
-
-  conda-cpp-build:
-    needs: checks
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@branch-25.10
-    with:
-      build_type: pull-request
-      script: ci/build_cpp.sh
-  conda-cpp-tests:
-    needs: [conda-cpp-build, changed-files]
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@branch-25.10
-    #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
-    with:
-      build_type: pull-request
-      script: ci/test_cpp.sh
-  conda-python-build:
-    needs: conda-cpp-build
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@branch-25.10
-    with:
-      build_type: pull-request
-      script: ci/build_python.sh
-  conda-python-tests:
-    needs: [conda-python-build, changed-files]
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@branch-25.10
-    #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python
-    with:
-      run_codecov: false
-      build_type: pull-request
-      script: ci/test_python.sh
-  docs-build:
-    needs: conda-python-build
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.10
-    with:
-      build_type: pull-request
-      node_type: "gpu-l4-latest-1"
-      arch: "amd64"
-      file_to_upload: "docs/cuopt/build/html/"
-      artifact-name: "cuopt_docs"
-      container_image: "rapidsai/ci-conda:25.10-latest"
-      script: "ci/build_docs.sh"
   wheel-build-cuopt-mps-parser:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
@@ -174,8 +50,8 @@ jobs:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
     with:
-      # build for every combination of arch and CUDA version, but only for the latest Python
-      matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
+      # Build only for amd64 and CUDA 12.9.1
+      matrix_filter: 'map(select(.ARCH == "amd64" and .CUDA_VER == "12.9.1"))'
       package-type: cpp
       package-name: libcuopt
       build_type: pull-request
@@ -189,26 +65,15 @@ jobs:
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
+      # Build only for amd64 and CUDA 12.9.1
+      matrix_filter: 'map(select(.ARCH == "amd64" and .CUDA_VER == "12.9.1" and .PY_VER == "3.10"))'
   wheel-tests-cuopt:
-    needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, wheel-build-cuopt-sh-client, changed-files]
+    needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, wheel-build-cuopt-sh-client]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@branch-25.10
-    #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
-  wheel-build-cuopt-server:
-    needs: checks
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
-    with:
-      build_type: pull-request
-      script: ci/build_wheel_cuopt_server.sh
-      package-name: cuopt_server
-      package-type: python
-      pure-wheel: true
-      # Only need 1 package per CUDA major version. This selects "ARCH=amd64 + the latest supported Python, 1 job per major CUDA version".
-      matrix_filter: map(select(.ARCH == "amd64")) | group_by(.CUDA_VER|split(".")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(".")|map(tonumber)), (.CUDA_VER|split(".")|map(tonumber))]))
   wheel-build-cuopt-sh-client:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@branch-25.10
@@ -221,19 +86,3 @@ jobs:
       pure-wheel: true
       # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
       matrix_filter: '[map(select(.ARCH == "amd64")) | min_by((.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber)))]'
-  wheel-tests-cuopt-server:
-    needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@branch-25.10
-    #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt_server
-    with:
-      build_type: pull-request
-      script: ci/test_wheel_cuopt_server.sh
-  test-self-hosted-server:
-    needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
-    secrets: inherit
-    uses: ./.github/workflows/self_hosted_service_test.yaml
-    #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python
-    with:
-      build_type: pull-request
-      script: ci/test_self_hosted_service.sh

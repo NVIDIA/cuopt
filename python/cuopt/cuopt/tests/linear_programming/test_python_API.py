@@ -494,7 +494,9 @@ def test_barrier_solver():
     settings.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
     settings.set_parameter("time_limit", 10)
 
+    print("Solving with default settings\n")
     prob.solve(settings)
+    print("Solved with default settings\n")
 
     assert prob.solved
     assert prob.Status.name == "Optimal"
@@ -513,7 +515,11 @@ def test_barrier_solver():
     settings_forced.set_parameter(CUOPT_CUDSS_DETERMINISTIC, True)
     settings_forced.set_parameter("time_limit", 10)
 
+    print("Solving with forced settings\n")
+
     prob.solve(settings_forced)
+
+    print("Solved with forced settings\n")
 
     assert prob.solved
     assert prob.Status.name == "Optimal"
@@ -530,7 +536,11 @@ def test_barrier_solver():
     settings_disabled.set_parameter(CUOPT_CUDSS_DETERMINISTIC, False)
     settings_disabled.set_parameter("time_limit", 10)
 
+    print("Solving with disabled settings\n")
+
     prob.solve(settings_disabled)
+
+    print("Solved with disabled settings\n")
 
     assert prob.solved
     assert prob.Status.name == "Optimal"
@@ -545,7 +555,11 @@ def test_barrier_solver():
     settings_auto.set_parameter(CUOPT_AUGMENTED, -1)  # Automatic
     settings_auto.set_parameter("time_limit", 10)
 
+    print("Solving with automatic settings\n")
+
     prob.solve(settings_auto)
+    
+    print("Solved with automatic settings\n")
 
     assert prob.solved
     assert prob.Status.name == "Optimal"
