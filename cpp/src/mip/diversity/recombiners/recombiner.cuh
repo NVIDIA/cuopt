@@ -212,6 +212,7 @@ class recombiner_t {
     }
     if (problem_t<i_t, f_t>::expensive_to_fix_vars) {
       recombiner_t::enabled_recombiners.erase(recombiner_enum_t::FP);
+      recombiner_t::enabled_recombiners.erase(recombiner_enum_t::SUB_MIP);
     }
     // check the size of the continous vars
     if (problem.n_variables - problem.n_integer_vars >
