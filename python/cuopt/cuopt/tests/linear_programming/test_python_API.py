@@ -569,3 +569,330 @@ def test_barrier_solver():
     for c in prob.getConstraints():
         # For <= constraints with optimal solution, slack should be >= 0
         assert c.Slack >= -1e-6  # Allow small numerical tolerance
+
+
+def test_barrier_solver_fresh_instances():
+    """
+    Test the barrier solver with different configurations, creating a fresh
+    Problem instance for each configuration to ensure complete isolation.
+
+    Problem:
+        maximize   5*xs + 20*xl
+        subject to  1*xs +  3*xl <= 200
+                    3*xs +  2*xl <= 160
+                    xs, xl >= 0
+
+    Expected Solution:
+        Optimal objective: 1333.33
+        xs = 0, xl = 66.67 (corner solution where constraint 1 is binding)
+    """
+    
+    # Test 1: Default barrier settings
+    print("\n=== Test 1: Default barrier settings ===")
+    prob1 = Problem("Barrier Test - Default")
+    xs1 = prob1.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xs")
+    xl1 = prob1.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xl")
+    prob1.addConstraint(xs1 + 3 * xl1 <= 200, name="constraint1")
+    prob1.addConstraint(3 * xs1 + 2 * xl1 <= 160, name="constraint2")
+    prob1.setObjective(5 * xs1 + 20 * xl1, sense=MAXIMIZE)
+    
+    settings1 = SolverSettings()
+    settings1.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings1.set_parameter("time_limit", 10)
+    
+    print("Solving with default settings")
+    prob1.solve(settings1)
+    print("Solved with default settings")
+    
+    assert prob1.solved
+    assert prob1.Status.name == "Optimal"
+    assert prob1.ObjValue == pytest.approx(1333.33, rel=0.01)
+    assert xs1.Value == pytest.approx(0.0, abs=1e-4)
+    assert xl1.Value == pytest.approx(66.67, rel=0.01)
+    
+    # Test 2: Barrier with forced settings
+    print("\n=== Test 2: Barrier with forced settings ===")
+    prob2 = Problem("Barrier Test - Forced")
+    xs2 = prob2.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xs")
+    xl2 = prob2.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xl")
+    prob2.addConstraint(xs2 + 3 * xl2 <= 200, name="constraint1")
+    prob2.addConstraint(3 * xs2 + 2 * xl2 <= 160, name="constraint2")
+    prob2.setObjective(5 * xs2 + 20 * xl2, sense=MAXIMIZE)
+    
+    settings2 = SolverSettings()
+    settings2.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings2.set_parameter(CUOPT_FOLDING, 1)  # Force folding
+    settings2.set_parameter(CUOPT_DUALIZE, 1)  # Force dualize
+    settings2.set_parameter(CUOPT_ORDERING, 1)  # AMD ordering
+    settings2.set_parameter(CUOPT_AUGMENTED, 1)  # Augmented system
+    settings2.set_parameter(CUOPT_ELIMINATE_DENSE_COLUMNS, True)
+    settings2.set_parameter(CUOPT_CUDSS_DETERMINISTIC, True)
+    settings2.set_parameter("time_limit", 10)
+    
+    print("Solving with forced settings")
+    prob2.solve(settings2)
+    print("Solved with forced settings")
+    
+    assert prob2.solved
+    assert prob2.Status.name == "Optimal"
+    assert prob2.ObjValue == pytest.approx(1333.33, rel=0.01)
+    assert xs2.Value == pytest.approx(0.0, abs=1e-4)
+    assert xl2.Value == pytest.approx(66.67, rel=0.01)
+    
+    # Test 3: Barrier with features disabled
+    print("\n=== Test 3: Barrier with features disabled ===")
+    prob3 = Problem("Barrier Test - Disabled")
+    xs3 = prob3.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xs")
+    xl3 = prob3.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xl")
+    prob3.addConstraint(xs3 + 3 * xl3 <= 200, name="constraint1")
+    prob3.addConstraint(3 * xs3 + 2 * xl3 <= 160, name="constraint2")
+    prob3.setObjective(5 * xs3 + 20 * xl3, sense=MAXIMIZE)
+    
+    settings3 = SolverSettings()
+    settings3.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings3.set_parameter(CUOPT_FOLDING, 0)  # No folding
+    settings3.set_parameter(CUOPT_DUALIZE, 0)  # No dualization
+    settings3.set_parameter(CUOPT_ORDERING, 0)  # cuDSS default
+    settings3.set_parameter(CUOPT_AUGMENTED, 0)  # ADAT system
+    settings3.set_parameter(CUOPT_ELIMINATE_DENSE_COLUMNS, False)
+    settings3.set_parameter(CUOPT_CUDSS_DETERMINISTIC, False)
+    settings3.set_parameter("time_limit", 10)
+    
+    print("Solving with disabled settings")
+    prob3.solve(settings3)
+    print("Solved with disabled settings")
+    
+    assert prob3.solved
+    assert prob3.Status.name == "Optimal"
+    assert prob3.ObjValue == pytest.approx(1333.33, rel=0.01)
+    assert xs3.Value == pytest.approx(0.0, abs=1e-4)
+    assert xl3.Value == pytest.approx(66.67, rel=0.01)
+    
+    # Test 4: Barrier with automatic settings (default -1 values)
+    print("\n=== Test 4: Barrier with automatic settings ===")
+    prob4 = Problem("Barrier Test - Automatic")
+    xs4 = prob4.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xs")
+    xl4 = prob4.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xl")
+    prob4.addConstraint(xs4 + 3 * xl4 <= 200, name="constraint1")
+    prob4.addConstraint(3 * xs4 + 2 * xl4 <= 160, name="constraint2")
+    prob4.setObjective(5 * xs4 + 20 * xl4, sense=MAXIMIZE)
+    
+    settings4 = SolverSettings()
+    settings4.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings4.set_parameter(CUOPT_FOLDING, -1)  # Automatic
+    settings4.set_parameter(CUOPT_DUALIZE, -1)  # Automatic
+    settings4.set_parameter(CUOPT_ORDERING, -1)  # Automatic
+    settings4.set_parameter(CUOPT_AUGMENTED, -1)  # Automatic
+    settings4.set_parameter("time_limit", 10)
+    
+    print("Solving with automatic settings")
+    prob4.solve(settings4)
+    print("Solved with automatic settings")
+    
+    assert prob4.solved
+    assert prob4.Status.name == "Optimal"
+    assert prob4.ObjValue == pytest.approx(1333.33, rel=0.01)
+    assert xs4.Value == pytest.approx(0.0, abs=1e-4)
+    assert xl4.Value == pytest.approx(66.67, rel=0.01)
+    
+    # Verify constraint slacks are non-negative for all tests
+    for prob in [prob1, prob2, prob3, prob4]:
+        for c in prob.getConstraints():
+            assert c.Slack >= -1e-6  # Allow small numerical tolerance
+
+
+@pytest.mark.parametrize(
+    "test_name,settings_config",
+    [
+        (
+            "automatic",
+            {
+                CUOPT_FOLDING: -1,
+                CUOPT_DUALIZE: -1,
+                CUOPT_ORDERING: -1,
+                CUOPT_AUGMENTED: -1,
+            },
+        ),
+        (
+            "forced_on",
+            {
+                CUOPT_FOLDING: 1,
+                CUOPT_DUALIZE: 1,
+                CUOPT_ORDERING: 1,
+                CUOPT_AUGMENTED: 1,
+                CUOPT_ELIMINATE_DENSE_COLUMNS: True,
+                CUOPT_CUDSS_DETERMINISTIC: True,
+            },
+        ),
+        (
+            "disabled",
+            {
+                CUOPT_FOLDING: 0,
+                CUOPT_DUALIZE: 0,
+                CUOPT_ORDERING: 0,
+                CUOPT_AUGMENTED: 0,
+                CUOPT_ELIMINATE_DENSE_COLUMNS: False,
+                CUOPT_CUDSS_DETERMINISTIC: False,
+            },
+        ),
+        (
+            "mixed",
+            {
+                CUOPT_FOLDING: 1,
+                CUOPT_DUALIZE: 0,
+                CUOPT_ORDERING: -1,
+                CUOPT_AUGMENTED: 1,
+            },
+        ),
+        (
+            "folding_on",
+            {
+                CUOPT_FOLDING: 1,
+            },
+        ),
+        (
+            "folding_off",
+            {
+                CUOPT_FOLDING: 0,
+            },
+        ),
+        (
+            "dualize_on",
+            {
+                CUOPT_DUALIZE: 1,
+            },
+        ),
+        (
+            "dualize_off",
+            {
+                CUOPT_DUALIZE: 0,
+            },
+        ),
+        (
+            "amd_ordering",
+            {
+                CUOPT_ORDERING: 1,
+            },
+        ),
+        (
+            "cudss_ordering",
+            {
+                CUOPT_ORDERING: 0,
+            },
+        ),
+        (
+            "augmented_system",
+            {
+                CUOPT_AUGMENTED: 1,
+            },
+        ),
+        (
+            "adat_system",
+            {
+                CUOPT_AUGMENTED: 0,
+            },
+        ),
+        (
+            "no_dense_elim",
+            {
+                CUOPT_ELIMINATE_DENSE_COLUMNS: False,
+            },
+        ),
+        (
+            "cudss_deterministic",
+            {
+                CUOPT_CUDSS_DETERMINISTIC: True,
+            },
+        ),
+        (
+            "combo1",
+            {
+                CUOPT_FOLDING: 1,
+                CUOPT_DUALIZE: 1,
+                CUOPT_ORDERING: 1,
+            },
+        ),
+        (
+            "combo2",
+            {
+                CUOPT_FOLDING: 0,
+                CUOPT_AUGMENTED: 0,
+                CUOPT_ELIMINATE_DENSE_COLUMNS: False,
+            },
+        ),
+    ],
+)
+def test_barrier_solver_settings(test_name, settings_config):
+    """
+    Parameterized test for barrier solver with different configurations.
+
+    Tests the barrier solver across various settings combinations to ensure
+    correctness and robustness. Each configuration tests different aspects
+    of the barrier solver implementation.
+
+    Problem:
+        maximize   5*xs + 20*xl
+        subject to  1*xs +  3*xl <= 200
+                    3*xs +  2*xl <= 160
+                    xs, xl >= 0
+
+    Expected Solution:
+        Optimal objective: 1333.33
+        xs = 0, xl = 66.67 (corner solution where constraint 1 is binding)
+
+    Args:
+        test_name: Descriptive name for the test configuration
+        settings_config: Dictionary of barrier solver parameters to set
+    """
+    prob = Problem(f"Barrier Test - {test_name}")
+
+    # Add variables
+    xs = prob.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xs")
+    xl = prob.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xl")
+
+    # Add constraints
+    prob.addConstraint(xs + 3 * xl <= 200, name="constraint1")
+    prob.addConstraint(3 * xs + 2 * xl <= 160, name="constraint2")
+
+    # Set objective: maximize 5*xs + 20*xl
+    prob.setObjective(5 * xs + 20 * xl, sense=MAXIMIZE)
+
+    # Configure solver settings
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings.set_parameter("time_limit", 10)
+
+    # Apply test-specific settings
+    for param_name, param_value in settings_config.items():
+        settings.set_parameter(param_name, param_value)
+
+    print(f"\nTesting configuration: {test_name}")
+    print(f"Settings: {settings_config}")
+
+    # Solve the problem
+    prob.solve(settings)
+
+    print(f"Status: {prob.Status.name}")
+    print(f"Objective: {prob.ObjValue}")
+    print(f"xs = {xs.Value}, xl = {xl.Value}")
+
+    # Verify solution
+    assert prob.solved, f"Problem not solved for {test_name}"
+    assert prob.Status.name == "Optimal", f"Not optimal for {test_name}"
+    assert prob.ObjValue == pytest.approx(
+        1333.33, rel=0.01
+    ), f"Incorrect objective for {test_name}"
+    assert xs.Value == pytest.approx(
+        0.0, abs=1e-4
+    ), f"Incorrect xs value for {test_name}"
+    assert xl.Value == pytest.approx(
+        66.67, rel=0.01
+    ), f"Incorrect xl value for {test_name}"
+
+    # Verify constraint slacks are non-negative
+    for c in prob.getConstraints():
+        assert (
+            c.Slack >= -1e-6
+        ), f"Negative slack for {c.getConstraintName()} in {test_name}"
+
+    print(f"✓ Test passed: {test_name}\n")
