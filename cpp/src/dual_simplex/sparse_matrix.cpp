@@ -511,13 +511,21 @@ i_t csc_matrix_t<i_t, f_t>::check_matrix() const
     const i_t col_start = this->col_start[j];
     const i_t col_end   = this->col_start[j + 1];
     if (col_start > col_end || col_start > this->col_start[this->n]) {
-      printf("CSC error: column pointers. col start %d col end %d nz %d\n", col_start, col_end, this->col_start[this->n]);
+      printf("CSC error: column pointers. col start %d col end %d nz %d\n",
+             col_start,
+             col_end,
+             this->col_start[this->n]);
       return -1;
     }
     for (i_t p = col_start; p < col_end; ++p) {
       const i_t i = this->i[p];
-      if (i < 0 || i >= this->m) { printf("CSC error: row index %d not in range [0, %d]\n", i, this->m-1); }
-      if (row_marker[i] == j) { printf("CSC error: repeated row index %d in column %d\n", i, j); return -1; }
+      if (i < 0 || i >= this->m) {
+        printf("CSC error: row index %d not in range [0, %d]\n", i, this->m - 1);
+      }
+      if (row_marker[i] == j) {
+        printf("CSC error: repeated row index %d in column %d\n", i, j);
+        return -1;
+      }
       row_marker[i] = j;
     }
   }

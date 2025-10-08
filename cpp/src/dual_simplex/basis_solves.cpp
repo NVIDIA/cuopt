@@ -565,7 +565,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
   }
   q.resize(m);
   f_t fact_start = tic();
-  rank = right_looking_lu(A, medium_tol, basic_list, q, L, U, pinv);
+  rank           = right_looking_lu(A, medium_tol, basic_list, q, L, U, pinv);
   if (verbose) {
     printf("Right Lnz+Unz %d t %.3f\n", L.col_start[m] + U.col_start[m], toc(fact_start));
   }
