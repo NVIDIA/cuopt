@@ -530,6 +530,14 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(solution_t<i_t, f_
   // if (population.population_hash_map.check_skip_solution(solution, 1)) { return; }
   auto population_vector = population.population_to_vector();
   for (auto& curr_sol : population_vector) {
+    if (check_integer_equal_on_indices(problem_ptr->integer_indices,
+                                       curr_sol.assignment,
+                                       solution.assignment,
+                                       1e-6,
+                                       problem_ptr->handle_ptr)) {
+      CUOPT_LOG_DEBUG("Skipping solution because it is equal to the given solution");
+      continue;
+    }
     for (const auto recombiner_type : recombiner_t<i_t, f_t>::enabled_recombiners) {
       if (check_b_b_preemption()) { return; }
       if (curr_sol.get_feasible()) {

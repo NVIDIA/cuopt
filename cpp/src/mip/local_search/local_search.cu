@@ -680,7 +680,6 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
   raft::common::nvtx::range fun_scope("run_fp");
   cuopt_assert(population_ptr != nullptr, "Population pointer must not be null");
   const i_t n_fp_iterations          = 1000000;
-  i_t n_sol_in_population_for_exit   = 4;
   bool is_feasible                   = solution.compute_feasibility();
   cutting_plane_added_for_active_run = is_feasible;
   double best_objective =
@@ -732,12 +731,6 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                       last_unimproved_iteration,
                                       best_solution,
                                       best_objective);
-      if ((i_t)population_ptr->current_size() >= n_sol_in_population_for_exit) {
-        solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
-        population_ptr->run_all_recombiners(best_feasible_copy);
-        n_sol_in_population_for_exit += 2;
-        // break;
-      }
     }
     // if not feasible, it means it is a cycle
     else {
@@ -760,12 +753,6 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                         last_unimproved_iteration,
                                         best_solution,
                                         best_objective);
-        if ((i_t)population_ptr->current_size() >= n_sol_in_population_for_exit) {
-          solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
-          population_ptr->run_all_recombiners(best_feasible_copy);
-          n_sol_in_population_for_exit += 2;
-          // break;
-        }
       } else {
         last_unimproved_iteration = i;
       }
