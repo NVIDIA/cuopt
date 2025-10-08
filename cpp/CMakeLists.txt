@@ -190,9 +190,9 @@ FetchContent_Declare(
   # does not have some of the presolvers and settings that we need
   # Mainly, probing and clique merging.
   # This is the reason we are using the development branch
-  # commit from Sep 26, 2025. Once these changes are merged into the main branch,
+  # commit from Oct 8, 2025. Once these changes are merged into the main branch,
   #we can switch to the main branch.
-  GIT_TAG "34a40781fa14f8870cb6368cffb6c0eda2f47511"
+  GIT_TAG "24ccf5752656df0f15dd9aabe5b97feae829b9ec"
   GIT_PROGRESS TRUE
   SYSTEM
 )
@@ -201,6 +201,8 @@ find_package(TBB REQUIRED)
 set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
 set(PAPILO_NO_BINARIES ON)
 option(LUSOL "Disable LUSOL" OFF)
+# Disable TBB because of a bug in CliqueMerging parallel version
+set(TBB OFF CACHE BOOL "Disable TBB for papilo")
 
 FetchContent_MakeAvailable(papilo)
 
