@@ -347,7 +347,7 @@ int main(int argc, char* argv[])
   program.add_argument("--time-limit")
     .help("time limit")
     .scan<'g', double>()
-    .default_value(std::numeric_limits<double>::max());
+    .default_value(std::numeric_limits<double>::infinity());
 
   program.add_argument("--memory-limit")
     .help("memory limit in MB")

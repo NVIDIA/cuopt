@@ -165,7 +165,7 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
                                             f_t obj, const std::vector<f_t>& h_vec) {
       population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
       if (obj < local_search_best_obj) {
-        CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
+        CUOPT_LOG_TRACE("******* New local search best obj %g, best overall %g",
                         context.problem_ptr->get_user_obj_from_solver_obj(obj),
                         context.problem_ptr->get_user_obj_from_solver_obj(
                           population.is_feasible() ? population.best_feasible().get_objective()
@@ -673,10 +673,10 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
 {
   raft::common::nvtx::range fun_scope("run_fp");
   cuopt_assert(population_ptr != nullptr, "Population pointer must not be null");
-  const i_t n_fp_iterations                  = 1000000;
-  constexpr i_t n_sol_in_population_for_exit = 4;
-  bool is_feasible                           = solution.compute_feasibility();
-  cutting_plane_added_for_active_run         = is_feasible;
+  const i_t n_fp_iterations          = 1000000;
+  i_t n_sol_in_population_for_exit   = 4;
+  bool is_feasible                   = solution.compute_feasibility();
+  cutting_plane_added_for_active_run = is_feasible;
   double best_objective =
     is_feasible ? solution.get_objective() : std::numeric_limits<double>::max();
   rmm::device_uvector<f_t> best_solution(solution.assignment, solution.handle_ptr->get_stream());
@@ -708,12 +708,14 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
       CUOPT_LOG_DEBUG("Preempting heuristic solver!");
       break;
     }
-    is_feasible = fp.run_single_fp_descent(solution);
+    is_feasible         = fp.run_single_fp_descent(solution);
+    auto new_sol_vector = population_ptr->get_external_solutions();
+    population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
+    CUOPT_LOG_DEBUG("Population size at iteration %d: %d", i, population_ptr->current_size());
     if (population_ptr->preempt_heuristic_solver_.load()) {
       CUOPT_LOG_DEBUG("Preempting heuristic solver!");
       break;
     }
-    // if feasible return true
     if (is_feasible) {
       CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
                       solution.get_objective());
@@ -724,7 +726,12 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                       last_unimproved_iteration,
                                       best_solution,
                                       best_objective);
-      if (population_ptr->current_size() >= n_sol_in_population_for_exit) { break; }
+      if ((i_t)population_ptr->current_size() >= n_sol_in_population_for_exit) {
+        solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
+        population_ptr->run_all_recombiners(best_feasible_copy);
+        n_sol_in_population_for_exit += 2;
+        // break;
+      }
     }
     // if not feasible, it means it is a cycle
     else {
@@ -747,7 +754,12 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
                                         last_unimproved_iteration,
                                         best_solution,
                                         best_objective);
-        if (population_ptr->current_size() >= n_sol_in_population_for_exit) { break; }
+        if ((i_t)population_ptr->current_size() >= n_sol_in_population_for_exit) {
+          solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
+          population_ptr->run_all_recombiners(best_feasible_copy);
+          n_sol_in_population_for_exit += 2;
+          // break;
+        }
       } else {
         last_unimproved_iteration = i;
       }

@@ -79,6 +79,11 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
     this->compute_vars_to_fix(offspring, vars_to_fix, n_vars_from_other, n_vars_from_guiding);
     auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
     fixed_problem.check_problem_representation(true);
+    // if FP recombiner is added to enabled ones, because the fixing never happenned before.
+    // check if the problem fixing is expensive
+    if (problem_t<i_t, f_t>::expensive_to_fix_vars) {
+      this->enabled_recombiners.erase(recombiner_enum_t::FP);
+    }
     if (!guiding_solution.get_feasible() && !other_solution.get_feasible()) {
       relaxed_lp_settings_t lp_settings;
       lp_settings.time_limit = fp_recombiner_config_t::infeasibility_detection_time_limit;

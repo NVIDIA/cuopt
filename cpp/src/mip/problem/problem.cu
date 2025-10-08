@@ -53,6 +53,9 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
+bool problem_t<i_t, f_t>::expensive_to_fix_vars{false};
+
+template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t, f_t>& problem_)
 {
   // Mark the problem as empty if the op_problem has an empty matrix.
@@ -1203,6 +1206,10 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
     time_taken,
     total_time_taken / total_calls,
     total_time_taken);
+  // if the fixing is greater than 150, mark this as expensive.
+  // this way we can avoid frequent fixings for this problem
+  constexpr double expensive_time_threshold = 150;
+  if (time_taken > expensive_time_threshold) { expensive_to_fix_vars = true; }
   return problem;
 }
 
@@ -1287,12 +1294,24 @@ rmm::device_uvector<f_t> problem_t<i_t, f_t>::get_fixed_assignment_from_integer_
 }
 
 template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::test_problem_fixing_time()
+{
+  rmm::device_uvector<f_t> assignment(n_variables, handle_ptr->get_stream());
+  i_t n_vars_to_test = std::min(n_variables - 1, 200);
+  rmm::device_uvector<i_t> indices(n_vars_to_test, handle_ptr->get_stream());
+  thrust::fill(handle_ptr->get_thrust_policy(), assignment.begin(), assignment.end(), 0.);
+  thrust::sequence(handle_ptr->get_thrust_policy(), indices.begin(), indices.end(), 0);
+  get_problem_after_fixing_vars(assignment, indices, integer_fixed_variable_map, handle_ptr);
+}
+
+template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_integer_fixed_problem()
 {
   raft::common::nvtx::range fun_scope("compute_integer_fixed_problem");
   cuopt_assert(integer_fixed_problem == nullptr, "Integer fixed problem already computed");
   if (n_variables == n_integer_vars) {
     integer_fixed_problem = nullptr;
+    test_problem_fixing_time();
     return;
   }
   rmm::device_uvector<f_t> assignment(n_variables, handle_ptr->get_stream());

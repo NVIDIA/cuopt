@@ -163,13 +163,10 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
   try {
     constexpr f_t max_time_limit = 1000000000;
     f_t time_limit =
-      (settings.time_limit == 0 || settings.time_limit == std::numeric_limits<f_t>::infinity())
+      (settings.time_limit == 0 || settings.time_limit == std::numeric_limits<f_t>::infinity() ||
+       settings.time_limit == std::numeric_limits<f_t>::max())
         ? max_time_limit
         : settings.time_limit;
-    if (settings.heuristics_only && (time_limit == std::numeric_limits<f_t>::max() ||
-                                     time_limit == std::numeric_limits<f_t>::infinity())) {
-      time_limit = max_time_limit;
-    }
 
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);

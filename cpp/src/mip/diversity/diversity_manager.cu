@@ -40,6 +40,9 @@ size_t sub_mip_recombiner_config_t::max_n_of_vars_from_other =
   sub_mip_recombiner_config_t::initial_n_of_vars_from_other;
 
 template <typename i_t, typename f_t>
+std::unordered_set<recombiner_enum_t> recombiner_t<i_t, f_t>::enabled_recombiners;
+
+template <typename i_t, typename f_t>
 diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t>& context_)
   : context(context_),
     problem_ptr(context.problem_ptr),
@@ -351,7 +354,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   problem_ptr->check_problem_representation(true);
   // have the structure ready for reusing later
   problem_ptr->compute_integer_fixed_problem();
-
+  recombiner_t<i_t, f_t>::init_enabled_recombiners(*problem_ptr);
   // test problem is not ii
   cuopt_func_call(
     ls.constraint_prop.bounds_update.calculate_activity_on_problem_bounds(*problem_ptr));
@@ -526,10 +529,10 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(solution_t<i_t, f_
                                                               bool add_only_feasible)
 {
   raft::common::nvtx::range fun_scope("recombine_and_ls_with_all");
-  if (population.population_hash_map.check_skip_solution(solution, 1)) { return; }
+  // if (population.population_hash_map.check_skip_solution(solution, 1)) { return; }
   auto population_vector = population.population_to_vector();
   for (auto& curr_sol : population_vector) {
-    for (const auto recombiner_type : recombiner_types) {
+    for (const auto recombiner_type : recombiner_t<i_t, f_t>::enabled_recombiners) {
       if (check_b_b_preemption()) { return; }
       if (curr_sol.get_feasible()) {
         auto [offspring, lp_offspring] =
@@ -566,10 +569,10 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
       if (timer.check_time_limit()) { return; }
       // TODO try if running LP with integers fixed makes it feasible
       if (ls_solution.get_feasible()) {
-        CUOPT_LOG_DEBUG("External LS searched solution feasible, running recombiners!");
+        CUOPT_LOG_DEBUG("LS searched solution feasible, running recombiners!");
         recombine_and_ls_with_all(ls_solution, add_only_feasible);
       } else {
-        CUOPT_LOG_DEBUG("External solution feasible, running recombiners!");
+        CUOPT_LOG_DEBUG("Given solution feasible, running recombiners!");
         recombine_and_ls_with_all(sol, add_only_feasible);
       }
     }

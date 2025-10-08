@@ -108,6 +108,7 @@ struct fp_recombiner_config_t {
 };
 
 struct sub_mip_recombiner_config_t {
+  static constexpr size_t max_continuous_vars                = 5000;
   static constexpr double sub_mip_time_limit                 = 3.;
   static constexpr double infeasibility_detection_time_limit = 0.5;
   static constexpr size_t initial_n_of_vars_from_other       = 40;
