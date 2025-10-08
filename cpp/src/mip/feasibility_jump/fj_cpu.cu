@@ -1005,7 +1005,7 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_l
     }
 
     // number of violated constraints is usually small (<100). recomputing from all LHSs is cheap
-    // and more numerically precise than just adding to the accumulator in apply_move 1
+    // and more numerically precise than just adding to the accumulator in apply_move
     fj_cpu.total_violations = 0;
     for (auto cstr_idx : fj_cpu.violated_constraints) {
       fj_cpu.total_violations += fj_cpu.view.excess_score(cstr_idx, fj_cpu.h_lhs[cstr_idx]);
