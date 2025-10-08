@@ -578,10 +578,13 @@ class fj_t {
         return excess_score(cstr, lhs) >= -cstr_tolerance;
       }
 
-      HDI bool move_numerically_stable(f_t old_val, f_t new_val, f_t infeasibility) const
+      HDI bool move_numerically_stable(f_t old_val,
+                                       f_t new_val,
+                                       f_t infeasibility,
+                                       f_t total_violations) const
       {
         return fabs(new_val - old_val) < 1e6 && fabs(new_val) < 1e20 &&
-               fabs(*violation_score - infeasibility) < 1e20;
+               fabs(total_violations - infeasibility) < 1e20;
       }
 
       DI bool admits_move(i_t var_idx) const

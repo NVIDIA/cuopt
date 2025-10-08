@@ -333,7 +333,8 @@ DI std::pair<f_t, typename fj_t<i_t, f_t>::move_score_info_t> compute_best_mtm(
     auto new_score_info = compute_new_score<i_t, f_t, TPB>(fj, var_idx, new_val - old_val);
     if (threadIdx.x == 0) {
       // reject this move if it would increase the target variable to a numerically unstable value
-      if (fj.move_numerically_stable(old_val, new_val, new_score_info.infeasibility)) {
+      if (fj.move_numerically_stable(
+            old_val, new_val, new_score_info.infeasibility, *fj.violation_score)) {
         if (new_score_info.score > best_score_info.score ||
             (new_score_info.score == best_score_info.score && new_val < best_val)) {
           best_score_info = new_score_info;
