@@ -125,6 +125,22 @@ static inline bool tabu_check(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 }
 
 template <typename i_t, typename f_t>
+static bool check_variable_feasibility(const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
+                                       bool check_integer = true)
+{
+  for (i_t var_idx = 0; var_idx < fj.pb.n_variables; var_idx += 1) {
+    auto val      = fj.incumbent_assignment[var_idx];
+    bool feasible = fj.pb.check_variable_within_bounds(var_idx, val);
+
+    if (!feasible) return false;
+    if (check_integer && fj.pb.is_integer_var(var_idx) &&
+        !fj.pb.is_integer(fj.incumbent_assignment[var_idx]))
+      return false;
+  }
+  return true;
+}
+
+template <typename i_t, typename f_t>
 static inline fj_staged_score_t compute_score(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
                                               i_t var_idx,
                                               f_t delta)
@@ -321,17 +337,22 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.h_incumbent_objective += fj_cpu.h_obj_coeffs[var_idx] * delta;
   if (fj_cpu.h_incumbent_objective < fj_cpu.h_best_objective &&
       fj_cpu.violated_constraints.empty()) {
-    cuopt_assert(fj_cpu.satisfied_constraints.size() == fj_cpu.view.pb.n_constraints, "");
-    fj_cpu.h_best_objective =
-      fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
-    fj_cpu.h_best_assignment = fj_cpu.h_assignment;
-    CUOPT_LOG_TRACE("%sCPUFJ: new best objective: %g\n",
-                    fj_cpu.log_prefix.c_str(),
-                    fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective));
-    if (fj_cpu.improvement_callback) {
-      fj_cpu.improvement_callback(fj_cpu.h_best_objective, fj_cpu.h_assignment);
+    // recompute the LHS values to cancel out accumulation errors, then check if feasibility remains
+    recompute_lhs(fj_cpu);
+
+    if (fj_cpu.violated_constraints.empty() && check_variable_feasibility<i_t, f_t>(fj_cpu.view)) {
+      cuopt_assert(fj_cpu.satisfied_constraints.size() == fj_cpu.view.pb.n_constraints, "");
+      fj_cpu.h_best_objective =
+        fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
+      fj_cpu.h_best_assignment = fj_cpu.h_assignment;
+      CUOPT_LOG_TRACE("%sCPUFJ: new best objective: %g\n",
+                      fj_cpu.log_prefix.c_str(),
+                      fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective));
+      if (fj_cpu.improvement_callback) {
+        fj_cpu.improvement_callback(fj_cpu.h_best_objective, fj_cpu.h_assignment);
+      }
+      fj_cpu.feasible_found = true;
     }
-    fj_cpu.feasible_found = true;
   }
 
   i_t tabu_tenure = fj_cpu.settings.parameters.tabu_tenure_min +
@@ -537,7 +558,7 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_sat(
 }
 
 template <typename i_t, typename f_t>
-static void init_lhs(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+static void recompute_lhs(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
   cuopt_assert(fj_cpu.h_lhs.size() == fj_cpu.view.pb.n_constraints, "h_lhs size mismatch");
 
@@ -545,15 +566,16 @@ static void init_lhs(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   fj_cpu.satisfied_constraints.clear();
   for (i_t cstr_idx = 0; cstr_idx < fj_cpu.view.pb.n_constraints; ++cstr_idx) {
     auto [offset_begin, offset_end] = fj_cpu.view.pb.range_for_constraint(cstr_idx);
-    f_t lhs                         = 0;
-    for (i_t i = offset_begin; i < offset_end; ++i) {
-      lhs += fj_cpu.h_coefficients[i] * fj_cpu.h_assignment[fj_cpu.h_variables[i]];
-    }
-
-    fj_cpu.h_lhs[cstr_idx] = lhs;
+    auto delta_it =
+      thrust::make_transform_iterator(thrust::make_counting_iterator(0), [fj = fj_cpu.view](i_t j) {
+        return fj.pb.coefficients[j] * fj.incumbent_assignment[fj.pb.variables[j]];
+      });
+    fj_cpu.h_lhs[cstr_idx] =
+      fj_kahan_babushka_neumaier_sum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
+    fj_cpu.h_lhs_sumcomp[cstr_idx] = 0;
 
     f_t cstr_tolerance = fj_cpu.view.get_corrected_tolerance(cstr_idx);
-    f_t new_cost       = fj_cpu.view.excess_score(cstr_idx, lhs);
+    f_t new_cost       = fj_cpu.view.excess_score(cstr_idx, fj_cpu.h_lhs[cstr_idx]);
     if (new_cost < -cstr_tolerance) {
       fj_cpu.violated_constraints.insert(cstr_idx);
     } else {
@@ -695,7 +717,7 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     fj_cpu.h_assignment[var_idx] = val;
   }
 
-  init_lhs(fj_cpu);
+  recompute_lhs(fj_cpu);
 }
 
 template <typename i_t, typename f_t>
@@ -759,6 +781,8 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.view.incumbent_assignment =
     raft::device_span<f_t>(fj_cpu.h_assignment.data(), fj_cpu.h_assignment.size());
   fj_cpu.view.incumbent_lhs = raft::device_span<f_t>(fj_cpu.h_lhs.data(), fj_cpu.h_lhs.size());
+  fj_cpu.view.incumbent_lhs_sumcomp =
+    raft::device_span<f_t>(fj_cpu.h_lhs_sumcomp.data(), fj_cpu.h_lhs_sumcomp.size());
   fj_cpu.view.tabu_nodec_until =
     raft::device_span<i_t>(fj_cpu.h_tabu_nodec_until.data(), fj_cpu.h_tabu_nodec_until.size());
   fj_cpu.view.tabu_noinc_until =
@@ -824,7 +848,7 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.var_bitmap.resize(fj_cpu.view.pb.n_variables, false);
   fj_cpu.iter_mtm_vars.reserve(fj_cpu.view.pb.n_variables);
 
-  init_lhs(fj_cpu);
+  recompute_lhs(fj_cpu);
 }
 
 template <typename i_t, typename f_t>
@@ -912,6 +936,14 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_l
                       time_limit.count() / 1000.f,
                       fj_cpu.iterations);
       break;
+    }
+
+    // periodically recompute the LHS and violation scores
+    // to correct any accumulated numerical errors
+    cuopt_assert(fj_cpu.settings.parameters.lhs_refresh_period > 0,
+                 "lhs_refresh_period should be positive");
+    if (fj_cpu.iterations % fj_cpu.settings.parameters.lhs_refresh_period == 0) {
+      recompute_lhs(fj_cpu);
     }
 
     fj_move_t move          = fj_move_t{-1, 0};
