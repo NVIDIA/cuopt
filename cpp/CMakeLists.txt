@@ -201,6 +201,8 @@ find_package(TBB REQUIRED)
 set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
 set(PAPILO_NO_BINARIES ON)
 option(LUSOL "Disable LUSOL" OFF)
+# Disable TBB because of a bug in CliqueMerging parallel version
+set(TBB OFF CACHE BOOL "Disable TBB for papilo")
 
 FetchContent_MakeAvailable(papilo)
 
