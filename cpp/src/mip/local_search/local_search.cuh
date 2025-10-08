@@ -113,7 +113,10 @@ class local_search_t {
               population_t<i_t, f_t>* population_ptr = nullptr);
   void resize_vectors(problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr);
 
-  bool do_fj_solve(solution_t<i_t, f_t>& solution, fj_t<i_t, f_t>& fj, const std::string& source);
+  bool do_fj_solve(solution_t<i_t, f_t>& solution,
+                   fj_t<i_t, f_t>& fj,
+                   f_t time_limit,
+                   const std::string& source);
 
   i_t ls_threads() const { return ls_cpu_fj.size() + scratch_cpu_fj.size(); }
   void save_solution_and_add_cutting_plane(solution_t<i_t, f_t>& solution,

@@ -263,7 +263,7 @@ void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
   cusparseDnVecDescr_t x_cusparse = create_vector(d_x);
   cusparseDnVecDescr_t y_cusparse = create_vector(d_y);
   spmv(alpha, x_cusparse, beta, y_cusparse);
-  y = cuopt::host_copy<f_t, AllocatorB>(d_y);
+  y = cuopt::host_copy<f_t, AllocatorB>(d_y, handle_ptr_->get_stream());
 }
 
 template <typename i_t, typename f_t>
@@ -306,7 +306,7 @@ void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
   cusparseDnVecDescr_t x_cusparse = create_vector(d_x);
   cusparseDnVecDescr_t y_cusparse = create_vector(d_y);
   transpose_spmv(alpha, x_cusparse, beta, y_cusparse);
-  y = cuopt::host_copy<f_t, AllocatorB>(d_y);
+  y = cuopt::host_copy<f_t, AllocatorB>(d_y, handle_ptr_->get_stream());
 }
 
 template <typename i_t, typename f_t>
