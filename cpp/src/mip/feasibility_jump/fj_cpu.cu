@@ -304,8 +304,7 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 
     // trigger early lhs recomputation if the sumcomp term gets too large
     // to avoid large numerical errors
-    if (fabs(fj_cpu.h_lhs_sumcomp[cstr_idx]) > BIGVAL_THRESHOLD ||
-        fabs(fj_cpu.h_lhs_sumcomp[cstr_idx]) > BIGVAL_THRESHOLD)
+    if (fabs(fj_cpu.h_lhs_sumcomp[cstr_idx]) > BIGVAL_THRESHOLD)
       fj_cpu.trigger_early_lhs_recomputation = true;
 
     if (new_cost < -cstr_tolerance && !fj_cpu.violated_constraints.count(cstr_idx)) {
