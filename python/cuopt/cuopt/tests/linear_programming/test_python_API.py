@@ -35,6 +35,7 @@ from cuopt.linear_programming.problem import (
 )
 from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_AUGMENTED,
+    CUOPT_BARRIER_DUAL_INITIAL_POINT,
     CUOPT_CUDSS_DETERMINISTIC,
     CUOPT_DUALIZE,
     CUOPT_ELIMINATE_DENSE_COLUMNS,
@@ -578,6 +579,32 @@ def test_problem_update():
                 CUOPT_FOLDING: 0,
                 CUOPT_AUGMENTED: 0,
                 CUOPT_ELIMINATE_DENSE_COLUMNS: False,
+            },
+        ),
+        (
+            "dual_initial_point_automatic",
+            {
+                CUOPT_BARRIER_DUAL_INITIAL_POINT: -1,
+            },
+        ),
+        (
+            "dual_initial_point_lustig",
+            {
+                CUOPT_BARRIER_DUAL_INITIAL_POINT: 0,
+            },
+        ),
+        (
+            "dual_initial_point_least_squares",
+            {
+                CUOPT_BARRIER_DUAL_INITIAL_POINT: 1,
+            },
+        ),
+        (
+            "combo3_with_dual_init",
+            {
+                CUOPT_AUGMENTED: 1,
+                CUOPT_BARRIER_DUAL_INITIAL_POINT: 1,
+                CUOPT_ELIMINATE_DENSE_COLUMNS: True,
             },
         ),
     ],
