@@ -26,6 +26,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
     CUOPT_AUGMENTED,
+    CUOPT_BARRIER_DUAL_INITIAL_POINT,
     CUOPT_CROSSOVER,
     CUOPT_CUDSS_DETERMINISTIC,
     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
@@ -450,6 +451,11 @@ def create_solver(LP_data, warmstart_data):
         if solver_config.ordering != "":
             solver_settings.set_parameter(
                 CUOPT_ORDERING, solver_config.ordering
+            )
+        if solver_config.barrier_dual_initial_point is not None:
+            solver_settings.set_parameter(
+                CUOPT_BARRIER_DUAL_INITIAL_POINT,
+                solver_config.barrier_dual_initial_point,
             )
         if solver_config.eliminate_dense_columns is not None:
             solver_settings.set_parameter(

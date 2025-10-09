@@ -225,8 +225,13 @@ void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 template <typename i_t, typename f_t>
 bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
                                            fj_t<i_t, f_t>& in_fj,
+                                           f_t time_limit,
                                            const std::string& source)
 {
+  if (time_limit == 0.) return solution.get_feasible();
+
+  timer_t timer(time_limit);
+
   auto h_weights          = cuopt::host_copy(in_fj.cstr_weights, solution.handle_ptr->get_stream());
   auto h_objective_weight = in_fj.objective_weight.value(solution.handle_ptr->get_stream());
   for (auto& cpu_fj : ls_cpu_fj) {
@@ -242,7 +247,8 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   }
 
   // Run GPU solver and measure execution time
-  auto gpu_fj_start = std::chrono::high_resolution_clock::now();
+  auto gpu_fj_start         = std::chrono::high_resolution_clock::now();
+  in_fj.settings.time_limit = timer.remaining_time();
   in_fj.solve(solution);
 
   // Stop CPU solver
@@ -320,9 +326,9 @@ void local_search_t<i_t, f_t>::generate_fast_solution(solution_t<i_t, f_t>& solu
     constraint_prop.apply_round(solution, 1., constr_prop_timer);
     if (solution.compute_feasibility()) { return; }
     if (timer.check_time_limit()) { return; };
-    fj.settings.time_limit = std::min(3., timer.remaining_time());
+    f_t time_limit = std::min(3., timer.remaining_time());
     // run fj on the solution
-    do_fj_solve(solution, fj, "fast");
+    do_fj_solve(solution, fj, time_limit, "fast");
     // TODO check if FJ returns the same solution
     // check if the solution is feasible
     if (solution.compute_feasibility()) { return; }
@@ -381,11 +387,11 @@ bool local_search_t<i_t, f_t>::run_fj_until_timer(solution_t<i_t, f_t>& solution
   bool is_feasible;
   fj.settings.n_of_minimums_for_exit = 1e6;
   fj.settings.mode                   = fj_mode_t::EXIT_NON_IMPROVING;
-  fj.settings.time_limit             = timer.remaining_time() * 0.95;
   fj.settings.update_weights         = false;
   fj.settings.feasibility_run        = false;
   fj.copy_weights(weights, solution.handle_ptr);
-  do_fj_solve(solution, fj, "until_timer");
+  f_t time_limit = timer.remaining_time() * 0.95;
+  do_fj_solve(solution, fj, time_limit, "until_timer");
   CUOPT_LOG_DEBUG("Initial FJ feasibility done");
   is_feasible = solution.compute_feasibility();
   if (fj.settings.feasibility_run || timer.check_time_limit()) { return is_feasible; }
@@ -410,11 +416,11 @@ bool local_search_t<i_t, f_t>::run_fj_annealing(solution_t<i_t, f_t>& solution,
   fj.settings.mode                                      = fj_mode_t::EXIT_NON_IMPROVING;
   fj.settings.candidate_selection                       = fj_candidate_selection_t::FEASIBLE_FIRST;
   fj.settings.iteration_limit                           = ls_config.iteration_limit;
-  fj.settings.time_limit                                = std::min(10., timer.remaining_time());
   fj.settings.parameters.allow_infeasibility_iterations = 100;
   fj.settings.update_weights                            = 1;
   fj.settings.baseline_objective_for_longer_run         = ls_config.best_objective_of_parents;
-  do_fj_solve(solution, fj, "annealing");
+  f_t time_limit                                        = std::min(10., timer.remaining_time());
+  do_fj_solve(solution, fj, time_limit, "annealing");
   bool is_feasible = solution.compute_feasibility();
 
   fj.settings = prev_settings;
@@ -460,14 +466,14 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
     solution.assign_random_within_bounds(perturbation_ratio);
   }
   cuopt_func_call(solution.test_variable_bounds(false));
-  f_t lp_run_time_after_feasible = 1.;
+  f_t lp_run_time_after_feasible = std::min(1., timer.remaining_time());
   timer_t bounds_prop_timer      = timer_t(std::min(timer.remaining_time(), 10.));
   bool is_feasible =
     constraint_prop.apply_round(solution, lp_run_time_after_feasible, bounds_prop_timer);
   if (!is_feasible) {
     const f_t lp_run_time = 2.;
     relaxed_lp_settings_t lp_settings;
-    lp_settings.time_limit = lp_run_time;
+    lp_settings.time_limit = std::min(lp_run_time, timer.remaining_time());
     lp_settings.tolerance  = solution.problem_ptr->tolerances.absolute_tolerance;
     run_lp_with_vars_fixed(
       *solution.problem_ptr, solution, solution.problem_ptr->integer_indices, lp_settings);
@@ -479,8 +485,8 @@ bool local_search_t<i_t, f_t>::check_fj_on_lp_optimal(solution_t<i_t, f_t>& solu
   fj.settings.n_of_minimums_for_exit = 20000;
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = false;
-  fj.settings.time_limit             = std::min(30., timer.remaining_time());
-  do_fj_solve(solution, fj, "on_lp_optimal");
+  f_t time_limit                     = std::min(30., timer.remaining_time());
+  do_fj_solve(solution, fj, time_limit, "on_lp_optimal");
   return solution.get_feasible();
 }
 
@@ -496,8 +502,8 @@ bool local_search_t<i_t, f_t>::run_fj_on_zero(solution_t<i_t, f_t>& solution, ti
   fj.settings.n_of_minimums_for_exit = 20000;
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = false;
-  fj.settings.time_limit             = std::min(30., timer.remaining_time());
-  bool is_feasible                   = do_fj_solve(solution, fj, "on_zero");
+  f_t time_limit                     = std::min(30., timer.remaining_time());
+  bool is_feasible                   = do_fj_solve(solution, fj, time_limit, "on_zero");
   return is_feasible;
 }
 

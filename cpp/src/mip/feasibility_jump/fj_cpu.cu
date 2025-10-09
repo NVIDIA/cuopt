@@ -32,6 +32,8 @@
 
 namespace cuopt::linear_programming::detail {
 
+static constexpr double BIGVAL_THRESHOLD = 1e20;
+
 template <typename i_t, typename f_t>
 class timing_raii_t {
  public:
@@ -125,9 +127,25 @@ static inline bool tabu_check(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 }
 
 template <typename i_t, typename f_t>
-static inline fj_staged_score_t compute_score(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
-                                              i_t var_idx,
-                                              f_t delta)
+static bool check_variable_feasibility(const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
+                                       bool check_integer = true)
+{
+  for (i_t var_idx = 0; var_idx < fj.pb.n_variables; var_idx += 1) {
+    auto val      = fj.incumbent_assignment[var_idx];
+    bool feasible = fj.pb.check_variable_within_bounds(var_idx, val);
+
+    if (!feasible) return false;
+    if (check_integer && fj.pb.is_integer_var(var_idx) &&
+        !fj.pb.is_integer(fj.incumbent_assignment[var_idx]))
+      return false;
+  }
+  return true;
+}
+
+template <typename i_t, typename f_t>
+static inline std::pair<fj_staged_score_t, f_t> compute_score(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
+                                                              i_t var_idx,
+                                                              f_t delta)
 {
   // timing_raii_t<i_t, f_t> timer(fj_cpu.compute_score_times);
 
@@ -174,7 +192,7 @@ static inline fj_staged_score_t compute_score(fj_cpu_climber_t<i_t, f_t>& fj_cpu
   fj_staged_score_t score;
   score.base  = round(base_obj + base_feas_sum);
   score.bonus = round(bonus_breakthrough + bonus_robust_sum);
-  return score;
+  return std::make_pair(score, base_feas_sum);
 }
 
 template <typename i_t, typename f_t>
@@ -273,26 +291,33 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
     auto cstr_idx   = fj_cpu.h_reverse_constraints[i];
     auto cstr_coeff = fj_cpu.h_reverse_coefficients[i];
 
-    f_t old_lhs        = fj_cpu.h_lhs[cstr_idx];
-    f_t new_lhs        = old_lhs + cstr_coeff * delta;
-    f_t old_cost       = fj_cpu.view.excess_score(cstr_idx, old_lhs, c_lb, c_ub);
-    f_t new_cost       = fj_cpu.view.excess_score(cstr_idx, new_lhs, c_lb, c_ub);
-    f_t cstr_tolerance = fj_cpu.view.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
-
-    if (new_cost < -cstr_tolerance && !fj_cpu.violated_constraints.count(cstr_idx)) {
-      fj_cpu.violated_constraints.insert(cstr_idx);
-      fj_cpu.satisfied_constraints.erase(cstr_idx);
-    } else if (!(new_cost < -cstr_tolerance) && fj_cpu.violated_constraints.count(cstr_idx)) {
-      fj_cpu.violated_constraints.erase(cstr_idx);
-      fj_cpu.satisfied_constraints.insert(cstr_idx);
-    }
-
-    cuopt_assert(isfinite(delta), "delta should be finite");
+    f_t old_lhs = fj_cpu.h_lhs[cstr_idx];
     // Kahan compensated summation
     f_t y                          = cstr_coeff * delta - fj_cpu.h_lhs_sumcomp[cstr_idx];
     f_t t                          = old_lhs + y;
     fj_cpu.h_lhs_sumcomp[cstr_idx] = (t - old_lhs) - y;
     fj_cpu.h_lhs[cstr_idx]         = t;
+    f_t new_lhs                    = fj_cpu.h_lhs[cstr_idx];
+    f_t old_cost                   = fj_cpu.view.excess_score(cstr_idx, old_lhs, c_lb, c_ub);
+    f_t new_cost                   = fj_cpu.view.excess_score(cstr_idx, new_lhs, c_lb, c_ub);
+    f_t cstr_tolerance             = fj_cpu.view.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
+
+    // trigger early lhs recomputation if the sumcomp term gets too large
+    // to avoid large numerical errors
+    if (fabs(fj_cpu.h_lhs_sumcomp[cstr_idx]) > BIGVAL_THRESHOLD)
+      fj_cpu.trigger_early_lhs_recomputation = true;
+
+    if (new_cost < -cstr_tolerance && !fj_cpu.violated_constraints.count(cstr_idx)) {
+      fj_cpu.violated_constraints.insert(cstr_idx);
+      cuopt_assert(fj_cpu.satisfied_constraints.count(cstr_idx) == 1, "");
+      fj_cpu.satisfied_constraints.erase(cstr_idx);
+    } else if (!(new_cost < -cstr_tolerance) && fj_cpu.violated_constraints.count(cstr_idx)) {
+      cuopt_assert(fj_cpu.satisfied_constraints.count(cstr_idx) == 0, "");
+      fj_cpu.violated_constraints.erase(cstr_idx);
+      fj_cpu.satisfied_constraints.insert(cstr_idx);
+    }
+
+    cuopt_assert(isfinite(delta), "delta should be finite");
     cuopt_assert(isfinite(fj_cpu.h_lhs[cstr_idx]), "assignment should be finite");
 
     // Invalidate related cached move scores
@@ -321,17 +346,22 @@ static void apply_move(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.h_incumbent_objective += fj_cpu.h_obj_coeffs[var_idx] * delta;
   if (fj_cpu.h_incumbent_objective < fj_cpu.h_best_objective &&
       fj_cpu.violated_constraints.empty()) {
-    cuopt_assert(fj_cpu.satisfied_constraints.size() == fj_cpu.view.pb.n_constraints, "");
-    fj_cpu.h_best_objective =
-      fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
-    fj_cpu.h_best_assignment = fj_cpu.h_assignment;
-    CUOPT_LOG_TRACE("%sCPUFJ: new best objective: %g\n",
-                    fj_cpu.log_prefix.c_str(),
-                    fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective));
-    if (fj_cpu.improvement_callback) {
-      fj_cpu.improvement_callback(fj_cpu.h_best_objective, fj_cpu.h_assignment);
+    // recompute the LHS values to cancel out accumulation errors, then check if feasibility remains
+    recompute_lhs(fj_cpu);
+
+    if (fj_cpu.violated_constraints.empty() && check_variable_feasibility<i_t, f_t>(fj_cpu.view)) {
+      cuopt_assert(fj_cpu.satisfied_constraints.size() == fj_cpu.view.pb.n_constraints, "");
+      fj_cpu.h_best_objective =
+        fj_cpu.h_incumbent_objective - fj_cpu.settings.parameters.breakthrough_move_epsilon;
+      fj_cpu.h_best_assignment = fj_cpu.h_assignment;
+      CUOPT_LOG_TRACE("%sCPUFJ: new best objective: %g\n",
+                      fj_cpu.log_prefix.c_str(),
+                      fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective));
+      if (fj_cpu.improvement_callback) {
+        fj_cpu.improvement_callback(fj_cpu.h_best_objective, fj_cpu.h_assignment);
+      }
+      fj_cpu.feasible_found = true;
     }
-    fj_cpu.feasible_found = true;
   }
 
   i_t tabu_tenure = fj_cpu.settings.parameters.tabu_tenure_min +
@@ -455,14 +485,16 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
       cuopt_assert(move.var_idx < fj_cpu.h_assignment.size(), "move.var_idx is out of bounds");
       cuopt_assert(move.var_idx >= 0, "move.var_idx is not positive");
 
-      // candidate_moves.insert(move);
-      fj_staged_score_t score;
-      score                      = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
-      fj_cpu.cached_mtm_moves[i] = std::make_pair(delta, score);
+      auto [score, infeasibility] = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
+      fj_cpu.cached_mtm_moves[i]  = std::make_pair(delta, score);
       fj_cpu.miss_count++;
-      if (best_score < score) {
-        best_score = score;
-        best_move  = move;
+      // reject this move if it would increase the target variable to a numerically unstable value
+      if (fj_cpu.view.move_numerically_stable(
+            val, new_val, infeasibility, fj_cpu.total_violations)) {
+        if (best_score < score) {
+          best_score = score;
+          best_move  = move;
+        }
       }
     }
   }
@@ -487,14 +519,17 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move(
 
       if (tabu_check(fj_cpu, var_idx, delta)) continue;
 
-      fj_staged_score_t score = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
+      auto [score, infeasibility] = compute_score<i_t, f_t>(fj_cpu, var_idx, delta);
 
       cuopt_assert(fj_cpu.view.pb.check_variable_within_bounds(var_idx, new_val), "");
       cuopt_assert(isfinite(delta), "");
 
-      if (best_score < score) {
-        best_score = score;
-        best_move  = move;
+      if (fj_cpu.view.move_numerically_stable(
+            old_val, new_val, infeasibility, fj_cpu.total_violations)) {
+        if (best_score < score) {
+          best_score = score;
+          best_move  = move;
+        }
       }
     }
   }
@@ -537,25 +572,28 @@ static thrust::tuple<fj_move_t, fj_staged_score_t> find_mtm_move_sat(
 }
 
 template <typename i_t, typename f_t>
-static void init_lhs(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
+static void recompute_lhs(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
   cuopt_assert(fj_cpu.h_lhs.size() == fj_cpu.view.pb.n_constraints, "h_lhs size mismatch");
 
   fj_cpu.violated_constraints.clear();
   fj_cpu.satisfied_constraints.clear();
+  fj_cpu.total_violations = 0;
   for (i_t cstr_idx = 0; cstr_idx < fj_cpu.view.pb.n_constraints; ++cstr_idx) {
     auto [offset_begin, offset_end] = fj_cpu.view.pb.range_for_constraint(cstr_idx);
-    f_t lhs                         = 0;
-    for (i_t i = offset_begin; i < offset_end; ++i) {
-      lhs += fj_cpu.h_coefficients[i] * fj_cpu.h_assignment[fj_cpu.h_variables[i]];
-    }
-
-    fj_cpu.h_lhs[cstr_idx] = lhs;
+    auto delta_it =
+      thrust::make_transform_iterator(thrust::make_counting_iterator(0), [fj = fj_cpu.view](i_t j) {
+        return fj.pb.coefficients[j] * fj.incumbent_assignment[fj.pb.variables[j]];
+      });
+    fj_cpu.h_lhs[cstr_idx] =
+      fj_kahan_babushka_neumaier_sum<i_t, f_t>(delta_it + offset_begin, delta_it + offset_end);
+    fj_cpu.h_lhs_sumcomp[cstr_idx] = 0;
 
     f_t cstr_tolerance = fj_cpu.view.get_corrected_tolerance(cstr_idx);
-    f_t new_cost       = fj_cpu.view.excess_score(cstr_idx, lhs);
+    f_t new_cost       = fj_cpu.view.excess_score(cstr_idx, fj_cpu.h_lhs[cstr_idx]);
     if (new_cost < -cstr_tolerance) {
       fj_cpu.violated_constraints.insert(cstr_idx);
+      fj_cpu.total_violations += new_cost;
     } else {
       fj_cpu.satisfied_constraints.insert(cstr_idx);
     }
@@ -695,7 +733,7 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
     fj_cpu.h_assignment[var_idx] = val;
   }
 
-  init_lhs(fj_cpu);
+  recompute_lhs(fj_cpu);
 }
 
 template <typename i_t, typename f_t>
@@ -759,6 +797,8 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.view.incumbent_assignment =
     raft::device_span<f_t>(fj_cpu.h_assignment.data(), fj_cpu.h_assignment.size());
   fj_cpu.view.incumbent_lhs = raft::device_span<f_t>(fj_cpu.h_lhs.data(), fj_cpu.h_lhs.size());
+  fj_cpu.view.incumbent_lhs_sumcomp =
+    raft::device_span<f_t>(fj_cpu.h_lhs_sumcomp.data(), fj_cpu.h_lhs_sumcomp.size());
   fj_cpu.view.tabu_nodec_until =
     raft::device_span<i_t>(fj_cpu.h_tabu_nodec_until.data(), fj_cpu.h_tabu_nodec_until.size());
   fj_cpu.view.tabu_noinc_until =
@@ -824,7 +864,7 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   fj_cpu.var_bitmap.resize(fj_cpu.view.pb.n_variables, false);
   fj_cpu.iter_mtm_vars.reserve(fj_cpu.view.pb.n_variables);
 
-  init_lhs(fj_cpu);
+  recompute_lhs(fj_cpu);
 }
 
 template <typename i_t, typename f_t>
@@ -914,6 +954,16 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_l
       break;
     }
 
+    // periodically recompute the LHS and violation scores
+    // to correct any accumulated numerical errors
+    cuopt_assert(fj_cpu.settings.parameters.lhs_refresh_period > 0,
+                 "lhs_refresh_period should be positive");
+    if (fj_cpu.iterations % fj_cpu.settings.parameters.lhs_refresh_period == 0 ||
+        fj_cpu.trigger_early_lhs_recomputation) {
+      recompute_lhs(fj_cpu);
+      fj_cpu.trigger_early_lhs_recomputation = false;
+    }
+
     fj_move_t move          = fj_move_t{-1, 0};
     fj_staged_score_t score = fj_staged_score_t::invalid();
     // Perform lift moves
@@ -951,6 +1001,13 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_l
       f_t delta   = move.var_idx >= 0 ? move.value : 0;
       apply_move(fj_cpu, var_idx, delta, true);
       ++local_mins;
+    }
+
+    // number of violated constraints is usually small (<100). recomputing from all LHSs is cheap
+    // and more numerically precise than just adding to the accumulator in apply_move
+    fj_cpu.total_violations = 0;
+    for (auto cstr_idx : fj_cpu.violated_constraints) {
+      fj_cpu.total_violations += fj_cpu.view.excess_score(cstr_idx, fj_cpu.h_lhs[cstr_idx]);
     }
     if (fj_cpu.iterations % fj_cpu.log_interval == 0) {
       CUOPT_LOG_TRACE(

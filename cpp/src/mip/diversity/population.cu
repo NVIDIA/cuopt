@@ -211,7 +211,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
       sol.copy_new_assignment(h_entry.solution);
       sol.compute_feasibility();
       if (!sol.get_feasible()) {
-        CUOPT_LOG_ERROR(
+        CUOPT_LOG_DEBUG(
           "External solution %d is infeasible, excess %g, obj %g, int viol %g, var viol %g, cstr "
           "viol %g, n_feasible %d/%d, integers %d/%d",
           counter,

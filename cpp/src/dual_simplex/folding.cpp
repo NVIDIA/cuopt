@@ -521,7 +521,7 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
       // See if we need to split the column colors
       for (i_t color : colors_to_split) {
         split_colors(color,
-                     refining_color.color,
+                     colors[refining_color_index].color,
                      kCol,
                      vertex_to_sum,
                      color_sums,
@@ -543,7 +543,7 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
       // See if we need to split the row colors
       for (i_t color : colors_to_split) {
         split_colors(color,
-                     refining_color.color,
+                     colors[refining_color_index].color,
                      kRow,
                      vertex_to_sum,
                      color_sums,

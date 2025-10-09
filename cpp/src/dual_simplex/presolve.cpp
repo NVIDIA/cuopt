@@ -1099,7 +1099,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   for (i_t j = 0; j < problem.num_cols; j++) {
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
-  if (free_variables > 0) {
+  if (settings.barrier_presolve && free_variables > 0) {
 #ifdef PRINT_INFO
     settings.log.printf("%d free variables\n", free_variables);
 #endif
@@ -1411,6 +1411,7 @@ void uncrush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
 
 template <typename i_t, typename f_t>
 void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
                       const std::vector<f_t>& crushed_x,
                       const std::vector<f_t>& crushed_y,
                       const std::vector<f_t>& crushed_z,
@@ -1452,15 +1453,15 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     matrix_transpose_vector_multiply(presolve_info.folding_info.C_s, 1.0, crushed_y, 0.0, ytilde);
     matrix_transpose_vector_multiply(presolve_info.folding_info.D_s, 1.0, crushed_z, 0.0, ztilde);
 
-    printf("|| y ||_2 = %e\n", vector_norm2<i_t, f_t>(ytilde));
-    printf("|| z ||_2 = %e\n", vector_norm2<i_t, f_t>(ztilde));
+    settings.log.debug("|| y ||_2 = %e\n", vector_norm2<i_t, f_t>(ytilde));
+    settings.log.debug("|| z ||_2 = %e\n", vector_norm2<i_t, f_t>(ztilde));
     std::vector<f_t> dual_residual(previous_cols);
     for (i_t j = 0; j < previous_cols; j++) {
       dual_residual[j] = ztilde[j] - presolve_info.folding_info.c_tilde[j];
     }
     matrix_transpose_vector_multiply(
       presolve_info.folding_info.A_tilde, 1.0, ytilde, 1.0, dual_residual);
-    printf("Unfolded dual residual = %e\n", vector_norm_inf<i_t, f_t>(dual_residual));
+    settings.log.printf("Unfolded dual residual = %e\n", vector_norm_inf<i_t, f_t>(dual_residual));
 
     // Now we need to map the solution back to the original problem
     // minimize c^T x
@@ -1475,74 +1476,84 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     input_z.resize(previous_cols - presolve_info.folding_info.num_upper_bounds);
   }
 
-  if (presolve_info.removed_constraints.size() == 0) {
-    uncrushed_y = input_y;
-  } else {
-    printf("Handling removed constraints %d\n", presolve_info.removed_constraints.size());
-    // We removed some constraints, so we need to map the crushed solution back to the original
-    // constraints
-    const i_t m =
-      presolve_info.removed_constraints.size() + presolve_info.remaining_constraints.size();
-    uncrushed_y.resize(m);
-
-    i_t k = 0;
-    for (const i_t i : presolve_info.remaining_constraints) {
-      uncrushed_y[i] = input_y[k];
-      k++;
+  const i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
+  if (num_free_variables > 0) {
+    settings.log.printf("Post-solve: Handling free variables %d\n", num_free_variables);
+    // We added free variables so we need to map the crushed solution back to the original variables
+    for (i_t k = 0; k < 2 * num_free_variables; k += 2) {
+      const i_t u = presolve_info.free_variable_pairs[k];
+      const i_t v = presolve_info.free_variable_pairs[k + 1];
+      input_x[u] -= input_x[v];
     }
-    for (const i_t i : presolve_info.removed_constraints) {
-      uncrushed_y[i] = 0.0;
-    }
+    input_z.resize(input_z.size() - num_free_variables);
+    input_x.resize(input_x.size() - num_free_variables);
   }
 
-  if (presolve_info.removed_variables.size() == 0) {
-    uncrushed_x = input_x;
-    uncrushed_z = input_z;
-  } else {
-    printf("Handling removed variables %d\n", presolve_info.removed_variables.size());
+  if (presolve_info.removed_variables.size() > 0) {
+    settings.log.printf("Post-solve: Handling removed variables %d\n",
+                        presolve_info.removed_variables.size());
     // We removed some variables, so we need to map the crushed solution back to the original
     // variables
     const i_t n = presolve_info.removed_variables.size() + presolve_info.remaining_variables.size();
-    uncrushed_x.resize(n);
-    uncrushed_z.resize(n);
+    std::vector<f_t> input_x_copy = input_x;
+    std::vector<f_t> input_z_copy = input_z;
+    input_x_copy.resize(n);
+    input_z_copy.resize(n);
 
     i_t k = 0;
     for (const i_t j : presolve_info.remaining_variables) {
-      uncrushed_x[j] = input_x[k];
-      uncrushed_z[j] = input_z[k];
+      input_x_copy[j] = input_x[k];
+      input_z_copy[j] = input_z[k];
       k++;
     }
 
     k = 0;
     for (const i_t j : presolve_info.removed_variables) {
-      uncrushed_x[j] = presolve_info.removed_values[k];
-      uncrushed_z[j] = presolve_info.removed_reduced_costs[k];
+      input_x_copy[j] = presolve_info.removed_values[k];
+      input_z_copy[j] = presolve_info.removed_reduced_costs[k];
       k++;
     }
+    input_x = input_x_copy;
+    input_z = input_z_copy;
   }
 
-  const i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
-  if (num_free_variables > 0) {
-    printf("Handling free variables %d\n", num_free_variables);
-    // We added free variables so we need to map the crushed solution back to the original variables
-    for (i_t k = 0; k < 2 * num_free_variables; k += 2) {
-      const i_t u = presolve_info.free_variable_pairs[k];
-      const i_t v = presolve_info.free_variable_pairs[k + 1];
-      uncrushed_x[u] -= uncrushed_x[v];
+  if (presolve_info.removed_constraints.size() > 0) {
+    settings.log.printf("Post-solve: Handling removed constraints %d\n",
+                        presolve_info.removed_constraints.size());
+    // We removed some constraints, so we need to map the crushed solution back to the original
+    // constraints
+    const i_t m =
+      presolve_info.removed_constraints.size() + presolve_info.remaining_constraints.size();
+    std::vector<f_t> input_y_copy = input_y;
+    input_y_copy.resize(m);
+
+    i_t k = 0;
+    for (const i_t i : presolve_info.remaining_constraints) {
+      input_y_copy[i] = input_y[k];
+      k++;
     }
-    const i_t n = uncrushed_x.size();
-    uncrushed_x.resize(n - num_free_variables);
-    uncrushed_z.resize(n - num_free_variables);
+    for (const i_t i : presolve_info.removed_constraints) {
+      input_y_copy[i] = 0.0;
+    }
+    input_y = input_y_copy;
   }
 
   if (presolve_info.removed_lower_bounds.size() > 0) {
-    printf("Handling removed lower bounds %d\n", presolve_info.removed_lower_bounds.size());
+    settings.log.printf("Post-solve: Handling removed lower bounds %d\n",
+                        presolve_info.removed_lower_bounds.size());
     // We removed some lower bounds so we need to map the crushed solution back to the original
     // variables
-    for (i_t j = 0; j < uncrushed_x.size(); j++) {
-      uncrushed_x[j] += presolve_info.removed_lower_bounds[j];
+    for (i_t j = 0; j < input_x.size(); j++) {
+      input_x[j] += presolve_info.removed_lower_bounds[j];
     }
   }
+  assert(uncrushed_x.size() == input_x.size());
+  assert(uncrushed_y.size() == input_y.size());
+  assert(uncrushed_z.size() == input_z.size());
+
+  uncrushed_x = input_x;
+  uncrushed_y = input_y;
+  uncrushed_z = input_z;
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
@@ -1585,6 +1596,7 @@ template void uncrush_dual_solution<int, double>(const user_problem_t<int, doubl
                                                  std::vector<double>& user_z);
 
 template void uncrush_solution<int, double>(const presolve_info_t<int, double>& presolve_info,
+                                            const simplex_solver_settings_t<int, double>& settings,
                                             const std::vector<double>& crushed_x,
                                             const std::vector<double>& crushed_y,
                                             const std::vector<double>& crushed_z,

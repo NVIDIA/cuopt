@@ -180,6 +180,7 @@ void uncrush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
 
 template <typename i_t, typename f_t>
 void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
                       const std::vector<f_t>& crushed_x,
                       const std::vector<f_t>& crushed_y,
                       const std::vector<f_t>& crushed_z,

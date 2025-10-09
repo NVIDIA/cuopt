@@ -868,8 +868,8 @@ class iteration_data_t {
       return chol->solve(d_b, d_x);
     } else {
       // TMP until this is ported to the GPU
-      dense_vector_t<i_t, f_t> b = host_copy(d_b);
-      dense_vector_t<i_t, f_t> x = host_copy(d_x);
+      dense_vector_t<i_t, f_t> b = host_copy(d_b, stream_view_);
+      dense_vector_t<i_t, f_t> x = host_copy(d_x, stream_view_);
 
       i_t out = solve_adat(b, x);
 
@@ -1028,7 +1028,7 @@ class iteration_data_t {
       }
     }
 
-    std::vector<i_t> histogram_row(m, 0);
+    std::vector<i_t> histogram_row(n, 0);
     max_row_nz = 0;
     for (i_t k = 0; k < m; k++) {
       histogram_row[row_nz[k]]++;
@@ -1619,7 +1619,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   }
 
   dense_vector_t<i_t, f_t> dual_res(lp.num_cols);
-  if (1) {
+  float64_t epsilon_adjust = 10.0;
+  if (settings.barrier_dual_initial_point == -1 || settings.barrier_dual_initial_point == 0) {
     // Use the dual starting point suggested by the paper
     // On Implementing Mehrotra’s Predictor–Corrector Interior-Point Method for Linear Programming
     // Irvin J. Lustig, Roy E. Marsten, and David F. Shanno
@@ -1686,6 +1687,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     data.gather_upper_bounds(data.z, data.v);
     data.v.multiply_scalar(-1.0);
 
+    data.v.ensure_positive(epsilon_adjust);
+    data.z.ensure_positive(epsilon_adjust);
   } else {
     // First compute rhs = A*Dinv*c
     dense_vector_t<i_t, f_t> rhs(lp.num_rows);
@@ -1716,6 +1719,9 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     // v = -E'*z
     data.gather_upper_bounds(data.z, data.v);
     data.v.multiply_scalar(-1.0);
+
+    data.v.ensure_positive(epsilon_adjust);
+    data.z.ensure_positive(epsilon_adjust);
   }
 
   // Verify A'*y + z - E*v = c
@@ -1738,11 +1744,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   settings.log.printf("||A^T y + z - E*v - c ||: %e\n", vector_norm2<i_t, f_t>(data.dual_residual));
 #endif
   // Make sure (w, x, v, z) > 0
-  float64_t epsilon_adjust = 10.0;
   data.w.ensure_positive(epsilon_adjust);
   data.x.ensure_positive(epsilon_adjust);
-  // data.v.ensure_positive(epsilon_adjust);
-  // data.z.ensure_positive(epsilon_adjust);
 #ifdef PRINT_INFO
   settings.log.printf("min v %e min z %e\n", data.v.minimum(), data.z.minimum());
 #endif
