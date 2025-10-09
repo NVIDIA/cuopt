@@ -180,6 +180,7 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_ORDERING
 .. doxygendefine:: CUOPT_ELIMINATE_DENSE_COLUMNS
 .. doxygendefine:: CUOPT_CUDSS_DETERMINISTIC
+.. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT
 .. doxygendefine:: CUOPT_DUAL_POSTSOLVE
 .. doxygendefine:: CUOPT_SOLUTION_FILE
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
