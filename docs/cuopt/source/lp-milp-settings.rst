@@ -254,13 +254,13 @@ cuDSS Deterministic Mode
 Dual Initial Point
 """"""""""""""""""
 
-``CUOPT_BARRIER_DUAL_INITIAL_POINT`` controls the method used to compute the dual initial point for the barrier solver. The choice of initial point can affect convergence speed and numerical stability.
+``CUOPT_BARRIER_DUAL_INITIAL_POINT`` controls the method used to compute the dual initial point for the barrier solver. The choice of initial point will affect the number of iterations performed by barrier.
 
 * ``-1``: Automatic (default) - cuOpt selects the best method
-* ``0``: Use the Lustig-Marsten-Shanno initial point - a heuristic approach based on the paper "On Implementing Mehrotra's Predictor–Corrector Interior-Point Method for Linear Programming" (SIAM Journal on Optimization, 1992)
-* ``1``: Use initial point from dual least squares problem - solves a least squares problem to compute a dual solution that satisfies the dual feasibility constraints
+* ``0``: Use an initial point from a heuristic approach based on the paper "On Implementing Mehrotra's Predictor–Corrector Interior-Point Method for Linear Programming" (SIAM J. Optimization, 1992) by Lustig, Martsten, Shanno.
+* ``1``: Use an initial point from solving a least squares problem that minimizes the norms of the dual variables and reduced costs while statisfying the dual equality constraints.
 
-.. note:: the default value is ``-1`` (automatic). When set to automatic, the behavior is equivalent to option ``0``.
+.. note:: the default value is ``-1`` (automatic). 
 
 Absolute Primal Tolerance
 ^^^^^^^^^^^^^^^^^^^^^^^^^
