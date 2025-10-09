@@ -1536,10 +1536,12 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   problem.lower     = std::vector<f_t>(reduced_cols, 0.0);
   problem.upper     = std::vector<f_t>(reduced_cols, inf);
 
-  presolve_info.folding_info.c_tilde          = c_tilde;
-  presolve_info.folding_info.A_tilde          = A_tilde;
-  presolve_info.folding_info.is_folded        = true;
-  presolve_info.folding_info.num_upper_bounds = nz_ub;
+  presolve_info.folding_info.c_tilde                      = c_tilde;
+  presolve_info.folding_info.A_tilde                      = A_tilde;
+  presolve_info.folding_info.is_folded                    = true;
+  presolve_info.folding_info.num_upper_bounds             = nz_ub;
+  presolve_info.folding_info.previous_free_variable_pairs = presolve_info.free_variable_pairs;
+  presolve_info.free_variable_pairs.clear();
 
   settings.log.printf("Folding: time %.2f seconds\n", toc(start_time));
 
