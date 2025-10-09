@@ -34,8 +34,6 @@ from datetime import date, datetime
 
 from dateutil.relativedelta import relativedelta
 
-from raft_dask.common import Comms, local_handle
-
 from cuopt.routing.assignment import Assignment
 from cuopt.utilities import type_cast
 
@@ -161,14 +159,11 @@ cdef class DataModel:
     cdef unique_ptr[data_model_view_t[int, float]] c_data_model_view
     cdef unique_ptr[handle_t] handle_ptr
 
-    def __init__(self, int num_locations, int fleet_size, int n_orders=-1,
-                 session_id=None):
+    def __init__(self, int num_locations, int fleet_size, int n_orders=-1):
         cdef handle_t* handle_ = <handle_t*><size_t>NULL
-        if session_id is None:
-            self.handle_ptr.reset(new handle_t())
-            handle_ = self.handle_ptr.get()
-        else:
-            handle_ = <handle_t*><size_t>local_handle(session_id).getHandle()
+
+        self.handle_ptr.reset(new handle_t())
+        handle_ = self.handle_ptr.get()
 
         self.c_data_model_view.reset(new data_model_view_t[int, float](
             handle_,
