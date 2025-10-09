@@ -45,7 +45,6 @@ Source = "https://github.com/nvidia/cuopt"
 
 [project.scripts]
 cuopt_sh = "cuopt_sh_client.cuopt_sh:main"
-cuopt_web_sh = "cuopt_sh_client.cuopt_web_hosted_sh:main"
 
 [tool.setuptools]
 zip-safe = false
