@@ -654,5 +654,3 @@ def test_barrier_solver_settings(test_name, settings_config):
         assert (
             c.Slack >= -1e-6
         ), f"Negative slack for {c.getConstraintName()} in {test_name}"
-
-    print(f"✓ Test passed: {test_name}\n")
