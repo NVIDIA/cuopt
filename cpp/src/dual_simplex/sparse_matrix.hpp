@@ -103,7 +103,7 @@ class csc_matrix_t {
   void print_matrix(FILE* fid) const;
 
   // Ensures no repeated row indices within a column
-  void check_matrix() const;
+  i_t check_matrix() const;
 
   // Writes the matrix to a file in Matrix Market format
   void write_matrix_market(FILE* fid) const;
