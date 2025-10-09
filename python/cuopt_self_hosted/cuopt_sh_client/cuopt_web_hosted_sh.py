@@ -48,7 +48,6 @@ def create_cuopt_client(args):
     # Check if web-hosted parameters are provided
     endpoint = getattr(args, 'endpoint', None)
     api_key = getattr(args, 'api_key', None)
-    bearer_token = getattr(args, 'bearer_token', None)
     
     # Validate parameter combinations
     if endpoint and (args.ip != ip_default or args.port != port_default):
@@ -58,9 +57,9 @@ def create_cuopt_client(args):
             UserWarning
         )
     
-    if (api_key or bearer_token) and not endpoint:
+    if api_key and not endpoint:
         raise ValueError(
-            "API key or bearer token provided but no endpoint specified. "
+            "API key provided but no endpoint specified. "
             "Web-hosted authentication requires an endpoint URL. "
             "Use -e/--endpoint to specify the service endpoint."
         )
@@ -70,7 +69,6 @@ def create_cuopt_client(args):
         return create_client(
             endpoint=endpoint,
             api_key=api_key,
-            bearer_token=bearer_token,
             ip=args.ip,
             port=args.port,
             use_https=args.ssl,
@@ -316,8 +314,6 @@ def solve(args):
                 # Add authentication parameters if present
                 if getattr(args, 'api_key', None):
                     repoll += f"--api-key '{args.api_key}' "
-                elif getattr(args, 'bearer_token', None):
-                    repoll += f"--bearer-token '{args.bearer_token}' "
                 
                 status = repoll + "-st "
                 repoll += solve_result["reqId"]
@@ -366,12 +362,11 @@ Examples:
   # Web-hosted with endpoint URL
   cuopt_web_sh -e https://api.nvidia.com/cuopt/v1 --api-key YOUR_KEY problem.json
   
-  # Web-hosted with bearer token
-  cuopt_web_sh -e https://inference.nvidia.com/cuopt --bearer-token YOUR_TOKEN problem.json
+  # Web-hosted with API key (sent as Bearer token)
+  cuopt_web_sh -e https://inference.nvidia.com/cuopt --api-key YOUR_API_KEY problem.json
   
 Environment Variables:
-  CUOPT_API_KEY      - API key for authentication
-  CUOPT_BEARER_TOKEN - Bearer token for authentication
+  CUOPT_API_KEY      - API key for authentication (sent as Bearer token)
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -413,12 +408,7 @@ Environment Variables:
     web_group.add_argument(
         "--api-key",
         type=str,
-        help="API key for authentication. Can also be set via CUOPT_API_KEY environment variable.",
-    )
-    web_group.add_argument(
-        "--bearer-token",
-        type=str,
-        help="Bearer token for authentication. Can also be set via CUOPT_BEARER_TOKEN environment variable.",
+        help="API key for authentication. Will be sent as Bearer token. Can also be set via CUOPT_API_KEY environment variable.",
     )
     
     # Legacy self-hosted parameters

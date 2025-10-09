@@ -43,11 +43,8 @@ class CuOptServiceWebHostedClient(CuOptServiceSelfHostClient):
         - "https://inference.nvidia.com/cuopt"
         - "http://my-cuopt-service.com:8080/api"
     api_key : str, optional
-        API key for authentication. Can also be set via CUOPT_API_KEY
-        environment variable.
-    bearer_token : str, optional
-        Bearer token for authentication. Can also be set via CUOPT_BEARER_TOKEN
-        environment variable.
+        API key for authentication. Will be sent as Bearer token in Authorization header.
+        Can also be set via CUOPT_API_KEY environment variable.
     base_path : str, optional
         Base path to append to the endpoint if not included in endpoint URL.
         Defaults to "/cuopt" if not specified in endpoint.
@@ -62,7 +59,6 @@ class CuOptServiceWebHostedClient(CuOptServiceSelfHostClient):
         self,
         endpoint: str,
         api_key: Optional[str] = None,
-        bearer_token: Optional[str] = None,
         base_path: Optional[str] = None,
         self_signed_cert: str = "",
         **kwargs
@@ -72,7 +68,6 @@ class CuOptServiceWebHostedClient(CuOptServiceSelfHostClient):
             
         # Handle authentication from environment variables
         self.api_key = api_key or os.getenv("CUOPT_API_KEY")
-        self.bearer_token = bearer_token or os.getenv("CUOPT_BEARER_TOKEN")
         
         # Parse endpoint URL
         self._parsed_endpoint = self._parse_endpoint_url(endpoint, base_path)
@@ -137,9 +132,22 @@ class CuOptServiceWebHostedClient(CuOptServiceSelfHostClient):
         }
         
     def _construct_endpoint_urls(self):
-        """Construct service URLs from parsed endpoint."""
+        """Construct service URLs from parsed endpoint.
+        
+        For web-hosted cuOpt services (like NVIDIA's API), the endpoint
+        URL is typically the complete service endpoint that handles all
+        operations. Unlike self-hosted services that have separate paths
+        for /request, /log, /solution, web-hosted APIs often use a single
+        endpoint for all operations.
+        """
         base_url = self._parsed_endpoint["full_url"]
-        self.request_url = urljoin(base_url + "/", "request")
+        
+        # For web-hosted services, use the provided endpoint directly
+        # This matches the curl example which POSTs directly to the endpoint
+        self.request_url = base_url
+        
+        # Log and solution URLs may still follow traditional patterns
+        # but many web-hosted APIs use the same endpoint for all operations
         self.log_url = urljoin(base_url + "/", "log")
         self.solution_url = urljoin(base_url + "/", "solution")
         
@@ -148,9 +156,7 @@ class CuOptServiceWebHostedClient(CuOptServiceSelfHostClient):
         headers = {}
         
         if self.api_key:
-            headers["X-API-Key"] = self.api_key
-        elif self.bearer_token:
-            headers["Authorization"] = f"Bearer {self.bearer_token}"
+            headers["Authorization"] = f"Bearer {self.api_key}"
             
         return headers
         
@@ -182,7 +188,7 @@ class CuOptServiceWebHostedClient(CuOptServiceSelfHostClient):
         
         # Handle authentication errors
         if response.status_code == 401:
-            raise ValueError("Authentication failed. Please check your API key or bearer token.")
+            raise ValueError("Authentication failed. Please check your API key.")
         elif response.status_code == 403:
             raise ValueError("Access forbidden. Please check your permissions.")
             
@@ -192,7 +198,6 @@ class CuOptServiceWebHostedClient(CuOptServiceSelfHostClient):
 def create_client(
     endpoint: Optional[str] = None,
     api_key: Optional[str] = None,
-    bearer_token: Optional[str] = None,
     **kwargs
 ) -> Union[CuOptServiceWebHostedClient, CuOptServiceSelfHostClient]:
     """
@@ -207,9 +212,7 @@ def create_client(
         Full endpoint URL. If provided, creates a web-hosted client.
         Required for web-hosted client creation.
     api_key : str, optional
-        API key for web-hosted client authentication
-    bearer_token : str, optional
-        Bearer token for web-hosted client authentication
+        API key for web-hosted client authentication. Will be sent as Bearer token.
     **kwargs
         Additional parameters passed to the selected client
         
@@ -234,13 +237,12 @@ def create_client(
         return CuOptServiceWebHostedClient(
             endpoint=endpoint,
             api_key=api_key,
-            bearer_token=bearer_token,
             **kwargs
         )
-    elif api_key or bearer_token:
+    elif api_key:
         # Authentication provided but no endpoint - this is an error
         raise ValueError(
-            "api_key or bearer_token provided but no endpoint specified. "
+            "api_key provided but no endpoint specified. "
             "Web-hosted client requires an endpoint URL. "
             "Use CuOptServiceSelfHostClient for ip/port connections."
         )
