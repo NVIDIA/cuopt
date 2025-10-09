@@ -584,7 +584,8 @@ __launch_bounds__(TPB_loadbalance, 16) __global__
             // value
             if (!fj.move_numerically_stable(fj.incumbent_assignment[var_idx],
                                             fj.incumbent_assignment[var_idx] + delta,
-                                            base_feas)) {
+                                            base_feas,
+                                            *fj.violation_score)) {
               fj.jump_move_scores[var_idx] = fj_t<i_t, f_t>::move_score_t::invalid();
             } else if (fj.jump_move_scores[var_idx] < candidate.score
                        // determinism for ease of debugging

@@ -20,6 +20,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
     CUOPT_AUGMENTED,
+    CUOPT_BARRIER_DUAL_INITIAL_POINT,
     CUOPT_CROSSOVER,
     CUOPT_CUDSS_DETERMINISTIC,
     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
@@ -390,6 +391,9 @@ class SolverSettings:
             "folding": self.get_parameter(CUOPT_FOLDING),
             "dualize": self.get_parameter(CUOPT_DUALIZE),
             "ordering": self.get_parameter(CUOPT_ORDERING),
+            "barrier_dual_initial_point": self.get_parameter(
+                CUOPT_BARRIER_DUAL_INITIAL_POINT
+            ),
             "eliminate_dense_columns": self.get_parameter(
                 CUOPT_ELIMINATE_DENSE_COLUMNS
             ),

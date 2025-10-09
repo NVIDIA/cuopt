@@ -2884,6 +2884,9 @@ dual::status_t dual_phase2(i_t phase,
           settings.log.printf("Failed to repair basis. Iteration %d. %d deficient columns.\n",
                               iter,
                               static_cast<int>(deficient.size()));
+#ifdef CHECK_L_FACTOR
+          if (L.check_matrix() == -1) { settings.log.printf("Bad L after basis repair\n"); }
+#endif
           if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
           settings.threshold_partial_pivoting_tol = 1.0;
           count++;
@@ -2913,6 +2916,9 @@ dual::status_t dual_phase2(i_t phase,
         settings.log.printf("Successfully repaired basis. Iteration %d\n", iter);
       }
       reorder_basic_list(q, basic_list);
+#ifdef CHECK_L_FACTOR
+      if (L.check_matrix() == -1) { settings.log.printf("Bad L factor\n"); }
+#endif
       ft.reset(L, U, p);
       phase2::reset_basis_mark(basic_list, nonbasic_list, basic_mark, nonbasic_mark);
       if (should_recompute_x) {
