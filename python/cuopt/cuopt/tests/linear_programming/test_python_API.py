@@ -627,7 +627,8 @@ def test_barrier_solver_settings(test_name, settings_config):
         Optimal objective: 1333.33
         xs = 0, xl = 66.67 (corner solution where constraint 1 is binding)
 
-    Args:
+    Args
+    ----
         test_name: Descriptive name for the test configuration
         settings_config: Dictionary of barrier solver parameters to set
     """

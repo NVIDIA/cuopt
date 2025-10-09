@@ -150,7 +150,8 @@ def test_sample_milp(
 
 # @pytest.mark.skip(reason="Skipping barrier solver options test")
 @pytest.mark.parametrize(
-    "folding, dualize, ordering, augmented, eliminate_dense, cudss_determ, dual_initial_point",
+    "folding, dualize, ordering, augmented, eliminate_dense, cudss_determ, "
+    "dual_initial_point",
     [
         # Test automatic settings (default)
         (-1, -1, -1, -1, True, False, -1),
@@ -185,8 +186,10 @@ def test_barrier_solver_options(
     - ordering: (-1) automatic, (0) cuDSS default, (1) AMD
     - augmented: (-1) automatic, (0) ADAT, (1) augmented system
     - eliminate_dense_columns: True to eliminate, False to not
-    - cudss_deterministic: True for deterministic, False for nondeterministic
-    - barrier_dual_initial_point: (-1) automatic, (0) Lustig-Marsten-Shanno, (1) dual least squares
+    - cudss_deterministic: True for deterministic, False for
+      nondeterministic
+    - barrier_dual_initial_point: (-1) automatic, (0) Lustig-Marsten-Shanno,
+      (1) dual least squares
     """
     data = get_std_data_for_lp()
 
