@@ -348,7 +348,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     cuopt::scope_guard([&]() { stats.total_solve_time = timer.elapsed_time(); });
   // after every change to the problem, we should resize all the relevant vars
   // we need to encapsulate that to prevent repetitions
-
+  recombine_stats.reset();
   ls.resize_vectors(*problem_ptr, problem_ptr->handle_ptr);
   ls.constraint_prop.bounds_update.resize(*problem_ptr);
   problem_ptr->check_problem_representation(true);
@@ -465,24 +465,14 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     return population.best_feasible();
   }
   run_fp_alone(sol);
-  population.update_weights();
-
-  if (timer.check_time_limit()) {
-    auto new_sol_vector = population.get_external_solutions();
-    population.add_solutions_from_vec(std::move(new_sol_vector));
-    return population.best_feasible();
-  }
-  main_loop();
-
+  auto new_sol_vector = population.get_external_solutions();
+  population.add_solutions_from_vec(std::move(new_sol_vector));
   return population.best_feasible();
 };
 
 template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::diversity_step()
+void diversity_manager_t<i_t, f_t>::diversity_step(i_t max_iterations_without_improvement)
 {
-  // TODO when the solver is faster, increase this number
-  const i_t max_iterations_without_improvement =
-    diversity_config.max_iterations_without_improvement;
   bool improved = true;
   while (improved) {
     int k    = max_iterations_without_improvement;
@@ -501,12 +491,13 @@ void diversity_manager_t<i_t, f_t>::diversity_step()
       constexpr bool tournament = true;
       auto [sol1, sol2]         = population.get_two_random(tournament);
       cuopt_assert(population.test_invariant(), "");
-      auto [lp_offspring, offspring] = recombine_and_local_search(sol1, sol2);
-      i_t inserted_pos_1             = population.add_solution(std::move(lp_offspring));
-      i_t inserted_pos_2             = population.add_solution(std::move(offspring));
+      auto [lp_offspring, offspring]        = recombine_and_local_search(sol1, sol2);
+      auto [inserted_pos_1, best_updated_1] = population.add_solution(std::move(lp_offspring));
+      auto [inserted_pos_2, best_updated_2] = population.add_solution(std::move(offspring));
+      if (best_updated_1 || best_updated_2) { recombine_stats.add_best_updated(); }
       cuopt_assert(population.test_invariant(), "");
-      if ((inserted_pos_1 != -1 && inserted_pos_1 <= 3) ||
-          (inserted_pos_2 != -1 && inserted_pos_2 <= 3)) {
+      if ((inserted_pos_1 != -1 && inserted_pos_1 <= 2) ||
+          (inserted_pos_2 != -1 && inserted_pos_2 <= 2)) {
         improved = true;
         recombine_stats.print();
         break;
@@ -583,57 +574,6 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(
       }
     }
   }
-}
-
-template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::main_loop()
-{
-  raft::common::nvtx::range fun_scope("main_loop");
-  population.start_threshold_adjustment();
-  recombine_stats.reset();
-  population.print();
-  while (true) {
-    if (check_b_b_preemption()) { break; }
-    CUOPT_LOG_DEBUG("Running a new step");
-    bool enough_solutions = regenerate_solutions();
-    if (!enough_solutions) {
-      // do a longer search on the best solution then exit
-      auto best_sol = population.is_feasible() ? population.best_feasible() : population.best();
-      ls.run_fj_until_timer(best_sol, population.weights, timer);
-      population.add_solution(std::move(best_sol));
-      CUOPT_LOG_WARN("Enough solutions couldn't be generated,exiting heuristics!");
-      break;
-    }
-    if (timer.check_time_limit()) { break; }
-    diversity_step();
-    if (timer.check_time_limit()) { break; }
-
-    if (diversity_config.halve_population) {
-      population.adjust_threshold(timer);
-      i_t prev_threshold = population.var_threshold;
-      population.halve_the_population();
-      auto new_solutions      = generate_more_solutions();
-      auto current_population = population.population_to_vector();
-      population.clear();
-      current_population.insert(current_population.end(),
-                                std::make_move_iterator(new_solutions.begin()),
-                                std::make_move_iterator(new_solutions.end()));
-      population.find_diversity(current_population, diversity_config.use_avg_diversity);
-      // if the threshold is lower than the threshold we progress with time
-      // set it to the higher threshold
-      population.add_solutions_from_vec(std::move(current_population));
-    } else {
-      // increase the threshold/decrease the diversity
-      population.adjust_threshold(timer);
-    }
-    // idea to try, we can average the weights of the new solutions
-    population.update_weights();
-    population.print();
-    if (timer.check_time_limit()) { break; }
-  }
-  auto new_sol_vector = population.get_external_solutions();
-  recombine_and_ls_with_all(new_sol_vector);
-  population.print();
 }
 
 template <typename i_t, typename f_t>

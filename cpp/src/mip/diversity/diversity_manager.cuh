@@ -60,7 +60,7 @@ class diversity_manager_t {
                              f_t time_limit,
                              bool random_start = true);
   void average_fj_weights(i_t i);
-  void diversity_step();
+  void diversity_step(i_t max_iterations_without_improvement);
   std::vector<solution_t<i_t, f_t>> generate_more_solutions();
   void add_user_given_solutions(std::vector<solution_t<i_t, f_t>>& initial_sol_vector);
   population_t<i_t, f_t>* get_population_pointer() { return &population; }

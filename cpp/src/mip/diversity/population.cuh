@@ -112,7 +112,7 @@ class population_t {
   /*! \brief { Add a solution to population. Similar solutions may be ejected from the pool. }
    *  \return { -1 = not inserted , others = inserted index}
    */
-  i_t add_solution(solution_t<i_t, f_t>&& sol);
+  std::pair<i_t, bool> add_solution(solution_t<i_t, f_t>&& sol);
   void add_external_solution(const std::vector<f_t>& solution,
                              f_t objective,
                              solution_origin_t origin);
@@ -166,6 +166,8 @@ class population_t {
   void adjust_weights_according_to_best_feasible();
 
   void start_threshold_adjustment();
+
+  void diversity_step(i_t max_iterations_without_improvement);
 
   // does some consistency tests
   bool test_invariant();

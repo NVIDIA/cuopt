@@ -637,6 +637,40 @@ void local_search_t<i_t, f_t>::resize_to_old_problem(problem_t<i_t, f_t>* old_pr
 }
 
 template <typename i_t, typename f_t>
+void local_search_t<i_t, f_t>::reset_alpha_and_save_solution(
+  solution_t<i_t, f_t>& solution,
+  problem_t<i_t, f_t>* old_problem_ptr,
+  population_t<i_t, f_t>* population_ptr,
+  i_t i,
+  i_t last_unimproved_iteration,
+  rmm::device_uvector<f_t>& best_solution,
+  f_t& best_objective)
+{
+  raft::common::nvtx::range fun_scope("reset_alpha_and_save_solution");
+  fp.config.alpha = default_alpha;
+  solution_t<i_t, f_t> solution_copy(solution);
+  solution_copy.problem_ptr = old_problem_ptr;
+  solution_copy.resize_to_problem();
+  population_ptr->add_solution(std::move(solution_copy));
+  auto new_sol_vector = population_ptr->get_external_solutions();
+  population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
+  population_ptr->update_weights();
+  if (!cutting_plane_added_for_active_run) {
+    solution.problem_ptr = &problem_with_objective_cut;
+    solution.resize_to_problem();
+    resize_to_new_problem();
+    cutting_plane_added_for_active_run = true;
+  }
+  save_solution_and_add_cutting_plane(
+    population_ptr->best_feasible(), best_solution, best_objective);
+  raft::copy(solution.assignment.data(),
+             best_solution.data(),
+             solution.assignment.size(),
+             solution.handle_ptr->get_stream());
+  population_ptr->print();
+}
+
+template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   solution_t<i_t, f_t>& solution,
   problem_t<i_t, f_t>* old_problem_ptr,
@@ -647,29 +681,24 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   f_t& best_objective)
 {
   raft::common::nvtx::range fun_scope("reset_alpha_and_run_recombiners");
-  fp.config.alpha = default_alpha;
-  solution_t<i_t, f_t> solution_copy(solution);
-  solution_copy.problem_ptr = old_problem_ptr;
-  solution_copy.resize_to_problem();
-  population_ptr->add_solution(std::move(solution_copy));
-  constexpr i_t iterations_for_stagnation = 3;
+  fp.config.alpha                                  = default_alpha;
+  constexpr i_t iterations_for_stagnation          = 3;
+  constexpr i_t max_iterations_without_improvement = 8;
   if (population_ptr->current_size() > 1 &&
       i - last_unimproved_iteration > iterations_for_stagnation) {
-    solution_t<i_t, f_t> best_feasible_copy(population_ptr->best_feasible());
-    population_ptr->run_all_recombiners(best_feasible_copy);
+    population_ptr->diversity_step(max_iterations_without_improvement);
+    population_ptr->print();
   }
   auto new_sol_vector = population_ptr->get_external_solutions();
   population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
-  if (!cutting_plane_added_for_active_run) {
-    fj.copy_weights(
-      population_ptr->weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
-    solution.problem_ptr = &problem_with_objective_cut;
-    solution.resize_to_problem();
-    resize_to_new_problem();
-    cutting_plane_added_for_active_run = true;
-  }
+  population_ptr->update_weights();
   save_solution_and_add_cutting_plane(
     population_ptr->best_feasible(), best_solution, best_objective);
+  // always continue with best solution
+  raft::copy(solution.assignment.data(),
+             best_solution.data(),
+             solution.assignment.size(),
+             solution.handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
@@ -702,13 +731,13 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     solution.resize_to_problem();
     resize_to_new_problem();
   }
-  i_t last_unimproved_iteration = 0;
+  i_t last_improved_iteration = 0;
   for (i_t i = 0; i < n_fp_iterations && !timer.check_time_limit(); ++i) {
     if (timer.check_time_limit()) {
       is_feasible = false;
       break;
     }
-    CUOPT_LOG_DEBUG("fp_loop it %d", i);
+    CUOPT_LOG_DEBUG("fp_loop it %d last_improved_iteration %d", i, last_improved_iteration);
     if (population_ptr->preempt_heuristic_solver_.load()) {
       CUOPT_LOG_DEBUG("Preempting heuristic solver!");
       break;
@@ -724,13 +753,14 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     if (is_feasible) {
       CUOPT_LOG_DEBUG("Found feasible in FP with obj %f. Continue with FJ!",
                       solution.get_objective());
-      reset_alpha_and_run_recombiners(solution,
-                                      old_problem_ptr,
-                                      population_ptr,
-                                      i,
-                                      last_unimproved_iteration,
-                                      best_solution,
-                                      best_objective);
+      reset_alpha_and_save_solution(solution,
+                                    old_problem_ptr,
+                                    population_ptr,
+                                    i,
+                                    last_improved_iteration,
+                                    best_solution,
+                                    best_objective);
+      last_improved_iteration = i;
     }
     // if not feasible, it means it is a cycle
     else {
@@ -746,15 +776,22 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
       if (is_feasible) {
         CUOPT_LOG_DEBUG("Found feasible during restart with obj %f. Continue with FJ!",
                         solution.get_objective());
+        reset_alpha_and_save_solution(solution,
+                                      old_problem_ptr,
+                                      population_ptr,
+                                      i,
+                                      last_improved_iteration,
+                                      best_solution,
+                                      best_objective);
+        last_improved_iteration = i;
+      } else {
         reset_alpha_and_run_recombiners(solution,
                                         old_problem_ptr,
                                         population_ptr,
                                         i,
-                                        last_unimproved_iteration,
+                                        last_improved_iteration,
                                         best_solution,
                                         best_objective);
-      } else {
-        last_unimproved_iteration = i;
       }
     }
   }

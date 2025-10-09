@@ -373,11 +373,12 @@ void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
 }
 
 template <typename i_t, typename f_t>
-i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
+std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
 {
   raft::common::nvtx::range fun_scope("add_solution");
   population_hash_map.insert(sol);
-  double sol_cost = sol.get_quality(weights);
+  double sol_cost   = sol.get_quality(weights);
+  bool best_updated = false;
   CUOPT_LOG_DEBUG("Adding solution with quality %f and objective %f n_integers %d!",
                   sol_cost,
                   sol.get_user_objective(),
@@ -391,12 +392,13 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
     solution_t<i_t, f_t> temp_sol(sol);
     solutions[0].second = std::move(temp_sol);
     indices[0].second   = sol_cost;
+    best_updated        = true;
   }
 
   // Fast reject
   if (indices.size() == max_solutions && indices.back().second <= sol_cost + OBJECTIVE_EPSILON) {
     CUOPT_LOG_TRACE("Rejecting solution objective is not better!");
-    return -1;
+    return std::make_pair(-1, best_updated);
   }
 
   // Find index best solution similar to sol (within the threshold radius) in the indices array
@@ -426,7 +428,7 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
     int inserted_pos = insert_index(std::pair<size_t, double>((size_t)hint, sol_cost));
     cuopt_assert(test_invariant(), "Population invariant doesn't hold");
     test_invariant();
-    return inserted_pos;
+    return std::make_pair(inserted_pos, best_updated);
 
   } else if (sol_cost + OBJECTIVE_EPSILON < indices[index].second) {
     CUOPT_LOG_TRACE("Better than similar solution, eradicating similar solutions!");
@@ -440,12 +442,12 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
     int inserted_pos = insert_index(std::pair<size_t, double>((size_t)free, sol_cost));
     cuopt_assert(test_invariant(), "Population invariant doesn't hold");
     test_invariant();
-    return inserted_pos;
+    return std::make_pair(inserted_pos, best_updated);
   }
   CUOPT_LOG_TRACE("Adding solution failed!");
   cuopt_assert(test_invariant(), "Population invariant doesn't hold");
   test_invariant();
-  return -1;
+  return std::make_pair(-1, best_updated);
 }
 
 template <typename i_t, typename f_t>
@@ -819,6 +821,13 @@ void population_t<i_t, f_t>::run_all_recombiners(solution_t<i_t, f_t>& sol)
   std::vector<solution_t<i_t, f_t>> sol_vec;
   sol_vec.emplace_back(std::move(solution_t<i_t, f_t>(sol)));
   dm.recombine_and_ls_with_all(sol_vec, true);
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::diversity_step(i_t max_iterations_without_improvement)
+{
+  raft::common::nvtx::range fun_scope("diversity_step");
+  dm.diversity_step(max_iterations_without_improvement);
 }
 
 #if MIP_INSTANTIATE_FLOAT
