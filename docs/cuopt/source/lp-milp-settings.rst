@@ -260,7 +260,7 @@ Dual Initial Point
 * ``0``: Use an initial point from a heuristic approach based on the paper "On Implementing Mehrotra's Predictor–Corrector Interior-Point Method for Linear Programming" (SIAM J. Optimization, 1992) by Lustig, Martsten, Shanno.
 * ``1``: Use an initial point from solving a least squares problem that minimizes the norms of the dual variables and reduced costs while statisfying the dual equality constraints.
 
-.. note:: the default value is ``-1`` (automatic). 
+.. note:: the default value is ``-1`` (automatic).
 
 Absolute Primal Tolerance
 ^^^^^^^^^^^^^^^^^^^^^^^^^
