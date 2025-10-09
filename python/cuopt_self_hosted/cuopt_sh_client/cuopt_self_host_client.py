@@ -380,6 +380,26 @@ class CuOptServiceSelfHostClient:
         if reqId:
             err += f"\nreqId: {reqId}"
         return err, complete
+        
+    def _make_http_request(self, method: str, url: str, **kwargs):
+        """
+        Make HTTP request. Can be overridden by subclasses for authentication.
+        
+        Parameters
+        ----------
+        method : str
+            HTTP method (GET, POST, DELETE, etc.)
+        url : str
+            Request URL
+        **kwargs
+            Additional arguments passed to requests.request()
+            
+        Returns
+        -------
+        requests.Response
+            HTTP response object
+        """
+        return requests.request(method, url, **kwargs)
 
     def _get_logs(self, reqId, logging_callback):
         if logging_callback is None or not callable(logging_callback):
@@ -387,7 +407,8 @@ class CuOptServiceSelfHostClient:
         try:
             headers = {"Accept": self.accept_type.value}
             params = {"frombyte": self.loggedbytes}
-            response = requests.get(
+            response = self._make_http_request(
+                "GET",
                 self.log_url + f"/{reqId}",
                 verify=self.verify,
                 headers=headers,
@@ -415,7 +436,8 @@ class CuOptServiceSelfHostClient:
             return
         try:
             headers = {"Accept": self.accept_type.value}
-            response = requests.get(
+            response = self._make_http_request(
+                "GET",
                 self.solution_url + f"/{reqId}/incumbents",
                 verify=self.verify,
                 headers=headers,
@@ -524,7 +546,8 @@ class CuOptServiceSelfHostClient:
                 try:
                     log.debug(f"GET {self.solution_url}/{reqId}")
                     headers = {"Accept": self.accept_type.value}
-                    response = requests.get(
+                    response = self._make_http_request(
+                        "GET",
                         self.solution_url + f"/{reqId}",
                         verify=self.verify,
                         headers=headers,
@@ -613,7 +636,8 @@ class CuOptServiceSelfHostClient:
                 headers["CUOPT-RESULT-FILE"] = output
             headers["Content-Type"] = content_type
             headers["Accept"] = self.accept_type.value
-            response = requests.post(
+            response = self._make_http_request(
+                "POST",
                 self.request_url,
                 params=params,
                 data=data,
@@ -869,7 +893,8 @@ class CuOptServiceSelfHostClient:
             'running' and 'queued' are unspecified, otherwise False.
         """
         try:
-            response = requests.delete(
+            response = self._make_http_request(
+                "DELETE",
                 self.request_url + f"/{id}",
                 headers={"Accept": self.accept_type.value},
                 params={
@@ -908,7 +933,8 @@ class CuOptServiceSelfHostClient:
             id = id["reqId"]
         try:
             headers = {"Accept": self.accept_type.value}
-            response = requests.delete(
+            response = self._make_http_request(
+                "DELETE",
                 self.solution_url + f"/{id}",
                 headers=headers,
                 verify=self.verify,
@@ -920,7 +946,8 @@ class CuOptServiceSelfHostClient:
             # Get rid of a log if it exists.
             # It may not so just squash exceptions.
             try:
-                response = requests.delete(
+                response = self._make_http_request(
+                    "DELETE",
                     self.log_url + f"/{id}",
                     verify=self.verify,
                     timeout=self.http_general_timeout,
@@ -959,7 +986,8 @@ class CuOptServiceSelfHostClient:
             data = data["reqId"]
         headers = {"Accept": self.accept_type.value}
         try:
-            response = requests.get(
+            response = self._make_http_request(
+                "GET",
                 self.solution_url + f"/{data}",
                 verify=self.verify,
                 headers=headers,
@@ -997,7 +1025,8 @@ class CuOptServiceSelfHostClient:
             id = id["reqId"]
         headers = {"Accept": self.accept_type.value}
         try:
-            response = requests.get(
+            response = self._make_http_request(
+                "GET",
                 self.request_url + f"/{id}?status",
                 verify=self.verify,
                 headers=headers,
@@ -1034,7 +1063,8 @@ class CuOptServiceSelfHostClient:
             "Content-Type": content_type,
         }
         try:
-            response = requests.post(
+            response = self._make_http_request(
+                "POST",
                 self.solution_url,
                 verify=self.verify,
                 data=data,

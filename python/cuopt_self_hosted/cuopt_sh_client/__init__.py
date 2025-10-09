@@ -10,6 +10,10 @@ from .cuopt_self_host_client import (
     mime_type,
     set_log_level,
 )
+from .cuopt_web_hosted_client import (
+    CuOptServiceWebHostedClient,
+    create_client,
+)
 from .thin_client_solution import ThinClientSolution
 from .thin_client_solver_settings import (
     PDLPSolverMode,
