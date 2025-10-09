@@ -86,6 +86,7 @@ set(rpaths
   "$ORIGIN/../../nvidia/curand/lib"
   "$ORIGIN/../../nvidia/cusolver/lib"
   "$ORIGIN/../../nvidia/cusparse/lib"
+  "$ORIGIN/../../nvidia/nvjitlink/lib"
 )
 
 # Add CUDA version-specific paths based on CUDA compiler version
