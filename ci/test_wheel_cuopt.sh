@@ -66,26 +66,15 @@ cd -
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 
-# Please enable this once ISSUE https://github.com/NVIDIA/cuopt/issues/94 is fixed
 # Run CLI tests
-# timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
+timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 
 # Run Python tests
-# Set environment variables to handle OpenMP and UCX threading issues
-# Disable UCX debug logging to avoid interference with cleanup
-#export UCX_LOG_LEVEL=debug
-# Set UCX to handle signals gracefully and avoid spinlock issues
-export UCX_HANDLE_ERRORS=bt
-#export UCX_ERROR_SIGNALS="SIGSEGV,SIGBUS,SIGFPE"
-# Ensure proper OpenMP threading behavior
+
+# Due to race condition in certain cases UCX might not be able to cleanup properly, so we set the number of threads to 1
 export OMP_NUM_THREADS=1
-export OMP_WAIT_POLICY=passive
-# Disable CUDA launch blocking to allow proper async cleanup
-#export CUDA_LAUNCH_BLOCKING=0
-RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest -s --verbose --capture=no ./python/cuopt/cuopt/tests/linear_programming/test_python_API.py::test_barrier_solver_settings
-RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest -s --verbose --capture=no ./python/cuopt/cuopt/tests/linear_programming/test_python_API.py::test_barrier_solver_fresh_instances
-RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest -s --verbose --capture=no ./python/cuopt/cuopt/tests/linear_programming/test_python_API.py::test_barrier_solver
-RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest -s --verbose --capture=no ./python/cuopt/cuopt/tests/
+
+RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt/cuopt/tests/
 
 # run jump tests and cvxpy integration tests for only nightly builds
 if [[ "${RAPIDS_BUILD_TYPE}" == "nightly" ]]; then
