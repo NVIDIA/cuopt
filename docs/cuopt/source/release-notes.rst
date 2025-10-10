@@ -24,6 +24,7 @@ Breaking Changes (25.10)
 Improvements (25.10)
 --------------------
 
+- Add setting "CUOPT_BARRIER_DUAL_INITIAL_POINT" to change the dual initial point used by barrier
 - CPUFJ for local search + simple rounding
 - FP as a local search
 - Sub-MIP recombiner and B&B global variable changes
