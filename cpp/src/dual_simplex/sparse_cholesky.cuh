@@ -534,7 +534,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     if (first_factor) {
-      settings_.log.printf("Factorization time          : %.2fs\n", numeric_time);
+      settings_.log.debug("Factorization time          : %.2fs\n", numeric_time);
       first_factor = false;
     }
     if (status != CUDSS_STATUS_SUCCESS) {
@@ -635,7 +635,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
     f_t symbolic_time = toc(start_symbolic);
     f_t analysis_time = toc(start_analysis);
-    settings_.log.printf("Symbolic factorization time: %.2fs\n", symbolic_time);
+    settings_.log.printf("Symbolic factorization time : %.2fs\n", symbolic_time);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
       handle_ptr_->get_stream().synchronize();
@@ -647,7 +647,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudssDataGet(handle, solverData, CUDSS_DATA_LU_NNZ, &lu_nz, sizeof(int64_t), &size_written),
       status,
       "cudssDataGet for LU_NNZ");
-    settings_.log.printf("Symbolic nonzeros in factor: %e\n", static_cast<f_t>(lu_nz) / 2.0);
+    settings_.log.printf("Symbolic nonzeros in factor : %.2e\n", static_cast<f_t>(lu_nz) / 2.0);
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
     handle_ptr_->get_stream().synchronize();
     // TODO: Is there any way to get nonzeros in the factors?
@@ -703,7 +703,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     if (first_factor) {
-      settings_.log.printf("Factor time %.2fs\n", numeric_time);
+      settings_.log.debug("Factorization time          : %.2fs\n", numeric_time);
       first_factor = false;
     }
     if (status != CUDSS_STATUS_SUCCESS) {

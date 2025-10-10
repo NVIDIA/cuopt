@@ -55,36 +55,64 @@ enum class mip_exploration_status_t {
 template <typename i_t, typename f_t>
 void upper_bound_callback(f_t upper_bound);
 
+template <typename i_t, typename f_t>
+struct diving_root_t {
+  mip_node_t<i_t, f_t> node;
+  std::vector<f_t> lp_lower;
+  std::vector<f_t> lp_upper;
+
+  diving_root_t(mip_node_t<i_t, f_t>&& node,
+                const std::vector<f_t>& lower,
+                const std::vector<f_t>& upper)
+    : node(std::move(node)), lp_upper(upper), lp_lower(lower)
+  {
+  }
+
+  friend bool operator>(const diving_root_t<i_t, f_t>& a, const diving_root_t<i_t, f_t>& b)
+  {
+    return a.node.lower_bound > b.node.lower_bound;
+  }
+};
+
 // A min-heap for storing the starting nodes for the dives.
-// This has a maximum size of 8192, such that the container
+// This has a maximum size of 256, such that the container
 // will discard the least promising node if the queue is full.
 template <typename i_t, typename f_t>
 class dive_queue_t {
  private:
-  std::vector<mip_node_t<i_t, f_t>> buffer;
-  static constexpr i_t max_size_ = 2048;
+  std::vector<diving_root_t<i_t, f_t>> buffer;
+  static constexpr i_t max_size_ = 256;
 
  public:
   dive_queue_t() { buffer.reserve(max_size_); }
 
-  void push(mip_node_t<i_t, f_t>&& node)
+  void push(diving_root_t<i_t, f_t>&& node)
   {
     buffer.push_back(std::move(node));
-    std::push_heap(buffer.begin(), buffer.end(), node_compare_t<i_t, f_t>());
+    std::push_heap(buffer.begin(), buffer.end(), std::greater<>());
     if (buffer.size() > max_size()) { buffer.pop_back(); }
   }
 
-  mip_node_t<i_t, f_t> pop()
+  void emplace(mip_node_t<i_t, f_t>&& node,
+               const std::vector<f_t>& lower,
+               const std::vector<f_t>& upper)
   {
-    std::pop_heap(buffer.begin(), buffer.end(), node_compare_t<i_t, f_t>());
-    mip_node_t<i_t, f_t> node = std::move(buffer.back());
+    buffer.emplace_back(std::move(node), lower, upper);
+    std::push_heap(buffer.begin(), buffer.end(), std::greater<>());
+    if (buffer.size() > max_size()) { buffer.pop_back(); }
+  }
+
+  diving_root_t<i_t, f_t> pop()
+  {
+    std::pop_heap(buffer.begin(), buffer.end(), std::greater<>());
+    diving_root_t<i_t, f_t> node = std::move(buffer.back());
     buffer.pop_back();
     return node;
   }
 
   i_t size() const { return buffer.size(); }
   constexpr i_t max_size() const { return max_size_; }
-  const mip_node_t<i_t, f_t>& top() const { return buffer.front(); }
+  const diving_root_t<i_t, f_t>& top() const { return buffer.front(); }
   void clear() { buffer.clear(); }
 };
 
@@ -188,7 +216,7 @@ class branch_and_bound_t {
   // Set the final solution.
   mip_status_t set_final_solution(mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
 
-  // Update the incumbent solution with the new feasible solution.
+  // Update the incumbent solution with the new feasible solution
   // found during branch and bound.
   void add_feasible_solution(f_t leaf_objective,
                              const std::vector<f_t>& leaf_solution,

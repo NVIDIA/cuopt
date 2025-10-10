@@ -42,7 +42,6 @@ dependencies = [
     "numpy>=1.23.5,<3.0a0",
     "pandas>=2.0",
     "pylibraft==25.10.*,>=0.0.0a0",
-    "raft-dask==25.10.*,>=0.0.0a0",
     "rapids-dask-dependency==25.10.*,>=0.0.0a0",
     "rapids-logger==0.1.*,>=0.0.0a0",
     "rmm==25.10.*,>=0.0.0a0",
@@ -91,7 +90,6 @@ known_rapids = [
     "cudf",
     "pylibraft",
     "rmm",
-    "raft_dask",
 ]
 known_first_party = [
     "cuopt",

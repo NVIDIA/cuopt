@@ -520,6 +520,8 @@ class SolverConfig(StrictModel):
         "<br>"
         "- Dual Simplex: 2, Dual Simplex method"
         "<br>"
+        "- Barrier: 3, Barrier method"
+        "<br>"
         "Note: Not supported for MILP. ",
     )
     mip_scaling: Optional[bool] = Field(
