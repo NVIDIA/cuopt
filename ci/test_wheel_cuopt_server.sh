@@ -37,4 +37,7 @@ rapids-pip-retry install \
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
 ./datasets/mip/download_miplib_test_dataset.sh
 
+# Due to race condition in certain cases UCX might not be able to cleanup properly, so we set the number of threads to 1
+export OMP_NUM_THREADS=1
+
 RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt_server/cuopt_server/tests/
