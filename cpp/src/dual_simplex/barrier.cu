@@ -3266,14 +3266,15 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     }
 
     iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, settings);
-    if (data.symbolic_status != 0) {
-      settings.log.printf("Error in symbolic analysis\n");
-      return lp_status_t::NUMERICAL_ISSUES;
-    }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
     }
+    if (data.symbolic_status != 0) {
+      settings.log.printf("Error in symbolic analysis\n");
+      return lp_status_t::NUMERICAL_ISSUES;
+    }
+
     data.cusparse_dual_residual_ = data.cusparse_view_.create_vector(data.d_dual_residual_);
     data.cusparse_r1_            = data.cusparse_view_.create_vector(data.d_r1_);
     data.cusparse_tmp4_          = data.cusparse_view_.create_vector(data.d_tmp4_);
