@@ -235,7 +235,7 @@ class branch_and_bound_t {
                            i_t initial_heap_size);
 
   // Explore the search tree using the best-first search with plunging strategy.
-  void explore_subtree(i_t id,
+  void explore_subtree(i_t task_id,
                        search_tree_t<i_t, f_t>& search_tree,
                        mip_node_t<i_t, f_t>* start_node,
                        lp_problem_t<i_t, f_t>& leaf_problem,
