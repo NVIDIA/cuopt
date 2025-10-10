@@ -496,6 +496,7 @@ void population_t<i_t, f_t>::normalize_weights()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::compute_new_weights()
 {
+  if (indices.size() < 2) { return; }
   auto& best_sol = best();
   auto settings  = context.settings;
 

@@ -654,13 +654,17 @@ void local_search_t<i_t, f_t>::reset_alpha_and_save_solution(
   population_ptr->add_solution(std::move(solution_copy));
   auto new_sol_vector = population_ptr->get_external_solutions();
   population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
-  population_ptr->update_weights();
   if (!cutting_plane_added_for_active_run) {
     solution.problem_ptr = &problem_with_objective_cut;
     solution.resize_to_problem();
     resize_to_new_problem();
     cutting_plane_added_for_active_run = true;
+    raft::copy(population_ptr->weights.cstr_weights.data(),
+               fj.cstr_weights.data(),
+               population_ptr->weights.cstr_weights.size(),
+               solution.handle_ptr->get_stream());
   }
+  population_ptr->update_weights();
   save_solution_and_add_cutting_plane(
     population_ptr->best_feasible(), best_solution, best_objective);
   raft::copy(solution.assignment.data(),
