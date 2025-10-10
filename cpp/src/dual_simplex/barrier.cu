@@ -1487,7 +1487,6 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   // Perform a numerical factorization
   i_t status;
   if (use_augmented) {
-    settings.log.printf("Factorizing augmented\n");
     status = data.chol->factorize(data.augmented);
   } else {
     if (use_gpu) {
@@ -3329,9 +3328,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
   i_t iter = 0;
   settings.log.printf("\n");
   settings.log.printf(
-    "        Objective                            Infeasibility              Time\n");
+    "                  Objective                         Infeasibility        Time\n");
   settings.log.printf(
-    "Iter    Primal               Dual            Primal   Dual    Compl.    Elapsed\n");
+    "Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed\n");
   float64_t elapsed_time = toc(start_time);
   settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
                       iter,

@@ -1419,9 +1419,10 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
                       std::vector<f_t>& uncrushed_y,
                       std::vector<f_t>& uncrushed_z)
 {
-  std::vector<f_t> input_x = crushed_x;
-  std::vector<f_t> input_y = crushed_y;
-  std::vector<f_t> input_z = crushed_z;
+  std::vector<f_t> input_x             = crushed_x;
+  std::vector<f_t> input_y             = crushed_y;
+  std::vector<f_t> input_z             = crushed_z;
+  std::vector<i_t> free_variable_pairs = presolve_info.free_variable_pairs;
   if (presolve_info.folding_info.is_folded) {
     // We solved a foled problem in the form
     // minimize c_prime^T x_prime
@@ -1474,15 +1475,18 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     input_y.resize(previous_rows - presolve_info.folding_info.num_upper_bounds);
     input_z = ztilde;
     input_z.resize(previous_cols - presolve_info.folding_info.num_upper_bounds);
+
+    // If the original problem had free variables we need to reinstate them
+    free_variable_pairs = presolve_info.folding_info.previous_free_variable_pairs;
   }
 
-  const i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
+  const i_t num_free_variables = free_variable_pairs.size() / 2;
   if (num_free_variables > 0) {
     settings.log.printf("Post-solve: Handling free variables %d\n", num_free_variables);
     // We added free variables so we need to map the crushed solution back to the original variables
     for (i_t k = 0; k < 2 * num_free_variables; k += 2) {
-      const i_t u = presolve_info.free_variable_pairs[k];
-      const i_t v = presolve_info.free_variable_pairs[k + 1];
+      const i_t u = free_variable_pairs[k];
+      const i_t v = free_variable_pairs[k + 1];
       input_x[u] -= input_x[v];
     }
     input_z.resize(input_z.size() - num_free_variables);

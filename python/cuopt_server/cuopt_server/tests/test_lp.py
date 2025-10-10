@@ -146,3 +146,77 @@ def test_sample_milp(
         res.json()["response"]["solver_response"],
         expected_status,
     )
+
+
+# @pytest.mark.skip(reason="Skipping barrier solver options test")
+@pytest.mark.parametrize(
+    "folding, dualize, ordering, augmented, eliminate_dense, cudss_determ, "
+    "dual_initial_point",
+    [
+        # Test automatic settings (default)
+        (-1, -1, -1, -1, True, False, -1),
+        # Test folding off, no dualization, cuDSS default ordering, ADAT system
+        (0, 0, 0, 0, True, False, 0),
+        # Test folding on, force dualization, AMD ordering, augmented system
+        (1, 1, 1, 1, True, True, 1),
+        # Test mixed settings: automatic folding, no dualize, AMD, augmented
+        (-1, 0, 1, 1, False, False, 0),
+        # Test no folding, automatic dualize, cuDSS default, ADAT
+        (0, -1, 0, 0, True, True, -1),
+        # Test dual initial point with Lustig-Marsten-Shanno
+        (-1, -1, -1, -1, True, False, 0),
+        # Test dual initial point with least squares
+        (-1, -1, -1, 1, True, False, 1),
+    ],
+)
+def test_barrier_solver_options(
+    cuoptproc,  # noqa
+    folding,
+    dualize,
+    ordering,
+    augmented,
+    eliminate_dense,
+    cudss_determ,
+    dual_initial_point,
+):
+    """
+    Test the barrier solver (method=3) with various configuration options:
+    - folding: (-1) automatic, (0) off, (1) on
+    - dualize: (-1) automatic, (0) don't dualize, (1) force dualize
+    - ordering: (-1) automatic, (0) cuDSS default, (1) AMD
+    - augmented: (-1) automatic, (0) ADAT, (1) augmented system
+    - eliminate_dense_columns: True to eliminate, False to not
+    - cudss_deterministic: True for deterministic, False for
+      nondeterministic
+    - barrier_dual_initial_point: (-1) automatic, (0) Lustig-Marsten-Shanno,
+      (1) dual least squares
+    """
+    data = get_std_data_for_lp()
+
+    # Use barrier solver (method=3)
+    data["solver_config"]["method"] = 3
+
+    # Configure barrier solver options
+    data["solver_config"]["folding"] = folding
+    data["solver_config"]["dualize"] = dualize
+    data["solver_config"]["ordering"] = ordering
+    data["solver_config"]["augmented"] = augmented
+    data["solver_config"]["eliminate_dense_columns"] = eliminate_dense
+    data["solver_config"]["cudss_deterministic"] = cudss_determ
+    data["solver_config"]["barrier_dual_initial_point"] = dual_initial_point
+
+    res = get_lp(client, data)
+
+    assert res.status_code == 200
+
+    print("\n=== Barrier Solver Test Configuration ===")
+    print(f"folding={folding}, dualize={dualize}, ordering={ordering}")
+    print(f"augmented={augmented}, eliminate_dense={eliminate_dense}")
+    print(f"cudss_deterministic={cudss_determ}")
+    print(f"barrier_dual_initial_point={dual_initial_point}")
+    print(res.json())
+
+    validate_lp_result(
+        res.json()["response"]["solver_response"],
+        LPTerminationStatus.Optimal.name,
+    )

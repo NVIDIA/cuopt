@@ -66,9 +66,15 @@ This is a linear program.
 
 How cuOpt Solves the Linear Programming Problem
 ------------------------------------------------
-cuOpt includes an LP solver based on `PDLP <https://arxiv.org/abs/2106.04756>`__, a new First-Order Method (FOM) used to solve large-scale LPs. This solver implements gradient descent, enhanced by heuristics, and performing massively parallel operations efficiently by leveraging the latest NVIDIA GPUs.
+cuOpt includes three LP solving methods:
 
-In addition to PDLP, cuOpt includes a dual simplex solver that runs on the CPU. Both algorithms can be run concurrently on the GPU and CPU.
+* **PDLP**: Based on `PDLP <https://arxiv.org/abs/2106.04756>`__, a First-Order Method (FOM) for solving large-scale LPs. This solver implements primal-dual hybrid gradient enhanced by heuristics. Sparse matrix-vector products are perfomed efficiently on NVIDIA GPUs.
+
+* **Barrier (Interior-Point)**: A primal-dual interior-point method that uses GPU-accelerated sparse Cholesky and LDLT solves via cuDSS, and sparse matrix operations via cuSparse.
+
+* **Dual Simplex**: A CPU-based dual simplex solver for small to medium-sized problems.
+
+All three algorithms can be run concurrently on both GPU and CPU, with the fastest solution returned automatically.
 
 Mixed Integer Linear Programming (MILP)
 =========================================
@@ -121,6 +127,7 @@ cuOpt supports the following APIs:
    - `AMPL <https://www.ampl.com/>`_
    - `GAMS <https://www.gams.com/>`_
    - `PuLP <https://pypi.org/project/PuLP/>`_
+   - `JuMP <https://github.com/jump-dev/cuOpt.jl>`_
 
 
 ==================================

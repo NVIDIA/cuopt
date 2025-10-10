@@ -566,20 +566,13 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(search_tree_t<i_t, f_t>& 
   lp_solution_t<i_t, f_t> leaf_solution(leaf_problem.num_rows, leaf_problem.num_cols);
   assert(leaf_vstatus.size() == leaf_problem.num_cols);
 
-  // Set the correct bounds for the leaf problem
-  leaf_problem.lower = original_lp_.lower;
-  leaf_problem.upper = original_lp_.upper;
-
   std::vector<bool> bounds_changed(leaf_problem.num_cols, false);
   // Technically, we can get the already strengthened bounds from the node/parent instead of
   // getting it from the original problem and re-strengthening. But this requires storing
   // two vectors at each node and potentially cause memory issues
   node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper, bounds_changed);
 
-  i_t node_iter                    = 0;
-  f_t lp_start_time                = tic();
-  std::vector<f_t> leaf_edge_norms = edge_norms_;  // = node.steepest_edge_norms;
-
+  std::vector<f_t> leaf_edge_norms      = edge_norms_;  // = node.steepest_edge_norms;
   simplex_solver_settings_t lp_settings = settings_;
   lp_settings.set_log(false);
   lp_settings.cut_off    = upper_bound + settings_.dual_tol;
@@ -594,6 +587,9 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(search_tree_t<i_t, f_t>& 
   dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
 
   if (feasible) {
+    i_t node_iter     = 0;
+    f_t lp_start_time = tic();
+
     lp_status = dual_phase2(2,
                             0,
                             lp_start_time,
@@ -610,10 +606,10 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(search_tree_t<i_t, f_t>& 
         leaf_problem, lp_start_time, lp_settings, leaf_solution, leaf_vstatus, leaf_edge_norms);
       lp_status = convert_lp_status_to_dual_status(second_status);
     }
-  }
 
-  stats_.total_lp_solve_time += toc(lp_start_time);
-  stats_.total_lp_iters += node_iter;
+    stats_.total_lp_solve_time += toc(lp_start_time);
+    stats_.total_lp_iters += node_iter;
+  }
 
   if (lp_status == dual::status_t::DUAL_UNBOUNDED) {
     // Node was infeasible. Do not branch
@@ -695,17 +691,18 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
                                                        i_t initial_heap_size)
 {
   if (status_ != mip_exploration_status_t::RUNNING) { return; }
-  if (omp_get_thread_num() == 0) { repair_heuristic_solutions(); }
+
+  // Note that we do not know which thread will execute the
+  // `exploration_ramp_up` task, so we allow to any thread
+  // to repair the heuristic solution.
+  repair_heuristic_solutions();
 
   f_t lower_bound      = node->lower_bound;
   f_t upper_bound      = get_upper_bound();
   f_t rel_gap          = user_relative_gap(original_lp_, upper_bound, lower_bound);
   f_t abs_gap          = upper_bound - lower_bound;
-  i_t nodes_explored   = 0;
-  i_t nodes_unexplored = 0;
-
-  nodes_explored   = (stats_.nodes_explored++);
-  nodes_unexplored = (stats_.nodes_unexplored--);
+  i_t nodes_explored   = (++stats_.nodes_explored);
+  i_t nodes_unexplored = (--stats_.nodes_unexplored);
   stats_.nodes_since_last_log++;
 
   if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
@@ -714,14 +711,18 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
     return;
   }
 
-  f_t now = toc(stats_.start_time);
+  f_t now                 = toc(stats_.start_time);
+  f_t time_since_last_log = stats_.last_log == 0 ? 1.0 : toc(stats_.last_log);
 
-  if (omp_get_thread_num() == 0) {
-    f_t time_since_last_log = stats_.last_log == 0 ? 1.0 : toc(stats_.last_log);
+  if (((stats_.nodes_since_last_log >= 10 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
+       (time_since_last_log >= 1)) ||
+      (time_since_last_log > 30) || now > settings_.time_limit) {
+    // Check if no new node was explored until now. If this is the case,
+    // only the last thread should report the progress
+    if (stats_.nodes_explored.load() == nodes_explored) {
+      stats_.nodes_since_last_log = 0;
+      stats_.last_log             = tic();
 
-    if (((stats_.nodes_since_last_log >= 10 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
-         (time_since_last_log >= 1)) ||
-        (time_since_last_log > 30) || now > settings_.time_limit) {
       f_t obj              = compute_user_objective(original_lp_, upper_bound);
       f_t user_lower       = compute_user_objective(original_lp_, root_objective_);
       std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
@@ -735,8 +736,6 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
                            nodes_explored > 0 ? stats_.total_lp_iters / nodes_explored : 0,
                            gap_user.c_str(),
                            now);
-
-      stats_.nodes_since_last_log = 0;
     }
   }
 
@@ -744,6 +743,11 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
     status_ = mip_exploration_status_t::TIME_LIMIT;
     return;
   }
+
+  // Set the correct bounds for the leaf problem
+  leaf_problem.lower = original_lp_.lower;
+  leaf_problem.upper = original_lp_.upper;
+
   node_status_t node_status =
     solve_node(*search_tree, node, leaf_problem, Arow, upper_bound, settings_.log, 'B');
 
@@ -784,7 +788,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t id,
   stack.push_front(start_node);
 
   while (stack.size() > 0 && status_ == mip_exploration_status_t::RUNNING) {
-    if (omp_get_thread_num() == 0) { repair_heuristic_solutions(); }
+    if (id == 0) { repair_heuristic_solutions(); }
 
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
@@ -802,8 +806,8 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t id,
     // - The lower bound of the parent is lower or equal to its children
     assert(id < local_lower_bounds_.size());
     local_lower_bounds_[id] = lower_bound;
-    i_t nodes_explored      = stats_.nodes_explored++;
-    i_t nodes_unexplored    = stats_.nodes_unexplored--;
+    i_t nodes_explored      = (++stats_.nodes_explored);
+    i_t nodes_unexplored    = (--stats_.nodes_unexplored);
     stats_.nodes_since_last_log++;
 
     if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
@@ -842,6 +846,10 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t id,
       return;
     }
 
+    // Set the correct bounds for the leaf problem
+    leaf_problem.lower = original_lp_.lower;
+    leaf_problem.upper = original_lp_.upper;
+
     node_status_t node_status =
       solve_node(search_tree, node_ptr, leaf_problem, Arow, upper_bound, settings_.log, 'B');
 
@@ -866,7 +874,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t id,
         // would be better if we discard the node instead.
         if (get_heap_size() > settings_.num_bfs_threads) {
           mutex_dive_queue_.lock();
-          dive_queue_.push(node->detach_copy());
+          dive_queue_.emplace(node->detach_copy(), leaf_problem.lower, leaf_problem.upper);
           mutex_dive_queue_.unlock();
         }
 
@@ -950,16 +958,16 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
 
   while (status_ == mip_exploration_status_t::RUNNING &&
          (active_subtrees_ > 0 || get_heap_size() > 0)) {
-    std::optional<mip_node_t<i_t, f_t>> start_node;
+    std::optional<diving_root_t<i_t, f_t>> start_node;
 
     mutex_dive_queue_.lock();
     if (dive_queue_.size() > 0) { start_node = dive_queue_.pop(); }
     mutex_dive_queue_.unlock();
 
     if (start_node.has_value()) {
-      if (get_upper_bound() < start_node->lower_bound) { continue; }
+      if (get_upper_bound() < start_node->node.lower_bound) { continue; }
 
-      search_tree_t<i_t, f_t> subtree(std::move(start_node.value()));
+      search_tree_t<i_t, f_t> subtree(std::move(start_node->node));
       std::deque<mip_node_t<i_t, f_t>*> stack;
       stack.push_front(&subtree.root);
 
@@ -975,6 +983,10 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
 
         if (toc(stats_.start_time) > settings_.time_limit) { return; }
 
+        // Set the correct bounds for the leaf problem
+        leaf_problem.lower = start_node->lp_lower;
+        leaf_problem.upper = start_node->lp_upper;
+
         node_status_t node_status =
           solve_node(subtree, node_ptr, leaf_problem, Arow, upper_bound, log, 'D');
 
@@ -985,7 +997,9 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
           auto [first, second] = child_selection(node_ptr);
           stack.push_front(second);
           stack.push_front(first);
+        }
 
+        if (stack.size() > 1) {
           // If the diving thread is consuming the nodes faster than the
           // best first search, then we split the current subtree at the
           // lowest possible point and move to the queue, so it can
@@ -994,7 +1008,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
             mutex_dive_queue_.lock();
             mip_node_t<i_t, f_t>* new_node = stack.back();
             stack.pop_back();
-            dive_queue_.push(new_node->detach_copy());
+            dive_queue_.emplace(new_node->detach_copy(), leaf_problem.lower, leaf_problem.upper);
             mutex_dive_queue_.unlock();
           }
         }

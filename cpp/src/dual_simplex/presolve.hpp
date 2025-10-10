@@ -60,6 +60,7 @@ struct folding_info_t {
       c_tilde(0),
       A_tilde(0, 0, 0),
       num_upper_bounds(0),
+      previous_free_variable_pairs({}),
       is_folded(false)
   {
   }
@@ -69,6 +70,7 @@ struct folding_info_t {
   std::vector<f_t> c_tilde;
   csc_matrix_t<i_t, f_t> A_tilde;
   i_t num_upper_bounds;
+  std::vector<i_t> previous_free_variable_pairs;
   bool is_folded;
 };
 
