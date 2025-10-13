@@ -35,6 +35,7 @@ class cusparse_view_t {
  public:
   // TMP matrix data should already be on the GPU and in CSR not CSC
   cusparse_view_t(raft::handle_t const* handle_ptr, const csc_matrix_t<i_t, f_t>& A);
+  ~cusparse_view_t();
 
   static cusparseDnVecDescr_t create_vector(const rmm::device_uvector<f_t>& vec);
 

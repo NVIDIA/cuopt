@@ -238,6 +238,18 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                              CUSPARSE_SPMV_CSR_ALG2,
                              spmv_buffer_transpose_.data(),
                              handle_ptr->get_stream());
+  
+  // Cleanup temporary descriptors
+  RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(x));
+  RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(y));
+}
+
+template <typename i_t, typename f_t>
+cusparse_view_t<i_t, f_t>::~cusparse_view_t()
+{
+  // Cleanup CUSPARSE sparse matrix descriptors to prevent segmentation fault
+  RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(A_));
+  RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(A_T_));
 }
 
 template <typename i_t, typename f_t>
@@ -264,6 +276,9 @@ void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
   cusparseDnVecDescr_t y_cusparse = create_vector(d_y);
   spmv(alpha, x_cusparse, beta, y_cusparse);
   y = cuopt::host_copy<f_t, AllocatorB>(d_y, handle_ptr_->get_stream());
+  // Cleanup temporary descriptors
+  RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(x_cusparse));
+  RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(y_cusparse));
 }
 
 template <typename i_t, typename f_t>
@@ -307,6 +322,9 @@ void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
   cusparseDnVecDescr_t y_cusparse = create_vector(d_y);
   transpose_spmv(alpha, x_cusparse, beta, y_cusparse);
   y = cuopt::host_copy<f_t, AllocatorB>(d_y, handle_ptr_->get_stream());
+  // Cleanup temporary descriptors
+  RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(x_cusparse));
+  RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(y_cusparse));
 }
 
 template <typename i_t, typename f_t>
