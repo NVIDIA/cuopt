@@ -263,10 +263,16 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   lp_solution_t<i_t, f_t> lp_solution(original_lp.num_rows, original_lp.num_cols);
 
   // Presolve the linear program
+  printf("[SOLVE_LP_BARRIER] Running presolve\n");
+  fflush(stdout);
   presolve_info_t<i_t, f_t> presolve_info;
   lp_problem_t<i_t, f_t> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
   const i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
-  if (ok == -1) { return lp_status_t::INFEASIBLE; }
+  if (ok == -1) {
+    printf("[SOLVE_LP_BARRIER] Presolve failed, returning INFEASIBLE\n");
+    fflush(stdout);
+    return lp_status_t::INFEASIBLE;
+  }
 
   // Apply columns scaling to the presolve LP
   lp_problem_t<i_t, f_t> barrier_lp(user_problem.handle_ptr,
@@ -277,11 +283,25 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   column_scaling(presolved_lp, barrier_settings, barrier_lp, column_scales);
 
   // Solve using barrier
+  printf("[SOLVE_LP_BARRIER] Creating barrier_solution object\n");
+  fflush(stdout);
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
+  
+  printf("[SOLVE_LP_BARRIER] Creating barrier_solver object\n");
+  fflush(stdout);
   barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
+  
+  printf("[SOLVE_LP_BARRIER] Creating barrier_solver_settings\n");
+  fflush(stdout);
   barrier_solver_settings_t<i_t, f_t> barrier_solver_settings;
+  
+  printf("[SOLVE_LP_BARRIER] Calling barrier_solver.solve()\n");
+  fflush(stdout);
   lp_status_t barrier_status =
     barrier_solver.solve(start_time, barrier_solver_settings, barrier_solution);
+  
+  printf("[SOLVE_LP_BARRIER] barrier_solver.solve() returned with status %d\n", static_cast<int>(barrier_status));
+  fflush(stdout);
   if (barrier_status == lp_status_t::OPTIMAL) {
 #ifdef COMPUTE_SCALED_RESIDUALS
     std::vector<f_t> scaled_residual = barrier_lp.rhs;
@@ -433,7 +453,13 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   }
 
   // If we aren't doing crossover, we're done
-  if (!settings.crossover) { return barrier_status; }
+  if (!settings.crossover) {
+    printf("[SOLVE_LP_BARRIER] Crossover disabled, returning early with barrier_status %d\n", static_cast<int>(barrier_status));
+    fflush(stdout);
+    printf("[SOLVE_LP_BARRIER] Note: barrier_solver object will be destroyed when function exits\n");
+    fflush(stdout);
+    return barrier_status;
+  }
 
   if (settings.crossover && barrier_status == lp_status_t::OPTIMAL) {
     // Check to see if we need to add artifical variables
@@ -491,6 +517,11 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     settings.log.printf("Crossover status: %d\n", crossover_status);
     if (crossover_status == crossover_status_t::OPTIMAL) { barrier_status = lp_status_t::OPTIMAL; }
   }
+  
+  printf("[SOLVE_LP_BARRIER] About to return with barrier_status %d\n", static_cast<int>(barrier_status));
+  fflush(stdout);
+  printf("[SOLVE_LP_BARRIER] Note: barrier_solver object will be destroyed when function exits\n");
+  fflush(stdout);
   return barrier_status;
 }
 
