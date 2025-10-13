@@ -311,7 +311,6 @@ class optimization_problem_t {
    */
   void write_to_mps(const std::string& mps_file_path);
 
-
   /* Print scaling information */
   void print_scaling_information() const;
 
