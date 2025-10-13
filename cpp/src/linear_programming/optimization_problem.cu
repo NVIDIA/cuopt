@@ -275,6 +275,20 @@ i_t optimization_problem_t<i_t, f_t>::get_nnz() const
 }
 
 template <typename i_t, typename f_t>
+i_t optimization_problem_t<i_t, f_t>::get_n_integers() const
+{
+  i_t n_integers = 0;
+  if (get_n_variables() != 0) {
+    auto enum_variable_types = cuopt::host_copy(get_variable_types());
+
+    for (size_t i = 0; i < enum_variable_types.size(); ++i) {
+      if (enum_variable_types[i] == var_t::INTEGER) { n_integers++; }
+    }
+  }
+  return n_integers;
+}
+
+template <typename i_t, typename f_t>
 raft::handle_t const* optimization_problem_t<i_t, f_t>::get_handle_ptr() const noexcept
 {
   return handle_ptr_;
@@ -617,7 +631,7 @@ void optimization_problem_t<i_t, f_t>::print_scaling_information() const
       const f_t val = std::abs(vec[i]);
       if (val > 0.0) { min_abs_val = std::min(min_abs_val, val); }
     }
-    return min_abs_val;
+    return min_abs_val < inf ? min_abs_val : 0.0;
   };
 
   f_t A_max          = findMaxAbs(constraint_matrix_values);
@@ -642,7 +656,7 @@ void optimization_problem_t<i_t, f_t>::print_scaling_information() const
   f_t bound_min = std::min(x_upper_min, x_lower_min);
 
   CUOPT_LOG_INFO("");
-  CUOPT_LOG_INFO("Problem info:");
+  CUOPT_LOG_INFO("Problem scaling:");
   CUOPT_LOG_INFO("Objective coefficents range:          [%.0e, %.0e]", c_min, c_max);
   CUOPT_LOG_INFO("Constraint matrix coefficients range: [%.0e, %.0e]", A_min, A_max);
   CUOPT_LOG_INFO("Constraint rhs / bounds range:        [%.0e, %.0e]", rhs_min, rhs_max);
@@ -657,8 +671,8 @@ void optimization_problem_t<i_t, f_t>::print_scaling_information() const
     CUOPT_LOG_INFO(
       "Warning: input problem contains a large range of coefficients: consider reformulating to "
       "avoid numerical difficulties.");
-    CUOPT_LOG_INFO("");
   }
+  CUOPT_LOG_INFO("");
 }
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
