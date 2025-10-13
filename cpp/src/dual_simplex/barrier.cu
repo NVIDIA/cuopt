@@ -1324,42 +1324,32 @@ class iteration_data_t {
     if (cusparse_tmp4_ != nullptr) {
       RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_tmp4_));
     }
-    if (cusparse_h_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_h_));
-    }
+    if (cusparse_h_ != nullptr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_h_)); }
     if (cusparse_dx_residual_ != nullptr) {
       RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_residual_));
     }
-    if (cusparse_dy_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dy_));
-    }
+    if (cusparse_dy_ != nullptr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dy_)); }
     if (cusparse_dx_residual_5_ != nullptr) {
       RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_residual_5_));
     }
     if (cusparse_dx_residual_6_ != nullptr) {
       RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_residual_6_));
     }
-    if (cusparse_dx_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_));
-    }
+    if (cusparse_dx_ != nullptr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_)); }
     if (cusparse_dx_residual_3_ != nullptr) {
       RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_residual_3_));
     }
     if (cusparse_dx_residual_4_ != nullptr) {
       RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_residual_4_));
     }
-    if (cusparse_r1_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_r1_));
-    }
+    if (cusparse_r1_ != nullptr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_r1_)); }
     if (cusparse_dual_residual_ != nullptr) {
       RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dual_residual_));
     }
     if (cusparse_y_residual_ != nullptr) {
       RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_y_residual_));
     }
-    if (cusparse_u_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_u_));
-    }
+    if (cusparse_u_ != nullptr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_u_)); }
   }
 
   raft::handle_t const* handle_ptr;

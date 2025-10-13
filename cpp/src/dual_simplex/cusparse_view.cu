@@ -238,7 +238,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                              CUSPARSE_SPMV_CSR_ALG2,
                              spmv_buffer_transpose_.data(),
                              handle_ptr->get_stream());
-  
+
   // Cleanup temporary descriptors
   RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(x));
   RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(y));
