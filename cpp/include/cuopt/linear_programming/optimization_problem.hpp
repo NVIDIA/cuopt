@@ -311,6 +311,10 @@ class optimization_problem_t {
    */
   void write_to_mps(const std::string& mps_file_path);
 
+
+  /* Print scaling information */
+  void print_scaling_information() const;
+
   i_t get_n_variables() const;
   i_t get_n_constraints() const;
   i_t get_nnz() const;
