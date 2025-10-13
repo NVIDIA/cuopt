@@ -27,7 +27,7 @@ set_target_properties(
   pdptw_mixed_fleet
   cvrp_daily_deliveries
   PROPERTIES
-  CUDA_STANDARD 17
+  CUDA_STANDARD 20
   CUDA_STANDARD_REQUIRED ON
 )
 

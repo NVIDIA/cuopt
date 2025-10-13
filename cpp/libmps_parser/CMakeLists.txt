@@ -89,7 +89,7 @@ set_target_properties(mps_parser
   INSTALL_RPATH "\$ORIGIN"
 
   # set target compile options
-  CXX_STANDARD 17
+  CXX_STANDARD 20
   CXX_STANDARD_REQUIRED ON
   INTERFACE_POSITION_INDEPENDENT_CODE ON
 )
