@@ -655,17 +655,18 @@ void optimization_problem_t<i_t, f_t>::print_scaling_information() const
   f_t bound_max = std::max(x_upper_max, x_lower_max);
   f_t bound_min = std::min(x_upper_min, x_lower_min);
 
-  CUOPT_LOG_INFO("");
   CUOPT_LOG_INFO("Problem scaling:");
   CUOPT_LOG_INFO("Objective coefficents range:          [%.0e, %.0e]", c_min, c_max);
   CUOPT_LOG_INFO("Constraint matrix coefficients range: [%.0e, %.0e]", A_min, A_max);
   CUOPT_LOG_INFO("Constraint rhs / bounds range:        [%.0e, %.0e]", rhs_min, rhs_max);
   CUOPT_LOG_INFO("Variable bounds range:                [%.0e, %.0e]", bound_min, bound_max);
 
-  f_t obj_range   = std::log10(c_max) - std::log10(c_min);
-  f_t A_range     = std::log10(A_max) - std::log10(A_min);
-  f_t rhs_range   = std::log10(rhs_max) - std::log10(rhs_min);
-  f_t bound_range = std::log10(bound_max) - std::log10(bound_min);
+  auto safelog10 = [](f_t x) { return x > 0 ? std::log10(x) : 0.0; };
+
+  f_t obj_range   = safelog10(c_max) - safelog10(c_min);
+  f_t A_range     = safelog10(A_max) - safelog10(A_min);
+  f_t rhs_range   = safelog10(rhs_max) - safelog10(rhs_min);
+  f_t bound_range = safelog10(bound_max) - safelog10(bound_min);
 
   if (obj_range >= 6.0 || A_range >= 6.0 || rhs_range >= 6.0 || bound_range >= 6.0) {
     CUOPT_LOG_INFO(
