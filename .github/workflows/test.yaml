@@ -40,7 +40,7 @@ on:
 jobs:
   conda-cpp-tests:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@branch-25.12
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -49,7 +49,7 @@ jobs:
       script: ci/test_cpp.sh
   conda-python-tests:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@branch-25.12
     with:
       run_codecov: false
       build_type: ${{ inputs.build_type }}
@@ -59,7 +59,7 @@ jobs:
       script: ci/test_python.sh
   wheel-tests-cuopt:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@branch-25.12
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -68,7 +68,7 @@ jobs:
       script: ci/test_wheel_cuopt.sh
   wheel-tests-cuopt-server:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@branch-25.12
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -77,7 +77,7 @@ jobs:
       script: ci/test_wheel_cuopt_server.sh
   conda-notebook-tests:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.10
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@branch-25.12
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -85,5 +85,5 @@ jobs:
       sha: ${{ inputs.sha }}
       node_type: "gpu-l4-latest-1"
       arch: "amd64"
-      container_image: "rapidsai/ci-conda:25.10-latest"
+      container_image: "rapidsai/ci-conda:25.12-latest"
       script: ci/test_notebooks.sh

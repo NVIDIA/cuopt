@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - cuopt_version: "25.10"
+          - cuopt_version: "25.12"
     steps:
       - uses: actions/checkout@v4
       - name: Trigger Pipeline
