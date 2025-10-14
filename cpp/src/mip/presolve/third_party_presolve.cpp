@@ -402,7 +402,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
 {
   papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem, category);
 
-  CUOPT_LOG_INFO("Unpresolved problem: %d constraints, %d variables, %d nonzeros",
+  CUOPT_LOG_INFO("Original problem: %d constraints, %d variables, %d nonzeros",
                  papilo_problem.getNRows(),
                  papilo_problem.getNCols(),
                  papilo_problem.getConstraintMatrix().getNnz());
