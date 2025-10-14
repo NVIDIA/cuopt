@@ -177,6 +177,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     } else {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
     }
+    // only use half of available threads as CPU FJ and probing cache also uses some
+    branch_and_bound_settings.num_threads /= 2;
     CUOPT_LOG_INFO("Using %d CPU threads for B&B", branch_and_bound_settings.num_threads);
 
     i_t num_threads                              = branch_and_bound_settings.num_threads;
