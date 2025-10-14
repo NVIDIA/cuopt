@@ -22,7 +22,7 @@ namespace cuopt::linear_programming::dual_simplex {
 bool inactive_status(node_status_t status)
 {
   return (status == node_status_t::FATHOMED || status == node_status_t::INTEGER_FEASIBLE ||
-          status == node_status_t::INFEASIBLE);
+          status == node_status_t::INFEASIBLE || status == node_status_t::NUMERICAL);
 }
 
 }  // namespace cuopt::linear_programming::dual_simplex

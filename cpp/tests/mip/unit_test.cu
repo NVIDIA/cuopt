@@ -21,6 +21,7 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
+#include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
 
 #include <raft/core/handle.hpp>
@@ -130,6 +131,70 @@ mps_parser::mps_data_model_t<int, double> create_single_var_milp_problem(bool ma
   problem.set_maximize(maximize);
 
   return problem;
+}
+
+TEST(LPTest, TestSampleLP2)
+{
+  raft::handle_t handle;
+
+  // Construct a simple LP problem:
+  // Minimize:    x
+  // Subject to:  x <= 1
+  //              x <= 1
+  //              x >= 0
+
+  // One variable, two constraints (both x <= 1)
+  std::vector<double> A_values = {1.0, 1.0};
+  std::vector<int> A_indices   = {0, 0};
+  std::vector<int> A_offsets   = {0, 1, 2};  // CSR: 2 constraints, 1 variable
+
+  std::vector<double> b       = {1.0, 1.0};  // RHS for both constraints
+  std::vector<double> b_lower = {-std::numeric_limits<double>::infinity(),
+                                 -std::numeric_limits<double>::infinity()};
+
+  std::vector<double> c = {1.0};  // Objective: Minimize x
+
+  std::vector<char> row_types = {'L', 'L'};  // Both constraints are <=
+
+  // Build the problem
+  mps_parser::mps_data_model_t<int, double> problem;
+  problem.set_csr_constraint_matrix(A_values.data(),
+                                    A_values.size(),
+                                    A_indices.data(),
+                                    A_indices.size(),
+                                    A_offsets.data(),
+                                    A_offsets.size());
+  problem.set_constraint_upper_bounds(b.data(), b.size());
+  problem.set_constraint_lower_bounds(b_lower.data(), b_lower.size());
+
+  // Set variable bounds (x >= 0)
+  std::vector<double> var_lower = {0.0};
+  std::vector<double> var_upper = {std::numeric_limits<double>::infinity()};
+  problem.set_variable_lower_bounds(var_lower.data(), var_lower.size());
+  problem.set_variable_upper_bounds(var_upper.data(), var_upper.size());
+
+  problem.set_objective_coefficients(c.data(), c.size());
+  problem.set_maximize(false);
+  // Set up solver settings
+  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings{};
+  settings.set_optimality_tolerance(1e-2);
+  settings.method     = cuopt::linear_programming::method_t::PDLP;
+  settings.time_limit = 5;
+
+  // Solve
+  auto result = cuopt::linear_programming::solve_lp(&handle, problem, settings);
+
+  // Check results
+  EXPECT_EQ(result.get_termination_status(),
+            cuopt::linear_programming::pdlp_termination_status_t::Optimal);
+  ASSERT_EQ(result.get_primal_solution().size(), 1);
+
+  // Copy solution to host to access values
+  auto primal_host = cuopt::host_copy(result.get_primal_solution());
+  EXPECT_NEAR(primal_host[0], 0.0, 1e-6);
+
+  EXPECT_NEAR(result.get_additional_termination_information().primal_objective, 0.0, 1e-6);
+  EXPECT_NEAR(result.get_additional_termination_information().dual_objective, 0.0, 1e-6);
 }
 
 TEST(LPTest, TestSampleLP)

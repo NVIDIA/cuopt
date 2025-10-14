@@ -25,9 +25,16 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_DUAL_TOLERANCE,
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
+    CUOPT_AUGMENTED,
+    CUOPT_BARRIER_DUAL_INITIAL_POINT,
     CUOPT_CROSSOVER,
+    CUOPT_CUDSS_DETERMINISTIC,
     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
+    CUOPT_DUAL_POSTSOLVE,
+    CUOPT_DUALIZE,
+    CUOPT_ELIMINATE_DENSE_COLUMNS,
     CUOPT_FIRST_PRIMAL_FEASIBLE,
+    CUOPT_FOLDING,
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_ITERATION_LIMIT,
     CUOPT_LOG_FILE,
@@ -41,6 +48,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_MIP_RELATIVE_TOLERANCE,
     CUOPT_MIP_SCALING,
     CUOPT_NUM_CPU_THREADS,
+    CUOPT_ORDERING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PER_CONSTRAINT_RESIDUAL,
     CUOPT_PRESOLVE,
@@ -398,6 +406,11 @@ def create_solver(LP_data, warmstart_data):
                 CUOPT_PRESOLVE, solver_config.presolve
             )
 
+        if solver_config.dual_postsolve is not None:
+            solver_settings.set_parameter(
+                CUOPT_DUAL_POSTSOLVE, solver_config.dual_postsolve
+            )
+
         if solver_config.log_to_console is not None:
             solver_settings.set_parameter(
                 CUOPT_LOG_TO_CONSOLE, solver_config.log_to_console
@@ -426,6 +439,32 @@ def create_solver(LP_data, warmstart_data):
         if solver_config.log_file != "":
             solver_settings.set_parameter(
                 CUOPT_LOG_FILE, solver_config.log_file
+            )
+        if solver_config.augmented is not None:
+            solver_settings.set_parameter(
+                CUOPT_AUGMENTED, solver_config.augmented
+            )
+        if solver_config.folding is not None:
+            solver_settings.set_parameter(CUOPT_FOLDING, solver_config.folding)
+        if solver_config.dualize is not None:
+            solver_settings.set_parameter(CUOPT_DUALIZE, solver_config.dualize)
+        if solver_config.ordering is not None:
+            solver_settings.set_parameter(
+                CUOPT_ORDERING, solver_config.ordering
+            )
+        if solver_config.barrier_dual_initial_point is not None:
+            solver_settings.set_parameter(
+                CUOPT_BARRIER_DUAL_INITIAL_POINT,
+                solver_config.barrier_dual_initial_point,
+            )
+        if solver_config.eliminate_dense_columns is not None:
+            solver_settings.set_parameter(
+                CUOPT_ELIMINATE_DENSE_COLUMNS,
+                solver_config.eliminate_dense_columns,
+            )
+        if solver_config.cudss_deterministic is not None:
+            solver_settings.set_parameter(
+                CUOPT_CUDSS_DETERMINISTIC, solver_config.cudss_deterministic
             )
         if solver_config.solution_file != "":
             warnings.append(ignored_warning("solution_file"))

@@ -35,13 +35,13 @@ class solver_settings_t;
  * @brief Enum representing the different solver modes under which PDLP can
  * operate.
  *
- * Stable2: Best overall mode from experiments; balances speed and convergence
- * success. If you want to use the legacy version, use Stable1.
+ * Stable3: Best overall mode from experiments; balances speed and convergence
+ * success. If you want to use the legacy version, use Stable2.
  * Methodical1: Usually leads to slower individual steps but fewer are needed to
  * converge. It uses from 1.3x up to 1.7x times more memory.
  * Fast1: Less convergence success but usually yields the highest speed
  *
- * @note Default mode is Stable2.
+ * @note Default mode is Stable3.
  */
 // Forced to use an enum instead of an enum class for compatibility with the
 // Cython layer
@@ -49,7 +49,8 @@ enum pdlp_solver_mode_t : int {
   Stable1     = CUOPT_PDLP_SOLVER_MODE_STABLE1,
   Stable2     = CUOPT_PDLP_SOLVER_MODE_STABLE2,
   Methodical1 = CUOPT_PDLP_SOLVER_MODE_METHODICAL1,
-  Fast1       = CUOPT_PDLP_SOLVER_MODE_FAST1
+  Fast1       = CUOPT_PDLP_SOLVER_MODE_FAST1,
+  Stable3     = CUOPT_PDLP_SOLVER_MODE_STABLE3
 };
 
 /**
@@ -201,7 +202,7 @@ class pdlp_solver_settings_t {
   bool strict_infeasibility{false};
   i_t iteration_limit{std::numeric_limits<i_t>::max()};
   double time_limit{std::numeric_limits<double>::infinity()};
-  pdlp_solver_mode_t pdlp_solver_mode{pdlp_solver_mode_t::Stable2};
+  pdlp_solver_mode_t pdlp_solver_mode{pdlp_solver_mode_t::Stable3};
   bool log_to_console{true};
   std::string log_file{""};
   std::string sol_file{""};
@@ -211,10 +212,14 @@ class pdlp_solver_settings_t {
   bool cudss_deterministic{false};
   i_t folding{-1};
   i_t augmented{-1};
+  i_t dualize{-1};
+  i_t ordering{-1};
+  i_t barrier_dual_initial_point{-1};
   bool eliminate_dense_columns{true};
   bool save_best_primal_so_far{false};
   bool first_primal_feasible{false};
   bool presolve{false};
+  bool dual_postsolve{true};
   method_t method{method_t::Concurrent};
   // For concurrent termination
   volatile int* concurrent_halt;

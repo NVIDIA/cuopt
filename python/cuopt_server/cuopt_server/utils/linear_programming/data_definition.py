@@ -493,18 +493,20 @@ class SolverConfig(StrictModel):
         "Note: Not supported for MILP. ",
     )
     pdlp_solver_mode: Optional[int] = Field(
-        default=1,
+        default=4,
         description="Solver mode to use for PDLP:"
         "<br>"
         "- Stable1: 0, Legacy stable mode"
         "<br>"
-        "- Stable2: 1, Best overall mode from experiments; "
-        "balances speed and convergence success"
+        "- Stable2: 1, Legacy stable mode"
         "<br>"
         "- Methodical1: 2, Takes slower individual steps, "
         "but fewer are needed to converge"
         "<br>"
         "- Fast1: 3, Fastest mode, but with less success in convergence"
+        "<br>"
+        "- Stable3: 4, Best overall mode from experiments; "
+        "balances speed and convergence success"
         "<br>"
         "Note: Not supported for MILP. ",
     )
@@ -517,6 +519,8 @@ class SolverConfig(StrictModel):
         "- PDLP: 1, PDLP method"
         "<br>"
         "- Dual Simplex: 2, Dual Simplex method"
+        "<br>"
+        "- Barrier: 3, Barrier method"
         "<br>"
         "Note: Not supported for MILP. ",
     )
@@ -533,6 +537,44 @@ class SolverConfig(StrictModel):
         default=None,
         description="Set the number of CPU threads to use for branch and bound.",  # noqa
     )
+    augmented: Optional[int] = Field(
+        default=-1,
+        description="Set the types of system solved by the barrier solver."
+        " -1 for automatic, 0 for ADAT, 1 for augmented system",
+    )
+    folding: Optional[int] = Field(
+        default=-1,
+        description="Set if folding should be used on a linear program."
+        " -1 for automatic, 0 to not fold, 1 to force folding",
+    )
+    dualize: Optional[int] = Field(
+        default=-1,
+        description="Set if dualization should be used on a linear program."
+        " -1 for automatic, 0 to turn off dualization, 1 to force dualization",
+    )
+    ordering: Optional[int] = Field(
+        default=-1,
+        description="Set the type of ordering to use for the barrier solver."
+        "-1 for automatic, 0 to use cuDSS default ordering, 1 to use AMD",
+    )
+    barrier_dual_initial_point: Optional[int] = Field(
+        default=-1,
+        description="Set the type of dual initial point to use for the barrier"
+        "solver. -1 for automatic, 0 to use Lustig, Marsten, and Shanno"
+        "initial point, 1 to use initial point from a dual least squares"
+        "problem",
+    )
+    eliminate_dense_columns: Optional[bool] = Field(
+        default=True,
+        description="Set if dense columns should be eliminated from the "
+        "constraint matrix in the barrier solver. "
+        "True to eliminate, False to not eliminate",
+    )
+    cudss_deterministic: Optional[bool] = Field(
+        default=False,
+        description="Set if cuDSS should use deterministic mode. "
+        "True to use deterministic mode, False to not use deterministic mode",
+    )
     crossover: Optional[bool] = Field(
         default=False,
         description="Set True to use crossover, False to not use crossover.",
@@ -542,6 +584,14 @@ class SolverConfig(StrictModel):
         description="Set True to enable presolve, False to disable presolve. "
         "Presolve can reduce problem size and improve solve time. "
         "Default is True for MIP problems and False for LP problems.",
+    )
+    dual_postsolve: Optional[bool] = Field(
+        default=None,
+        description="Set True to enable dual postsolve, False to disable dual postsolve. "  # noqa
+        "Dual postsolve can improve solve time at the expense of not having "
+        "access to the dual solution. "
+        "Default is True for LP problems when presolve is enabled. "
+        "This is not relevant for MIP problems.",
     )
     log_to_console: Optional[bool] = Field(
         default=True,

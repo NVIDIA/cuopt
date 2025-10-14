@@ -31,6 +31,8 @@ inline constexpr int dual_stride   = 1;
 
 // #define PDLP_DEBUG_MODE
 
+// #define CUPDLP_DEBUG_MODE
+
 // Value used to determine what we see as too small (the value) or too large (1/value) values when
 // computing the new primal weight during the restart.
 template <typename f_t>

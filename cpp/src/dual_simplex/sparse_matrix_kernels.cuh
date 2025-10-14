@@ -23,26 +23,14 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
-__global__ void scale_columns_kernel(csc_view_t<i_t, f_t> csc, raft::device_span<const f_t> scale)
-{
-  i_t j         = blockIdx.x;
-  i_t col_start = csc.col_start[j];
-  i_t col_end   = csc.col_start[j + 1];
-
-  for (i_t p = threadIdx.x; p < col_end - col_start; p += blockDim.x) {
-    csc.x[col_start + p] *= scale[j];
-  }
-}
-
-template <typename i_t, typename f_t>
 void initialize_cusparse_data(raft::handle_t const* handle,
                               device_csr_matrix_t<i_t, f_t>& A,
                               device_csc_matrix_t<i_t, f_t>& DAT,
                               device_csr_matrix_t<i_t, f_t>& ADAT,
                               cusparse_info_t<i_t, f_t>& cusparse_data)
 {
-  auto A_nnz         = A.nz_max;    // A.row_start.element(A.m, A.row_start.stream());
-  auto DAT_nnz       = DAT.nz_max;  // DAT.col_start.element(DAT.n, DAT.col_start.stream());
+  auto A_nnz         = A.nz_max;
+  auto DAT_nnz       = DAT.nz_max;
   f_t chunk_fraction = 0.15;
 
   // Create matrix descriptors
@@ -56,7 +44,6 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                             DAT.i.data(),
                                                             DAT.x.data()));
 
-  // std::cout << "ADAT.m " << ADAT.m << " ADAT.n " << ADAT.n << std::endl;
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatecsr(&cusparse_data.matADAT_descr,
                                                             ADAT.m,
                                                             ADAT.n,
@@ -83,7 +70,6 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                   nullptr));
   cusparse_data.buffer_size.resize(buffer_size, handle->get_stream());
 
-  // std::cout << "buffer_size " << buffer_size << std::endl;
   RAFT_CUSPARSE_TRY(cusparseSpGEMM_workEstimation(handle->get_cusparse_handle(),
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -100,7 +86,6 @@ void initialize_cusparse_data(raft::handle_t const* handle,
 
   int64_t num_prods;
   RAFT_CUSPARSE_TRY(cusparseSpGEMM_getNumProducts(cusparse_data.spgemm_descr, &num_prods));
-  // std::cout << "num_prods " << num_prods << std::endl;
 
   size_t buffer_size_3_size;
   RAFT_CUSPARSE_TRY(cusparseSpGEMM_estimateMemory(handle->get_cusparse_handle(),
@@ -137,23 +122,6 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                   &cusparse_data.buffer_size_2_size));
   cusparse_data.buffer_size_3.resize(0, handle->get_stream());
   cusparse_data.buffer_size_2.resize(cusparse_data.buffer_size_2_size, handle->get_stream());
-
-  // RAFT_CUSPARSE_TRY(
-  //   cusparseSpGEMM_compute(handle->get_cusparse_handle(),
-  //                          CUSPARSE_OPERATION_NON_TRANSPOSE,
-  //                          CUSPARSE_OPERATION_NON_TRANSPOSE,
-  //                          cusparse_data.alpha.data(),
-  //                          cusparse_data.matA_descr,    // non-const descriptor supported
-  //                          cusparse_data.matDAT_descr,  // non-const descriptor supported
-  //                          cusparse_data.beta.data(),
-  //                          cusparse_data.matADAT_descr,
-  //                          CUDA_R_64F,
-  //                          CUSPARSE_SPGEMM_ALG3,
-  //                          cusparse_data.spgemm_descr,
-  //                          &cusparse_data.buffer_size_2_size,
-  //                          nullptr));
-
-  // cusparse_data.buffer_size_2.resize(cusparse_data.buffer_size_2_size, handle->get_stream());
 }
 
 template <typename i_t, typename f_t>
@@ -182,8 +150,6 @@ void multiply_kernels(raft::handle_t const* handle,
   int64_t ADAT_num_rows, ADAT_num_cols, ADAT_nnz1;
   RAFT_CUSPARSE_TRY(
     cusparseSpMatGetSize(cusparse_data.matADAT_descr, &ADAT_num_rows, &ADAT_num_cols, &ADAT_nnz1));
-  // std::cout << "ADAT_num_rows " << ADAT_num_rows << " ADAT_num_cols " << ADAT_num_cols <<
-  // std::endl; std::cout << "ADAT_nnz1 " << ADAT_nnz1 << std::endl;
   ADAT.resize_to_nnz(ADAT_nnz1, handle->get_stream());
 
   thrust::fill(rmm::exec_policy(handle->get_stream()), ADAT.x.begin(), ADAT.x.end(), 0.0);
@@ -204,10 +170,6 @@ void multiply_kernels(raft::handle_t const* handle,
                                         CUSPARSE_SPGEMM_ALG3,
                                         cusparse_data.spgemm_descr));
 
-  // RAFT_CUSPARSE_TRY(cusparseSpGEMM_destroyDescr(cusparse_data.spgemm_descr));
-  // RAFT_CUSPARSE_TRY(cusparseDestroySpMat(cusparse_data.matA_descr));
-  // RAFT_CUSPARSE_TRY(cusparseDestroySpMat(cusparse_data.matDAT_descr));
-  // RAFT_CUSPARSE_TRY(cusparseDestroySpMat(cusparse_data.matADAT_descr));
   handle->sync_stream();
 }
 

@@ -29,9 +29,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
-#include <iterator>
-#include <limits>
-#include <list>
+#include <ctime>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -1240,10 +1238,7 @@ i_t initialize_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Initialized %d of %d steepest edge norms in %.2fs\n", k, m, now);
     }
     if (toc(start_time) > settings.time_limit) { return -1; }
-    if (settings.concurrent_halt != nullptr &&
-        *settings.concurrent_halt == 1) {
-      return -1;
-    }
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return -1; }
   }
   return 0;
 }
@@ -2889,6 +2884,9 @@ dual::status_t dual_phase2(i_t phase,
           settings.log.printf("Failed to repair basis. Iteration %d. %d deficient columns.\n",
                               iter,
                               static_cast<int>(deficient.size()));
+#ifdef CHECK_L_FACTOR
+          if (L.check_matrix() == -1) { settings.log.printf("Bad L after basis repair\n"); }
+#endif
           if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
           settings.threshold_partial_pivoting_tol = 1.0;
           count++;
@@ -2918,6 +2916,9 @@ dual::status_t dual_phase2(i_t phase,
         settings.log.printf("Successfully repaired basis. Iteration %d\n", iter);
       }
       reorder_basic_list(q, basic_list);
+#ifdef CHECK_L_FACTOR
+      if (L.check_matrix() == -1) { settings.log.printf("Bad L factor\n"); }
+#endif
       ft.reset(L, U, p);
       phase2::reset_basis_mark(basic_list, nonbasic_list, basic_mark, nonbasic_mark);
       if (should_recompute_x) {
@@ -2977,8 +2978,7 @@ dual::status_t dual_phase2(i_t phase,
 
     if (now > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
 
-    if (settings.concurrent_halt != nullptr &&
-        *settings.concurrent_halt == 1) {
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return dual::status_t::CONCURRENT_LIMIT;
     }
   }

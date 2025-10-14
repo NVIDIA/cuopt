@@ -46,7 +46,6 @@ files:
       - depends_on_cudf
       - depends_on_cuvs
       - depends_on_pylibraft
-      - depends_on_raft_dask
       - depends_on_rapids_logger
       - rapids_build_backend
   test_cpp:
@@ -55,11 +54,17 @@ files:
       - cuda
       - cuda_version
       - test_cpp
+      - test_cpp_cuopt
       - depends_on_libcuopt
   test_python:
     output: none
     includes:
       - py_version
+      - depends_on_libcuopt
+      - depends_on_cuopt
+      - depends_on_cuopt_server
+      - depends_on_cuopt_sh_client
+      - depends_on_mps_parser
       - test_python_common
       - test_python_cuopt
       - test_python_cuopt_server
@@ -189,7 +194,6 @@ files:
       - depends_on_rmm
       - depends_on_cudf
       - depends_on_cuvs
-      - depends_on_raft_dask
       - depends_on_pylibraft
       - depends_on_rapids_logger
   py_test_cuopt:
@@ -318,6 +322,11 @@ dependencies:
           - cuda-sanitizer-api
           - gmock
           - gtest
+  test_cpp_cuopt:
+    common:
+      - output_types: [conda]
+        packages:
+          - libcuopt-tests==25.10.*,>=0.0.0a0
   build_wheels:
     common:
       - output_types: [requirements, pyproject]
@@ -393,7 +402,6 @@ dependencies:
       - output_types: [conda, requirements, pyproject]
         packages:
           - fastapi
-          - httpx
           - *jsonref
           - *msgpack_numpy
           - *pandas
@@ -402,11 +410,11 @@ dependencies:
         packages:
           - *msgpack_python
           - pip
-          - psutil>=5.9,<6.0a0
+          - psutil>=6.0.0
       - output_types: [requirements, pyproject]
         packages:
           - *msgpack
-          - psutil==5.9.6
+          - psutil>=6.0.0
 
   run_cuopt_sh_client:
     common:
@@ -650,32 +658,6 @@ dependencies:
             packages:
               - *cuvs_unsuffixed
 
-  depends_on_raft_dask:
-    common:
-      - output_types: conda
-        packages:
-          - &raft_dask_unsuffixed raft-dask==25.10.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
-    specific:
-      - output_types: [requirements, pyproject]
-        matrices:
-          - matrix:
-              cuda: "12.*"
-              cuda_suffixed: "true"
-            packages:
-              - raft-dask-cu12==25.10.*,>=0.0.0a0
-          - matrix:
-              cuda: "13.*"
-              cuda_suffixed: "true"
-            packages:
-              - raft-dask-cu13==25.10.*,>=0.0.0a0
-          - matrix:
-            packages:
-              - *raft_dask_unsuffixed
-
   depends_on_pylibraft:
     common:
       - output_types: conda
@@ -737,10 +719,12 @@ dependencies:
     common:
       - output_types: [conda]
         packages:
+          - libcudss-dev >=0.7
           - libcurand-dev
           - libcusolver-dev
           - libcusparse-dev
           - cuda-nvtx-dev
+
 
   cuda_wheels:
     specific:
@@ -751,11 +735,13 @@ dependencies:
               use_cuda_wheels: "true"
             packages:
               - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==12.*
+              - nvidia-cudss-cu12
           - matrix:
               cuda: "13.*"
               use_cuda_wheels: "true"
             packages:
               - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*
+              - nvidia-cudss-cu13
           # if use_cuda_wheels=false is provided, do not add dependencies on any CUDA wheels
           # (e.g. for DLFW and pip devcontainers)
           - matrix:
@@ -767,6 +753,7 @@ dependencies:
             packages:
               - nvidia-cudart
               - nvidia-cublas
+              - nvidia-cudss
               - nvidia-curand
               - nvidia-cusparse
               - nvidia-cusolver

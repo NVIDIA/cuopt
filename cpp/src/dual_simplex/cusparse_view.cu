@@ -16,8 +16,8 @@
  */
 
 #include <dual_simplex/dense_vector.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
 #include <dual_simplex/pinned_host_allocator.hpp>
+#include <dual_simplex/sparse_matrix.hpp>
 #include "dual_simplex/cusparse_view.hpp"
 
 #include <utilities/copy_helpers.hpp>
@@ -125,7 +125,7 @@ void my_cusparsespmv_preprocess(cusparseHandle_t handle,
 
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
-                                          const csc_matrix_t<i_t, f_t>& A)
+                                           const csc_matrix_t<i_t, f_t>& A)
   : handle_ptr_(handle_ptr),
     A_offsets_(0, handle_ptr->get_stream()),
     A_indices_(0, handle_ptr->get_stream()),
@@ -140,18 +140,15 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
 {
   // TMP matrix data should already be on the GPU
   constexpr bool debug = false;
-  if (debug)
-  {
-    printf("A hash: %zu\n", A.hash());
-  }
+  if (debug) { printf("A hash: %zu\n", A.hash()); }
   csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
   A.to_compressed_row(A_csr);
-  i_t rows = A_csr.m;
-  i_t cols = A_csr.n;
-  i_t nnz = A_csr.x.size();
+  i_t rows                        = A_csr.m;
+  i_t cols                        = A_csr.n;
+  i_t nnz                         = A_csr.x.size();
   const std::vector<i_t>& offsets = A_csr.row_start;
   const std::vector<i_t>& indices = A_csr.j;
-  const std::vector<f_t>& data = A_csr.x;
+  const std::vector<f_t>& data    = A_csr.x;
 
   A_offsets_ = device_copy(offsets, handle_ptr->get_stream());
   A_indices_ = device_copy(indices, handle_ptr->get_stream());
@@ -172,7 +169,6 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                     CUSPARSE_INDEX_32I,
                     CUSPARSE_INDEX_BASE_ZERO,
                     CUDA_R_64F);
-
 
   cusparseCreateCsr(&A_T_,
                     cols,
@@ -267,7 +263,7 @@ void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
   cusparseDnVecDescr_t x_cusparse = create_vector(d_x);
   cusparseDnVecDescr_t y_cusparse = create_vector(d_y);
   spmv(alpha, x_cusparse, beta, y_cusparse);
-  y = cuopt::host_copy<f_t, AllocatorB>(d_y);
+  y = cuopt::host_copy<f_t, AllocatorB>(d_y, handle_ptr_->get_stream());
 }
 
 template <typename i_t, typename f_t>
@@ -310,7 +306,7 @@ void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
   cusparseDnVecDescr_t x_cusparse = create_vector(d_x);
   cusparseDnVecDescr_t y_cusparse = create_vector(d_y);
   transpose_spmv(alpha, x_cusparse, beta, y_cusparse);
-  y = cuopt::host_copy<f_t, AllocatorB>(d_y);
+  y = cuopt::host_copy<f_t, AllocatorB>(d_y, handle_ptr_->get_stream());
 }
 
 template <typename i_t, typename f_t>

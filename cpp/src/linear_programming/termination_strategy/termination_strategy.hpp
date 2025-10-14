@@ -46,6 +46,7 @@ class pdlp_termination_strategy_t {
     pdhg_solver_t<i_t, f_t>& current_pdhg_solver,
     rmm::device_uvector<f_t>& primal_iterate,
     rmm::device_uvector<f_t>& dual_iterate,
+    [[maybe_unused]] const rmm::device_uvector<f_t>& dual_slack,
     const rmm::device_uvector<f_t>& combined_bounds,  // Only useful if per_constraint_residual
     const rmm::device_uvector<f_t>&
       objective_coefficients  // Only useful if per_constraint_residual

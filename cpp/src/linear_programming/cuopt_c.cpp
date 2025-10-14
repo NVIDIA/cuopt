@@ -21,11 +21,13 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/logger.hpp>
+#include <cuopt/utilities/timestamp_utils.hpp>
 
 #include <mps_parser/parser.hpp>
 
 #include <cuopt/version_config.hpp>
 
+#include <cstdlib>
 #include <memory>
 #include <string>
 
@@ -115,6 +117,8 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
                                const char* variable_types,
                                cuOptOptimizationProblem* problem_ptr)
 {
+  cuopt::utilities::printTimestamp("CUOPT_CREATE_PROBLEM");
+
   if (problem_ptr == nullptr || objective_coefficients == nullptr ||
       constraint_matrix_row_offsets == nullptr || constraint_matrix_column_indices == nullptr ||
       constraint_matrix_coefficent_values == nullptr || constraint_sense == nullptr ||
@@ -170,6 +174,8 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
                                      const char* variable_types,
                                      cuOptOptimizationProblem* problem_ptr)
 {
+  cuopt::utilities::printTimestamp("CUOPT_CREATE_PROBLEM");
+
   if (problem_ptr == nullptr || objective_coefficients == nullptr ||
       constraint_matrix_row_offsets == nullptr || constraint_matrix_column_indices == nullptr ||
       constraint_matrix_coefficent_values == nullptr || constraint_lower_bounds == nullptr ||
@@ -596,6 +602,8 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
                        cuOptSolverSettings settings,
                        cuOptSolution* solution_ptr)
 {
+  cuopt::utilities::printTimestamp("CUOPT_SOLVE_START");
+
   if (problem == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (solution_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
@@ -614,6 +622,9 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
     solution_and_stream_view->mip_solution_ptr = new mip_solution_t<cuopt_int_t, cuopt_float_t>(
       solve_mip<cuopt_int_t, cuopt_float_t>(*op_problem, mip_settings));
     *solution_ptr = static_cast<cuOptSolution>(solution_and_stream_view);
+
+    cuopt::utilities::printTimestamp("CUOPT_SOLVE_RETURN");
+
     return static_cast<cuopt_int_t>(
       solution_and_stream_view->mip_solution_ptr->get_error_status().get_error_type());
   } else {
@@ -629,6 +640,9 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
       new optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>(
         solve_lp<cuopt_int_t, cuopt_float_t>(*op_problem, pdlp_settings));
     *solution_ptr = static_cast<cuOptSolution>(solution_and_stream_view);
+
+    cuopt::utilities::printTimestamp("CUOPT_SOLVE_RETURN");
+
     return static_cast<cuopt_int_t>(
       solution_and_stream_view->lp_solution_ptr->get_error_status().get_error_type());
   }

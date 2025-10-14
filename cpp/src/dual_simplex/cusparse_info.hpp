@@ -42,6 +42,15 @@ struct cusparse_info_t {
     alpha.set_value_async(v, handle->get_stream());
     beta.set_value_async(v, handle->get_stream());
   }
+
+  ~cusparse_info_t()
+  {
+    //    RAFT_CUSPARSE_TRY(cusparseSpGEMM_destroyDescr(spgemm_descr));
+    //    RAFT_CUSPARSE_TRY(cusparseDestroySpMat(matA_descr));
+    //   RAFT_CUSPARSE_TRY(cusparseDestroySpMat(matDAT_descr));
+    //   RAFT_CUSPARSE_TRY(cusparseDestroySpMat(matADAT_descr));
+  }
+
   cusparseSpMatDescr_t matA_descr;
   cusparseSpMatDescr_t matDAT_descr;
   cusparseSpMatDescr_t matADAT_descr;

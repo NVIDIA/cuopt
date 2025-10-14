@@ -52,9 +52,13 @@
 #define CUOPT_CROSSOVER                   "crossover"
 #define CUOPT_FOLDING                     "folding"
 #define CUOPT_AUGMENTED                   "augmented"
+#define CUOPT_DUALIZE                     "dualize"
+#define CUOPT_ORDERING                    "ordering"
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT  "barrier_dual_initial_point"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS     "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC         "cudss_deterministic"
 #define CUOPT_PRESOLVE                    "presolve"
+#define CUOPT_DUAL_POSTSOLVE              "dual_postsolve"
 #define CUOPT_MIP_ABSOLUTE_TOLERANCE      "mip_absolute_tolerance"
 #define CUOPT_MIP_RELATIVE_TOLERANCE      "mip_relative_tolerance"
 #define CUOPT_MIP_INTEGRALITY_TOLERANCE   "mip_integrality_tolerance"
@@ -105,6 +109,7 @@
 #define CUOPT_PDLP_SOLVER_MODE_STABLE2     1
 #define CUOPT_PDLP_SOLVER_MODE_METHODICAL1 2
 #define CUOPT_PDLP_SOLVER_MODE_FAST1       3
+#define CUOPT_PDLP_SOLVER_MODE_STABLE3     4
 
 #define CUOPT_METHOD_CONCURRENT   0
 #define CUOPT_METHOD_PDLP         1

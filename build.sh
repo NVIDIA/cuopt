@@ -27,7 +27,7 @@ REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -54,6 +54,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    --skip-tests-build  - disable building of all tests
    --skip-routing-build - skip building routing components
    --skip-fatbin-write      - skip the fatbin write
+   --host-lineinfo           - build with debug line information for host code
    --cache-tool=<tool> - pass the build cache tool (eg: ccache, sccache, distcc) that will be used
                       to speedup the build process.
    --cmake-args=\\\"<args>\\\"   - pass arbitrary list of CMake configuration options (escape all quotes in argument)
@@ -91,6 +92,7 @@ SKIP_C_PYTHON_ADAPTERS=0
 SKIP_TESTS_BUILD=0
 SKIP_ROUTING_BUILD=0
 WRITE_FATBIN=1
+HOST_LINEINFO=0
 CACHE_ARGS=()
 PYTHON_ARGS_FOR_INSTALL=("-m" "pip" "install" "--no-build-isolation" "--no-deps")
 LOGGING_ACTIVE_LEVEL="INFO"
@@ -133,7 +135,7 @@ function cacheTool {
 }
 
 function loggingArgs {
-    if [[ $(echo "$ARGS" | { grep -Eo "\-l" || true; } | wc -l ) -gt 1 ]]; then
+    if [[ $(echo "$ARGS" | { grep -Eo "\-l=" || true; } | wc -l ) -gt 1 ]]; then
         echo "Multiple -l logging options were provided, please provide only one: ${ARGS}"
         exit 1
     fi
@@ -141,7 +143,7 @@ function loggingArgs {
     LOG_LEVEL_LIST=("TRACE" "DEBUG" "INFO" "WARN" "ERROR" "CRITICAL" "OFF")
 
     # Check for logging option
-    if [[ -n $(echo "$ARGS" | { grep -E "\-l" || true; } ) ]]; then
+    if [[ -n $(echo "$ARGS" | { grep -E "\-l=" || true; } ) ]]; then
         LOGGING_ARGS=$(echo "$ARGS" | { grep -Eo "\-l=\S+" || true; })
         if [[ -n ${LOGGING_ARGS} ]]; then
             # Remove the full log argument from list of args so that it passes validArgs function
@@ -252,6 +254,9 @@ fi
 if hasArg --skip-fatbin-write; then
     WRITE_FATBIN=0
 fi
+if hasArg --host-lineinfo; then
+    HOST_LINEINFO=1
+fi
 
 function contains_string {
     local search_string="$1"
@@ -355,6 +360,7 @@ if buildAll || hasArg libcuopt; then
           -DBUILD_TESTS=$((1 - ${SKIP_TESTS_BUILD})) \
           -DSKIP_ROUTING_BUILD=${SKIP_ROUTING_BUILD} \
           -DWRITE_FATBIN=${WRITE_FATBIN} \
+          -DHOST_LINEINFO=${HOST_LINEINFO} \
           "${CACHE_ARGS[@]}" \
           "${EXTRA_CMAKE_ARGS[@]}" \
           "${REPODIR}"/cpp

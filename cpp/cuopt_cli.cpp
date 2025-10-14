@@ -36,6 +36,8 @@
 
 #include <cuopt/version_config.hpp>
 
+static char cuda_module_loading_env[] = "CUDA_MODULE_LOADING=EAGER";
+
 /**
  * @file cuopt_cli.cpp
  * @brief Command line interface for solving Linear Programming (LP) and Mixed Integer Programming
@@ -102,7 +104,7 @@ int run_single_file(const std::string& file_path,
   cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model;
   bool parsing_failed = false;
   {
-    CUOPT_LOG_INFO("Running file %s", base_filename.c_str());
+    CUOPT_LOG_INFO("Reading file %s", base_filename.c_str());
     try {
       mps_data_model = cuopt::mps_parser::parse_mps<int, double>(file_path, input_mps_strict);
     } catch (const std::logic_error& e) {
@@ -122,13 +124,13 @@ int run_single_file(const std::string& file_path,
     (op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP ||
      op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::IP);
 
-  auto initial_solution =
-    initial_solution_file.empty()
-      ? std::vector<double>()
-      : cuopt::linear_programming::solution_reader_t::get_variable_values_from_sol_file(
-          initial_solution_file, mps_data_model.get_variable_names());
-
   try {
+    auto initial_solution =
+      initial_solution_file.empty()
+        ? std::vector<double>()
+        : cuopt::linear_programming::solution_reader_t::get_variable_values_from_sol_file(
+            initial_solution_file, mps_data_model.get_variable_names());
+
     if (is_mip && !solve_relaxation) {
       auto& mip_settings = settings.get_mip_settings();
       if (initial_solution.size() > 0) {
@@ -166,6 +168,50 @@ std::string param_name_to_arg_name(const std::string& input)
 }
 
 /**
+ * @brief Set the CUDA module loading environment variable
+ * If the method is 0, set the CUDA module loading environment variable to EAGER
+ * This needs to be done before the first call to the CUDA API. In this file before dummy settings
+ * default constructor is called.
+ * @param argc Number of command line arguments
+ * @param argv Command line arguments
+ * @return 0 on success, 1 on failure
+ */
+int set_cuda_module_loading(int argc, char* argv[])
+{
+  // Parse method_int from argv
+  int method_int = 0;  // Default value
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if ((arg == "--method" || arg == "-m") && i + 1 < argc) {
+      try {
+        method_int = std::stoi(argv[i + 1]);
+      } catch (...) {
+        std::cerr << "Invalid value for --method: " << argv[i + 1] << std::endl;
+        return 1;
+      }
+      break;
+    }
+    // Also support --method=1 style
+    if (arg.rfind("--method=", 0) == 0) {
+      try {
+        method_int = std::stoi(arg.substr(9));
+      } catch (...) {
+        std::cerr << "Invalid value for --method: " << arg << std::endl;
+        return 1;
+      }
+      break;
+    }
+  }
+
+  char* env_val = getenv("CUDA_MODULE_LOADING");
+  if (method_int == 0 && (!env_val || env_val[0] == '\0')) {
+    CUOPT_LOG_INFO("Setting CUDA_MODULE_LOADING to EAGER");
+    putenv(cuda_module_loading_env);
+  }
+  return 0;
+}
+
+/**
  * @brief Main function for the cuOpt CLI
  * @param argc Number of command line arguments
  * @param argv Command line arguments
@@ -173,6 +219,8 @@ std::string param_name_to_arg_name(const std::string& input)
  */
 int main(int argc, char* argv[])
 {
+  if (set_cuda_module_loading(argc, argv) != 0) { return 1; }
+
   // Get the version string from the version_config.hpp file
   const std::string version_string = std::string("cuOpt ") + std::to_string(CUOPT_VERSION_MAJOR) +
                                      "." + std::to_string(CUOPT_VERSION_MINOR) + "." +

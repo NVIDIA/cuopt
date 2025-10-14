@@ -19,9 +19,16 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_DUAL_TOLERANCE,
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
+    CUOPT_AUGMENTED,
+    CUOPT_BARRIER_DUAL_INITIAL_POINT,
     CUOPT_CROSSOVER,
+    CUOPT_CUDSS_DETERMINISTIC,
     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
+    CUOPT_DUAL_POSTSOLVE,
+    CUOPT_DUALIZE,
+    CUOPT_ELIMINATE_DENSE_COLUMNS,
     CUOPT_FIRST_PRIMAL_FEASIBLE,
+    CUOPT_FOLDING,
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_ITERATION_LIMIT,
     CUOPT_LOG_FILE,
@@ -35,8 +42,10 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_MIP_RELATIVE_TOLERANCE,
     CUOPT_MIP_SCALING,
     CUOPT_NUM_CPU_THREADS,
+    CUOPT_ORDERING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PER_CONSTRAINT_RESIDUAL,
+    CUOPT_PRESOLVE,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
     CUOPT_RELATIVE_DUAL_TOLERANCE,
     CUOPT_RELATIVE_GAP_TOLERANCE,
@@ -58,6 +67,7 @@ class SolverMethod(IntEnum):
     Concurrent = 0
     PDLP = auto()
     DualSimplex = auto()
+    Barrier = auto()
 
     def __str__(self):
         """Convert the solver method to a string.
@@ -76,7 +86,7 @@ class PDLPSolverMode(IntEnum):
 
     Attributes
     ----------
-    Stable2
+    Stable3
         Best overall mode from experiments; balances speed and convergence
         success. If you want to use the legacy version, use Stable1.
     Methodical1
@@ -86,13 +96,14 @@ class PDLPSolverMode(IntEnum):
 
     Notes
     -----
-    Default mode is Stable2.
+    Default mode is Stable3.
     """
 
     Stable1 = 0
     Stable2 = auto()
     Methodical1 = auto()
     Fast1 = auto()
+    Stable3 = auto()
 
     def __str__(self):
         """Convert the solver mode to a string.
@@ -205,6 +216,7 @@ class SolverSettings:
         ----------
         eps_optimal : float64
             Tolerance to optimality
+
         Notes
         -----
         Default value is 1e-4.
@@ -228,7 +240,8 @@ class SolverSettings:
         Parameters
         ----------
         pdlp_warm_start_data : PDLPWarmStartData
-            PDLP warm start data.
+            PDLP warm start data obtained from a previous solve.
+            Refer :py:meth:`cuopt.linear_programming.problem.Problem.get_pdlp_warm_start_data`  # noqa
 
         Notes
         -----
@@ -239,11 +252,7 @@ class SolverSettings:
 
         Examples
         --------
-        >>> solution = solver.Solve(first_problem, settings)
-        >>> settings.set_pdlp_warm_start_data(
-        >>>     solution.get_pdlp_warm_start_data()
-        >>> )
-        >>> solution = solver.Solve(second_problem, settings)
+        >>> settings.set_pdlp_warm_start_data(pdlp_warm_start_data)
         """
         self.pdlp_warm_start_data = pdlp_warm_start_data
 
@@ -315,11 +324,7 @@ class SolverSettings:
 
         Returns
         -------
-        pdlp_warm_start_data
-
-        Notes
-        -----
-        ...
+        pdlp_warm_start_data:
 
         """
         return self.pdlp_warm_start_data
@@ -375,11 +380,26 @@ class SolverSettings:
             "iteration_limit": self.get_parameter(CUOPT_ITERATION_LIMIT),
             "pdlp_solver_mode": self.get_parameter(CUOPT_PDLP_SOLVER_MODE),
             "method": self.get_parameter(CUOPT_METHOD),
+            "presolve": self.get_parameter(CUOPT_PRESOLVE),
+            "dual_postsolve": self.get_parameter(CUOPT_DUAL_POSTSOLVE),
             "mip_scaling": self.get_parameter(CUOPT_MIP_SCALING),
             "mip_heuristics_only": self.get_parameter(
                 CUOPT_MIP_HEURISTICS_ONLY
             ),
             "num_cpu_threads": self.get_parameter(CUOPT_NUM_CPU_THREADS),
+            "augmented": self.get_parameter(CUOPT_AUGMENTED),
+            "folding": self.get_parameter(CUOPT_FOLDING),
+            "dualize": self.get_parameter(CUOPT_DUALIZE),
+            "ordering": self.get_parameter(CUOPT_ORDERING),
+            "barrier_dual_initial_point": self.get_parameter(
+                CUOPT_BARRIER_DUAL_INITIAL_POINT
+            ),
+            "eliminate_dense_columns": self.get_parameter(
+                CUOPT_ELIMINATE_DENSE_COLUMNS
+            ),
+            "cudss_deterministic": self.get_parameter(
+                CUOPT_CUDSS_DETERMINISTIC
+            ),
             "crossover": self.get_parameter(CUOPT_CROSSOVER),
             "log_to_console": self.get_parameter(CUOPT_LOG_TO_CONSOLE),
             "first_primal_feasible": self.get_parameter(

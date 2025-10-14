@@ -18,6 +18,7 @@
 #include <cuopt/error.hpp>
 #include <cuopt/logger.hpp>
 #include <mip/mip_constants.hpp>
+#include <mip/presolve/gf2_presolve.hpp>
 #include <mip/presolve/third_party_presolve.hpp>
 #include <utilities/timer.hpp>
 
@@ -35,7 +36,8 @@ static papilo::PostsolveStorage<double> post_solve_storage_;
 static bool maximize_ = false;
 
 template <typename i_t, typename f_t>
-papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem)
+papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem,
+                                          problem_category_t category)
 {
   raft::common::nvtx::range fun_scope("Build papilo problem");
   // Build papilo problem from optimization problem
@@ -119,6 +121,9 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
   if (!h_var_lb.empty() && !h_var_ub.empty()) {
     builder.setColLbAll(h_var_lb);
     builder.setColUbAll(h_var_ub);
+    if (op_problem.get_variable_names().size() == h_var_lb.size()) {
+      builder.setColNameAll(op_problem.get_variable_names());
+    }
   }
 
   for (size_t i = 0; i < h_var_types.size(); ++i) {
@@ -169,7 +174,11 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
 
   if (h_entries.size()) {
     auto constexpr const sorted_entries = true;
-    auto csr_storage = papilo::SparseStorage<f_t>(h_entries, num_rows, num_cols, sorted_entries);
+    // MIP reductions like clique merging and substituition require more fillin
+    const double spare_ratio      = category == problem_category_t::MIP ? 4.0 : 2.0;
+    const int min_inter_row_space = category == problem_category_t::MIP ? 30 : 4;
+    auto csr_storage              = papilo::SparseStorage<f_t>(
+      h_entries, num_rows, num_cols, sorted_entries, spare_ratio, min_inter_row_space);
     problem.setConstraintMatrix(csr_storage, h_constr_lb, h_constr_ub, h_row_flags);
 
     papilo::ConstraintMatrix<f_t>& matrix = problem.getConstraintMatrix();
@@ -277,19 +286,19 @@ void check_presolve_status(const papilo::PresolveStatus& status)
 {
   switch (status) {
     case papilo::PresolveStatus::kUnchanged:
-      CUOPT_LOG_INFO("Presolve status:: did not result in any changes");
+      CUOPT_LOG_INFO("Presolve status: did not result in any changes");
       break;
     case papilo::PresolveStatus::kReduced:
-      CUOPT_LOG_INFO("Presolve status:: reduced the problem");
+      CUOPT_LOG_INFO("Presolve status: reduced the problem");
       break;
     case papilo::PresolveStatus::kUnbndOrInfeas:
-      CUOPT_LOG_INFO("Presolve status:: found an unbounded or infeasible problem");
+      CUOPT_LOG_INFO("Presolve status: found an unbounded or infeasible problem");
       break;
     case papilo::PresolveStatus::kInfeasible:
-      CUOPT_LOG_INFO("Presolve status:: found an infeasible problem");
+      CUOPT_LOG_INFO("Presolve status: found an infeasible problem");
       break;
     case papilo::PresolveStatus::kUnbounded:
-      CUOPT_LOG_INFO("Presolve status:: found an unbounded problem");
+      CUOPT_LOG_INFO("Presolve status: found an unbounded problem");
       break;
   }
 }
@@ -297,20 +306,26 @@ void check_presolve_status(const papilo::PresolveStatus& status)
 void check_postsolve_status(const papilo::PostsolveStatus& status)
 {
   switch (status) {
-    case papilo::PostsolveStatus::kOk: CUOPT_LOG_INFO("Post-solve status:: succeeded"); break;
+    case papilo::PostsolveStatus::kOk: CUOPT_LOG_INFO("Post-solve status: succeeded"); break;
     case papilo::PostsolveStatus::kFailed:
       CUOPT_LOG_INFO(
-        "Post-solve status:: Post solved solution violates constraints. This is most likely due to "
+        "Post-solve status: Post solved solution violates constraints. This is most likely due to "
         "different tolerances.");
       break;
   }
 }
 
 template <typename f_t>
-void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t category)
+void set_presolve_methods(papilo::Presolve<f_t>& presolver,
+                          problem_category_t category,
+                          bool dual_postsolve)
 {
   using uptr = std::unique_ptr<papilo::PresolveMethod<f_t>>;
 
+  if (category == problem_category_t::MIP) {
+    // cuOpt custom GF2 presolver
+    presolver.addPresolveMethod(uptr(new cuopt::linear_programming::detail::GF2Presolve<f_t>()));
+  }
   // fast presolvers
   presolver.addPresolveMethod(uptr(new papilo::SingletonCols<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::CoefficientStrengthening<f_t>()));
@@ -325,16 +340,21 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver, problem_category_t c
   presolver.addPresolveMethod(uptr(new papilo::SingletonStuffing<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::DualFix<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::SimplifyInequalities<f_t>()));
+  presolver.addPresolveMethod(uptr(new papilo::CliqueMerging<f_t>()));
 
   // exhaustive presolvers
   presolver.addPresolveMethod(uptr(new papilo::ImplIntDetection<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::DominatedCols<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::Probing<f_t>()));
 
-  presolver.addPresolveMethod(uptr(new papilo::DualInfer<f_t>));
-  presolver.addPresolveMethod(uptr(new papilo::SimpleSubstitution<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::Sparsify<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::Substitution<f_t>()));
+  if (!dual_postsolve) {
+    presolver.addPresolveMethod(uptr(new papilo::DualInfer<f_t>()));
+    presolver.addPresolveMethod(uptr(new papilo::SimpleSubstitution<f_t>()));
+    presolver.addPresolveMethod(uptr(new papilo::Sparsify<f_t>()));
+    presolver.addPresolveMethod(uptr(new papilo::Substitution<f_t>()));
+  } else {
+    CUOPT_LOG_INFO("Disabling the presolver methods that do not support dual postsolve");
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -350,28 +370,51 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
   presolver.getPresolveOptions().feastol = 1e-5;
 }
 
+template <typename f_t>
+void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
+                             problem_category_t category,
+                             int nrows,
+                             int ncols)
+{
+  // It looks like a copy. But this copy has the pointers to relevant variables in papilo
+  auto params = presolver.getParameters();
+  if (category == problem_category_t::MIP) {
+    // Papilo has work unit measurements for probing. Because of this when the first batch fails to
+    // produce any reductions, the algorithm stops. To avoid stopping the algorithm, we set a
+    // minimum badge size to a huge value. The time limit makes sure that we exit if it takes too
+    // long
+    int min_badgesize = std::max(ncols / 2, 32);
+    params.setParameter("probing.minbadgesize", min_badgesize);
+    params.setParameter("cliquemerging.enabled", true);
+    params.setParameter("cliquemerging.maxcalls", 50);
+  }
+}
+
 template <typename i_t, typename f_t>
 std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_t>::apply(
   optimization_problem_t<i_t, f_t> const& op_problem,
   problem_category_t category,
+  bool dual_postsolve,
   f_t absolute_tolerance,
   f_t relative_tolerance,
   double time_limit,
   i_t num_cpu_threads)
 {
-  raft::common::nvtx::range fun_scope("Third party presolve");
+  papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem, category);
 
-  papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem);
-
-  CUOPT_LOG_INFO("Unpresolved problem:: %d constraints, %d variables, %d nonzeros",
+  CUOPT_LOG_INFO("Original problem: %d constraints, %d variables, %d nonzeros",
                  papilo_problem.getNRows(),
                  papilo_problem.getNCols(),
                  papilo_problem.getConstraintMatrix().getNnz());
 
+  CUOPT_LOG_INFO("Calling Papilo presolver");
+  if (category == problem_category_t::MIP) { dual_postsolve = false; }
   papilo::Presolve<f_t> presolver;
-  set_presolve_methods<f_t>(presolver, category);
+  set_presolve_methods<f_t>(presolver, category, dual_postsolve);
   set_presolve_options<i_t, f_t>(
     presolver, category, absolute_tolerance, relative_tolerance, time_limit, num_cpu_threads);
+  set_presolve_parameters<f_t>(
+    presolver, category, op_problem.get_n_constraints(), op_problem.get_n_variables());
 
   // Disable papilo logs
   presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
@@ -383,11 +426,11 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
     return std::make_pair(optimization_problem_t<i_t, f_t>(op_problem.get_handle_ptr()), false);
   }
   post_solve_storage_ = result.postsolve;
-  CUOPT_LOG_INFO("Presolve removed:: %d constraints, %d variables, %d nonzeros",
+  CUOPT_LOG_INFO("Presolve removed: %d constraints, %d variables, %d nonzeros",
                  op_problem.get_n_constraints() - papilo_problem.getNRows(),
                  op_problem.get_n_variables() - papilo_problem.getNCols(),
                  op_problem.get_nnz() - papilo_problem.getConstraintMatrix().getNnz());
-  CUOPT_LOG_INFO("Presolved problem:: %d constraints, %d variables, %d nonzeros",
+  CUOPT_LOG_INFO("Presolved problem: %d constraints, %d variables, %d nonzeros",
                  papilo_problem.getNRows(),
                  papilo_problem.getNCols(),
                  papilo_problem.getConstraintMatrix().getNnz());
@@ -424,9 +467,12 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
   check_postsolve_status(status);
 
   primal_solution.resize(full_sol.primal.size(), stream_view);
-  dual_solution.resize(full_sol.primal.size(), stream_view);
-  reduced_costs.resize(full_sol.primal.size(), stream_view);
+  dual_solution.resize(full_sol.dual.size(), stream_view);
+  reduced_costs.resize(full_sol.reducedCosts.size(), stream_view);
   raft::copy(primal_solution.data(), full_sol.primal.data(), full_sol.primal.size(), stream_view);
+  raft::copy(dual_solution.data(), full_sol.dual.data(), full_sol.dual.size(), stream_view);
+  raft::copy(
+    reduced_costs.data(), full_sol.reducedCosts.data(), full_sol.reducedCosts.size(), stream_view);
 }
 
 #if MIP_INSTANTIATE_FLOAT

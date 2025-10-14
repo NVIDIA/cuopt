@@ -19,8 +19,8 @@
 
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/types.hpp>
+#include <utilities/omp_helpers.hpp>
 
-#include <atomic>
 #include <cmath>
 #include <list>
 #include <memory>
@@ -30,11 +30,12 @@ namespace cuopt::linear_programming::dual_simplex {
 
 enum class node_status_t : int {
   ACTIVE           = 0,  // Node still in the tree
-  IN_PROGRESS      = 1,  // Node is currently being solved
-  INTEGER_FEASIBLE = 2,  // Node has an integer feasible solution
-  INFEASIBLE       = 3,  // Node is infeasible
-  FATHOMED         = 4,  // Node objective is greater than the upper bound
-  HAS_CHILDREN     = 5,  // Node has children to explore
+  INTEGER_FEASIBLE = 1,  // Node has an integer feasible solution
+  INFEASIBLE       = 2,  // Node is infeasible
+  FATHOMED         = 3,  // Node objective is greater than the upper bound
+  HAS_CHILDREN     = 4,  // Node has children to explore
+  NUMERICAL        = 5,  // Encountered numerical issue when solving the LP relaxation
+  TIME_LIMIT       = 6   // Time out during the LP relaxation
 };
 
 bool inactive_status(node_status_t status);
@@ -201,6 +202,22 @@ class mip_node_t {
     }
   }
 
+  // This method creates a copy of the current node
+  // with its parent set to `nullptr`, `node_id = 0`
+  // and `depth = 0` such that it is the root
+  // of a separated tree.
+  mip_node_t<i_t, f_t> detach_copy() const
+  {
+    mip_node_t<i_t, f_t> copy(lower_bound, vstatus);
+    copy.branch_var       = branch_var;
+    copy.branch_dir       = branch_dir;
+    copy.branch_var_lower = branch_var_lower;
+    copy.branch_var_upper = branch_var_upper;
+    copy.fractional_val   = fractional_val;
+    copy.node_id          = node_id;
+    return copy;
+  }
+
   node_status_t status;
   f_t lower_bound;
   i_t depth;
@@ -230,11 +247,96 @@ void remove_fathomed_nodes(std::vector<mip_node_t<i_t, f_t>*>& stack)
 template <typename i_t, typename f_t>
 class node_compare_t {
  public:
-  bool operator()(mip_node_t<i_t, f_t>& a, mip_node_t<i_t, f_t>& b)
+  bool operator()(const mip_node_t<i_t, f_t>& a, const mip_node_t<i_t, f_t>& b) const
   {
     return a.lower_bound >
            b.lower_bound;  // True if a comes before b, elements that come before are output last
   }
+
+  bool operator()(const mip_node_t<i_t, f_t>* a, const mip_node_t<i_t, f_t>* b) const
+  {
+    return a->lower_bound >
+           b->lower_bound;  // True if a comes before b, elements that come before are output last
+  }
+};
+
+template <typename i_t, typename f_t>
+class search_tree_t {
+ public:
+  search_tree_t(f_t root_lower_bound, const std::vector<variable_status_t>& basis)
+    : root(root_lower_bound, basis), num_nodes(0)
+  {
+  }
+
+  search_tree_t(mip_node_t<i_t, f_t>&& node) : root(std::move(node)), num_nodes(0) {}
+
+  void update_tree(mip_node_t<i_t, f_t>* node_ptr, node_status_t status)
+  {
+    mutex.lock();
+    std::vector<mip_node_t<i_t, f_t>*> stack;
+    node_ptr->set_status(status, stack);
+    remove_fathomed_nodes(stack);
+    mutex.unlock();
+  }
+
+  void branch(mip_node_t<i_t, f_t>* parent_node,
+              const i_t branch_var,
+              const f_t fractional_val,
+              const std::vector<variable_status_t>& parent_vstatus,
+              const lp_problem_t<i_t, f_t>& original_lp,
+              logger_t& log)
+  {
+    i_t id = num_nodes.fetch_add(2);
+
+    // down child
+    auto down_child = std::make_unique<mip_node_t<i_t, f_t>>(
+      original_lp, parent_node, ++id, branch_var, 0, fractional_val, parent_vstatus);
+
+    graphviz_edge(log, parent_node, down_child.get(), branch_var, 0, std::floor(fractional_val));
+
+    // up child
+    auto up_child = std::make_unique<mip_node_t<i_t, f_t>>(
+      original_lp, parent_node, ++id, branch_var, 1, fractional_val, parent_vstatus);
+
+    graphviz_edge(log, parent_node, up_child.get(), branch_var, 1, std::ceil(fractional_val));
+
+    assert(parent_vstatus.size() == original_lp.num_cols);
+    parent_node->add_children(std::move(down_child),
+                              std::move(up_child));  // child pointers moved into the tree
+  }
+
+  void graphviz_node(logger_t& log,
+                     const mip_node_t<i_t, f_t>* node_ptr,
+                     const std::string label,
+                     const f_t val)
+  {
+    if (write_graphviz) {
+      log.printf("Node%d [label=\"%s %.16e\"]\n", node_ptr->node_id, label.c_str(), val);
+    }
+  }
+
+  void graphviz_edge(logger_t& log,
+                     const mip_node_t<i_t, f_t>* origin_ptr,
+                     const mip_node_t<i_t, f_t>* dest_ptr,
+                     const i_t branch_var,
+                     const i_t branch_dir,
+                     const f_t bound)
+  {
+    if (write_graphviz) {
+      log.printf("Node%d -> Node%d [label=\"x%d %s %e\"]\n",
+                 origin_ptr->node_id,
+                 dest_ptr->node_id,
+                 branch_var,
+                 branch_dir == 0 ? "<=" : ">=",
+                 bound);
+    }
+  }
+
+  mip_node_t<i_t, f_t> root;
+  omp_mutex_t mutex;
+  omp_atomic_t<i_t> num_nodes;
+
+  static constexpr bool write_graphviz = false;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

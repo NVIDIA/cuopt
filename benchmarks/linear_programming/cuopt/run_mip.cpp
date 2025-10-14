@@ -36,6 +36,7 @@
 #include <rmm/mr/device/owning_wrapper.hpp>
 
 #include <fcntl.h>
+#include <omp.h>
 #include <sys/file.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -79,10 +80,11 @@ void merge_result_files(const std::string& out_dir,
 void write_to_output_file(const std::string& out_dir,
                           const std::string& base_filename,
                           int gpu_id,
+                          int n_gpus,
                           int batch_id,
                           const std::string& data)
 {
-  int output_id        = batch_id * 8 + gpu_id;
+  int output_id        = batch_id * n_gpus + gpu_id;
   std::string filename = out_dir + "/result_" + std::to_string(output_id) + ".txt";
   std::ofstream outfile(filename, std::ios_base::app);
   if (outfile.is_open()) {
@@ -148,6 +150,7 @@ std::vector<std::vector<double>> read_solution_from_dir(const std::string file_p
 int run_single_file(std::string file_path,
                     int device,
                     int batch_id,
+                    int n_gpus,
                     std::string out_dir,
                     std::optional<std::string> initial_solution_dir,
                     bool heuristics_only,
@@ -242,7 +245,7 @@ int run_single_file(std::string file_path,
      << obj_val << "," << benchmark_info.objective_of_initial_population << ","
      << benchmark_info.last_improvement_of_best_feasible << ","
      << benchmark_info.last_improvement_after_recombination << "\n";
-  write_to_output_file(out_dir, base_filename, device, batch_id, ss.str());
+  write_to_output_file(out_dir, base_filename, device, n_gpus, batch_id, ss.str());
   CUOPT_LOG_INFO("Results written to the file %s", base_filename.c_str());
   return sol_found;
 }
@@ -250,6 +253,7 @@ int run_single_file(std::string file_path,
 void run_single_file_mp(std::string file_path,
                         int device,
                         int batch_id,
+                        int n_gpus,
                         std::string out_dir,
                         std::optional<std::string> input_file_dir,
                         bool heuristics_only,
@@ -264,6 +268,7 @@ void run_single_file_mp(std::string file_path,
   int sol_found = run_single_file(file_path,
                                   device,
                                   batch_id,
+                                  n_gpus,
                                   out_dir,
                                   input_file_dir,
                                   heuristics_only,
@@ -382,6 +387,8 @@ int main(int argc, char* argv[])
   double memory_limit    = program.get<double>("--memory-limit");
   bool track_allocations = program.get<std::string>("--track-allocations")[0] == 't';
 
+  if (num_cpu_threads < 0) { num_cpu_threads = omp_get_max_threads() / n_gpus; }
+
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
     result_file = out_dir + "/final_result.csv";
@@ -459,6 +466,7 @@ int main(int argc, char* argv[])
             run_single_file_mp(file_name,
                                gpu_id,
                                batch_num,
+                               n_gpus,
                                out_dir,
                                initial_solution_file,
                                heuristics_only,
@@ -498,6 +506,7 @@ int main(int argc, char* argv[])
     run_single_file(path,
                     0,
                     0,
+                    n_gpus,
                     out_dir,
                     initial_solution_file,
                     heuristics_only,

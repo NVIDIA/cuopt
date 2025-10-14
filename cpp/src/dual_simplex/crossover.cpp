@@ -543,8 +543,7 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Crossover time exceeded\n");
       return -1;
     }
-    if (settings.concurrent_halt != nullptr &&
-        *settings.concurrent_halt == 1) {
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Concurrent halt\n");
       return -2;
     }
@@ -691,7 +690,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
       const f_t delta_xs    = delta_xs_trials[push];
       // Compute delta_xB_trial = -delta_xs * w
       sparse_vector_t<i_t, f_t>& delta_xB_trial = delta_xB_trials[push];
-      delta_xB_trial = w_sparse;
+      delta_xB_trial                            = w_sparse;
       for (i_t k = 0; k < w_sparse.i.size(); ++k) {
         delta_xB_trial.x[k] = -w_sparse.x[k] * delta_xs;
       }
@@ -711,12 +710,12 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
     if (best == -1) { best = step_length_trials[0] > step_length_trials[1] ? 0 : 1; }
     assert(best != -1);
 
-    f_t delta_xs               = delta_xs_trials[best];
+    f_t delta_xs                        = delta_xs_trials[best];
     sparse_vector_t<i_t, f_t>& delta_xB = delta_xB_trials[best];
-    i_t leaving_index          = leaving_index_trials[best];
-    i_t basic_leaving_index    = basic_leaving_index_trials[best];
-    f_t step_length            = step_length_trials[best];
-    i_t bound                  = bound_trials[best];
+    i_t leaving_index                   = leaving_index_trials[best];
+    i_t basic_leaving_index             = basic_leaving_index_trials[best];
+    f_t step_length                     = step_length_trials[best];
+    i_t bound                           = bound_trials[best];
 
 #ifdef CHECK_DIRECTION
     {
@@ -835,8 +834,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Crossover time limit exceeded\n");
       return -1;
     }
-    if (settings.concurrent_halt != nullptr &&
-        *settings.concurrent_halt == 1) {
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Concurrent halt\n");
       return -2;
     }
@@ -1159,8 +1157,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     settings.log.printf("Time limit exceeded\n");
     return crossover_status_t::TIME_LIMIT;
   }
-  if (settings.concurrent_halt != nullptr &&
-      *settings.concurrent_halt == 1) {
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
     settings.log.printf("Concurrent halt\n");
     return crossover_status_t::CONCURRENT_LIMIT;
   }
@@ -1246,8 +1243,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Time limit exceeded\n");
       return crossover_status_t::TIME_LIMIT;
     }
-    if (settings.concurrent_halt != nullptr &&
-        *settings.concurrent_halt == 1) {
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Concurrent halt\n");
       return crossover_status_t::CONCURRENT_LIMIT;
     }
@@ -1375,8 +1371,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
         settings.log.printf("Time limit exceeded\n");
         return crossover_status_t::TIME_LIMIT;
       }
-      if (settings.concurrent_halt != nullptr &&
-          *settings.concurrent_halt == 1) {
+      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Concurrent halt\n");
         return crossover_status_t::CONCURRENT_LIMIT;
       }

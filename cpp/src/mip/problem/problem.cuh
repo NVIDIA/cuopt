@@ -99,7 +99,7 @@ class problem_t {
                                bool resize_to_original_problem = true);
   void post_process_solution(solution_t<i_t, f_t>& solution);
   void compute_transpose_of_problem();
-  f_t get_user_obj_from_solver_obj(f_t solver_obj);
+  f_t get_user_obj_from_solver_obj(f_t solver_obj) const;
   void compute_integer_fixed_problem();
   void fill_integer_fixed_problem(rmm::device_uvector<f_t>& assignment,
                                   const raft::handle_t* handle_ptr);
@@ -116,23 +116,23 @@ class problem_t {
   void compute_vars_with_objective_coeffs();
 
   struct view_t {
-    DI std::pair<i_t, i_t> reverse_range_for_var(i_t v) const
+    HDI std::pair<i_t, i_t> reverse_range_for_var(i_t v) const
     {
       cuopt_assert(v >= 0 && v < n_variables, "Variable should be within the range");
       return std::make_pair(reverse_offsets[v], reverse_offsets[v + 1]);
     }
 
-    DI std::pair<i_t, i_t> range_for_constraint(i_t c) const
+    HDI std::pair<i_t, i_t> range_for_constraint(i_t c) const
     {
       return std::make_pair(offsets[c], offsets[c + 1]);
     }
 
-    DI std::pair<i_t, i_t> range_for_related_vars(i_t v) const
+    HDI std::pair<i_t, i_t> range_for_related_vars(i_t v) const
     {
       return std::make_pair(related_variables_offsets[v], related_variables_offsets[v + 1]);
     }
 
-    DI bool check_variable_within_bounds(i_t v, f_t val) const
+    HDI bool check_variable_within_bounds(i_t v, f_t val) const
     {
       const f_t int_tol = tolerances.integrality_tolerance;
       auto bounds       = variable_bounds[v];
@@ -141,20 +141,20 @@ class problem_t {
       return within_bounds;
     }
 
-    DI bool is_integer_var(i_t v) const { return var_t::INTEGER == variable_types[v]; }
+    HDI bool is_integer_var(i_t v) const { return var_t::INTEGER == variable_types[v]; }
 
     // check if the variable is integer according to the tolerances
     // specified for this problem
-    DI bool is_integer(f_t val) const
+    HDI bool is_integer(f_t val) const
     {
       return raft::abs(round(val) - (val)) <= tolerances.integrality_tolerance;
     }
-    DI bool integer_equal(f_t val1, f_t val2) const
+    HDI bool integer_equal(f_t val1, f_t val2) const
     {
       return raft::abs(val1 - val2) <= tolerances.integrality_tolerance;
     }
 
-    DI f_t get_random_for_var(i_t v, raft::random::PCGenerator& rng) const
+    HDI f_t get_random_for_var(i_t v, raft::random::PCGenerator& rng) const
     {
       cuopt_assert(var_t::INTEGER != variable_types[v],
                    "Random value can only be called on continuous values");

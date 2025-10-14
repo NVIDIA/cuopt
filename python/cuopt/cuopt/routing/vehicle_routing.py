@@ -34,7 +34,7 @@ from .validation import (
 class DataModel(vehicle_routing_wrapper.DataModel):
     """
 
-    DataModel(n_locations, n_fleet, n_orders: int = -1, session_id=None)
+    DataModel(n_locations, n_fleet, n_orders: int = -1)
 
     Initialize a Data Model.
 
@@ -46,8 +46,6 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         number of vehicles/technician in the fleet.
     n_orders : Integer
         number of orders.
-    session_id : Integer
-        This is used with dask for Multi GPU scenario.
 
     Note:
       - A cost matrix must be set before passing
@@ -67,16 +65,8 @@ class DataModel(vehicle_routing_wrapper.DataModel):
     """
 
     @catch_cuopt_exception
-    def __init__(
-        self,
-        n_locations,
-        n_fleet,
-        n_orders: int = -1,
-        session_id=None,
-    ):
-        super().__init__(
-            n_locations, n_fleet, n_orders=n_orders, session_id=session_id
-        )
+    def __init__(self, n_locations, n_fleet, n_orders: int = -1):
+        super().__init__(n_locations, n_fleet, n_orders=n_orders)
 
     @catch_cuopt_exception
     def add_cost_matrix(self, cost_mat, vehicle_type=0):

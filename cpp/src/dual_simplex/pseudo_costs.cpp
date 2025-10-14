@@ -21,15 +21,14 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
-#include <random>
+#include <omp.h>
 
 namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
 
 template <typename i_t, typename f_t>
-void strong_branch_helper(i_t thread_id,
-                          i_t start,
+void strong_branch_helper(i_t start,
                           i_t end,
                           f_t start_time,
                           const lp_problem_t<i_t, f_t>& original_lp,
@@ -46,6 +45,7 @@ void strong_branch_helper(i_t thread_id,
 
   constexpr bool verbose = false;
   f_t last_log           = tic();
+  i_t thread_id          = omp_get_thread_num();
   for (i_t k = start; k < end; ++k) {
     const i_t j = fractional[k];
 
@@ -79,7 +79,6 @@ void strong_branch_helper(i_t thread_id,
                                           solution,
                                           iter,
                                           child_edge_norms);
-      const f_t lp_solve_time                = toc(lp_start_time);
 
       f_t obj = std::numeric_limits<f_t>::infinity();
       if (status == dual::status_t::DUAL_UNBOUNDED) {
@@ -126,15 +125,10 @@ void strong_branch_helper(i_t thread_id,
     }
     if (toc(start_time) > settings.time_limit) { break; }
 
-    pc.strong_branches_completed.lock();
-    pc.num_strong_branches_completed++;
-    pc.strong_branches_completed.unlock();
+    const i_t completed = pc.num_strong_branches_completed++;
 
     if (thread_id == 0 && toc(last_log) > 10) {
       last_log = tic();
-      pc.strong_branches_completed.lock();
-      const i_t completed = pc.num_strong_branches_completed;
-      pc.strong_branches_completed.unlock();
       settings.log.printf("%d of %ld strong branches completed in %.1fs\n",
                           completed,
                           fractional.size(),
@@ -146,58 +140,6 @@ void strong_branch_helper(i_t thread_id,
 
     if (toc(start_time) > settings.time_limit) { break; }
   }
-}
-
-template <typename i_t>
-void get_partitioning(i_t N, i_t num_threads, i_t tid, i_t& begin, i_t& end)
-{
-  int base_tasks      = N / num_threads;
-  int remaining_tasks = N % num_threads;
-
-  if (tid < remaining_tasks) {
-    begin = tid * (base_tasks + 1);
-    end   = begin + base_tasks + 1;
-  } else {
-    begin = tid * base_tasks + remaining_tasks;
-    end   = begin + base_tasks;
-  }
-}
-
-template <typename i_t, typename f_t>
-void thread_strong_branch(i_t thread_id,
-                          i_t num_threads,
-                          f_t start_time,
-                          const lp_problem_t<i_t, f_t>& original_lp,
-                          const simplex_solver_settings_t<i_t, f_t>& settings,
-                          const std::vector<variable_type_t>& var_types,
-                          const std::vector<i_t>& fractional,
-                          f_t root_obj,
-                          const std::vector<f_t>& root_soln,
-                          const std::vector<variable_status_t>& root_vstatus,
-                          const std::vector<f_t>& edge_norms,
-                          pseudo_costs_t<i_t, f_t>& pc)
-{
-  i_t start, end;
-  get_partitioning(static_cast<i_t>(fractional.size()), num_threads, thread_id, start, end);
-  constexpr bool verbose = false;
-  if (verbose) {
-    settings.log.printf(
-      "Thread id %d start %d end %d. size %d\n", thread_id, start, end, end - start);
-  }
-
-  strong_branch_helper(thread_id,
-                       start,
-                       end,
-                       start_time,
-                       original_lp,
-                       settings,
-                       var_types,
-                       fractional,
-                       root_obj,
-                       root_soln,
-                       root_vstatus,
-                       edge_norms,
-                       pc);
 }
 
 }  // namespace
@@ -214,51 +156,49 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       const std::vector<f_t>& edge_norms,
                       pseudo_costs_t<i_t, f_t>& pc)
 {
+  pc.resize(original_lp.num_cols);
   pc.strong_branch_down.resize(fractional.size());
   pc.strong_branch_up.resize(fractional.size());
-
   pc.num_strong_branches_completed = 0;
 
-  if (fractional.size() > settings.num_threads) {
-    int num_threads = settings.num_threads;
-    std::thread threads[num_threads];
-    settings.log.printf("Strong branching using %d threads and %ld fractional variables\n",
-                        num_threads,
-                        fractional.size());
-    for (int thread_id = 0; thread_id < num_threads; thread_id++) {
-      threads[thread_id] = std::thread(thread_strong_branch<i_t, f_t>,
-                                       thread_id,
-                                       num_threads,
-                                       start_time,
-                                       original_lp,
-                                       settings,
-                                       var_types,
-                                       fractional,
-                                       root_obj,
-                                       root_soln,
-                                       root_vstatus,
-                                       edge_norms,
-                                       std::ref(pc));
-    }
+  settings.log.printf("Strong branching using %d threads and %ld fractional variables\n",
+                      settings.num_threads,
+                      fractional.size());
 
-    for (int thread_id = 0; thread_id < num_threads; thread_id++) {
-      threads[thread_id].join();
+#pragma omp parallel num_threads(settings.num_threads)
+  {
+    i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
+
+    // Here we are creating more tasks than the number of threads
+    // such that they can be scheduled dynamically to the threads.
+#pragma omp for schedule(dynamic, 1)
+    for (i_t k = 0; k < n; k++) {
+      i_t start = std::floor(k * fractional.size() / n);
+      i_t end   = std::floor((k + 1) * fractional.size() / n);
+
+      constexpr bool verbose = false;
+      if (verbose) {
+        settings.log.printf("Thread id %d task id %d start %d end %d. size %d\n",
+                            omp_get_thread_num(),
+                            k,
+                            start,
+                            end,
+                            end - start);
+      }
+
+      strong_branch_helper(start,
+                           end,
+                           start_time,
+                           original_lp,
+                           settings,
+                           var_types,
+                           fractional,
+                           root_obj,
+                           root_soln,
+                           root_vstatus,
+                           edge_norms,
+                           pc);
     }
-  } else {
-    settings.log.printf("Strong branching on %ld fractional variables\n", fractional.size());
-    strong_branch_helper(0,
-                         0,
-                         static_cast<int>(fractional.size()),
-                         start_time,
-                         original_lp,
-                         settings,
-                         var_types,
-                         fractional,
-                         root_obj,
-                         root_soln,
-                         root_vstatus,
-                         edge_norms,
-                         pc);
   }
 
   pc.update_pseudo_costs_from_strong_branching(fractional, root_soln);
@@ -268,6 +208,7 @@ template <typename i_t, typename f_t>
 void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_ptr,
                                                    f_t leaf_objective)
 {
+  mutex.lock();
   const f_t change_in_obj = leaf_objective - node_ptr->lower_bound;
   const f_t frac          = node_ptr->branch_dir == 0
                               ? node_ptr->fractional_val - std::floor(node_ptr->fractional_val)
@@ -279,6 +220,7 @@ void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_pt
     pseudo_cost_sum_up[node_ptr->branch_var] += change_in_obj / frac;
     pseudo_cost_num_up[node_ptr->branch_var]++;
   }
+  mutex.unlock();
 }
 
 template <typename i_t, typename f_t>
@@ -317,10 +259,10 @@ void pseudo_costs_t<i_t, f_t>::initialized(i_t& num_initialized_down,
 template <typename i_t, typename f_t>
 i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractional,
                                                  const std::vector<f_t>& solution,
-                                                 const std::vector<f_t>& lower,
-                                                 const std::vector<f_t>& upper,
-                                                 logger_t& log) const
+                                                 logger_t& log)
 {
+  mutex.lock();
+
   const i_t num_fractional = fractional.size();
   std::vector<f_t> pseudo_cost_up(num_fractional);
   std::vector<f_t> pseudo_cost_down(num_fractional);
@@ -372,6 +314,8 @@ i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractio
 
   log.printf(
     "pc branching on %d. Value %e. Score %e\n", branch_var, solution[branch_var], score[select]);
+
+  mutex.unlock();
 
   return branch_var;
 }

@@ -13,6 +13,9 @@ cuOpt Examples and Tutorials Videos
 .. dropdown:: Tutorial List
 
     - `Quick Start to GPU-Accelerated Large-Scale Logistics and Supply Chain Optimization with NVIDIA cuOpt <https://www.youtube.com/watch?v=CVtqcUmW9nU>`_
+    - `Accelerated MILP for Supply Chain, Logistics & Planning Optimization — Quick Start with NVIDIA cuOpt <https://www.youtube.com/watch?v=jnDPQeUO0CM>`_
+    - `Solving Vehicle Routing Problems — Hands-On with Open Source NVIDIA cuOpt <https://www.youtube.com/watch?v=kSATyJrELUI>`_
+
 
 `Test cuOpt with NVIDIA Launchable <https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ>`_
 ------------------------------------------------------------------------------------------------------------------------------

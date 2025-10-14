@@ -90,15 +90,13 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     solution.compute_objective();  // just to ensure h_user_obj is set
     auto stats           = solver_stats_t<i_t, f_t>{};
     stats.solution_bound = solution.get_user_objective();
+    // log the objective for scripts which need it
+    CUOPT_LOG_INFO("Best feasible: %f", solution.get_user_objective());
     return solution.get_solution(true, stats, false);
   }
   // problem contains unpreprocessed data
   detail::problem_t<i_t, f_t> scaled_problem(problem);
-  CUOPT_LOG_INFO("Solving a problem with %d constraints %d variables (%d integers) and %d nonzeros",
-                 problem.n_constraints,
-                 problem.n_variables,
-                 problem.n_integer_vars,
-                 problem.nnz);
+
   CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
                  problem.presolve_data.objective_offset,
                  problem.presolve_data.objective_scaling_factor);
@@ -179,6 +177,14 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
 
+    CUOPT_LOG_INFO(
+      "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
+      op_problem.get_n_constraints(),
+      op_problem.get_n_variables(),
+      op_problem.get_n_integers(),
+      op_problem.get_nnz());
+    op_problem.print_scaling_information();
+
     // Check for crossing bounds. Return infeasible if there are any
     if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
       return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
@@ -200,11 +206,13 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     if (run_presolve) {
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
-      const double presolve_time_limit = 0.1 * time_limit;
+      const double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
+      const bool dual_postsolve        = false;
       presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
       auto [reduced_op_problem, feasible] =
         presolver->apply(op_problem,
                          cuopt::linear_programming::problem_category_t::MIP,
+                         dual_postsolve,
                          settings.tolerances.absolute_tolerance,
                          settings.tolerances.relative_tolerance,
                          presolve_time_limit,
@@ -217,7 +225,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
       problem       = detail::problem_t<i_t, f_t>(reduced_op_problem);
       presolve_time = timer.elapsed_time();
-      CUOPT_LOG_INFO("Third party presolve time: %f", presolve_time);
+      CUOPT_LOG_INFO("Papilo presolve time: %f", presolve_time);
     }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());

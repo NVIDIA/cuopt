@@ -139,7 +139,7 @@ __global__ void load_balancing_prepare_iteration(const __grid_constant__
 
     for (i_t i = blockIdx.x + range.first; i < range.second; i += gridDim.x) {
       i_t var_idx = fj.pb.related_variables[i];
-      update_jump_value<i_t, f_t, FJ_MTM_VIOLATED, false>(fj, var_idx);
+      update_jump_value<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>(fj, var_idx);
     }
 
     if (FIRST_THREAD) *fj.load_balancing_skip = true;
@@ -584,7 +584,8 @@ __launch_bounds__(TPB_loadbalance, 16) __global__
             // value
             if (!fj.move_numerically_stable(fj.incumbent_assignment[var_idx],
                                             fj.incumbent_assignment[var_idx] + delta,
-                                            base_feas)) {
+                                            base_feas,
+                                            *fj.violation_score)) {
               fj.jump_move_scores[var_idx] = fj_t<i_t, f_t>::move_score_t::invalid();
             } else if (fj.jump_move_scores[var_idx] < candidate.score
                        // determinism for ease of debugging

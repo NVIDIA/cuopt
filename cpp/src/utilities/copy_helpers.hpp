@@ -179,7 +179,6 @@ auto host_copy(rmm::device_uvector<T> const& device_vec)
  *
  * @tparam T
  * @param device_vec
- * @param stream_view
  * @return auto
  */
 template <typename T, typename Allocator>
@@ -188,6 +187,23 @@ auto host_copy(rmm::device_uvector<T> const& device_vec)
   std::vector<T, Allocator> host_vec(device_vec.size());
   raft::copy(host_vec.data(), device_vec.data(), device_vec.size(), device_vec.stream());
   device_vec.stream().synchronize();
+  return host_vec;
+}
+
+/**
+ * @brief Simple utility function to copy device_uvector to host
+ *
+ * @tparam T
+ * @param device_vec
+ * @param stream_view
+ * @return auto
+ */
+template <typename T, typename Allocator>
+auto host_copy(rmm::device_uvector<T> const& device_vec, rmm::cuda_stream_view stream_view)
+{
+  std::vector<T, Allocator> host_vec(device_vec.size());
+  raft::copy(host_vec.data(), device_vec.data(), device_vec.size(), stream_view);
+  stream_view.synchronize();
   return host_vec;
 }
 

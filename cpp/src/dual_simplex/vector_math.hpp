@@ -17,13 +17,23 @@
 
 #pragma once
 
+#include <cmath>
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
 
 // Computes || x ||_inf = max_j | x |_j
-template <typename i_t, typename f_t>
-f_t vector_norm_inf(const std::vector<f_t>& x);
+template <typename i_t, typename f_t, typename Allocator>
+f_t vector_norm_inf(const std::vector<f_t, Allocator>& x)
+{
+  i_t n = x.size();
+  f_t a = 0.0;
+  for (i_t j = 0; j < n; ++j) {
+    f_t t = std::abs(x[j]);
+    if (t > a) { a = t; }
+  }
+  return a;
+}
 
 // Computes || x ||_2^2
 template <typename i_t, typename f_t, typename Allocator>

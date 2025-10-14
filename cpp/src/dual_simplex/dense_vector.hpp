@@ -216,8 +216,7 @@ class dense_vector_t : public std::vector<f_t, Allocator> {
   {
     dense_vector_t<i_t, f_t> y(p);
     const i_t N = std::min(p, static_cast<i_t>(this->size()));
-    for (i_t i = 0; i < p; i++)
-    {
+    for (i_t i = 0; i < p; i++) {
       y[i] = (*this)[i];
     }
     return y;
@@ -227,10 +226,10 @@ class dense_vector_t : public std::vector<f_t, Allocator> {
   {
     dense_vector_t<i_t, f_t> y(p);
     const i_t n = this->size();
-    const i_t N = std::max(n-p, 0);
-    i_t j = 0;
-    for (i_t i = N; i < N+p; i++) {
-       y[j++] = (*this)[i];
+    const i_t N = std::max(n - p, 0);
+    i_t j       = 0;
+    for (i_t i = N; i < N + p; i++) {
+      y[j++] = (*this)[i];
     }
     return y;
   }

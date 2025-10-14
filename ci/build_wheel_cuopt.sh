@@ -20,6 +20,14 @@ set -euo pipefail
 
 source rapids-init-pip
 
+# Install rockylinux repo
+if command -v dnf &> /dev/null; then
+    bash ci/utils/update_rockylinux_repo.sh
+fi
+
+# Install cudss
+bash ci/utils/install_cudss.sh
+
 package_dir="python/cuopt"
 export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNINGS=ON";
 
@@ -41,6 +49,8 @@ EXCLUDE_ARGS=(
   --exclude "libraft.so"
   --exclude "libcublas.so.*"
   --exclude "libcublasLt.so.*"
+  --exclude "libcuda.so.1"
+  --exclude "libcudss.so.*"
   --exclude "libcurand.so.*"
   --exclude "libcusolver.so.*"
   --exclude "libcusparse.so.*"

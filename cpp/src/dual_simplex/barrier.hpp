@@ -30,8 +30,8 @@ namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
 struct barrier_solver_settings_t {
-  i_t iteration_limit     = 1000;
-  f_t step_scale          = 0.9;
+  i_t iteration_limit = 1000;
+  f_t step_scale      = 0.9;
 };
 
 template <typename i_t, typename f_t>
@@ -43,7 +43,8 @@ class barrier_solver_t {
   barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
                    const presolve_info_t<i_t, f_t>& presolve,
                    const simplex_solver_settings_t<i_t, f_t>& settings);
-  lp_status_t solve(f_t start_time, const barrier_solver_settings_t<i_t, f_t>& options,
+  lp_status_t solve(f_t start_time,
+                    const barrier_solver_settings_t<i_t, f_t>& options,
                     lp_solution_t<i_t, f_t>& solution);
 
  private:
@@ -74,8 +75,42 @@ class barrier_solver_t {
   template <typename AllocatorA, typename AllocatorB>
   f_t max_step_to_boundary(const dense_vector_t<i_t, f_t, AllocatorA>& x,
                            const dense_vector_t<i_t, f_t, AllocatorB>& dx) const;
+
+  void compute_primal_dual_step_length(iteration_data_t<i_t, f_t>& data,
+                                       f_t step_scale,
+                                       f_t& step_primal,
+                                       f_t& step_dual);
+
+  void compute_residual_norms(iteration_data_t<i_t, f_t>& data,
+                              f_t& primal_residual_norm,
+                              f_t& dual_residual_norm,
+                              f_t& complementarity_residual_norm);
+  void compute_mu(iteration_data_t<i_t, f_t>& data, f_t& mu);
+  void compute_primal_dual_objective(iteration_data_t<i_t, f_t>& data,
+                                     f_t& primal_objective,
+                                     f_t& dual_objective);
+
+  void cpu_compute_residual_norms(const dense_vector_t<i_t, f_t>& w,
+                                  const dense_vector_t<i_t, f_t>& x,
+                                  const dense_vector_t<i_t, f_t>& y,
+                                  const dense_vector_t<i_t, f_t>& v,
+                                  const dense_vector_t<i_t, f_t>& z,
+                                  iteration_data_t<i_t, f_t>& data,
+                                  f_t& primal_residual_norm,
+                                  f_t& dual_residual_norm,
+                                  f_t& complementarity_residual_norm);
+
   // To be able to directly pass lambdas to transform functions
  public:
+  void compute_next_iterate(iteration_data_t<i_t, f_t>& data,
+                            f_t step_scale,
+                            f_t step_primal,
+                            f_t step_dual);
+  void compute_final_direction(iteration_data_t<i_t, f_t>& data);
+  void compute_cc_rhs(iteration_data_t<i_t, f_t>& data, f_t& new_mu);
+  void compute_target_mu(
+    iteration_data_t<i_t, f_t>& data, f_t mu, f_t& mu_aff, f_t& sigma, f_t& new_mu);
+  void compute_affine_rhs(iteration_data_t<i_t, f_t>& data);
   void gpu_compute_residuals(rmm::device_uvector<f_t> const& d_w,
                              rmm::device_uvector<f_t> const& d_x,
                              rmm::device_uvector<f_t> const& d_y,
@@ -127,53 +162,6 @@ class barrier_solver_t {
   const lp_problem_t<i_t, f_t>& lp;
   const simplex_solver_settings_t<i_t, f_t>& settings;
   const presolve_info_t<i_t, f_t>& presolve_info;
-
-  rmm::device_uvector<f_t> d_diag_;
-  rmm::device_uvector<f_t> d_bound_rhs_;
-  rmm::device_uvector<f_t> d_x_;
-  rmm::device_uvector<f_t> d_z_;
-  rmm::device_uvector<f_t> d_w_;
-  rmm::device_uvector<f_t> d_v_;
-  rmm::device_uvector<f_t> d_h_;
-  rmm::device_uvector<f_t> d_y_;
-  rmm::device_uvector<i_t> d_upper_bounds_;
-  rmm::device_uvector<f_t> d_tmp3_;
-  rmm::device_uvector<f_t> d_tmp4_;
-  rmm::device_uvector<f_t> d_r1_;
-  rmm::device_uvector<f_t> d_r1_prime_;
-  rmm::device_uvector<f_t> d_dx_;
-  rmm::device_uvector<f_t> d_dy_;
-  rmm::device_uvector<f_t> d_c_;
-
-  rmm::device_uvector<f_t> d_dual_residual_;
-  rmm::device_uvector<f_t> d_complementarity_xz_rhs_;
-  rmm::device_uvector<f_t> d_complementarity_wv_rhs_;
-  rmm::device_uvector<f_t> d_dual_rhs_;
-  rmm::device_uvector<f_t> d_dz_;
-  rmm::device_uvector<f_t> d_dv_;
-  rmm::device_uvector<f_t> d_y_residual_;
-  rmm::device_uvector<f_t> d_dx_residual_;
-  rmm::device_uvector<f_t> d_xz_residual_;
-  rmm::device_uvector<f_t> d_dw_;
-  rmm::device_uvector<f_t> d_dw_residual_;
-  rmm::device_uvector<f_t> d_wv_residual_;
-  // After Compute search direction
-  rmm::device_uvector<f_t> d_dw_aff_;
-  rmm::device_uvector<f_t> d_dx_aff_;
-  rmm::device_uvector<f_t> d_dv_aff_;
-  rmm::device_uvector<f_t> d_dz_aff_;
-  rmm::device_uvector<f_t> d_dy_aff_;
-  // GPU ADAT multiply
-  rmm::device_uvector<f_t> d_u_;
-  // Compute residuals
-  rmm::device_uvector<f_t> d_primal_residual_;
-  rmm::device_uvector<f_t> d_bound_residual_;
-  rmm::device_uvector<f_t> d_upper_;
-  rmm::device_uvector<f_t> d_complementarity_xz_residual_;
-  rmm::device_uvector<f_t> d_complementarity_wv_residual_;
-
-  pinned_dense_vector_t<i_t, f_t> restrict_u_;
-
   rmm::cuda_stream_view stream_view_;
 };
 

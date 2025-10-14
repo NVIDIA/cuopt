@@ -20,11 +20,11 @@
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/types.hpp>
 
+#include <omp.h>
 #include <algorithm>
 #include <atomic>
 #include <functional>
 #include <limits>
-#include <thread>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -67,14 +67,17 @@ struct simplex_solver_settings_t {
       barrier(false),
       eliminate_dense_columns(true),
       folding(-1),
-      augmented(false),
+      augmented(0),
+      dualize(-1),
+      ordering(-1),
+      barrier_dual_initial_point(-1),
       crossover(false),
       refactor_frequency(100),
       iteration_log_frequency(1000),
       first_iteration_log(2),
-      num_threads(std::thread::hardware_concurrency() > 8
-                    ? (std::thread::hardware_concurrency() / 8)
-                    : std::thread::hardware_concurrency()),
+      num_threads(omp_get_max_threads() - 1),
+      num_bfs_threads(std::min(num_threads / 4, 1)),
+      num_diving_threads(std::min(num_threads - num_bfs_threads, 1)),
       random_seed(0),
       inside_mip(0),
       solution_callback(nullptr),
@@ -99,12 +102,13 @@ struct simplex_solver_settings_t {
   f_t fixed_tol;             // If l <= x <= u with u - l < fixed_tol a variable is consider fixed
   f_t zero_tol;              // Values below this tolerance are considered numerically zero
   f_t barrier_relative_feasibility_tol;  // Relative feasibility tolerance for barrier method
-  f_t barrier_relative_optimality_tol;  // Relative optimality tolerance for barrier method
-  f_t barrier_relative_complementarity_tol;  // Relative complementarity tolerance for barrier method
-  f_t barrier_relaxed_feasibility_tol;  // Relative feasibility tolerance for barrier method
-  f_t barrier_relaxed_optimality_tol;  // Relative optimality tolerance for barrier method
+  f_t barrier_relative_optimality_tol;   // Relative optimality tolerance for barrier method
+  f_t
+    barrier_relative_complementarity_tol;   // Relative complementarity tolerance for barrier method
+  f_t barrier_relaxed_feasibility_tol;      // Relative feasibility tolerance for barrier method
+  f_t barrier_relaxed_optimality_tol;       // Relative optimality tolerance for barrier method
   f_t barrier_relaxed_complementarity_tol;  // Relative complementarity tolerance for barrier method
-  f_t cut_off;               // If the dual objective is greater than the cutoff we stop
+  f_t cut_off;  // If the dual objective is greater than the cutoff we stop
   f_t
     steepest_edge_ratio;  // the ratio of computed steepest edge mismatch from updated steepest edge
   f_t steepest_edge_primal_tol;  // Primal tolerance divided by steepest edge norm
@@ -121,24 +125,30 @@ struct simplex_solver_settings_t {
   bool eliminate_singletons;  // true to eliminate singletons from the basis
   bool print_presolve_stats;  // true to print presolve stats
   bool barrier_presolve;      // true to use barrier presolve
-  bool cudss_deterministic;  // true to use cuDSS deterministic mode, false for non-deterministic
-  bool barrier;    // true to use barrier method, false to use dual simplex method
+  bool cudss_deterministic;   // true to use cuDSS deterministic mode, false for non-deterministic
+  bool barrier;               // true to use barrier method, false to use dual simplex method
   bool eliminate_dense_columns;  // true to eliminate dense columns from A*D*A^T
-  i_t folding;  // -1 automatic, 0 don't fold, 1 fold
+  i_t folding;                   // -1 automatic, 0 don't fold, 1 fold
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system
-  bool crossover;  // true to do crossover, false to not
-  i_t refactor_frequency;       // number of basis updates before refactorization
-  i_t iteration_log_frequency;  // number of iterations between log updates
-  i_t first_iteration_log;      // number of iterations to log at beginning of solve
-  i_t num_threads;              // number of threads to use
-  i_t random_seed;              // random seed
+  i_t dualize;    // -1 automatic, 0 to not dualize, 1 to dualize
+  i_t ordering;   // -1 automatic, 0 to use nested dissection, 1 to use AMD
+  i_t barrier_dual_initial_point;  // -1 automatic, 0 to use Lustig, Marsten, and Shanno initial
+                                   // point, 1 to use initial point form dual least squares problem
+  bool crossover;                  // true to do crossover, false to not
+  i_t refactor_frequency;          // number of basis updates before refactorization
+  i_t iteration_log_frequency;     // number of iterations between log updates
+  i_t first_iteration_log;         // number of iterations to log at beginning of solve
+  i_t num_threads;                 // number of threads to use
+  i_t random_seed;                 // random seed
+  i_t num_bfs_threads;             // number of threads dedicated to the best-first search
+  i_t num_diving_threads;          // number of threads dedicated to diving
   i_t inside_mip;  // 0 if outside MIP, 1 if inside MIP at root node, 2 if inside MIP at leaf node
   std::function<void(std::vector<f_t>&, f_t)> solution_callback;
   std::function<void()> heuristic_preemption_callback;
   std::function<void(std::vector<f_t>&, std::vector<f_t>&, f_t)> set_simplex_solution_callback;
   mutable logger_t log;
   volatile int* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
-                                      // continue, 1 if solver should halt
+                                  // continue, 1 if solver should halt
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

@@ -59,6 +59,7 @@ option(BUILD_LP_ONLY "Build only linear programming components, exclude routing 
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
 option(WRITE_FATBIN "Enable fatbin writing" ON)
+option(HOST_LINEINFO "Build with debug line information for host code" OFF)
 
 message(VERBOSE "cuOpt: Enable nvcc -lineinfo: ${CMAKE_CUDA_LINEINFO}")
 message(VERBOSE "cuOpt: Build cuOpt unit-tests: ${BUILD_TESTS}")
@@ -67,6 +68,7 @@ message(VERBOSE "cuOpt: Disable OpenMP: ${DISABLE_OPENMP}")
 message(VERBOSE "cuOpt: Build LP-only mode: ${BUILD_LP_ONLY}")
 message(VERBOSE "cuOpt: Skip C/Python adapters: ${SKIP_C_PYTHON_ADAPTERS}")
 message(VERBOSE "cuOpt: Skip routing build: ${SKIP_ROUTING_BUILD}")
+message(VERBOSE "cuOpt: Build with debug line information for host code: ${HOST_LINEINFO}")
 message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
 
 # ##################################################################################################
@@ -127,7 +129,7 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extend
 if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.9)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -static-global-template-stub=false")
 endif()
-list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations)# -Xcompiler=-Werror)
+list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror --default-stream=per-thread)
 list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall -Wno-error=non-template-friend)
 list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=-compress-all)
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
@@ -184,7 +186,14 @@ endif()
 FetchContent_Declare(
   papilo
   GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
-  GIT_TAG "v2.4.3"
+  # We would want to get the main branch. However, the main branch
+  # does not have some of the presolvers and settings that we need
+  # Mainly, probing and clique merging.
+  # This is the reason we are using the development branch
+  # from Oct 12, 2025. Once these changes are merged into the main branch,
+  #we can switch to the main branch.
+  GIT_TAG "741a2b9c8155b249d6df574d758b4d97d4417520"
+  GIT_PROGRESS TRUE
   SYSTEM
 )
 
@@ -208,6 +217,9 @@ endif()
 
 set(CUOPT_SRC_FILES )
 add_subdirectory(src)
+if (HOST_LINEINFO)
+  set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
+endif()
 add_library(cuopt SHARED
   ${CUOPT_SRC_FILES}
 )
@@ -279,6 +291,10 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser)
 set(CMAKE_LIBRARY_PATH ${CMAKE_CURRENT_BINARY_DIR}/libmps_parser/)
 
 
+# Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
+get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
+target_compile_definitions(cuopt PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}")
+
 execute_process(
   COMMAND git rev-parse --short HEAD
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -303,7 +319,7 @@ target_link_libraries(cuopt
   CCCL::CCCL
   raft::raft
   cuopt::mps_parser
-  ${CUDSS_LIBRARIES}
+  ${CUDSS_LIB_FILE}
   PRIVATE
   ${CUOPT_PRIVATE_CUDA_LIBS}
   )
@@ -428,7 +444,6 @@ target_link_libraries(cuopt_cli
   OpenMP::OpenMP_CXX
   ${CUDSS_LIBRARIES}
   PRIVATE
-  papilo-core
 )
 set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
@@ -452,7 +467,6 @@ if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     cuopt
     OpenMP::OpenMP_CXX
     PRIVATE
-    papilo-core
   )
 endif()
 
@@ -468,7 +482,6 @@ if(BUILD_LP_BENCHMARKS)
     cuopt
     OpenMP::OpenMP_CXX
     PRIVATE
-    papilo-core
   )
 endif()
 

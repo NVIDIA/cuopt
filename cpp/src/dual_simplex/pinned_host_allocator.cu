@@ -18,6 +18,7 @@
 #include <raft/util/cuda_utils.cuh>
 
 #include <dual_simplex/types.hpp>
+#include <dual_simplex/vector_math.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -54,6 +55,13 @@ bool operator!=(const PinnedHostAllocator<T>&, const PinnedHostAllocator<U>&) no
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template class PinnedHostAllocator<double>;
+template double vector_norm_inf<int, double, PinnedHostAllocator<double>>(
+  const std::vector<double, PinnedHostAllocator<double>>& x);
+
+template bool operator==(const PinnedHostAllocator<double>&,
+                         const PinnedHostAllocator<double>&) noexcept;
+template bool operator!=(const PinnedHostAllocator<double>&,
+                         const PinnedHostAllocator<double>&) noexcept;
 #endif
 template class PinnedHostAllocator<int>;
 
