@@ -73,7 +73,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                                  cuopt::timer_t& timer)
 {
   raft::common::nvtx::range fun_scope("run_mip");
-  cudaProfilerStart();
+  // cudaProfilerStart();
   auto constexpr const running_mip = true;
 
   pdlp_hyper_params::update_primal_weight_on_initial_solution = false;
@@ -203,7 +203,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     if (run_presolve) {
       // allocate not more than 5% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
-      const double presolve_time_limit = std::min(0.05 * time_limit, 60.0);
+      const double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
       const bool dual_postsolve        = false;
       presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
       auto [reduced_op_problem, feasible] =
