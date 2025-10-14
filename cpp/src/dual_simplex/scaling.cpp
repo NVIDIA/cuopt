@@ -32,7 +32,7 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
   i_t m  = scaled.num_rows;
   i_t n  = scaled.num_cols;
 
-  if (unscaled.Q.n > 0 ||!settings.scale_columns) {
+  if (unscaled.Q.n > 0 || !settings.scale_columns) {
     settings.log.printf("Skipping column scaling\n");
     column_scaling.resize(n, 1.0);
     return 0;
