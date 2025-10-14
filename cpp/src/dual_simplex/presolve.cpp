@@ -22,7 +22,6 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
-
 #include <cmath>
 #include <iostream>
 #include <numeric>
@@ -1008,9 +1007,10 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
 
   if (user_problem.Q_values.size() > 0) {
     printf("Converting problem with %d quadratic nonzeros\n", user_problem.Q_values.size());
-    printf("problem.num_cols: %d user_problem.num_cols: %d\n", problem.num_cols, user_problem.num_cols);
-    problem.Q.m = problem.num_cols;
-    problem.Q.n = problem.num_cols;
+    printf(
+      "problem.num_cols: %d user_problem.num_cols: %d\n", problem.num_cols, user_problem.num_cols);
+    problem.Q.m      = problem.num_cols;
+    problem.Q.n      = problem.num_cols;
     problem.Q.nz_max = user_problem.Q_values.size();
     problem.Q.row_start.resize(problem.num_cols + 1);
     for (i_t j = 0; j < user_problem.num_cols; j++) {

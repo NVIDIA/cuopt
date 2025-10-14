@@ -999,7 +999,7 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
   }
 
   if (data_model.get_quadratic_objective_values().size() != 0) {
-    const std::vector<f_t> Q_values = data_model.get_quadratic_objective_values();
+    const std::vector<f_t> Q_values  = data_model.get_quadratic_objective_values();
     const std::vector<i_t> Q_indices = data_model.get_quadratic_objective_indices();
     const std::vector<i_t> Q_offsets = data_model.get_quadratic_objective_offsets();
     op_problem.set_quadratic_objective_matrix(Q_offsets.data(),
@@ -1008,7 +1008,6 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
                                               Q_indices.size(),
                                               Q_values.data(),
                                               Q_values.size());
-
   }
 
   return op_problem;
