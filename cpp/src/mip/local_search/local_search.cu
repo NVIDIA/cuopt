@@ -698,11 +698,11 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   population_ptr->update_weights();
   save_solution_and_add_cutting_plane(
     population_ptr->best_feasible(), best_solution, best_objective);
-  // always continue with best solution
-  raft::copy(solution.assignment.data(),
-             best_solution.data(),
-             solution.assignment.size(),
-             solution.handle_ptr->get_stream());
+  // // always continue with best solution
+  // raft::copy(solution.assignment.data(),
+  //            best_solution.data(),
+  //            solution.assignment.size(),
+  //            solution.handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
