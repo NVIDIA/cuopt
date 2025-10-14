@@ -311,16 +311,27 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
   presolve_info.removed_variables.reserve(num_empty_cols);
   presolve_info.removed_values.reserve(num_empty_cols);
   presolve_info.removed_reduced_costs.reserve(num_empty_cols);
+
+  // Check to see if a variable participates in a quadratic objective
+  std::vector<i_t> has_quadratic_term(problem.num_cols, 0);
+  for (i_t j = 0; j < problem.num_cols; ++j) {
+    const i_t row_start = problem.Q.row_start[j];
+    const i_t row_end   = problem.Q.row_start[j + 1];
+    for (i_t p = row_start; p < row_end; ++p) {
+      has_quadratic_term[problem.Q.j[p]] = 1;
+    }
+  }
+
   std::vector<i_t> col_marker(problem.num_cols);
   i_t new_cols = 0;
   for (i_t j = 0; j < problem.num_cols; ++j) {
     bool remove_var = false;
     if ((problem.A.col_start[j + 1] - problem.A.col_start[j]) == 0) {
-      if (problem.objective[j] >= 0 && problem.lower[j] > -inf) {
+      if (problem.objective[j] >= 0 && problem.lower[j] > -inf && !has_quadratic_term[j]) {
         presolve_info.removed_values.push_back(problem.lower[j]);
         problem.obj_constant += problem.objective[j] * problem.lower[j];
         remove_var = true;
-      } else if (problem.objective[j] <= 0 && problem.upper[j] < inf) {
+      } else if (problem.objective[j] <= 0 && problem.upper[j] < inf && !has_quadratic_term[j]) {
         presolve_info.removed_values.push_back(problem.upper[j]);
         problem.obj_constant += problem.objective[j] * problem.upper[j];
         remove_var = true;

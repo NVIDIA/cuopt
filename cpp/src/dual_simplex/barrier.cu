@@ -180,6 +180,7 @@ class iteration_data_t {
     bool has_Q = lp.Q.x.size() > 0;
 
     if (has_Q) {
+      cuopt_assert(lp.Q.n == lp.num_cols && lp.Q.m == lp.num_cols, "Q.n != num_cols || Q.m != num_cols");
       Q.m = lp.num_cols;
       Q.n = lp.num_cols;
       Q.col_start.resize(lp.num_cols + 1);
