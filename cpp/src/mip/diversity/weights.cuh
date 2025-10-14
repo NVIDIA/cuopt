@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <thrust/fill.h>
 #include <raft/core/handle.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
