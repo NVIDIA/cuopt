@@ -688,21 +688,20 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   fp.config.alpha                                  = default_alpha;
   constexpr i_t iterations_for_stagnation          = 3;
   constexpr i_t max_iterations_without_improvement = 8;
+  auto new_sol_vector                              = population_ptr->get_external_solutions();
+  population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
   if (population_ptr->current_size() > 1 &&
       i - last_unimproved_iteration > iterations_for_stagnation) {
     population_ptr->diversity_step(max_iterations_without_improvement);
     population_ptr->print();
+    population_ptr->update_weights();
+    save_solution_and_add_cutting_plane(
+      population_ptr->best_feasible(), best_solution, best_objective);
+    raft::copy(solution.assignment.data(),
+               best_solution.data(),
+               solution.assignment.size(),
+               solution.handle_ptr->get_stream());
   }
-  auto new_sol_vector = population_ptr->get_external_solutions();
-  population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
-  population_ptr->update_weights();
-  save_solution_and_add_cutting_plane(
-    population_ptr->best_feasible(), best_solution, best_objective);
-  // // always continue with best solution
-  // raft::copy(solution.assignment.data(),
-  //            best_solution.data(),
-  //            solution.assignment.size(),
-  //            solution.handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
