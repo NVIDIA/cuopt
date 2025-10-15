@@ -138,6 +138,8 @@ std::vector<std::vector<double>> read_solution_from_dir(const std::string file_p
   // check if a directory with the given mps file exists
   // std::string initial_solution_dir = file_path + "/" + mps_file_name_no_ext;
   std::string initial_solution_dir = file_path + "/" + mps_file_name;
+  read_single_solution_from_path(initial_solution_dir, var_names, initial_solutions);
+  return initial_solutions;
   if (std::filesystem::exists(initial_solution_dir)) {
     for (const auto& entry : std::filesystem::directory_iterator(initial_solution_dir)) {
       read_single_solution_from_path(entry.path(), var_names, initial_solutions);
