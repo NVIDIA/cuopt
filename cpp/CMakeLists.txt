@@ -159,9 +159,9 @@ elseif(CMAKE_CUDA_LINEINFO)
   set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -lineinfo")
 endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
-list(APPEND CUOPT_CUDA_FLAGS -G -Xcompiler=-rdynamic -O0)
-list(APPEND CUOPT_CUDA_FLAGS -lineinfo)
-set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -lineinfo")
+#list(APPEND CUOPT_CUDA_FLAGS -G -Xcompiler=-rdynamic -O0)
+#list(APPEND CUOPT_CUDA_FLAGS -lineinfo)
+#set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -lineinfo")
 
 # Undefine NDEBUG if assert mode is on
 if(DEFINE_ASSERT)

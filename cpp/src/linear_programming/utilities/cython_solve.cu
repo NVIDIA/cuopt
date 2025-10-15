@@ -244,6 +244,11 @@ std::unique_ptr<solver_ret_t> call_solve(
     response.problem_type = linear_programming::problem_category_t::MIP;
   }
 
+  // Synchronize the stream to ensure all GPU operations complete before the handle
+  // and stream go out of scope. This prevents race conditions, particularly with
+  // the barrier solver which has many asynchronous GPU operations.
+  handle_.sync_stream();
+
   return std::make_unique<solver_ret_t>(std::move(response));
 }
 

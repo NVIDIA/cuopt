@@ -339,103 +339,36 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
   ~sparse_cholesky_cudss_t() override
   {
-    printf("[CUDSS_DESTRUCTOR] Starting destructor\n");
-    fflush(stdout);
-    
-    printf("[CUDSS_DESTRUCTOR] Freeing csr_values_d\n");
-    fflush(stdout);
     cudaFreeAsync(csr_values_d, stream);
-    
-    printf("[CUDSS_DESTRUCTOR] Freeing csr_columns_d\n");
-    fflush(stdout);
     cudaFreeAsync(csr_columns_d, stream);
-    
-    printf("[CUDSS_DESTRUCTOR] Freeing csr_offset_d\n");
-    fflush(stdout);
     cudaFreeAsync(csr_offset_d, stream);
 
-    printf("[CUDSS_DESTRUCTOR] Freeing x_values_d\n");
-    fflush(stdout);
     cudaFreeAsync(x_values_d, stream);
-    
-    printf("[CUDSS_DESTRUCTOR] Freeing b_values_d\n");
-    fflush(stdout);
     cudaFreeAsync(b_values_d, stream);
-    
     if (A_created) {
-      printf("[CUDSS_DESTRUCTOR] Destroying matrix A\n");
-      fflush(stdout);
       CUDSS_CALL_AND_CHECK_EXIT(cudssMatrixDestroy(A), status, "cudssMatrixDestroy for A");
-      printf("[CUDSS_DESTRUCTOR] Matrix A destroyed successfully\n");
-      fflush(stdout);
     }
 
-    printf("[CUDSS_DESTRUCTOR] Destroying cudss_x\n");
-    fflush(stdout);
     CUDSS_CALL_AND_CHECK_EXIT(
       cudssMatrixDestroy(cudss_x), status, "cudssMatrixDestroy for cudss_x");
-    printf("[CUDSS_DESTRUCTOR] cudss_x destroyed successfully\n");
-    fflush(stdout);
-    
-    printf("[CUDSS_DESTRUCTOR] Destroying cudss_b\n");
-    fflush(stdout);
     CUDSS_CALL_AND_CHECK_EXIT(
       cudssMatrixDestroy(cudss_b), status, "cudssMatrixDestroy for cudss_b");
-    printf("[CUDSS_DESTRUCTOR] cudss_b destroyed successfully\n");
-    fflush(stdout);
-    
-    printf("[CUDSS_DESTRUCTOR] Destroying solverData\n");
-    fflush(stdout);
     CUDSS_CALL_AND_CHECK_EXIT(cudssDataDestroy(handle, solverData), status, "cudssDataDestroy");
-    printf("[CUDSS_DESTRUCTOR] solverData destroyed successfully\n");
-    fflush(stdout);
-    
-    printf("[CUDSS_DESTRUCTOR] Destroying solverConfig\n");
-    fflush(stdout);
     CUDSS_CALL_AND_CHECK_EXIT(cudssConfigDestroy(solverConfig), status, "cudssConfigDestroy");
-    printf("[CUDSS_DESTRUCTOR] solverConfig destroyed successfully\n");
-    fflush(stdout);
-    
-    printf("[CUDSS_DESTRUCTOR] Destroying cudss handle\n");
-    fflush(stdout);
     CUDSS_CALL_AND_CHECK_EXIT(cudssDestroy(handle), status, "cudssDestroy");
-    printf("[CUDSS_DESTRUCTOR] cudss handle destroyed successfully\n");
-    fflush(stdout);
-    
-    printf("[CUDSS_DESTRUCTOR] Synchronizing stream\n");
-    fflush(stdout);
     CUDA_CALL_AND_CHECK_EXIT(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
-    printf("[CUDSS_DESTRUCTOR] Stream synchronized successfully\n");
-    fflush(stdout);
-    
 #if CUDART_VERSION >= 13000
     if (settings_.concurrent_halt != nullptr) {
-      printf("[CUDSS_DESTRUCTOR] Destroying green context stream\n");
-      fflush(stdout);
       auto cuStreamDestroy_func = cuopt::detail::get_driver_entry_point("cuStreamDestroy");
       CU_CHECK(reinterpret_cast<decltype(::cuStreamDestroy)*>(cuStreamDestroy_func)(stream),
                reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
-      printf("[CUDSS_DESTRUCTOR] Green context stream destroyed successfully\n");
-      fflush(stdout);
-      
-      printf("[CUDSS_DESTRUCTOR] Destroying barrier green context\n");
-      fflush(stdout);
       auto cuGreenCtxDestroy_func = cuopt::detail::get_driver_entry_point("cuGreenCtxDestroy");
       CU_CHECK(
         reinterpret_cast<decltype(::cuGreenCtxDestroy)*>(cuGreenCtxDestroy_func)(barrier_green_ctx),
         reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
-      printf("[CUDSS_DESTRUCTOR] Barrier green context destroyed successfully\n");
-      fflush(stdout);
-      
-      printf("[CUDSS_DESTRUCTOR] Final handle stream sync\n");
-      fflush(stdout);
       handle_ptr_->get_stream().synchronize();
-      printf("[CUDSS_DESTRUCTOR] Final handle stream synced successfully\n");
-      fflush(stdout);
     }
 #endif
-    printf("[CUDSS_DESTRUCTOR] Destructor completed successfully\n");
-    fflush(stdout);
   }
 
   i_t analyze(device_csr_matrix_t<i_t, f_t>& Arow) override

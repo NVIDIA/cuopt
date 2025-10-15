@@ -420,22 +420,11 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
     barrier_settings.log.log = false;
   }
 
-  printf("[BARRIER_SOLVE] Creating solution object\n");
-  fflush(stdout);
   dual_simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
-  
-  printf("[BARRIER_SOLVE] Calling solve_linear_program_with_barrier\n");
-  fflush(stdout);
   auto status = dual_simplex::solve_linear_program_with_barrier<i_t, f_t>(
     user_problem, barrier_settings, solution);
 
-  printf("[BARRIER_SOLVE] solve_linear_program_with_barrier returned with status %d\n", static_cast<int>(status));
-  fflush(stdout);
-  
   CUOPT_LOG_INFO("Barrier finished in %.2f seconds", timer.elapsed_time());
-  
-  printf("[BARRIER_SOLVE] After 'Barrier finished' log message\n");
-  fflush(stdout);
 
   if (settings.concurrent_halt != nullptr && (status == dual_simplex::lp_status_t::OPTIMAL ||
                                               status == dual_simplex::lp_status_t::UNBOUNDED ||
@@ -444,8 +433,6 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
     *settings.concurrent_halt = 1;
   }
 
-  printf("[BARRIER_SOLVE] About to return from run_barrier\n");
-  fflush(stdout);
   return {std::move(solution), status, timer.elapsed_time(), norm_user_objective, norm_rhs};
 }
 
@@ -455,28 +442,17 @@ optimization_problem_solution_t<i_t, f_t> run_barrier(
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer)
 {
-  printf("[RUN_BARRIER] Converting problem to dual simplex format\n");
-  fflush(stdout);
   // Convert data structures to dual simplex format and back
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
     cuopt_problem_to_simplex_problem<i_t, f_t>(problem);
-  
-  printf("[RUN_BARRIER] Calling run_barrier with dual simplex problem\n");
-  fflush(stdout);
   auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, timer);
-  
-  printf("[RUN_BARRIER] run_barrier returned, converting solution back\n");
-  fflush(stdout);
-  auto result = convert_dual_simplex_sol(problem,
+  return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
                                   std::get<1>(sol_dual_simplex),
                                   std::get<2>(sol_dual_simplex),
                                   std::get<3>(sol_dual_simplex),
                                   std::get<4>(sol_dual_simplex),
                                   1);
-  printf("[RUN_BARRIER] Solution converted, returning\n");
-  fflush(stdout);
-  return result;
 }
 
 template <typename i_t, typename f_t>

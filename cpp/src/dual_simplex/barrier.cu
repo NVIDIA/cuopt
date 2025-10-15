@@ -171,20 +171,7 @@ class iteration_data_t {
       d_dual_rhs_(lp.num_cols, lp.handle_ptr->get_stream()),
       restrict_u_(0),
       transform_reduce_helper_(lp.handle_ptr->get_stream()),
-      sum_reduce_helper_(lp.handle_ptr->get_stream()),
-      cusparse_tmp4_(nullptr),
-      cusparse_h_(nullptr),
-      cusparse_dx_residual_(nullptr),
-      cusparse_dy_(nullptr),
-      cusparse_dx_residual_5_(nullptr),
-      cusparse_dx_residual_6_(nullptr),
-      cusparse_dx_(nullptr),
-      cusparse_dx_residual_3_(nullptr),
-      cusparse_dx_residual_4_(nullptr),
-      cusparse_r1_(nullptr),
-      cusparse_dual_residual_(nullptr),
-      cusparse_y_residual_(nullptr),
-      cusparse_u_(nullptr)
+      sum_reduce_helper_(lp.handle_ptr->get_stream())
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
@@ -1316,40 +1303,6 @@ class iteration_data_t {
     for (i_t i = n; i < n + m; ++i) {
       y[i] = y2[i - n];
     }
-  }
-
-  ~iteration_data_t()
-  {
-    // Cleanup CUSPARSE vector descriptors to prevent segmentation fault
-    if (cusparse_tmp4_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_tmp4_));
-    }
-    if (cusparse_h_ != nullptr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_h_)); }
-    if (cusparse_dx_residual_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_residual_));
-    }
-    if (cusparse_dy_ != nullptr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dy_)); }
-    if (cusparse_dx_residual_5_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_residual_5_));
-    }
-    if (cusparse_dx_residual_6_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_residual_6_));
-    }
-    if (cusparse_dx_ != nullptr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_)); }
-    if (cusparse_dx_residual_3_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_residual_3_));
-    }
-    if (cusparse_dx_residual_4_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dx_residual_4_));
-    }
-    if (cusparse_r1_ != nullptr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_r1_)); }
-    if (cusparse_dual_residual_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_dual_residual_));
-    }
-    if (cusparse_y_residual_ != nullptr) {
-      RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_y_residual_));
-    }
-    if (cusparse_u_ != nullptr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(cusparse_u_)); }
   }
 
   raft::handle_t const* handle_ptr;
