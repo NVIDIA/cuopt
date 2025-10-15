@@ -271,8 +271,6 @@ i_t convert_less_than_to_equal(const user_problem_t<i_t, f_t>& user_problem,
   // We must convert rows in the form: a_i^T x <= beta
   // into: a_i^T x + s_i = beta, s_i >= 0
 
-  csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
-  problem.A.to_compressed_row(Arow);
   i_t num_cols = problem.num_cols + less_rows;
   i_t nnz      = problem.A.col_start[problem.num_cols] + less_rows;
   problem.A.col_start.resize(num_cols + 1);
