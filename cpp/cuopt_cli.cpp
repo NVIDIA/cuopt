@@ -104,7 +104,7 @@ int run_single_file(const std::string& file_path,
   cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model;
   bool parsing_failed = false;
   {
-    CUOPT_LOG_INFO("Running file %s", base_filename.c_str());
+    CUOPT_LOG_INFO("Reading file %s", base_filename.c_str());
     try {
       mps_data_model = cuopt::mps_parser::parse_mps<int, double>(file_path, input_mps_strict);
     } catch (const std::logic_error& e) {
