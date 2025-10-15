@@ -76,15 +76,9 @@ struct mab_t {
     double q_value     = 0.5;  // Exponential recency-weighted average estimate
     double last_reward = 0.0;  // Last reward received (for debugging)
   };
-  std::vector<mab_arm_stats_t> mab_arm_stats_;
-  double mab_epsilon_ = 0.15;   // Probability of exploration in Epsilon-Greedy.
-  std::mt19937 mab_rng_;        // RNG dedicated to MAB decisions.
-  double mab_alpha_    = 0.05;  // Step size for exponential recency weighting
-  int mab_total_steps_ = 0;     // Total number of action selections (for UCB)
-  bool use_ucb_        = true;  // Flag to enable UCB vs epsilon-greedy
-  std::string bandit_name;
 
   // --- MAB Helper Methods ---
+  void resize_mab_arm_stats(int n_arms);
   int select_mab_option();
   template <typename Func>
   void add_mab_reward(int option_id,
@@ -94,6 +88,16 @@ struct mab_t {
                       Func work_normalized_reward);
   int select_ucb_arm();
   int select_epsilon_greedy_arm();
+  void set_last_chosen_option(int option_id);
+
+  std::vector<mab_arm_stats_t> mab_arm_stats_;
+  double mab_epsilon_ = 0.15;   // Probability of exploration in Epsilon-Greedy.
+  std::mt19937 mab_rng_;        // RNG dedicated to MAB decisions.
+  double mab_alpha_    = 0.05;  // Step size for exponential recency weighting
+  int mab_total_steps_ = 0;     // Total number of action selections (for UCB)
+  bool use_ucb_        = true;  // Flag to enable UCB vs epsilon-greedy
+  std::string bandit_name;
+  int last_chosen_option = -1;
 };
 
 }  // namespace cuopt::linear_programming::detail

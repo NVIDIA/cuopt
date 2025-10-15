@@ -40,7 +40,7 @@ size_t sub_mip_recombiner_config_t::max_n_of_vars_from_other =
   sub_mip_recombiner_config_t::initial_n_of_vars_from_other;
 
 template <typename i_t, typename f_t>
-std::unordered_set<recombiner_enum_t> recombiner_t<i_t, f_t>::enabled_recombiners;
+std::vector<recombiner_enum_t> recombiner_t<i_t, f_t>::enabled_recombiners;
 
 template <typename i_t, typename f_t>
 diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t>& context_)
@@ -78,10 +78,7 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
       context, population, context.problem_ptr->n_variables, context.problem_ptr->handle_ptr),
     rng(cuopt::seed_generator::get_seed()),
     stats(context.stats),
-    mab_recombiner(static_cast<int>(recombiner_t<i_t, f_t>::enabled_recombiners.size()),
-                   cuopt::seed_generator::get_seed(),
-                   recombiner_alpha,
-                   "recombiner"),
+    mab_recombiner(0, cuopt::seed_generator::get_seed(), recombiner_alpha, "recombiner"),
     mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), ls_alpha, "ls"),
     ls_hash_map(*context.problem_ptr)
 {
@@ -136,6 +133,7 @@ void diversity_manager_t<i_t, f_t>::generate_solution(f_t time_limit, bool rando
   sol.compute_feasibility();
   // if a feasible is found, it is added to the population
   ls.generate_solution(sol, random_start, &population, time_limit);
+  population.add_solution(std::move(sol));
 }
 
 template <typename i_t, typename f_t>
@@ -314,6 +312,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   // have the structure ready for reusing later
   problem_ptr->compute_integer_fixed_problem();
   recombiner_t<i_t, f_t>::init_enabled_recombiners(*problem_ptr);
+  mab_recombiner.resize_mab_arm_stats(recombiner_t<i_t, f_t>::enabled_recombiners.size());
   // test problem is not ii
   cuopt_func_call(
     ls.constraint_prop.bounds_update.calculate_activity_on_problem_bounds(*problem_ptr));
@@ -574,11 +573,11 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   auto [offspring, success] = recombine(sol1, sol2, recombiner_type);
   if (!success) {
     // add the attempt
-    // mab_recombiner.add_mab_reward(static_cast<int>(recombine_stats.get_last_attempt()),
-    //                               std::numeric_limits<double>::lowest(),
-    //                               std::numeric_limits<double>::lowest(),
-    //                               std::numeric_limits<double>::max(),
-    //                               recombiner_work_normalized_reward_t(0.0));
+    mab_recombiner.add_mab_reward(mab_recombiner.last_chosen_option,
+                                  std::numeric_limits<double>::lowest(),
+                                  std::numeric_limits<double>::lowest(),
+                                  std::numeric_limits<double>::max(),
+                                  recombiner_work_normalized_reward_t(0.0));
     return std::make_pair(solution_t<i_t, f_t>(sol1), solution_t<i_t, f_t>(sol2));
   }
   cuopt_assert(population.test_invariant(), "");
@@ -594,11 +593,11 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   success = this->run_local_search(offspring, population.weights, timer, ls_config);
   if (!success) {
     // add the attempt
-    // mab_recombiner.add_mab_reward(static_cast<int>(recombine_stats.get_last_attempt()),
-    //                               std::numeric_limits<double>::lowest(),
-    //                               std::numeric_limits<double>::lowest(),
-    //                               std::numeric_limits<double>::max(),
-    //                               recombiner_work_normalized_reward_t(0.0));
+    mab_recombiner.add_mab_reward(mab_recombiner.last_chosen_option,
+                                  std::numeric_limits<double>::lowest(),
+                                  std::numeric_limits<double>::lowest(),
+                                  std::numeric_limits<double>::max(),
+                                  recombiner_work_normalized_reward_t(0.0));
     return std::make_pair(solution_t<i_t, f_t>(sol1), solution_t<i_t, f_t>(sol2));
   }
   cuopt_assert(offspring.test_number_all_integer(), "All must be integers after LS");
@@ -637,12 +636,12 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
     offspring_qual, sol1.get_quality(population.weights), sol2.get_quality(population.weights));
   f_t best_quality_of_parents =
     std::min(sol1.get_quality(population.weights), sol2.get_quality(population.weights));
-  // mab_recombiner.add_mab_reward(
-  //   static_cast<int>(recombine_stats.get_last_attempt()),
-  //   best_quality_of_parents,
-  //   population.best().get_quality(population.weights),
-  //   offspring_qual,
-  //   recombiner_work_normalized_reward_t(recombine_stats.get_last_recombiner_time()));
+  mab_recombiner.add_mab_reward(
+    mab_recombiner.last_chosen_option,
+    best_quality_of_parents,
+    population.best().get_quality(population.weights),
+    offspring_qual,
+    recombiner_work_normalized_reward_t(recombine_stats.get_last_recombiner_time()));
   mab_ls.add_mab_reward(mab_ls_config_t<i_t, f_t>::last_ls_mab_option,
                         best_quality_of_parents,
                         population.best_feasible().get_quality(population.weights),
@@ -660,6 +659,7 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
   solution_t<i_t, f_t>& a, solution_t<i_t, f_t>& b, recombiner_enum_t recombiner_type)
 {
   recombiner_enum_t recombiner;
+  i_t selected_index = -1;
   if (run_only_ls_recombiner) {
     recombiner = recombiner_enum_t::LINE_SEGMENT;
   } else if (run_only_bp_recombiner) {
@@ -671,16 +671,17 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
   } else {
     // only run the given recombiner unless it is defult
     if (recombiner_type == recombiner_enum_t::SIZE) {
-      // recombiner = static_cast<recombiner_enum_t>(mab_recombiner.select_mab_option());`
-      std::uniform_int_distribution<int> dist(
-        0, recombiner_t<i_t, f_t>::enabled_recombiners.size() - 1);
-      int selected_index = dist(rng);
-      auto it    = std::next(recombiner_t<i_t, f_t>::enabled_recombiners.begin(), selected_index);
-      recombiner = *it;
+      selected_index = mab_recombiner.select_mab_option();
+      recombiner     = recombiner_t<i_t, f_t>::enabled_recombiners[selected_index];
     } else {
-      recombiner = recombiner_type;
+      recombiner     = recombiner_type;
+      selected_index = std::find(recombiner_t<i_t, f_t>::enabled_recombiners.begin(),
+                                 recombiner_t<i_t, f_t>::enabled_recombiners.end(),
+                                 recombiner_type) -
+                       recombiner_t<i_t, f_t>::enabled_recombiners.begin();
     }
   }
+  mab_recombiner.set_last_chosen_option(selected_index);
   recombine_stats.add_attempt((recombiner_enum_t)recombiner);
   recombine_stats.start_recombiner_time();
   // Refactored code using a switch statement
