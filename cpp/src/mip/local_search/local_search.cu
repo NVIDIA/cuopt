@@ -685,13 +685,13 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   f_t& best_objective)
 {
   raft::common::nvtx::range fun_scope("reset_alpha_and_run_recombiners");
-  fp.config.alpha                                  = default_alpha;
   constexpr i_t iterations_for_stagnation          = 3;
   constexpr i_t max_iterations_without_improvement = 8;
   auto new_sol_vector                              = population_ptr->get_external_solutions();
   population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
   if (population_ptr->current_size() > 1 &&
       i - last_unimproved_iteration > iterations_for_stagnation) {
+    fp.config.alpha = default_alpha;
     population_ptr->diversity_step(max_iterations_without_improvement);
     population_ptr->print();
     population_ptr->update_weights();

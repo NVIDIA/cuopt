@@ -529,7 +529,7 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
       }
       // if the solution is almost on polytope
       else if (last_distances[0] < distance_to_check_for_feasible) {
-        // run the linear projection with full precision to check if it actually is feasible
+        // run the LP with full precision to check if it actually is feasible
         const f_t lp_verify_time_limit = 5.;
         relaxed_lp_settings_t lp_settings;
         lp_settings.time_limit            = lp_verify_time_limit;
