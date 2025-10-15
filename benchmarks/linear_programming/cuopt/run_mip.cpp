@@ -136,8 +136,7 @@ std::vector<std::vector<double>> read_solution_from_dir(const std::string file_p
   std::vector<std::vector<double>> initial_solutions;
   std::string mps_file_name_no_ext = mps_file_name.substr(0, mps_file_name.find_last_of("."));
   // check if a directory with the given mps file exists
-  // std::string initial_solution_dir = file_path + "/" + mps_file_name_no_ext;
-  std::string initial_solution_dir = file_path + "/" + mps_file_name;
+  std::string initial_solution_dir = file_path + "/" + mps_file_name_no_ext + ".sol";
   read_single_solution_from_path(initial_solution_dir, var_names, initial_solutions);
   return initial_solutions;
   if (std::filesystem::exists(initial_solution_dir)) {
