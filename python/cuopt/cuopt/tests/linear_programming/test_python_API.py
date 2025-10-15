@@ -34,10 +34,21 @@ from cuopt.linear_programming.problem import (
     sense,
 )
 from cuopt.linear_programming.solver.solver_parameters import (
+    CUOPT_AUGMENTED,
+    CUOPT_BARRIER_DUAL_INITIAL_POINT,
+    CUOPT_CUDSS_DETERMINISTIC,
+    CUOPT_DUALIZE,
+    CUOPT_ELIMINATE_DENSE_COLUMNS,
+    CUOPT_FOLDING,
     CUOPT_INFEASIBILITY_DETECTION,
+    CUOPT_METHOD,
+    CUOPT_ORDERING,
     CUOPT_PDLP_SOLVER_MODE,
 )
-from cuopt.linear_programming.solver_settings import PDLPSolverMode
+from cuopt.linear_programming.solver_settings import (
+    PDLPSolverMode,
+    SolverMethod,
+)
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:
@@ -395,6 +406,7 @@ def test_warm_start():
 
     settings = SolverSettings()
     settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
     settings.set_optimality_tolerance(1e-3)
     settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
 
@@ -449,3 +461,225 @@ def test_problem_update():
     prob.updateObjective(constant=5, sense=MINIMIZE)
     prob.solve()
     assert prob.ObjValue == pytest.approx(5)
+
+
+@pytest.mark.parametrize(
+    "test_name,settings_config",
+    [
+        (
+            "automatic",
+            {
+                CUOPT_FOLDING: -1,
+                CUOPT_DUALIZE: -1,
+                CUOPT_ORDERING: -1,
+                CUOPT_AUGMENTED: -1,
+            },
+        ),
+        (
+            "forced_on",
+            {
+                CUOPT_FOLDING: 1,
+                CUOPT_DUALIZE: 1,
+                CUOPT_ORDERING: 1,
+                CUOPT_AUGMENTED: 1,
+                CUOPT_ELIMINATE_DENSE_COLUMNS: True,
+                CUOPT_CUDSS_DETERMINISTIC: True,
+            },
+        ),
+        (
+            "disabled",
+            {
+                CUOPT_FOLDING: 0,
+                CUOPT_DUALIZE: 0,
+                CUOPT_ORDERING: 0,
+                CUOPT_AUGMENTED: 0,
+                CUOPT_ELIMINATE_DENSE_COLUMNS: False,
+                CUOPT_CUDSS_DETERMINISTIC: False,
+            },
+        ),
+        (
+            "mixed",
+            {
+                CUOPT_FOLDING: 1,
+                CUOPT_DUALIZE: 0,
+                CUOPT_ORDERING: -1,
+                CUOPT_AUGMENTED: 1,
+            },
+        ),
+        (
+            "folding_on",
+            {
+                CUOPT_FOLDING: 1,
+            },
+        ),
+        (
+            "folding_off",
+            {
+                CUOPT_FOLDING: 0,
+            },
+        ),
+        (
+            "dualize_on",
+            {
+                CUOPT_DUALIZE: 1,
+            },
+        ),
+        (
+            "dualize_off",
+            {
+                CUOPT_DUALIZE: 0,
+            },
+        ),
+        (
+            "amd_ordering",
+            {
+                CUOPT_ORDERING: 1,
+            },
+        ),
+        (
+            "cudss_ordering",
+            {
+                CUOPT_ORDERING: 0,
+            },
+        ),
+        (
+            "augmented_system",
+            {
+                CUOPT_AUGMENTED: 1,
+            },
+        ),
+        (
+            "adat_system",
+            {
+                CUOPT_AUGMENTED: 0,
+            },
+        ),
+        (
+            "no_dense_elim",
+            {
+                CUOPT_ELIMINATE_DENSE_COLUMNS: False,
+            },
+        ),
+        (
+            "cudss_deterministic",
+            {
+                CUOPT_CUDSS_DETERMINISTIC: True,
+            },
+        ),
+        (
+            "combo1",
+            {
+                CUOPT_FOLDING: 1,
+                CUOPT_DUALIZE: 1,
+                CUOPT_ORDERING: 1,
+            },
+        ),
+        (
+            "combo2",
+            {
+                CUOPT_FOLDING: 0,
+                CUOPT_AUGMENTED: 0,
+                CUOPT_ELIMINATE_DENSE_COLUMNS: False,
+            },
+        ),
+        (
+            "dual_initial_point_automatic",
+            {
+                CUOPT_BARRIER_DUAL_INITIAL_POINT: -1,
+            },
+        ),
+        (
+            "dual_initial_point_lustig",
+            {
+                CUOPT_BARRIER_DUAL_INITIAL_POINT: 0,
+            },
+        ),
+        (
+            "dual_initial_point_least_squares",
+            {
+                CUOPT_BARRIER_DUAL_INITIAL_POINT: 1,
+            },
+        ),
+        (
+            "combo3_with_dual_init",
+            {
+                CUOPT_AUGMENTED: 1,
+                CUOPT_BARRIER_DUAL_INITIAL_POINT: 1,
+                CUOPT_ELIMINATE_DENSE_COLUMNS: True,
+            },
+        ),
+    ],
+)
+def test_barrier_solver_settings(test_name, settings_config):
+    """
+    Parameterized test for barrier solver with different configurations.
+
+    Tests the barrier solver across various settings combinations to ensure
+    correctness and robustness. Each configuration tests different aspects
+    of the barrier solver implementation.
+
+    Problem:
+        maximize   5*xs + 20*xl
+        subject to  1*xs +  3*xl <= 200
+                    3*xs +  2*xl <= 160
+                    xs, xl >= 0
+
+    Expected Solution:
+        Optimal objective: 1333.33
+        xs = 0, xl = 66.67 (corner solution where constraint 1 is binding)
+
+    Args
+    ----
+        test_name: Descriptive name for the test configuration
+        settings_config: Dictionary of barrier solver parameters to set
+    """
+    prob = Problem(f"Barrier Test - {test_name}")
+
+    # Add variables
+    xs = prob.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xs")
+    xl = prob.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xl")
+
+    # Add constraints
+    prob.addConstraint(xs + 3 * xl <= 200, name="constraint1")
+    prob.addConstraint(3 * xs + 2 * xl <= 160, name="constraint2")
+
+    # Set objective: maximize 5*xs + 20*xl
+    prob.setObjective(5 * xs + 20 * xl, sense=MAXIMIZE)
+
+    # Configure solver settings
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings.set_parameter("time_limit", 10)
+
+    # Apply test-specific settings
+    for param_name, param_value in settings_config.items():
+        settings.set_parameter(param_name, param_value)
+
+    print(f"\nTesting configuration: {test_name}")
+    print(f"Settings: {settings_config}")
+
+    # Solve the problem
+    prob.solve(settings)
+
+    print(f"Status: {prob.Status.name}")
+    print(f"Objective: {prob.ObjValue}")
+    print(f"xs = {xs.Value}, xl = {xl.Value}")
+
+    # Verify solution
+    assert prob.solved, f"Problem not solved for {test_name}"
+    assert prob.Status.name == "Optimal", f"Not optimal for {test_name}"
+    assert prob.ObjValue == pytest.approx(
+        1333.33, rel=0.01
+    ), f"Incorrect objective for {test_name}"
+    assert xs.Value == pytest.approx(
+        0.0, abs=1e-4
+    ), f"Incorrect xs value for {test_name}"
+    assert xl.Value == pytest.approx(
+        66.67, rel=0.01
+    ), f"Incorrect xl value for {test_name}"
+
+    # Verify constraint slacks are non-negative
+    for c in prob.getConstraints():
+        assert (
+            c.Slack >= -1e-6
+        ), f"Negative slack for {c.getConstraintName()} in {test_name}"

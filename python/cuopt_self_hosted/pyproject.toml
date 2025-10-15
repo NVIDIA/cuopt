@@ -86,7 +86,6 @@ known_rapids = [
     "cudf",
     "pylibraft",
     "rmm",
-    "raft_dask",
     "cuopt",
 ]
 known_first_party = [

@@ -440,15 +440,15 @@ def create_solver(LP_data, warmstart_data):
             solver_settings.set_parameter(
                 CUOPT_LOG_FILE, solver_config.log_file
             )
-        if solver_config.augmented != "":
+        if solver_config.augmented is not None:
             solver_settings.set_parameter(
                 CUOPT_AUGMENTED, solver_config.augmented
             )
-        if solver_config.folding != "":
+        if solver_config.folding is not None:
             solver_settings.set_parameter(CUOPT_FOLDING, solver_config.folding)
-        if solver_config.dualize != "":
+        if solver_config.dualize is not None:
             solver_settings.set_parameter(CUOPT_DUALIZE, solver_config.dualize)
-        if solver_config.ordering != "":
+        if solver_config.ordering is not None:
             solver_settings.set_parameter(
                 CUOPT_ORDERING, solver_config.ordering
             )

@@ -46,7 +46,6 @@ files:
       - depends_on_cudf
       - depends_on_cuvs
       - depends_on_pylibraft
-      - depends_on_raft_dask
       - depends_on_rapids_logger
       - rapids_build_backend
   test_cpp:
@@ -195,7 +194,6 @@ files:
       - depends_on_rmm
       - depends_on_cudf
       - depends_on_cuvs
-      - depends_on_raft_dask
       - depends_on_pylibraft
       - depends_on_rapids_logger
   py_test_cuopt:
@@ -328,7 +326,7 @@ dependencies:
     common:
       - output_types: [conda]
         packages:
-          - libcuopt-tests==25.10.*,>=0.0.0a0
+          - libcuopt-tests==25.12.*,>=0.0.0a0
   build_wheels:
     common:
       - output_types: [requirements, pyproject]
@@ -575,7 +573,7 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - rapids-logger==0.1.*,>=0.0.0a0
+          - rapids-logger==0.2.*,>=0.0.0a0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
@@ -659,32 +657,6 @@ dependencies:
           - matrix:
             packages:
               - *cuvs_unsuffixed
-
-  depends_on_raft_dask:
-    common:
-      - output_types: conda
-        packages:
-          - &raft_dask_unsuffixed raft-dask==25.12.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
-    specific:
-      - output_types: [requirements, pyproject]
-        matrices:
-          - matrix:
-              cuda: "12.*"
-              cuda_suffixed: "true"
-            packages:
-              - raft-dask-cu12==25.12.*,>=0.0.0a0
-          - matrix:
-              cuda: "13.*"
-              cuda_suffixed: "true"
-            packages:
-              - raft-dask-cu13==25.12.*,>=0.0.0a0
-          - matrix:
-            packages:
-              - *raft_dask_unsuffixed
 
   depends_on_pylibraft:
     common:

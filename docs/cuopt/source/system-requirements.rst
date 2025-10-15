@@ -47,6 +47,7 @@ Dependencies are installed automatically when using the pip and Conda installati
       - CUDA 12.2 with Driver 535.86.10+
       - CUDA 12.5 with Driver 555.42.06+
       - CUDA 12.9 with Driver 570.42.01+
+      - CUDA 13.0 with Driver 580.65.06+
 
 .. dropdown:: Recommended Requirements for Best Performance
 

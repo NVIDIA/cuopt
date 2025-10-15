@@ -13,6 +13,7 @@ The LP solver can be accessed in the following ways:
    -  AMPL
    -  GAMS
    -  PuLP
+   -  JuMP
 
 - **C API**: A native C API that provides direct low-level access to cuOpt's LP capabilities, enabling integration into any application or system that can interface with C.
 
@@ -65,9 +66,11 @@ Users can control how the solver will operate by specifying the PDLP solver mode
 Method
 ------
 
-**Concurrent**: The default method for solving linear programs. When concurrent is selected, cuOpt runs two algorithms at the same time: PDLP on the GPU and dual simplex on the CPU. A solution is returned from the algorithm that finishes first.
+**Concurrent**: The default method for solving linear programs. When concurrent is selected, cuOpt runs three algorithms in parallel: PDLP on the GPU, barrier (interior-point) on the GPU, and dual simplex on the CPU. A solution is returned from the algorithm that finishes first.
 
-**PDLP**: Primal-Dual Hybrid Gradient for Linear Program is an algorithm for solving large-scale linear programming problems on the GPU. PDLP does not attempt to any matrix factorizations during the course of the solve. Select this method if your LP is so large that factorization will not fit into memory. By default PDLP solves to low relative tolerance and the solutions it returns do not lie at a vertex of the feasible region. Enable crossover to obtain a highly accurate basic solution from a PDLP solution.
+**PDLP**: Primal-Dual Hybrid Gradient for Linear Program is an algorithm for solving large-scale linear programming problems on the GPU. PDLP does not attempt any matrix factorizations during the course of the solve. Select this method if your LP is so large that factorization will not fit into memory. By default PDLP solves to low relative tolerance and the solutions it returns do not lie at a vertex of the feasible region. Enable crossover to obtain a highly accurate basic solution from a PDLP solution.
+
+**Barrier**: The barrier method (also known as interior-point method) solves linear programs using a primal-dual predictor-corrector algorithm. This method uses GPU-accelerated sparse Cholesky and sparse LDLT solves via cuDSS, and GPU-accelerated sparse matrix-vector and matrix-matrix operations via cuSparse. Barrier is particularly effective for large-scale problems and can automatically apply techniques like folding, dualization, and dense column elimination to improve performance. This method solves the linear systems at each iteration using the augmented system or the normal equations (ADAT). Enable crossover to obtain a highly accurate basic solution from a barrier solution.
 
 **Dual Simplex**: Dual simplex is the simplex method applied to the dual of the linear program. Dual simplex requires the basis factorization of linear program fit into memory. Select this method if your LP is small to medium sized, or if you require a high-quality basic solution.
 
@@ -75,7 +78,7 @@ Method
 Crossover
 ---------
 
-Crossover allows you to obtain a high-quality basic solution from the results of a PDLP solve. More details can be found :ref:`here <crossover>`.
+Crossover allows you to obtain a high-quality basic solution from the results of a PDLP or barrier solve. When enabled, crossover converts these solutions to a vertex solution (basic solution) with high accuracy. More details can be found :ref:`here <crossover>`.
 
 
 Presolve

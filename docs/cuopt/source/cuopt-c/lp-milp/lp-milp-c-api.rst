@@ -16,6 +16,13 @@ You may use the following functions to determine the number of bytes used to rep
 .. doxygenfunction:: cuOptGetIntSize
 .. doxygenfunction:: cuOptGetFloatSize
 
+Version Information
+-------------------
+
+You may use the following function to get the version of the cuOpt library
+
+.. doxygenfunction:: cuOptGetVersion
+
 Status Codes
 ------------
 
@@ -25,6 +32,9 @@ Every function in the C API returns a status code that indicates success or fail
 .. doxygendefine:: CUOPT_INVALID_ARGUMENT
 .. doxygendefine:: CUOPT_MPS_FILE_ERROR
 .. doxygendefine:: CUOPT_MPS_PARSE_ERROR
+.. doxygendefine:: CUOPT_VALIDATION_ERROR
+.. doxygendefine:: CUOPT_OUT_OF_MEMORY
+.. doxygendefine:: CUOPT_RUNTIME_ERROR
 
 Optimization Problem
 --------------------
@@ -156,9 +166,22 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_MIP_ABSOLUTE_TOLERANCE
 .. doxygendefine:: CUOPT_MIP_RELATIVE_TOLERANCE
 .. doxygendefine:: CUOPT_MIP_INTEGRALITY_TOLERANCE
+.. doxygendefine:: CUOPT_MIP_ABSOLUTE_GAP
+.. doxygendefine:: CUOPT_MIP_RELATIVE_GAP
 .. doxygendefine:: CUOPT_MIP_SCALING
 .. doxygendefine:: CUOPT_MIP_HEURISTICS_ONLY
+.. doxygendefine:: CUOPT_MIP_PRESOLVE
 .. doxygendefine:: CUOPT_PRESOLVE
+.. doxygendefine:: CUOPT_LOG_TO_CONSOLE
+.. doxygendefine:: CUOPT_CROSSOVER
+.. doxygendefine:: CUOPT_FOLDING
+.. doxygendefine:: CUOPT_AUGMENTED
+.. doxygendefine:: CUOPT_DUALIZE
+.. doxygendefine:: CUOPT_ORDERING
+.. doxygendefine:: CUOPT_ELIMINATE_DENSE_COLUMNS
+.. doxygendefine:: CUOPT_CUDSS_DETERMINISTIC
+.. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT
+.. doxygendefine:: CUOPT_DUAL_POSTSOLVE
 .. doxygendefine:: CUOPT_SOLUTION_FILE
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
 .. doxygendefine:: CUOPT_USER_PROBLEM_FILE
@@ -186,6 +209,7 @@ These constants are used to configure `CUOPT_METHOD` via :c:func:`cuOptSetIntege
 .. doxygendefine:: CUOPT_METHOD_CONCURRENT
 .. doxygendefine:: CUOPT_METHOD_PDLP
 .. doxygendefine:: CUOPT_METHOD_DUAL_SIMPLEX
+.. doxygendefine:: CUOPT_METHOD_BARRIER
 
 
 Solving an LP or MIP
@@ -206,12 +230,15 @@ The output of a solve is a `cuOptSolution` object.
 The following functions may be used to access information from a `cuOptSolution`
 
 .. doxygenfunction:: cuOptGetTerminationStatus
+.. doxygenfunction:: cuOptGetErrorStatus
+.. doxygenfunction:: cuOptGetErrorString
 .. doxygenfunction:: cuOptGetPrimalSolution
 .. doxygenfunction:: cuOptGetObjectiveValue
 .. doxygenfunction:: cuOptGetSolveTime
 .. doxygenfunction:: cuOptGetMIPGap
 .. doxygenfunction:: cuOptGetSolutionBound
 .. doxygenfunction:: cuOptGetDualSolution
+.. doxygenfunction:: cuOptGetDualObjectiveValue
 .. doxygenfunction:: cuOptGetReducedCosts
 
 When you are finished with a `cuOptSolution` object you should destory it with
