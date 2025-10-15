@@ -128,66 +128,14 @@ bool diversity_manager_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solut
   return true;
 }
 
-// There should be at least 3 solutions in the population
 template <typename i_t, typename f_t>
-bool diversity_manager_t<i_t, f_t>::regenerate_solutions()
-{
-  raft::common::nvtx::range fun_scope("regenerate_solutions");
-  f_t time_limit     = 5;
-  i_t counter        = 0;
-  const i_t min_size = 2;
-  while (population.current_size() <= min_size && (current_step == 0 || counter < 5)) {
-    CUOPT_LOG_DEBUG("Trying to regenerate solution, pop size %d\n", population.current_size());
-    time_limit = std::min(time_limit, timer.remaining_time());
-    ls.fj.randomize_weights(problem_ptr->handle_ptr);
-    population.add_solution(generate_solution(time_limit));
-    if (timer.check_time_limit()) { return false; }
-    // increase the time limit as we couldn't add a valid solution
-    time_limit += 5;
-    counter++;
-  }
-  ++current_step;
-  // if there is at least two sols still return true
-  return population.current_size() >= min_size;
-}
-
-// There should be at least 3 solutions in the population
-template <typename i_t, typename f_t>
-std::vector<solution_t<i_t, f_t>> diversity_manager_t<i_t, f_t>::generate_more_solutions()
-{
-  raft::common::nvtx::range fun_scope("generate_more_solutions");
-  std::vector<solution_t<i_t, f_t>> solutions;
-  timer_t total_time_to_generate = timer_t(timer.remaining_time() / 5.);
-  f_t time_limit                 = std::min(60., total_time_to_generate.remaining_time());
-  f_t ls_limit                   = std::min(5., timer.remaining_time() / 20.);
-  const i_t n_sols_to_generate   = 3;
-  for (i_t i = 0; i < n_sols_to_generate; ++i) {
-    CUOPT_LOG_DEBUG("Trying to generate more solutions");
-    time_limit = std::min(time_limit, timer.remaining_time());
-    ls.fj.randomize_weights(problem_ptr->handle_ptr);
-    auto sol = generate_solution(time_limit);
-    population.run_solution_callbacks(sol);
-    solutions.emplace_back(solution_t<i_t, f_t>(sol));
-    if (total_time_to_generate.check_time_limit()) { return solutions; }
-    timer_t ls_timer(std::min(ls_limit, timer.remaining_time()));
-    ls_config_t<i_t, f_t> ls_config;
-    run_local_search(sol, population.weights, ls_timer, ls_config);
-    population.run_solution_callbacks(sol);
-    solutions.emplace_back(std::move(sol));
-    if (total_time_to_generate.check_time_limit()) { return solutions; }
-  }
-  return solutions;
-}
-
-template <typename i_t, typename f_t>
-solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::generate_solution(f_t time_limit,
-                                                                      bool random_start)
+void diversity_manager_t<i_t, f_t>::generate_solution(f_t time_limit, bool random_start)
 {
   raft::common::nvtx::range fun_scope("generate_solution");
   solution_t<i_t, f_t> sol(*problem_ptr);
   sol.compute_feasibility();
+  // if a feasible is found, it is added to the population
   ls.generate_solution(sol, random_start, &population, time_limit);
-  return sol;
 }
 
 template <typename i_t, typename f_t>
@@ -199,6 +147,16 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
     solution_t<i_t, f_t> sol(*problem_ptr);
     rmm::device_uvector<f_t> init_sol_assignment(*init_sol, sol.handle_ptr->get_stream());
     if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
+      relaxed_lp_settings_t lp_settings;
+      lp_settings.time_limit            = 60;
+      lp_settings.tolerance             = problem_ptr->tolerances.absolute_tolerance;
+      lp_settings.save_state            = false;
+      lp_settings.return_first_feasible = true;
+      run_lp_with_vars_fixed(*problem_ptr,
+                             sol,
+                             problem_ptr->integer_indices,
+                             lp_settings,
+                             static_cast<bound_presolve_t<i_t, f_t>*>(nullptr));
       raft::copy(sol.assignment.data(),
                  init_sol_assignment.data(),
                  init_sol_assignment.size(),
@@ -320,10 +278,11 @@ void diversity_manager_t<i_t, f_t>::run_fj_alone(solution_t<i_t, f_t>& solution)
 
 // returns the best feasible solution
 template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::run_fp_alone(solution_t<i_t, f_t>& solution)
+void diversity_manager_t<i_t, f_t>::run_fp_alone()
 {
   CUOPT_LOG_DEBUG("Running FP alone!");
-  ls.run_fp(solution, timer, &population);
+  solution_t<i_t, f_t> sol(population.best_feasible());
+  ls.run_fp(sol, timer, &population);
   CUOPT_LOG_DEBUG("FP alone finished!");
 }
 
@@ -363,7 +322,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     "The problem must not be ii");
   population.initialize_population();
   if (check_b_b_preemption()) { return population.best_feasible(); }
-
+  add_user_given_solutions(initial_sol_vector);
   // Run CPUFJ early to find quick initial solutions
   population.allocate_solutions();
   ls_cpufj_raii_guard_t ls_cpufj_raii_guard(ls);  // RAII to stop cpufj threads on solve stop
@@ -457,14 +416,13 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   }
   // cudaProfilerStop();
   // exit(0);
-  auto sol = generate_solution(timer.remaining_time(), false);
-  population.add_solution(std::move(solution_t<i_t, f_t>(sol)));
+  if (population.current_size() == 0) { generate_solution(timer.remaining_time(), false); }
   if (timer.check_time_limit()) {
     auto new_sol_vector = population.get_external_solutions();
     population.add_solutions_from_vec(std::move(new_sol_vector));
     return population.best_feasible();
   }
-  run_fp_alone(sol);
+  run_fp_alone();
   auto new_sol_vector = population.get_external_solutions();
   population.add_solutions_from_vec(std::move(new_sol_vector));
   return population.best_feasible();

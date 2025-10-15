@@ -734,6 +734,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     solution.resize_to_problem();
     resize_to_new_problem();
   }
+  if (population_ptr->current_size() > 0) { solution.copy_from(population_ptr->best_feasible()); }
   i_t last_improved_iteration = 0;
   for (i_t i = 0; i < n_fp_iterations && !timer.check_time_limit(); ++i) {
     if (timer.check_time_limit()) {

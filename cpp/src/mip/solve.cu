@@ -197,6 +197,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
     auto run_presolve = settings.presolve;
     run_presolve      = run_presolve && settings.get_mip_callbacks().empty();
+    run_presolve      = run_presolve && settings.initial_solutions.size() == 0;
 
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
 
