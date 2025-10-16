@@ -3359,9 +3359,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
   try {
     raft::common::nvtx::range fun_scope("Barrier: solve");
 
-    std::cout << "Qp.n = " << lp.Q.n << ", lp.num_cols = " << lp.num_cols
-              << ", lp.num_rows = " << lp.num_rows << std::endl;
-
     i_t n = lp.num_cols;
     i_t m = lp.num_rows;
 
