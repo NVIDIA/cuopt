@@ -180,12 +180,21 @@ class iteration_data_t {
     bool has_Q = lp.Q.x.size() > 0;
 
     if (has_Q) {
-      cuopt_assert(lp.Q.n == lp.num_cols && lp.Q.m == lp.num_cols,
-                   "Q.n != num_cols || Q.m != num_cols");
-      Q.m = lp.num_cols;
-      Q.n = lp.num_cols;
-      Q.col_start.resize(lp.num_cols + 1);
+      cuopt_assert(lp.Q.n <= lp.num_cols && lp.Q.m <= lp.num_cols,
+                   "Q.n <= num_cols && Q.m <= num_cols");
+
       lp.Q.to_compressed_col(Q);
+      // The original Q matrix will not have the slack variables. Let's resize it to include those
+      // variables.
+      if (Q.n != lp.num_cols) {
+        i_t nz    = Q.col_start[Q.n];
+        i_t old_n = Q.n;
+        Q.m = Q.n = lp.num_cols;
+        Q.col_start.resize(Q.m + 1);
+        for (i_t i = old_n; i < Q.n; i++) {
+          Q.col_start[i + 1] = nz;
+        }
+      }
     }
 
     // Allocating GPU flag data for Form ADAT
@@ -3350,6 +3359,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
   try {
     raft::common::nvtx::range fun_scope("Barrier: solve");
 
+    std::cout << "Qp.n = " << lp.Q.n << ", lp.num_cols = " << lp.num_cols
+              << ", lp.num_rows = " << lp.num_rows << std::endl;
+
     i_t n = lp.num_cols;
     i_t m = lp.num_rows;
 
@@ -3485,7 +3497,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     data.v_save = data.v;
     data.z_save = data.z;
 
-    const i_t iteration_limit = settings.iteration_limit;
+    const i_t iteration_limit = 1000;  // settings.iteration_limit;
 
     while (iter < iteration_limit) {
       raft::common::nvtx::range fun_scope("Barrier: iteration");
