@@ -20,8 +20,8 @@
 namespace cuopt::linear_programming::detail {
 
 struct bp_recombiner_config_t {
-  static constexpr double bounds_prop_time_limit          = 1;
-  static constexpr double lp_after_bounds_prop_time_limit = 2;
+  static constexpr double bounds_prop_time_limit          = 0.5;
+  static constexpr double lp_after_bounds_prop_time_limit = 1;
   // number of repair iterations even if it fails during the repair
   static constexpr size_t n_repair_iterations          = 10;
   static constexpr size_t initial_n_of_vars_from_other = 200;
@@ -53,7 +53,7 @@ struct ls_recombiner_config_t {
   // FIXME: not implemented yet
   static constexpr bool use_fj_for_rounding            = false;
   static constexpr int n_points_to_search              = 20;
-  static constexpr double time_limit                   = 1.;
+  static constexpr double time_limit                   = 0.5;
   static constexpr size_t initial_n_of_vars_from_other = 200;
   static constexpr size_t max_different_var_limit      = 10000;
   static constexpr size_t min_different_var_limit      = 20;
@@ -79,8 +79,8 @@ struct ls_recombiner_config_t {
 };
 
 struct fp_recombiner_config_t {
-  static constexpr double infeasibility_detection_time_limit = 0.1;
-  static constexpr double fp_time_limit                      = 1.;
+  static constexpr double infeasibility_detection_time_limit = 0.05;
+  static constexpr double fp_time_limit                      = 0.5;
   static constexpr double alpha                              = 0.99;
   static constexpr double alpha_decrease_factor              = 0.9;
   static constexpr size_t initial_n_of_vars_from_other       = 200;
@@ -109,8 +109,8 @@ struct fp_recombiner_config_t {
 
 struct sub_mip_recombiner_config_t {
   static constexpr size_t max_continuous_vars                = 5000;
-  static constexpr double sub_mip_time_limit                 = 1.;
-  static constexpr double infeasibility_detection_time_limit = 0.1;
+  static constexpr double sub_mip_time_limit                 = 0.5;
+  static constexpr double infeasibility_detection_time_limit = 0.05;
   static constexpr size_t initial_n_of_vars_from_other       = 40;
   static constexpr size_t max_different_var_limit            = 500;
   static constexpr size_t min_different_var_limit            = 10;

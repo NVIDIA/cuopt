@@ -21,9 +21,9 @@ namespace cuopt::linear_programming::detail {
 
 struct diversity_config_t {
   double time_ratio_on_init_lp        = 0.1;
-  double max_time_on_lp               = 30.0;
-  double time_ratio_of_probing_cache  = 0.05;
-  double max_time_on_probing          = 30.0;
+  double max_time_on_lp               = 15.0;
+  double time_ratio_of_probing_cache  = 0.04;
+  double max_time_on_probing          = 15.0;
   int max_var_diff                    = 256;
   size_t max_solutions                = 32;
   double initial_infeasibility_weight = 1000.;
@@ -35,8 +35,8 @@ struct diversity_config_t {
   double max_island_gen_time          = 600;
   size_t n_sol_for_skip_init_gen      = 3;
   double max_fast_sol_time            = 10;
-  double lp_run_time_if_feasible      = 2.;
-  double lp_run_time_if_infeasible    = 1.;
+  double lp_run_time_if_feasible      = 1.;
+  double lp_run_time_if_infeasible    = 0.5;
   bool halve_population               = false;
 };
 

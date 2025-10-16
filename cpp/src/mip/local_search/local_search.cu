@@ -686,7 +686,7 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
 {
   raft::common::nvtx::range fun_scope("reset_alpha_and_run_recombiners");
   constexpr i_t iterations_for_stagnation          = 3;
-  constexpr i_t max_iterations_without_improvement = 8;
+  constexpr i_t max_iterations_without_improvement = 15;
   auto new_sol_vector                              = population_ptr->get_external_solutions();
   population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
   if (population_ptr->current_size() > 1 &&
