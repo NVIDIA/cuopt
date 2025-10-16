@@ -195,13 +195,12 @@ fi
 
 # Set defaults if not provided
 GPU_COUNT=${GPU_COUNT:-1}
-TIME_LIMIT=${TIME_LIMIT:-360}
+TIME_LIMIT=${TIME_LIMIT:-3600}
 OUTPUT_DIR=${OUTPUT_DIR:-.}
 RELAXATION=${RELAXATION:-false}
 MIP_HEURISTICS_ONLY=${MIP_HEURISTICS_ONLY:-false}
 WRITE_LOG_FILE=${WRITE_LOG_FILE:-false}
 NUM_CPU_THREADS=${NUM_CPU_THREADS:-1}
-PRESOLVE=${PRESOLVE:-true}
 BATCH_NUM=${BATCH_NUM:-0}
 N_BATCHES=${N_BATCHES:-1}
 LOG_TO_CONSOLE=${LOG_TO_CONSOLE:-true}
@@ -336,7 +335,9 @@ worker() {
             args="$args --relaxation"
         fi
         args="$args --log-to-console $LOG_TO_CONSOLE"
-        args="$args --presolve $PRESOLVE"
+        if [ -n "$PRESOLVE" ]; then
+            args="$args --presolve $PRESOLVE"
+        fi
         if [ -n "$METHOD" ]; then
             args="$args --method $METHOD"
         fi
