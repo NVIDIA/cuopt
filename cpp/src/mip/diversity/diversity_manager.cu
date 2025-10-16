@@ -395,6 +395,14 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     }
     // in case the pdlp returned var boudns that are out of bounds
     clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
+  }
+
+  if (ls.lp_optimal_exists) {
+    solution_t<i_t, f_t> lp_rounded_sol(*problem_ptr);
+    lp_rounded_sol.copy_new_assignment(lp_optimal_solution);
+    lp_rounded_sol.round_nearest();
+    lp_rounded_sol.compute_feasibility();
+    population.add_solution(std::move(lp_rounded_sol));
     ls.start_cpufj_lptopt_scratch_threads(population);
   }
 

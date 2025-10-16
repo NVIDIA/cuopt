@@ -227,6 +227,13 @@ void solution_t<i_t, f_t>::copy_new_assignment(const std::vector<f_t>& h_assignm
 }
 
 template <typename i_t, typename f_t>
+void solution_t<i_t, f_t>::copy_new_assignment(const rmm::device_uvector<f_t>& d_assignment)
+{
+  assignment.resize(d_assignment.size(), handle_ptr->get_stream());
+  raft::copy(assignment.data(), d_assignment.data(), d_assignment.size(), handle_ptr->get_stream());
+}
+
+template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::assign_random_within_bounds(f_t ratio_of_vars_to_random_assign,
                                                        bool only_integers)
 {
