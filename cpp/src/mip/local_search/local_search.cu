@@ -642,7 +642,7 @@ void local_search_t<i_t, f_t>::reset_alpha_and_save_solution(
   problem_t<i_t, f_t>* old_problem_ptr,
   population_t<i_t, f_t>* population_ptr,
   i_t i,
-  i_t last_unimproved_iteration,
+  i_t last_improved_iteration,
   rmm::device_uvector<f_t>& best_solution,
   f_t& best_objective)
 {
@@ -680,7 +680,7 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   problem_t<i_t, f_t>* old_problem_ptr,
   population_t<i_t, f_t>* population_ptr,
   i_t i,
-  i_t last_unimproved_iteration,
+  i_t last_improved_iteration,
   rmm::device_uvector<f_t>& best_solution,
   f_t& best_objective)
 {
@@ -690,7 +690,7 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   auto new_sol_vector                              = population_ptr->get_external_solutions();
   population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
   if (population_ptr->current_size() > 1 &&
-      i - last_unimproved_iteration > iterations_for_stagnation) {
+      i - last_improved_iteration > iterations_for_stagnation) {
     fp.config.alpha = default_alpha;
     population_ptr->diversity_step(max_iterations_without_improvement);
     population_ptr->print();
@@ -724,6 +724,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     problem_with_objective_cut = std::move(problem_t<i_t, f_t>(*old_problem_ptr));
   }
   if (is_feasible) {
+    CUOPT_LOG_DEBUG("FP initial solution is feasible, adding cutting plane at obj");
     f_t objective_cut =
       best_objective - std::max(std::abs(0.001 * best_objective), OBJECTIVE_EPSILON);
     problem_with_objective_cut.add_cutting_plane_at_objective(objective_cut);
@@ -734,7 +735,6 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     solution.resize_to_problem();
     resize_to_new_problem();
   }
-  if (population_ptr->current_size() > 0) { solution.copy_from(population_ptr->best_feasible()); }
   i_t last_improved_iteration = 0;
   for (i_t i = 0; i < n_fp_iterations && !timer.check_time_limit(); ++i) {
     if (timer.check_time_limit()) {
