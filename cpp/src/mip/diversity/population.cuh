@@ -117,6 +117,7 @@ class population_t {
                              f_t objective,
                              solution_origin_t origin);
   std::vector<solution_t<i_t, f_t>> get_external_solutions();
+  void add_external_solutions_to_population();
   size_t get_external_solution_size();
   void preempt_heuristic_solver();
 

@@ -252,8 +252,7 @@ bool diversity_manager_t<i_t, f_t>::check_b_b_preemption()
 {
   if (population.preempt_heuristic_solver_.load()) {
     if (population.current_size() == 0) { population.allocate_solutions(); }
-    auto new_sol_vector = population.get_external_solutions();
-    population.add_solutions_from_vec(std::move(new_sol_vector));
+    population.add_external_solutions_to_population();
     return true;
   }
   return false;
@@ -417,13 +416,11 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   // exit(0);
   if (population.current_size() == 0) { generate_solution(timer.remaining_time(), false); }
   if (timer.check_time_limit()) {
-    auto new_sol_vector = population.get_external_solutions();
-    population.add_solutions_from_vec(std::move(new_sol_vector));
+    population.add_external_solutions_to_population();
     return population.best_feasible();
   }
   run_fp_alone();
-  auto new_sol_vector = population.get_external_solutions();
-  population.add_solutions_from_vec(std::move(new_sol_vector));
+  population.add_external_solutions_to_population();
   return population.best_feasible();
 };
 
