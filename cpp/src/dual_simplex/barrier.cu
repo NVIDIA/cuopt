@@ -3233,8 +3233,9 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
     f_t quad_objective = 0.0;
     if (data.Q.n > 0) {
       dense_vector_t<i_t, f_t> Qx(data.Q.n);
-      dense_vector_t<i_t, f_t> x_host(data.d_x_.size());
-      raft::copy(x_host.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
+      dense_vector_t<i_t, f_t> x_host(data.Q.n);
+      // Copy only the first data.Q.n elements
+      raft::copy(x_host.data(), data.d_x_.data(), data.Q.n, stream_view_);
       cudaStreamSynchronize(stream_view_);
       matrix_vector_multiply(data.Q, 1.0, x_host, 0.0, Qx);
       quad_objective = 0.5 * x_host.inner_product(Qx);
@@ -3245,9 +3246,12 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
   } else {
     f_t quad_objective = 0.0;
     if (data.Q.n > 0) {
+      dense_vector_t<i_t, f_t> x_truncated(data.Q.n);
+      // Copy only the first data.Q.n elements
+      std::copy(data.x.begin(), data.x.begin() + data.Q.n, x_truncated.begin());
       dense_vector_t<i_t, f_t> Qx(data.Q.n);
-      matrix_vector_multiply(data.Q, 1.0, data.x, 0.0, Qx);
-      quad_objective = 0.5 * data.x.inner_product(Qx);
+      matrix_vector_multiply(data.Q, 1.0, x_truncated, 0.0, Qx);
+      quad_objective = 0.5 * x_truncated.inner_product(Qx);
     }
     primal_objective = data.c.inner_product(data.x) + quad_objective;
     dual_objective =
