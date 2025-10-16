@@ -3366,7 +3366,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     settings.log.printf(
       "Barrier solver: %d constraints, %d variables, %ld nonzeros\n", m, n, lp.A.col_start[n]);
     if (lp.Q.n > 0) {
-      settings.log.printf("Quadratic objective matrix: %d nonzeros\n", lp.Q.row_start[n]);
+      settings.log.printf("Quadratic objective matrix: %d nonzeros\n", lp.Q.row_start[lp.Q.n]);
     }
     settings.log.printf("\n");
 
