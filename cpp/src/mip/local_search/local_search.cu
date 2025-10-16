@@ -665,6 +665,11 @@ void local_search_t<i_t, f_t>::reset_alpha_and_save_solution(
                solution.handle_ptr->get_stream());
   }
   population_ptr->update_weights();
+  constexpr i_t max_iterations_without_improvement = 8;
+  if (population_ptr->current_size() > 1) {
+    population_ptr->diversity_step(max_iterations_without_improvement);
+    population_ptr->print();
+  }
   save_solution_and_add_cutting_plane(
     population_ptr->best_feasible(), best_solution, best_objective);
   raft::copy(solution.assignment.data(),
