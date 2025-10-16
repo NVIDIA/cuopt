@@ -60,6 +60,9 @@ EXITCODE=0
 trap "EXITCODE=1" ERR
 set +e
 
+# Due to race condition in certain cases UCX might not be able to cleanup properly, so we set the number of threads to 1
+export OMP_NUM_THREADS=1
+
 rapids-logger "Test cuopt_cli"
 timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 

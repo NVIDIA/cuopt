@@ -100,13 +100,17 @@ class sparse_cholesky_base_t {
 template <typename mem_pool_t>
 int cudss_device_alloc(void* ctx, void** ptr, size_t size, cudaStream_t stream)
 {
-  return cudaMallocAsync(ptr, size, stream);
+  int status = cudaMallocAsync(ptr, size, stream);
+  if (status != cudaSuccess) { throw raft::cuda_error("Cuda error in cudss_device_alloc"); }
+  return status;
 }
 
 template <typename mem_pool_t>
 int cudss_device_dealloc(void* ctx, void* ptr, size_t size, cudaStream_t stream)
 {
-  return cudaFreeAsync(ptr, stream);
+  int status = cudaFreeAsync(ptr, stream);
+  if (status != cudaSuccess) { throw raft::cuda_error("Cuda error in cudss_device_dealloc"); }
+  return status;
 }
 
 template <class T>
@@ -494,7 +498,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     auto d_nnz = Arow.row_start.element(Arow.m, Arow.row_start.stream());
     if (nnz != d_nnz) {
       settings_.log.printf("Error: nnz %d != A_in.col_start[A_in.n] %d\n", nnz, d_nnz);
-      exit(1);
+      return -1;
     }
 
     CUDSS_CALL_AND_CHECK(
@@ -564,7 +568,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 #endif
     if (A_in.n != n) {
       printf("Analyze input does not match size %d != %d\n", A_in.n, n);
-      exit(1);
+      return -1;
     }
 
     nnz = A_in.col_start[A_in.n];
@@ -665,7 +669,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     if (nnz != A_in.col_start[A_in.n]) {
       settings_.log.printf(
         "Error: nnz %d != A_in.col_start[A_in.n] %d\n", nnz, A_in.col_start[A_in.n]);
-      exit(1);
+      return -1;
     }
 
     CUDA_CALL_AND_CHECK(
@@ -737,11 +741,11 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     handle_ptr_->get_stream().synchronize();
     if (static_cast<i_t>(b.size()) != n) {
       settings_.log.printf("Error: b.size() %d != n %d\n", b.size(), n);
-      exit(1);
+      return -1;
     }
     if (static_cast<i_t>(x.size()) != n) {
       settings_.log.printf("Error: x.size() %d != n %d\n", x.size(), n);
-      exit(1);
+      return -1;
     }
 
     CUDSS_CALL_AND_CHECK(

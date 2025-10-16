@@ -3,6 +3,93 @@ Release Notes
 =====================
 
 ====================
+Release Notes 25.10
+====================
+
+New Features (25.10)
+--------------------
+
+- New barrier method for solving LPs. Uses cuDSS for sparse Cholesky / LDT.
+- Concurrent mode for LPs now uses PDLP, dual simplex, and barrier
+- New PDLP solver mode Stable3.
+- MIP presolve using Papilo (enabled by default). LP presolve using Papilo (optional).
+- Parallel branch and bound on the CPU: multiple best-first search and diving threads
+
+Breaking Changes (25.10)
+------------------------
+
+- New PDLP Solver mode Stable3 is the default
+
+
+Improvements (25.10)
+--------------------
+
+- Add setting "CUOPT_BARRIER_DUAL_INITIAL_POINT" to change the dual initial point used by barrier
+- CPUFJ for local search + simple rounding
+- FP as a local search
+- Sub-MIP recombiner and B&B global variable changes
+- Implement GF(2) presolve reduction
+- Implement node presolve
+- CUDA 13/12.9 support
+- Build and test with CUDA 13.0.0
+- Add read/write MPS and relaxation to python API
+- Decompression for ``.mps.gz`` and ``.mps.bz2`` files
+- Enable parallelism for root node presolve
+- Enable singleton stuffing and use Papilo default params
+- Make infeasibility checks consistent between the main solver and presolver
+- Add maximization support for root node presolve
+- Performance improvement in dual simplex's right-looking LU factorization
+- Fix high GPU memory usage
+- Print cuOpt version / machine info before solving
+- ``cuopt-server``: update dependencies (drop httpx, add psutil)
+- Add nightly testing of cuOpt jump interface
+- Compression tests are not run when compression is disabled
+- Add sanitizer build option- Heuristic Improvements: balance between generation and improvement heuristics
+- Loosen presolve tolerance and update timers to report cumulative presolve/solve time
+- Warn in case a dependent library is not found in libcuopt load
+- Combined variable bounds
+- Add Commit Sha to container for reference
+- use GCC 14, consolidate dependency groups, update pre-commit hooks
+- Add support for nightly ``cuopt-examples`` notebook testing
+- Reduce hard-coded version usage in repo
+- Container to work on all different users including root
+- Changes to download LP and MILP datasets, and also disable cvxpy testing for 3.10
+- Faster engine compile time
+- Fix pre-commit for trailing whitespace and end of file
+- Merge update version and fix version format bugs
+- This library now supports the QPS format, which is an extension of the standard MPS format for representing quadratic programming problems.
+
+
+Bug Fixes (25.10)
+-----------------
+
+- Fix variables out of bounds caused by CPUFJ LP scratch thread
+- Fix the maybe-uninitialized compilation error
+- Fix linking errors in the test suite when disabling C adaptor
+- Compute relative gap with respect to user objectives
+- Add http timeout values for general, send, and receive to client
+- Fix bug in ``fixed_problem_computation``
+- Remove ``limiting_resource_adaptor`` leftover
+- Add support for cuda13 container and fix cuda13 lib issues in wheel
+- Return Infeasible if the user problem contains crossing bounds
+- Fix out-of-bound access in ``clean_up_infeasibilities``
+- Empty columns with infinite bounds are not removed
+
+
+Documentation (25.10)
+---------------------
+
+- Add tutorial video links to Decompression
+- Add warmstart, model update, update docs
+- add docs on CI workflow inputs
+- Add name to drop-down for video link
+- Add video link to the docs and to the Readme
+- Add documentation on nightly installation commands
+- Fix version in version tab, change log, and fix typos
+- Doc update for container version update, and add ``nvidia-cuda-runtime`` as a dependency
+
+
+====================
 Release Notes 25.08
 ====================
 
