@@ -25,7 +25,6 @@
 
 #include "cuda_profiler_api.h"
 
-constexpr bool from_dir    = false;
 constexpr bool fj_only_run = false;
 
 namespace cuopt::linear_programming::detail {
