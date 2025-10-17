@@ -218,7 +218,7 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
     get_tolerance_from_ratio(ratio_of_set_integers, context.settings.tolerances.absolute_tolerance);
   temp_p.check_problem_representation(true);
   f_t time_limit     = longer_lp_run ? 5. : 1.;
-  time_limit         = std::min(time_limit, timer.remaining_time());
+  time_limit         = std::max(0.05, std::min(time_limit, timer.remaining_time() / 10.));
   static f_t lp_time = 0;
   static i_t n_calls = 0;
   f_t old_remaining  = timer.remaining_time();
@@ -256,7 +256,7 @@ bool feasibility_pump_t<i_t, f_t>::round(solution_t<i_t, f_t>& solution)
 {
   bool result;
   CUOPT_LOG_DEBUG("Rounding the point");
-  timer_t bounds_prop_timer(std::min(0.5, timer.remaining_time()));
+  timer_t bounds_prop_timer(std::max(0.05, std::min(0.5, timer.remaining_time() / 10.)));
   const f_t lp_run_time_after_feasible     = 0.;
   bool old_var                             = constraint_prop.round_all_vars;
   f_t old_time                             = constraint_prop.max_time_for_bounds_prop;
