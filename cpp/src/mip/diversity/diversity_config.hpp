@@ -35,7 +35,7 @@ struct diversity_config_t {
   double max_island_gen_time          = 600;
   size_t n_sol_for_skip_init_gen      = 3;
   double max_fast_sol_time            = 10;
-  double lp_run_time_if_feasible      = 2.;
+  double lp_run_time_if_feasible      = 5.;
   double lp_run_time_if_infeasible    = 1.;
   bool halve_population               = false;
 };
