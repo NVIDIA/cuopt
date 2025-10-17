@@ -63,6 +63,7 @@ solution_t<i_t, f_t>::solution_t(problem_t<i_t, f_t>& problem_)
     n_feasible_constraints(handle_ptr->get_stream()),
     lp_state(problem_)
 {
+  clamp_within_var_bounds(assignment, problem_ptr, handle_ptr);
 }
 
 template <typename i_t, typename f_t>

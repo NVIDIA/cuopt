@@ -422,7 +422,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   }
   // cudaProfilerStop();
   // exit(0);
-  if (population.current_size() == 0) { generate_solution(timer.remaining_time(), false); }
+  generate_solution(timer.remaining_time(), false);
   if (timer.check_time_limit()) {
     population.add_external_solutions_to_population();
     return population.best_feasible();
