@@ -29,6 +29,10 @@ cuOpt supports the following APIs:
 
 This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) project.
 
+## Latest Release Notes:
+
+[RELEASE-NOTES.md](RELEASE-NOTES.md)
+
 ## Installation
 
 ### CUDA/GPU requirements
