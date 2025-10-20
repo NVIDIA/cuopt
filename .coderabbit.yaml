@@ -24,4 +24,3 @@ reviews:
       enabled: true
     gitleaks:
       enabled: true
-
