@@ -19,6 +19,7 @@ reviews:
   auto_review:
     enabled: false
     drafts: false
+    ignore_usernames: ["rapids-bot", "GPUtester", "nv-automation-bot", "copy-pr-bot"]
   tools:
     eslint:
       enabled: true
