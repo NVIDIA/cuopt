@@ -55,6 +55,7 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   pdlp_settings.set_optimality_tolerance(settings.tolerance);
   const f_t tolerance_divisor =
     op_problem.tolerances.absolute_tolerance / op_problem.tolerances.relative_tolerance;
+  if (tolerance_divisor == 0) { tolerance_divisor = 1; }
   pdlp_settings.tolerances.relative_primal_tolerance = settings.tolerance / tolerance_divisor;
   pdlp_settings.tolerances.relative_dual_tolerance   = settings.tolerance / tolerance_divisor;
   pdlp_settings.time_limit                           = settings.time_limit;

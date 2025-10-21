@@ -679,11 +679,16 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
       selected_index = mab_recombiner.select_mab_option();
       recombiner     = recombiner_t<i_t, f_t>::enabled_recombiners[selected_index];
     } else {
-      recombiner     = recombiner_type;
-      selected_index = std::find(recombiner_t<i_t, f_t>::enabled_recombiners.begin(),
-                                 recombiner_t<i_t, f_t>::enabled_recombiners.end(),
-                                 recombiner_type) -
-                       recombiner_t<i_t, f_t>::enabled_recombiners.begin();
+      recombiner = recombiner_type;
+      auto it    = std::find(recombiner_t<i_t, f_t>::enabled_recombiners.begin(),
+                          recombiner_t<i_t, f_t>::enabled_recombiners.end(),
+                          recombiner_type);
+      selected_index =
+        static_cast<i_t>(std::distance(recombiner_t<i_t, f_t>::enabled_recombiners.begin(), it));
+      if (it == recombiner_t<i_t, f_t>::enabled_recombiners.end()) {
+        CUOPT_LOG_DEBUG("Recombiner not enabled; falling back to index 0");
+        selected_index = 0;
+      }
     }
   }
   mab_recombiner.set_last_chosen_option(selected_index);

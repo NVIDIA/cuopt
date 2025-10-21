@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 namespace cuopt::linear_programming::detail {
 
 struct diversity_config_t {

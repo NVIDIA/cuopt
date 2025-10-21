@@ -480,7 +480,6 @@ void population_t<i_t, f_t>::normalize_weights()
     weights.cstr_weights.begin(),
     [l2_norm_ptr = l2_norm.data(), inf_weight = infeasibility_importance] __device__(f_t weight) {
       f_t new_weight = max((weight * inf_weight) / *l2_norm_ptr, 10.);
-      new_weight     = (weight * inf_weight) / *l2_norm_ptr;
       cuopt_assert(isfinite(new_weight), "");
       return new_weight;
     });
