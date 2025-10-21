@@ -31,7 +31,7 @@ This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) projec
 
 ## Latest Release Notes:
 
-[RELEASE-NOTES.md](docs/cuopt/source/release-notes.rst)
+[RELEASE-NOTES.md](RELEASE-NOTES.md)
 
 ## Installation
 
