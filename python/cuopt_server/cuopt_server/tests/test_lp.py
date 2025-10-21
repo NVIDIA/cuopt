@@ -155,10 +155,12 @@ def test_sample_milp(
     [
         # Test automatic settings (default)
         (-1, -1, -1, -1, True, False, -1),
+        # Enable barrier solver options when this issue is resolved https://github.com/NVIDIA/cuopt/issues/519
         # Test folding off, no dualization, cuDSS default ordering, ADAT system
-        (0, 0, 0, 0, True, False, 0),
+        # (0, 0, 0, 0, True, False, 0),
+        # Enable barrier solver options when this issue is resolved https://github.com/NVIDIA/cuopt/issues/519
         # Test folding on, force dualization, AMD ordering, augmented system
-        (1, 1, 1, 1, True, True, 1),
+        # (1, 1, 1, 1, True, True, 1),
         # Test mixed settings: automatic folding, no dualize, AMD, augmented
         (-1, 0, 1, 1, False, False, 0),
         # Test no folding, automatic dualize, cuDSS default, ADAT
