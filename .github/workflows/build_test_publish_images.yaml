@@ -67,7 +67,7 @@ jobs:
   compute-matrix:
     runs-on: ubuntu-latest
     container:
-      image: rapidsai/ci-conda:25.10-latest
+      image: rapidsai/ci-conda:25.12-latest
     outputs:
       MATRIX: ${{ steps.compute-matrix.outputs.MATRIX }}
       CUOPT_VER: ${{ steps.compute-cuopt-ver.outputs.CUOPT_VER }}

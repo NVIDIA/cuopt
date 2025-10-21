@@ -275,7 +275,7 @@ __global__ void execute_sliding_moves_tsp(
   s_route.copy_from(route);
   __syncthreads();
 
-  s_route.copy_to_tsp_route(sol.problem.order_info.depot_included);
+  s_route.copy_to_tsp_route();
 
   __shared__ i_t sh_overlaps;
 
@@ -471,7 +471,7 @@ void compute_cumulative_distances(solution_t<i_t, f_t, REQUEST>& sol,
                                 n_temp_storage_bytes,
                                 distances_ptr,
                                 distances_ptr,
-                                n_nodes + 1,
+                                n_nodes + 2,
                                 sol.sol_handle->get_stream());
 
   if (n_temp_storage_bytes > 0) {
@@ -484,7 +484,7 @@ void compute_cumulative_distances(solution_t<i_t, f_t, REQUEST>& sol,
                                 temp_storage_bytes,
                                 distances_ptr,
                                 distances_ptr,
-                                n_nodes + 1,
+                                n_nodes + 2,
                                 sol.sol_handle->get_stream());
 }
 
@@ -504,7 +504,7 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
   sol.compute_max_active();
   moved_regions_.resize(sol.get_n_routes() * sol.get_max_active_nodes_for_all_routes(),
                         sol.sol_handle->get_stream());
-  auto n_nodes              = sol.get_num_orders();
+  auto n_nodes              = sol.problem_ptr->order_info.get_num_depot_excluded_orders();
   size_t temp_storage_bytes = 0;
   resize_temp_storage<i_t, f_t, REQUEST>(sol, move_candidates, n_nodes, temp_storage_bytes);
 

@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <thrust/fill.h>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
 

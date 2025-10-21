@@ -13,10 +13,10 @@ pip
 .. code-block:: bash
 
     # CUDA 13
-    pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu13==25.10.*'
+    pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu13==25.12.*'
 
     # CUDA 12
-    pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu12==25.10.*'
+    pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu12==25.12.*'
 
 
 .. note::
@@ -26,11 +26,11 @@ pip
 
     # CUDA 13
     pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-      'cuopt-cu13==25.10.*'
+      'cuopt-cu13==25.12.*'
 
     # CUDA 12
     pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-      'cuopt-cu12==25.10.*'
+      'cuopt-cu12==25.12.*'
 
 
 Conda
@@ -41,10 +41,10 @@ NVIDIA cuOpt can be installed with Conda (via `miniforge <https://github.com/con
 .. code-block:: bash
 
     # CUDA 13
-    conda install -c rapidsai -c conda-forge -c nvidia cuopt=25.10.* cuda-version=13.0
+    conda install -c rapidsai -c conda-forge -c nvidia cuopt=25.12.* cuda-version=25.12.*
 
     # CUDA 12
-    conda install -c rapidsai -c conda-forge -c nvidia cuopt=25.10.* cuda-version=12.9
+    conda install -c rapidsai -c conda-forge -c nvidia cuopt=25.12.* cuda-version=25.12.*
 
 .. note::
    For development conda packages which are available as nightlies, please update `-c rapidsai` to `-c rapidsai-nightly`.
