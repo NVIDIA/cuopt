@@ -28,4 +28,3 @@ reviews:
     gitleaks:
       enabled: true
   sequence_diagrams: false
-
