@@ -245,10 +245,11 @@ class route_t {
       return get_node(*n_nodes).time_dim.forward_feasible(this->vehicle_info());
     }
 
-    DI void copy_to_tsp_route(bool depot_included)
+    DI void copy_to_tsp_route()
     {
       dimensions.requests.tsp_requests.start = get_node(0).node_info();
       dimensions.requests.tsp_requests.end   = get_node(*n_nodes).node_info();
+
       for (i_t tid = threadIdx.x; tid < *n_nodes; tid += blockDim.x) {
         if (get_node(tid).node_info().is_depot()) { continue; }
         dimensions.requests.tsp_requests.pred[get_node(tid).node_info().node()] =
@@ -257,10 +258,10 @@ class route_t {
           get_node(tid + 1).node_info();
       }
 
-      if (depot_included) {
-        dimensions.requests.tsp_requests.pred[0] = get_node(*n_nodes - 1).node_info();
-        dimensions.requests.tsp_requests.succ[0] = get_node(1).node_info();
-      }
+      dimensions.requests.tsp_requests.pred[dimensions.requests.tsp_requests.end.node()] =
+        get_node(*n_nodes - 1).node_info();
+      dimensions.requests.tsp_requests.succ[dimensions.requests.tsp_requests.start.node()] =
+        get_node(1).node_info();
     }
 
     // insert a single node to the route
