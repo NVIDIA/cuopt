@@ -366,10 +366,12 @@ class iteration_data_t {
     const f_t dual_perturb   = 0.0;
     const f_t primal_perturb = 1e-12;
     if (first_call) {
+      i_t new_nnz = 2 * nnzA + n + m + nnzQ;
       augmented.reallocate(2 * nnzA + n + m + nnzQ);
       i_t q            = 0;
       i_t off_diag_Qnz = 0;
       for (i_t j = 0; j < n; j++) {
+        cuopt_assert(std::isfinite(diag[j]), "diag[j] is not finite");
         augmented.col_start[j] = q;
         if (nnzQ == 0) {
           augmented.i[q]   = j;
@@ -1540,6 +1542,58 @@ class iteration_data_t {
   const simplex_solver_settings_t<i_t, f_t>& settings_;
 };
 
+// Move the Cholesky debug logic to a reusable function.
+
+template <typename i_t, typename f_t>
+void cholesky_debug_check(const iteration_data_t<i_t, f_t>& data, const lp_problem_t<i_t, f_t>& lp)
+{
+  // return;
+  srand(42);
+  // 1. Create a random test vector
+  dense_vector_t<i_t, f_t> test_vec(lp.num_cols + lp.num_rows);
+  for (size_t i = 0; i < test_vec.size(); i++) {
+    test_vec[i] = static_cast<f_t>(rand()) / static_cast<f_t>(RAND_MAX);  // random in [0,1]
+  }
+
+  // 2. Compute rhs as augmented_matrix * test_vec
+  dense_vector_t<i_t, f_t> test_rhs(lp.num_cols + lp.num_rows);
+  std::fill(test_rhs.begin(), test_rhs.end(), 0.0);
+  data.augmented_multiply(1.0, test_vec, 0.0, test_rhs);
+
+  // 3. Solve the system with Cholesky
+  dense_vector_t<i_t, f_t> test_soln(lp.num_cols + lp.num_rows);
+  i_t cholesky_status = data.chol->solve(test_rhs, test_soln);
+
+  // 4. Compute norms/differences and print results
+  f_t err_norm2      = 0.0;
+  f_t testvec_norm2  = 0.0;
+  f_t soln_norm2     = 0.0;
+  f_t test_rhs_norm2 = 0.0;
+  for (size_t i = 0; i < test_vec.size(); i++) {
+    f_t diff = test_soln[i] - test_vec[i];
+    err_norm2 += diff * diff;
+    testvec_norm2 += test_vec[i] * test_vec[i];
+    soln_norm2 += test_soln[i] * test_soln[i];
+    test_rhs_norm2 += test_rhs[i] * test_rhs[i];
+  }
+  f_t rel_err_norm2 = sqrt(err_norm2) / sqrt(soln_norm2);
+  printf("Cholesky check: status = %d\n", cholesky_status);
+  printf("test_vec norm2 = %e, test_soln norm2 = %e, diff norm2 = %e, test_rhs norm2 = %e \n",
+         sqrt(testvec_norm2),
+         sqrt(soln_norm2),
+         sqrt(err_norm2),
+         sqrt(test_rhs_norm2));
+  printf("rel_err_norm2 = %e\n", rel_err_norm2);
+
+  if (false && rel_err_norm2 > 1e-2) {
+    FILE* fid = fopen("augmented.mtx", "w");
+    data.augmented.write_matrix_market(fid);
+    fclose(fid);
+    printf("Augmented matrix written to augmented.mtx\n");
+    exit(1);
+  }
+}
+
 template <typename i_t, typename f_t>
 barrier_solver_t<i_t, f_t>::barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
                                              const presolve_info_t<i_t, f_t>& presolve,
@@ -1558,6 +1612,10 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   i_t status;
   if (use_augmented) {
     status = data.chol->factorize(data.augmented);
+
+#ifndef NDEBUG
+    cholesky_debug_check(data, lp);
+#endif
   } else {
     if (use_gpu) {
       status = data.chol->factorize(data.device_ADAT);
@@ -1608,6 +1666,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       }
     } op(data);
     iterative_refinement(op, rhs, soln);
+
     for (i_t k = 0; k < lp.num_cols; k++) {
       data.x[k] = soln[k];
     }
@@ -2197,6 +2256,10 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
       data.form_augmented();
       status = data.chol->factorize(data.augmented);
+
+#ifndef NDEBUG
+      cholesky_debug_check(data, lp);
+#endif
     } else {
       // compute ADAT = A Dinv * A^T
       data.form_adat();
@@ -2980,6 +3043,14 @@ void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f
     raft::copy(data.d_y_.data(), data.y.data(), data.y.size(), stream_view_);
     raft::copy(data.d_dy_aff_.data(), data.dy_aff.data(), data.dy_aff.size(), stream_view_);
 
+    for (i_t i = 0; i < (int)data.y.size(); i++) {
+      cuopt_assert(std::isfinite(data.y[i]), "data.d_y_[i] is not finite");
+    }
+
+    for (i_t i = 0; i < (int)data.dy_aff.size(); i++) {
+      cuopt_assert(std::isfinite(data.dy_aff[i]), "data.dy_aff_[i] is not finite");
+    }
+
     // dw = dw_aff + dw_cc
     // dx = dx_aff + dx_cc
     // dy = dy_aff + dy_cc
@@ -3020,6 +3091,7 @@ void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f
       data.d_dy_.size(),
       [] HD(f_t dy_aff, f_t dy) { return dy + dy_aff; },
       stream_view_);
+
   } else {
     raft::common::nvtx::range fun_scope("Barrier: CPU vector operations");
     // dw = dw_aff + dw_cc
@@ -3249,6 +3321,11 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
       matrix_vector_multiply(data.Q, 1.0, x_host, 0.0, Qx);
       quad_objective = 0.5 * x_host.inner_product(Qx);
     }
+
+    std::cout << "d_cx.value(stream_view_) = " << d_cx.value(stream_view_)
+              << ", quad_objective = " << quad_objective
+              << ", d_by.value(stream_view_) = " << d_by.value(stream_view_)
+              << ", d_uv.value(stream_view_) = " << d_uv.value(stream_view_) << std::endl;
     primal_objective = d_cx.value(stream_view_) + quad_objective;
     dual_objective   = d_by.value(stream_view_) - d_uv.value(stream_view_) - quad_objective;
 
@@ -3494,7 +3571,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     data.v_save = data.v;
     data.z_save = data.z;
 
-    const i_t iteration_limit = 1000;  // settings.iteration_limit;
+    const i_t iteration_limit = settings.iteration_limit;
 
     while (iter < iteration_limit) {
       raft::common::nvtx::range fun_scope("Barrier: iteration");
