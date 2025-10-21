@@ -73,7 +73,6 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                                  cuopt::timer_t& timer)
 {
   raft::common::nvtx::range fun_scope("run_mip");
-  // cudaProfilerStart();
   auto constexpr const running_mip = true;
 
   pdlp_hyper_params::update_primal_weight_on_initial_solution = false;

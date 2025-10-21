@@ -53,9 +53,6 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
-bool problem_t<i_t, f_t>::expensive_to_fix_vars{false};
-
-template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t, f_t>& problem_)
 {
   // Mark the problem as empty if the op_problem has an empty matrix.
@@ -195,7 +192,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     preprocess_called(problem_.preprocess_called),
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
-    vars_with_objective_coeffs(problem_.vars_with_objective_coeffs)
+    vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
+    expensive_to_fix_vars(problem_.expensive_to_fix_vars)
 {
 }
 
@@ -288,7 +286,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     preprocess_called(problem_.preprocess_called),
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
-    vars_with_objective_coeffs(problem_.vars_with_objective_coeffs)
+    vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
+    expensive_to_fix_vars(problem_.expensive_to_fix_vars)
 {
 }
 

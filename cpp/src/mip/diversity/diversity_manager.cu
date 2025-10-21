@@ -25,7 +25,6 @@
 
 #include "cuda_profiler_api.h"
 
-constexpr bool from_dir    = false;
 constexpr bool fj_only_run = false;
 
 namespace cuopt::linear_programming::detail {
@@ -146,7 +145,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
     rmm::device_uvector<f_t> init_sol_assignment(*init_sol, sol.handle_ptr->get_stream());
     if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
       relaxed_lp_settings_t lp_settings;
-      lp_settings.time_limit            = 60;
+      lp_settings.time_limit            = std::min(60., timer.remaining_time() / 2);
       lp_settings.tolerance             = problem_ptr->tolerances.absolute_tolerance;
       lp_settings.save_state            = false;
       lp_settings.return_first_feasible = true;
@@ -327,8 +326,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   ls.start_cpufj_scratch_threads(population);
 
   // before probing cache or LP, run FJ to generate initial primal feasible solution
-  // TODO: commenting this out decreases the gap on trento1.mps dramatically. figure out why?
-  // if (!from_dir && !fj_only_run) { generate_quick_feasible_solution(); }
   const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
   const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
   f_t time_for_probing_cache =
@@ -420,8 +417,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     run_fj_alone(sol);
     return sol;
   }
-  // cudaProfilerStop();
-  // exit(0);
   generate_solution(timer.remaining_time(), false);
   if (timer.check_time_limit()) {
     population.add_external_solutions_to_population();
@@ -486,7 +481,7 @@ void diversity_manager_t<i_t, f_t>::recombine_and_ls_with_all(solution_t<i_t, f_
     if (check_integer_equal_on_indices(problem_ptr->integer_indices,
                                        curr_sol.assignment,
                                        solution.assignment,
-                                       1e-6,
+                                       problem_ptr->tolerances.integrality_tolerance,
                                        problem_ptr->handle_ptr)) {
       CUOPT_LOG_DEBUG("Skipping solution because it is equal to the given solution");
       continue;

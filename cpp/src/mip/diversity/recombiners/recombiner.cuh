@@ -211,7 +211,7 @@ class recombiner_t {
     for (auto recombiner : recombiner_types) {
       enabled_recombiners.insert(recombiner);
     }
-    if (problem_t<i_t, f_t>::expensive_to_fix_vars) {
+    if (problem.expensive_to_fix_vars) {
       enabled_recombiners.erase(recombiner_enum_t::FP);
       enabled_recombiners.erase(recombiner_enum_t::SUB_MIP);
     }

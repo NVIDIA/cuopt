@@ -53,7 +53,7 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   pdlp_solver_settings_t<i_t, f_t> pdlp_settings{};
   pdlp_settings.detect_infeasibility = settings.check_infeasibility;
   pdlp_settings.set_optimality_tolerance(settings.tolerance);
-  const f_t tolerance_divisor =
+  f_t tolerance_divisor =
     op_problem.tolerances.absolute_tolerance / op_problem.tolerances.relative_tolerance;
   if (tolerance_divisor == 0) { tolerance_divisor = 1; }
   pdlp_settings.tolerances.relative_primal_tolerance = settings.tolerance / tolerance_divisor;

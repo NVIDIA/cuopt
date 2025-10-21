@@ -183,7 +183,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     rmm::device_uvector<thrust::pair<f_t, f_t>> probing_values(a.problem_ptr->n_variables,
                                                                a.handle_ptr->get_stream());
     probing_config_t<i_t, f_t> probing_config(a.problem_ptr->n_variables, a.handle_ptr);
-    if (guiding_solution.get_feasible() && !problem_t<i_t, f_t>::expensive_to_fix_vars) {
+    if (guiding_solution.get_feasible() && !a.problem_ptr->expensive_to_fix_vars) {
       this->compute_vars_to_fix(offspring, vars_to_fix, n_vars_from_other, n_vars_from_guiding);
       auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
       timer_t timer(bp_recombiner_config_t::bounds_prop_time_limit);
