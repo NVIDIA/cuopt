@@ -45,6 +45,8 @@ struct sum_reduce_helper_t {
     buffer_size = 0;
     cub::DeviceReduce::Sum(nullptr, buffer_size, input, out.data(), size, stream_view);
     buffer_data.resize(buffer_size, stream_view);
+    // Synchronize to ensure buffer allocation completes before CUB accesses it
+    stream_view.synchronize();
     cub::DeviceReduce::Sum(buffer_data.data(), buffer_size, input, out.data(), size, stream_view);
     return out.value(stream_view);
   }
@@ -73,6 +75,8 @@ struct transform_reduce_helper_t {
       nullptr, buffer_size, input, out.data(), size, reduce_op, transform_op, init, stream_view);
 
     buffer_data.resize(buffer_size, stream_view);
+    // Synchronize to ensure buffer allocation completes before CUB accesses it
+    stream_view.synchronize();
 
     cub::DeviceReduce::TransformReduce(buffer_data.data(),
                                        buffer_size,
@@ -190,6 +194,8 @@ class device_csc_matrix_t {
     cub::DeviceScan::InclusiveSum(
       nullptr, temp_storage_bytes, col_index.data(), col_index.data(), col_index.size(), stream);
     d_temp_storage.resize(temp_storage_bytes, stream);
+    // Synchronize to ensure buffer allocation completes before CUB accesses it
+    stream.synchronize();
     cub::DeviceScan::InclusiveSum(d_temp_storage.data(),
                                   temp_storage_bytes,
                                   col_index.data(),

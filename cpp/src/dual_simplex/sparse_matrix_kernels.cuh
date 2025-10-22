@@ -69,6 +69,8 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                   &buffer_size,
                                                   nullptr));
   cusparse_data.buffer_size.resize(buffer_size, handle->get_stream());
+  // Synchronize to ensure buffer allocation completes before cuSparse accesses it
+  handle->sync_stream();
 
   RAFT_CUSPARSE_TRY(cusparseSpGEMM_workEstimation(handle->get_cusparse_handle(),
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -101,9 +103,11 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                   cusparse_data.spgemm_descr,
                                                   chunk_fraction,
                                                   &buffer_size_3_size,
-                                                  nullptr,
-                                                  nullptr));
+                                                 nullptr,
+                                                 nullptr));
   cusparse_data.buffer_size_3.resize(buffer_size_3_size, handle->get_stream());
+  // Synchronize to ensure buffer allocation completes before cuSparse accesses it
+  handle->sync_stream();
 
   RAFT_CUSPARSE_TRY(cusparseSpGEMM_estimateMemory(handle->get_cusparse_handle(),
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -118,10 +122,12 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                   cusparse_data.spgemm_descr,
                                                   chunk_fraction,
                                                   &buffer_size_3_size,
-                                                  cusparse_data.buffer_size_3.data(),
-                                                  &cusparse_data.buffer_size_2_size));
+                                                 cusparse_data.buffer_size_3.data(),
+                                                 &cusparse_data.buffer_size_2_size));
   cusparse_data.buffer_size_3.resize(0, handle->get_stream());
   cusparse_data.buffer_size_2.resize(cusparse_data.buffer_size_2_size, handle->get_stream());
+  // Synchronize to ensure buffer_size_2 allocation completes
+  handle->sync_stream();
 }
 
 template <typename i_t, typename f_t>
@@ -151,6 +157,8 @@ void multiply_kernels(raft::handle_t const* handle,
   RAFT_CUSPARSE_TRY(
     cusparseSpMatGetSize(cusparse_data.matADAT_descr, &ADAT_num_rows, &ADAT_num_cols, &ADAT_nnz1));
   ADAT.resize_to_nnz(ADAT_nnz1, handle->get_stream());
+  // Synchronize to ensure ADAT allocation completes before accessing
+  handle->sync_stream();
 
   thrust::fill(rmm::exec_policy(handle->get_stream()), ADAT.x.begin(), ADAT.x.end(), 0.0);
 

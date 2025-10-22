@@ -54,6 +54,8 @@ f_t device_custom_vector_norm_inf(InputIteratorT in, i_t size, rmm::cuda_stream_
                             stream_view);
 
   d_temp_storage.resize(temp_storage_bytes, stream_view);
+  // Synchronize to ensure buffer allocation completes before CUB accesses it
+  stream_view.synchronize();
 
   cub::DeviceReduce::Reduce(d_temp_storage.data(),
                             temp_storage_bytes,
