@@ -691,16 +691,16 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
   if (population_ptr->current_size() > 1 &&
       i - last_improved_iteration > iterations_for_stagnation) {
-    fp.config.alpha = default_alpha;
-    population_ptr->diversity_step(max_iterations_without_improvement);
-    population_ptr->print();
-    population_ptr->update_weights();
-    save_solution_and_add_cutting_plane(
-      population_ptr->best_feasible(), best_solution, best_objective);
-    raft::copy(solution.assignment.data(),
-               best_solution.data(),
-               solution.assignment.size(),
-               solution.handle_ptr->get_stream());
+    // fp.config.alpha = default_alpha;
+    // population_ptr->diversity_step(max_iterations_without_improvement);
+    // population_ptr->print();
+    // population_ptr->update_weights();
+    // save_solution_and_add_cutting_plane(
+    //   population_ptr->best_feasible(), best_solution, best_objective);
+    // raft::copy(solution.assignment.data(),
+    //            best_solution.data(),
+    //            solution.assignment.size(),
+    //            solution.handle_ptr->get_stream());
   }
 }
 
