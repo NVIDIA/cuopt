@@ -114,6 +114,7 @@ class problem_t {
 
   void add_cutting_plane_at_objective(f_t objective);
   void compute_vars_with_objective_coeffs();
+  void test_problem_fixing_time();
 
   struct view_t {
     HDI std::pair<i_t, i_t> reverse_range_for_var(i_t v) const
@@ -277,6 +278,7 @@ class problem_t {
   problem_fixing_helpers_t<i_t, f_t> fixing_helpers;
   bool cutting_plane_added{false};
   std::pair<std::vector<i_t>, std::vector<f_t>> vars_with_objective_coeffs;
+  bool expensive_to_fix_vars{false};
 };
 
 }  // namespace linear_programming::detail

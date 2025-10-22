@@ -62,7 +62,16 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
 template <typename i_t>
 i_t get_max_var_threshold(i_t n_vars)
 {
-  return n_vars - sqrt(n_vars);
+  if (n_vars < 50) {
+    return std::max(1, n_vars - 1);
+  } else if (n_vars < 80) {
+    return n_vars - 2;
+  } else if (n_vars < 200) {
+    return n_vars - 4;
+  } else if (n_vars < 1000) {
+    return n_vars - 8;
+  }
+  return n_vars - 10;
 }
 
 template <typename i_t, typename f_t>
@@ -177,6 +186,13 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
                     problem_ptr->get_user_obj_from_solver_obj(objective));
   }
   if (external_solution_queue.size() >= 5) { early_exit_primal_generation = true; }
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::add_external_solutions_to_population()
+{
+  auto new_sol_vector = get_external_solutions();
+  add_solutions_from_vec(std::move(new_sol_vector));
 }
 
 // normally we would need a lock here but these are boolean types and race conditions are not
@@ -373,11 +389,12 @@ void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
 }
 
 template <typename i_t, typename f_t>
-i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
+std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
 {
   raft::common::nvtx::range fun_scope("add_solution");
   population_hash_map.insert(sol);
-  double sol_cost = sol.get_quality(weights);
+  double sol_cost   = sol.get_quality(weights);
+  bool best_updated = false;
   CUOPT_LOG_DEBUG("Adding solution with quality %f and objective %f n_integers %d!",
                   sol_cost,
                   sol.get_user_objective(),
@@ -391,12 +408,13 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
     solution_t<i_t, f_t> temp_sol(sol);
     solutions[0].second = std::move(temp_sol);
     indices[0].second   = sol_cost;
+    best_updated        = true;
   }
 
   // Fast reject
   if (indices.size() == max_solutions && indices.back().second <= sol_cost + OBJECTIVE_EPSILON) {
     CUOPT_LOG_TRACE("Rejecting solution objective is not better!");
-    return -1;
+    return std::make_pair(-1, best_updated);
   }
 
   // Find index best solution similar to sol (within the threshold radius) in the indices array
@@ -426,7 +444,7 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
     int inserted_pos = insert_index(std::pair<size_t, double>((size_t)hint, sol_cost));
     cuopt_assert(test_invariant(), "Population invariant doesn't hold");
     test_invariant();
-    return inserted_pos;
+    return std::make_pair(inserted_pos, best_updated);
 
   } else if (sol_cost + OBJECTIVE_EPSILON < indices[index].second) {
     CUOPT_LOG_TRACE("Better than similar solution, eradicating similar solutions!");
@@ -440,12 +458,12 @@ i_t population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
     int inserted_pos = insert_index(std::pair<size_t, double>((size_t)free, sol_cost));
     cuopt_assert(test_invariant(), "Population invariant doesn't hold");
     test_invariant();
-    return inserted_pos;
+    return std::make_pair(inserted_pos, best_updated);
   }
   CUOPT_LOG_TRACE("Adding solution failed!");
   cuopt_assert(test_invariant(), "Population invariant doesn't hold");
   test_invariant();
-  return -1;
+  return std::make_pair(-1, best_updated);
 }
 
 template <typename i_t, typename f_t>
@@ -462,7 +480,6 @@ void population_t<i_t, f_t>::normalize_weights()
     weights.cstr_weights.begin(),
     [l2_norm_ptr = l2_norm.data(), inf_weight = infeasibility_importance] __device__(f_t weight) {
       f_t new_weight = max((weight * inf_weight) / *l2_norm_ptr, 10.);
-      new_weight     = (weight * inf_weight) / *l2_norm_ptr;
       cuopt_assert(isfinite(new_weight), "");
       return new_weight;
     });
@@ -494,6 +511,7 @@ void population_t<i_t, f_t>::normalize_weights()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::compute_new_weights()
 {
+  if (indices.size() < 2) { return; }
   auto& best_sol = best();
   auto settings  = context.settings;
 
@@ -819,6 +837,13 @@ void population_t<i_t, f_t>::run_all_recombiners(solution_t<i_t, f_t>& sol)
   std::vector<solution_t<i_t, f_t>> sol_vec;
   sol_vec.emplace_back(std::move(solution_t<i_t, f_t>(sol)));
   dm.recombine_and_ls_with_all(sol_vec, true);
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::diversity_step(i_t max_iterations_without_improvement)
+{
+  raft::common::nvtx::range fun_scope("diversity_step");
+  dm.diversity_step(max_iterations_without_improvement);
 }
 
 #if MIP_INSTANTIATE_FLOAT

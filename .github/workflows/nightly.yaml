@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - cuopt_branch: "branch-25.12"
+          - cuopt_branch: "main"
     steps:
       - uses: actions/checkout@v4
       - name: Trigger Pipeline

@@ -43,6 +43,7 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
                                                  i_t n_points_to_search,
                                                  i_t remaining_variables)
   {
+    raft::common::nvtx::range fun_scope("generate_delta_vector");
     CUOPT_LOG_DEBUG("LS rec: Number of different variables %d MAX_VARS %d",
                     remaining_variables,
                     ls_recombiner_config_t::max_n_of_vars_from_other);

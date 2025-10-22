@@ -63,6 +63,7 @@ solution_t<i_t, f_t>::solution_t(problem_t<i_t, f_t>& problem_)
     n_feasible_constraints(handle_ptr->get_stream()),
     lp_state(problem_)
 {
+  clamp_within_var_bounds(assignment, problem_ptr, handle_ptr);
 }
 
 template <typename i_t, typename f_t>
@@ -224,6 +225,13 @@ void solution_t<i_t, f_t>::copy_new_assignment(const std::vector<f_t>& h_assignm
 {
   assignment.resize(h_assignment.size(), handle_ptr->get_stream());
   raft::copy(assignment.data(), h_assignment.data(), h_assignment.size(), handle_ptr->get_stream());
+}
+
+template <typename i_t, typename f_t>
+void solution_t<i_t, f_t>::copy_new_assignment(const rmm::device_uvector<f_t>& d_assignment)
+{
+  assignment.resize(d_assignment.size(), handle_ptr->get_stream());
+  raft::copy(assignment.data(), d_assignment.data(), d_assignment.size(), handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>

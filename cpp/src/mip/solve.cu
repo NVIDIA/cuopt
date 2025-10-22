@@ -45,6 +45,8 @@
 #include <raft/common/nvtx.hpp>
 #include <raft/core/handle.hpp>
 
+#include <cuda_profiler_api.h>
+
 namespace cuopt::linear_programming {
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
@@ -70,6 +72,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                                  mip_solver_settings_t<i_t, f_t> const& settings,
                                  cuopt::timer_t& timer)
 {
+  raft::common::nvtx::range fun_scope("run_mip");
   auto constexpr const running_mip = true;
 
   pdlp_hyper_params::update_primal_weight_on_initial_solution = false;
@@ -155,13 +158,10 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
   try {
     constexpr f_t max_time_limit = 1000000000;
     f_t time_limit =
-      (settings.time_limit == 0 || settings.time_limit == std::numeric_limits<f_t>::infinity())
+      (settings.time_limit == 0 || settings.time_limit == std::numeric_limits<f_t>::infinity() ||
+       settings.time_limit == std::numeric_limits<f_t>::max())
         ? max_time_limit
         : settings.time_limit;
-    if (settings.heuristics_only && (time_limit == std::numeric_limits<f_t>::max() ||
-                                     time_limit == std::numeric_limits<f_t>::infinity())) {
-      time_limit = max_time_limit;
-    }
 
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
@@ -200,6 +200,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
     auto run_presolve = settings.presolve;
     run_presolve      = run_presolve && settings.get_mip_callbacks().empty();
+    run_presolve      = run_presolve && settings.initial_solutions.size() == 0;
 
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
 

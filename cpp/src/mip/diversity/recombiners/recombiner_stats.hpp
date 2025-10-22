@@ -33,16 +33,19 @@ struct recombine_stats {
   int success;
   int better_than_one;
   int better_than_both;
-
+  int best_updated;
   void reset()
   {
     attempts         = 0;
     success          = 0;
     better_than_one  = 0;
     better_than_both = 0;
+    best_updated     = 0;
   }
 
   void add_success() { ++success; }
+
+  void add_best_updated() { ++best_updated; }
 
   bool update_improve_stats(double cost_new, double cost_first, double cost_second)
   {
@@ -59,12 +62,15 @@ struct recombine_stats {
 
   void print([[maybe_unused]] const char* recombiner_name)
   {
-    CUOPT_LOG_DEBUG("%s : (better_than_one: %d better_than_both: %d success: %d attempts: %d)\t",
-                    recombiner_name,
-                    better_than_one,
-                    better_than_both,
-                    success,
-                    attempts);
+    CUOPT_LOG_DEBUG(
+      "%s : (better_than_one: %d better_than_both: %d success: %d best_updated: %d attempts: %d "
+      ")\t",
+      recombiner_name,
+      better_than_one,
+      better_than_both,
+      success,
+      best_updated,
+      attempts);
   }
 };
 
@@ -112,6 +118,8 @@ struct all_recombine_stats {
   }
 
   void add_success() { stats[static_cast<int>(last_attempt.value())].add_success(); }
+
+  void add_best_updated() { stats[static_cast<int>(last_attempt.value())].add_best_updated(); }
 
   bool update_improve_stats(double cost_new, double cost_first, double cost_second)
   {

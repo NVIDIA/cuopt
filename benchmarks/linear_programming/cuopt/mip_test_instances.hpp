@@ -17,11 +17,11 @@
 #pragma once
 #include <string>
 #include <vector>
-std::vector<std::string> instances = {"supportcase26_presolved.mps",
-                                      "supportcase26_presolved_2.mps",
-                                      "supportcase26_presolved_3.mps",
-                                      "supportcase26_presolved_4.mps",
-                                      "supportcase26_presolved_5.mps",
-                                      "supportcase26_presolved_6.mps",
-                                      "supportcase26_presolved_7.mps",
-                                      "supportcase26_presolved_8.mps"};
+std::vector<std::string> instances = {"polygonpack4-7_1.mps",
+                                      "polygonpack4-7_2.mps",
+                                      "polygonpack4-7_3.mps",
+                                      "neos-3355120-tarago_1.mps",
+                                      "neos-3355120-tarago_2.mps",
+                                      "neos-3355120-tarago_3.mps",
+                                      "liu_1.mps",
+                                      "liu_2.mps"};
