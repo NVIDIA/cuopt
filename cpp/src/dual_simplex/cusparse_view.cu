@@ -200,8 +200,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                                                   d_one_.data(),
                                                   y,
                                                   CUSPARSE_SPMV_CSR_ALG2,
-                                                 &buffer_size_spmv,
-                                                 handle_ptr_->get_stream()));
+                                                  &buffer_size_spmv,
+                                                  handle_ptr_->get_stream()));
   spmv_buffer_.resize(buffer_size_spmv, handle_ptr_->get_stream());
   // Synchronize to ensure buffer allocation completes before cuSparse accesses it
   handle_ptr_->sync_stream();
@@ -226,8 +226,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                                                   d_one_.data(),
                                                   x,
                                                   CUSPARSE_SPMV_CSR_ALG2,
-                                                 &buffer_size_spmv,
-                                                 handle_ptr_->get_stream()));
+                                                  &buffer_size_spmv,
+                                                  handle_ptr_->get_stream()));
   spmv_buffer_transpose_.resize(buffer_size_spmv, handle_ptr_->get_stream());
   // Synchronize to ensure buffer allocation completes before cuSparse accesses it
   handle_ptr_->sync_stream();

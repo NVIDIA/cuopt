@@ -103,8 +103,8 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                   cusparse_data.spgemm_descr,
                                                   chunk_fraction,
                                                   &buffer_size_3_size,
-                                                 nullptr,
-                                                 nullptr));
+                                                  nullptr,
+                                                  nullptr));
   cusparse_data.buffer_size_3.resize(buffer_size_3_size, handle->get_stream());
   // Synchronize to ensure buffer allocation completes before cuSparse accesses it
   handle->sync_stream();
@@ -122,8 +122,8 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                   cusparse_data.spgemm_descr,
                                                   chunk_fraction,
                                                   &buffer_size_3_size,
-                                                 cusparse_data.buffer_size_3.data(),
-                                                 &cusparse_data.buffer_size_2_size));
+                                                  cusparse_data.buffer_size_3.data(),
+                                                  &cusparse_data.buffer_size_2_size));
   cusparse_data.buffer_size_3.resize(0, handle->get_stream());
   cusparse_data.buffer_size_2.resize(cusparse_data.buffer_size_2_size, handle->get_stream());
   // Synchronize to ensure buffer_size_2 allocation completes
