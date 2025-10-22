@@ -19,7 +19,7 @@ set -euo pipefail
 
 . /opt/conda/etc/profile.d/conda.sh
 
-CUOPT_VERSION="$(rapids-version)"
+RAPIDS_VERSION="$(rapids-version)"
 
 rapids-logger "Downloading artifacts from previous jobs"
 CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
@@ -45,7 +45,7 @@ set -u
 
 rapids-print-env
 
-EXAMPLES_BRANCH="branch-${CUOPT_VERSION%.*}"
+EXAMPLES_BRANCH="branch-${RAPIDS_VERSION%.*}"
 
 # Remove any existing cuopt-examples directory
 

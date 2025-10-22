@@ -35,12 +35,9 @@ message(STATUS "CMAKE_MODULE_PATH = ${CMAKE_MODULE_PATH}")
 
 project(
   CUOPT
-  VERSION "${CUOPT_VERSION}"
+  VERSION "${RAPIDS_VERSION}"
   LANGUAGES CXX CUDA C
 )
-
-set(DEPENDENT_LIB_MAJOR_VERSION "${RAPIDS_VERSION_MAJOR}")
-set(DEPENDENT_LIB_MINOR_VERSION "${RAPIDS_VERSION_MINOR}")
 
 rapids_cmake_write_version_file(include/cuopt/version_config.hpp)
 # ##################################################################################################
@@ -190,9 +187,9 @@ FetchContent_Declare(
   # does not have some of the presolvers and settings that we need
   # Mainly, probing and clique merging.
   # This is the reason we are using the development branch
-  # commit from cliquemergebug branch. Once these changes are merged into the main branch,
+  # from Oct 12, 2025. Once these changes are merged into the main branch,
   #we can switch to the main branch.
-  GIT_TAG "8f710e33d352bf319d30b9c57e70516222f3f5ca"
+  GIT_TAG "741a2b9c8155b249d6df574d758b4d97d4417520"
   GIT_PROGRESS TRUE
   SYSTEM
 )

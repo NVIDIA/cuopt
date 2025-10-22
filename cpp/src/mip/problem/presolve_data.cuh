@@ -20,6 +20,7 @@
 #include <cuopt/linear_programming/optimization_problem.hpp>
 
 #include <thrust/sequence.h>
+#include <thrust/uninitialized_fill.h>
 #include <rmm/device_uvector.hpp>
 
 namespace cuopt {

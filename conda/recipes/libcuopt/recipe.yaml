@@ -3,9 +3,7 @@ schema_version: 1
 
 context:
   version: ${{ env.get("RAPIDS_PACKAGE_VERSION") }}
-  # cuOpt version doesn't match RAPIDS versioning
-  # so we need to specify which RAPIDS version to use
-  dep_minor_version: ${{ (env.get("DEPENDENT_PACKAGE_VERSION") | split("."))[:2] | join(".") }}
+  minor_version: ${{ (version | split("."))[:2] | join(".") }}
   cuda_version: ${{ (env.get("RAPIDS_CUDA_VERSION") | split("."))[:2] | join(".") }}
   cuda_major: '${{ (env.get("RAPIDS_CUDA_VERSION") | split("."))[0] }}'
   date_string: '${{ env.get("RAPIDS_DATE_STRING") }}'
@@ -65,9 +63,9 @@ cache:
       - cuda-version =${{ cuda_version }}
       - gmock ${{ gtest_version }}
       - gtest ${{ gtest_version }}
-      - libraft-headers =${{ dep_minor_version }}
-      - librmm =${{ dep_minor_version }}
-      - rapids-logger =0.1
+      - libraft-headers =${{ minor_version }}
+      - librmm =${{ minor_version }}
+      - rapids-logger =0.2
       - cuda-nvtx-dev
       - libcudss-dev >=0.7
       - libcurand-dev
@@ -133,6 +131,8 @@ outputs:
       script:
         content: |
           cmake --install cpp/build
+          # Remove papilo _deps directory from cmake files
+          rm -rf "${PREFIX}/lib/cmake/papilo/_deps"
       dynamic_linking:
         overlinking_behavior: "error"
       prefix_detection:
@@ -148,8 +148,8 @@ outputs:
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
         - boost
         - cuda-version =${{ cuda_version }}
-        - rapids-logger =0.1
-        - librmm =${{ dep_minor_version }}
+        - rapids-logger =0.2
+        - librmm =${{ minor_version }}
         - cuda-cudart-dev
         - libcublas
         - libcudss-dev >=0.7
@@ -158,7 +158,7 @@ outputs:
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
         - boost
-        - librmm =${{ dep_minor_version }}
+        - librmm =${{ minor_version }}
         - cuda-nvrtc
         - libcudss
       ignore_run_exports:

@@ -19,7 +19,7 @@ include(../../../../cmake/rapids_config.cmake)
 
 project(
   mpsparser-python
-  VERSION "${CUOPT_VERSION}"
+  VERSION "${RAPIDS_VERSION}"
   LANGUAGES # TODO: Building Python extension modules via the python_extension_module requires the C
             # language to be enabled here. The test project that is built in scikit-build to verify
             # various linking options for the python library is hardcoded to build with C, so until
@@ -32,7 +32,7 @@ option(CUOPT_BUILD_WHEELS "Whether this build is generating a Python wheel." ON)
 
 # If the user requested it we attempt to find MPS Parser.
 if(FIND_MPS_PARSER_CPP)
-  find_package(mps_parser "${CUOPT_VERSION}")
+  find_package(mps_parser "${RAPIDS_VERSION}")
 else()
   set(mps_parser_FOUND OFF)
 endif()

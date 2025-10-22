@@ -38,7 +38,6 @@ function sed_runner() {
 
 # Centralized version file update
 echo "${NEXT_FULL_TAG}" > ./VERSION
-echo "${NEXT_FULL_TAG}" > ./RAPIDS_VERSION
 
 DEPENDENCIES=(
   cudf

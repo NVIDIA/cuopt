@@ -16,6 +16,7 @@
  */
 
 #include <cuopt/error.hpp>
+#include <cuopt/logger.hpp>
 #include <mps_parser/writer.hpp>
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
@@ -271,6 +272,20 @@ template <typename i_t, typename f_t>
 i_t optimization_problem_t<i_t, f_t>::get_nnz() const
 {
   return A_.size();
+}
+
+template <typename i_t, typename f_t>
+i_t optimization_problem_t<i_t, f_t>::get_n_integers() const
+{
+  i_t n_integers = 0;
+  if (get_n_variables() != 0) {
+    auto enum_variable_types = cuopt::host_copy(get_variable_types());
+
+    for (size_t i = 0; i < enum_variable_types.size(); ++i) {
+      if (enum_variable_types[i] == var_t::INTEGER) { n_integers++; }
+    }
+  }
+  return n_integers;
 }
 
 template <typename i_t, typename f_t>
@@ -581,6 +596,84 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
   if (!get_row_names().empty()) { data_model_view.set_row_names(get_row_names()); }
 
   cuopt::mps_parser::write_mps(data_model_view, mps_file_path);
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::print_scaling_information() const
+{
+  std::vector<f_t> constraint_matrix_values = cuopt::host_copy(get_constraint_matrix_values());
+  std::vector<f_t> constraint_rhs           = cuopt::host_copy(get_constraint_bounds());
+  std::vector<f_t> objective_coefficients   = cuopt::host_copy(get_objective_coefficients());
+  std::vector<f_t> variable_lower_bounds    = cuopt::host_copy(get_variable_lower_bounds());
+  std::vector<f_t> variable_upper_bounds    = cuopt::host_copy(get_variable_upper_bounds());
+  std::vector<f_t> constraint_lower_bounds  = cuopt::host_copy(get_constraint_lower_bounds());
+  std::vector<f_t> constraint_upper_bounds  = cuopt::host_copy(get_constraint_upper_bounds());
+
+  auto findMaxAbs = [](const std::vector<f_t>& vec) -> f_t {
+    if (vec.empty()) { return 0.0; }
+    const f_t inf = std::numeric_limits<f_t>::infinity();
+
+    const size_t sz = vec.size();
+    f_t max_abs_val = 0.0;
+    for (size_t i = 0; i < sz; ++i) {
+      const f_t val = std::abs(vec[i]);
+      if (val < inf) { max_abs_val = std::max(max_abs_val, val); }
+    }
+    return max_abs_val;
+  };
+
+  auto findMinAbs = [](const std::vector<f_t>& vec) -> f_t {
+    if (vec.empty()) { return 0.0; }
+    const size_t sz = vec.size();
+    const f_t inf   = std::numeric_limits<f_t>::infinity();
+    f_t min_abs_val = inf;
+    for (size_t i = 0; i < sz; ++i) {
+      const f_t val = std::abs(vec[i]);
+      if (val > 0.0) { min_abs_val = std::min(min_abs_val, val); }
+    }
+    return min_abs_val < inf ? min_abs_val : 0.0;
+  };
+
+  f_t A_max          = findMaxAbs(constraint_matrix_values);
+  f_t A_min          = findMinAbs(constraint_matrix_values);
+  f_t b_max          = findMaxAbs(constraint_rhs);
+  f_t b_min          = findMinAbs(constraint_rhs);
+  f_t c_max          = findMaxAbs(objective_coefficients);
+  f_t c_min          = findMinAbs(objective_coefficients);
+  f_t x_lower_max    = findMaxAbs(variable_lower_bounds);
+  f_t x_lower_min    = findMinAbs(variable_lower_bounds);
+  f_t x_upper_max    = findMaxAbs(variable_upper_bounds);
+  f_t x_upper_min    = findMinAbs(variable_upper_bounds);
+  f_t cstr_lower_max = findMaxAbs(constraint_lower_bounds);
+  f_t cstr_lower_min = findMinAbs(constraint_lower_bounds);
+  f_t cstr_upper_max = findMaxAbs(constraint_upper_bounds);
+  f_t cstr_upper_min = findMinAbs(constraint_upper_bounds);
+
+  f_t rhs_max = std::max(b_max, std::max(cstr_lower_max, cstr_upper_max));
+  f_t rhs_min = std::min(b_min, std::min(cstr_lower_min, cstr_upper_min));
+
+  f_t bound_max = std::max(x_upper_max, x_lower_max);
+  f_t bound_min = std::min(x_upper_min, x_lower_min);
+
+  CUOPT_LOG_INFO("Problem scaling:");
+  CUOPT_LOG_INFO("Objective coefficents range:          [%.0e, %.0e]", c_min, c_max);
+  CUOPT_LOG_INFO("Constraint matrix coefficients range: [%.0e, %.0e]", A_min, A_max);
+  CUOPT_LOG_INFO("Constraint rhs / bounds range:        [%.0e, %.0e]", rhs_min, rhs_max);
+  CUOPT_LOG_INFO("Variable bounds range:                [%.0e, %.0e]", bound_min, bound_max);
+
+  auto safelog10 = [](f_t x) { return x > 0 ? std::log10(x) : 0.0; };
+
+  f_t obj_range   = safelog10(c_max) - safelog10(c_min);
+  f_t A_range     = safelog10(A_max) - safelog10(A_min);
+  f_t rhs_range   = safelog10(rhs_max) - safelog10(rhs_min);
+  f_t bound_range = safelog10(bound_max) - safelog10(bound_min);
+
+  if (obj_range >= 6.0 || A_range >= 6.0 || rhs_range >= 6.0 || bound_range >= 6.0) {
+    CUOPT_LOG_INFO(
+      "Warning: input problem contains a large range of coefficients: consider reformulating to "
+      "avoid numerical difficulties.");
+  }
+  CUOPT_LOG_INFO("");
 }
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error

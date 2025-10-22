@@ -29,6 +29,10 @@ cuOpt supports the following APIs:
 
 This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) project.
 
+## Latest Release Notes:
+
+[RELEASE-NOTES.md](RELEASE-NOTES.md)
+
 ## Installation
 
 ### CUDA/GPU requirements
@@ -65,7 +69,7 @@ For CUDA 12.x:
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
   nvidia-cuda-runtime-cu12=12.9.* \
-  cuopt-server-cu12==25.10.* cuopt-sh-client==25.10.*
+  cuopt-server-cu12==25.12.* cuopt-sh-client==25.12.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -73,7 +77,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu12==25.10.* cuopt-sh-client==25.10.*
+  cuopt-server-cu12==25.12.* cuopt-sh-client==25.12.*
 ```
 
 For CUDA 13.x:
@@ -81,7 +85,7 @@ For CUDA 13.x:
 ```bash
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
-  cuopt-server-cu13==25.10.* cuopt-sh-client==25.10.*
+  cuopt-server-cu13==25.12.* cuopt-sh-client==25.12.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -89,7 +93,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu13==25.10.* cuopt-sh-client==25.10.*
+  cuopt-server-cu13==25.12.* cuopt-sh-client==25.12.*
 ```
 
 
@@ -100,7 +104,7 @@ cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forg
 All other dependencies are installed automatically when `cuopt-server` and `cuopt-sh-client` are installed.
 
 ```bash
-conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=25.10.* cuopt-sh-client=25.10.*
+conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=25.12.* cuopt-sh-client=25.12.*
 ```
 
 We also provide [nightly conda packages](https://anaconda.org/rapidsai-nightly) built from the HEAD

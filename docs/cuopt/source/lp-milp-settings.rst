@@ -87,6 +87,12 @@ Method
 
 .. note:: The default method is ``Concurrent``.
 
+Default accuracy for each method:
+
+* PDLP solves to 1e-4 relative accuracy by default.
+* Barrier solves to 1e-8 relative accuracy by default.
+* Dual Simplex solves to 1e-6 absolute accuracy by default.
+
 C API users should use the constants defined in :ref:`method-constants` for this parameter.
 
 Server Thin client users should use the :class:`cuopt_sh_client.SolverMethod` for this parameter.

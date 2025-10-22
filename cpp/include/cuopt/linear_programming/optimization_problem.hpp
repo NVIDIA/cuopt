@@ -311,9 +311,13 @@ class optimization_problem_t {
    */
   void write_to_mps(const std::string& mps_file_path);
 
+  /* Print scaling information */
+  void print_scaling_information() const;
+
   i_t get_n_variables() const;
   i_t get_n_constraints() const;
   i_t get_nnz() const;
+  i_t get_n_integers() const;
   raft::handle_t const* get_handle_ptr() const noexcept;
   const rmm::device_uvector<f_t>& get_constraint_matrix_values() const;
   rmm::device_uvector<f_t>& get_constraint_matrix_values();

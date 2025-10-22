@@ -21,7 +21,7 @@ rapids_cuda_init_architectures(libcuopt-python)
 
 project(
   libcuopt-python
-  VERSION "${CUOPT_VERSION}"
+  VERSION "${RAPIDS_VERSION}"
   LANGUAGES CXX CUDA
 )
 
@@ -33,7 +33,7 @@ message(STATUS "=============================================================")
 
 # Check if cuopt is already available. If so, it is the user's responsibility to ensure that the
 # CMake package is also available at build time of the Python cuopt package.
-find_package(cuopt "${CUOPT_VERSION}")
+find_package(cuopt "${RAPIDS_VERSION}")
 
 if(cuopt_FOUND)
   return()

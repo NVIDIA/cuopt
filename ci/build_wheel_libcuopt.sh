@@ -75,10 +75,11 @@ EXCLUDE_ARGS=(
   --exclude "libcurand.so.*"
   --exclude "libcusolver.so.*"
   --exclude "libcusparse.so.*"
-  --exclude "libnvJitLink*.so*"
+  --exclude "libnvJitLink*"
   --exclude "librapids_logger.so"
   --exclude "libmps_parser.so"
   --exclude "librmm.so"
+  --exclude "libpapilo-core.a"
 )
 
 ci/build_wheel.sh libcuopt ${package_dir}

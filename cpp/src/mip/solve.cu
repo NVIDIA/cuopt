@@ -96,11 +96,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
   }
   // problem contains unpreprocessed data
   detail::problem_t<i_t, f_t> scaled_problem(problem);
-  CUOPT_LOG_INFO("Solving a problem with %d constraints %d variables (%d integers) and %d nonzeros",
-                 problem.n_constraints,
-                 problem.n_variables,
-                 problem.n_integer_vars,
-                 problem.nnz);
+
   CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
                  problem.presolve_data.objective_offset,
                  problem.presolve_data.objective_scaling_factor);
@@ -180,6 +176,14 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     // This is required as user might forget to set some fields
     problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
+
+    CUOPT_LOG_INFO(
+      "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
+      op_problem.get_n_constraints(),
+      op_problem.get_n_variables(),
+      op_problem.get_n_integers(),
+      op_problem.get_nnz());
+    op_problem.print_scaling_information();
 
     // Check for crossing bounds. Return infeasible if there are any
     if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {

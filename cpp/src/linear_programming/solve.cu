@@ -813,6 +813,14 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
       problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
     }
 
+    CUOPT_LOG_INFO(
+      "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
+      op_problem.get_n_constraints(),
+      op_problem.get_n_variables(),
+      0,
+      op_problem.get_nnz());
+    op_problem.print_scaling_information();
+
     // Check for crossing bounds. Return infeasible if there are any
     if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
       return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::PrimalInfeasible,
@@ -851,12 +859,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
       CUOPT_LOG_INFO("Papilo presolve time: %f", presolve_time);
     }
 
-    CUOPT_LOG_INFO(
-      "Solving a problem with %d constraints %d variables (%d integers) and %d nonzeros",
-      problem.n_constraints,
-      problem.n_variables,
-      problem.n_integer_vars,
-      problem.nnz);
     CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
                    problem.presolve_data.objective_offset,
                    problem.presolve_data.objective_scaling_factor);

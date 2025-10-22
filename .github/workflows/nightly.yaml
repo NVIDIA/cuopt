@@ -13,14 +13,14 @@ jobs:
     strategy:
       matrix:
         include:
-          - cuopt_version: "25.10"
+          - cuopt_branch: "branch-25.12"
     steps:
       - uses: actions/checkout@v4
       - name: Trigger Pipeline
         env:
           GH_TOKEN: ${{ github.token }}
+          CUOPT_BRANCH: ${{ matrix.cuopt_branch }}
         run: |
-          export CUOPT_BRANCH="branch-${{ matrix.cuopt_version }}"
           export DATE=$(date +%F)
           export SHA=$(gh api -q '.commit.sha' "repos/nvidia/cuopt/branches/${CUOPT_BRANCH}")
 

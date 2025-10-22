@@ -1232,13 +1232,17 @@ class Problem:
         if len(primal_sol) > 0:
             for var in self.vars:
                 var.Value = primal_sol[var.index]
-                if not IsMIP:
+                if (
+                    not IsMIP
+                    and reduced_cost is not None
+                    and len(reduced_cost) > 0
+                ):
                     var.ReducedCost = reduced_cost[var.index]
         dual_sol = None
         if not IsMIP:
             dual_sol = solution.get_dual_solution()
         for i, constr in enumerate(self.constrs):
-            if dual_sol is not None:
+            if dual_sol is not None and len(dual_sol) > 0:
                 constr.DualValue = dual_sol[i]
             constr.Slack = constr.compute_slack()
         self.ObjValue = self.Obj.getValue()
