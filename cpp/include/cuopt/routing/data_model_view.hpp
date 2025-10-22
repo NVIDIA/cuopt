@@ -431,6 +431,26 @@ class data_model_view_t {
   void set_vehicle_max_times(f_t const* vehicle_max_times);
 
   /**
+   * @brief Set distance-based tiered pricing for vehicles.
+   * Each vehicle can have multiple tiers with different cost structures based on total route
+   * distance.
+   *
+   * @param[in] thresholds Device memory pointer to distance thresholds for all tiers (flattened
+   * array)
+   * @param[in] fixed_costs Device memory pointer to fixed costs for all tiers (flattened array)
+   * @param[in] costs_per_unit Device memory pointer to cost per unit for all tiers (flattened
+   * array)
+   * @param[in] tier_offsets Device memory pointer to offsets array (size = fleet_size + 1)
+   *            tier_offsets[i] indicates where vehicle i's tiers start in the flattened arrays
+   * @param[in] total_tiers Total number of tiers across all vehicles
+   */
+  void set_vehicle_distance_tiers(f_t const* thresholds,
+                                  f_t const* fixed_costs,
+                                  f_t const* costs_per_unit,
+                                  i_t const* tier_offsets,
+                                  i_t total_tiers);
+
+  /**
    * @brief Get cost matrix
    * @return Matrix pointer
    */
@@ -642,6 +662,13 @@ class data_model_view_t {
   raft::device_span<f_t const> get_vehicle_fixed_costs() const noexcept;
 
   /**
+   * @brief Get distance tiers configuration for all vehicles
+   * @return Tuple of (thresholds, fixed_costs, costs_per_unit, tier_offsets, total_tiers)
+   */
+  std::tuple<f_t const*, f_t const*, f_t const*, i_t const*, i_t> get_vehicle_distance_tiers()
+    const noexcept;
+
+  /**
    * @brief Get raft handle object containing GPU resource objects
    * @return Handle object
    */
@@ -690,6 +717,13 @@ class data_model_view_t {
   raft::device_span<f_t const> vehicle_max_costs_{};
   raft::device_span<f_t const> vehicle_max_times_{};
   raft::device_span<f_t const> vehicle_fixed_costs_{};
+
+  // Distance tiers for tiered pricing
+  f_t const* distance_tier_thresholds_{nullptr};
+  f_t const* distance_tier_fixed_costs_{nullptr};
+  f_t const* distance_tier_costs_per_unit_{nullptr};
+  i_t const* distance_tier_offsets_{nullptr};
+  i_t total_distance_tiers_{0};
 
   raft::device_span<i_t const> initial_vehicle_ids_{};
   raft::device_span<i_t const> initial_routes_{};

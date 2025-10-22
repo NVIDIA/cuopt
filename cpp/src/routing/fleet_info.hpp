@@ -44,6 +44,8 @@ class fleet_info_t {
       v_fixed_costs_(0, handle_ptr_->get_stream()),
       v_buckets_(0, handle_ptr_->get_stream()),
       v_vehicle_availability_(0, handle_ptr_->get_stream()),
+      v_distance_tiers_(0, handle_ptr_->get_stream()),
+      v_tier_offsets_(0, handle_ptr_->get_stream()),
       is_homogenous_(true)
   {
   }
@@ -290,6 +292,18 @@ class fleet_info_t {
     info.latest       = v_latest_time_.element(vehicle_id, handle_ptr_->get_stream());
     info.start        = v_start_locations_.element(vehicle_id, handle_ptr_->get_stream());
     info.end          = v_return_locations_.element(vehicle_id, handle_ptr_->get_stream());
+
+    // Assign distance tiers for this vehicle
+    if (!v_tier_offsets_.is_empty() && !v_distance_tiers_.is_empty()) {
+      i_t tier_start = v_tier_offsets_.element(vehicle_id, handle_ptr_->get_stream());
+      i_t tier_end   = v_tier_offsets_.element(vehicle_id + 1, handle_ptr_->get_stream());
+      i_t num_tiers  = tier_end - tier_start;
+      if (num_tiers > 0) {
+        info.distance_tiers =
+          raft::span<distance_tier_t<f_t> const, true>(v_distance_tiers_.data() + tier_start, num_tiers);
+      }
+    }
+
     return info;
   }
 
@@ -314,6 +328,8 @@ class fleet_info_t {
   rmm::device_uvector<f_t> v_fixed_costs_;
   rmm::device_uvector<i_t> v_buckets_;
   rmm::device_uvector<i_t> v_vehicle_availability_;
+  rmm::device_uvector<distance_tier_t<f_t>> v_distance_tiers_;  // Flattened array of all tiers
+  rmm::device_uvector<i_t> v_tier_offsets_;  // Offsets per vehicle (size = fleet_size + 1)
   bool is_homogenous_;
 };
 

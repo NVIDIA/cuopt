@@ -84,11 +84,6 @@ struct VehicleInfo {
   // Tiers should be sorted by threshold in ascending order
   // Example: [{100, X, 0}, {200, 0, 0.1}, {INF, 0, 0.5}]
   raft::span<distance_tier_t<f_t> const, is_device> distance_tiers{};
-  //   distance_tier_t<float> tiers[] = {
-  //     {100.0, X, 0.0},           // Tier 1: hasta 100 km, coste fijo X
-  //     {200.0, 0.0, 0.1},         // Tier 2: 100-200 km, 0.1 por km
-  //     {FLT_MAX, 0.0, 0.5}        // Tier 3: > 200 km, 0.5 por km
-  //   };
 };
 }  // namespace detail
 }  // namespace routing

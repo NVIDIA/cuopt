@@ -573,6 +573,33 @@ void data_model_view_t<i_t, f_t>::set_vehicle_fixed_costs(f_t const* vehicle_fix
 }
 
 template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::set_vehicle_distance_tiers(f_t const* thresholds,
+                                                             f_t const* fixed_costs,
+                                                             f_t const* costs_per_unit,
+                                                             i_t const* tier_offsets,
+                                                             i_t total_tiers)
+{
+  cuopt_expects(thresholds != nullptr,
+                error_type_t::ValidationError,
+                "distance tier thresholds cannot be null");
+  cuopt_expects(fixed_costs != nullptr,
+                error_type_t::ValidationError,
+                "distance tier fixed_costs cannot be null");
+  cuopt_expects(costs_per_unit != nullptr,
+                error_type_t::ValidationError,
+                "distance tier costs_per_unit cannot be null");
+  cuopt_expects(
+    tier_offsets != nullptr, error_type_t::ValidationError, "distance tier offsets cannot be null");
+  cuopt_expects(total_tiers > 0, error_type_t::ValidationError, "total_tiers must be positive");
+
+  distance_tier_thresholds_     = thresholds;
+  distance_tier_fixed_costs_    = fixed_costs;
+  distance_tier_costs_per_unit_ = costs_per_unit;
+  distance_tier_offsets_        = tier_offsets;
+  total_distance_tiers_         = total_tiers;
+}
+
+template <typename i_t, typename f_t>
 f_t const* data_model_view_t<i_t, f_t>::get_cost_matrix(uint8_t vehicle_type) const noexcept
 {
   if (cost_matrices_.find(vehicle_type) != cost_matrices_.end())
@@ -803,6 +830,17 @@ template <typename i_t, typename f_t>
 raft::handle_t const* data_model_view_t<i_t, f_t>::get_handle_ptr() const noexcept
 {
   return handle_ptr_;
+}
+
+template <typename i_t, typename f_t>
+std::tuple<f_t const*, f_t const*, f_t const*, i_t const*, i_t>
+data_model_view_t<i_t, f_t>::get_vehicle_distance_tiers() const noexcept
+{
+  return std::make_tuple(distance_tier_thresholds_,
+                         distance_tier_fixed_costs_,
+                         distance_tier_costs_per_unit_,
+                         distance_tier_offsets_,
+                         total_distance_tiers_);
 }
 
 template class CUOPT_EXPORT data_model_view_t<int, float>;

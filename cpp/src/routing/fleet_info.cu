@@ -255,6 +255,40 @@ void populate_fleet_info(data_model_view_t<i_t, f_t> const& data_model,
                                fleet_info_.v_fixed_costs_.end(),
                                -1.f);
   }
+
+  // Copy distance tiers from data_model to fleet_info
+  auto [thresholds, fixed_costs, costs_per_unit, tier_offsets, total_tiers] =
+    data_model.get_vehicle_distance_tiers();
+
+  if (thresholds != nullptr && total_tiers > 0) {
+    // Resize and copy the flattened tiers data
+    fleet_info_.v_distance_tiers_.resize(total_tiers, stream_view);
+    fleet_info_.v_tier_offsets_.resize(fleet_size + 1, stream_view);
+
+    // Copy tier offsets
+    raft::copy(fleet_info_.v_tier_offsets_.data(), tier_offsets, fleet_size + 1, stream_view);
+
+    // Copy tier data (thresholds, fixed_costs, costs_per_unit) into distance_tier_t structs
+    std::vector<distance_tier_t<f_t>> h_tiers(total_tiers);
+    std::vector<f_t> h_thresholds(total_tiers);
+    std::vector<f_t> h_fixed_costs(total_tiers);
+    std::vector<f_t> h_costs_per_unit(total_tiers);
+
+    raft::copy(h_thresholds.data(), thresholds, total_tiers, stream_view);
+    raft::copy(h_fixed_costs.data(), fixed_costs, total_tiers, stream_view);
+    raft::copy(h_costs_per_unit.data(), costs_per_unit, total_tiers, stream_view);
+    handle_ptr_->sync_stream();
+
+    // Pack into distance_tier_t structs
+    for (i_t i = 0; i < total_tiers; ++i) {
+      h_tiers[i].threshold     = h_thresholds[i];
+      h_tiers[i].fixed_cost    = h_fixed_costs[i];
+      h_tiers[i].cost_per_unit = h_costs_per_unit[i];
+    }
+
+    raft::copy(fleet_info_.v_distance_tiers_.data(), h_tiers.data(), total_tiers, stream_view);
+  }
+
   fleet_info_.is_homogenous_ = is_homogenous;
 }
 
