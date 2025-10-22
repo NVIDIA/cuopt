@@ -691,7 +691,14 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
                                   std::ref(sol_dual_simplex_ptr),
                                   std::ref(timer));
 
+  // Create separate handle and stream for barrier thread to avoid cuSparse handle conflicts
+  auto barrier_handle_2 = raft::handle_t(*op_problem.get_handle_ptr());
+  rmm::cuda_stream_view barrier_stream_2 = rmm::cuda_stream_per_thread;
+  raft::resource::set_cuda_stream(barrier_handle_2, barrier_stream_2);
+  
   dual_simplex::user_problem_t<i_t, f_t> barrier_problem = dual_simplex_problem;
+  barrier_problem.handle_ptr = &barrier_handle_2;
+  
   // Create a thread for barrier
   std::unique_ptr<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
@@ -709,7 +716,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   dual_simplex_thread.join();
 
   // Wait for barrier thread to finish
-  barrier_handle.sync_stream();
+  barrier_handle_2.sync_stream();
   barrier_thread.join();
 
   // copy the dual simplex solution to the device
