@@ -399,8 +399,10 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
 
         # In BatchSolve, we don't get the warm start data
         if not is_batch:
-            current_primal_solution_device_buf = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_primal_solution_)
+            current_primal_solution_device_buf = (
+                DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.current_primal_solution_)
+                )
             )
             current_dual_solution_device_buf = DeviceBuffer.c_from_unique_ptr(
                 move(sol_ret.lp_ret.current_dual_solution_)
@@ -435,12 +437,22 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             sum_solution_weight = sol_ret.lp_ret.sum_solution_weight_
             iterations_since_last_restart = sol_ret.lp_ret.iterations_since_last_restart_ # noqa
 
-            current_primal_solution_buf = as_buffer(current_primal_solution_device_buf)
-            current_dual_solution_buf = as_buffer(current_dual_solution_device_buf)
-            initial_primal_average_buf = as_buffer(initial_primal_average_device_buf)
-            initial_dual_average_buf = as_buffer(initial_dual_average_device_buf)
+            current_primal_solution_buf = as_buffer(
+                current_primal_solution_device_buf
+            )
+            current_dual_solution_buf = as_buffer(
+                current_dual_solution_device_buf
+            )
+            initial_primal_average_buf = as_buffer(
+                initial_primal_average_device_buf
+            )
+            initial_dual_average_buf = as_buffer(
+                initial_dual_average_device_buf
+            )
             current_ATY_buf = as_buffer(current_ATY_device_buf)
-            sum_primal_solutions_buf = as_buffer(sum_primal_solutions_device_buf)
+            sum_primal_solutions_buf = as_buffer(
+                sum_primal_solutions_device_buf
+            )
             sum_dual_solutions_buf = as_buffer(sum_dual_solutions_device_buf)
             last_restart_duality_gap_primal_solution_buf = as_buffer(last_restart_duality_gap_primal_solution_device_buf) # noqa
             last_restart_duality_gap_dual_solution_buf = as_buffer(last_restart_duality_gap_dual_solution_device_buf) # noqa
