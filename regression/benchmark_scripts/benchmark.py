@@ -8,11 +8,12 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-
-from utils import get_configuration, LPMetrics, RoutingMetrics
-from cuopt import linear_programming
-from cuopt import routing
-from cuopt import utilities
+import os
+from multiprocessing import Process
+#from utils import get_configuration, LPMetrics, RoutingMetrics
+#from cuopt import linear_programming
+#from cuopt import routing
+#from cuopt import utilities
 import rmm
 import time
 import pandas as pd
@@ -21,6 +22,8 @@ import logging as log
 from datetime import datetime
 import os
 import argparse
+
+log.getLogger().setLevel(log.INFO)
 
 def create_regression_markdown(data, regression_path, test_type_string):
     regression_md_file = regression_path + "/" + test_type_string + "_regressions.md" 
@@ -88,8 +91,8 @@ def get_bks_change(
 def record_result(
     test_name, metrics, required_metrics, csv_path, test_type_string
 ):
-    
-    file_path = csv_path + "/" + test_name + ".csv"
+
+    file_path = csv_path + "/" + test_type_string + "_" + test_name + ".csv"
 
     bks_metrics = get_bks_change(metrics, required_metrics)
     # Add default metrics to data
@@ -117,19 +120,25 @@ def run_benchmark(
     required_metrics,
     csv_path,
     git_commit,
-    test_status_file
+    test_status_file,
+    d_type
 ):
+    import rmm
     mr = rmm.mr.get_current_device_resource()
 
+    from utils import LPMetrics, RoutingMetrics
+    from cuopt import linear_programming
+    from cuopt import routing
+
     start_time = time.time()
-    if test_name.startswith("LP_") or test_name.startswith("MIP_"):
+    if d_type=="lp" or d_type=="mip":
         metrics = LPMetrics()._asdict()
         solver_settings.set_parameter("infeasibility_detection", False)
-        solver_settings.set_parameter("time_limit", 180)
+        solver_settings.set_parameter("time_limit", 300)
         solution = linear_programming.Solve(data_model, solver_settings)
     else:
         metrics = RoutingMetrics()._asdict()
-        solution = routing.Solve(data_model, solver_settings)
+        solution = routing.Solve(data_model)
     end_time = time.time()
 
     metrics["gpu_memory_usage"] = int(mr.allocation_counts.peak_bytes/(1024*1024))
@@ -138,14 +147,14 @@ def run_benchmark(
 
     success_status = False
 
-    if test_name.startswith("LP_") or test_name.startswith("MIP_"):
+    if d_type=="lp" or d_type=="mip":
         ## Optimal solution
-        if solution.get_termination_reason() == 1:
-            test_type_string = "lp" if test_name.startswith("LP_") else "mip"
+        acceptable_termination = ["Optimal", "TimeLimit", "FeasibleFound"]
+        if solution.get_termination_reason() in acceptable_termination:
             success_status = True
             metrics["solver_time"] = solution.get_solve_time()
             metrics["primal_objective_value"] = solution.get_primal_objective()
-            if test_type_string == "lp":
+            if d_type == "lp":
                 lp_stats = solution.get_lp_stats()
                 metrics["nb_iterations"] = lp_stats["nb_iterations"]
             else:
@@ -154,7 +163,7 @@ def run_benchmark(
                 metrics["max_constraint_violation"] = milp_stats["max_constraint_violation"]
                 metrics["max_int_violation"] = milp_stats["max_int_violation"]
                 metrics["max_variable_bound_violation"] = milp_stats["max_variable_bound_violation"]
-            record_result(test_name, metrics, required_metrics, csv_path, test_type_string)
+            record_result(test_name, metrics, required_metrics, csv_path, d_type)
     else:
         if solution.get_status() == 0:
             success_status = True
@@ -170,40 +179,49 @@ def run_benchmark(
             if "travel_time" in required_metrics:
                 metrics["travel_time"] = objectives[routing.Objective.TRAVEL_TIME]
 
-            record_result(test_name, metrics, required_metrics, csv_path, "routing")
+            record_result(test_name, metrics, required_metrics, csv_path, d_type)
 
     return "SUCCESS" if success_status is True else "FAILED"
 
-
 def reinitialize_rmm():
-    
+
     pool_size = 2**30
     rmm.reinitialize(pool_allocator=True, initial_pool_size=pool_size)
 
     base_mr = rmm.mr.get_current_device_resource()
     stats_mr = rmm.mr.StatisticsResourceAdaptor(base_mr)
-    rmm.mr.set_current_device_resource(stats_mr) 
+    rmm.mr.set_current_device_resource(stats_mr)
 
     return base_mr, stats_mr
 
 
-def run(config_file_path, csv_path, git_commit, log_path, test_status_file):
+def worker(gpu_id, dataset_file_path, csv_path, git_commit, log_path, test_status_file, n_gpus, d_type="routing"):
+    import os
+    os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
 
-    config_files = glob.glob(config_file_path + "/*_config.json")
+    import glob
+    from utils import get_configuration
+    data_files = []
+    if d_type == "lp" or d_type == "mip":
+        data_files = glob.glob(dataset_file_path + "/*.mps")
+    else:
+        data_files = glob.glob(dataset_file_path + "/*_config.json")
+    idx = int(gpu_id)
+    n_files = len(data_files)
 
-    for config in config_files:
-
+    while idx < n_files:
         mr, stats_mr = reinitialize_rmm()
-        test_name = str(config)
+        from rmm._cuda.gpu import CUDARuntimeError, getDevice, setDevice
+
+        data_file = data_files[idx]
+        test_name = str(data_file)
         status = "FAILED"
         try:
 
-            test_name, data_model, solver_settings, requested_metrics = get_configuration(config, config_file_path)
-
+            test_name, data_model, solver_settings, requested_metrics = get_configuration(data_file, dataset_file_path, d_type)
             log.basicConfig(level=log.INFO, filename=log_path+"/"+test_name+"_log.txt", filemode="a+",
                         format="%(asctime)-15s %(levelname)-8s %(message)s")
-            log.info(f"------------- Test Start : {test_name} -------------------")
-
+            log.info(f"------------- Test Start : {test_name} gpu id : {gpu_id} -------------------")
             status = run_benchmark(
                 test_name,
                 data_model,
@@ -211,7 +229,8 @@ def run(config_file_path, csv_path, git_commit, log_path, test_status_file):
                 requested_metrics,
                 csv_path,
                 git_commit,
-                test_status_file
+                test_status_file,
+                d_type
             )
 
         except Exception as e:
@@ -225,7 +244,78 @@ def run(config_file_path, csv_path, git_commit, log_path, test_status_file):
         del mr
         del stats_mr
 
-        log.info(f"------------- Test End : {test_name} -------------------")
+        log.info(f"------------- Test End : {test_name} gpu id : {gpu_id} -------------------")
+        idx = idx + n_gpus
+
+def run(dataset_file_path, csv_path, git_commit, log_path, test_status_file, n_gpus, d_type):
+
+    """def worker(gpu_id, n_gpus):
+        import os
+        #log.info(f"------------- GPU id : {gpu_id} -------------------")
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
+        import rmm
+        pool = rmm.mr.PoolMemoryResource(
+            rmm.mr.CudaMemoryResource()
+        )
+
+        rmm.mr.set_current_device_resource(pool)
+        idx = int(gpu_id)
+        n_files = len(config_files)
+
+        def reinitialize_rmm():
+
+            pool = rmm.mr.PoolMemoryResource(
+                rmm.mr.CudaMemoryResource()
+            )
+
+            rmm.mr.set_current_device_resource(pool)
+            #rmm.reinitialize(pool_allocator=True, initial_pool_size=pool_size)
+
+            #base_mr = rmm.mr.get_current_device_resource()
+            #stats_mr = rmm.mr.StatisticsResourceAdaptor(base_mr)
+            #rmm.mr.set_current_device_resource(stats_mr)
+
+            return "", ""
+
+        while idx < n_files:
+            config = config_files[idx]
+
+            test_name = str(config)
+            status = "FAILED"
+            try:
+
+                test_name, data_model, solver_settings, requested_metrics = get_configuration(config, config_file_path)
+
+                log.basicConfig(level=log.INFO, filename=log_path+"/"+test_name+"_log.txt", filemode="a+",
+                            format="%(asctime)-15s %(levelname)-8s %(message)s")
+                log.info(f"------------- Test Start : {test_name} -------------------")
+                log.info(f"------------- GPU id : {gpu_id} -------------------")
+                #status = run_benchmark(
+                #    test_name,
+                #    data_model,
+                #    solver_settings,
+                #    requested_metrics,
+                #    csv_path,
+                #    git_commit,
+                #    test_status_file
+                #)
+
+            except Exception as e:
+                log.error(str(e))
+
+            with open(test_status_file, "a") as f:
+                f.write("\n")
+                f.write(test_name +": " + status)"""
+
+    procs = []
+    for gpu_id in range(int(n_gpus)):
+        p = Process(target=worker, args=(str(gpu_id), dataset_file_path, csv_path, git_commit, log_path, test_status_file, int(n_gpus), d_type))
+        p.start()
+        procs.append(p)
+
+    for p in procs:
+        p.join()
+    print("All processes finished.")
 
 if __name__ == "__main__":
 
@@ -246,6 +336,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "-s", "--test-status-file", type=str, help="All test status will be stored in this file"
     )
-
+    parser.add_argument(
+        "-n", "--num-gpus", type=str, help="Number of GPUs available"
+    )
+    parser.add_argument(
+        "-t", "--type", type=str, help="Type of benchmark"
+    )
     args = parser.parse_args()
-    run(args.config_path, args.csv_path, args.git_commit, args.log_path, args.test_status_file)
+    run(args.config_path, args.csv_path, args.git_commit, args.log_path, args.test_status_file, args.num_gpus, args.type)

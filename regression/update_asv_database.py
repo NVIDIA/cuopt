@@ -1,15 +1,12 @@
-# Copyright (c) 2021, NVIDIA CORPORATION.
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
 
 from pathlib import Path
 import platform
@@ -26,7 +23,8 @@ def update_asv_db(commitHash=None,
                   repo_url=None,
                   results_dir=None,
                   machine_name=None,
-                  gpu_type=None):
+                  gpu_type=None,
+                  configs=None):
     """
     Read the benchmark_result* files in results_dir/benchmarks and
     update an existing asv benchmark database or create one if one
@@ -36,39 +34,49 @@ def update_asv_db(commitHash=None,
     """
 
     # commitHash = commitHash + str(int(time.time()))
-    benchmark_dir_path = Path(results_dir)/"benchmarks"
-    asv_dir_path = benchmark_dir_path/"asv"
+    benchmark_dir_path = Path(results_dir)/"benchmarks"/"results"/"csvs"
+    asv_dir_path = Path(results_dir)/"benchmarks"/"results"/"asv"
 
     # List all benchmark_result files
-    benchmark_result_list = benchmark_dir_path.glob("results*.csv")
+    benchmark_result_list = benchmark_dir_path.glob("*.csv")
 
     bResultList = []
+    # Skip these columns from benchmarking
+    skip_columns = ["date_time", "git_commit"]
+    print("AAA")
     # Create result objects for each benchmark result and store it in a list
     for file_name in benchmark_result_list:
+        # skip if it's regression file
+        if "regressions.csv" in str(file_name):
+            continue
         with open(file_name, 'r') as openfile:
-            data = pd.read_csv(openfile, index_col="test")
-            if "service_endpoint" in str(file_name) or "service_method" in str(file_name):
-                name = "Service_Endpoint" if "service_endpoint" in str(file_name) else "Service_Method"
-                for index, rows in data.iterrows():
-                    bResult = BenchmarkResult(funcName=name+"."+index+"_runtime", result=rows["run_time"], unit="Seconds")
-                    bResultList.append(bResult)
+            data = pd.read_csv(openfile, index_col=0).iloc[-1]
+            test_name = str(file_name).split("/")[-1].split(".")[-2]
+            config_file = None
+            if test_name.startswith("lp"):
+                config_file = configs + "/" + "lp_config.json"
+            elif test_name.startswith("mip"):
+                config_file = configs + "/" + "mip_config.json"
             else:
-                for index, rows in data.iterrows():
-                    bResult = BenchmarkResult(funcName=index+"_solver_runtime", result=rows["solver_run_time"], unit="Seconds")
-                    bResultList.append(bResult)
-                    bResult = BenchmarkResult(funcName=index+"_etl_runtime", result=rows["etl_time"], unit="Seconds")
-                    bResultList.append(bResult)
-                    bResult = BenchmarkResult(funcName=index+"_memory", result=rows["memory"], unit="MB")
-                    bResultList.append(bResult)
-                    bResult = BenchmarkResult(funcName=index+"_travel_cost", result=rows["travel_cost"], unit="Distance")
+                config_file = configs + "/" + test_name + "_config.json"
+            metrics = {}
+            with open(config_file, 'r') as fp:
+                metrics = json.load(fp)["metrics"]
+            for col_name in data.index:
+                if col_name not in skip_columns:
+                    bResult = BenchmarkResult(
+                            funcName=test_name+"."+col_name,
+                        result=data[col_name].item(),
+                        unit="percentage" if  "bks" in col_name else metrics[col_name]["unit"]
+                    )
                     bResultList.append(bResult)
 
     if len(bResultList) == 0:
-        print("Could not find files matching 'benchmark_result*' in "
+        print("Could not find files matching 'csv' in "
               f"{benchmark_dir_path}, not creating/updating ASV database "
               f"in {asv_dir_path}.")
         return
-
+    print("BBB")
     uname = platform.uname()
     # Maybe also write those metadata to metadata.sh ?
     osType = "%s %s" % (uname.system, uname.release)
@@ -92,17 +100,19 @@ def update_asv_db(commitHash=None,
         'ram' : "%d" % psutil.virtual_memory().total
     }
     bInfo = BenchmarkInfo(**bInfo_dict)
-
+    print("CCC")
     # extract the branch name
     branch = bInfo_dict['branch']
 
     db = ASVDb(dbDir=str(asv_dir_path),
                repo=repo_url,
                branches=[branch])
-
+    print("DDD")
     for res in bResultList:
+        print(bInfo)
+        print(res)
         db.addResult(bInfo, res)
-    
+    print("EEE")
 
 if __name__ == "__main__":
     import argparse
@@ -121,6 +131,8 @@ if __name__ == "__main__":
                     help="Slurm cluster name")
     ap.add_argument("--gpu-type", type=str, required=True,
                     help="the official product name of the GPU")
+    ap.add_argument("--configs", type=str, required=True,
+                    help="the config file for all the tests")
     args = ap.parse_args()
 
     update_asv_db(commitHash=args.commitHash,
@@ -129,4 +141,5 @@ if __name__ == "__main__":
                   repo_url=args.repo_url,
                   results_dir=args.results_dir,
                   machine_name=args.machine_name,
-                  gpu_type=args.gpu_type)
+                  gpu_type=args.gpu_type,
+                  configs=args.configs)

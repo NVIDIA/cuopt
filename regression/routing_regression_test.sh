@@ -36,7 +36,7 @@ mkdir -p ${RESULTS_DIR}/benchmarks/results/csvs/
 
 
 logger "Running routing tests ........"
-python ${CUOPT_SCRIPTS_DIR}/benchmark_scripts/benchmark.py -c ${ROUTING_CONFIGS_PATH} -r ${RESULTS_DIR}/benchmarks/results/csvs/ -g ${GIT_COMMIT} -l ${LOG_PATH} -s ${RESULTS_DIR}/benchmarks/results/routing_tests_status.txt
+python ${CUOPT_SCRIPTS_DIR}/benchmark_scripts/benchmark.py -c ${ROUTING_CONFIGS_PATH} -r ${RESULTS_DIR}/benchmarks/results/csvs/ -g ${GIT_COMMIT} -l ${LOG_PATH} -s ${RESULTS_DIR}/benchmarks/results/routing_tests_status.txt -n ${GPUS_PER_NODE}
 logger "Completed routing tests ........"
 
 

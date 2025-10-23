@@ -8,9 +8,10 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-#from cuopt_server.utils.utils import build_routing_datamodel_from_json, build_lp_datamodel_from_json
+from cuopt_server.utils.utils import build_routing_datamodel_from_json
 from cuopt import routing
-
+from cuopt.linear_programming.solver_settings import SolverSettings
+import cuopt_mps_parser
 import os
 import json
 from typing import NamedTuple
@@ -35,12 +36,6 @@ from typing import NamedTuple
 import json
 import os
 
-from cuopt_server.utils.job_queue import SolverLPJob
-from cuopt_server.utils.linear_programming.data_definition import LPData
-from cuopt_server.utils.linear_programming.solver import (
-    create_data_model as lp_create_data_model,
-    create_solver as lp_create_solver,
-)
 from cuopt_server.utils.routing.data_definition import OptimizedRoutingData
 from cuopt_server.utils.routing.solver import (
     create_data_model as routing_create_data_model,
@@ -85,41 +80,25 @@ def build_routing_datamodel_from_json(data):
     return data_model, solver_settings
 
 
-def build_lp_datamodel_from_json(data):
+def build_datamodel_from_mps(data):
     """
-    data: A valid dictionary or a json file-path with
-          valid format as per open-api spec.
+    data: A file in mps format
     """
 
-    if isinstance(data, dict):
-        data = LPData.parse_obj(data)
-    elif os.path.isfile(data):
-        with open(data, "r") as f:
-            data = json.loads(f.read())
-            # Remove this once we support variable names
-            data.pop("variable_names")
-            data = LPData.parse_obj(data)
+    if os.path.isfile(data):
+        data_model = cuopt_mps_parser.ParseMps(data)
     else:
         raise ValueError(
             f"Invalid type : {type(data)} has been provided as input, "
-            "requires json input"
+            "requires mps input"
         )
-
-    stub_id = 9999
-    stub_warnings = []
-    job = SolverLPJob(stub_id, data, None, stub_warnings)
-    # transform data into digestible format
-    job._transform(job.LP_data)
-    data = job.get_data()
-
-    _, data_model = lp_create_data_model(data)
-    _, solver_settings = lp_create_solver(data, None)
+    solver_settings = SolverSettings()
 
     return data_model, solver_settings
 
 
 class RoutingMetrics(NamedTuple):
- 
+
     total_objective_value:float = -1
     vehicle_count:int = -1
     cost:float = -1
@@ -139,27 +118,71 @@ class LPMetrics(NamedTuple):
     date_time: str = ""
 
 
-def get_configuration(config_file, data_file_path):
+def get_metrics(d_type):
+    if d_type == "mip":
+        return {
+        "primal_objective_value": {
+            "threshold": 1,
+            "unit": "primal_objective_value"
+        },
+        "solver_time": {
+            "threshold": 1,
+            "unit": "seconds"
+        },
+        "mip_gap": {
+            "threshold": 1,
+            "unit": "mip_gap"
+        },
+        "max_constraint_violation": {
+            "threshold": 1,
+            "unit": "max"
+        },
+        "max_int_violation": {
+            "threshold": 1,
+            "unit": "max"
+        },
+        "max_variable_bound_violation": {
+            "threshold": 1,
+            "unit": "max"
+        }
+    }
+    elif dtype == "lp":
+        return {
+        "primal_objective_value": {
+            "threshold": 1,
+            "unit": "primal_objective_value",
+            "bks": {
+                "value": -282.9604743,
+                "threshold": 1
+            }
+        },
+        "solver_time": {
+            "threshold": 1,
+            "unit": "seconds"
+        },
+        "nb_iterations": {
+            "threshold": 1,
+            "unit": "num_iterations"
+        }
+    }
+
+def get_configuration(data_file, data_file_path, d_type):
 
     data = {}
-    if os.path.isfile(config_file):
-        with open(config_file) as f:
+    test_name = None
+    requested_metrics = {}
+
+    if d_type == "lp" or d_type == "mip":
+        with open(data_file_path+"/"+d_type+"_config.json") as f:
             data = json.load(f)
+        test_name = data_file.split('/')[-1].split('.')[0]
+        data_model, solver_settings = build_datamodel_from_mps(data_file)
+        requested_metrics = data["metrics"]
     else:
-        raise ValueError(f"Invalid type : {type(data)} has been provided as input, requires json input")
-
-
-    test_name = data["test_name"]
-
-    if data["file_name"].startswith("LP_") or data["file_name"].startswith("MIP_"):
-        data_model, solver_settings = build_lp_datamodel_from_json(data_file_path+"/"+data["file_name"])
-    else:
+        with open(data_file) as f:
+            data = json.load(f)
+        test_name = data["test_name"]
         data_model, solver_settings = build_routing_datamodel_from_json(data_file_path+"/"+data["file_name"])
-
-
-    requested_metrics = data["metrics"]
+        requested_metrics = data["metrics"]
 
     return test_name, data_model, solver_settings, requested_metrics
-
-
-

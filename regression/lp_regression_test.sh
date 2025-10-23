@@ -35,7 +35,7 @@ mkdir -p ${RESULTS_DIR}/benchmarks/results/csvs/
 #rm -rf ${WORKSPACE}/${RESULT_DIR_NAME}/data/regressions.csv
 
 logger "Running lp tests ........"
-python ${CUOPT_SCRIPTS_DIR}/benchmark_scripts/benchmark.py -c ${LP_CONFIGS_PATH} -r ${RESULTS_DIR}/benchmarks/results/csvs/ -g ${GIT_COMMIT} -l ${LOG_PATH} -s ${RESULTS_DIR}/benchmarks/results/lp_tests_status.txt
+python ${CUOPT_SCRIPTS_DIR}/benchmark_scripts/benchmark.py -c ${LP_CONFIGS_PATH} -r ${RESULTS_DIR}/benchmarks/results/csvs/ -g ${GIT_COMMIT} -l ${LOG_PATH} -s ${RESULTS_DIR}/benchmarks/results/lp_tests_status.txt -n ${GPUS_PER_NODE}
 logger "Completed lp tests ........"
 
 

@@ -53,23 +53,22 @@ setupResultsDir
 set +e
 
 ################################################################################
-#logger "Testing cuOpt in container..."
-#srun \
-#    --account $ACCOUNT \
-#    --partition $PARTITION \
-#    --nv-meta ml-model.dlss,dcgm_opt_out.yes \
-#    --job-name=test-container.testing \
-#    --nodes 1 \
-#    --gpus-per-node 1 \
-#    --time=120 \
-#    --export=ALL \
-#    --exclusive -K \
-#    --container-mounts=${CUOPT_SCRIPTS_DIR}:${CUOPT_SCRIPTS_DIR},${OUTPUT_DIR}:${OUTPUT_DIR},${SSH_CREDS}:/root/.ssh \
-#    --container-image=$IMAGE \
-#    --output=$BUILD_LOG_FILE \
-#    bash ${PROJECT_DIR}/test-container.sh
+logger "Testing cuOpt in container..."
+srun \
+    --account $ACCOUNT \
+    --partition $PARTITION \
+    --job-name=test-container.testing \
+    --nodes 1 \
+    --gpus-per-node 1 \
+    --time=120 \
+    --export=ALL \
+    --container-mounts=${CUOPT_SCRIPTS_DIR}:${CUOPT_SCRIPTS_DIR},${OUTPUT_DIR}:${OUTPUT_DIR} \
+    --container-image=$IMAGE \
+    --output=$BUILD_LOG_FILE \
+    bash ${PROJECT_DIR}/test-container.sh
 TESTING_FAILED=$?
 logger "done testing container, return code was $TESTING_FAILED"
+
 
 if [[ $TESTING_FAILED == 0 ]]; then
 
@@ -79,27 +78,25 @@ if [[ $TESTING_FAILED == 0 ]]; then
         logger "Running benchmarks..."
         logger "GPUs per node : $GPUS_PER_NODE"
         # SNMG tests - run in parallel
-        #srun \
-        #    --account $ACCOUNT \
-        #    --partition $PARTITION \
-        #    --nv-meta ml-model.dlss,dcgm_opt_out.yes \
-        #    --job-name=run-nightly-benchmarks \
-        #    --nodes 1 \
-        #    --gpus-per-node $GPUS_PER_NODE \
-        #    --time=4:00:00 \
-        #    --export=ALL \
-        #    --exclusive -K\
-        #    --container-mounts ${ROUTING_CONFIGS_PATH}:${ROUTING_CONFIGS_PATH},${CUOPT_SCRIPTS_DIR}:${CUOPT_SCRIPTS_DIR},${OUTPUT_DIR}:${OUTPUT_DIR} \
-        #    --container-image=$IMAGE \
-        #    --output=${BENCHMARK_RESULTS_DIR}/benchmark_routing_log.txt \
-        #    bash ${CUOPT_SCRIPTS_DIR}/routing_regression_test.sh &
-        #PID_1=$!
-        #logger "Process ID $PID_1 in background"
+        srun \
+            --account $ACCOUNT \
+            --partition $PARTITION \
+            --job-name=run-nightly-benchmarks \
+            --nodes 1 \
+            --gpus-per-node $GPUS_PER_NODE \
+            --time=4:00:00 \
+            --export=ALL \
+            --exclusive -K\
+            --container-mounts ${ROUTING_CONFIGS_PATH}:${ROUTING_CONFIGS_PATH},${CUOPT_SCRIPTS_DIR}:${CUOPT_SCRIPTS_DIR},${OUTPUT_DIR}:${OUTPUT_DIR} \
+            --container-image=$IMAGE \
+            --output=${BENCHMARK_RESULTS_DIR}/benchmark_routing_log.txt \
+            bash ${CUOPT_SCRIPTS_DIR}/routing_regression_test.sh &
+        PID_1=$!
+        logger "Process ID $PID_1 in background"
 
         srun \
             --account $ACCOUNT \
             --partition $PARTITION \
-            --nv-meta ml-model.dlss,dcgm_opt_out.yes \
             --job-name=run-nightly-benchmarks \
             --nodes 1 \
             --gpus-per-node $GPUS_PER_NODE \
@@ -115,19 +112,19 @@ if [[ $TESTING_FAILED == 0 ]]; then
         srun \
             --account $ACCOUNT \
             --partition $PARTITION \
-            --nv-meta ml-model.dlss,dcgm_opt_out.yes \
             --job-name=run-nightly-benchmarks \
             --nodes 1 \
             --gpus-per-node $GPUS_PER_NODE \
             --time=4:00:00 \
             --export=ALL \
             --exclusive -K\
-            --container-mounts ${MIP_CONFIGS_PATH}:${MIP_CONFIGS_PATH},${CUOPT_SCRIPTS_DIR}:${CUOPT_SCRIPTS_DIR},${OUTPUT_DIR}:${OUTPUT_DIR} \
+            --container-mounts ${MIP_DATASETS_PATH}:${MIP_DATASETS_PATH},${CUOPT_SCRIPTS_DIR}:${CUOPT_SCRIPTS_DIR},${OUTPUT_DIR}:${OUTPUT_DIR} \
             --container-image=$IMAGE \
             --output=${BENCHMARK_RESULTS_DIR}/benchmark_mip_log.txt \
             bash ${CUOPT_SCRIPTS_DIR}/mip_regression_test.sh &
         PID_3=$!
 
+        wait $PID_3
         wait $PID_0 $PID_1 $PID_2 $PID_3
     fi
 
@@ -135,7 +132,6 @@ else   # if [[ $TESTING_FAILED == 0 ]]
     logger "Container testing Failed!"
 fi
 
-: <<'END'
 ################################################################################
 # Send report based on contents of $RESULTS_DIR
 # These steps do not require a worker node.
@@ -149,18 +145,16 @@ if [ -f $METADATA_FILE ]; then
     source $METADATA_FILE
 fi
 
-activateCondaEnv
-
-if [[ $BUILD_FAILED == 0 ]]; then
-    if [[ $RUN_BENCHMARKS == 1 ]]; then
-        # Push regression tests to repo
-        cd ${WORKSPACE}/${RESULT_DIR_NAME}; git add data/*; git commit -m "Update for commit : ${PROJECT_VERSION}"; git push; cd -
-        # bash ${CUOPT_SCRIPTS_DIR}/save_benchmarks.sh $PROJECT_VERSION
-    fi
-fi
+#if [[ $BUILD_FAILED == 0 ]]; then
+#    if [[ $RUN_BENCHMARKS == 1 ]]; then
+#        # Push regression tests to repo
+#        cd ${WORKSPACE}/${RESULT_DIR_NAME}; git add data/*; git commit -m "Update for commit : ${PROJECT_VERSION}"; git push; cd -
+#        # bash ${CUOPT_SCRIPTS_DIR}/save_benchmarks.sh $PROJECT_VERSION
+#    fi
+#fi
 
 # Copy all config files to one folder
-cp $ROUTING_CONFIGS_PATH/*config.json $LP_CONFIGS_PATH/*config.json $MIP_CONFIGS_PATH/*config.json $ALL_CONFIGS_PATH/
+cp $ROUTING_CONFIGS_PATH/*config.json $LP_CONFIGS_PATH/*config.json $MIP_DATASETS_PATH/*config.json $ALL_CONFIGS_PATH/
 
 RUN_ASV_OPTION=""
 if hasArg --skip-asv; then
@@ -172,18 +166,12 @@ else
     if [[ "$PROJECT_BUILD" == "" ]]; then
         # Update/create the ASV database
         logger "Updating ASV database"
-        python $PROJECT_DIR/update_asv_database.py --commitHash=$PROJECT_VERSION --repo-url=$PROJECT_REPO_URL --branch=$PROJECT_REPO_BRANCH --commitTime=$PROJECT_REPO_TIME --results-dir=$RESULTS_DIR --machine-name>
+        python $PROJECT_DIR/update_asv_database.py --commitHash=$PROJECT_VERSION --repo-url=$PROJECT_REPO_URL --branch=$PROJECT_REPO_BRANCH --commitTime=$PROJECT_REPO_TIME --results-dir=$RESULTS_DIR --machine-name=$MACHINE --gpu-type=$GPU_TYPE --configs=$ALL_CONFIGS_PATH
         RUN_ASV_OPTION=--run-asv
         logger "Updated ASV database"
     else
         logger "Detected a conda install, cannot run ASV since a commit hash/time is needed."
     fi
-fi
-
-if hasArg --spreadsheet; then
-    logger "Generating spreadsheet"
-    export SPREADSHEET_URL=$(python $PROJECT_DIR/gsheet-report.py --results-dir=$RESULTS_DIR |grep "spreadsheet url is"|cut -d ' ' -f4)
-    #python $PROJECT_DIR/gsheet-report.py --results-dir=$RESULTS_DIR
 fi
 
 # The cuopt pull has missing .git folder which causes subsequent runs, lets delete and pull it fresh everytime.
@@ -192,6 +180,7 @@ rm -rf $RESULTS_DIR/tests
 
 ${SCRIPTS_DIR}/create-html-reports.sh $RUN_ASV_OPTION
 
+: <<'END'
 if hasArg --skip-sending-report; then
     logger "Skipping sending report."
 else

@@ -9,19 +9,15 @@
 # its affiliates is strictly prohibited.
 
 # Get latest set of datasets
-#rm -rf $SCRATCH_DIR/routing_configs/*
-#rm -rf $SCRATCH_DIR/lp_configs/*
-#rm -rf $SCRATCH_DIR/mip_configs/*
+rm -rf $SCRATCH_DIR/routing_configs/*
+rm -rf $SCRATCH_DIR/lp_configs/*
+rm -rf $SCRATCH_DIR/mip_configs/*
 
-#aws s3 cp s3://cuopt-datasets/regression_datasets/ $SCRATCH_DIR/routing_configs/ --recursive
-#aws s3 cp s3://cuopt-datasets/lp_datasets/ $SCRATCH_DIR/lp_configs/ --recursive
-#aws s3 cp s3://cuopt-datasets/mip_datasets/ $SCRATCH_DIR/mip_configs/ --recursive
+aws s3 cp s3://cuopt-datasets/regression_datasets/ $SCRATCH_DIR/routing_configs/ --recursive
+aws s3 cp s3://cuopt-datasets/lp_datasets/ $SCRATCH_DIR/lp_configs/ --recursive
+aws s3 cp s3://cuopt-datasets/mip_datasets/ $SCRATCH_DIR/mip_configs/ --recursive
 
-# Git clone multi gpu tools
-
-##rm -rf $SCRATCH_DIR/multi-gpu-tools
-
-##git clone ssh://git@gitlab-master.nvidia.com:12051/ramakrishnap/multi-gpu-tools.git $SCRATCH_DIR/multi-gpu-tools
+bash $SCRATCH_DIR/cuopt/regression/get_datasets.sh
 
 # Run build and test
-bash $SCRATCH_DIR/cuopt/regression/cronjob.sh --build-cuopt-env --benchmark  --skip-spreadsheet
+bash $SCRATCH_DIR/cuopt/regression/cronjob.sh --benchmark  --skip-spreadsheet

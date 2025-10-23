@@ -1,4 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: LicenseRef-NvidiaProprietary
 #
 # NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -14,16 +13,20 @@ CUOPT_SCRIPTS_DIR=$THIS_DIR
 OUTPUT_DIR=$SCRATCH_DIR/benchmark_runs/
 
 ACCOUNT=datascience_rapids_testing
-PARTITION="batch_dgx2h_m2"
-GPUS_PER_NODE=1
+PARTITION="batch"
+GPUS_PER_NODE=8
 
 # Path to the squashs file containing the container image
 IMAGE="nvidia/cuopt:25.10.0a-cuda12.9-py3.12"
 #SQSH_IMAGE=$SCRATCH_DIR/container_state/cuopt.sqsh
 
+ALL_CONFIGS_PATH=$SCRATCH_DIR/configs/
 ROUTING_CONFIGS_PATH=$SCRATCH_DIR/routing_configs/
 LP_CONFIGS_PATH=$SCRATCH_DIR/lp_configs/
 MIP_CONFIGS_PATH=$SCRATCH_DIR/mip_configs/
+ROUTING_DATASETS_PATH=$SCRATCH_DIR/routing_datasets/
+LP_DATASETS_PATH=$SCRATCH_DIR/lp_datasets/
+MIP_DATASETS_PATH=$SCRATCH_DIR/mip_datasets/
 
 STATUS_FILE=$OUTPUT_DIR/status.txt
 WORKER_RMM_POOL_SIZE=${WORKER_RMM_POOL_SIZE:-24G}
@@ -35,7 +38,7 @@ RESULT_DIR_NAME=cuopt-regression
 SSH_CREDS=/home/iroy/.ssh/
 
 # Assume CUOPT_SLACK_APP_ID is defined!
-CUOPT_SLACK_APP_ID="T04SYRAP3/B04BKLJ7R0F/8EPiEMTDcXFeB5FzQVEJp8t2"
+CUOPT_SLACK_APP_ID="XYZ"
 WEBHOOK_URL=${WEBHOOK_URL:-https://hooks.slack.com/services/${CUOPT_SLACK_APP_ID}}
 S3_FILE_PREFIX=s3://reopt-testing-public/regression_tests
 S3_URL_PREFIX=https://reopt-testing-public.s3.amazonaws.com/regression_tests
@@ -65,3 +68,4 @@ DATE=${DATE:-$(date --utc "+%Y-%m-%d_%H:%M:%S")_UTC}
 # therefore cannot be overridden by a project.
 TESTING_RESULTS_DIR=${RESULTS_DIR}/tests
 BENCHMARK_RESULTS_DIR=${RESULTS_DIR}/benchmarks
+

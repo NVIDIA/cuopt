@@ -35,7 +35,7 @@ mkdir -p ${RESULTS_DIR}/benchmarks/results/csvs/
 #rm -rf ${WORKSPACE}/${RESULT_DIR_NAME}/data/regressions.csv
 
 logger "Running mip tests ........"
-python ${CUOPT_SCRIPTS_DIR}/benchmark_scripts/benchmark.py -c ${MIP_CONFIGS_PATH} -r ${RESULTS_DIR}/benchmarks/results/csvs/ -g ${GIT_COMMIT} -l ${LOG_PATH} -s ${RESULTS_DIR}/benchmarks/results/mip_tests_status.txt
+python ${CUOPT_SCRIPTS_DIR}/benchmark_scripts/benchmark.py -c ${MIP_DATASETS_PATH} -r ${RESULTS_DIR}/benchmarks/results/csvs/ -g ${GIT_COMMIT} -l ${LOG_PATH} -s ${RESULTS_DIR}/benchmarks/results/mip_tests_status.txt -n ${GPUS_PER_NODE} -t mip
 logger "Completed mip tests ........"
 
 
