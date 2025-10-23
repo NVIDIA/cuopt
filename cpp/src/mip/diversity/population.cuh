@@ -170,6 +170,8 @@ class population_t {
 
   void diversity_step(i_t max_iterations_without_improvement);
 
+  void apply_problem_ptr_to_all_solutions();
+
   // does some consistency tests
   bool test_invariant();
 

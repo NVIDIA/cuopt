@@ -75,6 +75,19 @@ i_t get_max_var_threshold(i_t n_vars)
 }
 
 template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::apply_problem_ptr_to_all_solutions()
+{
+  for (size_t i = 1; i < indices.size(); i++) {
+    solutions[indices[i].first].second.problem_ptr = problem_ptr;
+    solutions[indices[i].first].second.resize_to_problem();
+    solutions[indices[i].first].second.compute_feasibility();
+    indices[i].second = solutions[indices[i].first].second.get_quality(weights);
+  }
+  update_qualities();
+  weights.cstr_weights.resize(problem_ptr->n_constraints, problem_ptr->handle_ptr->get_stream());
+}
+
+template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::allocate_solutions()
 {
   for (size_t i = 0; i < max_solutions; ++i) {
@@ -119,12 +132,11 @@ std::pair<solution_t<i_t, f_t>, solution_t<i_t, f_t>> population_t<i_t, f_t>::ge
   auto second_solution = solutions[indices[j].first].second;
   // if best feasible and best are the same, take the second index instead of best
   if (i == 0 && j == 1) {
-    bool same =
-      check_integer_equal_on_indices(first_solution.problem_ptr->integer_indices,
-                                     first_solution.assignment,
-                                     second_solution.assignment,
-                                     first_solution.problem_ptr->tolerances.integrality_tolerance,
-                                     first_solution.handle_ptr);
+    bool same = check_integer_equal_on_indices(problem_ptr->integer_indices,
+                                               first_solution.assignment,
+                                               second_solution.assignment,
+                                               problem_ptr->tolerances.integrality_tolerance,
+                                               first_solution.handle_ptr);
     if (same) {
       auto new_sol    = solutions[indices[2].first].second;
       second_solution = std::move(new_sol);
@@ -285,7 +297,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
         if (context.settings.mip_scaling) {
           context.scaling.unscale_solutions(temp_sol.assignment, dummy);
           // Need to get unscaled problem as well
-          problem_t<i_t, f_t> n_problem(*sol.problem_ptr->original_problem_ptr);
+          problem_t<i_t, f_t> n_problem(*problem_ptr->original_problem_ptr);
           temp_sol.problem_ptr = &n_problem;
           temp_sol.resize_to_original_problem();
           temp_sol.compute_feasibility();
