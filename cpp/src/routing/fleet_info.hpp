@@ -93,6 +93,8 @@ class fleet_info_t {
     h.fleet_order_constraints = fleet_order_constraints_.to_host(stream);
     h.types                   = host_copy(v_types_, stream);
     h.buckets                 = host_copy(v_buckets_, stream);
+    h.distance_tiers          = host_copy(v_distance_tiers_, stream);
+    h.tier_offsets            = host_copy(v_tier_offsets_, stream);
     h.matrices                = detail::create_host_mdarray<f_t>(
       matrices_.extent[2], matrices_.extent[0], matrices_.extent[1]);
     raft::copy(h.matrices.buffer.data(), matrices_.buffer.data(), matrices_.buffer.size(), stream);
@@ -144,6 +146,19 @@ class fleet_info_t {
       info.latest          = latest_time[vehicle_id];
       info.start           = start_locations[vehicle_id];
       info.end             = return_locations[vehicle_id];
+
+      // Assign distance tiers for this vehicle
+      if (!tier_offsets.empty() && !distance_tiers.empty() &&
+          vehicle_id < static_cast<i_t>(tier_offsets.size()) - 1) {
+        i_t tier_start = tier_offsets[vehicle_id];
+        i_t tier_end   = tier_offsets[vehicle_id + 1];
+        i_t num_tiers  = tier_end - tier_start;
+        if (num_tiers > 0) {
+          info.distance_tiers = raft::span<distance_tier_t<f_t> const, is_device>(
+            distance_tiers.data() + tier_start, num_tiers);
+        }
+      }
+
       return info;
     }
 
@@ -165,6 +180,8 @@ class fleet_info_t {
     std::vector<f_t> max_times;
     std::vector<f_t> fixed_costs;
     std::vector<i_t> vehicle_availability;
+    std::vector<distance_tier_t<f_t>> distance_tiers;
+    std::vector<i_t> tier_offsets;
     h_mdarray_t<f_t> matrices;
   };
 
@@ -299,8 +316,8 @@ class fleet_info_t {
       i_t tier_end   = v_tier_offsets_.element(vehicle_id + 1, handle_ptr_->get_stream());
       i_t num_tiers  = tier_end - tier_start;
       if (num_tiers > 0) {
-        info.distance_tiers =
-          raft::span<distance_tier_t<f_t> const, true>(v_distance_tiers_.data() + tier_start, num_tiers);
+        info.distance_tiers = raft::span<distance_tier_t<f_t> const, true>(
+          v_distance_tiers_.data() + tier_start, num_tiers);
       }
     }
 
