@@ -462,14 +462,19 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             current_ATY_buf = as_buffer(current_ATY)
             sum_primal_solutions_buf = as_buffer(sum_primal_solutions)
             sum_dual_solutions_buf = as_buffer(sum_dual_solutions)
-            last_restart_duality_gap_primal_solution_buf = as_buffer(last_restart_duality_gap_primal_solution)
-            last_restart_duality_gap_dual_solution_buf = as_buffer(last_restart_duality_gap_dual_solution)
+            last_restart_duality_gap_primal_solution_buf = as_buffer(
+                last_restart_duality_gap_primal_solution
+            )
+            last_restart_duality_gap_dual_solution_buf = as_buffer(
+                last_restart_duality_gap_dual_solution
+            )
 
             current_primal_solution = cudf.Series._from_column(
                 cudf.core.column.build_column(
                     current_primal_solution_buf,
                     dtype=np.dtype(np.float64),
-                    size=current_primal_solution_buf.size // np.dtype(np.float64).itemsize,
+                    size=(current_primal_solution_buf.size //
+                          np.dtype(np.float64).itemsize),
                     mask=None,
                     offset=0,
                     null_count=0,
@@ -480,7 +485,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 cudf.core.column.build_column(
                     current_dual_solution_buf,
                     dtype=np.dtype(np.float64),
-                    size=current_dual_solution_buf.size // np.dtype(np.float64).itemsize,
+                    size=(current_dual_solution_buf.size //
+                          np.dtype(np.float64).itemsize),
                     mask=None,
                     offset=0,
                     null_count=0,
@@ -491,7 +497,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 cudf.core.column.build_column(
                     initial_primal_average_buf,
                     dtype=np.dtype(np.float64),
-                    size=initial_primal_average_buf.size // np.dtype(np.float64).itemsize,
+                    size=(initial_primal_average_buf.size //
+                          np.dtype(np.float64).itemsize),
                     mask=None,
                     offset=0,
                     null_count=0,
@@ -502,7 +509,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 cudf.core.column.build_column(
                     initial_dual_average_buf,
                     dtype=np.dtype(np.float64),
-                    size=initial_dual_average_buf.size // np.dtype(np.float64).itemsize,
+                    size=(initial_dual_average_buf.size //
+                          np.dtype(np.float64).itemsize),
                     mask=None,
                     offset=0,
                     null_count=0,
@@ -513,7 +521,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 cudf.core.column.build_column(
                     current_ATY_buf,
                     dtype=np.dtype(np.float64),
-                    size=current_ATY_buf.size // np.dtype(np.float64).itemsize,
+                    size=(current_ATY_buf.size //
+                          np.dtype(np.float64).itemsize),
                     mask=None,
                     offset=0,
                     null_count=0,
@@ -524,7 +533,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 cudf.core.column.build_column(
                     sum_primal_solutions_buf,
                     dtype=np.dtype(np.float64),
-                    size=sum_primal_solutions_buf.size // np.dtype(np.float64).itemsize,
+                    size=(sum_primal_solutions_buf.size //
+                          np.dtype(np.float64).itemsize),
                     mask=None,
                     offset=0,
                     null_count=0,
@@ -535,7 +545,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 cudf.core.column.build_column(
                     sum_dual_solutions_buf,
                     dtype=np.dtype(np.float64),
-                    size=sum_dual_solutions_buf.size // np.dtype(np.float64).itemsize,
+                    size=(sum_dual_solutions_buf.size //
+                          np.dtype(np.float64).itemsize),
                     mask=None,
                     offset=0,
                     null_count=0,
@@ -546,7 +557,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 cudf.core.column.build_column(
                     last_restart_duality_gap_primal_solution_buf,
                     dtype=np.dtype(np.float64),
-                    size=last_restart_duality_gap_primal_solution_buf.size // np.dtype(np.float64).itemsize,
+                    size=(last_restart_duality_gap_primal_solution_buf.size //
+                          np.dtype(np.float64).itemsize),
                     mask=None,
                     offset=0,
                     null_count=0,
@@ -557,7 +569,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 cudf.core.column.build_column(
                     last_restart_duality_gap_dual_solution_buf,
                     dtype=np.dtype(np.float64),
-                    size=last_restart_duality_gap_dual_solution_buf.size // np.dtype(np.float64).itemsize,
+                    size=(last_restart_duality_gap_dual_solution_buf.size //
+                          np.dtype(np.float64).itemsize),
                     mask=None,
                     offset=0,
                     null_count=0,
