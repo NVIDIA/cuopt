@@ -820,7 +820,7 @@ def Solve(DataModel data_model, SolverSettings solver_settings):
     )
     route_df['arrival_stamp'] = cudf.core.column.build_column(
         arrival_stamp,
-        dtype=np.dtype(np.float64)
+        dtype=np.dtype(np.float64),
         size=arrival_stamp.size // np.dtype(np.float64).itemsize,
         mask=None,
         offset=0,
