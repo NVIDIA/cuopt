@@ -41,9 +41,13 @@ def col_from_buf(buf, dtype):
     """
     dt = np.dtype(dtype)
     return cudf.core.column.build_column(
-        buf, dtype=dt,
+        buf,
+        dtype=dt,
         size=buf.size // dt.itemsize,
-        mask=None, offset=0, null_count=0, children=(),
+        mask=None,
+        offset=0,
+        null_count=0,
+        children=(),
     )
 
 

@@ -148,10 +148,12 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
     vehicle_skip_first_trips = as_buffer(vehicle_skip_first_trips)
     vehicles["earliest_time"] = col_from_buf(vehicle_earliest, np.int32)
     vehicles["latest_time"] = col_from_buf(vehicle_latest, np.int32)
-    vehicles["drop_return_trips"] = col_from_buf(vehicle_drop_return_trips,
-                                                   np.bool_)
-    vehicles["skip_first_trips"] = col_from_buf(vehicle_skip_first_trips,
-                                                  np.bool_)
+    vehicles["drop_return_trips"] = col_from_buf(
+        vehicle_drop_return_trips, np.bool_
+    )
+    vehicles["skip_first_trips"] = col_from_buf(
+        vehicle_skip_first_trips, np.bool_
+    )
 
     fleet_size = vehicles["earliest_time"].shape[0]
     capacities_buf = as_buffer(

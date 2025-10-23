@@ -459,12 +459,16 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 col_from_buf(sum_dual_solutions_buf, np.float64)
             ).to_numpy()
             last_restart_duality_gap_primal_solution = cudf.Series._from_column( # noqa
-                col_from_buf(last_restart_duality_gap_primal_solution_buf,
-                              np.float64)
+                col_from_buf(
+                    last_restart_duality_gap_primal_solution_buf,
+                    np.float64
+                )
             ).to_numpy()
             last_restart_duality_gap_dual_solution = cudf.Series._from_column(
-                col_from_buf(last_restart_duality_gap_dual_solution_buf,
-                              np.float64)
+                col_from_buf(
+                    last_restart_duality_gap_dual_solution_buf,
+                    np.float64
+                )
             ).to_numpy()
 
             return Solution(

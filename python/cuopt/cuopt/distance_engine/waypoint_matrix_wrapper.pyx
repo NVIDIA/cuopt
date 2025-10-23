@@ -109,8 +109,9 @@ cdef class WaypointMatrix:
         full_sequence_offset = as_buffer(full_sequence_offset)
         full_path = as_buffer(full_path)
 
-        route_df['sequence_offset'] = col_from_buf(full_sequence_offset,
-                                                     np.int32)
+        route_df['sequence_offset'] = col_from_buf(
+            full_sequence_offset, np.int32
+        )
         locations = route_df["location"].replace(
             to_replace=list(range(len(target_locations))),
             value=target_locations.tolist()
