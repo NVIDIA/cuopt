@@ -59,15 +59,7 @@ from numba import cuda
 import cudf
 from cudf.core.buffer import as_buffer
 
-
-def _col_from_buf(buf, dtype):
-    """Helper function to create a cudf column from a buffer."""
-    dt = np.dtype(dtype)
-    return cudf.core.column.build_column(
-        buf, dtype=dt,
-        size=buf.size // dt.itemsize,
-        mask=None, offset=0, null_count=0, children=(),
-    )
+from cuopt.utilities import col_from_buf
 
 
 class ErrorStatus(IntEnum):
@@ -819,17 +811,17 @@ def Solve(DataModel data_model, SolverSettings solver_settings):
     accepted = as_buffer(accepted)
 
     route_df = cudf.DataFrame()
-    route_df['route'] = _col_from_buf(route, np.int32)
-    route_df['arrival_stamp'] = _col_from_buf(arrival_stamp, np.float64)
-    route_df['truck_id'] = _col_from_buf(truck_id, np.int32)
-    route_df['location'] = _col_from_buf(route_locations, np.int32)
-    route_df['type'] = _col_from_buf(node_types, np.int32)
+    route_df['route'] = col_from_buf(route, np.int32)
+    route_df['arrival_stamp'] = col_from_buf(arrival_stamp, np.float64)
+    route_df['truck_id'] = col_from_buf(truck_id, np.int32)
+    route_df['location'] = col_from_buf(route_locations, np.int32)
+    route_df['type'] = col_from_buf(node_types, np.int32)
 
     unserviced_nodes = cudf.Series._from_column(
-        _col_from_buf(unserviced_nodes, np.int32)
+        col_from_buf(unserviced_nodes, np.int32)
     )
     accepted = cudf.Series._from_column(
-        _col_from_buf(accepted, np.int32)
+        col_from_buf(accepted, np.int32)
     )
 
     def get_type_from_int(type_in_int):

@@ -37,15 +37,7 @@ from cudf.core.buffer import as_buffer
 
 from libcpp.utility cimport move
 
-
-def _col_from_buf(buf, dtype):
-    """Helper function to create a cudf column from a buffer."""
-    dt = np.dtype(dtype)
-    return cudf.core.column.build_column(
-        buf, dtype=dt,
-        size=buf.size // dt.itemsize,
-        mask=None, offset=0, null_count=0, children=(),
-    )
+from cuopt.utilities import col_from_buf
 
 
 class DatasetDistribution(IntEnum):
@@ -123,8 +115,8 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
     y_pos = DeviceBuffer.c_from_unique_ptr(move(g_ret.d_y_pos_))
     x_pos = as_buffer(x_pos)
     y_pos = as_buffer(y_pos)
-    coordinates['x'] = _col_from_buf(x_pos, np.float32)
-    coordinates['y'] = _col_from_buf(y_pos, np.float32)
+    coordinates['x'] = col_from_buf(x_pos, np.float32)
+    coordinates['y'] = col_from_buf(y_pos, np.float32)
 
     matrices_buf = as_buffer(
         DeviceBuffer.c_from_unique_ptr(move(g_ret.d_matrices_))
@@ -154,11 +146,11 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
     vehicle_latest = as_buffer(vehicle_latest)
     vehicle_drop_return_trips = as_buffer(vehicle_drop_return_trips)
     vehicle_skip_first_trips = as_buffer(vehicle_skip_first_trips)
-    vehicles["earliest_time"] = _col_from_buf(vehicle_earliest, np.int32)
-    vehicles["latest_time"] = _col_from_buf(vehicle_latest, np.int32)
-    vehicles["drop_return_trips"] = _col_from_buf(vehicle_drop_return_trips,
+    vehicles["earliest_time"] = col_from_buf(vehicle_earliest, np.int32)
+    vehicles["latest_time"] = col_from_buf(vehicle_latest, np.int32)
+    vehicles["drop_return_trips"] = col_from_buf(vehicle_drop_return_trips,
                                                    np.bool_)
-    vehicles["skip_first_trips"] = _col_from_buf(vehicle_skip_first_trips,
+    vehicles["skip_first_trips"] = col_from_buf(vehicle_skip_first_trips,
                                                   np.bool_)
 
     fleet_size = vehicles["earliest_time"].shape[0]
@@ -196,8 +188,8 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
     )
     latest_time = as_buffer(latest_time)
 
-    orders["earliest_time"] = _col_from_buf(earliest_time, np.int32)
-    orders["latest_time"] = _col_from_buf(latest_time, np.int32)
+    orders["earliest_time"] = col_from_buf(earliest_time, np.int32)
+    orders["latest_time"] = col_from_buf(latest_time, np.int32)
 
     demands_buf = as_buffer(
         DeviceBuffer.c_from_unique_ptr(move(g_ret.d_demands_))
