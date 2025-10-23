@@ -72,6 +72,16 @@ from cuopt.linear_programming.solver_settings.solver_settings import (
 from cuopt.utilities import InputValidationError
 
 
+def _col_from_buf(buf, dtype):
+    """Helper function to create a cudf column from a buffer."""
+    dt = np.dtype(dtype)
+    return cudf.core.column.build_column(
+        buf, dtype=dt,
+        size=buf.size // dt.itemsize,
+        mask=None, offset=0, null_count=0, children=(),
+    )
+
+
 cdef extern from "cuopt/linear_programming/utilities/internals.hpp" namespace "cuopt::internals": # noqa
     cdef cppclass base_solution_callback_t
 
@@ -330,15 +340,7 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
 
         solution_buf = as_buffer(solution)
         solution = cudf.Series._from_column(
-            cudf.core.column.build_column(
-                solution_buf,
-                dtype=np.dtype(np.float64),
-                size=solution_buf.size // np.dtype(np.float64).itemsize,
-                mask=None,
-                offset=0,
-                null_count=0,
-                children=(),
-            )
+            _col_from_buf(solution_buf, np.float64)
         ).to_numpy()
 
         return Solution(
@@ -372,37 +374,13 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         reduced_cost_buf = as_buffer(reduced_cost)
 
         primal_solution = cudf.Series._from_column(
-            cudf.core.column.build_column(
-                primal_solution_buf,
-                dtype=np.dtype(np.float64),
-                size=primal_solution_buf.size // np.dtype(np.float64).itemsize,
-                mask=None,
-                offset=0,
-                null_count=0,
-                children=(),
-            )
+            _col_from_buf(primal_solution_buf, np.float64)
         ).to_numpy()
         dual_solution = cudf.Series._from_column(
-            cudf.core.column.build_column(
-                dual_solution_buf,
-                dtype=np.dtype(np.float64),
-                size=dual_solution_buf.size // np.dtype(np.float64).itemsize,
-                mask=None,
-                offset=0,
-                null_count=0,
-                children=(),
-            )
+            _col_from_buf(dual_solution_buf, np.float64)
         ).to_numpy()
         reduced_cost = cudf.Series._from_column(
-            cudf.core.column.build_column(
-                reduced_cost_buf,
-                dtype=np.dtype(np.float64),
-                size=reduced_cost_buf.size // np.dtype(np.float64).itemsize,
-                mask=None,
-                offset=0,
-                null_count=0,
-                children=(),
-            )
+            _col_from_buf(reduced_cost_buf, np.float64)
         ).to_numpy()
 
         termination_status = sol_ret.lp_ret.termination_status_
@@ -470,112 +448,33 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             )
 
             current_primal_solution = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    current_primal_solution_buf,
-                    dtype=np.dtype(np.float64),
-                    size=(current_primal_solution_buf.size //
-                          np.dtype(np.float64).itemsize),
-                    mask=None,
-                    offset=0,
-                    null_count=0,
-                    children=(),
-                )
+                _col_from_buf(current_primal_solution_buf, np.float64)
             ).to_numpy()
             current_dual_solution = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    current_dual_solution_buf,
-                    dtype=np.dtype(np.float64),
-                    size=(current_dual_solution_buf.size //
-                          np.dtype(np.float64).itemsize),
-                    mask=None,
-                    offset=0,
-                    null_count=0,
-                    children=(),
-                )
+                _col_from_buf(current_dual_solution_buf, np.float64)
             ).to_numpy()
             initial_primal_average = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    initial_primal_average_buf,
-                    dtype=np.dtype(np.float64),
-                    size=(initial_primal_average_buf.size //
-                          np.dtype(np.float64).itemsize),
-                    mask=None,
-                    offset=0,
-                    null_count=0,
-                    children=(),
-                )
+                _col_from_buf(initial_primal_average_buf, np.float64)
             ).to_numpy()
             initial_dual_average = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    initial_dual_average_buf,
-                    dtype=np.dtype(np.float64),
-                    size=(initial_dual_average_buf.size //
-                          np.dtype(np.float64).itemsize),
-                    mask=None,
-                    offset=0,
-                    null_count=0,
-                    children=(),
-                )
+                _col_from_buf(initial_dual_average_buf, np.float64)
             ).to_numpy()
             current_ATY = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    current_ATY_buf,
-                    dtype=np.dtype(np.float64),
-                    size=(current_ATY_buf.size //
-                          np.dtype(np.float64).itemsize),
-                    mask=None,
-                    offset=0,
-                    null_count=0,
-                    children=(),
-                )
+                _col_from_buf(current_ATY_buf, np.float64)
             ).to_numpy()
             sum_primal_solutions = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    sum_primal_solutions_buf,
-                    dtype=np.dtype(np.float64),
-                    size=(sum_primal_solutions_buf.size //
-                          np.dtype(np.float64).itemsize),
-                    mask=None,
-                    offset=0,
-                    null_count=0,
-                    children=(),
-                )
+                _col_from_buf(sum_primal_solutions_buf, np.float64)
             ).to_numpy()
             sum_dual_solutions = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    sum_dual_solutions_buf,
-                    dtype=np.dtype(np.float64),
-                    size=(sum_dual_solutions_buf.size //
-                          np.dtype(np.float64).itemsize),
-                    mask=None,
-                    offset=0,
-                    null_count=0,
-                    children=(),
-                )
+                _col_from_buf(sum_dual_solutions_buf, np.float64)
             ).to_numpy()
             last_restart_duality_gap_primal_solution = cudf.Series._from_column( # noqa
-                cudf.core.column.build_column(
-                    last_restart_duality_gap_primal_solution_buf,
-                    dtype=np.dtype(np.float64),
-                    size=(last_restart_duality_gap_primal_solution_buf.size //
-                          np.dtype(np.float64).itemsize),
-                    mask=None,
-                    offset=0,
-                    null_count=0,
-                    children=(),
-                )
+                _col_from_buf(last_restart_duality_gap_primal_solution_buf,
+                              np.float64)
             ).to_numpy()
             last_restart_duality_gap_dual_solution = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    last_restart_duality_gap_dual_solution_buf,
-                    dtype=np.dtype(np.float64),
-                    size=(last_restart_duality_gap_dual_solution_buf.size //
-                          np.dtype(np.float64).itemsize),
-                    mask=None,
-                    offset=0,
-                    null_count=0,
-                    children=(),
-                )
+                _col_from_buf(last_restart_duality_gap_dual_solution_buf,
+                              np.float64)
             ).to_numpy()
 
             return Solution(

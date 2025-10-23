@@ -38,6 +38,16 @@ from cudf.core.buffer import as_buffer
 from libcpp.utility cimport move
 
 
+def _col_from_buf(buf, dtype):
+    """Helper function to create a cudf column from a buffer."""
+    dt = np.dtype(dtype)
+    return cudf.core.column.build_column(
+        buf, dtype=dt,
+        size=buf.size // dt.itemsize,
+        mask=None, offset=0, null_count=0, children=(),
+    )
+
+
 class DatasetDistribution(IntEnum):
     CLUSTERED = dataset_distribution_t.CLUSTERED
     RANDOM = dataset_distribution_t.RANDOM
@@ -113,24 +123,8 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
     y_pos = DeviceBuffer.c_from_unique_ptr(move(g_ret.d_y_pos_))
     x_pos = as_buffer(x_pos)
     y_pos = as_buffer(y_pos)
-    coordinates['x'] = cudf.core.column.build_column(
-        x_pos,
-        dtype=np.float32,
-        size=x_pos.size // np.dtype(np.float32).itemsize,
-        mask=None,
-        offset=0,
-        null_count=0,
-        children=(),
-    )
-    coordinates['y'] = cudf.core.column.build_column(
-        y_pos,
-        dtype=np.float32,
-        size=y_pos.size // np.dtype(np.float32).itemsize,
-        mask=None,
-        offset=0,
-        null_count=0,
-        children=(),
-    )
+    coordinates['x'] = _col_from_buf(x_pos, np.float32)
+    coordinates['y'] = _col_from_buf(y_pos, np.float32)
 
     matrices_buf = as_buffer(
         DeviceBuffer.c_from_unique_ptr(move(g_ret.d_matrices_))
@@ -160,42 +154,12 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
     vehicle_latest = as_buffer(vehicle_latest)
     vehicle_drop_return_trips = as_buffer(vehicle_drop_return_trips)
     vehicle_skip_first_trips = as_buffer(vehicle_skip_first_trips)
-    vehicles["earliest_time"] = cudf.core.column.build_column(
-        vehicle_earliest,
-        dtype=np.int32,
-        size=vehicle_earliest.size // np.dtype(np.int32).itemsize,
-        mask=None,
-        offset=0,
-        null_count=0,
-        children=(),
-    )
-    vehicles["latest_time"] = cudf.core.column.build_column(
-        vehicle_latest,
-        dtype=np.int32,
-        size=vehicle_latest.size // np.dtype(np.int32).itemsize,
-        mask=None,
-        offset=0,
-        null_count=0,
-        children=(),
-    )
-    vehicles["drop_return_trips"] = cudf.core.column.build_column(
-        vehicle_drop_return_trips,
-        dtype=np.bool_,
-        size=vehicle_drop_return_trips.size // np.dtype(np.bool_).itemsize,
-        mask=None,
-        offset=0,
-        null_count=0,
-        children=(),
-    )
-    vehicles["skip_first_trips"] = cudf.core.column.build_column(
-        vehicle_skip_first_trips,
-        dtype=np.bool_,
-        size=vehicle_skip_first_trips.size // np.dtype(np.bool_).itemsize,
-        mask=None,
-        offset=0,
-        null_count=0,
-        children=(),
-    )
+    vehicles["earliest_time"] = _col_from_buf(vehicle_earliest, np.int32)
+    vehicles["latest_time"] = _col_from_buf(vehicle_latest, np.int32)
+    vehicles["drop_return_trips"] = _col_from_buf(vehicle_drop_return_trips,
+                                                   np.bool_)
+    vehicles["skip_first_trips"] = _col_from_buf(vehicle_skip_first_trips,
+                                                  np.bool_)
 
     fleet_size = vehicles["earliest_time"].shape[0]
     capacities_buf = as_buffer(
@@ -232,24 +196,8 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
     )
     latest_time = as_buffer(latest_time)
 
-    orders["earliest_time"] = cudf.core.column.build_column(
-        earliest_time,
-        dtype=np.int32,
-        size=earliest_time.size // np.dtype(np.int32).itemsize,
-        mask=None,
-        offset=0,
-        null_count=0,
-        children=(),
-    )
-    orders["latest_time"] = cudf.core.column.build_column(
-        latest_time,
-        dtype=np.int32,
-        size=latest_time.size // np.dtype(np.int32).itemsize,
-        mask=None,
-        offset=0,
-        null_count=0,
-        children=(),
-    )
+    orders["earliest_time"] = _col_from_buf(earliest_time, np.int32)
+    orders["latest_time"] = _col_from_buf(latest_time, np.int32)
 
     demands_buf = as_buffer(
         DeviceBuffer.c_from_unique_ptr(move(g_ret.d_demands_))
