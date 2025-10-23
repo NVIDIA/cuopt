@@ -810,28 +810,72 @@ def Solve(DataModel data_model, SolverSettings solver_settings):
 
     route_df = cudf.DataFrame()
     route_df['route'] = cudf.core.column.build_column(
-        route, dtype=np.dtype(np.int32)
+        route,
+        dtype=np.dtype(np.int32),
+        size=route.size // np.dtype(np.int32).itemsize,
+        mask=None,
+        offset=0,
+        null_count=0,
+        children=(),
     )
     route_df['arrival_stamp'] = cudf.core.column.build_column(
-        arrival_stamp, dtype=np.dtype(np.float64)
+        arrival_stamp,
+        dtype=np.dtype(np.float64)
+        size=arrival_stamp.size // np.dtype(np.float64).itemsize,
+        mask=None,
+        offset=0,
+        null_count=0,
+        children=(),
     )
     route_df['truck_id'] = cudf.core.column.build_column(
-        truck_id, dtype=np.dtype(np.int32)
+        truck_id,
+        dtype=np.dtype(np.int32),
+        size=truck_id.size // np.dtype(np.int32).itemsize,
+        mask=None,
+        offset=0,
+        null_count=0,
+        children=(),
     )
     route_df['location'] = cudf.core.column.build_column(
-        route_locations, dtype=np.dtype(np.int32)
+        route_locations,
+        dtype=np.dtype(np.int32),
+        size=route_locations.size // np.dtype(np.int32).itemsize,
+        mask=None,
+        offset=0,
+        null_count=0,
+        children=(),
     )
     route_df['type'] = cudf.core.column.build_column(
-        node_types, dtype=np.dtype(np.int32)
+        node_types,
+        dtype=np.dtype(np.int32),
+        size=node_types.size // np.dtype(np.int32).itemsize,
+        mask=None,
+        offset=0,
+        null_count=0,
+        children=(),
     )
 
     unserviced_nodes = cudf.Series._from_column(
         cudf.core.column.build_column(
-            unserviced_nodes, dtype=np.dtype(np.int32)
+            unserviced_nodes,
+            dtype=np.dtype(np.int32),
+            size=unserviced_nodes.size // np.dtype(np.int32).itemsize,
+            mask=None,
+            offset=0,
+            null_count=0,
+            children=(),
         )
     )
     accepted = cudf.Series._from_column(
-        cudf.core.column.build_column(accepted, dtype=np.dtype(np.int32))
+        cudf.core.column.build_column(
+            accepted,
+            dtype=np.dtype(np.int32),
+            size=accepted.size // np.dtype(np.int32).itemsize,
+            mask=None,
+            offset=0,
+            null_count=0,
+            children=(),
+        )
     )
 
     def get_type_from_int(type_in_int):

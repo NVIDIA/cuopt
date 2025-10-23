@@ -328,10 +328,16 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         num_nodes = sol_ret.mip_ret.nodes_
         num_simplex_iterations = sol_ret.mip_ret.simplex_iterations_
 
+        solution_buf = as_buffer(solution)
         solution = cudf.Series._from_column(
             cudf.core.column.build_column(
-                as_buffer(solution),
-                dtype=np.dtype(np.float64)
+                solution_buf,
+                dtype=np.dtype(np.float64),
+                size=solution_buf.size // np.dtype(np.float64).itemsize,
+                mask=None,
+                offset=0,
+                null_count=0,
+                children=(),
             )
         ).to_numpy()
 
@@ -361,22 +367,41 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         dual_solution = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.dual_solution_)) # noqa
         reduced_cost = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.reduced_cost_)) # noqa
 
+        primal_solution_buf = as_buffer(primal_solution)
+        dual_solution_buf = as_buffer(dual_solution)
+        reduced_cost_buf = as_buffer(reduced_cost)
+
         primal_solution = cudf.Series._from_column(
             cudf.core.column.build_column(
-                as_buffer(primal_solution),
-                dtype=np.dtype(np.float64)
+                primal_solution_buf,
+                dtype=np.dtype(np.float64),
+                size=primal_solution_buf.size // np.dtype(np.float64).itemsize,
+                mask=None,
+                offset=0,
+                null_count=0,
+                children=(),
             )
         ).to_numpy()
         dual_solution = cudf.Series._from_column(
             cudf.core.column.build_column(
-                as_buffer(dual_solution),
-                dtype=np.dtype(np.float64)
+                dual_solution_buf,
+                dtype=np.dtype(np.float64),
+                size=dual_solution_buf.size // np.dtype(np.float64).itemsize,
+                mask=None,
+                offset=0,
+                null_count=0,
+                children=(),
             )
         ).to_numpy()
         reduced_cost = cudf.Series._from_column(
             cudf.core.column.build_column(
-                as_buffer(reduced_cost),
-                dtype=np.dtype(np.float64)
+                reduced_cost_buf,
+                dtype=np.dtype(np.float64),
+                size=reduced_cost_buf.size // np.dtype(np.float64).itemsize,
+                mask=None,
+                offset=0,
+                null_count=0,
+                children=(),
             )
         ).to_numpy()
 
@@ -430,58 +455,113 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             sum_solution_weight = sol_ret.lp_ret.sum_solution_weight_
             iterations_since_last_restart = sol_ret.lp_ret.iterations_since_last_restart_ # noqa
 
+            current_primal_solution_buf = as_buffer(current_primal_solution)
+            current_dual_solution_buf = as_buffer(current_dual_solution)
+            initial_primal_average_buf = as_buffer(initial_primal_average)
+            initial_dual_average_buf = as_buffer(initial_dual_average)
+            current_ATY_buf = as_buffer(current_ATY)
+            sum_primal_solutions_buf = as_buffer(sum_primal_solutions)
+            sum_dual_solutions_buf = as_buffer(sum_dual_solutions)
+            last_restart_duality_gap_primal_solution_buf = as_buffer(last_restart_duality_gap_primal_solution)
+            last_restart_duality_gap_dual_solution_buf = as_buffer(last_restart_duality_gap_dual_solution)
+
             current_primal_solution = cudf.Series._from_column(
                 cudf.core.column.build_column(
-                    as_buffer(current_primal_solution),
-                    dtype=np.dtype(np.float64)
+                    current_primal_solution_buf,
+                    dtype=np.dtype(np.float64),
+                    size=current_primal_solution_buf.size // np.dtype(np.float64).itemsize,
+                    mask=None,
+                    offset=0,
+                    null_count=0,
+                    children=(),
                 )
             ).to_numpy()
             current_dual_solution = cudf.Series._from_column(
                 cudf.core.column.build_column(
-                    as_buffer(current_dual_solution),
-                    dtype=np.dtype(np.float64)
+                    current_dual_solution_buf,
+                    dtype=np.dtype(np.float64),
+                    size=current_dual_solution_buf.size // np.dtype(np.float64).itemsize,
+                    mask=None,
+                    offset=0,
+                    null_count=0,
+                    children=(),
                 )
             ).to_numpy()
             initial_primal_average = cudf.Series._from_column(
                 cudf.core.column.build_column(
-                    as_buffer(initial_primal_average),
-                    dtype=np.dtype(np.float64)
+                    initial_primal_average_buf,
+                    dtype=np.dtype(np.float64),
+                    size=initial_primal_average_buf.size // np.dtype(np.float64).itemsize,
+                    mask=None,
+                    offset=0,
+                    null_count=0,
+                    children=(),
                 )
             ).to_numpy()
             initial_dual_average = cudf.Series._from_column(
                 cudf.core.column.build_column(
-                    as_buffer(initial_dual_average),
-                    dtype=np.dtype(np.float64)
+                    initial_dual_average_buf,
+                    dtype=np.dtype(np.float64),
+                    size=initial_dual_average_buf.size // np.dtype(np.float64).itemsize,
+                    mask=None,
+                    offset=0,
+                    null_count=0,
+                    children=(),
                 )
             ).to_numpy()
             current_ATY = cudf.Series._from_column(
                 cudf.core.column.build_column(
-                    as_buffer(current_ATY),
-                    dtype=np.dtype(np.float64)
+                    current_ATY_buf,
+                    dtype=np.dtype(np.float64),
+                    size=current_ATY_buf.size // np.dtype(np.float64).itemsize,
+                    mask=None,
+                    offset=0,
+                    null_count=0,
+                    children=(),
                 )
             ).to_numpy()
             sum_primal_solutions = cudf.Series._from_column(
                 cudf.core.column.build_column(
-                    as_buffer(sum_primal_solutions),
-                    dtype=np.dtype(np.float64)
+                    sum_primal_solutions_buf,
+                    dtype=np.dtype(np.float64),
+                    size=sum_primal_solutions_buf.size // np.dtype(np.float64).itemsize,
+                    mask=None,
+                    offset=0,
+                    null_count=0,
+                    children=(),
                 )
             ).to_numpy()
             sum_dual_solutions = cudf.Series._from_column(
                 cudf.core.column.build_column(
-                    as_buffer(sum_dual_solutions),
-                    dtype=np.dtype(np.float64)
+                    sum_dual_solutions_buf,
+                    dtype=np.dtype(np.float64),
+                    size=sum_dual_solutions_buf.size // np.dtype(np.float64).itemsize,
+                    mask=None,
+                    offset=0,
+                    null_count=0,
+                    children=(),
                 )
             ).to_numpy()
             last_restart_duality_gap_primal_solution = cudf.Series._from_column( # noqa
                 cudf.core.column.build_column(
-                    as_buffer(last_restart_duality_gap_primal_solution),
-                    dtype=np.dtype(np.float64)
+                    last_restart_duality_gap_primal_solution_buf,
+                    dtype=np.dtype(np.float64),
+                    size=last_restart_duality_gap_primal_solution_buf.size // np.dtype(np.float64).itemsize,
+                    mask=None,
+                    offset=0,
+                    null_count=0,
+                    children=(),
                 )
             ).to_numpy()
             last_restart_duality_gap_dual_solution = cudf.Series._from_column(
                 cudf.core.column.build_column(
-                    as_buffer(last_restart_duality_gap_dual_solution),
-                    dtype=np.dtype(np.float64)
+                    last_restart_duality_gap_dual_solution_buf,
+                    dtype=np.dtype(np.float64),
+                    size=last_restart_duality_gap_dual_solution_buf.size // np.dtype(np.float64).itemsize,
+                    mask=None,
+                    offset=0,
+                    null_count=0,
+                    children=(),
                 )
             ).to_numpy()
 

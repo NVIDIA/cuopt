@@ -110,7 +110,12 @@ cdef class WaypointMatrix:
         route_df['sequence_offset'] = (
             cudf.core.column.build_column(
                 full_sequence_offset,
-                dtype=np.dtype(np.int32)
+                dtype=np.dtype(np.int32),
+                size=full_sequence_offset.size // np.dtype(np.int32).itemsize,
+                mask=None,
+                offset=0,
+                null_count=0,
+                children=(),
             )
         )
         locations = route_df["location"].replace(
@@ -119,7 +124,13 @@ cdef class WaypointMatrix:
         )
         route_df['location'] = locations
         waypoint_seq = cudf.core.column.build_column(
-            full_path, dtype=np.dtype(np.int32)
+            full_path,
+            dtype=np.dtype(np.int32),
+            size=full_path.size // np.dtype(np.int32).itemsize,
+            mask=None,
+            offset=0,
+            null_count=0,
+            children=(),
         )
 
         def create_way_point_types(routes, waypoint_seq):
