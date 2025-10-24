@@ -16,15 +16,10 @@
  */
 #pragma once
 
-#include <cuopt/logger.hpp>
 #include <fstream>
 #include <iostream>
+#include <utilities/logger.hpp>
 
 namespace cuopt {
-class init_logger_t {
- public:
-  init_logger_t(std::string log_file, bool log_to_console);
 
-  ~init_logger_t();
-};
 }  // namespace cuopt

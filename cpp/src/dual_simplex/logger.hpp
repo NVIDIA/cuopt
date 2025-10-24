@@ -18,7 +18,7 @@
 #pragma once
 
 #ifdef CUOPT_LOG_ACTIVE_LEVEL
-#include <cuopt/logger.hpp>
+#include <utilities/logger.hpp>
 #endif
 
 #include <string>

@@ -15,10 +15,9 @@
  * limitations under the License.
  */
 
-#include <cuopt/logger.hpp>
-
-#include <utilities/logger_init.hpp>
+#include <utilities/logger.hpp>
 #include <utilities/version_info.hpp>
+
 namespace cuopt {
 
 // Buffer to store log messages

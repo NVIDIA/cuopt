@@ -22,8 +22,8 @@
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/logger.hpp>
 #include <mps_parser/parser.hpp>
+#include <utilities/logger.hpp>
 
 #include <raft/core/handle.hpp>
 
