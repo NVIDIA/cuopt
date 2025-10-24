@@ -62,11 +62,11 @@ jobs:
         id: set-filters
         run: |
           if [ "${{ env.LEAN_CI }}" == "true" ]; then
-            echo "lean_filter=[map(select(.ARCH == \"amd64\")) | max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))])]" >> $GITHUB_OUTPUT
-            echo "mps_parser_filter=[map(select(.ARCH == \"amd64\")) | max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))])]" >> $GITHUB_OUTPUT
-            echo "libcuopt_filter=[map(select(.ARCH == \"amd64\")) | max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))])]" >> $GITHUB_OUTPUT
-            echo "cuopt_server_filter=[map(select(.ARCH == \"amd64\")) | max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))])]" >> $GITHUB_OUTPUT
-            echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))])]" >> $GITHUB_OUTPUT
+            echo "lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "mps_parser_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "libcuopt_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "cuopt_server_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
           else
             echo "lean_filter=." >> $GITHUB_OUTPUT
             echo "mps_parser_filter=group_by([.ARCH, (.PY_VER |split(\".\") | map(tonumber))])|map(max_by([(.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
