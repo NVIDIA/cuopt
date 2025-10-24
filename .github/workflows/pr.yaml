@@ -19,12 +19,44 @@ on:
   push:
     branches:
       - "pull-request/[0-9]+"
+  workflow_dispatch:
+    inputs:
+      lean_ci:
+        description: 'Run lean CI (amd64 only, latest Python and CUDA)'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  compute-matrix-filters:
+    runs-on: ubuntu-latest
+    outputs:
+      lean_filter: ${{ steps.set-filters.outputs.lean_filter }}
+      mps_parser_filter: ${{ steps.set-filters.outputs.mps_parser_filter }}
+      libcuopt_filter: ${{ steps.set-filters.outputs.libcuopt_filter }}
+      cuopt_server_filter: ${{ steps.set-filters.outputs.cuopt_server_filter }}
+      cuopt_sh_client_filter: ${{ steps.set-filters.outputs.cuopt_sh_client_filter }}
+    steps:
+      - name: Set matrix filters
+        id: set-filters
+        run: |
+          if [ "${{ inputs.lean_ci }}" == "true" ]; then
+            echo "lean_filter=[map(select(.ARCH == \"amd64\")) | max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))])]" >> $GITHUB_OUTPUT
+            echo "mps_parser_filter=[map(select(.ARCH == \"amd64\")) | max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))])]" >> $GITHUB_OUTPUT
+            echo "libcuopt_filter=[map(select(.ARCH == \"amd64\")) | max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))])]" >> $GITHUB_OUTPUT
+            echo "cuopt_server_filter=[map(select(.ARCH == \"amd64\")) | max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))])]" >> $GITHUB_OUTPUT
+            echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))])]" >> $GITHUB_OUTPUT
+          else
+            echo "lean_filter=" >> $GITHUB_OUTPUT
+            echo "mps_parser_filter=group_by([.ARCH, (.PY_VER |split(\".\") | map(tonumber))])|map(max_by([(.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
+            echo "libcuopt_filter=group_by([.ARCH, (.CUDA_VER|split(\".\")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(\".\")|map(tonumber)))" >> $GITHUB_OUTPUT
+            echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
+            echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | min_by((.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(-tonumber)))]" >> $GITHUB_OUTPUT
+          fi
   pr-builder:
     needs:
       - changed-files
@@ -116,29 +148,32 @@ jobs:
       enable_check_generated_files: false
 
   conda-cpp-build:
-    needs: checks
+    needs: [checks, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@main
     with:
       build_type: pull-request
       script: ci/build_cpp.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
   conda-cpp-tests:
-    needs: [conda-cpp-build, changed-files]
+    needs: [conda-cpp-build, changed-files, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
   conda-python-build:
-    needs: conda-cpp-build
+    needs: [conda-cpp-build, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
     with:
       build_type: pull-request
       script: ci/build_python.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
   conda-python-tests:
-    needs: [conda-python-build, changed-files]
+    needs: [conda-python-build, changed-files, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python
@@ -146,6 +181,7 @@ jobs:
       run_codecov: false
       build_type: pull-request
       script: ci/test_python.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
   docs-build:
     needs: conda-python-build
     secrets: inherit
@@ -159,6 +195,7 @@ jobs:
       container_image: "rapidsai/ci-conda:25.12-latest"
       script: "ci/build_docs.sh"
   wheel-build-cuopt-mps-parser:
+    needs: compute-matrix-filters
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -168,20 +205,20 @@ jobs:
       package-type: python
       append-cuda-suffix: false
       # need 1 build per Python version and arch (but CUDA version doesn't matter so choose the latest)
-      matrix_filter: 'group_by([.ARCH, (.PY_VER |split(".") | map(tonumber))])|map(max_by([(.CUDA_VER|split(".")|map(tonumber))]))'
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.mps_parser_filter }}
   wheel-build-libcuopt:
-    needs: wheel-build-cuopt-mps-parser
+    needs: [wheel-build-cuopt-mps-parser, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       # build for every combination of arch and CUDA version, but only for the latest Python
-      matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_filter }}
       package-type: cpp
       package-name: libcuopt
       build_type: pull-request
       script: ci/build_wheel_libcuopt.sh
   wheel-build-cuopt:
-    needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt]
+    needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -189,16 +226,18 @@ jobs:
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
   wheel-tests-cuopt:
-    needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, wheel-build-cuopt-sh-client, changed-files]
+    needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, wheel-build-cuopt-sh-client, changed-files, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
   wheel-build-cuopt-server:
-    needs: checks
+    needs: [checks, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -208,8 +247,9 @@ jobs:
       package-type: python
       pure-wheel: true
       # Only need 1 package per CUDA major version. This selects "ARCH=amd64 + the latest supported Python, 1 job per major CUDA version".
-      matrix_filter: map(select(.ARCH == "amd64")) | group_by(.CUDA_VER|split(".")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(".")|map(tonumber)), (.CUDA_VER|split(".")|map(tonumber))]))
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_filter }}
   wheel-build-cuopt-sh-client:
+    needs: compute-matrix-filters
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -220,15 +260,16 @@ jobs:
       append-cuda-suffix: false
       pure-wheel: true
       # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
-      matrix_filter: '[map(select(.ARCH == "amd64")) | min_by((.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber)))]'
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_sh_client_filter }}
   wheel-tests-cuopt-server:
-    needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
+    needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt_server
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
   test-self-hosted-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
     secrets: inherit
