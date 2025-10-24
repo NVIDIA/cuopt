@@ -32,7 +32,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
- pr-builder:
+  pr-builder:
     needs:
       - compute-matrix-filters
       - changed-files
@@ -52,7 +52,7 @@ jobs:
       - test-self-hosted-server
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
- compute-matrix-filters:
+  compute-matrix-filters:
     runs-on: ubuntu-latest
     outputs:
       lean_filter: ${{ steps.set-filters.outputs.lean_filter }}
@@ -148,7 +148,6 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
     with:
       enable_check_generated_files: false
-
   conda-cpp-build:
     needs: [checks, compute-matrix-filters]
     secrets: inherit
