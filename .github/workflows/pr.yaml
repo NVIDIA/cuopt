@@ -24,7 +24,7 @@ on:
       lean_ci:
         description: 'Run lean CI (amd64 only, latest Python and CUDA)'
         required: false
-        default: false
+        default: true
         type: boolean
 
 concurrency:
