@@ -77,7 +77,7 @@ i_t get_max_var_threshold(i_t n_vars)
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::apply_problem_ptr_to_all_solutions()
 {
-  for (size_t i = 1; i < indices.size(); i++) {
+  for (size_t i = 0; i < indices.size(); i++) {
     solutions[indices[i].first].second.problem_ptr = problem_ptr;
     solutions[indices[i].first].second.resize_to_problem();
     solutions[indices[i].first].second.compute_feasibility();

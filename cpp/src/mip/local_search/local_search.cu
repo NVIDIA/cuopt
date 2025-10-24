@@ -815,6 +815,8 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
   solution.resize_to_problem();
   resize_to_old_problem(old_problem_ptr);
   solution.handle_ptr->sync_stream();
+  population_ptr->problem_ptr = old_problem_ptr;
+  population_ptr->apply_problem_ptr_to_all_solutions();
   return is_feasible;
 }
 
