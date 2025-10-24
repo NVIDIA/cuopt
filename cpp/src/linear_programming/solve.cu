@@ -20,9 +20,9 @@
 #include <linear_programming/restart_strategy/pdlp_restart_strategy.cuh>
 #include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <linear_programming/translate.hpp>
-#include <linear_programming/utilities/logger_init.hpp>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <linear_programming/utils.cuh>
+#include <utilities/logger_init.hpp>
 
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/third_party_presolve.hpp>
