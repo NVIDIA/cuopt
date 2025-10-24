@@ -356,7 +356,7 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
   // } else {
   //   fj_settings.time_limit = std::min(1., timer.remaining_time());
   // }
-  fj_settings.time_limit      = std::min(0.5, timer.remaining_time());
+  fj_settings.time_limit      = std::min(1., timer.remaining_time());
   timer                       = timer_t(fj_settings.time_limit);
   fj_settings.update_weights  = false;
   fj_settings.feasibility_run = false;
@@ -649,7 +649,7 @@ void local_search_t<i_t, f_t>::reset_alpha_and_save_solution(
   f_t& best_objective)
 {
   raft::common::nvtx::range fun_scope("reset_alpha_and_save_solution");
-  fp.config.alpha = default_alpha;
+  fp.reset();
   solution_t<i_t, f_t> solution_copy(solution);
   // solution_copy.problem_ptr = old_problem_ptr;
   // solution_copy.resize_to_problem();
@@ -701,7 +701,7 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
   if (population_ptr->current_size() > 1 &&
       i - last_improved_iteration > iterations_for_stagnation) {
-    fp.config.alpha = default_alpha;
+    // fp.config.alpha = default_alpha;
     population_ptr->apply_problem_ptr_to_all_solutions();
     population_ptr->diversity_step(max_iterations_without_improvement);
     population_ptr->print();
