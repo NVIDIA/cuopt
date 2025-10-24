@@ -661,12 +661,15 @@ void local_search_t<i_t, f_t>::reset_alpha_and_save_solution(
     solution.resize_to_problem();
     resize_to_new_problem();
     cutting_plane_added_for_active_run = true;
-    population_ptr->weights.cstr_weights.resize(problem_with_objective_cut.n_constraints,
-                                                solution.handle_ptr->get_stream());
     raft::copy(population_ptr->weights.cstr_weights.data(),
                fj.cstr_weights.data(),
                population_ptr->weights.cstr_weights.size(),
                solution.handle_ptr->get_stream());
+    population_ptr->weights.cstr_weights.resize(problem_with_objective_cut.n_constraints,
+                                                solution.handle_ptr->get_stream());
+    const f_t one = 1.0;
+    population_ptr->weights.cstr_weights.set_element_async(
+      population_ptr->weights.cstr_weights.size() - 1, one, solution.handle_ptr->get_stream());
   }
   population_ptr->update_weights();
   save_solution_and_add_cutting_plane(
