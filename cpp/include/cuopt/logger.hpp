@@ -21,7 +21,31 @@
 
 #include <rapids_logger/logger.hpp>
 
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+
 namespace cuopt {
+
+// Buffer to store log messages
+class log_buffer {
+ public:
+  log_buffer()  = default;
+  ~log_buffer() = default;
+
+  void add(const char* msg);
+
+  std::vector<std::string> get() const;
+
+  void clear();
+
+  std::vector<std::string> messages;
+  mutable std::mutex mutex;
+};
+
+log_buffer& global_log_buffer();
 
 /**
  * @brief Returns the default sink for the global logger.
@@ -68,39 +92,13 @@ inline rapids_logger::level_enum default_level()
  *
  * @return logger& The default logger
  */
-inline rapids_logger::logger& default_logger()
-{
-  static rapids_logger::logger logger_ = [] {
-    rapids_logger::logger logger_{"CUOPT", {default_sink()}};
-#if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
-    logger_.set_pattern("%v");
-#else
-    logger_.set_pattern(default_pattern());
-#endif
-    logger_.set_level(default_level());
-    logger_.flush_on(rapids_logger::level_enum::debug);
-
-    return logger_;
-  }();
-  return logger_;
-}
+rapids_logger::logger& default_logger();
 
 /**
  * @brief Reset the default logger to the default settings.
  *  This is needed when we are running multiple tests and each test has different logger settings
  *  and we need to reset the logger to the default settings before each test.
  */
-inline void reset_default_logger()
-{
-  default_logger().sinks().clear();
-  default_logger().sinks().push_back(default_sink());
-#if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
-  default_logger().set_pattern("%v");
-#else
-  default_logger().set_pattern(default_pattern());
-#endif
-  default_logger().set_level(default_level());
-  default_logger().flush_on(rapids_logger::level_enum::debug);
-}
+void reset_default_logger();
 
 }  // namespace cuopt
