@@ -81,3 +81,5 @@ if [[ "${RAPIDS_BUILD_TYPE}" == "nightly" ]]; then
     ./ci/thirdparty-testing/run_jump_tests.sh
     ./ci/thirdparty-testing/run_cvxpy_tests.sh
 fi
+
+./ci/thirdparty-testing/run_cvxpy_tests.sh
