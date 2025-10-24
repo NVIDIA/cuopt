@@ -59,6 +59,7 @@ jobs:
           fi
   pr-builder:
     needs:
+      - compute-matrix-filters
       - changed-files
       - checks
       - conda-cpp-build
