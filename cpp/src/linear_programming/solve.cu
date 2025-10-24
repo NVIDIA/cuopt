@@ -22,7 +22,7 @@
 #include <linear_programming/translate.hpp>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <linear_programming/utils.cuh>
-#include <utilities/logger_init.hpp>
+#include <utilities/logger.hpp>
 
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/third_party_presolve.hpp>
