@@ -357,6 +357,7 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
   //   fj_settings.time_limit = std::min(1., timer.remaining_time());
   // }
   fj_settings.time_limit      = std::min(1., timer.remaining_time());
+  timer                       = timer_t(fj_settings.time_limit);
   fj_settings.update_weights  = false;
   fj_settings.feasibility_run = false;
   fj.set_fj_settings(fj_settings);
