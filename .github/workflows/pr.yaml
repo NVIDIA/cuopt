@@ -32,7 +32,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  compute-matrix-filters:
+ pr-builder:
+    needs:
+      - compute-matrix-filters
+      - changed-files
+      - checks
+      - conda-cpp-build
+      - conda-cpp-tests
+      - conda-python-build
+      - conda-python-tests
+      - docs-build
+      - wheel-build-libcuopt
+      - wheel-build-cuopt
+      - wheel-tests-cuopt
+      - wheel-build-cuopt-server
+      - wheel-tests-cuopt-server
+      - wheel-build-cuopt-mps-parser
+      - wheel-build-cuopt-sh-client
+      - test-self-hosted-server
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
+ compute-matrix-filters:
     runs-on: ubuntu-latest
     outputs:
       lean_filter: ${{ steps.set-filters.outputs.lean_filter }}
@@ -57,26 +77,7 @@ jobs:
             echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
             echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | min_by((.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(-tonumber)))]" >> $GITHUB_OUTPUT
           fi
-  pr-builder:
-    needs:
-      - compute-matrix-filters
-      - changed-files
-      - checks
-      - conda-cpp-build
-      - conda-cpp-tests
-      - conda-python-build
-      - conda-python-tests
-      - docs-build
-      - wheel-build-libcuopt
-      - wheel-build-cuopt
-      - wheel-tests-cuopt
-      - wheel-build-cuopt-server
-      - wheel-tests-cuopt-server
-      - wheel-build-cuopt-mps-parser
-      - wheel-build-cuopt-sh-client
-      - test-self-hosted-server
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
+
   changed-files:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@main
