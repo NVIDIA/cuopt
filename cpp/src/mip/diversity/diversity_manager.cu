@@ -347,7 +347,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     relaxed_lp_settings_t lp_settings;
     lp_settings.time_limit            = lp_time_limit;
     lp_settings.tolerance             = context.settings.tolerances.absolute_tolerance;
-    lp_settings.return_first_feasible = false;
+    lp_settings.return_first_feasible = true;
     lp_settings.save_state            = true;
     lp_settings.concurrent_halt       = &global_concurrent_halt;
     lp_settings.has_initial_primal    = false;
