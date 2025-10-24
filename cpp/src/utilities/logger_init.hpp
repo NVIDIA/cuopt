@@ -20,41 +20,11 @@
 #include <fstream>
 #include <iostream>
 
-namespace cuopt::linear_programming {
+namespace cuopt {
 class init_logger_t {
  public:
-  init_logger_t(std::string log_file, bool log_to_console = true)
-  {
-    // if (!log_to_console) {
-    // popback the default sink
-    cuopt::default_logger().sinks().pop_back();
-    // }
+  init_logger_t(std::string log_file, bool log_to_console);
 
-    if (log_to_console) {
-      cuopt::default_logger().sinks().push_back(
-        std::make_shared<rapids_logger::ostream_sink_mt>(std::cout));
-    }
-    if (!log_file.empty()) {
-      // TODO save the defaul sink and restore it
-      cuopt::default_logger().sinks().push_back(
-        std::make_shared<rapids_logger::basic_file_sink_mt>(log_file, true));
-      cuopt::default_logger().flush_on(rapids_logger::level_enum::debug);
-    }
-
-#if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
-    cuopt::default_logger().set_pattern("%v");
-#else
-    cuopt::default_logger().set_pattern(cuopt::default_pattern());
-#endif
-
-    // Extract messages from the global buffer and log to the default logger
-    auto buffered_messages = global_log_buffer().get();
-    // std::cout << "Buffered messages: " << buffered_messages.size() << std::endl;
-    for (const auto& msg : buffered_messages) {
-      cuopt::default_logger().log(rapids_logger::level_enum::info, msg);
-    }
-    global_log_buffer().clear();
-  }
-  ~init_logger_t() { cuopt::reset_default_logger(); }
+  ~init_logger_t();
 };
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt

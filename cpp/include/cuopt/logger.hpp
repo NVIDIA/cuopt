@@ -29,64 +29,6 @@
 
 namespace cuopt {
 
-// Buffer to store log messages
-class log_buffer {
- public:
-  log_buffer()  = default;
-  ~log_buffer() = default;
-
-  void add(const char* msg);
-
-  std::vector<std::string> get() const;
-
-  void clear();
-
-  std::vector<std::string> messages;
-  mutable std::mutex mutex;
-};
-
-log_buffer& global_log_buffer();
-
-/**
- * @brief Returns the default sink for the global logger.
- *
- * If the environment variable `CUOPT_DEBUG_LOG_FILE` is defined, the default sink is a sink to that
- * file. Otherwise, the default is to dump to stderr.
- *
- * @return sink_ptr The sink to use
- */
-rapids_logger::sink_ptr default_sink();
-/**
- * @brief Returns the default log pattern for the global logger.
- *
- * @return std::string The default log pattern.
- */
-inline std::string default_pattern() { return "[%Y-%m-%d %H:%M:%S:%f] [%n] [%-6l] %v"; }
-
-/**
- * @brief Returns the default log level for the global logger.
- *
- * @return rapids_logger::level_enum The default log level.
- */
-inline rapids_logger::level_enum default_level()
-{
-#if CUOPT_LOG_ACTIVE_LEVEL == RAPIDS_LOGGER_LOG_LEVEL_TRACE
-  return rapids_logger::level_enum::trace;
-#elif CUOPT_LOG_ACTIVE_LEVEL == RAPIDS_LOGGER_LOG_LEVEL_DEBUG
-  return rapids_logger::level_enum::debug;
-#elif CUOPT_LOG_ACTIVE_LEVEL == RAPIDS_LOGGER_LOG_LEVEL_INFO
-  return rapids_logger::level_enum::info;
-#elif CUOPT_LOG_ACTIVE_LEVEL == RAPIDS_LOGGER_LOG_LEVEL_WARN
-  return rapids_logger::level_enum::warn;
-#elif CUOPT_LOG_ACTIVE_LEVEL == RAPIDS_LOGGER_LOG_LEVEL_ERROR
-  return rapids_logger::level_enum::error;
-#elif CUOPT_LOG_ACTIVE_LEVEL == RAPIDS_LOGGER_LOG_LEVEL_CRITICAL
-  return rapids_logger::level_enum::critical;
-#else
-  return rapids_logger::level_enum::info;
-#endif
-}
-
 /**
  * @brief Get the default logger.
  *
