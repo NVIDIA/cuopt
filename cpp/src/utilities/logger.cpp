@@ -20,34 +20,42 @@
 
 namespace cuopt {
 
+struct buffered_entry {
+  rapids_logger::level_enum level;
+  std::string msg;
+};
+
 // Buffer to store log messages
 class log_buffer {
  public:
   log_buffer()  = default;
   ~log_buffer() = default;
 
-  void add(const char* msg)
+  void log(rapids_logger::level_enum lvl, const char* msg)
   {
     std::lock_guard<std::mutex> lock(mutex);
+    if (!msg) return;
     std::string str(msg);
 
     if (!str.empty() && str.back() == '\n') { str.pop_back(); }
-    messages.emplace_back(str);
+    messages.push_back({lvl, std::move(str)});
   }
 
-  std::vector<std::string> get() const
+  size_t size() const
   {
     std::lock_guard<std::mutex> lock(mutex);
-    return messages;
+    return messages.size();
   }
 
-  void clear()
+  std::vector<buffered_entry> drain_all()
   {
     std::lock_guard<std::mutex> lock(mutex);
-    messages.clear();
+    std::vector<buffered_entry> out;
+    out.swap(messages);
+    return out;
   }
 
-  std::vector<std::string> messages;
+  std::vector<buffered_entry> messages;
   mutable std::mutex mutex;
 };
 
@@ -60,8 +68,8 @@ log_buffer& global_log_buffer()
 // Callback function for the buffer sink
 static void buffer_log_callback(int lvl, const char* msg)
 {
-  // FIXME:: check for levels?
-  global_log_buffer().add(msg);
+  // store level with message; actual filtering happens at logger time
+  global_log_buffer().log(static_cast<rapids_logger::level_enum>(lvl), msg);
 }
 
 /**
@@ -142,8 +150,11 @@ void reset_default_logger()
 init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
 {
   // until this function is called, the default sink is the buffer sink
-  cuopt::default_logger().sinks().pop_back();
+  // if (cuopt::default_logger().sinks()) {
+  cuopt::default_logger().sinks().clear();
+  //}
 
+  // re-initialize sinks
   if (log_to_console) {
     cuopt::default_logger().sinks().push_back(
       std::make_shared<rapids_logger::ostream_sink_mt>(std::cout));
@@ -161,11 +172,10 @@ init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
 #endif
 
   // Extract messages from the global buffer and log to the default logger
-  auto buffered_messages = global_log_buffer().get();
-  for (const auto& msg : buffered_messages) {
-    cuopt::default_logger().log(rapids_logger::level_enum::info, msg);
+  auto buffered_messages = global_log_buffer().drain_all();
+  for (const auto& entry : buffered_messages) {
+    cuopt::default_logger().log(entry.level, entry.msg.c_str());
   }
-  global_log_buffer().clear();
 }
 
 init_logger_t::~init_logger_t() { cuopt::reset_default_logger(); }
