@@ -53,8 +53,11 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   pdlp_solver_settings_t<i_t, f_t> pdlp_settings{};
   pdlp_settings.detect_infeasibility = settings.check_infeasibility;
   pdlp_settings.set_optimality_tolerance(settings.tolerance);
-  pdlp_settings.tolerances.relative_primal_tolerance = settings.tolerance / 100.;
-  pdlp_settings.tolerances.relative_dual_tolerance   = settings.tolerance / 100.;
+  f_t tolerance_divisor =
+    op_problem.tolerances.absolute_tolerance / op_problem.tolerances.relative_tolerance;
+  if (tolerance_divisor == 0) { tolerance_divisor = 1; }
+  pdlp_settings.tolerances.relative_primal_tolerance = settings.tolerance / tolerance_divisor;
+  pdlp_settings.tolerances.relative_dual_tolerance   = settings.tolerance / tolerance_divisor;
   pdlp_settings.time_limit                           = settings.time_limit;
   pdlp_settings.concurrent_halt                      = settings.concurrent_halt;
   pdlp_settings.per_constraint_residual              = settings.per_constraint_residual;

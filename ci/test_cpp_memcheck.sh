@@ -24,7 +24,7 @@ set -euo pipefail
 
 . /opt/conda/etc/profile.d/conda.sh
 
-CUOPT_VERSION="$(rapids-version)"
+RAPIDS_VERSION="$(rapids-version)"
 
 rapids-logger "Generate C++ testing dependencies"
 rapids-dependency-file-generator \
@@ -47,8 +47,8 @@ rapids-print-env
 
 rapids-mamba-retry install \
   --channel "${CPP_CHANNEL}" \
-  "libcuopt=${CUOPT_VERSION}" \
-  "libcuopt-tests=${CUOPT_VERSION}"
+  "libcuopt=${RAPIDS_VERSION}" \
+  "libcuopt-tests=${RAPIDS_VERSION}"
 
 rapids-logger "Check GPU usage"
 nvidia-smi

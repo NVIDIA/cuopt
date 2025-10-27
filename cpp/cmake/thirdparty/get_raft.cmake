@@ -13,14 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set(CUOPT_MIN_VERSION_raft "${DEPENDENT_LIB_MAJOR_VERSION}.${DEPENDENT_LIB_MINOR_VERSION}.00")
-set(CUOPT_BRANCH_VERSION_raft "${DEPENDENT_LIB_MAJOR_VERSION}.${DEPENDENT_LIB_MINOR_VERSION}")
+set(CUOPT_MIN_VERSION_raft "${RAPIDS_VERSION_MAJOR}.${RAPIDS_VERSION_MINOR}.00")
 
 function(find_and_configure_raft)
     set(oneValueArgs VERSION FORK PINNED_TAG CLONE_ON_PIN)
     cmake_parse_arguments(PKG "" "${oneValueArgs}" "" ${ARGN})
 
-    if(PKG_CLONE_ON_PIN AND NOT PKG_PINNED_TAG STREQUAL "branch-${CUOPT_BRANCH_VERSION_raft}")
+    if(PKG_CLONE_ON_PIN AND NOT PKG_PINNED_TAG STREQUAL "${rapids-cmake-checkout-tag}")
         message("Pinned tag found: ${PKG_PINNED_TAG}. Cloning raft locally.")
         set(CPM_DOWNLOAD_raft ON)
     endif()
@@ -48,10 +47,9 @@ endfunction()
 
 # Change pinned tag and fork here to test a commit in CI
 # To use a different RAFT locally, set the CMake variable
-# RPM_raft_SOURCE=/path/to/local/raft
-set(CUOPT_MIN_VERSION_raft "${DEPENDENT_LIB_MAJOR_VERSION}.${DEPENDENT_LIB_MINOR_VERSION}.00")
+# CPM_raft_SOURCE=/path/to/local/raft
 find_and_configure_raft(VERSION ${CUOPT_MIN_VERSION_raft}
     FORK rapidsai
-    PINNED_TAG branch-${CUOPT_BRANCH_VERSION_raft}
+    PINNED_TAG ${rapids-cmake-checkout-tag}
     CLONE_ON_PIN ON
 )

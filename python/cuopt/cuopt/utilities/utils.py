@@ -15,11 +15,40 @@
 
 import numpy as np
 
+import cudf
+
 from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
     CUOPT_MIP_INTEGRALITY_TOLERANCE,
     CUOPT_RELATIVE_PRIMAL_TOLERANCE,
 )
+
+
+def col_from_buf(buf, dtype):
+    """Helper function to create a cudf column from a buffer.
+
+    Parameters
+    ----------
+    buf : cudf.core.buffer.Buffer
+        The buffer containing the data
+    dtype : numpy.dtype or type
+        The data type for the column
+
+    Returns
+    -------
+    cudf.core.column.Column
+        A cudf column built from the buffer
+    """
+    dt = np.dtype(dtype)
+    return cudf.core.column.build_column(
+        buf,
+        dtype=dt,
+        size=buf.size // dt.itemsize,
+        mask=None,
+        offset=0,
+        null_count=0,
+        children=(),
+    )
 
 
 def validate_variable_bounds(data, settings, solution):

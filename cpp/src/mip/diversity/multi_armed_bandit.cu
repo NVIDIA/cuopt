@@ -29,6 +29,10 @@ mab_t::mab_t(int n_arms, int seed, double alpha, std::string bandit_name)
 {
 }
 
+void mab_t::resize_mab_arm_stats(int n_arms) { mab_arm_stats_.resize(n_arms); }
+
+void mab_t::set_last_chosen_option(int option_id) { last_chosen_option = option_id; }
+
 int mab_t::select_mab_option()
 {
   if (mab_arm_stats_.size() == 0) {

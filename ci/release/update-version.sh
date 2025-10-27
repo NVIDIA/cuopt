@@ -38,7 +38,6 @@ function sed_runner() {
 
 # Centralized version file update
 echo "${NEXT_FULL_TAG}" > ./VERSION
-echo "${NEXT_FULL_TAG}" > ./RAPIDS_VERSION
 
 DEPENDENCIES=(
   cudf
@@ -83,7 +82,6 @@ sed_runner 's/\(appVersion: \)[0-9][0-9]\.[0-9]\+\.[0-9]\+/\1'${DOCKER_TAG}'/g' 
 sed_runner 's/\(version: \)[0-9][0-9]\.[0-9]\+\.[0-9]\+/\1'${DOCKER_TAG}'/g' helmchart/cuopt-server/Chart.yaml
 
 for FILE in .github/workflows/*.yaml; do
-  sed_runner "/shared-workflows/ s/@.*/@branch-${NEXT_SHORT_TAG}/g" "${FILE}"
   # CI image tags of the form {rapids_version}-{something}
   sed_runner "s/:[0-9]*\\.[0-9]*-/:${NEXT_SHORT_TAG}-/g" "${FILE}"
 done

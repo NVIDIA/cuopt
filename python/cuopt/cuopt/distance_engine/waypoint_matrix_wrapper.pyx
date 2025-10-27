@@ -35,6 +35,8 @@ import cudf
 from cudf.core.buffer import as_buffer
 from cudf.core.column_accessor import ColumnAccessor
 
+from cuopt.utilities import col_from_buf
+
 
 cdef class WaypointMatrix:
 
@@ -107,20 +109,15 @@ cdef class WaypointMatrix:
         full_sequence_offset = as_buffer(full_sequence_offset)
         full_path = as_buffer(full_path)
 
-        route_df['sequence_offset'] = (
-            cudf.core.column.build_column(
-                full_sequence_offset,
-                dtype=np.dtype(np.int32)
-            )
+        route_df['sequence_offset'] = col_from_buf(
+            full_sequence_offset, np.int32
         )
         locations = route_df["location"].replace(
             to_replace=list(range(len(target_locations))),
             value=target_locations.tolist()
         )
         route_df['location'] = locations
-        waypoint_seq = cudf.core.column.build_column(
-            full_path, dtype=np.dtype(np.int32)
-        )
+        waypoint_seq = col_from_buf(full_path, np.int32)
 
         def create_way_point_types(routes, waypoint_seq):
 

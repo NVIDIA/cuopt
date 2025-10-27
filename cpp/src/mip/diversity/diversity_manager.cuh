@@ -44,24 +44,17 @@ class diversity_manager_t {
   diversity_manager_t(mip_solver_context_t<i_t, f_t>& context);
   bool run_presolve(f_t time_limit);
   solution_t<i_t, f_t> run_solver();
-  solution_t<i_t, f_t> generate_solution(f_t time_limit, bool random_start = true);
-  // generates initial solutions
-  void generate_initial_solutions();
+  void generate_solution(f_t time_limit, bool random_start = true);
   void run_fj_alone(solution_t<i_t, f_t>& solution);
-  void run_fp_alone(solution_t<i_t, f_t>& solution);
+  void run_fp_alone();
   // main loop of diversity improvements
   void main_loop();
   // randomly chooses a recombiner and returns the offspring
   std::pair<solution_t<i_t, f_t>, bool> recombine(solution_t<i_t, f_t>& a,
                                                   solution_t<i_t, f_t>& b,
                                                   recombiner_enum_t recombiner_type);
-  bool regenerate_solutions();
-  void generate_add_solution(std::vector<solution_t<i_t, f_t>>& initial_sol_vector,
-                             f_t time_limit,
-                             bool random_start = true);
   void average_fj_weights(i_t i);
-  void diversity_step();
-  std::vector<solution_t<i_t, f_t>> generate_more_solutions();
+  void diversity_step(i_t max_iterations_without_improvement);
   void add_user_given_solutions(std::vector<solution_t<i_t, f_t>>& initial_sol_vector);
   population_t<i_t, f_t>* get_population_pointer() { return &population; }
   void recombine_and_ls_with_all(std::vector<solution_t<i_t, f_t>>& solutions,

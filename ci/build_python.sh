@@ -29,8 +29,6 @@ CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
 
 version=$(rapids-generate-version)
 export RAPIDS_PACKAGE_VERSION=${version}
-DEPENDENT_PACKAGE_VERSION=$(cat ./RAPIDS_VERSION)
-export DEPENDENT_PACKAGE_VERSION
 
 echo "${version}" > ./VERSION
 

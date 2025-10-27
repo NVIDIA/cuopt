@@ -69,7 +69,7 @@ from cuopt.linear_programming.solver_settings.solver_settings import (
     PDLPSolverMode,
     SolverSettings,
 )
-from cuopt.utilities import InputValidationError
+from cuopt.utilities import InputValidationError, col_from_buf
 
 
 cdef extern from "cuopt/linear_programming/utilities/internals.hpp" namespace "cuopt::internals": # noqa
@@ -328,11 +328,9 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         num_nodes = sol_ret.mip_ret.nodes_
         num_simplex_iterations = sol_ret.mip_ret.simplex_iterations_
 
+        solution_buf = as_buffer(solution)
         solution = cudf.Series._from_column(
-            cudf.core.column.build_column(
-                as_buffer(solution),
-                dtype=np.dtype(np.float64)
-            )
+            col_from_buf(solution_buf, np.float64)
         ).to_numpy()
 
         return Solution(
@@ -361,23 +359,18 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         dual_solution = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.dual_solution_)) # noqa
         reduced_cost = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.reduced_cost_)) # noqa
 
+        primal_solution_buf = as_buffer(primal_solution)
+        dual_solution_buf = as_buffer(dual_solution)
+        reduced_cost_buf = as_buffer(reduced_cost)
+
         primal_solution = cudf.Series._from_column(
-            cudf.core.column.build_column(
-                as_buffer(primal_solution),
-                dtype=np.dtype(np.float64)
-            )
+            col_from_buf(primal_solution_buf, np.float64)
         ).to_numpy()
         dual_solution = cudf.Series._from_column(
-            cudf.core.column.build_column(
-                as_buffer(dual_solution),
-                dtype=np.dtype(np.float64)
-            )
+            col_from_buf(dual_solution_buf, np.float64)
         ).to_numpy()
         reduced_cost = cudf.Series._from_column(
-            cudf.core.column.build_column(
-                as_buffer(reduced_cost),
-                dtype=np.dtype(np.float64)
-            )
+            col_from_buf(reduced_cost_buf, np.float64)
         ).to_numpy()
 
         termination_status = sol_ret.lp_ret.termination_status_
@@ -430,58 +423,51 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             sum_solution_weight = sol_ret.lp_ret.sum_solution_weight_
             iterations_since_last_restart = sol_ret.lp_ret.iterations_since_last_restart_ # noqa
 
+            current_primal_solution_buf = as_buffer(current_primal_solution)
+            current_dual_solution_buf = as_buffer(current_dual_solution)
+            initial_primal_average_buf = as_buffer(initial_primal_average)
+            initial_dual_average_buf = as_buffer(initial_dual_average)
+            current_ATY_buf = as_buffer(current_ATY)
+            sum_primal_solutions_buf = as_buffer(sum_primal_solutions)
+            sum_dual_solutions_buf = as_buffer(sum_dual_solutions)
+            last_restart_duality_gap_primal_solution_buf = as_buffer(
+                last_restart_duality_gap_primal_solution
+            )
+            last_restart_duality_gap_dual_solution_buf = as_buffer(
+                last_restart_duality_gap_dual_solution
+            )
+
             current_primal_solution = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(current_primal_solution),
-                    dtype=np.dtype(np.float64)
-                )
+                col_from_buf(current_primal_solution_buf, np.float64)
             ).to_numpy()
             current_dual_solution = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(current_dual_solution),
-                    dtype=np.dtype(np.float64)
-                )
+                col_from_buf(current_dual_solution_buf, np.float64)
             ).to_numpy()
             initial_primal_average = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(initial_primal_average),
-                    dtype=np.dtype(np.float64)
-                )
+                col_from_buf(initial_primal_average_buf, np.float64)
             ).to_numpy()
             initial_dual_average = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(initial_dual_average),
-                    dtype=np.dtype(np.float64)
-                )
+                col_from_buf(initial_dual_average_buf, np.float64)
             ).to_numpy()
             current_ATY = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(current_ATY),
-                    dtype=np.dtype(np.float64)
-                )
+                col_from_buf(current_ATY_buf, np.float64)
             ).to_numpy()
             sum_primal_solutions = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(sum_primal_solutions),
-                    dtype=np.dtype(np.float64)
-                )
+                col_from_buf(sum_primal_solutions_buf, np.float64)
             ).to_numpy()
             sum_dual_solutions = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(sum_dual_solutions),
-                    dtype=np.dtype(np.float64)
-                )
+                col_from_buf(sum_dual_solutions_buf, np.float64)
             ).to_numpy()
             last_restart_duality_gap_primal_solution = cudf.Series._from_column( # noqa
-                cudf.core.column.build_column(
-                    as_buffer(last_restart_duality_gap_primal_solution),
-                    dtype=np.dtype(np.float64)
+                col_from_buf(
+                    last_restart_duality_gap_primal_solution_buf,
+                    np.float64
                 )
             ).to_numpy()
             last_restart_duality_gap_dual_solution = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(last_restart_duality_gap_dual_solution),
-                    dtype=np.dtype(np.float64)
+                col_from_buf(
+                    last_restart_duality_gap_dual_solution_buf,
+                    np.float64
                 )
             ).to_numpy()
 

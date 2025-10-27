@@ -35,12 +35,9 @@ message(STATUS "CMAKE_MODULE_PATH = ${CMAKE_MODULE_PATH}")
 
 project(
   CUOPT
-  VERSION "${CUOPT_VERSION}"
+  VERSION "${RAPIDS_VERSION}"
   LANGUAGES CXX CUDA C
 )
-
-set(DEPENDENT_LIB_MAJOR_VERSION "${RAPIDS_VERSION_MAJOR}")
-set(DEPENDENT_LIB_MINOR_VERSION "${RAPIDS_VERSION_MINOR}")
 
 rapids_cmake_write_version_file(include/cuopt/version_config.hpp)
 # ##################################################################################################
@@ -194,6 +191,7 @@ FetchContent_Declare(
   #we can switch to the main branch.
   GIT_TAG "741a2b9c8155b249d6df574d758b4d97d4417520"
   GIT_PROGRESS TRUE
+  EXCLUDE_FROM_ALL
   SYSTEM
 )
 

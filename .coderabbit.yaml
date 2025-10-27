@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from cuopt.utilities.exception_handler import (
-    InputRuntimeError,
-    InputValidationError,
-    OutOfMemoryError,
-    catch_cuopt_exception,
-)
-from cuopt.utilities.type_casting import type_cast
-from cuopt.utilities.utils import check_solution, col_from_buf
+reviews:
+  profile: chill
+  high_level_summary: true
+  auto_review:
+    enabled: true
+    drafts: false
+    ignore_usernames: ["rapids-bot", "GPUtester", "nv-automation-bot", "copy-pr-bot"]
+  tools:
+    markdownlint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    gitleaks:
+      enabled: true
+  sequence_diagrams: false

@@ -58,6 +58,7 @@ class solution_t {
   void set_vars_to_values(const std::vector<thrust::pair<i_t, f_t>>& var_val_pairs);
   // copy new assignments
   void copy_new_assignment(const std::vector<f_t>& h_assignment);
+  void copy_new_assignment(const rmm::device_uvector<f_t>& d_assignment);
   // rounds integer variables to the nearest integer val, returns whether the rounding is feasible
   bool round_nearest();
   // rounds integers to random if fractionality is between 0.25 and 0.75. otherwise, to nearest

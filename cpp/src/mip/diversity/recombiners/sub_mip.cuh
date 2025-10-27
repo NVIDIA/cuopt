@@ -166,9 +166,10 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
         sub_mip_recombiner_config_t::decrease_max_n_of_vars_from_other();
       }
     }
-    // try adding all intermediate solutions to the population
-    for (const auto& solution : solution_vector) {
+    // try adding all intermediate solutions to the population, except the final one
+    for (i_t i = 0; i < (i_t)solution_vector.size() - 1; i++) {
       CUOPT_LOG_DEBUG("Adding intermediate submip solution to population");
+      const auto& solution = solution_vector[i];
       solution_t<i_t, f_t> sol(offspring);
       rmm::device_uvector<f_t> fixed_assignment(solution.size(),
                                                 offspring.handle_ptr->get_stream());

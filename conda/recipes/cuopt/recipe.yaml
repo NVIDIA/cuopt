@@ -3,9 +3,7 @@ schema_version: 1
 
 context:
   version: ${{ env.get("RAPIDS_PACKAGE_VERSION") }}
-  # cuOpt version doesn't match RAPIDS versioning
-  # so we need to specify which RAPIDS version to use
-  dep_minor_version: ${{ (env.get("DEPENDENT_PACKAGE_VERSION") | split("."))[:2] | join(".") }}
+  minor_version: ${{ (version | split("."))[:2] | join(".") }}
   cuda_version: ${{ (env.get("RAPIDS_CUDA_VERSION") | split("."))[:2] | join(".") }}
   cuda_major: '${{ (env.get("RAPIDS_CUDA_VERSION") | split("."))[0] }}'
   date_string: '${{ env.get("RAPIDS_DATE_STRING") }}'
@@ -61,10 +59,10 @@ requirements:
     - cython >=3.0.0
     - libcuopt =${{ version }}
     - pip
-    - pylibraft =${{ dep_minor_version }}
+    - pylibraft =${{ minor_version }}
     - python =${{ py_version }}
     - rapids-build-backend >=0.4.0,<0.5.0.dev0
-    - rmm =${{ dep_minor_version }}
+    - rmm =${{ minor_version }}
     - scikit-build-core >=0.10.0
     - cuda-cudart-dev
     - if: cuda_major == "12"
@@ -72,21 +70,21 @@ requirements:
       else: cuda-python >=13.0.1,<14.0a0
   run:
     - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
-    - cudf =${{ dep_minor_version }}
+    - cudf =${{ minor_version }}
     - cuopt-mps-parser =${{ version }}
     - cupy >=13.6.0
-    - cuvs =${{ dep_minor_version }}
+    - cuvs =${{ minor_version }}
     - h5py
     - libcuopt =${{ version }}
     - numba >=0.60.0
     - numba-cuda>=0.19.1,<0.20.0a0
     - numpy >=1.23,<3.0a0
     - pandas >=2.0
-    - pylibraft =${{ dep_minor_version }}
+    - pylibraft =${{ minor_version }}
     - python
-    - raft-dask =${{ dep_minor_version }}
-    - rapids-dask-dependency =${{ dep_minor_version }}
-    - rmm =${{ dep_minor_version }}
+    - raft-dask =${{ minor_version }}
+    - rapids-dask-dependency =${{ minor_version }}
+    - rmm =${{ minor_version }}
     # Needed by Numba for CUDA support
     - cuda-nvcc-impl
     # TODO: Add nvjitlink here
