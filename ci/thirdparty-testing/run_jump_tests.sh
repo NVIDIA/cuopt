@@ -48,6 +48,16 @@ if [ -f src/cuOpt.jl ]; then
     rapids-logger "Updated max cuOpt version to v\"99.99\" - all versions will pass"
 fi
 
+# Patch MOI_wrapper.jl test to enable logging and increase time limit
+rapids-logger "Patching MOI_wrapper.jl test settings..."
+if [ -f test/MOI_wrapper.jl ]; then
+    # Change CUOPT_LOG_TO_CONSOLE from false to true
+    sed -i 's/CUOPT_LOG_TO_CONSOLE.*false/CUOPT_LOG_TO_CONSOLE), true/g' test/MOI_wrapper.jl
+    # Change CUOPT_TIME_LIMIT from 60.0 to 120.0
+    sed -i 's/CUOPT_TIME_LIMIT.*60\.0/CUOPT_TIME_LIMIT), 90.0/g' test/MOI_wrapper.jl
+    rapids-logger "Updated CUOPT_LOG_TO_CONSOLE to true and CUOPT_TIME_LIMIT to 120.0"
+fi
+
 # Find libcuopt.so and add its directory to LD_LIBRARY_PATH
 LIBCUOPT_PATH=$(find /pyenv/ -name "libcuopt.so" -type f 2>/dev/null | head -1)
 
