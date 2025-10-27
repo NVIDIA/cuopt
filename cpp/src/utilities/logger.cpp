@@ -150,9 +150,7 @@ void reset_default_logger()
 init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
 {
   // until this function is called, the default sink is the buffer sink
-  // if (cuopt::default_logger().sinks()) {
   cuopt::default_logger().sinks().clear();
-  //}
 
   // re-initialize sinks
   if (log_to_console) {
