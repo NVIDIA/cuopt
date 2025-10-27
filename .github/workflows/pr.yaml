@@ -52,6 +52,8 @@ jobs:
   compute-matrix-filters:
     runs-on: ubuntu-latest
     outputs:
+      conda_lean_filter: ${{ steps.set-filters.outputs.conda_lean_filter }}
+      wheel_lean_filter: ${{ steps.set-filters.outputs.wheel_lean_filter }}
       lean_filter: ${{ steps.set-filters.outputs.lean_filter }}
       mps_parser_filter: ${{ steps.set-filters.outputs.mps_parser_filter }}
       libcuopt_filter: ${{ steps.set-filters.outputs.libcuopt_filter }}
@@ -62,12 +64,16 @@ jobs:
         id: set-filters
         run: |
           if [ "${{ env.LEAN_CI }}" == "true" ]; then
+            echo "conda_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.10\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "wheel_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "mps_parser_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "libcuopt_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "cuopt_server_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
           else
+            echo "conda_lean_filter=." >> $GITHUB_OUTPUT
+            echo "wheel_lean_filter=." >> $GITHUB_OUTPUT
             echo "lean_filter=." >> $GITHUB_OUTPUT
             echo "mps_parser_filter=group_by([.ARCH, (.PY_VER |split(\".\") | map(tonumber))])|map(max_by([(.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
             echo "libcuopt_filter=group_by([.ARCH, (.CUDA_VER|split(\".\")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(\".\")|map(tonumber)))" >> $GITHUB_OUTPUT
@@ -152,7 +158,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/build_cpp.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
   conda-cpp-tests:
     needs: [conda-cpp-build, changed-files, compute-matrix-filters]
     secrets: inherit
@@ -161,7 +167,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
   conda-python-build:
     needs: [conda-cpp-build, compute-matrix-filters]
     secrets: inherit
@@ -169,7 +175,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/build_python.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
   conda-python-tests:
     needs: [conda-python-build, changed-files, compute-matrix-filters]
     secrets: inherit
@@ -179,7 +185,7 @@ jobs:
       run_codecov: false
       build_type: pull-request
       script: ci/test_python.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
   docs-build:
     needs: conda-python-build
     secrets: inherit
@@ -224,7 +230,7 @@ jobs:
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, wheel-build-cuopt-sh-client, changed-files, compute-matrix-filters]
     secrets: inherit
@@ -233,7 +239,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
   wheel-build-cuopt-server:
     needs: [checks, compute-matrix-filters]
     secrets: inherit
@@ -267,7 +273,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.lean_filter }}
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
   test-self-hosted-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
     secrets: inherit
