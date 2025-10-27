@@ -170,6 +170,7 @@ class population_t {
 
   void diversity_step(i_t max_iterations_without_improvement);
 
+  void set_problem_ptr_with_cuts(problem_t<i_t, f_t>* problem_ptr_with_cuts);
   void apply_problem_ptr_to_all_solutions();
 
   // does some consistency tests
@@ -180,6 +181,7 @@ class population_t {
   std::string name;
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;
+  problem_t<i_t, f_t>* problem_ptr_with_cuts;
   diversity_manager_t<i_t, f_t>& dm;
   i_t var_threshold;
   i_t initial_threshold;
@@ -189,6 +191,7 @@ class population_t {
   f_t infeasibility_importance = 100.;
   size_t max_solutions;
   weight_t<i_t, f_t> weights;
+  weight_t<i_t, f_t> weights_with_cuts;
   std::vector<std::pair<size_t, f_t>> indices;
   std::vector<std::pair<bool, solution_t<i_t, f_t>>> solutions;
 
@@ -208,9 +211,8 @@ class population_t {
   std::mt19937 rng;
   i_t update_iter = 0;
   std::mutex solution_mutex;
-  std::atomic<bool> early_exit_primal_generation = false;
-  std::atomic<bool> preempt_heuristic_solver_    = false;
-  f_t best_feasible_objective                    = std::numeric_limits<f_t>::max();
+  std::atomic<bool> preempt_heuristic_solver_ = false;
+  f_t best_feasible_objective                 = std::numeric_limits<f_t>::max();
   assignment_hash_map_t<i_t, f_t> population_hash_map;
   cuopt::timer_t timer;
 };

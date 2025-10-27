@@ -51,8 +51,8 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
     max_solutions(max_solutions_),
     infeasibility_importance(infeasibility_weight_),
     weights(0, context.problem_ptr->handle_ptr),
+    weights_with_cuts(0, context.problem_ptr->handle_ptr),
     rng(cuopt::seed_generator::get_seed()),
-    early_exit_primal_generation(false),
     population_hash_map(*problem_ptr),
     timer(0)
 {
@@ -78,13 +78,8 @@ template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::apply_problem_ptr_to_all_solutions()
 {
   for (size_t i = 0; i < indices.size(); i++) {
-    solutions[indices[i].first].second.problem_ptr = problem_ptr;
-    solutions[indices[i].first].second.resize_to_problem();
-    solutions[indices[i].first].second.compute_feasibility();
-    indices[i].second = solutions[indices[i].first].second.get_quality(weights);
+    solutions[indices[i].first].second.problem_with_cuts_ptr = problem_ptr_with_cuts;
   }
-  update_qualities();
-  weights.cstr_weights.resize(problem_ptr->n_constraints, problem_ptr->handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
@@ -94,6 +89,20 @@ void population_t<i_t, f_t>::allocate_solutions()
     bool occupied = false;
     solutions.emplace_back(occupied, solution_t<i_t, f_t>(*problem_ptr));
   }
+}
+
+template <typename i_t, typename f_t>
+void population_t<i_t, f_t>::set_problem_ptr_with_cuts(problem_t<i_t, f_t>* problem_ptr_with_cuts)
+{
+  constexpr f_t ten           = 10.;
+  this->problem_ptr_with_cuts = problem_ptr_with_cuts;
+  weights_with_cuts.cstr_weights.resize(problem_ptr_with_cuts->n_constraints,
+                                        problem_ptr_with_cuts->handle_ptr->get_stream());
+  // fill last element with default
+  thrust::uninitialized_fill(problem_ptr_with_cuts->handle_ptr->get_thrust_policy(),
+                             weights_with_cuts.cstr_weights.begin() + problem_ptr->n_constraints,
+                             weights_with_cuts.cstr_weights.end(),
+                             ten);
 }
 
 template <typename i_t, typename f_t>
@@ -109,6 +118,12 @@ void population_t<i_t, f_t>::initialize_population()
   thrust::uninitialized_fill(problem_ptr->handle_ptr->get_thrust_policy(),
                              weights.cstr_weights.begin(),
                              weights.cstr_weights.end(),
+                             ten);
+  weights_with_cuts.cstr_weights.resize(problem_ptr->n_constraints,
+                                        problem_ptr->handle_ptr->get_stream());
+  thrust::uninitialized_fill(problem_ptr->handle_ptr->get_thrust_policy(),
+                             weights_with_cuts.cstr_weights.begin(),
+                             weights_with_cuts.cstr_weights.end(),
                              ten);
 }
 
@@ -197,7 +212,6 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
     CUOPT_LOG_DEBUG("Found new best solution %g in external queue",
                     problem_ptr->get_user_obj_from_solver_obj(objective));
   }
-  if (external_solution_queue.size() >= 5) { early_exit_primal_generation = true; }
 }
 
 template <typename i_t, typename f_t>
@@ -212,8 +226,7 @@ void population_t<i_t, f_t>::add_external_solutions_to_population()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::preempt_heuristic_solver()
 {
-  preempt_heuristic_solver_    = true;
-  early_exit_primal_generation = true;
+  preempt_heuristic_solver_ = true;
 }
 
 template <typename i_t, typename f_t>
