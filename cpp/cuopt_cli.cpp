@@ -138,10 +138,6 @@ int run_single_file(const std::string& file_path,
     (op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP ||
      op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::IP) &&
     !solve_relaxation;
-  const bool is_lp =
-    op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::LP ||
-    (op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP &&
-     solve_relaxation);
 
   try {
     auto initial_solution =
@@ -168,12 +164,12 @@ int run_single_file(const std::string& file_path,
   }
 
   try {
-    if (is_lp) {
-      auto& lp_settings = settings.get_pdlp_settings();
-      auto solution     = cuopt::linear_programming::solve_lp(op_problem, lp_settings);
-    } else {
+    if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
       auto solution      = cuopt::linear_programming::solve_mip(op_problem, mip_settings);
+    } else {
+      auto& lp_settings = settings.get_pdlp_settings();
+      auto solution     = cuopt::linear_programming::solve_lp(op_problem, lp_settings);
     }
   } catch (const std::exception& e) {
     CUOPT_LOG_ERROR("Error: %s", e.what());
