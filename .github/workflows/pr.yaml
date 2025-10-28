@@ -53,6 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       conda_lean_filter: ${{ steps.set-filters.outputs.conda_lean_filter }}
+      conda_test_filter: ${{ steps.set-filters.outputs.conda_test_filter }}
       wheel_lean_filter: ${{ steps.set-filters.outputs.wheel_lean_filter }}
       lean_filter: ${{ steps.set-filters.outputs.lean_filter }}
       mps_parser_filter: ${{ steps.set-filters.outputs.mps_parser_filter }}
@@ -65,6 +66,7 @@ jobs:
         run: |
           if [ "${{ env.LEAN_CI }}" == "true" ]; then
             echo "conda_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.10\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "conda_test_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.13\" and .CUDA_VER == \"13.0\"))]" >> $GITHUB_OUTPUT
             echo "wheel_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "mps_parser_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
@@ -73,6 +75,7 @@ jobs:
             echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
           else
             echo "conda_lean_filter=." >> $GITHUB_OUTPUT
+            echo "conda_test_filter=." >> $GITHUB_OUTPUT
             echo "wheel_lean_filter=." >> $GITHUB_OUTPUT
             echo "lean_filter=." >> $GITHUB_OUTPUT
             echo "mps_parser_filter=group_by([.ARCH, (.PY_VER |split(\".\") | map(tonumber))])|map(max_by([(.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
@@ -167,7 +170,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
   conda-python-build:
     needs: [conda-cpp-build, compute-matrix-filters]
     secrets: inherit
@@ -175,7 +178,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/build_python.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
   conda-python-tests:
     needs: [conda-python-build, changed-files, compute-matrix-filters]
     secrets: inherit
@@ -185,7 +188,7 @@ jobs:
       run_codecov: false
       build_type: pull-request
       script: ci/test_python.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
   docs-build:
     needs: conda-python-build
     secrets: inherit
