@@ -48,7 +48,8 @@ def extract_pip_commands(notebook_path: str) -> List[str]:
                     ):
                         # Clean up the line but preserve quotes
                         clean_line = line.strip()
-                        if clean_line:
+                        # Skip pip install commands that contain cuopt
+                        if clean_line and "cuopt" not in clean_line.lower():
                             pip_commands.append(clean_line)
 
         return pip_commands
