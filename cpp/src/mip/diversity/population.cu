@@ -693,40 +693,6 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::population_to_vector()
 }
 
 template <typename i_t, typename f_t>
-void population_t<i_t, f_t>::halve_the_population()
-{
-  raft::common::nvtx::range fun_scope("halve_the_population");
-  // try 3/4 here
-  if (current_size() <= (max_solutions * halving_skip_ratio)) { return; }
-  CUOPT_LOG_DEBUG("Halving the population, current size: %lu", current_size());
-  // put population into a vector
-  auto sol_vec                  = population_to_vector();
-  i_t counter                   = 0;
-  constexpr i_t max_adjustments = 4;
-  size_t max_var_threshold      = get_max_var_threshold(problem_ptr->n_integer_vars);
-  while (current_size() > max_solutions / 2) {
-    clear_except_best_feasible();
-    var_threshold = std::max(var_threshold * 0.97, 0.5 * problem_ptr->n_integer_vars);
-    for (auto& sol : sol_vec) {
-      add_solution(solution_t<i_t, f_t>(sol));
-    }
-    if (counter++ > max_adjustments) break;
-  }
-  counter = 0;
-  // if we removed too many decrease the diversity a little
-  while (current_size() < max_solutions / 4) {
-    clear_except_best_feasible();
-    var_threshold = std::min(
-      max_var_threshold,
-      std::min((size_t)(var_threshold * 1.02), (size_t)(0.995 * problem_ptr->n_integer_vars)));
-    for (auto& sol : sol_vec) {
-      add_solution(solution_t<i_t, f_t>(sol));
-    }
-    if (counter++ > max_adjustments) break;
-  }
-}
-
-template <typename i_t, typename f_t>
 size_t population_t<i_t, f_t>::find_free_solution_index()
 {
   raft::common::nvtx::range fun_scope("find_free_solution_index");

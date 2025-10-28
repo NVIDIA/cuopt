@@ -119,29 +119,26 @@ class local_search_t {
                    const std::string& source);
 
   i_t ls_threads() const { return ls_cpu_fj.size() + scratch_cpu_fj.size(); }
-  void save_solution_and_add_cutting_plane(solution_t<i_t, f_t>& solution,
-                                           rmm::device_uvector<f_t>& best_solution,
+  void save_solution_and_add_cutting_plane(solution_t<i_t, f_t>& best_in_population,
+                                           solution_t<i_t, f_t>& solution,
                                            f_t& best_objective);
   void resize_to_new_problem();
   void resize_to_old_problem(problem_t<i_t, f_t>* old_problem_ptr);
-  void reset_alpha_and_run_recombiners(solution_t<i_t, f_t>& solution,
-                                       problem_t<i_t, f_t>* old_problem_ptr,
-                                       population_t<i_t, f_t>* population_ptr,
-                                       i_t i,
-                                       i_t last_unimproved_iteration,
-                                       rmm::device_uvector<f_t>& best_solution,
-                                       f_t& best_objective);
+  void run_recombiners(solution_t<i_t, f_t>& solution,
+                       problem_t<i_t, f_t>* old_problem_ptr,
+                       population_t<i_t, f_t>* population_ptr,
+                       i_t i,
+                       i_t last_unimproved_iteration,
+                       f_t& best_objective);
   void reset_alpha_and_save_solution(solution_t<i_t, f_t>& solution,
                                      problem_t<i_t, f_t>* old_problem_ptr,
                                      population_t<i_t, f_t>* population_ptr,
                                      i_t i,
                                      i_t last_unimproved_iteration,
-                                     rmm::device_uvector<f_t>& best_solution,
                                      f_t& best_objective);
 
   void handle_cutting_plane_and_weights(solution_t<i_t, f_t>& solution,
                                         population_t<i_t, f_t>* population_ptr,
-                                        rmm::device_uvector<f_t>& best_solution,
                                         f_t& best_objective);
 
   mip_solver_context_t<i_t, f_t>& context;

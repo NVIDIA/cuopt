@@ -387,8 +387,6 @@ int main(int argc, char* argv[])
   double memory_limit    = program.get<double>("--memory-limit");
   bool track_allocations = program.get<std::string>("--track-allocations")[0] == 't';
 
-  if (num_cpu_threads < 0) { num_cpu_threads = omp_get_max_threads() / n_gpus; }
-
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
     result_file = out_dir + "/final_result.csv";
@@ -425,6 +423,7 @@ int main(int argc, char* argv[])
         paths.push_back(entry.path());
       }
     }
+    if (num_cpu_threads < 0) { num_cpu_threads = omp_get_max_threads() / n_gpus; }
     // if batch_num is given, trim the paths to only concerned batch
     if (batch_num != -1) {
       if (n_batches <= 0) {
@@ -491,6 +490,7 @@ int main(int argc, char* argv[])
     }
     merge_result_files(out_dir, result_file, n_gpus, batch_num);
   } else {
+    if (num_cpu_threads < 0) { num_cpu_threads = omp_get_max_threads(); }
     auto memory_resource = make_async();
     if (memory_limit > 0) {
       auto limiting_adaptor =
