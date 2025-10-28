@@ -62,7 +62,7 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
 template <typename i_t>
 i_t get_max_var_threshold(i_t n_vars)
 {
-  return n_vars - sqrt(n_vars);
+  // return n_vars - sqrt(n_vars);
   if (n_vars < 50) {
     return std::max(1, n_vars - 1);
   } else if (n_vars < 80) {
