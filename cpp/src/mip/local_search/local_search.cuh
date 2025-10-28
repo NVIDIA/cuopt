@@ -139,6 +139,11 @@ class local_search_t {
                                      rmm::device_uvector<f_t>& best_solution,
                                      f_t& best_objective);
 
+  void handle_cutting_plane_and_weights(solution_t<i_t, f_t>& solution,
+                                        population_t<i_t, f_t>* population_ptr,
+                                        rmm::device_uvector<f_t>& best_solution,
+                                        f_t& best_objective);
+
   mip_solver_context_t<i_t, f_t>& context;
   rmm::device_uvector<f_t>& lp_optimal_solution;
   bool lp_optimal_exists{false};
