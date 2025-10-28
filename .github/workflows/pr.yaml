@@ -66,7 +66,7 @@ jobs:
         run: |
           if [ "${{ env.LEAN_CI }}" == "true" ]; then
             echo "conda_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.10\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
-            echo "conda_test_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.13\" and .CUDA_VER == \"13.0\"))]" >> $GITHUB_OUTPUT
+            echo "conda_test_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.13\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "wheel_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "mps_parser_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
