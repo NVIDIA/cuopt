@@ -47,9 +47,9 @@ rapids-print-env
 
 # Remove any existing cuopt-examples directory
 
-rapids-logger "Cloning cuopt-examples repository for branch: ${EXAMPLES_BRANCH}"
+rapids-logger "Cloning cuopt-examples repository"
 rm -rf cuopt-examples
-git clone --single-branch https://github.com/NVIDIA/cuopt-examples.git
+git clone https://github.com/NVIDIA/cuopt-examples.git
 
 NBTEST="$(realpath "$(dirname "$0")/utils/nbtest.sh")"
 NBLIST_PATH="$(realpath "$(dirname "$0")/utils/notebook_list.py")"
