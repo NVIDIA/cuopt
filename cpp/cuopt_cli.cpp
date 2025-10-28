@@ -338,8 +338,6 @@ int main(int argc, char* argv[])
   std::map<std::string, std::string> settings_strings;
   for (auto& [arg_name, param_name] : arg_name_to_param_name) {
     if (program.is_used(arg_name.c_str())) {
-      std::cout << "Setting " << param_name << " to " << program.get<std::string>(arg_name.c_str())
-                << std::endl;
       settings_strings[param_name] = program.get<std::string>(arg_name.c_str());
     }
   }
