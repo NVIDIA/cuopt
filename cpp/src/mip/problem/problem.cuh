@@ -91,6 +91,7 @@ class problem_t {
 
   void insert_variables(variables_delta_t<i_t, f_t>& h_vars);
   void insert_constraints(constraints_delta_t<i_t, f_t>& h_constraints);
+  void set_implied_integers(const std::vector<i_t>& implied_integer_indices);
   void resize_variables(size_t size);
   void resize_constraints(size_t matrix_size, size_t constraint_size, size_t var_size);
   void preprocess_problem();
@@ -100,6 +101,7 @@ class problem_t {
   void post_process_solution(solution_t<i_t, f_t>& solution);
   void compute_transpose_of_problem();
   f_t get_user_obj_from_solver_obj(f_t solver_obj) const;
+  bool is_objective_integral() const { return objective_is_integral; }
   void compute_integer_fixed_problem();
   void fill_integer_fixed_problem(rmm::device_uvector<f_t>& assignment,
                                   const raft::handle_t* handle_ptr);
@@ -115,6 +117,10 @@ class problem_t {
   void add_cutting_plane_at_objective(f_t objective);
   void compute_vars_with_objective_coeffs();
   void test_problem_fixing_time();
+
+  enum var_flags_t : i_t {
+    VAR_IMPLIED_INTEGER = 1 << 0,
+  };
 
   struct view_t {
     HDI std::pair<i_t, i_t> reverse_range_for_var(i_t v) const
@@ -193,6 +199,7 @@ class problem_t {
     raft::device_span<f_t> constraint_upper_bounds;
     raft::device_span<var_t> variable_types;
     raft::device_span<i_t> is_binary_variable;
+    raft::device_span<i_t> var_flags;
     raft::device_span<i_t> integer_indices;
     raft::device_span<i_t> binary_indices;
     raft::device_span<i_t> nonbinary_indices;
@@ -269,6 +276,7 @@ class problem_t {
   f_t objective_offset;
   bool is_scaled_{false};
   bool preprocess_called{false};
+  bool objective_is_integral{false};
   // this LP state keeps the warm start data of some solution of
   // 1. Original problem: it is unchanged and part of it is used
   // to warm start slightly modified problems.
