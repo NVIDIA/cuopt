@@ -56,6 +56,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     auto& other_solution   = a.get_feasible() ? b : a;
     // copy the solution from A
     solution_t<i_t, f_t> offspring(guiding_solution);
+    offspring.swap_problem_pointers();
     // find same values and populate it to offspring
     i_t n_different_vars =
       this->assign_same_integer_values(guiding_solution, other_solution, offspring);
@@ -156,7 +157,6 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     }
     cuopt_func_call(offspring.test_variable_bounds());
     cuopt_assert(offspring.test_number_all_integer(), "All must be integers after offspring");
-    offspring.compute_feasibility();
     // bool same_as_parents = this->check_if_offspring_is_same_as_parents(offspring, a, b);
     // adjust the max_n_of_vars_from_other
     if (n_different_vars > (i_t)sub_mip_recombiner_config_t::max_n_of_vars_from_other) {
@@ -181,10 +181,15 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       rmm::device_uvector<f_t> dummy(0, offspring.handle_ptr->get_stream());
       scaling.unscale_solutions(fixed_assignment, dummy);
       sol.unfix_variables(fixed_assignment, variable_map);
-      sol.compute_feasibility();
+      // the current problem is the proble with objective cut
+      // to add to the population, swap problem to original
+      cuopt_assert(sol.compute_feasibility(), "Solution must be feasible");
+      sol.swap_problem_pointers();
+      cuopt_assert(sol.get_feasible(), "Solution must be feasible");
       cuopt_func_call(sol.test_variable_bounds());
       population.add_solution(std::move(sol));
     }
+    offspring.swap_problem_pointers();
     bool better_cost_than_parents =
       offspring.get_quality(weights) <
       std::min(other_solution.get_quality(weights), guiding_solution.get_quality(weights));

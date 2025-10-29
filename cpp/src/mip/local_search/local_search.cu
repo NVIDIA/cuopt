@@ -238,8 +238,6 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
       solution, h_weights, h_weights, h_objective_weight, fj_settings_t{}, true);
   }
 
-  auto solution_copy = solution;
-
   // Start CPU solver in background thread
   for (auto& cpu_fj : ls_cpu_fj) {
     cpu_fj.start_cpu_solver();
@@ -258,7 +256,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   auto gpu_fj_end        = std::chrono::high_resolution_clock::now();
   double gpu_fj_duration = std::chrono::duration<double>(gpu_fj_end - gpu_fj_start).count();
 
-  solution_t<i_t, f_t> solution_cpu(*solution.problem_ptr);
+  solution_t<i_t, f_t> solution_cpu(solution);
 
   f_t best_cpu_obj = std::numeric_limits<f_t>::max();
   // // Wait for CPU solver to finish
@@ -690,7 +688,7 @@ void local_search_t<i_t, f_t>::run_recombiners(solution_t<i_t, f_t>& solution,
                                                f_t& best_objective)
 {
   raft::common::nvtx::range fun_scope("reset_alpha_and_run_recombiners");
-  constexpr i_t iterations_for_stagnation          = 1;
+  constexpr i_t iterations_for_stagnation          = 3;
   constexpr i_t max_iterations_without_improvement = 8;
   auto new_sol_vector                              = population_ptr->get_external_solutions();
   population_ptr->add_solutions_from_vec(std::move(new_sol_vector));

@@ -34,7 +34,6 @@ constexpr double weight_decrease_ratio       = 0.9;
 constexpr double max_infeasibility_weight    = 1e12;
 constexpr double min_infeasibility_weight    = 1.;
 constexpr double infeasibility_balance_ratio = 1.1;
-constexpr double halving_skip_ratio          = 0.75;
 
 template <typename i_t, typename f_t>
 population_t<i_t, f_t>::population_t(std::string const& name_,
@@ -62,7 +61,7 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
 template <typename i_t>
 i_t get_max_var_threshold(i_t n_vars)
 {
-  // return n_vars - sqrt(n_vars);
+  return n_vars - sqrt(n_vars);
   if (n_vars < 50) {
     return std::max(1, n_vars - 1);
   } else if (n_vars < 80) {
