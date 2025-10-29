@@ -17,4 +17,4 @@
 
 #pragma once
 
-#include <cuopt/logger.hpp>
+#include <utilities/logger.hpp>

@@ -18,10 +18,10 @@
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/logger.hpp>
 #include <math_optimization/solution_writer.hpp>
 #include <mip/mip_constants.hpp>
 #include <mps_parser/utilities/span.hpp>
+#include <utilities/logger.hpp>
 
 #include <raft/util/cudart_utils.hpp>
 

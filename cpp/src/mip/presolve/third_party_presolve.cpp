@@ -16,10 +16,10 @@
  */
 
 #include <cuopt/error.hpp>
-#include <cuopt/logger.hpp>
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/gf2_presolve.hpp>
 #include <mip/presolve/third_party_presolve.hpp>
+#include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
 
 #include <raft/common/nvtx.hpp>
@@ -391,7 +391,7 @@ void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
 }
 
 template <typename i_t, typename f_t>
-std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_t>::apply(
+std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_t, f_t>::apply(
   optimization_problem_t<i_t, f_t> const& op_problem,
   problem_category_t category,
   bool dual_postsolve,
@@ -423,7 +423,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
   check_presolve_status(result.status);
   if (result.status == papilo::PresolveStatus::kInfeasible ||
       result.status == papilo::PresolveStatus::kUnbndOrInfeas) {
-    return std::make_pair(optimization_problem_t<i_t, f_t>(op_problem.get_handle_ptr()), false);
+    return std::nullopt;
   }
   post_solve_storage_ = result.postsolve;
   CUOPT_LOG_INFO("Presolve removed: %d constraints, %d variables, %d nonzeros",
@@ -435,8 +435,16 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
                  papilo_problem.getNCols(),
                  papilo_problem.getConstraintMatrix().getNnz());
 
-  return std::make_pair(
-    build_optimization_problem<i_t, f_t>(papilo_problem, op_problem.get_handle_ptr()), true);
+  auto opt_problem =
+    build_optimization_problem<i_t, f_t>(papilo_problem, op_problem.get_handle_ptr());
+  auto col_flags = papilo_problem.getColFlags();
+  std::vector<i_t> implied_integer_indices;
+  for (size_t i = 0; i < col_flags.size(); i++) {
+    if (col_flags[i].test(papilo::ColFlag::kImplInt)) implied_integer_indices.push_back(i);
+  }
+
+  return std::make_optional(
+    third_party_presolve_result_t<i_t, f_t>{opt_problem, implied_integer_indices});
 }
 
 template <typename i_t, typename f_t>

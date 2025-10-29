@@ -15,20 +15,39 @@
  * limitations under the License.
  */
 
-#include <cuopt/logger.hpp>
+#pragma once
+
+#include <cuopt/logger_macros.hpp>
+
+#include <rapids_logger/logger.hpp>
 
 #include <iostream>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
 
 namespace cuopt {
 
-rapids_logger::sink_ptr default_sink()
-{
-  auto* filename = std::getenv("CUOPT_DEBUG_LOG_FILE");
-  return (filename == nullptr)
-           ? static_cast<rapids_logger::sink_ptr>(
-               std::make_shared<rapids_logger::ostream_sink_mt>(std::cout))
-           : static_cast<rapids_logger::sink_ptr>(
-               std::make_shared<rapids_logger::basic_file_sink_mt>(filename, true));
-}
+/**
+ * @brief Get the default logger.
+ *
+ * @return logger& The default logger
+ */
+rapids_logger::logger& default_logger();
+
+/**
+ * @brief Reset the default logger to the default settings.
+ *  This is needed when we are running multiple tests and each test has different logger settings
+ *  and we need to reset the logger to the default settings before each test.
+ */
+void reset_default_logger();
+
+class init_logger_t {
+ public:
+  init_logger_t(std::string log_file, bool log_to_console);
+
+  ~init_logger_t();
+};
 
 }  // namespace cuopt

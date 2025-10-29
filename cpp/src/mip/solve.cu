@@ -21,15 +21,16 @@
 #include <mip/presolve/third_party_presolve.hpp>
 #include <mip/presolve/trivial_presolve.cuh>
 #include <mip/solver.cuh>
+#include <mip/utilities/sort_csr.cuh>
 #include <mip/utils.cuh>
 
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <linear_programming/pdlp.cuh>
 #include <linear_programming/restart_strategy/pdlp_restart_strategy.cuh>
 #include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
-#include <linear_programming/utilities/logger_init.hpp>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <linear_programming/utils.cuh>
+#include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
 #include <utilities/version_info.hpp>
 
@@ -205,27 +206,32 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
 
     if (run_presolve) {
+      detail::sort_csr(op_problem);
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
       const double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
       const bool dual_postsolve        = false;
-      presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
-      auto [reduced_op_problem, feasible] =
-        presolver->apply(op_problem,
-                         cuopt::linear_programming::problem_category_t::MIP,
-                         dual_postsolve,
-                         settings.tolerances.absolute_tolerance,
-                         settings.tolerances.relative_tolerance,
-                         presolve_time_limit,
-                         settings.num_cpu_threads);
-      if (!feasible) {
+      presolver   = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
+      auto result = presolver->apply(op_problem,
+                                     cuopt::linear_programming::problem_category_t::MIP,
+                                     dual_postsolve,
+                                     settings.tolerances.absolute_tolerance,
+                                     settings.tolerances.relative_tolerance,
+                                     presolve_time_limit,
+                                     settings.num_cpu_threads);
+      if (!result.has_value()) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
                                         solver_stats_t<i_t, f_t>{},
                                         op_problem.get_handle_ptr()->get_stream());
       }
 
-      problem       = detail::problem_t<i_t, f_t>(reduced_op_problem);
+      problem = detail::problem_t<i_t, f_t>(result->reduced_problem);
+      problem.set_implied_integers(result->implied_integer_indices);
       presolve_time = timer.elapsed_time();
+      if (result->implied_integer_indices.size() > 0) {
+        CUOPT_LOG_INFO("%d implied integers", result->implied_integer_indices.size());
+      }
+      if (problem.is_objective_integral()) { CUOPT_LOG_INFO("Objective function is integral"); }
       CUOPT_LOG_INFO("Papilo presolve time: %f", presolve_time);
     }
     if (settings.user_problem_file != "") {

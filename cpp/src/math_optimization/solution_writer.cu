@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-#include <cuopt/logger.hpp>
 #include <raft/common/nvtx.hpp>
+#include <utilities/logger.hpp>
 #include "solution_writer.hpp"
 
 #include <fstream>
