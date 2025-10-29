@@ -444,7 +444,7 @@ optimization_problem_solution_t<i_t, f_t> run_barrier(
 {
   // Convert data structures to dual simplex format and back
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_simplex_problem<i_t, f_t>(problem);
+    cuopt_problem_to_simplex_problem<i_t, f_t>(problem.handle_ptr, problem);
   auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, timer);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
@@ -515,7 +515,7 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
 {
   // Convert data structures to dual simplex format and back
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_simplex_problem<i_t, f_t>(problem);
+    cuopt_problem_to_simplex_problem<i_t, f_t>(problem.handle_ptr, problem);
   auto sol_dual_simplex = run_dual_simplex(dual_simplex_problem, settings, timer);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
@@ -671,16 +671,13 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // Initialize the dual simplex structures before we run PDLP.
   // Otherwise, CUDA API calls to the problem stream may occur in both threads and throw graph
   // capture off
-  auto barrier_handle = raft::handle_t(*op_problem.get_handle_ptr());
-  detail::problem_t<i_t, f_t> d_barrier_problem(problem);
   rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
-  d_barrier_problem.handle_ptr         = &barrier_handle;
-  raft::resource::set_cuda_stream(barrier_handle, barrier_stream);
+  auto barrier_handle                  = raft::handle_t(barrier_stream);
   // Make sure allocations are done on the original stream
   problem.handle_ptr->sync_stream();
 
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_simplex_problem<i_t, f_t>(d_barrier_problem);
+    cuopt_problem_to_simplex_problem<i_t, f_t>(&barrier_handle, problem);
   // Create a thread for dual simplex
   std::unique_ptr<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
