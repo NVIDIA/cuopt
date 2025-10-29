@@ -19,8 +19,6 @@ set -euo pipefail
 
 . /opt/conda/etc/profile.d/conda.sh
 
-#RAPIDS_VERSION="$(rapids-version)"
-
 rapids-logger "Downloading artifacts from previous jobs"
 CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
 PYTHON_CHANNEL=$(rapids-download-conda-from-github python)
@@ -49,7 +47,8 @@ rapids-print-env
 
 rapids-logger "Cloning cuopt-examples repository"
 rm -rf cuopt-examples
-git clone https://github.com/NVIDIA/cuopt-examples.git
+#git clone https://github.com/NVIDIA/cuopt-examples.git
+git clone -b fix_notebookS_for_nightly https://github.com/rgsl888prabhu/cuOpt-Resources.git cuopt-examples
 
 NBTEST="$(realpath "$(dirname "$0")/utils/nbtest.sh")"
 NBLIST_PATH="$(realpath "$(dirname "$0")/utils/notebook_list.py")"
