@@ -54,6 +54,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
     auto& other_solution   = a.get_feasible() ? b : a;
     // copy the solution from A
     solution_t<i_t, f_t> offspring(guiding_solution);
+    offspring.swap_problem_pointers();
     // find same values and populate it to offspring
     i_t n_different_vars =
       this->assign_same_integer_values(guiding_solution, other_solution, offspring);
@@ -136,6 +137,7 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
         fp_recombiner_config_t::decrease_max_n_of_vars_from_other();
       }
     }
+    offspring.swap_problem_pointers();
     bool better_cost_than_parents =
       offspring.get_quality(weights) <
       std::min(other_solution.get_quality(weights), guiding_solution.get_quality(weights));

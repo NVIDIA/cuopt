@@ -110,6 +110,7 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
                                             is_feasibility_run,
                                             line_segment_timer);
     line_segment_search.settings = {};
+    offspring.swap_problem_pointers();
     bool better_cost_than_parents =
       offspring.get_quality(weights) <
       std::min(other_solution.get_quality(weights), guiding_solution.get_quality(weights));
@@ -126,7 +127,6 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
         ls_recombiner_config_t::decrease_max_n_of_vars_from_other();
       }
     }
-    offspring.swap_problem_pointers();
     if (better_cost_than_parents || better_feasibility_than_parents) {
       CUOPT_LOG_DEBUG("Offspring is feasible or better than both parents");
       return std::make_pair(offspring, true);

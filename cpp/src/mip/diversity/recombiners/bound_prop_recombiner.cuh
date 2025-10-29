@@ -228,6 +228,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     }
     constraint_prop.max_n_failed_repair_iterations = 1;
     cuopt_func_call(offspring.test_number_all_integer());
+    offspring.swap_problem_pointers();
     bool better_cost_than_parents =
       offspring.get_quality(weights) <
       std::min(other_solution.get_quality(weights), guiding_solution.get_quality(weights));
@@ -245,7 +246,6 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
         bp_recombiner_config_t::decrease_max_n_of_vars_from_other();
       }
     }
-    offspring.swap_problem_pointers();
     if (better_cost_than_parents || better_feasibility_than_parents) {
       CUOPT_LOG_DEBUG("Offspring is feasible or better than both parents");
       return std::make_pair(offspring, true);
