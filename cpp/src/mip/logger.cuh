@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <cuopt/logger.hpp>
+#include <utilities/logger.hpp>
 
 namespace cuopt::linear_programming::detail {
 

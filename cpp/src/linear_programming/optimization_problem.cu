@@ -16,8 +16,8 @@
  */
 
 #include <cuopt/error.hpp>
-#include <cuopt/logger.hpp>
 #include <mps_parser/writer.hpp>
+#include <utilities/logger.hpp>
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <mip/mip_constants.hpp>
