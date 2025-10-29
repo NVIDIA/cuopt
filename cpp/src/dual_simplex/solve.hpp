@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
@@ -55,6 +56,20 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
                                           lp_solution_t<i_t, f_t>& original_solution,
                                           std::vector<variable_status_t>& vstatus,
                                           std::vector<f_t>& edge_norms);
+
+// Solve the LP using dual simplex and keep the `basis_update_mpf_t`
+// for future use.
+template <typename i_t, typename f_t>
+lp_status_t solve_linear_program_with_advanced_basis(
+  const lp_problem_t<i_t, f_t>& original_lp,
+  const f_t start_time,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  lp_solution_t<i_t, f_t>& original_solution,
+  basis_update_mpf_t<i_t, f_t>& ft,
+  std::vector<i_t>& basic_list,
+  std::vector<i_t>& nonbasic_list,
+  std::vector<variable_status_t>& vstatus,
+  std::vector<f_t>& edge_norms);
 
 template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,

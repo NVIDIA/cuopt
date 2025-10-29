@@ -16,8 +16,8 @@
  */
 
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
-#include <cuopt/logger.hpp>
 #include <mip/mip_constants.hpp>
+#include <utilities/logger.hpp>
 
 #include <limits>
 #include <math_optimization/solution_writer.hpp>

@@ -16,8 +16,8 @@
  */
 
 #include <cuopt/linear_programming/solver_settings.hpp>
-#include <cuopt/logger.hpp>
 #include <mip/mip_constants.hpp>
+#include <utilities/logger.hpp>
 
 namespace cuopt::linear_programming {
 

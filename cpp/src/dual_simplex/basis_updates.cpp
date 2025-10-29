@@ -15,7 +15,9 @@
  * limitations under the License.
  */
 
+#include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/basis_updates.hpp>
+#include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/triangle_solve.hpp>
 
 #include <cmath>
@@ -2044,6 +2046,73 @@ void basis_update_mpf_t<i_t, f_t>::multiply_lu(csc_matrix_t<i_t, f_t>& out) cons
   out.m      = m;
   out.n      = m;
   out.nz_max = B_nz;
+}
+
+template <typename i_t, typename f_t>
+int basis_update_mpf_t<i_t, f_t>::refactor_basis(
+  const csc_matrix_t<i_t, f_t>& A,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  std::vector<i_t>& basic_list,
+  std::vector<i_t>& nonbasic_list,
+  std::vector<variable_status_t>& vstatus)
+{
+  std::vector<i_t> deficient;
+  std::vector<i_t> slacks_needed;
+
+  if (L0_.m != A.m) { resize(A.m); }
+  std::vector<i_t> q;
+  if (factorize_basis(A,
+                      settings,
+                      basic_list,
+                      L0_,
+                      U0_,
+                      row_permutation_,
+                      inverse_row_permutation_,
+                      q,
+                      deficient,
+                      slacks_needed) == -1) {
+    settings.log.debug("Initial factorization failed\n");
+    basis_repair(A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
+
+#ifdef CHECK_BASIS_REPAIR
+    const i_t m = A.m;
+    csc_matrix_t<i_t, f_t> B(m, m, 0);
+    form_b(A, basic_list, B);
+    for (i_t k = 0; k < deficient.size(); ++k) {
+      const i_t j         = deficient[k];
+      const i_t col_start = B.col_start[j];
+      const i_t col_end   = B.col_start[j + 1];
+      const i_t col_nz    = col_end - col_start;
+      if (col_nz != 1) { settings.log.printf("Deficient column %d has %d nonzeros\n", j, col_nz); }
+      const i_t i = B.i[col_start];
+      if (i != slacks_needed[k]) {
+        settings.log.printf("Slack %d needed but found %d instead\n", slacks_needed[k], i);
+      }
+    }
+#endif
+
+    if (factorize_basis(A,
+                        settings,
+                        basic_list,
+                        L0_,
+                        U0_,
+                        row_permutation_,
+                        inverse_row_permutation_,
+                        q,
+                        deficient,
+                        slacks_needed) == -1) {
+#ifdef CHECK_L_FACTOR
+      if (L0_.check_matrix() == -1) { settings.log.printf("Bad L after basis repair\n"); }
+#endif
+      return deficient.size();
+    }
+    settings.log.debug("Basis repaired\n");
+  }
+
+  assert(q.size() == A.m);
+  reorder_basic_list(q, basic_list);  // We no longer need q after reordering the basic list
+  reset();
+  return 0;
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE

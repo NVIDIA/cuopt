@@ -143,6 +143,7 @@ TEST_F(cli_test_t, invalid_mps_file)
   invalid.close();
 
   auto output = run_cli({invalid_file.string()});
+  std::cout << "Output: " << output << std::endl;
   EXPECT_TRUE(output.find("error") != std::string::npos ||
               output.find("Error") != std::string::npos);
 }

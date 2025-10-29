@@ -20,8 +20,8 @@
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
-#include <cuopt/logger.hpp>
 #include <cuopt/utilities/timestamp_utils.hpp>
+#include <utilities/logger.hpp>
 
 #include <mps_parser/parser.hpp>
 

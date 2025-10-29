@@ -117,6 +117,35 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
                                           std::vector<variable_status_t>& vstatus,
                                           std::vector<f_t>& edge_norms)
 {
+  const i_t m = original_lp.num_rows;
+  const i_t n = original_lp.num_cols;
+  assert(m <= n);
+  std::vector<i_t> basic_list(m);
+  std::vector<i_t> nonbasic_list;
+  basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
+  return solve_linear_program_with_advanced_basis(original_lp,
+                                                  start_time,
+                                                  settings,
+                                                  original_solution,
+                                                  ft,
+                                                  basic_list,
+                                                  nonbasic_list,
+                                                  vstatus,
+                                                  edge_norms);
+}
+
+template <typename i_t, typename f_t>
+lp_status_t solve_linear_program_with_advanced_basis(
+  const lp_problem_t<i_t, f_t>& original_lp,
+  const f_t start_time,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  lp_solution_t<i_t, f_t>& original_solution,
+  basis_update_mpf_t<i_t, f_t>& ft,
+  std::vector<i_t>& basic_list,
+  std::vector<i_t>& nonbasic_list,
+  std::vector<variable_status_t>& vstatus,
+  std::vector<f_t>& edge_norms)
+{
   lp_status_t lp_status = lp_status_t::UNSET;
   lp_problem_t<i_t, f_t> presolved_lp(original_lp.handle_ptr, 1, 1, 1);
   presolve_info_t<i_t, f_t> presolve_info;
@@ -160,9 +189,9 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
   assert(num_basic == phase1_problem.num_rows);
   i_t iter = 0;
   lp_solution_t<i_t, f_t> phase1_solution(phase1_problem.num_rows, phase1_problem.num_cols);
-  std::vector<f_t> junk;
+  edge_norms.clear();
   dual::status_t phase1_status = dual_phase2(
-    1, 1, start_time, phase1_problem, settings, phase1_vstatus, phase1_solution, iter, junk);
+    1, 1, start_time, phase1_problem, settings, phase1_vstatus, phase1_solution, iter, edge_norms);
   if (phase1_status == dual::status_t::NUMERICAL ||
       phase1_status == dual::status_t::DUAL_UNBOUNDED) {
     settings.log.printf("Failed in Phase 1\n");
@@ -179,25 +208,54 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
     assert(solution.x.size() == lp.num_cols);
     vstatus = phase1_vstatus;
     edge_norms.clear();
-    dual::status_t status = dual_phase2(
-      2, iter == 0 ? 1 : 0, start_time, lp, settings, vstatus, solution, iter, edge_norms);
+    bool initialize_basis_update = true;
+    dual::status_t status        = dual_phase2_with_advanced_basis(2,
+                                                            iter == 0 ? 1 : 0,
+                                                            initialize_basis_update,
+                                                            start_time,
+                                                            lp,
+                                                            settings,
+                                                            vstatus,
+                                                            ft,
+                                                            basic_list,
+                                                            nonbasic_list,
+                                                            solution,
+                                                            iter,
+                                                            edge_norms);
     if (status == dual::status_t::NUMERICAL) {
       // Became dual infeasible. Try phase 1 again
       phase1_vstatus = vstatus;
       settings.log.printf("Running Phase 1 again\n");
-      junk.clear();
-      dual_phase2(1,
-                  0,
-                  start_time,
-                  phase1_problem,
-                  settings,
-                  phase1_vstatus,
-                  phase1_solution,
-                  iter,
-                  edge_norms);
+      edge_norms.clear();
+      initialize_basis_update = false;
+      dual_phase2_with_advanced_basis(1,
+                                      0,
+                                      initialize_basis_update,
+                                      start_time,
+                                      phase1_problem,
+                                      settings,
+                                      phase1_vstatus,
+                                      ft,
+                                      basic_list,
+                                      nonbasic_list,
+                                      phase1_solution,
+                                      iter,
+                                      edge_norms);
       vstatus = phase1_vstatus;
       edge_norms.clear();
-      status = dual_phase2(2, 0, start_time, lp, settings, vstatus, solution, iter, edge_norms);
+      status = dual_phase2_with_advanced_basis(2,
+                                               0,
+                                               initialize_basis_update,
+                                               start_time,
+                                               lp,
+                                               settings,
+                                               vstatus,
+                                               ft,
+                                               basic_list,
+                                               nonbasic_list,
+                                               solution,
+                                               iter,
+                                               edge_norms);
     }
     constexpr bool primal_cleanup = false;
     if (status == dual::status_t::OPTIMAL && primal_cleanup) {
@@ -599,6 +657,17 @@ template lp_status_t solve_linear_program_advanced(
   const double start_time,
   const simplex_solver_settings_t<int, double>& settings,
   lp_solution_t<int, double>& original_solution,
+  std::vector<variable_status_t>& vstatus,
+  std::vector<double>& edge_norms);
+
+template lp_status_t solve_linear_program_with_advanced_basis(
+  const lp_problem_t<int, double>& original_lp,
+  const double start_time,
+  const simplex_solver_settings_t<int, double>& settings,
+  lp_solution_t<int, double>& original_solution,
+  basis_update_mpf_t<int, double>& ft,
+  std::vector<int>& basic_list,
+  std::vector<int>& nonbasic_list,
   std::vector<variable_status_t>& vstatus,
   std::vector<double>& edge_norms);
 

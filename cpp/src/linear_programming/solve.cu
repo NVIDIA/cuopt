@@ -20,9 +20,9 @@
 #include <linear_programming/restart_strategy/pdlp_restart_strategy.cuh>
 #include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <linear_programming/translate.hpp>
-#include <linear_programming/utilities/logger_init.hpp>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <linear_programming/utils.cuh>
+#include <utilities/logger.hpp>
 
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/third_party_presolve.hpp>
@@ -672,9 +672,8 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // Initialize the dual simplex structures before we run PDLP.
   // Otherwise, CUDA API calls to the problem stream may occur in both threads and throw graph
   // capture off
-  auto barrier_handle                  = raft::handle_t(*op_problem.get_handle_ptr());
   rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
-  raft::resource::set_cuda_stream(barrier_handle, barrier_stream);
+  auto barrier_handle                  = raft::handle_t(barrier_stream);
   // Make sure allocations are done on the original stream
   problem.handle_ptr->sync_stream();
 
