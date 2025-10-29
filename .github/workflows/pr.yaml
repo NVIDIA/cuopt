@@ -26,7 +26,7 @@ concurrency:
 
 env:
   # Set to 'true' for lean CI (amd64, latest Python/CUDA only) or 'false' for full CI (all platforms)
-  LEAN_CI: 'true'
+  LEAN_CI: 'false'
 
 jobs:
   pr-builder:
