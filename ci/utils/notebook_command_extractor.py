@@ -78,6 +78,8 @@ def extract_shell_commands(notebook_path: str) -> List[str]:
             "mv",
             "unzip",
             "tar",
+            "apt-get",
+            "apt",
         ]
 
         for cell in notebook.get("cells", []):
@@ -250,17 +252,17 @@ def main():
         success_count = 0
         total_count = 0
 
-        if pip_commands:
-            print(f"\nExecuting {len(pip_commands)} pip install commands...")
-            for cmd in pip_commands:
-                if execute_pip_command(cmd, args.verbose):
-                    success_count += 1
-                total_count += 1
-
         if shell_commands:
             print(f"\nExecuting {len(shell_commands)} shell commands...")
             for cmd in shell_commands:
                 if execute_shell_command(cmd, args.verbose):
+                    success_count += 1
+                total_count += 1
+
+        if pip_commands:
+            print(f"\nExecuting {len(pip_commands)} pip install commands...")
+            for cmd in pip_commands:
+                if execute_pip_command(cmd, args.verbose):
                     success_count += 1
                 total_count += 1
 
