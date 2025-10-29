@@ -85,6 +85,7 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
     auto& other_solution   = a.get_feasible() ? b : a;
     // copy the solution from A
     solution_t<i_t, f_t> offspring(guiding_solution);
+    offspring.swap_problem_pointers();
     timer_t line_segment_timer{ls_recombiner_config_t::time_limit};
     // TODO after we have the conic combination, detect the lambda change
     // (i.e. the integral variables flip on line segment)
@@ -125,6 +126,7 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
         ls_recombiner_config_t::decrease_max_n_of_vars_from_other();
       }
     }
+    offspring.swap_problem_pointers();
     if (better_cost_than_parents || better_feasibility_than_parents) {
       CUOPT_LOG_DEBUG("Offspring is feasible or better than both parents");
       return std::make_pair(offspring, true);
