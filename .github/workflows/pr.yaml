@@ -55,7 +55,6 @@ jobs:
       conda_lean_filter: ${{ steps.set-filters.outputs.conda_lean_filter }}
       conda_test_filter: ${{ steps.set-filters.outputs.conda_test_filter }}
       wheel_lean_filter: ${{ steps.set-filters.outputs.wheel_lean_filter }}
-      lean_filter: ${{ steps.set-filters.outputs.lean_filter }}
       mps_parser_filter: ${{ steps.set-filters.outputs.mps_parser_filter }}
       libcuopt_filter: ${{ steps.set-filters.outputs.libcuopt_filter }}
       cuopt_server_filter: ${{ steps.set-filters.outputs.cuopt_server_filter }}
@@ -68,7 +67,6 @@ jobs:
             echo "conda_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.10\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "conda_test_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.13\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "wheel_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
-            echo "lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "mps_parser_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "libcuopt_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "cuopt_server_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
@@ -77,7 +75,6 @@ jobs:
             echo "conda_lean_filter=." >> $GITHUB_OUTPUT
             echo "conda_test_filter=." >> $GITHUB_OUTPUT
             echo "wheel_lean_filter=." >> $GITHUB_OUTPUT
-            echo "lean_filter=." >> $GITHUB_OUTPUT
             echo "mps_parser_filter=group_by([.ARCH, (.PY_VER |split(\".\") | map(tonumber))])|map(max_by([(.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
             echo "libcuopt_filter=group_by([.ARCH, (.CUDA_VER|split(\".\")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(\".\")|map(tonumber)))" >> $GITHUB_OUTPUT
             echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
