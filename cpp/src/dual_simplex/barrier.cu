@@ -1759,9 +1759,9 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     f_t epsilon = 1.0 + vector_norm1<i_t, f_t>(lp.objective);
 
     // A^T y + z - E^T v  - Q x = c
-    // when y = 0, z - E^T v = c - Q x
+    // when y = 0, z - E^T v = c + Q x
     dense_vector_t<i_t, f_t> c = data.c;
-    if (data.Q.n > 0) { matrix_vector_multiply(data.Q, -1.0, data.x, 1.0, c); }
+    if (data.Q.n > 0) { matrix_vector_multiply(data.Q, 1.0, data.x, 1.0, c); }
 
     // First handle the upper bounds case
     for (i_t k = 0; k < data.n_upper_bounds; k++) {
@@ -1780,14 +1780,13 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
         data.v[k] = -c[j] + epsilon;
       }
     }
-
     // Now hande the case with no upper bounds
     for (i_t j = 0; j < lp.num_cols; j++) {
       if (lp.upper[j] == inf) {
-        if (c[j] > 10.0) {
+        if (c[j] > epsilon_adjust) {
           data.z[j] = c[j];
         } else {
-          data.z[j] = 10.0;
+          data.z[j] = epsilon_adjust;
         }
       }
     }
