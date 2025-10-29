@@ -67,9 +67,9 @@ else
     rapids-logger "Warning: libcuopt.so not found in root filesystem"
 fi
 
-rapids-logger "Running Julia tests for cuOpt.jl (test_air05 excluded via patching)"
+rapids-logger "Running Julia tests for cuOpt.jl"
 
-# use Julia to instantiate and run tests for the package with verbose output
+# use Julia to instantiate and run tests for the package
 julia --project=. -e '
 import Pkg;
 Pkg.instantiate();
@@ -78,6 +78,6 @@ try
     Pkg.add("Test")
 catch
 end
-println("Running Pkg.test() for cuOpt.jl with verbose output");
+println("Running Pkg.test() for cuOpt.jl");
 Pkg.test(; coverage=true)
 '
