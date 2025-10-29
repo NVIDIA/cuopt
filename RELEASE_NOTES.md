@@ -1,1 +1,0 @@
-docs/cuopt/source/release-notes.rst

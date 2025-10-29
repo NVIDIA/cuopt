@@ -131,8 +131,6 @@ outputs:
       script:
         content: |
           cmake --install cpp/build
-          # Remove papilo _deps directory from cmake files
-          rm -rf "${PREFIX}/lib/cmake/papilo/_deps"
       dynamic_linking:
         overlinking_behavior: "error"
       prefix_detection:

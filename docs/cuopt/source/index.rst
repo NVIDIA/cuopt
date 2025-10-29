@@ -8,7 +8,8 @@ NVIDIA cuOpt
    :name: NVIDIA cuOpt
 
    introduction.rst
-   release-notes.rst
+   release-notes
+
    system-requirements.rst
 
 .. toctree::

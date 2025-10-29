@@ -191,6 +191,7 @@ FetchContent_Declare(
   #we can switch to the main branch.
   GIT_TAG "741a2b9c8155b249d6df574d758b4d97d4417520"
   GIT_PROGRESS TRUE
+  EXCLUDE_FROM_ALL
   SYSTEM
 )
 

@@ -15,13 +15,16 @@
 
 reviews:
   profile: chill
-  high_level_summary: false
+  high_level_summary: true
   auto_review:
-    enabled: false
+    enabled: true
     drafts: false
     ignore_usernames: ["rapids-bot", "GPUtester", "nv-automation-bot", "copy-pr-bot"]
   tools:
-    eslint:
+    markdownlint:
+      enabled: true
+    shellcheck:
       enabled: true
     gitleaks:
       enabled: true
+  sequence_diagrams: false

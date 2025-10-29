@@ -79,7 +79,6 @@ EXCLUDE_ARGS=(
   --exclude "librapids_logger.so"
   --exclude "libmps_parser.so"
   --exclude "librmm.so"
-  --exclude "libpapilo-core.a"
 )
 
 ci/build_wheel.sh libcuopt ${package_dir}
