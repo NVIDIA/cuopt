@@ -370,24 +370,28 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
       num_empty_cols--;
     }
   }
-
-  // There would not have been any non zero entry corresponding to the removed variables in the Q
-  // matrix So we can just copy the row_start array and change the column indices to the new indices
-  for (i_t j = 0; j < problem.num_cols; ++j) {
-    i_t new_j = col_old_to_new[j];
-    if (new_j != -1) { problem.Q.row_start[new_j] = problem.Q.row_start[j]; }
-  }
-
   if (problem.Q.n > 0) {
+    // There would not have been any non zero entry corresponding to the removed variables in the Q
+    // matrix So we can just copy the row_start array and change the column indices to the new
+    // indices
+    for (i_t j = 0; j < problem.num_cols; ++j) {
+      i_t new_j = col_old_to_new[j];
+      assert(new_j <= j);
+      if (new_j != -1) { problem.Q.row_start[new_j] = problem.Q.row_start[j]; }
+    }
     problem.Q.row_start[new_cols] = problem.Q.row_start[problem.num_cols];
     problem.Q.row_start.resize(new_cols + 1);
 
     i_t Q_nnz = problem.Q.j.size();
     for (i_t jj = 0; jj < Q_nnz; ++jj) {
       i_t old_col = problem.Q.j[jj];
-      assert(old_col != -1);
-      problem.Q.j[jj] = col_old_to_new[old_col];
+      i_t new_col = col_old_to_new[old_col];
+      assert(new_col != -1);
+      problem.Q.j[jj] = new_col;
     }
+    problem.Q.m = new_cols;
+    problem.Q.n = new_cols;
+    problem.Q.check_matrix("After removing empty columns");
   }
 
   problem.objective = objective;
@@ -1183,6 +1187,8 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
 
+  problem.Q.check_matrix("Before free variable expansion");
+
   if (settings.barrier_presolve && free_variables > 0) {
 #ifdef PRINT_INFO
     settings.log.printf("%d free variables\n", free_variables);
@@ -1314,9 +1320,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
             Q_x[row_starts[row]] = -qij;
             row_starts[row]++;
           } else if (pair_index[row] != -1) {
-            Q_j[row_starts[row]] = pair_index[row];
-            Q_x[row_starts[row]] = -qij;
-            row_starts[row]++;
+            Q_j[row_starts[pair_index[row]]] = col;
+            Q_x[row_starts[pair_index[row]]] = -qij;
+            row_starts[pair_index[row]]++;
           }
         }
       }
@@ -1326,6 +1332,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
       problem.Q.row_start       = Q_row_start;
       problem.Q.j               = Q_j;
       problem.Q.x               = Q_x;
+      problem.Q.check_matrix("After free variable expansion");
     }
 
     // assert(problem.A.p[num_cols] == nnz);
