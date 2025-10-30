@@ -641,7 +641,7 @@ void local_search_t<i_t, f_t>::handle_cutting_plane_and_weights(
 {
   if (!cutting_plane_added_for_active_run) {
     solution.problem_ptr = &problem_with_objective_cut;
-    population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
+    // population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
     solution.resize_to_problem();
     resize_to_new_problem();
     cutting_plane_added_for_active_run = true;
@@ -695,7 +695,7 @@ void local_search_t<i_t, f_t>::run_recombiners(solution_t<i_t, f_t>& solution,
   if (population_ptr->is_feasible()) {
     if (!cutting_plane_added_for_active_run) {
       solution.problem_ptr = &problem_with_objective_cut;
-      population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
+      // population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
       solution.resize_to_problem();
       resize_to_new_problem();
       cutting_plane_added_for_active_run = true;
@@ -748,8 +748,8 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     fj.copy_weights(
       population_ptr->weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
     solution.problem_ptr = &problem_with_objective_cut;
-    population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
-    population_ptr->apply_problem_ptr_to_all_solutions();
+    // population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
+    // population_ptr->apply_problem_ptr_to_all_solutions();
     solution.resize_to_problem();
     resize_to_new_problem();
   }
