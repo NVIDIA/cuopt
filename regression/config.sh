@@ -22,8 +22,6 @@ IMAGE="nvidia/cuopt:25.10.0a-cuda12.9-py3.12"
 
 ALL_CONFIGS_PATH=$SCRATCH_DIR/configs/
 ROUTING_CONFIGS_PATH=$SCRATCH_DIR/routing_configs/
-LP_CONFIGS_PATH=$SCRATCH_DIR/lp_configs/
-MIP_CONFIGS_PATH=$SCRATCH_DIR/mip_configs/
 ROUTING_DATASETS_PATH=$SCRATCH_DIR/routing_datasets/
 LP_DATASETS_PATH=$SCRATCH_DIR/lp_datasets/
 MIP_DATASETS_PATH=$SCRATCH_DIR/mip_datasets/
@@ -38,10 +36,10 @@ RESULT_DIR_NAME=cuopt-regression
 SSH_CREDS=/home/iroy/.ssh/
 
 # Assume CUOPT_SLACK_APP_ID is defined!
-CUOPT_SLACK_APP_ID="XYZ"
+CUOPT_SLACK_APP_ID="MY_SLACK_APP_ID"
 WEBHOOK_URL=${WEBHOOK_URL:-https://hooks.slack.com/services/${CUOPT_SLACK_APP_ID}}
-S3_FILE_PREFIX=s3://reopt-testing-public/regression_tests
-S3_URL_PREFIX=https://reopt-testing-public.s3.amazonaws.com/regression_tests
+S3_FILE_PREFIX="MY_S3_FILE_PREFIX"
+S3_URL_PREFIX="MY_S3_URL_PREFIX"
 
 # Most are defined using the bash := or :- syntax, which means they
 # will be set only if they were previously unset. The project config

@@ -43,7 +43,7 @@ def update_asv_db(commitHash=None,
     bResultList = []
     # Skip these columns from benchmarking
     skip_columns = ["date_time", "git_commit"]
-    print("AAA")
+
     # Create result objects for each benchmark result and store it in a list
     for file_name in benchmark_result_list:
         # skip if it's regression file
@@ -76,7 +76,7 @@ def update_asv_db(commitHash=None,
               f"{benchmark_dir_path}, not creating/updating ASV database "
               f"in {asv_dir_path}.")
         return
-    print("BBB")
+
     uname = platform.uname()
     # Maybe also write those metadata to metadata.sh ?
     osType = "%s %s" % (uname.system, uname.release)
@@ -100,19 +100,16 @@ def update_asv_db(commitHash=None,
         'ram' : "%d" % psutil.virtual_memory().total
     }
     bInfo = BenchmarkInfo(**bInfo_dict)
-    print("CCC")
+
     # extract the branch name
     branch = bInfo_dict['branch']
 
     db = ASVDb(dbDir=str(asv_dir_path),
                repo=repo_url,
                branches=[branch])
-    print("DDD")
+
     for res in bResultList:
-        print(bInfo)
-        print(res)
         db.addResult(bInfo, res)
-    print("EEE")
 
 if __name__ == "__main__":
     import argparse

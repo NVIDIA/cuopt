@@ -134,7 +134,7 @@ def run_benchmark(
     if d_type=="lp" or d_type=="mip":
         metrics = LPMetrics()._asdict()
         solver_settings.set_parameter("infeasibility_detection", False)
-        solver_settings.set_parameter("time_limit", 300)
+        solver_settings.set_parameter("time_limit", 60)
         solution = linear_programming.Solve(data_model, solver_settings)
     else:
         metrics = RoutingMetrics()._asdict()

@@ -103,7 +103,7 @@ if [[ $TESTING_FAILED == 0 ]]; then
             --time=4:00:00 \
             --export=ALL \
             --exclusive -K\
-            --container-mounts ${LP_CONFIGS_PATH}:${LP_CONFIGS_PATH},${CUOPT_SCRIPTS_DIR}:${CUOPT_SCRIPTS_DIR},${OUTPUT_DIR}:${OUTPUT_DIR} \
+            --container-mounts ${LP_DATASETS_PATH}:${LP_DATASETS_PATH},${CUOPT_SCRIPTS_DIR}:${CUOPT_SCRIPTS_DIR},${OUTPUT_DIR}:${OUTPUT_DIR} \
             --container-image=$IMAGE \
             --output=${BENCHMARK_RESULTS_DIR}/benchmark_lp_log.txt \
             bash ${CUOPT_SCRIPTS_DIR}/lp_regression_test.sh &
@@ -124,8 +124,7 @@ if [[ $TESTING_FAILED == 0 ]]; then
             bash ${CUOPT_SCRIPTS_DIR}/mip_regression_test.sh &
         PID_3=$!
 
-        wait $PID_3
-        wait $PID_0 $PID_1 $PID_2 $PID_3
+        wait $PID_1 $PID_2 $PID_3
     fi
 
 else   # if [[ $TESTING_FAILED == 0 ]]
@@ -154,7 +153,7 @@ fi
 #fi
 
 # Copy all config files to one folder
-cp $ROUTING_CONFIGS_PATH/*config.json $LP_CONFIGS_PATH/*config.json $MIP_DATASETS_PATH/*config.json $ALL_CONFIGS_PATH/
+cp $ROUTING_CONFIGS_PATH/*config.json  $PROJECT_DIR/*config.json $ALL_CONFIGS_PATH/
 
 RUN_ASV_OPTION=""
 if hasArg --skip-asv; then

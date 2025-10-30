@@ -1,0 +1,29 @@
+{
+    "details": "MIP test",
+    "metrics": {
+        "primal_objective_value": {
+            "threshold": 1,
+            "unit": "primal_objective_value"
+        },
+        "solver_time": {
+            "threshold": 1,
+            "unit": "seconds"
+        },
+        "mip_gap": {
+            "threshold": 1,
+            "unit": "mip_gap"
+        },
+        "max_constraint_violation": {
+            "threshold": 1,
+            "unit": "max"
+        },
+        "max_int_violation": {
+            "threshold": 1,
+            "unit": "max"
+        },
+        "max_variable_bound_violation": {
+            "threshold": 1,
+            "unit": "max"
+        }
+    }
+}
