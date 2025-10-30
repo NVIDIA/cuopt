@@ -1234,14 +1234,13 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
         problem.objective[col]                          = -problem.objective[j];
         presolve_info.free_variable_pairs[pair_count++] = j;
         presolve_info.free_variable_pairs[pair_count++] = col;
+        pair_index[j]                                   = col;
         problem.A.col_start[++col]                      = q;
         problem.lower[j]                                = 0.0;
-        pair_index[j]                                   = col;
       }
     }
 
     if (problem.Q.n > 0) {
-      i_t Q_nnz = problem.Q.row_start[problem.num_cols];
       std::vector<i_t> row_counts(num_cols, 0);
       i_t nz_count = problem.Q.row_start[problem.num_cols];
       for (i_t row = 0; row < problem.Q.n; row++) {
@@ -1251,13 +1250,17 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
         for (i_t qj = q_start; qj < q_end; qj++) {
           i_t col = problem.Q.j[qj];
           if (pair_index[row] != -1 && pair_index[col] != -1) {
+            assert(pair_index[row] >= problem.num_cols);            
+            assert(pair_index[col] >= problem.num_cols);
             row_counts[row]++;
             row_counts[pair_index[row]] += 2;
             nz_count += 3;
           } else if (pair_index[col] != -1) {
+            assert(pair_index[col] >= problem.num_cols);
             row_counts[row]++;
             nz_count++;
           } else if (pair_index[row] != -1) {
+            assert(pair_index[row] >= problem.num_cols);            
             row_counts[pair_index[row]]++;
             nz_count++;
           }
@@ -1266,10 +1269,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
 
       std::vector<i_t> Q_row_start(num_cols + 1);
       Q_row_start[0] = 0;
-      for (i_t row = 0; row < problem.Q.n; row++) {
+      for (i_t row = 0; row < num_cols; row++) {
         Q_row_start[row + 1] = Q_row_start[row] + row_counts[row];
       }
-
       std::vector<i_t> Q_j(nz_count);
       std::vector<f_t> Q_x(nz_count);
       auto row_starts = Q_row_start;
