@@ -1250,7 +1250,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
         for (i_t qj = q_start; qj < q_end; qj++) {
           i_t col = problem.Q.j[qj];
           if (pair_index[row] != -1 && pair_index[col] != -1) {
-            assert(pair_index[row] >= problem.num_cols);            
+            assert(pair_index[row] >= problem.num_cols);
             assert(pair_index[col] >= problem.num_cols);
             row_counts[row]++;
             row_counts[pair_index[row]] += 2;
@@ -1260,7 +1260,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
             row_counts[row]++;
             nz_count++;
           } else if (pair_index[row] != -1) {
-            assert(pair_index[row] >= problem.num_cols);            
+            assert(pair_index[row] >= problem.num_cols);
             row_counts[pair_index[row]]++;
             nz_count++;
           }
