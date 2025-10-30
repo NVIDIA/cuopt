@@ -778,7 +778,7 @@ i_t steepest_edge_pricing_with_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
     const i_t j              = infeasibility_indices[k];
     const f_t squared_infeas = squared_infeasibilities[j];
     const f_t val            = squared_infeas / dy_steepest_edge[j];
-    if (val > max_val || val == max_val && j > leaving_index) {
+    if (val > max_val || (val == max_val && j > leaving_index)) {
       max_val                = val;
       leaving_index          = j;
       const f_t lower_infeas = lp.lower[j] - x[j];
@@ -2183,6 +2183,43 @@ dual::status_t dual_phase2(i_t phase,
 {
   const i_t m = lp.num_rows;
   const i_t n = lp.num_cols;
+  std::vector<i_t> basic_list(m);
+  std::vector<i_t> nonbasic_list;
+  std::vector<i_t> superbasic_list;
+  basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
+  const bool initialize_basis = true;
+  return dual_phase2_with_advanced_basis(phase,
+                                         slack_basis,
+                                         initialize_basis,
+                                         start_time,
+                                         lp,
+                                         settings,
+                                         vstatus,
+                                         ft,
+                                         basic_list,
+                                         nonbasic_list,
+                                         sol,
+                                         iter,
+                                         delta_y_steepest_edge);
+}
+
+template <typename i_t, typename f_t>
+dual::status_t dual_phase2_with_advanced_basis(i_t phase,
+                                               i_t slack_basis,
+                                               bool initialize_basis,
+                                               f_t start_time,
+                                               const lp_problem_t<i_t, f_t>& lp,
+                                               const simplex_solver_settings_t<i_t, f_t>& settings,
+                                               std::vector<variable_status_t>& vstatus,
+                                               basis_update_mpf_t<i_t, f_t>& ft,
+                                               std::vector<i_t>& basic_list,
+                                               std::vector<i_t>& nonbasic_list,
+                                               lp_solution_t<i_t, f_t>& sol,
+                                               i_t& iter,
+                                               std::vector<f_t>& delta_y_steepest_edge)
+{
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
   assert(m <= n);
   assert(vstatus.size() == n);
   assert(lp.A.m == m);
@@ -2191,9 +2228,6 @@ dual::status_t dual_phase2(i_t phase,
   assert(lp.lower.size() == n);
   assert(lp.upper.size() == n);
   assert(lp.rhs.size() == m);
-  std::vector<i_t> basic_list(m);
-  std::vector<i_t> nonbasic_list;
-  std::vector<i_t> superbasic_list;
 
   std::vector<f_t>& x = sol.x;
   std::vector<f_t>& y = sol.y;
@@ -2209,33 +2243,18 @@ dual::status_t dual_phase2(i_t phase,
   std::vector<f_t> z_old                     = z;
 
   phase2::bound_info(lp, settings);
-  get_basis_from_vstatus(m, vstatus, basic_list, nonbasic_list, superbasic_list);
-  assert(superbasic_list.size() == 0);
-  assert(nonbasic_list.size() == n - m);
+  if (initialize_basis) {
+    std::vector<i_t> superbasic_list;
+    get_basis_from_vstatus(m, vstatus, basic_list, nonbasic_list, superbasic_list);
+    assert(superbasic_list.size() == 0);
+    assert(nonbasic_list.size() == n - m);
 
-  // Compute L*U = A(p, basic_list)
-  csc_matrix_t<i_t, f_t> L(m, m, 1);
-  csc_matrix_t<i_t, f_t> U(m, m, 1);
-  std::vector<i_t> pinv(m);
-  std::vector<i_t> p;
-  std::vector<i_t> q;
-  std::vector<i_t> deficient;
-  std::vector<i_t> slacks_needed;
-
-  if (factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) ==
-      -1) {
-    settings.log.debug("Initial factorization failed\n");
-    basis_repair(lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
-    if (factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) ==
-        -1) {
+    if (ft.refactor_basis(lp.A, settings, basic_list, nonbasic_list, vstatus) > 0) {
       return dual::status_t::NUMERICAL;
     }
-    settings.log.printf("Basis repaired\n");
+
+    if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
   }
-  if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
-  assert(q.size() == m);
-  reorder_basic_list(q, basic_list);
-  basis_update_mpf_t<i_t, f_t> ft(L, U, p, settings.refactor_frequency);
 
   std::vector<f_t> c_basic(m);
   for (i_t k = 0; k < m; ++k) {
@@ -2872,54 +2891,28 @@ dual::status_t dual_phase2(i_t phase,
 #endif
     if (should_refactor) {
       bool should_recompute_x = false;
-      if (factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) ==
-          -1) {
+      if (ft.refactor_basis(lp.A, settings, basic_list, nonbasic_list, vstatus) > 0) {
         should_recompute_x = true;
         settings.log.printf("Failed to factorize basis. Iteration %d\n", iter);
         if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
-        basis_repair(lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
         i_t count = 0;
-        while (factorize_basis(
-                 lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) == -1) {
+        i_t deficient_size;
+        while ((deficient_size =
+                  ft.refactor_basis(lp.A, settings, basic_list, nonbasic_list, vstatus)) > 0) {
           settings.log.printf("Failed to repair basis. Iteration %d. %d deficient columns.\n",
                               iter,
-                              static_cast<int>(deficient.size()));
-#ifdef CHECK_L_FACTOR
-          if (L.check_matrix() == -1) { settings.log.printf("Bad L after basis repair\n"); }
-#endif
+                              static_cast<int>(deficient_size));
+
           if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
           settings.threshold_partial_pivoting_tol = 1.0;
+
           count++;
           if (count > 10) { return dual::status_t::NUMERICAL; }
-          basis_repair(
-            lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
-
-#ifdef CHECK_BASIS_REPAIR
-          csc_matrix_t<i_t, f_t> B(m, m, 0);
-          form_b(lp.A, basic_list, B);
-          for (i_t k = 0; k < deficient.size(); ++k) {
-            const i_t j         = deficient[k];
-            const i_t col_start = B.col_start[j];
-            const i_t col_end   = B.col_start[j + 1];
-            const i_t col_nz    = col_end - col_start;
-            if (col_nz != 1) {
-              settings.log.printf("Deficient column %d has %d nonzeros\n", j, col_nz);
-            }
-            const i_t i = B.i[col_start];
-            if (i != slacks_needed[k]) {
-              settings.log.printf("Slack %d needed but found %d instead\n", slacks_needed[k], i);
-            }
-          }
-#endif
         }
 
         settings.log.printf("Successfully repaired basis. Iteration %d\n", iter);
       }
-      reorder_basic_list(q, basic_list);
-#ifdef CHECK_L_FACTOR
-      if (L.check_matrix() == -1) { settings.log.printf("Bad L factor\n"); }
-#endif
-      ft.reset(L, U, p);
+
       phase2::reset_basis_mark(basic_list, nonbasic_list, basic_mark, nonbasic_mark);
       if (should_recompute_x) {
         std::vector<f_t> unperturbed_x(n);
@@ -3013,6 +3006,20 @@ template dual::status_t dual_phase2<int, double>(
   int& iter,
   std::vector<double>& steepest_edge_norms);
 
+template dual::status_t dual_phase2_with_advanced_basis<int, double>(
+  int phase,
+  int slack_basis,
+  bool initialize_basis,
+  double start_time,
+  const lp_problem_t<int, double>& lp,
+  const simplex_solver_settings_t<int, double>& settings,
+  std::vector<variable_status_t>& vstatus,
+  basis_update_mpf_t<int, double>& ft,
+  std::vector<int>& basic_list,
+  std::vector<int>& nonbasic_list,
+  lp_solution_t<int, double>& sol,
+  int& iter,
+  std::vector<double>& steepest_edge_norms);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

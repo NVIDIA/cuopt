@@ -66,7 +66,7 @@ libcuopt = "libcuopt"
 select = [
     "distro-too-large-compressed",
 ]
-max_allowed_size_compressed = '585M'
+max_allowed_size_compressed = '595M'
 
 [project.scripts]
 cuopt_cli = "libcuopt._cli_wrapper:main"
