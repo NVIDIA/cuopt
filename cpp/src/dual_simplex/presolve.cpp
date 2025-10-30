@@ -1204,7 +1204,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     i_t num_cols = problem.num_cols + free_variables;
     i_t nnz      = problem.A.col_start[problem.num_cols];
     for (i_t j = 0; j < problem.num_cols; j++) {
-      if (is_free_variable[j]) { nnz += (problem.A.col_start[j + 1] - problem.A.col_start[j]); }
+      if (problem.lower[j] == -inf && problem.upper[j] == inf) {
+        nnz += (problem.A.col_start[j + 1] - problem.A.col_start[j]);
+      }
     }
 
     problem.A.col_start.resize(num_cols + 1);
@@ -1253,7 +1255,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
             row_counts[pair_index[row]] += 2;
             nz_count += 3;
           } else if (pair_index[col] != -1) {
-            row_counts[j]++;
+            row_counts[row]++;
             nz_count++;
           } else if (pair_index[row] != -1) {
             row_counts[pair_index[row]]++;
@@ -1281,7 +1283,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
           f_t qij   = problem.Q.x[qj];
           Q_j[q_nz] = col;
           Q_x[q_nz] = qij;
-          qz++;
+          q_nz++;
         }
         row_starts[row] = q_nz;
       }
@@ -1292,6 +1294,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
         i_t q_end   = problem.Q.row_start[row + 1];
         for (i_t qj = q_start; qj < q_end; qj++) {
           i_t col = problem.Q.j[qj];
+          f_t qij = problem.Q.x[qj];
           if (pair_index[row] != -1 && pair_index[col] != -1) {
             Q_j[row_starts[row]] = pair_index[col];
             Q_x[row_starts[row]] = -qij;
