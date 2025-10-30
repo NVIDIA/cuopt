@@ -15,13 +15,62 @@
  * limitations under the License.
  */
 
-#pragma once
-
-#include <cuopt/logger_macros.hpp>
-
-#include <rapids_logger/logger.hpp>
+#include <utilities/logger.hpp>
+#include <utilities/version_info.hpp>
 
 namespace cuopt {
+
+struct buffered_entry {
+  rapids_logger::level_enum level;
+  std::string msg;
+};
+
+// Buffer to store log messages
+class log_buffer {
+ public:
+  log_buffer()  = default;
+  ~log_buffer() = default;
+
+  void log(rapids_logger::level_enum lvl, const char* msg)
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (!msg) return;
+    std::string str(msg);
+
+    if (!str.empty() && str.back() == '\n') { str.pop_back(); }
+    messages.push_back({lvl, std::move(str)});
+  }
+
+  size_t size() const
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    return messages.size();
+  }
+
+  std::vector<buffered_entry> drain_all()
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    std::vector<buffered_entry> out;
+    out.swap(messages);
+    return out;
+  }
+
+  std::vector<buffered_entry> messages;
+  mutable std::mutex mutex;
+};
+
+log_buffer& global_log_buffer()
+{
+  static log_buffer buffer;
+  return buffer;
+}
+
+// Callback function for the buffer sink
+static void buffer_log_callback(int lvl, const char* msg)
+{
+  // store level with message; actual filtering happens at logger time
+  global_log_buffer().log(static_cast<rapids_logger::level_enum>(lvl), msg);
+}
 
 /**
  * @brief Returns the default sink for the global logger.
@@ -31,7 +80,11 @@ namespace cuopt {
  *
  * @return sink_ptr The sink to use
  */
-rapids_logger::sink_ptr default_sink();
+rapids_logger::sink_ptr default_sink()
+{
+  return std::make_shared<rapids_logger::callback_sink_mt>(buffer_log_callback);
+}
+
 /**
  * @brief Returns the default log pattern for the global logger.
  *
@@ -63,12 +116,7 @@ inline rapids_logger::level_enum default_level()
 #endif
 }
 
-/**
- * @brief Get the default logger.
- *
- * @return logger& The default logger
- */
-inline rapids_logger::logger& default_logger()
+rapids_logger::logger& default_logger()
 {
   static rapids_logger::logger logger_ = [] {
     rapids_logger::logger logger_{"CUOPT", {default_sink()}};
@@ -82,15 +130,11 @@ inline rapids_logger::logger& default_logger()
 
     return logger_;
   }();
+
   return logger_;
 }
 
-/**
- * @brief Reset the default logger to the default settings.
- *  This is needed when we are running multiple tests and each test has different logger settings
- *  and we need to reset the logger to the default settings before each test.
- */
-inline void reset_default_logger()
+void reset_default_logger()
 {
   default_logger().sinks().clear();
   default_logger().sinks().push_back(default_sink());
@@ -102,5 +146,36 @@ inline void reset_default_logger()
   default_logger().set_level(default_level());
   default_logger().flush_on(rapids_logger::level_enum::debug);
 }
+
+init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
+{
+  // until this function is called, the default sink is the buffer sink
+  cuopt::default_logger().sinks().clear();
+
+  // re-initialize sinks
+  if (log_to_console) {
+    cuopt::default_logger().sinks().push_back(
+      std::make_shared<rapids_logger::ostream_sink_mt>(std::cout));
+  }
+  if (!log_file.empty()) {
+    cuopt::default_logger().sinks().push_back(
+      std::make_shared<rapids_logger::basic_file_sink_mt>(log_file, true));
+    cuopt::default_logger().flush_on(rapids_logger::level_enum::debug);
+  }
+
+#if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
+  cuopt::default_logger().set_pattern("%v");
+#else
+  cuopt::default_logger().set_pattern(cuopt::default_pattern());
+#endif
+
+  // Extract messages from the global buffer and log to the default logger
+  auto buffered_messages = global_log_buffer().drain_all();
+  for (const auto& entry : buffered_messages) {
+    cuopt::default_logger().log(entry.level, entry.msg.c_str());
+  }
+}
+
+init_logger_t::~init_logger_t() { cuopt::reset_default_logger(); }
 
 }  // namespace cuopt

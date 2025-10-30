@@ -16,10 +16,10 @@
  */
 
 #include <cuopt/error.hpp>
-#include <cuopt/logger.hpp>
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/gf2_presolve.hpp>
 #include <mip/presolve/third_party_presolve.hpp>
+#include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
 
 #include <raft/common/nvtx.hpp>

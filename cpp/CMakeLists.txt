@@ -466,6 +466,12 @@ if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     OpenMP::OpenMP_CXX
     PRIVATE
   )
+
+  target_include_directories(solve_MIP
+    PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+
 endif()
 
 option(BUILD_LP_BENCHMARKS "Build LP benchmarks" OFF)

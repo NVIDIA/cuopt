@@ -18,8 +18,8 @@
 
 #include <cuda_runtime.h>
 
-#include <cuopt/logger.hpp>
 #include <cuopt/version_config.hpp>
+#include <utilities/logger.hpp>
 
 #include <fstream>
 #include <iomanip>
