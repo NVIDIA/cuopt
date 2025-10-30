@@ -3321,10 +3321,6 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
       quad_objective = 0.5 * x_host.inner_product(Qx);
     }
 
-    std::cout << "d_cx.value(stream_view_) = " << d_cx.value(stream_view_)
-              << ", quad_objective = " << quad_objective
-              << ", d_by.value(stream_view_) = " << d_by.value(stream_view_)
-              << ", d_uv.value(stream_view_) = " << d_uv.value(stream_view_) << std::endl;
     primal_objective = d_cx.value(stream_view_) + quad_objective;
     dual_objective   = d_by.value(stream_view_) - d_uv.value(stream_view_) - quad_objective;
 
