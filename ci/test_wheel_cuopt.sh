@@ -76,7 +76,7 @@ export OMP_NUM_THREADS=1
 
 RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt/cuopt/tests/
 
-# run jump tests and cvxpy integration tests for only nightly builds
+# run thirdparty integration tests for only nightly builds
 if [[ "${RAPIDS_BUILD_TYPE}" == "nightly" ]]; then
     ./ci/thirdparty-testing/run_jump_tests.sh
     ./ci/thirdparty-testing/run_cvxpy_tests.sh

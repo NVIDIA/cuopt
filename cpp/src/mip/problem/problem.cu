@@ -1075,7 +1075,6 @@ void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_i
 {
   raft::common::nvtx::range fun_scope("set_implied_integers");
   auto d_indices = cuopt::device_copy(implied_integer_indices, handle_ptr->get_stream());
-  print("implied integer indices", d_indices);
   thrust::for_each(handle_ptr->get_thrust_policy(),
                    d_indices.begin(),
                    d_indices.end(),

@@ -3575,6 +3575,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
   } catch (const raft::cuda_error& e) {
     settings.log.debug("Error in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
+  } catch (const rmm::out_of_memory& e) {
+    settings.log.debug("Out of memory in barrier_solver_t: %s\n", e.what());
+    return lp_status_t::NUMERICAL_ISSUES;
   }
 }
 

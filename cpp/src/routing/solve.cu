@@ -15,9 +15,9 @@
  * limitations under the License.
  */
 
-#include <cuopt/logger.hpp>
 #include <cuopt/routing/solve.hpp>
 #include <routing/solver.hpp>
+#include <utilities/logger.hpp>
 
 namespace cuopt {
 namespace routing {

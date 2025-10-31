@@ -21,15 +21,16 @@
 #include <mip/presolve/third_party_presolve.hpp>
 #include <mip/presolve/trivial_presolve.cuh>
 #include <mip/solver.cuh>
+#include <mip/utilities/sort_csr.cuh>
 #include <mip/utils.cuh>
 
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <linear_programming/pdlp.cuh>
 #include <linear_programming/restart_strategy/pdlp_restart_strategy.cuh>
 #include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
-#include <linear_programming/utilities/logger_init.hpp>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <linear_programming/utils.cuh>
+#include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
 #include <utilities/version_info.hpp>
 
@@ -205,6 +206,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
 
     if (run_presolve) {
+      detail::sort_csr(op_problem);
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
       const double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
