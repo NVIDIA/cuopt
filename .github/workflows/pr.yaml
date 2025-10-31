@@ -60,7 +60,7 @@ jobs:
           # Extract PR number from branch name (pull-request/123 -> 123)
           PR_NUMBER=$(echo "${{ github.ref }}" | sed 's|refs/heads/pull-request/||')
           echo "Checking PR #$PR_NUMBER for lean-ci label..."
-          
+
           # Check if the PR has the 'lean-ci' label
           if gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json labels --jq '.labels[].name' | grep -q "^lean-ci$"; then
             echo "lean_ci_enabled=true" >> $GITHUB_OUTPUT
@@ -69,7 +69,7 @@ jobs:
             echo "lean_ci_enabled=false" >> $GITHUB_OUTPUT
             echo "✅ Full CI is enabled"
           fi
-  
+
   prevent-merge-with-lean-ci:
     runs-on: ubuntu-latest
     needs: check-lean-ci
