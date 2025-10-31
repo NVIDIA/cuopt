@@ -3725,6 +3725,16 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       bool small_gap =
         relative_complementarity_residual < settings.barrier_relative_complementarity_tol;
 
+      // For QP, the difference between gap and complementarity residual norm can be large
+      if (lp.Q.n > 0) {
+        f_t user_primal_objective = compute_user_objective(lp, primal_objective);
+        f_t user_dual_objective   = compute_user_objective(lp, dual_objective);
+        f_t user_gap              = fabs(user_primal_objective - user_dual_objective);
+        f_t relative_user_gap     = user_gap / (1.0 + std::abs(user_primal_objective));
+
+        // FIXME:: use gap tolerance instead of complementarity tolerance
+        small_gap = small_gap && relative_user_gap < settings.barrier_relative_complementarity_tol;
+      }
       converged = primal_feasible && dual_feasible && small_gap;
 
       if (converged) {
