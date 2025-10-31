@@ -27,7 +27,7 @@ concurrency:
 jobs:
   pr-builder:
     needs:
-      - check-lean-ci
+      - prevent-merge-with-lean-ci
       - compute-matrix-filters
       - changed-files
       - checks
@@ -46,27 +46,43 @@ jobs:
       - test-self-hosted-server
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
+    if: always()
   check-lean-ci:
     runs-on: ubuntu-latest
+    outputs:
+      lean_ci_enabled: ${{ steps.check-label.outputs.lean_ci_enabled }}
     steps:
-      - name: Check for lean-ci label and fail if present
+      - name: Check for lean-ci label
+        id: check-label
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Extract PR number from branch name (pull-request/123 -> 123)
           PR_NUMBER=$(echo "${{ github.ref }}" | sed 's|refs/heads/pull-request/||')
           echo "Checking PR #$PR_NUMBER for lean-ci label..."
-
+          
           # Check if the PR has the 'lean-ci' label
           if gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json labels --jq '.labels[].name' | grep -q "^lean-ci$"; then
-            echo "❌ ERROR: This PR has the 'lean-ci' label enabled."
-            echo "Lean CI is only for testing purposes and should not be merged."
-            echo "Please remove the 'lean-ci' label and run full CI before merging."
-            exit 1
+            echo "lean_ci_enabled=true" >> $GITHUB_OUTPUT
+            echo "⚠️  Lean CI is enabled (lean-ci label found)"
           else
-            echo "✅ Full CI is enabled. PR can be merged once all checks pass."
+            echo "lean_ci_enabled=false" >> $GITHUB_OUTPUT
+            echo "✅ Full CI is enabled"
           fi
+  
+  prevent-merge-with-lean-ci:
+    runs-on: ubuntu-latest
+    needs: check-lean-ci
+    if: needs.check-lean-ci.outputs.lean_ci_enabled == 'true'
+    steps:
+      - name: Fail if lean-ci label is present
+        run: |
+          echo "❌ ERROR: This PR has the 'lean-ci' label enabled."
+          echo "Lean CI is only for testing purposes and should not be merged."
+          echo "Please remove the 'lean-ci' label and run full CI before merging."
+          exit 1
   compute-matrix-filters:
+    needs: check-lean-ci
     runs-on: ubuntu-latest
     outputs:
       conda_lean_filter: ${{ steps.set-filters.outputs.conda_lean_filter }}
@@ -77,27 +93,10 @@ jobs:
       cuopt_server_filter: ${{ steps.set-filters.outputs.cuopt_server_filter }}
       cuopt_sh_client_filter: ${{ steps.set-filters.outputs.cuopt_sh_client_filter }}
     steps:
-      - name: Check for lean-ci label
-        id: check-label
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Extract PR number from branch name (pull-request/123 -> 123)
-          PR_NUMBER=$(echo "${{ github.ref }}" | sed 's|refs/heads/pull-request/||')
-          echo "PR Number: $PR_NUMBER"
-
-          # Check if the PR has the 'lean-ci' label
-          if gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json labels --jq '.labels[].name' | grep -q "^lean-ci$"; then
-            echo "LEAN_CI=true" >> $GITHUB_ENV
-            echo "Lean CI enabled (lean-ci label found)"
-          else
-            echo "LEAN_CI=false" >> $GITHUB_ENV
-            echo "Full CI enabled (no lean-ci label)"
-          fi
       - name: Set matrix filters
         id: set-filters
         run: |
-          if [ "${{ env.LEAN_CI }}" == "true" ]; then
+          if [ "${{ needs.check-lean-ci.outputs.lean_ci_enabled }}" == "true" ]; then
             echo "conda_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.10\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "conda_test_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.13\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "wheel_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
