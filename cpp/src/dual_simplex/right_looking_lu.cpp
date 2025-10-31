@@ -579,6 +579,7 @@ void remove_pivot_col(i_t pivot_i,
 
 template <typename i_t, typename f_t>
 i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
+                     const simplex_solver_settings_t<i_t, f_t>& settings,
                      f_t tol,
                      const std::vector<i_t>& column_list,
                      std::vector<i_t>& q,
@@ -637,6 +638,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
 
   i_t pivots = 0;
   for (i_t k = 0; k < n; ++k) {
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return -1; }
     // Find pivot that satisfies
     // abs(pivot) >= abstol,
     // abs(pivot) >= threshold_tol * max abs[pivot column]
@@ -1152,6 +1154,7 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
 template int right_looking_lu<int, double>(const csc_matrix_t<int, double>& A,
+                                           const simplex_solver_settings_t<int, double>& settings,
                                            double tol,
                                            const std::vector<int>& column_list,
                                            std::vector<int>& q,
