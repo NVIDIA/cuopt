@@ -47,8 +47,7 @@ rapids-print-env
 
 rapids-logger "Cloning cuopt-examples repository"
 rm -rf cuopt-examples
-#git clone https://github.com/NVIDIA/cuopt-examples.git
-git clone -b fix_notebookS_for_nightly https://github.com/rgsl888prabhu/cuOpt-Resources.git cuopt-examples
+git clone https://github.com/NVIDIA/cuopt-examples.git
 
 NBTEST="$(realpath "$(dirname "$0")/utils/nbtest.sh")"
 NBLIST_PATH="$(realpath "$(dirname "$0")/utils/notebook_list.py")"
