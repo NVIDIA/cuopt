@@ -1854,7 +1854,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 
   // Verify A'*y + z - E*v  - Q*x = c
   data.z.pairwise_subtract(data.c, data.dual_residual);
-  if (data.Q.n > 0) { matrix_vector_multiply(data.Q, 1.0, data.x, 1.0, data.dual_residual); }
+  if (data.Q.n > 0) { matrix_vector_multiply(data.Q, -1.0, data.x, 1.0, data.dual_residual); }
   if (use_gpu) {
     data.cusparse_view_.transpose_spmv(1.0, data.y, 1.0, data.dual_residual);
   } else {
