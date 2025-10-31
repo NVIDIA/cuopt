@@ -24,13 +24,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # Set to 'true' for lean CI (amd64, latest Python/CUDA only) or 'false' for full CI (all platforms)
-  LEAN_CI: 'false'
-
 jobs:
   pr-builder:
     needs:
+      - check-lean-ci
       - compute-matrix-filters
       - changed-files
       - checks
@@ -49,6 +46,26 @@ jobs:
       - test-self-hosted-server
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
+  check-lean-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for lean-ci label and fail if present
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Extract PR number from branch name (pull-request/123 -> 123)
+          PR_NUMBER=$(echo "${{ github.ref }}" | sed 's|refs/heads/pull-request/||')
+          echo "Checking PR #$PR_NUMBER for lean-ci label..."
+          
+          # Check if the PR has the 'lean-ci' label
+          if gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json labels --jq '.labels[].name' | grep -q "^lean-ci$"; then
+            echo "❌ ERROR: This PR has the 'lean-ci' label enabled."
+            echo "Lean CI is only for testing purposes and should not be merged."
+            echo "Please remove the 'lean-ci' label and run full CI before merging."
+            exit 1
+          else
+            echo "✅ Full CI is enabled. PR can be merged once all checks pass."
+          fi
   compute-matrix-filters:
     runs-on: ubuntu-latest
     outputs:
@@ -60,6 +77,23 @@ jobs:
       cuopt_server_filter: ${{ steps.set-filters.outputs.cuopt_server_filter }}
       cuopt_sh_client_filter: ${{ steps.set-filters.outputs.cuopt_sh_client_filter }}
     steps:
+      - name: Check for lean-ci label
+        id: check-label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Extract PR number from branch name (pull-request/123 -> 123)
+          PR_NUMBER=$(echo "${{ github.ref }}" | sed 's|refs/heads/pull-request/||')
+          echo "PR Number: $PR_NUMBER"
+          
+          # Check if the PR has the 'lean-ci' label
+          if gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json labels --jq '.labels[].name' | grep -q "^lean-ci$"; then
+            echo "LEAN_CI=true" >> $GITHUB_ENV
+            echo "Lean CI enabled (lean-ci label found)"
+          else
+            echo "LEAN_CI=false" >> $GITHUB_ENV
+            echo "Full CI enabled (no lean-ci label)"
+          fi
       - name: Set matrix filters
         id: set-filters
         run: |
