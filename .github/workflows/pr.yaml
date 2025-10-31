@@ -47,7 +47,6 @@ jobs:
       - test-self-hosted-server
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
-    if: always()
   check-lean-ci:
     runs-on: ubuntu-latest
     outputs:
