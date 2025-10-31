@@ -27,6 +27,7 @@ concurrency:
 jobs:
   pr-builder:
     needs:
+      - check-lean-ci
       - prevent-merge-with-lean-ci
       - compute-matrix-filters
       - changed-files
