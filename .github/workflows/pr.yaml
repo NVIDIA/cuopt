@@ -56,7 +56,7 @@ jobs:
           # Extract PR number from branch name (pull-request/123 -> 123)
           PR_NUMBER=$(echo "${{ github.ref }}" | sed 's|refs/heads/pull-request/||')
           echo "Checking PR #$PR_NUMBER for lean-ci label..."
-          
+
           # Check if the PR has the 'lean-ci' label
           if gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json labels --jq '.labels[].name' | grep -q "^lean-ci$"; then
             echo "❌ ERROR: This PR has the 'lean-ci' label enabled."
@@ -85,7 +85,7 @@ jobs:
           # Extract PR number from branch name (pull-request/123 -> 123)
           PR_NUMBER=$(echo "${{ github.ref }}" | sed 's|refs/heads/pull-request/||')
           echo "PR Number: $PR_NUMBER"
-          
+
           # Check if the PR has the 'lean-ci' label
           if gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json labels --jq '.labels[].name' | grep -q "^lean-ci$"; then
             echo "LEAN_CI=true" >> $GITHUB_ENV
