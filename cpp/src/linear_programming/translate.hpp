@@ -115,6 +115,21 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
   printf("user_problem.Q_indices: %zu\n", user_problem.Q_indices.size());
   printf("user_problem.Q_values: %zu\n", user_problem.Q_values.size());
 
+  // Check if Q is diagonal matrix
+  bool Q_is_diagonal = true;
+  for (size_t j = 0; j < user_problem.Q_offsets.size() - 1; ++j) {
+    size_t start = user_problem.Q_offsets[j];
+    size_t end   = user_problem.Q_offsets[j + 1];
+    for (size_t p = start; p < end; ++p) {
+      if (user_problem.Q_indices[p] != static_cast<int>(j)) {
+        Q_is_diagonal = false;
+        break;
+      }
+    }
+    if (!Q_is_diagonal) break;
+  }
+  printf("Q_is_diagonal: %d\n", Q_is_diagonal);
+
   return user_problem;
 }
 

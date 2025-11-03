@@ -421,6 +421,8 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
     barrier_settings.log.log = false;
   }
 
+  user_problem.apply_scaling();
+
   dual_simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = dual_simplex::solve_linear_program_with_barrier<i_t, f_t>(
     user_problem, barrier_settings, solution);

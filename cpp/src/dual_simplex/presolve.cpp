@@ -1082,9 +1082,13 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   for (i_t j = 0; j < problem.num_cols; j++) {
     if (problem.lower[j] == -inf && problem.upper[j] < inf) { no_lower_bound++; }
   }
-#ifdef PRINT_INFO
-  settings.log.printf("%d variables with no lower bound\n", no_lower_bound);
-#endif
+
+  if (no_lower_bound > 0) {
+    settings.log.printf("%d variables with no lower bound\n", no_lower_bound);
+  }
+
+  // FIXME:: handle no lower bound cases
+
   // The original problem may have nonzero lower bounds
   // 0 != l_j <= x_j <= u_j
   i_t nonzero_lower_bounds = 0;

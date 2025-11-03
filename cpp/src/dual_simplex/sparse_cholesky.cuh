@@ -29,6 +29,9 @@
 
 #include "cudss.h"
 
+#define PERFORM_ANALYSIS 0
+#define USE_MATCHING     1
+
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
@@ -311,6 +314,11 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudssConfigSet(solverConfig, CUDSS_CONFIG_USE_MATCHING, &use_matching, sizeof(int32_t)),
       status,
       "cudssConfigSet for use matching");
+    cudssAlgType_t match_alg = CUDSS_ALG_DEFAULT;
+    CUDSS_CALL_AND_CHECK_EXIT(
+      cudssConfigSet(solverConfig, CUDSS_CONFIG_MATCHING_ALG, &match_alg, sizeof(cudssAlgType_t)),
+      status,
+      "cudssConfigSet matching alg");
 #endif
 
     // Device pointers
@@ -409,6 +417,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     {
+      std::cout << "positive_definite = " << positive_definite << std::endl;
       raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : cudssMatrixCreateCsr");
       CUDSS_CALL_AND_CHECK(
         cudssMatrixCreateCsr(&A,
@@ -429,10 +438,25 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       A_created = true;
     }
 
+#if PERFORM_ANALYSIS
     // Perform symbolic analysis
     f_t start_symbolic = tic();
     f_t start_symbolic_factor;
-
+#if USE_MATCHING
+    {
+      raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : CUDSS_PHASE_ANALYSIS");
+      status =
+        cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solverConfig, solverData, A, cudss_x, cudss_b);
+      if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return -2; }
+      if (status != CUDSS_STATUS_SUCCESS) {
+        settings_.log.printf(
+          "FAILED: CUDSS call ended unsuccessfully with status = %d, details: cuDSSExecute for "
+          "analysis\n",
+          status);
+        return -1;
+      }
+    }
+#else
     {
       raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : CUDSS_PHASE_ANALYSIS");
       status =
@@ -460,6 +484,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
         return -1;
       }
     }
+#endif
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
     f_t symbolic_factorization_time = toc(start_symbolic_factor);
     settings_.log.printf("Symbolic factorization time : %.2fs\n", symbolic_factorization_time);
@@ -471,6 +496,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       status,
       "cudssDataGet for LU_NNZ");
     settings_.log.printf("Symbolic nonzeros in factor : %.2e\n", static_cast<f_t>(lu_nz) / 2.0);
+#endif
+
     // TODO: Is there any way to get nonzeros in the factors?
     // TODO: Is there any way to get flops for the factorization?
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
@@ -505,7 +532,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudssMatrixSetValues(A, Arow.x.data()), status, "cudssMatrixSetValues for A");
 
     f_t start_numeric = tic();
-    status            = cudssExecute(
+    status =
+      cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solverConfig, solverData, A, cudss_x, cudss_b);
+    status = cudssExecute(
       handle, CUDSS_PHASE_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return -2; }
     if (status != CUDSS_STATUS_SUCCESS) {
@@ -621,6 +650,13 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     // Perform symbolic analysis
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return -2; }
     f_t start_analysis = tic();
+#if PERFORM_ANALYSIS
+#if USE_MATCHING
+    CUDSS_CALL_AND_CHECK(
+      cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solverConfig, solverData, A, cudss_x, cudss_b),
+      status,
+      "cudssExecute for analysis");
+#else
     CUDSS_CALL_AND_CHECK(
       cudssExecute(handle, CUDSS_PHASE_REORDERING, solverConfig, solverData, A, cudss_x, cudss_b),
       status,
@@ -645,6 +681,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       handle_ptr_->get_stream().synchronize();
       return -2;
     }
+#endif
     int64_t lu_nz       = 0;
     size_t size_written = 0;
     CUDSS_CALL_AND_CHECK(
@@ -652,6 +689,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       status,
       "cudssDataGet for LU_NNZ");
     settings_.log.printf("Symbolic nonzeros in factor : %.2e\n", static_cast<f_t>(lu_nz) / 2.0);
+#endif
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
     handle_ptr_->get_stream().synchronize();
     // TODO: Is there any way to get nonzeros in the factors?
@@ -684,6 +722,18 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudssMatrixSetValues(A, csr_values_d), status, "cudssMatrixSetValues for A");
 
     f_t start_numeric = tic();
+#if PERFORM_ANALYSIS == 0
+    status =
+      cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solverConfig, solverData, A, cudss_x, cudss_b);
+    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return -2; }
+    if (status != CUDSS_STATUS_SUCCESS) {
+      settings_.log.printf(
+        "FAILED: CUDSS call ended unsuccessfully with status = %d, details: cuDSSExecute for "
+        "analysis\n",
+        status);
+      return -1;
+    }
+#endif
     CUDSS_CALL_AND_CHECK(
       cudssExecute(
         handle, CUDSS_PHASE_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b),
