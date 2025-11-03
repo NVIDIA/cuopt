@@ -22,6 +22,7 @@
 #include <vector>
 
 #include <dual_simplex/mip_node.hpp>
+#include <utilities/pcg.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -30,15 +31,17 @@ struct diving_root_t {
   mip_node_t<i_t, f_t> node;
   std::vector<f_t> lower;
   std::vector<f_t> upper;
+  f_t score;
 
-  diving_root_t(mip_node_t<i_t, f_t>&& node, std::vector<f_t>&& lower, std::vector<f_t>&& upper)
-    : node(std::move(node)), lower(std::move(lower)), upper(std::move(upper))
+  diving_root_t(mip_node_t<i_t, f_t>&& new_node, std::vector<f_t>&& lower, std::vector<f_t>&& upper)
+    : node(std::move(new_node)), lower(std::move(lower)), upper(std::move(upper))
   {
+    score = node.objective_estimate;
   }
 
   friend bool operator>(const diving_root_t<i_t, f_t>& a, const diving_root_t<i_t, f_t>& b)
   {
-    return a.node.lower_bound > b.node.lower_bound;
+    return a.score > b.score;
   }
 };
 
@@ -50,9 +53,11 @@ class diving_queue_t {
  private:
   std::vector<diving_root_t<i_t, f_t>> buffer;
   static constexpr i_t max_size_ = INT16_MAX;
+  PCG rng;
+  const double epsilon = 0.1;  // Probability to grab a random node
 
  public:
-  diving_queue_t() { buffer.reserve(max_size_); }
+  diving_queue_t() {}
 
   void push(diving_root_t<i_t, f_t>&& node)
   {
@@ -70,10 +75,20 @@ class diving_queue_t {
 
   diving_root_t<i_t, f_t> pop()
   {
-    std::pop_heap(buffer.begin(), buffer.end(), std::greater<>());
-    diving_root_t<i_t, f_t> node = std::move(buffer.back());
-    buffer.pop_back();
-    return node;
+    if (rng.next<f_t>() <= epsilon) {
+      i_t idx = rng.uniform<i_t>(0, buffer.size());
+      std::swap(buffer[idx], buffer.back());
+      diving_root_t<i_t, f_t> node = std::move(buffer.back());
+      buffer.pop_back();
+      std::make_heap(buffer.begin(), buffer.end(), std::greater<>());
+      return node;
+
+    } else {
+      std::pop_heap(buffer.begin(), buffer.end(), std::greater<>());
+      diving_root_t<i_t, f_t> node = std::move(buffer.back());
+      buffer.pop_back();
+      return node;
+    }
   }
 
   i_t size() const { return buffer.size(); }

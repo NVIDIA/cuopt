@@ -69,8 +69,9 @@ class mip_solution_t {
 
   void set_incumbent_solution(f_t primal_objective, const std::vector<f_t>& primal_solution)
   {
-    x         = primal_solution;
-    objective = primal_objective;
+    x             = primal_solution;
+    objective     = primal_objective;
+    has_incumbent = true;
   }
 
   // Primal solution vector
@@ -79,6 +80,7 @@ class mip_solution_t {
   f_t lower_bound;
   i_t nodes_explored;
   i_t simplex_iterations;
+  bool has_incumbent;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

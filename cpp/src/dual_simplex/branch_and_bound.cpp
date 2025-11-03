@@ -192,11 +192,11 @@ std::string user_mip_gap(f_t obj_value, f_t lower_bound)
 {
   const f_t user_mip_gap = relative_gap(obj_value, lower_bound);
   if (user_mip_gap == std::numeric_limits<f_t>::infinity()) {
-    return "  -  ";
+    return "   -  ";
   } else {
     constexpr int BUFFER_LEN = 32;
     char buffer[BUFFER_LEN];
-    snprintf(buffer, BUFFER_LEN - 1, "%4.1f%%", user_mip_gap * 100);
+    snprintf(buffer, BUFFER_LEN - 1, "%5.1f%%", user_mip_gap * 100);
     return std::string(buffer);
   }
 }
@@ -204,9 +204,9 @@ std::string user_mip_gap(f_t obj_value, f_t lower_bound)
 inline const char* thread_type_symbol(thread_type_t type)
 {
   switch (type) {
-    case thread_type_t::EXPLORATION: return "B";
-    case thread_type_t::DIVING: return "D";
-    default: return "U";
+    case thread_type_t::EXPLORATION: return "B ";
+    case thread_type_t::DIVING: return "D ";
+    default: return "U ";
   }
 }
 
@@ -289,6 +289,7 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
       original_lp_, settings_, var_types_, crushed_solution, primal_err, bound_err, num_fractional);
     if (is_feasible) {
       upper_bound_ = obj;
+      incumbent_.set_incumbent_solution(obj, crushed_solution);
     } else {
       attempt_repair         = true;
       constexpr bool verbose = false;
@@ -311,7 +312,7 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
       std::string gap = user_mip_gap<f_t>(user_obj, user_lower);
 
       settings_.log.printf(
-        "H                           %+13.6e    %+10.6e                        %s %9.2f\n",
+        "H                            %+13.6e    %+10.6e                        %s %9.2f\n",
         user_obj,
         user_lower,
         gap.c_str(),
@@ -424,7 +425,7 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
           std::string user_gap = user_mip_gap<f_t>(obj, lower);
 
           settings_.log.printf(
-            "H                           %+13.6e    %+10.6e                        %s %9.2f\n",
+            "H                            %+13.6e    %+10.6e                        %s %9.2f\n",
             obj,
             lower,
             user_gap.c_str(),
@@ -459,15 +460,25 @@ mip_status_t branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t
     mip_status = mip_status_t::TIME_LIMIT;
   }
 
-  f_t upper_bound = get_upper_bound();
-  f_t gap         = upper_bound - lower_bound;
-  f_t obj         = compute_user_objective(original_lp_, upper_bound);
-  f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
-  f_t gap_rel     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  if (status_ == mip_exploration_status_t::NODE_LIMIT) {
+    settings_.log.printf("Node limit reached. Stopping the solver...\n");
+    mip_status = mip_status_t::NODE_LIMIT;
+  }
+
+  f_t upper_bound      = get_upper_bound();
+  f_t gap              = upper_bound - lower_bound;
+  f_t obj              = compute_user_objective(original_lp_, upper_bound);
+  f_t user_bound       = compute_user_objective(original_lp_, lower_bound);
+  f_t gap_rel          = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  bool is_maximization = original_lp_.obj_scale < 0.0;
 
   settings_.log.printf(
     "Explored %d nodes in %.2fs.\n", stats_.nodes_explored, toc(stats_.start_time));
-  settings_.log.printf("Absolute Gap %e Objective %.16e Lower Bound %.16e\n", gap, obj, user_lower);
+  settings_.log.printf("Absolute Gap %e Objective %.16e %s Bound %.16e\n",
+                       gap,
+                       obj,
+                       is_maximization ? "Upper" : "Lower",
+                       user_bound);
 
   if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
     mip_status = mip_status_t::OPTIMAL;
@@ -495,7 +506,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t
     }
   }
 
-  uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
+  if (upper_bound != inf) {
+    assert(incumbent_.has_incumbent);
+    uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
+  }
+
   solution.objective          = incumbent_.objective;
   solution.lower_bound        = lower_bound;
   solution.nodes_explored     = stats_.nodes_explored;
@@ -687,6 +702,9 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(mip_node_t<i_t, f_t>* nod
       // Choose fractional variable to branch on
       const i_t branch_var = pc_.variable_selection(leaf_fractional, leaf_solution.x, pc_log);
 
+      node_ptr->objective_estimate =
+        pc_.objective_estimate(leaf_fractional, leaf_solution.x, leaf_objective, pc_log);
+
       assert(leaf_vstatus.size() == leaf_problem.num_cols);
       search_tree.branch(
         node_ptr, branch_var, leaf_solution.x[branch_var], leaf_vstatus, leaf_problem, log);
@@ -764,7 +782,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(mip_node_t<i_t, f_t>* nod
       f_t user_lower       = compute_user_objective(original_lp_, root_objective_);
       std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
 
-      settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
+      settings_.log.printf("  %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
                            nodes_explored,
                            nodes_unexplored,
                            obj,
@@ -884,7 +902,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
         f_t obj              = compute_user_objective(original_lp_, upper_bound);
         f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
         std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
-        settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
+        settings_.log.printf("  %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
                              nodes_explored,
                              nodes_unexplored,
                              obj,
@@ -1036,7 +1054,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(i_t task_id,
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& Arow)
+void branch_and_bound_t<i_t, f_t>::diving_thread(i_t backtrack, const csr_matrix_t<i_t, f_t>& Arow)
 {
   logger_t log;
   log.log = false;
@@ -1104,21 +1122,9 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
         }
 
         if (stack.size() > 1) {
-          // If the diving thread is consuming the nodes faster than the
-          // best first search, then we split the current subtree at the
-          // lowest possible point and move to the queue, so it can
-          // be picked by another thread.
-          if (dive_queue_.size() < min_diving_queue_size_) {
+          if (stack.front()->depth - stack.back()->depth > backtrack) {
             mip_node_t<i_t, f_t>* new_node = stack.back();
             stack.pop_back();
-
-            std::vector<f_t> lower = start_node->lower;
-            std::vector<f_t> upper = start_node->upper;
-            new_node->get_variable_bounds(lower, upper, presolver.bounds_changed);
-
-            mutex_dive_queue_.lock();
-            dive_queue_.emplace(new_node->detach_copy(), std::move(lower), std::move(upper));
-            mutex_dive_queue_.unlock();
           }
         }
       }
@@ -1268,7 +1274,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                        settings_.num_diving_threads);
 
   settings_.log.printf(
-    " | Explored | Unexplored |    Objective    |     Bound     | Depth | Iter/Node |   Gap    "
+    "  | Explored | Unexplored |    Objective    |     Bound     | Depth | Iter/Node |   Gap    "
     "|  Time  |\n");
 
   stats_.nodes_explored       = 0;
@@ -1309,7 +1315,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
       for (i_t i = 0; i < settings_.num_diving_threads; i++) {
 #pragma omp task
-        diving_thread(Arow);
+        diving_thread(5, Arow);
       }
     }
   }

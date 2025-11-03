@@ -263,61 +263,73 @@ i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractio
 {
   mutex.lock();
 
-  const i_t num_fractional = fractional.size();
-  std::vector<f_t> pseudo_cost_up(num_fractional);
-  std::vector<f_t> pseudo_cost_down(num_fractional);
-  std::vector<f_t> score(num_fractional);
+  constexpr f_t eps = 1e-6;
+  i_t branch_var    = fractional[0];
+  f_t max_score     = -1;
 
   i_t num_initialized_down;
   i_t num_initialized_up;
-  f_t pseudo_cost_down_avg;
-  f_t pseudo_cost_up_avg;
+  f_t pc_down_avg;
+  f_t pc_up_avg;
+  initialized(num_initialized_down, num_initialized_up, pc_down_avg, pc_up_avg);
 
-  initialized(num_initialized_down, num_initialized_up, pseudo_cost_down_avg, pseudo_cost_up_avg);
+  for (auto j : fractional) {
+    f_t f_down = solution[j] - std::floor(solution[j]);
+    f_t f_up   = std::ceil(solution[j]) - solution[j];
 
-  log.printf("PC: num initialized down %d up %d avg down %e up %e\n",
-             num_initialized_down,
-             num_initialized_up,
-             pseudo_cost_down_avg,
-             pseudo_cost_up_avg);
+    f_t pc_down = pseudo_cost_num_down[j] != 0 ? pseudo_cost_sum_down[j] / pseudo_cost_num_down[j]
+                                               : pc_down_avg;
 
-  for (i_t k = 0; k < num_fractional; k++) {
-    const i_t j = fractional[k];
-    if (pseudo_cost_num_down[j] != 0) {
-      pseudo_cost_down[k] = pseudo_cost_sum_down[j] / pseudo_cost_num_down[j];
-    } else {
-      pseudo_cost_down[k] = pseudo_cost_down_avg;
-    }
+    f_t pc_up =
+      pseudo_cost_num_up[j] != 0 ? pseudo_cost_sum_up[j] / pseudo_cost_num_up[j] : pc_up_avg;
 
-    if (pseudo_cost_num_up[j] != 0) {
-      pseudo_cost_up[k] = pseudo_cost_sum_up[j] / pseudo_cost_num_up[j];
-    } else {
-      pseudo_cost_up[k] = pseudo_cost_up_avg;
-    }
-    constexpr f_t eps = 1e-6;
-    const f_t f_down  = solution[j] - std::floor(solution[j]);
-    const f_t f_up    = std::ceil(solution[j]) - solution[j];
-    score[k] =
-      std::max(f_down * pseudo_cost_down[k], eps) * std::max(f_up * pseudo_cost_up[k], eps);
-  }
+    f_t score = std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
 
-  i_t branch_var = fractional[0];
-  f_t max_score  = -1;
-  i_t select     = -1;
-  for (i_t k = 0; k < num_fractional; k++) {
-    if (score[k] > max_score) {
-      max_score  = score[k];
-      branch_var = fractional[k];
-      select     = k;
+    if (score > max_score) {
+      max_score  = score;
+      branch_var = j;
     }
   }
 
-  log.printf(
-    "pc branching on %d. Value %e. Score %e\n", branch_var, solution[branch_var], score[select]);
+  log.debug("Pseudocost branching: selected %d with val = %e and score = %e\n",
+            branch_var,
+            solution[branch_var],
+            max_score);
+  mutex.unlock();
+  return branch_var;
+}
+
+template <typename i_t, typename f_t>
+f_t pseudo_costs_t<i_t, f_t>::objective_estimate(const std::vector<i_t>& fractional,
+                                                 const std::vector<f_t>& solution,
+                                                 f_t lower_bound,
+                                                 logger_t& log)
+{
+  mutex.lock();
+
+  constexpr f_t eps = 1e-6;
+  f_t estimate      = lower_bound;
+
+  i_t num_initialized_down;
+  i_t num_initialized_up;
+  f_t pc_down_avg;
+  f_t pc_up_avg;
+  initialized(num_initialized_down, num_initialized_up, pc_down_avg, pc_up_avg);
+
+  for (auto j : fractional) {
+    f_t f_down = solution[j] - std::floor(solution[j]);
+    f_t f_up   = std::ceil(solution[j]) - solution[j];
+
+    f_t pc_down = pseudo_cost_num_down[j] != 0 ? pseudo_cost_sum_down[j] / pseudo_cost_num_down[j]
+                                               : pc_down_avg;
+
+    f_t pc_up =
+      pseudo_cost_num_up[j] != 0 ? pseudo_cost_sum_up[j] / pseudo_cost_num_up[j] : pc_up_avg;
+    estimate += std::min(std::max(pc_down * f_down, eps), std::max(pc_up * f_up, eps));
+  }
 
   mutex.unlock();
-
-  return branch_var;
+  return estimate;
 }
 
 template <typename i_t, typename f_t>

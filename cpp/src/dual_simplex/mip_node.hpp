@@ -29,7 +29,7 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 enum class node_status_t : int {
-  PENDING          = 0,  // Node still in the tree
+  PENDING          = 0,  // Node is still in the tree, waiting to be process
   INTEGER_FEASIBLE = 1,  // Node has an integer feasible solution
   INFEASIBLE       = 2,  // Node is infeasible
   FATHOMED         = 3,  // Node objective is greater than the upper bound
@@ -53,6 +53,7 @@ class mip_node_t {
       node_id(0),
       branch_var(-1),
       branch_dir(rounding_direction_t::NONE),
+      objective_estimate(inf),
       vstatus(basis)
   {
     children[0] = nullptr;
@@ -74,6 +75,7 @@ class mip_node_t {
       branch_var(branch_variable),
       branch_dir(branch_direction),
       fractional_val(branch_var_value),
+      objective_estimate(parent_node->objective_estimate),
       vstatus(basis)
 
   {
@@ -220,17 +222,19 @@ class mip_node_t {
   mip_node_t<i_t, f_t> detach_copy() const
   {
     mip_node_t<i_t, f_t> copy(lower_bound, vstatus);
-    copy.branch_var       = branch_var;
-    copy.branch_dir       = branch_dir;
-    copy.branch_var_lower = branch_var_lower;
-    copy.branch_var_upper = branch_var_upper;
-    copy.fractional_val   = fractional_val;
-    copy.node_id          = node_id;
+    copy.branch_var         = branch_var;
+    copy.branch_dir         = branch_dir;
+    copy.branch_var_lower   = branch_var_lower;
+    copy.branch_var_upper   = branch_var_upper;
+    copy.fractional_val     = fractional_val;
+    copy.objective_estimate = objective_estimate;
+    copy.node_id            = node_id;
     return copy;
   }
 
   node_status_t status;
   f_t lower_bound;
+  f_t objective_estimate;
   i_t depth;
   i_t node_id;
   i_t branch_var;
@@ -260,14 +264,18 @@ class node_compare_t {
  public:
   bool operator()(const mip_node_t<i_t, f_t>& a, const mip_node_t<i_t, f_t>& b) const
   {
-    return a.lower_bound >
-           b.lower_bound;  // True if a comes before b, elements that come before are output last
+    // f_t score_a = 0.1 * a.best_pseudocost_estimate + 0.9 * a.lower_bound;
+    // f_t score_b = 0.1 * b.best_pseudocost_estimate + 0.9 * b.lower_bound;
+
+    // // The elements are sorted in decreasing order (i.e., a will placed be after b)
+    // return score_a > score_b;
+
+    return a.lower_bound > b.lower_bound;
   }
 
   bool operator()(const mip_node_t<i_t, f_t>* a, const mip_node_t<i_t, f_t>* b) const
   {
-    return a->lower_bound >
-           b->lower_bound;  // True if a comes before b, elements that come before are output last
+    return operator()(*a, *b);
   }
 };
 

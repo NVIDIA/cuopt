@@ -57,6 +57,11 @@ class pseudo_costs_t {
                          const std::vector<f_t>& solution,
                          logger_t& log);
 
+  f_t objective_estimate(const std::vector<i_t>& fractional,
+                         const std::vector<f_t>& solution,
+                         f_t lower_bound,
+                         logger_t& log);
+
   void update_pseudo_costs_from_strong_branching(const std::vector<i_t>& fractional,
                                                  const std::vector<f_t>& root_soln);
   std::vector<f_t> pseudo_cost_sum_up;
