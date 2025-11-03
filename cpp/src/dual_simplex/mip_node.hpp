@@ -29,7 +29,7 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 enum class node_status_t : int {
-  ACTIVE           = 0,  // Node still in the tree
+  PENDING          = 0,  // Node still in the tree
   INTEGER_FEASIBLE = 1,  // Node has an integer feasible solution
   INFEASIBLE       = 2,  // Node is infeasible
   FATHOMED         = 3,  // Node objective is greater than the upper bound
@@ -38,7 +38,7 @@ enum class node_status_t : int {
   TIME_LIMIT       = 6   // Time out during the LP relaxation
 };
 
-enum class round_dir_t { NONE = -1, DOWN = 0, UP = 1 };
+enum class rounding_direction_t { NONE = -1, DOWN = 0, UP = 1 };
 
 bool inactive_status(node_status_t status);
 
@@ -46,13 +46,13 @@ template <typename i_t, typename f_t>
 class mip_node_t {
  public:
   mip_node_t(f_t root_lower_bound, const std::vector<variable_status_t>& basis)
-    : status(node_status_t::ACTIVE),
+    : status(node_status_t::PENDING),
       lower_bound(root_lower_bound),
       depth(0),
       parent(nullptr),
       node_id(0),
       branch_var(-1),
-      branch_dir(round_dir_t::NONE),
+      branch_dir(rounding_direction_t::NONE),
       vstatus(basis)
   {
     children[0] = nullptr;
@@ -63,10 +63,10 @@ class mip_node_t {
              mip_node_t* parent_node,
              i_t node_num,
              i_t branch_variable,
-             round_dir_t branch_direction,
+             rounding_direction_t branch_direction,
              f_t branch_var_value,
              const std::vector<variable_status_t>& basis)
-    : status(node_status_t::ACTIVE),
+    : status(node_status_t::PENDING),
       lower_bound(parent_node->lower_bound),
       depth(parent_node->depth + 1),
       parent(parent_node),
@@ -77,10 +77,10 @@ class mip_node_t {
       vstatus(basis)
 
   {
-    branch_var_lower = branch_direction == round_dir_t::DOWN ? problem.lower[branch_var]
-                                                             : std::ceil(branch_var_value);
-    branch_var_upper = branch_direction == round_dir_t::DOWN ? std::floor(branch_var_value)
-                                                             : problem.upper[branch_var];
+    branch_var_lower = branch_direction == rounding_direction_t::DOWN ? problem.lower[branch_var]
+                                                                      : std::ceil(branch_var_value);
+    branch_var_upper = branch_direction == rounding_direction_t::DOWN ? std::floor(branch_var_value)
+                                                                      : problem.upper[branch_var];
     children[0]      = nullptr;
     children[1]      = nullptr;
   }
@@ -234,7 +234,7 @@ class mip_node_t {
   i_t depth;
   i_t node_id;
   i_t branch_var;
-  round_dir_t branch_dir;
+  rounding_direction_t branch_dir;
   f_t branch_var_lower;
   f_t branch_var_upper;
   f_t fractional_val;
@@ -303,7 +303,7 @@ class search_tree_t {
                                                              parent_node,
                                                              ++id,
                                                              branch_var,
-                                                             round_dir_t::DOWN,
+                                                             rounding_direction_t::DOWN,
                                                              fractional_val,
                                                              parent_vstatus);
 
@@ -311,14 +311,23 @@ class search_tree_t {
                   parent_node,
                   down_child.get(),
                   branch_var,
-                  round_dir_t::DOWN,
+                  rounding_direction_t::DOWN,
                   std::floor(fractional_val));
 
-    auto up_child = std::make_unique<mip_node_t<i_t, f_t>>(
-      original_lp, parent_node, ++id, branch_var, round_dir_t::UP, fractional_val, parent_vstatus);
+    auto up_child = std::make_unique<mip_node_t<i_t, f_t>>(original_lp,
+                                                           parent_node,
+                                                           ++id,
+                                                           branch_var,
+                                                           rounding_direction_t::UP,
+                                                           fractional_val,
+                                                           parent_vstatus);
 
-    graphviz_edge(
-      log, parent_node, up_child.get(), branch_var, round_dir_t::UP, std::ceil(fractional_val));
+    graphviz_edge(log,
+                  parent_node,
+                  up_child.get(),
+                  branch_var,
+                  rounding_direction_t::UP,
+                  std::ceil(fractional_val));
 
     assert(parent_vstatus.size() == original_lp.num_cols);
     parent_node->add_children(std::move(down_child),
@@ -339,7 +348,7 @@ class search_tree_t {
                      const mip_node_t<i_t, f_t>* origin_ptr,
                      const mip_node_t<i_t, f_t>* dest_ptr,
                      const i_t branch_var,
-                     round_dir_t branch_dir,
+                     rounding_direction_t branch_dir,
                      const f_t bound)
   {
     if (write_graphviz) {
@@ -347,7 +356,7 @@ class search_tree_t {
                  origin_ptr->node_id,
                  dest_ptr->node_id,
                  branch_var,
-                 branch_dir == round_dir_t::DOWN ? "<=" : ">=",
+                 branch_dir == rounding_direction_t::DOWN ? "<=" : ">=",
                  bound);
     }
   }
