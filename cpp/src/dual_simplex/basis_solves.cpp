@@ -363,8 +363,18 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
         for (i_t h = 0; h < Sdim; ++h) {
           identity[h] = h;
         }
-        Srank = right_looking_lu(
-          S, settings.threshold_partial_pivoting_tol, identity, S_col_perm, SL, SU, S_perm_inv);
+        Srank = right_looking_lu(S,
+                                 settings,
+                                 settings.threshold_partial_pivoting_tol,
+                                 identity,
+                                 S_col_perm,
+                                 SL,
+                                 SU,
+                                 S_perm_inv);
+        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+          settings.log.printf("Concurrent halt\n");
+          return -1;
+        }
         if (Srank != Sdim) {
           // Get the rank deficient columns
           deficient.clear();
@@ -565,7 +575,11 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
   }
   q.resize(m);
   f_t fact_start = tic();
-  rank           = right_looking_lu(A, medium_tol, basic_list, q, L, U, pinv);
+  rank           = right_looking_lu(A, settings, medium_tol, basic_list, q, L, U, pinv);
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    settings.log.printf("Concurrent halt\n");
+    return -1;
+  }
   if (verbose) {
     printf("Right Lnz+Unz %d t %.3f\n", L.col_start[m] + U.col_start[m], toc(fact_start));
   }
