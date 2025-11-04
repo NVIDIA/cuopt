@@ -9,6 +9,8 @@ The OpenAPI specification for the server is available in :doc:`open-api spec <..
 Generic Example
 ---------------
 
+:download:`Download basic_routing_example.py <routing/examples/basic_routing_example.py>`
+
 .. literalinclude:: routing/examples/basic_routing_example.py
    :language: python
    :linenos:
@@ -73,6 +75,8 @@ Initial Solution
 ----------------
 
 Previously run solutions or uploaded solutions can be used as the initial solution for new requests using previously run reqIds as follows:
+
+:download:`Download initial_solution_example.py <routing/examples/initial_solution_example.py>`
 
 .. literalinclude:: routing/examples/initial_solution_example.py
    :language: python

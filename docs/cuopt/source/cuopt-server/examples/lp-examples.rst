@@ -20,6 +20,8 @@ If you want to run server locally, please run the following command in a termina
 Genric Example With Normal Mode and Batch Mode
 ------------------------------------------------
 
+:download:`Download basic_lp_example.py <lp/examples/basic_lp_example.py>`
+
 .. literalinclude:: lp/examples/basic_lp_example.py
    :language: python
    :linenos:
@@ -152,6 +154,8 @@ Warm Start
 
 Previously run solutions can be saved and be used as warm start for new requests using previously run reqIds as follows:
 
+:download:`Download warmstart_example.py <lp/examples/warmstart_example.py>`
+
 .. literalinclude:: lp/examples/warmstart_example.py
    :language: python
    :linenos:
@@ -202,6 +206,8 @@ Using MPS file directly
 -----------------------
 
 An example on using .mps files as input is shown below:
+
+:download:`Download mps_file_example.py <lp/examples/mps_file_example.py>`
 
 .. literalinclude:: lp/examples/mps_file_example.py
    :language: python
@@ -256,6 +262,8 @@ Generate Datamodel from MPS Parser
 ----------------------------------
 
 Use a datamodel generated from mps file as input; this yields a solution object in response. For more details please refer to :doc:`LP/MILP parameters <../../lp-milp-settings>`.
+
+:download:`Download mps_datamodel_example.py <lp/examples/mps_datamodel_example.py>`
 
 .. literalinclude:: lp/examples/mps_datamodel_example.py
    :language: python
