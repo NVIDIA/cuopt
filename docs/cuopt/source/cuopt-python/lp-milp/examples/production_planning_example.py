@@ -10,12 +10,12 @@ Problem:
     A factory produces two products (A and B)
     - Product A: $50 profit per unit
     - Product B: $30 profit per unit
-    
+
     Resources:
     - Machine time: 2 hrs/unit A, 1 hr/unit B, max 100 hrs
-    - Labor: 1 hr/unit A, 3 hrs/unit B, max 120 hrs  
+    - Labor: 1 hr/unit A, 3 hrs/unit B, max 120 hrs
     - Material: 4 units/unit A, 2 units/unit B, max 200 units
-    
+
     Constraints:
     - Minimum 10 units of Product A
     - Minimum 15 units of Product B
@@ -78,4 +78,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

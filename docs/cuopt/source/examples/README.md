@@ -229,4 +229,3 @@ This script:
 - Ensure MPS files are valid (no extra whitespace in comment lines)
 - Check file paths are correct relative to example directory
 - Verify MPS format follows standard specification
-

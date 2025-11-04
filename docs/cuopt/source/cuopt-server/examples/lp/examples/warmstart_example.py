@@ -67,7 +67,7 @@ def main():
     initial_solution = cuopt_service_client.get_LP_solve(
         data, delete_solution=False, response_type="dict"
     )
-    
+
     print(f"Problem 1 reqId: {initial_solution['reqId']}")
     print(f"Objective: {initial_solution['response']['solver_response']['solution']['primal_objective']}")
 
@@ -88,4 +88,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

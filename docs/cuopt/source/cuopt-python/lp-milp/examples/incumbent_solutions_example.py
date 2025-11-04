@@ -7,12 +7,12 @@ This example demonstrates:
 - Accessing incumbent (best so far) solutions before final optimum
 - Custom callback class implementation
 
-Incumbent solutions are intermediate feasible solutions found during the MIP 
-solving process. They represent the best integer-feasible solution discovered 
+Incumbent solutions are intermediate feasible solutions found during the MIP
+solving process. They represent the best integer-feasible solution discovered
 so far.
 
 Note:
-    Incumbent solutions are only available for Mixed Integer Programming (MIP) 
+    Incumbent solutions are only available for Mixed Integer Programming (MIP)
     problems, not for pure Linear Programming (LP) problems.
 
 Problem:
@@ -25,7 +25,7 @@ Problem:
 Expected Output:
     Incumbent 1: [ 0. 58.], cost: 174.00
     Incumbent 2: [36. 41.], cost: 303.00
-    
+
     === Final Results ===
     Problem status: Optimal
     Solve time: 0.16 seconds
@@ -42,7 +42,7 @@ from cuopt.linear_programming.internals import GetSolutionCallback, SetSolutionC
 # Create a callback class to receive incumbent solutions
 class IncumbentCallback(GetSolutionCallback):
     """Callback to receive and track incumbent solutions during solving."""
-    
+
     def __init__(self):
         super().__init__()
         self.solutions = []
@@ -104,11 +104,10 @@ def main():
     print(f"Solve time: {problem.SolveTime:.2f} seconds")
     print(f"Final solution: x={x.getValue()}, y={y.getValue()}")
     print(f"Final objective value: {problem.ObjValue:.2f}")
-    
+
     # Display all incumbents found
     print(f"\nTotal incumbent solutions found: {len(incumbent_callback.solutions)}")
 
 
 if __name__ == "__main__":
     main()
-

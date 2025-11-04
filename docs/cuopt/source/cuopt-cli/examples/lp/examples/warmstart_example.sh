@@ -61,4 +61,3 @@ rm -f data.json
 
 echo ""
 echo "Note: Warmstart is only supported for LP problems, not MILP."
-

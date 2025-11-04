@@ -60,7 +60,7 @@ ENDATA
     # Write MPS file
     with open(data, "w") as file:
         file.write(mps_data)
-    
+
     print(f"Created MPS file: {data}")
 
     # If cuOpt is not running on localhost:5000, edit `ip` and `port` parameters
@@ -85,4 +85,3 @@ ENDATA
 
 if __name__ == "__main__":
     main()
-

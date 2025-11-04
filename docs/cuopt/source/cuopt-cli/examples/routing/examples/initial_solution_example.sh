@@ -46,4 +46,3 @@ echo "Solution deleted"
 
 # Clean up data file
 rm -f data.json
-

@@ -1,15 +1,15 @@
 /*
  * LP MPS File C API Example
- * 
+ *
  * This example demonstrates how to solve LP problems from MPS files using the cuOpt C API.
- * 
+ *
  * Problem (from MPS file):
  *   Minimize: -0.2*VAR1 + 0.1*VAR2
  *   Subject to:
  *     3*VAR1 + 4*VAR2 <= 5.4
  *     2.7*VAR1 + 10.1*VAR2 <= 4.9
  *     VAR1, VAR2 >= 0
- * 
+ *
  * Expected Output:
  *   Number of variables: 2
  *   Termination status: Optimal (1)
@@ -17,10 +17,10 @@
  *   Objective value: -0.360000
  *   x1 = 1.800000
  *   x2 = 0.000000
- * 
+ *
  * Build:
  *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o lp_example_mps lp_example_mps.c -lcuopt
- * 
+ *
  * Run:
  *   ./lp_example_mps sample.mps
  */
@@ -171,4 +171,3 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 }
-

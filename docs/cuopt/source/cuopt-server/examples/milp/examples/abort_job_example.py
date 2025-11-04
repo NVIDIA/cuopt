@@ -21,10 +21,10 @@ from cuopt_sh_client import CuOptServiceSelfHostClient
 
 def main():
     """Run the abort job example."""
-    # This is a UUID that is returned by the solver while the solver is trying 
+    # This is a UUID that is returned by the solver while the solver is trying
     # to find solution so users can come back and check the status or query for results.
     job_uuid = "<UUID_THAT_WE_GOT>"
-    
+
     print(f"Attempting to abort job: {job_uuid}")
 
     # If cuOpt is not running on localhost:5000, edit ip and port parameters
@@ -40,9 +40,9 @@ def main():
     #   - queued=True: Abort if the job is in the queue
     #   - cached=False: Don't delete from cache (only abort active/queued jobs)
     response = cuopt_service_client.delete(
-        job_uuid, 
-        running=True, 
-        queued=True, 
+        job_uuid,
+        running=True,
+        queued=True,
         cached=False
     )
 
@@ -56,7 +56,6 @@ if __name__ == "__main__":
     print("1. Submit a MILP job and get its UUID")
     print("2. Replace '<UUID_THAT_WE_GOT>' in this file with that UUID")
     print("3. Run this script to abort the job")
-    
+
     # Uncomment the line below and add your actual UUID to run
     # main()
-

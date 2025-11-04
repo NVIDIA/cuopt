@@ -55,13 +55,13 @@ def main():
     initial_solution = cuopt_service_client.get_optimized_routes(
         data, delete_solution=False
     )
-    
+
     print(f"Initial solution reqId: {initial_solution['reqId']}")
 
     print("\n=== Uploading Solution for Reuse ===")
     # Upload a solution returned/saved from previous request as initial solution
     initial_solution_3 = cuopt_service_client.upload_solution(initial_solution)
-    
+
     print(f"Uploaded solution reqId: {initial_solution_3['reqId']}")
 
     print("\n=== Solving with Multiple Initial Solutions ===")
@@ -99,7 +99,7 @@ def main():
     solution = cuopt_service_client.get_optimized_routes(data)
 
     print(json.dumps(solution, indent=4))
-    
+
     print("\n=== Note ===")
     print("The initial solution in the response may show 'not accepted',")
     print("because the problem is too small and the optimal solution is")
@@ -108,4 +108,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

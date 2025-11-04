@@ -53,4 +53,3 @@ cuopt_sh data.json -t LP -i $ip -p $port -sl
 
 # Clean up
 rm -f data.json
-

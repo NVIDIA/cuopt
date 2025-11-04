@@ -25,4 +25,3 @@ BOUNDS
  UP BOUND     X1               10
  UP BOUND     X2               10
 ENDATA
-

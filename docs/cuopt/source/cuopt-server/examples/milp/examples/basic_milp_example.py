@@ -44,8 +44,8 @@ import time
 def repoll(cuopt_service_client, solution, repoll_tries):
     """
     Repoll the server for solution if it's still processing.
-    
-    If solver is still busy solving, the job will be assigned a request id 
+
+    If solver is still busy solving, the job will be assigned a request id
     and response is sent back in the format {"reqId": <REQUEST-ID>}.
     """
     if "reqId" in solution and "response" not in solution:
@@ -54,10 +54,10 @@ def repoll(cuopt_service_client, solution, repoll_tries):
             solution = cuopt_service_client.repoll(req_id, response_type="dict")
             if "reqId" in solution and "response" in solution:
                 break
-            
+
             # Sleep for a second before requesting
             time.sleep(1)
-    
+
     return solution
 
 
@@ -113,4 +113,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

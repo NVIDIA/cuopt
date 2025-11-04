@@ -7,8 +7,8 @@ This example demonstrates:
 - Reusing warmstart data to solve a similar problem faster
 - Comparing solve times with and without warmstart
 
-Warmstart data allows restarting PDLP with a previous solution context. 
-This should be used when you solve a new problem which is similar to the 
+Warmstart data allows restarting PDLP with a previous solution context.
+This should be used when you solve a new problem which is similar to the
 previous one.
 
 Note:
@@ -44,7 +44,7 @@ from cuopt.linear_programming.solver_settings import SolverSettings, SolverMetho
 def main():
     """Run the PDLP warmstart example."""
     print("=== Solving Problem 1 ===")
-    
+
     # Create a new problem
     problem = Problem("Simple LP")
 
@@ -65,7 +65,7 @@ def main():
 
     # Solve the problem
     problem.solve(settings)
-    
+
     print(f"Problem 1 solved in {problem.SolveTime:.4f} seconds")
     print(f"x = {x.getValue()}, y = {y.getValue()}")
     print(f"Objective value = {problem.ObjValue}")
@@ -75,7 +75,7 @@ def main():
     print(f"\nWarmstart data extracted (primal solution size: {len(warmstart_data.current_primal_solution)})")
 
     print("\n=== Solving Problem 2 with Warmstart ===")
-    
+
     # Create a new problem
     new_problem = Problem("Warmstart LP")
 
@@ -108,4 +108,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

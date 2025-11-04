@@ -80,11 +80,11 @@ def main():
 
     print("=== Solving MILP with Callbacks ===")
     print("\n--- Logging Output ---")
-    
+
     solution = cuopt_service_client.get_LP_solve(
-        data, 
-        incumbent_callback=callback, 
-        response_type="dict", 
+        data,
+        incumbent_callback=callback,
+        response_type="dict",
         logging_callback=log_callback
     )
 
@@ -94,4 +94,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

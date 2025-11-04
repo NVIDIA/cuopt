@@ -1,25 +1,25 @@
 /*
  * Simple LP C API Example
- * 
+ *
  * This example demonstrates how to use the cuOpt C API for linear programming.
- * 
+ *
  * Problem:
  *   Minimize: -0.2*x1 + 0.1*x2
  *   Subject to:
  *     3.0*x1 + 4.0*x2 <= 5.4
  *     2.7*x1 + 10.1*x2 <= 4.9
  *     x1, x2 >= 0
- * 
+ *
  * Expected Output:
  *   Termination status: Optimal (1)
  *   Solve time: 0.000013 seconds
  *   Objective value: -0.360000
  *   x1 = 1.800000
  *   x2 = 0.000000
- * 
+ *
  * Build:
  *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o lp_example lp_example.c -lcuopt
- * 
+ *
  * Run:
  *   ./lp_example
  */
@@ -215,4 +215,3 @@ int main() {
     return 1;
   }
 }
-

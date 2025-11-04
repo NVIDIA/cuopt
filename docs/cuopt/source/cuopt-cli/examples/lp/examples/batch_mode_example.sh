@@ -47,4 +47,3 @@ rm -f sample.mps
 
 echo ""
 echo "Note: Batch mode is only available for LP with MPS files, not for MILP."
-

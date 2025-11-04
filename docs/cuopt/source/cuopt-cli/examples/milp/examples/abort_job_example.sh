@@ -33,4 +33,3 @@ echo "Note: This is a template. To use:"
 echo "1. Start a MILP job and note its UUID from the response"
 echo "2. Replace <UUID_THAT_WE_GOT> in this script with that UUID"
 echo "3. Run this script while the job is running or queued"
-

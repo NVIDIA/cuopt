@@ -12,7 +12,7 @@ Problem:
     - 2 locations (0 and 1)
     - 2 tasks at locations 0 and 1
     - 2 vehicles starting and ending at location [0, 0]
-    
+
 The data is structured according to the OpenAPI specification:
     - cost_matrix_data: Cost matrix indexed by string keys
     - task_data: Task locations
@@ -44,8 +44,8 @@ import time
 def repoll(cuopt_service_client, solution, repoll_tries):
     """
     Repoll the server for solution if it's still processing.
-    
-    If solver is still busy solving, the job will be assigned a request id 
+
+    If solver is still busy solving, the job will be assigned a request id
     and response is sent back in the format {"reqId": <REQUEST-ID>}.
     Solver needs to be re-polled for response using this <REQUEST-ID>.
     """
@@ -55,10 +55,10 @@ def repoll(cuopt_service_client, solution, repoll_tries):
             solution = cuopt_service_client.repoll(req_id, response_type="dict")
             if "reqId" in solution and "response" in solution:
                 break
-            
+
             # Sleep for a second before requesting
             time.sleep(1)
-    
+
     return solution
 
 
@@ -103,4 +103,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
