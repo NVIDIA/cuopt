@@ -1,4 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION &
+# AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,8 +50,10 @@ Expected Output:
 
 from cuopt.linear_programming.problem import Problem, INTEGER, MAXIMIZE
 from cuopt.linear_programming.solver_settings import SolverSettings
-from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
-from cuopt.linear_programming.internals import GetSolutionCallback, SetSolutionCallback
+from cuopt.linear_programming.solver.solver_parameters import (
+    CUOPT_TIME_LIMIT
+)
+from cuopt.linear_programming.internals import GetSolutionCallback
 
 
 # Create a callback class to receive incumbent solutions
@@ -83,7 +86,10 @@ class IncumbentCallback(GetSolutionCallback):
         }
         self.solutions.append(incumbent)
 
-        print(f"Incumbent {self.n_callbacks}: {incumbent['solution']}, cost: {incumbent['cost']:.2f}")
+        print(
+            f"Incumbent {self.n_callbacks}: {incumbent['solution']}, "
+            f"cost: {incumbent['cost']:.2f}"
+        )
 
 
 def main():
@@ -95,7 +101,8 @@ def main():
     x = problem.addVariable(vtype=INTEGER)
     y = problem.addVariable(vtype=INTEGER)
 
-    # Add constraints to create a problem that will generate multiple incumbents
+    # Add constraints to create a problem that will generate multiple
+    # incumbents
     problem.addConstraint(2 * x + 4 * y >= 230)
     problem.addConstraint(3 * x + 2 * y <= 190)
 
@@ -107,20 +114,24 @@ def main():
     # Set the incumbent callback
     incumbent_callback = IncumbentCallback()
     settings.set_mip_callback(incumbent_callback)
-    settings.set_parameter(CUOPT_TIME_LIMIT, 30)  # Allow enough time to find multiple incumbents
+    # Allow enough time to find multiple incumbents
+    settings.set_parameter(CUOPT_TIME_LIMIT, 30)
 
     # Solve the problem
     problem.solve(settings)
 
     # Display final results
-    print(f"\n=== Final Results ===")
+    print("\n=== Final Results ===")
     print(f"Problem status: {problem.Status.name}")
     print(f"Solve time: {problem.SolveTime:.2f} seconds")
     print(f"Final solution: x={x.getValue()}, y={y.getValue()}")
     print(f"Final objective value: {problem.ObjValue:.2f}")
 
     # Display all incumbents found
-    print(f"\nTotal incumbent solutions found: {len(incumbent_callback.solutions)}")
+    print(
+        f"\nTotal incumbent solutions found: "
+        f"{len(incumbent_callback.solutions)}"
+    )
 
 
 if __name__ == "__main__":

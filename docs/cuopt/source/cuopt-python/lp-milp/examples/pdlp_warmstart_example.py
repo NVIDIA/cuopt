@@ -1,4 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION &
+# AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -50,9 +51,15 @@ Expected Output:
     Objective value = 50.0
 """
 
-from cuopt.linear_programming.problem import Problem, CONTINUOUS, MAXIMIZE
-from cuopt.linear_programming.solver.solver_parameters import CUOPT_METHOD
-from cuopt.linear_programming.solver_settings import SolverSettings, SolverMethod
+from cuopt.linear_programming.problem import (
+    Problem, CONTINUOUS, MAXIMIZE
+)
+from cuopt.linear_programming.solver.solver_parameters import (
+    CUOPT_METHOD
+)
+from cuopt.linear_programming.solver_settings import (
+    SolverSettings, SolverMethod
+)
 
 
 def main():
@@ -67,11 +74,11 @@ def main():
     y = problem.addVariable(lb=0, vtype=CONTINUOUS, name="y")
 
     # Add constraints
-    problem.addConstraint(4*x + 10*y <= 130, name="c1")
-    problem.addConstraint(8*x - 3*y >= 40, name="c2")
+    problem.addConstraint(4 * x + 10 * y <= 130, name="c1")
+    problem.addConstraint(8 * x - 3 * y >= 40, name="c2")
 
     # Set objective function
-    problem.setObjective(2*x + y, sense=MAXIMIZE)
+    problem.setObjective(2 * x + y, sense=MAXIMIZE)
 
     # Configure solver settings
     settings = SolverSettings()
@@ -86,7 +93,10 @@ def main():
 
     # Get the warmstart data
     warmstart_data = problem.get_pdlp_warm_start_data()
-    print(f"\nWarmstart data extracted (primal solution size: {len(warmstart_data.current_primal_solution)})")
+    print(
+        f"\nWarmstart data extracted (primal solution size: "
+        f"{len(warmstart_data.current_primal_solution)})"
+    )
 
     print("\n=== Solving Problem 2 with Warmstart ===")
 
@@ -98,11 +108,11 @@ def main():
     y = new_problem.addVariable(lb=0, vtype=CONTINUOUS, name="y")
 
     # Add constraints (slightly different from problem 1)
-    new_problem.addConstraint(4*x + 10*y <= 100, name="c1")
-    new_problem.addConstraint(8*x - 3*y >= 50, name="c2")
+    new_problem.addConstraint(4 * x + 10 * y <= 100, name="c1")
+    new_problem.addConstraint(8 * x - 3 * y >= 50, name="c2")
 
     # Set objective function
-    new_problem.setObjective(2*x + y, sense=MAXIMIZE)
+    new_problem.setObjective(2 * x + y, sense=MAXIMIZE)
 
     # Configure solver settings with warmstart data
     settings.set_pdlp_warm_start_data(warmstart_data)

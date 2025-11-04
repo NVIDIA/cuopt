@@ -1,4 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION &
+# AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,7 +63,9 @@ def main():
     n_vehicles = 2
 
     # Create data model
-    dm = routing.DataModel(cost_matrix.shape[0], n_vehicles, len(task_locations))
+    dm = routing.DataModel(
+        cost_matrix.shape[0], n_vehicles, len(task_locations)
+    )
     dm.add_cost_matrix(cost_matrix)
     dm.add_transit_time_matrix(cost_matrix.copy(deep=True))
 

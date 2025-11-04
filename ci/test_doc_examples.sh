@@ -76,7 +76,7 @@ start_server() {
     SERVER_PID=$!
 
     # Wait for server to start (max 30 seconds)
-    for i in {1..30}; do
+    for _ in {1..30}; do
         sleep 1
         if check_server; then
             log_success "Server started (PID: ${SERVER_PID})"
@@ -127,14 +127,17 @@ test_python_examples() {
     while IFS= read -r -d '' py_file; do
         TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
-        local example_dir=$(dirname "${py_file}")
-        local example_name=$(basename "${py_file}")
-        local relative_path="${py_file#${DOCS_ROOT}/}"
+        local example_dir
+        local example_name
+        local relative_path
+        example_dir=$(dirname "${py_file}")
+        example_name=$(basename "${py_file}")
+        relative_path="${py_file#${DOCS_ROOT}/}"
 
         log_info "Running: ${relative_path}"
 
         # Change to example directory
-        pushd "${example_dir}" > /dev/null
+        pushd "${example_dir}" > /dev/null || return
 
         # Check if example requires server
         local requires_server=false
@@ -146,7 +149,7 @@ test_python_examples() {
         if [ "${requires_server}" = true ] && ! check_server; then
             log_skip "${example_name} (requires cuOpt server)"
             SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
-            popd > /dev/null
+            popd > /dev/null || return
             continue
         fi
 
@@ -161,7 +164,7 @@ test_python_examples() {
             FAILED_TESTS=$((FAILED_TESTS + 1))
         fi
 
-        popd > /dev/null
+        popd > /dev/null || return
     done < <(find "${base_dir}" -type f -path "*/examples/*.py" -print0 2>/dev/null)
 }
 
@@ -176,13 +179,14 @@ test_c_examples() {
         return
     fi
 
-    pushd "${c_examples_dir}" > /dev/null
+    pushd "${c_examples_dir}" > /dev/null || return
 
     # Count C source files
-    local c_file_count=$(find . -maxdepth 1 -name "*.c" -type f | wc -l)
+    local c_file_count
+    c_file_count=$(find . -maxdepth 1 -name "*.c" -type f | wc -l)
     if [ ${c_file_count} -eq 0 ]; then
         log_warning "No C source files found"
-        popd > /dev/null
+        popd > /dev/null || return
         return
     fi
 
@@ -226,12 +230,12 @@ test_c_examples() {
         else
             log_failure "Failed to build C examples"
             tail -n 20 "${RESULTS_DIR}/c-build.log" | sed 's/^/    /'
-            popd > /dev/null
+            popd > /dev/null || return
             return
         fi
     else
         log_warning "No Makefile found in C examples directory"
-        popd > /dev/null
+        popd > /dev/null || return
         return
     fi
 
@@ -286,7 +290,7 @@ test_c_examples() {
         fi
     done
 
-    popd > /dev/null
+    popd > /dev/null || return
 }
 
 # Test CLI examples
@@ -310,14 +314,17 @@ test_cli_examples() {
     while IFS= read -r -d '' sh_file; do
         TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
-        local example_dir=$(dirname "${sh_file}")
-        local example_name=$(basename "${sh_file}")
-        local relative_path="${sh_file#${DOCS_ROOT}/}"
+        local example_dir
+        local example_name
+        local relative_path
+        example_dir=$(dirname "${sh_file}")
+        example_name=$(basename "${sh_file}")
+        relative_path="${sh_file#${DOCS_ROOT}/}"
 
         log_info "Running: ${relative_path}"
 
         # Change to example directory
-        pushd "${example_dir}" > /dev/null
+        pushd "${example_dir}" > /dev/null || return
 
         # Make executable
         chmod +x "${example_name}"
@@ -333,7 +340,7 @@ test_cli_examples() {
             FAILED_TESTS=$((FAILED_TESTS + 1))
         fi
 
-        popd > /dev/null
+        popd > /dev/null || return
     done < <(find "${cli_examples_dir}" -type f -path "*/examples/*.sh" -print0 2>/dev/null)
 }
 
