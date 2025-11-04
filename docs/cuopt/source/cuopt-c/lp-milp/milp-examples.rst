@@ -7,9 +7,9 @@ Example With Data
 
 This example demonstrates how to use the MILP solver in C. More details on the API can be found in :doc:`C API <lp-milp-c-api>`.
 
-The example code is available at ``../lp-milp/examples/simple_milp_example.c``:
+The example code is available at ``../lp-milp/examples/simple_milp_example.c`` (:download:`download <examples/simple_milp_example.c>`):
 
-.. literalinclude:: ../lp-milp/examples/simple_milp_example.c
+.. literalinclude:: examples/simple_milp_example.c
    :language: c
    :linenos:
 
@@ -80,9 +80,9 @@ Example With MPS File
 
 This example demonstrates how to use the cuOpt solver in C to solve an MPS file.
 
-The example code is available at ``../lp-milp/examples/milp_mps_example.c``:
+The example code is available at ``../lp-milp/examples/milp_mps_example.c`` (:download:`download <examples/milp_mps_example.c>`):
 
-.. literalinclude:: ../lp-milp/examples/milp_mps_example.c
+.. literalinclude:: examples/milp_mps_example.c
    :language: c
    :linenos:
 
@@ -98,7 +98,7 @@ If you have built it locally, libcuopt.so will be in the build directory ``cpp/b
    # Find the libcuopt library and assign to LIBCUOPT_LIBRARY_PATH
    LIBCUOPT_LIBRARY_PATH=$(find / -name "libcuopt.so" 2>/dev/null)
 
-A sample MILP MPS file (``examples/mip_sample.mps``) is provided:
+A sample MILP MPS file (:download:`download mip_sample.mps <examples/mip_sample.mps>`):
 
 .. literalinclude:: examples/mip_sample.mps
    :language: text

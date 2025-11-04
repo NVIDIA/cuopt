@@ -7,7 +7,7 @@ Example With Data
 
 This example demonstrates how to use the LP solver in C. More details on the API can be found in :doc:`C API <lp-milp-c-api>`.
 
-The example code is available at ``examples/cuopt-c/lp/simple_lp_example.c``:
+The example code is available at ``examples/cuopt-c/lp/simple_lp_example.c`` (:download:`download <examples/simple_lp_example.c>`):
 
 .. literalinclude:: examples/simple_lp_example.c
    :language: c
@@ -72,7 +72,7 @@ Example With MPS File
 
 This example demonstrates how to use the cuOpt linear programming solver in C to solve an MPS file.
 
-The example code is available at ``examples/cuopt-c/lp/mps_file_example.c``:
+The example code is available at ``examples/cuopt-c/lp/mps_file_example.c`` (:download:`download <examples/mps_file_example.c>`):
 
 .. literalinclude:: examples/mps_file_example.c
    :language: c
@@ -90,7 +90,7 @@ If you have built it locally, libcuopt.so will be in the build directory ``cpp/b
    # Find the libcuopt library and assign to LIBCUOPT_LIBRARY_PATH
    LIBCUOPT_LIBRARY_PATH=$(find / -name "libcuopt.so" 2>/dev/null)
 
-A sample MPS file (``examples/sample.mps``) is provided:
+A sample MPS file (:download:`download sample.mps <examples/sample.mps>`):
 
 .. literalinclude:: examples/sample.mps
    :language: text
