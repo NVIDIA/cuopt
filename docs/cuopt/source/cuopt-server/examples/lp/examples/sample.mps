@@ -1,8 +1,3 @@
-* optimize
-*  cost = -0.2 * VAR1 + 0.1 * VAR2
-* subject to
-*  3 * VAR1 + 4 * VAR2 <= 5.4
-*  2.7 * VAR1 + 10.1 * VAR2 <= 4.9
 NAME   good-1
 ROWS
  N  COST
@@ -16,4 +11,3 @@ COLUMNS
 RHS
    RHS1      ROW1      5.4            ROW2      4.9
 ENDATA
-
