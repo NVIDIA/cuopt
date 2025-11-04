@@ -85,19 +85,14 @@ NVIDIA cuOpt can be tested with `NVIDIA Launchable <https://brev.nvidia.com/laun
 Smoke Test
 ----------
 
-After installation, you can verify that NVIDIA cuOpt is working correctly by running a simple test:
+After installation, you can verify that NVIDIA cuOpt is working correctly by running a simple test.
 
-.. literalinclude:: routing/examples/smoke_test_example.py
-   :language: python
+Copy and paste this script directly into your terminal (:download:`Download smoke_test_example.sh <routing/examples/smoke_test_example.sh>`):
+
+.. literalinclude:: routing/examples/smoke_test_example.sh
+   :language: bash
    :linenos:
-   :start-after: def main():
-   :end-before: if __name__
-
-You can run this example directly:
-
-.. code-block:: bash
-
-   python docs/cuopt/source/cuopt-python/routing/examples/smoke_test_example.py
+   :start-after: # Users can copy
 
 
 Example Response:
