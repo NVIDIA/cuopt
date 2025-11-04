@@ -87,23 +87,17 @@ Smoke Test
 
 After installation, you can verify that NVIDIA cuOpt is working correctly by running a simple test:
 
+.. literalinclude:: routing/examples/smoke_test_example.py
+   :language: python
+   :linenos:
+   :start-after: def main():
+   :end-before: if __name__
+
+You can run this example directly:
+
 .. code-block:: bash
 
-   python -c "
-   import cudf
-   from cuopt import routing
-   cost_matrix = cudf.DataFrame([[0,2,2,2],[2,0,2,2],[2,2,0,2],[2,2,2,0]], dtype='float32')
-   task_locations = cudf.Series([1,2,3])
-   n_vehicles = 2
-   dm = routing.DataModel(cost_matrix.shape[0], n_vehicles, len(task_locations))
-   dm.add_cost_matrix(cost_matrix)
-   dm.add_transit_time_matrix(cost_matrix.copy(deep=True))
-   ss = routing.SolverSettings()
-   sol = routing.Solve(dm, ss)
-   print(sol.get_route())
-   print('\n\n****************** Display Routes *************************')
-   sol.display_routes()
-   "
+   python docs/cuopt/source/cuopt-python/routing/examples/smoke_test_example.py
 
 
 Example Response:

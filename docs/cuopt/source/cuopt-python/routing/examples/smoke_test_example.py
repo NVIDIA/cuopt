@@ -1,0 +1,69 @@
+"""
+Routing Smoke Test Example
+
+This is a simple routing example to verify that cuOpt is working correctly.
+
+Problem:
+    - 4 locations in a cost matrix
+    - 3 tasks to be delivered
+    - 2 vehicles available
+    
+The solver will assign tasks to vehicles and create optimal routes.
+
+Expected Output:
+         route  arrival_stamp  truck_id  location      type
+            0            0.0         0         0     Depot
+            2            2.0         0         2  Delivery
+            1            4.0         0         1  Delivery
+            0            6.0         0         0     Depot
+
+
+       ****************** Display Routes *************************
+       Vehicle-0 starts at: 0.0, completes at: 6.0, travel time: 6.0,  Route :
+         0(Dpt)->2(D)->1(D)->0(Dpt)
+
+       This results in a travel time of 6.0 to deliver all routes
+"""
+
+import cudf
+from cuopt import routing
+
+
+def main():
+    """Run the smoke test routing example."""
+    # Create cost matrix (symmetric distance matrix for 4 locations)
+    cost_matrix = cudf.DataFrame(
+        [[0, 2, 2, 2],
+         [2, 0, 2, 2],
+         [2, 2, 0, 2],
+         [2, 2, 2, 0]], 
+        dtype='float32'
+    )
+    
+    # Task locations (indices into the cost matrix)
+    # Tasks at locations 1, 2, and 3
+    task_locations = cudf.Series([1, 2, 3])
+    
+    # Number of vehicles
+    n_vehicles = 2
+    
+    # Create data model
+    dm = routing.DataModel(cost_matrix.shape[0], n_vehicles, len(task_locations))
+    dm.add_cost_matrix(cost_matrix)
+    dm.add_transit_time_matrix(cost_matrix.copy(deep=True))
+    
+    # Configure solver settings
+    ss = routing.SolverSettings()
+    
+    # Solve the routing problem
+    sol = routing.Solve(dm, ss)
+    
+    # Display results
+    print(sol.get_route())
+    print('\n\n****************** Display Routes *************************')
+    sol.display_routes()
+
+
+if __name__ == "__main__":
+    main()
+
