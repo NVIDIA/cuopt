@@ -291,11 +291,10 @@ class search_tree_t {
 
   void update(mip_node_t<i_t, f_t>* node_ptr, node_status_t status)
   {
-    mutex.lock();
+    std::lock_guard<omp_mutex_t> lock(mutex);
     std::vector<mip_node_t<i_t, f_t>*> stack;
     node_ptr->set_status(status, stack);
     remove_fathomed_nodes(stack);
-    mutex.unlock();
   }
 
   void branch(mip_node_t<i_t, f_t>* parent_node,

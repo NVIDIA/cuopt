@@ -261,7 +261,7 @@ i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractio
                                                  const std::vector<f_t>& solution,
                                                  logger_t& log)
 {
-  mutex.lock();
+  std::lock_guard<omp_mutex_t> lock(mutex);
 
   constexpr f_t eps = 1e-6;
   i_t branch_var    = fractional[0];
@@ -295,7 +295,7 @@ i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractio
             branch_var,
             solution[branch_var],
             max_score);
-  mutex.unlock();
+
   return branch_var;
 }
 
@@ -305,7 +305,7 @@ f_t pseudo_costs_t<i_t, f_t>::objective_estimate(const std::vector<i_t>& fractio
                                                  f_t lower_bound,
                                                  logger_t& log)
 {
-  mutex.lock();
+  std::lock_guard<omp_mutex_t> lock(mutex);
 
   constexpr f_t eps = 1e-6;
   f_t estimate      = lower_bound;
@@ -328,7 +328,6 @@ f_t pseudo_costs_t<i_t, f_t>::objective_estimate(const std::vector<i_t>& fractio
     estimate += std::min(std::max(pc_down * f_down, eps), std::max(pc_up * f_up, eps));
   }
 
-  mutex.unlock();
   return estimate;
 }
 

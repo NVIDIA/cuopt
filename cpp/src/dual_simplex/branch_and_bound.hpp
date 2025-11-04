@@ -154,7 +154,7 @@ class branch_and_bound_t {
 
   // Queue for storing the promising node for performing dives.
   omp_mutex_t mutex_dive_queue_;
-  diving_queue_t<i_t, f_t> dive_queue_;
+  diving_queue_t<i_t, f_t> diving_queue_;
   i_t min_diving_queue_size_;
 
   // Global status of the solver.

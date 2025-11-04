@@ -39,6 +39,8 @@
 #include <string>
 #include <vector>
 
+#define DIVING_BACKTRACKING 5
+
 namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
@@ -961,7 +963,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
           node->get_variable_bounds(lower, upper, presolver.bounds_changed);
 
           mutex_dive_queue_.lock();
-          dive_queue_.emplace(node->detach_copy(), std::move(lower), std::move(upper));
+          diving_queue_.emplace(node->detach_copy(), std::move(lower), std::move(upper));
           mutex_dive_queue_.unlock();
         }
 
@@ -1073,7 +1075,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(i_t backtrack, const csr_matrix
     std::optional<diving_root_t<i_t, f_t>> start_node;
 
     mutex_dive_queue_.lock();
-    if (dive_queue_.size() > 0) { start_node = dive_queue_.pop(); }
+    if (diving_queue_.size() > 0) { start_node = diving_queue_.pop(); }
     mutex_dive_queue_.unlock();
 
     if (start_node.has_value()) {
@@ -1269,6 +1271,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                      original_lp_,
                      log);
 
+  csr_matrix_t<i_t, f_t> Arow(1, 1, 0);
+  original_lp_.A.to_compressed_row(Arow);
+
   settings_.log.printf("Exploring the B&B tree using %d best-first threads and %d diving threads\n",
                        settings_.num_bfs_threads,
                        settings_.num_diving_threads);
@@ -1285,9 +1290,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   min_diving_queue_size_      = 4 * settings_.num_diving_threads;
   status_                     = mip_exploration_status_t::RUNNING;
   lower_bound_ceiling_        = inf;
-
-  csr_matrix_t<i_t, f_t> Arow(1, 1, 0);
-  original_lp_.A.to_compressed_row(Arow);
+  diving_queue_.set_rng_seed(settings_.random_seed);
 
 #pragma omp parallel num_threads(settings_.num_threads)
   {
@@ -1315,7 +1318,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
       for (i_t i = 0; i < settings_.num_diving_threads; i++) {
 #pragma omp task
-        diving_thread(5, Arow);
+        diving_thread(DIVING_BACKTRACKING, Arow);
       }
     }
   }

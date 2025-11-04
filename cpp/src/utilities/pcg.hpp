@@ -35,21 +35,23 @@ class PCG {
    * unique set of random numbers. This can be achieved by initializing the generator with same
    * rng_state for all the threads and diststreamt values for subsequence.
    */
-  PCG(const uint64_t seed = default_seed, const uint64_t subsequence = 0)
+  PCG(const uint64_t seed        = default_seed,
+      const uint64_t subsequence = default_stream,
+      uint64_t offset            = 0)
   {
-    _init_pcg(seed, default_stream + subsequence, subsequence);
+    set_seed(seed, subsequence, offset);
   }
 
-  /**
-   * @brief ctor. This is lower level constructor for PCG
-   * This code is derived from PCG basic code
-   * @param seed A 64-bit seed for the generator
-   * @param subsequence The id of subsequence that should be generated [0, 2^64-1]
-   * @param offset Initial `offset` number of items are skipped from the subsequence
-   */
-  PCG(uint64_t seed, uint64_t subsequence, uint64_t offset)
+  // Set the seed, subsequence and offset of the PCG
+  void set_seed(uint64_t seed, const uint64_t subsequence = default_stream, uint64_t offset = 0)
   {
-    _init_pcg(seed, subsequence, offset);
+    state  = uint64_t(0);
+    stream = (subsequence << 1u) | 1u;
+    uint32_t discard;
+    next(discard);
+    state += seed;
+    next(discard);
+    skipahead(offset);
   }
 
   // Based on "Random Number Generation with Arbitrary Strides" F. B. Brown
@@ -135,31 +137,19 @@ class PCG {
   void next(float& ret) { ret = next_float(); }
   void next(double& ret) { ret = next_double(); }
 
-  // Generate a random integer uniformly distributed in [low, high].
-  // FIXME: When C++20 is enabled, switch to `std::integer`.
-  template <typename i_t>
-  i_t uniform(i_t low, i_t high)
+  // Generate a random number uniformly distributed in [low, high[.
+  template <typename T>
+  T uniform(T low, T high)
   {
     // Fractional scaling may exhibit slightly bias, but should be
     // fine for our use case.
     double val = next_double();
-    i_t dist   = high - low;
-    return low + static_cast<i_t>(val * dist);
+    T dist     = high - low;
+    return low + static_cast<T>(val * dist);
   }
 
  private:
   uint64_t state;
   uint64_t stream;
-
-  void _init_pcg(uint64_t seed, uint64_t subsequence, uint64_t offset)
-  {
-    state  = uint64_t(0);
-    stream = (subsequence << 1u) | 1u;
-    uint32_t discard;
-    next(discard);
-    state += seed;
-    next(discard);
-    skipahead(offset);
-  }
 };
 }  // namespace cuopt

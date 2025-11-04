@@ -57,7 +57,9 @@ class diving_queue_t {
   const double epsilon = 0.1;  // Probability to grab a random node
 
  public:
-  diving_queue_t() {}
+  diving_queue_t() { buffer.reserve(max_size_); }
+
+  void set_rng_seed(uint64_t seed) { rng.set_seed(PCG::default_seed + seed); }
 
   void push(diving_root_t<i_t, f_t>&& node)
   {
