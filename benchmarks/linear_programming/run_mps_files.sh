@@ -226,7 +226,8 @@ if [[ -n "$MODEL_LIST" && -f "$MODEL_LIST" ]]; then
         # Skip empty lines
         [[ -z "$line" ]] && continue
         # If the line does not end with .mps, append it
-        if [[ "$line" != *.mps ]]; then
+        # ignore if it ends with .SIF
+        if [[ "$line" != *.mps && "$line" != *.SIF ]]; then
             echo "${line}.mps" >> "$TMP_MODEL_LIST"
         else
             echo "$line" >> "$TMP_MODEL_LIST"
