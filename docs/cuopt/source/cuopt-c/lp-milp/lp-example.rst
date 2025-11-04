@@ -31,8 +31,8 @@ Build and run the example
 .. code-block:: bash
 
    # Build and run the example
-   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o lp_example lp_example.c -lcuopt
-   ./lp_example
+   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o simple_lp_example simple_lp_example.c -lcuopt
+   ./simple_lp_example
 
 
 
@@ -101,8 +101,8 @@ Build and run the example
 .. code-block:: bash
 
    # Build and run the example
-   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o lp_example_mps lp_example_mps.c -lcuopt
-   ./lp_example_mps examples/sample.mps
+   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o mps_file_example mps_file_example.c -lcuopt
+   ./mps_file_example sample.mps
 
 
 You should see the following output:

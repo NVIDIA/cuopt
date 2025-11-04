@@ -31,8 +31,8 @@ Build and run the example
 .. code-block:: bash
 
    # Build and run the example
-   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o milp_example milp_example.c -lcuopt
-   ./milp_example
+   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o simple_milp_example simple_milp_example.c -lcuopt
+   ./simple_milp_example
 
 
 
@@ -80,7 +80,7 @@ Example With MPS File
 
 This example demonstrates how to use the cuOpt solver in C to solve an MPS file.
 
-The example code is available at ``../lp-milp/examples/milp_mps_example.c`` (:download:`download <examples/milp_mps_example.c>`):
+The example code is available at ``examples/milp_mps_example.c`` (:download:`download <examples/milp_mps_example.c>`):
 
 .. literalinclude:: examples/milp_mps_example.c
    :language: c
@@ -109,8 +109,8 @@ Build and run the example
 .. code-block:: bash
 
    # Build and run the example
-   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o milp_example_mps milp_example_mps.c -lcuopt
-   ./milp_example_mps examples/mip_sample.mps
+   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o milp_mps_example milp_mps_example.c -lcuopt
+   ./milp_mps_example mip_sample.mps
 
 
 You should see the following output:
