@@ -109,7 +109,7 @@ cuopt_int_t test_simple_milp()
   cuopt_int_t termination_status;
   cuopt_float_t objective_value;
 
-  printf("Creating and solving simple LP problem...\n");
+  printf("Creating and solving simple MILP problem...\n");
 
   // Create the problem
   status = cuOptCreateRangedProblem(num_constraints,

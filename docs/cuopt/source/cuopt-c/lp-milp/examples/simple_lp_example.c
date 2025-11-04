@@ -132,7 +132,7 @@ cuopt_int_t test_simple_lp()
   // Create the problem
   status = cuOptCreateRangedProblem(num_constraints,
                                    num_variables,
-                                   CUOPT_MINIMIZE,  // minimize=False
+                                   CUOPT_MINIMIZE,  // minimize=True
                                    0.0,            // objective offset
                                    objective_coefficients,
                                    row_offsets,

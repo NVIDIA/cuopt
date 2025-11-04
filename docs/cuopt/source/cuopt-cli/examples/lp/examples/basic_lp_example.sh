@@ -50,7 +50,7 @@ echo '{
         "upper_bounds": ["inf", "inf"],
         "lower_bounds": [0.0, 0.0]
     },
-    "maximize": "False",
+    "maximize": false,
     "solver_config": {
         "tolerances": {
             "optimality": 0.0001

@@ -45,7 +45,6 @@ from cuopt_sh_client import (
     PDLPSolverMode
 )
 import cuopt_mps_parser
-import json
 import time
 
 

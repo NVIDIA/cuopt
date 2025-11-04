@@ -49,7 +49,7 @@ Expected Response:
 
 from cuopt_sh_client import CuOptServiceSelfHostClient, ThinClientSolverSettings
 import json
-
+import os
 
 def main():
     """Run the MPS file LP example."""
@@ -95,6 +95,11 @@ ENDATA
     )
 
     print(json.dumps(solution, indent=4))
+
+    # Delete the mps file after solving
+    if os.path.exists(data):
+        os.remove(data)
+        print(f"Deleted MPS file: {data}")
 
 
 if __name__ == "__main__":

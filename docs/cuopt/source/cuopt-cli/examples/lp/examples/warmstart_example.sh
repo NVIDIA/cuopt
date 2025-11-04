@@ -27,6 +27,8 @@
 #   - jq installed for JSON parsing
 #
 
+set -e  # Exit on any command failure
+
 # Set server connection details
 export ip="localhost"
 export port=5000
@@ -61,7 +63,19 @@ echo '{
 
 echo "=== Step 1: Solve and save solution for warmstart ==="
 # Solve and keep the solution (-k flag)
-reqId=$(cuopt_sh -t LP data.json -i $ip -p $port -k | sed "s/'/\"/g" | sed 's/False/false/g' | jq -r '.reqId')
+output=$(cuopt_sh -t LP data.json -i $ip -p $port -k)
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to solve LP problem"
+    rm -f data.json
+    exit 1
+fi
+
+reqId=$(echo "$output" | sed "s/'/\"/g" | sed 's/False/false/g' | jq -r '.reqId')
+if [ -z "$reqId" ] || [ "$reqId" = "null" ]; then
+    echo "Error: Failed to extract reqId from response"
+    rm -f data.json
+    exit 1
+fi
 
 echo "Saved solution with reqId: $reqId"
 

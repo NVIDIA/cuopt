@@ -37,7 +37,6 @@ Note:
 
 from cuopt_sh_client import CuOptServiceSelfHostClient
 import json
-import time
 
 
 def main():
