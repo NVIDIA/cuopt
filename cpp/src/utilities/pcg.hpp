@@ -137,15 +137,15 @@ class PCG {
   void next(float& ret) { ret = next_float(); }
   void next(double& ret) { ret = next_double(); }
 
-  // Generate a random number uniformly distributed in [low, high[.
+  /// Draws a sample from a uniform distribution. The samples are uniformly distributed over
+  /// the semi-closed interval `[low, high)`. This routine may have a **slight bias** toward
+  /// some numbers in the range (scaling by floating-point).
   template <typename T>
   T uniform(T low, T high)
   {
-    // Fractional scaling may exhibit slightly bias, but should be
-    // fine for our use case.
     double val = next_double();
-    T dist     = high - low;
-    return low + static_cast<T>(val * dist);
+    T range    = high - low;
+    return low + (val * range);
   }
 
  private:
