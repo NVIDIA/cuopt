@@ -90,33 +90,19 @@ If you have built it locally, libcuopt.so will be in the build directory ``cpp/b
    # Find the libcuopt library and assign to LIBCUOPT_LIBRARY_PATH
    LIBCUOPT_LIBRARY_PATH=$(find / -name "libcuopt.so" 2>/dev/null)
 
+A sample MPS file (``examples/sample.mps``) is provided:
+
+.. literalinclude:: examples/sample.mps
+   :language: text
+   :linenos:
+
 Build and run the example
 
 .. code-block:: bash
 
-    # Create a MPS file in the current directory
-    echo "* optimize
-   *  cost = -0.2 * VAR1 + 0.1 * VAR2
-   * subject to
-   *  3 * VAR1 + 4 * VAR2 <= 5.4
-   *  2.7 * VAR1 + 10.1 * VAR2 <= 4.9
-   NAME   good-1
-   ROWS
-    N  COST
-    L  ROW1
-    L  ROW2
-   COLUMNS
-      VAR1      COST      -0.2
-      VAR1      ROW1      3              ROW2      2.7
-      VAR2      COST      0.1
-      VAR2      ROW1      4              ROW2      10.1
-   RHS
-      RHS1      ROW1      5.4            ROW2      4.9
-   ENDATA" > sample.mps
-
    # Build and run the example
    gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o lp_example_mps lp_example_mps.c -lcuopt
-   ./lp_example_mps sample.mps
+   ./lp_example_mps examples/sample.mps
 
 
 You should see the following output:

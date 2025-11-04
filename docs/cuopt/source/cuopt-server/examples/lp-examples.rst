@@ -399,26 +399,15 @@ In the case of batch mode, you can send a bunch of ``mps`` files at once, and ac
 .. note::
    Batch mode is not available for MILP problems.
 
-.. code-block:: shell
+A sample MPS file is available at ``../../../cuopt-cli/examples/lp/examples/sample.mps``:
 
-    echo "* optimize
-   *  cost = -0.2 * VAR1 + 0.1 * VAR2
-   * subject to
-   *  3 * VAR1 + 4 * VAR2 <= 5.4
-   *  2.7 * VAR1 + 10.1 * VAR2 <= 4.9
-   NAME   good-1
-   ROWS
-    N  COST
-    L  ROW1
-    L  ROW2
-   COLUMNS
-      VAR1      COST      -0.2
-      VAR1      ROW1      3              ROW2      2.7
-      VAR2      COST      0.1
-      VAR2      ROW1      4              ROW2      10.1
-   RHS
-      RHS1      ROW1      5.4            ROW2      4.9
-   ENDATA" > sample.mps
+.. literalinclude:: ../../../cuopt-cli/examples/lp/examples/sample.mps
+   :language: text
+   :linenos:
+
+Run the example:
+
+.. code-block:: bash
 
    # Please update these values if the server is running on a different IP address or port
    export ip="localhost"
