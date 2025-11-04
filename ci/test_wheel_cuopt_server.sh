@@ -41,3 +41,6 @@ rapids-pip-retry install \
 export OMP_NUM_THREADS=1
 
 RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt_server/cuopt_server/tests/
+
+# Run documentation tests
+./ci/test_doc_examples.sh
