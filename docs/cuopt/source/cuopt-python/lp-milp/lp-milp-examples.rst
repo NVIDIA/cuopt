@@ -12,6 +12,8 @@ This section contains examples of how to use the cuOpt linear programming and mi
 Simple Linear Programming Example
 ---------------------------------
 
+:download:`Download simple_lp_example.py <examples/simple_lp_example.py>`
+
 .. literalinclude:: examples/simple_lp_example.py
    :language: python
    :linenos:
@@ -29,6 +31,8 @@ The response is as follows:
 
 Mixed Integer Linear Programming Example
 ----------------------------------------
+
+:download:`Download simple_milp_example.py <examples/simple_milp_example.py>`
 
 .. literalinclude:: examples/simple_milp_example.py
    :language: python

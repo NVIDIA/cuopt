@@ -399,7 +399,7 @@ In the case of batch mode, you can send a bunch of ``mps`` files at once, and ac
 .. note::
    Batch mode is not available for MILP problems.
 
-A sample MPS file is available at ``../../cuopt-cli/examples/lp/examples/sample.mps``:
+A sample MPS file (:download:`download sample.mps <../../cuopt-cli/examples/lp/examples/sample.mps>`):
 
 .. literalinclude:: ../../cuopt-cli/examples/lp/examples/sample.mps
    :language: text
