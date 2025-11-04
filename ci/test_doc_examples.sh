@@ -166,6 +166,55 @@ test_python_examples() {
 
         popd > /dev/null || return
     done < <(find "${base_dir}" -type f -path "*/examples/*.py" -print0 2>/dev/null)
+
+    # Also test shell scripts in cuopt-python and cuopt-server modules
+    if [ "${module}" = "cuopt-python" ] || [ "${module}" = "cuopt-server" ]; then
+        while IFS= read -r -d '' sh_file; do
+            TOTAL_TESTS=$((TOTAL_TESTS + 1))
+
+            local example_dir
+            local example_name
+            local relative_path
+            example_dir=$(dirname "${sh_file}")
+            example_name=$(basename "${sh_file}")
+            relative_path="${sh_file#${DOCS_ROOT}/}"
+
+            log_info "Running: ${relative_path}"
+
+            # Change to example directory
+            pushd "${example_dir}" > /dev/null || return
+
+            # Make executable
+            chmod +x "${example_name}"
+
+            # Check if example requires server
+            local requires_server=false
+            if grep -q "cuopt_sh\|localhost.*5000" "${example_name}"; then
+                requires_server=true
+            fi
+
+            # Skip if server is required but not running
+            if [ "${requires_server}" = true ] && ! check_server; then
+                log_skip "${example_name} (requires cuOpt server)"
+                SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
+                popd > /dev/null || return
+                continue
+            fi
+
+            # Run the shell script
+            if timeout 60 bash "${example_name}" > "${RESULTS_DIR}/${example_name}.log" 2>&1; then
+                log_success "${example_name}"
+                PASSED_TESTS=$((PASSED_TESTS + 1))
+            else
+                log_failure "${example_name}"
+                echo "  Last 10 lines of output:"
+                tail -n 10 "${RESULTS_DIR}/${example_name}.log" | sed 's/^/    /'
+                FAILED_TESTS=$((FAILED_TESTS + 1))
+            fi
+
+            popd > /dev/null || return
+        done < <(find "${base_dir}" -type f -path "*/examples/*.sh" -print0 2>/dev/null)
+    fi
 }
 
 # Test C examples

@@ -11,4 +11,3 @@ COLUMNS
 RHS
    RHS1      ROW1      5.4            ROW2      4.9
 ENDATA
-
