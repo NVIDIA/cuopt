@@ -79,7 +79,7 @@ cuopt_int_t test_simple_milp()
   cuopt_float_t values[] = {3.0, 4.0, 2.7, 10.1};
 
   // Objective coefficients
-  // From the objective function: minimize 0.2*x1 + 0.1*x2
+  // From the objective function: minimize -0.2*x1 + 0.1*x2
   // -0.2 is the coefficient of x1
   // 0.1 is the coefficient of x2
   cuopt_float_t objective_coefficients[] = {-0.2, 0.1};
@@ -97,7 +97,7 @@ cuopt_int_t test_simple_milp()
   cuopt_float_t var_lower_bounds[] = {0.0, 0.0};
   cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY};
 
-  // Variable types (continuous)
+  // Variable types
   // From the constraints:
   // x1, x2 >= 0
   // x1 is integer
@@ -114,7 +114,7 @@ cuopt_int_t test_simple_milp()
   // Create the problem
   status = cuOptCreateRangedProblem(num_constraints,
                                    num_variables,
-                                   CUOPT_MINIMIZE,  // minimize=False
+                                   CUOPT_MINIMIZE,
                                    0.0,            // objective offset
                                    objective_coefficients,
                                    row_offsets,

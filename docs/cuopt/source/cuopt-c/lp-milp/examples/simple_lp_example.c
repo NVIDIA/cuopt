@@ -34,7 +34,7 @@
  *   x2 = 0.000000
  *
  * Build:
- *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o lp_example lp_example.c -lcuopt
+ *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o simple_lp_example simple_lp_example.c -lcuopt
  *
  * Run:
  *   ./lp_example

@@ -8,7 +8,7 @@ The OpenAPI specification for the server is available in :doc:`open-api spec <..
 Generic Example
 ---------------
 
-:download:`Download basic_milp_example.py <milp/examples/basic_milp_example.py>`
+:download:`basic_milp_example.py <milp/examples/basic_milp_example.py>`
 
 .. literalinclude:: milp/examples/basic_milp_example.py
    :language: python
@@ -66,7 +66,7 @@ The incumbent solution can be retrieved using a callback function as follows:
 .. note::
     Incumbent solution callback is only applicable to MILP.
 
-:download:`Download incumbent_callback_example.py <milp/examples/incumbent_callback_example.py>`
+:download:`incumbent_callback_example.py <milp/examples/incumbent_callback_example.py>`
 
 .. literalinclude:: milp/examples/incumbent_callback_example.py
    :language: python
@@ -143,7 +143,7 @@ They can be of different format as well, please check the documentation.
 Aborting a Running Job in Thin Client
 -------------------------------------
 
-:download:`Download abort_job_example.py <milp/examples/abort_job_example.py>`
+:download:`abort_job_example.py <milp/examples/abort_job_example.py>`
 
 .. literalinclude:: milp/examples/abort_job_example.py
    :language: python

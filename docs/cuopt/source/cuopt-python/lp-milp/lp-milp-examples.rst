@@ -12,7 +12,7 @@ This section contains examples of how to use the cuOpt linear programming and mi
 Simple Linear Programming Example
 ---------------------------------
 
-:download:`Download simple_lp_example.py <examples/simple_lp_example.py>`
+:download:`simple_lp_example.py <examples/simple_lp_example.py>`
 
 .. literalinclude:: examples/simple_lp_example.py
    :language: python
@@ -32,7 +32,7 @@ The response is as follows:
 Mixed Integer Linear Programming Example
 ----------------------------------------
 
-:download:`Download simple_milp_example.py <examples/simple_milp_example.py>`
+:download:`simple_milp_example.py <examples/simple_milp_example.py>`
 
 .. literalinclude:: examples/simple_milp_example.py
    :language: python
@@ -53,7 +53,7 @@ The response is as follows:
 Advanced Example: Production Planning
 -------------------------------------
 
-:download:`Download production_planning_example.py <examples/production_planning_example.py>`
+:download:`production_planning_example.py <examples/production_planning_example.py>`
 
 .. literalinclude:: examples/production_planning_example.py
    :language: python
@@ -76,7 +76,7 @@ The response is as follows:
 Working with Expressions and Constraints
 ----------------------------------------
 
-:download:`Download expressions_constraints_example.py <examples/expressions_constraints_example.py>`
+:download:`expressions_constraints_example.py <examples/expressions_constraints_example.py>`
 
 .. literalinclude:: examples/expressions_constraints_example.py
    :language: python
@@ -102,7 +102,7 @@ Incumbent solutions are intermediate feasible solutions found during the MIP sol
 .. note::
     Incumbent solutions are only available for Mixed Integer Programming (MIP) problems, not for pure Linear Programming (LP) problems.
 
-:download:`Download incumbent_solutions_example.py <examples/incumbent_solutions_example.py>`
+:download:`incumbent_solutions_example.py <examples/incumbent_solutions_example.py>`
 
 .. literalinclude:: examples/incumbent_solutions_example.py
    :language: python
@@ -133,7 +133,7 @@ Warmstart data allows to restart PDLP with a previous solution context. This sho
 .. note::
     Warmstart data is only available for Linear Programming (LP) problems, not for Mixed Integer Linear Programming (MILP) problems.
 
-:download:`Download pdlp_warmstart_example.py <examples/pdlp_warmstart_example.py>`
+:download:`pdlp_warmstart_example.py <examples/pdlp_warmstart_example.py>`
 
 .. literalinclude:: examples/pdlp_warmstart_example.py
    :language: python

@@ -87,7 +87,7 @@ Smoke Test
 
 After installation, you can verify that NVIDIA cuOpt is working correctly by running a simple test.
 
-Copy and paste this script directly into your terminal (:download:`Download smoke_test_example.sh <routing/examples/smoke_test_example.sh>`):
+Copy and paste this script directly into your terminal (:download:`smoke_test_example.sh <routing/examples/smoke_test_example.sh>`):
 
 .. literalinclude:: routing/examples/smoke_test_example.sh
    :language: bash
