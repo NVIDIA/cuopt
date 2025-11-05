@@ -262,21 +262,35 @@ test_c_examples() {
         if [ -z "${search_dir}" ] || [ ! -d "${search_dir}" ]; then
             continue
         fi
-        
+
         if [ -z "${include_path}" ]; then
-            # Search for cuopt_c.h in both standard and Python package locations
-            include_path=$(find "${search_dir}" -name "cuopt_c.h" -path "*/linear_programming/*" -printf "%h\n" 2>/dev/null | sed 's/\/linear_programming//' | head -1)
-            # Also check libcuopt/include structure
-            if [ -z "${include_path}" ]; then
-                include_path=$(find "${search_dir}" -name "cuopt_c.h" -path "*/libcuopt/include/*" -printf "%h\n" 2>/dev/null | sed 's/\/cuopt\/linear_programming//' | head -1)
+            # Search for cuopt_c.h
+            local found_header
+            found_header=$(find "${search_dir}" -name "cuopt_c.h" -path "*/linear_programming/*" 2>/dev/null | head -1)
+
+            if [ -n "${found_header}" ]; then
+                # Check if this is a Python package installation (contains libcuopt/include)
+                if echo "${found_header}" | grep -q "/libcuopt/include/"; then
+                    # Python package structure: /path/to/libcuopt/include/cuopt/linear_programming/cuopt_c.h
+                    # Extract the include directory by going up 3 directories from the header file
+                    include_path=$(dirname "$(dirname "$(dirname "${found_header}")")")
+                else
+                    # Standard installation: /path/to/include/cuopt/linear_programming/cuopt_c.h
+                    # Extract the include directory by going up 2 directories
+                    include_path=$(dirname "$(dirname "${found_header}")")
+                fi
             fi
         fi
-        
+
         if [ -z "${lib_path}" ]; then
-            # Search for libcuopt.so
-            lib_path=$(find "${search_dir}" -name "libcuopt.so" 2>/dev/null | head -1 | xargs dirname)
+            # Search for libcuopt.so in both lib and lib64 directories
+            local found_lib
+            found_lib=$(find "${search_dir}" -name "libcuopt.so" \( -path "*/lib/*" -o -path "*/lib64/*" \) 2>/dev/null | head -1)
+            if [ -n "${found_lib}" ]; then
+                lib_path=$(dirname "${found_lib}")
+            fi
         fi
-        
+
         # Break early if both found
         if [ -n "${include_path}" ] && [ -n "${lib_path}" ]; then
             break
@@ -284,7 +298,19 @@ test_c_examples() {
     done
 
     if [ -z "${include_path}" ] || [ -z "${lib_path}" ]; then
-        log_warning "Could not find cuOpt headers or libraries - C examples may fail to build"
+        log_failure "Could not find cuOpt headers or libraries"
+        if [ -z "${include_path}" ]; then
+            log_failure "  Missing: INCLUDE_PATH (searched for cuopt_c.h)"
+        fi
+        if [ -z "${lib_path}" ]; then
+            log_failure "  Missing: LIBCUOPT_LIBRARY_PATH (searched for libcuopt.so)"
+        fi
+        log_info "  Marking all C examples as failed"
+        # Count all C files as failed
+        FAILED_TESTS=$((FAILED_TESTS + c_file_count))
+        TOTAL_TESTS=$((TOTAL_TESTS + c_file_count))
+        popd > /dev/null || return
+        return
     else
         log_info "Found: INCLUDE_PATH=${include_path}"
         log_info "Found: LIBCUOPT_LIBRARY_PATH=${lib_path}"
@@ -303,11 +329,19 @@ test_c_examples() {
         else
             log_failure "Failed to build C examples"
             tail -n 20 "${RESULTS_DIR}/c-build.log" | sed 's/^/    /'
+            log_info "  Marking all C examples as failed"
+            # Count all C files as failed
+            FAILED_TESTS=$((FAILED_TESTS + c_file_count))
+            TOTAL_TESTS=$((TOTAL_TESTS + c_file_count))
             popd > /dev/null || return
             return
         fi
     else
         log_warning "No Makefile found in C examples directory"
+        log_info "  Marking all C examples as failed"
+        # Count all C files as failed
+        FAILED_TESTS=$((FAILED_TESTS + c_file_count))
+        TOTAL_TESTS=$((TOTAL_TESTS + c_file_count))
         popd > /dev/null || return
         return
     fi
