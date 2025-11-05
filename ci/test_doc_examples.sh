@@ -452,12 +452,6 @@ test_cli_examples() {
         return
     fi
 
-    # Check if server is running (required for CLI)
-    if ! check_server; then
-        log_warning "CLI examples require cuOpt server - skipping all CLI tests"
-        return
-    fi
-
     # Find all shell scripts in examples directories
     while IFS= read -r -d '' sh_file; do
         TOTAL_TESTS=$((TOTAL_TESTS + 1))
@@ -476,6 +470,20 @@ test_cli_examples() {
 
         # Make executable
         chmod +x "${example_name}"
+
+        # Check if example uses cuopt_sh (requires server) or cuopt_cli (standalone)
+        local requires_server=false
+        if grep -q "cuopt_sh" "${example_name}"; then
+            requires_server=true
+        fi
+
+        # Skip if server is required but not running
+        if [ "${requires_server}" = true ] && ! check_server; then
+            log_skip "${example_name} (requires cuOpt server)"
+            SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
+            popd > /dev/null || return
+            continue
+        fi
 
         # Run the example
         if timeout 60 bash "${example_name}" > "${RESULTS_DIR}/${example_name}.log" 2>&1; then

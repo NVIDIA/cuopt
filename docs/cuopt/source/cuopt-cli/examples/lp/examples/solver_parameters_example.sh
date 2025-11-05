@@ -14,17 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Basic LP Example using cuopt_cli
+# Solver Parameters Example using cuopt_cli
 #
-# This example demonstrates how to solve a simple LP problem using cuopt_cli.
-# cuopt_cli is a standalone command-line tool that solves LP/MILP problems
-# from MPS files without requiring a server.
+# This example demonstrates how to customize solver behavior using various
+# command line parameters with cuopt_cli.
 #
 # Requirements:
 #   - cuopt_cli installed and available in PATH
 #
 
-# Create a sample MPS file
+# Create a sample MPS file for testing different parameters
 echo "* optimize
 *  cost = -0.2 * VAR1 + 0.1 * VAR2
 * subject to
@@ -47,8 +46,18 @@ RHS
  RHS1      ROW2                4.9
 ENDATA" > sample.mps
 
-# Solve using default settings
-cuopt_cli sample.mps
+echo "=== Example 1: Set absolute primal tolerance and PDLP solver mode ==="
+cuopt_cli --absolute-primal-tolerance 0.0001 --pdlp-solver-mode 1 sample.mps
+
+echo ""
+echo "=== Example 2: Set time limit and use specific solver method (PDLP only) ==="
+cuopt_cli --time-limit 5 --method 1 sample.mps
+
+echo ""
+echo "=== Example 3: Redirect output to log file and solution file ==="
+cuopt_cli --log-to-console false --log-file sample.log --solution-file sample.sol sample.mps
+echo "Log and solution files created: sample.log, sample.sol"
 
 # Clean up
-rm -f sample.mps
+rm -f sample.mps sample.log sample.sol
+

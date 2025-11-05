@@ -14,58 +14,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Basic MILP CLI Example
+# Basic MILP Example using cuopt_cli
 #
-# This example demonstrates how to use the cuopt_sh CLI tool to solve
-# a simple MILP (Mixed Integer Linear Programming) problem.
-#
-# The main difference from LP is the variable_types field specifying
-# integer variables.
+# This example demonstrates how to solve a Mixed Integer Programming (MIP)
+# problem using cuopt_cli. The main difference from LP is that variables
+# are marked as integers in the MPS file.
 #
 # Requirements:
-#   - cuOpt server running on localhost:5000
-#   - cuopt_sh CLI tool installed
+#   - cuopt_cli installed and available in PATH
 #
 
-# Set server connection details
-export ip="localhost"
-export port=5000
+# Create MILP problem MPS file
+echo "* Optimal solution -28
+NAME          MIP_SAMPLE
+ROWS
+ N  OBJ
+ L  C1
+ L  C2
+ L  C3
+COLUMNS
+ MARK0001  'MARKER'                 'INTORG'
+   X1        OBJ             -7
+   X1        C1              -1
+   X1        C2               5
+   X1        C3              -2
+   X2        OBJ             -2
+   X2        C1               2
+   X2        C2               1
+   X2        C3              -2
+ MARK0001  'MARKER'                 'INTEND'
+RHS
+   RHS       C1               4
+   RHS       C2              20
+   RHS       C3              -7
+BOUNDS
+ UP BOUND     X1               10
+ UP BOUND     X2               10
+ENDATA" > mip_sample.mps
 
-# Create MILP data file
-echo '{
-    "csr_constraint_matrix": {
-        "offsets": [0, 2, 4],
-        "indices": [0, 1, 0, 1],
-        "values": [3.0, 4.0, 2.7, 10.1]
-    },
-    "constraint_bounds": {
-        "upper_bounds": [5.4, 4.9],
-        "lower_bounds": ["ninf", "ninf"]
-    },
-    "objective_data": {
-        "coefficients": [0.2, 0.1],
-        "scalability_factor": 1.0,
-        "offset": 0.0
-    },
-    "variable_bounds": {
-        "upper_bounds": ["inf", "inf"],
-        "lower_bounds": [0.0, 0.0]
-    },
-    "variable_names": ["x", "y"],
-    "variable_types": ["I", "I"],
-    "maximize": "False",
-    "solver_config": {
-        "time_limit": 30
-    }
- }' > data.json
-
-# Invoke the CLI
-# -t LP: Problem type (same for MILP)
-# -i: IP address
-# -p: Port
-# -sl: Show logs
-# -il: Show incumbent logs
-cuopt_sh data.json -t LP -i $ip -p $port -sl -il
+# Solve the MIP problem with custom parameters
+cuopt_cli --mip-absolute-gap 0.01 --time-limit 10 mip_sample.mps
 
 # Clean up
-rm -f data.json
+rm -f mip_sample.mps
+
