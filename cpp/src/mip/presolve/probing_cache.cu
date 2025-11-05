@@ -19,6 +19,7 @@
 
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/multi_probe.cuh>
+#include <mip/utilities/work_unit_ordered_queue.cuh>
 #include <mip/utils.cuh>
 
 #include <omp.h>
@@ -370,13 +371,17 @@ void compute_cache_for_var(i_t var_idx,
                            const std::vector<i_t>& h_integer_indices,
                            std::atomic<size_t>& n_of_implied_singletons,
                            std::atomic<size_t>& n_of_cached_probings,
+                           std::vector<std::tuple<f_t, i_t, f_t, f_t>>& modification_vector,
+                           timer_t timer,
                            i_t device_id)
 {
   RAFT_CUDA_TRY(cudaSetDevice(device_id));
   // test if we need per thread handle
   raft::handle_t handle{};
-  std::vector<f_t> h_improved_lower_bounds(h_var_bounds.size());
-  std::vector<f_t> h_improved_upper_bounds(h_var_bounds.size());
+  std::vector<f_t> h_improved_lower_bounds_0(h_var_bounds.size());
+  std::vector<f_t> h_improved_upper_bounds_0(h_var_bounds.size());
+  std::vector<f_t> h_improved_lower_bounds_1(h_var_bounds.size());
+  std::vector<f_t> h_improved_upper_bounds_1(h_var_bounds.size());
   std::pair<val_interval_t<i_t, f_t>, val_interval_t<i_t, f_t>> probe_vals;
   auto bounds = h_var_bounds[var_idx];
   f_t lb      = get_lower(bounds);
@@ -433,12 +438,45 @@ void compute_cache_for_var(i_t var_idx,
   if (bounds_presolve_result != termination_criterion_t::NO_UPDATE) {
     CUOPT_LOG_TRACE("Adding cached bounds for var %d", var_idx);
   }
+  i_t n_of_infeasible_probings = 0;
+  i_t probing_changed_bounds   = 0;
   for (i_t i = 0; i < 2; ++i) {
+    cuopt_assert(multi_probe_presolve.infeas_constraints_count_0 == 0 ||
+                   multi_probe_presolve.infeas_constraints_count_1 == 0,
+                 "At least one of the probes must be feasible");
+    i_t infeas_constraints_count  = i == 0 ? multi_probe_presolve.infeas_constraints_count_0
+                                           : multi_probe_presolve.infeas_constraints_count_1;
+    const auto& probe_val         = i == 0 ? probe_vals.first : probe_vals.second;
+    auto& h_improved_lower_bounds = i == 0 ? h_improved_lower_bounds_0 : h_improved_lower_bounds_1;
+    auto& h_improved_upper_bounds = i == 0 ? h_improved_upper_bounds_0 : h_improved_upper_bounds_1;
+    if (infeas_constraints_count > 0) {
+      CUOPT_LOG_TRACE("Var %d is infeasible for probe %d on value %f. Fixing other interval",
+                      var_idx,
+                      i,
+                      probe_val.val);
+      const auto other_probe_val = i == 0 ? probe_vals.second : probe_vals.first;
+      const auto other_probe_interval_type =
+        i == 0 ? probe_vals.second.interval_type : probe_vals.first.interval_type;
+      // current probe is infeasible, remove the current var bound from the bounds
+      if (other_probe_interval_type == interval_type_t::EQUALS) {
+        modification_vector.emplace_back(
+          timer.elapsed_time(), var_idx, other_probe_val.val, other_probe_val.val);
+      } else if (other_probe_interval_type == interval_type_t::GEQ) {
+        // we can put infinity on the upper bound, as final modification will be on the most
+        // restrictive
+        modification_vector.emplace_back(
+          timer.elapsed_time(), var_idx, other_probe_val.val, std::numeric_limits<f_t>::infinity());
+      } else {
+        modification_vector.emplace_back(timer.elapsed_time(), var_idx, 0, other_probe_val.val);
+      }
+      n_of_infeasible_probings++;
+      continue;
+    }
     // this only tracs the number of variables that have cached bounds
     n_of_cached_probings++;
     // save the impacted bounds
     if (bounds_presolve_result != termination_criterion_t::NO_UPDATE) {
-      const auto& probe_val = i == 0 ? probe_vals.first : probe_vals.second;
+      probing_changed_bounds++;
       auto& d_lb = i == 0 ? multi_probe_presolve.upd_0.lb : multi_probe_presolve.upd_1.lb;
       auto& d_ub = i == 0 ? multi_probe_presolve.upd_0.ub : multi_probe_presolve.upd_1.ub;
       raft::copy(h_improved_lower_bounds.data(),
@@ -459,7 +497,74 @@ void compute_cache_for_var(i_t var_idx,
                                       n_of_implied_singletons);
     }
   }
+  // when both probes are feasible, we can infer some global bounds
+  if (n_of_infeasible_probings == 0 && probing_changed_bounds == 2) {
+    for (size_t i = 0; i < h_improved_lower_bounds_0.size(); i++) {
+      if (i == (size_t)var_idx) { continue; }
+      f_t lower_bound = min(h_improved_lower_bounds_0[i], h_improved_lower_bounds_1[i]);
+      f_t upper_bound = max(h_improved_upper_bounds_0[i], h_improved_upper_bounds_1[i]);
+      if (!(h_var_bounds[i].x <= lower_bound)) {
+        printf(
+          "Assert failed: lower bound violation for var %zu. h_var_bounds[i].x=%f, "
+          "lower_bound=%f\n",
+          i,
+          h_var_bounds[i].x,
+          lower_bound);
+      }
+      if (!(h_var_bounds[i].y >= upper_bound)) {
+        printf(
+          "Assert failed: upper bound violation for var %zu. h_var_bounds[i].y=%f, "
+          "upper_bound=%f\n",
+          i,
+          h_var_bounds[i].y,
+          upper_bound);
+      }
+      cuopt_assert(h_var_bounds[i].x <= lower_bound, "lower bound violation");
+      cuopt_assert(h_var_bounds[i].y >= upper_bound, "upper bound violation");
+      // check why we might have invalid lower and upper bound here
+      if (h_var_bounds[i].x < lower_bound || h_var_bounds[i].y > upper_bound) {
+        modification_vector.emplace_back(timer.elapsed_time(), i, lower_bound, upper_bound);
+        CUOPT_LOG_TRACE(
+          "Var %d global bounds inferred from probing new bounds: [%f, %f] old bounds: [%f, %f]",
+          i,
+          lower_bound,
+          upper_bound,
+          h_var_bounds[i].x,
+          h_var_bounds[i].y);
+      }
+    }
+  }
   handle.sync_stream();
+}
+
+template <typename i_t, typename f_t>
+void apply_modification_queue_to_problem(
+  std::vector<std::vector<std::tuple<f_t, i_t, f_t, f_t>>>& modification_vector_pool,
+  problem_t<i_t, f_t>& problem)
+{
+  // since each thread has its own deterministic chunk and the order of insertion here is
+  // deterministic this should be deterministic
+  std::unordered_map<i_t, std::pair<f_t, f_t>> var_to_modifications;
+  for (const auto& modification_vector : modification_vector_pool) {
+    for (const auto& modification : modification_vector) {
+      auto [time, var_idx, lb, ub] = modification;
+      if (var_to_modifications.count(var_idx) == 0) {
+        var_to_modifications[var_idx] = std::make_pair(lb, ub);
+      } else {
+        var_to_modifications[var_idx].first  = max(var_to_modifications[var_idx].first, lb);
+        var_to_modifications[var_idx].second = min(var_to_modifications[var_idx].second, ub);
+      }
+    }
+  }
+  std::vector<i_t> var_indices;
+  std::vector<f_t> lb_values;
+  std::vector<f_t> ub_values;
+  for (const auto& [var_idx, modifications] : var_to_modifications) {
+    var_indices.push_back(var_idx);
+    lb_values.push_back(modifications.first);
+    ub_values.push_back(modifications.second);
+  }
+  if (var_indices.size() > 0) { problem.update_variable_bounds(var_indices, lb_values, ub_values); }
 }
 
 template <typename i_t, typename f_t>
@@ -471,8 +576,8 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // we dont want to compute the probing cache for all variables for time and computation resources
   auto priority_indices = compute_prioritized_integer_indices(bound_presolve, problem);
   CUOPT_LOG_DEBUG("Computing probing cache");
-  auto h_integer_indices  = host_copy(problem.integer_indices);
-  const auto h_var_bounds = host_copy(problem.variable_bounds);
+  auto h_integer_indices = host_copy(problem.integer_indices);
+  auto h_var_bounds      = host_copy(problem.variable_bounds);
   // TODO adjust the iteration limit depending on the total time limit and time it takes for single
   // var
   bound_presolve.settings.iteration_limit = 50;
@@ -484,47 +589,68 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
 
   // Create a vector of multi_probe_t objects
   std::vector<multi_probe_t<i_t, f_t>> multi_probe_presolve_pool;
+  std::vector<std::vector<std::tuple<f_t, i_t, f_t, f_t>>> modification_vector_pool(max_threads);
 
   // Initialize multi_probe_presolve_pool
   for (size_t i = 0; i < max_threads; i++) {
     multi_probe_presolve_pool.emplace_back(bound_presolve.context);
     multi_probe_presolve_pool[i].resize(problem);
-    multi_probe_presolve_pool[i].compute_stats = false;
+    multi_probe_presolve_pool[i].compute_stats = true;
   }
 
   // Atomic variables for tracking progress
   std::atomic<size_t> n_of_implied_singletons(0);
   std::atomic<size_t> n_of_cached_probings(0);
 
+  const size_t step_size = 1024;
+  for (size_t step_start = 0; step_start < priority_indices.size(); step_start += step_size) {
+    if (timer.check_time_limit()) { break; }
+    size_t step_end = std::min(step_start + step_size, priority_indices.size());
 // Main parallel loop
 #pragma omp parallel
-  {
+    {
 #pragma omp for schedule(static, 4)
-    for (auto var_idx : priority_indices) {
-      if (timer.check_time_limit()) { continue; }
+      for (size_t i = step_start; i < step_end; ++i) {
+        auto var_idx = priority_indices[i];  // Get the index manually
+        if (timer.check_time_limit()) { continue; }
 
-      int thread_idx = omp_get_thread_num();
-      CUOPT_LOG_TRACE("Computing probing cache for var %d on thread %d", var_idx, thread_idx);
+        int thread_idx = omp_get_thread_num();
+        CUOPT_LOG_TRACE("Computing probing cache for var %d on thread %d", var_idx, thread_idx);
 
-      auto& multi_probe_presolve = multi_probe_presolve_pool[thread_idx];
+        auto& multi_probe_presolve = multi_probe_presolve_pool[thread_idx];
 
-      compute_cache_for_var<i_t, f_t>(var_idx,
-                                      bound_presolve,
-                                      problem,
-                                      multi_probe_presolve,
-                                      h_var_bounds,
-                                      h_integer_indices,
-                                      n_of_implied_singletons,
-                                      n_of_cached_probings,
-                                      problem.handle_ptr->get_device());
+        compute_cache_for_var<i_t, f_t>(var_idx,
+                                        bound_presolve,
+                                        problem,
+                                        multi_probe_presolve,
+                                        h_var_bounds,
+                                        h_integer_indices,
+                                        n_of_implied_singletons,
+                                        n_of_cached_probings,
+                                        modification_vector_pool[thread_idx],
+                                        timer,
+                                        problem.handle_ptr->get_device());
+      }
     }
-  }
-
+#pragma omp single
+    {
+      // TODO when we have determinism, check current threads work/time counter and filter queue
+      // items that are smaller or equal to that
+      apply_modification_queue_to_problem(modification_vector_pool, problem);
+      // copy host bounds again, because we changed some problem bounds
+      raft::copy(h_var_bounds.data(),
+                 problem.variable_bounds.data(),
+                 h_var_bounds.size(),
+                 problem.handle_ptr->get_stream());
+      problem.handle_ptr->sync_stream();
+    }
+  }  // end of step
   CUOPT_LOG_DEBUG("Total number of cached probings %lu number of implied singletons %lu",
                   n_of_cached_probings.load(),
                   n_of_implied_singletons.load());
   // restore the settings
   bound_presolve.settings = {};
+  exit(0);
 }
 
 #define INSTANTIATE(F_TYPE)                                                                        \

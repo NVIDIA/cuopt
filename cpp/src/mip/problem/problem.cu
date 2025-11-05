@@ -1547,6 +1547,7 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const
 {
   raft::common::nvtx::range fun_scope("get_host_user_problem");
+  // std::lock_guard<std::mutex> lock(problem_mutex);
   i_t m                  = n_constraints;
   i_t n                  = n_variables;
   i_t nz                 = nnz;
@@ -1678,6 +1679,54 @@ void problem_t<i_t, f_t>::add_cutting_plane_at_objective(f_t objective)
   insert_constraints(h_constraints);
   compute_transpose_of_problem();
   cuopt_func_call(check_problem_representation(true));
+}
+
+template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::update_variable_bounds(const std::vector<i_t>& var_indices,
+                                                 const std::vector<f_t>& lb_values,
+                                                 const std::vector<f_t>& ub_values)
+{
+  if (var_indices.size() == 0) { return; }
+  // std::lock_guard<std::mutex> lock(problem_mutex);
+  cuopt_assert(var_indices.size() == lb_values.size(), "size of variable lower bound mismatch");
+  cuopt_assert(var_indices.size() == ub_values.size(), "size of variable upper bound mismatch");
+  auto d_var_indices = device_copy(var_indices, handle_ptr->get_stream());
+  auto d_lb_values   = device_copy(lb_values, handle_ptr->get_stream());
+  auto d_ub_values   = device_copy(ub_values, handle_ptr->get_stream());
+  thrust::for_each(
+    handle_ptr->get_thrust_policy(),
+    thrust::make_counting_iterator(0),
+    thrust::make_counting_iterator(0) + d_var_indices.size(),
+    [lb_values       = make_span(d_lb_values),
+     ub_values       = make_span(d_ub_values),
+     variable_bounds = make_span(variable_bounds),
+     var_indices     = make_span(d_var_indices)] __device__(auto i) {
+      i_t var_idx = var_indices[i];
+      if (!(variable_bounds[var_idx].x <= lb_values[i])) {
+        printf(
+          "Assert failed: variable lower bound violation: variable_bounds[%d].x = %f > "
+          "lb_values[%d] = %f\n",
+          (int)var_idx,
+          variable_bounds[var_idx].x,
+          (int)i,
+          lb_values[i]);
+      }
+      if (!(variable_bounds[var_idx].y >= ub_values[i])) {
+        printf(
+          "Assert failed: variable upper bound violation: variable_bounds[%d].y = %f < "
+          "ub_values[%d] = %f\n",
+          (int)var_idx,
+          variable_bounds[var_idx].y,
+          (int)i,
+          ub_values[i]);
+      }
+      cuopt_assert(variable_bounds[var_idx].x <= lb_values[i], "variable lower bound violation");
+      cuopt_assert(variable_bounds[var_idx].y >= ub_values[i], "variable upper bound violation");
+      variable_bounds[var_idx].x = lb_values[i];
+      variable_bounds[var_idx].y = ub_values[i];
+    });
+  handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(handle_ptr->get_stream());
 }
 
 #if MIP_INSTANTIATE_FLOAT
