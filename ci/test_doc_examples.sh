@@ -136,12 +136,12 @@ trap cleanup EXIT INT TERM
 # Sets global variable: SKIP_REASON with the skip reason
 should_skip_example() {
     local file=$1
-    
+
     if grep -q "^#.*TEST_SKIP:" "${file}"; then
         SKIP_REASON=$(grep "^#.*TEST_SKIP:" "${file}" | head -1 | sed 's/^#.*TEST_SKIP: *//')
         return 0
     fi
-    
+
     return 1
 }
 
@@ -170,7 +170,7 @@ run_shell_script() {
     local script=$1
     local log_file=$2
     local timeout_seconds=${3:-60}
-    
+
     # Run the script with bash in strict mode to catch errors
     # We use a subshell to avoid affecting the parent shell
     timeout "${timeout_seconds}" bash -c "
@@ -179,7 +179,7 @@ run_shell_script() {
         set -u           # Exit on undefined variables
         source '${script}'
     " > "${log_file}" 2>&1
-    
+
     return $?
 }
 
@@ -397,14 +397,14 @@ test_c_examples() {
             fi
 
             TOTAL_TESTS=$((TOTAL_TESTS + 1))
-            
+
             # Skip files with TEST_SKIP marker
             if should_skip_example "${c_file}"; then
                 log_skip "  ${c_file} (${SKIP_REASON})"
                 SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
                 continue
             fi
-            
+
             log_info "  Running: ${executable}"
 
             # Check if it needs an MPS file

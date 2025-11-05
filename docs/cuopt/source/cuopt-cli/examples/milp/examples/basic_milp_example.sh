@@ -57,4 +57,3 @@ cuopt_cli --mip-absolute-gap 0.01 --time-limit 10 mip_sample.mps
 
 # Clean up
 rm -f mip_sample.mps
-

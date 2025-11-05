@@ -60,4 +60,3 @@ echo "Log and solution files created: sample.log, sample.sol"
 
 # Clean up
 rm -f sample.mps sample.log sample.sol
-
