@@ -15,7 +15,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License
 
-set -o pipefail
+# Bash strict mode
+set -o pipefail  # Catch errors in pipes
+set -o nounset   # Exit on undefined variables
+set -o errtrace  # Inherit ERR trap in functions
 
 # Colors for output
 RED='\033[0;31m'
@@ -120,6 +123,66 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
+# Check if example file should be skipped based on TEST_SKIP marker
+#
+# To skip an example from automated testing, add this comment line near the top
+# of the example file (works for .py, .sh, .c files):
+#   # TEST_SKIP: <reason for skipping>
+#
+# Example:
+#   # TEST_SKIP: This is a template file requiring manual configuration
+#
+# Returns: 0 if should skip, 1 if should run
+# Sets global variable: SKIP_REASON with the skip reason
+should_skip_example() {
+    local file=$1
+    
+    if grep -q "^#.*TEST_SKIP:" "${file}"; then
+        SKIP_REASON=$(grep "^#.*TEST_SKIP:" "${file}" | head -1 | sed 's/^#.*TEST_SKIP: *//')
+        return 0
+    fi
+    
+    return 1
+}
+
+# Run a shell script with proper error detection
+#
+# This wrapper ensures that shell scripts fail properly on errors by running
+# them in bash strict mode. This catches:
+#   - Command failures (set -e)
+#   - Pipeline failures (set -o pipefail)
+#   - Undefined variable usage (set -u)
+#
+# Example authors: Your shell scripts will be run with these flags, so ensure:
+#   1. Commands that may fail are handled explicitly (|| true, or if checks)
+#   2. Variables are defined before use
+#   3. Pipelines are constructed correctly
+#
+# To allow a command to fail without stopping the script, use:
+#   command_that_may_fail || true
+#   # OR
+#   if command_that_may_fail; then
+#       echo "Success"
+#   else
+#       echo "Failed but continuing"
+#   fi
+run_shell_script() {
+    local script=$1
+    local log_file=$2
+    local timeout_seconds=${3:-60}
+    
+    # Run the script with bash in strict mode to catch errors
+    # We use a subshell to avoid affecting the parent shell
+    timeout "${timeout_seconds}" bash -c "
+        set -e           # Exit on error
+        set -o pipefail  # Catch errors in pipes
+        set -u           # Exit on undefined variables
+        source '${script}'
+    " > "${log_file}" 2>&1
+    
+    return $?
+}
+
 # Test Python examples
 test_python_examples() {
     local module=$1  # cuopt-python or cuopt-server
@@ -142,6 +205,14 @@ test_python_examples() {
 
         # Change to example directory
         pushd "${example_dir}" > /dev/null || return
+
+        # Skip files with TEST_SKIP marker
+        if should_skip_example "${example_name}"; then
+            log_skip "${example_name} (${SKIP_REASON})"
+            SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
+            popd > /dev/null || return
+            continue
+        fi
 
         # Check if example requires server
         local requires_server=false
@@ -191,6 +262,14 @@ test_python_examples() {
             # Make executable
             chmod +x "${example_name}"
 
+            # Skip files with TEST_SKIP marker
+            if should_skip_example "${example_name}"; then
+                log_skip "${example_name} (${SKIP_REASON})"
+                SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
+                popd > /dev/null || return
+                continue
+            fi
+
             # Check if example requires server
             local requires_server=false
             if grep -q "cuopt_sh\|localhost.*5000" "${example_name}"; then
@@ -205,8 +284,8 @@ test_python_examples() {
                 continue
             fi
 
-            # Run the shell script
-            if timeout 60 bash "${example_name}" > "${RESULTS_DIR}/${example_name}.log" 2>&1; then
+            # Run the shell script with error detection
+            if run_shell_script "${example_name}" "${RESULTS_DIR}/${example_name}.log" 60; then
                 log_success "${example_name}"
                 PASSED_TESTS=$((PASSED_TESTS + 1))
             else
@@ -318,6 +397,14 @@ test_c_examples() {
             fi
 
             TOTAL_TESTS=$((TOTAL_TESTS + 1))
+            
+            # Skip files with TEST_SKIP marker
+            if should_skip_example "${c_file}"; then
+                log_skip "  ${c_file} (${SKIP_REASON})"
+                SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
+                continue
+            fi
+            
             log_info "  Running: ${executable}"
 
             # Check if it needs an MPS file
@@ -471,6 +558,14 @@ test_cli_examples() {
         # Make executable
         chmod +x "${example_name}"
 
+        # Skip files with TEST_SKIP marker
+        if should_skip_example "${example_name}"; then
+            log_skip "${example_name} (${SKIP_REASON})"
+            SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
+            popd > /dev/null || return
+            continue
+        fi
+
         # Check if example uses cuopt_sh (requires server) or cuopt_cli (standalone)
         local requires_server=false
         if grep -q "cuopt_sh" "${example_name}"; then
@@ -485,8 +580,8 @@ test_cli_examples() {
             continue
         fi
 
-        # Run the example
-        if timeout 60 bash "${example_name}" > "${RESULTS_DIR}/${example_name}.log" 2>&1; then
+        # Run the example with error detection
+        if run_shell_script "${example_name}" "${RESULTS_DIR}/${example_name}.log" 60; then
             log_success "${example_name}"
             PASSED_TESTS=$((PASSED_TESTS + 1))
         else

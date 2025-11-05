@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# TEST_SKIP: This is a template file requiring manual configuration
+#
 # Abort Running MILP Job CLI Example
 #
 # This example demonstrates how to abort a running or queued job
