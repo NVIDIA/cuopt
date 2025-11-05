@@ -246,13 +246,37 @@ test_c_examples() {
     local include_path=""
     local lib_path=""
 
-    for search_dir in "${HOME}" "${CONDA_PREFIX}" "/usr" "/opt"; do
-        if [ -z "${include_path}" ] && [ -d "${search_dir}" ]; then
-            include_path=$(find "${search_dir}" -name "cuopt_c.h" -path "*/linear_programming/*" -printf "%h\n" 2>/dev/null | sed 's/\/linear_programming//' | head -1)
+    # Get Python site-packages directory
+    local site_packages=""
+    if command -v python > /dev/null 2>&1; then
+        site_packages=$(python -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || echo "")
+    fi
+
+    # Search in common locations including Python site-packages
+    local search_dirs=("${HOME}" "${CONDA_PREFIX}" "/usr" "/opt")
+    if [ -n "${site_packages}" ] && [ -d "${site_packages}" ]; then
+        search_dirs+=("${site_packages}")
+    fi
+
+    for search_dir in "${search_dirs[@]}"; do
+        if [ -z "${search_dir}" ] || [ ! -d "${search_dir}" ]; then
+            continue
         fi
-        if [ -z "${lib_path}" ] && [ -d "${search_dir}" ]; then
+        
+        if [ -z "${include_path}" ]; then
+            # Search for cuopt_c.h in both standard and Python package locations
+            include_path=$(find "${search_dir}" -name "cuopt_c.h" -path "*/linear_programming/*" -printf "%h\n" 2>/dev/null | sed 's/\/linear_programming//' | head -1)
+            # Also check libcuopt/include structure
+            if [ -z "${include_path}" ]; then
+                include_path=$(find "${search_dir}" -name "cuopt_c.h" -path "*/libcuopt/include/*" -printf "%h\n" 2>/dev/null | sed 's/\/cuopt\/linear_programming//' | head -1)
+            fi
+        fi
+        
+        if [ -z "${lib_path}" ]; then
+            # Search for libcuopt.so
             lib_path=$(find "${search_dir}" -name "libcuopt.so" 2>/dev/null | head -1 | xargs dirname)
         fi
+        
         # Break early if both found
         if [ -n "${include_path}" ] && [ -n "${lib_path}" ]; then
             break
