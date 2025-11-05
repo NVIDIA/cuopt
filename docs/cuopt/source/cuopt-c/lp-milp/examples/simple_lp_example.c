@@ -37,7 +37,7 @@
  *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o simple_lp_example simple_lp_example.c -lcuopt
  *
  * Run:
- *   ./lp_example
+ *   ./simple_lp_example
  */
 
 // Include the cuOpt linear programming solver header
@@ -198,6 +198,10 @@ cuopt_int_t test_simple_lp()
 
   // Get and print solution variables
   cuopt_float_t* solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  if (solution_values == NULL) {
+    printf("Error allocating solution values\n");
+    goto DONE;
+  }
   status = cuOptGetPrimalSolution(solution, solution_values);
   if (status != CUOPT_SUCCESS) {
     printf("Error getting solution values: %d\n", status);

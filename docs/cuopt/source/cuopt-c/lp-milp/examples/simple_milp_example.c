@@ -55,7 +55,7 @@ cuopt_int_t test_simple_milp()
   cuOptSolverSettings settings = NULL;
   cuOptSolution solution = NULL;
 
-  /* Solve the following LP:
+  /* Solve the following MILP:
      minimize -0.2*x1 + 0.1*x2
      subject to:
      3.0*x1 + 4.0*x2 <= 5.4
