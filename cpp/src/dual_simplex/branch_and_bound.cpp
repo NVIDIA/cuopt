@@ -707,6 +707,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
     search_tree->update_tree(node, node_status_t::FATHOMED);
     ++stats_.nodes_explored;
     --stats_.nodes_unexplored;
+    ++stats_.nodes_since_last_log;
     return;
   }
 
@@ -818,6 +819,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
       search_tree.update_tree(node_ptr, node_status_t::FATHOMED);
       ++stats_.nodes_explored;
       --stats_.nodes_unexplored;
+      ++stats_.nodes_since_last_log;
       continue;
     }
 
