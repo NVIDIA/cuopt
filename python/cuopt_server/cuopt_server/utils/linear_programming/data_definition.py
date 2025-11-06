@@ -341,42 +341,42 @@ class Tolerances(StrictModel):
     )
     absolute_dual_tolerance: float = Field(
         default=None,
-        description="Absolute dual toleranceNOTE: Only applicable to LP",
+        description="Absolute dual tolerance NOTE: Only applicable to LP",
     )
     absolute_gap_tolerance: float = Field(
         default=None,
-        description="Absolute gap toleranceNOTE: Only applicable to LP",
+        description="Absolute gap tolerance NOTE: Only applicable to LP",
     )
     relative_primal_tolerance: float = Field(
         default=None, description="Relative primal tolerance"
     )
     relative_dual_tolerance: float = Field(
         default=None,
-        description="Relative dual toleranceNOTE: Only applicable to LP",
+        description="Relative dual tolerance NOTE: Only applicable to LP",
     )
     relative_gap_tolerance: float = Field(
         default=None,
-        description="Relative gap toleranceNOTE: Only applicable to LP",
+        description="Relative gap tolerance NOTE: Only applicable to LP",
     )
     primal_infeasible_tolerance: float = Field(
         default=None,
-        description="Primal infeasible toleranceNOTE: Only applicable to LP",
+        description="Primal infeasible tolerance NOTE: Only applicable to LP",
     )
     dual_infeasible_tolerance: float = Field(
         default=None,
-        description="Dual infeasible toleranceNOTE: Only applicable to LP",
+        description="Dual infeasible tolerance NOTE: Only applicable to LP",
     )
     mip_integrality_tolerance: float = Field(
         default=None,
-        description="NOTE: Only applicable to MILP.Integrality tolerance.",
+        description="NOTE: Only applicable to MILP. Integrality tolerance.",
     )
     mip_absolute_gap: float = Field(
         default=None,
-        description="MIP gap absolute toleranceNOTE: Only applicable to MILP",
+        description="MIP gap absolute tolerance NOTE: Only applicable to MILP",
     )
     mip_relative_gap: float = Field(
         default=None,
-        description="MIP gap relative toleranceNOTE: Only applicable to MILP",
+        description="MIP gap relative tolerance NOTE: Only applicable to MILP",
     )
     mip_absolute_tolerance: float = Field(
         default=None, description="MIP absolute tolerance"
