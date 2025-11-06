@@ -316,7 +316,6 @@ def skip_unwanted_inherited_members(app, what, name, obj, skip, options):
         "is_integer",
         "bit_count",
         "bit_length",
-        "is_integer",
     }  # add more as needed
     if name in inherited_to_skip:
         return True
