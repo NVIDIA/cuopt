@@ -301,10 +301,19 @@ execute_process(
 )
 message("-- Building with GIT_COMMIT_HASH = '${GIT_COMMIT_HASH}'")
 
+# Generate build_info.hpp from template
+# configure_file() only updates the output if content changes, avoiding unnecessary rebuilds
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/utilities/build_info.hpp.in
+  ${CMAKE_CURRENT_BINARY_DIR}/include/utilities/build_info.hpp
+  @ONLY
+)
 
-list(JOIN CMAKE_CUDA_ARCHITECTURES "," JOINED_CUDA_ARCHITECTURES) # ';' breaks compile_definitions, replace it
+# Add the generated include directory
+target_include_directories(cuopt PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include)
+
+list(JOIN CMAKE_CUDA_ARCHITECTURES "," JOINED_CUDA_ARCHITECTURES)
 target_compile_definitions(cuopt PUBLIC
-  CUOPT_GIT_COMMIT_HASH="${GIT_COMMIT_HASH}"
   CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
   CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}")
 

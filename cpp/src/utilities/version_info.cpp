@@ -19,6 +19,7 @@
 #include <cuda_runtime.h>
 
 #include <cuopt/version_config.hpp>
+#include <utilities/build_info.hpp>
 #include <utilities/logger.hpp>
 
 #include <fstream>
