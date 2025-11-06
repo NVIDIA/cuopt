@@ -27,7 +27,7 @@ import argparse
 import json
 import subprocess
 import sys
-from typing import List, Tuple
+from typing import List
 
 
 def extract_pip_commands(notebook_path: str) -> List[str]:

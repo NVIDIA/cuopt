@@ -103,7 +103,6 @@ def warn_on_objectives(solver_config):
 
 
 def create_data_model(LP_data):
-
     warnings = []
 
     # Create data model object
@@ -532,7 +531,6 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data):
             MILPTerminationStatus.Optimal,
             MILPTerminationStatus.FeasibleFound,
         ):
-
             primal_solution = get_if_attribute_is_valid_else_none(
                 sol.get_primal_solution
             )

@@ -42,7 +42,6 @@ def kill_pid(pid):
 
 
 def terminate(job_queue, results_queue, abort_queue, signame):
-
     global s_procs
 
     logging.info("terminate called")
@@ -81,7 +80,6 @@ def terminate(job_queue, results_queue, abort_queue, signame):
 
 
 def create_process(app_exit, job_queue, results_queue, abort_list, gpu_id):
-
     global s_procs
 
     complete = Event()
@@ -130,7 +128,6 @@ def watch_solvers(app_exit, job_queue, results_queue, abort_queue, abort_list):
         to_remove = []
         for pid, s in s_procs.items():
             if s.complete.is_set() or not s.process.is_alive():
-
                 # Send a completion to any job on the abort
                 # list that has this pid listed ...
                 abort_by_pid(pid, abort_list, results_queue)

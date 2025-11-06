@@ -52,6 +52,7 @@ valid_data = {
 
 client = RequestClient()
 
+
 # Test valid travel time waypoint graph data
 def test_valid_routes(cuoptproc):  # noqa
     response_set = client.post("/cuopt/request", json=valid_data)

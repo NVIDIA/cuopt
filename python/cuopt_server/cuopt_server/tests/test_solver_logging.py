@@ -22,7 +22,6 @@ client = RequestClient()
 
 
 def test_solver_logging(cuoptproc):  # noqa
-
     data = {
         "csr_constraint_matrix": {
             "offsets": [0, 2],

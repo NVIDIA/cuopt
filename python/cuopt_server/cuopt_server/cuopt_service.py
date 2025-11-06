@@ -49,7 +49,6 @@ def watcher(app_exit, results_queue, job_queue, abort_queue, abort_list):
 
 
 if __name__ == "__main__":
-
     import subprocess
 
     # Do this before setting the signal handler,

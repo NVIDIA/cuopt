@@ -329,9 +329,10 @@ def create_pickup_delivery_data(
         raw_order_pdf["pickup_service_time"].tolist()
         + raw_order_pdf["delivery_service_time"].tolist()
     )
-    raw_order_df["demand"] = (raw_order_pdf["demand"]).tolist() + (
-        -raw_order_pdf["demand"]
-    ).tolist()
+    raw_order_df["demand"] = (
+        (raw_order_pdf["demand"]).tolist()
+        + (-raw_order_pdf["demand"]).tolist()
+    )
     constraints_df = cudf.DataFrame()
     constraints_df = cudf.concat([constraints_df, raw_order_df]).reset_index(
         drop=True

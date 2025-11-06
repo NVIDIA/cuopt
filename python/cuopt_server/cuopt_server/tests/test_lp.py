@@ -60,7 +60,6 @@ def validate_milp_result(
 
 
 def get_std_data_for_lp():
-
     return {
         "csr_constraint_matrix": {
             "offsets": [0, 2],
@@ -98,7 +97,6 @@ def get_std_data_for_lp():
 
 
 def get_std_data_for_milp():
-
     data = get_std_data_for_lp()
     data["variable_types"] = ["I", "C"]
     data["maximize"] = True
@@ -107,7 +105,6 @@ def get_std_data_for_milp():
 
 
 def test_sample_lp(cuoptproc):  # noqa
-
     res = get_lp(client, get_std_data_for_lp())
 
     assert res.status_code == 200
@@ -129,9 +126,12 @@ def test_sample_lp(cuoptproc):  # noqa
     ],
 )
 def test_sample_milp(
-    cuoptproc, maximize, scaling, expected_status, heuristics_only  # noqa
+    cuoptproc,  # noqa
+    maximize,
+    scaling,
+    expected_status,
+    heuristics_only,
 ):
-
     data = get_std_data_for_milp()
     data["maximize"] = maximize
     data["solver_config"]["mip_scaling"] = scaling

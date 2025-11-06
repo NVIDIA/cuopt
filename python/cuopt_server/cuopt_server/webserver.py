@@ -269,7 +269,6 @@ class SolverException(Exception):
 
 
 def encode(result, accept, job_result=False):
-
     if accept not in [mime_json, mime_msgpack, mime_zlib] + mime_wild:
         accept = mime_json
 
@@ -306,7 +305,6 @@ def encode(result, accept, job_result=False):
 
 
 def get_format(mime_type):
-
     f = {
         mime_json: "json",
         mime_zlib: "zlib",
@@ -510,7 +508,6 @@ async def postsolution(
     ),
     content_length: int = Header(),
 ):
-
     # TODO validate the solution
     # This will have to be call to a thread to read the id, validate,
     # and then update the validation status on the solution.
@@ -1101,7 +1098,6 @@ async def postrequest(
 
         # if reqId is not set and we're not using file_path, stream in the data
         elif not file_path:
-
             # Stream the input data.
             # Write to shared memory if enabled, otherwise write to a bytearray
             s = None
@@ -1262,7 +1258,6 @@ async def get_body(request: Request):
     },
 )
 def cuopt(request: Request, data_bytes: bytes = Depends(get_body)):
-
     headers = dict(request.headers)
 
     accept = headers.get("accept", mime_json)

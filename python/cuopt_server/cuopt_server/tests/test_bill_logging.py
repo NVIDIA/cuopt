@@ -35,7 +35,6 @@ python_path = shutil.which("python")
     reason="Billing logs are not currently supported on non-x86_64 architectures (they take too long to run)",  # noqa: E501
 )
 def test_time_limit_logs():
-
     dataset_path = (
         utils.RAPIDS_DATASET_ROOT_DIR
         + "/cuopt_service_data/cuopt_problem_data.json"

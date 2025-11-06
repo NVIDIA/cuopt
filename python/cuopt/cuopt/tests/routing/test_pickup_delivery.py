@@ -107,7 +107,6 @@ def run_cuopt(
     pickup_indices,
     delivery_indices,
 ):
-
     num_orders = len(constraints)
     num_locations = len(matrix_df)
     # Pass the distance matrix

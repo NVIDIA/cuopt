@@ -33,7 +33,6 @@ valid_data = {
 
 
 def test_valid_set_cost_matrix(cuoptproc):  # noqa
-
     response_set = client.post("/cuopt/request", json=valid_data)
 
     assert response_set.status_code == 200
@@ -84,7 +83,6 @@ def test_invalid_values_set_cost_matrix(cuoptproc):  # noqa
 
 # Cost matrices for multiple vehicle types must have the same shape
 def test_invalid_matrices_shape_set_cost_matrix(cuoptproc):  # noqa
-
     data = copy.deepcopy(valid_data)
     data["cost_matrix_data"] = {
         "data": {

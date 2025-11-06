@@ -292,7 +292,6 @@ def solve_optimized_routes_sync(
     warnings=[],
     reqId="",
 ):
-
     from cuopt_server.utils.routing.solver import solve as routing_solve
 
     begin_time = time.time()
@@ -348,7 +347,6 @@ def solve_optimized_routes_sync(
 def process_async_solve(
     solver_exit, solver_complete, job_queue, results_queue, abort_list, gpu_id
 ):
-
     # Send incumbent solutions
     def send_solution(id, solution, cost):
         results_queue.put(

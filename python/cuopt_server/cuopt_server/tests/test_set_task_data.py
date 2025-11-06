@@ -65,13 +65,11 @@ valid_data = {
 
 
 def test_valid_full_set_task_data(cuoptproc):  # noqa
-
     response_set = client.post("/cuopt/request", json=valid_data)
     assert response_set.status_code == 200
 
 
 def test_valid_minimal_set_task_data(cuoptproc):  # noqa
-
     test_data = copy.deepcopy(valid_data)
 
     test_data["fleet_data"] = {
@@ -85,7 +83,6 @@ def test_valid_minimal_set_task_data(cuoptproc):  # noqa
 
 # Testing invalid, all task parameters need to in range
 def test_invalid_values_set_task_data(cuoptproc):  # noqa
-
     invalid_task_data = {
         "task_locations": [1, -2, 3, 4],
         "demand": [[1, 2, 3, 4], [2, 3, 4, -5]],
@@ -260,7 +257,6 @@ def test_invalid_time_windows_set_task_data(cuoptproc):  # noqa
 
 # Test invalid Service Time
 def test_invalid_service_time_set_task_data(cuoptproc):  # noqa
-
     test_data = copy.deepcopy(valid_data)
     test_data["task_data"]["service_times"] = [1, 2, 1, 2, 5]
 
@@ -274,7 +270,6 @@ def test_invalid_service_time_set_task_data(cuoptproc):  # noqa
 
 # Test invalid vehicle ids in order vehicle match
 def test_invalid_order_vehicle_match(cuoptproc):  # noqa
-
     test_data = copy.deepcopy(valid_data)
     test_data["task_data"]["order_vehicle_match"] = [
         {"order_id": 0, "vehicle_ids": [1, -2]}
@@ -290,7 +285,6 @@ def test_invalid_order_vehicle_match(cuoptproc):  # noqa
 
 # Test set/get vehicle specific service times
 def test_vehicle_specific_service_times(cuoptproc):  # noqa
-
     test_data = copy.deepcopy(valid_data)
     test_data["task_data"]["service_times"] = {
         0: [1.0, 1.0, 1.0, 1.0],

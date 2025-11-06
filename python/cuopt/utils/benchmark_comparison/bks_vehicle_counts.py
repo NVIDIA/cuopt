@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """BKS vehicle counts of the benchmarks."""
+
 bks_counts = {
     "LC1_2_1.pdptw": 20,
     "LC1_2_2.pdptw": 19,

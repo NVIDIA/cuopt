@@ -117,7 +117,6 @@ def validate_constraint_sanity_per_row(
 
 
 def validate_objective_sanity(data, solution, cost, tolerance):
-
     output = (data.get_objective_coefficients() * solution).sum()
 
     assert abs(output - cost) <= tolerance

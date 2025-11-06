@@ -22,7 +22,6 @@ client = RequestClient()
 
 
 def test_incumbent_callback(cuoptproc):  # noqa
-
     data = {
         "csr_constraint_matrix": {
             "offsets": [0, 2],

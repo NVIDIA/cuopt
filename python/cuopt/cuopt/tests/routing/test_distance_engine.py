@@ -127,7 +127,6 @@ def check_matrix(
 
 
 def test_compute_cost_matrix():
-
     # Data loading
     matrix_df_all = pd.read_csv(
         utils.RAPIDS_DATASET_ROOT_DIR + "/distance_engine/traveltimes.csv",
@@ -284,7 +283,6 @@ def test_compute_cost_matrix():
 def start_compute_waypoint_sequence(
     locations, n_vehicles, min_vehicles, set_order_locations
 ):
-
     data = {
         "start": [0, 1, 2, 3, 4, 4],
         "offsets": [0, 3, 5, 7, 8, 9],
@@ -363,7 +361,6 @@ def start_compute_waypoint_sequence(
 
 
 def start_compute_waypoint_sequence_no_matrix_call(locations):
-
     data = {
         "start": [0, 1, 2, 3, 4, 4],
         "offsets": [0, 3, 5, 7, 8, 9],

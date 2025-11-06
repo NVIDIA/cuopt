@@ -44,7 +44,6 @@ def use_time_matrix_(request):
 
 
 def test_cvrptw_dist_mat(data_, nodes_):
-
     df, vehicle_capacity, n_vehicles, file_name = data_
     # read reference, if it doesn't exists skip the test
     try:

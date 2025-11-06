@@ -56,7 +56,6 @@ if RAPIDS_DATASET_ROOT_DIR is None:
 
 
 def test_solver():
-
     data_model_obj = data_model.DataModel()
 
     A_values = np.array([1.0, 1.0])
@@ -92,7 +91,6 @@ def test_solver():
 
 
 def test_parser_and_solver():
-
     file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-1.mps"
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
@@ -103,7 +101,6 @@ def test_parser_and_solver():
 
 
 def test_very_low_tolerance():
-
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
     )
@@ -127,7 +124,6 @@ def test_very_low_tolerance():
 
 # TODO: should test all LP solver modes?
 def test_iteration_limit_solver():
-
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/savsched1/savsched1.mps"
     )
@@ -149,7 +145,6 @@ def test_iteration_limit_solver():
 
 
 def test_time_limit_solver():
-
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/savsched1/savsched1.mps"
     )
@@ -172,7 +167,6 @@ def test_time_limit_solver():
 
 
 def test_set_get_fields():
-
     data_model_obj = data_model.DataModel()
 
     A = np.array([1.0, 2.0, 3.0], dtype=np.float64)
@@ -269,7 +263,6 @@ def test_set_get_fields():
 
 
 def test_solver_settings():
-
     settings = solver_settings.SolverSettings()
 
     tolerance_value = 1e-5
@@ -325,7 +318,6 @@ def test_solver_settings():
 
 
 def test_check_data_model_validity():
-
     data_model_obj = data_model.DataModel()
 
     # Test if exception is thrown when A_CSR is not set
@@ -481,7 +473,6 @@ def test_parse_var_names():
 
 
 def test_parser_and_batch_solver():
-
     data_model_list = []
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
@@ -516,7 +507,6 @@ def test_parser_and_batch_solver():
 
 
 def test_warm_start():
-
     file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/a2864/a2864.mps"
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
@@ -548,7 +538,6 @@ def test_warm_start():
 
 
 def test_warm_start_other_problem():
-
     file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/a2864/a2864.mps"
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
@@ -570,7 +559,6 @@ def test_warm_start_other_problem():
 
 
 def test_batch_solver_warm_start():
-
     data_model_list = []
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
@@ -595,7 +583,6 @@ def test_batch_solver_warm_start():
 
 
 def test_dual_simplex():
-
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
     )
@@ -645,7 +632,6 @@ def test_barrier():
 
 
 def test_heuristics_only():
-
     file_path = RAPIDS_DATASET_ROOT_DIR + "/mip/swath1.mps"
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
@@ -711,7 +697,6 @@ def test_bound_in_maximization():
 
 
 def test_write_files():
-
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
     )

@@ -61,7 +61,6 @@ def ParseMps(mps_file_path, fixed_mps_format=False):
 
 
 def toDict(model, json=False):
-
     if not isinstance(model, parser_wrapper.DataModel):
         raise ValueError(
             "model must be a cuopt_mps_parser.parser_wrapper.Datamodel"

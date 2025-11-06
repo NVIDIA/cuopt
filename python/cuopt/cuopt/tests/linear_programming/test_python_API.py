@@ -57,7 +57,6 @@ if RAPIDS_DATASET_ROOT_DIR is None:
 
 
 def test_model():
-
     prob = Problem("Simple MIP")
     assert prob.Name == "Simple MIP"
 
@@ -168,7 +167,6 @@ def test_model():
 
 
 def test_linear_expression():
-
     prob = Problem()
 
     x = prob.addVariable()
@@ -227,7 +225,6 @@ def test_linear_expression():
 
 
 def test_constraint_matrix():
-
     prob = Problem()
 
     a = prob.addVariable(lb=0, ub=float("inf"), vtype="C", name="a")
@@ -291,7 +288,6 @@ def test_constraint_matrix():
 
 
 def test_read_write_mps_and_relaxation():
-
     # Create MIP model
     m = Problem("SMALLMIP")
 
@@ -338,7 +334,6 @@ def test_read_write_mps_and_relaxation():
 
 
 def test_incumbent_solutions():
-
     # Callback for incumbent solution
     class CustomGetSolutionCallback(GetSolutionCallback):
         def __init__(self):
@@ -347,7 +342,6 @@ def test_incumbent_solutions():
             self.solutions = []
 
         def get_solution(self, solution, solution_cost):
-
             self.n_callbacks += 1
             assert len(solution) > 0
             assert len(solution_cost) == 1
@@ -668,18 +662,18 @@ def test_barrier_solver_settings(test_name, settings_config):
     # Verify solution
     assert prob.solved, f"Problem not solved for {test_name}"
     assert prob.Status.name == "Optimal", f"Not optimal for {test_name}"
-    assert prob.ObjValue == pytest.approx(
-        1333.33, rel=0.01
-    ), f"Incorrect objective for {test_name}"
-    assert xs.Value == pytest.approx(
-        0.0, abs=1e-4
-    ), f"Incorrect xs value for {test_name}"
-    assert xl.Value == pytest.approx(
-        66.67, rel=0.01
-    ), f"Incorrect xl value for {test_name}"
+    assert prob.ObjValue == pytest.approx(1333.33, rel=0.01), (
+        f"Incorrect objective for {test_name}"
+    )
+    assert xs.Value == pytest.approx(0.0, abs=1e-4), (
+        f"Incorrect xs value for {test_name}"
+    )
+    assert xl.Value == pytest.approx(66.67, rel=0.01), (
+        f"Incorrect xl value for {test_name}"
+    )
 
     # Verify constraint slacks are non-negative
     for c in prob.getConstraints():
-        assert (
-            c.Slack >= -1e-6
-        ), f"Negative slack for {c.getConstraintName()} in {test_name}"
+        assert c.Slack >= -1e-6, (
+            f"Negative slack for {c.getConstraintName()} in {test_name}"
+        )

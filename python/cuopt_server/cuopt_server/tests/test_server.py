@@ -962,7 +962,6 @@ def test_cost_matrix_solution(cuoptproc):  # noqa
     veh_data = res.json()["response"]["solver_response"]["vehicle_data"]
 
     for vehicle_id, route_data in veh_data.items():
-
         route_df = pd.DataFrame(route_data)
         sol_start_loc = route_df["route"].iloc[0]
         sol_end_loc = route_df["route"].iloc[-1]
@@ -1002,7 +1001,6 @@ def test_cost_matrix_solution(cuoptproc):  # noqa
 
 
 def test_waypoint_graph_solution(cuoptproc):  # noqa
-
     offsets = [0, 8, 16, 24, 32, 40, 48, 56, 64]
     edges = [
         0,
@@ -1198,7 +1196,6 @@ def test_waypoint_graph_solution(cuoptproc):  # noqa
     veh_data = res.json()["response"]["solver_response"]["vehicle_data"]
 
     for vehicle_id, route_data in veh_data.items():
-
         route_df = pd.DataFrame(route_data)
         sol_start_loc = route_df["route"].iloc[0]
         sol_end_loc = route_df["route"].iloc[-1]
@@ -1238,7 +1235,6 @@ def test_waypoint_graph_solution(cuoptproc):  # noqa
 
 
 def test_heterogeneous_breaks(cuoptproc):  # noqa
-
     cost_matrix = {
         0: [
             [0, 1, 1, 1, 1, 1, 1, 1],
@@ -1340,7 +1336,6 @@ def test_heterogeneous_breaks(cuoptproc):  # noqa
     veh_data = res.json()["response"]["solver_response"]["vehicle_data"]
 
     for vehicle_id, route_data in veh_data.items():
-
         route_df = pd.DataFrame(route_data)
         sol_start_loc = route_df["route"].iloc[0]
         sol_end_loc = route_df["route"].iloc[-1]

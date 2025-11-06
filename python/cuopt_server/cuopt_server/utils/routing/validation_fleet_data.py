@@ -126,8 +126,7 @@ def validate_fleet_data(
         if min(vehicle_max_times) <= 0:
             return (
                 False,
-                "Maximum time any vehicle can travel must be greater "
-                "than 0",
+                "Maximum time any vehicle can travel must be greater than 0",
             )
         fleet_length_check_array.append(len(vehicle_max_times))
 

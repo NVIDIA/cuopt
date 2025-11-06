@@ -25,7 +25,6 @@ service_list, vehicle_capacity, vehicle_num = utils.create_from_file(filename)
 
 
 def test_order_constraints():
-
     distances = utils.build_matrix(service_list)
     distances = distances.astype(np.float32)
 
@@ -74,7 +73,6 @@ def test_order_constraints():
 
 
 def test_objective_function():
-
     d = utils.create_data_model(filename, run_nodes=10)
 
     obj = routing.Objective

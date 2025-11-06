@@ -34,7 +34,6 @@ def generate_json_data(**args):
 
 
 def delete_request(client, reqId, queued=None, running=None):
-
     params = {}
     if queued is not None:
         params["queued"] = queued
@@ -52,7 +51,6 @@ def poll_request(client, reqId):
 
 
 def get_lp(client, data):
-
     headers = {"CLIENT-VERSION": "custom"}
 
     return client.post("/cuopt/request", headers=headers, params={}, json=data)

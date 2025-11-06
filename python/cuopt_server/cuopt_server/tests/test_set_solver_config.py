@@ -70,7 +70,6 @@ valid_data = {
 
 # Test valid set solver config with all fleet parameters
 def test_valid_full_set_solver_config(cuoptproc):  # noqa
-
     response_set = client.post("/cuopt/request", json=valid_data)
     assert response_set.status_code == 200
 

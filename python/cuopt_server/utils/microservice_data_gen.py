@@ -119,7 +119,7 @@ def create_and_save_dataset(p_size):
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "Create random problem instances" "formatted for the cuOpt service"
+            "Create random problem instancesformatted for the cuOpt service"
         )
     )
 

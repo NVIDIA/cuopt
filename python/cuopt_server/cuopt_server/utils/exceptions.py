@@ -79,10 +79,13 @@ def exception_handler(exc):
     msg = ":".join(str(exc).split(":")[1:]).split("\n")[0]
     if len(msg) == 0:
         msg = str(exc)
-    b, c = {
-        "error": "cuOpt unhandled exception, "
-        "please include this message in any error report: %s" % (msg)
-    }, 500
+    b, c = (
+        {
+            "error": "cuOpt unhandled exception, "
+            "please include this message in any error report: %s" % (msg)
+        },
+        500,
+    )
     log_traceback(exc, msg)
     log_cuopt_exception(b, c)
     return JSONResponse(b, c)

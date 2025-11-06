@@ -204,9 +204,7 @@ class OptimizationDataModel:
             else None,
             "vehicle_break_time_windows": [
                 data.to_numpy().tolist()
-                for data in self.fleet_data[
-                    "vehicle_break_time_windows"
-                ]  # noqa
+                for data in self.fleet_data["vehicle_break_time_windows"]  # noqa
             ]
             if self.fleet_data["vehicle_break_time_windows"] is not None
             else None,
@@ -351,11 +349,9 @@ class OptimizationDataModel:
 
         if is_valid[0]:
             for v_type, weights in waypoint_graph_weights.items():
-                self.waypoint_graph[v_type][
-                    "weights"
-                ] = waypoint_graph_weights[
-                    v_type
-                ]  # noqa
+                self.waypoint_graph[v_type]["weights"] = (
+                    waypoint_graph_weights[v_type]
+                )  # noqa
 
         return is_valid
 
@@ -410,11 +406,9 @@ class OptimizationDataModel:
 
         if is_valid[0]:
             for v_type, weights in travel_time_waypoint_graph_weights.items():
-                self.travel_time_waypoint_graph[v_type][
-                    "weights"
-                ] = travel_time_waypoint_graph_weights[
-                    v_type
-                ]  # noqa
+                self.travel_time_waypoint_graph[v_type]["weights"] = (
+                    travel_time_waypoint_graph_weights[v_type]
+                )  # noqa
 
         return is_valid
 

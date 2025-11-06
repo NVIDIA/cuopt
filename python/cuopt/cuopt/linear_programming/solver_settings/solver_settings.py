@@ -330,7 +330,6 @@ class SolverSettings:
         return self.pdlp_warm_start_data
 
     def toDict(self):
-
         time_limit = self.get_parameter(CUOPT_TIME_LIMIT)
         if time_limit == float("inf"):
             time_limit = None

@@ -44,8 +44,8 @@ def get_full_response(
         full_response["solver_status"] = status
 
     if return_data_state:
-        full_response[
-            "optimization_data"
-        ] = optimization_data.get_optimization_data()
+        full_response["optimization_data"] = (
+            optimization_data.get_optimization_data()
+        )
 
     return full_response

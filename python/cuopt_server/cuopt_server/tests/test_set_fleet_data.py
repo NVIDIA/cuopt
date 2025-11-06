@@ -76,7 +76,6 @@ valid_data = {
 
 # Test validation error when multiple cost matrices set without vehicle types
 def test_invalid_vehicle_types(cuoptproc):  # noqa
-
     matrix_data = {
         "data": {
             0: [
@@ -110,14 +109,12 @@ def test_invalid_vehicle_types(cuoptproc):  # noqa
 
 # Testing valid with all fleet parameters
 def test_valid_full_set_fleet_data(cuoptproc):  # noqa
-
     response_set = client.post("/cuopt/request", json=valid_data)
     assert response_set.status_code == 200
 
 
 # Testing valid with minimal required parameters
 def test_valid_minimal_set_fleet_data(cuoptproc):  # noqa
-
     test_data = copy.deepcopy(valid_data)
     test_data["fleet_data"] = {
         "vehicle_locations": [[1, 1], [2, 2], [3, 3], [4, 4]]
@@ -129,7 +126,6 @@ def test_valid_minimal_set_fleet_data(cuoptproc):  # noqa
 
 # Testing invalid, all fleet parameters need to in range
 def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
-
     invalid_fleet_data_values = {
         "vehicle_locations": [[-1, 1], [2, 2], [3, 3], [4, 4]],
         "capacities": [[0, -2, 3, 4], [2, 3, 4, 5]],
@@ -194,9 +190,9 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     # vehicle time windows if provided must be greater than or equal
     # to 0 for each vehicle
     test_data = copy.deepcopy(valid_data)
-    test_data["fleet_data"][
-        "vehicle_time_windows"
-    ] = invalid_fleet_data_values["vehicle_time_windows"]
+    test_data["fleet_data"]["vehicle_time_windows"] = (
+        invalid_fleet_data_values["vehicle_time_windows"]
+    )
 
     response_set = client.post("/cuopt/request", json=test_data)
     assert response_set.status_code == 400
@@ -208,9 +204,9 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     # vehicle break time windows if provided must be greater than or equal
     # to 0 for each vehicle
     test_data = copy.deepcopy(valid_data)
-    test_data["fleet_data"][
-        "vehicle_break_time_windows"
-    ] = invalid_fleet_data_values["vehicle_break_time_windows"]
+    test_data["fleet_data"]["vehicle_break_time_windows"] = (
+        invalid_fleet_data_values["vehicle_break_time_windows"]
+    )
 
     response_set = client.post("/cuopt/request", json=test_data)
     assert response_set.status_code == 400
@@ -222,9 +218,9 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     # vehicle break durations if provided must be greater than or equal
     # to 0 for each vehicle
     test_data = copy.deepcopy(valid_data)
-    test_data["fleet_data"][
-        "vehicle_break_durations"
-    ] = invalid_fleet_data_values["vehicle_break_durations"]
+    test_data["fleet_data"]["vehicle_break_durations"] = (
+        invalid_fleet_data_values["vehicle_break_durations"]
+    )
 
     response_set = client.post("/cuopt/request", json=test_data)
     assert response_set.status_code == 400
@@ -236,9 +232,9 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
     # vehicle break locations if provided must be greater than or equal
     # to 0 for each vehicle
     test_data = copy.deepcopy(valid_data)
-    test_data["fleet_data"][
-        "vehicle_break_locations"
-    ] = invalid_fleet_data_values["vehicle_break_locations"]
+    test_data["fleet_data"]["vehicle_break_locations"] = (
+        invalid_fleet_data_values["vehicle_break_locations"]
+    )
 
     response_set = client.post("/cuopt/request", json=test_data)
     assert response_set.status_code == 400
@@ -326,7 +322,6 @@ def test_invalid_values_set_fleet_data(cuoptproc):  # noqa
 
 
 def test_invalid_length_set_fleet_data(cuoptproc):  # noqa
-
     test_data = copy.deepcopy(valid_data)
     test_data["fleet_data"]["vehicle_time_windows"] = [[1, 2], [1, 2], [1, 2]]
 
@@ -381,7 +376,6 @@ def test_invalid_time_windows_set_fleet_data(cuoptproc):  # noqa
 
 
 def test_invalid_break_time_windows_set_fleet_data(cuoptproc):  # noqa
-
     test_data = copy.deepcopy(valid_data)
     test_data["fleet_data"]["vehicle_break_time_windows"] = [
         [[1, 2], [1, 2], [2, 3], [2, 3]],
@@ -408,7 +402,6 @@ def test_invalid_break_time_windows_set_fleet_data(cuoptproc):  # noqa
 
 
 def test_invalid_skip_first_trips_set_fleet_data(cuoptproc):  # noqa
-
     test_data = copy.deepcopy(valid_data)
     test_data["fleet_data"]["skip_first_trips"] = [False, False, True]
 

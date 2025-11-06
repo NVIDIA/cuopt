@@ -22,8 +22,6 @@ if it doesn't already exist, setting it as the latest and preferred version.
 """
 
 import json
-import os
-import sys
 from pathlib import Path
 
 

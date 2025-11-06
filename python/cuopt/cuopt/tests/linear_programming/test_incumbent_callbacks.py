@@ -43,7 +43,6 @@ if RAPIDS_DATASET_ROOT_DIR is None:
     ],
 )
 def test_incumbent_solver_callback(file_name):
-
     # Callback for incumbent solution
     class CustomGetSolutionCallback(GetSolutionCallback):
         def __init__(self):
@@ -52,7 +51,6 @@ def test_incumbent_solver_callback(file_name):
             self.solutions = []
 
         def get_solution(self, solution, solution_cost):
-
             self.n_callbacks += 1
             assert len(solution) > 0
             assert len(solution_cost) == 1

@@ -42,7 +42,6 @@ capacity = cudf.Series([5, 5])
 
 @pytest.mark.skip(reason="No error logging in new solver")
 def test_time_window_constraints():
-
     data_model = routing.DataModel(cost_matrix.shape[0], 2)
     data_model.add_cost_matrix(cost_matrix)
 
@@ -72,7 +71,6 @@ def test_time_window_constraints():
 
 @pytest.mark.skip(reason="No error logging in new solver")
 def test_break_constraints():
-
     vehicle_num = len(capacity)
     data_model = routing.DataModel(cost_matrix.shape[0], vehicle_num)
     data_model.add_cost_matrix(cost_matrix)

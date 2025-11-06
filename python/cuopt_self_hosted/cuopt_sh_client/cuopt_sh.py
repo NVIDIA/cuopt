@@ -66,7 +66,6 @@ def status(args):
 
 
 def delete_request(args):
-
     cuopt_service_client = CuOptServiceSelfHostClient(
         args.ip,
         args.port,
@@ -98,7 +97,6 @@ def delete_request(args):
 
 
 def upload_solution(args):
-
     cuopt_service_client = CuOptServiceSelfHostClient(
         args.ip,
         args.port,
@@ -150,7 +148,6 @@ def delete_solution(args):
 
 
 def solve(args):
-
     problem_data = args.data
 
     # Set the problem data
@@ -332,7 +329,6 @@ def solve(args):
 
 
 def main():
-
     levels = {
         "critical": logging.CRITICAL,
         "error": logging.ERROR,
@@ -565,26 +561,30 @@ def main():
         action="store_true",
         help="Print client version and exit.",
     )
-    parser.add_argument(
-        "-sl",
-        "--solver-logs",
-        nargs="?",
-        const="",
-        default=None,
-        help="If set detailed MIP solver logs will be returned. If a filename "
-        "argument is given logs will be written to that file. If no argument "
-        "is given logs will be written to stdout.",
-    ),
-    parser.add_argument(
-        "-il",
-        "--incumbent-logs",
-        nargs="?",
-        const="",
-        default=None,
-        help="If set MIP incumbent solutions will be returned. If a filename "
-        "argument is given incumbents will be written to that file. "
-        "If no argument is given incumbents will be written to stdout.",
-    ),
+    (
+        parser.add_argument(
+            "-sl",
+            "--solver-logs",
+            nargs="?",
+            const="",
+            default=None,
+            help="If set detailed MIP solver logs will be returned. If a filename "
+            "argument is given logs will be written to that file. If no argument "
+            "is given logs will be written to stdout.",
+        ),
+    )
+    (
+        parser.add_argument(
+            "-il",
+            "--incumbent-logs",
+            nargs="?",
+            const="",
+            default=None,
+            help="If set MIP incumbent solutions will be returned. If a filename "
+            "argument is given incumbents will be written to that file. "
+            "If no argument is given incumbents will be written to stdout.",
+        ),
+    )
     parser.add_argument(
         "-us",
         "--upload-solution",

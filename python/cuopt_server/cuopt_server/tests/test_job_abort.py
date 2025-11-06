@@ -26,6 +26,7 @@ from cuopt_server.tests.utils.utils import (
 
 client = RequestClient()
 
+
 # Keep this one first because if we don't the restart of the
 # solver from another test may cause this to result in a 200
 # (job is aborted while still on the queue)
@@ -45,7 +46,6 @@ def test_abort_on_complete(cuoptproc):  # noqa
 
 
 def test_abort_of_running(cuoptproc):  # noqa
-
     cost_matrix = {0: [[0, 1, 1], [1, 0, 1], [1, 1, 0]]}
 
     # fleet data
@@ -92,7 +92,6 @@ def test_abort_of_running(cuoptproc):  # noqa
 
 
 def test_abort_queued_and_running_flags(cuoptproc):  # noqa
-
     cost_matrix = {0: [[0, 1, 1], [1, 0, 1], [1, 1, 0]]}
 
     # fleet data

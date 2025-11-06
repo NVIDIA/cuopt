@@ -28,7 +28,7 @@ def set_data_dir(dir):
     logging.info(message(f"Data directory is {dir}"))
     if datadir:
         if not os.path.isdir(datadir):
-            raise ValueError(f"Data directory '{datadir}' " "does not exist!")
+            raise ValueError(f"Data directory '{datadir}' does not exist!")
         elif not os.access(datadir, os.R_OK):
             raise ValueError(
                 f"Data directory '{dir}' "
@@ -62,7 +62,7 @@ def set_result_dir(dir, maxresult, mode):
     )
     if dir:
         if not os.path.isdir(dir):
-            raise ValueError(f"Result directory '{dir}' " "does not exist!")
+            raise ValueError(f"Result directory '{dir}' does not exist!")
         elif not os.access(dir, os.W_OK):
             raise ValueError(
                 f"Result directory '{dir}' "

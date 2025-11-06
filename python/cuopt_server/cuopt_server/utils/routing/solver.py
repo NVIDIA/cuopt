@@ -213,7 +213,6 @@ def create_data_model(
             )
 
     if optimization_data.fleet_data["vehicle_break_locations"] is not None:
-
         if len(optimization_data.locations) > 0:
             break_location_id = locations.loc[
                 optimization_data.fleet_data["vehicle_break_locations"]
@@ -293,7 +292,6 @@ def create_data_model(
         optimization_data.task_data["demand"] is not None
         and optimization_data.fleet_data["capacities"] is not None
     ):
-
         if (
             optimization_data.task_data["demand"].shape[1]
             != optimization_data.fleet_data["capacities"].shape[1]
@@ -387,7 +385,6 @@ def create_solver(optimization_data: OptimizationDataModel):
 
 
 def prep_optimization_data(optimization_data):
-
     if optimization_data.task_data["task_locations"] is None:
         raise ValueError("task location is None")
     elif optimization_data.fleet_data["vehicle_locations"] is None:
@@ -435,10 +432,10 @@ def prep_optimization_data(optimization_data):
             v_type,
             graph,
         ) in optimization_data.travel_time_waypoint_graph.items():
-            travel_time_waypoint_graph[
-                v_type
-            ] = distance_engine.WaypointMatrix(
-                graph["offsets"], graph["edges"], graph["weights"]
+            travel_time_waypoint_graph[v_type] = (
+                distance_engine.WaypointMatrix(
+                    graph["offsets"], graph["edges"], graph["weights"]
+                )
             )
             travel_time_matrix[v_type] = travel_time_waypoint_graph[
                 v_type

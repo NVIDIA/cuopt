@@ -317,18 +317,16 @@ class InitialSolution(StrictModel):
     Initial solution for the solver.
     """
 
-    primal: Optional[
-        Annotated[List[float], PlainValidator(listfloat)]
-    ] = Field(
-        default=None,
-        description="Initial primal solution",
-        json_schema_extra=addfloat,
+    primal: Optional[Annotated[List[float], PlainValidator(listfloat)]] = (
+        Field(
+            default=None,
+            description="Initial primal solution",
+            json_schema_extra=addfloat,
+        )
     )
     dual: Optional[Annotated[List[float], PlainValidator(listfloat)]] = Field(
         default=None,
-        description="Initial dual solution"
-        "<br>"
-        "Note: Not supported for MILP. ",
+        description="Initial dual solution<br>Note: Not supported for MILP. ",
         json_schema_extra=addfloat,
     )
 
@@ -343,45 +341,42 @@ class Tolerances(StrictModel):
     )
     absolute_dual_tolerance: float = Field(
         default=None,
-        description="Absolute dual tolerance" "NOTE: Only applicable to LP",
+        description="Absolute dual toleranceNOTE: Only applicable to LP",
     )
     absolute_gap_tolerance: float = Field(
         default=None,
-        description="Absolute gap tolerance" "NOTE: Only applicable to LP",
+        description="Absolute gap toleranceNOTE: Only applicable to LP",
     )
     relative_primal_tolerance: float = Field(
         default=None, description="Relative primal tolerance"
     )
     relative_dual_tolerance: float = Field(
         default=None,
-        description="Relative dual tolerance" "NOTE: Only applicable to LP",
+        description="Relative dual toleranceNOTE: Only applicable to LP",
     )
     relative_gap_tolerance: float = Field(
         default=None,
-        description="Relative gap tolerance" "NOTE: Only applicable to LP",
+        description="Relative gap toleranceNOTE: Only applicable to LP",
     )
     primal_infeasible_tolerance: float = Field(
         default=None,
-        description="Primal infeasible tolerance"
-        "NOTE: Only applicable to LP",
+        description="Primal infeasible toleranceNOTE: Only applicable to LP",
     )
     dual_infeasible_tolerance: float = Field(
         default=None,
-        description="Dual infeasible tolerance" "NOTE: Only applicable to LP",
+        description="Dual infeasible toleranceNOTE: Only applicable to LP",
     )
     mip_integrality_tolerance: float = Field(
         default=None,
-        description="NOTE: Only applicable to MILP." "Integrality tolerance.",
+        description="NOTE: Only applicable to MILP.Integrality tolerance.",
     )
     mip_absolute_gap: float = Field(
         default=None,
-        description="MIP gap absolute tolerance"
-        "NOTE: Only applicable to MILP",
+        description="MIP gap absolute toleranceNOTE: Only applicable to MILP",
     )
     mip_relative_gap: float = Field(
         default=None,
-        description="MIP gap relative tolerance"
-        "NOTE: Only applicable to MILP",
+        description="MIP gap relative toleranceNOTE: Only applicable to MILP",
     )
     mip_absolute_tolerance: float = Field(
         default=None, description="MIP absolute tolerance"
@@ -398,14 +393,12 @@ class Tolerances(StrictModel):
     absolute_dual: float = Field(
         default=None,
         deprecated=True,
-        description="Deprecated in 25.08. "
-        "Use absolute_dual_tolerance instead",
+        description="Deprecated in 25.08. Use absolute_dual_tolerance instead",
     )
     absolute_gap: float = Field(
         default=None,
         deprecated=True,
-        description="Deprecated in 25.08. "
-        "Use absolute_gap_tolerance instead",
+        description="Deprecated in 25.08. Use absolute_gap_tolerance instead",
     )
     relative_primal: float = Field(
         default=None,
@@ -416,14 +409,12 @@ class Tolerances(StrictModel):
     relative_dual: float = Field(
         default=None,
         deprecated=True,
-        description="Deprecated in 25.08. "
-        "Use relative_dual_tolerance instead",
+        description="Deprecated in 25.08. Use relative_dual_tolerance instead",
     )
     relative_gap: float = Field(
         default=None,
         deprecated=True,
-        description="Deprecated in 25.08. "
-        "Use relative_gap_tolerance instead",
+        description="Deprecated in 25.08. Use relative_gap_tolerance instead",
     )
     primal_infeasible: float = Field(
         default=None,
@@ -707,20 +698,22 @@ class LPData(StrictModel):
         description="If set to True, solver tries to maximize "
         "objective function else it will try to minimize",
     )
-    variable_types: Optional[
-        Annotated[List[str], PlainValidator(liststr)]
-    ] = Field(
-        default=None,
-        description="Type of each variable, this is must for MILP,"
-        "Available options are, "
-        "'I' - Integer"
-        "'C' - Continuous",
-        json_schema_extra=addstr,
+    variable_types: Optional[Annotated[List[str], PlainValidator(liststr)]] = (
+        Field(
+            default=None,
+            description="Type of each variable, this is must for MILP,"
+            "Available options are, "
+            "'I' - Integer"
+            "'C' - Continuous",
+            json_schema_extra=addstr,
+        )
     )
-    variable_names: Optional[
-        Annotated[List[str], PlainValidator(liststr)]
-    ] = Field(
-        default=None, description="Name of variables", json_schema_extra=addstr
+    variable_names: Optional[Annotated[List[str], PlainValidator(liststr)]] = (
+        Field(
+            default=None,
+            description="Name of variables",
+            json_schema_extra=addstr,
+        )
     )
     solver_config: Optional[SolverConfig] = Field(
         default=SolverConfig(),
@@ -767,7 +760,6 @@ class WarmStartData(StrictModel):
 
 
 class SolutionData(StrictModel):
-
     problem_category: int = Field(
         default=None, description=("Category of the solution, LP-0/MIP-1/IP-2")
     )
@@ -778,8 +770,7 @@ class SolutionData(StrictModel):
     dual_solution: List[float] = Field(
         default=[],
         description=(
-            "Note: Only applicable to LP \n"
-            "Dual solution of the LP problem\n"
+            "Note: Only applicable to LP \nDual solution of the LP problem\n"
         ),
     )
     solver_time: float = Field(
@@ -799,8 +790,7 @@ class SolutionData(StrictModel):
     dual_objective: float = Field(
         default=None,
         description=(
-            "Note: Only applicable to LP \n"
-            "Dual objective of the LP problem \n"
+            "Note: Only applicable to LP \nDual objective of the LP problem \n"
         ),
     )
     vars: Dict = Field(
@@ -856,9 +846,9 @@ class SolutionResultData(StrictModel):
 
 
 class LPSolve(StrictModel):
-    solver_response: Union[
-        SolutionResultData, List[SolutionResultData]
-    ] = Field(default=SolutionResultData(), description="LP solution")
+    solver_response: Union[SolutionResultData, List[SolutionResultData]] = (
+        Field(default=SolutionResultData(), description="LP solution")
+    )
     perf_times: Optional[Dict] = Field(
         default=None, description=("Etl and Solve times of the solve call")
     )

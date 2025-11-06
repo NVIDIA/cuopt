@@ -53,9 +53,9 @@ def test_invalid_values_set_waypoint_graph(cuoptproc):  # noqa
     }
 
     test_data = copy.deepcopy(valid_data)
-    test_data["cost_waypoint_graph_data"]["waypoint_graph"][0][
-        "edges"
-    ] = invalid_graph_data["edges"]
+    test_data["cost_waypoint_graph_data"]["waypoint_graph"][0]["edges"] = (
+        invalid_graph_data["edges"]
+    )
 
     response_set = client.post("/cuopt/request", json=test_data)
     assert response_set.status_code == 400
@@ -65,9 +65,9 @@ def test_invalid_values_set_waypoint_graph(cuoptproc):  # noqa
     }
 
     test_data = copy.deepcopy(valid_data)
-    test_data["cost_waypoint_graph_data"]["waypoint_graph"][0][
-        "offsets"
-    ] = invalid_graph_data["offsets"]
+    test_data["cost_waypoint_graph_data"]["waypoint_graph"][0]["offsets"] = (
+        invalid_graph_data["offsets"]
+    )
 
     response_set = client.post("/cuopt/request", json=test_data)
     assert response_set.status_code == 400
@@ -77,9 +77,9 @@ def test_invalid_values_set_waypoint_graph(cuoptproc):  # noqa
     }
 
     test_data = copy.deepcopy(valid_data)
-    test_data["cost_waypoint_graph_data"]["waypoint_graph"][0][
-        "weights"
-    ] = invalid_graph_data["weights"]
+    test_data["cost_waypoint_graph_data"]["waypoint_graph"][0]["weights"] = (
+        invalid_graph_data["weights"]
+    )
 
     response_set = client.post("/cuopt/request", json=test_data)
     assert response_set.status_code == 400

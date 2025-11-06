@@ -19,7 +19,6 @@ from cuopt_sh_client import CuOptServiceSelfHostClient
 
 
 def test_initial_solution():
-
     port = os.environ.get("CUOPT_SERVER_PORT", 5000)
 
     client_cert = os.environ.get("CLIENT_CERT", "")

@@ -148,7 +148,6 @@ def is_uuid(cuopt_problem_data):
 
 
 def _mps_parse(LP_problem_data, solver_config):
-
     if isinstance(LP_problem_data, cuopt_mps_parser.parser_wrapper.DataModel):
         model = LP_problem_data
         log.debug("Received Mps parser DataModel object")
@@ -234,9 +233,9 @@ def create_lp_response(response_dict):
         else:
             status, solution_obj = create_solution_obj(solver_responses)
             response_dict["response"]["solver_response"]["status"] = status
-            response_dict["response"]["solver_response"][
-                "solution"
-            ] = solution_obj
+            response_dict["response"]["solver_response"]["solution"] = (
+                solution_obj
+            )
         return response_dict
     except Exception:
         return response_dict
@@ -361,17 +360,17 @@ class CuOptServiceSelfHostClient:
         # name is exported from kubernetes (for example) and the port is
         # inherent in the hostname
         if self.port:
-            self.request_url = f"{self.protocol}://{self.ip}:{self.port}/cuopt/request"  # noqa
-            self.log_url = f"{self.protocol}://{self.ip}:{self.port}/cuopt/log"
-            self.solution_url = f"{self.protocol}://{self.ip}:{self.port}/cuopt/solution"  # noqa
-        else:
             self.request_url = (
-                f"{self.protocol}://{self.ip}/cuopt/request"  # noqa
+                f"{self.protocol}://{self.ip}:{self.port}/cuopt/request"  # noqa
             )
-            self.log_url = f"{self.protocol}://{self.ip}/cuopt/log"
+            self.log_url = f"{self.protocol}://{self.ip}:{self.port}/cuopt/log"
             self.solution_url = (
-                f"{self.protocol}://{self.ip}/cuopt/solution"  # noqa
+                f"{self.protocol}://{self.ip}:{self.port}/cuopt/solution"  # noqa
             )
+        else:
+            self.request_url = f"{self.protocol}://{self.ip}/cuopt/request"  # noqa
+            self.log_url = f"{self.protocol}://{self.ip}/cuopt/log"
+            self.solution_url = f"{self.protocol}://{self.ip}/cuopt/solution"  # noqa
 
         self.polling_interval = polling_interval
         self.timeout = (
@@ -464,7 +463,6 @@ class CuOptServiceSelfHostClient:
     def _poll_request(
         self, response, delete, incumbent_callback=None, logging_callback=None
     ):
-
         log_t = None
         inc_t = None
         complete = False

@@ -27,7 +27,6 @@ class SolverStatus(IntEnum):
 
 class Properties:
     def __init__(self) -> None:
-
         # SKU, may be number of tasks and other elements to measure
         self.sku = None
 
@@ -52,7 +51,6 @@ class Properties:
 
 class BillingDataModel:
     def __init__(self, nspect_id, nca_id, request_id, request_type) -> None:
-
         # Nspect Id for the service
         self.nspect_id = nspect_id
 
