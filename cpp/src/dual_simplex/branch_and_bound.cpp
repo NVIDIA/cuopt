@@ -697,17 +697,16 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
   // to repair the heuristic solution.
   repair_heuristic_solutions();
 
-  f_t lower_bound      = node->lower_bound;
-  f_t upper_bound      = get_upper_bound();
-  f_t rel_gap          = user_relative_gap(original_lp_, upper_bound, lower_bound);
-  f_t abs_gap          = upper_bound - lower_bound;
-  i_t nodes_explored   = (++stats_.nodes_explored);
-  i_t nodes_unexplored = (--stats_.nodes_unexplored);
-  stats_.nodes_since_last_log++;
+  f_t lower_bound = node->lower_bound;
+  f_t upper_bound = get_upper_bound();
+  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  f_t abs_gap     = upper_bound - lower_bound;
 
   if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
     search_tree->graphviz_node(settings_.log, node, "cutoff", node->lower_bound);
     search_tree->update_tree(node, node_status_t::FATHOMED);
+    ++stats_.nodes_explored;
+    --stats_.nodes_unexplored;
     return;
   }
 
@@ -717,15 +716,14 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
   if (((stats_.nodes_since_last_log >= 10 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
        (time_since_last_log >= 1)) ||
       (time_since_last_log > 30) || now > settings_.time_limit) {
-    // Check if no new node was explored until now. If this is the case,
-    // only the last thread should report the progress
-    if (stats_.nodes_explored.load() == nodes_explored) {
-      stats_.nodes_since_last_log = 0;
-      stats_.last_log             = tic();
+    bool should_report = should_report_.exchange(false);
 
+    if (should_report) {
       f_t obj              = compute_user_objective(original_lp_, upper_bound);
       f_t user_lower       = compute_user_objective(original_lp_, root_objective_);
       std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
+      i_t nodes_explored   = stats_.nodes_explored;
+      i_t nodes_unexplored = stats_.nodes_unexplored;
 
       settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
                            nodes_explored,
@@ -736,6 +734,10 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
                            nodes_explored > 0 ? stats_.total_lp_iters / nodes_explored : 0,
                            gap_user.c_str(),
                            now);
+
+      stats_.nodes_since_last_log = 0;
+      stats_.last_log             = tic();
+      should_report_              = true;
     }
   }
 
@@ -775,6 +777,10 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
       mutex_heap_.unlock();
     }
   }
+
+  ++stats_.nodes_explored;
+  --stats_.nodes_unexplored;
+  ++stats_.nodes_since_last_log;
 }
 
 template <typename i_t, typename f_t>
@@ -806,13 +812,12 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
     // - The lower bound of the parent is lower or equal to its children
     assert(task_id < local_lower_bounds_.size());
     local_lower_bounds_[task_id] = lower_bound;
-    i_t nodes_explored           = (++stats_.nodes_explored);
-    i_t nodes_unexplored         = (--stats_.nodes_unexplored);
-    stats_.nodes_since_last_log++;
 
     if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
       search_tree.graphviz_node(settings_.log, node_ptr, "cutoff", node_ptr->lower_bound);
       search_tree.update_tree(node_ptr, node_status_t::FATHOMED);
+      ++stats_.nodes_explored;
+      --stats_.nodes_unexplored;
       continue;
     }
 
@@ -827,6 +832,9 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
         f_t obj              = compute_user_objective(original_lp_, upper_bound);
         f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
         std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
+        i_t nodes_explored   = stats_.nodes_explored;
+        i_t nodes_unexplored = stats_.nodes_unexplored;
+
         settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
                              nodes_explored,
                              nodes_unexplored,
@@ -889,6 +897,10 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
       stack.push_front(second);
       stack.push_front(first);
     }
+
+    ++stats_.nodes_explored;
+    --stats_.nodes_unexplored;
+    ++stats_.nodes_since_last_log;
   }
 }
 
