@@ -439,7 +439,7 @@ void compute_cache_for_var(i_t var_idx,
     CUOPT_LOG_TRACE("Adding cached bounds for var %d", var_idx);
   }
   i_t n_of_infeasible_probings = 0;
-  i_t probing_changed_bounds   = 0;
+  i_t valid_host_bounds        = 0;
   for (i_t i = 0; i < 2; ++i) {
     cuopt_assert(multi_probe_presolve.infeas_constraints_count_0 == 0 ||
                    multi_probe_presolve.infeas_constraints_count_1 == 0,
@@ -450,7 +450,7 @@ void compute_cache_for_var(i_t var_idx,
     auto& h_improved_lower_bounds = i == 0 ? h_improved_lower_bounds_0 : h_improved_lower_bounds_1;
     auto& h_improved_upper_bounds = i == 0 ? h_improved_upper_bounds_0 : h_improved_upper_bounds_1;
     if (infeas_constraints_count > 0) {
-      CUOPT_LOG_TRACE("Var %d is infeasible for probe %d on value %f. Fixing other interval",
+      CUOPT_LOG_DEBUG("Var %d is infeasible for probe %d on value %f. Fixing other interval",
                       var_idx,
                       i,
                       probe_val.val);
@@ -476,7 +476,7 @@ void compute_cache_for_var(i_t var_idx,
     n_of_cached_probings++;
     // save the impacted bounds
     if (bounds_presolve_result != termination_criterion_t::NO_UPDATE) {
-      probing_changed_bounds++;
+      valid_host_bounds++;
       auto& d_lb = i == 0 ? multi_probe_presolve.upd_0.lb : multi_probe_presolve.upd_1.lb;
       auto& d_ub = i == 0 ? multi_probe_presolve.upd_0.ub : multi_probe_presolve.upd_1.ub;
       raft::copy(h_improved_lower_bounds.data(),
@@ -498,33 +498,17 @@ void compute_cache_for_var(i_t var_idx,
     }
   }
   // when both probes are feasible, we can infer some global bounds
-  if (n_of_infeasible_probings == 0 && probing_changed_bounds == 2) {
+  if (n_of_infeasible_probings == 0 && valid_host_bounds == 2) {
     for (size_t i = 0; i < h_improved_lower_bounds_0.size(); i++) {
       if (i == (size_t)var_idx) { continue; }
       f_t lower_bound = min(h_improved_lower_bounds_0[i], h_improved_lower_bounds_1[i]);
       f_t upper_bound = max(h_improved_upper_bounds_0[i], h_improved_upper_bounds_1[i]);
-      if (!(h_var_bounds[i].x <= lower_bound)) {
-        printf(
-          "Assert failed: lower bound violation for var %zu. h_var_bounds[i].x=%f, "
-          "lower_bound=%f\n",
-          i,
-          h_var_bounds[i].x,
-          lower_bound);
-      }
-      if (!(h_var_bounds[i].y >= upper_bound)) {
-        printf(
-          "Assert failed: upper bound violation for var %zu. h_var_bounds[i].y=%f, "
-          "upper_bound=%f\n",
-          i,
-          h_var_bounds[i].y,
-          upper_bound);
-      }
       cuopt_assert(h_var_bounds[i].x <= lower_bound, "lower bound violation");
       cuopt_assert(h_var_bounds[i].y >= upper_bound, "upper bound violation");
       // check why we might have invalid lower and upper bound here
       if (h_var_bounds[i].x < lower_bound || h_var_bounds[i].y > upper_bound) {
         modification_vector.emplace_back(timer.elapsed_time(), i, lower_bound, upper_bound);
-        CUOPT_LOG_TRACE(
+        CUOPT_LOG_DEBUG(
           "Var %d global bounds inferred from probing new bounds: [%f, %f] old bounds: [%f, %f]",
           i,
           lower_bound,
@@ -650,7 +634,6 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                   n_of_implied_singletons.load());
   // restore the settings
   bound_presolve.settings = {};
-  exit(0);
 }
 
 #define INSTANTIATE(F_TYPE)                                                                        \
