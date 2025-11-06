@@ -30,7 +30,11 @@ reviews:
       enabled: true
   sequence_diagrams: false
   collapse_walkthrough: true
-  changed_files_summary: false
+
+  # Reduce noise from status messages
+  request_changes_workflow: false
+  review_status: false
+
   # Path-specific review instructions
   path_instructions:
     - path: "docs/**/*"
