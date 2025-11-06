@@ -53,7 +53,7 @@ echo '{
     },
     "variable_names": ["x", "y"],
     "variable_types": ["I", "I"],
-    "maximize": "False",
+    "maximize": false,
     "solver_config": {
         "time_limit": 30
     }

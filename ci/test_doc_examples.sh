@@ -19,6 +19,7 @@
 set -o pipefail  # Catch errors in pipes
 set -o nounset   # Exit on undefined variables
 set -o errtrace  # Inherit ERR trap in functions
+set -e           # Exit on error
 
 # Colors for output
 RED='\033[0;31m'

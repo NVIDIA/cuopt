@@ -98,8 +98,6 @@ cuopt_int_t test_simple_milp()
   cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY};
 
   // Variable types
-  // From the constraints:
-  // x1, x2 >= 0
   // x1 is integer
   // x2 is continuous
   char variable_types[] = {CUOPT_INTEGER, CUOPT_CONTINUOUS};
@@ -180,6 +178,10 @@ cuopt_int_t test_simple_milp()
 
   // Get and print solution variables
   cuopt_float_t* solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  if (solution_values == NULL) {
+    printf("Error allocating solution values\n");
+    goto DONE;
+  }
   status = cuOptGetPrimalSolution(solution, solution_values);
   if (status != CUOPT_SUCCESS) {
     printf("Error getting solution values: %d\n", status);

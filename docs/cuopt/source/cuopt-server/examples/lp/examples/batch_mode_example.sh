@@ -25,13 +25,19 @@
 #   - cuOpt server running on localhost:5000
 #   - cuopt_sh CLI tool installed
 #
+set -e
 
 # Set server connection details
 export ip="localhost"
 export port=5000
 
+# Create temporary MPS file and ensure cleanup on exit
+mps_file=$(mktemp --suffix=.mps)
+trap "rm -f \"$mps_file\"" EXIT
+
 # Create sample MPS file
-echo "* optimize
+cat > "$mps_file" << 'EOF'
+* optimize
 *  cost = -0.2 * VAR1 + 0.1 * VAR2
 * subject to
 *  3 * VAR1 + 4 * VAR2 <= 5.4
@@ -48,16 +54,14 @@ COLUMNS
    VAR2      ROW1      4              ROW2      10.1
 RHS
    RHS1      ROW1      5.4            ROW2      4.9
-ENDATA" > sample.mps
+ENDATA
+EOF
 
 echo "=== Solving Multiple MPS Files in Batch Mode ==="
 # Submit multiple MPS files at once
 # -t LP: Problem type
 # -ss: Solver settings (JSON format)
-cuopt_sh sample.mps sample.mps sample.mps -t LP -i $ip -p $port -ss '{"tolerances": {"optimality": 0.0001}, "time_limit": 5}'
-
-# Clean up
-rm -f sample.mps
+cuopt_sh "$mps_file" "$mps_file" "$mps_file" -t LP -i $ip -p $port -ss '{"tolerances": {"optimality": 0.0001}, "time_limit": 5}'
 
 echo ""
 echo "Note: Batch mode is only available for LP with MPS files, not for MILP."
