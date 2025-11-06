@@ -72,7 +72,7 @@ struct simplex_solver_settings_t {
       ordering(-1),
       barrier_dual_initial_point(-1),
       crossover(false),
-      refactor_frequency(50),
+      refactor_frequency(100),
       iteration_log_frequency(1000),
       first_iteration_log(2),
       num_threads(omp_get_max_threads() - 1),
