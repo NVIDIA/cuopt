@@ -17,8 +17,6 @@ Simple Linear Programming Example
 .. literalinclude:: examples/simple_lp_example.py
    :language: python
    :linenos:
-   :start-after: def main():
-   :end-before: if __name__
 
 The response is as follows:
 
@@ -37,8 +35,6 @@ Mixed Integer Linear Programming Example
 .. literalinclude:: examples/simple_milp_example.py
    :language: python
    :linenos:
-   :start-after: def main():
-   :end-before: if __name__
 
 The response is as follows:
 
@@ -58,8 +54,6 @@ Advanced Example: Production Planning
 .. literalinclude:: examples/production_planning_example.py
    :language: python
    :linenos:
-   :start-after: def main():
-   :end-before: if __name__
 
 The response is as follows:
 
@@ -81,8 +75,6 @@ Working with Expressions and Constraints
 .. literalinclude:: examples/expressions_constraints_example.py
    :language: python
    :linenos:
-   :start-after: def main():
-   :end-before: if __name__
 
 The response is as follows:
 
@@ -138,8 +130,6 @@ Warmstart data allows to restart PDLP with a previous solution context. This sho
 .. literalinclude:: examples/pdlp_warmstart_example.py
    :language: python
    :linenos:
-   :start-after: def main():
-   :end-before: if __name__
 
 The response is as follows:
 
