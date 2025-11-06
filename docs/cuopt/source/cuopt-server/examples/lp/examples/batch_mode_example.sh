@@ -33,7 +33,7 @@ export port=5000
 
 # Create temporary MPS file and ensure cleanup on exit
 mps_file=$(mktemp --suffix=.mps)
-trap "rm -f \"$mps_file\"" EXIT
+trap 'rm -f "$mps_file"' EXIT
 
 # Create sample MPS file
 cat > "$mps_file" << 'EOF'
