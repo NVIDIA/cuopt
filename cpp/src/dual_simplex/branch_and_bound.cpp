@@ -39,8 +39,6 @@
 #include <string>
 #include <vector>
 
-#define DIVING_BACKTRACKING 5
-
 namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
@@ -1056,7 +1054,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(i_t task_id,
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::diving_thread(i_t backtrack, const csr_matrix_t<i_t, f_t>& Arow)
+void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& Arow)
 {
   logger_t log;
   log.log = false;
@@ -1124,7 +1122,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(i_t backtrack, const csr_matrix
         }
 
         if (stack.size() > 1) {
-          if (stack.front()->depth - stack.back()->depth > backtrack) {
+          if (stack.front()->depth - stack.back()->depth > 5) {
             mip_node_t<i_t, f_t>* new_node = stack.back();
             stack.pop_back();
           }
@@ -1318,7 +1316,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
       for (i_t i = 0; i < settings_.num_diving_threads; i++) {
 #pragma omp task
-        diving_thread(DIVING_BACKTRACKING, Arow);
+        diving_thread(Arow);
       }
     }
   }

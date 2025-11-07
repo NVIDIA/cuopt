@@ -31,17 +31,15 @@ struct diving_root_t {
   mip_node_t<i_t, f_t> node;
   std::vector<f_t> lower;
   std::vector<f_t> upper;
-  f_t score;
 
-  diving_root_t(mip_node_t<i_t, f_t>&& new_node, std::vector<f_t>&& lower, std::vector<f_t>&& upper)
-    : node(std::move(new_node)), lower(std::move(lower)), upper(std::move(upper))
+  diving_root_t(mip_node_t<i_t, f_t>&& node, std::vector<f_t>&& lower, std::vector<f_t>&& upper)
+    : node(std::move(node)), lower(std::move(lower)), upper(std::move(upper))
   {
-    score = node.objective_estimate;
   }
 
   friend bool operator>(const diving_root_t<i_t, f_t>& a, const diving_root_t<i_t, f_t>& b)
   {
-    return a.score > b.score;
+    return a.node.objective_estimate > b.node.objective_estimate;
   }
 };
 

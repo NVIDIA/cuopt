@@ -61,7 +61,11 @@ class lp_solution_t {
 template <typename i_t, typename f_t>
 class mip_solution_t {
  public:
-  mip_solution_t(i_t n) : x(n), objective(std::numeric_limits<f_t>::quiet_NaN()), lower_bound(-inf)
+  mip_solution_t(i_t n)
+    : x(n),
+      objective(std::numeric_limits<f_t>::quiet_NaN()),
+      lower_bound(-inf),
+      has_incumbent(false)
   {
   }
 

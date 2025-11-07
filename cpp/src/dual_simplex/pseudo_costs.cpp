@@ -208,7 +208,7 @@ template <typename i_t, typename f_t>
 void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_ptr,
                                                    f_t leaf_objective)
 {
-  mutex.lock();
+  std::lock_guard<omp_mutex_t> lock(mutex);
   const f_t change_in_obj = leaf_objective - node_ptr->lower_bound;
   const f_t frac          = node_ptr->branch_dir == rounding_direction_t::DOWN
                               ? node_ptr->fractional_val - std::floor(node_ptr->fractional_val)
@@ -220,7 +220,6 @@ void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_pt
     pseudo_cost_sum_up[node_ptr->branch_var] += change_in_obj / frac;
     pseudo_cost_num_up[node_ptr->branch_var]++;
   }
-  mutex.unlock();
 }
 
 template <typename i_t, typename f_t>
