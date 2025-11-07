@@ -208,7 +208,7 @@ jobs:
       append-cuda-suffix: false
       pure-wheel: true
       # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
-      matrix_filter: '[map(select(.ARCH == "amd64")) | min_by((.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber)))]'
+      matrix_filter: '[map(select(.ARCH == "amd64")) | min_by([(.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber))])]'
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
     secrets: inherit
