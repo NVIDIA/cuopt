@@ -192,11 +192,11 @@ std::string user_mip_gap(f_t obj_value, f_t lower_bound)
 {
   const f_t user_mip_gap = relative_gap(obj_value, lower_bound);
   if (user_mip_gap == std::numeric_limits<f_t>::infinity()) {
-    return "   -  ";
+    return "  -  ";
   } else {
     constexpr int BUFFER_LEN = 32;
     char buffer[BUFFER_LEN];
-    snprintf(buffer, BUFFER_LEN - 1, "%5.1f%%", user_mip_gap * 100);
+    snprintf(buffer, BUFFER_LEN - 1, "%4.1f%%", user_mip_gap * 100);
     return std::string(buffer);
   }
 }
@@ -204,9 +204,9 @@ std::string user_mip_gap(f_t obj_value, f_t lower_bound)
 inline const char* thread_type_symbol(thread_type_t type)
 {
   switch (type) {
-    case thread_type_t::EXPLORATION: return "B ";
-    case thread_type_t::DIVING: return "D ";
-    default: return "U ";
+    case thread_type_t::EXPLORATION: return "B";
+    case thread_type_t::DIVING: return "D";
+    default: return "U";
   }
 }
 
@@ -312,7 +312,7 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
       std::string gap = user_mip_gap<f_t>(user_obj, user_lower);
 
       settings_.log.printf(
-        "H                            %+13.6e    %+10.6e                        %s %9.2f\n",
+        "H                           %+13.6e    %+10.6e                        %s %9.2f\n",
         user_obj,
         user_lower,
         gap.c_str(),
@@ -425,7 +425,7 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
           std::string user_gap = user_mip_gap<f_t>(obj, lower);
 
           settings_.log.printf(
-            "H                            %+13.6e    %+10.6e                        %s %9.2f\n",
+            "H                           %+13.6e    %+10.6e                        %s %9.2f\n",
             obj,
             lower,
             user_gap.c_str(),
@@ -458,11 +458,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t
   if (status_ == mip_exploration_status_t::TIME_LIMIT) {
     settings_.log.printf("Time limit reached. Stopping the solver...\n");
     mip_status = mip_status_t::TIME_LIMIT;
-  }
-
-  if (status_ == mip_exploration_status_t::NODE_LIMIT) {
-    settings_.log.printf("Node limit reached. Stopping the solver...\n");
-    mip_status = mip_status_t::NODE_LIMIT;
   }
 
   f_t upper_bound      = get_upper_bound();
@@ -663,6 +658,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(mip_node_t<i_t, f_t>* nod
 
       lp_status = convert_lp_status_to_dual_status(second_status);
     }
+
     stats.total_lp_solve_time += toc(lp_start_time);
     stats.total_lp_iters += node_iter;
   }
@@ -721,7 +717,6 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(mip_node_t<i_t, f_t>* nod
       search_tree.update(node_ptr, node_status_t::FATHOMED);
       return node_status_t::FATHOMED;
     }
-
   } else if (lp_status == dual::status_t::TIME_LIMIT) {
     return node_status_t::TIME_LIMIT;
 
@@ -789,7 +784,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(mip_node_t<i_t, f_t>* nod
       f_t user_lower       = compute_user_objective(original_lp_, root_objective_);
       std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
 
-      settings_.log.printf("  %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
+      settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
                            nodes_explored,
                            nodes_unexplored,
                            obj,
@@ -910,7 +905,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
         f_t obj              = compute_user_objective(original_lp_, upper_bound);
         f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
         std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
-        settings_.log.printf("  %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
+        settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
                              nodes_explored,
                              nodes_unexplored,
                              obj,
@@ -1294,7 +1289,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                        settings_.num_diving_threads);
 
   settings_.log.printf(
-    "  | Explored | Unexplored |    Objective    |     Bound     | Depth | Iter/Node |   Gap    "
+    " | Explored | Unexplored |    Objective    |     Bound     | Depth | Iter/Node |   Gap    "
     "|  Time  |\n");
 
   stats_.nodes_explored       = 0;
