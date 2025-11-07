@@ -131,7 +131,7 @@ linear_programming_ret_t call_solve_lp(
   const bool use_pdlp_solver_mode = true;
   auto solution                   = cuopt::linear_programming::solve_lp(
     op_problem, solver_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
-  
+
   // Convert device vectors to host vectors for LP solution
   linear_programming_ret_t lp_ret{
     cuopt::host_copy(solution.get_primal_solution()),
@@ -187,7 +187,7 @@ mip_ret_t call_solve_mip(
     error_type_t::ValidationError,
     "MIP solve cannot be called on an LP problem!");
   auto solution = cuopt::linear_programming::solve_mip(op_problem, solver_settings);
-  
+
   // Convert device vector to host vector for MILP solution
   mip_ret_t mip_ret{cuopt::host_copy(solution.get_solution()),
                     solution.get_termination_status(),

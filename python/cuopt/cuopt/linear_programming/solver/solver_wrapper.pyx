@@ -366,7 +366,7 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             cdef double[:] sum_dual_view = sol_ret.lp_ret.sum_dual_solutions_
             cdef double[:] last_restart_primal_view = sol_ret.lp_ret.last_restart_duality_gap_primal_solution_
             cdef double[:] last_restart_dual_view = sol_ret.lp_ret.last_restart_duality_gap_dual_solution_
-            
+
             current_primal_solution = np.asarray(curr_primal_view).copy()
             current_dual_solution = np.asarray(curr_dual_view).copy()
             initial_primal_average = np.asarray(init_primal_avg_view).copy()
