@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #include <dual_simplex/basis_solves.hpp>
 
@@ -363,8 +353,18 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
         for (i_t h = 0; h < Sdim; ++h) {
           identity[h] = h;
         }
-        Srank = right_looking_lu(
-          S, settings.threshold_partial_pivoting_tol, identity, S_col_perm, SL, SU, S_perm_inv);
+        Srank = right_looking_lu(S,
+                                 settings,
+                                 settings.threshold_partial_pivoting_tol,
+                                 identity,
+                                 S_col_perm,
+                                 SL,
+                                 SU,
+                                 S_perm_inv);
+        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+          settings.log.printf("Concurrent halt\n");
+          return -1;
+        }
         if (Srank != Sdim) {
           // Get the rank deficient columns
           deficient.clear();
@@ -565,7 +565,11 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
   }
   q.resize(m);
   f_t fact_start = tic();
-  rank           = right_looking_lu(A, medium_tol, basic_list, q, L, U, pinv);
+  rank           = right_looking_lu(A, settings, medium_tol, basic_list, q, L, U, pinv);
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    settings.log.printf("Concurrent halt\n");
+    return -1;
+  }
   if (verbose) {
     printf("Right Lnz+Unz %d t %.3f\n", L.col_start[m] + U.col_start[m], toc(fact_start));
   }

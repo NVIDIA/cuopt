@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import copy
 import json
@@ -109,20 +97,16 @@ class VehicleBreak(StrictModel):
     )
     earliest: int = Field(
         ...,
-        description=(
-            "dtype: int32, earliest >= 0." " \n\n " "Earliest break time"
-        ),
+        description=("dtype: int32, earliest >= 0. \n\n Earliest break time"),
     )
     latest: int = Field(
         ...,
-        description=("dtype: int32, latest > 0." " \n\n " "Latest break time"),
+        description=("dtype: int32, latest > 0. \n\n Latest break time"),
     )
     duration: int = Field(
         ...,
         description=(
-            "dtype: int32, duration >= 0."
-            " \n\n "
-            "Duration of the break time"
+            "dtype: int32, duration >= 0. \n\n Duration of the break time"
         ),
     )
     locations: Optional[List[int]] = Field(
@@ -179,9 +163,7 @@ class WaypointGraph(StrictModel):
     edges: List[int] = Field(
         ...,
         description=(
-            "dtype: int32, edge >= 0."
-            " \n\n "
-            "Vertices of all the directed edges."
+            "dtype: int32, edge >= 0. \n\n Vertices of all the directed edges."
         ),
     )
     offsets: List[int] = Field(
@@ -195,7 +177,7 @@ class WaypointGraph(StrictModel):
     weights: Optional[List[float]] = Field(
         default=None,
         description=(
-            "dtype: float32, weight >= 0." " \n\n " "Weights of each edges."
+            "dtype: float32, weight >= 0. \n\n Weights of each edges."
         ),
     )
 
@@ -208,7 +190,7 @@ class WaypointGraphWeights(StrictModel):
     weights: Dict[int, List[float]] = Field(
         ...,
         description=(
-            "dtype: float32, weight >= 0." " \n\n " "Weights of each edges"
+            "dtype: float32, weight >= 0. \n\n Weights of each edges"
         ),
     )
 
@@ -533,9 +515,7 @@ class TaskData(StrictModel):
             "    ]"
         ),
     )
-    service_times: Optional[
-        Union[List[int], Dict[int, List[int]]]
-    ] = Field(  # noqa
+    service_times: Optional[Union[List[int], Dict[int, List[int]]]] = Field(  # noqa
         default=None,
         examples=[[0, 0]],
         description=(
@@ -740,7 +720,6 @@ class OptimizedRoutingData(StrictModel):
             return {
                 "travel_time_waypoint_graph_data": None,
                 "cost_waypoint_graph_data": None,
-                "travel_time_waypoint_graph_data": None,
                 "cost_matrix_data": None,
                 "travel_time_matrix_data": None,
                 "fleet_data": FleetData(vehicle_locations=[]),
