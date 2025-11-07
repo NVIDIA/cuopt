@@ -590,6 +590,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(mip_node_t<i_t, f_t>* nod
                                                        bool recompute_bounds_and_basis,
                                                        const std::vector<f_t>& root_lower,
                                                        const std::vector<f_t>& root_upper,
+                                                       stats_t& stats,
                                                        logger_t& log)
 {
   const f_t abs_fathom_tol = settings_.absolute_mip_gap_tol / 10;
@@ -604,6 +605,11 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(mip_node_t<i_t, f_t>* nod
   lp_settings.cut_off    = upper_bound + settings_.dual_tol;
   lp_settings.inside_mip = 2;
   lp_settings.time_limit = settings_.time_limit - toc(stats_.start_time);
+
+  // Limit the number of simplex iterations when diving.
+  if (thread_type == thread_type_t::DIVING) {
+    lp_settings.iteration_limit = 0.05 * stats_.total_lp_iters - stats.total_lp_iters;
+  }
 
   // Reset the bound_changed markers
   std::fill(presolver.bounds_changed.begin(), presolver.bounds_changed.end(), false);
@@ -657,9 +663,8 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(mip_node_t<i_t, f_t>* nod
 
       lp_status = convert_lp_status_to_dual_status(second_status);
     }
-
-    stats_.total_lp_solve_time += toc(lp_start_time);
-    stats_.total_lp_iters += node_iter;
+    stats.total_lp_solve_time += toc(lp_start_time);
+    stats.total_lp_iters += node_iter;
   }
 
   if (lp_status == dual::status_t::DUAL_UNBOUNDED) {
@@ -716,10 +721,12 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(mip_node_t<i_t, f_t>* nod
       search_tree.update(node_ptr, node_status_t::FATHOMED);
       return node_status_t::FATHOMED;
     }
+
   } else if (lp_status == dual::status_t::TIME_LIMIT) {
-    search_tree.graphviz_node(log, node_ptr, "timeout", 0.0);
-    search_tree.update(node_ptr, node_status_t::TIME_LIMIT);
     return node_status_t::TIME_LIMIT;
+
+  } else if (lp_status == dual::status_t::ITERATION_LIMIT) {
+    return node_status_t::ITERATION_LIMIT;
 
   } else {
     if (thread_type == thread_type_t::EXPLORATION) {
@@ -820,6 +827,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(mip_node_t<i_t, f_t>* nod
                                          true,
                                          original_lp_.lower,
                                          original_lp_.upper,
+                                         stats_,
                                          settings_.log);
 
   if (node_status == node_status_t::TIME_LIMIT) {
@@ -932,6 +940,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
                                            recompute_bounds_and_basis,
                                            original_lp_.lower,
                                            original_lp_.upper,
+                                           stats_,
                                            settings_.log);
 
     recompute_bounds_and_basis = node_status != node_status_t::HAS_CHILDREN;
@@ -1084,6 +1093,12 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
       std::deque<mip_node_t<i_t, f_t>*> stack;
       stack.push_front(&subtree.root);
 
+      stats_t lp_stats;
+      lp_stats.total_lp_iters      = 0;
+      lp_stats.total_lp_solve_time = 0;
+      lp_stats.nodes_explored      = 0;
+      lp_stats.nodes_unexplored    = 0;
+
       while (stack.size() > 0 && status_ == mip_exploration_status_t::RUNNING) {
         mip_node_t<i_t, f_t>* node_ptr = stack.front();
         stack.pop_front();
@@ -1108,6 +1123,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
                                                recompute_bounds_and_basis,
                                                start_node->lower,
                                                start_node->upper,
+                                               lp_stats,
                                                log);
 
         recompute_bounds_and_basis = node_status != node_status_t::HAS_CHILDREN;
@@ -1115,17 +1131,18 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
         if (node_status == node_status_t::TIME_LIMIT) {
           return;
 
-        } else if (node_status == node_status_t::HAS_CHILDREN) {
-          auto [first, second] = child_selection(node_ptr);
-          stack.push_front(second);
-          stack.push_front(first);
-        }
+        } else if (node_status == node_status_t::ITERATION_LIMIT) {
+          break;
 
-        if (stack.size() > 1) {
-          if (stack.front()->depth - stack.back()->depth > 5) {
+        } else if (node_status == node_status_t::HAS_CHILDREN) {
+          if (stack.size() > 0) {
             mip_node_t<i_t, f_t>* new_node = stack.back();
             stack.pop_back();
           }
+
+          auto [first, second] = child_selection(node_ptr);
+          stack.push_front(second);
+          stack.push_front(first);
         }
       }
     }

@@ -35,7 +35,8 @@ enum class node_status_t : int {
   FATHOMED         = 3,  // Node objective is greater than the upper bound
   HAS_CHILDREN     = 4,  // Node has children to explore
   NUMERICAL        = 5,  // Encountered numerical issue when solving the LP relaxation
-  TIME_LIMIT       = 6   // Time out during the LP relaxation
+  TIME_LIMIT       = 6,  // Time out during the LP relaxation
+  ITERATION_LIMIT  = 7   // Reached the iteration limit during the LP relaxation
 };
 
 enum class rounding_direction_t { NONE = -1, DOWN = 0, UP = 1 };

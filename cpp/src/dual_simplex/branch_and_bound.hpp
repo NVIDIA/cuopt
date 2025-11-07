@@ -216,6 +216,7 @@ class branch_and_bound_t {
                            bool recompute,
                            const std::vector<f_t>& root_lower,
                            const std::vector<f_t>& root_upper,
+                           stats_t& stats,
                            logger_t& log);
 
   // Sort the children based on the Martin's criteria.
