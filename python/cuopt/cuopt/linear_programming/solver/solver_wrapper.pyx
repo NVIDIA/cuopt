@@ -25,7 +25,7 @@ from libcpp.string cimport string
 from libcpp.utility cimport move
 from libcpp.vector cimport vector
 
-from rmm.pylibrmm.device_buffer cimport DeviceBuffer
+# DeviceBuffer import removed - now using host vectors directly from C++
 
 from cuopt.linear_programming.data_model.data_model cimport data_model_view_t
 from cuopt.linear_programming.data_model.data_model_wrapper cimport DataModel
@@ -46,18 +46,16 @@ import sys
 import warnings
 from enum import IntEnum
 
-import cupy as cp
 import numpy as np
 from numba import cuda
 
 import cudf
-from cudf.core.buffer import as_buffer
 
 from cuopt.linear_programming.solver_settings.solver_settings import (
     PDLPSolverMode,
     SolverSettings,
 )
-from cuopt.utilities import InputValidationError, col_from_buf
+from cuopt.utilities import InputValidationError
 
 
 cdef extern from "cuopt/linear_programming/utilities/internals.hpp" namespace "cuopt::internals": # noqa
@@ -299,9 +297,9 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
     sol_ret = move(sol_ret_ptr.get()[0])
 
     if sol_ret.problem_type == ProblemCategory.MIP or sol_ret.problem_type == ProblemCategory.IP: # noqa
-        solution = DeviceBuffer.c_from_unique_ptr(
-            move(sol_ret.mip_ret.solution_)
-        )
+        # Extract and copy host solution vector from C++
+        cdef double[:] solution_view = sol_ret.mip_ret.solution_
+        solution = np.asarray(solution_view).copy()
         termination_status = sol_ret.mip_ret.termination_status_
         error_status = sol_ret.mip_ret.error_status_
         error_message = sol_ret.mip_ret.error_message_
@@ -315,11 +313,6 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         max_variable_bound_violation = sol_ret.mip_ret.max_variable_bound_violation_ # noqa
         num_nodes = sol_ret.mip_ret.nodes_
         num_simplex_iterations = sol_ret.mip_ret.simplex_iterations_
-
-        solution_buf = as_buffer(solution)
-        solution = cudf.Series._from_column(
-            col_from_buf(solution_buf, np.float64)
-        ).to_numpy()
 
         return Solution(
             ProblemCategory(sol_ret.problem_type),
@@ -341,25 +334,13 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         )
 
     else:
-        primal_solution = DeviceBuffer.c_from_unique_ptr(
-            move(sol_ret.lp_ret.primal_solution_)
-        )
-        dual_solution = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.dual_solution_)) # noqa
-        reduced_cost = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.reduced_cost_)) # noqa
-
-        primal_solution_buf = as_buffer(primal_solution)
-        dual_solution_buf = as_buffer(dual_solution)
-        reduced_cost_buf = as_buffer(reduced_cost)
-
-        primal_solution = cudf.Series._from_column(
-            col_from_buf(primal_solution_buf, np.float64)
-        ).to_numpy()
-        dual_solution = cudf.Series._from_column(
-            col_from_buf(dual_solution_buf, np.float64)
-        ).to_numpy()
-        reduced_cost = cudf.Series._from_column(
-            col_from_buf(reduced_cost_buf, np.float64)
-        ).to_numpy()
+        # Extract and copy host solution vectors from C++ for LP
+        cdef double[:] primal_view = sol_ret.lp_ret.primal_solution_
+        cdef double[:] dual_view = sol_ret.lp_ret.dual_solution_
+        cdef double[:] reduced_view = sol_ret.lp_ret.reduced_cost_
+        primal_solution = np.asarray(primal_view).copy()
+        dual_solution = np.asarray(dual_view).copy()
+        reduced_cost = np.asarray(reduced_view).copy()
 
         termination_status = sol_ret.lp_ret.termination_status_
         error_status = sol_ret.lp_ret.error_status_
@@ -375,33 +356,26 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
 
         # In BatchSolve, we don't get the warm start data
         if not is_batch:
-            current_primal_solution = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_primal_solution_)
-            )
-            current_dual_solution = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_dual_solution_)
-            )
-            initial_primal_average = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.initial_primal_average_)
-            )
-            initial_dual_average = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.initial_dual_average_)
-            )
-            current_ATY = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_ATY_)
-            )
-            sum_primal_solutions = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.sum_primal_solutions_)
-            )
-            sum_dual_solutions = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.sum_dual_solutions_)
-            )
-            last_restart_duality_gap_primal_solution = DeviceBuffer.c_from_unique_ptr( # noqa
-                move(sol_ret.lp_ret.last_restart_duality_gap_primal_solution_)
-            )
-            last_restart_duality_gap_dual_solution = DeviceBuffer.c_from_unique_ptr( # noqa
-                move(sol_ret.lp_ret.last_restart_duality_gap_dual_solution_)
-            )
+            # Extract and copy host warm start data vectors from C++
+            cdef double[:] curr_primal_view = sol_ret.lp_ret.current_primal_solution_
+            cdef double[:] curr_dual_view = sol_ret.lp_ret.current_dual_solution_
+            cdef double[:] init_primal_avg_view = sol_ret.lp_ret.initial_primal_average_
+            cdef double[:] init_dual_avg_view = sol_ret.lp_ret.initial_dual_average_
+            cdef double[:] curr_aty_view = sol_ret.lp_ret.current_ATY_
+            cdef double[:] sum_primal_view = sol_ret.lp_ret.sum_primal_solutions_
+            cdef double[:] sum_dual_view = sol_ret.lp_ret.sum_dual_solutions_
+            cdef double[:] last_restart_primal_view = sol_ret.lp_ret.last_restart_duality_gap_primal_solution_
+            cdef double[:] last_restart_dual_view = sol_ret.lp_ret.last_restart_duality_gap_dual_solution_
+            
+            current_primal_solution = np.asarray(curr_primal_view).copy()
+            current_dual_solution = np.asarray(curr_dual_view).copy()
+            initial_primal_average = np.asarray(init_primal_avg_view).copy()
+            initial_dual_average = np.asarray(init_dual_avg_view).copy()
+            current_ATY = np.asarray(curr_aty_view).copy()
+            sum_primal_solutions = np.asarray(sum_primal_view).copy()
+            sum_dual_solutions = np.asarray(sum_dual_view).copy()
+            last_restart_duality_gap_primal_solution = np.asarray(last_restart_primal_view).copy()
+            last_restart_duality_gap_dual_solution = np.asarray(last_restart_dual_view).copy()
             initial_primal_weight = sol_ret.lp_ret.initial_primal_weight_
             initial_step_size = sol_ret.lp_ret.initial_step_size_
             total_pdlp_iterations = sol_ret.lp_ret.total_pdlp_iterations_
@@ -410,54 +384,6 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             last_restart_kkt_score = sol_ret.lp_ret.last_restart_kkt_score_
             sum_solution_weight = sol_ret.lp_ret.sum_solution_weight_
             iterations_since_last_restart = sol_ret.lp_ret.iterations_since_last_restart_ # noqa
-
-            current_primal_solution_buf = as_buffer(current_primal_solution)
-            current_dual_solution_buf = as_buffer(current_dual_solution)
-            initial_primal_average_buf = as_buffer(initial_primal_average)
-            initial_dual_average_buf = as_buffer(initial_dual_average)
-            current_ATY_buf = as_buffer(current_ATY)
-            sum_primal_solutions_buf = as_buffer(sum_primal_solutions)
-            sum_dual_solutions_buf = as_buffer(sum_dual_solutions)
-            last_restart_duality_gap_primal_solution_buf = as_buffer(
-                last_restart_duality_gap_primal_solution
-            )
-            last_restart_duality_gap_dual_solution_buf = as_buffer(
-                last_restart_duality_gap_dual_solution
-            )
-
-            current_primal_solution = cudf.Series._from_column(
-                col_from_buf(current_primal_solution_buf, np.float64)
-            ).to_numpy()
-            current_dual_solution = cudf.Series._from_column(
-                col_from_buf(current_dual_solution_buf, np.float64)
-            ).to_numpy()
-            initial_primal_average = cudf.Series._from_column(
-                col_from_buf(initial_primal_average_buf, np.float64)
-            ).to_numpy()
-            initial_dual_average = cudf.Series._from_column(
-                col_from_buf(initial_dual_average_buf, np.float64)
-            ).to_numpy()
-            current_ATY = cudf.Series._from_column(
-                col_from_buf(current_ATY_buf, np.float64)
-            ).to_numpy()
-            sum_primal_solutions = cudf.Series._from_column(
-                col_from_buf(sum_primal_solutions_buf, np.float64)
-            ).to_numpy()
-            sum_dual_solutions = cudf.Series._from_column(
-                col_from_buf(sum_dual_solutions_buf, np.float64)
-            ).to_numpy()
-            last_restart_duality_gap_primal_solution = cudf.Series._from_column( # noqa
-                col_from_buf(
-                    last_restart_duality_gap_primal_solution_buf,
-                    np.float64
-                )
-            ).to_numpy()
-            last_restart_duality_gap_dual_solution = cudf.Series._from_column(
-                col_from_buf(
-                    last_restart_duality_gap_dual_solution_buf,
-                    np.float64
-                )
-            ).to_numpy()
 
             return Solution(
                 ProblemCategory(sol_ret.problem_type),

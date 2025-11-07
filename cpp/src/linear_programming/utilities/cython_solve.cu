@@ -131,28 +131,21 @@ linear_programming_ret_t call_solve_lp(
   const bool use_pdlp_solver_mode = true;
   auto solution                   = cuopt::linear_programming::solve_lp(
     op_problem, solver_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+  
+  // Convert device vectors to host vectors for LP solution
   linear_programming_ret_t lp_ret{
-    std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release()),
-    std::make_unique<rmm::device_buffer>(solution.get_dual_solution().release()),
-    std::make_unique<rmm::device_buffer>(solution.get_reduced_cost().release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().current_primal_solution_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().current_dual_solution_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().initial_primal_average_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().initial_dual_average_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().current_ATY_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().sum_primal_solutions_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().sum_dual_solutions_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().last_restart_duality_gap_primal_solution_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.release()),
+    cuopt::host_copy(solution.get_primal_solution()),
+    cuopt::host_copy(solution.get_dual_solution()),
+    cuopt::host_copy(solution.get_reduced_cost()),
+    cuopt::host_copy(solution.get_pdlp_warm_start_data().current_primal_solution_),
+    cuopt::host_copy(solution.get_pdlp_warm_start_data().current_dual_solution_),
+    cuopt::host_copy(solution.get_pdlp_warm_start_data().initial_primal_average_),
+    cuopt::host_copy(solution.get_pdlp_warm_start_data().initial_dual_average_),
+    cuopt::host_copy(solution.get_pdlp_warm_start_data().current_ATY_),
+    cuopt::host_copy(solution.get_pdlp_warm_start_data().sum_primal_solutions_),
+    cuopt::host_copy(solution.get_pdlp_warm_start_data().sum_dual_solutions_),
+    cuopt::host_copy(solution.get_pdlp_warm_start_data().last_restart_duality_gap_primal_solution_),
+    cuopt::host_copy(solution.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_),
     solution.get_pdlp_warm_start_data().initial_primal_weight_,
     solution.get_pdlp_warm_start_data().initial_step_size_,
     solution.get_pdlp_warm_start_data().total_pdlp_iterations_,
@@ -194,7 +187,9 @@ mip_ret_t call_solve_mip(
     error_type_t::ValidationError,
     "MIP solve cannot be called on an LP problem!");
   auto solution = cuopt::linear_programming::solve_mip(op_problem, solver_settings);
-  mip_ret_t mip_ret{std::make_unique<rmm::device_buffer>(solution.get_solution().release()),
+  
+  // Convert device vector to host vector for MILP solution
+  mip_ret_t mip_ret{cuopt::host_copy(solution.get_solution()),
                     solution.get_termination_status(),
                     solution.get_error_status().get_error_type(),
                     solution.get_error_status().what(),
