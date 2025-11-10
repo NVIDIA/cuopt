@@ -1,22 +1,13 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #include <dual_simplex/presolve.hpp>
 
+#include <dual_simplex/bounds_strengthening.hpp>
 #include <dual_simplex/folding.hpp>
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/solve.hpp>
@@ -576,7 +567,15 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
     convert_greater_to_less(user_problem, row_sense, problem, greater_rows, less_rows);
   }
 
-  // bounds strengthening was moved to node_presolve.hpp
+  constexpr bool run_bounds_strengthening = false;
+  if (run_bounds_strengthening) {
+    csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
+    problem.A.to_compressed_row(Arow);
+
+    // Empty var_types means that all variables are continuous
+    bounds_strengthening_t<i_t, f_t> bounds_strenghtening(problem, Arow, row_sense, {});
+    bounds_strenghtening.bounds_strengthening(problem.lower, problem.upper, settings);
+  }
 
   settings.log.debug(
     "equality rows %d less rows %d columns %d\n", equal_rows, less_rows, problem.num_cols);

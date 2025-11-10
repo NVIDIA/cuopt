@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #pragma once
 
@@ -29,16 +19,15 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 enum class node_status_t : int {
-  PENDING          = 0,  // Node still in the tree
+  PENDING          = 0,  // Node still in the tree, waiting to be solved
   INTEGER_FEASIBLE = 1,  // Node has an integer feasible solution
   INFEASIBLE       = 2,  // Node is infeasible
   FATHOMED         = 3,  // Node objective is greater than the upper bound
   HAS_CHILDREN     = 4,  // Node has children to explore
-  NUMERICAL        = 5,  // Encountered numerical issue when solving the LP relaxation
-  TIME_LIMIT       = 6   // Time out during the LP relaxation
+  NUMERICAL        = 5   // Encountered numerical issue when solving the LP relaxation
 };
 
-enum class rounding_direction_t { NONE = -1, DOWN = 0, UP = 1 };
+enum class rounding_direction_t : int8_t { NONE = -1, DOWN = 0, UP = 1 };
 
 bool inactive_status(node_status_t status);
 
@@ -110,7 +99,8 @@ class mip_node_t {
     assert(bounds_changed.size() > branch_var);
 
     // If the bounds have already been updated on another node,
-    // skip this node as it contains a less tight bounds.
+    // skip this node as it contains looser bounds, since we
+    // are traversing up the tree toward the root
     if (bounds_changed[branch_var]) { return; }
 
     // Apply the bounds at the current node

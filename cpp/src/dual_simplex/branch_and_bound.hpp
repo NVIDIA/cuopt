@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #pragma once
 
@@ -50,6 +40,15 @@ enum class mip_exploration_status_t {
   NUMERICAL  = 3,  // The solver encountered a numerical error
   RUNNING    = 4,  // The solver is currently exploring the tree
   COMPLETED  = 5,  // The solver finished exploring the tree
+};
+
+enum class node_children_status_t {
+  NO_CHILDREN         = 0,  // The node does not produced children
+  UP_CHILDREN_FIRST   = 1,  // The up child should be explored first
+  DOWN_CHILDREN_FIRST = 2,  // The down child should be explored first
+  TIME_LIMIT          = 3,  // The solver reached a time limit
+  ITERATION_LIMIT     = 4,  // The solver reached a iteration limit
+  NUMERICAL           = 5   // The solver encounter a numerical error when solving the node
 };
 
 // Indicate the search and variable selection algorithms used by the thread (See [1]).
@@ -130,7 +129,7 @@ class branch_and_bound_t {
     // This should only be used by the main thread
     f_t last_log                           = 0.0;
     omp_atomic_t<i_t> nodes_since_last_log = 0;
-  } stats_;
+  } exploration_stats_;
 
   // Mutex for repair
   omp_mutex_t mutex_repair_;
@@ -158,7 +157,7 @@ class branch_and_bound_t {
   i_t min_diving_queue_size_;
 
   // Global status of the solver.
-  omp_atomic_t<mip_exploration_status_t> status_;
+  omp_atomic_t<mip_exploration_status_t> solver_status_;
 
   // In case, a best-first thread encounters a numerical issue when solving a node,
   // its blocks the progression of the lower bound.
@@ -189,7 +188,7 @@ class branch_and_bound_t {
                        mip_node_t<i_t, f_t>* start_node,
                        search_tree_t<i_t, f_t>& search_tree,
                        lp_problem_t<i_t, f_t>& leaf_problem,
-                       bounds_strengthening_t<i_t, f_t>& presolver,
+                       bounds_strengthening_t<i_t, f_t>& node_presolver,
                        basis_update_mpf_t<i_t, f_t>& basis_update,
                        std::vector<i_t>& basic_list,
                        std::vector<i_t>& nonbasic_list);
@@ -205,22 +204,21 @@ class branch_and_bound_t {
   void diving_thread(const csr_matrix_t<i_t, f_t>& Arow);
 
   // Solve the LP relaxation of a leaf node and update the tree.
-  node_status_t solve_node(mip_node_t<i_t, f_t>* node_ptr,
-                           search_tree_t<i_t, f_t>& search_tree,
-                           lp_problem_t<i_t, f_t>& leaf_problem,
-                           basis_update_mpf_t<i_t, f_t>& ft,
-                           std::vector<i_t>& basic_list,
-                           std::vector<i_t>& nonbasic_list,
-                           bounds_strengthening_t<i_t, f_t>& presolver,
-                           thread_type_t thread_type,
-                           bool recompute,
-                           const std::vector<f_t>& root_lower,
-                           const std::vector<f_t>& root_upper,
-                           logger_t& log);
+  node_children_status_t solve_node(mip_node_t<i_t, f_t>* node_ptr,
+                                    search_tree_t<i_t, f_t>& search_tree,
+                                    lp_problem_t<i_t, f_t>& leaf_problem,
+                                    basis_update_mpf_t<i_t, f_t>& ft,
+                                    std::vector<i_t>& basic_list,
+                                    std::vector<i_t>& nonbasic_list,
+                                    bounds_strengthening_t<i_t, f_t>& node_presolver,
+                                    thread_type_t thread_type,
+                                    bool recompute,
+                                    const std::vector<f_t>& root_lower,
+                                    const std::vector<f_t>& root_upper,
+                                    logger_t& log);
 
   // Sort the children based on the Martin's criteria.
-  std::pair<mip_node_t<i_t, f_t>*, mip_node_t<i_t, f_t>*> child_selection(
-    mip_node_t<i_t, f_t>* node_ptr);
+  rounding_direction_t child_selection(mip_node_t<i_t, f_t>* node_ptr);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
