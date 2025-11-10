@@ -638,8 +638,10 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
       lp_status = convert_lp_status_to_dual_status(second_status);
     }
 
-    exploration_stats_.total_lp_solve_time += toc(lp_start_time);
-    exploration_stats_.total_lp_iters += node_iter;
+    if (thread_type == thread_type_t::EXPLORATION) {
+      exploration_stats_.total_lp_solve_time += toc(lp_start_time);
+      exploration_stats_.total_lp_iters += node_iter;
+    }
   }
 
   if (lp_status == dual::status_t::DUAL_UNBOUNDED) {
@@ -1069,7 +1071,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
                                                    start_node->upper,
                                                    log);
 
-        recompute_bounds = has_children(status);
+        recompute_bounds = !has_children(status);
 
         if (status == node_children_status_t::TIME_LIMIT) {
           solver_status_ = mip_exploration_status_t::TIME_LIMIT;
