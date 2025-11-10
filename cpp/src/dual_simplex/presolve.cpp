@@ -573,8 +573,8 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
     problem.A.to_compressed_row(Arow);
 
     // Empty var_types means that all variables are continuous
-    bounds_strengthening_t<i_t, f_t> bounds_strenghtening(problem, Arow, row_sense, {});
-    bounds_strenghtening.bounds_strengthening(problem.lower, problem.upper, settings);
+    bounds_strengthening_t<i_t, f_t> strengthening(problem, Arow, row_sense, {});
+    strengthening.bounds_strengthening(problem.lower, problem.upper, settings);
   }
 
   settings.log.debug(
