@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import json
 import logging
@@ -148,7 +136,6 @@ def is_uuid(cuopt_problem_data):
 
 
 def _mps_parse(LP_problem_data, solver_config):
-
     if isinstance(LP_problem_data, cuopt_mps_parser.parser_wrapper.DataModel):
         model = LP_problem_data
         log.debug("Received Mps parser DataModel object")
@@ -234,9 +221,9 @@ def create_lp_response(response_dict):
         else:
             status, solution_obj = create_solution_obj(solver_responses)
             response_dict["response"]["solver_response"]["status"] = status
-            response_dict["response"]["solver_response"][
-                "solution"
-            ] = solution_obj
+            response_dict["response"]["solver_response"]["solution"] = (
+                solution_obj
+            )
         return response_dict
     except Exception:
         return response_dict
@@ -361,17 +348,17 @@ class CuOptServiceSelfHostClient:
         # name is exported from kubernetes (for example) and the port is
         # inherent in the hostname
         if self.port:
-            self.request_url = f"{self.protocol}://{self.ip}:{self.port}/cuopt/request"  # noqa
-            self.log_url = f"{self.protocol}://{self.ip}:{self.port}/cuopt/log"
-            self.solution_url = f"{self.protocol}://{self.ip}:{self.port}/cuopt/solution"  # noqa
-        else:
             self.request_url = (
-                f"{self.protocol}://{self.ip}/cuopt/request"  # noqa
+                f"{self.protocol}://{self.ip}:{self.port}/cuopt/request"  # noqa
             )
-            self.log_url = f"{self.protocol}://{self.ip}/cuopt/log"
+            self.log_url = f"{self.protocol}://{self.ip}:{self.port}/cuopt/log"
             self.solution_url = (
-                f"{self.protocol}://{self.ip}/cuopt/solution"  # noqa
+                f"{self.protocol}://{self.ip}:{self.port}/cuopt/solution"  # noqa
             )
+        else:
+            self.request_url = f"{self.protocol}://{self.ip}/cuopt/request"  # noqa
+            self.log_url = f"{self.protocol}://{self.ip}/cuopt/log"
+            self.solution_url = f"{self.protocol}://{self.ip}/cuopt/solution"  # noqa
 
         self.polling_interval = polling_interval
         self.timeout = (
@@ -464,7 +451,6 @@ class CuOptServiceSelfHostClient:
     def _poll_request(
         self, response, delete, incumbent_callback=None, logging_callback=None
     ):
-
         log_t = None
         inc_t = None
         complete = False
