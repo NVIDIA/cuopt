@@ -25,7 +25,7 @@ from cudf.core.buffer import as_buffer
 
 from libcpp.utility cimport move
 
-from cuopt.utilities import col_from_buf
+from cuopt.utilities import series_from_buf
 
 import pyarrow as pa
 
@@ -103,8 +103,8 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
 
     x_pos = DeviceBuffer.c_from_unique_ptr(move(g_ret.d_x_pos_))
     y_pos = DeviceBuffer.c_from_unique_ptr(move(g_ret.d_y_pos_))
-    coordinates['x'] = col_from_buf(x_pos, pa.float32())
-    coordinates['y'] = col_from_buf(y_pos, pa.float32())
+    coordinates['x'] = series_from_buf(x_pos, pa.float32())
+    coordinates['y'] = series_from_buf(y_pos, pa.float32())
 
     matrices_buf = as_buffer(
         DeviceBuffer.c_from_unique_ptr(move(g_ret.d_matrices_))
@@ -130,12 +130,12 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
         move(g_ret.d_skip_first_trips_)
     )
 
-    vehicles["earliest_time"] = col_from_buf(vehicle_earliest, pa.int32())
-    vehicles["latest_time"] = col_from_buf(vehicle_latest, pa.int32())
-    vehicles["drop_return_trips"] = col_from_buf(
+    vehicles["earliest_time"] = series_from_buf(vehicle_earliest, pa.int32())
+    vehicles["latest_time"] = series_from_buf(vehicle_latest, pa.int32())
+    vehicles["drop_return_trips"] = series_from_buf(
         vehicle_drop_return_trips, pa.bool_()
     )
-    vehicles["skip_first_trips"] = col_from_buf(
+    vehicles["skip_first_trips"] = series_from_buf(
         vehicle_skip_first_trips, pa.bool_()
     )
 
@@ -172,8 +172,8 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
         move(g_ret.d_latest_time_)
     )
 
-    orders["earliest_time"] = col_from_buf(earliest_time, pa.int32())
-    orders["latest_time"] = col_from_buf(latest_time, pa.int32())
+    orders["earliest_time"] = series_from_buf(earliest_time, pa.int32())
+    orders["latest_time"] = series_from_buf(latest_time, pa.int32())
 
     demands_buf = as_buffer(
         DeviceBuffer.c_from_unique_ptr(move(g_ret.d_demands_))

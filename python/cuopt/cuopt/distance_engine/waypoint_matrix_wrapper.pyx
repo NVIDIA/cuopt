@@ -22,7 +22,7 @@ from numba import cuda
 import cudf
 from cudf.core.column_accessor import ColumnAccessor
 
-from cuopt.utilities import col_from_buf
+from cuopt.utilities import series_from_buf
 
 import pyarrow as pa
 
@@ -95,7 +95,7 @@ cdef class WaypointMatrix:
         )
         full_path = DeviceBuffer.c_from_unique_ptr(move(path_info.second))
 
-        route_df['sequence_offset'] = col_from_buf(
+        route_df['sequence_offset'] = series_from_buf(
             full_sequence_offset, pa.int32()
         )
         locations = route_df["location"].replace(
@@ -103,7 +103,7 @@ cdef class WaypointMatrix:
             value=target_locations.tolist()
         )
         route_df['location'] = locations
-        waypoint_seq = col_from_buf(full_path, pa.int32())
+        waypoint_seq = series_from_buf(full_path, pa.int32())
 
         def create_way_point_types(routes, waypoint_seq):
 

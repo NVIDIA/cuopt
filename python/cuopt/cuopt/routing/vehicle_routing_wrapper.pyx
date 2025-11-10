@@ -48,7 +48,7 @@ from numba import cuda
 
 import cudf
 
-from cuopt.utilities import col_from_buf
+from cuopt.utilities import series_from_buf
 
 
 class ErrorStatus(IntEnum):
@@ -792,17 +792,17 @@ def Solve(DataModel data_model, SolverSettings solver_settings):
         DeviceBuffer.c_from_unique_ptr(move(vr_ret.d_accepted_))
 
     route_df = cudf.DataFrame()
-    route_df['route'] = col_from_buf(route, pa.int32())
-    route_df['arrival_stamp'] = col_from_buf(arrival_stamp, pa.float64())
-    route_df['truck_id'] = col_from_buf(truck_id, pa.int32())
-    route_df['location'] = col_from_buf(route_locations, pa.int32())
-    route_df['type'] = col_from_buf(node_types, pa.int32())
+    route_df['route'] = series_from_buf(route, pa.int32())
+    route_df['arrival_stamp'] = series_from_buf(arrival_stamp, pa.float64())
+    route_df['truck_id'] = series_from_buf(truck_id, pa.int32())
+    route_df['location'] = series_from_buf(route_locations, pa.int32())
+    route_df['type'] = series_from_buf(node_types, pa.int32())
 
     unserviced_nodes = cudf.Series._from_column(
-        col_from_buf(unserviced_nodes, pa.int32())
+        series_from_buf(unserviced_nodes, pa.int32())
     )
     accepted = cudf.Series._from_column(
-        col_from_buf(accepted, pa.int32())
+        series_from_buf(accepted, pa.int32())
     )
 
     def get_type_from_int(type_in_int):
