@@ -53,7 +53,7 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
-void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t, f_t>& problem_)
+void problem_t<i_t, f_t>::op_problem_cstr_body(const gpu_optimization_problem_t<i_t, f_t>& problem_)
 {
   // Mark the problem as empty if the op_problem has an empty matrix.
   if (problem_.get_constraint_matrix_values().is_empty()) {
@@ -103,7 +103,7 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
 
 template <typename i_t, typename f_t>
 problem_t<i_t, f_t>::problem_t(
-  const optimization_problem_t<i_t, f_t>& problem_,
+  const gpu_optimization_problem_t<i_t, f_t>& problem_,
   const typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_)
   : original_problem_ptr(&problem_),
     handle_ptr(problem_.get_handle_ptr()),

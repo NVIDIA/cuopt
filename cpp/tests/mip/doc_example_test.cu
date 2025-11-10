@@ -105,18 +105,18 @@ void test_mps_file()
   // Expected objective value from documentation example is approximately 303.5
   EXPECT_NEAR(303.5, obj_val, 1.0);
 
-  // Test solution bounds
+  // Test solution bounds (solution is already on host)
   test_variable_bounds(problem, solution.get_solution(), settings);
 
-  // Get solution values
+  // Get solution values (already on host)
   const auto& sol_values = solution.get_solution();
   // x should be approximately 37 and integer
-  EXPECT_NEAR(37.0, sol_values.element(0, handle_.get_stream()), 0.1);
-  EXPECT_NEAR(std::round(sol_values.element(0, handle_.get_stream())),
-              sol_values.element(0, handle_.get_stream()),
+  EXPECT_NEAR(37.0, sol_values[0], 0.1);
+  EXPECT_NEAR(std::round(sol_values[0]),
+              sol_values[0],
               settings.tolerances.integrality_tolerance);  // Check x is integer
   // y should be approximately 39.5
-  EXPECT_NEAR(39.5, sol_values.element(1, handle_.get_stream()), 0.1);
+  EXPECT_NEAR(39.5, sol_values[1], 0.1);
 }
 
 TEST(docs, mixed_integer_linear_programming) { test_mps_file(); }
@@ -157,17 +157,17 @@ TEST(docs, user_problem_file)
   // Expected objective value from documentation example is approximately 303.5
   EXPECT_NEAR(303.5, obj_val, 1.0);
 
-  // Get solution values
+  // Get solution values (already on host)
   const auto& sol_values = solution.get_solution();
   // x should be approximately 37 and integer
   for (int i = 0; i < problem2.get_n_variables(); i++) {
     if (problem2.get_variable_names()[i] == "x") {
-      EXPECT_NEAR(37.0, sol_values.element(i, handle_.get_stream()), 0.1);
-      EXPECT_NEAR(std::round(sol_values.element(i, handle_.get_stream())),
-                  sol_values.element(i, handle_.get_stream()),
+      EXPECT_NEAR(37.0, sol_values[i], 0.1);
+      EXPECT_NEAR(std::round(sol_values[i]),
+                  sol_values[i],
                   settings.tolerances.integrality_tolerance);  // Check x is integer
     } else {                                                   // y should be approximately 39.5
-      EXPECT_NEAR(39.5, sol_values.element(i, handle_.get_stream()), 0.1);
+      EXPECT_NEAR(39.5, sol_values[i], 0.1);
     }
   }
 }

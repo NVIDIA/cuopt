@@ -84,7 +84,9 @@ class pdlp_solver_t {
   // Interface to let MIP set an initial solution
   // Users will keep on using the optimization_problem to provide an initial solution
   void set_initial_primal_solution(const rmm::device_uvector<f_t>& initial_primal_solution);
+  void set_initial_primal_solution(const std::vector<f_t>& initial_primal_solution);
   void set_initial_dual_solution(const rmm::device_uvector<f_t>& initial_dual_solution);
+  void set_initial_dual_solution(const std::vector<f_t>& initial_dual_solution);
   void set_initial_primal_weight(f_t initial_primal_weight);
   void set_initial_step_size(f_t initial_primal_weight);
   void set_initial_k(i_t initial_k);

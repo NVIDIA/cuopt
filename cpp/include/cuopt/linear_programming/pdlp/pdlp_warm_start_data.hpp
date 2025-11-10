@@ -29,18 +29,18 @@ struct pdlp_warm_start_data_view_t;
 // Holds everything necessary to warm start PDLP
 template <typename i_t, typename f_t>
 struct pdlp_warm_start_data_t {
-  rmm::device_uvector<f_t>
+  std::vector<f_t>
     current_primal_solution_;  // Can't just be pulled from solution object as we might return the
                                // average as solution while we want to continue on optimize on the
                                // current, no the average
-  rmm::device_uvector<f_t> current_dual_solution_;   // Same as above
-  rmm::device_uvector<f_t> initial_primal_average_;  // Same as above but if current is returned
-  rmm::device_uvector<f_t> initial_dual_average_;    // Same as above
-  rmm::device_uvector<f_t> current_ATY_;
-  rmm::device_uvector<f_t> sum_primal_solutions_;
-  rmm::device_uvector<f_t> sum_dual_solutions_;
-  rmm::device_uvector<f_t> last_restart_duality_gap_primal_solution_;
-  rmm::device_uvector<f_t> last_restart_duality_gap_dual_solution_;
+  std::vector<f_t> current_dual_solution_;   // Same as above
+  std::vector<f_t> initial_primal_average_;  // Same as above but if current is returned
+  std::vector<f_t> initial_dual_average_;    // Same as above
+  std::vector<f_t> current_ATY_;
+  std::vector<f_t> sum_primal_solutions_;
+  std::vector<f_t> sum_dual_solutions_;
+  std::vector<f_t> last_restart_duality_gap_primal_solution_;
+  std::vector<f_t> last_restart_duality_gap_dual_solution_;
   f_t initial_primal_weight_{-1};
   f_t initial_step_size_{-1};
   i_t total_pdlp_iterations_{-1};
@@ -51,15 +51,15 @@ struct pdlp_warm_start_data_t {
   i_t iterations_since_last_restart_{-1};
 
   // Constructor when building it in the solution object
-  pdlp_warm_start_data_t(rmm::device_uvector<f_t>& current_primal_solution,
-                         rmm::device_uvector<f_t>& current_dual_solution,
-                         rmm::device_uvector<f_t>& initial_primal_average,
-                         rmm::device_uvector<f_t>& initial_dual_average,
-                         rmm::device_uvector<f_t>& current_ATY,
-                         rmm::device_uvector<f_t>& sum_primal_solutions,
-                         rmm::device_uvector<f_t>& sum_dual_solutions,
-                         rmm::device_uvector<f_t>& last_restart_duality_gap_primal_solution,
-                         rmm::device_uvector<f_t>& last_restart_duality_gap_dual_solution,
+  pdlp_warm_start_data_t(std::vector<f_t> current_primal_solution,
+                         std::vector<f_t> current_dual_solution,
+                         std::vector<f_t> initial_primal_average,
+                         std::vector<f_t> initial_dual_average,
+                         std::vector<f_t> current_ATY,
+                         std::vector<f_t> sum_primal_solutions,
+                         std::vector<f_t> sum_dual_solutions,
+                         std::vector<f_t> last_restart_duality_gap_primal_solution,
+                         std::vector<f_t> last_restart_duality_gap_dual_solution,
                          f_t initial_primal_weight,
                          f_t initial_step_size,
                          i_t total_pdlp_iterations,
@@ -73,12 +73,10 @@ struct pdlp_warm_start_data_t {
   pdlp_warm_start_data_t();
 
   // Copy constructor using the view version for the cython_solver
-  pdlp_warm_start_data_t(const pdlp_warm_start_data_view_t<i_t, f_t>& other,
-                         rmm::cuda_stream_view stream_view);
+  pdlp_warm_start_data_t(const pdlp_warm_start_data_view_t<i_t, f_t>& other);
 
   // Copy constructor for when copying the solver_settings object in the PDLP object
-  pdlp_warm_start_data_t(const pdlp_warm_start_data_t<i_t, f_t>& other,
-                         rmm::cuda_stream_view stream_view);
+  pdlp_warm_start_data_t(const pdlp_warm_start_data_t<i_t, f_t>& other);
 
  private:
   // Check sizes through assertion

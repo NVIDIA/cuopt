@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/gpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 
 namespace cuopt::linear_programming::detail {
@@ -26,8 +27,8 @@ class third_party_presolve_t {
  public:
   third_party_presolve_t() = default;
 
-  std::pair<optimization_problem_t<i_t, f_t>, bool> apply(
-    optimization_problem_t<i_t, f_t> const& op_problem,
+  std::pair<gpu_optimization_problem_t<i_t, f_t>, bool> apply(
+    gpu_optimization_problem_t<i_t, f_t> const& op_problem,
     problem_category_t category,
     bool dual_postsolve,
     f_t absolute_tolerance,

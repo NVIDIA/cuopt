@@ -127,7 +127,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     initial_primal_{0, stream_view_},
     initial_dual_{0, stream_view_},
 
-    best_primal_solution_so_far{pdlp_termination_status_t::TimeLimit, stream_view_},
+    best_primal_solution_so_far{pdlp_termination_status_t::TimeLimit},
     inside_mip_{false}
 {
   if (settings.has_initial_primal_solution()) {
@@ -254,8 +254,28 @@ void pdlp_solver_t<i_t, f_t>::set_initial_primal_solution(
 }
 
 template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::set_initial_primal_solution(
+  const std::vector<f_t>& initial_primal_solution)
+{
+  initial_primal_.resize(initial_primal_solution.size(), stream_view_);
+  raft::copy(initial_primal_.data(),
+             initial_primal_solution.data(),
+             initial_primal_solution.size(),
+             stream_view_);
+}
+
+template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::set_initial_dual_solution(
   const rmm::device_uvector<f_t>& initial_dual_solution)
+{
+  initial_dual_.resize(initial_dual_solution.size(), stream_view_);
+  raft::copy(
+    initial_dual_.data(), initial_dual_solution.data(), initial_dual_solution.size(), stream_view_);
+}
+
+template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::set_initial_dual_solution(
+  const std::vector<f_t>& initial_dual_solution)
 {
   initial_dual_.resize(initial_dual_solution.size(), stream_view_);
   raft::copy(
@@ -482,16 +502,39 @@ void pdlp_solver_t<i_t, f_t>::record_best_primal_so_far(
 template <typename i_t, typename f_t>
 pdlp_warm_start_data_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::get_filled_warmed_start_data()
 {
+  // Convert device vectors to host for warm start data
+  auto device_to_host = [this](const rmm::device_uvector<f_t>& device_vec) {
+    std::vector<f_t> host_vec(device_vec.size());
+    raft::copy(host_vec.data(), device_vec.data(), device_vec.size(), stream_view_);
+    return host_vec;
+  };
+
+  auto host_primal     = device_to_host(pdhg_solver_.get_primal_solution());
+  auto host_dual       = device_to_host(pdhg_solver_.get_dual_solution());
+  auto host_primal_avg = device_to_host(unscaled_primal_avg_solution_);
+  auto host_dual_avg   = device_to_host(unscaled_dual_avg_solution_);
+  auto host_AtY        = device_to_host(pdhg_solver_.get_saddle_point_state().get_current_AtY());
+  auto host_sum_primal =
+    device_to_host(restart_strategy_.weighted_average_solution_.sum_primal_solutions_);
+  auto host_sum_dual =
+    device_to_host(restart_strategy_.weighted_average_solution_.sum_dual_solutions_);
+  auto host_restart_primal =
+    device_to_host(restart_strategy_.last_restart_duality_gap_.primal_solution_);
+  auto host_restart_dual =
+    device_to_host(restart_strategy_.last_restart_duality_gap_.dual_solution_);
+
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+
   return pdlp_warm_start_data_t<i_t, f_t>(
-    pdhg_solver_.get_primal_solution(),
-    pdhg_solver_.get_dual_solution(),
-    unscaled_primal_avg_solution_,
-    unscaled_dual_avg_solution_,
-    pdhg_solver_.get_saddle_point_state().get_current_AtY(),
-    restart_strategy_.weighted_average_solution_.sum_primal_solutions_,
-    restart_strategy_.weighted_average_solution_.sum_dual_solutions_,
-    restart_strategy_.last_restart_duality_gap_.primal_solution_,
-    restart_strategy_.last_restart_duality_gap_.dual_solution_,
+    std::move(host_primal),
+    std::move(host_dual),
+    std::move(host_primal_avg),
+    std::move(host_dual_avg),
+    std::move(host_AtY),
+    std::move(host_sum_primal),
+    std::move(host_sum_dual),
+    std::move(host_restart_primal),
+    std::move(host_restart_dual),
     get_primal_weight_h(),
     get_step_size_h(),
     total_pdlp_iterations_,
@@ -822,8 +865,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
 #endif
     print_final_termination_criteria(
       timer, current_termination_strategy_.get_convergence_information(), termination_current);
-    return optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::NumericalError,
-                                                     stream_view_};
+    return optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::NumericalError};
   }
 
   // If not infeasible and not pdlp_termination_status_t::Optimal and no error, record best so far
@@ -1339,8 +1381,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     if (pdlp_hyper_params::never_restart_to_average)
       restart_strategy_.increment_iteration_since_last_restart();
   }
-  return optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::NumericalError,
-                                                   stream_view_};
+  return optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::NumericalError};
 }
 
 template <typename i_t, typename f_t>

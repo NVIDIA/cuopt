@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/gpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 
 #include <thrust/sequence.h>
@@ -32,7 +33,7 @@ class problem_t;
 template <typename i_t, typename f_t>
 class presolve_data_t {
  public:
-  presolve_data_t(const optimization_problem_t<i_t, f_t>& problem, rmm::cuda_stream_view stream)
+  presolve_data_t(const gpu_optimization_problem_t<i_t, f_t>& problem, rmm::cuda_stream_view stream)
     : variable_offsets(problem.get_n_variables(), 0),
       additional_var_used(problem.get_n_variables(), false),
       additional_var_id_per_var(problem.get_n_variables(), -1),

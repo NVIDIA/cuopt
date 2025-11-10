@@ -24,6 +24,35 @@
 
 namespace cuopt::linear_programming::test {
 
+// Overload for host-based solutions
+static void test_variable_bounds(
+  const cuopt::mps_parser::mps_data_model_t<int, double>& problem,
+  const std::vector<double>& solution,
+  const cuopt::linear_programming::mip_solver_settings_t<int, double> settings)
+{
+  const double* lower_bound_ptr = problem.get_variable_lower_bounds().data();
+  const double* upper_bound_ptr = problem.get_variable_upper_bounds().data();
+  const double* assignment_ptr  = solution.data();
+  cuopt_assert(solution.size() == problem.get_variable_lower_bounds().size(), "");
+  cuopt_assert(solution.size() == problem.get_variable_upper_bounds().size(), "");
+  std::vector<int> indices(solution.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  bool result = std::all_of(indices.begin(), indices.end(), [=](int idx) {
+    bool res = true;
+    if (lower_bound_ptr != nullptr) {
+      res = res && (assignment_ptr[idx] >=
+                    lower_bound_ptr[idx] - settings.tolerances.integrality_tolerance);
+    }
+    if (upper_bound_ptr != nullptr) {
+      res = res && (assignment_ptr[idx] <=
+                    upper_bound_ptr[idx] + settings.tolerances.integrality_tolerance);
+    }
+    return res;
+  });
+  EXPECT_TRUE(result);
+}
+
+// Overload for device-based solutions
 static void test_variable_bounds(
   const cuopt::mps_parser::mps_data_model_t<int, double>& problem,
   const rmm::device_uvector<double>& solution,
@@ -31,7 +60,7 @@ static void test_variable_bounds(
 {
   const double* lower_bound_ptr = problem.get_variable_lower_bounds().data();
   const double* upper_bound_ptr = problem.get_variable_upper_bounds().data();
-  auto host_assignment          = cuopt::host_copy(solution);
+  auto host_assignment          = cuopt::host_copy(solution, rmm::cuda_stream_view{});
   double* assignment_ptr        = host_assignment.data();
   cuopt_assert(host_assignment.size() == problem.get_variable_lower_bounds().size(), "");
   cuopt_assert(host_assignment.size() == problem.get_variable_upper_bounds().size(), "");
@@ -76,9 +105,38 @@ struct violation {
   }
 };
 
+// Forward declaration
+static void test_constraint_sanity_per_row_impl(
+  const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
+  const std::vector<double>& solution,
+  double abs_tolerance,
+  double rel_tolerance);
+
+// Overload for host vectors (std::vector)
 static void test_constraint_sanity_per_row(
   const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
-  const rmm::device_uvector<double>& solution,
+  const std::vector<double>& solution,
+  double abs_tolerance,
+  double rel_tolerance)
+{
+  test_constraint_sanity_per_row_impl(op_problem, solution, abs_tolerance, rel_tolerance);
+}
+
+// Overload for device vectors (device_uvector) - converts to host then calls impl
+static void test_constraint_sanity_per_row(
+  const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
+  const rmm::device_uvector<double>& device_solution,
+  double abs_tolerance,
+  double rel_tolerance)
+{
+  auto solution = cuopt::host_copy(device_solution, rmm::cuda_stream_view{});
+  test_constraint_sanity_per_row_impl(op_problem, solution, abs_tolerance, rel_tolerance);
+}
+
+// Implementation that works with host vectors
+static void test_constraint_sanity_per_row_impl(
+  const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
+  const std::vector<double>& solution,
   double abs_tolerance,
   double rel_tolerance)
 {
@@ -91,7 +149,8 @@ static void test_constraint_sanity_per_row(
   const std::vector<double>& variable_upper_bounds   = op_problem.get_variable_upper_bounds();
   std::vector<double> residual(constraint_lower_bounds.size(), 0.0);
   std::vector<double> viol(constraint_lower_bounds.size(), 0.0);
-  auto h_solution = cuopt::host_copy(solution);
+  // Solution is already on host
+  const std::vector<double>& h_solution = solution;
   // CSR SpMV
   for (size_t i = 0; i < offsets.size() - 1; ++i) {
     for (int j = offsets[i]; j < offsets[i + 1]; ++j) {

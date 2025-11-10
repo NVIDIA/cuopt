@@ -330,6 +330,17 @@ void print_solution(const raft::handle_t* handle_ptr, const rmm::device_uvector<
   CUOPT_LOG_DEBUG("%s]", log_str.c_str());
 }
 
+// Overload for host solution
+template <typename f_t>
+void print_solution(const raft::handle_t* handle_ptr, const std::vector<f_t>& solution)
+{
+  std::string log_str{"sol: ["};
+  for (int i = 0; i < (int)solution.size(); i++) {
+    log_str.append(std::to_string(solution[i]) + ", ");
+  }
+  CUOPT_LOG_DEBUG("%s]", log_str.c_str());
+}
+
 template <typename f_t>
 bool has_nans(const raft::handle_t* handle_ptr, const rmm::device_uvector<f_t>& vec)
 {

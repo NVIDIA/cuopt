@@ -95,7 +95,7 @@ data_model_to_optimization_problem(
         .last_restart_duality_gap_dual_solution_.data() != nullptr) {
     // Moved inside
     cuopt::linear_programming::pdlp_warm_start_data_t<int, double> pdlp_warm_start_data(
-      solver_settings->get_pdlp_warm_start_data_view(), handle_ptr->get_stream());
+      solver_settings->get_pdlp_warm_start_data_view());
     solver_settings->get_pdlp_settings().set_pdlp_warm_start_data(pdlp_warm_start_data);
   }
 
@@ -141,36 +141,43 @@ linear_programming_ret_t call_solve_lp(
   const bool use_pdlp_solver_mode = true;
   auto solution                   = cuopt::linear_programming::solve_lp(
     op_problem, solver_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+
+  // Convert host vectors (std::vector) to device buffers for Cython interface
+  rmm::cuda_stream_view stream = op_problem.get_handle_ptr()->get_stream();
+  const auto& ws               = solution.get_pdlp_warm_start_data();
+
   linear_programming_ret_t lp_ret{
-    std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release()),
-    std::make_unique<rmm::device_buffer>(solution.get_dual_solution().release()),
-    std::make_unique<rmm::device_buffer>(solution.get_reduced_cost().release()),
     std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().current_primal_solution_.release()),
+      cuopt::device_copy(solution.get_primal_solution(), stream).release()),
     std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().current_dual_solution_.release()),
+      cuopt::device_copy(solution.get_dual_solution(), stream).release()),
     std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().initial_primal_average_.release()),
+      cuopt::device_copy(solution.get_reduced_cost(), stream).release()),
     std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().initial_dual_average_.release()),
+      cuopt::device_copy(ws.current_primal_solution_, stream).release()),
     std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().current_ATY_.release()),
+      cuopt::device_copy(ws.current_dual_solution_, stream).release()),
     std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().sum_primal_solutions_.release()),
+      cuopt::device_copy(ws.initial_primal_average_, stream).release()),
     std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().sum_dual_solutions_.release()),
+      cuopt::device_copy(ws.initial_dual_average_, stream).release()),
+    std::make_unique<rmm::device_buffer>(cuopt::device_copy(ws.current_ATY_, stream).release()),
     std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().last_restart_duality_gap_primal_solution_.release()),
+      cuopt::device_copy(ws.sum_primal_solutions_, stream).release()),
     std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.release()),
-    solution.get_pdlp_warm_start_data().initial_primal_weight_,
-    solution.get_pdlp_warm_start_data().initial_step_size_,
-    solution.get_pdlp_warm_start_data().total_pdlp_iterations_,
-    solution.get_pdlp_warm_start_data().total_pdhg_iterations_,
-    solution.get_pdlp_warm_start_data().last_candidate_kkt_score_,
-    solution.get_pdlp_warm_start_data().last_restart_kkt_score_,
-    solution.get_pdlp_warm_start_data().sum_solution_weight_,
-    solution.get_pdlp_warm_start_data().iterations_since_last_restart_,
+      cuopt::device_copy(ws.sum_dual_solutions_, stream).release()),
+    std::make_unique<rmm::device_buffer>(
+      cuopt::device_copy(ws.last_restart_duality_gap_primal_solution_, stream).release()),
+    std::make_unique<rmm::device_buffer>(
+      cuopt::device_copy(ws.last_restart_duality_gap_dual_solution_, stream).release()),
+    ws.initial_primal_weight_,
+    ws.initial_step_size_,
+    ws.total_pdlp_iterations_,
+    ws.total_pdhg_iterations_,
+    ws.last_candidate_kkt_score_,
+    ws.last_restart_kkt_score_,
+    ws.sum_solution_weight_,
+    ws.iterations_since_last_restart_,
     solution.get_termination_status(),
     solution.get_error_status().get_error_type(),
     solution.get_error_status().what(),
@@ -204,7 +211,12 @@ mip_ret_t call_solve_mip(
     error_type_t::ValidationError,
     "MIP solve cannot be called on an LP problem!");
   auto solution = cuopt::linear_programming::solve_mip(op_problem, solver_settings);
-  mip_ret_t mip_ret{std::make_unique<rmm::device_buffer>(solution.get_solution().release()),
+
+  // Convert host vector (std::vector) to device buffer for Cython interface
+  rmm::cuda_stream_view stream = op_problem.get_handle_ptr()->get_stream();
+
+  mip_ret_t mip_ret{std::make_unique<rmm::device_buffer>(
+                      cuopt::device_copy(solution.get_solution(), stream).release()),
                     solution.get_termination_status(),
                     solution.get_error_status().get_error_type(),
                     solution.get_error_status().what(),

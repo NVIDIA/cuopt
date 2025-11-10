@@ -32,7 +32,7 @@ namespace cuopt::linear_programming {
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_csr_representation(
-  const optimization_problem_t<i_t, f_t>& op_problem)
+  const gpu_optimization_problem_t<i_t, f_t>& op_problem)
 {
   cuopt_expects(op_problem.get_constraint_matrix_indices().size() ==
                   op_problem.get_constraint_matrix_values().size(),
@@ -40,10 +40,11 @@ void problem_checking_t<i_t, f_t>::check_csr_representation(
                 "A_index and A_values must have same sizes.");
 
   // Check offset values
-  const i_t first_value = op_problem.get_constraint_matrix_offsets().front_element(
-    op_problem.get_handle_ptr()->get_stream());
-  cuopt_expects(
-    first_value == 0, error_type_t::ValidationError, "A_offsets first value should be 0.");
+  const auto& offsets   = op_problem.get_constraint_matrix_offsets();
+  const i_t first_value = offsets.front_element(op_problem.get_handle_ptr()->get_stream());
+  cuopt_expects(!offsets.is_empty() && first_value == 0,
+                error_type_t::ValidationError,
+                "A_offsets first value should be 0.");
 
   cuopt_expects(thrust::is_sorted(op_problem.get_handle_ptr()->get_thrust_policy(),
                                   op_problem.get_constraint_matrix_offsets().cbegin(),
@@ -64,7 +65,7 @@ void problem_checking_t<i_t, f_t>::check_csr_representation(
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_initial_primal_representation(
-  const optimization_problem_t<i_t, f_t>& op_problem,
+  const gpu_optimization_problem_t<i_t, f_t>& op_problem,
   const rmm::device_uvector<f_t>& primal_initial_solution)
 {
   // Inital solution check if set
@@ -93,7 +94,7 @@ void problem_checking_t<i_t, f_t>::check_initial_primal_representation(
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_initial_dual_representation(
-  const optimization_problem_t<i_t, f_t>& op_problem,
+  const gpu_optimization_problem_t<i_t, f_t>& op_problem,
   const rmm::device_uvector<f_t>& dual_initial_solution)
 {
   if (!dual_initial_solution.is_empty()) {
@@ -112,7 +113,7 @@ void problem_checking_t<i_t, f_t>::check_initial_dual_representation(
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_initial_solution_representation(
-  const optimization_problem_t<i_t, f_t>& op_problem,
+  const gpu_optimization_problem_t<i_t, f_t>& op_problem,
   const pdlp_solver_settings_t<i_t, f_t>& settings)
 {
   if (settings.initial_primal_solution_.get() != nullptr) {
@@ -125,7 +126,7 @@ void problem_checking_t<i_t, f_t>::check_initial_solution_representation(
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_initial_solution_representation(
-  const optimization_problem_t<i_t, f_t>& op_problem,
+  const gpu_optimization_problem_t<i_t, f_t>& op_problem,
   const mip_solver_settings_t<i_t, f_t>& settings)
 {
   for (const auto& initial_solution : settings.initial_solutions) {
@@ -135,7 +136,7 @@ void problem_checking_t<i_t, f_t>::check_initial_solution_representation(
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_problem_representation(
-  const optimization_problem_t<i_t, f_t>& op_problem)
+  const gpu_optimization_problem_t<i_t, f_t>& op_problem)
 {
   bool empty_problem = op_problem.get_constraint_matrix_values().is_empty();
 
@@ -324,7 +325,7 @@ void problem_checking_t<i_t, f_t>::check_unscaled_solution(
 
 template <typename i_t, typename f_t>
 bool problem_checking_t<i_t, f_t>::has_crossing_bounds(
-  const optimization_problem_t<i_t, f_t>& op_problem)
+  const gpu_optimization_problem_t<i_t, f_t>& op_problem)
 {
   // Check if all variable bounds are valid (upper >= lower)
   bool all_variable_bounds_valid = thrust::all_of(

@@ -631,7 +631,16 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
     auto term_reason =
       not_optimal ? mip_termination_status_t::FeasibleFound : mip_termination_status_t::Optimal;
     if (is_problem_fully_reduced) { term_reason = mip_termination_status_t::Optimal; }
-    return mip_solution_t<i_t, f_t>(std::move(assignment),
+
+    // Convert device solution to host memory
+    std::vector<f_t> host_assignment(assignment.size());
+    raft::copy(host_assignment.data(),
+               assignment.data(),
+               assignment.size(),
+               handle_ptr->get_stream().value());
+    handle_ptr->sync_stream();
+
+    return mip_solution_t<i_t, f_t>(std::move(host_assignment),
                                     problem_ptr->var_names,
                                     h_user_obj,
                                     rel_mip_gap,
@@ -643,8 +652,7 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
   } else {
     return mip_solution_t<i_t, f_t>{is_problem_fully_reduced ? mip_termination_status_t::Infeasible
                                                              : mip_termination_status_t::TimeLimit,
-                                    stats,
-                                    handle_ptr->get_stream()};
+                                    stats};
   }
 }
 

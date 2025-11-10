@@ -330,30 +330,40 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
 
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
+  // Convert device vectors to host for solution construction
+  std::vector<f_t> host_primal(primal_iterate.size());
+  std::vector<f_t> host_dual(dual_iterate.size());
+  std::vector<f_t> host_rc(convergence_information_.get_reduced_cost().size());
+
+  raft::copy(host_primal.data(), primal_iterate.data(), primal_iterate.size(), stream_view_);
+  raft::copy(host_dual.data(), dual_iterate.data(), dual_iterate.size(), stream_view_);
+  raft::copy(host_rc.data(),
+             convergence_information_.get_reduced_cost().data(),
+             convergence_information_.get_reduced_cost().size(),
+             stream_view_);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+
   if (deep_copy) {
-    optimization_problem_solution_t<i_t, f_t> op_solution{
-      primal_iterate,
-      dual_iterate,
-      convergence_information_.get_reduced_cost(),
-      problem_ptr->objective_name,
-      problem_ptr->var_names,
-      problem_ptr->row_names,
-      term_stats,
-      termination_status,
-      handle_ptr_,
-      deep_copy};
+    optimization_problem_solution_t<i_t, f_t> op_solution{host_primal,
+                                                          host_dual,
+                                                          host_rc,
+                                                          problem_ptr->objective_name,
+                                                          problem_ptr->var_names,
+                                                          problem_ptr->row_names,
+                                                          term_stats,
+                                                          termination_status,
+                                                          deep_copy};
     return op_solution;
   } else {
-    optimization_problem_solution_t<i_t, f_t> op_solution{
-      primal_iterate,
-      dual_iterate,
-      convergence_information_.get_reduced_cost(),
-      warm_start_data,
-      problem_ptr->objective_name,
-      problem_ptr->var_names,
-      problem_ptr->row_names,
-      term_stats,
-      termination_status};
+    optimization_problem_solution_t<i_t, f_t> op_solution{std::move(host_primal),
+                                                          std::move(host_dual),
+                                                          std::move(host_rc),
+                                                          warm_start_data,
+                                                          problem_ptr->objective_name,
+                                                          problem_ptr->var_names,
+                                                          problem_ptr->row_names,
+                                                          term_stats,
+                                                          termination_status};
     return op_solution;
   }
 }

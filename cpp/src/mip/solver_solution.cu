@@ -28,7 +28,7 @@
 namespace cuopt::linear_programming {
 
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t>::mip_solution_t(rmm::device_uvector<f_t> solution,
+mip_solution_t<i_t, f_t>::mip_solution_t(std::vector<f_t> solution,
                                          std::vector<std::string> var_names,
                                          f_t objective,
                                          f_t mip_gap,
@@ -37,7 +37,7 @@ mip_solution_t<i_t, f_t>::mip_solution_t(rmm::device_uvector<f_t> solution,
                                          f_t max_int_violation,
                                          f_t max_variable_bound_violation,
                                          solver_stats_t<i_t, f_t> stats,
-                                         std::vector<rmm::device_uvector<f_t>> solution_pool)
+                                         std::vector<std::vector<f_t>> solution_pool)
   : solution_(std::move(solution)),
     var_names_(std::move(var_names)),
     objective_(objective),
@@ -54,9 +54,8 @@ mip_solution_t<i_t, f_t>::mip_solution_t(rmm::device_uvector<f_t> solution,
 
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t>::mip_solution_t(mip_termination_status_t termination_status,
-                                         solver_stats_t<i_t, f_t> stats,
-                                         rmm::cuda_stream_view stream_view)
-  : solution_(0, stream_view),
+                                         solver_stats_t<i_t, f_t> stats)
+  : solution_(),
     objective_(0),
     mip_gap_(0),
     termination_status_(termination_status),
@@ -69,9 +68,8 @@ mip_solution_t<i_t, f_t>::mip_solution_t(mip_termination_status_t termination_st
 }
 
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t>::mip_solution_t(const cuopt::logic_error& error_status,
-                                         rmm::cuda_stream_view stream_view)
-  : solution_(0, stream_view),
+mip_solution_t<i_t, f_t>::mip_solution_t(const cuopt::logic_error& error_status)
+  : solution_(),
     objective_(0),
     mip_gap_(0),
     termination_status_(mip_termination_status_t::NoTermination),
@@ -89,13 +87,13 @@ const cuopt::logic_error& mip_solution_t<i_t, f_t>::get_error_status() const
 }
 
 template <typename i_t, typename f_t>
-const rmm::device_uvector<f_t>& mip_solution_t<i_t, f_t>::get_solution() const
+const std::vector<f_t>& mip_solution_t<i_t, f_t>::get_solution() const
 {
   return solution_;
 }
 
 template <typename i_t, typename f_t>
-rmm::device_uvector<f_t>& mip_solution_t<i_t, f_t>::get_solution()
+std::vector<f_t>& mip_solution_t<i_t, f_t>::get_solution()
 {
   return solution_;
 }
@@ -202,14 +200,13 @@ const std::vector<std::string>& mip_solution_t<i_t, f_t>::get_variable_names() c
 }
 
 template <typename i_t, typename f_t>
-const std::vector<rmm::device_uvector<f_t>>& mip_solution_t<i_t, f_t>::get_solution_pool() const
+const std::vector<std::vector<f_t>>& mip_solution_t<i_t, f_t>::get_solution_pool() const
 {
   return solution_pool_;
 }
 
 template <typename i_t, typename f_t>
-void mip_solution_t<i_t, f_t>::write_to_sol_file(std::string_view filename,
-                                                 rmm::cuda_stream_view stream_view) const
+void mip_solution_t<i_t, f_t>::write_to_sol_file(std::string_view filename) const
 {
   std::string status = get_termination_status_string();
   // Override for no termination
@@ -220,13 +217,9 @@ void mip_solution_t<i_t, f_t>::write_to_sol_file(std::string_view filename,
 
   double objective_value = get_objective_value();
   auto& var_names        = get_variable_names();
-  std::vector<f_t> solution;
-  solution.resize(solution_.size());
-  raft::copy(solution.data(), solution_.data(), solution_.size(), stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
-
+  // Solution is already on host, no need to copy
   solution_writer_t::write_solution_to_sol_file(
-    std::string(filename), status, objective_value, var_names, solution);
+    std::string(filename), status, objective_value, var_names, solution_);
 }
 
 template <typename i_t, typename f_t>

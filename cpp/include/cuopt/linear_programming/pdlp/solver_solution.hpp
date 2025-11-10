@@ -108,10 +108,8 @@ class optimization_problem_solution_t : public base_solution_t {
    *
    * @param[in] termination_status_ Reason for termination. Possible values are : 'NumericalError'
    * 'Optimal', 'PrimalInfeasible', 'DualInfeasible', 'TimeLimit'
-   * @param[in] stream_view An rmm view to a stream. All computations will go through this stream
    */
-  optimization_problem_solution_t(pdlp_termination_status_t termination_status_,
-                                  rmm::cuda_stream_view stream_view);
+  optimization_problem_solution_t(pdlp_termination_status_t termination_status_);
 
   /**
    * @brief Construct an optimization problem solution that serves as PDLP solver output
@@ -119,10 +117,8 @@ class optimization_problem_solution_t : public base_solution_t {
    *
    * @param[in] error_status_ The error object, containing info about what went wrong
    * 'Optimal', 'PrimalInfeasible', 'DualInfeasible', 'TimeLimit'
-   * @param[in] stream_view An rmm view to a stream. All computations will go through this stream
    */
-  optimization_problem_solution_t(cuopt::logic_error error_status_,
-                                  rmm::cuda_stream_view stream_view);
+  optimization_problem_solution_t(cuopt::logic_error error_status_);
   /**
    * @brief Construct an optimization problem solution that serves as PDLP solver output
    *
@@ -135,23 +131,23 @@ class optimization_problem_solution_t : public base_solution_t {
    * @param[in] termination_stats The termination statistics
    * @param[in] termination_status_ The termination reason
    */
-  optimization_problem_solution_t(rmm::device_uvector<f_t>& final_primal_solution,
-                                  rmm::device_uvector<f_t>& final_dual_solution,
-                                  rmm::device_uvector<f_t>& final_reduced_cost,
-                                  pdlp_warm_start_data_t<i_t, f_t>& warm_start_data,
+  optimization_problem_solution_t(std::vector<f_t> final_primal_solution,
+                                  std::vector<f_t> final_dual_solution,
+                                  std::vector<f_t> final_reduced_cost,
+                                  pdlp_warm_start_data_t<i_t, f_t> warm_start_data,
                                   const std::string objective_name,
                                   const std::vector<std::string>& var_names,
                                   const std::vector<std::string>& row_names,
-                                  additional_termination_information_t& termination_stats,
+                                  additional_termination_information_t termination_stats,
                                   pdlp_termination_status_t termination_status_);
 
-  optimization_problem_solution_t(rmm::device_uvector<f_t>& final_primal_solution,
-                                  rmm::device_uvector<f_t>& final_dual_solution,
-                                  rmm::device_uvector<f_t>& final_reduced_cost,
+  optimization_problem_solution_t(std::vector<f_t> final_primal_solution,
+                                  std::vector<f_t> final_dual_solution,
+                                  std::vector<f_t> final_reduced_cost,
                                   const std::string objective_name,
                                   const std::vector<std::string>& var_names,
                                   const std::vector<std::string>& row_names,
-                                  additional_termination_information_t& termination_stats,
+                                  additional_termination_information_t termination_stats,
                                   pdlp_termination_status_t termination_status_);
 
   /**
@@ -167,15 +163,14 @@ class optimization_problem_solution_t : public base_solution_t {
    * @param[in] termination_stats The termination statistics
    * @param[in] termination_status_ The termination reason
    */
-  optimization_problem_solution_t(rmm::device_uvector<f_t>& final_primal_solution,
-                                  rmm::device_uvector<f_t>& final_dual_solution,
-                                  rmm::device_uvector<f_t>& final_reduced_cost,
+  optimization_problem_solution_t(const std::vector<f_t>& final_primal_solution,
+                                  const std::vector<f_t>& final_dual_solution,
+                                  const std::vector<f_t>& final_reduced_cost,
                                   const std::string objective_name,
                                   const std::vector<std::string>& var_names,
                                   const std::vector<std::string>& row_names,
-                                  additional_termination_information_t& termination_stats,
+                                  additional_termination_information_t termination_stats,
                                   pdlp_termination_status_t termination_status,
-                                  const raft::handle_t* handler_ptr,
                                   bool deep_copy);
 
   /**
@@ -223,26 +218,26 @@ class optimization_problem_solution_t : public base_solution_t {
   /**
    * @brief Returns the solution for the values of the primal variables as a vector of `f_t`.
    *
-   * @return rmm::device_uvector<i_t> The device memory container for the primal solution.
+   * @return std::vector<f_t> The host memory container for the primal solution.
    */
-  rmm::device_uvector<f_t>& get_primal_solution();
-  const rmm::device_uvector<f_t>& get_primal_solution() const;
+  std::vector<f_t>& get_primal_solution();
+  const std::vector<f_t>& get_primal_solution() const;
 
   /**
    * @brief Returns the solution for the values of the dual variables as a vector of `f_t`.
    *
-   * @return rmm::device_uvector<i_t> The device memory container for the dual solution.
+   * @return std::vector<f_t> The host memory container for the dual solution.
    */
-  rmm::device_uvector<f_t>& get_dual_solution();
-  const rmm::device_uvector<f_t>& get_dual_solution() const;
+  std::vector<f_t>& get_dual_solution();
+  const std::vector<f_t>& get_dual_solution() const;
 
   /**
    * @brief Returns the reduced cost as a vector of `f_t`. The reduced cost contains the dual
    * multipliers for the linear constraints.
    *
-   * @return rmm::device_uvector<i_t> The device memory container for the reduced cost.
+   * @return std::vector<f_t> The host memory container for the reduced cost.
    */
-  rmm::device_uvector<f_t>& get_reduced_cost();
+  std::vector<f_t>& get_reduced_cost();
 
   /**
    * @brief Get termination reason
@@ -266,23 +261,18 @@ class optimization_problem_solution_t : public base_solution_t {
   pdlp_warm_start_data_t<i_t, f_t>& get_pdlp_warm_start_data();
 
   /**
-   * @brief Writes the solver_solution object as a JSON object to the 'filename' file using
-   * 'stream_view' to transfer the data from device to host before it is written to the file.
+   * @brief Writes the solver_solution object as a JSON object to the 'filename' file.
+   * Solution is already on host memory.
    * @param filename Name of the output file
-   * @param stream_view Non-owning stream view object
    */
-  void write_to_file(std::string_view filename,
-                     rmm::cuda_stream_view stream_view,
-                     bool generate_variable_values = true);
+  void write_to_file(std::string_view filename, bool generate_variable_values = true);
 
   /**
    * @brief Writes the solver_solution object as a '.sol' file as supported by other solvers and
-   * used in MIPLIB using 'stream_view' to transfer the data from device to host before it is
-   * written to the file.
+   * used in MIPLIB. Solution is already on host memory.
    * @param filename Name of the output file
-   * @param stream_view Non-owning stream view object
    */
-  void write_to_sol_file(std::string_view filename, rmm::cuda_stream_view stream_view) const;
+  void write_to_sol_file(std::string_view filename) const;
 
   /**
    * @brief Copy solution from another solution object
@@ -295,9 +285,9 @@ class optimization_problem_solution_t : public base_solution_t {
  private:
   void write_additional_termination_statistics_to_file(std::ofstream& myfile);
 
-  rmm::device_uvector<f_t> primal_solution_;
-  rmm::device_uvector<f_t> dual_solution_;
-  rmm::device_uvector<f_t> reduced_cost_;
+  std::vector<f_t> primal_solution_;
+  std::vector<f_t> dual_solution_;
+  std::vector<f_t> reduced_cost_;
   pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
 
   pdlp_termination_status_t termination_status_;

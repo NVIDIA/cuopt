@@ -26,6 +26,7 @@
 #include <mip/logger.hpp>
 #include <mip/relaxed_lp/lp_state.cuh>
 
+#include <cuopt/linear_programming/gpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
@@ -57,7 +58,7 @@ constexpr bool USE_REL_TOLERANCE   = true;
 template <typename i_t, typename f_t>
 class problem_t {
  public:
-  problem_t(const optimization_problem_t<i_t, f_t>& problem,
+  problem_t(const gpu_optimization_problem_t<i_t, f_t>& problem,
             const typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_ = {});
   problem_t() = delete;
   // copy constructor
@@ -65,7 +66,7 @@ class problem_t {
   problem_t(const problem_t<i_t, f_t>& problem, bool no_deep_copy);
   problem_t(problem_t<i_t, f_t>&& problem) = default;
   problem_t& operator=(problem_t&&)        = default;
-  void op_problem_cstr_body(const optimization_problem_t<i_t, f_t>& problem_);
+  void op_problem_cstr_body(const gpu_optimization_problem_t<i_t, f_t>& problem_);
 
   problem_t<i_t, f_t> get_problem_after_fixing_vars(
     rmm::device_uvector<f_t>& assignment,
@@ -203,7 +204,7 @@ class problem_t {
 
   view_t view();
 
-  const optimization_problem_t<i_t, f_t>* original_problem_ptr;
+  const gpu_optimization_problem_t<i_t, f_t>* original_problem_ptr;
   const raft::handle_t* handle_ptr;
   std::shared_ptr<problem_t<i_t, f_t>> integer_fixed_problem = nullptr;
   rmm::device_uvector<i_t> integer_fixed_variable_map;

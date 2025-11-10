@@ -308,7 +308,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
 
     from cuopt.linear_programming.solution.solution import Solution
 
-    sol_ret = move(sol_ret_ptr.get()[0])
+    # Access the solver_ret_t through the unique_ptr without moving it first
+    cdef solver_ret_t* sol_ret = sol_ret_ptr.get()
 
     if sol_ret.problem_type == ProblemCategory.MIP or sol_ret.problem_type == ProblemCategory.IP: # noqa
         solution = DeviceBuffer.c_from_unique_ptr(

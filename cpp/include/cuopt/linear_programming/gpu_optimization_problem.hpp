@@ -34,6 +34,8 @@
 
 namespace cuopt::linear_programming {
 
+// NOTE: These enum definitions are duplicated from optimization_problem.hpp
+// They MUST remain identical. In the future, these should be extracted to a common header.
 #ifndef CUOPT_VAR_T_DEFINED
 #define CUOPT_VAR_T_DEFINED
 enum class var_t { CONTINUOUS = 0, INTEGER };
@@ -41,9 +43,14 @@ enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
 #endif
 
 /**
- * @brief A representation of a linear programming (LP) optimization problem
+ * @brief GPU-based representation of a linear programming (LP) optimization problem
  *
- * @tparam f_t  Data type of the variables and their weights in the equations
+ * This is an internal solver representation that stores all problem data on the GPU
+ * using rmm::device_uvector. This class is used internally by solvers and should not
+ * be directly exposed to users.
+ *
+ * @tparam i_t  Integer type for indexes
+ * @tparam f_t  Floating point type for values
  *
  * This structure stores all the information necessary to represent the
  * following LP:
@@ -69,19 +76,19 @@ enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
  * `set_objective_offset()` methods.
  */
 template <typename i_t, typename f_t>
-class optimization_problem_t {
+class gpu_optimization_problem_t {
  public:
   static_assert(std::is_integral<i_t>::value,
-                "'optimization_problem_t' accepts only integer types for indexes");
+                "'gpu_optimization_problem_t' accepts only integer types for indexes");
   static_assert(std::is_floating_point<f_t>::value,
-                "'optimization_problem_t' accepts only floating point types for weights");
+                "'gpu_optimization_problem_t' accepts only floating point types for weights");
 
   /**
-   * @brief A device-side view of the `optimization_problem_t` structure with
+   * @brief A device-side view of the `gpu_optimization_problem_t` structure with
    * the RAII stuffs stripped out, to make it easy to work inside kernels
    *
    * @note It is assumed that the pointers are NOT owned by this class, but
-   * rather by the encompassing `optimization_problem_t` class via RAII
+   * rather by the encompassing `gpu_optimization_problem_t` class via RAII
    * abstractions like `rmm::device_uvector`
    */
   struct view_t {
@@ -115,8 +122,8 @@ class optimization_problem_t {
     raft::device_span<const f_t> constraint_upper_bounds;
   };  // struct view_t
 
-  optimization_problem_t(raft::handle_t const* handle_ptr);
-  optimization_problem_t(const optimization_problem_t<i_t, f_t>& other);
+  gpu_optimization_problem_t(raft::handle_t const* handle_ptr);
+  gpu_optimization_problem_t(const gpu_optimization_problem_t<i_t, f_t>& other);
 
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
 
@@ -131,29 +138,29 @@ class optimization_problem_t {
   void set_maximize(bool maximize);
   /**
    * @brief Set the constraint matrix (A) in CSR format. For more information
-   about CSR checkout:
+   * about CSR checkout:
    * https://docs.nvidia.com/cuda/cusparse/index.html#compressed-sparse-row-csr
 
    * @note Setting before calling the solver is mandatory.
    *
    * @throws cuopt::logic_error when an error occurs.
    * @param[in] A_values Values of the CSR representation of the constraint
-   matrix as a device or host memory pointer to a floating point array of size
-   size_values.
+   * matrix as a device or host memory pointer to a floating point array of size
+   * size_values.
    * cuOpt copies this data. Copy happens on the stream of the raft:handler
-   passed to the problem.
+   * passed to the problem.
    * @param size_values Size of the A_values array.
    * @param[in] A_indices Indices of the CSR representation of the constraint
-   matrix as a device or host memory pointer to an integer array of size
-   size_indices.
+   * matrix as a device or host memory pointer to an integer array of size
+   * size_indices.
    * cuOpt copies this data. Copy happens on the stream of the raft:handler
-   passed to the problem.
+   * passed to the problem.
    * @param size_indices Size of the A_indices array.
    * @param[in] A_offsets Offsets of the CSR representation of the constraint
-   matrix as a device or host memory pointer to a integer array of size
-   size_offsets.
+   * matrix as a device or host memory pointer to a integer array of size
+   * size_offsets.
    * cuOpt copies this data. Copy happens on the stream of the raft:handler
-   passed to the problem.
+   * passed to the problem.
    * @param size_offsets Size of the A_offsets array.
    */
   void set_csr_constraint_matrix(const f_t* A_values,
@@ -322,28 +329,28 @@ class optimization_problem_t {
   i_t get_nnz() const;
   i_t get_n_integers() const;
   raft::handle_t const* get_handle_ptr() const noexcept;
-  const std::vector<f_t>& get_constraint_matrix_values() const;
-  std::vector<f_t>& get_constraint_matrix_values();
-  const std::vector<i_t>& get_constraint_matrix_indices() const;
-  std::vector<i_t>& get_constraint_matrix_indices();
-  const std::vector<i_t>& get_constraint_matrix_offsets() const;
-  std::vector<i_t>& get_constraint_matrix_offsets();
-  const std::vector<f_t>& get_constraint_bounds() const;
-  std::vector<f_t>& get_constraint_bounds();
-  const std::vector<f_t>& get_objective_coefficients() const;
-  std::vector<f_t>& get_objective_coefficients();
+  const rmm::device_uvector<f_t>& get_constraint_matrix_values() const;
+  rmm::device_uvector<f_t>& get_constraint_matrix_values();
+  const rmm::device_uvector<i_t>& get_constraint_matrix_indices() const;
+  rmm::device_uvector<i_t>& get_constraint_matrix_indices();
+  const rmm::device_uvector<i_t>& get_constraint_matrix_offsets() const;
+  rmm::device_uvector<i_t>& get_constraint_matrix_offsets();
+  const rmm::device_uvector<f_t>& get_constraint_bounds() const;
+  rmm::device_uvector<f_t>& get_constraint_bounds();
+  const rmm::device_uvector<f_t>& get_objective_coefficients() const;
+  rmm::device_uvector<f_t>& get_objective_coefficients();
   f_t get_objective_scaling_factor() const;
   f_t get_objective_offset() const;
-  const std::vector<f_t>& get_variable_lower_bounds() const;
-  const std::vector<f_t>& get_variable_upper_bounds() const;
-  std::vector<f_t>& get_variable_lower_bounds();
-  std::vector<f_t>& get_variable_upper_bounds();
-  const std::vector<f_t>& get_constraint_lower_bounds() const;
-  const std::vector<f_t>& get_constraint_upper_bounds() const;
-  std::vector<f_t>& get_constraint_lower_bounds();
-  std::vector<f_t>& get_constraint_upper_bounds();
-  const std::vector<char>& get_row_types() const;
-  const std::vector<var_t>& get_variable_types() const;
+  const rmm::device_uvector<f_t>& get_variable_lower_bounds() const;
+  const rmm::device_uvector<f_t>& get_variable_upper_bounds() const;
+  rmm::device_uvector<f_t>& get_variable_lower_bounds();
+  rmm::device_uvector<f_t>& get_variable_upper_bounds();
+  const rmm::device_uvector<f_t>& get_constraint_lower_bounds() const;
+  const rmm::device_uvector<f_t>& get_constraint_upper_bounds() const;
+  rmm::device_uvector<f_t>& get_constraint_lower_bounds();
+  rmm::device_uvector<f_t>& get_constraint_upper_bounds();
+  const rmm::device_uvector<char>& get_row_types() const;
+  const rmm::device_uvector<var_t>& get_variable_types() const;
   bool get_sense() const;
   bool empty() const;
 
@@ -368,11 +375,11 @@ class optimization_problem_t {
                                    std::vector<f_t>& A_values);
 
   // Pointer to library handle (RAFT) containing hardware resources information
-  // NOTE: Still kept for potential future use, but not used for host memory operations
   raft::handle_t const* handle_ptr_{nullptr};
+  rmm::cuda_stream_view stream_view_;
 
   /** problem classification */
-  problem_category_t problem_category_ = problem_category_t::LP;
+  problem_category_t problem_category_;
   /** whether to maximize or minimize the objective function */
   bool maximize_;
   /** number of variables */
@@ -380,33 +387,33 @@ class optimization_problem_t {
   /** number of constraints in the LP representation */
   i_t n_constraints_;
   /**
-   * the constraint matrix itself in the CSR format (HOST memory)
+   * the constraint matrix itself in the CSR format (GPU)
    * @{
    */
-  std::vector<f_t> A_;
-  std::vector<i_t> A_indices_;
-  std::vector<i_t> A_offsets_;
+  rmm::device_uvector<f_t> A_;
+  rmm::device_uvector<i_t> A_indices_;
+  rmm::device_uvector<i_t> A_offsets_;
   /** @} */
-  /** RHS of the constraints (HOST memory) */
-  std::vector<f_t> b_;
-  /** weights in the objective function (HOST memory) */
-  std::vector<f_t> c_;
+  /** RHS of the constraints (GPU) */
+  rmm::device_uvector<f_t> b_;
+  /** weights in the objective function (GPU) */
+  rmm::device_uvector<f_t> c_;
   /** scale factor of the objective function */
   f_t objective_scaling_factor_{1};
   /** offset of the objective function */
   f_t objective_offset_{0};
-  /** lower bounds of the variables (primal part, HOST memory) */
-  std::vector<f_t> variable_lower_bounds_;
-  /** upper bounds of the variables (primal part, HOST memory) */
-  std::vector<f_t> variable_upper_bounds_;
-  /** lower bounds of the constraint (dual part, HOST memory) */
-  std::vector<f_t> constraint_lower_bounds_;
-  /** upper bounds of the constraint (dual part, HOST memory) */
-  std::vector<f_t> constraint_upper_bounds_;
-  /** Type of each constraint (HOST memory) */
-  std::vector<char> row_types_;
-  /** Type of each variable (HOST memory) */
-  std::vector<var_t> variable_types_;
+  /** lower bounds of the variables (primal part, GPU) */
+  rmm::device_uvector<f_t> variable_lower_bounds_;
+  /** upper bounds of the variables (primal part, GPU) */
+  rmm::device_uvector<f_t> variable_upper_bounds_;
+  /** lower bounds of the constraint (dual part, GPU) */
+  rmm::device_uvector<f_t> constraint_lower_bounds_;
+  /** upper bounds of the constraint (dual part, GPU) */
+  rmm::device_uvector<f_t> constraint_upper_bounds_;
+  /** Type of each constraint (GPU) */
+  rmm::device_uvector<char> row_types_;
+  /** Type of each variable (GPU) */
+  rmm::device_uvector<var_t> variable_types_;
   /** name of the objective (only a single objective is currently allowed) */
   std::string objective_name_;
   /** name of the problem  */
@@ -415,6 +422,6 @@ class optimization_problem_t {
   std::vector<std::string> var_names_{};
   /** names of each of the rows (aka constraints or objective) in the OP */
   std::vector<std::string> row_names_{};
-};  // class optimization_problem_t
+};  // class gpu_optimization_problem_t
 
 }  // namespace cuopt::linear_programming

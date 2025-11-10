@@ -132,8 +132,8 @@ void translate_to_crossover_problem(const detail::problem_t<i_t, f_t>& problem,
   CUOPT_LOG_DEBUG("Converted to compressed column");
 
   std::vector<f_t> slack(problem.n_constraints);
-  std::vector<f_t> tmp_x = cuopt::host_copy(sol.get_primal_solution());
-  problem.handle_ptr->get_stream().synchronize();
+  // Solution is already on host, no need for host_copy
+  const std::vector<f_t>& tmp_x = sol.get_primal_solution();
   dual_simplex::matrix_vector_multiply(lp.A, 1.0, tmp_x, 0.0, slack);
   CUOPT_LOG_DEBUG("Multiplied A and x");
 
@@ -189,10 +189,10 @@ void translate_to_crossover_problem(const detail::problem_t<i_t, f_t>& problem,
     if (initial_solution.x[j] > lp.upper[j]) { initial_solution.x[j] = lp.upper[j]; }
   }
   CUOPT_LOG_DEBUG("Finished with x");
-  initial_solution.y = cuopt::host_copy(sol.get_dual_solution());
+  // Solution is already on host, no need for host_copy
+  initial_solution.y = sol.get_dual_solution();
 
-  std::vector<f_t> tmp_z = cuopt::host_copy(sol.get_reduced_cost());
-  problem.handle_ptr->get_stream().synchronize();
+  const std::vector<f_t>& tmp_z = sol.get_reduced_cost();
   std::copy(tmp_z.begin(), tmp_z.begin() + problem.n_variables, initial_solution.z.begin());
   for (i_t j = problem.n_variables; j < n; ++j) {
     initial_solution.z[j] = initial_solution.y[j - problem.n_variables];

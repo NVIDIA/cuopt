@@ -138,10 +138,11 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     settings.method     = method_t::Concurrent;
 
     auto opt_sol = solve_lp_with_method<i_t, f_t>(
-      *context.problem_ptr->original_problem_ptr, *context.problem_ptr, settings, lp_timer);
+      *context.problem_ptr->original_problem_ptr, *context.problem_ptr, settings, lp_timer, false);
 
     solution_t<i_t, f_t> sol(*context.problem_ptr);
-    sol.copy_new_assignment(host_copy(opt_sol.get_primal_solution()));
+    // Solution is already on host, no need for host_copy
+    sol.copy_new_assignment(opt_sol.get_primal_solution());
     if (opt_sol.get_termination_status() == pdlp_termination_status_t::Optimal ||
         opt_sol.get_termination_status() == pdlp_termination_status_t::PrimalInfeasible ||
         opt_sol.get_termination_status() == pdlp_termination_status_t::DualInfeasible) {

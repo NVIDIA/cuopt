@@ -98,7 +98,20 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   if (solver_response.get_primal_solution().size() != 0 &&
       solver_response.get_dual_solution().size() != 0 && settings.save_state) {
     CUOPT_LOG_DEBUG("saving initial primal solution of size %d", lp_state.prev_primal.size());
-    lp_state.set_state(solver_response.get_primal_solution(), solver_response.get_dual_solution());
+    // Solution is already on host, copy to device for lp_state
+    rmm::device_uvector<f_t> device_primal(solver_response.get_primal_solution().size(),
+                                           op_problem.handle_ptr->get_stream());
+    rmm::device_uvector<f_t> device_dual(solver_response.get_dual_solution().size(),
+                                         op_problem.handle_ptr->get_stream());
+    raft::copy(device_primal.data(),
+               solver_response.get_primal_solution().data(),
+               solver_response.get_primal_solution().size(),
+               op_problem.handle_ptr->get_stream());
+    raft::copy(device_dual.data(),
+               solver_response.get_dual_solution().data(),
+               solver_response.get_dual_solution().size(),
+               op_problem.handle_ptr->get_stream());
+    lp_state.set_state(device_primal, device_dual);
   }
   if (solver_response.get_primal_solution().size() != 0) {
     // copy the solution no matter what, because in the worst case we are closer to the polytope

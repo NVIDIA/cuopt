@@ -42,13 +42,33 @@ static std::string make_path_absolute(const std::string& file)
 }
 
 // Compute on the CPU x * c to check that the returned objective value is correct
+// Overload for host-based solutions
+static void test_objective_sanity(
+  const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
+  const std::vector<double>& primal_solution,
+  double objective_value,
+  double epsilon = tolerance)
+{
+  const auto& c_vector = op_problem.get_objective_coefficients();
+  std::vector<double> out(primal_solution.size());
+  std::transform(primal_solution.cbegin(),
+                 primal_solution.cend(),
+                 c_vector.cbegin(),
+                 out.begin(),
+                 std::multiplies<double>());
+
+  const auto sum_primal_objective = std::accumulate(out.cbegin(), out.cend(), 0.0);
+  EXPECT_NEAR(sum_primal_objective, objective_value, epsilon);
+}
+
+// Overload for device-based solutions
 static void test_objective_sanity(
   const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
   const rmm::device_uvector<double>& primal_solution,
   double objective_value,
   double epsilon = tolerance)
 {
-  const auto primal_vars = host_copy(primal_solution);
+  const auto primal_vars = host_copy(primal_solution, rmm::cuda_stream_view{});
   const auto& c_vector   = op_problem.get_objective_coefficients();
   std::vector<double> out(primal_vars.size());
   std::transform(primal_vars.cbegin(),
@@ -72,7 +92,8 @@ static void test_constraint_sanity(
   double epsilon        = tolerance,
   bool presolve_enabled = false)
 {
-  const std::vector<double> primal_vars              = host_copy(solution.get_primal_solution());
+  // Solution is already on host
+  const std::vector<double>& primal_vars             = solution.get_primal_solution();
   const std::vector<double>& values                  = op_problem.get_constraint_matrix_values();
   const std::vector<int>& indices                    = op_problem.get_constraint_matrix_indices();
   const std::vector<int>& offsets                    = op_problem.get_constraint_matrix_offsets();

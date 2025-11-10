@@ -36,7 +36,7 @@ static papilo::PostsolveStorage<double> post_solve_storage_;
 static bool maximize_ = false;
 
 template <typename i_t, typename f_t>
-papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem,
+papilo::Problem<f_t> build_papilo_problem(const gpu_optimization_problem_t<i_t, f_t>& op_problem,
                                           problem_category_t category)
 {
   raft::common::nvtx::range fun_scope("Build papilo problem");
@@ -194,11 +194,11 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
 }
 
 template <typename i_t, typename f_t>
-optimization_problem_t<i_t, f_t> build_optimization_problem(
+gpu_optimization_problem_t<i_t, f_t> build_optimization_problem(
   papilo::Problem<f_t> const& papilo_problem, raft::handle_t const* handle_ptr)
 {
   raft::common::nvtx::range fun_scope("Build optimization problem");
-  optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
+  gpu_optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
 
   auto obj = papilo_problem.getObjective();
   op_problem.set_objective_offset(maximize_ ? -obj.offset : obj.offset);
@@ -391,8 +391,8 @@ void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
 }
 
 template <typename i_t, typename f_t>
-std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_t>::apply(
-  optimization_problem_t<i_t, f_t> const& op_problem,
+std::pair<gpu_optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_t>::apply(
+  gpu_optimization_problem_t<i_t, f_t> const& op_problem,
   problem_category_t category,
   bool dual_postsolve,
   f_t absolute_tolerance,
@@ -423,7 +423,7 @@ std::pair<optimization_problem_t<i_t, f_t>, bool> third_party_presolve_t<i_t, f_
   check_presolve_status(result.status);
   if (result.status == papilo::PresolveStatus::kInfeasible ||
       result.status == papilo::PresolveStatus::kUnbndOrInfeas) {
-    return std::make_pair(optimization_problem_t<i_t, f_t>(op_problem.get_handle_ptr()), false);
+    return std::make_pair(gpu_optimization_problem_t<i_t, f_t>(op_problem.get_handle_ptr()), false);
   }
   post_solve_storage_ = result.postsolve;
   CUOPT_LOG_INFO("Presolve removed: %d constraints, %d variables, %d nonzeros",

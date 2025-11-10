@@ -96,22 +96,16 @@ TEST(SolverSettingsTest, warm_start_smaller_vector)
   std::vector<double> primal_expected = {1.0, 0.0};
   std::vector<double> dual_expected   = {0.0, 2.0, 1.0};
 
-  rmm::device_uvector<double> current_primal_solution =
-    cuopt::device_copy(primal, handle_.get_stream());
-  rmm::device_uvector<double> initial_primal_average =
-    cuopt::device_copy(primal, handle_.get_stream());
-  rmm::device_uvector<double> current_ATY = cuopt::device_copy(primal, handle_.get_stream());
-  rmm::device_uvector<double> sum_primal_solutions =
-    cuopt::device_copy(primal, handle_.get_stream());
-  rmm::device_uvector<double> last_restart_duality_gap_primal_solution =
-    cuopt::device_copy(primal, handle_.get_stream());
+  std::vector<double> current_primal_solution(primal);
+  std::vector<double> initial_primal_average(primal);
+  std::vector<double> current_ATY(primal);
+  std::vector<double> sum_primal_solutions(primal);
+  std::vector<double> last_restart_duality_gap_primal_solution(primal);
 
-  rmm::device_uvector<double> current_dual_solution =
-    cuopt::device_copy(dual, handle_.get_stream());
-  rmm::device_uvector<double> initial_dual_average = cuopt::device_copy(dual, handle_.get_stream());
-  rmm::device_uvector<double> sum_dual_solutions   = cuopt::device_copy(dual, handle_.get_stream());
-  rmm::device_uvector<double> last_restart_duality_gap_dual_solution =
-    cuopt::device_copy(dual, handle_.get_stream());
+  std::vector<double> current_dual_solution(dual);
+  std::vector<double> initial_dual_average(dual);
+  std::vector<double> sum_dual_solutions(dual);
+  std::vector<double> last_restart_duality_gap_dual_solution(dual);
 
   rmm::device_uvector<int> d_primal_mapping =
     cuopt::device_copy(primal_mapping, handle_.get_stream());
@@ -137,16 +131,16 @@ TEST(SolverSettingsTest, warm_start_smaller_vector)
                                         -1);
   solver_settings.set_pdlp_warm_start_data(warm_start_data, d_primal_mapping, d_dual_mapping);
 
-  std::vector<double> h_current_primal_solution =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().current_primal_solution_);
-  std::vector<double> h_initial_primal_average =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().initial_primal_average_);
-  std::vector<double> h_current_ATY =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().current_ATY_);
-  std::vector<double> h_sum_primal_solutions =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().sum_primal_solutions_);
-  std::vector<double> h_last_restart_duality_gap_primal_solution = cuopt::host_copy(
-    solver_settings.get_pdlp_warm_start_data().last_restart_duality_gap_primal_solution_);
+  const std::vector<double>& h_current_primal_solution =
+    solver_settings.get_pdlp_warm_start_data().current_primal_solution_;
+  const std::vector<double>& h_initial_primal_average =
+    solver_settings.get_pdlp_warm_start_data().initial_primal_average_;
+  const std::vector<double>& h_current_ATY =
+    solver_settings.get_pdlp_warm_start_data().current_ATY_;
+  const std::vector<double>& h_sum_primal_solutions =
+    solver_settings.get_pdlp_warm_start_data().sum_primal_solutions_;
+  const std::vector<double>& h_last_restart_duality_gap_primal_solution =
+    solver_settings.get_pdlp_warm_start_data().last_restart_duality_gap_primal_solution_;
 
   EXPECT_EQ(h_current_primal_solution.size(), primal_expected.size());
   EXPECT_EQ(h_initial_primal_average.size(), primal_expected.size());
@@ -160,14 +154,14 @@ TEST(SolverSettingsTest, warm_start_smaller_vector)
   EXPECT_EQ(h_sum_primal_solutions, primal_expected);
   EXPECT_EQ(h_last_restart_duality_gap_primal_solution, primal_expected);
 
-  std::vector<double> h_current_dual_solution =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().current_dual_solution_);
-  std::vector<double> h_initial_dual_average =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().initial_dual_average_);
-  std::vector<double> h_sum_dual_solutions =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().sum_dual_solutions_);
-  std::vector<double> h_last_restart_duality_gap_dual_solution = cuopt::host_copy(
-    solver_settings.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_);
+  const std::vector<double>& h_current_dual_solution =
+    solver_settings.get_pdlp_warm_start_data().current_dual_solution_;
+  const std::vector<double>& h_initial_dual_average =
+    solver_settings.get_pdlp_warm_start_data().initial_dual_average_;
+  const std::vector<double>& h_sum_dual_solutions =
+    solver_settings.get_pdlp_warm_start_data().sum_dual_solutions_;
+  const std::vector<double>& h_last_restart_duality_gap_dual_solution =
+    solver_settings.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_;
 
   EXPECT_EQ(h_current_dual_solution.size(), dual_expected.size());
   EXPECT_EQ(h_initial_dual_average.size(), dual_expected.size());
@@ -196,22 +190,16 @@ TEST(SolverSettingsTest, warm_start_bigger_vector)
   std::vector<double> primal_expected = {0.0, 1.0, 2.0, 3.0, 0.0, 0.0};
   std::vector<double> dual_expected   = {0.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0};
 
-  rmm::device_uvector<double> current_primal_solution =
-    cuopt::device_copy(primal, handle_.get_stream());
-  rmm::device_uvector<double> initial_primal_average =
-    cuopt::device_copy(primal, handle_.get_stream());
-  rmm::device_uvector<double> current_ATY = cuopt::device_copy(primal, handle_.get_stream());
-  rmm::device_uvector<double> sum_primal_solutions =
-    cuopt::device_copy(primal, handle_.get_stream());
-  rmm::device_uvector<double> last_restart_duality_gap_primal_solution =
-    cuopt::device_copy(primal, handle_.get_stream());
+  std::vector<double> current_primal_solution(primal);
+  std::vector<double> initial_primal_average(primal);
+  std::vector<double> current_ATY(primal);
+  std::vector<double> sum_primal_solutions(primal);
+  std::vector<double> last_restart_duality_gap_primal_solution(primal);
 
-  rmm::device_uvector<double> current_dual_solution =
-    cuopt::device_copy(dual, handle_.get_stream());
-  rmm::device_uvector<double> initial_dual_average = cuopt::device_copy(dual, handle_.get_stream());
-  rmm::device_uvector<double> sum_dual_solutions   = cuopt::device_copy(dual, handle_.get_stream());
-  rmm::device_uvector<double> last_restart_duality_gap_dual_solution =
-    cuopt::device_copy(dual, handle_.get_stream());
+  std::vector<double> current_dual_solution(dual);
+  std::vector<double> initial_dual_average(dual);
+  std::vector<double> sum_dual_solutions(dual);
+  std::vector<double> last_restart_duality_gap_dual_solution(dual);
 
   rmm::device_uvector<int> d_primal_mapping =
     cuopt::device_copy(primal_mapping, handle_.get_stream());
@@ -237,16 +225,16 @@ TEST(SolverSettingsTest, warm_start_bigger_vector)
                                         -1);
   solver_settings.set_pdlp_warm_start_data(warm_start_data, d_primal_mapping, d_dual_mapping);
 
-  std::vector<double> h_current_primal_solution =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().current_primal_solution_);
-  std::vector<double> h_initial_primal_average =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().initial_primal_average_);
-  std::vector<double> h_current_ATY =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().current_ATY_);
-  std::vector<double> h_sum_primal_solutions =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().sum_primal_solutions_);
-  std::vector<double> h_last_restart_duality_gap_primal_solution = cuopt::host_copy(
-    solver_settings.get_pdlp_warm_start_data().last_restart_duality_gap_primal_solution_);
+  const std::vector<double>& h_current_primal_solution =
+    solver_settings.get_pdlp_warm_start_data().current_primal_solution_;
+  const std::vector<double>& h_initial_primal_average =
+    solver_settings.get_pdlp_warm_start_data().initial_primal_average_;
+  const std::vector<double>& h_current_ATY =
+    solver_settings.get_pdlp_warm_start_data().current_ATY_;
+  const std::vector<double>& h_sum_primal_solutions =
+    solver_settings.get_pdlp_warm_start_data().sum_primal_solutions_;
+  const std::vector<double>& h_last_restart_duality_gap_primal_solution =
+    solver_settings.get_pdlp_warm_start_data().last_restart_duality_gap_primal_solution_;
 
   EXPECT_EQ(h_current_primal_solution.size(), primal_expected.size());
   EXPECT_EQ(h_initial_primal_average.size(), primal_expected.size());
@@ -260,14 +248,14 @@ TEST(SolverSettingsTest, warm_start_bigger_vector)
   EXPECT_EQ(h_sum_primal_solutions, primal_expected);
   EXPECT_EQ(h_last_restart_duality_gap_primal_solution, primal_expected);
 
-  std::vector<double> h_current_dual_solution =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().current_dual_solution_);
-  std::vector<double> h_initial_dual_average =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().initial_dual_average_);
-  std::vector<double> h_sum_dual_solutions =
-    cuopt::host_copy(solver_settings.get_pdlp_warm_start_data().sum_dual_solutions_);
-  std::vector<double> h_last_restart_duality_gap_dual_solution = cuopt::host_copy(
-    solver_settings.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_);
+  const std::vector<double>& h_current_dual_solution =
+    solver_settings.get_pdlp_warm_start_data().current_dual_solution_;
+  const std::vector<double>& h_initial_dual_average =
+    solver_settings.get_pdlp_warm_start_data().initial_dual_average_;
+  const std::vector<double>& h_sum_dual_solutions =
+    solver_settings.get_pdlp_warm_start_data().sum_dual_solutions_;
+  const std::vector<double>& h_last_restart_duality_gap_dual_solution =
+    solver_settings.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_;
 
   EXPECT_EQ(h_current_dual_solution.size(), dual_expected.size());
   EXPECT_EQ(h_initial_dual_average.size(), dual_expected.size());

@@ -277,13 +277,10 @@ cuopt_int_t cuOptGetObjectiveCoefficients(cuOptOptimizationProblem problem,
   if (objective_coefficients_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  const rmm::device_uvector<cuopt_float_t>& objective_coefficients =
+  const std::vector<cuopt_float_t>& objective_coefficients =
     problem_and_stream_view->op_problem->get_objective_coefficients();
-  raft::copy(objective_coefficients_ptr,
-             objective_coefficients.data(),
-             objective_coefficients.size(),
-             problem_and_stream_view->stream_view);
-  problem_and_stream_view->stream_view.synchronize();
+  std::copy(
+    objective_coefficients.begin(), objective_coefficients.end(), objective_coefficients_ptr);
   return CUOPT_SUCCESS;
 }
 
@@ -309,25 +306,21 @@ cuopt_int_t cuOptGetConstraintMatrix(cuOptOptimizationProblem problem,
   if (constraint_matrix_coefficients_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  const rmm::device_uvector<cuopt_float_t>& constraint_matrix_coefficients =
+  const std::vector<cuopt_float_t>& constraint_matrix_coefficients =
     problem_and_stream_view->op_problem->get_constraint_matrix_values();
-  const rmm::device_uvector<cuopt_int_t>& constraint_matrix_column_indices =
+  const std::vector<cuopt_int_t>& constraint_matrix_column_indices =
     problem_and_stream_view->op_problem->get_constraint_matrix_indices();
-  const rmm::device_uvector<cuopt_int_t>& constraint_matrix_row_offsets =
+  const std::vector<cuopt_int_t>& constraint_matrix_row_offsets =
     problem_and_stream_view->op_problem->get_constraint_matrix_offsets();
-  raft::copy(constraint_matrix_coefficients_ptr,
-             constraint_matrix_coefficients.data(),
-             constraint_matrix_coefficients.size(),
-             problem_and_stream_view->stream_view);
-  raft::copy(constraint_matrix_column_indices_ptr,
-             constraint_matrix_column_indices.data(),
-             constraint_matrix_column_indices.size(),
-             problem_and_stream_view->stream_view);
-  raft::copy(constraint_matrix_row_offsets_ptr,
-             constraint_matrix_row_offsets.data(),
-             constraint_matrix_row_offsets.size(),
-             problem_and_stream_view->stream_view);
-  problem_and_stream_view->stream_view.synchronize();
+  std::copy(constraint_matrix_coefficients.begin(),
+            constraint_matrix_coefficients.end(),
+            constraint_matrix_coefficients_ptr);
+  std::copy(constraint_matrix_column_indices.begin(),
+            constraint_matrix_column_indices.end(),
+            constraint_matrix_column_indices_ptr);
+  std::copy(constraint_matrix_row_offsets.begin(),
+            constraint_matrix_row_offsets.end(),
+            constraint_matrix_row_offsets_ptr);
   return CUOPT_SUCCESS;
 }
 
@@ -337,13 +330,8 @@ cuopt_int_t cuOptGetConstraintSense(cuOptOptimizationProblem problem, char* cons
   if (constraint_sense_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  const rmm::device_uvector<char>& constraint_sense =
-    problem_and_stream_view->op_problem->get_row_types();
-  raft::copy(constraint_sense_ptr,
-             constraint_sense.data(),
-             constraint_sense.size(),
-             problem_and_stream_view->stream_view);
-  problem_and_stream_view->stream_view.synchronize();
+  const std::vector<char>& constraint_sense = problem_and_stream_view->op_problem->get_row_types();
+  std::copy(constraint_sense.begin(), constraint_sense.end(), constraint_sense_ptr);
   return CUOPT_SUCCESS;
 }
 
@@ -354,10 +342,9 @@ cuopt_int_t cuOptGetConstraintRightHandSide(cuOptOptimizationProblem problem,
   if (rhs_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  const rmm::device_uvector<cuopt_float_t>& rhs =
+  const std::vector<cuopt_float_t>& rhs =
     problem_and_stream_view->op_problem->get_constraint_bounds();
-  raft::copy(rhs_ptr, rhs.data(), rhs.size(), problem_and_stream_view->stream_view);
-  problem_and_stream_view->stream_view.synchronize();
+  std::copy(rhs.begin(), rhs.end(), rhs_ptr);
   return CUOPT_SUCCESS;
 }
 
@@ -368,13 +355,9 @@ cuopt_int_t cuOptGetConstraintLowerBounds(cuOptOptimizationProblem problem,
   if (lower_bounds_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  const rmm::device_uvector<cuopt_float_t>& lower_bounds =
+  const std::vector<cuopt_float_t>& lower_bounds =
     problem_and_stream_view->op_problem->get_constraint_lower_bounds();
-  raft::copy(lower_bounds_ptr,
-             lower_bounds.data(),
-             lower_bounds.size(),
-             problem_and_stream_view->stream_view);
-  problem_and_stream_view->stream_view.synchronize();
+  std::copy(lower_bounds.begin(), lower_bounds.end(), lower_bounds_ptr);
   return CUOPT_SUCCESS;
 }
 
@@ -385,13 +368,9 @@ cuopt_int_t cuOptGetConstraintUpperBounds(cuOptOptimizationProblem problem,
   if (upper_bounds_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  const rmm::device_uvector<cuopt_float_t>& upper_bounds =
+  const std::vector<cuopt_float_t>& upper_bounds =
     problem_and_stream_view->op_problem->get_constraint_upper_bounds();
-  raft::copy(upper_bounds_ptr,
-             upper_bounds.data(),
-             upper_bounds.size(),
-             problem_and_stream_view->stream_view);
-  problem_and_stream_view->stream_view.synchronize();
+  std::copy(upper_bounds.begin(), upper_bounds.end(), upper_bounds_ptr);
   return CUOPT_SUCCESS;
 }
 
@@ -402,13 +381,9 @@ cuopt_int_t cuOptGetVariableLowerBounds(cuOptOptimizationProblem problem,
   if (lower_bounds_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  const rmm::device_uvector<cuopt_float_t>& lower_bounds =
+  const std::vector<cuopt_float_t>& lower_bounds =
     problem_and_stream_view->op_problem->get_variable_lower_bounds();
-  raft::copy(lower_bounds_ptr,
-             lower_bounds.data(),
-             lower_bounds.size(),
-             problem_and_stream_view->stream_view);
-  problem_and_stream_view->stream_view.synchronize();
+  std::copy(lower_bounds.begin(), lower_bounds.end(), lower_bounds_ptr);
   return CUOPT_SUCCESS;
 }
 
@@ -419,13 +394,9 @@ cuopt_int_t cuOptGetVariableUpperBounds(cuOptOptimizationProblem problem,
   if (upper_bounds_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  const rmm::device_uvector<cuopt_float_t>& upper_bounds =
+  const std::vector<cuopt_float_t>& upper_bounds =
     problem_and_stream_view->op_problem->get_variable_upper_bounds();
-  raft::copy(upper_bounds_ptr,
-             upper_bounds.data(),
-             upper_bounds.size(),
-             problem_and_stream_view->stream_view);
-  problem_and_stream_view->stream_view.synchronize();
+  std::copy(upper_bounds.begin(), upper_bounds.end(), upper_bounds_ptr);
   return CUOPT_SUCCESS;
 }
 
@@ -435,17 +406,11 @@ cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variab
   if (variable_types_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  const rmm::device_uvector<var_t>& variable_types =
+  const std::vector<var_t>& variable_types =
     problem_and_stream_view->op_problem->get_variable_types();
-  std::vector<cuopt::linear_programming::var_t> variable_types_host(variable_types.size());
-  raft::copy(variable_types_host.data(),
-             variable_types.data(),
-             variable_types.size(),
-             problem_and_stream_view->stream_view);
-  problem_and_stream_view->stream_view.synchronize();
-  for (size_t j = 0; j < variable_types_host.size(); j++) {
-    variable_types_ptr[j] =
-      variable_types_host[j] == var_t::INTEGER ? CUOPT_INTEGER : CUOPT_CONTINUOUS;
+  // Data is already on host - just convert enum to char
+  for (size_t j = 0; j < variable_types.size(); j++) {
+    variable_types_ptr[j] = variable_types[j] == var_t::INTEGER ? CUOPT_INTEGER : CUOPT_CONTINUOUS;
   }
   return CUOPT_SUCCESS;
 }
@@ -735,24 +700,17 @@ cuopt_int_t cuOptGetPrimalSolution(cuOptSolution solution, cuopt_float_t* soluti
     mip_solution_t<cuopt_int_t, cuopt_float_t>* mip_solution =
       static_cast<mip_solution_t<cuopt_int_t, cuopt_float_t>*>(
         solution_and_stream_view->mip_solution_ptr);
-    const rmm::device_uvector<cuopt_float_t>& solution_values = mip_solution->get_solution();
-    rmm::cuda_stream_view stream_view{};
-    raft::copy(solution_values_ptr,
-               solution_values.data(),
-               solution_values.size(),
-               solution_and_stream_view->stream_view);
-    solution_and_stream_view->stream_view.synchronize();
+    const std::vector<cuopt_float_t>& solution_values = mip_solution->get_solution();
+    // Solution is already on host, just copy
+    std::copy(solution_values.begin(), solution_values.end(), solution_values_ptr);
   } else {
     optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* optimization_problem_solution =
       static_cast<optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>*>(
         solution_and_stream_view->lp_solution_ptr);
-    const rmm::device_uvector<cuopt_float_t>& solution_values =
+    // Solution is already on host, just copy directly
+    const std::vector<cuopt_float_t>& solution_values =
       optimization_problem_solution->get_primal_solution();
-    raft::copy(solution_values_ptr,
-               solution_values.data(),
-               solution_values.size(),
-               solution_and_stream_view->stream_view);
-    solution_and_stream_view->stream_view.synchronize();
+    std::copy(solution_values.begin(), solution_values.end(), solution_values_ptr);
   }
   return CUOPT_SUCCESS;
 }
@@ -843,13 +801,10 @@ cuopt_int_t cuOptGetDualSolution(cuOptSolution solution, cuopt_float_t* dual_sol
     optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* optimization_problem_solution =
       static_cast<optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>*>(
         solution_and_stream_view->lp_solution_ptr);
-    const rmm::device_uvector<cuopt_float_t>& dual_solution =
+    // Solution is already on host, just copy directly
+    const std::vector<cuopt_float_t>& dual_solution =
       optimization_problem_solution->get_dual_solution();
-    raft::copy(dual_solution_ptr,
-               dual_solution.data(),
-               dual_solution.size(),
-               solution_and_stream_view->stream_view);
-    solution_and_stream_view->stream_view.synchronize();
+    std::copy(dual_solution.begin(), dual_solution.end(), dual_solution_ptr);
     return CUOPT_SUCCESS;
   }
 }
@@ -884,13 +839,10 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
     optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* optimization_problem_solution =
       static_cast<optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>*>(
         solution_and_stream_view->lp_solution_ptr);
-    const rmm::device_uvector<cuopt_float_t>& reduced_cost =
+    // Solution is already on host, just copy directly
+    const std::vector<cuopt_float_t>& reduced_cost =
       optimization_problem_solution->get_reduced_cost();
-    raft::copy(reduced_cost_ptr,
-               reduced_cost.data(),
-               reduced_cost.size(),
-               solution_and_stream_view->stream_view);
-    solution_and_stream_view->stream_view.synchronize();
+    std::copy(reduced_cost.begin(), reduced_cost.end(), reduced_cost_ptr);
     return CUOPT_SUCCESS;
   }
 }

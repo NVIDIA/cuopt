@@ -29,9 +29,11 @@
 #include <mip/presolve/trivial_presolve.cuh>
 #include <mip/solver.cuh>
 
+#include <cuopt/linear_programming/gpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/linear_programming/utilities/problem_conversion.cuh>
 
 #include <mps_parser/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -369,9 +371,15 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   info.dual_ray_linear_objective       = 0.0;
 
   pdlp_termination_status_t termination_status = to_termination_status(status);
-  auto sol = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
-                                                       final_dual_solution,
-                                                       final_reduced_cost,
+
+  // Convert device vectors to host for solution construction
+  auto host_primal = cuopt::host_copy(final_primal_solution, problem.handle_ptr->get_stream());
+  auto host_dual   = cuopt::host_copy(final_dual_solution, problem.handle_ptr->get_stream());
+  auto host_rc     = cuopt::host_copy(final_reduced_cost, problem.handle_ptr->get_stream());
+
+  auto sol = optimization_problem_solution_t<i_t, f_t>(std::move(host_primal),
+                                                       std::move(host_dual),
+                                                       std::move(host_rc),
                                                        problem.objective_name,
                                                        problem.var_names,
                                                        problem.row_names,
@@ -535,8 +543,7 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
 {
   if (problem.n_constraints == 0) {
     CUOPT_LOG_INFO("No constraints in the problem: PDLP can't be run, use Dual Simplex instead.");
-    return optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::NumericalError,
-                                                     problem.handle_ptr->get_stream()};
+    return optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::NumericalError};
   }
   detail::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode);
   return solver.run_solver(timer);
@@ -613,10 +620,16 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     auto crossover_end         = std::chrono::high_resolution_clock::now();
     auto crossover_duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(crossover_end - start_solver);
-    info.solve_time    = crossover_duration.count() / 1000.0;
-    auto sol_crossover = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
-                                                                   final_dual_solution,
-                                                                   final_reduced_cost,
+    info.solve_time = crossover_duration.count() / 1000.0;
+
+    // Convert device vectors to host for solution construction
+    auto host_primal = cuopt::host_copy(final_primal_solution, problem.handle_ptr->get_stream());
+    auto host_dual   = cuopt::host_copy(final_dual_solution, problem.handle_ptr->get_stream());
+    auto host_rc     = cuopt::host_copy(final_reduced_cost, problem.handle_ptr->get_stream());
+
+    auto sol_crossover = optimization_problem_solution_t<i_t, f_t>(std::move(host_primal),
+                                                                   std::move(host_dual),
+                                                                   std::move(host_rc),
                                                                    problem.objective_name,
                                                                    problem.var_names,
                                                                    problem.row_names,
@@ -651,7 +664,7 @@ void run_dual_simplex_thread(
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_concurrent(
-  const optimization_problem_t<i_t, f_t>& op_problem,
+  const gpu_optimization_problem_t<i_t, f_t>& op_problem,
   detail::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
@@ -767,7 +780,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
-  const optimization_problem_t<i_t, f_t>& op_problem,
+  const gpu_optimization_problem_t<i_t, f_t>& op_problem,
   detail::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
@@ -785,19 +798,22 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
 }
 
 template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f_t>& op_problem,
+optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f_t>& host_problem,
                                                    pdlp_solver_settings_t<i_t, f_t> const& settings,
                                                    bool problem_checking,
                                                    bool use_pdlp_solver_mode,
                                                    bool is_batch_mode)
 {
+  // Convert host problem to GPU problem for internal solving
+  auto gpu_problem = host_to_gpu_problem(host_problem.get_handle_ptr(), host_problem);
+
   try {
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
 
     // Init libraies before to not include it in solve time
     // This needs to be called before pdlp is initialized
-    init_handler(op_problem.get_handle_ptr());
+    init_handler(gpu_problem.get_handle_ptr());
 
     print_version_info();
 
@@ -806,26 +822,25 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
     if (problem_checking) {
       raft::common::nvtx::range fun_scope("Check problem representation");
       // This is required as user might forget to set some fields
-      problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
-      problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
+      problem_checking_t<i_t, f_t>::check_problem_representation(gpu_problem);
+      problem_checking_t<i_t, f_t>::check_initial_solution_representation(gpu_problem, settings);
     }
 
     CUOPT_LOG_INFO(
       "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
-      op_problem.get_n_constraints(),
-      op_problem.get_n_variables(),
+      gpu_problem.get_n_constraints(),
+      gpu_problem.get_n_variables(),
       0,
-      op_problem.get_nnz());
-    op_problem.print_scaling_information();
+      gpu_problem.get_nnz());
+    gpu_problem.print_scaling_information();
 
     // Check for crossing bounds. Return infeasible if there are any
-    if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
-      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::PrimalInfeasible,
-                                                       op_problem.get_handle_ptr()->get_stream());
+    if (problem_checking_t<i_t, f_t>::has_crossing_bounds(gpu_problem)) {
+      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::PrimalInfeasible);
     }
 
     auto lp_timer = cuopt::timer_t(settings.time_limit);
-    detail::problem_t<i_t, f_t> problem(op_problem);
+    detail::problem_t<i_t, f_t> problem(gpu_problem);
 
     double presolve_time = 0.0;
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
@@ -841,7 +856,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
         std::max(1.0, std::min(0.1 * lp_timer.remaining_time(), 60.0));
       presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
       auto [reduced_problem, feasible] =
-        presolver->apply(op_problem,
+        presolver->apply(gpu_problem,
                          cuopt::linear_programming::problem_category_t::LP,
                          settings.dual_postsolve,
                          settings.tolerances.absolute_primal_tolerance,
@@ -849,7 +864,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
                          presolve_time_limit);
       if (!feasible) {
         return optimization_problem_solution_t<i_t, f_t>(
-          pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
+          pdlp_termination_status_t::PrimalInfeasible);
       }
       problem       = detail::problem_t<i_t, f_t>(reduced_problem);
       presolve_time = lp_timer.elapsed_time();
@@ -862,23 +877,23 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
 
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      op_problem.write_to_mps(settings.user_problem_file);
+      gpu_problem.write_to_mps(settings.user_problem_file);
     }
 
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
 
-    setup_device_symbols(op_problem.get_handle_ptr()->get_stream());
+    setup_device_symbols(gpu_problem.get_handle_ptr()->get_stream());
 
-    auto solution = solve_lp_with_method(op_problem, problem, settings, lp_timer, is_batch_mode);
+    auto solution = solve_lp_with_method(gpu_problem, problem, settings, lp_timer, is_batch_mode);
 
     if (run_presolve) {
       auto primal_solution = cuopt::device_copy(solution.get_primal_solution(),
-                                                op_problem.get_handle_ptr()->get_stream());
-      auto dual_solution =
-        cuopt::device_copy(solution.get_dual_solution(), op_problem.get_handle_ptr()->get_stream());
+                                                gpu_problem.get_handle_ptr()->get_stream());
+      auto dual_solution   = cuopt::device_copy(solution.get_dual_solution(),
+                                              gpu_problem.get_handle_ptr()->get_stream());
       auto reduced_costs =
-        cuopt::device_copy(solution.get_reduced_cost(), op_problem.get_handle_ptr()->get_stream());
+        cuopt::device_copy(solution.get_reduced_cost(), gpu_problem.get_handle_ptr()->get_stream());
       bool status_to_skip = false;
 
       presolver->undo(primal_solution,
@@ -886,45 +901,50 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
                       reduced_costs,
                       cuopt::linear_programming::problem_category_t::LP,
                       status_to_skip,
-                      op_problem.get_handle_ptr()->get_stream());
+                      gpu_problem.get_handle_ptr()->get_stream());
 
-      thrust::fill(rmm::exec_policy(op_problem.get_handle_ptr()->get_stream()),
+      thrust::fill(rmm::exec_policy(gpu_problem.get_handle_ptr()->get_stream()),
                    dual_solution.data(),
                    dual_solution.data() + dual_solution.size(),
                    std::numeric_limits<f_t>::signaling_NaN());
-      thrust::fill(rmm::exec_policy(op_problem.get_handle_ptr()->get_stream()),
+      thrust::fill(rmm::exec_policy(gpu_problem.get_handle_ptr()->get_stream()),
                    reduced_costs.data(),
                    reduced_costs.data() + reduced_costs.size(),
                    std::numeric_limits<f_t>::signaling_NaN());
 
       auto full_stats = solution.get_additional_termination_information();
 
+      // Convert device vectors back to host for solution construction
+      auto host_primal =
+        cuopt::host_copy(primal_solution, gpu_problem.get_handle_ptr()->get_stream());
+      auto host_dual = cuopt::host_copy(dual_solution, gpu_problem.get_handle_ptr()->get_stream());
+      auto host_rc   = cuopt::host_copy(reduced_costs, gpu_problem.get_handle_ptr()->get_stream());
+
       // Create a new solution with the full problem solution
-      solution = optimization_problem_solution_t<i_t, f_t>(primal_solution,
-                                                           dual_solution,
-                                                           reduced_costs,
+      solution = optimization_problem_solution_t<i_t, f_t>(std::move(host_primal),
+                                                           std::move(host_dual),
+                                                           std::move(host_rc),
                                                            solution.get_pdlp_warm_start_data(),
-                                                           op_problem.get_objective_name(),
-                                                           op_problem.get_variable_names(),
-                                                           op_problem.get_row_names(),
+                                                           gpu_problem.get_objective_name(),
+                                                           gpu_problem.get_variable_names(),
+                                                           gpu_problem.get_row_names(),
                                                            full_stats,
                                                            solution.get_termination_status());
     }
 
     if (settings.sol_file != "") {
       CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
-      solution.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
+      solution.write_to_sol_file(settings.sol_file);
     }
 
     return solution;
   } catch (const cuopt::logic_error& e) {
     CUOPT_LOG_ERROR("Error in solve_lp: %s", e.what());
-    return optimization_problem_solution_t<i_t, f_t>{e, op_problem.get_handle_ptr()->get_stream()};
+    return optimization_problem_solution_t<i_t, f_t>{e};
   } catch (const std::bad_alloc& e) {
     CUOPT_LOG_ERROR("Error in solve_lp: %s", e.what());
     return optimization_problem_solution_t<i_t, f_t>{
-      cuopt::logic_error("Memory allocation failed", cuopt::error_type_t::RuntimeError),
-      op_problem.get_handle_ptr()->get_stream()};
+      cuopt::logic_error("Memory allocation failed", cuopt::error_type_t::RuntimeError)};
   }
 }
 
@@ -932,33 +952,33 @@ template <typename i_t, typename f_t>
 cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
   raft::handle_t const* handle_ptr, const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model)
 {
-  cuopt::linear_programming::optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
-  op_problem.set_maximize(data_model.get_sense());
+  cuopt::linear_programming::optimization_problem_t<i_t, f_t> gpu_problem(handle_ptr);
+  gpu_problem.set_maximize(data_model.get_sense());
 
-  op_problem.set_csr_constraint_matrix(data_model.get_constraint_matrix_values().data(),
-                                       data_model.get_constraint_matrix_values().size(),
-                                       data_model.get_constraint_matrix_indices().data(),
-                                       data_model.get_constraint_matrix_indices().size(),
-                                       data_model.get_constraint_matrix_offsets().data(),
-                                       data_model.get_constraint_matrix_offsets().size());
+  gpu_problem.set_csr_constraint_matrix(data_model.get_constraint_matrix_values().data(),
+                                        data_model.get_constraint_matrix_values().size(),
+                                        data_model.get_constraint_matrix_indices().data(),
+                                        data_model.get_constraint_matrix_indices().size(),
+                                        data_model.get_constraint_matrix_offsets().data(),
+                                        data_model.get_constraint_matrix_offsets().size());
 
   if (data_model.get_constraint_bounds().size() != 0) {
-    op_problem.set_constraint_bounds(data_model.get_constraint_bounds().data(),
-                                     data_model.get_constraint_bounds().size());
+    gpu_problem.set_constraint_bounds(data_model.get_constraint_bounds().data(),
+                                      data_model.get_constraint_bounds().size());
   }
   if (data_model.get_objective_coefficients().size() != 0) {
-    op_problem.set_objective_coefficients(data_model.get_objective_coefficients().data(),
-                                          data_model.get_objective_coefficients().size());
+    gpu_problem.set_objective_coefficients(data_model.get_objective_coefficients().data(),
+                                           data_model.get_objective_coefficients().size());
   }
-  op_problem.set_objective_scaling_factor(data_model.get_objective_scaling_factor());
-  op_problem.set_objective_offset(data_model.get_objective_offset());
+  gpu_problem.set_objective_scaling_factor(data_model.get_objective_scaling_factor());
+  gpu_problem.set_objective_offset(data_model.get_objective_offset());
   if (data_model.get_variable_lower_bounds().size() != 0) {
-    op_problem.set_variable_lower_bounds(data_model.get_variable_lower_bounds().data(),
-                                         data_model.get_variable_lower_bounds().size());
+    gpu_problem.set_variable_lower_bounds(data_model.get_variable_lower_bounds().data(),
+                                          data_model.get_variable_lower_bounds().size());
   }
   if (data_model.get_variable_upper_bounds().size() != 0) {
-    op_problem.set_variable_upper_bounds(data_model.get_variable_upper_bounds().data(),
-                                         data_model.get_variable_upper_bounds().size());
+    gpu_problem.set_variable_upper_bounds(data_model.get_variable_upper_bounds().data(),
+                                          data_model.get_variable_upper_bounds().size());
   }
   if (data_model.get_variable_types().size() != 0) {
     std::vector<var_t> enum_variable_types(data_model.get_variable_types().size());
@@ -967,35 +987,35 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
       data_model.get_variable_types().cend(),
       enum_variable_types.begin(),
       [](const auto val) -> var_t { return val == 'I' ? var_t::INTEGER : var_t::CONTINUOUS; });
-    op_problem.set_variable_types(enum_variable_types.data(), enum_variable_types.size());
+    gpu_problem.set_variable_types(enum_variable_types.data(), enum_variable_types.size());
   }
 
   if (data_model.get_row_types().size() != 0) {
-    op_problem.set_row_types(data_model.get_row_types().data(), data_model.get_row_types().size());
+    gpu_problem.set_row_types(data_model.get_row_types().data(), data_model.get_row_types().size());
   }
   if (data_model.get_constraint_lower_bounds().size() != 0) {
-    op_problem.set_constraint_lower_bounds(data_model.get_constraint_lower_bounds().data(),
-                                           data_model.get_constraint_lower_bounds().size());
+    gpu_problem.set_constraint_lower_bounds(data_model.get_constraint_lower_bounds().data(),
+                                            data_model.get_constraint_lower_bounds().size());
   }
   if (data_model.get_constraint_upper_bounds().size() != 0) {
-    op_problem.set_constraint_upper_bounds(data_model.get_constraint_upper_bounds().data(),
-                                           data_model.get_constraint_upper_bounds().size());
+    gpu_problem.set_constraint_upper_bounds(data_model.get_constraint_upper_bounds().data(),
+                                            data_model.get_constraint_upper_bounds().size());
   }
 
   if (data_model.get_objective_name().size() != 0) {
-    op_problem.set_objective_name(data_model.get_objective_name());
+    gpu_problem.set_objective_name(data_model.get_objective_name());
   }
   if (data_model.get_problem_name().size() != 0) {
-    op_problem.set_problem_name(data_model.get_problem_name().data());
+    gpu_problem.set_problem_name(data_model.get_problem_name().data());
   }
   if (data_model.get_variable_names().size() != 0) {
-    op_problem.set_variable_names(data_model.get_variable_names());
+    gpu_problem.set_variable_names(data_model.get_variable_names());
   }
   if (data_model.get_row_names().size() != 0) {
-    op_problem.set_row_names(data_model.get_row_names());
+    gpu_problem.set_row_names(data_model.get_row_names());
   }
 
-  return op_problem;
+  return gpu_problem;
 }
 
 template <typename i_t, typename f_t>
@@ -1026,7 +1046,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     bool use_pdlp_solver_mode);                                                        \
                                                                                        \
   template optimization_problem_solution_t<int, F_TYPE> solve_lp_with_method(          \
-    const optimization_problem_t<int, F_TYPE>& op_problem,                             \
+    const gpu_optimization_problem_t<int, F_TYPE>& op_problem,                         \
     detail::problem_t<int, F_TYPE>& problem,                                           \
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                               \
     const timer_t& timer,                                                              \
