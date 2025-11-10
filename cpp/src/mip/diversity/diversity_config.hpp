@@ -24,8 +24,8 @@ namespace cuopt::linear_programming::detail {
 struct diversity_config_t {
   double time_ratio_on_init_lp        = 0.1;
   double max_time_on_lp               = 15.0;
-  double time_ratio_of_probing_cache  = 0.1;
-  double max_time_on_probing          = 60.0;
+  double time_ratio_of_probing_cache  = 0.05;
+  double max_time_on_probing          = 30.0;
   int max_var_diff                    = 256;
   size_t max_solutions                = 32;
   double initial_infeasibility_weight = 1000.;

@@ -475,7 +475,7 @@ void compute_cache_for_var(i_t var_idx,
       n_of_infeasible_probings++;
       continue;
     }
-    // this only tracs the number of variables that have cached bounds
+    // this only tracks the number of variables that have cached bounds
     n_of_cached_probings++;
     // save the impacted bounds
     if (bounds_presolve_result != termination_criterion_t::NO_UPDATE) {
@@ -569,7 +569,10 @@ void apply_modification_queue_to_problem(
     lb_values.push_back(modifications.first);
     ub_values.push_back(modifications.second);
   }
-  if (var_indices.size() > 0) { problem.update_variable_bounds(var_indices, lb_values, ub_values); }
+  if (var_indices.size() > 0) {
+    problem.update_variable_bounds(var_indices, lb_values, ub_values);
+    CUOPT_LOG_DEBUG("Updated %d variable bounds", var_indices.size());
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -600,8 +603,105 @@ void apply_substitution_queue_to_problem(
   if (var_indices.size() > 0) {
     problem.substitute_variables(
       var_indices, var_to_substitude_indices, offset_values, coefficient_values);
-    CUOPT_LOG_DEBUG("Substituted %d variables", var_indices.size());
   }
+}
+
+template <typename i_t, typename f_t>
+std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t>& problem)
+{
+  void* d_temp_storage      = nullptr;
+  size_t temp_storage_bytes = 0;
+  auto input_transform_it   = thrust::make_transform_iterator(
+    thrust::make_counting_iterator(0), [view = problem.view()] __device__(i_t idx) -> i_t {
+      return view.is_integer_var(view.variables[idx]);
+    });
+  // keeps the number of constraints that contain integer variables
+  rmm::device_uvector<i_t> num_int_vars_per_constraint(problem.n_constraints,
+                                                       problem.handle_ptr->get_stream());
+  cub::DeviceSegmentedReduce::Reduce(d_temp_storage,
+                                     temp_storage_bytes,
+                                     input_transform_it,
+                                     num_int_vars_per_constraint.data(),
+                                     problem.n_constraints,
+                                     problem.offsets.data(),
+                                     problem.offsets.data() + 1,
+                                     cuda::std::plus<>{},
+                                     0,
+                                     problem.handle_ptr->get_stream());
+
+  rmm::device_uvector<std::uint8_t> temp_storage(temp_storage_bytes,
+                                                 problem.handle_ptr->get_stream());
+  d_temp_storage = thrust::raw_pointer_cast(temp_storage.data());
+
+  // Run reduction
+  cub::DeviceSegmentedReduce::Reduce(d_temp_storage,
+                                     temp_storage_bytes,
+                                     input_transform_it,
+                                     num_int_vars_per_constraint.data(),
+                                     problem.n_constraints,
+                                     problem.offsets.data(),
+                                     problem.offsets.data() + 1,
+                                     cuda::std::plus<>{},
+                                     0,
+                                     problem.handle_ptr->get_stream());
+  // keeps the count of number of other integers that this variables shares a constraint with
+  rmm::device_uvector<i_t> count_per_variable(problem.n_variables,
+                                              problem.handle_ptr->get_stream());
+  auto input_transform_it_2 = thrust::make_transform_iterator(
+    thrust::make_counting_iterator(0),
+    [num_int_vars_per_constraint = make_span(num_int_vars_per_constraint),
+     view                        = problem.view()] __device__(i_t idx) -> i_t {
+      return num_int_vars_per_constraint[view.reverse_constraints[idx]];
+    });
+  cub::DeviceSegmentedReduce::Reduce(d_temp_storage,
+                                     temp_storage_bytes,
+                                     input_transform_it_2,
+                                     count_per_variable.data(),
+                                     problem.n_variables,
+                                     problem.reverse_offsets.data(),
+                                     problem.reverse_offsets.data() + 1,
+                                     cuda::std::plus<>{},
+                                     0,
+                                     problem.handle_ptr->get_stream());
+
+  temp_storage.resize(temp_storage_bytes, problem.handle_ptr->get_stream());
+  d_temp_storage = thrust::raw_pointer_cast(temp_storage.data());
+
+  // Run reduction
+  cub::DeviceSegmentedReduce::Reduce(d_temp_storage,
+                                     temp_storage_bytes,
+                                     input_transform_it_2,
+                                     count_per_variable.data(),
+                                     problem.n_constraints,
+                                     problem.offsets.data(),
+                                     problem.offsets.data() + 1,
+                                     cuda::std::plus<>{},
+                                     0,
+                                     problem.handle_ptr->get_stream());
+  thrust::for_each(problem.handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(problem.n_variables),
+                   [count_per_variable = make_span(count_per_variable),
+                    view               = problem.view()] __device__(i_t idx) {
+                     if (!view.is_integer_var(idx)) { count_per_variable[idx] = 0; }
+                   });
+  rmm::device_uvector<i_t> priority_indices(problem.n_variables, problem.handle_ptr->get_stream());
+  thrust::sequence(
+    problem.handle_ptr->get_thrust_policy(), priority_indices.begin(), priority_indices.end());
+  thrust::sort_by_key(problem.handle_ptr->get_thrust_policy(),
+                      count_per_variable.data(),
+                      count_per_variable.data() + problem.n_variables,
+                      priority_indices.data(),
+                      thrust::greater<i_t>());
+  auto h_priority_indices = host_copy(priority_indices);
+  problem.handle_ptr->sync_stream();
+  // Find the index of the first 0 element in h_priority_indices
+  auto first_zero_it      = std::find(h_priority_indices.begin(), h_priority_indices.end(), 0);
+  size_t first_zero_index = (first_zero_it != h_priority_indices.end())
+                              ? std::distance(h_priority_indices.begin(), first_zero_it)
+                              : h_priority_indices.size();
+  h_priority_indices.erase(h_priority_indices.begin() + first_zero_index, h_priority_indices.end());
+  return h_priority_indices;
 }
 
 template <typename i_t, typename f_t>
@@ -611,7 +711,8 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
 {
   raft::common::nvtx::range fun_scope("compute_probing_cache");
   // we dont want to compute the probing cache for all variables for time and computation resources
-  auto priority_indices = compute_prioritized_integer_indices(bound_presolve, problem);
+  // auto priority_indices = compute_prioritized_integer_indices(bound_presolve, problem);
+  auto priority_indices = compute_priority_indices_by_implied_integers(problem);
   CUOPT_LOG_DEBUG("Computing probing cache");
   auto h_integer_indices = host_copy(problem.integer_indices);
   auto h_var_bounds      = host_copy(problem.variable_bounds);
@@ -640,17 +741,18 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // Atomic variables for tracking progress
   std::atomic<size_t> n_of_implied_singletons(0);
   std::atomic<size_t> n_of_cached_probings(0);
-
-  const size_t step_size = 512;
+  size_t last_it_implied_singletons = 0;
+  bool early_exit                   = false;
+  const size_t step_size            = min((size_t)2048, priority_indices.size());
   for (size_t step_start = 0; step_start < priority_indices.size(); step_start += step_size) {
-    if (timer.check_time_limit()) { break; }
+    if (timer.check_time_limit() || early_exit) { break; }
     size_t step_end = std::min(step_start + step_size, priority_indices.size());
 // Main parallel loop
 #pragma omp parallel
     {
 #pragma omp for schedule(static, 4)
       for (size_t i = step_start; i < step_end; ++i) {
-        auto var_idx = priority_indices[i];  // Get the index manually
+        auto var_idx = priority_indices[i];
         if (timer.check_time_limit()) { continue; }
 
         int thread_idx = omp_get_thread_num();
@@ -683,6 +785,11 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                  h_var_bounds.size(),
                  problem.handle_ptr->get_stream());
       problem.handle_ptr->sync_stream();
+      if (n_of_implied_singletons - last_it_implied_singletons <
+          (size_t)(min(100, problem.n_variables / 50))) {
+        early_exit = true;
+      }
+      last_it_implied_singletons = n_of_implied_singletons;
     }
   }  // end of step
   apply_substitution_queue_to_problem(substitution_vector_pool, problem);
