@@ -17,6 +17,7 @@
 
 #include <dual_simplex/presolve.hpp>
 
+#include <dual_simplex/bounds_strengthening.hpp>
 #include <dual_simplex/folding.hpp>
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/solve.hpp>
@@ -576,7 +577,15 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
     convert_greater_to_less(user_problem, row_sense, problem, greater_rows, less_rows);
   }
 
-  // bounds strengthening was moved to node_presolve.hpp
+  constexpr bool run_bounds_strengthening = false;
+  if (run_bounds_strengthening) {
+    csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
+    problem.A.to_compressed_row(Arow);
+
+    // Empty var_types means that all variables are continuous
+    bounds_strengthening_t<i_t, f_t> bounds_strenghtening(problem, Arow, row_sense, {});
+    bounds_strenghtening.bounds_strengthening(problem.lower, problem.upper, settings);
+  }
 
   settings.log.debug(
     "equality rows %d less rows %d columns %d\n", equal_rows, less_rows, problem.num_cols);

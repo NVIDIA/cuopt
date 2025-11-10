@@ -34,11 +34,10 @@ enum class node_status_t : int {
   INFEASIBLE       = 2,  // Node is infeasible
   FATHOMED         = 3,  // Node objective is greater than the upper bound
   HAS_CHILDREN     = 4,  // Node has children to explore
-  NUMERICAL        = 5,  // Encountered numerical issue when solving the LP relaxation
-  TIME_LIMIT       = 6   // Time out during the LP relaxation
+  NUMERICAL        = 5   // Encountered numerical issue when solving the LP relaxation
 };
 
-enum class rounding_direction_t { NONE = -1, DOWN = 0, UP = 1 };
+enum class rounding_direction_t : int8_t { NONE = -1, DOWN = 0, UP = 1 };
 
 bool inactive_status(node_status_t status);
 
@@ -110,7 +109,8 @@ class mip_node_t {
     assert(bounds_changed.size() > branch_var);
 
     // If the bounds have already been updated on another node,
-    // skip this node as it contains a less tight bounds.
+    // skip this node as it contains looser bounds, since we
+    // are traversing up the tree toward the root
     if (bounds_changed[branch_var]) { return; }
 
     // Apply the bounds at the current node
