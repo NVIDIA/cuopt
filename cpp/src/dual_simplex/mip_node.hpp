@@ -19,7 +19,7 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 enum class node_status_t : int {
-  PENDING          = 0,  // Node still in the tree, waiting to be solved
+  PENDING          = 0,  // Node is still in the tree, waiting to be solved
   INTEGER_FEASIBLE = 1,  // Node has an integer feasible solution
   INFEASIBLE       = 2,  // Node is infeasible
   FATHOMED         = 3,  // Node objective is greater than the upper bound
@@ -273,11 +273,10 @@ class search_tree_t {
 
   void update(mip_node_t<i_t, f_t>* node_ptr, node_status_t status)
   {
-    mutex.lock();
+    std::lock_guard<omp_mutex_t> lock(mutex);
     std::vector<mip_node_t<i_t, f_t>*> stack;
     node_ptr->set_status(status, stack);
     remove_fathomed_nodes(stack);
-    mutex.unlock();
   }
 
   void branch(mip_node_t<i_t, f_t>* parent_node,

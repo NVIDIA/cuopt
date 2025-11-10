@@ -955,7 +955,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
           node->get_variable_bounds(lower, upper, node_presolver.bounds_changed);
 
           mutex_dive_queue_.lock();
-          dive_queue_.emplace(node->detach_copy(), std::move(lower), std::move(upper));
+          diving_queue_.emplace(node->detach_copy(), std::move(lower), std::move(upper));
           mutex_dive_queue_.unlock();
         }
 
@@ -1071,7 +1071,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
     std::optional<diving_root_t<i_t, f_t>> start_node;
 
     mutex_dive_queue_.lock();
-    if (dive_queue_.size() > 0) { start_node = dive_queue_.pop(); }
+    if (diving_queue_.size() > 0) { start_node = diving_queue_.pop(); }
     mutex_dive_queue_.unlock();
 
     if (start_node.has_value()) {
@@ -1129,7 +1129,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
           // best first search, then we split the current subtree at the
           // lowest possible point and move to the queue, so it can
           // be picked by another thread.
-          if (dive_queue_.size() < min_diving_queue_size_) {
+          if (diving_queue_.size() < min_diving_queue_size_) {
             mip_node_t<i_t, f_t>* new_node = stack.back();
             stack.pop_back();
 
@@ -1138,7 +1138,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
             new_node->get_variable_bounds(lower, upper, node_presolver.bounds_changed);
 
             mutex_dive_queue_.lock();
-            dive_queue_.emplace(new_node->detach_copy(), std::move(lower), std::move(upper));
+            diving_queue_.emplace(new_node->detach_copy(), std::move(lower), std::move(upper));
             mutex_dive_queue_.unlock();
           }
         }
@@ -1288,6 +1288,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                      original_lp_,
                      log);
 
+  csr_matrix_t<i_t, f_t> Arow(1, 1, 0);
+  original_lp_.A.to_compressed_row(Arow);
+
   settings_.log.printf("Exploring the B&B tree using %d threads (best-first = %d, diving = %d)\n",
                        settings_.num_threads,
                        settings_.num_bfs_threads,
@@ -1305,9 +1308,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   min_diving_queue_size_                  = 4 * settings_.num_diving_threads;
   solver_status_                          = mip_exploration_status_t::RUNNING;
   lower_bound_ceiling_                    = inf;
-
-  csr_matrix_t<i_t, f_t> Arow(1, 1, 0);
-  original_lp_.A.to_compressed_row(Arow);
 
 #pragma omp parallel num_threads(settings_.num_threads)
   {
