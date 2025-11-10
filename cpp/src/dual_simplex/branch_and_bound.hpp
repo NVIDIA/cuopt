@@ -153,7 +153,7 @@ class branch_and_bound_t {
 
   // Queue for storing the promising node for performing dives.
   omp_mutex_t mutex_dive_queue_;
-  diving_queue_t<i_t, f_t> dive_queue_;
+  diving_queue_t<i_t, f_t> diving_queue_;
   i_t min_diving_queue_size_;
 
   // Global status of the solver.
@@ -192,7 +192,7 @@ class branch_and_bound_t {
 
   // Each "main" thread pops a node from the global heap and then performs a plunge
   // (i.e., a shallow dive) into the subtree determined by the node.
-  void best_first_thread(i_t id,
+  void best_first_thread(i_t task_id,
                          search_tree_t<i_t, f_t>& search_tree,
                          const csr_matrix_t<i_t, f_t>& Arow);
 
