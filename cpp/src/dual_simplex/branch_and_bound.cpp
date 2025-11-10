@@ -566,7 +566,7 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
   mip_node_t<i_t, f_t>* node_ptr,
   search_tree_t<i_t, f_t>& search_tree,
   lp_problem_t<i_t, f_t>& leaf_problem,
-  basis_update_mpf_t<i_t, f_t>& ft,
+  basis_update_mpf_t<i_t, f_t>& basis_update,
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
   bounds_strengthening_t<i_t, f_t>& node_presolver,
@@ -621,7 +621,7 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
                                                 leaf_problem,
                                                 lp_settings,
                                                 leaf_vstatus,
-                                                ft,
+                                                basis_update,
                                                 basic_list,
                                                 nonbasic_list,
                                                 leaf_solution,
@@ -634,7 +634,7 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
                                                                            lp_start_time,
                                                                            lp_settings,
                                                                            leaf_solution,
-                                                                           ft,
+                                                                           basis_update,
                                                                            basic_list,
                                                                            nonbasic_list,
                                                                            leaf_vstatus,
@@ -683,11 +683,9 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
       return node_children_status_t::NO_CHILDREN;
 
     } else if (leaf_objective <= upper_bound + abs_fathom_tol) {
-      logger_t pc_log = log;
-      pc_log.log      = false;
-
       // Choose fractional variable to branch on
-      const i_t branch_var = pc_.variable_selection(leaf_fractional, leaf_solution.x, pc_log);
+      const i_t branch_var =
+        pc_.variable_selection(leaf_fractional, leaf_solution.x, lp_settings.log);
 
       assert(leaf_vstatus.size() == leaf_problem.num_cols);
       search_tree.branch(
@@ -1290,7 +1288,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                      original_lp_,
                      log);
 
-  settings_.log.printf("Exploring the B&B tree using %d best-first threads and %d diving threads\n",
+  settings_.log.printf("Exploring the B&B tree using %d threads (best-first = %d, diving = %d)\n",
+                       settings_.num_threads,
                        settings_.num_bfs_threads,
                        settings_.num_diving_threads);
 

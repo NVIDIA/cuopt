@@ -207,7 +207,7 @@ class branch_and_bound_t {
   node_children_status_t solve_node(mip_node_t<i_t, f_t>* node_ptr,
                                     search_tree_t<i_t, f_t>& search_tree,
                                     lp_problem_t<i_t, f_t>& leaf_problem,
-                                    basis_update_mpf_t<i_t, f_t>& ft,
+                                    basis_update_mpf_t<i_t, f_t>& basis_update,
                                     std::vector<i_t>& basic_list,
                                     std::vector<i_t>& nonbasic_list,
                                     bounds_strengthening_t<i_t, f_t>& node_presolver,
