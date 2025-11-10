@@ -20,8 +20,6 @@ from cuopt.routing.vehicle_routing cimport (
 
 from datetime import date, datetime
 
-import pyarrow as p
-
 import pyarrow as pa
 
 from dateutil.relativedelta import relativedelta

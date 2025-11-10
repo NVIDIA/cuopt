@@ -431,13 +431,13 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             last_restart_duality_gap_primal_solution = cudf.Series._from_column( # noqa
                 col_from_buf(
                     last_restart_duality_gap_primal_solution,
-                    pa.float64
+                    pa.float64()
                 )
             ).to_numpy()
             last_restart_duality_gap_dual_solution = cudf.Series._from_column(
                 col_from_buf(
                     last_restart_duality_gap_dual_solution,
-                    pa.float64
+                    pa.float64()
                 )
             ).to_numpy()
 
