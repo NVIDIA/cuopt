@@ -566,7 +566,7 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
   mip_node_t<i_t, f_t>* node_ptr,
   search_tree_t<i_t, f_t>& search_tree,
   lp_problem_t<i_t, f_t>& leaf_problem,
-  basis_update_mpf_t<i_t, f_t>& basis_update,
+  basis_update_mpf_t<i_t, f_t>& basis_factors,
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
   bounds_strengthening_t<i_t, f_t>& node_presolver,
@@ -621,7 +621,7 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
                                                 leaf_problem,
                                                 lp_settings,
                                                 leaf_vstatus,
-                                                basis_update,
+                                                basis_factors,
                                                 basic_list,
                                                 nonbasic_list,
                                                 leaf_solution,
@@ -634,7 +634,7 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
                                                                            lp_start_time,
                                                                            lp_settings,
                                                                            leaf_solution,
-                                                                           basis_update,
+                                                                           basis_factors,
                                                                            basic_list,
                                                                            nonbasic_list,
                                                                            leaf_vstatus,
@@ -796,14 +796,14 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(mip_node_t<i_t, f_t>* nod
   bounds_strengthening_t<i_t, f_t> node_presolver(leaf_problem, Arow, row_sense, var_types_);
 
   const i_t m = leaf_problem.num_rows;
-  basis_update_mpf_t<i_t, f_t> basis_update(m, settings_.refactor_frequency);
+  basis_update_mpf_t<i_t, f_t> basis_factors(m, settings_.refactor_frequency);
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
 
   node_children_status_t status = solve_node(node,
                                              *search_tree,
                                              leaf_problem,
-                                             basis_update,
+                                             basis_factors,
                                              basic_list,
                                              nonbasic_list,
                                              node_presolver,
@@ -844,7 +844,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
                                                    search_tree_t<i_t, f_t>& search_tree,
                                                    lp_problem_t<i_t, f_t>& leaf_problem,
                                                    bounds_strengthening_t<i_t, f_t>& node_presolver,
-                                                   basis_update_mpf_t<i_t, f_t>& basis_update,
+                                                   basis_update_mpf_t<i_t, f_t>& basis_factors,
                                                    std::vector<i_t>& basic_list,
                                                    std::vector<i_t>& nonbasic_list)
 {
@@ -918,7 +918,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
     node_children_status_t status = solve_node(node_ptr,
                                                search_tree,
                                                leaf_problem,
-                                               basis_update,
+                                               basis_factors,
                                                basic_list,
                                                nonbasic_list,
                                                node_presolver,
@@ -993,7 +993,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(i_t task_id,
   bounds_strengthening_t<i_t, f_t> node_presolver(leaf_problem, Arow, row_sense, var_types_);
 
   const i_t m = leaf_problem.num_rows;
-  basis_update_mpf_t<i_t, f_t> basis_update(m, settings_.refactor_frequency);
+  basis_update_mpf_t<i_t, f_t> basis_factors(m, settings_.refactor_frequency);
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
 
@@ -1027,7 +1027,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(i_t task_id,
                       search_tree,
                       leaf_problem,
                       node_presolver,
-                      basis_update,
+                      basis_factors,
                       basic_list,
                       nonbasic_list);
 
@@ -1062,7 +1062,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
   bounds_strengthening_t<i_t, f_t> node_presolver(leaf_problem, Arow, row_sense, var_types_);
 
   const i_t m = leaf_problem.num_rows;
-  basis_update_mpf_t<i_t, f_t> basis_update(m, settings_.refactor_frequency);
+  basis_update_mpf_t<i_t, f_t> basis_factors(m, settings_.refactor_frequency);
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
 
@@ -1098,7 +1098,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
         node_children_status_t status = solve_node(node_ptr,
                                                    subtree,
                                                    leaf_problem,
-                                                   basis_update,
+                                                   basis_factors,
                                                    basic_list,
                                                    nonbasic_list,
                                                    node_presolver,
