@@ -78,6 +78,7 @@ cdef class WaypointMatrix:
             target_locations.__array_interface__['data'][0]
         )
 
+        route_df = route_df.reset_index(drop=True)
         route_locations = route_df['location'].astype(np.dtype(np.int32))
         route_locations = cp.array(route_locations.to_cupy(), order='C')
         cdef uintptr_t c_route_locations = route_locations.data.ptr
