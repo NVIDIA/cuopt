@@ -120,7 +120,11 @@ class problem_t {
   void update_variable_bounds(const std::vector<i_t>& var_indices,
                               const std::vector<f_t>& lb_values,
                               const std::vector<f_t>& ub_values);
-
+  void substitute_variables(const std::vector<i_t>& var_indices,
+                            const std::vector<i_t>& var_to_substitude_indices,
+                            const std::vector<f_t>& offset_values,
+                            const std::vector<f_t>& coefficient_values);
+  void sort_rows_by_variables(const raft::handle_t* handle_ptr);
   enum var_flags_t : i_t {
     VAR_IMPLIED_INTEGER = 1 << 0,
   };

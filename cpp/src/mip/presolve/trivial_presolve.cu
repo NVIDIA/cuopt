@@ -21,11 +21,11 @@
 namespace cuopt::linear_programming::detail {
 
 #if MIP_INSTANTIATE_FLOAT
-template void trivial_presolve(problem_t<int, float>& problem);
+template void trivial_presolve(problem_t<int, float>& problem, bool remap_cache_ids);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template void trivial_presolve(problem_t<int, double>& problem);
+template void trivial_presolve(problem_t<int, double>& problem, bool remap_cache_ids);
 #endif
 
 }  // namespace cuopt::linear_programming::detail

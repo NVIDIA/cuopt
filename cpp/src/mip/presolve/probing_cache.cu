@@ -16,6 +16,7 @@
  */
 
 #include "probing_cache.cuh"
+#include "trivial_presolve.cuh"
 
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/multi_probe.cuh>
@@ -372,6 +373,7 @@ void compute_cache_for_var(i_t var_idx,
                            std::atomic<size_t>& n_of_implied_singletons,
                            std::atomic<size_t>& n_of_cached_probings,
                            std::vector<std::tuple<f_t, i_t, f_t, f_t>>& modification_vector,
+                           std::vector<std::tuple<f_t, i_t, i_t, f_t, f_t>>& substitution_vector,
                            timer_t timer,
                            i_t device_id)
 {
@@ -386,6 +388,8 @@ void compute_cache_for_var(i_t var_idx,
   auto bounds = h_var_bounds[var_idx];
   f_t lb      = get_lower(bounds);
   f_t ub      = get_upper(bounds);
+  // note that is_binary does not always mean the bound difference is one
+  bool is_binary = ub == 1 && lb == 0;
   for (i_t i = 0; i < 2; ++i) {
     auto& probe_val = i == 0 ? probe_vals.first : probe_vals.second;
     // if binary, probe both values
@@ -462,12 +466,11 @@ void compute_cache_for_var(i_t var_idx,
         modification_vector.emplace_back(
           timer.elapsed_time(), var_idx, other_probe_val.val, other_probe_val.val);
       } else if (other_probe_interval_type == interval_type_t::GEQ) {
-        // we can put infinity on the upper bound, as final modification will be on the most
-        // restrictive
         modification_vector.emplace_back(
-          timer.elapsed_time(), var_idx, other_probe_val.val, std::numeric_limits<f_t>::infinity());
+          timer.elapsed_time(), var_idx, other_probe_val.val, bounds.y);
       } else {
-        modification_vector.emplace_back(timer.elapsed_time(), var_idx, 0, other_probe_val.val);
+        modification_vector.emplace_back(
+          timer.elapsed_time(), var_idx, bounds.x, other_probe_val.val);
       }
       n_of_infeasible_probings++;
       continue;
@@ -516,6 +519,23 @@ void compute_cache_for_var(i_t var_idx,
           h_var_bounds[i].x,
           h_var_bounds[i].y);
       }
+      if (h_improved_lower_bounds_0[i] == h_improved_upper_bounds_0[i] &&
+          h_improved_lower_bounds_1[i] == h_improved_upper_bounds_1[i] && is_binary) {
+        // == case has been handled as fixing by the global bounds update
+        if (h_improved_lower_bounds_0[i] != h_improved_lower_bounds_1[i]) {
+          // trivial presolve handles eliminations
+          // x_i = l_0 + (l_1 - l_0) * x_var_idx
+          // this means
+          CUOPT_LOG_DEBUG("Variable substitution found for var %d", i);
+          // timestamp, substituded var, var to substitude, offset, coefficient
+          substitution_vector.emplace_back(
+            timer.elapsed_time(),
+            i,
+            var_idx,
+            h_improved_lower_bounds_0[i],
+            h_improved_lower_bounds_1[i] - h_improved_lower_bounds_0[i]);
+        }
+      }
     }
   }
   handle.sync_stream();
@@ -528,27 +548,60 @@ void apply_modification_queue_to_problem(
 {
   // since each thread has its own deterministic chunk and the order of insertion here is
   // deterministic this should be deterministic
-  std::unordered_map<i_t, std::pair<f_t, f_t>> var_to_modifications;
+  std::unordered_map<i_t, std::pair<f_t, f_t>> var_bounds_modifications;
   for (const auto& modification_vector : modification_vector_pool) {
     for (const auto& modification : modification_vector) {
       auto [time, var_idx, lb, ub] = modification;
-      if (var_to_modifications.count(var_idx) == 0) {
-        var_to_modifications[var_idx] = std::make_pair(lb, ub);
+      if (var_bounds_modifications.count(var_idx) == 0) {
+        var_bounds_modifications[var_idx] = std::make_pair(lb, ub);
       } else {
-        var_to_modifications[var_idx].first  = max(var_to_modifications[var_idx].first, lb);
-        var_to_modifications[var_idx].second = min(var_to_modifications[var_idx].second, ub);
+        var_bounds_modifications[var_idx].first = max(var_bounds_modifications[var_idx].first, lb);
+        var_bounds_modifications[var_idx].second =
+          min(var_bounds_modifications[var_idx].second, ub);
       }
     }
   }
   std::vector<i_t> var_indices;
   std::vector<f_t> lb_values;
   std::vector<f_t> ub_values;
-  for (const auto& [var_idx, modifications] : var_to_modifications) {
+  for (const auto& [var_idx, modifications] : var_bounds_modifications) {
     var_indices.push_back(var_idx);
     lb_values.push_back(modifications.first);
     ub_values.push_back(modifications.second);
   }
   if (var_indices.size() > 0) { problem.update_variable_bounds(var_indices, lb_values, ub_values); }
+}
+
+template <typename i_t, typename f_t>
+void apply_substitution_queue_to_problem(
+  std::vector<std::vector<std::tuple<f_t, i_t, i_t, f_t, f_t>>>& substitution_vector_pool,
+  problem_t<i_t, f_t>& problem)
+{
+  std::unordered_map<i_t, std::tuple<i_t, f_t, f_t>> substituted_vars;
+  for (const auto& substitution_vector : substitution_vector_pool) {
+    for (const auto& substitution : substitution_vector) {
+      auto [time, var_idx, var_to_substitude, offset, coefficient] = substitution;
+      // only take the first substitutions if multiple are there
+      if (substituted_vars.count(var_idx) == 0) {
+        substituted_vars[var_idx] = std::make_tuple(var_to_substitude, offset, coefficient);
+      }
+    }
+  }
+  std::vector<i_t> var_indices;
+  std::vector<i_t> var_to_substitude_indices;
+  std::vector<f_t> offset_values;
+  std::vector<f_t> coefficient_values;
+  for (const auto& [var_idx, substitution] : substituted_vars) {
+    var_indices.push_back(var_idx);
+    var_to_substitude_indices.push_back(std::get<0>(substitution));
+    offset_values.push_back(std::get<1>(substitution));
+    coefficient_values.push_back(std::get<2>(substitution));
+  }
+  if (var_indices.size() > 0) {
+    problem.substitute_variables(
+      var_indices, var_to_substitude_indices, offset_values, coefficient_values);
+    CUOPT_LOG_DEBUG("Substituted %d variables", var_indices.size());
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -574,6 +627,8 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // Create a vector of multi_probe_t objects
   std::vector<multi_probe_t<i_t, f_t>> multi_probe_presolve_pool;
   std::vector<std::vector<std::tuple<f_t, i_t, f_t, f_t>>> modification_vector_pool(max_threads);
+  std::vector<std::vector<std::tuple<f_t, i_t, i_t, f_t, f_t>>> substitution_vector_pool(
+    max_threads);
 
   // Initialize multi_probe_presolve_pool
   for (size_t i = 0; i < max_threads; i++) {
@@ -586,7 +641,7 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   std::atomic<size_t> n_of_implied_singletons(0);
   std::atomic<size_t> n_of_cached_probings(0);
 
-  const size_t step_size = 1024;
+  const size_t step_size = 512;
   for (size_t step_start = 0; step_start < priority_indices.size(); step_start += step_size) {
     if (timer.check_time_limit()) { break; }
     size_t step_end = std::min(step_start + step_size, priority_indices.size());
@@ -612,6 +667,7 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                                         n_of_implied_singletons,
                                         n_of_cached_probings,
                                         modification_vector_pool[thread_idx],
+                                        substitution_vector_pool[thread_idx],
                                         timer,
                                         problem.handle_ptr->get_device());
       }
@@ -629,9 +685,12 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
       problem.handle_ptr->sync_stream();
     }
   }  // end of step
+  apply_substitution_queue_to_problem(substitution_vector_pool, problem);
   CUOPT_LOG_DEBUG("Total number of cached probings %lu number of implied singletons %lu",
                   n_of_cached_probings.load(),
                   n_of_implied_singletons.load());
+  const bool remap_cache_ids = true;
+  trivial_presolve(problem, remap_cache_ids);
   // restore the settings
   bound_presolve.settings = {};
 }

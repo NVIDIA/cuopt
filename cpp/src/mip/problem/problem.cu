@@ -1095,6 +1095,168 @@ void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_i
                                          });
 }
 
+// note that this only substitutes the variables, for problem modification trivial_presolve needs to
+// be called
+template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indices,
+                                               const std::vector<i_t>& var_to_substitude_indices,
+                                               const std::vector<f_t>& offset_values,
+                                               const std::vector<f_t>& coefficient_values)
+{
+  raft::common::nvtx::range fun_scope("substitute_variables");
+  // TODO store substitutions in presolve data and replace variables at post solve
+  const i_t dummy_substituted_variable = var_indices[0];
+  printf("dummy_substituted_variable %d\n", dummy_substituted_variable);
+  cuopt_assert(var_indices.size() == var_to_substitude_indices.size(), "size mismatch");
+  cuopt_assert(var_indices.size() == offset_values.size(), "size mismatch");
+  cuopt_assert(var_indices.size() == coefficient_values.size(), "size mismatch");
+  auto d_var_indices = device_copy(var_indices, handle_ptr->get_stream());
+  auto d_var_to_substitude_indices =
+    device_copy(var_to_substitude_indices, handle_ptr->get_stream());
+  auto d_offset_values      = device_copy(offset_values, handle_ptr->get_stream());
+  auto d_coefficient_values = device_copy(coefficient_values, handle_ptr->get_stream());
+  fixing_helpers.reduction_in_rhs.resize(n_constraints, handle_ptr->get_stream());
+  fixing_helpers.variable_fix_mask.resize(n_variables, handle_ptr->get_stream());
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               fixing_helpers.reduction_in_rhs.begin(),
+               fixing_helpers.reduction_in_rhs.end(),
+               0);
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               fixing_helpers.variable_fix_mask.begin(),
+               fixing_helpers.variable_fix_mask.end(),
+               -1);
+
+  rmm::device_scalar<f_t> objective_offset(0., handle_ptr->get_stream());
+  thrust::for_each(handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(0) + d_var_indices.size(),
+                   [variable_fix_mask         = make_span(fixing_helpers.variable_fix_mask),
+                    var_indices               = make_span(d_var_indices),
+                    n_variables               = n_variables,
+                    substitute_coefficient    = make_span(d_coefficient_values),
+                    substitute_offset         = make_span(d_offset_values),
+                    var_to_substitude_indices = make_span(d_var_to_substitude_indices),
+                    objective_coefficients    = make_span(objective_coefficients),
+                    objective_offset          = objective_offset.data()] __device__(i_t idx) {
+                     i_t var_idx                = var_indices[idx];
+                     i_t substituting_var_idx   = var_to_substitude_indices[idx];
+                     variable_fix_mask[var_idx] = idx;
+                     f_t objective_offset_difference =
+                       objective_coefficients[var_idx] * substitute_offset[idx];
+                     atomicAdd(objective_offset, objective_offset_difference);
+                     objective_coefficients[var_idx] +=
+                       objective_coefficients[var_idx] * substitute_coefficient[idx];
+                   });
+  f_t objective_offset_value = objective_offset.value(handle_ptr->get_stream());
+  presolve_data.objective_offset += objective_offset_value;
+  const i_t num_segments = n_constraints;
+  f_t initial_value{0.};
+
+  auto input_transform_it = thrust::make_transform_iterator(
+    thrust::make_counting_iterator(0),
+    [coefficients           = make_span(coefficients),
+     variables              = make_span(variables),
+     variable_fix_mask      = make_span(fixing_helpers.variable_fix_mask),
+     substitute_coefficient = make_span(d_coefficient_values),
+     substitute_offset      = make_span(d_offset_values),
+     substitute_var_indices = make_span(d_var_to_substitude_indices),
+     int_tol                = tolerances.integrality_tolerance] __device__(i_t idx) -> f_t {
+      i_t var_idx = variables[idx];
+      if (variable_fix_mask[var_idx] != -1) {
+        i_t reference_idx           = variable_fix_mask[var_idx];
+        f_t substituted_coefficient = substitute_coefficient[reference_idx];
+        f_t substituted_offset      = substitute_offset[reference_idx];
+        f_t reduction               = coefficients[idx] * substituted_offset;
+        coefficients[idx]           = coefficients[idx] * substituted_coefficient;
+        // note that this might cause duplicates if these two variables are in the same row
+        // we will handle duplicates in later
+        variables[idx] = substitute_var_indices[reference_idx];
+        return reduction;
+      } else {
+        return 0.;
+      }
+    });
+  // Determine temporary device storage requirements
+  void* d_temp_storage      = nullptr;
+  size_t temp_storage_bytes = 0;
+  cub::DeviceSegmentedReduce::Reduce(d_temp_storage,
+                                     temp_storage_bytes,
+                                     input_transform_it,
+                                     fixing_helpers.reduction_in_rhs.data(),
+                                     num_segments,
+                                     offsets.data(),
+                                     offsets.data() + 1,
+                                     cuda::std::plus<>{},
+                                     initial_value,
+                                     handle_ptr->get_stream());
+
+  rmm::device_uvector<std::uint8_t> temp_storage(temp_storage_bytes, handle_ptr->get_stream());
+  d_temp_storage = thrust::raw_pointer_cast(temp_storage.data());
+
+  // Run reduction
+  cub::DeviceSegmentedReduce::Reduce(d_temp_storage,
+                                     temp_storage_bytes,
+                                     input_transform_it,
+                                     fixing_helpers.reduction_in_rhs.data(),
+                                     num_segments,
+                                     offsets.data(),
+                                     offsets.data() + 1,
+                                     cuda::std::plus<>{},
+                                     initial_value,
+                                     handle_ptr->get_stream());
+  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+  thrust::for_each(
+    handle_ptr->get_thrust_policy(),
+    thrust::make_counting_iterator(0),
+    thrust::make_counting_iterator(0) + n_constraints,
+    [lower_bounds     = make_span(constraint_lower_bounds),
+     upper_bounds     = make_span(constraint_upper_bounds),
+     reduction_in_rhs = make_span(fixing_helpers.reduction_in_rhs)] __device__(i_t cstr_idx) {
+      lower_bounds[cstr_idx] = lower_bounds[cstr_idx] - reduction_in_rhs[cstr_idx];
+      upper_bounds[cstr_idx] = upper_bounds[cstr_idx] - reduction_in_rhs[cstr_idx];
+    });
+  // sort indices so we can detect duplicates
+  sort_rows_by_variables(handle_ptr);
+  // now remove the duplicate substituted variables by summing their coefficients on one and
+  // assigning a dummy variable on another
+  thrust::for_each(handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(n_constraints),
+                   [variables              = make_span(variables),
+                    coefficients           = make_span(coefficients),
+                    offsets                = make_span(offsets),
+                    objective_coefficients = make_span(objective_coefficients),
+                    dummy_substituted_variable] __device__(i_t cstr_idx) {
+                     i_t offset_begin        = offsets[cstr_idx];
+                     i_t offset_end          = offsets[cstr_idx + 1];
+                     i_t duplicate_start_idx = -1;
+                     while (offset_begin < offset_end - 1) {
+                       i_t var_idx      = variables[offset_begin];
+                       i_t next_var_idx = variables[offset_begin + 1];
+                       if (var_idx == next_var_idx) {
+                         if (duplicate_start_idx == -1) { duplicate_start_idx = offset_begin; }
+                         coefficients[duplicate_start_idx] += coefficients[offset_begin + 1];
+                         printf(
+                           "removing duplicate variable %d in constraint %d new coefficient %f\n",
+                           var_idx,
+                           cstr_idx,
+                           coefficients[duplicate_start_idx]);
+                         // objective_coefficients[var_idx] += objective_coefficients[next_var_idx];
+                         variables[duplicate_start_idx] = variables[offset_begin + 1];
+                         // mark those for elimination
+                         variables[offset_begin + 1]          = dummy_substituted_variable;
+                         coefficients[offset_begin + 1]       = 0.;
+                         objective_coefficients[next_var_idx] = 0.;
+                       } else {
+                         duplicate_start_idx = -1;
+                       }
+                       offset_begin++;
+                     }
+                   });
+  handle_ptr->sync_stream();
+  CUOPT_LOG_DEBUG("Substituted %d variables", var_indices.size());
+}
+
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::fix_given_variables(problem_t<i_t, f_t>& original_problem,
                                               rmm::device_uvector<f_t>& assignment,
@@ -1178,6 +1340,12 @@ void problem_t<i_t, f_t>::fix_given_variables(problem_t<i_t, f_t>& original_prob
       upper_bounds[cstr_idx] = original_upper_bounds[cstr_idx] - reduction_in_rhs[cstr_idx];
     });
   handle_ptr->sync_stream();
+}
+
+template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::sort_rows_by_variables(const raft::handle_t* handle_ptr)
+{
+  csrsort_cusparse(coefficients, variables, offsets, n_constraints, n_variables, handle_ptr);
 }
 
 template <typename i_t, typename f_t>
@@ -1702,24 +1870,24 @@ void problem_t<i_t, f_t>::update_variable_bounds(const std::vector<i_t>& var_ind
      variable_bounds = make_span(variable_bounds),
      var_indices     = make_span(d_var_indices)] __device__(auto i) {
       i_t var_idx = var_indices[i];
-      if (!(variable_bounds[var_idx].x <= lb_values[i])) {
-        printf(
-          "Assert failed: variable lower bound violation: variable_bounds[%d].x = %f > "
-          "lb_values[%d] = %f\n",
-          (int)var_idx,
-          variable_bounds[var_idx].x,
-          (int)i,
-          lb_values[i]);
-      }
-      if (!(variable_bounds[var_idx].y >= ub_values[i])) {
-        printf(
-          "Assert failed: variable upper bound violation: variable_bounds[%d].y = %f < "
-          "ub_values[%d] = %f\n",
-          (int)var_idx,
-          variable_bounds[var_idx].y,
-          (int)i,
-          ub_values[i]);
-      }
+      // if (!(variable_bounds[var_idx].x <= lb_values[i])) {
+      //   printf(
+      //     "Assert failed: variable lower bound violation: variable_bounds[%d].x = %f > "
+      //     "lb_values[%d] = %f\n",
+      //     (int)var_idx,
+      //     variable_bounds[var_idx].x,
+      //     (int)i,
+      //     lb_values[i]);
+      // }
+      // if (!(variable_bounds[var_idx].y >= ub_values[i])) {
+      //   printf(
+      //     "Assert failed: variable upper bound violation: variable_bounds[%d].y = %f < "
+      //     "ub_values[%d] = %f\n",
+      //     (int)var_idx,
+      //     variable_bounds[var_idx].y,
+      //     (int)i,
+      //     ub_values[i]);
+      // }
       cuopt_assert(variable_bounds[var_idx].x <= lb_values[i], "variable lower bound violation");
       cuopt_assert(variable_bounds[var_idx].y >= ub_values[i], "variable upper bound violation");
       variable_bounds[var_idx].x = lb_values[i];
