@@ -19,6 +19,7 @@
 #include "mip_utils.cuh"
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuopt/linear_programming/utilities/problem_conversion.cuh>
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <mip/presolve/bounds_presolve.cuh>
@@ -154,9 +155,10 @@ void test_multi_probe(std::string path)
   cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
     cuopt::mps_parser::parse_mps<int, double>(path, false);
   handle_.sync_stream();
-  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
-  problem_checking_t<int, double>::check_problem_representation(op_problem);
-  detail::problem_t<int, double> problem(op_problem);
+  auto op_problem  = mps_data_model_to_optimization_problem(mps_problem);
+  auto gpu_problem = host_to_gpu_problem(&handle_, op_problem);
+  problem_checking_t<int, double>::check_problem_representation(gpu_problem);
+  detail::problem_t<int, double> problem(gpu_problem);
   mip_solver_settings_t<int, double> default_settings{};
   detail::pdlp_initial_scaling_strategy_t<int, double> scaling(&handle_,
                                                                problem,

@@ -804,8 +804,11 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
                                                    bool use_pdlp_solver_mode,
                                                    bool is_batch_mode)
 {
+  // Create RAFT handle for local GPU solve
+  raft::handle_t handle;
+
   // Convert host problem to GPU problem for internal solving
-  auto gpu_problem = host_to_gpu_problem(host_problem.get_handle_ptr(), host_problem);
+  auto gpu_problem = host_to_gpu_problem(&handle, host_problem);
 
   try {
     // Create log stream for file logging and add it to default logger
@@ -950,9 +953,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
 
 template <typename i_t, typename f_t>
 cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
-  raft::handle_t const* handle_ptr, const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model)
+  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model)
 {
-  cuopt::linear_programming::optimization_problem_t<i_t, f_t> gpu_problem(handle_ptr);
+  cuopt::linear_programming::optimization_problem_t<i_t, f_t> gpu_problem;
   gpu_problem.set_maximize(data_model.get_sense());
 
   gpu_problem.set_csr_constraint_matrix(data_model.get_constraint_matrix_values().data(),
@@ -1020,13 +1023,12 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp(
-  raft::handle_t const* handle_ptr,
   const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   bool problem_checking,
   bool use_pdlp_solver_mode)
 {
-  auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
+  auto op_problem = mps_data_model_to_optimization_problem(mps_data_model);
   return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode);
 }
 
@@ -1039,7 +1041,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     bool is_batch_mode);                                                               \
                                                                                        \
   template optimization_problem_solution_t<int, F_TYPE> solve_lp(                      \
-    raft::handle_t const* handle_ptr,                                                  \
     const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& mps_data_model,            \
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                               \
     bool problem_checking,                                                             \
@@ -1053,7 +1054,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     bool is_batch_mode);                                                               \
                                                                                        \
   template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem( \
-    raft::handle_t const* handle_ptr,                                                  \
     const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);               \
   template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE> const& settings);
 

@@ -59,7 +59,7 @@ void test_miplib_file(result_map_t test_instance, mip_solver_settings_t<int, dou
 #endif
 
   settings.time_limit                  = test_time_limit;
-  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
+  mip_solution_t<int, double> solution = solve_mip(problem, settings);
   bool is_feasible = solution.get_termination_status() == mip_termination_status_t::FeasibleFound ||
                      solution.get_termination_status() == mip_termination_status_t::Optimal;
   EXPECT_TRUE(is_feasible);

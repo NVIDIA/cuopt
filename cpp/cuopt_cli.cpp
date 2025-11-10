@@ -118,7 +118,7 @@ int run_single_file(const std::string& file_path,
   }
 
   auto op_problem =
-    cuopt::linear_programming::mps_data_model_to_optimization_problem(&handle_, mps_data_model);
+    cuopt::linear_programming::mps_data_model_to_optimization_problem(mps_data_model);
 
   const bool is_mip =
     (op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP ||

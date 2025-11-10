@@ -36,9 +36,8 @@
 namespace cuopt::linear_programming {
 
 template <typename i_t, typename f_t>
-optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* handle_ptr)
-  : handle_ptr_(handle_ptr),
-    maximize_{false},
+optimization_problem_t<i_t, f_t>::optimization_problem_t()
+  : maximize_{false},
     n_vars_{0},
     n_constraints_{0},
     A_{},
@@ -61,8 +60,7 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* h
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t>::optimization_problem_t(
   const optimization_problem_t<i_t, f_t>& other)
-  : handle_ptr_(other.get_handle_ptr()),
-    maximize_{other.get_sense()},
+  : maximize_{other.get_sense()},
     n_vars_{other.get_n_variables()},
     n_constraints_{other.get_n_constraints()},
     A_{other.get_constraint_matrix_values()},
@@ -290,12 +288,6 @@ i_t optimization_problem_t<i_t, f_t>::get_n_integers() const
     }
   }
   return n_integers;
-}
-
-template <typename i_t, typename f_t>
-raft::handle_t const* optimization_problem_t<i_t, f_t>::get_handle_ptr() const noexcept
-{
-  return handle_ptr_;
 }
 
 template <typename i_t, typename f_t>

@@ -18,6 +18,7 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
+#include <cuopt/linear_programming/utilities/problem_conversion.cuh>
 #include <linear_programming/pdlp.cuh>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <mip/presolve/trivial_presolve.cuh>
@@ -80,12 +81,13 @@ void test_elim_var_remap(std::string test_instance)
   cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
     cuopt::mps_parser::parse_mps<int, double>(path, false);
   handle_.sync_stream();
-  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
-  problem_checking_t<int, double>::check_problem_representation(op_problem);
+  auto op_problem  = mps_data_model_to_optimization_problem(mps_problem);
+  auto gpu_problem = host_to_gpu_problem(&handle_, op_problem);
+  problem_checking_t<int, double>::check_problem_representation(gpu_problem);
 
-  init_handler(op_problem.get_handle_ptr());
+  init_handler(&handle_);
   // run the problem constructor of MIP, so that we do bounds standardization
-  detail::problem_t<int, double> problem(op_problem);
+  detail::problem_t<int, double> problem(gpu_problem);
   problem.preprocess_problem();
   trivial_presolve(problem);
 
@@ -148,13 +150,14 @@ void test_elim_var_solution(std::string test_instance)
   cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
     cuopt::mps_parser::parse_mps<int, double>(path, false);
   handle_.sync_stream();
-  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
-  problem_checking_t<int, double>::check_problem_representation(op_problem);
+  auto op_problem  = mps_data_model_to_optimization_problem(mps_problem);
+  auto gpu_problem = host_to_gpu_problem(&handle_, op_problem);
+  problem_checking_t<int, double>::check_problem_representation(gpu_problem);
   setup_pdlp(handle_.get_stream());
-  init_handler(op_problem.get_handle_ptr());
+  init_handler(&handle_);
   // run the problem constructor of MIP, so that we do bounds standardization
-  detail::problem_t<int, double> standardized_problem(op_problem);
-  detail::problem_t<int, double> original_problem(op_problem);
+  detail::problem_t<int, double> standardized_problem(gpu_problem);
+  detail::problem_t<int, double> original_problem(gpu_problem);
   standardized_problem.preprocess_problem();
   trivial_presolve(standardized_problem);
   detail::problem_t<int, double> sub_problem(standardized_problem);

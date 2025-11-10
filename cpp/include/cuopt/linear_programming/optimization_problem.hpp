@@ -115,7 +115,7 @@ class optimization_problem_t {
     raft::device_span<const f_t> constraint_upper_bounds;
   };  // struct view_t
 
-  optimization_problem_t(raft::handle_t const* handle_ptr);
+  optimization_problem_t();
   optimization_problem_t(const optimization_problem_t<i_t, f_t>& other);
 
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
@@ -321,7 +321,6 @@ class optimization_problem_t {
   i_t get_n_constraints() const;
   i_t get_nnz() const;
   i_t get_n_integers() const;
-  raft::handle_t const* get_handle_ptr() const noexcept;
   const std::vector<f_t>& get_constraint_matrix_values() const;
   std::vector<f_t>& get_constraint_matrix_values();
   const std::vector<i_t>& get_constraint_matrix_indices() const;
@@ -366,10 +365,6 @@ class optimization_problem_t {
                                    std::vector<i_t>& A_offsets,
                                    std::vector<i_t>& A_indices,
                                    std::vector<f_t>& A_values);
-
-  // Pointer to library handle (RAFT) containing hardware resources information
-  // NOTE: Still kept for potential future use, but not used for host memory operations
-  raft::handle_t const* handle_ptr_{nullptr};
 
   /** problem classification */
   problem_category_t problem_category_ = problem_category_t::LP;

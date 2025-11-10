@@ -18,6 +18,7 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 
 #include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/linear_programming/utilities/problem_conversion.cuh>
 #include <linear_programming/utils.cuh>
 #include <mip/presolve/trivial_presolve.cuh>
 #include <mip/problem/problem.cuh>
@@ -69,9 +70,9 @@ thrust::host_vector<T> rand_vec(i_t size, T dist_beg, T dist_end)
 }
 
 template <typename i_t, typename f_t>
-lp::optimization_problem_t<i_t, f_t> create_problem(raft::handle_t const* h, i_t n_cnst, i_t n_var)
+lp::optimization_problem_t<i_t, f_t> create_problem(i_t n_cnst, i_t n_var)
 {
-  lp::optimization_problem_t<i_t, f_t> problem(h);
+  lp::optimization_problem_t<i_t, f_t> problem;
   thrust::default_random_engine rng(1337);
   thrust::uniform_real_distribution<f_t> dist(0, 5);
 
@@ -154,26 +155,18 @@ void set_equal_var_bounds(optimization_problem_t<i_t, f_t>& problem,
                           thrust::host_vector<i_t>& selected_vars)
 {
   cuopt_assert(selected_vars.size() < problem.get_n_variables(), "invalid number of variables");
-  rmm::device_uvector<f_t>& v_lb = problem.get_variable_lower_bounds();
-  rmm::device_uvector<f_t>& v_ub = problem.get_variable_upper_bounds();
-  rmm::device_uvector<i_t> sel_vars(selected_vars.size(), problem.get_handle_ptr()->get_stream());
-  raft::copy(sel_vars.data(),
-             selected_vars.data(),
-             selected_vars.size(),
-             problem.get_handle_ptr()->get_stream());
-  auto lb = make_span(v_lb);
-  auto ub = make_span(v_ub);
-  auto vt = make_span(problem.get_variable_types());
-  thrust::for_each(problem.get_handle_ptr()->get_thrust_policy(),
-                   sel_vars.begin(),
-                   sel_vars.end(),
-                   [lb, ub, vt] __device__(auto v) {
-                     if (vt[v] == var_t::INTEGER) {
-                       lb[v] = ub[v] = ceil(ub[v]);
-                     } else {
-                       lb[v] = ub[v];
-                     }
-                   });
+  // Problem now uses host memory (std::vector) - work directly with host data
+  auto& v_lb     = problem.get_variable_lower_bounds();
+  auto& v_ub     = problem.get_variable_upper_bounds();
+  const auto& vt = problem.get_variable_types();
+
+  for (const auto& v : selected_vars) {
+    if (vt[v] == var_t::INTEGER) {
+      v_lb[v] = v_ub[v] = std::ceil(v_ub[v]);
+    } else {
+      v_lb[v] = v_ub[v];
+    }
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -192,12 +185,14 @@ void test_equal_val_bounds(i_t n_cnst, i_t n_var)
 {
   const raft::handle_t handle_{};
 
-  auto op_problem = create_problem<i_t, f_t>(&handle_, n_cnst, n_var);
+  auto op_problem = create_problem<i_t, f_t>(n_cnst, n_var);
   auto selected_vars =
     generate_random_vals<i_t, f_t>(op_problem.get_n_variables(), std::max(n_var * 0.1, 1.));
   set_equal_var_bounds<i_t, f_t>(op_problem, selected_vars);
 
-  dtl::problem_t<i_t, f_t> problem(op_problem);
+  // Convert host problem to GPU problem for solver
+  auto gpu_problem = host_to_gpu_problem(&handle_, op_problem);
+  dtl::problem_t<i_t, f_t> problem(gpu_problem);
 
   problem.preprocess_problem();
 
@@ -240,9 +235,10 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
   // Check constraints lower/upper bounds after having filled the row type and rhs
   {
     raft::handle_t handle;
-    optimization_problem_t<int, double> op_problem(&handle);
+    optimization_problem_t<int, double> op_problem;
     fill_problem(op_problem);
-    cuopt::linear_programming::detail::problem_t<int, double> problem(op_problem);
+    auto gpu_problem = host_to_gpu_problem(&handle, op_problem);
+    cuopt::linear_programming::detail::problem_t<int, double> problem(gpu_problem);
 
     // problem members are device vectors, need stream for copy
     const auto constraints_lower_bounds =
@@ -257,13 +253,14 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
   // Check constraints lower/upper bounds after having set both
   {
     raft::handle_t handle;
-    optimization_problem_t<int, double> op_problem(&handle);
+    optimization_problem_t<int, double> op_problem;
     fill_problem(op_problem);
     double lower[] = {2.0};
     double upper[] = {3.0};
     op_problem.set_constraint_lower_bounds(lower, 1);
     op_problem.set_constraint_upper_bounds(upper, 1);
-    cuopt::linear_programming::detail::problem_t<int, double> problem(op_problem);
+    auto gpu_problem = host_to_gpu_problem(&handle, op_problem);
+    cuopt::linear_programming::detail::problem_t<int, double> problem(gpu_problem);
 
     // problem members are device vectors, need stream for copy
     const auto constraints_lower_bounds =
@@ -278,13 +275,14 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
   // Set upper / lower before
   {
     raft::handle_t handle;
-    optimization_problem_t<int, double> op_problem(&handle);
+    optimization_problem_t<int, double> op_problem;
     double lower[] = {2.0};
     double upper[] = {3.0};
     op_problem.set_constraint_lower_bounds(lower, 1);
     op_problem.set_constraint_upper_bounds(upper, 1);
     fill_problem(op_problem);
-    cuopt::linear_programming::detail::problem_t<int, double> problem(op_problem);
+    auto gpu_problem = host_to_gpu_problem(&handle, op_problem);
+    cuopt::linear_programming::detail::problem_t<int, double> problem(gpu_problem);
 
     // problem members are device vectors, need stream for copy
     const auto constraints_lower_bounds =
@@ -303,11 +301,16 @@ TEST(optimization_problem_t_DeathTest, test_check_problem_validity)
   GTEST_FLAG_SET(death_test_style, "threadsafe");
 
   raft::handle_t handle;
-  auto op_problem        = optimization_problem_t<int, double>(&handle);
+  auto op_problem        = optimization_problem_t<int, double>();
   using custom_problem_t = cuopt::linear_programming::detail::problem_t<int, double>;
 
   // Check if assert if nothing
-  EXPECT_DEATH({ custom_problem_t problem(op_problem); }, "");
+  EXPECT_DEATH(
+    {
+      auto gpu_problem = host_to_gpu_problem(&handle, op_problem);
+      custom_problem_t problem(gpu_problem);
+    },
+    "");
 
   // Set A_CSR_matrix
   /*
@@ -320,35 +323,56 @@ TEST(optimization_problem_t_DeathTest, test_check_problem_validity)
   op_problem.set_csr_constraint_matrix(A_host, 5, indices_host, 5, offset_host, 3);
 
   // Test if assert is thrown when c is not set
-  EXPECT_DEATH({ custom_problem_t problem(op_problem); }, "");
+  EXPECT_DEATH(
+    {
+      auto gpu_problem = host_to_gpu_problem(&handle, op_problem);
+      custom_problem_t problem(gpu_problem);
+    },
+    "");
 
   // Set c
   double c_host[] = {1.0, 2.0, 3.0};
   op_problem.set_objective_coefficients(c_host, 3);
 
   // Test if assert is thrown when constraints are not set
-  EXPECT_DEATH({ custom_problem_t problem(op_problem); }, "");
+  EXPECT_DEATH(
+    {
+      auto gpu_problem = host_to_gpu_problem(&handle, op_problem);
+      custom_problem_t problem(gpu_problem);
+    },
+    "");
 
   // Set row type
   char row_type_host[] = {'E', 'E'};
   op_problem.set_row_types(row_type_host, 2);
 
   // Test if assert is thrown when row_type is set but not b
-  EXPECT_DEATH({ custom_problem_t problem(op_problem); }, "");
+  EXPECT_DEATH(
+    {
+      auto gpu_problem = host_to_gpu_problem(&handle, op_problem);
+      custom_problem_t problem(gpu_problem);
+    },
+    "");
 
   // Set b
   double b_host[] = {1.0, 2.0};
   op_problem.set_constraint_bounds(b_host, 2);
 
   // Test that nothing is thrown when both b and row types are set
-  custom_problem_t problem(op_problem);
+  auto gpu_problem1 = host_to_gpu_problem(&handle, op_problem);
+  custom_problem_t problem(gpu_problem1);
 
   // Unsetting row types and constraints bounds
   op_problem.set_row_types(row_type_host, 0);
   op_problem.set_constraint_bounds(b_host, 0);
 
   // Test again if assert is thrown when constraints bounds are not set
-  EXPECT_DEATH({ custom_problem_t problem(op_problem); }, "");
+  EXPECT_DEATH(
+    {
+      auto gpu_problem = host_to_gpu_problem(&handle, op_problem);
+      custom_problem_t problem(gpu_problem);
+    },
+    "");
 
   // Seting constraint lower bounds
   double constraint_lower_bounds_host[] = {1.0f, 2.0f};
@@ -357,7 +381,8 @@ TEST(optimization_problem_t_DeathTest, test_check_problem_validity)
   op_problem.set_constraint_upper_bounds(constraint_lower_bounds_host, 2);
 
   // Test if no assert is thrown when constraints bounds are set
-  custom_problem_t problem2(op_problem);
+  auto gpu_problem2 = host_to_gpu_problem(&handle, op_problem);
+  custom_problem_t problem2(gpu_problem2);
 
   // Manually unsetting the tranpose fields in problem2 (automatically created in LP mode)
   problem2.reverse_coefficients = rmm::device_uvector<double>(0, handle.get_stream());

@@ -17,6 +17,7 @@
 
 #include <utilities/common_utils.hpp>
 
+#include <cuopt/linear_programming/utilities/problem_conversion.cuh>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <mip/problem/problem.cuh>
 #include <mps_parser/parser.hpp>
@@ -33,6 +34,15 @@
 #include <vector>
 
 namespace cuopt::linear_programming {
+
+// Helper function to check problem representation (converts host problem to GPU problem first)
+template <typename i_t, typename f_t>
+void check_problem_representation_helper(const optimization_problem_t<i_t, f_t>& host_problem)
+{
+  raft::handle_t handle;
+  auto gpu_problem = host_to_gpu_problem(&handle, host_problem);
+  problem_checking_t<i_t, f_t>::check_problem_representation(gpu_problem);
+}
 
 cuopt::mps_parser::mps_data_model_t<int, double> read_from_mps(const std::string& file,
                                                                bool fixed_mps_format = true)
@@ -116,8 +126,8 @@ TEST(optimization_problem_t, good_mps_file_comments)
 
 TEST(optimization_problem_t, test_set_get_fields)
 {
-  raft::handle_t handle;
-  auto problem = optimization_problem_t<int, double>(&handle);
+  // optimization_problem_t now uses host memory (std::vector) - no need for handle or cudaMemcpy
+  auto problem = optimization_problem_t<int, double>();
 
   double A_host[]      = {1.0, 2.0, 3.0};
   int indices_host[]   = {0, 1, 2};
@@ -127,97 +137,68 @@ TEST(optimization_problem_t, test_set_get_fields)
   double var_ub_host[] = {1.0, 1.1, 1.2};
   double con_lb_host[] = {0.5, 0.6, 0.7};
   double con_ub_host[] = {1.5, 1.6, 1.7};
-  std::vector<double> result(3);
-  std::vector<int> result_int(3);
 
   problem.set_csr_constraint_matrix(A_host, 3, indices_host, 3, indices_host, 3);
 
-  // Test set_A_values
-  cudaMemcpy(result.data(),
-             problem.get_constraint_matrix_values().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
-  EXPECT_NEAR(1.0, result[0], 1e-5);
-  EXPECT_NEAR(2.0, result[1], 1e-5);
-  EXPECT_NEAR(3.0, result[2], 1e-5);
+  // Test set_A_values - data is already on host
+  const auto& A_values = problem.get_constraint_matrix_values();
+  EXPECT_NEAR(1.0, A_values[0], 1e-5);
+  EXPECT_NEAR(2.0, A_values[1], 1e-5);
+  EXPECT_NEAR(3.0, A_values[2], 1e-5);
 
-  // Test A_indices
-  cudaMemcpy(result_int.data(),
-             problem.get_constraint_matrix_indices().data(),
-             3 * sizeof(int),
-             cudaMemcpyDeviceToHost);
-  EXPECT_EQ(0, result_int[0]);
-  EXPECT_EQ(1, result_int[1]);
-  EXPECT_EQ(2, result_int[2]);
+  // Test A_indices - data is already on host
+  const auto& A_indices = problem.get_constraint_matrix_indices();
+  EXPECT_EQ(0, A_indices[0]);
+  EXPECT_EQ(1, A_indices[1]);
+  EXPECT_EQ(2, A_indices[2]);
 
-  // Test A_offsets_
-  cudaMemcpy(result_int.data(),
-             problem.get_constraint_matrix_offsets().data(),
-             3 * sizeof(int),
-             cudaMemcpyDeviceToHost);
-  EXPECT_EQ(0, result_int[0]);
-  EXPECT_EQ(1, result_int[1]);
-  EXPECT_EQ(2, result_int[2]);
+  // Test A_offsets_ - data is already on host
+  const auto& A_offsets = problem.get_constraint_matrix_offsets();
+  EXPECT_EQ(0, A_offsets[0]);
+  EXPECT_EQ(1, A_offsets[1]);
+  EXPECT_EQ(2, A_offsets[2]);
 
-  // Test b_
+  // Test b_ - data is already on host
   problem.set_constraint_bounds(b_host, 3);
-  cudaMemcpy(result.data(),
-             problem.get_constraint_bounds().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
-  EXPECT_NEAR(4.0, result[0], 1e-5);
-  EXPECT_NEAR(5.0, result[1], 1e-5);
-  EXPECT_NEAR(6.0, result[2], 1e-5);
+  const auto& b = problem.get_constraint_bounds();
+  EXPECT_NEAR(4.0, b[0], 1e-5);
+  EXPECT_NEAR(5.0, b[1], 1e-5);
+  EXPECT_NEAR(6.0, b[2], 1e-5);
 
-  // Test c_
+  // Test c_ - data is already on host
   problem.set_objective_coefficients(c_host, 3);
-  cudaMemcpy(result.data(),
-             problem.get_objective_coefficients().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
-  EXPECT_NEAR(7.0, result[0], 1e-5);
-  EXPECT_NEAR(8.0, result[1], 1e-5);
-  EXPECT_NEAR(9.0, result[2], 1e-5);
+  const auto& c = problem.get_objective_coefficients();
+  EXPECT_NEAR(7.0, c[0], 1e-5);
+  EXPECT_NEAR(8.0, c[1], 1e-5);
+  EXPECT_NEAR(9.0, c[2], 1e-5);
 
-  // Test variable_lower_bounds_
+  // Test variable_lower_bounds_ - data is already on host
   problem.set_variable_lower_bounds(var_lb_host, 3);
-  cudaMemcpy(result.data(),
-             problem.get_variable_lower_bounds().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
-  EXPECT_NEAR(0.0, result[0], 1e-5);
-  EXPECT_NEAR(0.1, result[1], 1e-5);
-  EXPECT_NEAR(0.2, result[2], 1e-5);
+  const auto& var_lb = problem.get_variable_lower_bounds();
+  EXPECT_NEAR(0.0, var_lb[0], 1e-5);
+  EXPECT_NEAR(0.1, var_lb[1], 1e-5);
+  EXPECT_NEAR(0.2, var_lb[2], 1e-5);
 
-  // Test variable_upper_bounds_
+  // Test variable_upper_bounds_ - data is already on host
   problem.set_variable_upper_bounds(var_ub_host, 3);
-  cudaMemcpy(result.data(),
-             problem.get_variable_upper_bounds().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
-  EXPECT_NEAR(1.0, result[0], 1e-5);
-  EXPECT_NEAR(1.1, result[1], 1e-5);
-  EXPECT_NEAR(1.2, result[2], 1e-5);
+  const auto& var_ub = problem.get_variable_upper_bounds();
+  EXPECT_NEAR(1.0, var_ub[0], 1e-5);
+  EXPECT_NEAR(1.1, var_ub[1], 1e-5);
+  EXPECT_NEAR(1.2, var_ub[2], 1e-5);
 
-  // Test constraint_lower_bounds_
+  // Test constraint_lower_bounds_ - data is already on host
   problem.set_constraint_lower_bounds(con_lb_host, 3);
-  cudaMemcpy(result.data(),
-             problem.get_constraint_lower_bounds().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
-  EXPECT_NEAR(0.5, result[0], 1e-5);
-  EXPECT_NEAR(0.6, result[1], 1e-5);
-  EXPECT_NEAR(0.7, result[2], 1e-5);
+  const auto& con_lb = problem.get_constraint_lower_bounds();
+  EXPECT_NEAR(0.5, con_lb[0], 1e-5);
+  EXPECT_NEAR(0.6, con_lb[1], 1e-5);
+  EXPECT_NEAR(0.7, con_lb[2], 1e-5);
 
-  // Test constraint_upper_bounds_
+  // Test constraint_upper_bounds_ - data is already on host
   problem.set_constraint_upper_bounds(con_ub_host, 3);
-  cudaMemcpy(result.data(),
-             problem.get_constraint_upper_bounds().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
-  EXPECT_NEAR(1.5, result[0], 1e-5);
-  EXPECT_NEAR(1.6, result[1], 1e-5);
-  EXPECT_NEAR(1.7, result[2], 1e-5);
+  const auto& con_ub = problem.get_constraint_upper_bounds();
+  EXPECT_NEAR(1.5, con_ub[0], 1e-5);
+  EXPECT_NEAR(1.6, con_ub[1], 1e-5);
+  EXPECT_NEAR(1.7, con_ub[2], 1e-5);
 
   // Test objective_scaling_factor_
   double obj_scale = 1.5;
@@ -256,12 +237,10 @@ TEST(optimization_problem_t, test_set_get_fields)
 
 TEST(optimization_problem_t, test_check_problem_validity)
 {
-  raft::handle_t handle;
-  auto op_problem_ = optimization_problem_t<int, double>(&handle);
+  auto op_problem_ = optimization_problem_t<int, double>();
 
   // Test if exception is thrown when A_CSR_matrix are not set
-  EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)),
-               cuopt::logic_error);
+  EXPECT_THROW(check_problem_representation_helper(op_problem_), cuopt::logic_error);
 
   // Set A_CSR_matrix
   double A_host[]    = {1.0};
@@ -270,8 +249,7 @@ TEST(optimization_problem_t, test_check_problem_validity)
   op_problem_.set_csr_constraint_matrix(A_host, 1, indices_host, 1, offset_host, 2);
 
   // Test if exception is thrown when c is not set
-  EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)),
-               cuopt::logic_error);
+  EXPECT_THROW(check_problem_representation_helper(op_problem_), cuopt::logic_error);
 
   // Test that n_vars is not set
   EXPECT_EQ(op_problem_.get_n_variables(), 0);
@@ -281,8 +259,7 @@ TEST(optimization_problem_t, test_check_problem_validity)
   op_problem_.set_objective_coefficients(c_host, 1);
 
   // Test if exception is thrown when constraints are not set
-  EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)),
-               cuopt::logic_error);
+  EXPECT_THROW(check_problem_representation_helper(op_problem_), cuopt::logic_error);
 
   // Test that n_vars is now set
   EXPECT_EQ(op_problem_.get_n_variables(), 1);
@@ -295,8 +272,7 @@ TEST(optimization_problem_t, test_check_problem_validity)
   op_problem_.set_row_types(row_type_host, 1);
 
   // Test if exception is thrown when row_type is set but not b
-  EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)),
-               cuopt::logic_error);
+  EXPECT_THROW(check_problem_representation_helper(op_problem_), cuopt::logic_error);
 
   // Test that n_constraints is now set
   EXPECT_EQ(op_problem_.get_n_constraints(), 1);
@@ -306,7 +282,7 @@ TEST(optimization_problem_t, test_check_problem_validity)
   op_problem_.set_constraint_bounds(b_host, 1);
 
   // Test that nothing is thrown when both b and row types are set
-  EXPECT_NO_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)));
+  EXPECT_NO_THROW(check_problem_representation_helper(op_problem_));
 
   // Unsetting row types and constraints bounds
   op_problem_.set_row_types(row_type_host, 0);
@@ -316,8 +292,7 @@ TEST(optimization_problem_t, test_check_problem_validity)
   EXPECT_EQ(op_problem_.get_n_constraints(), 0);
 
   // Test again if exception is thrown when constraints bounds are not set
-  EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)),
-               cuopt::logic_error);
+  EXPECT_THROW(check_problem_representation_helper(op_problem_), cuopt::logic_error);
 
   // Seting constraint lower bounds
   double constraint_lower_bounds_host[] = {1.0};
@@ -327,21 +302,19 @@ TEST(optimization_problem_t, test_check_problem_validity)
   EXPECT_EQ(op_problem_.get_n_constraints(), 1);
 
   // Test if exception is thrown when upper constraints bounds are not set
-  EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)),
-               cuopt::logic_error);
+  EXPECT_THROW(check_problem_representation_helper(op_problem_), cuopt::logic_error);
 
   // Seting constraint upper bounds
   double constraint_upper_bounds_host[] = {1.0};
   op_problem_.set_constraint_upper_bounds(constraint_upper_bounds_host, 1);
 
   // Test if no exception is thrown when constraints bounds are set
-  EXPECT_NO_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)));
+  EXPECT_NO_THROW(check_problem_representation_helper(op_problem_));
 }
 
 TEST(optimization_problem_t, test_csr_validity)
 {
-  raft::handle_t handle;
-  auto op_problem_   = optimization_problem_t<int, double>(&handle);
+  auto op_problem_   = optimization_problem_t<int, double>();
   double A_host[]    = {1.0, 1.0};
   int indices_host[] = {0, 0};
   int offset_host[]  = {0, 1, 2};
@@ -351,46 +324,41 @@ TEST(optimization_problem_t, test_csr_validity)
   char row_type_host[] = {'E', 'E'};
   op_problem_.set_row_types(row_type_host, 2);
   // Valid problem
-  EXPECT_NO_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)));
+  EXPECT_NO_THROW((check_problem_representation_helper(op_problem_)));
 
   // Test case 0: A_indices and A_values have different size
   {
     int incorrect_indices_size[] = {0};
     op_problem_.set_csr_constraint_matrix(A_host, 2, incorrect_indices_size, 1, offset_host, 3);
-    EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)),
-                 cuopt::logic_error);
+    EXPECT_THROW((check_problem_representation_helper(op_problem_)), cuopt::logic_error);
   }
 
   // Test case 1: A_offsets first value not 0
   {
     int incorrect_first_offset[] = {1, 1, 2};
     op_problem_.set_csr_constraint_matrix(A_host, 2, indices_host, 2, incorrect_first_offset, 3);
-    EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)),
-                 cuopt::logic_error);
+    EXPECT_THROW((check_problem_representation_helper(op_problem_)), cuopt::logic_error);
   }
 
   // Test case 2: A_offsets not in increasing order
   {
     int unsorted_offsets[] = {0, 2, 1};
     op_problem_.set_csr_constraint_matrix(A_host, 2, indices_host, 2, unsorted_offsets, 3);
-    EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)),
-                 cuopt::logic_error);
+    EXPECT_THROW((check_problem_representation_helper(op_problem_)), cuopt::logic_error);
   }
 
   // Test case 3: A_indices value is negative
   {
     int negative_indices_host[] = {0, -1};
     op_problem_.set_csr_constraint_matrix(A_host, 2, negative_indices_host, 2, offset_host, 3);
-    EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)),
-                 cuopt::logic_error);
+    EXPECT_THROW((check_problem_representation_helper(op_problem_)), cuopt::logic_error);
   }
 
   // Test case 4: A_indices value is greater than number of vars
   {
     int too_big_indices_host[] = {0, 1};
     op_problem_.set_csr_constraint_matrix(A_host, 2, too_big_indices_host, 2, offset_host, 3);
-    EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)),
-                 cuopt::logic_error);
+    EXPECT_THROW((check_problem_representation_helper(op_problem_)), cuopt::logic_error);
   }
 }
 
@@ -409,8 +377,7 @@ TEST(optimization_problem_t, test_row_type_invalidity_char)
   char row_type_host[] = {'E', 'L', 'N'};
   op_problem_1.set_row_types(row_type_host, 3);
 
-  EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_1)),
-               cuopt::logic_error);
+  EXPECT_THROW((check_problem_representation_helper(op_problem_1)), cuopt::logic_error);
 }
 
 TEST(optimization_problem_t, test_row_type_invalidity_size)
@@ -428,11 +395,10 @@ TEST(optimization_problem_t, test_row_type_invalidity_size)
   char row_type_host[] = {'E', 'L', 'L'};
   op_problem_1.set_row_types(row_type_host, 2);
 
-  EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_1)),
-               cuopt::logic_error);
+  EXPECT_THROW((check_problem_representation_helper(op_problem_1)), cuopt::logic_error);
 
   op_problem_1.set_row_types(row_type_host, 3);
-  EXPECT_NO_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_1)));
+  EXPECT_NO_THROW((check_problem_representation_helper(op_problem_1)));
 }
 
 TEST(optimization_problem_t, test_variable_invalidity_size)
@@ -450,18 +416,16 @@ TEST(optimization_problem_t, test_variable_invalidity_size)
   op_problem_1.set_objective_coefficients(A_host, 1);
 
   op_problem_1.set_variable_lower_bounds(A_host, 2);
-  EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_1)),
-               cuopt::logic_error);
+  EXPECT_THROW((check_problem_representation_helper(op_problem_1)), cuopt::logic_error);
 
   op_problem_1.set_variable_lower_bounds(A_host, 1);
-  EXPECT_NO_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_1)));
+  EXPECT_NO_THROW((check_problem_representation_helper(op_problem_1)));
 
   op_problem_1.set_variable_upper_bounds(A_host, 2);
-  EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_1)),
-               cuopt::logic_error);
+  EXPECT_THROW((check_problem_representation_helper(op_problem_1)), cuopt::logic_error);
 
   op_problem_1.set_variable_upper_bounds(A_host, 1);
-  EXPECT_NO_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_1)));
+  EXPECT_NO_THROW((check_problem_representation_helper(op_problem_1)));
 }
 
 TEST(optimization_problem_t, test_constraints_invalidity_size)
@@ -478,15 +442,13 @@ TEST(optimization_problem_t, test_constraints_invalidity_size)
   op_problem_1.set_constraint_upper_bounds(A_host, 2);
   op_problem_1.set_objective_coefficients(A_host, 1);
 
-  EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_1)),
-               cuopt::logic_error);
+  EXPECT_THROW((check_problem_representation_helper(op_problem_1)), cuopt::logic_error);
 
   op_problem_1.set_constraint_lower_bounds(A_host, 3);
-  EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_1)),
-               cuopt::logic_error);
+  EXPECT_THROW((check_problem_representation_helper(op_problem_1)), cuopt::logic_error);
 
   op_problem_1.set_constraint_upper_bounds(A_host, 3);
-  EXPECT_NO_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_1)));
+  EXPECT_NO_THROW((check_problem_representation_helper(op_problem_1)));
 }
 
 TEST(optimization_problem_t, good_mps_mip_file_1)

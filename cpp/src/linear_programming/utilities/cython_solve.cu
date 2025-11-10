@@ -44,10 +44,9 @@ using cuopt::linear_programming::var_t;
 static cuopt::linear_programming::optimization_problem_t<int, double>
 data_model_to_optimization_problem(
   cuopt::mps_parser::data_model_view_t<int, double>* data_model,
-  cuopt::linear_programming::solver_settings_t<int, double>* solver_settings,
-  raft::handle_t const* handle_ptr)
+  cuopt::linear_programming::solver_settings_t<int, double>* solver_settings)
 {
-  cuopt::linear_programming::optimization_problem_t<int, double> op_problem(handle_ptr);
+  cuopt::linear_programming::optimization_problem_t<int, double> op_problem;
   op_problem.set_maximize(data_model->get_sense());
   if (data_model->get_constraint_matrix_values().size() != 0 &&
       data_model->get_constraint_matrix_indices().size() != 0 &&
@@ -143,7 +142,9 @@ linear_programming_ret_t call_solve_lp(
     op_problem, solver_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
 
   // Convert host vectors (std::vector) to device buffers for Cython interface
-  rmm::cuda_stream_view stream = op_problem.get_handle_ptr()->get_stream();
+  // Create temporary handle for device copy operations
+  raft::handle_t temp_handle;
+  rmm::cuda_stream_view stream = temp_handle.get_stream();
   const auto& ws               = solution.get_pdlp_warm_start_data();
 
   linear_programming_ret_t lp_ret{
@@ -213,7 +214,9 @@ mip_ret_t call_solve_mip(
   auto solution = cuopt::linear_programming::solve_mip(op_problem, solver_settings);
 
   // Convert host vector (std::vector) to device buffer for Cython interface
-  rmm::cuda_stream_view stream = op_problem.get_handle_ptr()->get_stream();
+  // Create temporary handle for device copy operations
+  raft::handle_t temp_handle;
+  rmm::cuda_stream_view stream = temp_handle.get_stream();
 
   mip_ret_t mip_ret{std::make_unique<rmm::device_buffer>(
                       cuopt::device_copy(solution.get_solution(), stream).release()),
@@ -245,7 +248,7 @@ std::unique_ptr<solver_ret_t> call_solve(
   RAFT_CUDA_TRY(cudaStreamCreateWithFlags(&stream, flags));
   const raft::handle_t handle_{stream};
 
-  auto op_problem = data_model_to_optimization_problem(data_model, solver_settings, &handle_);
+  auto op_problem = data_model_to_optimization_problem(data_model, solver_settings);
   solver_ret_t response;
   if (op_problem.get_problem_category() == linear_programming::problem_category_t::LP) {
     response.lp_ret =

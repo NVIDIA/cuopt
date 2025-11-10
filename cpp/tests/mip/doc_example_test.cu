@@ -98,7 +98,7 @@ void test_mps_file()
   auto problem = create_doc_example_problem();
 
   settings.time_limit                  = test_time_limit;
-  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
+  mip_solution_t<int, double> solution = solve_mip(problem, settings);
   EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
 
   double obj_val = solution.get_objective_value();
@@ -136,7 +136,7 @@ TEST(docs, user_problem_file)
   settings.time_limit        = test_time_limit;
   settings.user_problem_file = user_problem_path;
   settings.presolve          = false;
-  EXPECT_EQ(solve_mip(&handle_, problem, settings).get_termination_status(),
+  EXPECT_EQ(solve_mip(problem, settings).get_termination_status(),
             mip_termination_status_t::Optimal);
 
   EXPECT_TRUE(std::filesystem::exists(user_problem_path));
@@ -150,7 +150,7 @@ TEST(docs, user_problem_file)
 
   const auto user_problem_path2 = std::filesystem::temp_directory_path() / "user_problem2.mps";
   settings.user_problem_file    = user_problem_path2;
-  mip_solution_t<int, double> solution = solve_mip(&handle_, problem2, settings);
+  mip_solution_t<int, double> solution = solve_mip(problem2, settings);
   EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
 
   double obj_val = solution.get_objective_value();

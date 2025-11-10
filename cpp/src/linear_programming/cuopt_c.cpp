@@ -95,8 +95,8 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
     }
   }
   optimization_problem_t<cuopt_int_t, cuopt_float_t>* op_problem =
-    new optimization_problem_t<cuopt_int_t, cuopt_float_t>(mps_data_model_to_optimization_problem(
-      problem_and_stream->get_handle_ptr(), *mps_data_model_ptr));
+    new optimization_problem_t<cuopt_int_t, cuopt_float_t>(
+      mps_data_model_to_optimization_problem(*mps_data_model_ptr));
   problem_and_stream->op_problem = op_problem;
   *problem_ptr                   = static_cast<cuOptOptimizationProblem>(problem_and_stream);
   return CUOPT_SUCCESS;
@@ -128,8 +128,7 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
   }
 
   problem_and_stream_view_t* problem_and_stream = new problem_and_stream_view_t();
-  problem_and_stream->op_problem =
-    new optimization_problem_t<cuopt_int_t, cuopt_float_t>(problem_and_stream->get_handle_ptr());
+  problem_and_stream->op_problem = new optimization_problem_t<cuopt_int_t, cuopt_float_t>();
   try {
     problem_and_stream->op_problem->set_maximize(objective_sense == CUOPT_MAXIMIZE);
     problem_and_stream->op_problem->set_objective_offset(objective_offset);
@@ -185,8 +184,7 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
   }
 
   problem_and_stream_view_t* problem_and_stream = new problem_and_stream_view_t();
-  problem_and_stream->op_problem =
-    new optimization_problem_t<cuopt_int_t, cuopt_float_t>(problem_and_stream->get_handle_ptr());
+  problem_and_stream->op_problem = new optimization_problem_t<cuopt_int_t, cuopt_float_t>();
   try {
     problem_and_stream->op_problem->set_maximize(objective_sense == CUOPT_MAXIMIZE);
     problem_and_stream->op_problem->set_objective_offset(objective_offset);

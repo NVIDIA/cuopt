@@ -182,7 +182,7 @@ TEST(LPTest, TestSampleLP2)
   settings.time_limit = 5;
 
   // Solve
-  auto result = cuopt::linear_programming::solve_lp(&handle, problem, settings);
+  auto result = cuopt::linear_programming::solve_lp(problem, settings);
 
   // Check results
   EXPECT_EQ(result.get_termination_status(),
@@ -207,7 +207,7 @@ TEST(LPTest, TestSampleLP)
   settings.time_limit = 5;
   settings.presolve   = false;
 
-  auto result = cuopt::linear_programming::solve_lp(&handle, problem, settings);
+  auto result = cuopt::linear_programming::solve_lp(problem, settings);
 
   EXPECT_EQ(result.get_termination_status(),
             cuopt::linear_programming::pdlp_termination_status_t::Optimal);
@@ -228,7 +228,7 @@ TEST(ErrorTest, TestError)
   problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
   problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
 
-  auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
+  auto result = cuopt::linear_programming::solve_mip(problem, settings);
 
   EXPECT_EQ(result.get_termination_status(),
             cuopt::linear_programming::mip_termination_status_t::NoTermination);
@@ -254,7 +254,7 @@ TEST_P(MILPTestParams, TestSampleMILP)
   settings.heuristics_only = heuristics_only;
   settings.presolve        = false;
 
-  auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
+  auto result = cuopt::linear_programming::solve_mip(problem, settings);
 
   EXPECT_EQ(result.get_termination_status(), expected_termination_status);
 }
@@ -275,7 +275,7 @@ TEST_P(MILPTestParams, TestSingleVarMILP)
   settings.heuristics_only = heuristics_only;
   settings.presolve        = false;
 
-  auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
+  auto result = cuopt::linear_programming::solve_mip(problem, settings);
 
   EXPECT_EQ(result.get_termination_status(),
             cuopt::linear_programming::mip_termination_status_t::Optimal);

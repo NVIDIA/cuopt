@@ -186,7 +186,7 @@ static std::tuple<mip_termination_status_t, double, double> test_mps_file(
   settings.time_limit                  = time_limit;
   settings.heuristics_only             = heuristics_only;
   settings.presolve                    = presolve;
-  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
+  mip_solution_t<int, double> solution = solve_mip(problem, settings);
   return std::make_tuple(solution.get_termination_status(),
                          solution.get_objective_value(),
                          solution.get_solution_bound());

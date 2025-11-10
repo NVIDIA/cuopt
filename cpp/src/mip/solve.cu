@@ -154,8 +154,11 @@ template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& host_problem,
                                    mip_solver_settings_t<i_t, f_t> const& settings)
 {
+  // Create RAFT handle for local GPU solve
+  raft::handle_t handle;
+
   // Convert host problem to GPU problem for internal solving
-  auto gpu_problem = host_to_gpu_problem(host_problem.get_handle_ptr(), host_problem);
+  auto gpu_problem = host_to_gpu_problem(&handle, host_problem);
 
   try {
     constexpr f_t max_time_limit = 1000000000;
@@ -298,11 +301,10 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& host_proble
 
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(
-  raft::handle_t const* handle_ptr,
   const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
   mip_solver_settings_t<i_t, f_t> const& settings)
 {
-  auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
+  auto op_problem = mps_data_model_to_optimization_problem(mps_data_model);
   return solve_mip(op_problem, settings);
 }
 
@@ -312,7 +314,6 @@ mip_solution_t<i_t, f_t> solve_mip(
     mip_solver_settings_t<int, F_TYPE> const& settings);                    \
                                                                             \
   template mip_solution_t<int, F_TYPE> solve_mip(                           \
-    raft::handle_t const* handle_ptr,                                       \
     const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& mps_data_model, \
     mip_solver_settings_t<int, F_TYPE> const& settings);
 

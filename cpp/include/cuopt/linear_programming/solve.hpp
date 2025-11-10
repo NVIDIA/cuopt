@@ -82,6 +82,16 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool use_pdlp_solver_mode                        = true);
 
 /**
+ * @brief Linear programming solve function without handle
+ */
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> solve_lp(
+  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
+  pdlp_solver_settings_t<i_t, f_t> const& settings = pdlp_solver_settings_t<i_t, f_t>{},
+  bool problem_checking                            = true,
+  bool use_pdlp_solver_mode                        = true);
+
+/**
  * @brief Mixed integer programming solve function.
  *
  * @tparam i_t Data type of indexes
@@ -108,13 +118,11 @@ mip_solution_t<i_t, f_t> solve_mip(
  */
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(
-  raft::handle_t const* handle_ptr,
   const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
   mip_solver_settings_t<i_t, f_t> const& settings = mip_solver_settings_t<i_t, f_t>{});
 
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
-  raft::handle_t const* handle_ptr,
   const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model);
 
 }  // namespace cuopt::linear_programming

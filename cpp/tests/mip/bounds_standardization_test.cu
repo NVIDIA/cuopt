@@ -20,6 +20,7 @@
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_stats.hpp>
+#include <cuopt/linear_programming/utilities/problem_conversion.cuh>
 #include <linear_programming/pdlp.cuh>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <mip/presolve/trivial_presolve.cuh>
@@ -65,13 +66,14 @@ void test_bounds_standardization_test(std::string test_instance)
   cuopt::mps_parser::mps_data_model_t<int, double> problem =
     cuopt::mps_parser::parse_mps<int, double>(path, false);
   handle_.sync_stream();
-  auto op_problem = mps_data_model_to_optimization_problem(&handle_, problem);
-  problem_checking_t<int, double>::check_problem_representation(op_problem);
+  auto op_problem  = mps_data_model_to_optimization_problem(problem);
+  auto gpu_problem = host_to_gpu_problem(&handle_, op_problem);
+  problem_checking_t<int, double>::check_problem_representation(gpu_problem);
   setup_pdlp(handle_.get_stream());
-  init_handler(op_problem.get_handle_ptr());
+  init_handler(&handle_);
   // run the problem constructor of MIP, so that we do bounds standardization
-  detail::problem_t<int, double> standardized_problem(op_problem);
-  detail::problem_t<int, double> original_problem(op_problem);
+  detail::problem_t<int, double> standardized_problem(gpu_problem);
+  detail::problem_t<int, double> original_problem(gpu_problem);
   standardized_problem.preprocess_problem();
   detail::trivial_presolve(standardized_problem);
   detail::solution_t<int, double> solution_1(standardized_problem);
