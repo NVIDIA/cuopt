@@ -116,7 +116,7 @@ void test_incumbent_callback(std::string test_instance)
   cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
     cuopt::mps_parser::parse_mps<int, double>(path, false);
   handle_.sync_stream();
-  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
+  auto op_problem = mps_data_model_to_optimization_problem(mps_problem);
 
   auto settings       = mip_solver_settings_t<int, double>{};
   settings.time_limit = 30.;

@@ -367,7 +367,7 @@ TEST(optimization_problem_t, test_row_type_invalidity_char)
   raft::handle_t handle;
 
   // Constraints set through row types
-  auto op_problem_1  = optimization_problem_t<int, double>(&handle);
+  auto op_problem_1  = optimization_problem_t<int, double>();
   double A_host[]    = {1.0, 1.0, 1.0};
   int indices_host[] = {0, 0, 0};
   int offset_host[]  = {0, 1, 2, 3};
@@ -385,7 +385,7 @@ TEST(optimization_problem_t, test_row_type_invalidity_size)
   raft::handle_t handle;
 
   // Constraints set through row types
-  auto op_problem_1  = optimization_problem_t<int, double>(&handle);
+  auto op_problem_1  = optimization_problem_t<int, double>();
   double A_host[]    = {1.0, 1.0, 1.0};
   int indices_host[] = {0, 0, 0};
   int offset_host[]  = {0, 1, 2, 3};
@@ -405,7 +405,7 @@ TEST(optimization_problem_t, test_variable_invalidity_size)
 {
   raft::handle_t handle;
 
-  auto op_problem_1  = optimization_problem_t<int, double>(&handle);
+  auto op_problem_1  = optimization_problem_t<int, double>();
   double A_host[]    = {1.0, 1.0, 1.0};
   int indices_host[] = {0, 0, 0};
   int offset_host[]  = {0, 1, 2, 3};
@@ -432,7 +432,7 @@ TEST(optimization_problem_t, test_constraints_invalidity_size)
 {
   raft::handle_t handle;
 
-  auto op_problem_1  = optimization_problem_t<int, double>(&handle);
+  auto op_problem_1  = optimization_problem_t<int, double>();
   double A_host[]    = {1.0, 1.0, 1.0};
   int indices_host[] = {0, 0, 0};
   int offset_host[]  = {0, 1, 2, 3};
