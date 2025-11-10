@@ -55,6 +55,8 @@ from cuopt.linear_programming.solver_settings.solver_settings import (
 )
 from cuopt.utilities import InputValidationError
 
+import pyarrow as pa
+
 
 cdef extern from "cuopt/linear_programming/utilities/internals.hpp" namespace "cuopt::internals": # noqa
     cdef cppclass base_solution_callback_t

@@ -20,10 +20,11 @@ import numpy as np
 from numba import cuda
 
 import cudf
-from cudf.core.buffer import as_buffer
 from cudf.core.column_accessor import ColumnAccessor
 
 from cuopt.utilities import col_from_buf
+
+import pyarrow as pa
 
 
 cdef class WaypointMatrix:
@@ -94,18 +95,15 @@ cdef class WaypointMatrix:
         )
         full_path = DeviceBuffer.c_from_unique_ptr(move(path_info.second))
 
-        full_sequence_offset = as_buffer(full_sequence_offset)
-        full_path = as_buffer(full_path)
-
         route_df['sequence_offset'] = col_from_buf(
-            full_sequence_offset, np.int32
+            full_sequence_offset, pa.int32()
         )
         locations = route_df["location"].replace(
             to_replace=list(range(len(target_locations))),
             value=target_locations.tolist()
         )
         route_df['location'] = locations
-        waypoint_seq = col_from_buf(full_path, np.int32)
+        waypoint_seq = col_from_buf(full_path, pa.int32())
 
         def create_way_point_types(routes, waypoint_seq):
 

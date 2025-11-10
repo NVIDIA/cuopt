@@ -4,6 +4,7 @@
 import numpy as np
 
 import cudf
+import pylibcudf as plc
 
 from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
@@ -27,16 +28,14 @@ def col_from_buf(buf, dtype):
     cudf.core.column.Column
         A cudf column built from the buffer
     """
-    dt = np.dtype(dtype)
-    return cudf.core.column.build_column(
+    col = plc.column.Column.from_rmm_buffer(
         buf,
-        dtype=dt,
-        size=buf.size // dt.itemsize,
-        mask=None,
-        offset=0,
-        null_count=0,
-        children=(),
+        dtype=plc.types.DataType.from_arrow(dtype),
+        size=buf.size // dtype.byte_width,
+        children=[],
     )
+
+    return cudf.Series.from_pylibcudf(col)
 
 
 def validate_variable_bounds(data, settings, solution):
