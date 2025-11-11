@@ -662,9 +662,9 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
                                      temp_storage_bytes,
                                      input_transform_it_2,
                                      count_per_variable.data(),
-                                     problem.n_constraints,
-                                     problem.offsets.data(),
-                                     problem.offsets.data() + 1,
+                                     problem.n_variables,
+                                     problem.reverse_offsets.data(),
+                                     problem.reverse_offsets.data() + 1,
                                      cuda::std::plus<>{},
                                      0,
                                      problem.handle_ptr->get_stream());
