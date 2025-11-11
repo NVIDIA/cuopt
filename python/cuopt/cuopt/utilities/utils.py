@@ -13,20 +13,20 @@ from cuopt.linear_programming.solver.solver_parameters import (
 )
 
 
-def col_from_buf(buf, dtype):
-    """Helper function to create a cudf column from a buffer.
+def series_from_buf(buf, dtype):
+    """Helper function to create a cudf series from a buffer.
 
     Parameters
     ----------
     buf : cudf.core.buffer.Buffer
         The buffer containing the data
-    dtype : numpy.dtype or type
-        The data type for the column
+    dtype : pyarrow.dtype or type
+        The data type for the Series
 
     Returns
     -------
-    cudf.core.column.Column
-        A cudf column built from the buffer
+    cudf.Series
+        A cudf Series built from the buffer
     """
     col = plc.column.Column.from_rmm_buffer(
         buf,
