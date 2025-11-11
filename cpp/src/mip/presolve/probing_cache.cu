@@ -14,6 +14,7 @@
 #include <mip/utils.cuh>
 
 #include <omp.h>
+#include <thrust/binary_search.h>
 #include <thrust/sort.h>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
@@ -465,7 +466,7 @@ void compute_cache_for_var(i_t var_idx,
       n_of_infeasible_probings++;
       continue;
     }
-    // this only tracks the number of variables that have cached bounds
+    // this only tracks the number of variable intervals that have cached bounds
     n_of_cached_probings++;
     // save the impacted bounds
     if (bounds_presolve_result != termination_criterion_t::NO_UPDATE) {
@@ -684,11 +685,14 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
                       priority_indices.data(),
                       thrust::greater<i_t>());
   auto h_priority_indices = host_copy(priority_indices);
-  problem.handle_ptr->sync_stream();
-  // Find the index of the first 0 element in h_priority_indices
-  auto first_zero_it      = std::find(count_per_variable.begin(), count_per_variable.end(), 0);
+  // Find the index of the first 0 element in count_per_variable
+  auto first_zero_it      = thrust::lower_bound(problem.handle_ptr->get_thrust_policy(),
+                                           count_per_variable.begin(),
+                                           count_per_variable.end(),
+                                           0,
+                                           thrust::greater<i_t>());
   size_t first_zero_index = (first_zero_it != count_per_variable.end())
-                              ? std::distance(count_per_variable.begin(), first_zero_it)
+                              ? thrust::distance(count_per_variable.begin(), first_zero_it)
                               : count_per_variable.size();
   h_priority_indices.erase(h_priority_indices.begin() + first_zero_index, h_priority_indices.end());
   return h_priority_indices;
@@ -776,7 +780,7 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                  problem.handle_ptr->get_stream());
       problem.handle_ptr->sync_stream();
       if (n_of_implied_singletons - last_it_implied_singletons <
-          (size_t)(min(100, problem.n_variables / 50))) {
+          (size_t)std::max(2, (min(100, problem.n_variables / 50)))) {
         early_exit = true;
       }
       last_it_implied_singletons = n_of_implied_singletons;

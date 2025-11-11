@@ -1133,8 +1133,8 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
                      f_t objective_offset_difference =
                        objective_coefficients[var_idx] * substitute_offset[idx];
                      atomicAdd(objective_offset, objective_offset_difference);
-                     objective_coefficients[substituting_var_idx] +=
-                       objective_coefficients[var_idx] * substitute_coefficient[idx];
+                     atomicAdd(&objective_coefficients[substituting_var_idx],
+                               objective_coefficients[var_idx] * substitute_coefficient[idx]);
                    });
   f_t objective_offset_value = objective_offset.value(handle_ptr->get_stream());
   presolve_data.objective_offset += objective_offset_value;
