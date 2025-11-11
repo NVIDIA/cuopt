@@ -686,10 +686,10 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
   auto h_priority_indices = host_copy(priority_indices);
   problem.handle_ptr->sync_stream();
   // Find the index of the first 0 element in h_priority_indices
-  auto first_zero_it      = std::find(h_priority_indices.begin(), h_priority_indices.end(), 0);
-  size_t first_zero_index = (first_zero_it != h_priority_indices.end())
-                              ? std::distance(h_priority_indices.begin(), first_zero_it)
-                              : h_priority_indices.size();
+  auto first_zero_it      = std::find(count_per_variable.begin(), count_per_variable.end(), 0);
+  size_t first_zero_index = (first_zero_it != count_per_variable.end())
+                              ? std::distance(count_per_variable.begin(), first_zero_it)
+                              : count_per_variable.size();
   h_priority_indices.erase(h_priority_indices.begin() + first_zero_index, h_priority_indices.end());
   return h_priority_indices;
 }
