@@ -455,7 +455,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t
     settings_.log.printf("Time limit reached. Stopping the solver...\n");
     mip_status = mip_status_t::TIME_LIMIT;
   }
-  if (status_ == mip_exploration_status_t::NODE_LIMIT) {
+  if (solver_status_ == mip_exploration_status_t::NODE_LIMIT) {
     settings_.log.printf("Node limit reached. Stopping the solver...\n");
     mip_status = mip_status_t::NODE_LIMIT;
   }
@@ -467,8 +467,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t
   f_t gap_rel          = user_relative_gap(original_lp_, upper_bound, lower_bound);
   bool is_maximization = original_lp_.obj_scale < 0.0;
 
-  settings_.log.printf(
-    "Explored %d nodes in %.2fs.\n", stats_.nodes_explored, toc(stats_.start_time));
+  settings_.log.printf("Explored %d nodes in %.2fs.\n",
+                       exploration_stats_.nodes_explored,
+                       toc(exploration_stats_.start_time));
   settings_.log.printf("Absolute Gap %e Objective %.16e %s Bound %.16e\n",
                        gap,
                        obj,
@@ -932,8 +933,8 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
       solver_status_ = mip_exploration_status_t::TIME_LIMIT;
       return;
     }
-    if (stats_.nodes_explored >= settings_.node_limit) {
-      status_ = mip_exploration_status_t::NODE_LIMIT;
+    if (exploration_stats_.nodes_explored >= settings_.node_limit) {
+      solver_status_ = mip_exploration_status_t::NODE_LIMIT;
       return;
     }
 
@@ -1173,11 +1174,11 @@ template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solution)
 {
   logger_t log;
-  log.log                 = false;
-  log.log_prefix          = settings_.log.log_prefix;
-  status_                 = mip_exploration_status_t::UNSET;
-  stats_.nodes_unexplored = 0;
-  stats_.nodes_explored   = 0;
+  log.log                             = false;
+  log.log_prefix                      = settings_.log.log_prefix;
+  solver_status_                      = mip_exploration_status_t::UNSET;
+  exploration_stats_.nodes_unexplored = 0;
+  exploration_stats_.nodes_explored   = 0;
 
   if (guess_.size() != 0) {
     std::vector<f_t> crushed_guess;
