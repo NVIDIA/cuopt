@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import logging
 import queue
@@ -42,7 +30,6 @@ def kill_pid(pid):
 
 
 def terminate(job_queue, results_queue, abort_queue, signame):
-
     global s_procs
 
     logging.info("terminate called")
@@ -81,7 +68,6 @@ def terminate(job_queue, results_queue, abort_queue, signame):
 
 
 def create_process(app_exit, job_queue, results_queue, abort_list, gpu_id):
-
     global s_procs
 
     complete = Event()
@@ -130,7 +116,6 @@ def watch_solvers(app_exit, job_queue, results_queue, abort_queue, abort_list):
         to_remove = []
         for pid, s in s_procs.items():
             if s.complete.is_set() or not s.process.is_alive():
-
                 # Send a completion to any job on the abort
                 # list that has this pid listed ...
                 abort_by_pid(pid, abort_list, results_queue)
