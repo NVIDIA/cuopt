@@ -31,10 +31,6 @@ class bounds_strengthening_t {
   const csr_matrix_t<i_t, f_t>& Arow;
   const std::vector<variable_type_t>& var_types;
 
-  std::vector<bool> constraint_changed;
-  std::vector<bool> variable_changed;
-  std::vector<bool> constraint_changed_next;
-
   std::vector<f_t> lower;
   std::vector<f_t> upper;
 

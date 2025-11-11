@@ -98,17 +98,20 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
   const i_t m = A.m;
   const i_t n = A.n;
 
-  constraint_changed.assign(m, false);
-  variable_changed.assign(n, false);
-  constraint_changed_next.assign(m, false);
+  std::vector<bool> constraint_changed(m, true);
+  std::vector<bool> variable_changed(n, false);
+  std::vector<bool> constraint_changed_next(m, false);
 
-  for (i_t i = 0; i < bounds_changed.size(); ++i) {
-    if (bounds_changed[i]) {
-      const i_t row_start = A.col_start[i];
-      const i_t row_end   = A.col_start[i + 1];
-      for (i_t p = row_start; p < row_end; ++p) {
-        const i_t j           = A.i[p];
-        constraint_changed[j] = true;
+  if (!bounds_changed.empty()) {
+    std::fill(constraint_changed.begin(), constraint_changed.end(), false);
+    for (i_t i = 0; i < n; ++i) {
+      if (bounds_changed[i]) {
+        const i_t row_start = A.col_start[i];
+        const i_t row_end   = A.col_start[i + 1];
+        for (i_t p = row_start; p < row_end; ++p) {
+          const i_t j           = A.i[p];
+          constraint_changed[j] = true;
+        }
       }
     }
   }
