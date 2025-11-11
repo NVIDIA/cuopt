@@ -154,17 +154,14 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
   }
 
   // Prevent CPUFJ scratch solutions from flooding the queue
-  if (external_solution_queue_cpufj.size() >= 10) {
+  if (external_solution_queue_cpufj.size() > 10) {
     auto worst_obj_it =
       std::max_element(external_solution_queue_cpufj.begin(),
                        external_solution_queue_cpufj.end(),
                        [](const external_solution_t& a, const external_solution_t& b) {
                          return a.objective < b.objective;
                        });
-    if (objective > worst_obj_it->objective) return;
-    auto worst_obj_idx = std::distance(external_solution_queue_cpufj.begin(), worst_obj_it);
-
-    external_solution_queue_cpufj.erase(external_solution_queue_cpufj.begin() + worst_obj_idx);
+    external_solution_queue_cpufj.erase(worst_obj_it);
   }
 
   CUOPT_LOG_DEBUG("%s added a solution to population, solution queue size %lu with objective %g",
@@ -176,11 +173,15 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
                     problem_ptr->get_user_obj_from_solver_obj(objective));
   }
   if (external_solution_queue.size() >= 5) { early_exit_primal_generation = true; }
+  solutions_in_external_queue_ = true;
 }
 
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::add_external_solutions_to_population()
 {
+  // early exit to avoid taking the population lock
+  if (!solutions_in_external_queue_.load()) { return; }
+
   auto new_sol_vector = get_external_solutions();
   add_solutions_from_vec(std::move(new_sol_vector));
 }
@@ -201,6 +202,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
   std::vector<solution_t<i_t, f_t>> return_vector;
   i_t counter                     = 0;
   f_t new_best_feasible_objective = best_feasible_objective;
+  f_t longest_wait_time           = 0;
   for (auto& queue : {external_solution_queue, external_solution_queue_cpufj}) {
     for (auto& h_entry : queue) {
       // ignore CPUFJ solutions if they're not better than the best feasible.
@@ -213,6 +215,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
         new_best_feasible_objective = h_entry.objective;
       }
 
+      longest_wait_time = max(longest_wait_time, h_entry.timer.elapsed_time());
       solution_t<i_t, f_t> sol(*problem_ptr);
       sol.copy_new_assignment(h_entry.solution);
       sol.compute_feasibility();
@@ -242,6 +245,10 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
     external_solution_queue.clear();
   }
   external_solution_queue_cpufj.clear();
+  solutions_in_external_queue_ = false;
+  if (return_vector.size() > 0) {
+    CUOPT_LOG_DEBUG("Longest wait time in external queue: %f seconds", longest_wait_time);
+  }
   return return_vector;
 }
 
@@ -381,6 +388,7 @@ void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
 template <typename i_t, typename f_t>
 std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
 {
+  std::lock_guard<std::recursive_mutex> lock(write_mutex);
   raft::common::nvtx::range fun_scope("add_solution");
   population_hash_map.insert(sol);
   double sol_cost   = sol.get_quality(weights);
@@ -550,6 +558,7 @@ void population_t<i_t, f_t>::compute_new_weights()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::update_qualities()
 {
+  std::lock_guard<std::recursive_mutex> lock(write_mutex);
   if (indices.size() == 1) return;
   using pr = std::pair<size_t, double>;
   for (size_t i = !is_feasible(); i < indices.size(); i++)
@@ -648,6 +657,8 @@ void population_t<i_t, f_t>::eradicate_similar(size_t start_index, solution_t<i_
 template <typename i_t, typename f_t>
 std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::population_to_vector()
 {
+  std::lock_guard<std::recursive_mutex> lock(write_mutex);
+  if (solutions.empty()) return {};
   std::vector<solution_t<i_t, f_t>> sol_vec;
   bool population_feasible = is_feasible();
   for (size_t i = !population_feasible; i < indices.size(); i++) {
@@ -668,6 +679,8 @@ void population_t<i_t, f_t>::halve_the_population()
   i_t counter                   = 0;
   constexpr i_t max_adjustments = 4;
   size_t max_var_threshold      = get_max_var_threshold(problem_ptr->n_integer_vars);
+
+  std::lock_guard<std::recursive_mutex> lock(write_mutex);
   while (current_size() > max_solutions / 2) {
     clear_except_best_feasible();
     var_threshold = std::max(var_threshold * 0.97, 0.5 * problem_ptr->n_integer_vars);

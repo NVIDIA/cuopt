@@ -61,7 +61,7 @@ class logger_t {
 
         size_t len = strlen(buffer);
         if (len > 0 && buffer[len - 1] == '\n') { buffer[len - 1] = '\0'; }
-        CUOPT_LOG_INFO(buffer);
+        CUOPT_LOG_INFO("%s%s", log_prefix.c_str(), buffer);
       }
 #else
       if (log_to_console) {
@@ -95,7 +95,7 @@ class logger_t {
 
         size_t len = strlen(buffer);
         if (len > 0 && buffer[len - 1] == '\n') { buffer[len - 1] = '\0'; }
-        CUOPT_LOG_TRACE(buffer);
+        CUOPT_LOG_TRACE("%s%s", log_prefix.c_str(), buffer);
       }
 #else
       if (log_to_console) {
@@ -118,6 +118,7 @@ class logger_t {
 
   bool log;
   bool log_to_console;
+  std::string log_prefix;
 
  private:
   bool log_to_file;

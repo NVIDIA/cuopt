@@ -1044,12 +1044,46 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_l
   return fj_cpu.feasible_found;
 }
 
+template <typename i_t, typename f_t>
+cpu_fj_thread_t<i_t, f_t>::~cpu_fj_thread_t()
+{
+  this->request_termination();
+}
+
+template <typename i_t, typename f_t>
+void cpu_fj_thread_t<i_t, f_t>::run_worker()
+{
+  bool solution_found   = fj_ptr->cpu_solve(*fj_cpu, time_limit);
+  cpu_fj_solution_found = solution_found;
+}
+
+template <typename i_t, typename f_t>
+void cpu_fj_thread_t<i_t, f_t>::on_terminate()
+{
+  if (fj_cpu) fj_cpu->halted = true;
+}
+
+template <typename i_t, typename f_t>
+void cpu_fj_thread_t<i_t, f_t>::on_start()
+{
+  cuopt_assert(fj_cpu != nullptr, "fj_cpu must not be null");
+  fj_cpu->halted = false;
+}
+
+template <typename i_t, typename f_t>
+void cpu_fj_thread_t<i_t, f_t>::stop_cpu_solver()
+{
+  fj_cpu->halted = true;
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template class fj_t<int, float>;
+template class cpu_fj_thread_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template class fj_t<int, double>;
+template class cpu_fj_thread_t<int, double>;
 #endif
 
 }  // namespace cuopt::linear_programming::detail

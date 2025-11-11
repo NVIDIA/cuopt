@@ -1275,6 +1275,9 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
                  variable_types.begin());
   variable_types.resize(variable_map.size(), handle_ptr->get_stream());
   // keep implied-integer and other flags consistent with new variable set
+  cuopt_assert(original_problem.presolve_data.var_flags.size() == original_problem.n_variables,
+               "size mismatch");
+  cuopt_assert(presolve_data.var_flags.size() == n_variables, "size mismatch");
   thrust::gather(handle_ptr->get_thrust_policy(),
                  variable_map.begin(),
                  variable_map.end(),
@@ -1407,6 +1410,7 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
   auto h_var_bounds             = cuopt::host_copy(pb.variable_bounds);
   auto h_objective_coefficients = cuopt::host_copy(pb.objective_coefficients);
   auto h_variable_types         = cuopt::host_copy(pb.variable_types);
+  auto h_var_flags              = cuopt::host_copy(pb.presolve_data.var_flags);
   handle_ptr->sync_stream();
 
   const i_t n_vars_originally = (i_t)h_var_bounds.size();
@@ -1438,6 +1442,7 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
       pb.presolve_data.variable_offsets.push_back(0.);
       h_objective_coefficients.push_back(-h_objective_coefficients[i]);
       h_variable_types.push_back(h_variable_types[i]);
+      h_var_flags.push_back(0);
       pb.presolve_data.additional_var_used.push_back(false);
       pb.presolve_data.additional_var_id_per_var.push_back(-1);
       pb.n_variables++;
@@ -1454,6 +1459,7 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
     pb.variable_bounds.resize(h_var_bounds.size(), handle_ptr->get_stream());
     pb.objective_coefficients.resize(h_objective_coefficients.size(), handle_ptr->get_stream());
     pb.variable_types.resize(h_variable_types.size(), handle_ptr->get_stream());
+    pb.presolve_data.var_flags.resize(h_var_flags.size(), handle_ptr->get_stream());
   }
 
   raft::copy(
@@ -1465,6 +1471,10 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
   raft::copy(pb.variable_types.data(),
              h_variable_types.data(),
              h_variable_types.size(),
+             handle_ptr->get_stream());
+  raft::copy(pb.presolve_data.var_flags.data(),
+             h_var_flags.data(),
+             h_var_flags.size(),
              handle_ptr->get_stream());
   handle_ptr->sync_stream();
 }

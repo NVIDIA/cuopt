@@ -47,6 +47,7 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     lp_dual_optimal_solution(context.problem_ptr->n_constraints,
                              context.problem_ptr->handle_ptr->get_stream()),
     ls(context, lp_optimal_solution),
+    rins(context, *this),
     timer(diversity_config.default_time_limit),
     bound_prop_recombiner(context,
                           context.problem_ptr->n_variables,
@@ -244,6 +245,7 @@ bool diversity_manager_t<i_t, f_t>::check_b_b_preemption()
     population.add_external_solutions_to_population();
     return true;
   }
+  population.add_external_solutions_to_population();
   return false;
 }
 
@@ -308,10 +310,10 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     ls.constraint_prop.bounds_update.calculate_infeasible_redundant_constraints(*problem_ptr),
     "The problem must not be ii");
   population.initialize_population();
+  population.allocate_solutions();
   if (check_b_b_preemption()) { return population.best_feasible(); }
   add_user_given_solutions(initial_sol_vector);
   // Run CPUFJ early to find quick initial solutions
-  population.allocate_solutions();
   ls_cpufj_raii_guard_t ls_cpufj_raii_guard(ls);  // RAII to stop cpufj threads on solve stop
   ls.start_cpufj_scratch_threads(population);
 
@@ -407,6 +409,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     run_fj_alone(sol);
     return sol;
   }
+  rins.enable();
+
   generate_solution(timer.remaining_time(), false);
   if (timer.check_time_limit()) {
     population.add_external_solutions_to_population();
@@ -721,7 +725,7 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
 {
   CUOPT_LOG_DEBUG("Setting simplex solution with objective %f", objective);
   using sol_t = solution_t<i_t, f_t>;
-  cudaSetDevice(context.handle_ptr->get_device());
+  RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
   context.handle_ptr->sync_stream();
   cuopt_func_call(sol_t new_sol(*problem_ptr));
   cuopt_assert(new_sol.assignment.size() == solution.size(), "Assignment size mismatch");
