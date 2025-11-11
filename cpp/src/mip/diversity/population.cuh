@@ -25,13 +25,14 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 class diversity_manager_t;
 
-enum class solution_origin_t { BRANCH_AND_BOUND, CPUFJ, EXTERNAL };
+enum class solution_origin_t { BRANCH_AND_BOUND, CPUFJ, RINS, EXTERNAL };
 
 constexpr const char* solution_origin_to_string(solution_origin_t origin)
 {
   switch (origin) {
     case solution_origin_t::BRANCH_AND_BOUND: return "B&B";
     case solution_origin_t::CPUFJ: return "CPUFJ";
+    case solution_origin_t::RINS: return "RINS";
     case solution_origin_t::EXTERNAL: return "injected";
     default: return "unknown";
   }
@@ -52,10 +53,10 @@ class population_t {
   // functions without logic:
   // --------------------
   /*! \brief { Current number of solutions in the pool }*/
-  size_t current_size() { return indices.size() - 1; }
+  size_t current_size() { return indices.empty() ? 0 : indices.size() - 1; }
 
   /*! \brief { Is feasible soution in the pool? } */
-  bool is_feasible() { return solutions[0].first; }
+  bool is_feasible() { return indices.empty() ? false : solutions[0].first; }
 
   /*! \brief { Best feasible quality }*/
   f_t feasible_quality() { return indices[0].second; }
@@ -183,21 +184,27 @@ class population_t {
   struct external_solution_t {
     external_solution_t() = default;
     external_solution_t(const std::vector<f_t>& solution, f_t objective, solution_origin_t origin)
-      : solution(solution), objective(objective), origin(origin)
+      : solution(solution),
+        objective(objective),
+        origin(origin),
+        timer(std::numeric_limits<double>::infinity())
     {
     }
     std::vector<f_t> solution;
     f_t objective;
     solution_origin_t origin;
+    timer_t timer;  // debug timer to track how long a solution has lingered in the queue
   };
 
   std::vector<external_solution_t> external_solution_queue;
   std::vector<external_solution_t> external_solution_queue_cpufj;
   std::mt19937 rng;
   i_t update_iter = 0;
+  std::recursive_mutex write_mutex;
   std::mutex solution_mutex;
   std::atomic<bool> early_exit_primal_generation = false;
   std::atomic<bool> preempt_heuristic_solver_    = false;
+  std::atomic<bool> solutions_in_external_queue_ = false;
   f_t best_feasible_objective                    = std::numeric_limits<f_t>::max();
   assignment_hash_map_t<i_t, f_t> population_hash_map;
   cuopt::timer_t timer;
