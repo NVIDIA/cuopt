@@ -1085,8 +1085,24 @@ void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_i
                                          });
 }
 
+template <typename i_t, typename f_t>
+bool are_exclusive(const std::vector<i_t>& var_indices,
+                   const std::vector<i_t>& var_to_substitude_indices)
+{
+  std::vector<i_t> A_sorted = var_indices;
+  std::vector<i_t> B_sorted = var_to_substitude_indices;
+  std::sort(A_sorted.begin(), A_sorted.end());
+  std::sort(B_sorted.begin(), B_sorted.end());
+  std::vector<i_t> intersection(std::min(A_sorted.size(), B_sorted.size()));
+  auto end_iter = std::set_intersection(
+    A_sorted.begin(), A_sorted.end(), B_sorted.begin(), B_sorted.end(), intersection.begin());
+  return (end_iter == intersection.begin());  // true if no overlap
+}
+
 // note that this only substitutes the variables, for problem modification trivial_presolve needs to
-// be called
+// be called.
+// note that, this function assumes var_indices and var_to_substitude_indices don't contain any
+// common indices
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indices,
                                                const std::vector<i_t>& var_to_substitude_indices,
@@ -1094,7 +1110,8 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
                                                const std::vector<f_t>& coefficient_values)
 {
   raft::common::nvtx::range fun_scope("substitute_variables");
-  // TODO store substitutions in presolve data and replace variables at post solve
+  cuopt_assert((are_exclusive<i_t, f_t>(var_indices, var_to_substitude_indices)),
+               "variables and var_to_substitude_indices are not exclusive");
   const i_t dummy_substituted_variable = var_indices[0];
   cuopt_assert(var_indices.size() == var_to_substitude_indices.size(), "size mismatch");
   cuopt_assert(var_indices.size() == offset_values.size(), "size mismatch");
@@ -1236,6 +1253,14 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
                        offset_begin++;
                      }
                    });
+  // in case we use this function in context other than propagation, it is possible that substituted
+  // var doesn't exist in the constraint(they are not detected by duplicate detection). so we need
+  // to take care of that.
+  thrust::for_each(handle_ptr->get_thrust_policy(),
+                   d_var_indices.begin(),
+                   d_var_indices.end(),
+                   [objective_coefficients = make_span(objective_coefficients)] __device__(
+                     i_t var_idx) { objective_coefficients[var_idx] = 0.; });
   handle_ptr->sync_stream();
   CUOPT_LOG_DEBUG("Substituted %d variables", var_indices.size());
 }

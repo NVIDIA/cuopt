@@ -510,10 +510,13 @@ void compute_cache_for_var(i_t var_idx,
           h_var_bounds[i].x,
           h_var_bounds[i].y);
       }
-      if (h_improved_lower_bounds_0[i] == h_improved_upper_bounds_0[i] &&
-          h_improved_lower_bounds_1[i] == h_improved_upper_bounds_1[i] && is_binary) {
+      f_t int_tol = bound_presolve.context.settings.tolerances.integrality_tolerance;
+      if (integer_equal<f_t>(h_improved_lower_bounds_0[i], h_improved_upper_bounds_0[i], int_tol) &&
+          integer_equal<f_t>(h_improved_lower_bounds_1[i], h_improved_upper_bounds_1[i], int_tol) &&
+          is_binary) {
         // == case has been handled as fixing by the global bounds update
-        if (h_improved_lower_bounds_0[i] != h_improved_lower_bounds_1[i]) {
+        if (!integer_equal<f_t>(
+              h_improved_lower_bounds_0[i], h_improved_lower_bounds_1[i], int_tol)) {
           // trivial presolve handles eliminations
           // x_i = l_0 + (l_1 - l_0) * x_var_idx
           // this means
