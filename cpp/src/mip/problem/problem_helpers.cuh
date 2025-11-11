@@ -260,7 +260,7 @@ static void check_csr_representation([[maybe_unused]] const rmm::device_uvector<
                               variables.cbegin(),
                               variables.cend(),
                               [n_variables = n_variables] __device__(i_t val) {
-                                return val >= -1 && val < n_variables;
+                                return val >= 0 && val < n_variables;
                               }),
                "A_indices values must positive lower than the number of variables (c size).");
 

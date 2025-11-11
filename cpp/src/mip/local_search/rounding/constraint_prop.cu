@@ -662,15 +662,6 @@ bool test_var_out_of_bounds(const solution_t<i_t, f_t>& orig_sol,
 {
   auto var_bnd =
     orig_sol.problem_ptr->variable_bounds.element(unset_var_idx, handle_ptr->get_stream());
-  if (!((get_lower(var_bnd) <= probe + int_tol) && (probe - int_tol <= get_upper(var_bnd)))) {
-    CUOPT_LOG_DEBUG(
-      "[debug] test_var_out_of_bounds failed: var_idx=%d probe=%f int_tol=%f lower=%f upper=%f",
-      unset_var_idx,
-      probe,
-      int_tol,
-      get_lower(var_bnd),
-      get_upper(var_bnd));
-  }
   return (get_lower(var_bnd) <= probe + int_tol) && (probe - int_tol <= get_upper(var_bnd));
 }
 

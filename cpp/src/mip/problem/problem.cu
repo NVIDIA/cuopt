@@ -1106,7 +1106,6 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
   raft::common::nvtx::range fun_scope("substitute_variables");
   // TODO store substitutions in presolve data and replace variables at post solve
   const i_t dummy_substituted_variable = var_indices[0];
-  printf("dummy_substituted_variable %d\n", dummy_substituted_variable);
   cuopt_assert(var_indices.size() == var_to_substitude_indices.size(), "size mismatch");
   cuopt_assert(var_indices.size() == offset_values.size(), "size mismatch");
   cuopt_assert(var_indices.size() == coefficient_values.size(), "size mismatch");
@@ -1236,12 +1235,6 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
                        if (var_idx == next_var_idx) {
                          if (duplicate_start_idx == -1) { duplicate_start_idx = offset_begin; }
                          coefficients[duplicate_start_idx] += coefficients[offset_begin + 1];
-                         printf(
-                           "removing duplicate variable %d in constraint %d new coefficient %f\n",
-                           var_idx,
-                           cstr_idx,
-                           coefficients[duplicate_start_idx]);
-                         // objective_coefficients[var_idx] += objective_coefficients[next_var_idx];
                          variables[duplicate_start_idx] = variables[offset_begin + 1];
                          // mark those for elimination
                          variables[offset_begin + 1]          = dummy_substituted_variable;
@@ -1870,24 +1863,6 @@ void problem_t<i_t, f_t>::update_variable_bounds(const std::vector<i_t>& var_ind
      variable_bounds = make_span(variable_bounds),
      var_indices     = make_span(d_var_indices)] __device__(auto i) {
       i_t var_idx = var_indices[i];
-      // if (!(variable_bounds[var_idx].x <= lb_values[i])) {
-      //   printf(
-      //     "Assert failed: variable lower bound violation: variable_bounds[%d].x = %f > "
-      //     "lb_values[%d] = %f\n",
-      //     (int)var_idx,
-      //     variable_bounds[var_idx].x,
-      //     (int)i,
-      //     lb_values[i]);
-      // }
-      // if (!(variable_bounds[var_idx].y >= ub_values[i])) {
-      //   printf(
-      //     "Assert failed: variable upper bound violation: variable_bounds[%d].y = %f < "
-      //     "ub_values[%d] = %f\n",
-      //     (int)var_idx,
-      //     variable_bounds[var_idx].y,
-      //     (int)i,
-      //     ub_values[i]);
-      // }
       cuopt_assert(variable_bounds[var_idx].x <= lb_values[i], "variable lower bound violation");
       cuopt_assert(variable_bounds[var_idx].y >= ub_values[i], "variable upper bound violation");
       variable_bounds[var_idx].x = lb_values[i];
