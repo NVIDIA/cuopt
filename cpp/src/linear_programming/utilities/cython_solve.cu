@@ -141,36 +141,50 @@ linear_programming_ret_t call_solve_lp(
   auto solution                   = cuopt::linear_programming::solve_lp(
     op_problem, solver_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
 
+  std::fprintf(stderr, "[call_solve_lp] Received solution from solve_lp\n");
+  std::fflush(stderr);
+
   // Convert host vectors (std::vector) to device buffers for Cython interface
   // Create temporary handle for device copy operations
   raft::handle_t temp_handle;
   rmm::cuda_stream_view stream = temp_handle.get_stream();
   const auto& ws               = solution.get_pdlp_warm_start_data();
 
+  std::fprintf(stderr, "[call_solve_lp] Got warm start data, starting device copies\n");
+  std::fprintf(stderr,
+               "[call_solve_lp] Warm start vector sizes: primal=%zu, dual=%zu\n",
+               ws.current_primal_solution_.size(),
+               ws.current_dual_solution_.size());
+  std::fflush(stderr);
+
+  // Helper lambda to safely copy vectors (including empty ones) to device buffers
+  auto safe_device_copy = [&stream](const auto& host_vec) -> std::unique_ptr<rmm::device_buffer> {
+    try {
+      if (host_vec.empty()) {
+        // Return empty device buffer for empty vectors
+        return std::make_unique<rmm::device_buffer>(0, stream);
+      }
+      return std::make_unique<rmm::device_buffer>(cuopt::device_copy(host_vec, stream).release());
+    } catch (const std::exception& e) {
+      std::fprintf(stderr, "[call_solve_lp] Exception during device_copy: %s\n", e.what());
+      std::fflush(stderr);
+      throw;
+    }
+  };
+
   linear_programming_ret_t lp_ret{
-    std::make_unique<rmm::device_buffer>(
-      cuopt::device_copy(solution.get_primal_solution(), stream).release()),
-    std::make_unique<rmm::device_buffer>(
-      cuopt::device_copy(solution.get_dual_solution(), stream).release()),
-    std::make_unique<rmm::device_buffer>(
-      cuopt::device_copy(solution.get_reduced_cost(), stream).release()),
-    std::make_unique<rmm::device_buffer>(
-      cuopt::device_copy(ws.current_primal_solution_, stream).release()),
-    std::make_unique<rmm::device_buffer>(
-      cuopt::device_copy(ws.current_dual_solution_, stream).release()),
-    std::make_unique<rmm::device_buffer>(
-      cuopt::device_copy(ws.initial_primal_average_, stream).release()),
-    std::make_unique<rmm::device_buffer>(
-      cuopt::device_copy(ws.initial_dual_average_, stream).release()),
-    std::make_unique<rmm::device_buffer>(cuopt::device_copy(ws.current_ATY_, stream).release()),
-    std::make_unique<rmm::device_buffer>(
-      cuopt::device_copy(ws.sum_primal_solutions_, stream).release()),
-    std::make_unique<rmm::device_buffer>(
-      cuopt::device_copy(ws.sum_dual_solutions_, stream).release()),
-    std::make_unique<rmm::device_buffer>(
-      cuopt::device_copy(ws.last_restart_duality_gap_primal_solution_, stream).release()),
-    std::make_unique<rmm::device_buffer>(
-      cuopt::device_copy(ws.last_restart_duality_gap_dual_solution_, stream).release()),
+    safe_device_copy(solution.get_primal_solution()),
+    safe_device_copy(solution.get_dual_solution()),
+    safe_device_copy(solution.get_reduced_cost()),
+    safe_device_copy(ws.current_primal_solution_),
+    safe_device_copy(ws.current_dual_solution_),
+    safe_device_copy(ws.initial_primal_average_),
+    safe_device_copy(ws.initial_dual_average_),
+    safe_device_copy(ws.current_ATY_),
+    safe_device_copy(ws.sum_primal_solutions_),
+    safe_device_copy(ws.sum_dual_solutions_),
+    safe_device_copy(ws.last_restart_duality_gap_primal_solution_),
+    safe_device_copy(ws.last_restart_duality_gap_dual_solution_),
     ws.initial_primal_weight_,
     ws.initial_step_size_,
     ws.total_pdlp_iterations_,
@@ -191,6 +205,8 @@ linear_programming_ret_t call_solve_lp(
     solution.get_additional_termination_information().solve_time,
     solution.get_additional_termination_information().solved_by_pdlp};
 
+  std::fprintf(stderr, "[call_solve_lp] Returning LP result\n");
+  std::fflush(stderr);
   return lp_ret;
 }
 
@@ -251,15 +267,24 @@ std::unique_ptr<solver_ret_t> call_solve(
   auto op_problem = data_model_to_optimization_problem(data_model, solver_settings);
   solver_ret_t response;
   if (op_problem.get_problem_category() == linear_programming::problem_category_t::LP) {
+    std::fprintf(stderr, "[call_solve] Calling call_solve_lp\n");
+    std::fflush(stderr);
     response.lp_ret =
       call_solve_lp(op_problem, solver_settings->get_pdlp_settings(), is_batch_mode);
+    std::fprintf(stderr, "[call_solve] call_solve_lp returned\n");
+    std::fflush(stderr);
     response.problem_type = linear_programming::problem_category_t::LP;
   } else {
     response.mip_ret      = call_solve_mip(op_problem, solver_settings->get_mip_settings());
     response.problem_type = linear_programming::problem_category_t::MIP;
   }
 
-  return std::make_unique<solver_ret_t>(std::move(response));
+  std::fprintf(stderr, "[call_solve] Creating unique_ptr and returning\n");
+  std::fflush(stderr);
+  auto result = std::make_unique<solver_ret_t>(std::move(response));
+  std::fprintf(stderr, "[call_solve] Returning result to Python\n");
+  std::fflush(stderr);
+  return result;
 }
 
 static int compute_max_thread(

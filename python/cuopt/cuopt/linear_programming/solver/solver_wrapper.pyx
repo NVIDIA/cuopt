@@ -395,9 +395,12 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
 
         # In BatchSolve, we don't get the warm start data
         if not is_batch:
+            print(f"[create_solution] is_batch={is_batch},"
+                  "processing warm start data")
             current_primal_solution = DeviceBuffer.c_from_unique_ptr(
                 move(sol_ret.lp_ret.current_primal_solution_)
             )
+            print("[create_solution] Moved current_primal_solution")
             current_dual_solution = DeviceBuffer.c_from_unique_ptr(
                 move(sol_ret.lp_ret.current_dual_solution_)
             )
@@ -486,6 +489,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 )
             ).to_numpy()
 
+            print("[create_solution] About to return Solution "
+                  "with warm start data")
             return Solution(
                 ProblemCategory(sol_ret.problem_type),
                 dict(zip(data_model_obj.get_variable_names(), primal_solution)), # noqa

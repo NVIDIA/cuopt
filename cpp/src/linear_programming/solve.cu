@@ -34,6 +34,7 @@
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/problem_conversion.cuh>
+#include <cuopt/linear_programming/utilities/remote_solve.hpp>
 
 #include <mps_parser/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -804,6 +805,32 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
                                                    bool use_pdlp_solver_mode,
                                                    bool is_batch_mode)
 {
+  // Check for remote solve environment variables
+  const char* remote_host = std::getenv("CUOPT_REMOTE_HOST");
+  const char* remote_port = std::getenv("CUOPT_REMOTE_PORT");
+
+  if (remote_host != nullptr && remote_port != nullptr) {
+    std::fprintf(stderr,
+                 "[solve_lp] Remote solve detected: CUOPT_REMOTE_HOST=%s, CUOPT_REMOTE_PORT=%s\n",
+                 remote_host,
+                 remote_port);
+    std::fflush(stderr);
+
+    try {
+      int port = std::atoi(remote_port);
+      auto remote_solution =
+        solve_lp_remote(std::string(remote_host), port, host_problem, settings);
+      std::fprintf(stderr, "[solve_lp] Remote solve succeeded, returning solution\n");
+      std::fflush(stderr);
+      return remote_solution;
+    } catch (const std::exception& e) {
+      std::fprintf(stderr, "[solve_lp] Remote solve failed: %s\n", e.what());
+      std::fprintf(stderr, "[solve_lp] Falling back to local solve\n");
+      std::fflush(stderr);
+      // Fall through to local solve
+    }
+  }
+
   // Create RAFT handle for local GPU solve
   raft::handle_t handle;
 

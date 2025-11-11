@@ -449,6 +449,37 @@ install(TARGETS cuopt_cli
   COMPONENT runtime
   RUNTIME DESTINATION ${_BIN_DEST}
 )
+
+# Remote solve server executable
+add_executable(cuopt_remote_server cuopt_remote_server.cpp)
+target_compile_options(cuopt_remote_server
+  PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+)
+
+target_include_directories(cuopt_remote_server
+  PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+  ${CUDSS_INCLUDE}
+  "$<INSTALL_INTERFACE:include>"
+)
+
+target_link_libraries(cuopt_remote_server
+  PUBLIC
+  cuopt
+  OpenMP::OpenMP_CXX
+  ${CUDSS_LIBRARIES}
+  PRIVATE
+)
+set_property(TARGET cuopt_remote_server PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
+
+# Install the remote server
+install(TARGETS cuopt_remote_server
+  COMPONENT runtime
+  RUNTIME DESTINATION ${_BIN_DEST}
+)
 endif()
 
 

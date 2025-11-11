@@ -39,6 +39,7 @@
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/problem_conversion.cuh>
+#include <cuopt/linear_programming/utilities/remote_solve.hpp>
 
 #include <mps_parser/mps_data_model.hpp>
 
@@ -154,6 +155,28 @@ template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& host_problem,
                                    mip_solver_settings_t<i_t, f_t> const& settings)
 {
+  // Check for remote solve environment variables
+  const char* remote_host = std::getenv("CUOPT_REMOTE_HOST");
+  const char* remote_port = std::getenv("CUOPT_REMOTE_PORT");
+
+  if (remote_host != nullptr && remote_port != nullptr) {
+    std::fprintf(stderr,
+                 "[solve_mip] Remote solve detected: CUOPT_REMOTE_HOST=%s, CUOPT_REMOTE_PORT=%s\n",
+                 remote_host,
+                 remote_port);
+    std::fflush(stderr);
+
+    try {
+      int port = std::atoi(remote_port);
+      return solve_mip_remote(std::string(remote_host), port, host_problem, settings);
+    } catch (const std::exception& e) {
+      std::fprintf(stderr, "[solve_mip] Remote solve failed: %s\n", e.what());
+      std::fprintf(stderr, "[solve_mip] Falling back to local solve\n");
+      std::fflush(stderr);
+      // Fall through to local solve
+    }
+  }
+
   // Create RAFT handle for local GPU solve
   raft::handle_t handle;
 
