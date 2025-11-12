@@ -25,77 +25,6 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
-cpu_fj_thread_t<i_t, f_t>::cpu_fj_thread_t()
-{
-  cpu_worker = std::thread(&cpu_fj_thread_t<i_t, f_t>::cpu_worker_thread, this);
-}
-
-template <typename i_t, typename f_t>
-cpu_fj_thread_t<i_t, f_t>::~cpu_fj_thread_t()
-{
-  if (!cpu_thread_terminate) { kill_cpu_solver(); }
-}
-
-template <typename i_t, typename f_t>
-void cpu_fj_thread_t<i_t, f_t>::cpu_worker_thread()
-{
-  while (!cpu_thread_terminate) {
-    // Wait for start signal
-    {
-      std::unique_lock<std::mutex> lock(cpu_mutex);
-      cpu_cv.wait(lock, [this] { return cpu_thread_should_start || cpu_thread_terminate; });
-    }
-
-    if (cpu_thread_terminate) break;
-
-    // Run CPU solver
-    {
-      raft::common::nvtx::range fun_scope("Running CPU FJ");
-      cpu_fj_solution_found = fj_ptr->cpu_solve(*fj_cpu);
-    }
-
-    cpu_thread_should_start = false;
-    cpu_thread_done         = true;
-  }
-}
-
-template <typename i_t, typename f_t>
-void cpu_fj_thread_t<i_t, f_t>::kill_cpu_solver()
-{
-  cpu_thread_terminate = true;
-  if (fj_cpu) fj_cpu->halted = true;
-  cpu_cv.notify_one();
-  cpu_worker.join();
-}
-
-template <typename i_t, typename f_t>
-void cpu_fj_thread_t<i_t, f_t>::start_cpu_solver()
-{
-  cuopt_assert(fj_cpu != nullptr, "fj_cpu must not be null");
-  // Reset flags
-  cpu_thread_done         = false;
-  cpu_thread_should_start = true;
-  fj_cpu->halted          = false;
-  cpu_cv.notify_one();
-}
-
-template <typename i_t, typename f_t>
-void cpu_fj_thread_t<i_t, f_t>::stop_cpu_solver()
-{
-  fj_cpu->halted = true;
-}
-
-template <typename i_t, typename f_t>
-bool cpu_fj_thread_t<i_t, f_t>::wait_for_cpu_solver()
-{
-  while (!cpu_thread_done && !cpu_thread_terminate) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-
-  return cpu_fj_solution_found;
-}
-
-template <typename i_t, typename f_t>
 local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context_,
                                          rmm::device_uvector<f_t>& lp_optimal_solution_)
   : context(context_),
@@ -207,9 +136,9 @@ template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 {
   for (auto& cpu_fj : scratch_cpu_fj) {
-    cpu_fj.kill_cpu_solver();
+    cpu_fj.request_termination();
   }
-  scratch_cpu_fj_on_lp_opt.kill_cpu_solver();
+  scratch_cpu_fj_on_lp_opt.request_termination();
 }
 
 template <typename i_t, typename f_t>
@@ -524,6 +453,7 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
     fp.reset();
     fp.resize_vectors(*solution.problem_ptr, solution.handle_ptr);
     for (i_t i = 0; i < n_fp_iterations && !timer.check_time_limit(); ++i) {
+      population_ptr->add_external_solutions_to_population();
       if (population_ptr->preempt_heuristic_solver_.load()) {
         CUOPT_LOG_DEBUG("Preempting heuristic solver!");
         return false;
@@ -533,6 +463,7 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
       timer_t binary_timer(timer.remaining_time() / 3);
       i_t binary_it_counter = 0;
       for (; binary_it_counter < 100; ++binary_it_counter) {
+        population_ptr->add_external_solutions_to_population();
         if (population_ptr->preempt_heuristic_solver_.load()) {
           CUOPT_LOG_DEBUG("Preempting heuristic solver!");
           return false;
@@ -642,8 +573,7 @@ void local_search_t<i_t, f_t>::reset_alpha_and_save_solution(
   solution_copy.problem_ptr = old_problem_ptr;
   solution_copy.resize_to_problem();
   population_ptr->add_solution(std::move(solution_copy));
-  auto new_sol_vector = population_ptr->get_external_solutions();
-  population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
+  population_ptr->add_external_solutions_to_population();
   if (!cutting_plane_added_for_active_run) {
     solution.problem_ptr = &problem_with_objective_cut;
     solution.resize_to_problem();
@@ -677,8 +607,7 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   raft::common::nvtx::range fun_scope("reset_alpha_and_run_recombiners");
   constexpr i_t iterations_for_stagnation          = 3;
   constexpr i_t max_iterations_without_improvement = 8;
-  auto new_sol_vector                              = population_ptr->get_external_solutions();
-  population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
+  population_ptr->add_external_solutions_to_population();
   if (population_ptr->current_size() > 1 &&
       i - last_improved_iteration > iterations_for_stagnation) {
     fp.config.alpha = default_alpha;
@@ -732,13 +661,13 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
       break;
     }
     CUOPT_LOG_DEBUG("fp_loop it %d last_improved_iteration %d", i, last_improved_iteration);
+    population_ptr->add_external_solutions_to_population();
     if (population_ptr->preempt_heuristic_solver_.load()) {
       CUOPT_LOG_DEBUG("Preempting heuristic solver!");
       break;
     }
-    is_feasible         = fp.run_single_fp_descent(solution);
-    auto new_sol_vector = population_ptr->get_external_solutions();
-    population_ptr->add_solutions_from_vec(std::move(new_sol_vector));
+    is_feasible = fp.run_single_fp_descent(solution);
+    population_ptr->add_external_solutions_to_population();
     CUOPT_LOG_DEBUG("Population size at iteration %d: %d", i, population_ptr->current_size());
     if (population_ptr->preempt_heuristic_solver_.load()) {
       CUOPT_LOG_DEBUG("Preempting heuristic solver!");
@@ -763,6 +692,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
         break;
       }
       is_feasible = fp.restart_fp(solution);
+      population_ptr->add_external_solutions_to_population();
       if (population_ptr->preempt_heuristic_solver_.load()) {
         CUOPT_LOG_DEBUG("Preempting heuristic solver!");
         break;
@@ -817,6 +747,7 @@ bool local_search_t<i_t, f_t>::generate_solution(solution_t<i_t, f_t>& solution,
     CUOPT_LOG_DEBUG("Solution generated with FJ on LP optimal: is_feasible %d", is_feasible);
     return true;
   }
+  population_ptr->add_external_solutions_to_population();
   if (population_ptr->preempt_heuristic_solver_.load()) {
     CUOPT_LOG_DEBUG("Preempting heuristic solver!");
     return is_feasible;
@@ -837,6 +768,7 @@ bool local_search_t<i_t, f_t>::generate_solution(solution_t<i_t, f_t>& solution,
                solution.assignment.size(),
                solution.handle_ptr->get_stream());
   }
+  population_ptr->add_external_solutions_to_population();
   if (population_ptr->preempt_heuristic_solver_.load()) {
     CUOPT_LOG_DEBUG("Preempting heuristic solver!");
     return is_feasible;

@@ -20,6 +20,8 @@ from cuopt.routing.vehicle_routing cimport (
 
 from datetime import date, datetime
 
+import pyarrow as pa
+
 from dateutil.relativedelta import relativedelta
 
 from cuopt.routing.assignment import Assignment
@@ -45,9 +47,8 @@ import numpy as np
 from numba import cuda
 
 import cudf
-from cudf.core.buffer import as_buffer
 
-from cuopt.utilities import col_from_buf
+from cuopt.utilities import series_from_buf
 
 
 class ErrorStatus(IntEnum):
@@ -790,26 +791,18 @@ def Solve(DataModel data_model, SolverSettings solver_settings):
     accepted = \
         DeviceBuffer.c_from_unique_ptr(move(vr_ret.d_accepted_))
 
-    route = as_buffer(route)
-    route_locations = as_buffer(route_locations)
-    arrival_stamp = as_buffer(arrival_stamp)
-    truck_id = as_buffer(truck_id)
-    node_types = as_buffer(node_types)
-    unserviced_nodes = as_buffer(unserviced_nodes)
-    accepted = as_buffer(accepted)
-
     route_df = cudf.DataFrame()
-    route_df['route'] = col_from_buf(route, np.int32)
-    route_df['arrival_stamp'] = col_from_buf(arrival_stamp, np.float64)
-    route_df['truck_id'] = col_from_buf(truck_id, np.int32)
-    route_df['location'] = col_from_buf(route_locations, np.int32)
-    route_df['type'] = col_from_buf(node_types, np.int32)
+    route_df['route'] = series_from_buf(route, pa.int32())
+    route_df['arrival_stamp'] = series_from_buf(arrival_stamp, pa.float64())
+    route_df['truck_id'] = series_from_buf(truck_id, pa.int32())
+    route_df['location'] = series_from_buf(route_locations, pa.int32())
+    route_df['type'] = series_from_buf(node_types, pa.int32())
 
     unserviced_nodes = cudf.Series._from_column(
-        col_from_buf(unserviced_nodes, np.int32)
+        series_from_buf(unserviced_nodes, pa.int32())
     )
     accepted = cudf.Series._from_column(
-        col_from_buf(accepted, np.int32)
+        series_from_buf(accepted, pa.int32())
     )
 
     def get_type_from_int(type_in_int):
