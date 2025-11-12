@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <mip/mip_constants.hpp>
 
@@ -1054,12 +1044,46 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_l
   return fj_cpu.feasible_found;
 }
 
+template <typename i_t, typename f_t>
+cpu_fj_thread_t<i_t, f_t>::~cpu_fj_thread_t()
+{
+  this->request_termination();
+}
+
+template <typename i_t, typename f_t>
+void cpu_fj_thread_t<i_t, f_t>::run_worker()
+{
+  bool solution_found   = fj_ptr->cpu_solve(*fj_cpu, time_limit);
+  cpu_fj_solution_found = solution_found;
+}
+
+template <typename i_t, typename f_t>
+void cpu_fj_thread_t<i_t, f_t>::on_terminate()
+{
+  if (fj_cpu) fj_cpu->halted = true;
+}
+
+template <typename i_t, typename f_t>
+void cpu_fj_thread_t<i_t, f_t>::on_start()
+{
+  cuopt_assert(fj_cpu != nullptr, "fj_cpu must not be null");
+  fj_cpu->halted = false;
+}
+
+template <typename i_t, typename f_t>
+void cpu_fj_thread_t<i_t, f_t>::stop_cpu_solver()
+{
+  fj_cpu->halted = true;
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template class fj_t<int, float>;
+template class cpu_fj_thread_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template class fj_t<int, double>;
+template class cpu_fj_thread_t<int, double>;
 #endif
 
 }  // namespace cuopt::linear_programming::detail

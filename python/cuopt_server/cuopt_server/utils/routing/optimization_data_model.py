@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import numpy as np
 
@@ -204,9 +192,7 @@ class OptimizationDataModel:
             else None,
             "vehicle_break_time_windows": [
                 data.to_numpy().tolist()
-                for data in self.fleet_data[
-                    "vehicle_break_time_windows"
-                ]  # noqa
+                for data in self.fleet_data["vehicle_break_time_windows"]  # noqa
             ]
             if self.fleet_data["vehicle_break_time_windows"] is not None
             else None,
@@ -351,11 +337,9 @@ class OptimizationDataModel:
 
         if is_valid[0]:
             for v_type, weights in waypoint_graph_weights.items():
-                self.waypoint_graph[v_type][
-                    "weights"
-                ] = waypoint_graph_weights[
-                    v_type
-                ]  # noqa
+                self.waypoint_graph[v_type]["weights"] = (
+                    waypoint_graph_weights[v_type]
+                )  # noqa
 
         return is_valid
 
@@ -410,11 +394,9 @@ class OptimizationDataModel:
 
         if is_valid[0]:
             for v_type, weights in travel_time_waypoint_graph_weights.items():
-                self.travel_time_waypoint_graph[v_type][
-                    "weights"
-                ] = travel_time_waypoint_graph_weights[
-                    v_type
-                ]  # noqa
+                self.travel_time_waypoint_graph[v_type]["weights"] = (
+                    travel_time_waypoint_graph_weights[v_type]
+                )  # noqa
 
         return is_valid
 

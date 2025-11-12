@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import argparse
 import json
@@ -694,15 +682,15 @@ def run_endpoint_tests(
 
     # Get Data
     print("Testing Get Optimization Data Endpoint : Initial")
-    end_point_results[
-        "get_optimization_data_state_empty"
-    ] = time_get_optimization_data_state_endpoint(cuopt_url, n_runs)
+    end_point_results["get_optimization_data_state_empty"] = (
+        time_get_optimization_data_state_endpoint(cuopt_url, n_runs)
+    )
 
     # Clear Data
     print("Testing Clear Optimization Data Endpoint")
-    end_point_results[
-        "clear_optimization_data"
-    ] = time_clear_optimization_data_endpoint(cuopt_url, n_runs)
+    end_point_results["clear_optimization_data"] = (
+        time_clear_optimization_data_endpoint(cuopt_url, n_runs)
+    )
 
     # Environment Data
     for number_of_locations in n_locs_array:
@@ -724,17 +712,17 @@ def run_endpoint_tests(
             n_locs=number_of_locations,
         )
 
-        end_point_results[
-            f"set_matrix_{number_of_locations}"
-        ] = set_matrix_results
-        end_point_results[
-            f"update_matrix_{number_of_locations}"
-        ] = update_matrix_results
+        end_point_results[f"set_matrix_{number_of_locations}"] = (
+            set_matrix_results
+        )
+        end_point_results[f"update_matrix_{number_of_locations}"] = (
+            update_matrix_results
+        )
 
         # Waypoint Graph
         print(
             f"Testing Set/Update Waypoint Graph Endpoints: \
-                {number_of_locations} Nodes, {number_of_locations*(number_of_locations-1)} Edges"  # noqa
+                {number_of_locations} Nodes, {number_of_locations * (number_of_locations - 1)} Edges"  # noqa
         )
 
         (
@@ -749,12 +737,12 @@ def run_endpoint_tests(
             n_locs=number_of_locations,
         )
 
-        end_point_results[
-            f"set_waypoint_graph_{number_of_locations}"
-        ] = set_waypoint_graph_results
-        end_point_results[
-            f"update_waypoint_graph_{number_of_locations}"
-        ] = update_waypoint_graph_results
+        end_point_results[f"set_waypoint_graph_{number_of_locations}"] = (
+            set_waypoint_graph_results
+        )
+        end_point_results[f"update_waypoint_graph_{number_of_locations}"] = (
+            update_waypoint_graph_results
+        )
 
     # Order Data
     for number_of_tasks in n_task_array:
@@ -777,9 +765,9 @@ def run_endpoint_tests(
         )
 
         end_point_results[f"set_tasks_{number_of_tasks}"] = set_tasks_results
-        end_point_results[
-            f"update_tasks_{number_of_tasks}"
-        ] = update_tasks_results
+        end_point_results[f"update_tasks_{number_of_tasks}"] = (
+            update_tasks_results
+        )
 
     # Vehicles Data
     for number_of_vehicles in n_vehicles_array:
@@ -801,12 +789,12 @@ def run_endpoint_tests(
             return_data_state=False,
         )
 
-        end_point_results[
-            f"set_fleet_{number_of_vehicles}"
-        ] = set_fleet_results
-        end_point_results[
-            f"update_fleet_{number_of_vehicles}"
-        ] = update_fleet_results
+        end_point_results[f"set_fleet_{number_of_vehicles}"] = (
+            set_fleet_results
+        )
+        end_point_results[f"update_fleet_{number_of_vehicles}"] = (
+            update_fleet_results
+        )
 
     # Solver Config
     print("Testing Set/Update Solver Config Endpoint")
@@ -901,13 +889,13 @@ def run_methods_tests(
             return_data_state=False,
         )
 
-        methods_results[
-            f"full_solve_matrix_data_off_{n_locations}"
-        ] = data_off_matrix_full_solve_results
+        methods_results[f"full_solve_matrix_data_off_{n_locations}"] = (
+            data_off_matrix_full_solve_results
+        )
 
-        methods_results[
-            f"solve_delta_matrix_{n_locations}"
-        ] = data_off_matrix_solve_delta_results
+        methods_results[f"solve_delta_matrix_{n_locations}"] = (
+            data_off_matrix_solve_delta_results
+        )
 
         # run matrix data on
         print(f"Running Cost Matrix, Data On, {n_locations} Locations")
@@ -925,9 +913,9 @@ def run_methods_tests(
             return_data_state=True,
         )
 
-        methods_results[
-            f"full_solve_matrix_data_on_{n_locations}"
-        ] = data_on_matrix_full_solve_results
+        methods_results[f"full_solve_matrix_data_on_{n_locations}"] = (
+            data_on_matrix_full_solve_results
+        )
 
         # run waypoint_graph data off
         print(f"Running Waypoint Graph, Data Off, {n_locations} Locations")
@@ -945,13 +933,13 @@ def run_methods_tests(
             return_data_state=False,
         )
 
-        methods_results[
-            f"full_solve_wpg_data_off_{n_locations}"
-        ] = data_off_wpg_full_solve_results
+        methods_results[f"full_solve_wpg_data_off_{n_locations}"] = (
+            data_off_wpg_full_solve_results
+        )
 
-        methods_results[
-            f"solve_delta_wpg_{n_locations}"
-        ] = data_off_wpg_solve_delta_results
+        methods_results[f"solve_delta_wpg_{n_locations}"] = (
+            data_off_wpg_solve_delta_results
+        )
 
         # Test sync waypoint graph
         print(
@@ -968,9 +956,9 @@ def run_methods_tests(
             return_data_state=False,
         )
 
-        methods_results[
-            f"full_solve_sync_wpg_data_off_{n_locations}"
-        ] = data_off_sync_wpg_full_solve_results
+        methods_results[f"full_solve_sync_wpg_data_off_{n_locations}"] = (
+            data_off_sync_wpg_full_solve_results
+        )
 
         # Test sync waypoint graph
         print(f"Running Sync Matrix, Data Off, {n_locations} Locations")
@@ -985,9 +973,9 @@ def run_methods_tests(
             return_data_state=False,
         )
 
-        methods_results[
-            f"full_solve_sync_matrix_data_off_{n_locations}"
-        ] = data_off_sync_matrix_full_solve_results
+        methods_results[f"full_solve_sync_matrix_data_off_{n_locations}"] = (
+            data_off_sync_matrix_full_solve_results
+        )
     print("\nMETHODS TESTING COMPLETE\n")
     return methods_results
 
