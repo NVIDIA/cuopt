@@ -59,6 +59,9 @@ timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 
 # Run Python tests
 
+# Due to race condition in certain cases UCX might not be able to cleanup properly, so we set the number of threads to 1
+export OMP_NUM_THREADS=1
+
 RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt/cuopt/tests/
 
 # run thirdparty integration tests for only nightly builds
