@@ -29,8 +29,6 @@ from cuopt.utilities import series_from_buf
 
 import pyarrow as pa
 
-import pyarrow as pa
-
 
 class DatasetDistribution(IntEnum):
     CLUSTERED = dataset_distribution_t.CLUSTERED
