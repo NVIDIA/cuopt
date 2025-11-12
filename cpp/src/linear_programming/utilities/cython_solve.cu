@@ -144,47 +144,29 @@ linear_programming_ret_t call_solve_lp(
   std::fprintf(stderr, "[call_solve_lp] Received solution from solve_lp\n");
   std::fflush(stderr);
 
-  // Convert host vectors (std::vector) to device buffers for Cython interface
-  // Create temporary handle for device copy operations
-  raft::handle_t temp_handle;
-  rmm::cuda_stream_view stream = temp_handle.get_stream();
-  const auto& ws               = solution.get_pdlp_warm_start_data();
+  // Pass host vectors directly to Cython (no GPU dependency!)
+  const auto& ws = solution.get_pdlp_warm_start_data();
 
-  std::fprintf(stderr, "[call_solve_lp] Got warm start data, starting device copies\n");
+  std::fprintf(stderr, "[call_solve_lp] Got warm start data, passing host vectors directly\n");
   std::fprintf(stderr,
                "[call_solve_lp] Warm start vector sizes: primal=%zu, dual=%zu\n",
                ws.current_primal_solution_.size(),
                ws.current_dual_solution_.size());
   std::fflush(stderr);
 
-  // Helper lambda to safely copy vectors (including empty ones) to device buffers
-  auto safe_device_copy = [&stream](const auto& host_vec) -> std::unique_ptr<rmm::device_buffer> {
-    try {
-      if (host_vec.empty()) {
-        // Return empty device buffer for empty vectors
-        return std::make_unique<rmm::device_buffer>(0, stream);
-      }
-      return std::make_unique<rmm::device_buffer>(cuopt::device_copy(host_vec, stream).release());
-    } catch (const std::exception& e) {
-      std::fprintf(stderr, "[call_solve_lp] Exception during device_copy: %s\n", e.what());
-      std::fflush(stderr);
-      throw;
-    }
-  };
-
   linear_programming_ret_t lp_ret{
-    safe_device_copy(solution.get_primal_solution()),
-    safe_device_copy(solution.get_dual_solution()),
-    safe_device_copy(solution.get_reduced_cost()),
-    safe_device_copy(ws.current_primal_solution_),
-    safe_device_copy(ws.current_dual_solution_),
-    safe_device_copy(ws.initial_primal_average_),
-    safe_device_copy(ws.initial_dual_average_),
-    safe_device_copy(ws.current_ATY_),
-    safe_device_copy(ws.sum_primal_solutions_),
-    safe_device_copy(ws.sum_dual_solutions_),
-    safe_device_copy(ws.last_restart_duality_gap_primal_solution_),
-    safe_device_copy(ws.last_restart_duality_gap_dual_solution_),
+    solution.get_primal_solution(),
+    solution.get_dual_solution(),
+    solution.get_reduced_cost(),
+    ws.current_primal_solution_,
+    ws.current_dual_solution_,
+    ws.initial_primal_average_,
+    ws.initial_dual_average_,
+    ws.current_ATY_,
+    ws.sum_primal_solutions_,
+    ws.sum_dual_solutions_,
+    ws.last_restart_duality_gap_primal_solution_,
+    ws.last_restart_duality_gap_dual_solution_,
     ws.initial_primal_weight_,
     ws.initial_step_size_,
     ws.total_pdlp_iterations_,
@@ -205,7 +187,7 @@ linear_programming_ret_t call_solve_lp(
     solution.get_additional_termination_information().solve_time,
     solution.get_additional_termination_information().solved_by_pdlp};
 
-  std::fprintf(stderr, "[call_solve_lp] Returning LP result\n");
+  std::fprintf(stderr, "[call_solve_lp] Returning LP result with host data\n");
   std::fflush(stderr);
   return lp_ret;
 }
@@ -229,13 +211,8 @@ mip_ret_t call_solve_mip(
     "MIP solve cannot be called on an LP problem!");
   auto solution = cuopt::linear_programming::solve_mip(op_problem, solver_settings);
 
-  // Convert host vector (std::vector) to device buffer for Cython interface
-  // Create temporary handle for device copy operations
-  raft::handle_t temp_handle;
-  rmm::cuda_stream_view stream = temp_handle.get_stream();
-
-  mip_ret_t mip_ret{std::make_unique<rmm::device_buffer>(
-                      cuopt::device_copy(solution.get_solution(), stream).release()),
+  // Pass host vector directly to Cython (no GPU dependency!)
+  mip_ret_t mip_ret{solution.get_solution(),
                     solution.get_termination_status(),
                     solution.get_error_status().get_error_type(),
                     solution.get_error_status().what(),

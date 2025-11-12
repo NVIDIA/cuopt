@@ -34,20 +34,21 @@ namespace cython {
 
 // aggregate for call_solve() return type
 // to be exposed to cython:
+// NOTE: Uses host memory (std::vector) to support remote solving without GPU
 struct linear_programming_ret_t {
-  std::unique_ptr<rmm::device_buffer> primal_solution_;
-  std::unique_ptr<rmm::device_buffer> dual_solution_;
-  std::unique_ptr<rmm::device_buffer> reduced_cost_;
+  std::vector<double> primal_solution_;
+  std::vector<double> dual_solution_;
+  std::vector<double> reduced_cost_;
   /* -- PDLP Warm Start Data -- */
-  std::unique_ptr<rmm::device_buffer> current_primal_solution_;
-  std::unique_ptr<rmm::device_buffer> current_dual_solution_;
-  std::unique_ptr<rmm::device_buffer> initial_primal_average_;
-  std::unique_ptr<rmm::device_buffer> initial_dual_average_;
-  std::unique_ptr<rmm::device_buffer> current_ATY_;
-  std::unique_ptr<rmm::device_buffer> sum_primal_solutions_;
-  std::unique_ptr<rmm::device_buffer> sum_dual_solutions_;
-  std::unique_ptr<rmm::device_buffer> last_restart_duality_gap_primal_solution_;
-  std::unique_ptr<rmm::device_buffer> last_restart_duality_gap_dual_solution_;
+  std::vector<double> current_primal_solution_;
+  std::vector<double> current_dual_solution_;
+  std::vector<double> initial_primal_average_;
+  std::vector<double> initial_dual_average_;
+  std::vector<double> current_ATY_;
+  std::vector<double> sum_primal_solutions_;
+  std::vector<double> sum_dual_solutions_;
+  std::vector<double> last_restart_duality_gap_primal_solution_;
+  std::vector<double> last_restart_duality_gap_dual_solution_;
   double initial_primal_weight_;
   double initial_step_size_;
   int total_pdlp_iterations_;
@@ -74,7 +75,7 @@ struct linear_programming_ret_t {
 };
 
 struct mip_ret_t {
-  std::unique_ptr<rmm::device_buffer> solution_;
+  std::vector<double> solution_;
 
   linear_programming::mip_termination_status_t termination_status_;
   error_type_t error_status_;

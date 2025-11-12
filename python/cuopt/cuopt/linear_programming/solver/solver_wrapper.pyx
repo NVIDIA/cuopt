@@ -312,9 +312,8 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
     cdef solver_ret_t* sol_ret = sol_ret_ptr.get()
 
     if sol_ret.problem_type == ProblemCategory.MIP or sol_ret.problem_type == ProblemCategory.IP: # noqa
-        solution = DeviceBuffer.c_from_unique_ptr(
-            move(sol_ret.mip_ret.solution_)
-        )
+        # Convert host vector directly to numpy (no GPU dependency!)
+        solution = np.array(sol_ret.mip_ret.solution_, dtype=np.float64)
         termination_status = sol_ret.mip_ret.termination_status_
         error_status = sol_ret.mip_ret.error_status_
         error_message = sol_ret.mip_ret.error_message_
@@ -328,13 +327,6 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         max_variable_bound_violation = sol_ret.mip_ret.max_variable_bound_violation_ # noqa
         num_nodes = sol_ret.mip_ret.nodes_
         num_simplex_iterations = sol_ret.mip_ret.simplex_iterations_
-
-        solution = cudf.Series._from_column(
-            cudf.core.column.build_column(
-                as_buffer(solution),
-                dtype=np.dtype(np.float64)
-            )
-        ).to_numpy()
 
         return Solution(
             ProblemCategory(sol_ret.problem_type),
@@ -356,30 +348,16 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         )
 
     else:
-        primal_solution = DeviceBuffer.c_from_unique_ptr(
-            move(sol_ret.lp_ret.primal_solution_)
+        # Convert host vectors directly to numpy (no GPU dependency!)
+        primal_solution = np.array(
+            sol_ret.lp_ret.primal_solution_, dtype=np.float64
         )
-        dual_solution = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.dual_solution_)) # noqa
-        reduced_cost = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.reduced_cost_)) # noqa
-
-        primal_solution = cudf.Series._from_column(
-            cudf.core.column.build_column(
-                as_buffer(primal_solution),
-                dtype=np.dtype(np.float64)
-            )
-        ).to_numpy()
-        dual_solution = cudf.Series._from_column(
-            cudf.core.column.build_column(
-                as_buffer(dual_solution),
-                dtype=np.dtype(np.float64)
-            )
-        ).to_numpy()
-        reduced_cost = cudf.Series._from_column(
-            cudf.core.column.build_column(
-                as_buffer(reduced_cost),
-                dtype=np.dtype(np.float64)
-            )
-        ).to_numpy()
+        dual_solution = np.array(
+            sol_ret.lp_ret.dual_solution_, dtype=np.float64
+        )
+        reduced_cost = np.array(
+            sol_ret.lp_ret.reduced_cost_, dtype=np.float64
+        )
 
         termination_status = sol_ret.lp_ret.termination_status_
         error_status = sol_ret.lp_ret.error_status_
@@ -395,102 +373,58 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
 
         # In BatchSolve, we don't get the warm start data
         if not is_batch:
-            print(f"[create_solution] is_batch={is_batch},"
-                  "processing warm start data")
-            current_primal_solution = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_primal_solution_)
+            print(
+                f"[create_solution] is_batch={is_batch}, "
+                "processing warm start data"
             )
-            print("[create_solution] Moved current_primal_solution")
-            current_dual_solution = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_dual_solution_)
+            # Convert host vectors directly to numpy (no GPU dependency!)
+            current_primal_solution = np.array(
+                sol_ret.lp_ret.current_primal_solution_, dtype=np.float64
             )
-            initial_primal_average = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.initial_primal_average_)
+            current_dual_solution = np.array(
+                sol_ret.lp_ret.current_dual_solution_, dtype=np.float64
             )
-            initial_dual_average = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.initial_dual_average_)
+            initial_primal_average = np.array(
+                sol_ret.lp_ret.initial_primal_average_, dtype=np.float64
             )
-            current_ATY = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_ATY_)
+            initial_dual_average = np.array(
+                sol_ret.lp_ret.initial_dual_average_, dtype=np.float64
             )
-            sum_primal_solutions = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.sum_primal_solutions_)
+            current_ATY = np.array(
+                sol_ret.lp_ret.current_ATY_, dtype=np.float64
             )
-            sum_dual_solutions = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.sum_dual_solutions_)
+            sum_primal_solutions = np.array(
+                sol_ret.lp_ret.sum_primal_solutions_, dtype=np.float64
             )
-            last_restart_duality_gap_primal_solution = DeviceBuffer.c_from_unique_ptr( # noqa
-                move(sol_ret.lp_ret.last_restart_duality_gap_primal_solution_)
+            sum_dual_solutions = np.array(
+                sol_ret.lp_ret.sum_dual_solutions_, dtype=np.float64
             )
-            last_restart_duality_gap_dual_solution = DeviceBuffer.c_from_unique_ptr( # noqa
-                move(sol_ret.lp_ret.last_restart_duality_gap_dual_solution_)
+            last_restart_duality_gap_primal_solution = np.array(
+                sol_ret.lp_ret.last_restart_duality_gap_primal_solution_,
+                dtype=np.float64
             )
+            last_restart_duality_gap_dual_solution = np.array(
+                sol_ret.lp_ret.last_restart_duality_gap_dual_solution_,
+                dtype=np.float64
+            )
+
             initial_primal_weight = sol_ret.lp_ret.initial_primal_weight_
             initial_step_size = sol_ret.lp_ret.initial_step_size_
             total_pdlp_iterations = sol_ret.lp_ret.total_pdlp_iterations_
             total_pdhg_iterations = sol_ret.lp_ret.total_pdhg_iterations_
-            last_candidate_kkt_score = sol_ret.lp_ret.last_candidate_kkt_score_
+            last_candidate_kkt_score = (
+                sol_ret.lp_ret.last_candidate_kkt_score_
+            )
             last_restart_kkt_score = sol_ret.lp_ret.last_restart_kkt_score_
             sum_solution_weight = sol_ret.lp_ret.sum_solution_weight_
-            iterations_since_last_restart = sol_ret.lp_ret.iterations_since_last_restart_ # noqa
+            iterations_since_last_restart = (
+                sol_ret.lp_ret.iterations_since_last_restart_
+            )  # noqa
 
-            current_primal_solution = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(current_primal_solution),
-                    dtype=np.dtype(np.float64)
-                )
-            ).to_numpy()
-            current_dual_solution = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(current_dual_solution),
-                    dtype=np.dtype(np.float64)
-                )
-            ).to_numpy()
-            initial_primal_average = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(initial_primal_average),
-                    dtype=np.dtype(np.float64)
-                )
-            ).to_numpy()
-            initial_dual_average = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(initial_dual_average),
-                    dtype=np.dtype(np.float64)
-                )
-            ).to_numpy()
-            current_ATY = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(current_ATY),
-                    dtype=np.dtype(np.float64)
-                )
-            ).to_numpy()
-            sum_primal_solutions = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(sum_primal_solutions),
-                    dtype=np.dtype(np.float64)
-                )
-            ).to_numpy()
-            sum_dual_solutions = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(sum_dual_solutions),
-                    dtype=np.dtype(np.float64)
-                )
-            ).to_numpy()
-            last_restart_duality_gap_primal_solution = cudf.Series._from_column( # noqa
-                cudf.core.column.build_column(
-                    as_buffer(last_restart_duality_gap_primal_solution),
-                    dtype=np.dtype(np.float64)
-                )
-            ).to_numpy()
-            last_restart_duality_gap_dual_solution = cudf.Series._from_column(
-                cudf.core.column.build_column(
-                    as_buffer(last_restart_duality_gap_dual_solution),
-                    dtype=np.dtype(np.float64)
-                )
-            ).to_numpy()
-
-            print("[create_solution] About to return Solution "
-                  "with warm start data")
+            print(
+                "[create_solution] About to return Solution "
+                "with warm start data"
+            )
             return Solution(
                 ProblemCategory(sol_ret.problem_type),
                 dict(zip(data_model_obj.get_variable_names(), primal_solution)), # noqa
