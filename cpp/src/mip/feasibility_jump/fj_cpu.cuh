@@ -7,11 +7,17 @@
 
 #pragma once
 
+#include <atomic>
+#include <condition_variable>
 #include <functional>
+#include <limits>
+#include <mutex>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
 #include <mip/feasibility_jump/feasibility_jump.cuh>
+#include <mip/utilities/cpu_worker_thread.cuh>
 
 namespace cuopt::linear_programming::detail {
 
@@ -109,6 +115,23 @@ struct fj_cpu_climber_t {
   std::string log_prefix{""};
 
   std::atomic<bool> halted{false};
+};
+
+template <typename i_t, typename f_t>
+struct cpu_fj_thread_t : public cpu_worker_thread_base_t<cpu_fj_thread_t<i_t, f_t>> {
+  ~cpu_fj_thread_t();
+
+  void run_worker();
+  void on_terminate();
+  void on_start();
+  bool get_result() { return cpu_fj_solution_found; }
+
+  void stop_cpu_solver();
+
+  std::atomic<bool> cpu_fj_solution_found{false};
+  f_t time_limit{+std::numeric_limits<f_t>::infinity()};
+  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_cpu;
+  fj_t<i_t, f_t>* fj_ptr{nullptr};
 };
 
 }  // namespace cuopt::linear_programming::detail

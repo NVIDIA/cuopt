@@ -1371,7 +1371,10 @@ void uncrush_primal_solution(const user_problem_t<i_t, f_t>& user_problem,
 {
   user_solution.resize(user_problem.num_cols);
   assert(problem.num_cols >= user_problem.num_cols);
-  std::copy(solution.begin(), solution.begin() + user_problem.num_cols, user_solution.data());
+  assert(solution.size() >= user_problem.num_cols);
+  std::copy(solution.begin(),
+            solution.begin() + std::min((i_t)solution.size(), user_problem.num_cols),
+            user_solution.data());
 }
 
 template <typename i_t, typename f_t>
