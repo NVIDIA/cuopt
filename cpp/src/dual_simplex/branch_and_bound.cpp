@@ -269,6 +269,7 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
       original_lp_, settings_, var_types_, crushed_solution, primal_err, bound_err, num_fractional);
     if (is_feasible) {
       upper_bound_ = obj;
+      incumbent_.set_incumbent_solution(obj, crushed_solution);
     } else {
       attempt_repair         = true;
       constexpr bool verbose = false;
@@ -438,16 +439,25 @@ mip_status_t branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t
     settings_.log.printf("Time limit reached. Stopping the solver...\n");
     mip_status = mip_status_t::TIME_LIMIT;
   }
+  if (status_ == mip_exploration_status_t::NODE_LIMIT) {
+    settings_.log.printf("Node limit reached. Stopping the solver...\n");
+    mip_status = mip_status_t::NODE_LIMIT;
+  }
 
-  f_t upper_bound = get_upper_bound();
-  f_t gap         = upper_bound - lower_bound;
-  f_t obj         = compute_user_objective(original_lp_, upper_bound);
-  f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
-  f_t gap_rel     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  f_t upper_bound      = get_upper_bound();
+  f_t gap              = upper_bound - lower_bound;
+  f_t obj              = compute_user_objective(original_lp_, upper_bound);
+  f_t user_bound       = compute_user_objective(original_lp_, lower_bound);
+  f_t gap_rel          = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  bool is_maximization = original_lp_.obj_scale < 0.0;
 
   settings_.log.printf(
     "Explored %d nodes in %.2fs.\n", stats_.nodes_explored, toc(stats_.start_time));
-  settings_.log.printf("Absolute Gap %e Objective %.16e Lower Bound %.16e\n", gap, obj, user_lower);
+  settings_.log.printf("Absolute Gap %e Objective %.16e %s Bound %.16e\n",
+                       gap,
+                       obj,
+                       is_maximization ? "Upper" : "Lower",
+                       user_bound);
 
   if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
     mip_status = mip_status_t::OPTIMAL;
@@ -473,7 +483,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t
     }
   }
 
-  uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
+  if (upper_bound != inf) {
+    assert(incumbent_.has_incumbent);
+    uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, solution.x);
+  }
   solution.objective          = incumbent_.objective;
   solution.lower_bound        = lower_bound;
   solution.nodes_explored     = stats_.nodes_explored;
@@ -626,6 +639,12 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(search_tree_t<i_t, f_t>& 
     node_ptr->lower_bound = leaf_objective;
     search_tree.graphviz_node(log, node_ptr, "lower bound", leaf_objective);
     pc_.update_pseudo_costs(node_ptr, leaf_objective);
+
+    if (settings_.node_processed_callback != nullptr) {
+      std::vector<f_t> original_x;
+      uncrush_primal_solution(original_problem_, original_lp_, leaf_solution.x, original_x);
+      settings_.node_processed_callback(original_x, leaf_objective);
+    }
 
     if (leaf_num_fractional == 0) {
       // Found a integer feasible solution
@@ -835,6 +854,10 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
       status_ = mip_exploration_status_t::TIME_LIMIT;
       return;
     }
+    if (stats_.nodes_explored >= settings_.node_limit) {
+      status_ = mip_exploration_status_t::NODE_LIMIT;
+      return;
+    }
 
     // Set the correct bounds for the leaf problem
     leaf_problem.lower = original_lp_.lower;
@@ -1012,6 +1035,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 {
   logger_t log;
   log.log                 = false;
+  log.log_prefix          = settings_.log.log_prefix;
   status_                 = mip_exploration_status_t::UNSET;
   stats_.nodes_unexplored = 0;
   stats_.nodes_explored   = 0;
