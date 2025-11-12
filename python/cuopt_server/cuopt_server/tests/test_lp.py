@@ -135,6 +135,7 @@ def test_sample_milp(
         expected_status,
     )
 
+
 @pytest.mark.skip(
     reason="Enable barrier solver options when issue "
     "https://github.com/NVIDIA/cuopt/issues/519 is resolved",
