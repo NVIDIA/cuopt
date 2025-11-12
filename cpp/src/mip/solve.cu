@@ -167,8 +167,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& host_proble
     std::fflush(stderr);
 
     try {
-      int port = std::atoi(remote_port);
-      return solve_mip_remote(std::string(remote_host), port, host_problem, settings);
+      return solve_mip_remote(host_problem, settings);
     } catch (const std::exception& e) {
       std::fprintf(stderr, "[solve_mip] Remote solve failed: %s\n", e.what());
       std::fprintf(stderr, "[solve_mip] Falling back to local solve\n");

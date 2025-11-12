@@ -19,6 +19,8 @@
 #include <cuopt/linear_programming/utilities/remote_solve.hpp>
 #include <mip/mip_constants.hpp>
 
+#include <cuopt_remote.pb.h>
+
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/socket.h>
@@ -57,538 +59,476 @@ static void read_all(int sockfd, void* data, size_t size)
   }
 }
 
-// Helper to write vector to buffer
-template <typename T>
-static void write_vector(std::vector<uint8_t>& buffer, const std::vector<T>& vec)
-{
-  uint64_t size = vec.size();
-  size_t start  = buffer.size();
-  buffer.resize(start + sizeof(uint64_t) + size * sizeof(T));
-
-  std::memcpy(buffer.data() + start, &size, sizeof(uint64_t));
-  if (size > 0) {
-    std::memcpy(buffer.data() + start + sizeof(uint64_t), vec.data(), size * sizeof(T));
-  }
-}
-
-// Helper to read vector from buffer
-template <typename T>
-static std::vector<T> read_vector(const uint8_t*& ptr)
-{
-  uint64_t size;
-  std::memcpy(&size, ptr, sizeof(uint64_t));
-  ptr += sizeof(uint64_t);
-
-  std::vector<T> vec(size);
-  if (size > 0) {
-    std::memcpy(vec.data(), ptr, size * sizeof(T));
-    ptr += size * sizeof(T);
-  }
-  return vec;
-}
-
-// Helper to write scalar to buffer
-template <typename T>
-static void write_to_buffer(std::vector<uint8_t>& buffer, const T& value)
-{
-  size_t start = buffer.size();
-  buffer.resize(start + sizeof(T));
-  std::memcpy(buffer.data() + start, &value, sizeof(T));
-}
-
-// Helper to read scalar from buffer with offset tracking
-template <typename T>
-static void read_from_buffer(const std::vector<uint8_t>& buffer, size_t& offset, T& value)
-{
-  if (offset + sizeof(T) > buffer.size()) {
-    throw std::runtime_error("Buffer underrun during scalar deserialization");
-  }
-  std::memcpy(&value, buffer.data() + offset, sizeof(T));
-  offset += sizeof(T);
-}
-
-// Helper to write vector with offset-based reading
-template <typename T>
-static void write_vector_to_buffer(std::vector<uint8_t>& buffer, const std::vector<T>& vec)
-{
-  uint64_t size = vec.size();
-  write_to_buffer(buffer, size);
-  if (size > 0) {
-    size_t start = buffer.size();
-    buffer.resize(start + size * sizeof(T));
-    std::memcpy(buffer.data() + start, vec.data(), size * sizeof(T));
-  }
-}
-
-// Helper to read vector with offset tracking
-template <typename T>
-static void read_vector_from_buffer(const std::vector<uint8_t>& buffer,
-                                    size_t& offset,
-                                    std::vector<T>& vec)
-{
-  uint64_t size;
-  read_from_buffer(buffer, offset, size);
-  vec.resize(size);
-  if (size > 0) {
-    if (offset + size * sizeof(T) > buffer.size()) {
-      throw std::runtime_error("Buffer underrun during vector deserialization");
-    }
-    std::memcpy(vec.data(), buffer.data() + offset, size * sizeof(T));
-    offset += size * sizeof(T);
-  }
-}
-
-// Helper to write string to buffer
-static void write_string(std::vector<uint8_t>& buffer, const std::string& str)
-{
-  uint64_t size = str.size();
-  size_t start  = buffer.size();
-  buffer.resize(start + sizeof(uint64_t) + size);
-
-  std::memcpy(buffer.data() + start, &size, sizeof(uint64_t));
-  if (size > 0) { std::memcpy(buffer.data() + start + sizeof(uint64_t), str.data(), size); }
-}
-
-// Helper to read string from buffer
-static std::string read_string(const uint8_t*& ptr)
-{
-  uint64_t size;
-  std::memcpy(&size, ptr, sizeof(uint64_t));
-  ptr += sizeof(uint64_t);
-
-  std::string str(size, '\0');
-  if (size > 0) {
-    std::memcpy(&str[0], ptr, size);
-    ptr += size;
-  }
-  return str;
-}
-
+// Convert optimization_problem_t to protobuf message
 template <typename i_t, typename f_t>
-std::vector<uint8_t> serialize_problem(const optimization_problem_t<i_t, f_t>& problem)
+static void problem_to_protobuf(const optimization_problem_t<i_t, f_t>& problem,
+                                cuopt::remote::OptimizationProblem* pb_problem)
 {
-  std::vector<uint8_t> buffer;
+  // Problem metadata
+  pb_problem->set_maximize(problem.get_sense());
+  pb_problem->set_objective_scaling_factor(problem.get_objective_scaling_factor());
+  pb_problem->set_objective_offset(problem.get_objective_offset());
 
-  // Write all the vectors
-  write_vector(buffer, problem.get_constraint_matrix_values());
-  write_vector(buffer, problem.get_constraint_matrix_indices());
-  write_vector(buffer, problem.get_constraint_matrix_offsets());
-  write_vector(buffer, problem.get_objective_coefficients());
-  write_vector(buffer, problem.get_variable_lower_bounds());
-  write_vector(buffer, problem.get_variable_upper_bounds());
-  write_vector(buffer, problem.get_constraint_lower_bounds());
-  write_vector(buffer, problem.get_constraint_upper_bounds());
-  write_vector(buffer, problem.get_constraint_bounds());
-  write_vector(buffer, problem.get_row_types());
-  write_vector(buffer, problem.get_variable_types());
+  // Constraint matrix (CSR format)
+  const auto& matrix_values  = problem.get_constraint_matrix_values();
+  const auto& matrix_indices = problem.get_constraint_matrix_indices();
+  const auto& matrix_offsets = problem.get_constraint_matrix_offsets();
 
-  // Write scalars
-  size_t start = buffer.size();
-  buffer.resize(start + sizeof(bool) + sizeof(f_t) * 2);
-  bool maximize = problem.get_sense();
-  std::memcpy(buffer.data() + start, &maximize, sizeof(bool));
-  start += sizeof(bool);
-
-  f_t obj_scale = problem.get_objective_scaling_factor();
-  std::memcpy(buffer.data() + start, &obj_scale, sizeof(f_t));
-  start += sizeof(f_t);
-
-  f_t obj_offset = problem.get_objective_offset();
-  std::memcpy(buffer.data() + start, &obj_offset, sizeof(f_t));
-
-  // Write strings
-  write_string(buffer, problem.get_objective_name());
-  write_string(buffer, problem.get_problem_name());
-
-  // Write variable names
-  const auto& var_names = problem.get_variable_names();
-  uint64_t n_var_names  = var_names.size();
-  size_t string_start   = buffer.size();
-  buffer.resize(string_start + sizeof(uint64_t));
-  std::memcpy(buffer.data() + string_start, &n_var_names, sizeof(uint64_t));
-  for (const auto& name : var_names) {
-    write_string(buffer, name);
+  for (const auto& val : matrix_values) {
+    pb_problem->add_constraint_matrix_values(static_cast<double>(val));
+  }
+  for (const auto& idx : matrix_indices) {
+    pb_problem->add_constraint_matrix_indices(static_cast<int32_t>(idx));
+  }
+  for (const auto& offset : matrix_offsets) {
+    pb_problem->add_constraint_matrix_offsets(static_cast<int32_t>(offset));
   }
 
-  // Write row names
-  const auto& row_names = problem.get_row_names();
-  uint64_t n_row_names  = row_names.size();
-  string_start          = buffer.size();
-  buffer.resize(string_start + sizeof(uint64_t));
-  std::memcpy(buffer.data() + string_start, &n_row_names, sizeof(uint64_t));
-  for (const auto& name : row_names) {
-    write_string(buffer, name);
+  // Problem vectors
+  const auto& obj_coeffs        = problem.get_objective_coefficients();
+  const auto& constraint_bounds = problem.get_constraint_bounds();
+  const auto& var_lower         = problem.get_variable_lower_bounds();
+  const auto& var_upper         = problem.get_variable_upper_bounds();
+
+  for (const auto& val : obj_coeffs) {
+    pb_problem->add_objective_coefficients(static_cast<double>(val));
+  }
+  for (const auto& val : constraint_bounds) {
+    pb_problem->add_constraint_bounds(static_cast<double>(val));
+  }
+  for (const auto& val : var_lower) {
+    pb_problem->add_variable_lower_bounds(static_cast<double>(val));
+  }
+  for (const auto& val : var_upper) {
+    pb_problem->add_variable_upper_bounds(static_cast<double>(val));
   }
 
-  return buffer;
+  // Constraint lower/upper bounds (additional representation)
+  const auto& constraint_lower = problem.get_constraint_lower_bounds();
+  const auto& constraint_upper = problem.get_constraint_upper_bounds();
+  for (const auto& val : constraint_lower) {
+    pb_problem->add_constraint_lower_bounds(static_cast<double>(val));
+  }
+  for (const auto& val : constraint_upper) {
+    pb_problem->add_constraint_upper_bounds(static_cast<double>(val));
+  }
+
+  // Row types (constraint types: '<', '>', '=')
+  const auto& row_types = problem.get_row_types();
+  if (!row_types.empty()) { pb_problem->set_row_types(row_types.data(), row_types.size()); }
 }
 
+// Convert protobuf message to optimization_problem_t
 template <typename i_t, typename f_t>
-optimization_problem_t<i_t, f_t> deserialize_problem(const std::vector<uint8_t>& buffer)
+static optimization_problem_t<i_t, f_t> protobuf_to_problem(
+  const cuopt::remote::OptimizationProblem& pb_problem)
 {
-  const uint8_t* ptr = buffer.data();
-
   optimization_problem_t<i_t, f_t> problem;
 
-  // Read all the vectors
-  auto constraint_matrix_values  = read_vector<f_t>(ptr);
-  auto constraint_matrix_indices = read_vector<i_t>(ptr);
-  auto constraint_matrix_offsets = read_vector<i_t>(ptr);
-  auto objective_coefficients    = read_vector<f_t>(ptr);
-  auto variable_lower_bounds     = read_vector<f_t>(ptr);
-  auto variable_upper_bounds     = read_vector<f_t>(ptr);
-  auto constraint_lower_bounds   = read_vector<f_t>(ptr);
-  auto constraint_upper_bounds   = read_vector<f_t>(ptr);
-  auto constraint_bounds         = read_vector<f_t>(ptr);
-  auto row_types                 = read_vector<char>(ptr);
-  auto variable_types            = read_vector<var_t>(ptr);
+  // Set problem sense
+  problem.set_maximize(pb_problem.maximize());
+  problem.set_objective_scaling_factor(static_cast<f_t>(pb_problem.objective_scaling_factor()));
+  problem.set_objective_offset(static_cast<f_t>(pb_problem.objective_offset()));
 
-  // Read scalars
-  bool maximize;
-  std::memcpy(&maximize, ptr, sizeof(bool));
-  ptr += sizeof(bool);
+  // Convert constraint matrix
+  std::vector<f_t> matrix_values;
+  std::vector<i_t> matrix_indices;
+  std::vector<i_t> matrix_offsets;
 
-  f_t obj_scale;
-  std::memcpy(&obj_scale, ptr, sizeof(f_t));
-  ptr += sizeof(f_t);
-
-  f_t obj_offset;
-  std::memcpy(&obj_offset, ptr, sizeof(f_t));
-  ptr += sizeof(f_t);
-
-  // Read strings
-  std::string obj_name     = read_string(ptr);
-  std::string problem_name = read_string(ptr);
-
-  // Read variable names
-  uint64_t n_var_names;
-  std::memcpy(&n_var_names, ptr, sizeof(uint64_t));
-  ptr += sizeof(uint64_t);
-  std::vector<std::string> var_names(n_var_names);
-  for (uint64_t i = 0; i < n_var_names; ++i) {
-    var_names[i] = read_string(ptr);
+  matrix_values.reserve(pb_problem.constraint_matrix_values_size());
+  for (int i = 0; i < pb_problem.constraint_matrix_values_size(); ++i) {
+    matrix_values.push_back(static_cast<f_t>(pb_problem.constraint_matrix_values(i)));
   }
 
-  // Read row names
-  uint64_t n_row_names;
-  std::memcpy(&n_row_names, ptr, sizeof(uint64_t));
-  ptr += sizeof(uint64_t);
-  std::vector<std::string> row_names(n_row_names);
-  for (uint64_t i = 0; i < n_row_names; ++i) {
-    row_names[i] = read_string(ptr);
+  matrix_indices.reserve(pb_problem.constraint_matrix_indices_size());
+  for (int i = 0; i < pb_problem.constraint_matrix_indices_size(); ++i) {
+    matrix_indices.push_back(static_cast<i_t>(pb_problem.constraint_matrix_indices(i)));
   }
 
-  // Set all the data
-  if (!constraint_matrix_values.empty()) {
-    problem.set_csr_constraint_matrix(constraint_matrix_values.data(),
-                                      constraint_matrix_values.size(),
-                                      constraint_matrix_indices.data(),
-                                      constraint_matrix_indices.size(),
-                                      constraint_matrix_offsets.data(),
-                                      constraint_matrix_offsets.size());
+  matrix_offsets.reserve(pb_problem.constraint_matrix_offsets_size());
+  for (int i = 0; i < pb_problem.constraint_matrix_offsets_size(); ++i) {
+    matrix_offsets.push_back(static_cast<i_t>(pb_problem.constraint_matrix_offsets(i)));
   }
 
-  if (!objective_coefficients.empty()) {
-    problem.set_objective_coefficients(objective_coefficients.data(),
-                                       objective_coefficients.size());
+  problem.set_csr_constraint_matrix(matrix_values.data(),
+                                    matrix_values.size(),
+                                    matrix_indices.data(),
+                                    matrix_indices.size(),
+                                    matrix_offsets.data(),
+                                    matrix_offsets.size());
+
+  // Convert problem vectors
+  std::vector<f_t> obj_coeffs;
+  std::vector<f_t> constraint_bounds;
+  std::vector<f_t> var_lower;
+  std::vector<f_t> var_upper;
+
+  obj_coeffs.reserve(pb_problem.objective_coefficients_size());
+  for (int i = 0; i < pb_problem.objective_coefficients_size(); ++i) {
+    obj_coeffs.push_back(static_cast<f_t>(pb_problem.objective_coefficients(i)));
   }
 
-  if (!variable_lower_bounds.empty()) {
-    problem.set_variable_lower_bounds(variable_lower_bounds.data(), variable_lower_bounds.size());
+  constraint_bounds.reserve(pb_problem.constraint_bounds_size());
+  for (int i = 0; i < pb_problem.constraint_bounds_size(); ++i) {
+    constraint_bounds.push_back(static_cast<f_t>(pb_problem.constraint_bounds(i)));
   }
 
-  if (!variable_upper_bounds.empty()) {
-    problem.set_variable_upper_bounds(variable_upper_bounds.data(), variable_upper_bounds.size());
+  var_lower.reserve(pb_problem.variable_lower_bounds_size());
+  for (int i = 0; i < pb_problem.variable_lower_bounds_size(); ++i) {
+    var_lower.push_back(static_cast<f_t>(pb_problem.variable_lower_bounds(i)));
   }
 
-  if (!constraint_lower_bounds.empty()) {
-    problem.set_constraint_lower_bounds(constraint_lower_bounds.data(),
-                                        constraint_lower_bounds.size());
+  var_upper.reserve(pb_problem.variable_upper_bounds_size());
+  for (int i = 0; i < pb_problem.variable_upper_bounds_size(); ++i) {
+    var_upper.push_back(static_cast<f_t>(pb_problem.variable_upper_bounds(i)));
   }
 
-  if (!constraint_upper_bounds.empty()) {
-    problem.set_constraint_upper_bounds(constraint_upper_bounds.data(),
-                                        constraint_upper_bounds.size());
+  problem.set_objective_coefficients(obj_coeffs.data(), obj_coeffs.size());
+  problem.set_constraint_bounds(constraint_bounds.data(), constraint_bounds.size());
+  problem.set_variable_lower_bounds(var_lower.data(), var_lower.size());
+  problem.set_variable_upper_bounds(var_upper.data(), var_upper.size());
+
+  // Constraint lower/upper bounds (if provided)
+  if (pb_problem.constraint_lower_bounds_size() > 0) {
+    std::vector<f_t> constraint_lower;
+    constraint_lower.reserve(pb_problem.constraint_lower_bounds_size());
+    for (int i = 0; i < pb_problem.constraint_lower_bounds_size(); ++i) {
+      constraint_lower.push_back(static_cast<f_t>(pb_problem.constraint_lower_bounds(i)));
+    }
+    problem.set_constraint_lower_bounds(constraint_lower.data(), constraint_lower.size());
   }
 
-  if (!constraint_bounds.empty()) {
-    problem.set_constraint_bounds(constraint_bounds.data(), constraint_bounds.size());
+  if (pb_problem.constraint_upper_bounds_size() > 0) {
+    std::vector<f_t> constraint_upper;
+    constraint_upper.reserve(pb_problem.constraint_upper_bounds_size());
+    for (int i = 0; i < pb_problem.constraint_upper_bounds_size(); ++i) {
+      constraint_upper.push_back(static_cast<f_t>(pb_problem.constraint_upper_bounds(i)));
+    }
+    problem.set_constraint_upper_bounds(constraint_upper.data(), constraint_upper.size());
   }
 
-  if (!row_types.empty()) { problem.set_row_types(row_types.data(), row_types.size()); }
-
-  if (!variable_types.empty()) {
-    problem.set_variable_types(variable_types.data(), variable_types.size());
+  // Row types (if provided)
+  if (!pb_problem.row_types().empty()) {
+    const std::string& rt = pb_problem.row_types();
+    problem.set_row_types(rt.data(), rt.size());
   }
-
-  problem.set_maximize(maximize);
-  problem.set_objective_scaling_factor(obj_scale);
-  problem.set_objective_offset(obj_offset);
-
-  if (!obj_name.empty()) { problem.set_objective_name(obj_name); }
-
-  if (!problem_name.empty()) { problem.set_problem_name(problem_name.c_str()); }
-
-  if (!var_names.empty()) { problem.set_variable_names(var_names); }
-
-  if (!row_names.empty()) { problem.set_row_names(row_names); }
 
   return problem;
 }
 
+// Convert PDLP warm start data to protobuf
 template <typename i_t, typename f_t>
-std::vector<uint8_t> serialize_solution(optimization_problem_solution_t<i_t, f_t>& solution)
+static void warm_start_to_protobuf(const pdlp_warm_start_data_t<i_t, f_t>& ws,
+                                   cuopt::remote::PDLPWarmStartData* pb_ws)
 {
-  std::vector<uint8_t> buffer;
-
-  // Write solution vectors (may be empty)
-  write_vector_to_buffer(buffer, solution.get_primal_solution());
-  write_vector_to_buffer(buffer, solution.get_dual_solution());
-  write_vector_to_buffer(buffer, solution.get_reduced_cost());
-
-  // Write termination status
-  uint32_t status = static_cast<uint32_t>(solution.get_termination_status());
-  write_to_buffer(buffer, status);
-
-  // Write warm start data (vectors may be empty if no warm start was used)
-  const auto& ws = solution.get_pdlp_warm_start_data();
-  write_vector_to_buffer(buffer, ws.current_primal_solution_);
-  write_vector_to_buffer(buffer, ws.current_dual_solution_);
-  write_vector_to_buffer(buffer, ws.initial_primal_average_);
-  write_vector_to_buffer(buffer, ws.initial_dual_average_);
-  write_vector_to_buffer(buffer, ws.current_ATY_);
-  write_vector_to_buffer(buffer, ws.sum_primal_solutions_);
-  write_vector_to_buffer(buffer, ws.sum_dual_solutions_);
-  write_vector_to_buffer(buffer, ws.last_restart_duality_gap_primal_solution_);
-  write_vector_to_buffer(buffer, ws.last_restart_duality_gap_dual_solution_);
-  write_to_buffer(buffer, ws.initial_primal_weight_);
-  write_to_buffer(buffer, ws.initial_step_size_);
-  write_to_buffer(buffer, ws.total_pdlp_iterations_);
-  write_to_buffer(buffer, ws.total_pdhg_iterations_);
-  write_to_buffer(buffer, ws.last_candidate_kkt_score_);
-  write_to_buffer(buffer, ws.last_restart_kkt_score_);
-  write_to_buffer(buffer, ws.sum_solution_weight_);
-  write_to_buffer(buffer, ws.iterations_since_last_restart_);
-
-  // Write additional termination information
-  const auto& info = solution.get_additional_termination_information();
-  write_to_buffer(buffer, info.primal_objective);
-  write_to_buffer(buffer, info.dual_objective);
-  write_to_buffer(buffer, info.l2_primal_residual);
-  write_to_buffer(buffer, info.l2_dual_residual);
-  write_to_buffer(buffer, info.gap);
-  write_to_buffer(buffer, info.number_of_steps_taken);
-  write_to_buffer(buffer, info.solve_time);
-  write_to_buffer(buffer, info.solved_by_pdlp);
-
-  return buffer;
-}
-
-template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t> deserialize_lp_solution(
-  const std::vector<uint8_t>& buffer)
-{
-  size_t offset = 0;
-
-  // Read solution vectors
-  std::vector<f_t> primal_solution;
-  read_vector_from_buffer(buffer, offset, primal_solution);
-  std::vector<f_t> dual_solution;
-  read_vector_from_buffer(buffer, offset, dual_solution);
-  std::vector<f_t> reduced_cost;
-  read_vector_from_buffer(buffer, offset, reduced_cost);
-
-  // Read termination status
-  uint32_t status_val;
-  read_from_buffer(buffer, offset, status_val);
-  auto status = static_cast<pdlp_termination_status_t>(status_val);
-
-  // Read warm start data (all fields, vectors may be empty)
-  pdlp_warm_start_data_t<i_t, f_t> warm_start_data;
-  read_vector_from_buffer(buffer, offset, warm_start_data.current_primal_solution_);
-  read_vector_from_buffer(buffer, offset, warm_start_data.current_dual_solution_);
-  read_vector_from_buffer(buffer, offset, warm_start_data.initial_primal_average_);
-  read_vector_from_buffer(buffer, offset, warm_start_data.initial_dual_average_);
-  read_vector_from_buffer(buffer, offset, warm_start_data.current_ATY_);
-  read_vector_from_buffer(buffer, offset, warm_start_data.sum_primal_solutions_);
-  read_vector_from_buffer(buffer, offset, warm_start_data.sum_dual_solutions_);
-  read_vector_from_buffer(
-    buffer, offset, warm_start_data.last_restart_duality_gap_primal_solution_);
-  read_vector_from_buffer(buffer, offset, warm_start_data.last_restart_duality_gap_dual_solution_);
-  read_from_buffer(buffer, offset, warm_start_data.initial_primal_weight_);
-  read_from_buffer(buffer, offset, warm_start_data.initial_step_size_);
-  read_from_buffer(buffer, offset, warm_start_data.total_pdlp_iterations_);
-  read_from_buffer(buffer, offset, warm_start_data.total_pdhg_iterations_);
-  read_from_buffer(buffer, offset, warm_start_data.last_candidate_kkt_score_);
-  read_from_buffer(buffer, offset, warm_start_data.last_restart_kkt_score_);
-  read_from_buffer(buffer, offset, warm_start_data.sum_solution_weight_);
-  read_from_buffer(buffer, offset, warm_start_data.iterations_since_last_restart_);
-
-  // Read additional termination information
-  typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t stats{};
-  read_from_buffer(buffer, offset, stats.primal_objective);
-  read_from_buffer(buffer, offset, stats.dual_objective);
-  read_from_buffer(buffer, offset, stats.l2_primal_residual);
-  read_from_buffer(buffer, offset, stats.l2_dual_residual);
-  read_from_buffer(buffer, offset, stats.gap);
-  read_from_buffer(buffer, offset, stats.number_of_steps_taken);
-  read_from_buffer(buffer, offset, stats.solve_time);
-  read_from_buffer(buffer, offset, stats.solved_by_pdlp);
-
-  // Create solution with all data
-  return optimization_problem_solution_t<i_t, f_t>(std::move(primal_solution),
-                                                   std::move(dual_solution),
-                                                   std::move(reduced_cost),
-                                                   std::move(warm_start_data),
-                                                   "",                          // objective_name
-                                                   std::vector<std::string>(),  // var_names
-                                                   std::vector<std::string>(),  // row_names
-                                                   stats,
-                                                   status);
-}
-
-template <typename i_t, typename f_t>
-std::vector<uint8_t> serialize_mip_solution(mip_solution_t<i_t, f_t>& solution)
-{
-  std::vector<uint8_t> buffer;
-
-  // Write solution vector (may be empty if solve failed)
-  write_vector_to_buffer(buffer, solution.get_solution());
-
-  // Write termination status
-  uint32_t status = static_cast<uint32_t>(solution.get_termination_status());
-  write_to_buffer(buffer, status);
-
-  // Write objective value
-  f_t obj_val = solution.get_objective_value();
-  write_to_buffer(buffer, obj_val);
-
-  return buffer;
-}
-
-template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> deserialize_mip_solution(const std::vector<uint8_t>& buffer)
-{
-  size_t offset = 0;
-
-  // Read solution vector (may be empty if solve failed)
-  std::vector<f_t> solution_vec;
-  read_vector_from_buffer(buffer, offset, solution_vec);
-
-  // Read termination status
-  uint32_t status_val;
-  read_from_buffer(buffer, offset, status_val);
-  auto status = static_cast<mip_termination_status_t>(status_val);
-
-  // Read objective value
-  f_t obj_val;
-  read_from_buffer(buffer, offset, obj_val);
-
-  // Create minimal solver_stats
-  solver_stats_t<i_t, f_t> stats{};
-  stats.solution_bound = obj_val;
-
-  // Create solution using the full constructor with minimal values
-  return mip_solution_t<i_t, f_t>(std::move(solution_vec),           // solution
-                                  std::vector<std::string>(),        // var_names
-                                  obj_val,                           // objective
-                                  f_t{0.0},                          // mip_gap
-                                  status,                            // termination_status
-                                  f_t{0.0},                          // max_constraint_violation
-                                  f_t{0.0},                          // max_int_violation
-                                  f_t{0.0},                          // max_variable_bound_violation
-                                  stats,                             // stats
-                                  std::vector<std::vector<f_t>>());  // solution_pool
-}
-
-// Connect to remote server
-static int connect_to_server(const std::string& host, int port)
-{
-  struct addrinfo hints, *servinfo, *p;
-  std::memset(&hints, 0, sizeof(hints));
-  hints.ai_family   = AF_UNSPEC;
-  hints.ai_socktype = SOCK_STREAM;
-
-  std::string port_str = std::to_string(port);
-  int rv               = getaddrinfo(host.c_str(), port_str.c_str(), &hints, &servinfo);
-  if (rv != 0) { throw std::runtime_error(std::string("getaddrinfo failed: ") + gai_strerror(rv)); }
-
-  int sockfd = -1;
-  for (p = servinfo; p != nullptr; p = p->ai_next) {
-    sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-    if (sockfd == -1) { continue; }
-
-    if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-      close(sockfd);
-      sockfd = -1;
-      continue;
-    }
-
-    break;
+  // Convert vectors
+  for (const auto& val : ws.current_primal_solution_) {
+    pb_ws->add_current_primal_solution(static_cast<double>(val));
+  }
+  for (const auto& val : ws.current_dual_solution_) {
+    pb_ws->add_current_dual_solution(static_cast<double>(val));
+  }
+  for (const auto& val : ws.initial_primal_average_) {
+    pb_ws->add_initial_primal_average(static_cast<double>(val));
+  }
+  for (const auto& val : ws.initial_dual_average_) {
+    pb_ws->add_initial_dual_average(static_cast<double>(val));
+  }
+  for (const auto& val : ws.current_ATY_) {
+    pb_ws->add_current_aty(static_cast<double>(val));
+  }
+  for (const auto& val : ws.sum_primal_solutions_) {
+    pb_ws->add_sum_primal_solutions(static_cast<double>(val));
+  }
+  for (const auto& val : ws.sum_dual_solutions_) {
+    pb_ws->add_sum_dual_solutions(static_cast<double>(val));
+  }
+  for (const auto& val : ws.last_restart_duality_gap_primal_solution_) {
+    pb_ws->add_last_restart_duality_gap_primal_solution(static_cast<double>(val));
+  }
+  for (const auto& val : ws.last_restart_duality_gap_dual_solution_) {
+    pb_ws->add_last_restart_duality_gap_dual_solution(static_cast<double>(val));
   }
 
-  freeaddrinfo(servinfo);
-
-  if (sockfd == -1) { throw std::runtime_error("Failed to connect to server"); }
-
-  return sockfd;
+  // Convert scalars
+  pb_ws->set_initial_primal_weight(static_cast<double>(ws.initial_primal_weight_));
+  pb_ws->set_initial_step_size(static_cast<double>(ws.initial_step_size_));
+  pb_ws->set_total_pdlp_iterations(ws.total_pdlp_iterations_);
+  pb_ws->set_total_pdhg_iterations(ws.total_pdhg_iterations_);
+  pb_ws->set_last_candidate_kkt_score(static_cast<double>(ws.last_candidate_kkt_score_));
+  pb_ws->set_last_restart_kkt_score(static_cast<double>(ws.last_restart_kkt_score_));
+  pb_ws->set_sum_solution_weight(static_cast<double>(ws.sum_solution_weight_));
+  pb_ws->set_iterations_since_last_restart(ws.iterations_since_last_restart_);
 }
 
+// Convert protobuf to PDLP warm start data
+template <typename i_t, typename f_t>
+static pdlp_warm_start_data_t<i_t, f_t> protobuf_to_warm_start(
+  const cuopt::remote::PDLPWarmStartData& pb_ws)
+{
+  pdlp_warm_start_data_t<i_t, f_t> ws;
+
+  // Convert vectors
+  ws.current_primal_solution_.reserve(pb_ws.current_primal_solution_size());
+  for (int i = 0; i < pb_ws.current_primal_solution_size(); ++i) {
+    ws.current_primal_solution_.push_back(static_cast<f_t>(pb_ws.current_primal_solution(i)));
+  }
+
+  ws.current_dual_solution_.reserve(pb_ws.current_dual_solution_size());
+  for (int i = 0; i < pb_ws.current_dual_solution_size(); ++i) {
+    ws.current_dual_solution_.push_back(static_cast<f_t>(pb_ws.current_dual_solution(i)));
+  }
+
+  ws.initial_primal_average_.reserve(pb_ws.initial_primal_average_size());
+  for (int i = 0; i < pb_ws.initial_primal_average_size(); ++i) {
+    ws.initial_primal_average_.push_back(static_cast<f_t>(pb_ws.initial_primal_average(i)));
+  }
+
+  ws.initial_dual_average_.reserve(pb_ws.initial_dual_average_size());
+  for (int i = 0; i < pb_ws.initial_dual_average_size(); ++i) {
+    ws.initial_dual_average_.push_back(static_cast<f_t>(pb_ws.initial_dual_average(i)));
+  }
+
+  ws.current_ATY_.reserve(pb_ws.current_aty_size());
+  for (int i = 0; i < pb_ws.current_aty_size(); ++i) {
+    ws.current_ATY_.push_back(static_cast<f_t>(pb_ws.current_aty(i)));
+  }
+
+  ws.sum_primal_solutions_.reserve(pb_ws.sum_primal_solutions_size());
+  for (int i = 0; i < pb_ws.sum_primal_solutions_size(); ++i) {
+    ws.sum_primal_solutions_.push_back(static_cast<f_t>(pb_ws.sum_primal_solutions(i)));
+  }
+
+  ws.sum_dual_solutions_.reserve(pb_ws.sum_dual_solutions_size());
+  for (int i = 0; i < pb_ws.sum_dual_solutions_size(); ++i) {
+    ws.sum_dual_solutions_.push_back(static_cast<f_t>(pb_ws.sum_dual_solutions(i)));
+  }
+
+  ws.last_restart_duality_gap_primal_solution_.reserve(
+    pb_ws.last_restart_duality_gap_primal_solution_size());
+  for (int i = 0; i < pb_ws.last_restart_duality_gap_primal_solution_size(); ++i) {
+    ws.last_restart_duality_gap_primal_solution_.push_back(
+      static_cast<f_t>(pb_ws.last_restart_duality_gap_primal_solution(i)));
+  }
+
+  ws.last_restart_duality_gap_dual_solution_.reserve(
+    pb_ws.last_restart_duality_gap_dual_solution_size());
+  for (int i = 0; i < pb_ws.last_restart_duality_gap_dual_solution_size(); ++i) {
+    ws.last_restart_duality_gap_dual_solution_.push_back(
+      static_cast<f_t>(pb_ws.last_restart_duality_gap_dual_solution(i)));
+  }
+
+  // Convert scalars
+  ws.initial_primal_weight_         = static_cast<f_t>(pb_ws.initial_primal_weight());
+  ws.initial_step_size_             = static_cast<f_t>(pb_ws.initial_step_size());
+  ws.total_pdlp_iterations_         = pb_ws.total_pdlp_iterations();
+  ws.total_pdhg_iterations_         = pb_ws.total_pdhg_iterations();
+  ws.last_candidate_kkt_score_      = static_cast<f_t>(pb_ws.last_candidate_kkt_score());
+  ws.last_restart_kkt_score_        = static_cast<f_t>(pb_ws.last_restart_kkt_score());
+  ws.sum_solution_weight_           = static_cast<f_t>(pb_ws.sum_solution_weight());
+  ws.iterations_since_last_restart_ = pb_ws.iterations_since_last_restart();
+
+  return ws;
+}
+
+// Convert LP solution to protobuf
+template <typename i_t, typename f_t>
+static void lp_solution_to_protobuf(optimization_problem_solution_t<i_t, f_t>& solution,
+                                    cuopt::remote::LPSolution* pb_solution)
+{
+  // Solution vectors
+  for (const auto& val : solution.get_primal_solution()) {
+    pb_solution->add_primal_solution(static_cast<double>(val));
+  }
+  for (const auto& val : solution.get_dual_solution()) {
+    pb_solution->add_dual_solution(static_cast<double>(val));
+  }
+  for (const auto& val : solution.get_reduced_cost()) {
+    pb_solution->add_reduced_cost(static_cast<double>(val));
+  }
+
+  // Warm start data
+  const auto& ws = solution.get_pdlp_warm_start_data();
+  warm_start_to_protobuf<i_t, f_t>(ws, pb_solution->mutable_warm_start_data());
+
+  // Termination status
+  pb_solution->set_termination_status(
+    static_cast<cuopt::remote::PDLPTerminationStatus>(solution.get_termination_status()));
+
+  // Solution statistics
+  const auto& stats = solution.get_additional_termination_information();
+  pb_solution->set_l2_primal_residual(stats.l2_primal_residual);
+  pb_solution->set_l2_dual_residual(stats.l2_dual_residual);
+  pb_solution->set_primal_objective(stats.primal_objective);
+  pb_solution->set_dual_objective(stats.dual_objective);
+  pb_solution->set_gap(stats.gap);
+  pb_solution->set_nb_iterations(stats.number_of_steps_taken);
+  pb_solution->set_solve_time(stats.solve_time);
+  pb_solution->set_solved_by_pdlp(stats.solved_by_pdlp);
+}
+
+// Convert protobuf to LP solution
+template <typename i_t, typename f_t>
+static optimization_problem_solution_t<i_t, f_t> protobuf_to_lp_solution(
+  const cuopt::remote::LPSolution& pb_solution)
+{
+  // Convert solution vectors
+  std::vector<f_t> primal_solution;
+  std::vector<f_t> dual_solution;
+  std::vector<f_t> reduced_cost;
+
+  primal_solution.reserve(pb_solution.primal_solution_size());
+  for (int i = 0; i < pb_solution.primal_solution_size(); ++i) {
+    primal_solution.push_back(static_cast<f_t>(pb_solution.primal_solution(i)));
+  }
+
+  dual_solution.reserve(pb_solution.dual_solution_size());
+  for (int i = 0; i < pb_solution.dual_solution_size(); ++i) {
+    dual_solution.push_back(static_cast<f_t>(pb_solution.dual_solution(i)));
+  }
+
+  reduced_cost.reserve(pb_solution.reduced_cost_size());
+  for (int i = 0; i < pb_solution.reduced_cost_size(); ++i) {
+    reduced_cost.push_back(static_cast<f_t>(pb_solution.reduced_cost(i)));
+  }
+
+  // Convert warm start data
+  pdlp_warm_start_data_t<i_t, f_t> warm_start_data;
+  if (pb_solution.has_warm_start_data()) {
+    warm_start_data = protobuf_to_warm_start<i_t, f_t>(pb_solution.warm_start_data());
+  }
+
+  // Convert solution statistics
+  typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t stats{};
+  stats.l2_primal_residual    = pb_solution.l2_primal_residual();
+  stats.l2_dual_residual      = pb_solution.l2_dual_residual();
+  stats.primal_objective      = pb_solution.primal_objective();
+  stats.dual_objective        = pb_solution.dual_objective();
+  stats.gap                   = pb_solution.gap();
+  stats.number_of_steps_taken = pb_solution.nb_iterations();
+  stats.solve_time            = pb_solution.solve_time();
+  stats.solved_by_pdlp        = pb_solution.solved_by_pdlp();
+
+  // Create solution
+  return optimization_problem_solution_t<i_t, f_t>(
+    std::move(primal_solution),
+    std::move(dual_solution),
+    std::move(reduced_cost),
+    std::move(warm_start_data),
+    "",                          // objective_name
+    std::vector<std::string>(),  // var_names
+    std::vector<std::string>(),  // row_names
+    stats,
+    static_cast<pdlp_termination_status_t>(pb_solution.termination_status()));
+}
+
+// Check if remote solve is enabled via environment variables
+bool is_remote_solve_enabled(const char** host, const char** port)
+{
+  *host = std::getenv("CUOPT_REMOTE_HOST");
+  *port = std::getenv("CUOPT_REMOTE_PORT");
+  return (*host != nullptr && *port != nullptr);
+}
+
+// Solve LP problem remotely using protobuf
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
-  const std::string& host,
-  int port,
-  const optimization_problem_t<i_t, f_t>& problem,
-  const pdlp_solver_settings_t<i_t, f_t>& settings)
+  const optimization_problem_t<i_t, f_t>& problem, const pdlp_solver_settings_t<i_t, f_t>& settings)
 {
+  // Get remote host and port
+  const char* host;
+  const char* port;
+  if (!is_remote_solve_enabled(&host, &port)) {
+    throw std::runtime_error("Remote solve not enabled (CUOPT_REMOTE_HOST/PORT not set)");
+  }
+
+  fprintf(stderr, "[solve_lp_remote] Connecting to %s:%s\n", host, port);
+
+  // Create socket
+  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  if (sockfd < 0) { throw std::runtime_error("Failed to create socket"); }
+
+  // Resolve hostname
+  struct hostent* server = gethostbyname(host);
+  if (server == nullptr) {
+    close(sockfd);
+    throw std::runtime_error("Failed to resolve hostname");
+  }
+
   // Connect to server
-  int sockfd = connect_to_server(host, port);
+  struct sockaddr_in serv_addr;
+  std::memset(&serv_addr, 0, sizeof(serv_addr));
+  serv_addr.sin_family = AF_INET;
+  std::memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
+  serv_addr.sin_port = htons(std::atoi(port));
+
+  if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+    close(sockfd);
+    throw std::runtime_error("Failed to connect to remote server");
+  }
+
+  fprintf(stderr, "[solve_lp_remote] Connected, building request...\n");
 
   try {
-    // Serialize problem
-    auto problem_data = serialize_problem(problem);
+    // Create protobuf request
+    cuopt::remote::SolveLPRequest request;
 
-    // Create and send header
-    remote_solve_header_t header;
-    header.version      = 1;
-    header.problem_type = 0;  // LP
-    header.problem_size = problem_data.size();
-    header.i_type_size  = sizeof(i_t);
-    header.f_type_size  = sizeof(f_t);
+    // Set header
+    auto* header = request.mutable_header();
+    header->set_version(1);
+    header->set_problem_type(cuopt::remote::LP);
+    header->set_index_type(sizeof(i_t) == 4 ? cuopt::remote::INT32 : cuopt::remote::INT64);
+    header->set_float_type(sizeof(f_t) == 4 ? cuopt::remote::FLOAT32 : cuopt::remote::DOUBLE);
 
-    write_all(sockfd, &header, sizeof(header));
+    // Convert problem
+    problem_to_protobuf(problem, request.mutable_problem());
 
-    // Send problem data
-    write_all(sockfd, problem_data.data(), problem_data.size());
+    // Serialize request
+    std::string request_data = request.SerializeAsString();
+    uint32_t request_size    = static_cast<uint32_t>(request_data.size());
 
-    // TODO: Send settings if needed
+    fprintf(stderr, "[solve_lp_remote] Sending request (%u bytes)...\n", request_size);
 
-    // Read response header
-    remote_solve_response_header_t response_header;
-    read_all(sockfd, &response_header, sizeof(response_header));
+    // Send request size and data
+    write_all(sockfd, &request_size, sizeof(request_size));
+    write_all(sockfd, request_data.data(), request_data.size());
 
-    if (response_header.status != 0) {
+    fprintf(stderr, "[solve_lp_remote] Request sent, waiting for response...\n");
+
+    // Read response size
+    uint32_t response_size;
+    read_all(sockfd, &response_size, sizeof(response_size));
+
+    fprintf(stderr, "[solve_lp_remote] Receiving response (%u bytes)...\n", response_size);
+
+    // Read response data
+    std::vector<uint8_t> response_data(response_size);
+    read_all(sockfd, response_data.data(), response_size);
+
+    fprintf(stderr, "[solve_lp_remote] Response received, parsing...\n");
+
+    // Parse response
+    cuopt::remote::SolveResponse response;
+    if (!response.ParseFromArray(response_data.data(), response_size)) {
       close(sockfd);
-      throw std::runtime_error("Remote solve failed with status: " +
-                               std::to_string(response_header.status));
+      throw std::runtime_error("Failed to parse response");
     }
-
-    // Read solution data
-    std::vector<uint8_t> solution_data(response_header.solution_size);
-    read_all(sockfd, solution_data.data(), solution_data.size());
-    std::fprintf(
-      stderr, "[solve_lp_remote] Received %zu bytes of solution data\n", solution_data.size());
-    std::fflush(stderr);
 
     close(sockfd);
 
-    // Deserialize solution
-    std::fprintf(stderr, "[solve_lp_remote] Deserializing solution...\n");
-    std::fflush(stderr);
-    auto solution = deserialize_lp_solution<i_t, f_t>(solution_data);
-    std::fprintf(stderr, "[solve_lp_remote] Deserialization complete, returning solution\n");
-    std::fflush(stderr);
-    return solution;
+    // Check response status
+    if (response.status() != cuopt::remote::SUCCESS) {
+      throw std::runtime_error("Remote solve failed: " + response.error_message());
+    }
+
+    if (!response.has_lp_solution()) {
+      throw std::runtime_error("Response does not contain LP solution");
+    }
+
+    fprintf(stderr, "[solve_lp_remote] Solution received successfully\n");
+
+    // Convert protobuf solution to C++ solution
+    return protobuf_to_lp_solution<i_t, f_t>(response.lp_solution());
 
   } catch (...) {
     close(sockfd);
@@ -596,115 +536,30 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
   }
 }
 
+// Solve MIP problem remotely (placeholder for now)
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> solve_mip_remote(const std::string& host,
-                                          int port,
-                                          const optimization_problem_t<i_t, f_t>& problem,
+mip_solution_t<i_t, f_t> solve_mip_remote(const optimization_problem_t<i_t, f_t>& problem,
                                           const mip_solver_settings_t<i_t, f_t>& settings)
 {
-  // Connect to server
-  int sockfd = connect_to_server(host, port);
-
-  try {
-    // Serialize problem
-    auto problem_data = serialize_problem(problem);
-
-    // Create and send header
-    remote_solve_header_t header;
-    header.version      = 1;
-    header.problem_type = 1;  // MIP
-    header.problem_size = problem_data.size();
-    header.i_type_size  = sizeof(i_t);
-    header.f_type_size  = sizeof(f_t);
-
-    write_all(sockfd, &header, sizeof(header));
-
-    // Send problem data
-    write_all(sockfd, problem_data.data(), problem_data.size());
-
-    // TODO: Send settings if needed
-
-    // Read response header
-    remote_solve_response_header_t response_header;
-    read_all(sockfd, &response_header, sizeof(response_header));
-
-    if (response_header.status != 0) {
-      close(sockfd);
-      throw std::runtime_error("Remote solve failed with status: " +
-                               std::to_string(response_header.status));
-    }
-
-    // Read solution data
-    std::vector<uint8_t> solution_data(response_header.solution_size);
-    read_all(sockfd, solution_data.data(), solution_data.size());
-
-    close(sockfd);
-
-    // Deserialize solution
-    return deserialize_mip_solution<i_t, f_t>(solution_data);
-
-  } catch (...) {
-    close(sockfd);
-    throw;
-  }
+  throw std::runtime_error("Remote MIP solving not yet implemented with protobuf");
 }
 
-// Explicit template instantiations
-#if MIP_INSTANTIATE_FLOAT
-template std::vector<uint8_t> serialize_problem(const optimization_problem_t<int, float>& problem);
+// Explicit template instantiations for double precision
+#if MIP_INSTANTIATE_DOUBLE
+template optimization_problem_solution_t<int, double> solve_lp_remote(
+  const optimization_problem_t<int, double>&, const pdlp_solver_settings_t<int, double>&);
 
-template optimization_problem_t<int, float> deserialize_problem(const std::vector<uint8_t>& buffer);
-
-template std::vector<uint8_t> serialize_solution(
-  optimization_problem_solution_t<int, float>& solution);
-
-template optimization_problem_solution_t<int, float> deserialize_lp_solution(
-  const std::vector<uint8_t>& buffer);
-
-template std::vector<uint8_t> serialize_mip_solution(mip_solution_t<int, float>& solution);
-
-template mip_solution_t<int, float> deserialize_mip_solution(const std::vector<uint8_t>& buffer);
-
-template optimization_problem_solution_t<int, float> solve_lp_remote(
-  const std::string& host,
-  int port,
-  const optimization_problem_t<int, float>& problem,
-  const pdlp_solver_settings_t<int, float>& settings);
-
-template mip_solution_t<int, float> solve_mip_remote(
-  const std::string& host,
-  int port,
-  const optimization_problem_t<int, float>& problem,
-  const mip_solver_settings_t<int, float>& settings);
+template mip_solution_t<int, double> solve_mip_remote(const optimization_problem_t<int, double>&,
+                                                      const mip_solver_settings_t<int, double>&);
 #endif
 
-#if MIP_INSTANTIATE_DOUBLE
-template std::vector<uint8_t> serialize_problem(const optimization_problem_t<int, double>& problem);
+// Explicit template instantiations for float precision (if enabled)
+#if MIP_INSTANTIATE_FLOAT
+template optimization_problem_solution_t<int, float> solve_lp_remote(
+  const optimization_problem_t<int, float>&, const pdlp_solver_settings_t<int, float>&);
 
-template optimization_problem_t<int, double> deserialize_problem(
-  const std::vector<uint8_t>& buffer);
-
-template std::vector<uint8_t> serialize_solution(
-  optimization_problem_solution_t<int, double>& solution);
-
-template optimization_problem_solution_t<int, double> deserialize_lp_solution(
-  const std::vector<uint8_t>& buffer);
-
-template std::vector<uint8_t> serialize_mip_solution(mip_solution_t<int, double>& solution);
-
-template mip_solution_t<int, double> deserialize_mip_solution(const std::vector<uint8_t>& buffer);
-
-template optimization_problem_solution_t<int, double> solve_lp_remote(
-  const std::string& host,
-  int port,
-  const optimization_problem_t<int, double>& problem,
-  const pdlp_solver_settings_t<int, double>& settings);
-
-template mip_solution_t<int, double> solve_mip_remote(
-  const std::string& host,
-  int port,
-  const optimization_problem_t<int, double>& problem,
-  const mip_solver_settings_t<int, double>& settings);
+template mip_solution_t<int, float> solve_mip_remote(const optimization_problem_t<int, float>&,
+                                                     const mip_solver_settings_t<int, float>&);
 #endif
 
 }  // namespace cuopt::linear_programming

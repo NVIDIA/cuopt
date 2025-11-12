@@ -817,9 +817,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
     std::fflush(stderr);
 
     try {
-      int port = std::atoi(remote_port);
-      auto remote_solution =
-        solve_lp_remote(std::string(remote_host), port, host_problem, settings);
+      auto remote_solution = solve_lp_remote(host_problem, settings);
       std::fprintf(stderr, "[solve_lp] Remote solve succeeded, returning solution\n");
       std::fflush(stderr);
       return remote_solution;

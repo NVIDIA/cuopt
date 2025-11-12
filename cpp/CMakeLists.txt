@@ -208,6 +208,27 @@ create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
 
 find_package(CUDSS REQUIRED)
 
+# Find Protocol Buffers for remote solve support
+find_package(Protobuf REQUIRED)
+include_directories(${Protobuf_INCLUDE_DIRS})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+# Generate C++ code from .proto file
+set(PROTO_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/linear_programming/utilities/cuopt_remote.proto")
+set(PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote.pb.cc")
+set(PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote.pb.h")
+
+add_custom_command(
+  OUTPUT "${PROTO_SRCS}" "${PROTO_HDRS}"
+  COMMAND ${Protobuf_PROTOC_EXECUTABLE}
+  ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
+       --proto_path ${CMAKE_CURRENT_SOURCE_DIR}/src/linear_programming/utilities
+       ${PROTO_FILE}
+  DEPENDS ${PROTO_FILE}
+  COMMENT "Generating C++ code from cuopt_remote.proto"
+  VERBATIM
+)
+
 if(BUILD_TESTS)
   include(cmake/thirdparty/get_gtest.cmake)
 endif()
@@ -219,6 +240,7 @@ if (HOST_LINEINFO)
 endif()
 add_library(cuopt SHARED
   ${CUOPT_SRC_FILES}
+  ${PROTO_SRCS}
 )
 
 set_target_properties(cuopt
@@ -317,6 +339,7 @@ target_link_libraries(cuopt
   raft::raft
   cuopt::mps_parser
   ${CUDSS_LIB_FILE}
+  protobuf::libprotobuf
   PRIVATE
   ${CUOPT_PRIVATE_CUDA_LIBS}
   )
