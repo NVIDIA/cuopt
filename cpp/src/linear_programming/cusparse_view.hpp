@@ -13,9 +13,72 @@
 #include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
 
+#include <raft/sparse/detail/cusparse_macros.h>
+#include <raft/sparse/detail/cusparse_wrappers.h>
+
 #include <cusparse_v2.h>
 
 namespace cuopt::linear_programming::detail {
+
+template <typename i_t, typename f_t>
+class cusparse_sp_mat_descr_wrapper_t {
+ public:
+  cusparse_sp_mat_descr_wrapper_t() : need_destruction_(false) {}
+  ~cusparse_sp_mat_descr_wrapper_t()
+  {
+    if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(descr_)); }
+  }
+
+  cusparse_sp_mat_descr_wrapper_t(const cusparse_sp_mat_descr_wrapper_t& other)
+    : descr_(other.descr_), need_destruction_(false)
+  {
+  }
+
+  cusparse_sp_mat_descr_wrapper_t& operator=(const cusparse_sp_mat_descr_wrapper_t& other) = delete;
+
+  void create(int64_t m, int64_t n, int64_t nnz, i_t* offsets, i_t* indices, f_t* values)
+  {
+    RAFT_CUSPARSE_TRY(
+      raft::sparse::detail::cusparsecreatecsr(&descr_, m, n, nnz, offsets, indices, values));
+    need_destruction_ = true;
+  }
+
+  operator cusparseSpMatDescr_t() const { return descr_; }
+
+ private:
+  cusparseSpMatDescr_t descr_;
+  bool need_destruction_;
+};
+
+template <typename f_t>
+class cusparse_dn_vec_descr_wrapper_t {
+ public:
+  cusparse_dn_vec_descr_wrapper_t() : need_destruction_(false) {}
+  ~cusparse_dn_vec_descr_wrapper_t()
+  {
+    if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(descr_)); }
+  }
+
+  cusparse_dn_vec_descr_wrapper_t(const cusparse_dn_vec_descr_wrapper_t& other)
+    : descr_(other.descr_), need_destruction_(false)
+  {
+  }
+
+  cusparse_dn_vec_descr_wrapper_t& operator=(const cusparse_dn_vec_descr_wrapper_t& other) = delete;
+
+  void create(int64_t size, f_t* values)
+  {
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&descr_, size, values));
+    need_destruction_ = true;
+  }
+
+  operator cusparseDnVecDescr_t() const { return descr_; }
+
+ private:
+  cusparseDnVecDescr_t descr_;
+  bool need_destruction_;
+};
+
 template <typename i_t, typename f_t>
 class cusparse_view_t {
  public:
@@ -55,35 +118,36 @@ class cusparse_view_t {
   raft::handle_t const* handle_ptr_{nullptr};
 
   // cusparse view of linear program
-  cusparseSpMatDescr_t A;
-  cusparseSpMatDescr_t A_T;
-  cusparseDnVecDescr_t c;
+  cusparse_sp_mat_descr_wrapper_t<i_t, f_t> A;
+  cusparse_sp_mat_descr_wrapper_t<i_t, f_t> A_T;
+  cusparse_dn_vec_descr_wrapper_t<f_t> c;
 
   // cusparse view of solutions
-  cusparseDnVecDescr_t primal_solution;
-  cusparseDnVecDescr_t dual_solution;
+  cusparse_dn_vec_descr_wrapper_t<f_t> primal_solution;
+  cusparse_dn_vec_descr_wrapper_t<f_t> dual_solution;
 
   // cusparse view of gradients
-  cusparseDnVecDescr_t primal_gradient;
-  cusparseDnVecDescr_t dual_gradient;
+  cusparse_dn_vec_descr_wrapper_t<f_t> primal_gradient;
+  cusparse_dn_vec_descr_wrapper_t<f_t> dual_gradient;
 
   // cusparse view of At * Y computation
-  cusparseDnVecDescr_t
+  cusparse_dn_vec_descr_wrapper_t<f_t>
     current_AtY;  // Only used at very first iteration and after each restart to average
-  cusparseDnVecDescr_t next_AtY;  // Next value is swapped out with current after each valid PDHG
-                                  // step to save the first AtY SpMV in compute next primal
-  cusparseDnVecDescr_t potential_next_dual_solution;
+  cusparse_dn_vec_descr_wrapper_t<f_t>
+    next_AtY;  // Next value is swapped out with current after each valid PDHG
+               // step to save the first AtY SpMV in compute next primal
+  cusparse_dn_vec_descr_wrapper_t<f_t> potential_next_dual_solution;
 
   // cusparse view of auxiliary space needed for some spmv computations
-  cusparseDnVecDescr_t tmp_primal;
-  cusparseDnVecDescr_t tmp_dual;
+  cusparse_dn_vec_descr_wrapper_t<f_t> tmp_primal;
+  cusparse_dn_vec_descr_wrapper_t<f_t> tmp_dual;
 
   // reuse buffers for cusparse spmv
   rmm::device_uvector<uint8_t> buffer_non_transpose;
   rmm::device_uvector<uint8_t> buffer_transpose;
 
   // Only when using reflection
-  cusparseDnVecDescr_t reflected_primal_solution;
+  cusparse_dn_vec_descr_wrapper_t<f_t> reflected_primal_solution;
 
   // Ref to the A_T found in either
   // Initial problem, we use it to have an unscaled A_T
