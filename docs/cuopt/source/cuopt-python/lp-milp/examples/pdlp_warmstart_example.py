@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION &
+# SPDX-License-Identifier: Apache-2.0
 # AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -51,14 +52,11 @@ Expected Output:
     Objective value = 50.0
 """
 
-from cuopt.linear_programming.problem import (
-    Problem, CONTINUOUS, MAXIMIZE
-)
-from cuopt.linear_programming.solver.solver_parameters import (
-    CUOPT_METHOD
-)
+from cuopt.linear_programming.problem import Problem, CONTINUOUS, MAXIMIZE
+from cuopt.linear_programming.solver.solver_parameters import CUOPT_METHOD
 from cuopt.linear_programming.solver_settings import (
-    SolverSettings, SolverMethod
+    SolverSettings,
+    SolverMethod,
 )
 
 

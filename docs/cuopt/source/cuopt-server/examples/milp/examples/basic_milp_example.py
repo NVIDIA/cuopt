@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 """
 Basic MILP Server Example
 
@@ -65,7 +53,9 @@ def repoll(cuopt_service_client, solution, repoll_tries):
     if "reqId" in solution and "response" not in solution:
         req_id = solution["reqId"]
         for i in range(repoll_tries):
-            solution = cuopt_service_client.repoll(req_id, response_type="dict")
+            solution = cuopt_service_client.repoll(
+                req_id, response_type="dict"
+            )
             if "reqId" in solution and "response" in solution:
                 break
 
@@ -83,35 +73,27 @@ def main():
         "csr_constraint_matrix": {
             "offsets": [0, 2],
             "indices": [0, 1],
-            "values": [1.0, 1.0]
+            "values": [1.0, 1.0],
         },
-        "constraint_bounds": {
-            "upper_bounds": [5000.0],
-            "lower_bounds": [0.0]
-        },
+        "constraint_bounds": {"upper_bounds": [5000.0], "lower_bounds": [0.0]},
         "objective_data": {
             "coefficients": [1.2, 1.7],
             "scalability_factor": 1.0,
-            "offset": 0.0
+            "offset": 0.0,
         },
         "variable_bounds": {
             "upper_bounds": [3000.0, 5000.0],
-            "lower_bounds": [0.0, 0.0]
+            "lower_bounds": [0.0, 0.0],
         },
         "maximize": True,
         "variable_names": ["x", "y"],
         "variable_types": ["I", "I"],  # Both variables are integers
-        "solver_config": {
-            "time_limit": 30
-        }
+        "solver_config": {"time_limit": 30},
     }
 
     # If cuOpt is not running on localhost:5000, edit ip and port parameters
     cuopt_service_client = CuOptServiceSelfHostClient(
-        ip="localhost",
-        port=5000,
-        polling_timeout=25,
-        timeout_exception=False
+        ip="localhost", port=5000, polling_timeout=25, timeout_exception=False
     )
 
     print("=== Solving MILP Problem ===")

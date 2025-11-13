@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION &
+# SPDX-License-Identifier: Apache-2.0
 # AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -50,9 +51,7 @@ Expected Output:
 
 from cuopt.linear_programming.problem import Problem, INTEGER, MAXIMIZE
 from cuopt.linear_programming.solver_settings import SolverSettings
-from cuopt.linear_programming.solver.solver_parameters import (
-    CUOPT_TIME_LIMIT
-)
+from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
 from cuopt.linear_programming.internals import GetSolutionCallback
 
 
@@ -82,7 +81,7 @@ class IncumbentCallback(GetSolutionCallback):
         incumbent = {
             "solution": solution.copy_to_host(),
             "cost": solution_cost.copy_to_host()[0],
-            "iteration": self.n_callbacks
+            "iteration": self.n_callbacks,
         }
         self.solutions.append(incumbent)
 
