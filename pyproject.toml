@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 [tool.black]
 line-length = 79
 target-version = ["py39"]
@@ -17,6 +20,33 @@ exclude = '''
     dist
 )/
 '''
+
+[tool.ruff]
+line-length = 79
+extend-exclude = [
+    "thirdparty",
+    "__init__.py",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = [
+    # unused imports
+    "F401",
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+order-by-type = true
+default-section = "third-party"
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "dask",
+    "rapids",
+    "first-party",
+    "local-folder",
+]
 
 [tool.pydocstyle]
 # Due to https://github.com/PyCQA/pydocstyle/issues/363, we must exclude rather

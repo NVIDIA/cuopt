@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import copy
 
@@ -65,13 +53,11 @@ valid_data = {
 
 
 def test_valid_full_set_task_data(cuoptproc):  # noqa
-
     response_set = client.post("/cuopt/request", json=valid_data)
     assert response_set.status_code == 200
 
 
 def test_valid_minimal_set_task_data(cuoptproc):  # noqa
-
     test_data = copy.deepcopy(valid_data)
 
     test_data["fleet_data"] = {
@@ -85,7 +71,6 @@ def test_valid_minimal_set_task_data(cuoptproc):  # noqa
 
 # Testing invalid, all task parameters need to in range
 def test_invalid_values_set_task_data(cuoptproc):  # noqa
-
     invalid_task_data = {
         "task_locations": [1, -2, 3, 4],
         "demand": [[1, 2, 3, 4], [2, 3, 4, -5]],
@@ -260,7 +245,6 @@ def test_invalid_time_windows_set_task_data(cuoptproc):  # noqa
 
 # Test invalid Service Time
 def test_invalid_service_time_set_task_data(cuoptproc):  # noqa
-
     test_data = copy.deepcopy(valid_data)
     test_data["task_data"]["service_times"] = [1, 2, 1, 2, 5]
 
@@ -274,7 +258,6 @@ def test_invalid_service_time_set_task_data(cuoptproc):  # noqa
 
 # Test invalid vehicle ids in order vehicle match
 def test_invalid_order_vehicle_match(cuoptproc):  # noqa
-
     test_data = copy.deepcopy(valid_data)
     test_data["task_data"]["order_vehicle_match"] = [
         {"order_id": 0, "vehicle_ids": [1, -2]}
@@ -290,7 +273,6 @@ def test_invalid_order_vehicle_match(cuoptproc):  # noqa
 
 # Test set/get vehicle specific service times
 def test_vehicle_specific_service_times(cuoptproc):  # noqa
-
     test_data = copy.deepcopy(valid_data)
     test_data["task_data"]["service_times"] = {
         0: [1.0, 1.0, 1.0, 1.0],

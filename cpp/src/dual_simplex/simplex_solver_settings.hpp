@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #pragma once
 
@@ -33,6 +23,7 @@ struct simplex_solver_settings_t {
  public:
   simplex_solver_settings_t()
     : iteration_limit(std::numeric_limits<i_t>::max()),
+      node_limit(std::numeric_limits<i_t>::max()),
       time_limit(std::numeric_limits<f_t>::infinity()),
       absolute_mip_gap_tol(0.0),
       relative_mip_gap_tol(1e-3),
@@ -91,6 +82,7 @@ struct simplex_solver_settings_t {
   void set_log_filename(const std::string& log_filename) { log.set_log_file(log_filename); }
   void close_log_file() { log.close_log_file(); }
   i_t iteration_limit;
+  i_t node_limit;
   f_t time_limit;
   f_t absolute_mip_gap_tol;  // Tolerance on mip gap to declare optimal
   f_t relative_mip_gap_tol;  // Tolerance on mip gap to declare optimal
@@ -144,6 +136,7 @@ struct simplex_solver_settings_t {
   i_t num_diving_threads;          // number of threads dedicated to diving
   i_t inside_mip;  // 0 if outside MIP, 1 if inside MIP at root node, 2 if inside MIP at leaf node
   std::function<void(std::vector<f_t>&, f_t)> solution_callback;
+  std::function<void(const std::vector<f_t>&, f_t)> node_processed_callback;
   std::function<void()> heuristic_preemption_callback;
   std::function<void(std::vector<f_t>&, std::vector<f_t>&, f_t)> set_simplex_solution_callback;
   mutable logger_t log;
