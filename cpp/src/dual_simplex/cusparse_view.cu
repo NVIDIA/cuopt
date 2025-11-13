@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <dual_simplex/dense_vector.hpp>
 #include <dual_simplex/pinned_host_allocator.hpp>
@@ -138,6 +128,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
     d_minus_one_(f_t(-1), handle_ptr->get_stream()),
     d_zero_(f_t(0), handle_ptr->get_stream())
 {
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
+    handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
+    handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
   // TMP matrix data should already be on the GPU
   constexpr bool debug = false;
   if (debug) { printf("A hash: %zu\n", A.hash()); }

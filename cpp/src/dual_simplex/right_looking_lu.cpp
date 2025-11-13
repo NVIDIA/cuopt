@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/tic_toc.hpp>
@@ -579,6 +569,7 @@ void remove_pivot_col(i_t pivot_i,
 
 template <typename i_t, typename f_t>
 i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
+                     const simplex_solver_settings_t<i_t, f_t>& settings,
                      f_t tol,
                      const std::vector<i_t>& column_list,
                      std::vector<i_t>& q,
@@ -637,6 +628,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
 
   i_t pivots = 0;
   for (i_t k = 0; k < n; ++k) {
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return -1; }
     // Find pivot that satisfies
     // abs(pivot) >= abstol,
     // abs(pivot) >= threshold_tol * max abs[pivot column]
@@ -1152,6 +1144,7 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
 template int right_looking_lu<int, double>(const csc_matrix_t<int, double>& A,
+                                           const simplex_solver_settings_t<int, double>& settings,
                                            double tol,
                                            const std::vector<int>& column_list,
                                            std::vector<int>& q,

@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 # cython: profile=False
 # distutils: language = c++
@@ -32,10 +20,11 @@ import numpy as np
 from numba import cuda
 
 import cudf
-from cudf.core.buffer import as_buffer
 from cudf.core.column_accessor import ColumnAccessor
 
-from cuopt.utilities import col_from_buf
+from cuopt.utilities import series_from_buf
+
+import pyarrow as pa
 
 
 cdef class WaypointMatrix:
@@ -89,6 +78,7 @@ cdef class WaypointMatrix:
             target_locations.__array_interface__['data'][0]
         )
 
+        route_df = route_df.reset_index(drop=True)
         route_locations = route_df['location'].astype(np.dtype(np.int32))
         route_locations = cp.array(route_locations.to_cupy(), order='C')
         cdef uintptr_t c_route_locations = route_locations.data.ptr
@@ -106,18 +96,15 @@ cdef class WaypointMatrix:
         )
         full_path = DeviceBuffer.c_from_unique_ptr(move(path_info.second))
 
-        full_sequence_offset = as_buffer(full_sequence_offset)
-        full_path = as_buffer(full_path)
-
-        route_df['sequence_offset'] = col_from_buf(
-            full_sequence_offset, np.int32
+        route_df['sequence_offset'] = series_from_buf(
+            full_sequence_offset, pa.int32()
         )
         locations = route_df["location"].replace(
             to_replace=list(range(len(target_locations))),
             value=target_locations.tolist()
         )
         route_df['location'] = locations
-        waypoint_seq = col_from_buf(full_path, np.int32)
+        waypoint_seq = series_from_buf(full_path, pa.int32())
 
         def create_way_point_types(routes, waypoint_seq):
 

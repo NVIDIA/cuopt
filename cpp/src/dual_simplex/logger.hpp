@@ -1,24 +1,14 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #pragma once
 
 #ifdef CUOPT_LOG_ACTIVE_LEVEL
-#include <cuopt/logger.hpp>
+#include <utilities/logger.hpp>
 #endif
 
 #include <string>
@@ -71,7 +61,7 @@ class logger_t {
 
         size_t len = strlen(buffer);
         if (len > 0 && buffer[len - 1] == '\n') { buffer[len - 1] = '\0'; }
-        CUOPT_LOG_INFO(buffer);
+        CUOPT_LOG_INFO("%s%s", log_prefix.c_str(), buffer);
       }
 #else
       if (log_to_console) {
@@ -105,7 +95,7 @@ class logger_t {
 
         size_t len = strlen(buffer);
         if (len > 0 && buffer[len - 1] == '\n') { buffer[len - 1] = '\0'; }
-        CUOPT_LOG_TRACE(buffer);
+        CUOPT_LOG_TRACE("%s%s", log_prefix.c_str(), buffer);
       }
 #else
       if (log_to_console) {
@@ -128,6 +118,7 @@ class logger_t {
 
   bool log;
   bool log_to_console;
+  std::string log_prefix;
 
  private:
   bool log_to_file;

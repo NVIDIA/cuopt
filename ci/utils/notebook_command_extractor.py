@@ -2,18 +2,6 @@
 
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 
 """
@@ -27,7 +15,7 @@ import argparse
 import json
 import subprocess
 import sys
-from typing import List, Tuple
+from typing import List
 
 
 def extract_pip_commands(notebook_path: str) -> List[str]:
@@ -48,7 +36,8 @@ def extract_pip_commands(notebook_path: str) -> List[str]:
                     ):
                         # Clean up the line but preserve quotes
                         clean_line = line.strip()
-                        if clean_line:
+                        # Skip pip install commands that contain cuopt
+                        if clean_line and "cuopt" not in clean_line.lower():
                             pip_commands.append(clean_line)
 
         return pip_commands
@@ -77,6 +66,8 @@ def extract_shell_commands(notebook_path: str) -> List[str]:
             "mv",
             "unzip",
             "tar",
+            "apt-get",
+            "apt",
         ]
 
         for cell in notebook.get("cells", []):
@@ -249,17 +240,17 @@ def main():
         success_count = 0
         total_count = 0
 
-        if pip_commands:
-            print(f"\nExecuting {len(pip_commands)} pip install commands...")
-            for cmd in pip_commands:
-                if execute_pip_command(cmd, args.verbose):
-                    success_count += 1
-                total_count += 1
-
         if shell_commands:
             print(f"\nExecuting {len(shell_commands)} shell commands...")
             for cmd in shell_commands:
                 if execute_shell_command(cmd, args.verbose):
+                    success_count += 1
+                total_count += 1
+
+        if pip_commands:
+            print(f"\nExecuting {len(pip_commands)} pip install commands...")
+            for cmd in pip_commands:
+                if execute_pip_command(cmd, args.verbose):
                     success_count += 1
                 total_count += 1
 
