@@ -1864,7 +1864,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const std::vector<f_t>& utilde,
                                   S_.x.data() + S_.col_start[S_start + 1],
                                   v_nz);
 
-  if (std::abs(mu) < 1e-13) {
+  if (std::abs(mu) < mu_tolerance_) {
     // Force a refactor. Otherwise we will get numerical issues when dividing by mu.
     return 1;
   }
@@ -1928,7 +1928,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
                                   S_.i.data() + S_.col_start[S_start + 1],
                                   S_.x.data() + S_.col_start[S_start + 1],
                                   S_.col_start[S_start + 2] - S_.col_start[S_start + 1]);
-  if (std::abs(mu) < 1e-13) {
+  if (std::abs(mu) < mu_tolerance_) {
     // Force a refactor. Otherwise we will get numerical issues when dividing by mu.
     return 1;
   }
