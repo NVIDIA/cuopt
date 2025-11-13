@@ -23,27 +23,16 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 class cusparse_sp_mat_descr_wrapper_t {
  public:
-  cusparse_sp_mat_descr_wrapper_t() : need_destruction_(false) {}
-  ~cusparse_sp_mat_descr_wrapper_t()
-  {
-    if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(descr_)); }
-  }
+  cusparse_sp_mat_descr_wrapper_t();
+  ~cusparse_sp_mat_descr_wrapper_t();
 
-  cusparse_sp_mat_descr_wrapper_t(const cusparse_sp_mat_descr_wrapper_t& other)
-    : descr_(other.descr_), need_destruction_(false)
-  {
-  }
+  cusparse_sp_mat_descr_wrapper_t(const cusparse_sp_mat_descr_wrapper_t& other);
 
   cusparse_sp_mat_descr_wrapper_t& operator=(const cusparse_sp_mat_descr_wrapper_t& other) = delete;
 
-  void create(int64_t m, int64_t n, int64_t nnz, i_t* offsets, i_t* indices, f_t* values)
-  {
-    RAFT_CUSPARSE_TRY(
-      raft::sparse::detail::cusparsecreatecsr(&descr_, m, n, nnz, offsets, indices, values));
-    need_destruction_ = true;
-  }
+  void create(int64_t m, int64_t n, int64_t nnz, i_t* offsets, i_t* indices, f_t* values);
 
-  operator cusparseSpMatDescr_t() const { return descr_; }
+  operator cusparseSpMatDescr_t() const;
 
  private:
   cusparseSpMatDescr_t descr_;
@@ -53,26 +42,16 @@ class cusparse_sp_mat_descr_wrapper_t {
 template <typename f_t>
 class cusparse_dn_vec_descr_wrapper_t {
  public:
-  cusparse_dn_vec_descr_wrapper_t() : need_destruction_(false) {}
-  ~cusparse_dn_vec_descr_wrapper_t()
-  {
-    if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(descr_)); }
-  }
+  cusparse_dn_vec_descr_wrapper_t();
+  ~cusparse_dn_vec_descr_wrapper_t();
 
-  cusparse_dn_vec_descr_wrapper_t(const cusparse_dn_vec_descr_wrapper_t& other)
-    : descr_(other.descr_), need_destruction_(false)
-  {
-  }
+  cusparse_dn_vec_descr_wrapper_t(const cusparse_dn_vec_descr_wrapper_t& other);
 
   cusparse_dn_vec_descr_wrapper_t& operator=(const cusparse_dn_vec_descr_wrapper_t& other) = delete;
 
-  void create(int64_t size, f_t* values)
-  {
-    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&descr_, size, values));
-    need_destruction_ = true;
-  }
+  void create(int64_t size, f_t* values);
 
-  operator cusparseDnVecDescr_t() const { return descr_; }
+  operator cusparseDnVecDescr_t() const;
 
  private:
   cusparseDnVecDescr_t descr_;

@@ -21,6 +21,73 @@
 
 namespace cuopt::linear_programming::detail {
 
+// cusparse_sp_mat_descr_wrapper_t implementation
+template <typename i_t, typename f_t>
+cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::cusparse_sp_mat_descr_wrapper_t()
+  : need_destruction_(false)
+{
+}
+
+template <typename i_t, typename f_t>
+cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::~cusparse_sp_mat_descr_wrapper_t()
+{
+  if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(descr_)); }
+}
+
+template <typename i_t, typename f_t>
+cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::cusparse_sp_mat_descr_wrapper_t(
+  const cusparse_sp_mat_descr_wrapper_t& other)
+  : descr_(other.descr_), need_destruction_(false)
+{
+}
+
+template <typename i_t, typename f_t>
+void cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::create(
+  int64_t m, int64_t n, int64_t nnz, i_t* offsets, i_t* indices, f_t* values)
+{
+  RAFT_CUSPARSE_TRY(
+    raft::sparse::detail::cusparsecreatecsr(&descr_, m, n, nnz, offsets, indices, values));
+  need_destruction_ = true;
+}
+
+template <typename i_t, typename f_t>
+cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::operator cusparseSpMatDescr_t() const
+{
+  return descr_;
+}
+
+// cusparse_dn_vec_descr_wrapper_t implementation
+template <typename f_t>
+cusparse_dn_vec_descr_wrapper_t<f_t>::cusparse_dn_vec_descr_wrapper_t() : need_destruction_(false)
+{
+}
+
+template <typename f_t>
+cusparse_dn_vec_descr_wrapper_t<f_t>::~cusparse_dn_vec_descr_wrapper_t()
+{
+  if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(descr_)); }
+}
+
+template <typename f_t>
+cusparse_dn_vec_descr_wrapper_t<f_t>::cusparse_dn_vec_descr_wrapper_t(
+  const cusparse_dn_vec_descr_wrapper_t& other)
+  : descr_(other.descr_), need_destruction_(false)
+{
+}
+
+template <typename f_t>
+void cusparse_dn_vec_descr_wrapper_t<f_t>::create(int64_t size, f_t* values)
+{
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&descr_, size, values));
+  need_destruction_ = true;
+}
+
+template <typename f_t>
+cusparse_dn_vec_descr_wrapper_t<f_t>::operator cusparseDnVecDescr_t() const
+{
+  return descr_;
+}
+
 #define CUDA_VER_12_4_UP (CUDART_VERSION >= 12040)
 
 #if CUDA_VER_12_4_UP
@@ -511,9 +578,13 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 }
 
 #if MIP_INSTANTIATE_FLOAT
+template class cusparse_sp_mat_descr_wrapper_t<int, float>;
+template class cusparse_dn_vec_descr_wrapper_t<float>;
 template class cusparse_view_t<int, float>;
 #endif
 #if MIP_INSTANTIATE_DOUBLE
+template class cusparse_sp_mat_descr_wrapper_t<int, double>;
+template class cusparse_dn_vec_descr_wrapper_t<double>;
 template class cusparse_view_t<int, double>;
 #endif
 
