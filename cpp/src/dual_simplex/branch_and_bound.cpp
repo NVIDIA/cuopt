@@ -599,6 +599,26 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
   lp_settings.inside_mip = 2;
   lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
 
+#ifdef LOG_NODE_SIMPLEX
+  lp_settings.set_log(true);
+  std::stringstream ss;
+  ss << "simplex-" << std::this_thread::get_id() << ".log";
+  std::string logname;
+  ss >> logname;
+  lp_settings.set_log_filename(logname);
+  lp_settings.log.enable_log_to_file("a+");
+  lp_settings.log.log_to_console = false;
+  lp_settings.log.printf(
+    "%s node id = %d, branch var = %d, fractional val = %f, variable lower bound = %f, variable "
+    "upper bound = %f\n",
+    settings_.log.log_prefix.c_str(),
+    node_ptr->node_id,
+    node_ptr->branch_var,
+    node_ptr->fractional_val,
+    node_ptr->branch_var_lower,
+    node_ptr->branch_var_upper);
+#endif
+
   // Reset the bound_changed markers
   std::fill(node_presolver.bounds_changed.begin(), node_presolver.bounds_changed.end(), false);
 

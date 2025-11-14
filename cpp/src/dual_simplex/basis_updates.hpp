@@ -424,7 +424,6 @@ class basis_update_mpf_t {
   void l_multiply(std::vector<f_t>& inout) const;
   void l_transpose_multiply(std::vector<f_t>& inout) const;
 
-  static constexpr f_t mu_tolerance_ = 1e-8;
   i_t num_updates_;                    // Number of rank-1 updates to L0
   i_t refactor_frequency_;             // Average updates before refactoring
   mutable csc_matrix_t<i_t, f_t> L0_;  // Sparse lower triangular matrix from initial factorization
