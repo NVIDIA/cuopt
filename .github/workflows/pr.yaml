@@ -61,14 +61,18 @@ jobs:
   prevent-merge-with-lean-ci:
     runs-on: ubuntu-latest
     needs: check-lean-ci
-    if: needs.check-lean-ci.outputs.lean_ci_enabled == 'true'
     steps:
-      - name: Fail if lean-ci label is present
+      - name: Check lean-ci status
         run: |
-          echo "❌ ERROR: This PR has the 'lean-ci' label enabled."
-          echo "Lean CI is only for testing purposes and should not be merged."
-          echo "Please remove the 'lean-ci' label and run full CI before merging."
-          exit 1
+          if [ "${{ needs.check-lean-ci.outputs.lean_ci_enabled }}" == "true" ]; then
+            echo "❌ ERROR: This PR has the 'lean-ci' label enabled."
+            echo "Lean CI is only for testing purposes and should not be merged."
+            echo "Please remove the 'lean-ci' label and run full CI before merging."
+            exit 1
+          else
+            echo "✅ No lean-ci label found. PR can be merged."
+            exit 0
+          fi
   compute-matrix-filters:
     needs: check-lean-ci
     runs-on: ubuntu-latest
