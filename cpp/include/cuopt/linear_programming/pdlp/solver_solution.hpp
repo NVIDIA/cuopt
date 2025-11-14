@@ -282,6 +282,11 @@ class optimization_problem_solution_t : public base_solution_t {
   void copy_from(const raft::handle_t* handle_ptr,
                  const optimization_problem_solution_t<i_t, f_t>& other);
 
+  /**
+   * @brief Print solution statistics in compact single-line format
+   */
+  void print_solution_stats() const;
+
  private:
   void write_additional_termination_statistics_to_file(std::ofstream& myfile);
 

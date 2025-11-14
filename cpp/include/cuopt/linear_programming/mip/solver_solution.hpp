@@ -79,6 +79,7 @@ class mip_solution_t : public base_solution_t {
   const std::vector<std::vector<f_t>>& get_solution_pool() const;
   void write_to_sol_file(std::string_view filename) const;
   void log_summary() const;
+  void print_solution_stats() const;
 
  private:
   std::vector<f_t> solution_;

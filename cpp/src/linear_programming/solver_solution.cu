@@ -364,6 +364,30 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_sol_file(std::string_vi
     std::string(filename), status, objective_value, var_names_, primal_solution_);
 }
 
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::print_solution_stats() const
+{
+  const char* status_str = "Other";
+  if (termination_status_ == pdlp_termination_status_t::Optimal) {
+    status_str = "Optimal";
+  } else if (termination_status_ == pdlp_termination_status_t::PrimalInfeasible) {
+    status_str = "Primal Infeasible";
+  } else if (termination_status_ == pdlp_termination_status_t::DualInfeasible) {
+    status_str = "Dual Infeasible";
+  } else if (termination_status_ == pdlp_termination_status_t::TimeLimit) {
+    status_str = "Time Limit";
+  } else if (termination_status_ == pdlp_termination_status_t::IterationLimit) {
+    status_str = "Iteration Limit";
+  }
+
+  fprintf(stderr,
+          "Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs\n",
+          status_str,
+          termination_stats_.primal_objective,
+          termination_stats_.number_of_steps_taken,
+          termination_stats_.solve_time);
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template class optimization_problem_solution_t<int, float>;
 #endif

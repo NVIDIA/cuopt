@@ -196,7 +196,80 @@ enum MIPTerminationStatus {
   MIP_TIME_LIMIT = 5;
 }
 
-// Response wrapper
+// Request types for async operations
+enum RequestType {
+  SUBMIT_JOB = 0;        // Submit a new solve job
+  CHECK_STATUS = 1;      // Check job status
+  GET_RESULT = 2;        // Retrieve completed result
+  DELETE_RESULT = 3;     // Delete result from server
+}
+
+// Job status for async operations
+enum JobStatus {
+  QUEUED = 0;           // Job submitted, waiting in queue
+  PROCESSING = 1;       // Job currently being solved
+  COMPLETED = 2;        // Job completed successfully
+  FAILED = 3;           // Job failed with error
+  NOT_FOUND = 4;        // Job ID not found
+}
+
+// Generic request wrapper for async operations
+message AsyncRequest {
+  RequestType request_type = 1;
+  string job_id = 2;  // For status/get/delete operations
+  bool blocking = 3;  // If true, server waits and returns solution (sync mode)
+
+  // For SUBMIT_JOB requests
+  oneof job_data {
+    SolveLPRequest lp_request = 10;
+    SolveMIPRequest mip_request = 11;
+  }
+}
+
+// Response for job submission
+message SubmitResponse {
+  ResponseStatus status = 1;
+  string job_id = 2;          // Unique job identifier
+  string message = 3;         // Success/error message
+}
+
+// Response for status check
+message StatusResponse {
+  JobStatus job_status = 1;
+  string message = 2;
+  double progress = 3;        // 0.0-1.0 (future enhancement)
+}
+
+// Response for get result
+message ResultResponse {
+  ResponseStatus status = 1;
+  string error_message = 2;
+
+  oneof solution {
+    LPSolution lp_solution = 10;
+    MIPSolution mip_solution = 11;
+  }
+}
+
+// Response for delete
+message DeleteResponse {
+  ResponseStatus status = 1;
+  string message = 2;
+}
+
+// Generic response wrapper
+message AsyncResponse {
+  RequestType request_type = 1;
+
+  oneof response_data {
+    SubmitResponse submit_response = 10;
+    StatusResponse status_response = 11;
+    ResultResponse result_response = 12;
+    DeleteResponse delete_response = 13;
+  }
+}
+
+// Legacy synchronous response (for backward compatibility)
 message SolveResponse {
   ResponseStatus status = 1;
   string error_message = 2;
@@ -212,4 +285,5 @@ enum ResponseStatus {
   ERROR_INVALID_REQUEST = 1;
   ERROR_SOLVE_FAILED = 2;
   ERROR_INTERNAL = 3;
+  ERROR_NOT_FOUND = 4;
 }

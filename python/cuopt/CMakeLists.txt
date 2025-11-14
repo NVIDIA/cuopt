@@ -28,6 +28,8 @@ project(
             # that is fixed we need to keep C.
             C CXX CUDA)
 
+# Protobuf is required because cuopt library depends on it
+find_package(Protobuf REQUIRED)
 
 find_package(cuopt "${RAPIDS_VERSION}")
 find_package(mps_parser "${RAPIDS_VERSION}")

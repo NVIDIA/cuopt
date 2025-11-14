@@ -116,6 +116,16 @@ static void problem_to_protobuf(const optimization_problem_t<i_t, f_t>& problem,
   // Row types (constraint types: '<', '>', '=')
   const auto& row_types = problem.get_row_types();
   if (!row_types.empty()) { pb_problem->set_row_types(row_types.data(), row_types.size()); }
+
+  // Variable types (for MIP: CONTINUOUS or INTEGER)
+  const auto& var_types = problem.get_variable_types();
+  if (!var_types.empty()) {
+    for (const auto& vt : var_types) {
+      bool is_int = (vt == cuopt::linear_programming::var_t::INTEGER);
+      pb_problem->add_is_integer(is_int);
+      pb_problem->add_is_binary(false);  // cuOpt uses INTEGER for both
+    }
+  }
 }
 
 // Convert protobuf message to optimization_problem_t
@@ -422,6 +432,44 @@ static optimization_problem_solution_t<i_t, f_t> protobuf_to_lp_solution(
     static_cast<pdlp_termination_status_t>(pb_solution.termination_status()));
 }
 
+// Convert protobuf to MIP solution
+template <typename i_t, typename f_t>
+static mip_solution_t<i_t, f_t> protobuf_to_mip_solution(
+  const cuopt::remote::MIPSolution& pb_solution)
+{
+  // Convert solution vector
+  std::vector<f_t> solution;
+  solution.reserve(pb_solution.solution_size());
+  for (int i = 0; i < pb_solution.solution_size(); ++i) {
+    solution.push_back(static_cast<f_t>(pb_solution.solution(i)));
+  }
+
+  // Convert solver stats
+  solver_stats_t<i_t, f_t> stats;
+  stats.total_solve_time       = static_cast<f_t>(pb_solution.total_solve_time());
+  stats.presolve_time          = static_cast<f_t>(pb_solution.presolve_time());
+  stats.solution_bound         = static_cast<f_t>(pb_solution.solution_bound());
+  stats.num_nodes              = static_cast<i_t>(pb_solution.nodes());
+  stats.num_simplex_iterations = static_cast<i_t>(pb_solution.simplex_iterations());
+
+  // Create solution
+  auto mip_sol = mip_solution_t<i_t, f_t>(
+    std::move(solution),
+    std::vector<std::string>(),  // var_names
+    static_cast<f_t>(pb_solution.objective()),
+    static_cast<f_t>(pb_solution.mip_gap()),
+    static_cast<mip_termination_status_t>(pb_solution.termination_status()),
+    static_cast<f_t>(pb_solution.max_constraint_violation()),
+    static_cast<f_t>(pb_solution.max_int_violation()),
+    static_cast<f_t>(pb_solution.max_variable_bound_violation()),
+    stats);
+
+  // Print solution stats using shared method
+  mip_sol.print_solution_stats();
+
+  return mip_sol;
+}
+
 // Check if remote solve is enabled via environment variables
 bool is_remote_solve_enabled(const char** host, const char** port)
 {
@@ -430,7 +478,7 @@ bool is_remote_solve_enabled(const char** host, const char** port)
   return (*host != nullptr && *port != nullptr);
 }
 
-// Solve LP problem remotely using protobuf
+// Solve LP problem remotely using async server (blocking mode)
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
   const optimization_problem_t<i_t, f_t>& problem, const pdlp_solver_settings_t<i_t, f_t>& settings)
@@ -442,7 +490,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
     throw std::runtime_error("Remote solve not enabled (CUOPT_REMOTE_HOST/PORT not set)");
   }
 
-  fprintf(stderr, "[solve_lp_remote] Connecting to %s:%s\n", host, port);
+  fprintf(
+    stderr, "[solve_lp_remote] Connecting to %s:%s (async server, blocking mode)\n", host, port);
 
   // Create socket
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -470,32 +519,37 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
   fprintf(stderr, "[solve_lp_remote] Connected, building request...\n");
 
   try {
-    // Create protobuf request
-    cuopt::remote::SolveLPRequest request;
+    // Create AsyncRequest with blocking=true
+    cuopt::remote::AsyncRequest async_request;
+    async_request.set_request_type(cuopt::remote::SUBMIT_JOB);
+    async_request.set_blocking(true);  // KEY: Server will wait for result
+
+    // Add LP problem data
+    auto* lp_request = async_request.mutable_lp_request();
 
     // Set header
-    auto* header = request.mutable_header();
+    auto* header = lp_request->mutable_header();
     header->set_version(1);
     header->set_problem_type(cuopt::remote::LP);
     header->set_index_type(sizeof(i_t) == 4 ? cuopt::remote::INT32 : cuopt::remote::INT64);
     header->set_float_type(sizeof(f_t) == 4 ? cuopt::remote::FLOAT32 : cuopt::remote::DOUBLE);
 
-    // Convert problem
-    problem_to_protobuf(problem, request.mutable_problem());
+    // Convert problem to protobuf
+    problem_to_protobuf(problem, lp_request->mutable_problem());
 
-    // Serialize request
-    std::string request_data = request.SerializeAsString();
+    // Serialize AsyncRequest
+    std::string request_data = async_request.SerializeAsString();
     uint32_t request_size    = static_cast<uint32_t>(request_data.size());
 
-    fprintf(stderr, "[solve_lp_remote] Sending request (%u bytes)...\n", request_size);
+    fprintf(stderr, "[solve_lp_remote] Sending blocking request (%u bytes)...\n", request_size);
 
     // Send request size and data
     write_all(sockfd, &request_size, sizeof(request_size));
     write_all(sockfd, request_data.data(), request_data.size());
 
-    fprintf(stderr, "[solve_lp_remote] Request sent, waiting for response...\n");
+    fprintf(stderr, "[solve_lp_remote] Request sent, waiting for solution (server blocking)...\n");
 
-    // Read response size
+    // Read response size (server will block until result ready)
     uint32_t response_size;
     read_all(sockfd, &response_size, sizeof(response_size));
 
@@ -507,28 +561,40 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
 
     fprintf(stderr, "[solve_lp_remote] Response received, parsing...\n");
 
-    // Parse response
-    cuopt::remote::SolveResponse response;
-    if (!response.ParseFromArray(response_data.data(), response_size)) {
+    // Parse AsyncResponse
+    cuopt::remote::AsyncResponse async_response;
+    if (!async_response.ParseFromArray(response_data.data(), response_size)) {
       close(sockfd);
-      throw std::runtime_error("Failed to parse response");
+      throw std::runtime_error("Failed to parse AsyncResponse");
     }
 
     close(sockfd);
 
-    // Check response status
-    if (response.status() != cuopt::remote::SUCCESS) {
-      throw std::runtime_error("Remote solve failed: " + response.error_message());
+    // Extract ResultResponse
+    if (!async_response.has_result_response()) {
+      throw std::runtime_error("AsyncResponse does not contain result_response");
     }
 
-    if (!response.has_lp_solution()) {
-      throw std::runtime_error("Response does not contain LP solution");
+    const auto& result_response = async_response.result_response();
+
+    // Check result status
+    if (result_response.status() != cuopt::remote::SUCCESS) {
+      throw std::runtime_error("Remote solve failed: " + result_response.error_message());
+    }
+
+    if (!result_response.has_lp_solution()) {
+      throw std::runtime_error("ResultResponse does not contain LP solution");
     }
 
     fprintf(stderr, "[solve_lp_remote] Solution received successfully\n");
 
     // Convert protobuf solution to C++ solution
-    return protobuf_to_lp_solution<i_t, f_t>(response.lp_solution());
+    auto lp_sol = protobuf_to_lp_solution<i_t, f_t>(result_response.lp_solution());
+
+    // Print solution stats using shared method
+    lp_sol.print_solution_stats();
+
+    return lp_sol;
 
   } catch (...) {
     close(sockfd);
@@ -536,12 +602,123 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
   }
 }
 
-// Solve MIP problem remotely (placeholder for now)
+// Solve MIP problem remotely using async server (blocking mode)
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip_remote(const optimization_problem_t<i_t, f_t>& problem,
                                           const mip_solver_settings_t<i_t, f_t>& settings)
 {
-  throw std::runtime_error("Remote MIP solving not yet implemented with protobuf");
+  // Get remote host and port
+  const char* host;
+  const char* port;
+  if (!is_remote_solve_enabled(&host, &port)) {
+    throw std::runtime_error("Remote solve not enabled (CUOPT_REMOTE_HOST/PORT not set)");
+  }
+
+  fprintf(
+    stderr, "[solve_mip_remote] Connecting to %s:%s (async server, blocking mode)\n", host, port);
+
+  // Create socket
+  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  if (sockfd < 0) { throw std::runtime_error("Failed to create socket"); }
+
+  // Resolve hostname
+  struct hostent* server = gethostbyname(host);
+  if (server == nullptr) {
+    close(sockfd);
+    throw std::runtime_error("Failed to resolve hostname");
+  }
+
+  // Connect to server
+  struct sockaddr_in serv_addr;
+  std::memset(&serv_addr, 0, sizeof(serv_addr));
+  serv_addr.sin_family = AF_INET;
+  std::memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
+  serv_addr.sin_port = htons(std::atoi(port));
+
+  if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+    close(sockfd);
+    throw std::runtime_error("Failed to connect to remote server");
+  }
+
+  fprintf(stderr, "[solve_mip_remote] Connected, building blocking request...\n");
+
+  try {
+    // Create AsyncRequest with blocking=true
+    cuopt::remote::AsyncRequest async_request;
+    async_request.set_request_type(cuopt::remote::SUBMIT_JOB);
+    async_request.set_blocking(true);  // KEY: Server will wait for result
+
+    // Add MIP problem data
+    auto* mip_request = async_request.mutable_mip_request();
+
+    // Set header
+    auto* header = mip_request->mutable_header();
+    header->set_version(1);
+    header->set_problem_type(cuopt::remote::MIP);
+    header->set_index_type(sizeof(i_t) == 4 ? cuopt::remote::INT32 : cuopt::remote::INT64);
+    header->set_float_type(sizeof(f_t) == 4 ? cuopt::remote::FLOAT32 : cuopt::remote::DOUBLE);
+
+    // Convert problem to protobuf
+    problem_to_protobuf(problem, mip_request->mutable_problem());
+
+    // Serialize AsyncRequest
+    std::string request_data = async_request.SerializeAsString();
+    uint32_t request_size    = static_cast<uint32_t>(request_data.size());
+
+    fprintf(stderr, "[solve_mip_remote] Sending blocking request (%u bytes)...\n", request_size);
+
+    // Send request size and data
+    write_all(sockfd, &request_size, sizeof(request_size));
+    write_all(sockfd, request_data.data(), request_data.size());
+
+    fprintf(stderr, "[solve_mip_remote] Request sent, waiting for solution (server blocking)...\n");
+
+    // Read response size (server will block until result ready)
+    uint32_t response_size;
+    read_all(sockfd, &response_size, sizeof(response_size));
+
+    fprintf(stderr, "[solve_mip_remote] Receiving response (%u bytes)...\n", response_size);
+
+    // Read response data
+    std::vector<uint8_t> response_data(response_size);
+    read_all(sockfd, response_data.data(), response_size);
+
+    fprintf(stderr, "[solve_mip_remote] Response received, parsing...\n");
+
+    // Parse AsyncResponse
+    cuopt::remote::AsyncResponse async_response;
+    if (!async_response.ParseFromArray(response_data.data(), response_size)) {
+      close(sockfd);
+      throw std::runtime_error("Failed to parse AsyncResponse");
+    }
+
+    close(sockfd);
+
+    // Extract ResultResponse
+    if (!async_response.has_result_response()) {
+      throw std::runtime_error("AsyncResponse does not contain result_response");
+    }
+
+    const auto& result_response = async_response.result_response();
+
+    // Check result status
+    if (result_response.status() != cuopt::remote::SUCCESS) {
+      throw std::runtime_error("Remote solve failed: " + result_response.error_message());
+    }
+
+    if (!result_response.has_mip_solution()) {
+      throw std::runtime_error("ResultResponse does not contain MIP solution");
+    }
+
+    fprintf(stderr, "[solve_mip_remote] Solution received successfully\n");
+
+    // Convert protobuf solution to C++ solution (printing happens inside)
+    return protobuf_to_mip_solution<i_t, f_t>(result_response.mip_solution());
+
+  } catch (...) {
+    close(sockfd);
+    throw;
+  }
 }
 
 // Explicit template instantiations for double precision

@@ -473,7 +473,7 @@ install(TARGETS cuopt_cli
   RUNTIME DESTINATION ${_BIN_DEST}
 )
 
-# Remote solve server executable
+# Remote solve server executable (synchronous)
 add_executable(cuopt_remote_server cuopt_remote_server.cpp)
 target_compile_options(cuopt_remote_server
   PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
@@ -500,6 +500,64 @@ set_property(TARGET cuopt_remote_server PROPERTY INSTALL_RPATH "$ORIGIN/../${lib
 
 # Install the remote server
 install(TARGETS cuopt_remote_server
+  COMPONENT runtime
+  RUNTIME DESTINATION ${_BIN_DEST}
+)
+
+# Async remote solve server executable
+add_executable(cuopt_async_server cuopt_async_server.cpp ${PROTO_SRCS})
+target_compile_options(cuopt_async_server
+  PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+)
+
+target_include_directories(cuopt_async_server
+  PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+  ${CUDSS_INCLUDE}
+  "$<INSTALL_INTERFACE:include>"
+)
+
+target_link_libraries(cuopt_async_server
+  PUBLIC
+  OpenMP::OpenMP_CXX
+  protobuf::libprotobuf
+  rt
+  PRIVATE
+)
+set_property(TARGET cuopt_async_server PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
+
+# Solver worker process
+add_executable(cuopt_solver_worker cuopt_solver_worker.cpp ${PROTO_SRCS})
+target_compile_options(cuopt_solver_worker
+  PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+)
+
+target_include_directories(cuopt_solver_worker
+  PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+  ${CUDSS_INCLUDE}
+  "$<INSTALL_INTERFACE:include>"
+)
+
+target_link_libraries(cuopt_solver_worker
+  PUBLIC
+  cuopt
+  OpenMP::OpenMP_CXX
+  ${CUDSS_LIBRARIES}
+  protobuf::libprotobuf
+  rt
+  PRIVATE
+)
+set_property(TARGET cuopt_solver_worker PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
+
+# Install async server and worker
+install(TARGETS cuopt_async_server cuopt_solver_worker
   COMPONENT runtime
   RUNTIME DESTINATION ${_BIN_DEST}
 )
