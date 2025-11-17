@@ -5,12 +5,12 @@
 import copy
 from enum import Enum
 
-#import cuopt_mps_parser
-#import numpy as np
+import cuopt_mps_parser
+import numpy as np
 
-#import cuopt.linear_programming.data_model as data_model
-#import cuopt.linear_programming.solver as solver
-#import cuopt.linear_programming.solver_settings as solver_settings
+import cuopt.linear_programming.data_model as data_model
+import cuopt.linear_programming.solver as solver
+import cuopt.linear_programming.solver_settings as solver_settings
 
 
 class VType(str, Enum):
