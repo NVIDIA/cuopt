@@ -49,6 +49,9 @@ cdef class DataModel:
         self.A_values = np.array([])
         self.A_indices = np.array([])
         self.A_offsets = np.array([])
+        self.Q_values = np.array([])
+        self.Q_indices = np.array([])
+        self.Q_offsets = np.array([])
         self.b = np.array([])
         self.c = np.array([])
         self.objective_scaling_factor = 1.0
@@ -74,6 +77,11 @@ cdef class DataModel:
         self.A_values = type_cast(A_values, np.float64, "A_values")
         self.A_indices = type_cast(A_indices, np.int32, "A_indices")
         self.A_offsets = type_cast(A_offsets, np.int32, "A_offsets")
+
+    def set_quadratic_objective_matrix(self, Q_values, Q_indices, Q_offsets):
+        self.Q_values = type_cast(Q_values, np.float64, "Q_values")
+        self.Q_indices = type_cast(Q_indices, np.int32, "Q_indices")
+        self.Q_offsets = type_cast(Q_offsets, np.int32, "Q_offsets")
 
     def set_constraint_bounds(self, b):
         self.b = type_cast(b, np.float64, "b")
@@ -149,6 +157,15 @@ cdef class DataModel:
     def get_constraint_matrix_offsets(self):
         return self.A_offsets
 
+    def get_quadratic_objective_values(self):
+        return self.Q_values
+
+    def get_quadratic_objective_indices(self):
+        return self.Q_indices
+
+    def get_quadratic_objective_offsets(self):
+        return self.Q_offsets
+
     def get_constraint_bounds(self):
         return self.b
 
@@ -215,6 +232,17 @@ cdef class DataModel:
         cdef uintptr_t c_A_offsets = (
             get_data_ptr(self.get_constraint_matrix_offsets())
         )
+
+        cdef uintptr_t c_Q_values = (
+            get_data_ptr(self.get_quadratic_objective_values())
+        )
+        cdef uintptr_t c_Q_indices = (
+            get_data_ptr(self.get_quadratic_objective_indices())
+        )
+        cdef uintptr_t c_Q_offsets = (
+            get_data_ptr(self.get_quadratic_objective_offsets())
+        )
+
         if self.get_constraint_matrix_values().shape[0] != 0 and self.get_constraint_matrix_indices().shape[0] != 0 and self.get_constraint_matrix_offsets().shape[0] != 0: # noqa
             c_data_model_view.set_csr_constraint_matrix(
                 <const double *> c_A_values,
@@ -223,6 +251,16 @@ cdef class DataModel:
                 self.get_constraint_matrix_indices().shape[0],
                 <const int *> c_A_offsets,
                 self.get_constraint_matrix_offsets().shape[0]
+            )
+
+        if self.get_quadratic_objective_values().shape[0] != 0 and self.get_quadratic_objective_indices().shape[0] != 0 and self.get_quadratic_objective_offsets().shape[0] != 0: # noqa
+            c_data_model_view.set_quadratic_objective_matrix(
+                <const double *> c_Q_values,
+                self.get_quadratic_objective_values().shape[0],
+                <const int *> c_Q_indices,
+                self.get_quadratic_objective_indices().shape[0],
+                <const int *> c_Q_offsets,
+                self.get_quadratic_objective_offsets().shape[0]
             )
 
         cdef uintptr_t c_b = (
