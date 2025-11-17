@@ -144,7 +144,7 @@ jobs:
       arch: "amd64"
       file_to_upload: "docs/cuopt/build/html/"
       artifact-name: "cuopt_docs"
-      container_image: "rapidsai/ci-conda:25.12-latest"
+      container_image: "rapidsai/ci-conda:26.02-latest"
       script: "ci/build_docs.sh"
   wheel-build-cuopt-mps-parser:
     secrets: inherit
