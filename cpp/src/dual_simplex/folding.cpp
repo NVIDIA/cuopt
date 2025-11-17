@@ -251,7 +251,7 @@ void split_colors(i_t color,
     if (remaining_size < 0) {
       printf("Negative remaining size %d\n", remaining_size);
 
-      printf("Color %d vertices\n");
+      printf("Color %d vertices\n", color);
       for (i_t v : colors[color].vertices) {
         printf("Vertex %d\n", v);
       }
