@@ -230,14 +230,14 @@ class basis_update_mpf_t {
     i_t total_L_calls           = total_sparse_L_ + total_dense_L_;
     i_t total_U_calls           = total_sparse_U_ + total_dense_U_;
     // clang-format off
-    printf("sparse L transpose  %8d %8.2f%\n", total_sparse_L_transpose_, 100.0 * total_sparse_L_transpose_ / total_L_transpose_calls);
-    printf("dense  L transpose  %8d %8.2f%\n", total_dense_L_transpose_, 100.0 * total_dense_L_transpose_ / total_L_transpose_calls);
-    printf("sparse U transpose  %8d %8.2f%\n", total_sparse_U_transpose_, 100.0 * total_sparse_U_transpose_ / total_U_transpose_calls);
-    printf("dense  U transpose  %8d %8.2f%\n", total_dense_U_transpose_, 100.0 * total_dense_U_transpose_ / total_U_transpose_calls);
-    printf("sparse L            %8d %8.2f%\n", total_sparse_L_, 100.0 * total_sparse_L_ / total_L_calls);
-    printf("dense  L            %8d %8.2f%\n", total_dense_L_, 100.0 * total_dense_L_ / total_L_calls);
-    printf("sparse U            %8d %8.2f%\n", total_sparse_U_, 100.0 * total_sparse_U_ / total_U_calls);
-    printf("dense  U            %8d %8.2f%\n", total_dense_U_, 100.0 * total_dense_U_ / total_U_calls);
+    printf("sparse L transpose  %8d %8.2f%%\n", total_sparse_L_transpose_, 100.0 * total_sparse_L_transpose_ / total_L_transpose_calls);
+    printf("dense  L transpose  %8d %8.2f%%\n", total_dense_L_transpose_, 100.0 * total_dense_L_transpose_ / total_L_transpose_calls);
+    printf("sparse U transpose  %8d %8.2f%%\n", total_sparse_U_transpose_, 100.0 * total_sparse_U_transpose_ / total_U_transpose_calls);
+    printf("dense  U transpose  %8d %8.2f%%\n", total_dense_U_transpose_, 100.0 * total_dense_U_transpose_ / total_U_transpose_calls);
+    printf("sparse L            %8d %8.2f%%\n", total_sparse_L_, 100.0 * total_sparse_L_ / total_L_calls);
+    printf("dense  L            %8d %8.2f%%\n", total_dense_L_, 100.0 * total_dense_L_ / total_L_calls);
+    printf("sparse U            %8d %8.2f%%\n", total_sparse_U_, 100.0 * total_sparse_U_ / total_U_calls);
+    printf("dense  U            %8d %8.2f%%\n", total_dense_U_, 100.0 * total_dense_U_ / total_U_calls);
     // clang-format on
   }
 
