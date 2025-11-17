@@ -14,8 +14,8 @@
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
-#include <rmm/mr/device/cuda_async_memory_resource.hpp>
-#include <rmm/mr/device/limiting_resource_adaptor.hpp>
+#include <rmm/mr/cuda_async_memory_resource.hpp>
+#include <rmm/mr/limiting_resource_adaptor.hpp>
 
 namespace cuopt {
 
