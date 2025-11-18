@@ -8,6 +8,12 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    base_branches:
+      - main
+      - master
+      - develop
+      - "release/**"
+      - "hotfix/**"
     ignore_usernames: ["rapids-bot", "GPUtester", "nv-automation-bot", "copy-pr-bot"]
   tools:
     markdownlint:
