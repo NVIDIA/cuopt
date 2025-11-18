@@ -62,9 +62,9 @@ struct max_abs_value {
 template <typename i_t>
 i_t conditional_major(uint64_t total_pdlp_iterations)
 {
-  uint64_t step      = 10;
-  uint64_t threshold = 1000;
-  uint64_t iteration = 0;
+  uint64_t step                       = 10;
+  uint64_t threshold                  = 1000;
+  [[maybe_unused]] uint64_t iteration = 0;
 
   [[maybe_unused]] constexpr uint64_t max_u64 = std::numeric_limits<uint64_t>::max();
 

@@ -33,8 +33,6 @@ enum class error_type_t {
  */
 
 struct logic_error : public std::logic_error {
-  explicit logic_error() = default;
-
   logic_error(const logic_error& exception) = default;
 
   // Move constructor

@@ -661,7 +661,9 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(search_tree_t<i_t, f_t>& 
       assert(leaf_vstatus.size() == leaf_problem.num_cols);
       search_tree.branch(
         node_ptr, branch_var, leaf_solution.x[branch_var], leaf_vstatus, original_lp_, log);
+      search_tree.mutex.lock();
       node_ptr->status = node_status_t::HAS_CHILDREN;
+      search_tree.mutex.unlock();
       return node_status_t::HAS_CHILDREN;
 
     } else {
@@ -676,7 +678,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(search_tree_t<i_t, f_t>& 
 
   } else {
     if (thread_type == 'B') {
-      lower_bound_ceiling_.fetch_min(node_ptr->lower_bound);
+      fetch_min(lower_bound_ceiling_, node_ptr->lower_bound);
       log.printf(
         "LP returned status %d on node %d. This indicates a numerical issue. The best bound is set "
         "to "
@@ -1017,12 +1019,11 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(lp_problem_t<i_t, f_t>& leaf_pr
           // best first search, then we split the current subtree at the
           // lowest possible point and move to the queue, so it can
           // be picked by another thread.
-          if (dive_queue_.size() < min_diving_queue_size_) {
-            mutex_dive_queue_.lock();
+          if (std::lock_guard<omp_mutex_t> lock(mutex_dive_queue_);
+              dive_queue_.size() < min_diving_queue_size_) {
             mip_node_t<i_t, f_t>* new_node = stack.back();
             stack.pop_back();
             dive_queue_.emplace(new_node->detach_copy(), leaf_problem.lower, leaf_problem.upper);
-            mutex_dive_queue_.unlock();
           }
         }
       }
