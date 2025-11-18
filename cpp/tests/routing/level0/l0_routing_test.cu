@@ -320,7 +320,7 @@ class routing_retail_test_t : public base_test_t<i_t, f_t>,
     this->populate_device_vectors();
   }
 
-  void TearDown() {}
+  void TearDown() override {}
 
   void test_cvrptw()
   {

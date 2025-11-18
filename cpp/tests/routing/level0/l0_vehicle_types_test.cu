@@ -23,7 +23,7 @@ namespace test {
 template <typename i_t, typename f_t>
 class vehicle_types_test_t : public base_test_t<i_t, f_t>, public ::testing::Test {
  public:
-  vehicle_types_test_t() : base_test_t<i_t, f_t>(512, 5E-2, 0) {}
+  vehicle_types_test_t() : base_test_t<i_t, f_t>(512, 0, 0) {}
   void SetUp() override
   {
     this->n_locations     = input_.n_locations;

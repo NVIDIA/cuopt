@@ -127,7 +127,7 @@ class branch_and_bound_t {
     omp_atomic_t<f_t> total_lp_iters      = 0;
 
     // This should only be used by the main thread
-    f_t last_log                           = 0.0;
+    omp_atomic_t<f_t> last_log             = 0.0;
     omp_atomic_t<i_t> nodes_since_last_log = 0;
   } exploration_stats_;
 

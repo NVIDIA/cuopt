@@ -729,7 +729,7 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
       assert(leaf_vstatus.size() == leaf_problem.num_cols);
       search_tree.branch(
         node_ptr, branch_var, leaf_solution.x[branch_var], leaf_vstatus, leaf_problem, log);
-      node_ptr->status = node_status_t::HAS_CHILDREN;
+      search_tree.update(node_ptr, node_status_t::HAS_CHILDREN);
 
       rounding_direction_t round_dir = child_selection(node_ptr);
 
@@ -750,7 +750,7 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
 
   } else {
     if (thread_type == thread_type_t::EXPLORATION) {
-      lower_bound_ceiling_.fetch_min(node_ptr->lower_bound);
+      fetch_min(lower_bound_ceiling_, node_ptr->lower_bound);
       log.printf(
         "LP returned status %d on node %d. This indicates a numerical issue. The best bound is set "
         "to "
@@ -1172,7 +1172,8 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
           // best first search, then we split the current subtree at the
           // lowest possible point and move to the queue, so it can
           // be picked by another thread.
-          if (diving_queue_.size() < min_diving_queue_size_) {
+          if (std::lock_guard<omp_mutex_t> lock(mutex_dive_queue_);
+              diving_queue_.size() < min_diving_queue_size_) {
             mip_node_t<i_t, f_t>* new_node = stack.back();
             stack.pop_back();
 
@@ -1180,9 +1181,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
             std::vector<f_t> upper = start_node->upper;
             new_node->get_variable_bounds(lower, upper, node_presolver.bounds_changed);
 
-            mutex_dive_queue_.lock();
             diving_queue_.emplace(new_node->detach_copy(), std::move(lower), std::move(upper));
-            mutex_dive_queue_.unlock();
           }
         }
       }

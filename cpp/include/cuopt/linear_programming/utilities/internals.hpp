@@ -62,6 +62,7 @@ namespace linear_programming {
 
 class base_solution_t {
  public:
+  virtual ~base_solution_t()  = default;
   virtual bool is_mip() const = 0;
 };
 
