@@ -17,7 +17,7 @@ ConfigureTest(PDLP_TEST
 # The C API tests require a separate library to be linked against. So we don't use the ConfigureTest macro.
 
 if (NOT SKIP_C_PYTHON_ADAPTERS)
-    add_library(c_api_tester "${CMAKE_CURRENT_SOURCE_DIR}/c_api_tests/c_api_test.c")
+    add_library(c_api_tester STATIC "${CMAKE_CURRENT_SOURCE_DIR}/c_api_tests/c_api_test.c")
     target_include_directories(c_api_tester
         PRIVATE
         ${CUOPT_SOURCE_DIR}/include
