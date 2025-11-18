@@ -349,7 +349,9 @@ template <typename i_t, typename f_t>
 bool is_KKT_restart()
 {
   return pdlp_hyper_params::restart_strategy ==
-         static_cast<int>(pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::KKT_RESTART);
+           static_cast<int>(pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::KKT_RESTART) ||
+         pdlp_hyper_params::restart_strategy ==
+           static_cast<int>(pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::CUPDLPX_RESTART);
 }
 
 }  // namespace cuopt::linear_programming::detail
