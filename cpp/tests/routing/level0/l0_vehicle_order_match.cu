@@ -24,7 +24,7 @@ namespace test {
 template <typename i_t, typename f_t>
 class vehicle_order_test_t : public base_test_t<i_t, f_t>, public ::testing::TestWithParam<float> {
  public:
-  vehicle_order_test_t() : base_test_t<i_t, f_t>(512, 5E-2, 0) {}
+  vehicle_order_test_t() : base_test_t<i_t, f_t>(512, 0, 0) {}
   void SetUp() override
   {
     this->not_matching_constraints_fraction = GetParam();

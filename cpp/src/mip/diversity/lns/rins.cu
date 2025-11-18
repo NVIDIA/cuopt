@@ -246,8 +246,8 @@ void rins_t<i_t, f_t>::run_rins()
   branch_and_bound_settings.num_diving_threads = 1;
   branch_and_bound_settings.log.log            = false;
   branch_and_bound_settings.log.log_prefix     = "[RINS] ";
-  branch_and_bound_settings.solution_callback  = [this, &rins_solution_queue](
-                                                  std::vector<f_t>& solution, f_t objective) {
+  branch_and_bound_settings.solution_callback  = [&rins_solution_queue](std::vector<f_t>& solution,
+                                                                       f_t objective) {
     rins_solution_queue.push_back(solution);
   };
   dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(branch_and_bound_problem,
