@@ -478,6 +478,211 @@ bool is_remote_solve_enabled(const char** host, const char** port)
   return (*host != nullptr && *port != nullptr);
 }
 
+// Helper: Create and connect socket
+static int connect_to_server(const char* host, const char* port)
+{
+  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  if (sockfd < 0) { throw std::runtime_error("Failed to create socket"); }
+
+  struct hostent* server = gethostbyname(host);
+  if (server == nullptr) {
+    close(sockfd);
+    throw std::runtime_error("Failed to resolve hostname");
+  }
+
+  struct sockaddr_in serv_addr;
+  std::memset(&serv_addr, 0, sizeof(serv_addr));
+  serv_addr.sin_family = AF_INET;
+  std::memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
+  serv_addr.sin_port = htons(std::atoi(port));
+
+  if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+    close(sockfd);
+    throw std::runtime_error("Failed to connect to remote server");
+  }
+
+  return sockfd;
+}
+
+// Helper: Submit a job to the async server
+static std::string submit_job(const char* host,
+                              const char* port,
+                              const cuopt::remote::AsyncRequest& request)
+{
+  int sockfd = connect_to_server(host, port);
+
+  try {
+    // Serialize and send request
+    std::string request_data = request.SerializeAsString();
+    uint32_t request_size    = static_cast<uint32_t>(request_data.size());
+
+    write_all(sockfd, &request_size, sizeof(request_size));
+    write_all(sockfd, request_data.data(), request_data.size());
+
+    // Read response
+    uint32_t response_size;
+    read_all(sockfd, &response_size, sizeof(response_size));
+
+    std::vector<uint8_t> response_data(response_size);
+    read_all(sockfd, response_data.data(), response_size);
+
+    close(sockfd);
+
+    // Parse response
+    cuopt::remote::AsyncResponse async_response;
+    if (!async_response.ParseFromArray(response_data.data(), response_size)) {
+      throw std::runtime_error("Failed to parse AsyncResponse");
+    }
+
+    if (!async_response.has_submit_response()) {
+      throw std::runtime_error("AsyncResponse does not contain submit_response");
+    }
+
+    const auto& submit_resp = async_response.submit_response();
+    if (submit_resp.status() != cuopt::remote::SUCCESS) {
+      throw std::runtime_error("Job submission failed: " + submit_resp.message());
+    }
+
+    return submit_resp.job_id();
+  } catch (...) {
+    close(sockfd);
+    throw;
+  }
+}
+
+// Helper: Poll job status until complete
+static void poll_until_complete(const char* host, const char* port, const std::string& job_id)
+{
+  while (true) {
+    int sockfd = connect_to_server(host, port);
+
+    try {
+      // Create status request
+      cuopt::remote::AsyncRequest status_request;
+      status_request.set_request_type(cuopt::remote::CHECK_STATUS);
+      status_request.set_job_id(job_id);
+
+      // Send request
+      std::string request_data = status_request.SerializeAsString();
+      uint32_t request_size    = static_cast<uint32_t>(request_data.size());
+
+      write_all(sockfd, &request_size, sizeof(request_size));
+      write_all(sockfd, request_data.data(), request_data.size());
+
+      // Read response
+      uint32_t response_size;
+      read_all(sockfd, &response_size, sizeof(response_size));
+
+      std::vector<uint8_t> response_data(response_size);
+      read_all(sockfd, response_data.data(), response_size);
+
+      close(sockfd);
+
+      // Parse response
+      cuopt::remote::AsyncResponse async_response;
+      if (!async_response.ParseFromArray(response_data.data(), response_size)) {
+        throw std::runtime_error("Failed to parse status response");
+      }
+
+      if (!async_response.has_status_response()) {
+        throw std::runtime_error("AsyncResponse does not contain status_response");
+      }
+
+      const auto& status_resp = async_response.status_response();
+
+      if (status_resp.job_status() == cuopt::remote::COMPLETED) {
+        return;  // Job is done
+      } else if (status_resp.job_status() == cuopt::remote::FAILED) {
+        throw std::runtime_error("Job failed: " + status_resp.message());
+      }
+
+      // Job still pending/running, wait a bit before polling again
+      usleep(100000);  // 100ms
+    } catch (...) {
+      close(sockfd);
+      throw;
+    }
+  }
+}
+
+// Helper: Get result from completed job
+static cuopt::remote::ResultResponse get_result(const char* host,
+                                                const char* port,
+                                                const std::string& job_id)
+{
+  int sockfd = connect_to_server(host, port);
+
+  try {
+    // Create get result request
+    cuopt::remote::AsyncRequest result_request;
+    result_request.set_request_type(cuopt::remote::GET_RESULT);
+    result_request.set_job_id(job_id);
+
+    // Send request
+    std::string request_data = result_request.SerializeAsString();
+    uint32_t request_size    = static_cast<uint32_t>(request_data.size());
+
+    write_all(sockfd, &request_size, sizeof(request_size));
+    write_all(sockfd, request_data.data(), request_data.size());
+
+    // Read response
+    uint32_t response_size;
+    read_all(sockfd, &response_size, sizeof(response_size));
+
+    std::vector<uint8_t> response_data(response_size);
+    read_all(sockfd, response_data.data(), response_size);
+
+    close(sockfd);
+
+    // Parse response
+    cuopt::remote::AsyncResponse async_response;
+    if (!async_response.ParseFromArray(response_data.data(), response_size)) {
+      throw std::runtime_error("Failed to parse result response");
+    }
+
+    if (!async_response.has_result_response()) {
+      throw std::runtime_error("AsyncResponse does not contain result_response");
+    }
+
+    return async_response.result_response();
+  } catch (...) {
+    close(sockfd);
+    throw;
+  }
+}
+
+// Helper: Delete job after retrieving result
+static void delete_job(const char* host, const char* port, const std::string& job_id)
+{
+  int sockfd = connect_to_server(host, port);
+
+  try {
+    // Create delete request
+    cuopt::remote::AsyncRequest delete_request;
+    delete_request.set_request_type(cuopt::remote::DELETE_RESULT);
+    delete_request.set_job_id(job_id);
+
+    // Send request
+    std::string request_data = delete_request.SerializeAsString();
+    uint32_t request_size    = static_cast<uint32_t>(request_data.size());
+
+    write_all(sockfd, &request_size, sizeof(request_size));
+    write_all(sockfd, request_data.data(), request_data.size());
+
+    // Read response (but don't need to check it)
+    uint32_t response_size;
+    read_all(sockfd, &response_size, sizeof(response_size));
+
+    std::vector<uint8_t> response_data(response_size);
+    read_all(sockfd, response_data.data(), response_size);
+
+    close(sockfd);
+  } catch (...) {
+    close(sockfd);
+    throw;
+  }
+}
+
 // Solve LP problem remotely using async server (blocking mode)
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
@@ -490,42 +695,16 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
     throw std::runtime_error("Remote solve not enabled (CUOPT_REMOTE_HOST/PORT not set)");
   }
 
-  fprintf(
-    stderr, "[solve_lp_remote] Connecting to %s:%s (async server, blocking mode)\n", host, port);
-
-  // Create socket
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0) { throw std::runtime_error("Failed to create socket"); }
-
-  // Resolve hostname
-  struct hostent* server = gethostbyname(host);
-  if (server == nullptr) {
-    close(sockfd);
-    throw std::runtime_error("Failed to resolve hostname");
-  }
-
-  // Connect to server
-  struct sockaddr_in serv_addr;
-  std::memset(&serv_addr, 0, sizeof(serv_addr));
-  serv_addr.sin_family = AF_INET;
-  std::memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
-  serv_addr.sin_port = htons(std::atoi(port));
-
-  if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-    close(sockfd);
-    throw std::runtime_error("Failed to connect to remote server");
-  }
-
-  fprintf(stderr, "[solve_lp_remote] Connected, building request...\n");
+  fprintf(stderr, "[solve_lp_remote] Connecting to %s:%s (async server, async mode)\n", host, port);
 
   try {
-    // Create AsyncRequest with blocking=true
-    cuopt::remote::AsyncRequest async_request;
-    async_request.set_request_type(cuopt::remote::SUBMIT_JOB);
-    async_request.set_blocking(true);  // KEY: Server will wait for result
+    // Create AsyncRequest for async job submission
+    cuopt::remote::AsyncRequest submit_request;
+    submit_request.set_request_type(cuopt::remote::SUBMIT_JOB);
+    submit_request.set_blocking(false);  // Use true async mode
 
     // Add LP problem data
-    auto* lp_request = async_request.mutable_lp_request();
+    auto* lp_request = submit_request.mutable_lp_request();
 
     // Set header
     auto* header = lp_request->mutable_header();
@@ -537,45 +716,20 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
     // Convert problem to protobuf
     problem_to_protobuf(problem, lp_request->mutable_problem());
 
-    // Serialize AsyncRequest
-    std::string request_data = async_request.SerializeAsString();
-    uint32_t request_size    = static_cast<uint32_t>(request_data.size());
+    // Submit job and get job ID
+    std::string job_id = submit_job(host, port, submit_request);
+    fprintf(stderr, "[solve_lp_remote] Job submitted, ID: %s\n", job_id.c_str());
 
-    fprintf(stderr, "[solve_lp_remote] Sending blocking request (%u bytes)...\n", request_size);
+    // Poll until job completes
+    fprintf(stderr, "[solve_lp_remote] Polling for completion...\n");
+    poll_until_complete(host, port, job_id);
 
-    // Send request size and data
-    write_all(sockfd, &request_size, sizeof(request_size));
-    write_all(sockfd, request_data.data(), request_data.size());
+    // Get result
+    fprintf(stderr, "[solve_lp_remote] Job complete, retrieving result...\n");
+    const auto result_response = get_result(host, port, job_id);
 
-    fprintf(stderr, "[solve_lp_remote] Request sent, waiting for solution (server blocking)...\n");
-
-    // Read response size (server will block until result ready)
-    uint32_t response_size;
-    read_all(sockfd, &response_size, sizeof(response_size));
-
-    fprintf(stderr, "[solve_lp_remote] Receiving response (%u bytes)...\n", response_size);
-
-    // Read response data
-    std::vector<uint8_t> response_data(response_size);
-    read_all(sockfd, response_data.data(), response_size);
-
-    fprintf(stderr, "[solve_lp_remote] Response received, parsing...\n");
-
-    // Parse AsyncResponse
-    cuopt::remote::AsyncResponse async_response;
-    if (!async_response.ParseFromArray(response_data.data(), response_size)) {
-      close(sockfd);
-      throw std::runtime_error("Failed to parse AsyncResponse");
-    }
-
-    close(sockfd);
-
-    // Extract ResultResponse
-    if (!async_response.has_result_response()) {
-      throw std::runtime_error("AsyncResponse does not contain result_response");
-    }
-
-    const auto& result_response = async_response.result_response();
+    // Delete job
+    delete_job(host, port, job_id);
 
     // Check result status
     if (result_response.status() != cuopt::remote::SUCCESS) {
@@ -597,7 +751,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
     return lp_sol;
 
   } catch (...) {
-    close(sockfd);
     throw;
   }
 }
@@ -615,41 +768,16 @@ mip_solution_t<i_t, f_t> solve_mip_remote(const optimization_problem_t<i_t, f_t>
   }
 
   fprintf(
-    stderr, "[solve_mip_remote] Connecting to %s:%s (async server, blocking mode)\n", host, port);
-
-  // Create socket
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0) { throw std::runtime_error("Failed to create socket"); }
-
-  // Resolve hostname
-  struct hostent* server = gethostbyname(host);
-  if (server == nullptr) {
-    close(sockfd);
-    throw std::runtime_error("Failed to resolve hostname");
-  }
-
-  // Connect to server
-  struct sockaddr_in serv_addr;
-  std::memset(&serv_addr, 0, sizeof(serv_addr));
-  serv_addr.sin_family = AF_INET;
-  std::memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
-  serv_addr.sin_port = htons(std::atoi(port));
-
-  if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-    close(sockfd);
-    throw std::runtime_error("Failed to connect to remote server");
-  }
-
-  fprintf(stderr, "[solve_mip_remote] Connected, building blocking request...\n");
+    stderr, "[solve_mip_remote] Connecting to %s:%s (async server, async mode)\n", host, port);
 
   try {
-    // Create AsyncRequest with blocking=true
-    cuopt::remote::AsyncRequest async_request;
-    async_request.set_request_type(cuopt::remote::SUBMIT_JOB);
-    async_request.set_blocking(true);  // KEY: Server will wait for result
+    // Create AsyncRequest for async job submission
+    cuopt::remote::AsyncRequest submit_request;
+    submit_request.set_request_type(cuopt::remote::SUBMIT_JOB);
+    submit_request.set_blocking(false);  // Use true async mode
 
     // Add MIP problem data
-    auto* mip_request = async_request.mutable_mip_request();
+    auto* mip_request = submit_request.mutable_mip_request();
 
     // Set header
     auto* header = mip_request->mutable_header();
@@ -661,45 +789,20 @@ mip_solution_t<i_t, f_t> solve_mip_remote(const optimization_problem_t<i_t, f_t>
     // Convert problem to protobuf
     problem_to_protobuf(problem, mip_request->mutable_problem());
 
-    // Serialize AsyncRequest
-    std::string request_data = async_request.SerializeAsString();
-    uint32_t request_size    = static_cast<uint32_t>(request_data.size());
+    // Submit job and get job ID
+    std::string job_id = submit_job(host, port, submit_request);
+    fprintf(stderr, "[solve_mip_remote] Job submitted, ID: %s\n", job_id.c_str());
 
-    fprintf(stderr, "[solve_mip_remote] Sending blocking request (%u bytes)...\n", request_size);
+    // Poll until job completes
+    fprintf(stderr, "[solve_mip_remote] Polling for completion...\n");
+    poll_until_complete(host, port, job_id);
 
-    // Send request size and data
-    write_all(sockfd, &request_size, sizeof(request_size));
-    write_all(sockfd, request_data.data(), request_data.size());
+    // Get result
+    fprintf(stderr, "[solve_mip_remote] Job complete, retrieving result...\n");
+    const auto result_response = get_result(host, port, job_id);
 
-    fprintf(stderr, "[solve_mip_remote] Request sent, waiting for solution (server blocking)...\n");
-
-    // Read response size (server will block until result ready)
-    uint32_t response_size;
-    read_all(sockfd, &response_size, sizeof(response_size));
-
-    fprintf(stderr, "[solve_mip_remote] Receiving response (%u bytes)...\n", response_size);
-
-    // Read response data
-    std::vector<uint8_t> response_data(response_size);
-    read_all(sockfd, response_data.data(), response_size);
-
-    fprintf(stderr, "[solve_mip_remote] Response received, parsing...\n");
-
-    // Parse AsyncResponse
-    cuopt::remote::AsyncResponse async_response;
-    if (!async_response.ParseFromArray(response_data.data(), response_size)) {
-      close(sockfd);
-      throw std::runtime_error("Failed to parse AsyncResponse");
-    }
-
-    close(sockfd);
-
-    // Extract ResultResponse
-    if (!async_response.has_result_response()) {
-      throw std::runtime_error("AsyncResponse does not contain result_response");
-    }
-
-    const auto& result_response = async_response.result_response();
+    // Delete job
+    delete_job(host, port, job_id);
 
     // Check result status
     if (result_response.status() != cuopt::remote::SUCCESS) {
@@ -716,7 +819,6 @@ mip_solution_t<i_t, f_t> solve_mip_remote(const optimization_problem_t<i_t, f_t>
     return protobuf_to_mip_solution<i_t, f_t>(result_response.mip_solution());
 
   } catch (...) {
-    close(sockfd);
     throw;
   }
 }
