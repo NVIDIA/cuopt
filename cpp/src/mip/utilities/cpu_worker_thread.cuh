@@ -60,7 +60,6 @@ template <typename Derived>
 cpu_worker_thread_base_t<Derived>::~cpu_worker_thread_base_t()
 {
   // Note: We don't call on_terminate() here since the derived object is already destroyed.
-  CUOPT_LOG_DEBUG("Destroying CPU worker thread");
   join_worker();
 }
 
@@ -91,7 +90,6 @@ void cpu_worker_thread_base_t<Derived>::cpu_worker_thread()
 template <typename Derived>
 void cpu_worker_thread_base_t<Derived>::request_termination()
 {
-  CUOPT_LOG_DEBUG("Requesting termination of CPU worker thread");
   bool should_terminate = false;
   {
     std::lock_guard<std::mutex> lock(cpu_mutex);
