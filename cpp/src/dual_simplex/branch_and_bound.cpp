@@ -661,9 +661,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node(search_tree_t<i_t, f_t>& 
       assert(leaf_vstatus.size() == leaf_problem.num_cols);
       search_tree.branch(
         node_ptr, branch_var, leaf_solution.x[branch_var], leaf_vstatus, original_lp_, log);
-      search_tree.mutex.lock();
-      node_ptr->status = node_status_t::HAS_CHILDREN;
-      search_tree.mutex.unlock();
+      search_tree.update_tree(node_ptr, node_status_t::HAS_CHILDREN);
       return node_status_t::HAS_CHILDREN;
 
     } else {
