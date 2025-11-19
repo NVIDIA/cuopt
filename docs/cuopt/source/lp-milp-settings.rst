@@ -100,7 +100,7 @@ Server Thin client users should use the :class:`cuopt_sh_client.SolverMethod` fo
 PDLP Solver Mode
 ^^^^^^^^^^^^^^^^
 
-``CUOPT_PDLP_MODE`` controls the mode under which PDLP should operate. The mode will change the way the
+``CUOPT_PDLP_SOLVER_MODE`` controls the mode under which PDLP should operate. The mode will change the way the
 PDLP internally optimizes the problem. The mode choice can drastically impact how fast a
 specific problem will be solved. Users are encouraged to test different modes to see which one
 fits the best their problem. By default, the solver uses ``Stable3``, the best
@@ -126,13 +126,13 @@ cuOpt will stop at the first limit (iteration or time) reached.
    or proves the problem is infeasible or unbounded.
 
 
-Infeasiblity Detection
+Infeasibility Detection
 ^^^^^^^^^^^^^^^^^^^^^^
 
 ``CUOPT_INFEASIBILITY_DETECTION`` controls whether PDLP should detect infeasibility. Note that infeasibility detection in PDLP
 is not always accurate. Some problems detected as infeasible may converge under a different tolerance factor.
 Detecting infeasibility consumes both more runtime and memory. The added runtime is between 3% and 7%,
-the added memory consumpution is between 10% and 20%.
+the added memory consumption is between 10% and 20%.
 
 .. note:: by default PDLP will not detect infeasibility. Dual simplex will always detect infeasibility
    regardless of this setting.
@@ -145,6 +145,24 @@ is detected as infeasible, PDLP will stop. When false both the current and avera
 detected as infeasible for PDLP to stop.
 
 .. note:: the default value is false.
+
+Primal Infeasible Tolerance
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_PRIMAL_INFEASIBLE_TOLERANCE`` controls the tolerance used to determine if the primal problem is infeasible in PDLP.
+A smaller value makes the infeasibility detection stricter, while a larger value makes it more lenient.
+This parameter is only used when ``CUOPT_INFEASIBILITY_DETECTION`` is enabled.
+
+.. note:: the default value is ``1e-8``.
+
+Dual Infeasible Tolerance
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_DUAL_INFEASIBLE_TOLERANCE`` controls the tolerance used to determine if the dual problem is infeasible in PDLP.
+A smaller value makes the infeasibility detection stricter, while a larger value makes it more lenient.
+This parameter is only used when ``CUOPT_INFEASIBILITY_DETECTION`` is enabled.
+
+.. note:: the default value is ``1e-8``.
 
 .. _crossover:
 
@@ -386,7 +404,7 @@ Relative Tolerance
 Integrality Tolerance
 ^^^^^^^^^^^^^^^^^^^^^
 
-``CUOPT_INTEGRALITY_TOLERANCE`` controls the MIP integrality tolerance. A variable is considered to be integral, if
+``CUOPT_MIP_INTEGRALITY_TOLERANCE`` controls the MIP integrality tolerance. A variable is considered to be integral, if
 it is within the integrality tolerance of an integer.
 
 .. note:: the default value is ``1e-5``.
