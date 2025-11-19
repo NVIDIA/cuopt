@@ -15,6 +15,9 @@ concurrency:
 jobs:
   pr-builder:
     needs:
+      - check-lean-ci
+      - prevent-merge-with-lean-ci
+      - compute-matrix-filters
       - changed-files
       - checks
       - conda-cpp-build
@@ -32,6 +35,77 @@ jobs:
       - test-self-hosted-server
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
+  check-lean-ci:
+    runs-on: ubuntu-latest
+    outputs:
+      lean_ci_enabled: ${{ steps.check-label.outputs.lean_ci_enabled }}
+    steps:
+      - name: Check for lean-ci label
+        id: check-label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Extract PR number from branch name (pull-request/123 -> 123)
+          PR_NUMBER=$(echo "${{ github.ref }}" | sed 's|refs/heads/pull-request/||')
+          echo "Checking PR #$PR_NUMBER for lean-ci label..."
+
+          # Check if the PR has the 'lean-ci' label
+          if gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json labels --jq '.labels[].name' | grep -q "^lean-ci$"; then
+            echo "lean_ci_enabled=true" >> $GITHUB_OUTPUT
+            echo "⚠️  Lean CI is enabled (lean-ci label found)"
+          else
+            echo "lean_ci_enabled=false" >> $GITHUB_OUTPUT
+            echo "✅ Full CI is enabled"
+          fi
+
+  prevent-merge-with-lean-ci:
+    runs-on: ubuntu-latest
+    needs: check-lean-ci
+    steps:
+      - name: Check lean-ci status
+        run: |
+          if [ "${{ needs.check-lean-ci.outputs.lean_ci_enabled }}" == "true" ]; then
+            echo "❌ ERROR: This PR has the 'lean-ci' label enabled."
+            echo "Lean CI is only for testing purposes and should not be merged."
+            echo "Please remove the 'lean-ci' label and run full CI before merging."
+            exit 1
+          else
+            echo "✅ No lean-ci label found. PR can be merged."
+            exit 0
+          fi
+  compute-matrix-filters:
+    needs: check-lean-ci
+    runs-on: ubuntu-latest
+    outputs:
+      conda_lean_filter: ${{ steps.set-filters.outputs.conda_lean_filter }}
+      conda_test_filter: ${{ steps.set-filters.outputs.conda_test_filter }}
+      wheel_lean_filter: ${{ steps.set-filters.outputs.wheel_lean_filter }}
+      mps_parser_filter: ${{ steps.set-filters.outputs.mps_parser_filter }}
+      libcuopt_filter: ${{ steps.set-filters.outputs.libcuopt_filter }}
+      cuopt_server_filter: ${{ steps.set-filters.outputs.cuopt_server_filter }}
+      cuopt_sh_client_filter: ${{ steps.set-filters.outputs.cuopt_sh_client_filter }}
+    steps:
+      - name: Set matrix filters
+        id: set-filters
+        run: |
+          if [ "${{ needs.check-lean-ci.outputs.lean_ci_enabled }}" == "true" ]; then
+            echo "conda_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.10\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "conda_test_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.13\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "wheel_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "mps_parser_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "libcuopt_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "cuopt_server_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+          else
+            echo "conda_lean_filter=." >> $GITHUB_OUTPUT
+            echo "conda_test_filter=." >> $GITHUB_OUTPUT
+            echo "wheel_lean_filter=." >> $GITHUB_OUTPUT
+            echo "mps_parser_filter=group_by([.ARCH, (.PY_VER |split(\".\") | map(tonumber))])|map(max_by([(.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
+            echo "libcuopt_filter=group_by([.ARCH, (.CUDA_VER|split(\".\")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(\".\")|map(tonumber)))" >> $GITHUB_OUTPUT
+            echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
+            echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | min_by((.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(-tonumber)))]" >> $GITHUB_OUTPUT
+          fi
+
   changed-files:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@main
@@ -102,31 +176,33 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
     with:
       enable_check_generated_files: false
-
   conda-cpp-build:
-    needs: checks
+    needs: [checks, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@main
     with:
       build_type: pull-request
       script: ci/build_cpp.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
   conda-cpp-tests:
-    needs: [conda-cpp-build, changed-files]
+    needs: [conda-cpp-build, changed-files, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
   conda-python-build:
-    needs: conda-cpp-build
+    needs: [conda-cpp-build, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
     with:
       build_type: pull-request
       script: ci/build_python.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
   conda-python-tests:
-    needs: [conda-python-build, changed-files]
+    needs: [conda-python-build, changed-files, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python
@@ -134,6 +210,7 @@ jobs:
       run_codecov: false
       build_type: pull-request
       script: ci/test_python.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
   docs-build:
     needs: conda-python-build
     secrets: inherit
@@ -147,6 +224,7 @@ jobs:
       container_image: "rapidsai/ci-conda:26.02-latest"
       script: "ci/build_docs.sh"
   wheel-build-cuopt-mps-parser:
+    needs: compute-matrix-filters
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -156,20 +234,20 @@ jobs:
       package-type: python
       append-cuda-suffix: false
       # need 1 build per Python version and arch (but CUDA version doesn't matter so choose the latest)
-      matrix_filter: 'group_by([.ARCH, (.PY_VER |split(".") | map(tonumber))])|map(max_by([(.CUDA_VER|split(".")|map(tonumber))]))'
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.mps_parser_filter }}
   wheel-build-libcuopt:
-    needs: wheel-build-cuopt-mps-parser
+    needs: [wheel-build-cuopt-mps-parser, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       # build for every combination of arch and CUDA version, but only for the latest Python
-      matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_filter }}
       package-type: cpp
       package-name: libcuopt
       build_type: pull-request
       script: ci/build_wheel_libcuopt.sh
   wheel-build-cuopt:
-    needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt]
+    needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -177,16 +255,18 @@ jobs:
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
   wheel-tests-cuopt:
-    needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, wheel-build-cuopt-sh-client, changed-files]
+    needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, wheel-build-cuopt-sh-client, changed-files, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
   wheel-build-cuopt-server:
-    needs: checks
+    needs: [checks, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -196,8 +276,9 @@ jobs:
       package-type: python
       pure-wheel: true
       # Only need 1 package per CUDA major version. This selects "ARCH=amd64 + the latest supported Python, 1 job per major CUDA version".
-      matrix_filter: map(select(.ARCH == "amd64")) | group_by(.CUDA_VER|split(".")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(".")|map(tonumber)), (.CUDA_VER|split(".")|map(tonumber))]))
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_filter }}
   wheel-build-cuopt-sh-client:
+    needs: compute-matrix-filters
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -208,15 +289,16 @@ jobs:
       append-cuda-suffix: false
       pure-wheel: true
       # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
-      matrix_filter: '[map(select(.ARCH == "amd64")) | min_by((.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber)))]'
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_sh_client_filter }}
   wheel-tests-cuopt-server:
-    needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
+    needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files, compute-matrix-filters]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt_server
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
   test-self-hosted-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
     secrets: inherit
