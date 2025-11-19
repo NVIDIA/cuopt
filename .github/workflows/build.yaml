@@ -38,7 +38,7 @@ on:
         default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.branch || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
