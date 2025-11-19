@@ -70,9 +70,9 @@ create_manifest \
     "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
     "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
 
-# Only create latest manifests for release builds
-if [[ "${BUILD_TYPE}" == "release" ]]; then
-    echo "=== Creating latest manifests for release build ==="
+# Only create latest manifests for release versions (semantic version without 'a')
+if [[ "${IMAGE_TAG_PREFIX}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "${IMAGE_TAG_PREFIX}" != *"a"* ]]; then
+    echo "=== Creating latest manifests for release version: ${IMAGE_TAG_PREFIX} ==="
 
     echo "Creating Docker Hub latest manifest..."
     create_manifest \
@@ -86,7 +86,7 @@ if [[ "${BUILD_TYPE}" == "release" ]]; then
         "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
         "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
 else
-    echo "Skipping latest manifest creation (BUILD_TYPE=${BUILD_TYPE}, not 'release')"
+    echo "Skipping latest manifest creation (IMAGE_TAG_PREFIX='${IMAGE_TAG_PREFIX}' is not a release version)"
 fi
 
 echo "=== Multi-architecture manifest creation completed ==="
