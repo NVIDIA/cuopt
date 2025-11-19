@@ -478,6 +478,13 @@ bool is_remote_solve_enabled(const char** host, const char** port)
   return (*host != nullptr && *port != nullptr);
 }
 
+// Check if sync mode is enabled (default is async)
+static bool use_sync_mode()
+{
+  const char* sync_env = std::getenv("CUOPT_REMOTE_USE_SYNC");
+  return (sync_env != nullptr && std::string(sync_env) == "1");
+}
+
 // Helper: Create and connect socket
 static int connect_to_server(const char* host, const char* port)
 {
@@ -683,7 +690,48 @@ static void delete_job(const char* host, const char* port, const std::string& jo
   }
 }
 
-// Solve LP problem remotely using async server (blocking mode)
+// Helper: Submit job in sync mode (blocking) and get result directly
+static cuopt::remote::ResultResponse submit_job_sync(const char* host,
+                                                     const char* port,
+                                                     const cuopt::remote::AsyncRequest& request)
+{
+  int sockfd = connect_to_server(host, port);
+
+  try {
+    // Serialize and send request
+    std::string request_data = request.SerializeAsString();
+    uint32_t request_size    = static_cast<uint32_t>(request_data.size());
+
+    write_all(sockfd, &request_size, sizeof(request_size));
+    write_all(sockfd, request_data.data(), request_data.size());
+
+    // Read response
+    uint32_t response_size;
+    read_all(sockfd, &response_size, sizeof(response_size));
+
+    std::vector<uint8_t> response_data(response_size);
+    read_all(sockfd, response_data.data(), response_size);
+
+    close(sockfd);
+
+    // Parse response
+    cuopt::remote::AsyncResponse async_response;
+    if (!async_response.ParseFromArray(response_data.data(), response_size)) {
+      throw std::runtime_error("Failed to parse AsyncResponse");
+    }
+
+    if (!async_response.has_result_response()) {
+      throw std::runtime_error("AsyncResponse does not contain result_response (sync mode)");
+    }
+
+    return async_response.result_response();
+  } catch (...) {
+    close(sockfd);
+    throw;
+  }
+}
+
+// Solve LP problem remotely using async server (sync or async mode)
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
   const optimization_problem_t<i_t, f_t>& problem, const pdlp_solver_settings_t<i_t, f_t>& settings)
@@ -695,16 +743,22 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
     throw std::runtime_error("Remote solve not enabled (CUOPT_REMOTE_HOST/PORT not set)");
   }
 
-  fprintf(stderr, "[solve_lp_remote] Connecting to %s:%s (async server, async mode)\n", host, port);
+  // Check if sync or async mode
+  const bool sync_mode = use_sync_mode();
+  fprintf(stderr,
+          "[solve_lp_remote] Connecting to %s:%s (async server, %s mode)\n",
+          host,
+          port,
+          sync_mode ? "sync" : "async");
 
   try {
-    // Create AsyncRequest for async job submission
-    cuopt::remote::AsyncRequest submit_request;
-    submit_request.set_request_type(cuopt::remote::SUBMIT_JOB);
-    submit_request.set_blocking(false);  // Use true async mode
+    // Create AsyncRequest
+    cuopt::remote::AsyncRequest request;
+    request.set_request_type(cuopt::remote::SUBMIT_JOB);
+    request.set_blocking(sync_mode);
 
     // Add LP problem data
-    auto* lp_request = submit_request.mutable_lp_request();
+    auto* lp_request = request.mutable_lp_request();
 
     // Set header
     auto* header = lp_request->mutable_header();
@@ -716,20 +770,31 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
     // Convert problem to protobuf
     problem_to_protobuf(problem, lp_request->mutable_problem());
 
-    // Submit job and get job ID
-    std::string job_id = submit_job(host, port, submit_request);
-    fprintf(stderr, "[solve_lp_remote] Job submitted, ID: %s\n", job_id.c_str());
+    cuopt::remote::ResultResponse result_response;
 
-    // Poll until job completes
-    fprintf(stderr, "[solve_lp_remote] Polling for completion...\n");
-    poll_until_complete(host, port, job_id);
+    if (sync_mode) {
+      // ===== SYNC MODE: Submit with blocking=true, get result directly =====
+      fprintf(stderr, "[solve_lp_remote] Sending blocking request, waiting for solution...\n");
+      result_response = submit_job_sync(host, port, request);
+      fprintf(stderr, "[solve_lp_remote] Solution received from sync request\n");
 
-    // Get result
-    fprintf(stderr, "[solve_lp_remote] Job complete, retrieving result...\n");
-    const auto result_response = get_result(host, port, job_id);
+    } else {
+      // ===== ASYNC MODE: Submit → Poll → Get Result → Delete =====
+      std::string job_id = submit_job(host, port, request);
+      fprintf(stderr, "[solve_lp_remote] Job submitted, ID: %s\n", job_id.c_str());
 
-    // Delete job
-    delete_job(host, port, job_id);
+      // Poll until job completes
+      fprintf(stderr, "[solve_lp_remote] Polling for completion...\n");
+      poll_until_complete(host, port, job_id);
+
+      // Get result
+      fprintf(stderr, "[solve_lp_remote] Job complete, retrieving result...\n");
+      result_response = get_result(host, port, job_id);
+
+      // Delete job
+      delete_job(host, port, job_id);
+      fprintf(stderr, "[solve_lp_remote] Job deleted from server\n");
+    }
 
     // Check result status
     if (result_response.status() != cuopt::remote::SUCCESS) {
@@ -755,7 +820,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
   }
 }
 
-// Solve MIP problem remotely using async server (blocking mode)
+// Solve MIP problem remotely using async server (sync or async mode)
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip_remote(const optimization_problem_t<i_t, f_t>& problem,
                                           const mip_solver_settings_t<i_t, f_t>& settings)
@@ -767,17 +832,22 @@ mip_solution_t<i_t, f_t> solve_mip_remote(const optimization_problem_t<i_t, f_t>
     throw std::runtime_error("Remote solve not enabled (CUOPT_REMOTE_HOST/PORT not set)");
   }
 
-  fprintf(
-    stderr, "[solve_mip_remote] Connecting to %s:%s (async server, async mode)\n", host, port);
+  // Check if sync or async mode
+  const bool sync_mode = use_sync_mode();
+  fprintf(stderr,
+          "[solve_mip_remote] Connecting to %s:%s (async server, %s mode)\n",
+          host,
+          port,
+          sync_mode ? "sync" : "async");
 
   try {
-    // Create AsyncRequest for async job submission
-    cuopt::remote::AsyncRequest submit_request;
-    submit_request.set_request_type(cuopt::remote::SUBMIT_JOB);
-    submit_request.set_blocking(false);  // Use true async mode
+    // Create AsyncRequest
+    cuopt::remote::AsyncRequest request;
+    request.set_request_type(cuopt::remote::SUBMIT_JOB);
+    request.set_blocking(sync_mode);
 
     // Add MIP problem data
-    auto* mip_request = submit_request.mutable_mip_request();
+    auto* mip_request = request.mutable_mip_request();
 
     // Set header
     auto* header = mip_request->mutable_header();
@@ -789,20 +859,31 @@ mip_solution_t<i_t, f_t> solve_mip_remote(const optimization_problem_t<i_t, f_t>
     // Convert problem to protobuf
     problem_to_protobuf(problem, mip_request->mutable_problem());
 
-    // Submit job and get job ID
-    std::string job_id = submit_job(host, port, submit_request);
-    fprintf(stderr, "[solve_mip_remote] Job submitted, ID: %s\n", job_id.c_str());
+    cuopt::remote::ResultResponse result_response;
 
-    // Poll until job completes
-    fprintf(stderr, "[solve_mip_remote] Polling for completion...\n");
-    poll_until_complete(host, port, job_id);
+    if (sync_mode) {
+      // ===== SYNC MODE: Submit with blocking=true, get result directly =====
+      fprintf(stderr, "[solve_mip_remote] Sending blocking request, waiting for solution...\n");
+      result_response = submit_job_sync(host, port, request);
+      fprintf(stderr, "[solve_mip_remote] Solution received from sync request\n");
 
-    // Get result
-    fprintf(stderr, "[solve_mip_remote] Job complete, retrieving result...\n");
-    const auto result_response = get_result(host, port, job_id);
+    } else {
+      // ===== ASYNC MODE: Submit → Poll → Get Result → Delete =====
+      std::string job_id = submit_job(host, port, request);
+      fprintf(stderr, "[solve_mip_remote] Job submitted, ID: %s\n", job_id.c_str());
 
-    // Delete job
-    delete_job(host, port, job_id);
+      // Poll until job completes
+      fprintf(stderr, "[solve_mip_remote] Polling for completion...\n");
+      poll_until_complete(host, port, job_id);
+
+      // Get result
+      fprintf(stderr, "[solve_mip_remote] Job complete, retrieving result...\n");
+      result_response = get_result(host, port, job_id);
+
+      // Delete job
+      delete_job(host, port, job_id);
+      fprintf(stderr, "[solve_mip_remote] Job deleted from server\n");
+    }
 
     // Check result status
     if (result_response.status() != cuopt::remote::SUCCESS) {
