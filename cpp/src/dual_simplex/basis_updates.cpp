@@ -2100,6 +2100,8 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
 #ifdef CHECK_L_FACTOR
       if (L0_.check_matrix() == -1) { settings.log.printf("Bad L after basis repair\n"); }
 #endif
+
+      assert(deficient.size() > 0);
       return deficient.size();
     }
     settings.log.debug("Basis repaired\n");
