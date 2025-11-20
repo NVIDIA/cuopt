@@ -1193,7 +1193,7 @@ i_t basis_update_mpf_t<i_t, f_t>::scatter_into_workspace(const sparse_vector_t<i
 template <typename i_t, typename f_t>
 void basis_update_mpf_t<i_t, f_t>::grow_storage(i_t nz, i_t& S_start, i_t& S_nz)
 {
-  const i_t last_S_col     = num_updates_ * 2;
+  const i_t last_S_col     = S_.n;
   const i_t new_last_S_col = last_S_col + 2;
   if (new_last_S_col >= S_.col_start.size()) {
     S_.col_start.resize(new_last_S_col + refactor_frequency_);
@@ -1204,6 +1204,8 @@ void basis_update_mpf_t<i_t, f_t>::grow_storage(i_t nz, i_t& S_start, i_t& S_nz)
     S_.x.resize(std::max(2 * S_nz, S_nz + nz));
   }
   S_start = last_S_col;
+  assert(S_nz + nz <= S_.i.size());
+  assert(S_nz + nz <= S_.x.size());
 }
 
 template <typename i_t, typename f_t>
@@ -1914,6 +1916,8 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
   i_t S_start;
   i_t S_nz;
   grow_storage(nz + etilde.i.size(), S_start, S_nz);
+
+  if (nz + etilde.i.size() > S_.i.size()) {}
 
   S_.append_column(nz, xi_workspace_.data() + m, x_workspace_.data());
 

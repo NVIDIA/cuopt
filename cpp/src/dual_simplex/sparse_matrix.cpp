@@ -157,6 +157,8 @@ void csc_matrix_t<i_t, f_t>::append_column(const std::vector<f_t>& x)
   i_t nz        = this->col_start[this->n];
   for (i_t j = 0; j < xsz; ++j) {
     if (x[j] != 0.0) {
+      assert(nz < this->i.size());
+      assert(nz < this->x.size());
       this->i[nz] = j;
       this->x[nz] = x[j];
       nz++;
@@ -177,6 +179,8 @@ void csc_matrix_t<i_t, f_t>::append_column(const sparse_vector_t<i_t, f_t>& x)
     const i_t i     = x.i[k];
     const f_t x_val = x.x[k];
     if (x_val != 0.0) {
+      assert(nz < this->i.size());
+      assert(nz < this->x.size());
       this->i[nz] = i;
       this->x[nz] = x_val;
       nz++;
@@ -194,6 +198,8 @@ void csc_matrix_t<i_t, f_t>::append_column(i_t x_nz, i_t* i, f_t* x)
     const i_t i_val = i[k];
     const f_t x_val = x[i_val];
     if (x_val != 0.0) {
+      assert(nz < this->i.size());
+      assert(nz < this->x.size());
       this->i[nz] = i_val;
       this->x[nz] = x_val;
       nz++;
