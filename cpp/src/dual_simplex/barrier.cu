@@ -3733,7 +3733,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
         f_t relative_user_gap     = user_gap / (1.0 + std::abs(user_primal_objective));
 
         // FIXME:: use gap tolerance instead of complementarity tolerance
-        small_gap = small_gap && relative_user_gap < settings.barrier_relative_complementarity_tol;
+        small_gap =
+          small_gap && relative_user_gap < 1e2 * settings.barrier_relative_complementarity_tol;
       }
       converged = primal_feasible && dual_feasible && small_gap;
 

@@ -203,7 +203,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                                                   x,
                                                   d_one_.data(),
                                                   y,
-                                                  CUSPARSE_SPMV_CSR_ALG2,
+                                                  CUSPARSE_SPMV_CSR_ALG1,
                                                   &buffer_size_spmv,
                                                   handle_ptr_->get_stream()));
   spmv_buffer_.resize(buffer_size_spmv, handle_ptr_->get_stream());
@@ -215,7 +215,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                              x,
                              d_one_.data(),
                              y,
-                             CUSPARSE_SPMV_CSR_ALG2,
+                             CUSPARSE_SPMV_CSR_ALG1,
                              spmv_buffer_.data(),
                              handle_ptr->get_stream());
 
@@ -227,7 +227,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                                                   y,
                                                   d_one_.data(),
                                                   x,
-                                                  CUSPARSE_SPMV_CSR_ALG2,
+                                                  CUSPARSE_SPMV_CSR_ALG1,
                                                   &buffer_size_spmv,
                                                   handle_ptr_->get_stream()));
   spmv_buffer_transpose_.resize(buffer_size_spmv, handle_ptr_->get_stream());
@@ -239,7 +239,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                              y,
                              d_one_.data(),
                              x,
-                             CUSPARSE_SPMV_CSR_ALG2,
+                             CUSPARSE_SPMV_CSR_ALG1,
                              spmv_buffer_transpose_.data(),
                              handle_ptr->get_stream());
 }
@@ -293,7 +293,7 @@ void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
                                      x,
                                      d_beta->data(),
                                      y,
-                                     CUSPARSE_SPMV_CSR_ALG2,
+                                     CUSPARSE_SPMV_CSR_ALG1,
                                      (f_t*)spmv_buffer_.data(),
                                      handle_ptr_->get_stream());
 }
@@ -336,7 +336,7 @@ void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
                                      x,
                                      d_beta->data(),
                                      y,
-                                     CUSPARSE_SPMV_CSR_ALG2,
+                                     CUSPARSE_SPMV_CSR_ALG1,
                                      (f_t*)spmv_buffer_transpose_.data(),
                                      handle_ptr_->get_stream());
 }

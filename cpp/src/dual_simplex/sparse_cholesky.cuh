@@ -29,8 +29,8 @@
 
 #include "cudss.h"
 
-#define PERFORM_ANALYSIS 0
-#define USE_MATCHING     1
+#define PERFORM_ANALYSIS 1
+#define USE_MATCHING     0
 
 namespace cuopt::linear_programming::dual_simplex {
 
