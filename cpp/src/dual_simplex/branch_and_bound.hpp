@@ -42,13 +42,13 @@ enum class mip_exploration_status_t {
   COMPLETED  = 5,  // The solver finished exploring the tree
 };
 
-enum class node_children_status_t {
-  NO_CHILDREN         = 0,  // The node does not produced children
-  UP_CHILDREN_FIRST   = 1,  // The up child should be explored first
-  DOWN_CHILDREN_FIRST = 2,  // The down child should be explored first
-  TIME_LIMIT          = 3,  // The solver reached a time limit
-  ITERATION_LIMIT     = 4,  // The solver reached a iteration limit
-  NUMERICAL           = 5   // The solver encounter a numerical error when solving the node
+enum class node_solve_info_t {
+  NO_CHILDREN      = 0,  // The node does not produced children
+  UP_CHILD_FIRST   = 1,  // The up child should be explored first
+  DOWN_CHILD_FIRST = 2,  // The down child should be explored first
+  TIME_LIMIT       = 3,  // The solver reached a time limit
+  ITERATION_LIMIT  = 4,  // The solver reached a iteration limit
+  NUMERICAL        = 5   // The solver encounter a numerical error when solving the node
 };
 
 // Indicate the search and variable selection algorithms used by the thread (See [1]).
@@ -201,15 +201,15 @@ class branch_and_bound_t {
   void diving_thread(const csr_matrix_t<i_t, f_t>& Arow);
 
   // Solve the LP relaxation of a leaf node and update the tree.
-  node_children_status_t solve_node(mip_node_t<i_t, f_t>* node_ptr,
-                                    search_tree_t<i_t, f_t>& search_tree,
-                                    lp_problem_t<i_t, f_t>& leaf_problem,
-                                    bounds_strengthening_t<i_t, f_t>& node_presolver,
-                                    thread_type_t thread_type,
-                                    bool recompute,
-                                    const std::vector<f_t>& root_lower,
-                                    const std::vector<f_t>& root_upper,
-                                    logger_t& log);
+  node_solve_info_t solve_node(mip_node_t<i_t, f_t>* node_ptr,
+                               search_tree_t<i_t, f_t>& search_tree,
+                               lp_problem_t<i_t, f_t>& leaf_problem,
+                               bounds_strengthening_t<i_t, f_t>& node_presolver,
+                               thread_type_t thread_type,
+                               bool recompute,
+                               const std::vector<f_t>& root_lower,
+                               const std::vector<f_t>& root_upper,
+                               logger_t& log);
 
   // Sort the children based on the Martin's criteria.
   rounding_direction_t child_selection(mip_node_t<i_t, f_t>* node_ptr);

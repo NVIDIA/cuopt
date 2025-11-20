@@ -200,10 +200,10 @@ inline const char* feasible_solution_symbol(thread_type_t type)
   }
 }
 
-inline bool has_children(node_children_status_t status)
+inline bool has_children(node_solve_info_t status)
 {
-  return status == node_children_status_t::UP_CHILDREN_FIRST ||
-         status == node_children_status_t::DOWN_CHILDREN_FIRST;
+  return status == node_solve_info_t::UP_CHILD_FIRST ||
+         status == node_solve_info_t::DOWN_CHILD_FIRST;
 }
 
 }  // namespace
@@ -575,7 +575,7 @@ rounding_direction_t branch_and_bound_t<i_t, f_t>::child_selection(mip_node_t<i_
 }
 
 template <typename i_t, typename f_t>
-node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
+node_solve_info_t branch_and_bound_t<i_t, f_t>::solve_node(
   mip_node_t<i_t, f_t>* node_ptr,
   search_tree_t<i_t, f_t>& search_tree,
   lp_problem_t<i_t, f_t>& leaf_problem,
@@ -672,7 +672,7 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
     node_ptr->lower_bound = inf;
     search_tree.graphviz_node(log, node_ptr, "infeasible", 0.0);
     search_tree.update(node_ptr, node_status_t::INFEASIBLE);
-    return node_children_status_t::NO_CHILDREN;
+    return node_solve_info_t::NO_CHILDREN;
 
   } else if (lp_status == dual::status_t::CUTOFF) {
     // Node was cut off. Do not branch
@@ -680,7 +680,7 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
     f_t leaf_objective    = compute_objective(leaf_problem, leaf_solution.x);
     search_tree.graphviz_node(log, node_ptr, "cut off", leaf_objective);
     search_tree.update(node_ptr, node_status_t::FATHOMED);
-    return node_children_status_t::NO_CHILDREN;
+    return node_solve_info_t::NO_CHILDREN;
 
   } else if (lp_status == dual::status_t::OPTIMAL) {
     // LP was feasible
@@ -704,7 +704,7 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
       add_feasible_solution(leaf_objective, leaf_solution.x, node_ptr->depth, thread_type);
       search_tree.graphviz_node(log, node_ptr, "integer feasible", leaf_objective);
       search_tree.update(node_ptr, node_status_t::INTEGER_FEASIBLE);
-      return node_children_status_t::NO_CHILDREN;
+      return node_solve_info_t::NO_CHILDREN;
 
     } else if (leaf_objective <= upper_bound + abs_fathom_tol) {
       // Choose fractional variable to branch on
@@ -719,19 +719,19 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
       rounding_direction_t round_dir = child_selection(node_ptr);
 
       if (round_dir == rounding_direction_t::UP) {
-        return node_children_status_t::UP_CHILDREN_FIRST;
+        return node_solve_info_t::UP_CHILD_FIRST;
       } else {
-        return node_children_status_t::DOWN_CHILDREN_FIRST;
+        return node_solve_info_t::DOWN_CHILD_FIRST;
       }
 
     } else {
       search_tree.graphviz_node(log, node_ptr, "fathomed", leaf_objective);
       search_tree.update(node_ptr, node_status_t::FATHOMED);
-      return node_children_status_t::NO_CHILDREN;
+      return node_solve_info_t::NO_CHILDREN;
     }
   } else if (lp_status == dual::status_t::TIME_LIMIT) {
     search_tree.graphviz_node(log, node_ptr, "timeout", 0.0);
-    return node_children_status_t::TIME_LIMIT;
+    return node_solve_info_t::TIME_LIMIT;
 
   } else {
     if (thread_type == thread_type_t::EXPLORATION) {
@@ -747,7 +747,7 @@ node_children_status_t branch_and_bound_t<i_t, f_t>::solve_node(
 
     search_tree.graphviz_node(log, node_ptr, "numerical", 0.0);
     search_tree.update(node_ptr, node_status_t::NUMERICAL);
-    return node_children_status_t::NUMERICAL;
+    return node_solve_info_t::NUMERICAL;
   }
 }
 
@@ -819,17 +819,17 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(mip_node_t<i_t, f_t>* nod
   std::vector<char> row_sense;
   bounds_strengthening_t<i_t, f_t> node_presolver(leaf_problem, Arow, row_sense, var_types_);
 
-  node_children_status_t status = solve_node(node,
-                                             *search_tree,
-                                             leaf_problem,
-                                             node_presolver,
-                                             thread_type_t::EXPLORATION,
-                                             true,
-                                             original_lp_.lower,
-                                             original_lp_.upper,
-                                             settings_.log);
+  node_solve_info_t status = solve_node(node,
+                                        *search_tree,
+                                        leaf_problem,
+                                        node_presolver,
+                                        thread_type_t::EXPLORATION,
+                                        true,
+                                        original_lp_.lower,
+                                        original_lp_.upper,
+                                        settings_.log);
 
-  if (status == node_children_status_t::TIME_LIMIT) {
+  if (status == node_solve_info_t::TIME_LIMIT) {
     solver_status_ = mip_exploration_status_t::TIME_LIMIT;
     return;
 
@@ -932,19 +932,19 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
       return;
     }
 
-    node_children_status_t status = solve_node(node_ptr,
-                                               search_tree,
-                                               leaf_problem,
-                                               node_presolver,
-                                               thread_type_t::EXPLORATION,
-                                               recompute_bounds,
-                                               original_lp_.lower,
-                                               original_lp_.upper,
-                                               settings_.log);
+    node_solve_info_t status = solve_node(node_ptr,
+                                          search_tree,
+                                          leaf_problem,
+                                          node_presolver,
+                                          thread_type_t::EXPLORATION,
+                                          recompute_bounds,
+                                          original_lp_.lower,
+                                          original_lp_.upper,
+                                          settings_.log);
 
     recompute_bounds = !has_children(status);
 
-    if (status == node_children_status_t::TIME_LIMIT) {
+    if (status == node_solve_info_t::TIME_LIMIT) {
       solver_status_ = mip_exploration_status_t::TIME_LIMIT;
       return;
 
@@ -980,7 +980,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
 
       exploration_stats_.nodes_unexplored += 2;
 
-      if (status == node_children_status_t::UP_CHILDREN_FIRST) {
+      if (status == node_solve_info_t::UP_CHILD_FIRST) {
         stack.push_front(node_ptr->get_down_child());
         stack.push_front(node_ptr->get_up_child());
       } else {
@@ -1092,24 +1092,24 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
 
         if (toc(exploration_stats_.start_time) > settings_.time_limit) { return; }
 
-        node_children_status_t status = solve_node(node_ptr,
-                                                   subtree,
-                                                   leaf_problem,
-                                                   node_presolver,
-                                                   thread_type_t::DIVING,
-                                                   recompute_bounds,
-                                                   start_node->lower,
-                                                   start_node->upper,
-                                                   log);
+        node_solve_info_t status = solve_node(node_ptr,
+                                              subtree,
+                                              leaf_problem,
+                                              node_presolver,
+                                              thread_type_t::DIVING,
+                                              recompute_bounds,
+                                              start_node->lower,
+                                              start_node->upper,
+                                              log);
 
         recompute_bounds = !has_children(status);
 
-        if (status == node_children_status_t::TIME_LIMIT) {
+        if (status == node_solve_info_t::TIME_LIMIT) {
           solver_status_ = mip_exploration_status_t::TIME_LIMIT;
           return;
 
         } else if (has_children(status)) {
-          if (status == node_children_status_t::UP_CHILDREN_FIRST) {
+          if (status == node_solve_info_t::UP_CHILD_FIRST) {
             stack.push_front(node_ptr->get_down_child());
             stack.push_front(node_ptr->get_up_child());
           } else {

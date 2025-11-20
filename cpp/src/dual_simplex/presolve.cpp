@@ -572,6 +572,8 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
     csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
     problem.A.to_compressed_row(Arow);
 
+    settings.log.printf("Running bound strengthening\n");
+
     // Empty var_types means that all variables are continuous
     bounds_strengthening_t<i_t, f_t> strengthening(problem, Arow, row_sense, {});
     std::fill(strengthening.bounds_changed.begin(), strengthening.bounds_changed.end(), true);
