@@ -146,24 +146,6 @@ detected as infeasible for PDLP to stop.
 
 .. note:: the default value is false.
 
-Primal Infeasible Tolerance
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_PRIMAL_INFEASIBLE_TOLERANCE`` controls the tolerance used to determine if the primal problem is infeasible in PDLP.
-A smaller value makes the infeasibility detection stricter, while a larger value makes it more lenient.
-This parameter is only used when ``CUOPT_INFEASIBILITY_DETECTION`` is enabled.
-
-.. note:: the default value is ``1e-8``.
-
-Dual Infeasible Tolerance
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_DUAL_INFEASIBLE_TOLERANCE`` controls the tolerance used to determine if the dual problem is infeasible in PDLP.
-A smaller value makes the infeasibility detection stricter, while a larger value makes it more lenient.
-This parameter is only used when ``CUOPT_INFEASIBILITY_DETECTION`` is enabled.
-
-.. note:: the default value is ``1e-8``.
-
 .. _crossover:
 
 Crossover
