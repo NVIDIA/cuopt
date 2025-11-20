@@ -1194,9 +1194,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   problem.Q.check_matrix("Before free variable expansion");
 
   if (settings.barrier_presolve && free_variables > 0) {
-#ifdef PRINT_INFO
     settings.log.printf("%d free variables\n", free_variables);
-#endif
 
     // We have a variable x_j: with -inf < x_j < inf
     // we create new variables v and w with 0 <= v, w and x_j = v - w
