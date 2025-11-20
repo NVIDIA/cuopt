@@ -24,6 +24,8 @@ def data_(request):
     return df, file_name
 
 
+# TO-DO: Remove this skip once the TSP Link is fixed and issue #609 is closed
+@pytest.mark.skip(reason="Skipping TSP tests")
 def test_tsp(data_):
     df, file_name = data_
     # read reference, if it doesn't exists skip the test
