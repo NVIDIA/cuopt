@@ -127,7 +127,7 @@ cuOpt will stop at the first limit (iteration or time) reached.
 
 
 Infeasibility Detection
-^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``CUOPT_INFEASIBILITY_DETECTION`` controls whether PDLP should detect infeasibility. Note that infeasibility detection in PDLP
 is not always accurate. Some problems detected as infeasible may converge under a different tolerance factor.
