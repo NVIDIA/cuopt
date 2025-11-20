@@ -784,13 +784,19 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
 {
   try {
     // Create log stream for file logging and add it to default logger
-    init_logger_t log(settings.log_file, settings.log_to_console);
+    // Skip logger initialization in batch mode to avoid race conditions
+    std::unique_ptr<init_logger_t> log;
+    if (!is_batch_mode) {
+      log = std::make_unique<init_logger_t>(settings.log_file, settings.log_to_console);
+    }
 
     // Init libraies before to not include it in solve time
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
 
-    print_version_info();
+    if (!is_batch_mode) {
+      print_version_info();
+    }
 
     raft::common::nvtx::range fun_scope("Running solver");
 
