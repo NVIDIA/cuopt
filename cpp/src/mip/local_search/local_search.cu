@@ -127,8 +127,8 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
       }
     };
 
-  // default weights
-  cudaDeviceSynchronize();
+  // Synchronize the stream instead of the entire device
+  context.problem_ptr->handle_ptr->sync_stream();
   scratch_cpu_fj_on_lp_opt.start_cpu_solver();
 }
 

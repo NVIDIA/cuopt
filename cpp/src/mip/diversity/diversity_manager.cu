@@ -384,6 +384,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     }
     // in case the pdlp returned var boudns that are out of bounds
     clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
+    // Ensure all device operations are complete before using lp_optimal_solution
+    problem_ptr->handle_ptr->sync_stream();
   }
 
   if (ls.lp_optimal_exists) {
