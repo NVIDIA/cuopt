@@ -272,7 +272,7 @@ class iteration_data_t {
       use_augmented   = true;
       n_dense_columns = 0;
     }
-    use_augmented = true;
+
     if (has_Q && !use_augmented) {
       // For now let's not deal with dense columns
       n_dense_columns = 0;
