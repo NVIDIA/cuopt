@@ -46,7 +46,7 @@ class cusparse_dn_vec_descr_wrapper_t {
   ~cusparse_dn_vec_descr_wrapper_t();
 
   cusparse_dn_vec_descr_wrapper_t(const cusparse_dn_vec_descr_wrapper_t& other);
-
+  cusparse_dn_vec_descr_wrapper_t& operator=(cusparse_dn_vec_descr_wrapper_t&& other);
   cusparse_dn_vec_descr_wrapper_t& operator=(const cusparse_dn_vec_descr_wrapper_t& other) = delete;
 
   void create(int64_t size, f_t* values);
