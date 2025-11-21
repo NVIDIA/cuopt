@@ -13,9 +13,6 @@ import cudf
 from cuopt import routing
 from cuopt.routing import utils_wrapper
 
-# Enable once cupy 13.4.0 is available
-# from cupyx.scipy.spatial import distance
-
 
 def generate_dataset(
     locations=100,
@@ -969,8 +966,6 @@ def create_from_yaml_file(file_path):
     return df, vehicle_capacity, vehicle_num
 
 
-# This is temporary till cupy releases new version > 13.3.0
-# which has fix with cuvs for cdist
 def euclidean_distance(coord):
     coord = np.array(coord)
     n_coord = len(coord)
