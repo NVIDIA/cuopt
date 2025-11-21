@@ -171,6 +171,7 @@ class iteration_data_t {
       d_complementarity_xz_rhs_(lp.num_cols, lp.handle_ptr->get_stream()),
       d_complementarity_wv_rhs_(0, lp.handle_ptr->get_stream()),
       d_dual_rhs_(lp.num_cols, lp.handle_ptr->get_stream()),
+      d_Q_diag_(0, lp.handle_ptr->get_stream()),
       restrict_u_(0),
       transform_reduce_helper_(lp.handle_ptr->get_stream()),
       sum_reduce_helper_(lp.handle_ptr->get_stream())
@@ -195,6 +196,22 @@ class iteration_data_t {
           Q.col_start[i + 1] = nz;
         }
       }
+    }
+
+    settings.log.printf("Q.n: %d, Q.is_diagonal(): %d\n", lp.Q.n, lp.Q.is_diagonal());
+
+    if (lp.Q.n > 0 && lp.Q.is_diagonal()) {
+      d_Q_diag_.resize(lp.Q.n, stream_view_);
+      std::vector<f_t> Q_diag(lp.Q.n, 0.0);
+      for (i_t i = 0; i < lp.Q.m; i++) {
+        for (i_t j = lp.Q.row_start[i]; j < lp.Q.row_start[i + 1]; j++) {
+          if (lp.Q.j[j] == i) {
+            Q_diag[i] = lp.Q.x[j];
+            break;
+          }
+        }
+      }
+      raft::copy(d_Q_diag_.data(), Q_diag.data(), Q_diag.size(), stream_view_);
     }
 
     // Allocating GPU flag data for Form ADAT
@@ -255,9 +272,11 @@ class iteration_data_t {
       use_augmented   = true;
       n_dense_columns = 0;
     }
-    if (has_Q) {
-      use_augmented   = true;
+    use_augmented = true;
+    if (has_Q && !use_augmented) {
+      // For now let's not deal with dense columns
       n_dense_columns = 0;
+      use_augmented   = !lp.Q.is_diagonal();
     }
     if (use_augmented) {
       settings.log.printf("Linear system               : augmented\n");
@@ -1532,6 +1551,8 @@ class iteration_data_t {
   rmm::device_uvector<f_t> d_complementarity_wv_rhs_;
   rmm::device_uvector<f_t> d_dual_rhs_;
 
+  rmm::device_uvector<f_t> d_Q_diag_;
+
   pinned_dense_vector_t<i_t, f_t> restrict_u_;
 
   transform_reduce_helper_t<f_t> transform_reduce_helper_;
@@ -2232,6 +2253,16 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         [] HD(f_t v_k, f_t w_k, f_t diag_j) { return diag_j + (v_k / w_k); },
         stream_view_);
       RAFT_CHECK_CUDA(stream_view_);
+    }
+
+    // diag = z ./ x + E * (v ./ w) * E' + Q (if Q is diagonal)
+    if (lp.Q.n > 0 && lp.Q.is_diagonal()) {
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(data.d_Q_diag_.data(), data.d_diag_.data()),
+        data.d_diag_.data(),
+        data.d_diag_.size(),
+        [] HD(f_t Q_diag_j, f_t diag_j) { return diag_j + Q_diag_j; },
+        stream_view_);
     }
 
     // inv_diag = 1.0 ./ diag

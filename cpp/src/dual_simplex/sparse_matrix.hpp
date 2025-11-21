@@ -122,6 +122,17 @@ class csc_matrix_t {
 
   size_t hash() const;
 
+  bool is_diagonal() const
+  {
+    for (i_t j = 0; j < n; j++) {
+      for (i_t k = col_start[j]; k < col_start[j + 1]; k++) {
+        i_t row = i[k];
+        if (row != j) { return false; }
+      }
+    }
+    return true;
+  }
+
   i_t m;                       // number of rows
   i_t n;                       // number of columns
   i_t nz_max;                  // maximum number of entries
@@ -150,6 +161,17 @@ class csr_matrix_t {
 
   // Ensures no repeated column indices within a row
   void check_matrix(std::string matrix_name = "") const;
+
+  bool is_diagonal() const
+  {
+    for (i_t i = 0; i < m; i++) {
+      for (i_t k = row_start[i]; k < row_start[i + 1]; k++) {
+        i_t col = j[k];
+        if (col != i) { return false; }
+      }
+    }
+    return true;
+  }
 
   i_t nz_max;                  // maximum number of nonzero entries
   i_t m;                       // number of rows
