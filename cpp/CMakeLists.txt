@@ -46,7 +46,7 @@ option(BUILD_LP_ONLY "Build only linear programming components, exclude routing 
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
 option(WRITE_FATBIN "Enable fatbin writing" ON)
-option(HOST_LINEINFO "Build with debug line information for host code" OFF)
+option(HOST_LINEINFO "Build with debug line information for host code" ON)
 
 message(VERBOSE "cuOpt: Enable nvcc -lineinfo: ${CMAKE_CUDA_LINEINFO}")
 message(VERBOSE "cuOpt: Build cuOpt unit-tests: ${BUILD_TESTS}")
