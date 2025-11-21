@@ -76,6 +76,16 @@ cusparse_dn_vec_descr_wrapper_t<f_t>::cusparse_dn_vec_descr_wrapper_t(
 }
 
 template <typename f_t>
+cusparse_dn_vec_descr_wrapper_t<f_t>& cusparse_dn_vec_descr_wrapper_t<f_t>::operator=(
+  cusparse_dn_vec_descr_wrapper_t<f_t>&& other)
+{
+  if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(descr_)); }
+  descr_                  = other.descr_;
+  other.need_destruction_ = false;
+  return *this;
+}
+
+template <typename f_t>
 void cusparse_dn_vec_descr_wrapper_t<f_t>::create(int64_t size, f_t* values)
 {
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&descr_, size, values));
