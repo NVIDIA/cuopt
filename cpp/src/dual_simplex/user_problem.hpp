@@ -244,7 +244,6 @@ struct user_problem_t {
   std::vector<i_t> Q_offsets;
   std::vector<i_t> Q_indices;
   std::vector<f_t> Q_values;
-  bool Q_is_diagonal = false;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

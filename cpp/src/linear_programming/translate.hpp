@@ -111,24 +111,27 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
   user_problem.Q_indices = model.Q_indices;
   user_problem.Q_values  = model.Q_values;
 
-  CUOPT_LOG_INFO("user_problem.Q_offsets: %zu", user_problem.Q_offsets.size());
-  CUOPT_LOG_INFO("user_problem.Q_indices: %zu", user_problem.Q_indices.size());
-  CUOPT_LOG_INFO("user_problem.Q_values: %zu", user_problem.Q_values.size());
-  // Check if Q is diagonal matrix
-  bool Q_is_diagonal = true;
-  for (size_t j = 0; j < user_problem.Q_offsets.size() - 1; ++j) {
-    size_t start = user_problem.Q_offsets[j];
-    size_t end   = user_problem.Q_offsets[j + 1];
-    for (size_t p = start; p < end; ++p) {
-      if (user_problem.Q_indices[p] != static_cast<int>(j)) {
-        Q_is_diagonal = false;
-        break;
+  bool has_Q = user_problem.Q_values.size() > 0;
+  if (has_Q) {
+    CUOPT_LOG_INFO("user_problem.Q_offsets: %zu", user_problem.Q_offsets.size());
+    CUOPT_LOG_INFO("user_problem.Q_indices: %zu", user_problem.Q_indices.size());
+    CUOPT_LOG_INFO("user_problem.Q_values: %zu", user_problem.Q_values.size());
+    // Check if Q is diagonal matrix
+    bool Q_is_diagonal = true;
+
+    for (size_t j = 0; j < user_problem.Q_offsets.size() - 1; ++j) {
+      size_t start = user_problem.Q_offsets[j];
+      size_t end   = user_problem.Q_offsets[j + 1];
+      for (size_t p = start; p < end; ++p) {
+        if (user_problem.Q_indices[p] != static_cast<int>(j)) {
+          Q_is_diagonal = false;
+          break;
+        }
       }
+      if (!Q_is_diagonal) break;
     }
-    if (!Q_is_diagonal) break;
+    CUOPT_LOG_INFO("Q_is_diagonal: %d", Q_is_diagonal);
   }
-  CUOPT_LOG_INFO("Q_is_diagonal: %d", Q_is_diagonal);
-  user_problem.Q_is_diagonal = Q_is_diagonal;
 
   return user_problem;
 }
