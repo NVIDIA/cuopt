@@ -1918,8 +1918,6 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
   i_t S_nz;
   grow_storage(nz + etilde.i.size(), S_start, S_nz);
 
-  if (nz + etilde.i.size() > S_.i.size()) {}
-
   S_.append_column(nz, xi_workspace_.data() + m, x_workspace_.data());
 
   // Gather etilde into a column of S
