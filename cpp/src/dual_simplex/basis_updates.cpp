@@ -1193,7 +1193,8 @@ i_t basis_update_mpf_t<i_t, f_t>::scatter_into_workspace(const sparse_vector_t<i
 template <typename i_t, typename f_t>
 void basis_update_mpf_t<i_t, f_t>::grow_storage(i_t nz, i_t& S_start, i_t& S_nz)
 {
-  const i_t last_S_col     = num_updates_ * 2;
+  const i_t last_S_col = num_updates_ * 2;
+  assert(S_.n == last_S_col);
   const i_t new_last_S_col = last_S_col + 2;
   if (new_last_S_col >= S_.col_start.size()) {
     S_.col_start.resize(new_last_S_col + refactor_frequency_);
@@ -1204,6 +1205,8 @@ void basis_update_mpf_t<i_t, f_t>::grow_storage(i_t nz, i_t& S_start, i_t& S_nz)
     S_.x.resize(std::max(2 * S_nz, S_nz + nz));
   }
   S_start = last_S_col;
+  assert(S_nz + nz <= S_.i.size());
+  assert(S_nz + nz <= S_.x.size());
 }
 
 template <typename i_t, typename f_t>
@@ -1864,7 +1867,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const std::vector<f_t>& utilde,
                                   S_.x.data() + S_.col_start[S_start + 1],
                                   v_nz);
 
-  if (std::abs(mu) < 1e-13) {
+  if (std::abs(mu) < 1E-8 || std::abs(mu) > 1E+8) {
     // Force a refactor. Otherwise we will get numerical issues when dividing by mu.
     return 1;
   }
@@ -1928,7 +1931,8 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
                                   S_.i.data() + S_.col_start[S_start + 1],
                                   S_.x.data() + S_.col_start[S_start + 1],
                                   S_.col_start[S_start + 2] - S_.col_start[S_start + 1]);
-  if (std::abs(mu) < 1e-13) {
+
+  if (std::abs(mu) < 1E-8 || std::abs(mu) > 1E+8) {
     // Force a refactor. Otherwise we will get numerical issues when dividing by mu.
     return 1;
   }
@@ -2094,6 +2098,8 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
 #ifdef CHECK_L_FACTOR
       if (L0_.check_matrix() == -1) { settings.log.printf("Bad L after basis repair\n"); }
 #endif
+
+      assert(deficient.size() > 0);
       return deficient.size();
     }
     settings.log.debug("Basis repaired\n");
