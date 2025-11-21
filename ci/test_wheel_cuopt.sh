@@ -62,6 +62,10 @@ timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 # Due to race condition in certain cases UCX might not be able to cleanup properly, so we set the number of threads to 1
 export OMP_NUM_THREADS=1
 
+# Enable Address Sanitizer for debugging
+export LD_PRELOAD="$(gcc -print-file-name=libasan.so)"
+export ASAN_OPTIONS='protect_shadow_gap=0:replace_intrin=0'
+
 RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt/cuopt/tests/
 
 # run thirdparty integration tests for only nightly builds

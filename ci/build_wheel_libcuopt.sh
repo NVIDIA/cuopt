@@ -17,14 +17,14 @@ fi
 # Install Boost and TBB
 bash ci/utils/install_boost_tbb.sh
 
-export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNING=ON"
+export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNING=ON;-DBUILD_SANITIZER=ON"
 
 # For pull requests we are enabling assert mode.
 if [ "$RAPIDS_BUILD_TYPE" = "pull-request" ]; then
-    echo "Building in assert mode"
+    echo "Building in assert mode with sanitizer"
     export SKBUILD_CMAKE_ARGS="${SKBUILD_CMAKE_ARGS};-DDEFINE_ASSERT=True"
 else
-    echo "Building in release mode"
+    echo "Building in release mode with sanitizer"
 fi
 
 # Install cudss
