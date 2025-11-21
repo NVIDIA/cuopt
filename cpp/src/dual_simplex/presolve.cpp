@@ -314,12 +314,15 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
 
   // Check to see if a variable participates in a quadratic objective
   std::vector<bool> has_quadratic_term(problem.num_cols, false);
-  for (i_t j = 0; j < problem.num_cols; ++j) {
-    const i_t row_start = problem.Q.row_start[j];
-    const i_t row_end   = problem.Q.row_start[j + 1];
-    if (row_end - row_start == 0) { continue; }
-    // Q is symmetric, so its sufficient to check only the row size
-    has_quadratic_term[j] = true;
+
+  if (problem.Q.n > 0) {
+    for (i_t j = 0; j < problem.num_cols; ++j) {
+      const i_t row_start = problem.Q.row_start[j];
+      const i_t row_end   = problem.Q.row_start[j + 1];
+      if (row_end - row_start == 0) { continue; }
+      // Q is symmetric, so its sufficient to check only the row size
+      has_quadratic_term[j] = true;
+    }
   }
 
   std::vector<i_t> col_marker(problem.num_cols);
@@ -1191,11 +1194,10 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
 
+  settings.log.printf("%d free variables\n", free_variables);
   problem.Q.check_matrix("Before free variable expansion");
 
   if (settings.barrier_presolve && free_variables > 0) {
-    settings.log.printf("%d free variables\n", free_variables);
-
     // We have a variable x_j: with -inf < x_j < inf
     // we create new variables v and w with 0 <= v, w and x_j = v - w
     // Constraints
