@@ -181,7 +181,7 @@ class device_csc_matrix_t {
                          static_cast<i_t>(col_start.size() - 1)),  // Skip the end index
                        [span_col_start = cuopt::make_span(col_start),
                         span_col_index = cuopt::make_span(col_index)] __device__(i_t i) {
-                         if (span_col_start[i] < span_col_start.size()) {
+                         if (span_col_start[i] < span_col_index.size()) {
                            span_col_index[span_col_start[i]] = 1;
                          }
                        });
