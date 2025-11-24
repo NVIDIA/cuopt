@@ -100,6 +100,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                 "preprocess_problem should be called before running the solver");
 
   if (context.problem_ptr->empty) {
+    CUOPT_LOG_INFO("Optimal solution found during presolve");
     CUOPT_LOG_INFO("Problem fully reduced in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
@@ -118,6 +119,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     return sol;
   }
   if (context.problem_ptr->empty) {
+    CUOPT_LOG_INFO("Optimal solution found during presolve");
     CUOPT_LOG_INFO("Problem full reduced in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
