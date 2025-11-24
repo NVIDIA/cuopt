@@ -10,9 +10,9 @@ package_name="libcuopt"
 package_dir="python/libcuopt"
 
 # Install rockylinux repo
-if command -v dnf &> /dev/null; then
-    bash ci/utils/update_rockylinux_repo.sh
-fi
+#if command -v dnf &> /dev/null; then
+#    bash ci/utils/update_rockylinux_repo.sh
+#fi
 
 # Install sanitizer libraries (needed for BUILD_SANITIZER=ON)
 if command -v apt-get &> /dev/null; then
@@ -21,9 +21,9 @@ if command -v apt-get &> /dev/null; then
 elif command -v dnf &> /dev/null; then
     dnf -y update
     # Install sanitizer libraries from gcc-toolset if available, fallback to base system packages
-    if dnf list installed gcc-toolset-14 &> /dev/null; then
+    if dnf list installed gcc-toolset-14-gcc &> /dev/null; then
         dnf -y install gcc-toolset-14-libasan-devel gcc-toolset-14-libubsan-devel || dnf -y install libasan libubsan
-    elif dnf list installed gcc-toolset-13 &> /dev/null; then
+    elif dnf list installed gcc-toolset-13-gcc &> /dev/null; then
         dnf -y install gcc-toolset-13-libasan-devel gcc-toolset-13-libubsan-devel || dnf -y install libasan libubsan
     else
         dnf -y install libasan libubsan
@@ -31,7 +31,7 @@ elif command -v dnf &> /dev/null; then
 fi
 
 # Install Boost and TBB
-bash ci/utils/install_boost_tbb.sh
+#bash ci/utils/install_boost_tbb.sh
 
 export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNING=ON;-DBUILD_SANITIZER=ON"
 
@@ -44,26 +44,26 @@ else
 fi
 
 # Install cudss
-bash ci/utils/install_cudss.sh
+# bash ci/utils/install_cudss.sh
 
-rapids-logger "Generating build requirements"
+# rapids-logger "Generating build requirements"
 
-CUOPT_MPS_PARSER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python)
-echo "cuopt-mps-parser @ file://$(echo ${CUOPT_MPS_PARSER_WHEELHOUSE}/cuopt_mps_parser*.whl)" >> /tmp/constraints.txt
-export PIP_CONSTRAINT="/tmp/constraints.txt"
+#CUOPT_MPS_PARSER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python)
+#echo "cuopt-mps-parser @ file://$(echo ${CUOPT_MPS_PARSER_WHEELHOUSE}/cuopt_mps_parser*.whl)" >> /tmp/constraints.txt
+#export PIP_CONSTRAINT="/tmp/constraints.txt"
 
-rapids-dependency-file-generator \
-  --output requirements \
-  --file-key "py_build_${package_name}" \
-  --file-key "py_rapids_build_${package_name}" \
-  --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch);py=${RAPIDS_PY_VERSION};cuda_suffixed=true" \
-| tee /tmp/requirements-build.txt
+#rapids-dependency-file-generator \
+#  --output requirements \
+#  --file-key "py_build_${package_name}" \
+#  --file-key "py_rapids_build_${package_name}" \
+#  --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch);py=${RAPIDS_PY_VERSION};cuda_suffixed=true" \
+#| tee /tmp/requirements-build.txt
 
-rapids-logger "Installing build requirements"
-rapids-pip-retry install \
-    -v \
-    --prefer-binary \
-    -r /tmp/requirements-build.txt
+# rapids-logger "Installing build requirements"
+# rapids-pip-retry install \
+#     -v \
+#     --prefer-binary \
+#     -r /tmp/requirements-build.txt
 
 # build with '--no-build-isolation', for better sccache hit rate
 # 0 really means "add --no-build-isolation" (ref: https://github.com/pypa/pip/issues/5735)

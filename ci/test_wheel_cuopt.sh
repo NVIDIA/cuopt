@@ -43,9 +43,9 @@ elif command -v dnf &> /dev/null; then
     dnf -y update
     dnf -y install file unzip
     # Install sanitizer libraries from gcc-toolset if available, fallback to base system packages
-    if dnf list installed gcc-toolset-14 &> /dev/null; then
+    if dnf list installed gcc-toolset-14-gcc &> /dev/null; then
         dnf -y install gcc-toolset-14-libasan-devel gcc-toolset-14-libubsan-devel || dnf -y install libasan libubsan
-    elif dnf list installed gcc-toolset-13 &> /dev/null; then
+    elif dnf list installed gcc-toolset-13-gcc &> /dev/null; then
         dnf -y install gcc-toolset-13-libasan-devel gcc-toolset-13-libubsan-devel || dnf -y install libasan libubsan
     else
         dnf -y install libasan libubsan
