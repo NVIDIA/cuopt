@@ -794,9 +794,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
 
-    if (!is_batch_mode) {
-      print_version_info();
-    }
+    if (!is_batch_mode) { print_version_info(); }
 
     raft::common::nvtx::range fun_scope("Running solver");
 
