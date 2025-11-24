@@ -995,6 +995,8 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
         if (get_heap_size() > settings_.num_bfs_threads) {
           std::vector<f_t> lower = original_lp_.lower;
           std::vector<f_t> upper = original_lp_.upper;
+          std::fill(
+            node_presolver.bounds_changed.begin(), node_presolver.bounds_changed.end(), false);
           node->get_variable_bounds(lower, upper, node_presolver.bounds_changed);
 
           mutex_dive_queue_.lock();
@@ -1179,6 +1181,8 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
 
             std::vector<f_t> lower = start_node->lower;
             std::vector<f_t> upper = start_node->upper;
+            std::fill(
+              node_presolver.bounds_changed.begin(), node_presolver.bounds_changed.end(), false);
             new_node->get_variable_bounds(lower, upper, node_presolver.bounds_changed);
 
             diving_queue_.emplace(new_node->detach_copy(), std::move(lower), std::move(upper));
