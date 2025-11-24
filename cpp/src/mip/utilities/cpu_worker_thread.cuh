@@ -83,7 +83,6 @@ void cpu_worker_thread_base_t<Derived>::cpu_worker_thread()
       std::lock_guard<std::mutex> lock(cpu_mutex);
       cpu_thread_done = true;
     }
-    cpu_cv.notify_all();
   }
 }
 
@@ -132,8 +131,9 @@ void cpu_worker_thread_base_t<Derived>::start_cpu_solver()
 template <typename Derived>
 bool cpu_worker_thread_base_t<Derived>::wait_for_cpu_solver()
 {
-  std::unique_lock<std::mutex> lock(cpu_mutex);
-  cpu_cv.wait(lock, [this] { return cpu_thread_done || cpu_thread_terminate; });
+  while (!cpu_thread_done && !cpu_thread_terminate) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
 
   return static_cast<Derived*>(this)->get_result();
 }

@@ -74,7 +74,6 @@ requirements:
     - cudf =${{ minor_version }}
     - cuopt-mps-parser =${{ version }}
     - cupy >=13.6.0
-    - cuvs =${{ minor_version }}
     - h5py
     - libcuopt =${{ version }}
     - numba >=0.60.0

@@ -91,45 +91,37 @@ class omp_atomic_t {
 
   T fetch_sub(T inc) { return fetch_add(-inc); }
 
- private:
-  T val;
-
-#ifndef __NVCC__
-  friend double fetch_min(omp_atomic_t<double>& atomic_var, double other);
-  friend double fetch_max(omp_atomic_t<double>& atomic_var, double other);
-#endif
-};
-
 // Atomic CAS are only supported in OpenMP v5.1
 // (gcc 12+ or clang 14+), however, nvcc (or the host compiler) cannot
 // parse it correctly yet
 #ifndef __NVCC__
 
-// Free non-template functions are necessary because of a clang 20 bug
-// when omp atomic compare is used within a templated context.
-// see https://github.com/llvm/llvm-project/issues/127466
-inline double fetch_min(omp_atomic_t<double>& atomic_var, double other)
-{
-  double old;
-#pragma omp atomic compare capture
+  T fetch_min(T other)
   {
-    old = atomic_var.val;
-    if (other < atomic_var.val) { atomic_var.val = other; }
+    T old;
+#pragma omp atomic compare capture
+    {
+      old = val;
+      val = other < val ? other : val;
+    }
+    return old;
   }
-  return old;
-}
 
-inline double fetch_max(omp_atomic_t<double>& atomic_var, double other)
-{
-  double old;
-#pragma omp atomic compare capture
+  T fetch_max(T other)
   {
-    old = atomic_var.val;
-    if (other > atomic_var.val) { atomic_var.val = other; }
+    T old;
+#pragma omp atomic compare capture
+    {
+      old = val;
+      val = other > val ? other : val;
+    }
+    return old;
   }
-  return old;
-}
 #endif
+
+ private:
+  T val;
+};
 
 #endif
 

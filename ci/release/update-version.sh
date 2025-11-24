@@ -99,7 +99,6 @@ echo "${RAPIDS_BRANCH_NAME}" > RAPIDS_BRANCH
 
 DEPENDENCIES=(
   cudf
-  cuvs
   cuopt
   cuopt-mps-parser
   cuopt-server

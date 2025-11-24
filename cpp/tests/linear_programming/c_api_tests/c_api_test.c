@@ -53,7 +53,6 @@ const char* termination_status_to_string(cuopt_int_t termination_status)
     case CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND:
       return "Feasible found";
   }
-  return "Unknown";
 }
 
 
