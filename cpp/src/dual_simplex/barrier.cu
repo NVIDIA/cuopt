@@ -383,7 +383,7 @@ class iteration_data_t {
     i_t nnzQ                 = Q.n > 0 ? Q.col_start[n] : 0;
     i_t factorization_size   = n + m;
     const f_t dual_perturb   = 0.0;
-    const f_t primal_perturb = 1e-12;
+    const f_t primal_perturb = 1e-6;
     if (first_call) {
       i_t new_nnz = 2 * nnzA + n + m + nnzQ;
       augmented.reallocate(2 * nnzA + n + m + nnzQ);
@@ -1566,23 +1566,31 @@ class iteration_data_t {
 // Move the Cholesky debug logic to a reusable function.
 
 template <typename i_t, typename f_t>
-void cholesky_debug_check(const iteration_data_t<i_t, f_t>& data, const lp_problem_t<i_t, f_t>& lp)
+void cholesky_debug_check(const iteration_data_t<i_t, f_t>& data,
+                          const lp_problem_t<i_t, f_t>& lp,
+                          bool use_augmented)
 {
   // return;
   srand(42);
+
+  i_t vec_size = use_augmented ? lp.num_cols + lp.num_rows : lp.num_rows;
   // 1. Create a random test vector
-  dense_vector_t<i_t, f_t> test_vec(lp.num_cols + lp.num_rows);
+  dense_vector_t<i_t, f_t> test_vec(vec_size);
   for (size_t i = 0; i < test_vec.size(); i++) {
     test_vec[i] = static_cast<f_t>(rand()) / static_cast<f_t>(RAND_MAX);  // random in [0,1]
   }
 
   // 2. Compute rhs as augmented_matrix * test_vec
-  dense_vector_t<i_t, f_t> test_rhs(lp.num_cols + lp.num_rows);
+  dense_vector_t<i_t, f_t> test_rhs(vec_size);
   std::fill(test_rhs.begin(), test_rhs.end(), 0.0);
-  data.augmented_multiply(1.0, test_vec, 0.0, test_rhs);
+  if (use_augmented) {
+    data.augmented_multiply(1.0, test_vec, 0.0, test_rhs);
+  } else {
+    data.adat_multiply(1.0, test_vec, 0.0, test_rhs);
+  }
 
   // 3. Solve the system with Cholesky
-  dense_vector_t<i_t, f_t> test_soln(lp.num_cols + lp.num_rows);
+  dense_vector_t<i_t, f_t> test_soln(vec_size);
   i_t cholesky_status = data.chol->solve(test_rhs, test_soln);
 
   // 4. Compute norms/differences and print results
@@ -1635,7 +1643,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     status = data.chol->factorize(data.augmented);
 
 #ifndef NDEBUG
-    cholesky_debug_check(data, lp);
+    cholesky_debug_check(data, lp, use_augmented);
 #endif
   } else {
     if (use_gpu) {
@@ -2288,7 +2296,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       status = data.chol->factorize(data.augmented);
 
 #ifndef NDEBUG
-      cholesky_debug_check(data, lp);
+      cholesky_debug_check(data, lp, use_augmented);
 #endif
     } else {
       // compute ADAT = A Dinv * A^T

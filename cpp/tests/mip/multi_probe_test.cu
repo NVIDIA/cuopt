@@ -30,7 +30,7 @@
 #include <utilities/error.hpp>
 #include <utilities/timer.hpp>
 
-#include <rmm/mr/device/cuda_async_memory_resource.hpp>
+#include <rmm/mr/cuda_async_memory_resource.hpp>
 
 #include <gtest/gtest.h>
 
