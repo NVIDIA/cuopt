@@ -162,7 +162,7 @@ struct user_problem_t {
 
   void apply_scaling()
   {
-#if 1
+#if 0
     // dump();
     // exit(0);
     // Read LOWER_BOUND and UPPER_BOUND from environment, use if set, else defaults
