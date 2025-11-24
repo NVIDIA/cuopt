@@ -733,7 +733,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(search_tree_t<i_t, f_t>* 
       stats_.last_log             = tic();
 
       f_t obj              = compute_user_objective(original_lp_, upper_bound);
-      f_t user_lower       = compute_user_objective(original_lp_, root_objective_);
+      f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
       std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
 
       settings_.log.printf(" %10d   %10lu    %+13.6e    %+10.6e   %6d   %7.1e     %s %9.2f\n",
@@ -1226,7 +1226,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
   }
 
-  f_t lower_bound = heap_.size() > 0 ? heap_.top()->lower_bound : search_tree.root.lower_bound;
+  f_t lower_bound = get_lower_bound();
   return set_final_solution(solution, lower_bound);
 }
 
