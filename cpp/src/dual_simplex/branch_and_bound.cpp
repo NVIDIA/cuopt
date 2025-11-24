@@ -598,9 +598,10 @@ node_solve_info_t branch_and_bound_t<i_t, f_t>::solve_node(
 
   simplex_solver_settings_t lp_settings = settings_;
   lp_settings.set_log(false);
-  lp_settings.cut_off    = upper_bound + settings_.dual_tol;
-  lp_settings.inside_mip = 2;
-  lp_settings.time_limit = settings_.time_limit - toc(exploration_stats_.start_time);
+  lp_settings.cut_off       = upper_bound + settings_.dual_tol;
+  lp_settings.inside_mip    = 2;
+  lp_settings.time_limit    = settings_.time_limit - toc(exploration_stats_.start_time);
+  lp_settings.scale_columns = false;
 
 #ifdef LOG_NODE_SIMPLEX
   lp_settings.set_log(true);
