@@ -38,10 +38,18 @@ python -c "import cuopt"
 
 if command -v apt-get &> /dev/null; then
     apt-get -y update
-    apt-get -y install file unzip
+    apt-get -y install file unzip libasan8 libubsan1
 elif command -v dnf &> /dev/null; then
     dnf -y update
     dnf -y install file unzip
+    # Install sanitizer libraries from gcc-toolset if available
+    if dnf list installed gcc-toolset-14 &> /dev/null; then
+        dnf -y install gcc-toolset-14-libasan-devel gcc-toolset-14-libubsan-devel
+    elif dnf list installed gcc-toolset-13 &> /dev/null; then
+        dnf -y install gcc-toolset-13-libasan-devel gcc-toolset-13-libubsan-devel
+    else
+        dnf -y install libasan libubsan
+    fi
 fi
 
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
