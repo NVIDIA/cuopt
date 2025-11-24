@@ -70,7 +70,6 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
   pdlp_hyper_params::update_step_size_on_initial_solution     = true;
   // if the input problem is empty: early exit
   if (problem.empty) {
-    CUOPT_LOG_INFO("Optimal solution found during presolve");
     detail::solution_t<i_t, f_t> solution(problem);
     problem.preprocess_problem();
     thrust::for_each(problem.handle_ptr->get_thrust_policy(),
