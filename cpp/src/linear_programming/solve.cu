@@ -786,13 +786,21 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
 }
 
 template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f_t>& op_problem,
-                                                   pdlp_solver_settings_t<i_t, f_t> const& settings,
-                                                   bool problem_checking,
-                                                   bool use_pdlp_solver_mode,
-                                                   bool is_batch_mode)
+optimization_problem_solution_t<i_t, f_t> solve_lp(
+  optimization_problem_t<i_t, f_t>& op_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings_const,
+  bool problem_checking,
+  bool use_pdlp_solver_mode,
+  bool is_batch_mode)
 {
   try {
+    pdlp_solver_settings_t<i_t, f_t> settings(settings_const,
+                                              op_problem.get_handle_ptr()->get_stream());
+    if (op_problem.has_quadratic_objective()) {
+      CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier solver");
+      settings.method   = method_t::Barrier;
+      settings.presolve = false;
+    }
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
 
@@ -1020,13 +1028,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool use_pdlp_solver_mode)
 {
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
-  if (op_problem.has_quadratic_objective()) {
-    CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier solver");
-    pdlp_solver_settings_t<i_t, f_t> settings_copy(settings, handle_ptr->get_stream());
-    settings_copy.method   = method_t::Barrier;
-    settings_copy.presolve = false;
-    return solve_lp(op_problem, settings_copy, problem_checking, false);
-  }
   return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode);
 }
 

@@ -722,6 +722,11 @@ void optimization_problem_t<i_t, f_t>::print_scaling_information() const
   CUOPT_LOG_INFO("");
 }
 
+template <typename i_t, typename f_t>
+bool optimization_problem_t<i_t, f_t>::has_quadratic_objective() const
+{
+  return !Q_values_.empty();
+}
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
 #if MIP_INSTANTIATE_FLOAT
 template class optimization_problem_t<int, float>;
