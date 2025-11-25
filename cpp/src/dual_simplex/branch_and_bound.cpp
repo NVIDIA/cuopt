@@ -788,9 +788,7 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(mip_node_t<i_t, f_t>* nod
   if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
     search_tree->graphviz_node(settings_.log, node, "cutoff", node->lower_bound);
     search_tree->update(node, node_status_t::FATHOMED);
-    ++exploration_stats_.nodes_explored;
     --exploration_stats_.nodes_unexplored;
-    ++exploration_stats_.nodes_since_last_log;
     return;
   }
 
@@ -856,6 +854,10 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(mip_node_t<i_t, f_t>* nod
                                         original_lp_.upper,
                                         settings_.log);
 
+  ++exploration_stats_.nodes_since_last_log;
+  ++exploration_stats_.nodes_explored;
+  --exploration_stats_.nodes_unexplored;
+
   if (status == node_solve_info_t::TIME_LIMIT) {
     solver_status_ = mip_exploration_status_t::TIME_LIMIT;
     return;
@@ -879,10 +881,6 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(mip_node_t<i_t, f_t>* nod
       mutex_heap_.unlock();
     }
   }
-
-  ++exploration_stats_.nodes_explored;
-  --exploration_stats_.nodes_unexplored;
-  ++exploration_stats_.nodes_since_last_log;
 }
 
 template <typename i_t, typename f_t>
@@ -922,9 +920,7 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
     if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
       search_tree.graphviz_node(settings_.log, node_ptr, "cutoff", node_ptr->lower_bound);
       search_tree.update(node_ptr, node_status_t::FATHOMED);
-      ++exploration_stats_.nodes_explored;
       --exploration_stats_.nodes_unexplored;
-      ++exploration_stats_.nodes_since_last_log;
       continue;
     }
 
@@ -983,6 +979,10 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
 
     recompute_bounds_and_basis = !has_children(status);
 
+    ++exploration_stats_.nodes_since_last_log;
+    ++exploration_stats_.nodes_explored;
+    --exploration_stats_.nodes_unexplored;
+
     if (status == node_solve_info_t::TIME_LIMIT) {
       solver_status_ = mip_exploration_status_t::TIME_LIMIT;
       return;
@@ -1029,10 +1029,6 @@ void branch_and_bound_t<i_t, f_t>::explore_subtree(i_t task_id,
         stack.push_front(node_ptr->get_down_child());
       }
     }
-
-    ++exploration_stats_.nodes_explored;
-    --exploration_stats_.nodes_unexplored;
-    ++exploration_stats_.nodes_since_last_log;
   }
 }
 
