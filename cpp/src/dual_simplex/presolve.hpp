@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #pragma once
 
@@ -189,14 +179,5 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
                       std::vector<f_t>& uncrushed_x,
                       std::vector<f_t>& uncrushed_y,
                       std::vector<f_t>& uncrushed_z);
-
-// For pure LP bounds strengthening, var_types should be defaulted (i.e. left empty)
-template <typename i_t, typename f_t>
-bool bound_strengthening(const std::vector<char>& row_sense,
-                         const simplex_solver_settings_t<i_t, f_t>& settings,
-                         lp_problem_t<i_t, f_t>& problem,
-                         const csc_matrix_t<i_t, f_t>& Arow,
-                         const std::vector<variable_type_t>& var_types = {},
-                         const std::vector<bool>& bounds_changed       = {});
 
 }  // namespace cuopt::linear_programming::dual_simplex

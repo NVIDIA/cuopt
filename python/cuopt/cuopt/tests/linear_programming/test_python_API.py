@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import math
 import os
@@ -57,7 +45,6 @@ if RAPIDS_DATASET_ROOT_DIR is None:
 
 
 def test_model():
-
     prob = Problem("Simple MIP")
     assert prob.Name == "Simple MIP"
 
@@ -168,7 +155,6 @@ def test_model():
 
 
 def test_linear_expression():
-
     prob = Problem()
 
     x = prob.addVariable()
@@ -227,7 +213,6 @@ def test_linear_expression():
 
 
 def test_constraint_matrix():
-
     prob = Problem()
 
     a = prob.addVariable(lb=0, ub=float("inf"), vtype="C", name="a")
@@ -291,7 +276,6 @@ def test_constraint_matrix():
 
 
 def test_read_write_mps_and_relaxation():
-
     # Create MIP model
     m = Problem("SMALLMIP")
 
@@ -338,7 +322,6 @@ def test_read_write_mps_and_relaxation():
 
 
 def test_incumbent_solutions():
-
     # Callback for incumbent solution
     class CustomGetSolutionCallback(GetSolutionCallback):
         def __init__(self):
@@ -347,7 +330,6 @@ def test_incumbent_solutions():
             self.solutions = []
 
         def get_solution(self, solution, solution_cost):
-
             self.n_callbacks += 1
             assert len(solution) > 0
             assert len(solution_cost) == 1
@@ -668,18 +650,18 @@ def test_barrier_solver_settings(test_name, settings_config):
     # Verify solution
     assert prob.solved, f"Problem not solved for {test_name}"
     assert prob.Status.name == "Optimal", f"Not optimal for {test_name}"
-    assert prob.ObjValue == pytest.approx(
-        1333.33, rel=0.01
-    ), f"Incorrect objective for {test_name}"
-    assert xs.Value == pytest.approx(
-        0.0, abs=1e-4
-    ), f"Incorrect xs value for {test_name}"
-    assert xl.Value == pytest.approx(
-        66.67, rel=0.01
-    ), f"Incorrect xl value for {test_name}"
+    assert prob.ObjValue == pytest.approx(1333.33, rel=0.01), (
+        f"Incorrect objective for {test_name}"
+    )
+    assert xs.Value == pytest.approx(0.0, abs=1e-4), (
+        f"Incorrect xs value for {test_name}"
+    )
+    assert xl.Value == pytest.approx(66.67, rel=0.01), (
+        f"Incorrect xl value for {test_name}"
+    )
 
     # Verify constraint slacks are non-negative
     for c in prob.getConstraints():
-        assert (
-            c.Slack >= -1e-6
-        ), f"Negative slack for {c.getConstraintName()} in {test_name}"
+        assert c.Slack >= -1e-6, (
+            f"Negative slack for {c.getConstraintName()} in {test_name}"
+        )

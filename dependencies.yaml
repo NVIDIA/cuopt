@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 # Dependency list for https://github.com/rapidsai/dependency-file-generator
 
@@ -44,7 +32,6 @@ files:
       - depends_on_rmm
       - depends_on_cupy
       - depends_on_cudf
-      - depends_on_cuvs
       - depends_on_pylibraft
       - depends_on_rapids_logger
       - rapids_build_backend
@@ -193,7 +180,6 @@ files:
       - depends_on_mps_parser
       - depends_on_rmm
       - depends_on_cudf
-      - depends_on_cuvs
       - depends_on_pylibraft
       - depends_on_rapids_logger
   py_test_cuopt:
@@ -631,32 +617,6 @@ dependencies:
           - matrix:
             packages:
               - *cudf_unsuffixed
-
-  depends_on_cuvs:
-    common:
-      - output_types: conda
-        packages:
-          - &cuvs_unsuffixed cuvs==25.12.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
-    specific:
-      - output_types: [requirements, pyproject]
-        matrices:
-          - matrix:
-              cuda: "12.*"
-              cuda_suffixed: "true"
-            packages:
-              - cuvs-cu12==25.12.*,>=0.0.0a0
-          - matrix:
-              cuda: "13.*"
-              cuda_suffixed: "true"
-            packages:
-              - cuvs-cu13==25.12.*,>=0.0.0a0
-          - matrix:
-            packages:
-              - *cuvs_unsuffixed
 
   depends_on_pylibraft:
     common:

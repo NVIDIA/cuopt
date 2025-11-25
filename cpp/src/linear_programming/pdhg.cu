@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 #include <linear_programming/pdhg.hpp>
 #include <linear_programming/pdlp_constants.hpp>
 #include <linear_programming/utilities/ping_pong_graph.cuh>
@@ -465,35 +455,23 @@ void pdhg_solver_t<i_t, f_t>::update_solution(
   // Accepted (valid step size) next_Aty will be current Aty next PDHG iteration, saves an SpMV
   std::swap(current_saddle_point_state_.current_AtY_, current_saddle_point_state_.next_AtY_);
 
-  // Forced to reinite cusparse views but that's ok, cost is marginal
+  // Update cusparse views to point to the new values, cost is marginal
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.current_AtY,
+                                           current_saddle_point_state_.current_AtY_.data()));
   RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsecreatednvec(&cusparse_view_.current_AtY,
-                                              current_saddle_point_state_.get_primal_size(),
-                                              current_saddle_point_state_.current_AtY_.data()));
+    cusparseDnVecSetValues(cusparse_view_.next_AtY, current_saddle_point_state_.next_AtY_.data()));
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.potential_next_dual_solution,
+                                           potential_next_dual_solution_.data()));
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.primal_solution,
+                                           current_saddle_point_state_.primal_solution_.data()));
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.dual_solution,
+                                           current_saddle_point_state_.dual_solution_.data()));
   RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsecreatednvec(&cusparse_view_.next_AtY,
-                                              current_saddle_point_state_.get_primal_size(),
-                                              current_saddle_point_state_.next_AtY_.data()));
+    cusparseDnVecSetValues(current_op_problem_evaluation_cusparse_view_.primal_solution,
+                           current_saddle_point_state_.primal_solution_.data()));
   RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsecreatednvec(&cusparse_view_.potential_next_dual_solution,
-                                              current_saddle_point_state_.get_dual_size(),
-                                              potential_next_dual_solution_.data()));
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsecreatednvec(&cusparse_view_.primal_solution,
-                                              current_saddle_point_state_.get_primal_size(),
-                                              current_saddle_point_state_.primal_solution_.data()));
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsecreatednvec(&cusparse_view_.dual_solution,
-                                              current_saddle_point_state_.get_dual_size(),
-                                              current_saddle_point_state_.dual_solution_.data()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &current_op_problem_evaluation_cusparse_view_.primal_solution,
-    current_saddle_point_state_.get_primal_size(),
-    current_saddle_point_state_.primal_solution_.data()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &current_op_problem_evaluation_cusparse_view_.dual_solution,
-    current_saddle_point_state_.get_dual_size(),
-    current_saddle_point_state_.dual_solution_.data()));
+    cusparseDnVecSetValues(current_op_problem_evaluation_cusparse_view_.dual_solution,
+                           current_saddle_point_state_.dual_solution_.data()));
 }
 
 template <typename i_t, typename f_t>

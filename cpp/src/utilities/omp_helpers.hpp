@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -101,37 +91,45 @@ class omp_atomic_t {
 
   T fetch_sub(T inc) { return fetch_add(-inc); }
 
+ private:
+  T val;
+
+#ifndef __NVCC__
+  friend double fetch_min(omp_atomic_t<double>& atomic_var, double other);
+  friend double fetch_max(omp_atomic_t<double>& atomic_var, double other);
+#endif
+};
+
 // Atomic CAS are only supported in OpenMP v5.1
 // (gcc 12+ or clang 14+), however, nvcc (or the host compiler) cannot
 // parse it correctly yet
 #ifndef __NVCC__
 
-  T fetch_min(T other)
-  {
-    T old;
+// Free non-template functions are necessary because of a clang 20 bug
+// when omp atomic compare is used within a templated context.
+// see https://github.com/llvm/llvm-project/issues/127466
+inline double fetch_min(omp_atomic_t<double>& atomic_var, double other)
+{
+  double old;
 #pragma omp atomic compare capture
-    {
-      old = val;
-      val = other < val ? other : val;
-    }
-    return old;
+  {
+    old = atomic_var.val;
+    if (other < atomic_var.val) { atomic_var.val = other; }
   }
+  return old;
+}
 
-  T fetch_max(T other)
-  {
-    T old;
+inline double fetch_max(omp_atomic_t<double>& atomic_var, double other)
+{
+  double old;
 #pragma omp atomic compare capture
-    {
-      old = val;
-      val = other > val ? other : val;
-    }
-    return old;
+  {
+    old = atomic_var.val;
+    if (other > atomic_var.val) { atomic_var.val = other; }
   }
+  return old;
+}
 #endif
-
- private:
-  T val;
-};
 
 #endif
 

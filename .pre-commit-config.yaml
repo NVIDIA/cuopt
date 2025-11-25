@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2019-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -27,31 +15,12 @@ repos:
       - id: check-yaml
         files: \.(yaml)$
         exclude: ^(helmchart)/.*\.(yaml)$
-  - repo: https://github.com/PyCQA/isort
-    rev: 5.12.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.3
     hooks:
-      - id: isort
-        # Use the config file specific to each subproject so that each
-        # project can specify its own first/third-party packages.
-        args: ["--config-root=python/", "--resolve-all-configs"]
-        files: ^(python/.*|ci/.*)
-        types_or: [python, cython, pyi]
-  - repo: https://github.com/psf/black
-    rev: 22.3.0
-    hooks:
-      - id: black
-        files: ^(python/.*|ci/.*)
-        # Explicitly specify the pyproject.toml at the repo root, not per-project.
-        args: ["--config", "pyproject.toml", "--target-version", "py310"]
-  - repo: https://github.com/PyCQA/flake8
-    rev: 7.1.1
-    hooks:
-      - id: flake8
-        args: ["--config=.flake8"]
-        files: python/.*$
-        types: [file]
-        types_or: [python, cython]
-        additional_dependencies: ["flake8-force"]
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
   - repo: https://github.com/PyCQA/pydocstyle
     rev: 6.1.1
     hooks:
@@ -85,14 +54,24 @@ repos:
       - id: shellcheck
         args: ["--severity=warning"]
   - repo: https://github.com/rapidsai/pre-commit-hooks
-    rev: v0.7.0
+    rev: v1.2.1
     hooks:
       - id: verify-copyright
+        args: [--fix, --spdx]
         files: |
           (?x)
-              [.](cmake|cpp|cu|cuh|h|hpp|sh|pxd|py|pyx)$|
-              CMakeLists[.]txt$|
-              recipe[.]yaml$
+            [.](cmake|c|cpp|cu|cuh|h|hpp|sh|pxd|py|pyx|pdx|hpp[.]in|bat)$|
+            CMakeLists[.]txt$|
+            recipe[.]yaml$|
+            ^[.]github/workflows/|
+            ^[.]coderabbit[.]yaml$|
+            ^[.]pre-commit-config[.]yaml$|
+            Dockerfile$|
+            dependencies[.]yaml$|
+            ^[.]flake8$|
+            Makefile$|
+            setup[.]cfg$|
+            pyproject[.]toml$
         exclude: |
           (?x)^(
             ^cpp/tests/utilities/cxxopts.hpp

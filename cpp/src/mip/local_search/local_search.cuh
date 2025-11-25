@@ -1,23 +1,14 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
 #include <mip/diversity/population.cuh>
+#include <mip/feasibility_jump/fj_cpu.cuh>
 #include <mip/local_search/feasibility_pump/feasibility_pump.cuh>
 #include <mip/local_search/line_segment_search/line_segment_search.cuh>
 #include <mip/solution/solution.cuh>
@@ -50,29 +41,6 @@ struct ls_config_t {
   i_t iteration_limit_for_line_segment    = 20 * n_local_mins_for_line_segment;
   i_t iteration_limit                     = 20 * n_local_mins;
   ls_method_t ls_method                   = ls_method_t::RANDOM;
-};
-
-template <typename i_t, typename f_t>
-struct cpu_fj_thread_t {
-  cpu_fj_thread_t();
-  ~cpu_fj_thread_t();
-
-  void cpu_worker_thread();
-  void start_cpu_solver();
-  void stop_cpu_solver();
-  bool wait_for_cpu_solver();  // return feasibility
-  void kill_cpu_solver();
-
-  std::thread cpu_worker;
-  std::mutex cpu_mutex;
-  std::condition_variable cpu_cv;
-  std::atomic<bool> should_stop{false};
-  std::atomic<bool> cpu_thread_should_start{false};
-  std::atomic<bool> cpu_thread_done{false};
-  std::atomic<bool> cpu_thread_terminate{false};
-  bool cpu_fj_solution_found{false};
-  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_cpu;
-  fj_t<i_t, f_t>* fj_ptr{nullptr};
 };
 
 template <typename i_t, typename f_t>

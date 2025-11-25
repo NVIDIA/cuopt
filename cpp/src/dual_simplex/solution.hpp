@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #pragma once
 
@@ -61,7 +51,11 @@ class lp_solution_t {
 template <typename i_t, typename f_t>
 class mip_solution_t {
  public:
-  mip_solution_t(i_t n) : x(n), objective(std::numeric_limits<f_t>::quiet_NaN()), lower_bound(-inf)
+  mip_solution_t(i_t n)
+    : x(n),
+      objective(std::numeric_limits<f_t>::quiet_NaN()),
+      lower_bound(-inf),
+      has_incumbent(false)
   {
   }
 
@@ -69,8 +63,9 @@ class mip_solution_t {
 
   void set_incumbent_solution(f_t primal_objective, const std::vector<f_t>& primal_solution)
   {
-    x         = primal_solution;
-    objective = primal_objective;
+    x             = primal_solution;
+    objective     = primal_objective;
+    has_incumbent = true;
   }
 
   // Primal solution vector
@@ -79,6 +74,7 @@ class mip_solution_t {
   f_t lower_bound;
   i_t nodes_explored;
   i_t simplex_iterations;
+  bool has_incumbent;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
