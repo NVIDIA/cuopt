@@ -124,6 +124,11 @@ while [[ $# -gt 0 ]]; do
             TIME_LIMIT="$2"
             shift 2
             ;;
+        --iteration-limit)
+            echo "ITERATION_LIMIT: $2"
+            ITERATION_LIMIT="$2"
+            shift 2
+            ;;
         --output-dir)
             echo "OUTPUT_DIR: $2"
             OUTPUT_DIR="$2"
@@ -158,7 +163,7 @@ while [[ $# -gt 0 ]]; do
             echo "PRESOLVE: $2"
             PRESOLVE="$2"
             shift 2
-            ;;
+            ;;       
         --batch-num)
             echo "BATCH_NUM: $2"
             BATCH_NUM="$2"
@@ -323,6 +328,9 @@ worker() {
         echo "GPU $gpu_id processing $my_index : $mps_file"
         # Build arguments string
         args=""
+        if [ -n "$ITERATION_LIMIT" ]; then
+            args="$args --iteration-limit $ITERATION_LIMIT"
+        fi
         if [ -n "$NUM_CPU_THREADS" ]; then
             args="$args --num-cpu-threads $NUM_CPU_THREADS"
         fi
