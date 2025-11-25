@@ -440,14 +440,9 @@ class iteration_data_t {
         augmented.x[q++] = primal_perturb;
       }
       augmented.col_start[n + m] = q;
-      if (q != 2 * nnzA + n + m + off_diag_Qnz) {
-        settings_.log.printf("augmented nnz %d predicted %d\n", q, 2 * nnzA + n + m + off_diag_Qnz);
-        exit(1);
-      }
-      if (A.col_start[n] != AT.col_start[m]) {
-        settings_.log.printf("A nz %d AT nz %d\n", A.col_start[n], AT.col_start[m]);
-        exit(1);
-      }
+      cuopt_assert(q == 2 * nnzA + n + m + off_diag_Qnz, "augmented nnz != predicted");
+      cuopt_assert(A.col_start[n] == AT.col_start[m], "A nz != AT nz");
+
 #define CHECK_SYMMETRY
 #ifdef CHECK_SYMMETRY
       csc_matrix_t<i_t, f_t> augmented_transpose(1, 1, 1);
@@ -460,7 +455,7 @@ class iteration_data_t {
       csc_matrix_t<i_t, f_t> error(m + n, m + n, 1);
       add(augmented, augmented_transpose, 1.0, -1.0, error);
       settings_.log.printf("|| Aug - Aug^T ||_1 %e\n", error.norm1());
-      if (error.norm1() > 1e-2) { exit(1); }
+      cuopt_assert(error.norm1() <= 1e-2, "|| Aug - Aug^T ||_1 > 1e-2");
 #endif
     } else {
       for (i_t j = 0; j < n; ++j) {
