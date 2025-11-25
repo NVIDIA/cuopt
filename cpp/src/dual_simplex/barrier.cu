@@ -233,27 +233,27 @@ class iteration_data_t {
     i_t max_row_nz       = 0;
     f_t estimated_nz_AAT = 0.0;
     std::vector<i_t> dense_columns_unordered;
-    if (!has_Q) {
-      f_t start_column_density = tic();
-      find_dense_columns(
-        lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+
+    f_t start_column_density = tic();
+    // Ignore Q matrix for now
+    find_dense_columns(
+      lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 #ifdef PRINT_INFO
-      for (i_t j : dense_columns_unordered) {
-        settings.log.printf("Dense column %6d\n", j);
-      }
-#endif
-      float64_t column_density_time = toc(start_column_density);
-      if (!settings.eliminate_dense_columns) { dense_columns_unordered.clear(); }
-      n_dense_columns = static_cast<i_t>(dense_columns_unordered.size());
-      if (n_dense_columns > 0) {
-        settings.log.printf("Dense columns               : %d\n", n_dense_columns);
-      }
-      if (n_dense_rows > 0) {
-        settings.log.printf("Dense rows                  : %d\n", n_dense_rows);
-      }
-      settings.log.printf("Density estimator time      : %.2fs\n", column_density_time);
+    for (i_t j : dense_columns_unordered) {
+      settings.log.printf("Dense column %6d\n", j);
     }
+#endif
+    float64_t column_density_time = toc(start_column_density);
+    if (!settings.eliminate_dense_columns) { dense_columns_unordered.clear(); }
+    n_dense_columns = static_cast<i_t>(dense_columns_unordered.size());
+    if (n_dense_columns > 0) {
+      settings.log.printf("Dense columns               : %d\n", n_dense_columns);
+    }
+    if (n_dense_rows > 0) {
+      settings.log.printf("Dense rows                  : %d\n", n_dense_rows);
+    }
+    settings.log.printf("Density estimator time      : %.2fs\n", column_density_time);
     if ((settings.augmented != 0) &&
         (n_dense_columns > 50 || n_dense_rows > 10 ||
          (max_row_nz > 5000 && estimated_nz_AAT > 1e10) || settings.augmented == 1)) {
@@ -519,8 +519,13 @@ class iteration_data_t {
                          });
       if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
       if (first_call) {
-        initialize_cusparse_data<i_t, f_t>(
-          handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+        try {
+          initialize_cusparse_data<i_t, f_t>(
+            handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+        } catch (const raft::cuda_error& e) {
+          CUOPT_LOG_INFO("Error in initialize_cusparse_data: %s\n", e.what());
+          return;
+        }
       }
       if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
 
@@ -3763,7 +3768,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
         relative_complementarity_residual < settings.barrier_relative_complementarity_tol;
 
       // For QP, the difference between gap and complementarity residual norm can be large
-      if (lp.Q.n > 0) {
+      // However, do not proceed if the relative complementarity residual is too small
+      if (lp.Q.n > 0 && small_gap &&
+          relative_complementarity_residual >
+            1e-2 * settings.barrier_relative_complementarity_tol) {
         f_t user_primal_objective = compute_user_objective(lp, primal_objective);
         f_t user_dual_objective   = compute_user_objective(lp, dual_objective);
         f_t user_gap              = fabs(user_primal_objective - user_dual_objective);
@@ -3812,9 +3820,13 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     return lp_status_t::ITERATION_LIMIT;
   } catch (const raft::cuda_error& e) {
     settings.log.debug("Error in barrier_solver_t: %s\n", e.what());
+    // settings.log.info("Error in barrier_solver_t: %s\n", e.what());
+    CUOPT_LOG_INFO("Error in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
   } catch (const rmm::out_of_memory& e) {
     settings.log.debug("Out of memory in barrier_solver_t: %s\n", e.what());
+    // settings.log.info("Out of memory in barrier_solver_t: %s\n", e.what());
+    CUOPT_LOG_INFO("Out of memory in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
   }
 }
