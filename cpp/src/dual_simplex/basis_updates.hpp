@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #pragma once
 
@@ -240,14 +230,14 @@ class basis_update_mpf_t {
     i_t total_L_calls           = total_sparse_L_ + total_dense_L_;
     i_t total_U_calls           = total_sparse_U_ + total_dense_U_;
     // clang-format off
-    printf("sparse L transpose  %8d %8.2f%\n", total_sparse_L_transpose_, 100.0 * total_sparse_L_transpose_ / total_L_transpose_calls);
-    printf("dense  L transpose  %8d %8.2f%\n", total_dense_L_transpose_, 100.0 * total_dense_L_transpose_ / total_L_transpose_calls);
-    printf("sparse U transpose  %8d %8.2f%\n", total_sparse_U_transpose_, 100.0 * total_sparse_U_transpose_ / total_U_transpose_calls);
-    printf("dense  U transpose  %8d %8.2f%\n", total_dense_U_transpose_, 100.0 * total_dense_U_transpose_ / total_U_transpose_calls);
-    printf("sparse L            %8d %8.2f%\n", total_sparse_L_, 100.0 * total_sparse_L_ / total_L_calls);
-    printf("dense  L            %8d %8.2f%\n", total_dense_L_, 100.0 * total_dense_L_ / total_L_calls);
-    printf("sparse U            %8d %8.2f%\n", total_sparse_U_, 100.0 * total_sparse_U_ / total_U_calls);
-    printf("dense  U            %8d %8.2f%\n", total_dense_U_, 100.0 * total_dense_U_ / total_U_calls);
+    printf("sparse L transpose  %8d %8.2f%%\n", total_sparse_L_transpose_, 100.0 * total_sparse_L_transpose_ / total_L_transpose_calls);
+    printf("dense  L transpose  %8d %8.2f%%\n", total_dense_L_transpose_, 100.0 * total_dense_L_transpose_ / total_L_transpose_calls);
+    printf("sparse U transpose  %8d %8.2f%%\n", total_sparse_U_transpose_, 100.0 * total_sparse_U_transpose_ / total_U_transpose_calls);
+    printf("dense  U transpose  %8d %8.2f%%\n", total_dense_U_transpose_, 100.0 * total_dense_U_transpose_ / total_U_transpose_calls);
+    printf("sparse L            %8d %8.2f%%\n", total_sparse_L_, 100.0 * total_sparse_L_ / total_L_calls);
+    printf("dense  L            %8d %8.2f%%\n", total_dense_L_, 100.0 * total_dense_L_ / total_L_calls);
+    printf("sparse U            %8d %8.2f%%\n", total_sparse_U_, 100.0 * total_sparse_U_ / total_U_calls);
+    printf("dense  U            %8d %8.2f%%\n", total_dense_U_, 100.0 * total_dense_U_ / total_U_calls);
     // clang-format on
   }
 
@@ -401,7 +391,11 @@ class basis_update_mpf_t {
     mu_values_.clear();
     mu_values_.reserve(refactor_frequency_);
     num_updates_ = 0;
+
+    std::fill(xi_workspace_.begin(), xi_workspace_.end(), 0);
+    std::fill(x_workspace_.begin(), x_workspace_.end(), 0.0);
   }
+
   void grow_storage(i_t nz, i_t& S_start, i_t& S_nz);
   i_t index_map(i_t leaving) const;
   f_t u_diagonal(i_t j) const;

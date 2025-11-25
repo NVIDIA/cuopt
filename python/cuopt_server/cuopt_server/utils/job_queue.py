@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import io
 import json
@@ -117,7 +105,6 @@ class SafeUnpickler(pickle.Unpickler):
 # to be set to "" for messaging and this routine to be
 # used when we don't pre-know the problem type
 def cuopt_pickle_load(s, kind="LP "):
-
     allowed_LP = {
         "numpy.core.multiarray": {
             "names": ["_reconstruct"],
@@ -338,7 +325,6 @@ def status_by_id(id, abort_list):
 
 
 def abort_by_id(id, abort_queue, abort_list, running, queued):
-
     if not running and not queued:
         return 0, 0
 
@@ -374,7 +360,6 @@ def abort_by_id(id, abort_queue, abort_list, running, queued):
 
 
 def abort_all(abort_queue, abort_list, running, queued):
-
     if not running and not queued:
         return
 
@@ -417,7 +402,6 @@ def abort_all(abort_queue, abort_list, running, queued):
 
 class BaseResult:
     def __init__(self, resultfile="", rtype=mime_json):
-
         self.id = str(uuid.uuid4())
         self.etl = None
         self.slv = None
@@ -560,7 +544,6 @@ class BinaryJobResult(BaseResult):
         maxresult=0,
         mode=644,
     ):
-
         super().__init__(resultfile=resultfile, rtype=rtype)
 
         # Note that this is a threading.Event, not
@@ -1031,7 +1014,6 @@ class SolverLPJob(SolverBaseJob):
         return 0  # len(self.LP_data["csr_constraint_matrix"].offsets)-1
 
     def solve(self, intermediate_sender):
-
         from cuopt_server.utils.solver import solve_LP_sync
 
         self._load_data()
@@ -1067,7 +1049,7 @@ def deserialize(ctype, buf):
     except Exception as e:
         raise HTTPException(
             status_code=422,
-            detail="unable to load " "optimization data stream, %s" % (str(e)),
+            detail="unable to load optimization data stream, %s" % (str(e)),
         )
     return data
 
@@ -1115,7 +1097,6 @@ class SolverBinaryJob:
         incumbents=False,
         solver_logs=False,
     ):
-
         # This class is a wrapper object around a real job. The actual
         # job type and contents are not determined until the job reaches
         # the solver and the data is loaded.  Here, we just have an unread
@@ -1362,7 +1343,6 @@ class SolverBinaryJobPath(SolverBinaryJob):
         incumbents=False,
         solver_logs=False,
     ):
-
         self.file_path = file_path
         super().__init__(
             id,
@@ -1413,7 +1393,6 @@ class SolverBinaryJobPath(SolverBinaryJob):
         return data
 
     def _resolve_job(self):
-
         # read the data from the file
         # if we have an extension, use it otherwise try everything
         try:
@@ -1456,8 +1435,7 @@ class SolverBinaryJobPath(SolverBinaryJob):
         except Exception as e:
             raise HTTPException(
                 status_code=422,
-                detail="unable to read "
-                "optimization data file, %s" % (str(e)),
+                detail="unable to read optimization data file, %s" % (str(e)),
             )
 
         initial_solutions = []

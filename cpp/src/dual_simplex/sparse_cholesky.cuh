@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
- * All rights reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 #pragma once
 
 #include "dual_simplex/dense_vector.hpp"
@@ -752,17 +742,6 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudssMatrixSetValues(cudss_b, b.data()), status, "cudssMatrixSetValues for b");
     CUDSS_CALL_AND_CHECK(
       cudssMatrixSetValues(cudss_x, x.data()), status, "cudssMatrixSetValues for x");
-
-    i_t ldb = n;
-    i_t ldx = n;
-    CUDSS_CALL_AND_CHECK_EXIT(
-      cudssMatrixCreateDn(&cudss_b, n, 1, ldb, b.data(), CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
-      status,
-      "cudssMatrixCreateDn for b");
-    CUDSS_CALL_AND_CHECK_EXIT(
-      cudssMatrixCreateDn(&cudss_x, n, 1, ldx, x.data(), CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
-      status,
-      "cudssMatrixCreateDn for x");
 
     status = cudssExecute(handle, CUDSS_PHASE_SOLVE, solverConfig, solverData, A, cudss_x, cudss_b);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return -2; }

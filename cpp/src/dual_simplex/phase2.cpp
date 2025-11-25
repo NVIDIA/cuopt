@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/basis_updates.hpp>
@@ -2245,6 +2235,8 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   phase2::bound_info(lp, settings);
   if (initialize_basis) {
     std::vector<i_t> superbasic_list;
+    nonbasic_list.clear();
+    nonbasic_list.reserve(n - m);
     get_basis_from_vstatus(m, vstatus, basic_list, nonbasic_list, superbasic_list);
     assert(superbasic_list.size() == 0);
     assert(nonbasic_list.size() == n - m);

@@ -1,21 +1,13 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
- * All rights reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
+
+#include <utilities/macros.cuh>
 
 #include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -45,16 +37,22 @@ struct cusparse_info_t {
 
   ~cusparse_info_t()
   {
-    //    RAFT_CUSPARSE_TRY(cusparseSpGEMM_destroyDescr(spgemm_descr));
-    //    RAFT_CUSPARSE_TRY(cusparseDestroySpMat(matA_descr));
-    //   RAFT_CUSPARSE_TRY(cusparseDestroySpMat(matDAT_descr));
-    //   RAFT_CUSPARSE_TRY(cusparseDestroySpMat(matADAT_descr));
+    if (spgemm_descr != nullptr) {
+      CUOPT_CUSPARSE_TRY_NO_THROW(cusparseSpGEMM_destroyDescr(spgemm_descr));
+    }
+    if (matA_descr != nullptr) { CUOPT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(matA_descr)); }
+    if (matDAT_descr != nullptr) {
+      CUOPT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(matDAT_descr));
+    }
+    if (matADAT_descr != nullptr) {
+      CUOPT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(matADAT_descr));
+    }
   }
 
-  cusparseSpMatDescr_t matA_descr;
-  cusparseSpMatDescr_t matDAT_descr;
-  cusparseSpMatDescr_t matADAT_descr;
-  cusparseSpGEMMDescr_t spgemm_descr;
+  cusparseSpMatDescr_t matA_descr{nullptr};
+  cusparseSpMatDescr_t matDAT_descr{nullptr};
+  cusparseSpMatDescr_t matADAT_descr{nullptr};
+  cusparseSpGEMMDescr_t spgemm_descr{nullptr};
   rmm::device_scalar<f_t> alpha;
   rmm::device_scalar<f_t> beta;
   rmm::device_uvector<uint8_t> buffer_size;
