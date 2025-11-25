@@ -188,8 +188,6 @@ class iteration_data_t {
       }
     }
 
-    settings.log.printf("Q.n: %d, Q.is_diagonal(): %d\n", lp.Q.n, lp.Q.is_diagonal());
-
     if (lp.Q.n > 0 && lp.Q.is_diagonal()) {
       d_Q_diag_.resize(lp.Q.n, stream_view_);
       std::vector<f_t> Q_diag(lp.Q.n, 0.0);
