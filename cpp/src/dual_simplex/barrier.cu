@@ -284,6 +284,7 @@ class iteration_data_t {
       settings.log.printf("Linear system               : ADAT\n");
     }
 
+    // D = I + EET
     diag.set_scalar(1.0);
     if (n_upper_bounds > 0) {
       for (i_t k = 0; k < n_upper_bounds; k++) {
@@ -291,15 +292,29 @@ class iteration_data_t {
         diag[j] = 2.0;
       }
     }
+
+    // D = I + EET + Q (if Q is diagonal)
+    if (has_Q && !use_augmented) {
+      // this means that Q is diagonal
+      for (i_t i = 0; i < lp.Q.n; i++) {
+        for (i_t j = lp.Q.row_start[i]; j < lp.Q.row_start[i + 1]; j++) {
+          if (lp.Q.j[j] == i) {
+            diag[i] += lp.Q.x[j];
+            break;
+          }
+        }
+      }
+    }
+
     inv_diag.set_scalar(1.0);
     if (use_augmented) { diag.multiply_scalar(-1.0); }
-    if (n_upper_bounds > 0) { diag.inverse(inv_diag); }
+    if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { diag.inverse(inv_diag); }
     if (use_gpu) {
       // TMP diag and inv_diag should directly created and filled on the GPU
       raft::copy(d_inv_diag.data(), inv_diag.data(), inv_diag.size(), stream_view_);
     }
     inv_sqrt_diag.set_scalar(1.0);
-    if (n_upper_bounds > 0) { inv_diag.sqrt(inv_sqrt_diag); }
+    if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { inv_diag.sqrt(inv_sqrt_diag); }
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
