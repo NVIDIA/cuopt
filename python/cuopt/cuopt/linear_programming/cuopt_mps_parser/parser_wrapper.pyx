@@ -124,6 +124,7 @@ def ParseMps(mps_file_path, fixed_mps_formats):
     data_model.set_maximize(dm_ret.maximize_)
     data_model.set_objective_scaling_factor(dm_ret.objective_scaling_factor_)
     data_model.set_objective_offset(dm_ret.objective_offset_)
+    data_model.set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets)
     data_model.set_variable_types(var_types)
     if row_types is not None:
         data_model.set_row_types(row_types)

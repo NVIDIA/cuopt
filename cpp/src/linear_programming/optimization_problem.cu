@@ -144,20 +144,31 @@ void optimization_problem_t<i_t, f_t>::set_objective_offset(f_t objective_offset
 }
 
 template <typename i_t, typename f_t>
-void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(const i_t* Q_offsets,
-                                                                      i_t size_offsets,
+void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(const f_t* Q_values,
+                                                                      i_t size_values,
                                                                       const i_t* Q_indices,
                                                                       i_t size_indices,
-                                                                      const f_t* Q_values,
-                                                                      i_t size_values)
+                                                                      const i_t* Q_offsets,
+                                                                      i_t size_offsets)
 {
-  printf("optimization_problem_t Quadratic objective matrix: %d nonzeros\n", size_values);
-  Q_offsets_.resize(size_offsets);
-  std::copy(Q_offsets, Q_offsets + size_offsets, Q_offsets_.data());
-  Q_indices_.resize(size_indices);
-  std::copy(Q_indices, Q_indices + size_indices, Q_indices_.data());
+  if (size_values != 0) {
+    cuopt_expects(Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
+  }
   Q_values_.resize(size_values);
   std::copy(Q_values, Q_values + size_values, Q_values_.data());
+
+  if (size_indices != 0) {
+    cuopt_expects(Q_indices != nullptr, error_type_t::ValidationError, "Q_indices cannot be null");
+  }
+
+  Q_indices_.resize(size_indices);
+  std::copy(Q_indices, Q_indices + size_indices, Q_indices_.data());
+
+  if (size_offsets != 0) {
+    cuopt_expects(Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
+  }
+  Q_offsets_.resize(size_offsets);
+  std::copy(Q_offsets, Q_offsets + size_offsets, Q_offsets_.data());
 }
 
 template <typename i_t, typename f_t>

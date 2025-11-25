@@ -203,19 +203,19 @@ class optimization_problem_t {
    * @note This is used for quadratic programming problems where the objective
    * function contains quadratic terms: (1/2) * x^T * Q * x + c^T * x
    *
-   * @param[in] Q_offsets Offsets of the CSR representation of the quadratic objective matrix
-   * @param size_offsets Size of the Q_offsets array
-   * @param[in] Q_indices Indices of the CSR representation of the quadratic objective matrix
-   * @param size_indices Size of the Q_indices array
    * @param[in] Q_values Values of the CSR representation of the quadratic objective matrix
    * @param size_values Size of the Q_values array
+   * @param[in] Q_indices Indices of the CSR representation of the quadratic objective matrix
+   * @param size_indices Size of the Q_indices array
+   * @param[in] Q_offsets Offsets of the CSR representation of the quadratic objective matrix
+   * @param size_offsets Size of the Q_offsets array
    */
-  void set_quadratic_objective_matrix(const i_t* Q_offsets,
-                                      i_t size_offsets,
+  void set_quadratic_objective_matrix(const f_t* Q_values,
+                                      i_t size_values,
                                       const i_t* Q_indices,
                                       i_t size_indices,
-                                      const f_t* Q_values,
-                                      i_t size_values);
+                                      const i_t* Q_offsets,
+                                      i_t size_offsets);
 
   /**
    * @brief Get the quadratic objective matrix offsets
@@ -389,6 +389,8 @@ class optimization_problem_t {
   problem_category_t get_problem_category() const;
   const std::vector<std::string>& get_variable_names() const;
   const std::vector<std::string>& get_row_names() const;
+
+  bool has_quadratic_objective() const;
 
   /**
    * @brief Gets the device-side view (with raw pointers), for ease of access

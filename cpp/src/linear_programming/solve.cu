@@ -1000,12 +1000,12 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
     const std::vector<f_t> Q_values  = data_model.get_quadratic_objective_values();
     const std::vector<i_t> Q_indices = data_model.get_quadratic_objective_indices();
     const std::vector<i_t> Q_offsets = data_model.get_quadratic_objective_offsets();
-    op_problem.set_quadratic_objective_matrix(Q_offsets.data(),
-                                              Q_offsets.size(),
+    op_problem.set_quadratic_objective_matrix(Q_values.data(),
+                                              Q_values.size(),
                                               Q_indices.data(),
                                               Q_indices.size(),
-                                              Q_values.data(),
-                                              Q_values.size());
+                                              Q_offsets.data(),
+                                              Q_offsets.size());
   }
 
   return op_problem;
@@ -1020,6 +1020,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool use_pdlp_solver_mode)
 {
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
+  if (op_problem.has_quadratic_objective()) {
+    CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier solver");
+    pdlp_solver_settings_t<i_t, f_t> settings_copy(settings, handle_ptr->get_stream());
+    settings_copy.method   = method_t::Barrier;
+    settings_copy.presolve = false;
+    return solve_lp(op_problem, settings_copy, problem_checking, false);
+  }
   return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode);
 }
 
