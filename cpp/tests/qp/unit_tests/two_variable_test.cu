@@ -56,9 +56,8 @@ TEST(two_variable_test, simple_test)
   int Q_offsets_host[]   = {0, 1, 2};
   op_problem.set_quadratic_objective_matrix(Q_values_host, 2, Q_indices_host, 2, Q_offsets_host, 3);
 
-  auto settings            = cuopt::linear_programming::pdlp_solver_settings_t<int, double>();
-  settings.iteration_limit = 10;
-  auto solution            = cuopt::linear_programming::solve_lp(op_problem, settings);
+  auto settings = cuopt::linear_programming::pdlp_solver_settings_t<int, double>();
+  auto solution = cuopt::linear_programming::solve_lp(op_problem, settings);
 
   // EXPECT_EQ(solution.get_termination_status(),
   // cuopt::linear_programming::pdlp_termination_status_t::Optimal);

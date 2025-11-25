@@ -784,6 +784,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool is_batch_mode)
 {
   try {
+    print_version_info();
     pdlp_solver_settings_t<i_t, f_t> settings(settings_const,
                                               op_problem.get_handle_ptr()->get_stream());
     if (op_problem.has_quadratic_objective()) {
@@ -797,8 +798,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     // Init libraies before to not include it in solve time
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
-
-    print_version_info();
 
     raft::common::nvtx::range fun_scope("Running solver");
 
