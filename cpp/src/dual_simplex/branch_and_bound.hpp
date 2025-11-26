@@ -159,6 +159,8 @@ class branch_and_bound_t {
   // Global status of the solver.
   omp_atomic_t<mip_exploration_status_t> solver_status_;
 
+  omp_atomic_t<bool> should_report_;
+
   // In case, a best-first thread encounters a numerical issue when solving a node,
   // its blocks the progression of the lower bound.
   omp_atomic_t<f_t> lower_bound_ceiling_;
