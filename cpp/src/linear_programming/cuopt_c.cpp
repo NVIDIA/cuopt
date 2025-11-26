@@ -208,6 +208,137 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
   return CUOPT_SUCCESS;
 }
 
+cuopt_int_t cuOptCreateQuadraticProblem(
+  cuopt_int_t num_constraints,
+  cuopt_int_t num_variables,
+  cuopt_int_t objective_sense,
+  cuopt_float_t objective_offset,
+  const cuopt_float_t* objective_coefficients,
+  const cuopt_int_t* quadratic_objective_matrix_row_offsets,
+  const cuopt_int_t* quadratic_objective_matrix_column_indices,
+  const cuopt_float_t* quadratic_objective_matrix_coefficent_values,
+  const cuopt_int_t* constraint_matrix_row_offsets,
+  const cuopt_int_t* constraint_matrix_column_indices,
+  const cuopt_float_t* constraint_matrix_coefficent_values,
+  const char* constraint_sense,
+  const cuopt_float_t* rhs,
+  const cuopt_float_t* lower_bounds,
+  const cuopt_float_t* upper_bounds,
+  cuOptOptimizationProblem* problem_ptr)
+{
+  cuopt::utilities::printTimestamp("CUOPT_CREATE_PROBLEM");
+
+  if (problem_ptr == nullptr || objective_coefficients == nullptr ||
+      quadratic_objective_matrix_row_offsets == nullptr ||
+      quadratic_objective_matrix_column_indices == nullptr ||
+      quadratic_objective_matrix_coefficent_values == nullptr ||
+      constraint_matrix_row_offsets == nullptr || constraint_matrix_column_indices == nullptr ||
+      constraint_matrix_coefficent_values == nullptr || constraint_sense == nullptr ||
+      rhs == nullptr || lower_bounds == nullptr || upper_bounds == nullptr) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+
+  problem_and_stream_view_t* problem_and_stream = new problem_and_stream_view_t();
+  problem_and_stream->op_problem =
+    new optimization_problem_t<cuopt_int_t, cuopt_float_t>(problem_and_stream->get_handle_ptr());
+  try {
+    problem_and_stream->op_problem->set_maximize(objective_sense == CUOPT_MAXIMIZE);
+    problem_and_stream->op_problem->set_objective_offset(objective_offset);
+    problem_and_stream->op_problem->set_objective_coefficients(objective_coefficients,
+                                                               num_variables);
+    cuopt_int_t Q_nnz = quadratic_objective_matrix_row_offsets[num_variables];
+    problem_and_stream->op_problem->set_quadratic_objective_matrix(
+      quadratic_objective_matrix_coefficent_values,
+      Q_nnz,
+      quadratic_objective_matrix_column_indices,
+      Q_nnz,
+      quadratic_objective_matrix_row_offsets,
+      num_variables + 1);
+    cuopt_int_t nnz = constraint_matrix_row_offsets[num_constraints];
+    problem_and_stream->op_problem->set_csr_constraint_matrix(constraint_matrix_coefficent_values,
+                                                              nnz,
+                                                              constraint_matrix_column_indices,
+                                                              nnz,
+                                                              constraint_matrix_row_offsets,
+                                                              num_constraints + 1);
+    problem_and_stream->op_problem->set_row_types(constraint_sense, num_constraints);
+    problem_and_stream->op_problem->set_constraint_bounds(rhs, num_constraints);
+    problem_and_stream->op_problem->set_variable_lower_bounds(lower_bounds, num_variables);
+    problem_and_stream->op_problem->set_variable_upper_bounds(upper_bounds, num_variables);
+    *problem_ptr = static_cast<cuOptOptimizationProblem>(problem_and_stream);
+  } catch (const raft::exception& e) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptCreateQuadraticRangedProblem(
+  cuopt_int_t num_constraints,
+  cuopt_int_t num_variables,
+  cuopt_int_t objective_sense,
+  cuopt_float_t objective_offset,
+  const cuopt_float_t* objective_coefficients,
+  const cuopt_int_t* quadratic_objective_matrix_row_offsets,
+  const cuopt_int_t* quadratic_objective_matrix_column_indices,
+  const cuopt_float_t* quadratic_objective_matrix_coefficent_values,
+  const cuopt_int_t* constraint_matrix_row_offsets,
+  const cuopt_int_t* constraint_matrix_column_indices,
+  const cuopt_float_t* constraint_matrix_coefficent_values,
+  const cuopt_float_t* constraint_lower_bounds,
+  const cuopt_float_t* constraint_upper_bounds,
+  const cuopt_float_t* variable_lower_bounds,
+  const cuopt_float_t* variable_upper_bounds,
+  cuOptOptimizationProblem* problem_ptr)
+{
+  cuopt::utilities::printTimestamp("CUOPT_CREATE_QUADRATIC_RANGED_PROBLEM");
+
+  if (problem_ptr == nullptr || objective_coefficients == nullptr ||
+      quadratic_objective_matrix_row_offsets == nullptr ||
+      quadratic_objective_matrix_column_indices == nullptr ||
+      quadratic_objective_matrix_coefficent_values == nullptr ||
+      constraint_matrix_row_offsets == nullptr || constraint_matrix_column_indices == nullptr ||
+      constraint_matrix_coefficent_values == nullptr || constraint_lower_bounds == nullptr ||
+      constraint_upper_bounds == nullptr || variable_lower_bounds == nullptr ||
+      variable_upper_bounds == nullptr) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+
+  problem_and_stream_view_t* problem_and_stream = new problem_and_stream_view_t();
+  problem_and_stream->op_problem =
+    new optimization_problem_t<cuopt_int_t, cuopt_float_t>(problem_and_stream->get_handle_ptr());
+  try {
+    problem_and_stream->op_problem->set_maximize(objective_sense == CUOPT_MAXIMIZE);
+    problem_and_stream->op_problem->set_objective_offset(objective_offset);
+    problem_and_stream->op_problem->set_objective_coefficients(objective_coefficients,
+                                                               num_variables);
+    cuopt_int_t Q_nnz = quadratic_objective_matrix_row_offsets[num_variables];
+    problem_and_stream->op_problem->set_quadratic_objective_matrix(
+      quadratic_objective_matrix_coefficent_values,
+      Q_nnz,
+      quadratic_objective_matrix_column_indices,
+      Q_nnz,
+      quadratic_objective_matrix_row_offsets,
+      num_variables + 1);
+    cuopt_int_t nnz = constraint_matrix_row_offsets[num_constraints];
+    problem_and_stream->op_problem->set_csr_constraint_matrix(constraint_matrix_coefficent_values,
+                                                              nnz,
+                                                              constraint_matrix_column_indices,
+                                                              nnz,
+                                                              constraint_matrix_row_offsets,
+                                                              num_constraints + 1);
+    problem_and_stream->op_problem->set_constraint_lower_bounds(constraint_lower_bounds,
+                                                                num_constraints);
+    problem_and_stream->op_problem->set_constraint_upper_bounds(constraint_upper_bounds,
+                                                                num_constraints);
+    problem_and_stream->op_problem->set_variable_lower_bounds(variable_lower_bounds, num_variables);
+    problem_and_stream->op_problem->set_variable_upper_bounds(variable_upper_bounds, num_variables);
+    *problem_ptr = static_cast<cuOptOptimizationProblem>(problem_and_stream);
+  } catch (const raft::exception& e) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  return CUOPT_SUCCESS;
+}
+
 void cuOptDestroyProblem(cuOptOptimizationProblem* problem_ptr)
 {
   if (problem_ptr == nullptr) { return; }

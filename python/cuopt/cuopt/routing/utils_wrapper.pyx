@@ -25,7 +25,9 @@ from cudf.core.buffer import as_buffer
 
 from libcpp.utility cimport move
 
-from cuopt.utilities import col_from_buf
+from cuopt.utilities import series_from_buf
+
+import pyarrow as pa
 
 
 class DatasetDistribution(IntEnum):
@@ -101,10 +103,8 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
 
     x_pos = DeviceBuffer.c_from_unique_ptr(move(g_ret.d_x_pos_))
     y_pos = DeviceBuffer.c_from_unique_ptr(move(g_ret.d_y_pos_))
-    x_pos = as_buffer(x_pos)
-    y_pos = as_buffer(y_pos)
-    coordinates['x'] = col_from_buf(x_pos, np.float32)
-    coordinates['y'] = col_from_buf(y_pos, np.float32)
+    coordinates['x'] = series_from_buf(x_pos, pa.float32())
+    coordinates['y'] = series_from_buf(y_pos, pa.float32())
 
     matrices_buf = as_buffer(
         DeviceBuffer.c_from_unique_ptr(move(g_ret.d_matrices_))
@@ -130,17 +130,13 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
         move(g_ret.d_skip_first_trips_)
     )
 
-    vehicle_earliest = as_buffer(vehicle_earliest)
-    vehicle_latest = as_buffer(vehicle_latest)
-    vehicle_drop_return_trips = as_buffer(vehicle_drop_return_trips)
-    vehicle_skip_first_trips = as_buffer(vehicle_skip_first_trips)
-    vehicles["earliest_time"] = col_from_buf(vehicle_earliest, np.int32)
-    vehicles["latest_time"] = col_from_buf(vehicle_latest, np.int32)
-    vehicles["drop_return_trips"] = col_from_buf(
-        vehicle_drop_return_trips, np.bool_
+    vehicles["earliest_time"] = series_from_buf(vehicle_earliest, pa.int32())
+    vehicles["latest_time"] = series_from_buf(vehicle_latest, pa.int32())
+    vehicles["drop_return_trips"] = series_from_buf(
+        vehicle_drop_return_trips, pa.bool_()
     )
-    vehicles["skip_first_trips"] = col_from_buf(
-        vehicle_skip_first_trips, np.bool_
+    vehicles["skip_first_trips"] = series_from_buf(
+        vehicle_skip_first_trips, pa.bool_()
     )
 
     fleet_size = vehicles["earliest_time"].shape[0]
@@ -172,14 +168,12 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
     earliest_time = DeviceBuffer.c_from_unique_ptr(
         move(g_ret.d_earliest_time_)
     )
-    earliest_time = as_buffer(earliest_time)
     latest_time = DeviceBuffer.c_from_unique_ptr(
         move(g_ret.d_latest_time_)
     )
-    latest_time = as_buffer(latest_time)
 
-    orders["earliest_time"] = col_from_buf(earliest_time, np.int32)
-    orders["latest_time"] = col_from_buf(latest_time, np.int32)
+    orders["earliest_time"] = series_from_buf(earliest_time, pa.int32())
+    orders["latest_time"] = series_from_buf(latest_time, pa.int32())
 
     demands_buf = as_buffer(
         DeviceBuffer.c_from_unique_ptr(move(g_ret.d_demands_))

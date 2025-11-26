@@ -277,6 +277,9 @@ class problem_t {
   bool cutting_plane_added{false};
   std::pair<std::vector<i_t>, std::vector<f_t>> vars_with_objective_coeffs;
   bool expensive_to_fix_vars{false};
+  std::vector<i_t> Q_offsets;
+  std::vector<i_t> Q_indices;
+  std::vector<f_t> Q_values;
 };
 
 }  // namespace linear_programming::detail

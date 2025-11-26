@@ -743,17 +743,6 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK(
       cudssMatrixSetValues(cudss_x, x.data()), status, "cudssMatrixSetValues for x");
 
-    i_t ldb = n;
-    i_t ldx = n;
-    CUDSS_CALL_AND_CHECK_EXIT(
-      cudssMatrixCreateDn(&cudss_b, n, 1, ldb, b.data(), CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
-      status,
-      "cudssMatrixCreateDn for b");
-    CUDSS_CALL_AND_CHECK_EXIT(
-      cudssMatrixCreateDn(&cudss_x, n, 1, ldx, x.data(), CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
-      status,
-      "cudssMatrixCreateDn for x");
-
     status = cudssExecute(handle, CUDSS_PHASE_SOLVE, solverConfig, solverData, A, cudss_x, cudss_b);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return -2; }
     if (status != CUDSS_STATUS_SUCCESS) {

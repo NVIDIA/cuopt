@@ -6,33 +6,11 @@ Basic Usage
 
 To solve a simple LP problem using cuopt_cli:
 
-.. code-block:: bash
+:download:`basic_lp_example.sh <examples/lp/examples/basic_lp_example.sh>`
 
-    # Create a sample MPS file
-    echo "* optimize
-   *  cost = -0.2 * VAR1 + 0.1 * VAR2
-   * subject to
-   *  3 * VAR1 + 4 * VAR2 <= 5.4
-   *  2.7 * VAR1 + 10.1 * VAR2 <= 4.9
-   NAME          SAMPLE
-   ROWS
-    N  COST
-    L  ROW1
-    L  ROW2
-   COLUMNS
-    VAR1      COST                -0.2
-    VAR1      ROW1                3.0
-    VAR1      ROW2                2.7
-    VAR2      COST                0.1
-    VAR2      ROW1                4.0
-    VAR2      ROW2               10.1
-   RHS
-    RHS1      ROW1                5.4
-    RHS1      ROW2                4.9
-   ENDATA" > sample.mps
-
-    # Solve using default settings
-    cuopt_cli sample.mps
+.. literalinclude:: examples/lp/examples/basic_lp_example.sh
+   :language: bash
+   :linenos:
 
 This should give you the following output:
 
@@ -58,37 +36,11 @@ Mixed Integer Programming Example
 
 Here's an example of solving a Mixed Integer Programming (MIP) problem using the CLI:
 
-.. code-block:: bash
+:download:`basic_milp_example.sh <examples/milp/examples/basic_milp_example.sh>`
 
-    echo "* Optimal solution -28
-   NAME          MIP_SAMPLE
-   ROWS
-    N  OBJ
-    L  C1
-    L  C2
-    L  C3
-   COLUMNS
-    MARK0001  'MARKER'                 'INTORG'
-      X1        OBJ             -7
-      X1        C1              -1
-      X1        C2               5
-      X1        C3              -2
-      X2        OBJ             -2
-      X2        C1               2
-      X2        C2               1
-      X2        C3              -2
-    MARK0001  'MARKER'                 'INTEND'
-   RHS
-      RHS       C1               4
-      RHS       C2              20
-      RHS       C3              -7
-   BOUNDS
-    UP BOUND     X1               10
-    UP BOUND     X2               10
-   ENDATA" > mip_sample.mps
-
-    # Solve the MIP problem with custom parameters
-    cuopt_cli --mip-absolute-gap 0.01 --time-limit 10 mip_sample.mps
+.. literalinclude:: examples/milp/examples/basic_milp_example.sh
+   :language: bash
+   :linenos:
 
 This should produce output similar to:
 
@@ -129,15 +81,10 @@ This should produce output similar to:
 Using Solver Parameters
 #######################
 
-You can customize the solver behavior using various command line parameters. Some examples are shown below:
+You can customize the solver behavior using various command line parameters. Here's a comprehensive example showing different parameter options:
 
-.. code-block:: bash
+:download:`solver_parameters_example.sh <examples/lp/examples/solver_parameters_example.sh>`
 
-    # Set absolute primal tolerance and PDLP solver mode
-    cuopt_cli --absolute-primal-tolerance 0.0001 --pdlp-solver-mode 1 sample.mps
-
-    # Set time limit and use specific solver method
-    cuopt_cli --time-limit 5 --method pdlp sample.mps
-
-    # Turn off output to console and output the logs to a .log file and solution to a .sol file
-    cuopt_cli --log-to-console false --log-file mip_sample.log --solution-file mip_sample.sol mip_sample.mps
+.. literalinclude:: examples/lp/examples/solver_parameters_example.sh
+   :language: bash
+   :linenos:

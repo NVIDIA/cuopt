@@ -776,21 +776,34 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
 }
 
 template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t> solve_lp(optimization_problem_t<i_t, f_t>& op_problem,
-                                                   pdlp_solver_settings_t<i_t, f_t> const& settings,
-                                                   bool problem_checking,
-                                                   bool use_pdlp_solver_mode,
-                                                   bool is_batch_mode)
+optimization_problem_solution_t<i_t, f_t> solve_lp(
+  optimization_problem_t<i_t, f_t>& op_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings_const,
+  bool problem_checking,
+  bool use_pdlp_solver_mode,
+  bool is_batch_mode)
 {
   try {
+    print_version_info();
+    pdlp_solver_settings_t<i_t, f_t> settings(settings_const,
+                                              op_problem.get_handle_ptr()->get_stream());
+    if (op_problem.has_quadratic_objective()) {
+      CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier solver");
+      settings.method   = method_t::Barrier;
+      settings.presolve = false;
+      // check for sense of the problem
+      if (op_problem.get_sense()) {
+        CUOPT_LOG_ERROR("Quadratic problems must be minimized");
+        return optimization_problem_solution_t<i_t, f_t>(
+          pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
+      }
+    }
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
 
     // Init libraies before to not include it in solve time
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
-
-    print_version_info();
 
     raft::common::nvtx::range fun_scope("Running solver");
 
@@ -984,6 +997,18 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
   }
   if (data_model.get_row_names().size() != 0) {
     op_problem.set_row_names(data_model.get_row_names());
+  }
+
+  if (data_model.get_quadratic_objective_values().size() != 0) {
+    const std::vector<f_t> Q_values  = data_model.get_quadratic_objective_values();
+    const std::vector<i_t> Q_indices = data_model.get_quadratic_objective_indices();
+    const std::vector<i_t> Q_offsets = data_model.get_quadratic_objective_offsets();
+    op_problem.set_quadratic_objective_matrix(Q_values.data(),
+                                              Q_values.size(),
+                                              Q_indices.data(),
+                                              Q_indices.size(),
+                                              Q_offsets.data(),
+                                              Q_offsets.size());
   }
 
   return op_problem;

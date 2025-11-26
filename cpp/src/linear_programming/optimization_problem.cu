@@ -134,6 +134,34 @@ void optimization_problem_t<i_t, f_t>::set_objective_offset(f_t objective_offset
 }
 
 template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(const f_t* Q_values,
+                                                                      i_t size_values,
+                                                                      const i_t* Q_indices,
+                                                                      i_t size_indices,
+                                                                      const i_t* Q_offsets,
+                                                                      i_t size_offsets)
+{
+  if (size_values != 0) {
+    cuopt_expects(Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
+  }
+  Q_values_.resize(size_values);
+  std::copy(Q_values, Q_values + size_values, Q_values_.data());
+
+  if (size_indices != 0) {
+    cuopt_expects(Q_indices != nullptr, error_type_t::ValidationError, "Q_indices cannot be null");
+  }
+
+  Q_indices_.resize(size_indices);
+  std::copy(Q_indices, Q_indices + size_indices, Q_indices_.data());
+
+  if (size_offsets != 0) {
+    cuopt_expects(Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
+  }
+  Q_offsets_.resize(size_offsets);
+  std::copy(Q_offsets, Q_offsets + size_offsets, Q_offsets_.data());
+}
+
+template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::set_variable_lower_bounds(const f_t* variable_lower_bounds,
                                                                  i_t size)
 {
@@ -357,6 +385,24 @@ template <typename i_t, typename f_t>
 f_t optimization_problem_t<i_t, f_t>::get_objective_offset() const
 {
   return objective_offset_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<f_t>& optimization_problem_t<i_t, f_t>::get_quadratic_objective_values() const
+{
+  return Q_values_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<i_t>& optimization_problem_t<i_t, f_t>::get_quadratic_objective_indices() const
+{
+  return Q_indices_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<i_t>& optimization_problem_t<i_t, f_t>::get_quadratic_objective_offsets() const
+{
+  return Q_offsets_;
 }
 
 template <typename i_t, typename f_t>
@@ -666,6 +712,11 @@ void optimization_problem_t<i_t, f_t>::print_scaling_information() const
   CUOPT_LOG_INFO("");
 }
 
+template <typename i_t, typename f_t>
+bool optimization_problem_t<i_t, f_t>::has_quadratic_objective() const
+{
+  return !Q_values_.empty();
+}
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
 #if MIP_INSTANTIATE_FLOAT
 template class optimization_problem_t<int, float>;
