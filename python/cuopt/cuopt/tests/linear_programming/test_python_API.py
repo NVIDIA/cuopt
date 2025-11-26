@@ -665,3 +665,81 @@ def test_barrier_solver_settings(test_name, settings_config):
         assert c.Slack >= -1e-6, (
             f"Negative slack for {c.getConstraintName()} in {test_name}"
         )
+
+
+def test_quadratic_expression_and_matrix():
+    problem = Problem()
+    x = problem.addVariable(lb=9.0, vtype="I", name="x")
+    y = problem.addVariable(name="y")
+    z = problem.addVariable(name="z")
+
+    assert x == y
+    expr1 = x * x  # var * var
+    expr2 = expr1 + y*z + 2  # QP + QP + const
+    expr3 = expr2 * 4  # QP * const
+
+    assert expr1.getVariables() == [(x, x)]
+    assert expr1.getCoefficients() == [1]
+    assert expr2.getVariables() == [(x, x), (y, z)]
+    assert expr2.getCoefficients() == [1, 1]
+    assert expr3.getVariables() == [(x, x), (y, z)]
+    assert expr3.getCoefficients() == [4, 4]
+    assert expr3.getLinearExpression().getConstant() == 8
+    assert expr3.getLinearExpression().getVariables() == []
+    assert expr3.getLinearExpression().getCoefficients() == []
+
+    expr3 /= 4  # QP / const
+    expr4 = expr3 - y  # QP - var
+
+    assert expr4.getVariables() == [(x, x), (y, z)]
+    assert expr4.getCoefficients() == [1, 1]
+    assert expr4.getLinearExpression().getConstant() == 2
+    assert expr4.getLinearExpression().getVariables() == [y]
+    assert expr4.getLinearExpression().getCoefficients() == [-1]
+
+    expr5 = z + 7*y + 1  # LP
+    expr6 = y * expr5  # var * LP
+    expr7 = expr5 - x*x  # LP - QP
+    expr8 = expr4 - expr5  # QP - LP # x2 + yz + 2 - y - 7y -z - 1 + 7y2 + yz + y
+    expr8 += expr6  # QP + QP
+
+    assert expr6.getVariable1(0) is y
+    assert expr6.getVariable2(0) is y
+    assert expr6.getVariable1(1) is y
+    assert expr6.getVariable2(1) is z
+    assert expr6.getCoefficients() == [7, 1]
+    assert expr6.getLinearExpression().getConstant() == 0
+    assert expr6.getLinearExpression().getVariables() == [y]
+    assert expr6.getLinearExpression().getCoefficients() == [1]
+
+    assert expr7.getVariable1(0) is x
+    assert expr7.getVariable2(0) is x
+    assert expr7.getCoefficients() == [-1]
+    assert expr7.getLinearExpression().getConstant() == 1
+    assert expr7.getLinearExpression().getVariable(0) is y
+    assert expr7.getLinearExpression().getVariable(1) is z
+    assert expr7.getLinearExpression().getCoefficients() == [7, 1]
+
+    assert len(expr8.getVariables()) == 4
+    assert expr8.getCoefficients() == [1, 1, 7, 1]
+    assert expr8.getLinearExpression().getConstant() == 1
+    assert expr8.getLinearExpression().getCoefficients() == [-1, -7, -1, 1]
+
+    expr9 = expr5 * (3*x - y + z + 3)  # LP * LP
+    # expr9 = 21*y*x + 7*y*z + 21*y - 7*y*y + 3*x + z + 3 - y + 3*z*x + z*z +3*z - z*y
+
+    qvariables = [(y, x), (y, y), (y, z), (z, x), (z, y), (z, z)]
+    qcoeffs = [21, -7, 7, 3, -1, 1]
+    for i, (var1, var2) in enumerate(expr9.getVariables()):
+        assert var1 is qvariables[i][0]
+        assert var2 is qvariables[i][1]
+    assert expr9.getCoefficients() == qcoeffs
+
+    linexpr = expr9.getLinearExpression()
+    lvariables = [y, z, x, y, z]
+    lcoeffs = [21, 3, 3, -1, 1]
+    constant = 3
+    for i, var in enumerate(linexpr.getVariables()):
+        assert var is lvariables[i]
+    assert linexpr.getCoefficients() == lcoeffs
+    assert linexpr.getConstant() == constant

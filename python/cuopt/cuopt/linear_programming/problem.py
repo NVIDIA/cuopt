@@ -656,6 +656,8 @@ class LinearExpression:
                 self.coefficients.extend(other.coefficients)
                 self.constant += other.constant
                 return self
+            case QuadraticExpression():
+                return other + self
             case _:
                 raise ValueError(
                     "Can't add type %s to Linear Expression"
@@ -681,6 +683,13 @@ class LinearExpression:
                 coeffs = self.coefficients + other.coefficients
                 constant = self.constant + other.constant
                 return LinearExpression(vars, coeffs, constant)
+            case QuadraticExpression():
+                return other + self
+            case _:
+                raise ValueError(
+                    "Can't add type %s to Linear Expression"
+                    % type(other).__name__
+                )
 
     def __radd__(self, other):
         return self + other
@@ -704,6 +713,8 @@ class LinearExpression:
                     self.coefficients.append(-coeff)
                 self.constant -= other.constant
                 return self
+            case QuadraticExpression():
+                return other * -1 + self
             case _:
                 raise ValueError(
                     "Can't sub type %s from LinearExpression"
@@ -733,10 +744,17 @@ class LinearExpression:
                     coeffs.append(-1.0 * i)
                 constant = self.constant - other.constant
                 return LinearExpression(vars, coeffs, constant)
+            case QuadraticExpression():
+                return other * -1 + self
+            case _:
+                raise ValueError(
+                    "Can't sub type %s from LinearExpression"
+                    % type(other).__name__
+                )
 
     def __rsub__(self, other):
         # other - self  -> other + self * -1.0
-        return other + self * -1.0
+        return self * -1.0 + other
 
     def __imul__(self, other):
         # Compute expr *= constant
@@ -747,6 +765,8 @@ class LinearExpression:
                 ]
                 self.constant = self.constant * float(other)
                 return self
+            case Variable():
+                return other * self
             case _:
                 raise ValueError(
                     "Can't multiply type %s by LinearExpresson"
@@ -760,6 +780,17 @@ class LinearExpression:
                 coeffs = [coeff * float(other) for coeff in self.coefficients]
                 constant = self.constant * float(other)
                 return LinearExpression(self.vars, coeffs, constant)
+            case LinearExpression():
+                qvars1, qvars2, qcoeffs = [], [], []
+                for i in range(len(self.vars)):
+                    for j in range(len(other.vars)):
+                        qvars1.append(self.vars[i])
+                        qvars2.append(other.vars[j])
+                        qcoeffs.append(self.coefficients[i] * other.coefficients[j])
+                vars = self.vars + other.vars
+                coeffs = [other.constant * i for i in self.coefficients] + [self.constant * i for i in other.coefficients]
+                constant = self.constant * other.constant
+                return QuadraticExpression(qvars1, qvars2, qcoeffs, vars, coeffs, constant)
             case Variable():
                 return other * self
 
@@ -1105,6 +1136,7 @@ class Problem:
         dm.set_objective_offset(self.ObjConstant)
         if self.ObjQmatrix:
             Qcsr = self.getQcsr(self.ObjQmatrix)
+            print(Qcsr)
         #    dm.set_objective_Q_matrix(Qcsr)  # TODO: Add Python SDK
         dm.set_variable_lower_bounds(self.lower_bound)
         dm.set_variable_upper_bounds(self.upper_bound)
@@ -1527,7 +1559,7 @@ class Problem:
         self.ObjValue = self.Obj.getValue()
         self.solved = True
 
-    def solve(self):
+    def solve(self, settings=solver_settings.SolverSettings()):
         """
         Optimizes the LP or MIP problem with the added variables,
         constraints and objective.
