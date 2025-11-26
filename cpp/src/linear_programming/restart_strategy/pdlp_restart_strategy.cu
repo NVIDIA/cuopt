@@ -155,7 +155,7 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
                                     last_restart_duality_gap_.dual_gradient_.data())},
     gap_reduction_ratio_last_trial_{stream_view_},
     last_restart_length_{0},
-    // If KKT restart, don't need to init all of those
+    // If trust region restart is not used, no need to init all of those
     center_point_{(!is_trust_region_restart<i_t, f_t>())
                     ? 0
                     : static_cast<size_t>(primal_size_h_ + dual_size_h_),
