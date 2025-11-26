@@ -1,5 +1,6 @@
 # Contributing to cuOpt
 
+
 Contributions to NVIDIA cuOpt fall into the following categories:
 
 1. To report a bug, request a new feature, or report a problem with documentation, please file an
