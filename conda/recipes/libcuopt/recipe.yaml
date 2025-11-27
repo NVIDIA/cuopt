@@ -1,4 +1,5 @@
-# Copyright (c) 2025, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION.
+# SPDX-License-Identifier: Apache-2.0
 schema_version: 1
 
 context:
@@ -131,8 +132,6 @@ outputs:
       script:
         content: |
           cmake --install cpp/build
-          # Remove papilo _deps directory from cmake files
-          rm -rf "${PREFIX}/lib/cmake/papilo/_deps"
       dynamic_linking:
         overlinking_behavior: "error"
       prefix_detection:

@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION &
- * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -28,21 +18,21 @@ namespace cuopt::linear_programming {
 
 template <typename i_t, typename f_t>
 static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
-  detail::problem_t<i_t, f_t>& model)
+  raft::handle_t const* handle_ptr, detail::problem_t<i_t, f_t>& model)
 {
-  dual_simplex::user_problem_t<i_t, f_t> user_problem(model.handle_ptr);
+  dual_simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
 
   int m                  = model.n_constraints;
   int n                  = model.n_variables;
   int nz                 = model.nnz;
   user_problem.num_rows  = m;
   user_problem.num_cols  = n;
-  user_problem.objective = cuopt::host_copy(model.objective_coefficients);
+  user_problem.objective = cuopt::host_copy(model.objective_coefficients, handle_ptr->get_stream());
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.x         = cuopt::host_copy(model.coefficients);
-  csr_A.j         = cuopt::host_copy(model.variables);
-  csr_A.row_start = cuopt::host_copy(model.offsets);
+  csr_A.x         = cuopt::host_copy(model.coefficients, handle_ptr->get_stream());
+  csr_A.j         = cuopt::host_copy(model.variables, handle_ptr->get_stream());
+  csr_A.row_start = cuopt::host_copy(model.offsets, handle_ptr->get_stream());
 
   csr_A.to_compressed_col(user_problem.A);
 
@@ -51,8 +41,10 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
   user_problem.range_rows.clear();
   user_problem.range_value.clear();
 
-  auto model_constraint_lower_bounds = cuopt::host_copy(model.constraint_lower_bounds);
-  auto model_constraint_upper_bounds = cuopt::host_copy(model.constraint_upper_bounds);
+  auto model_constraint_lower_bounds =
+    cuopt::host_copy(model.constraint_lower_bounds, handle_ptr->get_stream());
+  auto model_constraint_upper_bounds =
+    cuopt::host_copy(model.constraint_upper_bounds, handle_ptr->get_stream());
 
   // All constraints have lower and upper bounds
   // lr <= a_i^T x <= ur
@@ -79,7 +71,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
   }
   user_problem.num_range_rows = user_problem.range_rows.size();
   std::tie(user_problem.lower, user_problem.upper) =
-    extract_host_bounds<f_t>(model.variable_bounds, model.handle_ptr);
+    extract_host_bounds<f_t>(model.variable_bounds, handle_ptr);
   user_problem.problem_name = model.original_problem_ptr->get_problem_name();
   if (model.row_names.size() > 0) {
     user_problem.row_names.resize(m);
@@ -97,7 +89,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
   user_problem.obj_scale    = model.presolve_data.objective_scaling_factor;
   user_problem.var_types.resize(n);
 
-  auto model_variable_types = cuopt::host_copy(model.variable_types);
+  auto model_variable_types = cuopt::host_copy(model.variable_types, handle_ptr->get_stream());
   for (int j = 0; j < n; ++j) {
     user_problem.var_types[j] =
       model_variable_types[j] == var_t::CONTINUOUS

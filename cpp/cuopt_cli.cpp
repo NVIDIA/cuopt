@@ -1,29 +1,19 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/logger.hpp>
 #include <mps_parser/parser.hpp>
+#include <utilities/logger.hpp>
 
 #include <raft/core/handle.hpp>
 
-#include <rmm/mr/device/cuda_async_memory_resource.hpp>
+#include <rmm/mr/cuda_async_memory_resource.hpp>
 
 #include <unistd.h>
 #include <argparse/argparse.hpp>
@@ -76,6 +66,18 @@ static char cuda_module_loading_env[] = "CUDA_MODULE_LOADING=EAGER";
 inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_resource>(); }
 
 /**
+ * @brief Handle logger when error happens before logger is initialized
+ * @param settings Solver settings
+ * @return cuopt::init_logger_t
+ */
+inline cuopt::init_logger_t dummy_logger(
+  const cuopt::linear_programming::solver_settings_t<int, double>& settings)
+{
+  return cuopt::init_logger_t(settings.get_parameter<std::string>(CUOPT_LOG_FILE),
+                              settings.get_parameter<bool>(CUOPT_LOG_TO_CONSOLE));
+}
+
+/**
  * @brief Run a single file
  * @param file_path Path to the MPS format input file containing the optimization problem
  * @param initial_solution_file Path to initial solution file in SOL format
@@ -94,6 +96,7 @@ int run_single_file(const std::string& file_path,
       settings.set_parameter_from_string(key, val);
     }
   } catch (const std::exception& e) {
+    auto log = dummy_logger(settings);
     CUOPT_LOG_ERROR("Error: %s", e.what());
     return -1;
   }
@@ -113,6 +116,7 @@ int run_single_file(const std::string& file_path,
     }
   }
   if (parsing_failed) {
+    auto log = dummy_logger(settings);
     CUOPT_LOG_ERROR("Parsing MPS failed. Exiting!");
     return -1;
   }
@@ -122,7 +126,8 @@ int run_single_file(const std::string& file_path,
 
   const bool is_mip =
     (op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP ||
-     op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::IP);
+     op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::IP) &&
+    !solve_relaxation;
 
   try {
     auto initial_solution =
@@ -131,23 +136,36 @@ int run_single_file(const std::string& file_path,
         : cuopt::linear_programming::solution_reader_t::get_variable_values_from_sol_file(
             initial_solution_file, mps_data_model.get_variable_names());
 
-    if (is_mip && !solve_relaxation) {
+    if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
       if (initial_solution.size() > 0) {
         mip_settings.add_initial_solution(initial_solution.data(), initial_solution.size());
       }
-      auto solution = cuopt::linear_programming::solve_mip(op_problem, mip_settings);
     } else {
       auto& lp_settings = settings.get_pdlp_settings();
       if (initial_solution.size() > 0) {
         lp_settings.set_initial_primal_solution(initial_solution.data(), initial_solution.size());
       }
-      auto solution = cuopt::linear_programming::solve_lp(op_problem, lp_settings);
+    }
+  } catch (const std::exception& e) {
+    auto log = dummy_logger(settings);
+    CUOPT_LOG_ERROR("Error: %s", e.what());
+    return -1;
+  }
+
+  try {
+    if (is_mip) {
+      auto& mip_settings = settings.get_mip_settings();
+      auto solution      = cuopt::linear_programming::solve_mip(op_problem, mip_settings);
+    } else {
+      auto& lp_settings = settings.get_pdlp_settings();
+      auto solution     = cuopt::linear_programming::solve_lp(op_problem, lp_settings);
     }
   } catch (const std::exception& e) {
     CUOPT_LOG_ERROR("Error: %s", e.what());
     return -1;
   }
+
   return 0;
 }
 

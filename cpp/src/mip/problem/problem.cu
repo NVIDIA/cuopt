@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <mip/solution/solution.cuh>
 #include "problem.cuh"
@@ -89,6 +79,11 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
   // If maximization problem, convert the problem
   if (maximize) convert_to_maximization_problem(*this);
   if (is_mip) {
+    presolve_data.var_flags.resize(n_variables, handle_ptr->get_stream());
+    thrust::fill(handle_ptr->get_thrust_policy(),
+                 presolve_data.var_flags.begin(),
+                 presolve_data.var_flags.end(),
+                 0);
     integer_indices.resize(n_variables, handle_ptr->get_stream());
     is_binary_variable.resize(n_variables, handle_ptr->get_stream());
     compute_n_integer_vars();
@@ -190,6 +185,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     objective_name(problem_.objective_name),
     is_scaled_(problem_.is_scaled_),
     preprocess_called(problem_.preprocess_called),
+    objective_is_integral(problem_.objective_is_integral),
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
@@ -284,6 +280,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     objective_name(problem_.objective_name),
     is_scaled_(problem_.is_scaled_),
     preprocess_called(problem_.preprocess_called),
+    objective_is_integral(problem_.objective_is_integral),
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
@@ -933,6 +930,8 @@ typename problem_t<i_t, f_t>::view_t problem_t<i_t, f_t>::view()
   v.variable_types = raft::device_span<var_t>{variable_types.data(), variable_types.size()};
   v.is_binary_variable =
     raft::device_span<i_t>{is_binary_variable.data(), is_binary_variable.size()};
+  v.var_flags =
+    raft::device_span<i_t>{presolve_data.var_flags.data(), presolve_data.var_flags.size()};
   v.related_variables = raft::device_span<i_t>{related_variables.data(), related_variables.size()};
   v.related_variables_offsets =
     raft::device_span<i_t>{related_variables_offsets.data(), related_variables_offsets.size()};
@@ -953,6 +952,7 @@ void problem_t<i_t, f_t>::resize_variables(size_t size)
   variable_types.resize(size, handle_ptr->get_stream());
   objective_coefficients.resize(size, handle_ptr->get_stream());
   is_binary_variable.resize(size, handle_ptr->get_stream());
+  presolve_data.var_flags.resize(size, handle_ptr->get_stream());  // 0 is default - no flag
   related_variables_offsets.resize(size, handle_ptr->get_stream());
 }
 
@@ -1058,6 +1058,31 @@ void problem_t<i_t, f_t>::insert_constraints(constraints_delta_t<i_t, f_t>& h_co
                "nnz and offset should match!");
   cuopt_assert(offsets.size() == n_constraints + 1, "offset size should match!");
   combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+}
+
+template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_integer_indices)
+{
+  raft::common::nvtx::range fun_scope("set_implied_integers");
+  auto d_indices = cuopt::device_copy(implied_integer_indices, handle_ptr->get_stream());
+  thrust::for_each(handle_ptr->get_thrust_policy(),
+                   d_indices.begin(),
+                   d_indices.end(),
+                   [var_flags = make_span(presolve_data.var_flags),
+                    var_types = make_span(variable_types)] __device__(i_t idx) {
+                     cuopt_assert(idx < var_flags.size(), "Index out of bounds");
+                     cuopt_assert(var_types[idx] == var_t::CONTINUOUS, "Variable is integer");
+                     var_flags[idx] |= (i_t)VAR_IMPLIED_INTEGER;
+                   });
+  objective_is_integral = thrust::all_of(handle_ptr->get_thrust_policy(),
+                                         thrust::make_counting_iterator(0),
+                                         thrust::make_counting_iterator(n_variables),
+                                         [v = view()] __device__(i_t var_idx) {
+                                           if (v.objective_coefficients[var_idx] == 0) return true;
+                                           return v.is_integer(v.objective_coefficients[var_idx]) &&
+                                                  (v.variable_types[var_idx] == var_t::INTEGER ||
+                                                   (v.var_flags[var_idx] & VAR_IMPLIED_INTEGER));
+                                         });
 }
 
 template <typename i_t, typename f_t>
@@ -1249,6 +1274,16 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
                  original_problem.variable_types.begin(),
                  variable_types.begin());
   variable_types.resize(variable_map.size(), handle_ptr->get_stream());
+  // keep implied-integer and other flags consistent with new variable set
+  cuopt_assert(original_problem.presolve_data.var_flags.size() == original_problem.n_variables,
+               "size mismatch");
+  cuopt_assert(presolve_data.var_flags.size() == n_variables, "size mismatch");
+  thrust::gather(handle_ptr->get_thrust_policy(),
+                 variable_map.begin(),
+                 variable_map.end(),
+                 original_problem.presolve_data.var_flags.begin(),
+                 presolve_data.var_flags.begin());
+  presolve_data.var_flags.resize(variable_map.size(), handle_ptr->get_stream());
   const i_t TPB = 64;
   // compute new offsets
   compute_new_offsets<i_t, f_t><<<variable_map.size(), TPB, 0, handle_ptr->get_stream()>>>(
@@ -1375,6 +1410,7 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
   auto h_var_bounds             = cuopt::host_copy(pb.variable_bounds);
   auto h_objective_coefficients = cuopt::host_copy(pb.objective_coefficients);
   auto h_variable_types         = cuopt::host_copy(pb.variable_types);
+  auto h_var_flags              = cuopt::host_copy(pb.presolve_data.var_flags);
   handle_ptr->sync_stream();
 
   const i_t n_vars_originally = (i_t)h_var_bounds.size();
@@ -1406,6 +1442,7 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
       pb.presolve_data.variable_offsets.push_back(0.);
       h_objective_coefficients.push_back(-h_objective_coefficients[i]);
       h_variable_types.push_back(h_variable_types[i]);
+      h_var_flags.push_back(0);
       pb.presolve_data.additional_var_used.push_back(false);
       pb.presolve_data.additional_var_id_per_var.push_back(-1);
       pb.n_variables++;
@@ -1422,6 +1459,7 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
     pb.variable_bounds.resize(h_var_bounds.size(), handle_ptr->get_stream());
     pb.objective_coefficients.resize(h_objective_coefficients.size(), handle_ptr->get_stream());
     pb.variable_types.resize(h_variable_types.size(), handle_ptr->get_stream());
+    pb.presolve_data.var_flags.resize(h_var_flags.size(), handle_ptr->get_stream());
   }
 
   raft::copy(
@@ -1433,6 +1471,10 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
   raft::copy(pb.variable_types.data(),
              h_variable_types.data(),
              h_variable_types.size(),
+             handle_ptr->get_stream());
+  raft::copy(pb.presolve_data.var_flags.data(),
+             h_var_flags.data(),
+             h_var_flags.size(),
              handle_ptr->get_stream());
   handle_ptr->sync_stream();
 }

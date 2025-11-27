@@ -1,21 +1,13 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
+#include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/basis_updates.hpp>
+#include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/triangle_solve.hpp>
 
 #include <cmath>
@@ -1201,7 +1193,8 @@ i_t basis_update_mpf_t<i_t, f_t>::scatter_into_workspace(const sparse_vector_t<i
 template <typename i_t, typename f_t>
 void basis_update_mpf_t<i_t, f_t>::grow_storage(i_t nz, i_t& S_start, i_t& S_nz)
 {
-  const i_t last_S_col     = num_updates_ * 2;
+  const i_t last_S_col = num_updates_ * 2;
+  assert(S_.n == last_S_col);
   const i_t new_last_S_col = last_S_col + 2;
   if (new_last_S_col >= S_.col_start.size()) {
     S_.col_start.resize(new_last_S_col + refactor_frequency_);
@@ -1212,6 +1205,8 @@ void basis_update_mpf_t<i_t, f_t>::grow_storage(i_t nz, i_t& S_start, i_t& S_nz)
     S_.x.resize(std::max(2 * S_nz, S_nz + nz));
   }
   S_start = last_S_col;
+  assert(S_nz + nz <= S_.i.size());
+  assert(S_nz + nz <= S_.x.size());
 }
 
 template <typename i_t, typename f_t>
@@ -1872,7 +1867,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const std::vector<f_t>& utilde,
                                   S_.x.data() + S_.col_start[S_start + 1],
                                   v_nz);
 
-  if (std::abs(mu) < 1e-13) {
+  if (std::abs(mu) < 1E-8 || std::abs(mu) > 1E+8) {
     // Force a refactor. Otherwise we will get numerical issues when dividing by mu.
     return 1;
   }
@@ -1936,7 +1931,8 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
                                   S_.i.data() + S_.col_start[S_start + 1],
                                   S_.x.data() + S_.col_start[S_start + 1],
                                   S_.col_start[S_start + 2] - S_.col_start[S_start + 1]);
-  if (std::abs(mu) < 1e-13) {
+
+  if (std::abs(mu) < 1E-8 || std::abs(mu) > 1E+8) {
     // Force a refactor. Otherwise we will get numerical issues when dividing by mu.
     return 1;
   }
@@ -2044,6 +2040,75 @@ void basis_update_mpf_t<i_t, f_t>::multiply_lu(csc_matrix_t<i_t, f_t>& out) cons
   out.m      = m;
   out.n      = m;
   out.nz_max = B_nz;
+}
+
+template <typename i_t, typename f_t>
+int basis_update_mpf_t<i_t, f_t>::refactor_basis(
+  const csc_matrix_t<i_t, f_t>& A,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  std::vector<i_t>& basic_list,
+  std::vector<i_t>& nonbasic_list,
+  std::vector<variable_status_t>& vstatus)
+{
+  std::vector<i_t> deficient;
+  std::vector<i_t> slacks_needed;
+
+  if (L0_.m != A.m) { resize(A.m); }
+  std::vector<i_t> q;
+  if (factorize_basis(A,
+                      settings,
+                      basic_list,
+                      L0_,
+                      U0_,
+                      row_permutation_,
+                      inverse_row_permutation_,
+                      q,
+                      deficient,
+                      slacks_needed) == -1) {
+    settings.log.debug("Initial factorization failed\n");
+    basis_repair(A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
+
+#ifdef CHECK_BASIS_REPAIR
+    const i_t m = A.m;
+    csc_matrix_t<i_t, f_t> B(m, m, 0);
+    form_b(A, basic_list, B);
+    for (i_t k = 0; k < deficient.size(); ++k) {
+      const i_t j         = deficient[k];
+      const i_t col_start = B.col_start[j];
+      const i_t col_end   = B.col_start[j + 1];
+      const i_t col_nz    = col_end - col_start;
+      if (col_nz != 1) { settings.log.printf("Deficient column %d has %d nonzeros\n", j, col_nz); }
+      const i_t i = B.i[col_start];
+      if (i != slacks_needed[k]) {
+        settings.log.printf("Slack %d needed but found %d instead\n", slacks_needed[k], i);
+      }
+    }
+#endif
+
+    if (factorize_basis(A,
+                        settings,
+                        basic_list,
+                        L0_,
+                        U0_,
+                        row_permutation_,
+                        inverse_row_permutation_,
+                        q,
+                        deficient,
+                        slacks_needed) == -1) {
+#ifdef CHECK_L_FACTOR
+      if (L0_.check_matrix() == -1) { settings.log.printf("Bad L after basis repair\n"); }
+#endif
+
+      assert(deficient.size() > 0);
+      return deficient.size();
+    }
+    settings.log.debug("Basis repaired\n");
+  }
+
+  assert(q.size() == A.m);
+  reorder_basic_list(q, basic_list);  // We no longer need q after reordering the basic list
+  reset();
+  return 0;
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
