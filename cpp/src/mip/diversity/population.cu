@@ -209,6 +209,7 @@ void population_t<i_t, f_t>::add_external_solutions_to_population()
 
   auto new_sol_vector = get_external_solutions();
   add_solutions_from_vec(std::move(new_sol_vector));
+  apply_problem_ptr_to_all_solutions();
 }
 
 // normally we would need a lock here but these are boolean types and race conditions are not

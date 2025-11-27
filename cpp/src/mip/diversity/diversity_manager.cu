@@ -430,9 +430,7 @@ void diversity_manager_t<i_t, f_t>::diversity_step(i_t max_iterations_without_im
     improved = false;
     while (k-- > 0) {
       if (check_b_b_preemption()) { return; }
-      auto new_sol_vector = population.get_external_solutions();
-      population.add_solutions_from_vec(std::move(new_sol_vector));
-      population.apply_problem_ptr_to_all_solutions();
+      population.add_external_solutions_to_population();
       population.adjust_weights_according_to_best_feasible();
       cuopt_assert(population.test_invariant(), "");
       if (population.current_size() < 2) {

@@ -32,15 +32,9 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
     fj_sol_on_lp_opt(context.problem_ptr->n_variables,
                      context.problem_ptr->handle_ptr->get_stream()),
     fj(context),
-    // fj_tree(fj),
     constraint_prop(context),
     line_segment_search(fj, constraint_prop),
-    fp(context,
-       fj,
-       // fj_tree,
-       constraint_prop,
-       line_segment_search,
-       lp_optimal_solution_),
+    fp(context, fj, constraint_prop, line_segment_search, lp_optimal_solution_),
     rng(cuopt::seed_generator::get_seed()),
     problem_with_objective_cut(*context.problem_ptr, context.problem_ptr->handle_ptr)
 {
@@ -540,9 +534,6 @@ template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::resize_to_new_problem()
 {
   resize_vectors(problem_with_objective_cut, problem_with_objective_cut.handle_ptr);
-  // hint for next PR in case load balanced is reintroduced
-  // lb_constraint_prop.temp_problem.setup(problem_with_objective_cut);
-  // lb_constraint_prop.bounds_update.setup(lb_constraint_prop.temp_problem);
   constraint_prop.bounds_update.resize(problem_with_objective_cut);
 }
 
@@ -550,9 +541,6 @@ template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::resize_to_old_problem(problem_t<i_t, f_t>* old_problem_ptr)
 {
   resize_vectors(*old_problem_ptr, old_problem_ptr->handle_ptr);
-  // hint for next PR in case load balanced is reintroduced
-  // lb_constraint_prop.temp_problem.setup(*old_problem_ptr);
-  // lb_constraint_prop.bounds_update.setup(lb_constraint_prop.temp_problem);
   constraint_prop.bounds_update.resize(*old_problem_ptr);
 }
 
@@ -594,7 +582,7 @@ void local_search_t<i_t, f_t>::reset_alpha_and_save_solution(solution_t<i_t, f_t
   solution_copy.problem_ptr = old_problem_ptr;
   solution_copy.resize_to_problem();
   population_ptr->add_solution(std::move(solution_copy));
-  auto new_sol_vector = population_ptr->add_external_solutions_to_population();
+  population_ptr->add_external_solutions_to_population();
   handle_cutting_plane_and_weights(solution, population_ptr, best_objective);
   population_ptr->print();
 }
@@ -610,11 +598,11 @@ void local_search_t<i_t, f_t>::run_recombiners(solution_t<i_t, f_t>& solution,
   raft::common::nvtx::range fun_scope("reset_alpha_and_run_recombiners");
   constexpr i_t iterations_for_stagnation          = 3;
   constexpr i_t max_iterations_without_improvement = 8;
-  auto new_sol_vector = population_ptr->add_external_solutions_to_population();
+  population_ptr->add_external_solutions_to_population();
   if (population_ptr->is_feasible()) {
     if (!cutting_plane_added_for_active_run) {
       solution.problem_ptr = &problem_with_objective_cut;
-      // population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
+      population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
       solution.resize_to_problem();
       resize_to_new_problem();
       cutting_plane_added_for_active_run = true;
@@ -667,8 +655,8 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     fj.copy_weights(
       population_ptr->weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
     solution.problem_ptr = &problem_with_objective_cut;
-    // population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
-    // population_ptr->apply_problem_ptr_to_all_solutions();
+    population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
+    population_ptr->apply_problem_ptr_to_all_solutions();
     solution.resize_to_problem();
     resize_to_new_problem();
   }
