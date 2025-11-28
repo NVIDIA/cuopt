@@ -127,7 +127,7 @@ class branch_and_bound_t {
     omp_atomic_t<f_t> total_lp_iters      = 0;
 
     // This should only be used by the main thread
-    f_t last_log                           = 0.0;
+    omp_atomic_t<f_t> last_log             = 0.0;
     omp_atomic_t<i_t> nodes_since_last_log = 0;
   } exploration_stats_;
 
@@ -159,6 +159,8 @@ class branch_and_bound_t {
   // Global status of the solver.
   omp_atomic_t<mip_exploration_status_t> solver_status_;
 
+  omp_atomic_t<bool> should_report_;
+
   // In case, a best-first thread encounters a numerical issue when solving a node,
   // its blocks the progression of the lower bound.
   omp_atomic_t<f_t> lower_bound_ceiling_;
@@ -188,7 +190,10 @@ class branch_and_bound_t {
                        mip_node_t<i_t, f_t>* start_node,
                        search_tree_t<i_t, f_t>& search_tree,
                        lp_problem_t<i_t, f_t>& leaf_problem,
-                       bounds_strengthening_t<i_t, f_t>& node_presolver);
+                       bounds_strengthening_t<i_t, f_t>& node_presolver,
+                       basis_update_mpf_t<i_t, f_t>& basis_update,
+                       std::vector<i_t>& basic_list,
+                       std::vector<i_t>& nonbasic_list);
 
   // Each "main" thread pops a node from the global heap and then performs a plunge
   // (i.e., a shallow dive) into the subtree determined by the node.
@@ -204,9 +209,12 @@ class branch_and_bound_t {
   node_solve_info_t solve_node(mip_node_t<i_t, f_t>* node_ptr,
                                search_tree_t<i_t, f_t>& search_tree,
                                lp_problem_t<i_t, f_t>& leaf_problem,
+                               basis_update_mpf_t<i_t, f_t>& basis_factors,
+                               std::vector<i_t>& basic_list,
+                               std::vector<i_t>& nonbasic_list,
                                bounds_strengthening_t<i_t, f_t>& node_presolver,
                                thread_type_t thread_type,
-                               bool recompute,
+                               bool recompute_basis_and_bounds,
                                const std::vector<f_t>& root_lower,
                                const std::vector<f_t>& root_upper,
                                logger_t& log);
