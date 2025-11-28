@@ -141,6 +141,28 @@ void solution_t<i_t, f_t>::swap_problem_pointers()
 }
 
 template <typename i_t, typename f_t>
+void solution_t<i_t, f_t>::set_problem_ptr(problem_t<i_t, f_t>* _problem_ptr, bool is_cuts_problem)
+{
+  cuopt_assert(_problem_ptr != nullptr, "Problem pointer must be set");
+  // FIXME: when we create ping_pong problems with constant cuts, adjust this logic
+  if (is_cuts_problem) {
+    cuopt_assert(!current_problem_is_cut, "Current problem must not be with cuts");
+    // set original problem to be swap pointer
+    problem_with_cuts_ptr = problem_ptr;
+    // set current problem to new cut problem
+    problem_ptr            = _problem_ptr;
+    current_problem_is_cut = true;
+  } else {
+    problem_ptr = _problem_ptr;
+    // if we are setting non-cut problem, the cut version should be invalidated
+    problem_with_cuts_ptr  = nullptr;
+    current_problem_is_cut = false;
+  }
+  resize_to_problem();
+  compute_feasibility();
+}
+
+template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::resize_to_original_problem()
 {
   assignment.resize(problem_ptr->original_problem_ptr->get_n_variables(), handle_ptr->get_stream());

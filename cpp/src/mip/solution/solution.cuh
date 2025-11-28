@@ -99,6 +99,7 @@ class solution_t {
   f_t compute_max_int_violation();
   f_t compute_max_variable_violation();
   void swap_problem_pointers();
+  void set_problem_ptr(problem_t<i_t, f_t>* _problem_ptr, bool is_cuts_problem = false);
 
   struct view_t {
     // let's not bloat the class for every simple getter and setters

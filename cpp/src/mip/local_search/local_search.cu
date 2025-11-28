@@ -549,9 +549,9 @@ void local_search_t<i_t, f_t>::handle_cutting_plane_and_weights(
   solution_t<i_t, f_t>& solution, population_t<i_t, f_t>* population_ptr, f_t& best_objective)
 {
   if (!cutting_plane_added_for_active_run) {
-    solution.problem_ptr = &problem_with_objective_cut;
-    // population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
-    solution.resize_to_problem();
+    population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
+    constexpr bool is_cuts_problem = true;
+    solution.set_problem_ptr(&problem_with_objective_cut, is_cuts_problem);
     resize_to_new_problem();
     cutting_plane_added_for_active_run = true;
     raft::copy(population_ptr->weights.cstr_weights.data(),
@@ -579,8 +579,7 @@ void local_search_t<i_t, f_t>::reset_alpha_and_save_solution(solution_t<i_t, f_t
   raft::common::nvtx::range fun_scope("reset_alpha_and_save_solution");
   fp.reset();
   solution_t<i_t, f_t> solution_copy(solution);
-  solution_copy.problem_ptr = old_problem_ptr;
-  solution_copy.resize_to_problem();
+  solution_copy.set_problem_ptr(old_problem_ptr);
   population_ptr->add_solution(std::move(solution_copy));
   population_ptr->add_external_solutions_to_population();
   handle_cutting_plane_and_weights(solution, population_ptr, best_objective);
@@ -601,9 +600,8 @@ void local_search_t<i_t, f_t>::run_recombiners(solution_t<i_t, f_t>& solution,
   population_ptr->add_external_solutions_to_population();
   if (population_ptr->is_feasible()) {
     if (!cutting_plane_added_for_active_run) {
-      solution.problem_ptr = &problem_with_objective_cut;
+      solution.set_problem_ptr(&problem_with_objective_cut);
       population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
-      solution.resize_to_problem();
       resize_to_new_problem();
       cutting_plane_added_for_active_run = true;
       raft::copy(population_ptr->weights.cstr_weights.data(),
@@ -654,10 +652,9 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     // Do the copy here for proper handling of the added constraints weight
     fj.copy_weights(
       population_ptr->weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
-    solution.problem_ptr = &problem_with_objective_cut;
+    solution.set_problem_ptr(&problem_with_objective_cut);
     population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
     population_ptr->apply_problem_ptr_to_all_solutions();
-    solution.resize_to_problem();
     resize_to_new_problem();
   }
   i_t last_improved_iteration = 0;
@@ -710,8 +707,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
       }
     }
   }
-  solution.problem_ptr = old_problem_ptr;
-  solution.resize_to_problem();
+  solution.set_problem_ptr(old_problem_ptr);
   resize_to_old_problem(old_problem_ptr);
   solution.handle_ptr->sync_stream();
   return is_feasible;
