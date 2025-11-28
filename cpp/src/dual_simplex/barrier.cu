@@ -1197,12 +1197,13 @@ class iteration_data_t {
   // v = alpha * A * Dinv * A^T * y + beta * v
   void gpu_adat_multiply(f_t alpha,
                          const rmm::device_uvector<f_t>& y,
-                         cusparseDnVecDescr_t cusparse_y,
+                         detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_y,
+
                          f_t beta,
                          rmm::device_uvector<f_t>& v,
-                         cusparseDnVecDescr_t cusparse_v,
+                         detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_v,
                          rmm::device_uvector<f_t>& u,
-                         cusparseDnVecDescr_t cusparse_u,
+                         detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_u,
                          cusparse_view_t<i_t, f_t>& cusparse_view,
                          const rmm::device_uvector<f_t>& d_inv_diag) const
   {
@@ -1386,20 +1387,20 @@ class iteration_data_t {
   pinned_dense_vector_t<i_t, f_t> dz;
   cusparse_info_t<i_t, f_t> cusparse_info;
   cusparse_view_t<i_t, f_t> cusparse_view_;
-  cusparseDnVecDescr_t cusparse_tmp4_;
-  cusparseDnVecDescr_t cusparse_h_;
-  cusparseDnVecDescr_t cusparse_dx_residual_;
-  cusparseDnVecDescr_t cusparse_dy_;
-  cusparseDnVecDescr_t cusparse_dx_residual_5_;
-  cusparseDnVecDescr_t cusparse_dx_residual_6_;
-  cusparseDnVecDescr_t cusparse_dx_;
-  cusparseDnVecDescr_t cusparse_dx_residual_3_;
-  cusparseDnVecDescr_t cusparse_dx_residual_4_;
-  cusparseDnVecDescr_t cusparse_r1_;
-  cusparseDnVecDescr_t cusparse_dual_residual_;
-  cusparseDnVecDescr_t cusparse_y_residual_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_tmp4_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_h_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dy_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_5_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_6_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_3_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_4_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_r1_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dual_residual_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_y_residual_;
   // GPU ADAT multiply
-  cusparseDnVecDescr_t cusparse_u_;
+  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_u_;
 
   // Device vectors
 
@@ -2279,7 +2280,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       raft::copy(data.d_y_residual_.data(), data.d_h_.data(), data.d_h_.size(), stream_view_);
 
       // TMP should be done only once
-      cusparseDnVecDescr_t cusparse_dy_ = data.cusparse_view_.create_vector(data.d_dy_);
+      auto cusparse_dy_ = data.cusparse_view_.create_vector(data.d_dy_);
 
       data.gpu_adat_multiply(1.0,
                              data.d_dy_,
@@ -2448,9 +2449,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
 
       // TMP data should already be on the GPU
       rmm::device_uvector<f_t> d_dx_residual_7(data.d_h_, stream_view_);
-      cusparseDnVecDescr_t cusparse_dy_ = data.cusparse_view_.create_vector(data.d_dy_);
-      cusparseDnVecDescr_t cusparse_dx_residual_7 =
-        data.cusparse_view_.create_vector(d_dx_residual_7);
+      auto cusparse_dy_           = data.cusparse_view_.create_vector(data.d_dy_);
+      auto cusparse_dx_residual_7 = data.cusparse_view_.create_vector(d_dx_residual_7);
 
       // matrix_vector_multiply(data.ADAT, 1.0, dy, -1.0, dx_residual_7);
       data.gpu_adat_multiply(1.0,

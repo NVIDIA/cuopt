@@ -168,7 +168,6 @@ bool build_graph(managed_stream_pool& streams,
                  CaptureGraphFunc g_func)
 {
   bool graph_created = false;
-  cudaGraphCreate(&graph, 0);
   cudaEvent_t fork_stream_event;
   cudaEventCreate(&fork_stream_event);
 

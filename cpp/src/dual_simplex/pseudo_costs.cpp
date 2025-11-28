@@ -200,10 +200,10 @@ void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_pt
 {
   mutex.lock();
   const f_t change_in_obj = leaf_objective - node_ptr->lower_bound;
-  const f_t frac          = node_ptr->branch_dir == 0
+  const f_t frac          = node_ptr->branch_dir == rounding_direction_t::DOWN
                               ? node_ptr->fractional_val - std::floor(node_ptr->fractional_val)
                               : std::ceil(node_ptr->fractional_val) - node_ptr->fractional_val;
-  if (node_ptr->branch_dir == 0) {
+  if (node_ptr->branch_dir == rounding_direction_t::DOWN) {
     pseudo_cost_sum_down[node_ptr->branch_var] += change_in_obj / frac;
     pseudo_cost_num_down[node_ptr->branch_var]++;
   } else {

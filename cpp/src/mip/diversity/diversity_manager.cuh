@@ -21,6 +21,7 @@
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_stats.hpp>
 
+#include <mip/diversity/lns/rins.cuh>
 #include <mip/local_search/local_search.cuh>
 #include <mip/solution/solution.cuh>
 #include <mip/solver.cuh>
@@ -94,6 +95,8 @@ class diversity_manager_t {
   std::mutex relaxed_solution_mutex;
   // atomic for signalling pdlp to stop
   volatile int global_concurrent_halt{0};
+
+  rins_t<i_t, f_t> rins;
 
   bool run_only_ls_recombiner{false};
   bool run_only_bp_recombiner{false};

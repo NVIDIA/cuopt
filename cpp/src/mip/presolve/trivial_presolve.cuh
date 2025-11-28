@@ -67,28 +67,35 @@ void cleanup_vectors(problem_t<i_t, f_t>& pb,
                                     handle_ptr->get_stream());
 
   handle_ptr->sync_stream();
-  auto bnd_iter    = thrust::remove_if(handle_ptr->get_thrust_policy(),
+  auto bnd_iter       = thrust::remove_if(handle_ptr->get_thrust_policy(),
                                     pb.variable_bounds.begin(),
                                     pb.variable_bounds.end(),
                                     var_map.begin(),
                                     is_zero_t<i_t>{});
-  auto type_iter   = thrust::remove_if(handle_ptr->get_thrust_policy(),
+  auto type_iter      = thrust::remove_if(handle_ptr->get_thrust_policy(),
                                      pb.variable_types.begin(),
                                      pb.variable_types.end(),
                                      var_map.begin(),
                                      is_zero_t<i_t>{});
-  auto binary_iter = thrust::remove_if(handle_ptr->get_thrust_policy(),
+  auto binary_iter    = thrust::remove_if(handle_ptr->get_thrust_policy(),
                                        pb.is_binary_variable.begin(),
                                        pb.is_binary_variable.end(),
                                        var_map.begin(),
                                        is_zero_t<i_t>{});
-  auto obj_iter    = thrust::remove_if(handle_ptr->get_thrust_policy(),
+  auto obj_iter       = thrust::remove_if(handle_ptr->get_thrust_policy(),
                                     pb.objective_coefficients.begin(),
                                     pb.objective_coefficients.end(),
                                     var_map.begin(),
                                     is_zero_t<i_t>{});
+  auto var_flags_iter = thrust::remove_if(handle_ptr->get_thrust_policy(),
+                                          pb.presolve_data.var_flags.begin(),
+                                          pb.presolve_data.var_flags.end(),
+                                          var_map.begin(),
+                                          is_zero_t<i_t>{});
   pb.variable_bounds.resize(bnd_iter - pb.variable_bounds.begin(), handle_ptr->get_stream());
   pb.variable_types.resize(type_iter - pb.variable_types.begin(), handle_ptr->get_stream());
+  pb.presolve_data.var_flags.resize(var_flags_iter - pb.presolve_data.var_flags.begin(),
+                                    handle_ptr->get_stream());
   pb.is_binary_variable.resize(binary_iter - pb.is_binary_variable.begin(),
                                handle_ptr->get_stream());
   pb.objective_coefficients.resize(obj_iter - pb.objective_coefficients.begin(),

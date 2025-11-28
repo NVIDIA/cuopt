@@ -4,9 +4,14 @@
 reviews:
   profile: chill
   high_level_summary: true
+  poem: false
   auto_review:
     enabled: true
     drafts: false
+    base_branches:
+      - "^main$"
+      - "^release/.*"
+      - "^hotfix/.*"
     ignore_usernames: ["rapids-bot", "GPUtester", "nv-automation-bot", "copy-pr-bot"]
   tools:
     markdownlint:
@@ -16,3 +21,39 @@ reviews:
     gitleaks:
       enabled: true
   sequence_diagrams: false
+  collapse_walkthrough: true
+
+  # Reduce noise from status messages
+  request_changes_workflow: false
+  review_status: false
+
+  # Path-specific review instructions
+  path_instructions:
+    - path: "docs/**/*"
+      instructions: |
+        For documentation changes, focus on:
+        - Accuracy: Verify code examples compile and run correctly
+        - Completeness: Check if API changes (parameters, return values, errors) are documented
+        - Clarity: Flag confusing explanations, missing prerequisites, or unclear examples
+        - Consistency: Version numbers, parameter types, and terminology match code
+        - Examples: Suggest adding examples for complex features or new APIs
+        - Missing docs: If PR changes public APIs without updating docs, flag as HIGH priority
+
+        When code changes affect docs:
+        - Suggest specific doc files that need updates (e.g., docs/cuopt/api.rst)
+        - Identify outdated information contradicting the code changes
+        - Recommend documenting performance characteristics, GPU requirements, or numerical tolerances
+
+    - path: "cpp/include/cuopt/**/*"
+      instructions: |
+        For public header files (C++ API):
+        - Check if new public functions/classes have documentation comments (Doxygen format)
+        - Flag API changes that may need corresponding docs/ updates
+        - Verify parameter descriptions match actual types/behavior
+        - Suggest documenting thread-safety, GPU requirements, and numerical behavior
+        - For breaking changes, recommend updating docs and migration guides
+knowledge_base:
+  opt_out: false
+  code_guidelines:
+    filePatterns:
+      - ".github/.coderabbit_review_guide.md"

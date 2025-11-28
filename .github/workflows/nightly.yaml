@@ -15,8 +15,9 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        include:
-          - cuopt_branch: "main"
+        cuopt_branch:
+          - "main"
+          - "release/25.12"
     steps:
       - uses: actions/checkout@v4
       - name: Trigger Pipeline
