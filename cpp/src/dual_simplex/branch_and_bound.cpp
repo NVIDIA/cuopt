@@ -1336,14 +1336,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   // Choose variable to branch on
   i_t branch_var = pc_.variable_selection(fractional, root_relax_soln_.x, log);
 
-  search_tree_t<i_t, f_t> search_tree(root_objective_, root_vstatus_);
-  search_tree.graphviz_node(settings_.log, &search_tree.root, "lower bound", root_objective_);
-  search_tree.branch(&search_tree.root,
-                     branch_var,
-                     root_relax_soln_.x[branch_var],
-                     root_vstatus_,
-                     original_lp_,
-                     log);
+  search_tree_.root      = std::move(mip_node_t<i_t, f_t>(root_objective_, root_vstatus_));
+  search_tree_.num_nodes = 0;
+  search_tree_.graphviz_node(settings_.log, &search_tree_.root, "lower bound", root_objective_);
+  search_tree_.branch(&search_tree_.root,
+                      branch_var,
+                      root_relax_soln_.x[branch_var],
+                      root_vstatus_,
+                      original_lp_,
+                      log);
 
   csr_matrix_t<i_t, f_t> Arow(1, 1, 0);
   original_lp_.A.to_compressed_row(Arow);
@@ -1371,15 +1372,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   {
 #pragma omp master
     {
-      auto down_child  = search_tree.root.get_down_child();
-      auto up_child    = search_tree.root.get_up_child();
+      auto down_child  = search_tree_.root.get_down_child();
+      auto up_child    = search_tree_.root.get_up_child();
       i_t initial_size = 2 * settings_.num_threads;
 
 #pragma omp task
-      exploration_ramp_up(down_child, &search_tree, Arow, initial_size);
+      exploration_ramp_up(down_child, &search_tree_, Arow, initial_size);
 
 #pragma omp task
-      exploration_ramp_up(up_child, &search_tree, Arow, initial_size);
+      exploration_ramp_up(up_child, &search_tree_, Arow, initial_size);
     }
 
 #pragma omp barrier
@@ -1388,7 +1389,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     {
       for (i_t i = 0; i < settings_.num_bfs_threads; i++) {
 #pragma omp task
-        best_first_thread(i, search_tree, Arow);
+        best_first_thread(i, search_tree_, Arow);
       }
 
       for (i_t i = 0; i < settings_.num_diving_threads; i++) {
@@ -1398,7 +1399,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
   }
 
-  f_t lower_bound = heap_.size() > 0 ? heap_.top()->lower_bound : search_tree.root.lower_bound;
+  f_t lower_bound = heap_.size() > 0 ? heap_.top()->lower_bound : search_tree_.root.lower_bound;
   return set_final_solution(solution, lower_bound);
 }
 

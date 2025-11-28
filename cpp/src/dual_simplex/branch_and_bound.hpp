@@ -148,6 +148,9 @@ class branch_and_bound_t {
   omp_mutex_t mutex_heap_;
   mip_node_heap_t<mip_node_t<i_t, f_t>*> heap_;
 
+  // Search tree
+  search_tree_t<i_t, f_t> search_tree_;
+
   // Count the number of subtrees that are currently being explored.
   omp_atomic_t<i_t> active_subtrees_;
 
