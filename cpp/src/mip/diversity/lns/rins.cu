@@ -88,9 +88,9 @@ void rins_t<i_t, f_t>::enable()
 template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::stop_rins()
 {
+  enabled = false;
   if (rins_thread) rins_thread->request_termination();
   rins_thread.reset();
-  enabled = false;
 }
 
 template <typename i_t, typename f_t>
