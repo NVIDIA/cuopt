@@ -454,7 +454,7 @@ install(TARGETS cuopt_cli
 endif()
 
 
-option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" ON)
+option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
   add_executable(solve_MIP ../benchmarks/linear_programming/cuopt/run_mip.cpp)
   target_compile_options(solve_MIP
