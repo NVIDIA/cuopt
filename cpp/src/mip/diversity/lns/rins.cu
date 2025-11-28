@@ -86,6 +86,14 @@ void rins_t<i_t, f_t>::enable()
 }
 
 template <typename i_t, typename f_t>
+void rins_t<i_t, f_t>::stop_rins()
+{
+  if (rins_thread) rins_thread->request_termination();
+  rins_thread.reset();
+  enabled = false;
+}
+
+template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::run_rins()
 {
   if (total_calls == 0) RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));

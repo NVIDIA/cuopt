@@ -76,6 +76,7 @@ class rins_t {
   void node_callback(const std::vector<f_t>& solution, f_t objective);
   void new_best_incumbent_callback(const std::vector<f_t>& solution);
   void enable();
+  void stop_rins();
 
   void run_rins();
 
