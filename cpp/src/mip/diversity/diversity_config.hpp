@@ -28,7 +28,7 @@ struct diversity_config_t {
   size_t n_sol_for_skip_init_gen      = 3;
   double max_fast_sol_time            = 10;
   double lp_run_time_if_feasible      = 2.;
-  double lp_run_time_if_infeasible    = 2.;
+  double lp_run_time_if_infeasible    = 1.;
   bool halve_population               = false;
 };
 

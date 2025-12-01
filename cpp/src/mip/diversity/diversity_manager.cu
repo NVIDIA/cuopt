@@ -446,8 +446,8 @@ void diversity_manager_t<i_t, f_t>::diversity_step(i_t max_iterations_without_im
       auto [inserted_pos_2, best_updated_2] = population.add_solution(std::move(offspring));
       if (best_updated_1 || best_updated_2) { recombine_stats.add_best_updated(); }
       cuopt_assert(population.test_invariant(), "");
-      if ((inserted_pos_1 != -1 && inserted_pos_1 <= 1) ||
-          (inserted_pos_2 != -1 && inserted_pos_2 <= 1)) {
+      if ((inserted_pos_1 != -1 && inserted_pos_1 <= 2) ||
+          (inserted_pos_2 != -1 && inserted_pos_2 <= 2)) {
         improved = true;
         recombine_stats.print();
         break;
