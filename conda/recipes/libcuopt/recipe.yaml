@@ -9,7 +9,7 @@ context:
   cuda_major: '${{ (env.get("RAPIDS_CUDA_VERSION") | split("."))[0] }}'
   date_string: '${{ env.get("RAPIDS_DATE_STRING") }}'
   head_rev: '${{ git.head_rev(".")[:8] }}'
-  build_type: '${{ env.get("RAPIDS_BUILD_TYPE", "") }}'
+  build_type: '${{ env.get("RAPIDS_BUILD_TYPE") }}'
   # Enable assertions for PR builds, but not for nightly or release builds
   assertion_flag: '${{ "-a" if build_type == "pull-request" else "" }}'
 
@@ -37,7 +37,7 @@ cache:
         - AWS_SECRET_ACCESS_KEY
         - AWS_SESSION_TOKEN
       env:
-        BUILD_EXTRA_FLAGS: ${{ env.get("BUILD_EXTRA_FLAGS", assertion_flag) }}
+        BUILD_EXTRA_FLAGS: ${{ env.get("BUILD_EXTRA_FLAGS") or assertion_flag }}
         CMAKE_C_COMPILER_LAUNCHER: ${{ env.get("CMAKE_C_COMPILER_LAUNCHER") }}
         CMAKE_CUDA_COMPILER_LAUNCHER: ${{ env.get("CMAKE_CUDA_COMPILER_LAUNCHER") }}
         CMAKE_CXX_COMPILER_LAUNCHER: ${{ env.get("CMAKE_CXX_COMPILER_LAUNCHER") }}
