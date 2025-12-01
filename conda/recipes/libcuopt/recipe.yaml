@@ -28,12 +28,13 @@ cache:
         export CXXFLAGS=$(echo $CXXFLAGS | sed -E 's@\-fdebug\-prefix\-map[^ ]*@@g')
         set +x
 
-        ./build.sh -n -v -a libmps_parser libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib\"
+        ./build.sh -n -v ${BUILD_EXTRA_FLAGS} libmps_parser libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib\"
       secrets:
         - AWS_ACCESS_KEY_ID
         - AWS_SECRET_ACCESS_KEY
         - AWS_SESSION_TOKEN
       env:
+        BUILD_EXTRA_FLAGS: ${{ env.get("BUILD_EXTRA_FLAGS", "") }}
         CMAKE_C_COMPILER_LAUNCHER: ${{ env.get("CMAKE_C_COMPILER_LAUNCHER") }}
         CMAKE_CUDA_COMPILER_LAUNCHER: ${{ env.get("CMAKE_CUDA_COMPILER_LAUNCHER") }}
         CMAKE_CXX_COMPILER_LAUNCHER: ${{ env.get("CMAKE_CXX_COMPILER_LAUNCHER") }}
