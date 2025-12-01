@@ -29,6 +29,35 @@ class bound_presolve_t;
   rounding. To save from memory, we will keep the the results in host map.
 */
 
+template <typename i_t, typename f_t>
+class substitution_t {
+  bool add_impl(i_t p, i_t q)
+  {
+    i_t i, j;
+    for (i = p; i != at(i); i = at(i))
+      at(i) = at(at(i));
+    for (j = q; j != at(j); j = at(j))
+      at(j) = at(at(j));
+    if (i == j) return true;
+
+    // check size of tree & join with smallest
+    if (sz_[i] < sz_[j]) {
+      at(i) = j;
+      sz_[j] += sz_[i];
+    } else {
+      at(j) = i;
+      sz_[i] += sz_[j];
+    }
+
+    return false;
+  }
+
+  std::vector<i_t> parent;
+  std::vector<i_t> size;
+  std::vector<f_t> offset;
+  std::vector<f_t> coefficient;
+};
+
 enum interval_type_t { EQUALS = 0, LEQ, GEQ };
 
 template <typename i_t, typename f_t>
@@ -115,7 +144,7 @@ class lb_probing_cache_t {
 };
 
 template <typename i_t, typename f_t>
-void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
+bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,
                            timer_t timer);
 

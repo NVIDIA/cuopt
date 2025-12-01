@@ -183,13 +183,15 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
   }
   if (!fj_only_run) {
-    // before probing cache or LP, run FJ to generate initial primal feasible solution
+    // Run probing cache before trivial presolve to discover variable implications
     const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
     const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
     f_t time_for_probing_cache =
       std::min(max_time_on_probing, time_limit * time_ratio_of_probing_cache);
     timer_t probing_timer{time_for_probing_cache};
-    compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
+    bool problem_is_infeasible =
+      compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
+    if (problem_is_infeasible) { return false; }
   }
   trivial_presolve(*problem_ptr);
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }

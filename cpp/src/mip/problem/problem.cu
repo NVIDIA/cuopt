@@ -1110,6 +1110,8 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
                                                const std::vector<f_t>& coefficient_values)
 {
   raft::common::nvtx::range fun_scope("substitute_variables");
+  // if there is a chain substitution handle the indices here:
+
   cuopt_assert((are_exclusive<i_t, f_t>(var_indices, var_to_substitude_indices)),
                "variables and var_to_substitude_indices are not exclusive");
   const i_t dummy_substituted_variable = var_indices[0];
@@ -1244,9 +1246,8 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
                          coefficients[duplicate_start_idx] += coefficients[offset_begin + 1];
                          variables[duplicate_start_idx] = variables[offset_begin + 1];
                          // mark those for elimination
-                         variables[offset_begin + 1]          = dummy_substituted_variable;
-                         coefficients[offset_begin + 1]       = 0.;
-                         objective_coefficients[next_var_idx] = 0.;
+                         variables[offset_begin + 1]    = dummy_substituted_variable;
+                         coefficients[offset_begin + 1] = 0.;
                        } else {
                          duplicate_start_idx = -1;
                        }

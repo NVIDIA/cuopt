@@ -363,6 +363,7 @@ void compute_cache_for_var(i_t var_idx,
                            const std::vector<i_t>& h_integer_indices,
                            std::atomic<size_t>& n_of_implied_singletons,
                            std::atomic<size_t>& n_of_cached_probings,
+                           std::atomic<bool>& problem_is_infeasible,
                            std::vector<std::tuple<f_t, i_t, f_t, f_t>>& modification_vector,
                            std::vector<std::tuple<f_t, i_t, i_t, f_t, f_t>>& substitution_vector,
                            timer_t timer,
@@ -436,9 +437,11 @@ void compute_cache_for_var(i_t var_idx,
   i_t n_of_infeasible_probings = 0;
   i_t valid_host_bounds        = 0;
   for (i_t i = 0; i < 2; ++i) {
-    cuopt_assert(multi_probe_presolve.infeas_constraints_count_0 == 0 ||
-                   multi_probe_presolve.infeas_constraints_count_1 == 0,
-                 "At least one of the probes must be feasible");
+    if (multi_probe_presolve.infeas_constraints_count_0 > 0 &&
+        multi_probe_presolve.infeas_constraints_count_1 > 0) {
+      problem_is_infeasible.store(true);
+      return;
+    }
     i_t infeas_constraints_count  = i == 0 ? multi_probe_presolve.infeas_constraints_count_0
                                            : multi_probe_presolve.infeas_constraints_count_1;
     const auto& probe_val         = i == 0 ? probe_vals.first : probe_vals.second;
@@ -647,6 +650,9 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
      view                        = problem.view()] __device__(i_t idx) -> i_t {
       return num_int_vars_per_constraint[view.reverse_constraints[idx]];
     });
+  // run second reduction operation, reset sizes so query works correctly
+  d_temp_storage     = nullptr;
+  temp_storage_bytes = 0;
   cub::DeviceSegmentedReduce::Reduce(d_temp_storage,
                                      temp_storage_bytes,
                                      input_transform_it_2,
@@ -702,7 +708,7 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
 }
 
 template <typename i_t, typename f_t>
-void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
+bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,
                            timer_t timer)
 {
@@ -738,11 +744,12 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // Atomic variables for tracking progress
   std::atomic<size_t> n_of_implied_singletons(0);
   std::atomic<size_t> n_of_cached_probings(0);
+  std::atomic<bool> problem_is_infeasible(false);
   size_t last_it_implied_singletons = 0;
   bool early_exit                   = false;
   const size_t step_size            = min((size_t)2048, priority_indices.size());
   for (size_t step_start = 0; step_start < priority_indices.size(); step_start += step_size) {
-    if (timer.check_time_limit() || early_exit) { break; }
+    if (timer.check_time_limit() || early_exit || problem_is_infeasible.load()) { break; }
     size_t step_end = std::min(step_start + step_size, priority_indices.size());
 // Main parallel loop
 #pragma omp parallel
@@ -765,6 +772,7 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                                         h_integer_indices,
                                         n_of_implied_singletons,
                                         n_of_cached_probings,
+                                        problem_is_infeasible,
                                         modification_vector_pool[thread_idx],
                                         substitution_vector_pool[thread_idx],
                                         timer,
@@ -797,10 +805,11 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   trivial_presolve(problem, remap_cache_ids);
   // restore the settings
   bound_presolve.settings = {};
+  return problem_is_infeasible.load();
 }
 
 #define INSTANTIATE(F_TYPE)                                                                        \
-  template void compute_probing_cache<int, F_TYPE>(bound_presolve_t<int, F_TYPE> & bound_presolve, \
+  template bool compute_probing_cache<int, F_TYPE>(bound_presolve_t<int, F_TYPE> & bound_presolve, \
                                                    problem_t<int, F_TYPE> & problem,               \
                                                    timer_t timer);                                 \
   template class probing_cache_t<int, F_TYPE>;
