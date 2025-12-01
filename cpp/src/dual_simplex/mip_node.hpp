@@ -34,6 +34,23 @@ bool inactive_status(node_status_t status);
 template <typename i_t, typename f_t>
 class mip_node_t {
  public:
+  mip_node_t()
+    : status(node_status_t::PENDING),
+      lower_bound(-std::numeric_limits<f_t>::infinity()),
+      depth(0),
+      parent(nullptr),
+      node_id(0),
+      branch_var(-1),
+      branch_dir(rounding_direction_t::NONE),
+      branch_var_lower(-std::numeric_limits<f_t>::infinity()),
+      branch_var_upper(std::numeric_limits<f_t>::infinity()),
+      fractional_val(std::numeric_limits<f_t>::infinity()),
+      vstatus(0)
+  {
+    children[0] = nullptr;
+    children[1] = nullptr;
+  }
+
   mip_node_t(f_t root_lower_bound, const std::vector<variable_status_t>& basis)
     : status(node_status_t::PENDING),
       lower_bound(root_lower_bound),
@@ -264,10 +281,7 @@ class node_compare_t {
 template <typename i_t, typename f_t>
 class search_tree_t {
  public:
-  search_tree_t(f_t root_lower_bound, const std::vector<variable_status_t>& basis)
-    : root(root_lower_bound, basis), num_nodes(0)
-  {
-  }
+  search_tree_t() : num_nodes(0) {}
 
   search_tree_t(mip_node_t<i_t, f_t>&& node) : root(std::move(node)), num_nodes(0) {}
 
