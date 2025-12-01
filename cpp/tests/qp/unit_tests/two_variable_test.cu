@@ -29,6 +29,8 @@ TEST(two_variable_test, simple_test)
 {
   raft::handle_t handle;
 
+  // optimize: -8x1 - 16x2 + x1^2 + 4x1x2 + x2^2
+
   // Constraints set through row types
   auto op_problem    = optimization_problem_t<int, double>(&handle);
   double A_host[]    = {1.0, 1.0};
@@ -51,7 +53,7 @@ TEST(two_variable_test, simple_test)
   double c_host[] = {-8.0, -16.0};
   op_problem.set_objective_coefficients(c_host, 2);
 
-  double Q_values_host[] = {2.0, 8.0};
+  double Q_values_host[] = {1.0, 4.0};
   int Q_indices_host[]   = {0, 1};
   int Q_offsets_host[]   = {0, 1, 2};
   op_problem.set_quadratic_objective_matrix(Q_values_host, 2, Q_indices_host, 2, Q_offsets_host, 3);

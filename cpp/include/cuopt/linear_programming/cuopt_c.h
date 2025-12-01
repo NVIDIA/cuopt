@@ -241,7 +241,7 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
 /** @brief Create an optimization problem of the form
  *
  * @verbatim
- *                minimize/maximize  cᵀx + 0.5 xᵀQx + offset
+ *                minimize/maximize  cᵀx + xᵀQx + offset
  *                  subject to       A x {=, ≤, ≥} b
  *                                   l ≤ x ≤ u
  * @endverbatim
@@ -312,7 +312,7 @@ cuopt_int_t cuOptCreateQuadraticProblem(
 
 /** @brief Create an optimization problem of the form *
  * @verbatim
- *                minimize/maximize  cᵀx + 0.5 xᵀQx + offset
+ *                minimize/maximize  cᵀx + xᵀQx + offset
  *                  subject to       bl <= A*x <= bu
  *                                   l <= x <= u
  * @endverbatim

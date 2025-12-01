@@ -45,7 +45,7 @@ def test_solver():
     data_model_obj.set_objective_coefficients(c)
 
     # Q
-    Q_values = np.array([2.0, 8.0])
+    Q_values = np.array([1.0, 4.0])
     Q_indices = np.array([0, 1])
     Q_offsets = np.array([0, 1, 2])
 
