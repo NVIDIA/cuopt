@@ -172,8 +172,7 @@ class DataModel(data_model_wrapper.DataModel):
         """
         Set the constraint matrix (A) in CSR format.
         For more information about CSR checkout:
-        https://docs.nvidia.com/cuda/cusparse/index.html
-        compressed-sparse-row-csr
+        https://docs.nvidia.com/cuda/cusparse/index.html#compressed-sparse-row-csr #noqa
 
         Parameters
         ----------
@@ -267,8 +266,7 @@ class DataModel(data_model_wrapper.DataModel):
         """
         Set the quadratic objective matrix (Q) in CSR format.
         For more information about CSR checkout:
-        https://docs.nvidia.com/cuda/cusparse/index.html
-        compressed-sparse-row-csr
+        https://docs.nvidia.com/cuda/cusparse/index.html#compressed-sparse-row-csr #noqa
 
         Parameters
         ----------
