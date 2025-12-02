@@ -268,7 +268,7 @@ class DataModel(data_model_wrapper.DataModel):
         Set the quadratic objective matrix (Q) in CSR format.
         For more information about CSR checkout:
         https://docs.nvidia.com/cuda/cusparse/index.html
-        compressed-sparse-row-csr-
+        compressed-sparse-row-csr
 
         Parameters
         ----------
@@ -284,7 +284,7 @@ class DataModel(data_model_wrapper.DataModel):
 
         Notes
         -----
-        Setting before calling the solver is mandatory.
+        Setting before calling the solver is required for quadratic problems.
 
         """
         super().set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets)

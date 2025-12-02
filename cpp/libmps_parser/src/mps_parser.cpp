@@ -498,7 +498,6 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
 
   // Process QUADOBJ data if present (upper triangular format)
   if (!quadobj_entries.empty()) {
-    printf("Quadratic objective matrix: %zu nonzeros\n", quadobj_entries.size());
     // Convert quadratic objective entries to CSR format using double transpose
     // QUADOBJ stores upper triangular elements, so we expand to full symmetric matrix
     i_t num_vars    = static_cast<i_t>(var_names.size());

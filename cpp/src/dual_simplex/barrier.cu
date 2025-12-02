@@ -189,8 +189,8 @@ class iteration_data_t {
     }
 
     if (lp.Q.n > 0 && lp.Q.is_diagonal()) {
-      d_Q_diag_.resize(lp.Q.n, stream_view_);
-      std::vector<f_t> Q_diag(lp.Q.n, 0.0);
+      d_Q_diag_.resize(lp.num_cols, stream_view_);
+      std::vector<f_t> Q_diag(lp.num_cols, 0.0);
       for (i_t i = 0; i < lp.Q.m; i++) {
         for (i_t j = lp.Q.row_start[i]; j < lp.Q.row_start[i + 1]; j++) {
           if (lp.Q.j[j] == i) {
@@ -3426,6 +3426,14 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
   }
 
   f_t primal_objective_save = data.c.inner_product(data.x_save);
+  if (data.Q.n > 0) {
+    dense_vector_t<i_t, f_t> Qx_save(data.Q.n);
+    dense_vector_t<i_t, f_t> x_save_truncated(data.Q.n);
+    std::copy(data.x_save.begin(), data.x_save.begin() + data.Q.n, x_save_truncated.begin());
+    matrix_vector_multiply(data.Q, 1.0, x_save_truncated, 0.0, Qx_save);
+    f_t quad_objective = 0.5 * x_save_truncated.inner_product(Qx_save);
+    primal_objective_save += quad_objective;
+  }
 
   if (data.relative_primal_residual_save < settings.barrier_relaxed_feasibility_tol &&
       data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&

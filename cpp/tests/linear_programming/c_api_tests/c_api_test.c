@@ -1039,7 +1039,6 @@ cuopt_int_t test_quadratic_problem(cuopt_int_t* termination_status_ptr, cuopt_fl
 
   cuopt_int_t num_variables = 2;
   cuopt_int_t num_constraints = 1;
-  cuopt_int_t nnz = 2;
   cuopt_int_t objective_sense = CUOPT_MINIMIZE;
   cuopt_float_t objective_offset = 0.0;
   cuopt_float_t objective_coefficients[] = {-8.0, -16.0};
@@ -1059,7 +1058,6 @@ cuopt_int_t test_quadratic_problem(cuopt_int_t* termination_status_ptr, cuopt_fl
   cuopt_float_t var_upper_bounds[] = {10.0, 10.0};
 
   cuopt_int_t status;
-  cuopt_float_t time;
 
   status = cuOptCreateQuadraticProblem(num_constraints,
                                        num_variables,
@@ -1130,7 +1128,6 @@ cuopt_int_t test_quadratic_ranged_problem(cuopt_int_t* termination_status_ptr, c
   //         x2 <= 10
   cuopt_int_t num_variables = 2;
   cuopt_int_t num_constraints = 1;
-  cuopt_int_t nnz = 2;
   cuopt_int_t objective_sense = CUOPT_MINIMIZE;
   cuopt_float_t objective_offset = 0.0;
   cuopt_float_t objective_coefficients[] = {-8.0, -16.0};
@@ -1149,7 +1146,6 @@ cuopt_int_t test_quadratic_ranged_problem(cuopt_int_t* termination_status_ptr, c
   cuopt_float_t var_upper_bounds[] = {10.0, 10.0};
 
   cuopt_int_t status;
-  cuopt_float_t time;
 
   status = cuOptCreateQuadraticRangedProblem(num_constraints,
                                        num_variables,

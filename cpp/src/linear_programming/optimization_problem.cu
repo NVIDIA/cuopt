@@ -143,9 +143,9 @@ void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
   i_t size_offsets,
   bool validate_positive_semi_definite)
 {
-  if (size_values != 0) {
-    cuopt_expects(Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
-  }
+  cuopt_expects(Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
+  cuopt_expects(
+    size_values > 0, error_type_t::ValidationError, "size_values must be greater than 0");
 
   if (size_indices != 0) {
     cuopt_expects(Q_indices != nullptr, error_type_t::ValidationError, "Q_indices cannot be null");
@@ -156,7 +156,7 @@ void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
   }
 
   // Replace Q with Q + Q^T
-  int qn    = size_offsets - 1;  // Number of variables
+  i_t qn    = size_offsets - 1;  // Number of variables
   i_t q_nnz = size_indices;
   Q_offsets_.resize(qn + 1);
   std::fill(Q_offsets_.begin(), Q_offsets_.end(), 0);

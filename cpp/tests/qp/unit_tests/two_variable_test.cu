@@ -61,8 +61,8 @@ TEST(two_variable_test, simple_test)
   auto settings = cuopt::linear_programming::pdlp_solver_settings_t<int, double>();
   auto solution = cuopt::linear_programming::solve_lp(op_problem, settings);
 
-  // EXPECT_EQ(solution.get_termination_status(),
-  // cuopt::linear_programming::pdlp_termination_status_t::Optimal);
+  EXPECT_EQ(solution.get_termination_status(),
+            cuopt::linear_programming::pdlp_termination_status_t::Optimal);
   EXPECT_NEAR(solution.get_objective_value(), -32.0, 1e-6);
 
   auto sol_vec = cuopt::host_copy(solution.get_primal_solution());
