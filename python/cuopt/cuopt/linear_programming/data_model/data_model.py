@@ -278,12 +278,13 @@ class DataModel(data_model_wrapper.DataModel):
             matrix as a device integer array.
         Q_offsets : np.array dtype - int32
             Offsets of the CSR representation of the quadratic objective
-            matrix as a device integer array.
+            matrix as a device integer array. (size: n_variables + 1)
 
         Notes
         -----
         Setting before calling the solver is required for quadratic problems.
-
+        The input Q matrix is internally symmetrized as Q + Q^T. For convex
+        quadratic programming, Q + Q^T should be positive semi-definite.
         """
         super().set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets)
 
