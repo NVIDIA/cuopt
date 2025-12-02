@@ -12,11 +12,11 @@ set -o pipefail
 #  destination dir to untar to
 #  blank line separator
 
-TSP_DATASET_DATA="
-# 0.1s
-http://comopt.ifi.uni-heidelberg.de/software/TSPLIB95/tsp/ALL_tsp.tar.gz
-tsp
-"
+#TSP_DATASET_DATA="
+# # 0.1s
+# http://comopt.ifi.uni-heidelberg.de/software/TSPLIB95/tsp/ALL_tsp.tar.gz
+# tsp
+# "
 
 CVRP_DATASET_DATA="
 # 0.01s
@@ -67,7 +67,8 @@ https://www.sintef.no/globalassets/project/top/vrptw/solomon/solomon-100.zip
 solomon
 "
 
-ALL_DATASET_DATA="${TSP_DATASET_DATA} ${CVRP_DATASET_DATA} ${ACVRP_DATASET_DATA} ${CVRPTW_DATASET_DATA} ${SOLOMON_DATASET_DATA} ${PDPTW_DATASET_DATA}"
+# Add back ${TSP_DATASET_DATA} when issue #609 is fixed
+ALL_DATASET_DATA="${CVRP_DATASET_DATA} ${ACVRP_DATASET_DATA} ${CVRPTW_DATASET_DATA} ${SOLOMON_DATASET_DATA} ${PDPTW_DATASET_DATA}"
 
 ################################################################################
 # Do not change the script below this line if only adding/updating a dataset
@@ -84,9 +85,10 @@ if hasArg -h || hasArg --help; then
 fi
 
 # Select the datasets to install
-if hasArg "--tsp"; then
-  DATASET_DATA="${TSP_DATASET_DATA}"
-elif hasArg "--cvrp"; then
+# Add back --tsp when issue #609 is fixed
+# if hasArg "--tsp"; then
+#   DATASET_DATA="${TSP_DATASET_DATA}"
+if hasArg "--cvrp"; then
   DATASET_DATA="${CVRP_DATASET_DATA}"
 elif hasArg "--acvrp"; then
   DATASET_DATA="${ACVRP_DATASET_DATA}"
