@@ -115,8 +115,10 @@ class csc_matrix_t {
   bool is_diagonal() const
   {
     for (i_t j = 0; j < n; j++) {
-      for (i_t k = col_start[j]; k < col_start[j + 1]; k++) {
-        i_t row = i[k];
+      const i_t column_start = col_start[j];
+      const i_t column_end   = col_start[j + 1];
+      for (i_t p = column_start; p < column_end; p++) {
+        const i_t row = i[p];
         if (row != j) { return false; }
       }
     }
@@ -155,8 +157,10 @@ class csr_matrix_t {
   bool is_diagonal() const
   {
     for (i_t i = 0; i < m; i++) {
-      for (i_t k = row_start[i]; k < row_start[i + 1]; k++) {
-        i_t col = j[k];
+      const i_t current_row_start = row_start[i];
+      const i_t current_row_end   = row_start[i + 1];
+      for (i_t p = current_row_start; p < current_row_end; p++) {
+        const i_t col = j[p];
         if (col != i) { return false; }
       }
     }

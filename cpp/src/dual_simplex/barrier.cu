@@ -441,7 +441,7 @@ class iteration_data_t {
           augmented.x[q++] = A.x[p];
         }
       }
-      settings_.log.printf("augmented nz %d predicted %d\n", q, off_diag_Qnz + nnzA + n);
+      settings_.log.debug("augmented nz %d predicted %d\n", q, off_diag_Qnz + nnzA + n);
       for (i_t k = n; k < n + m; ++k) {
         augmented.col_start[k] = q;
         const i_t l            = k - n;
@@ -534,7 +534,7 @@ class iteration_data_t {
           initialize_cusparse_data<i_t, f_t>(
             handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
         } catch (const raft::cuda_error& e) {
-          CUOPT_LOG_INFO("Error in initialize_cusparse_data: %s\n", e.what());
+          settings_.log.printf("Error in initialize_cusparse_data: %s\n", e.what());
           return;
         }
       }
@@ -1660,7 +1660,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   if (use_augmented) {
     status = data.chol->factorize(data.augmented);
 
-#ifndef NDEBUG
+#ifdef CHOLESKY_DEBUG_CHECK
     cholesky_debug_check(data, lp, use_augmented);
 #endif
   } else {
@@ -2313,7 +2313,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       data.form_augmented();
       status = data.chol->factorize(data.augmented);
 
-#ifndef NDEBUG
+#ifdef CHOLESKY_DEBUG_CHECK
       cholesky_debug_check(data, lp, use_augmented);
 #endif
     } else {
@@ -3098,6 +3098,7 @@ void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f
     raft::copy(data.d_y_.data(), data.y.data(), data.y.size(), stream_view_);
     raft::copy(data.d_dy_aff_.data(), data.dy_aff.data(), data.dy_aff.size(), stream_view_);
 
+#ifdef FINITE_CHECK
     for (i_t i = 0; i < (int)data.y.size(); i++) {
       cuopt_assert(std::isfinite(data.y[i]), "data.d_y_[i] is not finite");
     }
@@ -3105,6 +3106,7 @@ void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f
     for (i_t i = 0; i < (int)data.dy_aff.size(); i++) {
       cuopt_assert(std::isfinite(data.dy_aff[i]), "data.dy_aff_[i] is not finite");
     }
+#endif
 
     // dw = dw_aff + dw_cc
     // dx = dx_aff + dx_cc
@@ -3371,7 +3373,6 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
     if (data.Q.n > 0) {
       dense_vector_t<i_t, f_t> Qx(data.Q.n);
       dense_vector_t<i_t, f_t> x_host(data.Q.n);
-      // Copy only the first data.Q.n elements
       raft::copy(x_host.data(), data.d_x_.data(), data.Q.n, stream_view_);
       cudaStreamSynchronize(stream_view_);
       matrix_vector_multiply(data.Q, 1.0, x_host, 0.0, Qx);
@@ -3474,12 +3475,11 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
   } else {
     f_t quad_objective = 0.0;
     if (data.Q.n > 0) {
-      dense_vector_t<i_t, f_t> x_truncated(data.Q.n);
-      // Copy only the first data.Q.n elements
-      std::copy(data.x.begin(), data.x.begin() + data.Q.n, x_truncated.begin());
+      dense_vector_t<i_t, f_t> x_host(data.Q.n);
+      std::copy(data.x.begin(), data.x.begin() + data.Q.n, x_host.begin());
       dense_vector_t<i_t, f_t> Qx(data.Q.n);
-      matrix_vector_multiply(data.Q, 1.0, x_truncated, 0.0, Qx);
-      quad_objective = 0.5 * x_truncated.inner_product(Qx);
+      matrix_vector_multiply(data.Q, 1.0, x_host, 0.0, Qx);
+      quad_objective = 0.5 * x_host.inner_product(Qx);
     }
     primal_objective = data.c.inner_product(data.x) + quad_objective;
     dual_objective =
@@ -3504,7 +3504,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
 {
   if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
       relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
-      relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol) {
+      relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol &&
+      primal_objective == primal_objective) {
     data.to_solution(lp,
                      iter,
                      primal_objective,
@@ -3533,10 +3534,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
   f_t primal_objective_save = data.c.inner_product(data.x_save);
   if (data.Q.n > 0) {
     dense_vector_t<i_t, f_t> Qx_save(data.Q.n);
-    dense_vector_t<i_t, f_t> x_save_truncated(data.Q.n);
-    std::copy(data.x_save.begin(), data.x_save.begin() + data.Q.n, x_save_truncated.begin());
-    matrix_vector_multiply(data.Q, 1.0, x_save_truncated, 0.0, Qx_save);
-    f_t quad_objective = 0.5 * x_save_truncated.inner_product(Qx_save);
+    dense_vector_t<i_t, f_t> x_save_host(data.Q.n);
+    std::copy(data.x_save.begin(), data.x_save.begin() + data.Q.n, x_save_host.begin());
+    matrix_vector_multiply(data.Q, 1.0, x_save_host, 0.0, Qx_save);
+    f_t quad_objective = 0.5 * x_save_host.inner_product(Qx_save);
     primal_objective_save += quad_objective;
   }
 
@@ -3555,7 +3556,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
     settings.log.printf("\n");
     settings.log.printf(
       "Suboptimal solution found in %d iterations and %.2f seconds\n", iter, toc(start_time));
-    settings.log.printf("Objective %+.8e\n", compute_user_objective(lp, primal_objective));
+    settings.log.printf("Objective %+.8e\n", compute_user_objective(lp, primal_objective_save));
     settings.log.printf("Primal infeasibility (abs/rel): %8.2e/%8.2e\n",
                         data.primal_residual_norm_save,
                         data.relative_primal_residual_save);
@@ -3834,7 +3835,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
           relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol) {
         if (relative_primal_residual < data.relative_primal_residual_save &&
             relative_dual_residual < data.relative_dual_residual_save &&
-            relative_complementarity_residual < data.relative_complementarity_residual_save) {
+            relative_complementarity_residual < data.relative_complementarity_residual_save &&
+            primal_objective == primal_objective && dual_objective == dual_objective) {
           settings.log.debug(
             "Saving solution: feasibility %.2e (%.2e), optimality %.2e (%.2e), complementarity "
             "%.2e (%.2e)\n",
@@ -3863,7 +3865,18 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
       if (primal_objective != primal_objective || dual_objective != dual_objective) {
         settings.log.printf("Numerical error in objective\n");
-        return lp_status_t::NUMERICAL_ISSUES;
+        return check_for_suboptimal_solution(options,
+                                             data,
+                                             start_time,
+                                             iter,
+                                             primal_objective,
+                                             primal_residual_norm,
+                                             dual_residual_norm,
+                                             complementarity_residual_norm,
+                                             relative_primal_residual,
+                                             relative_dual_residual,
+                                             relative_complementarity_residual,
+                                             solution);
       }
 
       settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",

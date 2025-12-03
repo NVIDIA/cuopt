@@ -787,8 +787,15 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     print_version_info();
     pdlp_solver_settings_t<i_t, f_t> settings(settings_const,
                                               op_problem.get_handle_ptr()->get_stream());
+    // Create log stream for file logging and add it to default logger
+    init_logger_t log(settings.log_file, settings.log_to_console);
+
+    // Init libraies before to not include it in solve time
+    // This needs to be called before pdlp is initialized
+    init_handler(op_problem.get_handle_ptr());
+
     if (op_problem.has_quadratic_objective()) {
-      CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier solver");
+      CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier.");
       settings.method   = method_t::Barrier;
       settings.presolve = false;
       // check for sense of the problem
@@ -798,12 +805,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                                                          op_problem.get_handle_ptr()->get_stream());
       }
     }
-    // Create log stream for file logging and add it to default logger
-    init_logger_t log(settings.log_file, settings.log_to_console);
-
-    // Init libraies before to not include it in solve time
-    // This needs to be called before pdlp is initialized
-    init_handler(op_problem.get_handle_ptr());
 
     raft::common::nvtx::range fun_scope("Running solver");
 

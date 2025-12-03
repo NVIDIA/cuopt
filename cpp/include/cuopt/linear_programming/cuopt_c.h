@@ -114,9 +114,9 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
 /** @brief Create an optimization problem of the form
  *
  * @verbatim
- *                minimize/maximize  cᵀx + offset
- *                  subject to       A x {=, ≤, ≥} b
- *                                   l ≤ x ≤ u
+ *                minimize/maximize  c^T x + offset
+ *                  subject to       A x {=, <=, >=} b
+ *                                   l <= x <= u
  *                                   x_i integer for some i
  * @endverbatim
  *
@@ -241,8 +241,8 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
 /** @brief Create an optimization problem of the form
  *
  * @verbatim
- *                minimize/maximize  cᵀx + xᵀQx + offset
- *                  subject to       A x {=, ≤, ≥} b
+ *                minimize/maximize  c^T x + x^T Q x + offset
+ *                  subject to       A x {=, <=, >=} b
  *                                   l ≤ x ≤ u
  * @endverbatim
  *
@@ -312,7 +312,7 @@ cuopt_int_t cuOptCreateQuadraticProblem(
 
 /** @brief Create an optimization problem of the form *
  * @verbatim
- *                minimize/maximize  cᵀx + xᵀQx + offset
+ *                minimize/maximize  c^T x + x^T Q x + offset
  *                  subject to       bl <= A*x <= bu
  *                                   l <= x <= u
  * @endverbatim

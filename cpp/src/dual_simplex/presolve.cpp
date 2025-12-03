@@ -556,7 +556,7 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
 {
   constexpr bool verbose = false;
   if (verbose) {
-    CUOPT_LOG_DEBUG("Converting problem with %d rows and %d columns and %d nonzeros\n",
+    settings.log.printf("Converting problem with %d rows and %d columns and %d nonzeros\n",
                     user_problem.num_rows,
                     user_problem.num_cols,
                     user_problem.A.col_start[user_problem.num_cols]);
@@ -598,7 +598,7 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
       equality_rows.push_back(i);
     }
   }
-  if (verbose) { printf("Constraints < %d = %d > %d\n", less_rows, equal_rows, greater_rows); }
+  if (verbose) { settings.log.printf("Constraints < %d = %d > %d\n", less_rows, equal_rows, greater_rows); }
 
   if (user_problem.num_range_rows > 0) {
     if (verbose) { printf("Problem has %d range rows\n", user_problem.num_range_rows); }
@@ -778,9 +778,9 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   }
 
   if (user_problem.Q_values.size() > 0) {
-    CUOPT_LOG_DEBUG("Converting problem with %d quadratic nonzeros\n",
+    settings.log.debug("Converting problem with %d quadratic nonzeros\n",
                     user_problem.Q_values.size());
-    CUOPT_LOG_DEBUG(
+    settings.log.debug(
       "problem.num_cols: %d user_problem.num_cols: %d\n", problem.num_cols, user_problem.num_cols);
     problem.Q.m      = problem.num_cols;
     problem.Q.n      = problem.num_cols;
@@ -822,7 +822,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     settings.log.printf("%d variables with no lower bound\n", no_lower_bound);
   }
 
-  // FIXME:: handle no lower bound cases
+  // FIXME:: handle no lower bound case for barrier presolve
 
   // The original problem may have nonzero lower bounds
   // 0 != l_j <= x_j <= u_j
@@ -860,11 +860,11 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     auto old_objective = problem.objective;
     if (problem.Q.n > 0) {
       for (i_t row = 0; row < problem.num_cols; row++) {
-        i_t q_start = problem.Q.row_start[row];
-        i_t q_end   = problem.Q.row_start[row + 1];
-        for (i_t qj = q_start; qj < q_end; qj++) {
-          i_t col = problem.Q.j[qj];
-          f_t qij = problem.Q.x[qj];
+        i_t row_start = problem.Q.row_start[row];
+        i_t row_end   = problem.Q.row_start[row + 1];
+        for (i_t p = row_start; p < row_end; p++) {
+          i_t col = problem.Q.j[p];
+          f_t qij = problem.Q.x[p];
 
           if (lower_bounds_removed[row]) {
             problem.objective[col] += 0.5 * qij * problem.lower[row];
@@ -881,7 +881,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
 
     for (i_t j = 0; j < problem.num_cols; j++) {
       if (lower_bounds_removed[j]) {
-        for (i_t p = problem.A.col_start[j]; p < problem.A.col_start[j + 1]; p++) {
+        i_t col_start = problem.A.col_start[j];
+        i_t col_end   = problem.A.col_start[j + 1];
+        for (i_t p = col_start; p < col_end; p++) {
           i_t i   = problem.A.i[p];
           f_t aij = problem.A.x[p];
           problem.rhs[i] -= aij * problem.lower[j];
@@ -926,7 +928,6 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
 
-  settings.log.printf("%d free variables\n", free_variables);
   problem.Q.check_matrix("Before free variable expansion");
 
   if (settings.barrier_presolve && free_variables > 0) {
