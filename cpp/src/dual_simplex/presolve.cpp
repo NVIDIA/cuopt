@@ -557,9 +557,9 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   constexpr bool verbose = false;
   if (verbose) {
     settings.log.printf("Converting problem with %d rows and %d columns and %d nonzeros\n",
-                    user_problem.num_rows,
-                    user_problem.num_cols,
-                    user_problem.A.col_start[user_problem.num_cols]);
+                        user_problem.num_rows,
+                        user_problem.num_cols,
+                        user_problem.A.col_start[user_problem.num_cols]);
   }
 
   // Copy info from user_problem to problem
@@ -598,7 +598,9 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
       equality_rows.push_back(i);
     }
   }
-  if (verbose) { settings.log.printf("Constraints < %d = %d > %d\n", less_rows, equal_rows, greater_rows); }
+  if (verbose) {
+    settings.log.printf("Constraints < %d = %d > %d\n", less_rows, equal_rows, greater_rows);
+  }
 
   if (user_problem.num_range_rows > 0) {
     if (verbose) { printf("Problem has %d range rows\n", user_problem.num_range_rows); }
@@ -779,7 +781,7 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
 
   if (user_problem.Q_values.size() > 0) {
     settings.log.debug("Converting problem with %d quadratic nonzeros\n",
-                    user_problem.Q_values.size());
+                       user_problem.Q_values.size());
     settings.log.debug(
       "problem.num_cols: %d user_problem.num_cols: %d\n", problem.num_cols, user_problem.num_cols);
     problem.Q.m      = problem.num_cols;
