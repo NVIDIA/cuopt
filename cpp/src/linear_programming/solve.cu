@@ -794,8 +794,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       // check for sense of the problem
       if (op_problem.get_sense()) {
         CUOPT_LOG_ERROR("Quadratic problems must be minimized");
-        return optimization_problem_solution_t<i_t, f_t>(
-          pdlp_termination_status_t::NumericalError, op_problem.get_handle_ptr()->get_stream());
+        return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::NumericalError,
+                                                         op_problem.get_handle_ptr()->get_stream());
       }
     }
     // Create log stream for file logging and add it to default logger

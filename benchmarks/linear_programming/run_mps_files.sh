@@ -151,7 +151,7 @@ while [[ $# -gt 0 ]]; do
             echo "PRESOLVE: $2"
             PRESOLVE="$2"
             shift 2
-            ;;       
+            ;;
         --batch-num)
             echo "BATCH_NUM: $2"
             BATCH_NUM="$2"

@@ -335,9 +335,9 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
       i_t v = presolve_info.free_variable_pairs[2 * k + 1];
 
       const i_t row_start_u = barrier_lp.Q.row_start[u];
-      const i_t row_end_u = barrier_lp.Q.row_start[u + 1];
+      const i_t row_end_u   = barrier_lp.Q.row_start[u + 1];
       const i_t row_start_v = barrier_lp.Q.row_start[v];
-      const i_t row_end_v = barrier_lp.Q.row_start[v + 1];
+      const i_t row_end_v   = barrier_lp.Q.row_start[v + 1];
       if (row_end_u - row_start_u == 0 && row_end_v - row_start_v == 0) {
         settings.log.printf("Free variable pair %d-%d has no quadratic term\n", u, v);
       }

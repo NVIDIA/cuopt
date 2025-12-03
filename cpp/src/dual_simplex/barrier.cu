@@ -167,7 +167,7 @@ class iteration_data_t {
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
-    bool has_Q = lp.Q.x.size() > 0;
+    bool has_Q   = lp.Q.x.size() > 0;
     indefinite_Q = false;
     if (has_Q) {
       cuopt_assert(lp.Q.n <= lp.num_cols && lp.Q.m <= lp.num_cols,
@@ -190,7 +190,7 @@ class iteration_data_t {
 
       for (i_t j = 0; j < Q.n; j++) {
         const i_t col_start = Q.col_start[j];
-        const i_t col_end = Q.col_start[j + 1];
+        const i_t col_end   = Q.col_start[j + 1];
         for (i_t p = col_start; p < col_end; p++) {
           const i_t i = Q.i[p];
           if (j == i) {
@@ -206,7 +206,8 @@ class iteration_data_t {
         // Check to ensure that Q is positive semi-definite
         for (i_t j = 0; j < lp.num_cols; j++) {
           if (Qdiag[j] < 0.0) {
-            settings_.log.printf("Q is not positive semidefinite: Q(%d, %d) = %e\n", j, j, Qdiag[j]);
+            settings_.log.printf(
+              "Q is not positive semidefinite: Q(%d, %d) = %e\n", j, j, Qdiag[j]);
             indefinite_Q = true;
             return;
           }
@@ -214,7 +215,6 @@ class iteration_data_t {
       } else if (settings.check_Q) {
         // Check to ensure that Q is positive semi-definite
       }
-
 
       d_Q_diag_.resize(lp.num_cols, stream_view_);
       raft::copy(d_Q_diag_.data(), Qdiag.data(), Qdiag.size(), stream_view_);
@@ -411,8 +411,8 @@ class iteration_data_t {
         augmented.col_start[j] = q;
         if (nnzQ == 0) {
           augmented_diagonal_indices[j] = q;
-          augmented.i[q]   = j;
-          augmented.x[q++] = -diag[j] - dual_perturb;
+          augmented.i[q]                = j;
+          augmented.x[q++]              = -diag[j] - dual_perturb;
         } else {
           const i_t q_col_beg = Q.col_start[j];
           const i_t q_col_end = Q.col_start[j + 1];
@@ -420,9 +420,9 @@ class iteration_data_t {
           for (i_t p = q_col_beg; p < q_col_end; ++p) {
             augmented.i[q] = Q.i[p];
             if (Q.i[p] == j) {
-              has_diagonal     = true;
+              has_diagonal                  = true;
               augmented_diagonal_indices[j] = q;
-              augmented.x[q++] = -Q.x[p] - diag[j] - dual_perturb;
+              augmented.x[q++]              = -Q.x[p] - diag[j] - dual_perturb;
             } else {
               off_diag_Qnz++;
               augmented.x[q++] = -Q.x[p];
@@ -430,8 +430,8 @@ class iteration_data_t {
           }
           if (!has_diagonal) {
             augmented_diagonal_indices[j] = q;
-            augmented.i[q]   = j;
-            augmented.x[q++] = -diag[j] - dual_perturb;
+            augmented.i[q]                = j;
+            augmented.x[q++]              = -diag[j] - dual_perturb;
           }
         }
         const i_t col_beg = A.col_start[j];
@@ -452,8 +452,8 @@ class iteration_data_t {
           augmented.x[q++] = AT.x[p];
         }
         augmented_diagonal_indices[k] = q;
-        augmented.i[q]   = k;
-        augmented.x[q++] = primal_perturb;
+        augmented.i[q]                = k;
+        augmented.x[q++]              = primal_perturb;
       }
       augmented.col_start[n + m] = q;
       cuopt_assert(q == 2 * nnzA + n + m + off_diag_Qnz, "augmented nnz != predicted");
@@ -476,11 +476,11 @@ class iteration_data_t {
       for (i_t j = 0; j < n; ++j) {
         f_t q_diag = nnzQ > 0 ? Qdiag[j] : 0.0;
 
-        const i_t p = augmented_diagonal_indices[j];
+        const i_t p    = augmented_diagonal_indices[j];
         augmented.x[p] = -q_diag - diag[j] - dual_perturb;
       }
       for (i_t j = n; j < n + m; ++j) {
-        const i_t p = augmented_diagonal_indices[j];
+        const i_t p    = augmented_diagonal_indices[j];
         augmented.x[p] = primal_perturb;
       }
     }
@@ -3394,52 +3394,64 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
                                                     data.d_x_.data(),
                                                     1,
                                                     data.d_z_.data(),
-                                                    1, d_xz.data(), stream_view_));
+                                                    1,
+                                                    d_xz.data(),
+                                                    stream_view_));
     RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
                                                     data.d_w_.size(),
                                                     data.d_w_.data(),
                                                     1,
                                                     data.d_v_.data(),
-                                                    1, d_wv.data(), stream_view_));
+                                                    1,
+                                                    d_wv.data(),
+                                                    stream_view_));
     RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
                                                     data.d_x_.size(),
                                                     data.d_x_.data(),
                                                     1,
                                                     data.d_dual_residual_.data(),
-                                                    1, d_rdx.data(), stream_view_));
+                                                    1,
+                                                    d_rdx.data(),
+                                                    stream_view_));
     RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
                                                     data.d_y_.size(),
                                                     data.d_y_.data(),
                                                     1,
                                                     data.d_primal_residual_.data(),
-                                                    1, d_rpy.data(), stream_view_));
+                                                    1,
+                                                    d_rpy.data(),
+                                                    stream_view_));
     RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
                                                     data.d_bound_residual_.size(),
                                                     data.d_bound_residual_.data(),
                                                     1,
                                                     data.d_v_.data(),
-                                                    1, d_rwv.data(), stream_view_));
+                                                    1,
+                                                    d_rwv.data(),
+                                                    stream_view_));
     RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
                                                     data.d_primal_residual_.size(),
                                                     data.d_primal_residual_.data(),
                                                     1,
                                                     data.d_primal_residual_.data(),
-                                                    1, d_p.data(), stream_view_));
+                                                    1,
+                                                    d_p.data(),
+                                                    stream_view_));
     RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
                                                     data.d_y_.size(),
                                                     data.d_y_.data(),
                                                     1,
                                                     data.d_y_.data(),
-                                                    1, d_y.data(), stream_view_));
-    f_t xz = d_xz.value(stream_view_);
-    f_t wv = d_wv.value(stream_view_);
+                                                    1,
+                                                    d_y.data(),
+                                                    stream_view_));
+    f_t xz  = d_xz.value(stream_view_);
+    f_t wv  = d_wv.value(stream_view_);
     f_t rdx = d_rdx.value(stream_view_);
     f_t rpy = d_rpy.value(stream_view_);
     f_t rwv = d_rwv.value(stream_view_);
-    f_t p = d_p.value(stream_view_);
-    f_t y = d_y.value(stream_view_);
-
-
+    f_t p   = d_p.value(stream_view_);
+    f_t y   = d_y.value(stream_view_);
 
     stream_view_.synchronize();
 
@@ -3450,8 +3462,14 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
                         objective_gap_1,
                         objective_gap_2,
                         std::abs(objective_gap_1 - objective_gap_2));
-    settings.log.printf("Objective - Complementarity: %.2e, rdx: %.2e, rpy: %.2e, rwv: %.2e, p: %.2e, y: %.2e\n",
-                        std::abs(objective_gap_1 - (xz + wv)), rdx, rpy, rwv, p, y);
+    settings.log.printf(
+      "Objective - Complementarity: %.2e, rdx: %.2e, rpy: %.2e, rwv: %.2e, p: %.2e, y: %.2e\n",
+      std::abs(objective_gap_1 - (xz + wv)),
+      rdx,
+      rpy,
+      rwv,
+      p,
+      y);
 #endif
   } else {
     f_t quad_objective = 0.0;
@@ -3889,7 +3907,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
                          solution);
         return lp_status_t::OPTIMAL;
       }
-
 
       // Check if the solution is getting worse
       if (relative_primal_residual > 100 * data.relative_primal_residual_save ||

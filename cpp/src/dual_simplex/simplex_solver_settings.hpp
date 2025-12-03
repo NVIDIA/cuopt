@@ -127,7 +127,7 @@ struct simplex_solver_settings_t {
   i_t ordering;   // -1 automatic, 0 to use nested dissection, 1 to use AMD
   i_t barrier_dual_initial_point;  // -1 automatic, 0 to use Lustig, Marsten, and Shanno initial
                                    // point, 1 to use initial point form dual least squares problem
-  bool check_Q;                     // true to check if Q is positive semidefinite
+  bool check_Q;                    // true to check if Q is positive semidefinite
   bool crossover;                  // true to do crossover, false to not
   i_t refactor_frequency;          // number of basis updates before refactorization
   i_t iteration_log_frequency;     // number of iterations between log updates
