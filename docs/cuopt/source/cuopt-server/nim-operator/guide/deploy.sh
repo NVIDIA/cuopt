@@ -168,11 +168,13 @@ deploy_cuopt() {
 wait_for_deployment() {
     print_info "Waiting for CuOpt to be ready (timeout: ${WAIT_TIMEOUT}s)..."
 
-    local start_time=$(date +%s)
+    local start_time
+    start_time=$(date +%s)
     local ready=false
 
     while [[ $(($(date +%s) - start_time)) -lt ${WAIT_TIMEOUT} ]]; do
-        local status=$(kubectl get nimservice cuopt-service -n "${NAMESPACE}" -o jsonpath='{.status.state}' 2>/dev/null || echo "Unknown")
+        local status
+        status=$(kubectl get nimservice cuopt-service -n "${NAMESPACE}" -o jsonpath='{.status.state}' 2>/dev/null || echo "Unknown")
 
         if [[ "${status}" == "Ready" ]]; then
             ready=true
@@ -189,8 +191,10 @@ wait_for_deployment() {
         print_info "CuOpt is ready!"
 
         # Get service details
-        local cluster_ip=$(kubectl get svc cuopt-service -n "${NAMESPACE}" -o jsonpath='{.spec.clusterIP}' 2>/dev/null)
-        local port=$(kubectl get svc cuopt-service -n "${NAMESPACE}" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null)
+        local cluster_ip
+        cluster_ip=$(kubectl get svc cuopt-service -n "${NAMESPACE}" -o jsonpath='{.spec.clusterIP}' 2>/dev/null)
+        local port
+        port=$(kubectl get svc cuopt-service -n "${NAMESPACE}" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null)
 
         echo ""
         echo "============================================"
