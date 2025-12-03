@@ -248,6 +248,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     return sol;
   }
   context.problem_ptr->post_process_solution(sol);
+  dm.rins.stop_rins();
   return sol;
 }
 

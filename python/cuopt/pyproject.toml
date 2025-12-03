@@ -23,7 +23,6 @@ dependencies = [
     "cudf==26.2.*,>=0.0.0a0",
     "cuopt-mps-parser==26.2.*,>=0.0.0a0",
     "cupy-cuda13x>=13.6.0",
-    "cuvs==26.2.*,>=0.0.0a0",
     "libcuopt==26.2.*,>=0.0.0a0",
     "numba-cuda>=0.19.1,<0.20.0a0",
     "numba>=0.60.0",
