@@ -112,11 +112,6 @@ while [[ $# -gt 0 ]]; do
             TIME_LIMIT="$2"
             shift 2
             ;;
-        --iteration-limit)
-            echo "ITERATION_LIMIT: $2"
-            ITERATION_LIMIT="$2"
-            shift 2
-            ;;
         --output-dir)
             echo "OUTPUT_DIR: $2"
             OUTPUT_DIR="$2"
@@ -140,11 +135,6 @@ while [[ $# -gt 0 ]]; do
         --num-cpu-threads)
             echo "NUM_CPU_THREADS: $2"
             NUM_CPU_THREADS="$2"
-            shift 2
-            ;;
-        --method)
-            echo "METHOD: $2"
-            METHOD="$2"
             shift 2
             ;;
         --presolve)
@@ -188,18 +178,17 @@ fi
 
 # Set defaults if not provided
 GPU_COUNT=${GPU_COUNT:-1}
-TIME_LIMIT=${TIME_LIMIT:-3600}
+TIME_LIMIT=${TIME_LIMIT:-360}
 OUTPUT_DIR=${OUTPUT_DIR:-.}
 RELAXATION=${RELAXATION:-false}
 MIP_HEURISTICS_ONLY=${MIP_HEURISTICS_ONLY:-false}
 WRITE_LOG_FILE=${WRITE_LOG_FILE:-false}
 NUM_CPU_THREADS=${NUM_CPU_THREADS:-1}
+PRESOLVE=${PRESOLVE:-true}
 BATCH_NUM=${BATCH_NUM:-0}
 N_BATCHES=${N_BATCHES:-1}
 LOG_TO_CONSOLE=${LOG_TO_CONSOLE:-true}
 MODEL_LIST=${MODEL_LIST:-}
-
-
 # Determine GPU list
 if [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
     IFS=',' read -ra GPU_LIST <<< "$CUDA_VISIBLE_DEVICES"
@@ -219,8 +208,7 @@ if [[ -n "$MODEL_LIST" && -f "$MODEL_LIST" ]]; then
         # Skip empty lines
         [[ -z "$line" ]] && continue
         # If the line does not end with .mps, append it
-        # ignore if it ends with .SIF
-        if [[ "$line" != *.mps && "$line" != *.SIF ]]; then
+        if [[ "$line" != *.mps ]]; then
             echo "${line}.mps" >> "$TMP_MODEL_LIST"
         else
             echo "$line" >> "$TMP_MODEL_LIST"
@@ -253,10 +241,7 @@ if [[ -n "$MODEL_LIST" ]]; then
         exit 1
     fi
 else
-    # Gather both .mps and .SIF files in the directory
-    mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps "$MPS_DIR"/*.SIF 2>/dev/null)
-
-    echo "Found ${#mps_files[@]} .mps and .SIF files in $MPS_DIR"
+    mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps)
 fi
 
 # Calculate batch size and start/end indices
@@ -313,12 +298,10 @@ worker() {
         fi
 
         mps_file="${mps_files[my_index]}"
-        echo "GPU $gpu_id processing $my_index : $mps_file"
+        echo "GPU $gpu_id processing $my_index"
+
         # Build arguments string
         args=""
-        if [ -n "$ITERATION_LIMIT" ]; then
-            args="$args --iteration-limit $ITERATION_LIMIT"
-        fi
         if [ -n "$NUM_CPU_THREADS" ]; then
             args="$args --num-cpu-threads $NUM_CPU_THREADS"
         fi
@@ -332,12 +315,7 @@ worker() {
             args="$args --relaxation"
         fi
         args="$args --log-to-console $LOG_TO_CONSOLE"
-        if [ -n "$PRESOLVE" ]; then
-            args="$args --presolve $PRESOLVE"
-        fi
-        if [ -n "$METHOD" ]; then
-            args="$args --method $METHOD"
-        fi
+        args="$args --presolve $PRESOLVE"
 
         CUDA_VISIBLE_DEVICES=$gpu_id cuopt_cli "$mps_file" --time-limit $TIME_LIMIT $args
     done

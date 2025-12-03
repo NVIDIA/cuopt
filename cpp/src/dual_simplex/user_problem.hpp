@@ -13,8 +13,6 @@
 
 #include <raft/core/handle.hpp>
 
-#include <fstream>
-#include <iostream>
 #include <string>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -25,24 +23,12 @@ enum class variable_type_t : int8_t {
   INTEGER    = 2,
 };
 
-template <typename T>
-bool print_vec(const std::vector<T>& vec, const std::string& name)
-{
-  std::cout << name << ": " << vec.size() << std::endl;
-  for (size_t i = 0; i < vec.size(); i++) {
-    std::cout << vec[i] << " ";
-  }
-  std::cout << std::endl;
-  return true;
-}
-
 template <typename i_t, typename f_t>
 struct user_problem_t {
   user_problem_t(raft::handle_t const* handle_ptr_)
     : handle_ptr(handle_ptr_), A(1, 1, 1), obj_constant(0.0), obj_scale(1.0)
   {
   }
-
   raft::handle_t const* handle_ptr;
   i_t num_rows;
   i_t num_cols;
@@ -61,9 +47,6 @@ struct user_problem_t {
   f_t obj_constant;
   f_t obj_scale;  // 1.0 for min, -1.0 for max
   std::vector<variable_type_t> var_types;
-  std::vector<i_t> Q_offsets;
-  std::vector<i_t> Q_indices;
-  std::vector<f_t> Q_values;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

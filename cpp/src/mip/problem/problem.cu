@@ -137,10 +137,7 @@ problem_t<i_t, f_t>::problem_t(
     objective_name(problem_.get_objective_name()),
     objective_offset(problem_.get_objective_offset()),
     lp_state(*this, problem_.get_handle_ptr()->get_stream()),
-    fixing_helpers(n_constraints, n_variables, handle_ptr),
-    Q_offsets(problem_.get_quadratic_objective_offsets()),
-    Q_indices(problem_.get_quadratic_objective_indices()),
-    Q_values(problem_.get_quadratic_objective_values())
+    fixing_helpers(n_constraints, n_variables, handle_ptr)
 {
   op_problem_cstr_body(problem_);
   branch_and_bound_callback = nullptr;
@@ -192,10 +189,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
-    expensive_to_fix_vars(problem_.expensive_to_fix_vars),
-    Q_offsets(problem_.Q_offsets),
-    Q_indices(problem_.Q_indices),
-    Q_values(problem_.Q_values)
+    expensive_to_fix_vars(problem_.expensive_to_fix_vars)
 {
 }
 
@@ -290,10 +284,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
-    expensive_to_fix_vars(problem_.expensive_to_fix_vars),
-    Q_offsets(problem_.Q_offsets),
-    Q_indices(problem_.Q_indices),
-    Q_values(problem_.Q_values)
+    expensive_to_fix_vars(problem_.expensive_to_fix_vars)
 {
 }
 

@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
-#include <string>
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -48,7 +47,6 @@ class csc_matrix_t {
   // Adjust to i and x vectors for a new number of nonzeros
   void reallocate(i_t new_nz);
 
-  i_t nnz() const { return col_start[n]; }
   // Convert the CSC matrix to a CSR matrix
   i_t to_compressed_row(
     cuopt::linear_programming::dual_simplex::csr_matrix_t<i_t, f_t>& Arow) const;
@@ -95,7 +93,7 @@ class csc_matrix_t {
   void print_matrix(FILE* fid) const;
 
   // Ensures no repeated row indices within a column
-  i_t check_matrix(std::string matrix_name = "") const;
+  i_t check_matrix() const;
 
   // Writes the matrix to a file in Matrix Market format
   void write_matrix_market(FILE* fid) const;
@@ -111,17 +109,6 @@ class csc_matrix_t {
   void scale_columns(const std::vector<f_t, Allocator>& scale);
 
   size_t hash() const;
-
-  bool is_diagonal() const
-  {
-    for (i_t j = 0; j < n; j++) {
-      for (i_t k = col_start[j]; k < col_start[j + 1]; k++) {
-        i_t row = i[k];
-        if (row != j) { return false; }
-      }
-    }
-    return true;
-  }
 
   i_t m;                       // number of rows
   i_t n;                       // number of columns
@@ -150,18 +137,7 @@ class csr_matrix_t {
   i_t remove_rows(std::vector<i_t>& row_marker, csr_matrix_t<i_t, f_t>& Aout) const;
 
   // Ensures no repeated column indices within a row
-  void check_matrix(std::string matrix_name = "") const;
-
-  bool is_diagonal() const
-  {
-    for (i_t i = 0; i < m; i++) {
-      for (i_t k = row_start[i]; k < row_start[i + 1]; k++) {
-        i_t col = j[k];
-        if (col != i) { return false; }
-      }
-    }
-    return true;
-  }
+  void check_matrix() const;
 
   i_t nz_max;                  // maximum number of nonzero entries
   i_t m;                       // number of rows
