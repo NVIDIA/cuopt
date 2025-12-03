@@ -245,6 +245,11 @@ texinfo_documents = [
 numpydoc_show_inherited_class_members = {
     # option_context inherits undocumented members from the parent class
     "cuopt.option_context": False,
+    # VType and CType inherit from str, sense inherits from int
+    # Hide inherited methods to avoid autodoc signature errors
+    "cuopt.linear_programming.problem.VType": False,
+    "cuopt.linear_programming.problem.CType": False,
+    "cuopt.linear_programming.problem.sense": False,
 }
 
 # Rely on toctrees generated from autosummary on each of the pages we define
@@ -269,6 +274,7 @@ nitpick_ignore = [
         "cuopt.distance_engine.waypoint_matrix_wrapper.WaypointMatrix",
     ),
     ("py:class", "enum.Enum"),
+    ("py:class", "object)"),  # malformed type annotation reference
     ("py:obj", "cuopt.routing.DataModel.add_order_precedence"),
     ("py:obj", "cuopt_sh_client.SolverMethod.denominator"),
     ("py:obj", "cuopt_sh_client.SolverMethod.imag"),
@@ -289,22 +295,36 @@ nitpick_ignore = [
     ("py:obj", "cuopt_sh_client.PDLPSolverMode.bit_count"),
     ("py:obj", "cuopt_sh_client.PDLPSolverMode.bit_length"),
     ("py:obj", "data_model.DataModel.set_data_model_view"),
+    (
+        "py:obj",
+        "cuopt.linear_programming.solver_settings.SolverSettings.to_base_type",
+    ),
     ("c:type", "size_t"),
     ("c:identifier", "int32_t"),
     ("c:identifier", "int8_t"),
 ]
 
+# Regex patterns to ignore inherited methods from str/int base classes
+# in VType, CType, and sense enums from linear_programming module
+nitpick_ignore_regex = [
+    # VType inherits from str - ignore all str methods
+    (r"py:obj", r"cuopt\.linear_programming\.problem\.VType\.\w+"),
+    # CType inherits from str - ignore all str methods
+    (r"py:obj", r"cuopt\.linear_programming\.problem\.CType\.\w+"),
+    # sense inherits from int - ignore all int methods/attributes
+    (r"py:obj", r"cuopt\.linear_programming\.problem\.sense\.\w+"),
+]
+
 
 def skip_unwanted_inherited_members(app, what, name, obj, skip, options):
-    inherited_to_skip = {
-        "as_integer_ratio",
-        "conjugate",
-        "from_bytes",
-        "to_bytes",
-        "is_integer",
-        "bit_count",
-        "bit_length",
-    }  # add more as needed
+    # Dynamically get all public methods/attributes from builtin types
+    int_inherited = {m for m in dir(int) if not m.startswith("_")}
+    str_inherited = {m for m in dir(str) if not m.startswith("_")}
+    # Other methods to skip
+    other_to_skip = {
+        "to_base_type",
+    }
+    inherited_to_skip = int_inherited | str_inherited | other_to_skip
     if name in inherited_to_skip:
         return True
     return skip
