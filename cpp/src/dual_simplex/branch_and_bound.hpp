@@ -148,6 +148,9 @@ class branch_and_bound_t {
   omp_mutex_t mutex_heap_;
   mip_node_heap_t<mip_node_t<i_t, f_t>*> heap_;
 
+  // Search tree
+  search_tree_t<i_t, f_t> search_tree_;
+
   // Count the number of subtrees that are currently being explored.
   omp_atomic_t<i_t> active_subtrees_;
 
@@ -158,6 +161,8 @@ class branch_and_bound_t {
 
   // Global status of the solver.
   omp_atomic_t<mip_exploration_status_t> solver_status_;
+
+  omp_atomic_t<bool> should_report_;
 
   // In case, a best-first thread encounters a numerical issue when solving a node,
   // its blocks the progression of the lower bound.

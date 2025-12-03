@@ -485,7 +485,9 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
 
     for (i_t row = 0; row < num_rows; ++row) {
       for (const auto& [col, val] : csr_data[row]) {
-        result.values.push_back(val);
+        // While the mps format expects to optimize for 0.5 xT Q x, cuopt optimizes for xT Q x
+        // so we have to multiply the value by 0.5 to get the correct value.
+        result.values.push_back(val * 0.5);
         result.indices.push_back(col);
       }
       result.offsets.push_back(result.values.size());
@@ -496,7 +498,6 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
 
   // Process QUADOBJ data if present (upper triangular format)
   if (!quadobj_entries.empty()) {
-    printf("Quadratic objective matrix: %zu nonzeros\n", quadobj_entries.size());
     // Convert quadratic objective entries to CSR format using double transpose
     // QUADOBJ stores upper triangular elements, so we expand to full symmetric matrix
     i_t num_vars    = static_cast<i_t>(var_names.size());

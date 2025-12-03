@@ -136,7 +136,7 @@ i_t remove_rows(lp_problem_t<i_t, f_t>& problem,
                 std::vector<i_t>& row_marker,
                 bool error_on_nonzero_rhs)
 {
-  constexpr bool verbose = true;
+  constexpr bool verbose = false;
   if (verbose) { printf("Removing rows %d %ld\n", Arow.m, row_marker.size()); }
   csr_matrix_t<i_t, f_t> Aout(0, 0, 0);
   Arow.remove_rows(row_marker, Aout);
@@ -265,7 +265,9 @@ i_t convert_less_than_to_equal(const user_problem_t<i_t, f_t>& user_problem,
                                std::vector<i_t>& new_slacks)
 {
   constexpr bool verbose = false;
-  if (verbose) { printf("Converting %d less than inequalities to equalities\n", less_rows); }
+  if (verbose) {
+    CUOPT_LOG_DEBUG("Converting %d less than inequalities to equalities\n", less_rows);
+  }
   // We must convert rows in the form: a_i^T x <= beta
   // into: a_i^T x + s_i = beta, s_i >= 0
 
@@ -552,12 +554,12 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
                           std::vector<i_t>& new_slacks,
                           dualize_info_t<i_t, f_t>& dualize_info)
 {
-  constexpr bool verbose = true;
+  constexpr bool verbose = false;
   if (verbose) {
-    printf("Converting problem with %d rows and %d columns and %d nonzeros\n",
-           user_problem.num_rows,
-           user_problem.num_cols,
-           user_problem.A.col_start[user_problem.num_cols]);
+    CUOPT_LOG_DEBUG("Converting problem with %d rows and %d columns and %d nonzeros\n",
+                    user_problem.num_rows,
+                    user_problem.num_cols,
+                    user_problem.A.col_start[user_problem.num_cols]);
   }
 
   // Copy info from user_problem to problem
@@ -776,8 +778,9 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   }
 
   if (user_problem.Q_values.size() > 0) {
-    printf("Converting problem with %d quadratic nonzeros\n", user_problem.Q_values.size());
-    printf(
+    CUOPT_LOG_DEBUG("Converting problem with %d quadratic nonzeros\n",
+                    user_problem.Q_values.size());
+    CUOPT_LOG_DEBUG(
       "problem.num_cols: %d user_problem.num_cols: %d\n", problem.num_cols, user_problem.num_cols);
     problem.Q.m      = problem.num_cols;
     problem.Q.n      = problem.num_cols;

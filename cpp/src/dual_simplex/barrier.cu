@@ -189,8 +189,8 @@ class iteration_data_t {
     }
 
     if (lp.Q.n > 0 && lp.Q.is_diagonal()) {
-      d_Q_diag_.resize(lp.Q.n, stream_view_);
-      std::vector<f_t> Q_diag(lp.Q.n, 0.0);
+      d_Q_diag_.resize(lp.num_cols, stream_view_);
+      std::vector<f_t> Q_diag(lp.num_cols, 0.0);
       for (i_t i = 0; i < lp.Q.m; i++) {
         for (i_t j = lp.Q.row_start[i]; j < lp.Q.row_start[i + 1]; j++) {
           if (lp.Q.j[j] == i) {
@@ -3212,8 +3212,9 @@ void barrier_solver_t<i_t, f_t>::compute_next_iterate(iteration_data_t<i_t, f_t>
       [step_dual] HD(f_t y, f_t dy) { return y + step_dual * dy; },
       stream_view_);
 
+    // Do not handle free variables for quadratic problems
     i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
-    if (num_free_variables > 0) {
+    if (num_free_variables > 0 && data.Q.n == 0) {
       auto d_free_variable_pairs = device_copy(presolve_info.free_variable_pairs, stream_view_);
       thrust::for_each(rmm::exec_policy(stream_view_),
                        thrust::make_counting_iterator(0),
@@ -3250,7 +3251,7 @@ void barrier_solver_t<i_t, f_t>::compute_next_iterate(iteration_data_t<i_t, f_t>
 
     // Handle free variables
     i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
-    if (num_free_variables > 0) {
+    if (num_free_variables > 0 && data.Q.n == 0) {
       for (i_t k = 0; k < 2 * num_free_variables; k += 2) {
         i_t u       = presolve_info.free_variable_pairs[k];
         i_t v       = presolve_info.free_variable_pairs[k + 1];
@@ -3426,6 +3427,14 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
   }
 
   f_t primal_objective_save = data.c.inner_product(data.x_save);
+  if (data.Q.n > 0) {
+    dense_vector_t<i_t, f_t> Qx_save(data.Q.n);
+    dense_vector_t<i_t, f_t> x_save_truncated(data.Q.n);
+    std::copy(data.x_save.begin(), data.x_save.begin() + data.Q.n, x_save_truncated.begin());
+    matrix_vector_multiply(data.Q, 1.0, x_save_truncated, 0.0, Qx_save);
+    f_t quad_objective = 0.5 * x_save_truncated.inner_product(Qx_save);
+    primal_objective_save += quad_objective;
+  }
 
   if (data.relative_primal_residual_save < settings.barrier_relaxed_feasibility_tol &&
       data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
@@ -3767,20 +3776,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       bool small_gap =
         relative_complementarity_residual < settings.barrier_relative_complementarity_tol;
 
-      // For QP, the difference between gap and complementarity residual norm can be large
-      // However, do not proceed if the relative complementarity residual is too small
-      if (lp.Q.n > 0 && small_gap &&
-          relative_complementarity_residual >
-            1e-2 * settings.barrier_relative_complementarity_tol) {
-        f_t user_primal_objective = compute_user_objective(lp, primal_objective);
-        f_t user_dual_objective   = compute_user_objective(lp, dual_objective);
-        f_t user_gap              = fabs(user_primal_objective - user_dual_objective);
-        f_t relative_user_gap     = user_gap / (1.0 + std::abs(user_primal_objective));
-
-        // FIXME:: use gap tolerance instead of complementarity tolerance
-        small_gap =
-          small_gap && relative_user_gap < 1e2 * settings.barrier_relative_complementarity_tol;
-      }
       converged = primal_feasible && dual_feasible && small_gap;
 
       if (converged) {

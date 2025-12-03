@@ -191,7 +191,7 @@ class optimization_problem_t {
    * @brief Set the quadratic objective matrix (Q) in CSR format for QPS files.
    *
    * @note This is used for quadratic programming problems where the objective
-   * function contains quadratic terms: (1/2) * x^T * Q * x + c^T * x
+   * function contains quadratic terms: x^T * Q * x + c^T * x
    *
    * @param[in] Q_values Values of the CSR representation of the quadratic objective matrix
    * @param size_values Size of the Q_values array
@@ -199,13 +199,16 @@ class optimization_problem_t {
    * @param size_indices Size of the Q_indices array
    * @param[in] Q_offsets Offsets of the CSR representation of the quadratic objective matrix
    * @param size_offsets Size of the Q_offsets array
+   * @param validate_positive_semi_definite Whether to validate if the matrix is positive semi
+   * definite
    */
   void set_quadratic_objective_matrix(const f_t* Q_values,
                                       i_t size_values,
                                       const i_t* Q_indices,
                                       i_t size_indices,
                                       const i_t* Q_offsets,
-                                      i_t size_offsets);
+                                      i_t size_offsets,
+                                      bool validate_positive_semi_definite = false);
 
   /**
    * @brief Get the quadratic objective matrix offsets
