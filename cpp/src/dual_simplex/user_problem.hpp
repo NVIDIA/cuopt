@@ -13,8 +13,6 @@
 
 #include <raft/core/handle.hpp>
 
-#include <fstream>
-#include <iostream>
 #include <string>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -24,17 +22,6 @@ enum class variable_type_t : int8_t {
   BINARY     = 1,
   INTEGER    = 2,
 };
-
-template <typename T>
-bool print_vec(const std::vector<T>& vec, const std::string& name)
-{
-  std::cout << name << ": " << vec.size() << std::endl;
-  for (size_t i = 0; i < vec.size(); i++) {
-    std::cout << vec[i] << " ";
-  }
-  std::cout << std::endl;
-  return true;
-}
 
 template <typename i_t, typename f_t>
 struct user_problem_t {

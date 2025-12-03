@@ -22,6 +22,12 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
   i_t m  = scaled.num_rows;
   i_t n  = scaled.num_cols;
 
+  if (!settings.scale_columns || unscaled.Q.n > 0) {
+    settings.log.printf("Skipping column scaling\n");
+    column_scaling.resize(n, 1.0);
+    return 0;
+  }
+
   column_scaling.resize(n);
   f_t max = 0;
   f_t min = std::numeric_limits<f_t>::max();
@@ -36,7 +42,6 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
     f_t col_norm_j = column_scaling[j] = sum > 0 ? std::sqrt(sum) : 1.0;
     max                                = std::max(col_norm_j, max);
     min                                = std::min(col_norm_j, min);
-    // printf("Column %d: norm %e\n", j, col_norm_j);
   }
   settings.log.printf("Scaling matrix. Maximum column norm %e, minimum column norm %e\n", max, min);
   // C(j, j) = 1/column_scaling(j)
