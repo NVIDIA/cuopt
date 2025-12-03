@@ -56,21 +56,6 @@ def ParseMps(mps_file_path, fixed_mps_formats):
     cdef int[:] A_offsets_ = <int[:A_offsets_size]>A_offsets_data
     A_offsets = np.asarray(A_offsets_).copy()
 
-    Q_objective_values_data = dm_ret.Q_objective_.data()
-    Q_objective_values_size = dm_ret.Q_objective_.size()
-    cdef double[:] Q_objective_values_ = <double[:Q_objective_values_size]>Q_objective_values_data  # noqa
-    Q_objective_values = np.asarray(Q_objective_values_).copy()
-
-    Q_objective_indices_data = dm_ret.Q_objective_indices_.data()
-    Q_objective_indices_size = dm_ret.Q_objective_indices_.size()
-    cdef int[:] Q_objective_indices_ = <int[:Q_objective_indices_size]>Q_objective_indices_data  # noqa
-    Q_objective_indices = np.asarray(Q_objective_indices_).copy()
-
-    Q_objective_offsets_data = dm_ret.Q_objective_offsets_.data()
-    Q_objective_offsets_size = dm_ret.Q_objective_offsets_.size()
-    cdef int[:] Q_objective_offsets_ = <int[:Q_objective_offsets_size]>Q_objective_offsets_data
-    Q_objective_offsets = np.asarray(Q_objective_offsets_).copy()
-
     b_data = dm_ret.b_.data()
     b_size = dm_ret.b_.size()
     cdef double[:] b_ = <double[:b_size]>b_data

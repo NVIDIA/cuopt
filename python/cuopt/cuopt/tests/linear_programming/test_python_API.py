@@ -673,7 +673,7 @@ def test_quadratic_expression_and_matrix():
     y = problem.addVariable(name="y")
     z = problem.addVariable(name="z")
 
-    assert x == y
+    # Test Quadratic Expressions
     expr1 = x * x  # var * var
     expr2 = expr1 + y*z + 2  # QP + QP + const
     expr3 = expr2 * 4  # QP * const
@@ -743,3 +743,37 @@ def test_quadratic_expression_and_matrix():
         assert var is lvariables[i]
     assert linexpr.getCoefficients() == lcoeffs
     assert linexpr.getConstant() == constant
+
+    # Test Quadratic Matrix
+    problem.setObjective(expr9)
+    Qcsr = problem.getQcsr()
+
+    exp_row_ptrs = [0, 0, 3, 6]
+    exp_col_inds = [0, 1, 2, 0, 1, 2]
+    exp_vals = [21, -7, 7, 3, -1, 1]
+
+    assert Qcsr.row_pointers == exp_row_ptrs
+    assert Qcsr.column_indices == exp_col_inds
+    assert Qcsr.values == exp_vals
+
+
+def test_quadratic_objective():
+
+    # Minimize x1 ^2 + 4 x2 ^2 - 8 x1 - 16 x2
+    # subject to x1 + x2 >= 5
+    #         x1 >= 3
+    #         x2 >= 0
+
+    problem = Problem()
+    x1 = problem.addVariable(lb=3.0, name="x")
+    x2 = problem.addVariable(lb = 0, name="y")
+
+    problem.addConstraint(x1 + x2 >= 5)
+    problem.setObjective(x1*x1 + 4*x2*x2 - 8*x1 - 16*x2)
+
+    problem.solve()
+
+    assert problem.Status.name == "Optimal"
+    assert x1.getValue() == pytest.approx(4.0)
+    assert x2.getValue() == pytest.approx(2.0)
+    assert problem.ObjValue ==  pytest.approx(-32.0)
