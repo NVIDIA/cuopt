@@ -193,29 +193,6 @@ class DataModel(data_model_wrapper.DataModel):
         """
         super().set_csr_constraint_matrix(A_values, A_indices, A_offsets)
 
-
-    @catch_cuopt_exception
-    def set_quadratic_objective_matrix(self, Q_values, Q_indices, Q_offsets):
-        """
-        Set the quadratic_objective matrix (Q) in CSR format.
-        For more information about CSR checkout:
-        https://docs.nvidia.com/cuda/cusparse/index.html
-        compressed-sparse-row-csr
-
-        Parameters
-        ----------
-        Q_values : np.array dtype - float64
-            Values of the CSR representation of the quadratic_objective
-            matrix as a device floating point array.
-        Q_indices : np.array dtype - int32
-            Indices of the CSR representation of the quadratic_objective
-            matrix as a device integer array.
-        Q_offsets : np.array dtype - int32
-            Offsets of the CSR representation of the quadratic_objective
-            matrix as a device integer array.
-        """
-        super().set_csr_constraint_matrix(A_values, A_indices, A_offsets)
-
     @catch_cuopt_exception
     def set_constraint_bounds(self, b):
         """
