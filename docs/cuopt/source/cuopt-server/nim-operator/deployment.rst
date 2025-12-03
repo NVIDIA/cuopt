@@ -260,5 +260,3 @@ Next Steps
 ----------
 
 See :ref:`configuration <cuopt-nim-configuration>` for advanced configuration options.
-
-

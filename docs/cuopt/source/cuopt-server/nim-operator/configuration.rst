@@ -307,5 +307,3 @@ Here's a complete production-ready configuration:
 .. literalinclude:: guide/cuopt-nimservice-full.yaml
    :language: yaml
    :linenos:
-
-

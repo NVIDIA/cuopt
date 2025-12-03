@@ -1,4 +1,7 @@
 #!/bin/bash
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 #
 # CuOpt NIM Operator Deployment Script
 #
@@ -281,5 +284,3 @@ create_namespace
 create_secrets
 deploy_cuopt
 wait_for_deployment
-
-

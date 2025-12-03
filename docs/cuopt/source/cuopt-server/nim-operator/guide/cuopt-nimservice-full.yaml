@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Full production-ready CuOpt NIMService configuration
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
@@ -98,5 +101,3 @@ spec:
       periodSeconds: 10
       successThreshold: 1
       timeoutSeconds: 1
-
-

@@ -188,5 +188,3 @@ Next Steps
 ----------
 
 Once all prerequisites are met, proceed to :ref:`deployment <cuopt-nim-deployment>`.
-
-

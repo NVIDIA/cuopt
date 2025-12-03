@@ -85,5 +85,3 @@ Additional Resources
 * `NVIDIA cuOpt Documentation <https://docs.nvidia.com/cuopt/>`_
 * `NIM Operator Documentation <https://docs.nvidia.com/nim-operator/latest/index.html>`_
 * `GPU Operator Documentation <https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/index.html>`_
-
-

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
 metadata:
@@ -64,5 +67,3 @@ spec:
       periodSeconds: 10
       successThreshold: 1
       timeoutSeconds: 1
-
-
