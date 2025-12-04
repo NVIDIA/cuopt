@@ -132,3 +132,8 @@ Batch Mode
 ----------
 
 Users can submit a set of problems which will be solved in a batch. Problems will be solved at the same time in parallel to fully utilize the GPU. Checkout :ref:`self-hosted client <generic-example-with-normal-and-batch-mode>` example in thin client.
+
+Multi-GPU Mode
+--------------
+
+Users can use multiple GPUs to solve a problem by specifying the ``num_gpus`` parameter. The feature is restricted to LP problems that uses concurrent mode and supports up to 2 GPUs at the moment. Using this mode will run PDLP and IPM in parallel on different GPUs to avoid sharing single GPU resources.
