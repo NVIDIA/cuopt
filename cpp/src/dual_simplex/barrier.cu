@@ -3945,11 +3945,12 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       }
 
       // Check if the solution is getting worse
-      if ((!primal_feasible &&
-           relative_primal_residual > 100 * data.relative_primal_residual_save) ||
-          (!dual_feasible && relative_dual_residual > 100 * data.relative_dual_residual_save) ||
-          (!small_gap && relative_complementarity_residual >
-                           10000 * data.relative_complementarity_residual_save)) {
+      if (data.Q.n > 0 &&
+          ((!primal_feasible &&
+            relative_primal_residual > 100 * data.relative_primal_residual_save) ||
+           (!dual_feasible && relative_dual_residual > 100 * data.relative_dual_residual_save) ||
+           (!small_gap && relative_complementarity_residual >
+                            10000 * data.relative_complementarity_residual_save))) {
         if (data.relative_primal_residual_save < settings.barrier_relaxed_feasibility_tol &&
             data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
             data.relative_complementarity_residual_save <
