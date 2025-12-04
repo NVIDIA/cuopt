@@ -49,6 +49,7 @@ class iteration_data_t {
  public:
   iteration_data_t(const lp_problem_t<i_t, f_t>& lp,
                    i_t num_upper_bounds,
+                   const csc_matrix_t<i_t, f_t>& Qin,
                    const simplex_solver_settings_t<i_t, f_t>& settings)
     : upper_bounds(num_upper_bounds),
       c(lp.objective),
@@ -81,7 +82,8 @@ class iteration_data_t {
       H(0, 0),
       Hchol(0, 0),
       A(lp.A),
-      Q(0, 0, 0),
+      Q(Qin),
+      cusparse_Q_view_(lp.handle_ptr, Q),
       primal_residual(lp.num_rows),
       bound_residual(num_upper_bounds),
       dual_residual(lp.num_cols),
@@ -161,31 +163,16 @@ class iteration_data_t {
       d_complementarity_wv_rhs_(0, lp.handle_ptr->get_stream()),
       d_dual_rhs_(lp.num_cols, lp.handle_ptr->get_stream()),
       d_Q_diag_(0, lp.handle_ptr->get_stream()),
+      d_Qx_(Qin.m, lp.handle_ptr->get_stream()),
       restrict_u_(0),
       transform_reduce_helper_(lp.handle_ptr->get_stream()),
       sum_reduce_helper_(lp.handle_ptr->get_stream())
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
-    bool has_Q   = lp.Q.x.size() > 0;
+    bool has_Q   = Q.x.size() > 0;
     indefinite_Q = false;
     if (has_Q) {
-      cuopt_assert(lp.Q.n <= lp.num_cols && lp.Q.m <= lp.num_cols,
-                   "Q.n <= num_cols && Q.m <= num_cols");
-
-      lp.Q.to_compressed_col(Q);
-      // The original Q matrix will not have the slack variables. Let's resize it to include those
-      // variables.
-      if (Q.n != lp.num_cols) {
-        i_t nz    = Q.col_start[Q.n];
-        i_t old_n = Q.n;
-        Q.m = Q.n = lp.num_cols;
-        Q.col_start.resize(Q.m + 1);
-        for (i_t i = old_n; i < Q.n; i++) {
-          Q.col_start[i + 1] = nz;
-        }
-      }
-
       Qdiag.resize(lp.num_cols, 0.0);
 
       for (i_t j = 0; j < Q.n; j++) {
@@ -1465,11 +1452,12 @@ class iteration_data_t {
   dense_matrix_t<i_t, f_t> Hchol;
   const csc_matrix_t<i_t, f_t>& A;
 
-  csc_matrix_t<i_t, f_t> Q;
+  const csc_matrix_t<i_t, f_t>& Q;
   std::vector<f_t> Qdiag;
   bool Q_diagonal;
   std::vector<i_t> augmented_diagonal_indices;
   bool indefinite_Q;
+  cusparse_view_t<i_t, f_t> cusparse_Q_view_;
 
   bool use_augmented;
   i_t symbolic_status;
@@ -1570,6 +1558,7 @@ class iteration_data_t {
   rmm::device_uvector<f_t> d_dual_rhs_;
 
   rmm::device_uvector<f_t> d_Q_diag_;
+  rmm::device_uvector<f_t> d_Qx_;
 
   pinned_dense_vector_t<i_t, f_t> restrict_u_;
 
@@ -1647,6 +1636,26 @@ barrier_solver_t<i_t, f_t>::barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
                                              const simplex_solver_settings_t<i_t, f_t>& settings)
   : lp(lp), settings(settings), presolve_info(presolve), stream_view_(lp.handle_ptr->get_stream())
 {
+}
+
+template <typename i_t, typename f_t>
+void barrier_solver_t<i_t, f_t>::create_Q(const lp_problem_t<i_t, f_t>& lp,
+                                          csc_matrix_t<i_t, f_t>& Q)
+{
+  cuopt_assert(lp.Q.n <= lp.num_cols && lp.Q.m <= lp.num_cols,
+               "Q.n <= num_cols && Q.m <= num_cols");
+  lp.Q.to_compressed_col(Q);
+  // The original Q matrix will not have the slack variables. Let's resize it to include those
+  // variables.
+  if (Q.n != lp.num_cols) {
+    i_t nz    = Q.col_start[Q.n];
+    i_t old_n = Q.n;
+    Q.m = Q.n = lp.num_cols;
+    Q.col_start.resize(Q.m + 1);
+    for (i_t i = old_n; i < Q.n; i++) {
+      Q.col_start[i + 1] = nz;
+    }
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -1977,13 +1986,9 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residuals(const rmm::device_uvector
 
   // Compute dual_residual = c - A'*y - z + E*v + Q*x
   if (data.Q.n > 0) {
-    dense_vector_t<i_t, f_t> c = data.c;
-    dense_vector_t<i_t, f_t> x_host(data.d_x_.size());
-    raft::copy(x_host.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
-    cudaStreamSynchronize(stream_view_);
-    matrix_vector_multiply(data.Q, 1.0, x_host, 1.0, c);
-    raft::copy(data.d_c_.data(), c.data(), c.size(), stream_view_);
-    cudaStreamSynchronize(stream_view_);
+    raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
+    auto cusparse_d_c = data.cusparse_view_.create_vector(data.d_c_);
+    data.cusparse_Q_view_.spmv(1.0, cusparse_d_x, 1.0, cusparse_d_c);
   } else {
     raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
   }
@@ -3371,12 +3376,19 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
                                                     stream_view_));
     f_t quad_objective = 0.0;
     if (data.Q.n > 0) {
-      dense_vector_t<i_t, f_t> Qx(data.Q.n);
-      dense_vector_t<i_t, f_t> x_host(data.Q.n);
-      raft::copy(x_host.data(), data.d_x_.data(), data.Q.n, stream_view_);
-      cudaStreamSynchronize(stream_view_);
-      matrix_vector_multiply(data.Q, 1.0, x_host, 0.0, Qx);
-      quad_objective = 0.5 * x_host.inner_product(Qx);
+      auto cusparse_d_x = data.cusparse_view_.create_vector(data.d_x_);
+      auto cusparse_Qx  = data.cusparse_view_.create_vector(data.d_Qx_);
+      data.cusparse_Q_view_.spmv(1.0, cusparse_d_x, 0.0, cusparse_Qx);
+      rmm::device_scalar<f_t> d_xQx(stream_view_);
+      RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                      data.d_Qx_.size(),
+                                                      data.d_Qx_.data(),
+                                                      1,
+                                                      data.d_x_.data(),
+                                                      1,
+                                                      d_xQx.data(),
+                                                      stream_view_));
+      quad_objective = 0.5 * d_xQx.value(stream_view_);
     }
 
     primal_objective = d_cx.value(stream_view_) + quad_objective;
@@ -3610,7 +3622,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       if (lp.upper[j] < inf) { num_upper_bounds++; }
     }
 
-    iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, settings);
+    csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
+    if (lp.Q.n > 0) { create_Q(lp, Q); }
+
+    iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
@@ -3619,6 +3634,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       settings.log.printf("Error in symbolic analysis\n");
       return lp_status_t::NUMERICAL_ISSUES;
     }
+    if (data.indefinite_Q) { return lp_status_t::NUMERICAL_ISSUES; }
 
     data.cusparse_dual_residual_ = data.cusparse_view_.create_vector(data.d_dual_residual_);
     data.cusparse_r1_            = data.cusparse_view_.create_vector(data.d_r1_);

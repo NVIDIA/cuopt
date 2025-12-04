@@ -707,6 +707,7 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_ranges_   = false;
         inside_objname_  = false;
         inside_objsense_ = false;
+        inside_qmatrix_  = false;
         inside_quadobj_  = true;
       } else if (line.find("QMATRIX", 0, 7) == 0) {
         encountered_sections.insert("QMATRIX");
@@ -717,6 +718,7 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_ranges_   = false;
         inside_objname_  = false;
         inside_objsense_ = false;
+        inside_quadobj_  = false;
         inside_qmatrix_  = true;
       } else if (line.find("ENDATA", 0, 6) == 0) {
         encountered_sections.insert("ENDATA");
@@ -732,6 +734,8 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_objsense_ = false;
         inside_ranges_   = false;
         inside_objname_  = false;
+        inside_quadobj_  = false;
+        inside_qmatrix_  = false;
       } else {
         mps_parser_expects(false,
                            error_type_t::ValidationError,
