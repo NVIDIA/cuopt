@@ -63,22 +63,7 @@ spec:
       additionalLabels:
         release: kube-prometheus-stack
   scale:
-    enabled: true
-    hpa:
-      minReplicas: 1
-      maxReplicas: 4
-      metrics:
-      - type: Object
-        object:
-          metric:
-            name: gpu_cache_usage_perc
-          describedObject:
-            apiVersion: v1
-            kind: Service
-            name: cuopt-service
-          target:
-            type: Value
-            value: "0.5"
+    enabled: false
   livenessProbe:
     enabled: true
     probe:

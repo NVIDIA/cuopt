@@ -79,7 +79,8 @@ CuOpt supports several environment variables for configuration:
 Storage Configuration
 ---------------------
 
-The deployment uses persistent storage for model data:
+The deployment optionally uses persistent storage so that datasets can be passed through the filesystem
+rather than over http. If data is sent over http (the default), this storage is not needed.
 
 .. code-block:: yaml
 
@@ -131,6 +132,7 @@ For NodePort access:
          nodePort: 30800
 
 For LoadBalancer (cloud environments):
+.. note:: Currently the cuopt service does not support scaling; there can only be 1 instance of the pod per service. Therefore a LoadBalancer service is unnecessary.
 
 .. code-block:: yaml
 
@@ -197,31 +199,7 @@ With TLS:
 Scaling Configuration
 ---------------------
 
-Horizontal Pod Autoscaler
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Enable autoscaling based on GPU metrics:
-
-.. code-block:: yaml
-
-   spec:
-     scale:
-       enabled: true
-       hpa:
-         minReplicas: 1
-         maxReplicas: 4
-         metrics:
-         - type: Object
-           object:
-             metric:
-               name: gpu_cache_usage_perc
-             describedObject:
-               apiVersion: v1
-               kind: Service
-               name: cuopt-service
-             target:
-               type: Value
-               value: "0.5"
+Currently the cuOpt service does not support scaling. Only a single instance of the pod per service is supported.
 
 Health Probes
 -------------
