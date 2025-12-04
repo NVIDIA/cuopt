@@ -349,6 +349,7 @@ if buildAll || hasArg libcuopt; then
           -DSKIP_ROUTING_BUILD=${SKIP_ROUTING_BUILD} \
           -DWRITE_FATBIN=${WRITE_FATBIN} \
           -DHOST_LINEINFO=${HOST_LINEINFO} \
+          -DINSTALL_TARGET="${INSTALL_TARGET}" \
           "${CACHE_ARGS[@]}" \
           "${EXTRA_CMAKE_ARGS[@]}" \
           "${REPODIR}"/cpp
