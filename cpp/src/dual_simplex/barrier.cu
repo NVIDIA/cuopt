@@ -2119,8 +2119,8 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residual_norms(const rmm::device_uv
              device_vector_norm_inf<i_t, f_t>(data.d_bound_residual_, stream_view_));
   dual_residual_norm = device_vector_norm_inf<i_t, f_t>(data.d_dual_residual_, stream_view_);
   complementarity_residual_norm =
-    std::max(device_vector_norm_inf<i_t, f_t>(data.d_complementarity_xz_rhs_, stream_view_),
-             device_vector_norm_inf<i_t, f_t>(data.d_complementarity_wv_rhs_, stream_view_));
+    std::max(device_vector_norm_inf<i_t, f_t>(data.d_complementarity_xz_residual_, stream_view_),
+             device_vector_norm_inf<i_t, f_t>(data.d_complementarity_wv_residual_, stream_view_));
 }
 
 template <typename i_t, typename f_t>
@@ -3678,7 +3678,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     f_t norm_b = vector_norm_inf<i_t, f_t>(data.b, stream_view_);
     f_t norm_c = vector_norm_inf<i_t, f_t>(data.c, stream_view_);
 
-
     f_t quad_objective = 0.0;
     if (data.Q.n > 0) {
       dense_vector_t<i_t, f_t> Qx(data.Q.n);
@@ -3694,7 +3693,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
     dense_vector_t<i_t, f_t> upper(lp.upper);
     data.gather_upper_bounds(upper, data.restrict_u_);
-    f_t dual_objective = data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
+    f_t dual_objective =
+      data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
 
     i_t iter = 0;
     settings.log.printf("\n");
