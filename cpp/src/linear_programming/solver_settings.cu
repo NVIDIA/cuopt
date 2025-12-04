@@ -52,7 +52,7 @@ pdlp_solver_settings_t<i_t, f_t>::pdlp_solver_settings_t(const pdlp_solver_setti
     concurrent_halt(other.concurrent_halt),
     initial_primal_solution_(other.initial_primal_solution_),
     initial_dual_solution_(other.initial_dual_solution_),
-    pdlp_warm_start_data_(other.pdlp_warm_start_data_, stream_view)
+    pdlp_warm_start_data_(other.pdlp_warm_start_data_, stream_view),
     num_gpus(other.num_gpus)
 {
 }
