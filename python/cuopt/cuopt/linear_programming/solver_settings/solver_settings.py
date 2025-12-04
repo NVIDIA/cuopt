@@ -30,6 +30,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_MIP_RELATIVE_TOLERANCE,
     CUOPT_MIP_SCALING,
     CUOPT_NUM_CPU_THREADS,
+    CUOPT_NUM_GPUS,
     CUOPT_ORDERING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PER_CONSTRAINT_RESIDUAL,
@@ -374,6 +375,7 @@ class SolverSettings:
                 CUOPT_MIP_HEURISTICS_ONLY
             ),
             "num_cpu_threads": self.get_parameter(CUOPT_NUM_CPU_THREADS),
+            "num_gpus": self.get_parameter(CUOPT_NUM_GPUS),
             "augmented": self.get_parameter(CUOPT_AUGMENTED),
             "folding": self.get_parameter(CUOPT_FOLDING),
             "dualize": self.get_parameter(CUOPT_DUALIZE),

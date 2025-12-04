@@ -440,6 +440,7 @@ target_link_libraries(cuopt_cli
   cuopt
   OpenMP::OpenMP_CXX
   ${CUDSS_LIBRARIES}
+  TBB::tbb
   PRIVATE
 )
 set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")

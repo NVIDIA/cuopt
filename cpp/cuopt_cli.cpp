@@ -11,6 +11,7 @@
 #include <mps_parser/parser.hpp>
 #include <utilities/logger.hpp>
 
+#include <raft/core/device_setter.hpp>
 #include <raft/core/handle.hpp>
 
 #include <rmm/mr/cuda_async_memory_resource.hpp>
@@ -333,7 +334,19 @@ int main(int argc, char* argv[])
   const auto initial_solution_file = program.get<std::string>("--initial-solution");
   const auto solve_relaxation      = program.get<bool>("--relaxation");
 
-  auto memory_resource = make_async();
-  rmm::mr::set_current_device_resource(memory_resource.get());
+  // All arguments are parsed as string, default values are parsed as int if unused.
+  const auto num_gpus = program.is_used("--num-gpus")
+                          ? std::stoi(program.get<std::string>("--num-gpus"))
+                          : program.get<int>("--num-gpus");
+
+  std::vector<std::shared_ptr<rmm::mr::device_memory_resource>> memory_resources;
+
+  for (int i = 0; i < std::min(raft::device_setter::get_device_count(), num_gpus); ++i) {
+    cudaSetDevice(i);
+    memory_resources.push_back(make_async());
+    rmm::mr::set_per_device_resource(rmm::cuda_device_id{i}, memory_resources.back().get());
+  }
+  cudaSetDevice(0);
+
   return run_single_file(file_name, initial_solution_file, solve_relaxation, settings_strings);
 }

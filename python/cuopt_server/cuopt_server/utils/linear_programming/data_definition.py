@@ -516,6 +516,10 @@ class SolverConfig(StrictModel):
         default=None,
         description="Set the number of CPU threads to use for branch and bound.",  # noqa
     )
+    num_gpus: Optional[int] = Field(
+        default=None,
+        description="Set the number of GPUs to use for LP solve.",
+    )
     augmented: Optional[int] = Field(
         default=-1,
         description="Set the types of system solved by the barrier solver."
