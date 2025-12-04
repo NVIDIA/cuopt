@@ -3678,7 +3678,14 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     f_t norm_b = vector_norm_inf<i_t, f_t>(data.b, stream_view_);
     f_t norm_c = vector_norm_inf<i_t, f_t>(data.c, stream_view_);
 
-    f_t primal_objective = data.c.inner_product(data.x);
+
+    f_t quad_objective = 0.0;
+    if (data.Q.n > 0) {
+      dense_vector_t<i_t, f_t> Qx(data.Q.n);
+      matrix_vector_multiply(data.Q, 1.0, data.x, 0.0, Qx);
+      quad_objective = 0.5 * data.x.inner_product(Qx);
+    }
+    f_t primal_objective = data.c.inner_product(data.x) + quad_objective;
 
     f_t relative_primal_residual = primal_residual_norm / (1.0 + norm_b);
     f_t relative_dual_residual   = dual_residual_norm / (1.0 + norm_c);
@@ -3687,7 +3694,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
     dense_vector_t<i_t, f_t> upper(lp.upper);
     data.gather_upper_bounds(upper, data.restrict_u_);
-    f_t dual_objective = data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v);
+    f_t dual_objective = data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
 
     i_t iter = 0;
     settings.log.printf("\n");
