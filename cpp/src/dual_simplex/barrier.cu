@@ -166,7 +166,10 @@ class iteration_data_t {
       d_Qx_(Qin.m, lp.handle_ptr->get_stream()),
       restrict_u_(0),
       transform_reduce_helper_(lp.handle_ptr->get_stream()),
-      sum_reduce_helper_(lp.handle_ptr->get_stream())
+      sum_reduce_helper_(lp.handle_ptr->get_stream()),
+      indefinite_Q(false),
+      Q_diagonal(false),
+      symbolic_status(0)
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
@@ -200,7 +203,8 @@ class iteration_data_t {
           }
         }
       } else if (settings.check_Q) {
-        // Check to ensure that Q is positive semi-definite
+        // TODO: Check to ensure that Q is positive semi-definite
+        // This requires us to perform a Cholesky factorization.
       }
 
       d_Q_diag_.resize(lp.num_cols, stream_view_);
@@ -3630,11 +3634,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
     }
+    if (data.indefinite_Q) { return lp_status_t::NUMERICAL_ISSUES; }
     if (data.symbolic_status != 0) {
       settings.log.printf("Error in symbolic analysis\n");
       return lp_status_t::NUMERICAL_ISSUES;
     }
-    if (data.indefinite_Q) { return lp_status_t::NUMERICAL_ISSUES; }
 
     data.cusparse_dual_residual_ = data.cusparse_view_.create_vector(data.d_dual_residual_);
     data.cusparse_r1_            = data.cusparse_view_.create_vector(data.d_r1_);
