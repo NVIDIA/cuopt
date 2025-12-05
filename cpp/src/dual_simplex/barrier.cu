@@ -2122,9 +2122,10 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residual_norms(const rmm::device_uv
     std::max(device_vector_norm_inf<i_t, f_t>(data.d_primal_residual_, stream_view_),
              device_vector_norm_inf<i_t, f_t>(data.d_bound_residual_, stream_view_));
   dual_residual_norm = device_vector_norm_inf<i_t, f_t>(data.d_dual_residual_, stream_view_);
+  // TODO: CMM understand why rhs and not residual
   complementarity_residual_norm =
-    std::max(device_vector_norm_inf<i_t, f_t>(data.d_complementarity_xz_residual_, stream_view_),
-             device_vector_norm_inf<i_t, f_t>(data.d_complementarity_wv_residual_, stream_view_));
+    std::max(device_vector_norm_inf<i_t, f_t>(data.d_complementarity_xz_rhs_, stream_view_),
+             device_vector_norm_inf<i_t, f_t>(data.d_complementarity_wv_rhs_, stream_view_));
 }
 
 template <typename i_t, typename f_t>
