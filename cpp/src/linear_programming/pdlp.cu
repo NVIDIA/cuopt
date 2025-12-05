@@ -65,7 +65,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     step_size_{(f_t)pdlp_hyper_params::initial_step_size_scaling, stream_view_},
     step_size_strategy_{handle_ptr_, &primal_weight_, &step_size_, is_batch_mode},
     pdhg_solver_{handle_ptr_, op_problem_scaled_, is_batch_mode},
-    settings_(settings, stream_view_),
+    settings_(settings),
     initial_scaling_strategy_{handle_ptr_,
                               op_problem_scaled_,
                               pdlp_hyper_params::default_l_inf_ruiz_iterations,
@@ -313,7 +313,8 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   }
 
   // Check for concurrent limit
-  if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
+  if (settings_.method == method_t::Concurrent && settings_.concurrent_halt != nullptr &&
+      *settings_.concurrent_halt == 1) {
 #ifdef PDLP_VERBOSE_MODE
     RAFT_CUDA_TRY(cudaDeviceSynchronize());
     std::cout << "Concurrent Limit reached, returning current solution" << std::endl;

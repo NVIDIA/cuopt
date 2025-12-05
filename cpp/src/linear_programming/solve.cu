@@ -657,8 +657,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   timer_t timer_concurrent(timer.remaining_time());
 
   // Copy the settings so that we can set the concurrent halt pointer
-  pdlp_solver_settings_t<i_t, f_t> settings_pdlp(settings,
-                                                 op_problem.get_handle_ptr()->get_stream());
+  pdlp_solver_settings_t<i_t, f_t> settings_pdlp(settings);
 
   // Set the concurrent halt pointer
   global_concurrent_halt        = 0;
