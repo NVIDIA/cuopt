@@ -1045,7 +1045,7 @@ cuopt_int_t test_quadratic_problem(cuopt_int_t* termination_status_ptr, cuopt_fl
 
   cuopt_int_t quadratic_objective_matrix_row_offsets[] = {0, 1, 2};
   cuopt_int_t quadratic_objective_matrix_column_indices[] = {0, 1};
-  cuopt_float_t quadratic_objective_matrix_coefficent_values[] = {2.0, 8.0};
+  cuopt_float_t quadratic_objective_matrix_coefficent_values[] = {1.0, 4.0};
 
   cuopt_int_t row_offsets[] = {0, 2};
   cuopt_int_t column_indices[] = {0, 1};
