@@ -6,7 +6,7 @@
 
 ### New Features (25.12)
 
-- Added a multi-GPU feature to enable PDLP and Barrier racing on separate GPUs in concurrent mode.
+- Added a feature to enable PDLP and Barrier racing on separate GPUs in concurrent mode.
 - RINS heuristic support adds a new mixed-integer improvement strategy in the MIP solver.
 - Propagating bounds from parent to child nodes and reusing basis factorizations in the branch-and-bound tree to improve the MIP search behavior.
 
@@ -32,7 +32,7 @@
 
 ### Documentation (25.12)
 
-- Missing parameters added to the documentation.
+- Missing parameters added to the documentation for LP and MILP.
 - Release notes added to the main repository for easy access.
 - Examples in the documentation improved.
 
