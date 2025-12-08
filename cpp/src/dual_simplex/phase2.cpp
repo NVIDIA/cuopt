@@ -2982,7 +2982,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       ft.print_stats();
     }
     if (settings.inside_mip && settings.concurrent_halt != nullptr) {
-      settings.log.printf("Setting concurrent halt in Dual Simplex Phase 2\n");
+      settings.log.debug("Setting concurrent halt in Dual Simplex Phase 2\n");
       *settings.concurrent_halt = 1;
     }
   }

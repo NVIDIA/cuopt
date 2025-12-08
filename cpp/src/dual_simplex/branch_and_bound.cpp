@@ -1239,7 +1239,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   simplex_solver_settings_t lp_settings = settings_;
   lp_status_t root_status;
   lp_settings.inside_mip      = 1;
-  lp_settings.concurrent_halt = get_global_root_concurrent_halt();
+  lp_settings.concurrent_halt = get_root_concurrent_halt();
   // RINS/SUBMIP path
   if (!enable_concurrent_lp_root_solve()) {
     root_status = solve_linear_program_advanced(original_lp_,
@@ -1263,7 +1263,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
     // to finish
     while (!root_crossover_solution_set_.load(std::memory_order_acquire) &&
-           *get_global_root_concurrent_halt() == 0) {
+           *get_root_concurrent_halt() == 0) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
     }
@@ -1290,7 +1290,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
       // Call crossover on the crushed solution
       auto root_crossover_settings            = settings_;
-      root_crossover_settings.concurrent_halt = get_global_root_concurrent_halt();
+      root_crossover_settings.concurrent_halt = get_root_concurrent_halt();
       crossover_status_t crossover_status     = crossover(original_lp_,
                                                       root_crossover_settings,
                                                       root_crossover_soln_,
@@ -1304,7 +1304,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
       // Check if crossover was stopped by dual simplex
       if (crossover_status == crossover_status_t::OPTIMAL) {
-        set_global_root_concurrent_halt(1);  // Stop dual simplex
+        set_root_concurrent_halt(1);  // Stop dual simplex
         root_status = root_status_future.get();
         // Override the root relaxation solution with the crossover solution
         root_relax_soln_ = root_crossover_soln_;

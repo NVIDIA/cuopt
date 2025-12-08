@@ -112,8 +112,8 @@ class branch_and_bound_t {
   f_t get_lower_bound();
   i_t get_heap_size();
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
-  volatile int* get_global_root_concurrent_halt() { return &global_root_concurrent_halt_; }
-  void set_global_root_concurrent_halt(int value) { global_root_concurrent_halt_ = value; }
+  volatile int* get_root_concurrent_halt() { return &root_concurrent_halt_; }
+  void set_root_concurrent_halt(int value) { root_concurrent_halt_ = value; }
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
@@ -168,7 +168,7 @@ class branch_and_bound_t {
   std::vector<f_t> edge_norms_;
   std::atomic<bool> root_crossover_solution_set_{false};
   bool enable_concurrent_lp_root_solve_{false};
-  volatile int global_root_concurrent_halt_{0};
+  volatile int root_concurrent_halt_{0};
 
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;
