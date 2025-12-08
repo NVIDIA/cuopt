@@ -12,6 +12,9 @@ set -euo pipefail
 
 . /opt/conda/etc/profile.d/conda.sh
 
+rapids-logger "Configuring conda strict channel priority"
+conda config --set channel_priority strict
+
 RAPIDS_VERSION="$(rapids-version)"
 
 rapids-logger "Generate C++ testing dependencies"

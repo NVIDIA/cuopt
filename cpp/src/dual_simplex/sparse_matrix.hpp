@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <string>
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -47,6 +48,7 @@ class csc_matrix_t {
   // Adjust to i and x vectors for a new number of nonzeros
   void reallocate(i_t new_nz);
 
+  i_t nnz() const { return col_start[n]; }
   // Convert the CSC matrix to a CSR matrix
   i_t to_compressed_row(
     cuopt::linear_programming::dual_simplex::csr_matrix_t<i_t, f_t>& Arow) const;
@@ -93,7 +95,7 @@ class csc_matrix_t {
   void print_matrix(FILE* fid) const;
 
   // Ensures no repeated row indices within a column
-  i_t check_matrix() const;
+  i_t check_matrix(std::string matrix_name = "") const;
 
   // Writes the matrix to a file in Matrix Market format
   void write_matrix_market(FILE* fid) const;

@@ -30,6 +30,7 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
 
   column_scaling.resize(n);
   f_t max = 0;
+  f_t min = std::numeric_limits<f_t>::max();
   for (i_t j = 0; j < n; ++j) {
     const i_t col_start = scaled.A.col_start[j];
     const i_t col_end   = scaled.A.col_start[j + 1];
@@ -42,7 +43,7 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
     max                                = std::max(col_norm_j, max);
     min                                = std::min(col_norm_j, min);
   }
-  settings.log.printf("Scaling matrix. Maximum column norm %e\n", max);
+  settings.log.printf("Scaling matrix. Maximum column norm %e, minimum column norm %e\n", max, min);
   // C(j, j) = 1/column_scaling(j)
 
   // scaled_A = unscaled_A * C
@@ -64,6 +65,15 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
     scaled.upper[j] *= column_scaling[j];
   }
 
+  for (i_t i = 0; i < unscaled.Q.n; ++i) {
+    const i_t row_start = unscaled.Q.row_start[i];
+    const i_t row_end   = unscaled.Q.row_start[i + 1];
+    i_t row             = i;
+    for (i_t p = row_start; p < row_end; ++p) {
+      i_t col       = unscaled.Q.j[p];
+      scaled.Q.x[p] = unscaled.Q.x[p] / (column_scaling[row] * column_scaling[col]);
+    }
+  }
   return 0;
 }
 

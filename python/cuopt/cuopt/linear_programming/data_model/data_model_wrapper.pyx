@@ -250,16 +250,6 @@ cdef class DataModel:
             get_data_ptr(self.get_constraint_matrix_offsets())
         )
 
-        cdef uintptr_t c_Q_values = (
-            get_data_ptr(self.get_quadratic_objective_values())
-        )
-        cdef uintptr_t c_Q_indices = (
-            get_data_ptr(self.get_quadratic_objective_indices())
-        )
-        cdef uintptr_t c_Q_offsets = (
-            get_data_ptr(self.get_quadratic_objective_offsets())
-        )
-
         if self.get_constraint_matrix_values().shape[0] != 0 and self.get_constraint_matrix_indices().shape[0] != 0 and self.get_constraint_matrix_offsets().shape[0] != 0: # noqa
             c_data_model_view.set_csr_constraint_matrix(
                 <const double *> c_A_values,
@@ -268,16 +258,6 @@ cdef class DataModel:
                 self.get_constraint_matrix_indices().shape[0],
                 <const int *> c_A_offsets,
                 self.get_constraint_matrix_offsets().shape[0]
-            )
-
-        if self.get_quadratic_objective_values().shape[0] != 0 and self.get_quadratic_objective_indices().shape[0] != 0 and self.get_quadratic_objective_offsets().shape[0] != 0: # noqa
-            c_data_model_view.set_quadratic_objective_matrix(
-                <const double *> c_Q_values,
-                self.get_quadratic_objective_values().shape[0],
-                <const int *> c_Q_indices,
-                self.get_quadratic_objective_indices().shape[0],
-                <const int *> c_Q_offsets,
-                self.get_quadratic_objective_offsets().shape[0]
             )
 
         cdef uintptr_t c_b = (
@@ -304,6 +284,26 @@ cdef class DataModel:
         c_data_model_view.set_objective_offset(
             <double> self.get_objective_offset()
         )
+
+        # Set self.fields on the C++ side if set on the Python side
+        cdef uintptr_t c_Q_values = (
+            get_data_ptr(self.get_quadratic_objective_values())
+        )
+        cdef uintptr_t c_Q_indices = (
+            get_data_ptr(self.get_quadratic_objective_indices())
+        )
+        cdef uintptr_t c_Q_offsets = (
+            get_data_ptr(self.get_quadratic_objective_offsets())
+        )
+        if self.get_quadratic_objective_values().shape[0] != 0 and self.get_quadratic_objective_indices().shape[0] != 0 and self.get_quadratic_objective_offsets().shape[0] != 0: # noqa
+            c_data_model_view.set_quadratic_objective_matrix(
+                <const double *> c_Q_values,
+                self.get_quadratic_objective_values().shape[0],
+                <const int *> c_Q_indices,
+                self.get_quadratic_objective_indices().shape[0],
+                <const int *> c_Q_offsets,
+                self.get_quadratic_objective_offsets().shape[0]
+            )
 
         c_data_model_view.set_maximize(<bool> self.maximize)
 
