@@ -67,8 +67,8 @@ struct pdlp_warm_start_data_t {
                          rmm::cuda_stream_view stream_view);
 
   // Copy constructor for when copying the solver_settings object in the PDLP object
-  pdlp_warm_start_data_t(const pdlp_warm_start_data_t<i_t, f_t>& other,
-                         rmm::cuda_stream_view stream_view);
+  pdlp_warm_start_data_t(const pdlp_warm_start_data_t<i_t, f_t>& other);
+  pdlp_warm_start_data_t& operator=(pdlp_warm_start_data_t<i_t, f_t>&& other) = default;
 
  private:
   // Check sizes through assertion
