@@ -811,8 +811,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 {
   try {
     print_version_info();
-    pdlp_solver_settings_t<i_t, f_t> settings(settings_const,
-                                              op_problem.get_handle_ptr()->get_stream());
+    pdlp_solver_settings_t<i_t, f_t> settings(settings_const);
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
 
