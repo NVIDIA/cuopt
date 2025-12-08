@@ -1,5 +1,42 @@
 # Release Notes
 
+
+
+## Release Notes 25.12
+
+### New Features (25.12)
+
+- Added a multi-GPU feature to enable PDLP and Barrier racing on separate GPUs in concurrent mode.
+- RINS heuristic support adds a new mixed-integer improvement strategy in the MIP solver.
+- Propagating bounds from parent to child nodes and reusing basis factorizations in the branch-and-bound tree to improve the MIP search behavior.
+
+### Improvements (25.12)
+
+- Improves numerical stability of dual simplex when the basis is ill-conditioned.
+- The barrier method and PDLP implementation improve robustness by fixing cuSPARSE related leaks and adding RAII-style wrappers for cuSPARSE structures.
+- Papilo-based Pre-Solve carries over implied integer information from reductions, improving consistency of integrality handling.
+- Each LP method gains a default accuracy setting.
+- Build and CI workflows improve through assertion-default changes, better handling of git-hash rebuilds, and fixes to the nightly build matrix.
+- Package sizes are reduced by adjusting build outputs and test-only library linkage, and the TSP dataset download logic disables unneeded downloads.
+
+### Bug Fixes (25.12)
+
+- A crash in the incumbent test is resolved.
+- Memory leaks in the barrier solver and PDLP's cuSPARSE usage fixes through corrected resource management.
+- The explored-nodes counter fixes so that the reported node count reflects the actual search.
+- A compilation issue in the solve_MIP benchmarking executable is fixed, restoring benchmark builds.
+- A logger bug when log_to_console is false is fixed.
+- Routing fixes improve TSP behavior when order locations are set.
+- Nightly container testing and CI handling fix issues in the nightly container test suite and build jobs.
+- A cuDF build_column deprecation issue fixed to keep compatibility with newer cuDF versions.
+
+### Documentation (25.12)
+
+- Missing parameters added to the documentation.
+- Release notes added to the main repository for easy access.
+- Examples in the documentation improved.
+
+
 ## Release Notes 25.10
 
 ### New Features (25.10)
