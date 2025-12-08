@@ -46,6 +46,7 @@ files:
   test_python:
     output: none
     includes:
+      - cuda_version
       - py_version
       - depends_on_libcuopt
       - depends_on_cuopt

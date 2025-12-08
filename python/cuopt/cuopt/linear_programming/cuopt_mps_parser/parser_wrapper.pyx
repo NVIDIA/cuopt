@@ -66,6 +66,27 @@ def ParseMps(mps_file_path, fixed_mps_formats):
     cdef double[:] c_ = <double[:c_size]>c_data
     c = np.asarray(c_).copy()
 
+    Q_values_size = dm_ret.Q_objective_values_.size()
+    if Q_values_size > 0:
+        Q_values_data = dm_ret.Q_objective_values_.data()
+        Q_values = np.asarray(<double[:Q_values_size]>Q_values_data).copy()
+    else:
+        Q_values = np.array([], dtype=np.float64)
+
+    Q_indices_size = dm_ret.Q_objective_indices_.size()
+    if Q_indices_size > 0:
+        Q_indices_data = dm_ret.Q_objective_indices_.data()
+        Q_indices = np.asarray(<int[:Q_indices_size]>Q_indices_data).copy()
+    else:
+        Q_indices = np.array([], dtype=np.int32)
+
+    Q_offsets_size = dm_ret.Q_objective_offsets_.size()
+    if Q_offsets_size > 0:
+        Q_offsets_data = dm_ret.Q_objective_offsets_.data()
+        Q_offsets = np.asarray(<int[:Q_offsets_size]>Q_offsets_data).copy()
+    else:
+        Q_offsets = np.array([], dtype=np.int32)
+
     variable_lower_bounds_data = dm_ret.variable_lower_bounds_.data()
     variable_lower_bounds_size = dm_ret.variable_lower_bounds_.size()
     cdef double[:] variable_lower_bounds_ = <double[:variable_lower_bounds_size]>variable_lower_bounds_data # noqa
@@ -111,6 +132,7 @@ def ParseMps(mps_file_path, fixed_mps_formats):
     data_model.set_maximize(dm_ret.maximize_)
     data_model.set_objective_scaling_factor(dm_ret.objective_scaling_factor_)
     data_model.set_objective_offset(dm_ret.objective_offset_)
+    data_model.set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets)
     data_model.set_variable_types(var_types)
     if row_types is not None:
         data_model.set_row_types(row_types)

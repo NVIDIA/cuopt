@@ -143,6 +143,8 @@ cd $CUOPT_HOME
 ./build.sh --help
 ```
 
+**Note**: when building the Python components, Python will by default look in ~/.local/lib/pythonX.Y/site-packages for any dependencies before looking in the site-packages directory in the conda environment. If you have cuOpt direct or indirect dependencies installed under ~/.local/lib, these may conflict with packages in the conda environment and cause build errors. If you have persistent build errors that do not seem to be related to local code changes, check the contents of ~/.local/lib. To work around this issue you can set the environment variable PYTHONNOUSERSITE=1 which will skip ~/.local/lib, or remove select packages from ~/.local/lib if they are not needed, or modify your $PYTHONPATH to look at the conda env first.
+
 #### Deb package
 
 `libcuopt.so` can be packaged as a deb package with option deb. This is a beta-feature and dependecies of libcuopt needs to be installed manually while installing it using deb package.
