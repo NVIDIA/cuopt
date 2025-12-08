@@ -162,11 +162,8 @@ class iteration_data_t {
       d_complementarity_xz_rhs_(lp.num_cols, lp.handle_ptr->get_stream()),
       d_complementarity_wv_rhs_(0, lp.handle_ptr->get_stream()),
       d_dual_rhs_(lp.num_cols, lp.handle_ptr->get_stream()),
-<<<<<<< HEAD
-=======
       d_Q_diag_(0, lp.handle_ptr->get_stream()),
       d_Qx_(Qin.m, lp.handle_ptr->get_stream()),
->>>>>>> chris/qp
       restrict_u_(0),
       transform_reduce_helper_(lp.handle_ptr->get_stream()),
       sum_reduce_helper_(lp.handle_ptr->get_stream()),
@@ -176,8 +173,6 @@ class iteration_data_t {
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
-<<<<<<< HEAD
-=======
     bool has_Q   = Q.x.size() > 0;
     indefinite_Q = false;
     if (has_Q) {
@@ -216,7 +211,6 @@ class iteration_data_t {
       raft::copy(d_Q_diag_.data(), Qdiag.data(), Qdiag.size(), stream_view_);
     }
 
->>>>>>> chris/qp
     // Allocating GPU flag data for Form ADAT
     if (use_gpu) {
       raft::common::nvtx::range fun_scope("Barrier: GPU Flag memory allocation");
@@ -275,15 +269,13 @@ class iteration_data_t {
       use_augmented   = true;
       n_dense_columns = 0;
     }
-<<<<<<< HEAD
-=======
 
     if (has_Q && !use_augmented) {
       // For now let's not deal with dense columns
       n_dense_columns = 0;
       use_augmented   = !Q_diagonal;
     }
->>>>>>> chris/qp
+
     if (use_augmented) {
       settings.log.printf("Linear system               : augmented\n");
     } else {
@@ -297,8 +289,6 @@ class iteration_data_t {
         diag[j] = 2.0;
       }
     }
-<<<<<<< HEAD
-=======
 
     // D = I + EET + Q (if Q is diagonal)
     if (has_Q && !use_augmented) {
@@ -308,7 +298,6 @@ class iteration_data_t {
       }
     }
 
->>>>>>> chris/qp
     inv_diag.set_scalar(1.0);
     if (use_augmented) { diag.multiply_scalar(-1.0); }
     if (n_upper_bounds > 0) { diag.inverse(inv_diag); }
@@ -402,24 +391,13 @@ class iteration_data_t {
     const f_t dual_perturb   = 0.0;
     const f_t primal_perturb = 1e-6;
     if (first_call) {
-<<<<<<< HEAD
-      augmented.reallocate(2 * nnzA + n + m);
-      i_t q = 0;
-=======
       augmented_diagonal_indices.resize(n + m, -1);
       i_t new_nnz = 2 * nnzA + n + m + nnzQ;
       augmented.reallocate(2 * nnzA + n + m + nnzQ);
       i_t q            = 0;
       i_t off_diag_Qnz = 0;
->>>>>>> chris/qp
       for (i_t j = 0; j < n; j++) {
         augmented.col_start[j] = q;
-<<<<<<< HEAD
-        augmented.i[q]         = j;
-        augmented.x[q++]       = -diag[j] - dual_perturb;
-        const i_t col_beg      = A.col_start[j];
-        const i_t col_end      = A.col_start[j + 1];
-=======
         if (nnzQ == 0) {
           augmented_diagonal_indices[j] = q;
           augmented.i[q]                = j;
@@ -447,17 +425,12 @@ class iteration_data_t {
         }
         const i_t col_beg = A.col_start[j];
         const i_t col_end = A.col_start[j + 1];
->>>>>>> chris/qp
         for (i_t p = col_beg; p < col_end; ++p) {
           augmented.i[q]   = n + A.i[p];
           augmented.x[q++] = A.x[p];
         }
       }
-<<<<<<< HEAD
-      settings_.log.debug("augmented nz %d predicted %d\n", q, nnzA + n);
-=======
       settings_.log.debug("augmented nz %d predicted %d\n", q, off_diag_Qnz + nnzA + n);
->>>>>>> chris/qp
       for (i_t k = n; k < n + m; ++k) {
         augmented.col_start[k] = q;
         const i_t l            = k - n;
@@ -490,10 +463,6 @@ class iteration_data_t {
 #endif
     } else {
       for (i_t j = 0; j < n; ++j) {
-<<<<<<< HEAD
-        const i_t q    = augmented.col_start[j];
-        augmented.x[q] = -diag[j] - dual_perturb;
-=======
         f_t q_diag = nnzQ > 0 ? Qdiag[j] : 0.0;
 
         const i_t p    = augmented_diagonal_indices[j];
@@ -502,7 +471,6 @@ class iteration_data_t {
       for (i_t j = n; j < n + m; ++j) {
         const i_t p    = augmented_diagonal_indices[j];
         augmented.x[p] = primal_perturb;
->>>>>>> chris/qp
       }
     }
   }
@@ -551,10 +519,6 @@ class iteration_data_t {
                          });
       if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
       if (first_call) {
-<<<<<<< HEAD
-        initialize_cusparse_data<i_t, f_t>(
-          handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
-=======
         try {
           initialize_cusparse_data<i_t, f_t>(
             handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
@@ -562,7 +526,6 @@ class iteration_data_t {
           settings_.log.printf("Error in initialize_cusparse_data: %s\n", e.what());
           return;
         }
->>>>>>> chris/qp
       }
       if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
 
@@ -1490,8 +1453,6 @@ class iteration_data_t {
   dense_matrix_t<i_t, f_t> Hchol;
   const csc_matrix_t<i_t, f_t>& A;
 
-<<<<<<< HEAD
-=======
   const csc_matrix_t<i_t, f_t>& Q;
   std::vector<f_t> Qdiag;
   bool Q_diagonal;
@@ -1499,7 +1460,6 @@ class iteration_data_t {
   bool indefinite_Q;
   cusparse_view_t<i_t, f_t> cusparse_Q_view_;
 
->>>>>>> chris/qp
   bool use_augmented;
   i_t symbolic_status;
 
@@ -1598,12 +1558,9 @@ class iteration_data_t {
   rmm::device_uvector<f_t> d_complementarity_wv_rhs_;
   rmm::device_uvector<f_t> d_dual_rhs_;
 
-<<<<<<< HEAD
-=======
   rmm::device_uvector<f_t> d_Q_diag_;
   rmm::device_uvector<f_t> d_Qx_;
 
->>>>>>> chris/qp
   pinned_dense_vector_t<i_t, f_t> restrict_u_;
 
   transform_reduce_helper_t<f_t> transform_reduce_helper_;
@@ -1652,13 +1609,10 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   i_t status;
   if (use_augmented) {
     status = data.chol->factorize(data.augmented);
-<<<<<<< HEAD
-=======
 
 #ifdef CHOLESKY_DEBUG_CHECK
     cholesky_debug_check(data, lp, use_augmented);
 #endif
->>>>>>> chris/qp
   } else {
     if (use_gpu) {
       status = data.chol->factorize(data.device_ADAT);
@@ -1971,11 +1925,6 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residuals(const rmm::device_uvector
       stream_view_);
   }
 
-<<<<<<< HEAD
-  // Compute dual_residual = c - A'*y - z + E*v
-  raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
-  cub::DeviceTransform::Transform(cuda::std::make_tuple(data.d_c_.data(), d_z.data()),
-=======
   // Compute dual_residual = c - A'*y - z + E*v + Q*x
   if (data.Q.n > 0) {
     raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
@@ -1985,7 +1934,6 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residuals(const rmm::device_uvector
     raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
   }
   cub::DeviceTransform::Transform(cuda::std::make_tuple(data.d_c_.data(), data.d_z_.data()),
->>>>>>> chris/qp
                                   data.d_dual_residual_.data(),
                                   data.d_dual_residual_.size(),
                                   cuda::std::minus<>{},
@@ -2279,8 +2227,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       RAFT_CHECK_CUDA(stream_view_);
     }
 
-<<<<<<< HEAD
-=======
     // diag = z ./ x + E * (v ./ w) * E' + Q (if Q is diagonal)
     if (data.Q.n > 0 && data.Q_diagonal) {
       cub::DeviceTransform::Transform(
@@ -2291,7 +2237,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         stream_view_);
     }
 
->>>>>>> chris/qp
     // inv_diag = 1.0 ./ diag
     cub::DeviceTransform::Transform(
       data.d_diag_.data(),
@@ -2313,13 +2258,10 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
       data.form_augmented();
       status = data.chol->factorize(data.augmented);
-<<<<<<< HEAD
-=======
 
 #ifdef CHOLESKY_DEBUG_CHECK
       cholesky_debug_check(data, lp, use_augmented);
 #endif
->>>>>>> chris/qp
     } else {
       // compute ADAT = A Dinv * A^T
       data.form_adat();
@@ -3092,8 +3034,6 @@ void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f
     raft::copy(data.d_y_.data(), data.y.data(), data.y.size(), stream_view_);
     raft::copy(data.d_dy_aff_.data(), data.dy_aff.data(), data.dy_aff.size(), stream_view_);
 
-<<<<<<< HEAD
-=======
 #ifdef FINITE_CHECK
     for (i_t i = 0; i < (int)data.y.size(); i++) {
       cuopt_assert(std::isfinite(data.y[i]), "data.d_y_[i] is not finite");
@@ -3104,7 +3044,6 @@ void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f
     }
 #endif
 
->>>>>>> chris/qp
     // dw = dw_aff + dw_cc
     // dx = dx_aff + dx_cc
     // dy = dy_aff + dy_cc
@@ -3362,13 +3301,6 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
                                                     1,
                                                     d_uv.data(),
                                                     stream_view_));
-<<<<<<< HEAD
-    primal_objective = d_cx.value(stream_view_);
-    dual_objective   = d_by.value(stream_view_) - d_uv.value(stream_view_);
-  } else {
-    primal_objective = data.c.inner_product(data.x);
-    dual_objective   = data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v);
-=======
     f_t quad_objective = 0.0;
     if (data.Q.n > 0) {
       auto cusparse_d_x = data.cusparse_view_.create_vector(data.d_x_);
@@ -3491,7 +3423,6 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
     primal_objective = data.c.inner_product(data.x) + quad_objective;
     dual_objective =
       data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
->>>>>>> chris/qp
   }
 }
 
@@ -3540,8 +3471,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
   }
 
   f_t primal_objective_save = data.c.inner_product(data.x_save);
-<<<<<<< HEAD
-=======
+
   if (data.Q.n > 0) {
     dense_vector_t<i_t, f_t> Qx_save(data.Q.n);
     dense_vector_t<i_t, f_t> x_save_host(data.Q.n);
@@ -3550,7 +3480,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
     f_t quad_objective = 0.5 * x_save_host.inner_product(Qx_save);
     primal_objective_save += quad_objective;
   }
->>>>>>> chris/qp
 
   if (data.relative_primal_residual_save < settings.barrier_relaxed_feasibility_tol &&
       data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
@@ -3975,17 +3904,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
                      solution);
     return lp_status_t::ITERATION_LIMIT;
   } catch (const raft::cuda_error& e) {
-<<<<<<< HEAD
-    settings.log.debug("Error in barrier_solver_t: %s\n", e.what());
-    return lp_status_t::NUMERICAL_ISSUES;
-  } catch (const rmm::out_of_memory& e) {
-    settings.log.debug("Out of memory in barrier_solver_t: %s\n", e.what());
-=======
     settings.log.printf("Error in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
   } catch (const rmm::out_of_memory& e) {
     settings.log.printf("Out of memory in barrier_solver_t: %s\n", e.what());
->>>>>>> chris/qp
     return lp_status_t::NUMERICAL_ISSUES;
   }
 }
