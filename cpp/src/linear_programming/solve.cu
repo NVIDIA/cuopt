@@ -621,8 +621,8 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     sol.copy_from(problem.handle_ptr, sol_crossover);
     CUOPT_LOG_INFO("Crossover status %s", sol.get_termination_status_string().c_str());
   }
-  if (settings.concurrent_halt != nullptr && crossover_info == 0 &&
-      sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
+  if (settings.method == method_t::Concurrent && settings.concurrent_halt != nullptr &&
+      crossover_info == 0 && sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
     // We finished. Tell dual simplex to stop if it is still running.
     CUOPT_LOG_INFO("PDLP finished. Telling others to stop");
     *settings.concurrent_halt = 1;
@@ -657,8 +657,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   timer_t timer_concurrent(timer.remaining_time());
 
   // Copy the settings so that we can set the concurrent halt pointer
-  pdlp_solver_settings_t<i_t, f_t> settings_pdlp(settings,
-                                                 op_problem.get_handle_ptr()->get_stream());
+  pdlp_solver_settings_t<i_t, f_t> settings_pdlp(settings);
 
   // Set the concurrent halt pointer
   global_concurrent_halt        = 0;

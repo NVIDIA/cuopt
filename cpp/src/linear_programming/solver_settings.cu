@@ -23,41 +23,6 @@
 namespace cuopt::linear_programming {
 
 template <typename i_t, typename f_t>
-pdlp_solver_settings_t<i_t, f_t>::pdlp_solver_settings_t(const pdlp_solver_settings_t& other,
-                                                         rmm::cuda_stream_view stream_view)
-  : tolerances(other.tolerances),
-    detect_infeasibility(other.detect_infeasibility),
-    strict_infeasibility(other.strict_infeasibility),
-    iteration_limit(other.iteration_limit),
-    time_limit(other.time_limit),
-    pdlp_solver_mode(other.pdlp_solver_mode),
-    log_to_console(other.log_to_console),
-    log_file(other.log_file),
-    sol_file(other.sol_file),
-    user_problem_file(other.user_problem_file),
-    per_constraint_residual(other.per_constraint_residual),
-    crossover(other.crossover),
-    cudss_deterministic(other.cudss_deterministic),
-    folding(other.folding),
-    augmented(other.augmented),
-    dualize(other.dualize),
-    ordering(other.ordering),
-    barrier_dual_initial_point(other.barrier_dual_initial_point),
-    eliminate_dense_columns(other.eliminate_dense_columns),
-    save_best_primal_so_far(other.save_best_primal_so_far),
-    first_primal_feasible(other.first_primal_feasible),
-    presolve(other.presolve),
-    dual_postsolve(other.dual_postsolve),
-    method(other.method),
-    concurrent_halt(other.concurrent_halt),
-    initial_primal_solution_(other.initial_primal_solution_),
-    initial_dual_solution_(other.initial_dual_solution_),
-    pdlp_warm_start_data_(other.pdlp_warm_start_data_, stream_view),
-    num_gpus(other.num_gpus)
-{
-}
-
-template <typename i_t, typename f_t>
 void pdlp_solver_settings_t<i_t, f_t>::set_optimality_tolerance(f_t eps_optimal)
 {
   tolerances.absolute_dual_tolerance   = eps_optimal;
