@@ -49,9 +49,6 @@ cdef class DataModel:
         self.A_values = np.array([])
         self.A_indices = np.array([])
         self.A_offsets = np.array([])
-        self.Q_values = np.array([])
-        self.Q_indices = np.array([])
-        self.Q_offsets = np.array([])
         self.b = np.array([])
         self.c = np.array([])
         self.objective_scaling_factor = 1.0
@@ -80,11 +77,6 @@ cdef class DataModel:
         self.A_values = type_cast(A_values, np.float64, "A_values")
         self.A_indices = type_cast(A_indices, np.int32, "A_indices")
         self.A_offsets = type_cast(A_offsets, np.int32, "A_offsets")
-
-    def set_quadratic_objective_matrix(self, Q_values, Q_indices, Q_offsets):
-        self.Q_values = type_cast(Q_values, np.float64, "Q_values")
-        self.Q_indices = type_cast(Q_indices, np.int32, "Q_indices")
-        self.Q_offsets = type_cast(Q_offsets, np.int32, "Q_offsets")
 
     def set_constraint_bounds(self, b):
         self.b = type_cast(b, np.float64, "b")
@@ -164,15 +156,6 @@ cdef class DataModel:
 
     def get_constraint_matrix_offsets(self):
         return self.A_offsets
-
-    def get_quadratic_objective_values(self):
-        return self.Q_values
-
-    def get_quadratic_objective_indices(self):
-        return self.Q_indices
-
-    def get_quadratic_objective_offsets(self):
-        return self.Q_offsets
 
     def get_constraint_bounds(self):
         return self.b
