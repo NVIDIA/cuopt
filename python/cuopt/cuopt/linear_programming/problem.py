@@ -241,7 +241,9 @@ class Variable:
                 qcoeffs = other.coefficients
                 vars = [self]
                 coeffs = [other.constant]
-                return QuadraticExpression(qvars1, qvars2, qcoeffs, vars, coeffs, 0.0)
+                return QuadraticExpression(
+                    qvars1, qvars2, qcoeffs, vars, coeffs, 0.0
+                )
             case _:
                 raise ValueError(
                     "Cannot multiply type %s with variable"
@@ -287,8 +289,11 @@ class Variable:
             case _:
                 raise ValueError("Unsupported operation")
 
+
 class QuadraticExpression:
-    def __init__(self, qvars1, qvars2, qcoefficients, vars, coefficients, constant):
+    def __init__(
+        self, qvars1, qvars2, qcoefficients, vars, coefficients, constant
+    ):
         self.qvars1 = qvars1
         self.qvars2 = qvars2
         self.qcoefficients = qcoefficients
@@ -388,19 +393,38 @@ class QuadraticExpression:
             case int() | float():
                 # Update just the constant value
                 return QuadraticExpression(
-                    self.qvars1, self.qvars2, self.qcoefficients, self.vars, self.coefficients, self.constant + float(other)
+                    self.qvars1,
+                    self.qvars2,
+                    self.qcoefficients,
+                    self.vars,
+                    self.coefficients,
+                    self.constant + float(other),
                 )
             case Variable():
                 # Append just a variable with coefficient 1.0
                 vars = self.vars + [other]
                 coeffs = self.coefficients + [1.0]
-                return QuadraticExpression(self.qvars1, self.qvars2, self.qcoefficients, vars, coeffs, self.constant)
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    self.qcoefficients,
+                    vars,
+                    coeffs,
+                    self.constant,
+                )
             case LinearExpression():
                 # Append all linear variables, coefficients and constants
                 vars = self.vars + other.vars
                 coeffs = self.coefficients + other.coefficients
                 constant = self.constant + other.constant
-                return QuadraticExpression(self.qvars1, self.qvars2, self.qcoefficients, vars, coeffs, constant)
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    self.qcoefficients,
+                    vars,
+                    coeffs,
+                    constant,
+                )
             case QuadraticExpression():
                 # Append all quadratic variables, coefficients and constants
                 qvars1 = self.qvars1 + other.qvars1
@@ -409,8 +433,14 @@ class QuadraticExpression:
                 vars = self.vars + other.vars
                 coeffs = self.coefficients + other.coefficients
                 constant = self.constant + other.constant
-                return QuadraticExpression(qvars1, qvars2, qcoeffs, vars, coeffs, constant)
-
+                return QuadraticExpression(
+                    qvars1, qvars2, qcoeffs, vars, coeffs, constant
+                )
+            case _:
+                raise ValueError(
+                    "Can't add type %s to Quadratic Expression"
+                    % type(other).__name__
+                )
 
     def __radd__(self, other):
         return self + other
@@ -457,13 +487,25 @@ class QuadraticExpression:
             case int() | float():
                 # Update just the constant value
                 return QuadraticExpression(
-                    self.qvars1, self.qvars2, self.qcoefficients, self.vars, self.coefficients, self.constant - float(other)
+                    self.qvars1,
+                    self.qvars2,
+                    self.qcoefficients,
+                    self.vars,
+                    self.coefficients,
+                    self.constant - float(other),
                 )
             case Variable():
                 # Append just a variable with coefficient -1.0
                 vars = self.vars + [other]
                 coeffs = self.coefficients + [-1.0]
-                return QuadraticExpression(self.qvars1, self.qvars2, self.qcoefficients, vars, coeffs, self.constant)
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    self.qcoefficients,
+                    vars,
+                    coeffs,
+                    self.constant,
+                )
             case LinearExpression():
                 # Append all linear variables, coefficients and constants
                 vars = self.vars + other.vars
@@ -473,7 +515,14 @@ class QuadraticExpression:
                 for i in other.coefficients:
                     coeffs.append(-1.0 * i)
                 constant = self.constant - other.constant
-                return QuadraticExpression(self.qvars1, self.qvars2, self.qcoefficients, vars, coeffs, constant)
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    self.qcoefficients,
+                    vars,
+                    coeffs,
+                    constant,
+                )
             case QuadraticExpression():
                 # Append all quadratic variables, coefficients and constants
                 vars = self.vars + other.vars
@@ -490,8 +539,14 @@ class QuadraticExpression:
                     qcoeffs.append(i)
                 for i in other.qcoefficients:
                     qcoeffs.append(-1.0 * i)
-                return QuadraticExpression(qvars1, qvars2, qcoeffs, vars, coeffs, constant)
-
+                return QuadraticExpression(
+                    qvars1, qvars2, qcoeffs, vars, coeffs, constant
+                )
+            case _:
+                raise ValueError(
+                    "Can't sub type %s from Quadratic Expression"
+                    % type(other).__name__
+                )
 
     def __rsub__(self, other):
         # other - self  -> other + self * -1.0
@@ -520,9 +575,18 @@ class QuadraticExpression:
         match other:
             case int() | float():
                 coeffs = [coeff * float(other) for coeff in self.coefficients]
-                qcoeffs = [qcoeff * float(other) for qcoeff in self.qcoefficients]
+                qcoeffs = [
+                    qcoeff * float(other) for qcoeff in self.qcoefficients
+                ]
                 constant = self.constant * float(other)
-                return QuadraticExpression(self.qvars1, self.qvars2, qcoeffs, self.vars, coeffs, constant)
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    qcoeffs,
+                    self.vars,
+                    coeffs,
+                    constant,
+                )
             case _:
                 raise ValueError(
                     "Can't multiply type %s by QuadraticExpresson"
@@ -555,9 +619,18 @@ class QuadraticExpression:
         match other:
             case int() | float():
                 coeffs = [coeff / float(other) for coeff in self.coefficients]
-                qcoeffs = [qcoeff / float(other) for qcoeff in self.qcoefficients]
+                qcoeffs = [
+                    qcoeff / float(other) for qcoeff in self.qcoefficients
+                ]
                 constant = self.constant / float(other)
-                return QuadraticExpression(self.qvars1, self.qvars2, qcoeffs, self.vars, coeffs, constant)
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    qcoeffs,
+                    self.vars,
+                    coeffs,
+                    constant,
+                )
             case _:
                 raise ValueError(
                     "Can't divide LinearExpression by type %s"
@@ -783,11 +856,17 @@ class LinearExpression:
                     for j in range(len(other.vars)):
                         qvars1.append(self.vars[i])
                         qvars2.append(other.vars[j])
-                        qcoeffs.append(self.coefficients[i] * other.coefficients[j])
+                        qcoeffs.append(
+                            self.coefficients[i] * other.coefficients[j]
+                        )
                 vars = self.vars + other.vars
-                coeffs = [other.constant * i for i in self.coefficients] + [self.constant * i for i in other.coefficients]
+                coeffs = [other.constant * i for i in self.coefficients] + [
+                    self.constant * i for i in other.coefficients
+                ]
                 constant = self.constant * other.constant
-                return QuadraticExpression(qvars1, qvars2, qcoeffs, vars, coeffs, constant)
+                return QuadraticExpression(
+                    qvars1, qvars2, qcoeffs, vars, coeffs, constant
+                )
             case _:
                 raise ValueError(
                     "Can't multiply type %s by LinearExpresson"
@@ -807,11 +886,17 @@ class LinearExpression:
                     for j in range(len(other.vars)):
                         qvars1.append(self.vars[i])
                         qvars2.append(other.vars[j])
-                        qcoeffs.append(self.coefficients[i] * other.coefficients[j])
+                        qcoeffs.append(
+                            self.coefficients[i] * other.coefficients[j]
+                        )
                 vars = self.vars + other.vars
-                coeffs = [other.constant * i for i in self.coefficients] + [self.constant * i for i in other.coefficients]
+                coeffs = [other.constant * i for i in self.coefficients] + [
+                    self.constant * i for i in other.coefficients
+                ]
                 constant = self.constant * other.constant
-                return QuadraticExpression(qvars1, qvars2, qcoeffs, vars, coeffs, constant)
+                return QuadraticExpression(
+                    qvars1, qvars2, qcoeffs, vars, coeffs, constant
+                )
             case Variable():
                 return other * self
 
@@ -1361,7 +1446,11 @@ class Problem:
                         sum_coeff
                     )
                 self.ObjConstant = expr.constant
-                self.objective_qcoo_matrix = expr.qvars1, expr.qvars2, expr.qcoefficients
+                self.objective_qcoo_matrix = (
+                    expr.qvars1,
+                    expr.qvars2,
+                    expr.qcoefficients,
+                )
             case _:
                 raise ValueError(
                     "Objective must be a LinearExpression or a constant"
@@ -1523,7 +1612,12 @@ class Problem:
         if not self.objective_qcoo_matrix:
             return LinearExpression(self.vars, coeffs, self.ObjConstant)
         else:
-            return QuadraticExpression(*self.objective_qcoo_matrix, self.vars, coeffs, self.ObjConstant)
+            return QuadraticExpression(
+                *self.objective_qcoo_matrix,
+                self.vars,
+                coeffs,
+                self.ObjConstant,
+            )
 
     def getCSR(self):
         """
@@ -1556,17 +1650,18 @@ class Problem:
             row_dict = Qdict[var1.index]
             var2 = vars2[i]
             coeff = coeffs[i]
-            row_dict[var2.index] = row_dict[var2.index] + coeff if var2.index in row_dict else coeff
+            row_dict[var2.index] = (
+                row_dict[var2.index] + coeff
+                if var2.index in row_dict
+                else coeff
+            )
         for i in range(0, self.NumVariables):
             if i in Qdict:
-                Qcsr_dict["column_indices"].extend(
-                    list(Qdict[i].keys())
-                )
+                Qcsr_dict["column_indices"].extend(list(Qdict[i].keys()))
                 Qcsr_dict["values"].extend(list(Qdict[i].values()))
             Qcsr_dict["row_pointers"].append(len(Qcsr_dict["column_indices"]))
         self.objective_qcsr_matrix = Qcsr_dict
         return self.dict_to_object(Qcsr_dict)
-
 
     def relax(self):
         """

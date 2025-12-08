@@ -675,7 +675,7 @@ def test_quadratic_expression_and_matrix():
 
     # Test Quadratic Expressions
     expr1 = x * x  # var * var
-    expr2 = expr1 + y*z + 2  # QP + QP + const
+    expr2 = expr1 + y * z + 2  # QP + QP + const
     expr3 = expr2 * 4  # QP * const
 
     assert expr1.getVariables() == [(x, x)]
@@ -697,10 +697,12 @@ def test_quadratic_expression_and_matrix():
     assert expr4.getLinearExpression().getVariables() == [y]
     assert expr4.getLinearExpression().getCoefficients() == [-1]
 
-    expr5 = z + 7*y + 1  # LP
+    expr5 = z + 7 * y + 1  # LP
     expr6 = y * expr5  # var * LP
-    expr7 = expr5 - x*x  # LP - QP
-    expr8 = expr4 - expr5  # QP - LP # x2 + yz + 2 - y - 7y -z - 1 + 7y2 + yz + y
+    expr7 = expr5 - x * x  # LP - QP
+    expr8 = (
+        expr4 - expr5
+    )  # QP - LP # x2 + yz + 2 - y - 7y -z - 1 + 7y2 + yz + y
     expr8 += expr6  # QP + QP
 
     assert expr6.getVariable1(0) is y
@@ -725,7 +727,7 @@ def test_quadratic_expression_and_matrix():
     assert expr8.getLinearExpression().getConstant() == 1
     assert expr8.getLinearExpression().getCoefficients() == [-1, -7, -1, 1]
 
-    expr9 = expr5 * (3*x - y + z + 3)  # LP * LP
+    expr9 = expr5 * (3 * x - y + z + 3)  # LP * LP
     # expr9 = 21*y*x + 7*y*z + 21*y - 7*y*y + 3*x + z + 3 - y + 3*z*x + z*z +3*z - z*y
 
     qvariables = [(y, x), (y, y), (y, z), (z, x), (z, y), (z, z)]
@@ -757,8 +759,7 @@ def test_quadratic_expression_and_matrix():
     assert Qcsr.values == exp_vals
 
 
-def test_quadratic_objective():
-
+def test_quadratic_objective_1():
     # Minimize x1 ^2 + 4 x2 ^2 - 8 x1 - 16 x2
     # subject to x1 + x2 >= 5
     #         x1 >= 3
@@ -766,14 +767,49 @@ def test_quadratic_objective():
 
     problem = Problem()
     x1 = problem.addVariable(lb=3.0, name="x")
-    x2 = problem.addVariable(lb = 0, name="y")
+    x2 = problem.addVariable(lb=0, name="y")
 
     problem.addConstraint(x1 + x2 >= 5)
-    problem.setObjective(x1*x1 + 4*x2*x2 - 8*x1 - 16*x2)
+    problem.setObjective(x1 * x1 + 4 * x2 * x2 - 8 * x1 - 16 * x2)
 
     problem.solve()
 
     assert problem.Status.name == "Optimal"
     assert x1.getValue() == pytest.approx(4.0)
     assert x2.getValue() == pytest.approx(2.0)
-    assert problem.ObjValue ==  pytest.approx(-32.0)
+    assert problem.ObjValue == pytest.approx(-32.0)
+
+
+def test_quadratic_objective_2():
+    # Minimize 4 x1^2 + 2 x2^2 + 3 x3^2 + 1.5 x1 x3 - 2 x1 + 0.5 x2 - x3
+    # subject to x1 + 2*x2 + x3 <= 3
+    #         x1 >= 0
+    #         x2 >= 0
+    #         x3 >= 0
+
+    problem = Problem()
+    x1 = problem.addVariable(lb=0, name="x")
+    x2 = problem.addVariable(lb=0, name="y")
+    x3 = problem.addVariable(lb=0, name="z")
+
+    problem.addConstraint(x1 + 2 * x2 + x3 <= 3)
+    problem.setObjective(
+        2 * x1 * x1
+        + 2 * x2 * x2
+        + 3 * x3 * x3
+        + 1.5 * x1 * x3
+        - 2 * x1
+        + 0.5 * x2
+        - 2 * x1 * x2
+        - 1.0 * x3
+        + 2 * x1 * x1
+        + 2 * x1 * x2
+    )
+
+    problem.solve()
+
+    assert problem.Status.name == "Optimal"
+    assert x1.getValue() == pytest.approx(0.2295081)
+    assert x2.getValue() == pytest.approx(0.0000000, abs=0.000001)
+    assert x3.getValue() == pytest.approx(0.1092896)
+    assert problem.ObjValue == pytest.approx(-0.284153)
