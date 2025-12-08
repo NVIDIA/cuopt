@@ -32,7 +32,7 @@ jobs:
           #       to pull the actual cuOpt source code from
           gh workflow run build.yaml    \
             --repo NVIDIA/cuopt         \
-            --ref "${CUOPT_BRANCH}"     \
+            --ref "${{ github.ref }}"   \
             -f branch="${CUOPT_BRANCH}" \
             -f build_type=nightly       \
             -f date="${DATE}"           \

@@ -275,7 +275,6 @@ class iteration_data_t {
       n_dense_columns = 0;
       use_augmented   = !Q_diagonal;
     }
-
     if (use_augmented) {
       settings.log.printf("Linear system               : augmented\n");
     } else {
@@ -3550,15 +3549,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
   }
 
   f_t primal_objective_save = data.c.inner_product(data.x_save);
-  if (data.Q.n > 0) {
-    dense_vector_t<i_t, f_t> Qx_save(data.Q.n);
-    dense_vector_t<i_t, f_t> x_save_host(data.Q.n);
-    std::copy(data.x_save.begin(), data.x_save.begin() + data.Q.n, x_save_host.begin());
-    matrix_vector_multiply(data.Q, 1.0, x_save_host, 0.0, Qx_save);
-    f_t quad_objective = 0.5 * x_save_host.inner_product(Qx_save);
-    primal_objective_save += quad_objective;
-  }
-
   if (data.Q.n > 0) {
     dense_vector_t<i_t, f_t> Qx_save(data.Q.n);
     dense_vector_t<i_t, f_t> x_save_host(data.Q.n);
