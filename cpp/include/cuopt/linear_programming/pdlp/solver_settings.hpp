@@ -65,8 +65,6 @@ class pdlp_solver_settings_t {
  public:
   pdlp_solver_settings_t() = default;
 
-  // Copy constructor for when copying in the PDLP object
-  pdlp_solver_settings_t(const pdlp_solver_settings_t& other, rmm::cuda_stream_view stream_view);
   /**
    * @brief Set both absolute and relative tolerance on the primal feasibility,
    dual feasibility and gap.

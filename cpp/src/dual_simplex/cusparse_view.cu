@@ -113,6 +113,13 @@ void my_cusparsespmv_preprocess(cusparseHandle_t handle,
 }
 #endif
 
+static cusparseSpMVAlg_t get_spmv_alg(int num_rows)
+{
+  // The older version of ALG2 has a bug with single row matrices
+  if (num_rows == 1 && __CUDACC_VER_MAJOR__ < 13) { return CUSPARSE_SPMV_CSR_ALG1; }
+  return CUSPARSE_SPMV_CSR_ALG2;
+}
+
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                                            const csc_matrix_t<i_t, f_t>& A)
@@ -193,7 +200,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                                                   x,
                                                   d_one_.data(),
                                                   y,
-                                                  CUSPARSE_SPMV_CSR_ALG2,
+                                                  get_spmv_alg(A_offsets_.size() - 1),
                                                   &buffer_size_spmv,
                                                   handle_ptr_->get_stream()));
   spmv_buffer_.resize(buffer_size_spmv, handle_ptr_->get_stream());
@@ -205,7 +212,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                              x,
                              d_one_.data(),
                              y,
-                             CUSPARSE_SPMV_CSR_ALG2,
+                             get_spmv_alg(A_offsets_.size() - 1),
                              spmv_buffer_.data(),
                              handle_ptr->get_stream());
 
@@ -217,7 +224,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                                                   y,
                                                   d_one_.data(),
                                                   x,
-                                                  CUSPARSE_SPMV_CSR_ALG2,
+                                                  get_spmv_alg(A_T_offsets_.size() - 1),
                                                   &buffer_size_spmv,
                                                   handle_ptr_->get_stream()));
   spmv_buffer_transpose_.resize(buffer_size_spmv, handle_ptr_->get_stream());
@@ -229,7 +236,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
                              y,
                              d_one_.data(),
                              x,
-                             CUSPARSE_SPMV_CSR_ALG2,
+                             get_spmv_alg(A_T_offsets_.size() - 1),
                              spmv_buffer_transpose_.data(),
                              handle_ptr->get_stream());
   RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(x));
@@ -290,7 +297,7 @@ void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
                                      x,
                                      d_beta->data(),
                                      y,
-                                     CUSPARSE_SPMV_CSR_ALG2,
+                                     get_spmv_alg(A_offsets_.size() - 1),
                                      (f_t*)spmv_buffer_.data(),
                                      handle_ptr_->get_stream());
 }
@@ -334,7 +341,7 @@ void cusparse_view_t<i_t, f_t>::transpose_spmv(
                                      x,
                                      d_beta->data(),
                                      y,
-                                     CUSPARSE_SPMV_CSR_ALG2,
+                                     get_spmv_alg(A_T_offsets_.size() - 1),
                                      (f_t*)spmv_buffer_transpose_.data(),
                                      handle_ptr_->get_stream());
 }
