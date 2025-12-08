@@ -76,6 +76,7 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
                                                       default_weights,
                                                       default_weights,
                                                       0.,
+                                                      context.preempt_heuristic_solver_,
                                                       fj_settings_t{},
                                                       /*randomize=*/counter > 0);
 
@@ -111,8 +112,8 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
   solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
   solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
   solution_lp.round_random_nearest(500);
-  scratch_cpu_fj_on_lp_opt.fj_cpu =
-    fj.create_cpu_climber(solution_lp, default_weights, default_weights, 0.);
+  scratch_cpu_fj_on_lp_opt.fj_cpu = fj.create_cpu_climber(
+    solution_lp, default_weights, default_weights, 0., context.preempt_heuristic_solver_);
   scratch_cpu_fj_on_lp_opt.fj_cpu->log_prefix = "******* scratch on LP optimal: ";
   scratch_cpu_fj_on_lp_opt.fj_cpu->improvement_callback =
     [this, &population](f_t obj, const std::vector<f_t>& h_vec) {
@@ -154,8 +155,13 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   auto h_weights          = cuopt::host_copy(in_fj.cstr_weights, solution.handle_ptr->get_stream());
   auto h_objective_weight = in_fj.objective_weight.value(solution.handle_ptr->get_stream());
   for (auto& cpu_fj : ls_cpu_fj) {
-    cpu_fj.fj_cpu = cpu_fj.fj_ptr->create_cpu_climber(
-      solution, h_weights, h_weights, h_objective_weight, fj_settings_t{}, true);
+    cpu_fj.fj_cpu = cpu_fj.fj_ptr->create_cpu_climber(solution,
+                                                      h_weights,
+                                                      h_weights,
+                                                      h_objective_weight,
+                                                      context.preempt_heuristic_solver_,
+                                                      fj_settings_t{},
+                                                      true);
   }
 
   auto solution_copy = solution;
@@ -454,7 +460,7 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
     fp.resize_vectors(*solution.problem_ptr, solution.handle_ptr);
     for (i_t i = 0; i < n_fp_iterations && !timer.check_time_limit(); ++i) {
       population_ptr->add_external_solutions_to_population();
-      if (population_ptr->preempt_heuristic_solver_.load()) {
+      if (context.preempt_heuristic_solver_.load()) {
         CUOPT_LOG_DEBUG("Preempting heuristic solver!");
         return false;
       }
@@ -464,7 +470,7 @@ bool local_search_t<i_t, f_t>::run_staged_fp(solution_t<i_t, f_t>& solution,
       i_t binary_it_counter = 0;
       for (; binary_it_counter < 100; ++binary_it_counter) {
         population_ptr->add_external_solutions_to_population();
-        if (population_ptr->preempt_heuristic_solver_.load()) {
+        if (context.preempt_heuristic_solver_.load()) {
           CUOPT_LOG_DEBUG("Preempting heuristic solver!");
           return false;
         }
@@ -662,14 +668,14 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     }
     CUOPT_LOG_DEBUG("fp_loop it %d last_improved_iteration %d", i, last_improved_iteration);
     population_ptr->add_external_solutions_to_population();
-    if (population_ptr->preempt_heuristic_solver_.load()) {
+    if (context.preempt_heuristic_solver_.load()) {
       CUOPT_LOG_DEBUG("Preempting heuristic solver!");
       break;
     }
     is_feasible = fp.run_single_fp_descent(solution);
     population_ptr->add_external_solutions_to_population();
     CUOPT_LOG_DEBUG("Population size at iteration %d: %d", i, population_ptr->current_size());
-    if (population_ptr->preempt_heuristic_solver_.load()) {
+    if (context.preempt_heuristic_solver_.load()) {
       CUOPT_LOG_DEBUG("Preempting heuristic solver!");
       break;
     }
@@ -693,7 +699,7 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
       }
       is_feasible = fp.restart_fp(solution);
       population_ptr->add_external_solutions_to_population();
-      if (population_ptr->preempt_heuristic_solver_.load()) {
+      if (context.preempt_heuristic_solver_.load()) {
         CUOPT_LOG_DEBUG("Preempting heuristic solver!");
         break;
       }
@@ -748,7 +754,7 @@ bool local_search_t<i_t, f_t>::generate_solution(solution_t<i_t, f_t>& solution,
     return true;
   }
   population_ptr->add_external_solutions_to_population();
-  if (population_ptr->preempt_heuristic_solver_.load()) {
+  if (context.preempt_heuristic_solver_.load()) {
     CUOPT_LOG_DEBUG("Preempting heuristic solver!");
     return is_feasible;
   }
@@ -769,7 +775,7 @@ bool local_search_t<i_t, f_t>::generate_solution(solution_t<i_t, f_t>& solution,
                solution.handle_ptr->get_stream());
   }
   population_ptr->add_external_solutions_to_population();
-  if (population_ptr->preempt_heuristic_solver_.load()) {
+  if (context.preempt_heuristic_solver_.load()) {
     CUOPT_LOG_DEBUG("Preempting heuristic solver!");
     return is_feasible;
   }

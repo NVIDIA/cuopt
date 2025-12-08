@@ -502,6 +502,7 @@ i_t scatter(const csc_matrix_t<i_t, f_t>& A,
 template <typename i_t, typename f_t>
 i_t csc_matrix_t<i_t, f_t>::check_matrix() const
 {
+#ifdef CHECK_MATRIX
   std::vector<i_t> row_marker(this->m, -1);
   for (i_t j = 0; j < this->n; ++j) {
     const i_t col_start = this->col_start[j];
@@ -525,6 +526,7 @@ i_t csc_matrix_t<i_t, f_t>::check_matrix() const
       row_marker[i] = j;
     }
   }
+#endif
   return 0;
 }
 

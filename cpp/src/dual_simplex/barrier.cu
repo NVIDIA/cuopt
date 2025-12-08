@@ -49,6 +49,7 @@ class iteration_data_t {
  public:
   iteration_data_t(const lp_problem_t<i_t, f_t>& lp,
                    i_t num_upper_bounds,
+                   const csc_matrix_t<i_t, f_t>& Qin,
                    const simplex_solver_settings_t<i_t, f_t>& settings)
     : upper_bounds(num_upper_bounds),
       c(lp.objective),
@@ -81,6 +82,8 @@ class iteration_data_t {
       H(0, 0),
       Hchol(0, 0),
       A(lp.A),
+      Q(Qin),
+      cusparse_Q_view_(lp.handle_ptr, Q),
       primal_residual(lp.num_rows),
       bound_residual(num_upper_bounds),
       dual_residual(lp.num_cols),
@@ -159,12 +162,61 @@ class iteration_data_t {
       d_complementarity_xz_rhs_(lp.num_cols, lp.handle_ptr->get_stream()),
       d_complementarity_wv_rhs_(0, lp.handle_ptr->get_stream()),
       d_dual_rhs_(lp.num_cols, lp.handle_ptr->get_stream()),
+<<<<<<< HEAD
+=======
+      d_Q_diag_(0, lp.handle_ptr->get_stream()),
+      d_Qx_(Qin.m, lp.handle_ptr->get_stream()),
+>>>>>>> chris/qp
       restrict_u_(0),
       transform_reduce_helper_(lp.handle_ptr->get_stream()),
-      sum_reduce_helper_(lp.handle_ptr->get_stream())
+      sum_reduce_helper_(lp.handle_ptr->get_stream()),
+      indefinite_Q(false),
+      Q_diagonal(false),
+      symbolic_status(0)
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
+<<<<<<< HEAD
+=======
+    bool has_Q   = Q.x.size() > 0;
+    indefinite_Q = false;
+    if (has_Q) {
+      Qdiag.resize(lp.num_cols, 0.0);
+
+      for (i_t j = 0; j < Q.n; j++) {
+        const i_t col_start = Q.col_start[j];
+        const i_t col_end   = Q.col_start[j + 1];
+        for (i_t p = col_start; p < col_end; p++) {
+          const i_t i = Q.i[p];
+          if (j == i) {
+            Qdiag[j] = Q.x[p];
+            break;
+          }
+        }
+      }
+
+      Q_diagonal = Q.is_diagonal();
+
+      if (Q_diagonal) {
+        // Check to ensure that Q is positive semi-definite
+        for (i_t j = 0; j < lp.num_cols; j++) {
+          if (Qdiag[j] < 0.0) {
+            settings_.log.printf(
+              "Q is not positive semidefinite: Q(%d, %d) = %e\n", j, j, Qdiag[j]);
+            indefinite_Q = true;
+            return;
+          }
+        }
+      } else if (settings.check_Q) {
+        // TODO: Check to ensure that Q is positive semi-definite
+        // This requires us to perform a Cholesky factorization.
+      }
+
+      d_Q_diag_.resize(lp.num_cols, stream_view_);
+      raft::copy(d_Q_diag_.data(), Qdiag.data(), Qdiag.size(), stream_view_);
+    }
+
+>>>>>>> chris/qp
     // Allocating GPU flag data for Form ADAT
     if (use_gpu) {
       raft::common::nvtx::range fun_scope("Barrier: GPU Flag memory allocation");
@@ -223,6 +275,15 @@ class iteration_data_t {
       use_augmented   = true;
       n_dense_columns = 0;
     }
+<<<<<<< HEAD
+=======
+
+    if (has_Q && !use_augmented) {
+      // For now let's not deal with dense columns
+      n_dense_columns = 0;
+      use_augmented   = !Q_diagonal;
+    }
+>>>>>>> chris/qp
     if (use_augmented) {
       settings.log.printf("Linear system               : augmented\n");
     } else {
@@ -236,6 +297,18 @@ class iteration_data_t {
         diag[j] = 2.0;
       }
     }
+<<<<<<< HEAD
+=======
+
+    // D = I + EET + Q (if Q is diagonal)
+    if (has_Q && !use_augmented) {
+      // this means that Q is diagonal
+      for (i_t j = 0; j < Q.n; j++) {
+        diag[j] += Qdiag[j];
+      }
+    }
+
+>>>>>>> chris/qp
     inv_diag.set_scalar(1.0);
     if (use_augmented) { diag.multiply_scalar(-1.0); }
     if (n_upper_bounds > 0) { diag.inverse(inv_diag); }
@@ -329,20 +402,62 @@ class iteration_data_t {
     const f_t dual_perturb   = 0.0;
     const f_t primal_perturb = 1e-6;
     if (first_call) {
+<<<<<<< HEAD
       augmented.reallocate(2 * nnzA + n + m);
       i_t q = 0;
+=======
+      augmented_diagonal_indices.resize(n + m, -1);
+      i_t new_nnz = 2 * nnzA + n + m + nnzQ;
+      augmented.reallocate(2 * nnzA + n + m + nnzQ);
+      i_t q            = 0;
+      i_t off_diag_Qnz = 0;
+>>>>>>> chris/qp
       for (i_t j = 0; j < n; j++) {
         augmented.col_start[j] = q;
+<<<<<<< HEAD
         augmented.i[q]         = j;
         augmented.x[q++]       = -diag[j] - dual_perturb;
         const i_t col_beg      = A.col_start[j];
         const i_t col_end      = A.col_start[j + 1];
+=======
+        if (nnzQ == 0) {
+          augmented_diagonal_indices[j] = q;
+          augmented.i[q]                = j;
+          augmented.x[q++]              = -diag[j] - dual_perturb;
+        } else {
+          const i_t q_col_beg = Q.col_start[j];
+          const i_t q_col_end = Q.col_start[j + 1];
+          bool has_diagonal   = false;
+          for (i_t p = q_col_beg; p < q_col_end; ++p) {
+            augmented.i[q] = Q.i[p];
+            if (Q.i[p] == j) {
+              has_diagonal                  = true;
+              augmented_diagonal_indices[j] = q;
+              augmented.x[q++]              = -Q.x[p] - diag[j] - dual_perturb;
+            } else {
+              off_diag_Qnz++;
+              augmented.x[q++] = -Q.x[p];
+            }
+          }
+          if (!has_diagonal) {
+            augmented_diagonal_indices[j] = q;
+            augmented.i[q]                = j;
+            augmented.x[q++]              = -diag[j] - dual_perturb;
+          }
+        }
+        const i_t col_beg = A.col_start[j];
+        const i_t col_end = A.col_start[j + 1];
+>>>>>>> chris/qp
         for (i_t p = col_beg; p < col_end; ++p) {
           augmented.i[q]   = n + A.i[p];
           augmented.x[q++] = A.x[p];
         }
       }
+<<<<<<< HEAD
       settings_.log.debug("augmented nz %d predicted %d\n", q, nnzA + n);
+=======
+      settings_.log.debug("augmented nz %d predicted %d\n", q, off_diag_Qnz + nnzA + n);
+>>>>>>> chris/qp
       for (i_t k = n; k < n + m; ++k) {
         augmented.col_start[k] = q;
         const i_t l            = k - n;
@@ -352,8 +467,9 @@ class iteration_data_t {
           augmented.i[q]   = AT.i[p];
           augmented.x[q++] = AT.x[p];
         }
-        augmented.i[q]   = k;
-        augmented.x[q++] = primal_perturb;
+        augmented_diagonal_indices[k] = q;
+        augmented.i[q]                = k;
+        augmented.x[q++]              = primal_perturb;
       }
       augmented.col_start[n + m] = q;
       cuopt_assert(q == 2 * nnzA + n + m, "augmented nnz != predicted");
@@ -374,8 +490,19 @@ class iteration_data_t {
 #endif
     } else {
       for (i_t j = 0; j < n; ++j) {
+<<<<<<< HEAD
         const i_t q    = augmented.col_start[j];
         augmented.x[q] = -diag[j] - dual_perturb;
+=======
+        f_t q_diag = nnzQ > 0 ? Qdiag[j] : 0.0;
+
+        const i_t p    = augmented_diagonal_indices[j];
+        augmented.x[p] = -q_diag - diag[j] - dual_perturb;
+      }
+      for (i_t j = n; j < n + m; ++j) {
+        const i_t p    = augmented_diagonal_indices[j];
+        augmented.x[p] = primal_perturb;
+>>>>>>> chris/qp
       }
     }
   }
@@ -424,8 +551,18 @@ class iteration_data_t {
                          });
       if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
       if (first_call) {
+<<<<<<< HEAD
         initialize_cusparse_data<i_t, f_t>(
           handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+=======
+        try {
+          initialize_cusparse_data<i_t, f_t>(
+            handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+        } catch (const raft::cuda_error& e) {
+          settings_.log.printf("Error in initialize_cusparse_data: %s\n", e.what());
+          return;
+        }
+>>>>>>> chris/qp
       }
       if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
 
@@ -1353,6 +1490,16 @@ class iteration_data_t {
   dense_matrix_t<i_t, f_t> Hchol;
   const csc_matrix_t<i_t, f_t>& A;
 
+<<<<<<< HEAD
+=======
+  const csc_matrix_t<i_t, f_t>& Q;
+  std::vector<f_t> Qdiag;
+  bool Q_diagonal;
+  std::vector<i_t> augmented_diagonal_indices;
+  bool indefinite_Q;
+  cusparse_view_t<i_t, f_t> cusparse_Q_view_;
+
+>>>>>>> chris/qp
   bool use_augmented;
   i_t symbolic_status;
 
@@ -1451,6 +1598,12 @@ class iteration_data_t {
   rmm::device_uvector<f_t> d_complementarity_wv_rhs_;
   rmm::device_uvector<f_t> d_dual_rhs_;
 
+<<<<<<< HEAD
+=======
+  rmm::device_uvector<f_t> d_Q_diag_;
+  rmm::device_uvector<f_t> d_Qx_;
+
+>>>>>>> chris/qp
   pinned_dense_vector_t<i_t, f_t> restrict_u_;
 
   transform_reduce_helper_t<f_t> transform_reduce_helper_;
@@ -1470,6 +1623,26 @@ barrier_solver_t<i_t, f_t>::barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
 }
 
 template <typename i_t, typename f_t>
+void barrier_solver_t<i_t, f_t>::create_Q(const lp_problem_t<i_t, f_t>& lp,
+                                          csc_matrix_t<i_t, f_t>& Q)
+{
+  cuopt_assert(lp.Q.n <= lp.num_cols && lp.Q.m <= lp.num_cols,
+               "Q.n <= num_cols && Q.m <= num_cols");
+  lp.Q.to_compressed_col(Q);
+  // The original Q matrix will not have the slack variables. Let's resize it to include those
+  // variables.
+  if (Q.n != lp.num_cols) {
+    i_t nz    = Q.col_start[Q.n];
+    i_t old_n = Q.n;
+    Q.m = Q.n = lp.num_cols;
+    Q.col_start.resize(Q.m + 1);
+    for (i_t i = old_n; i < Q.n; i++) {
+      Q.col_start[i + 1] = nz;
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
 int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 {
   raft::common::nvtx::range fun_scope("Barrier: initial_point");
@@ -1479,6 +1652,13 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   i_t status;
   if (use_augmented) {
     status = data.chol->factorize(data.augmented);
+<<<<<<< HEAD
+=======
+
+#ifdef CHOLESKY_DEBUG_CHECK
+    cholesky_debug_check(data, lp, use_augmented);
+#endif
+>>>>>>> chris/qp
   } else {
     if (use_gpu) {
       status = data.chol->factorize(data.device_ADAT);
@@ -1791,9 +1971,21 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residuals(const rmm::device_uvector
       stream_view_);
   }
 
+<<<<<<< HEAD
   // Compute dual_residual = c - A'*y - z + E*v
   raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
   cub::DeviceTransform::Transform(cuda::std::make_tuple(data.d_c_.data(), d_z.data()),
+=======
+  // Compute dual_residual = c - A'*y - z + E*v + Q*x
+  if (data.Q.n > 0) {
+    raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
+    auto cusparse_d_c = data.cusparse_view_.create_vector(data.d_c_);
+    data.cusparse_Q_view_.spmv(1.0, cusparse_d_x, 1.0, cusparse_d_c);
+  } else {
+    raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
+  }
+  cub::DeviceTransform::Transform(cuda::std::make_tuple(data.d_c_.data(), data.d_z_.data()),
+>>>>>>> chris/qp
                                   data.d_dual_residual_.data(),
                                   data.d_dual_residual_.size(),
                                   cuda::std::minus<>{},
@@ -1918,6 +2110,7 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residual_norms(const rmm::device_uv
     std::max(device_vector_norm_inf<i_t, f_t>(data.d_primal_residual_, stream_view_),
              device_vector_norm_inf<i_t, f_t>(data.d_bound_residual_, stream_view_));
   dual_residual_norm = device_vector_norm_inf<i_t, f_t>(data.d_dual_residual_, stream_view_);
+  // TODO: CMM understand why rhs and not residual
   complementarity_residual_norm =
     std::max(device_vector_norm_inf<i_t, f_t>(data.d_complementarity_xz_rhs_, stream_view_),
              device_vector_norm_inf<i_t, f_t>(data.d_complementarity_wv_rhs_, stream_view_));
@@ -2086,6 +2279,19 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       RAFT_CHECK_CUDA(stream_view_);
     }
 
+<<<<<<< HEAD
+=======
+    // diag = z ./ x + E * (v ./ w) * E' + Q (if Q is diagonal)
+    if (data.Q.n > 0 && data.Q_diagonal) {
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(data.d_Q_diag_.data(), data.d_diag_.data()),
+        data.d_diag_.data(),
+        data.d_diag_.size(),
+        [] HD(f_t Q_diag_j, f_t diag_j) { return diag_j + Q_diag_j; },
+        stream_view_);
+    }
+
+>>>>>>> chris/qp
     // inv_diag = 1.0 ./ diag
     cub::DeviceTransform::Transform(
       data.d_diag_.data(),
@@ -2107,6 +2313,13 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
       data.form_augmented();
       status = data.chol->factorize(data.augmented);
+<<<<<<< HEAD
+=======
+
+#ifdef CHOLESKY_DEBUG_CHECK
+      cholesky_debug_check(data, lp, use_augmented);
+#endif
+>>>>>>> chris/qp
     } else {
       // compute ADAT = A Dinv * A^T
       data.form_adat();
@@ -2879,6 +3092,19 @@ void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f
     raft::copy(data.d_y_.data(), data.y.data(), data.y.size(), stream_view_);
     raft::copy(data.d_dy_aff_.data(), data.dy_aff.data(), data.dy_aff.size(), stream_view_);
 
+<<<<<<< HEAD
+=======
+#ifdef FINITE_CHECK
+    for (i_t i = 0; i < (int)data.y.size(); i++) {
+      cuopt_assert(std::isfinite(data.y[i]), "data.d_y_[i] is not finite");
+    }
+
+    for (i_t i = 0; i < (int)data.dy_aff.size(); i++) {
+      cuopt_assert(std::isfinite(data.dy_aff[i]), "data.dy_aff_[i] is not finite");
+    }
+#endif
+
+>>>>>>> chris/qp
     // dw = dw_aff + dw_cc
     // dx = dx_aff + dx_cc
     // dy = dy_aff + dy_cc
@@ -3136,11 +3362,136 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
                                                     1,
                                                     d_uv.data(),
                                                     stream_view_));
+<<<<<<< HEAD
     primal_objective = d_cx.value(stream_view_);
     dual_objective   = d_by.value(stream_view_) - d_uv.value(stream_view_);
   } else {
     primal_objective = data.c.inner_product(data.x);
     dual_objective   = data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v);
+=======
+    f_t quad_objective = 0.0;
+    if (data.Q.n > 0) {
+      auto cusparse_d_x = data.cusparse_view_.create_vector(data.d_x_);
+      auto cusparse_Qx  = data.cusparse_view_.create_vector(data.d_Qx_);
+      data.cusparse_Q_view_.spmv(1.0, cusparse_d_x, 0.0, cusparse_Qx);
+      rmm::device_scalar<f_t> d_xQx(stream_view_);
+      RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                      data.d_Qx_.size(),
+                                                      data.d_Qx_.data(),
+                                                      1,
+                                                      data.d_x_.data(),
+                                                      1,
+                                                      d_xQx.data(),
+                                                      stream_view_));
+      quad_objective = 0.5 * d_xQx.value(stream_view_);
+    }
+
+    primal_objective = d_cx.value(stream_view_) + quad_objective;
+    dual_objective   = d_by.value(stream_view_) - d_uv.value(stream_view_) - quad_objective;
+
+#ifdef CHECK_OBJECTIVE_GAP
+    rmm::device_scalar<f_t> d_xz(stream_view_);
+    rmm::device_scalar<f_t> d_wv(stream_view_);
+    rmm::device_scalar<f_t> d_rdx(stream_view_);
+    rmm::device_scalar<f_t> d_rpy(stream_view_);
+    rmm::device_scalar<f_t> d_rwv(stream_view_);
+    rmm::device_scalar<f_t> d_p(stream_view_);
+    rmm::device_scalar<f_t> d_y(stream_view_);
+    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                    data.d_x_.size(),
+                                                    data.d_x_.data(),
+                                                    1,
+                                                    data.d_z_.data(),
+                                                    1,
+                                                    d_xz.data(),
+                                                    stream_view_));
+    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                    data.d_w_.size(),
+                                                    data.d_w_.data(),
+                                                    1,
+                                                    data.d_v_.data(),
+                                                    1,
+                                                    d_wv.data(),
+                                                    stream_view_));
+    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                    data.d_x_.size(),
+                                                    data.d_x_.data(),
+                                                    1,
+                                                    data.d_dual_residual_.data(),
+                                                    1,
+                                                    d_rdx.data(),
+                                                    stream_view_));
+    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                    data.d_y_.size(),
+                                                    data.d_y_.data(),
+                                                    1,
+                                                    data.d_primal_residual_.data(),
+                                                    1,
+                                                    d_rpy.data(),
+                                                    stream_view_));
+    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                    data.d_bound_residual_.size(),
+                                                    data.d_bound_residual_.data(),
+                                                    1,
+                                                    data.d_v_.data(),
+                                                    1,
+                                                    d_rwv.data(),
+                                                    stream_view_));
+    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                    data.d_primal_residual_.size(),
+                                                    data.d_primal_residual_.data(),
+                                                    1,
+                                                    data.d_primal_residual_.data(),
+                                                    1,
+                                                    d_p.data(),
+                                                    stream_view_));
+    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                    data.d_y_.size(),
+                                                    data.d_y_.data(),
+                                                    1,
+                                                    data.d_y_.data(),
+                                                    1,
+                                                    d_y.data(),
+                                                    stream_view_));
+    f_t xz  = d_xz.value(stream_view_);
+    f_t wv  = d_wv.value(stream_view_);
+    f_t rdx = d_rdx.value(stream_view_);
+    f_t rpy = d_rpy.value(stream_view_);
+    f_t rwv = d_rwv.value(stream_view_);
+    f_t p   = d_p.value(stream_view_);
+    f_t y   = d_y.value(stream_view_);
+
+    stream_view_.synchronize();
+
+    f_t objective_gap_1 = primal_objective - dual_objective;
+    f_t objective_gap_2 = xz + wv + rdx - rpy + rwv;
+
+    settings.log.printf("Objective gap 1: %.2e, Objective gap 2: %.2e Diff: %.2e\n",
+                        objective_gap_1,
+                        objective_gap_2,
+                        std::abs(objective_gap_1 - objective_gap_2));
+    settings.log.printf(
+      "Objective - Complementarity: %.2e, rdx: %.2e, rpy: %.2e, rwv: %.2e, p: %.2e, y: %.2e\n",
+      std::abs(objective_gap_1 - (xz + wv)),
+      rdx,
+      rpy,
+      rwv,
+      p,
+      y);
+#endif
+  } else {
+    f_t quad_objective = 0.0;
+    if (data.Q.n > 0) {
+      dense_vector_t<i_t, f_t> x_host(data.Q.n);
+      std::copy(data.x.begin(), data.x.begin() + data.Q.n, x_host.begin());
+      dense_vector_t<i_t, f_t> Qx(data.Q.n);
+      matrix_vector_multiply(data.Q, 1.0, x_host, 0.0, Qx);
+      quad_objective = 0.5 * x_host.inner_product(Qx);
+    }
+    primal_objective = data.c.inner_product(data.x) + quad_objective;
+    dual_objective =
+      data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
+>>>>>>> chris/qp
   }
 }
 
@@ -3161,7 +3512,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
 {
   if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
       relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
-      relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol) {
+      relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol &&
+      primal_objective == primal_objective) {
     data.to_solution(lp,
                      iter,
                      primal_objective,
@@ -3188,6 +3540,17 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
   }
 
   f_t primal_objective_save = data.c.inner_product(data.x_save);
+<<<<<<< HEAD
+=======
+  if (data.Q.n > 0) {
+    dense_vector_t<i_t, f_t> Qx_save(data.Q.n);
+    dense_vector_t<i_t, f_t> x_save_host(data.Q.n);
+    std::copy(data.x_save.begin(), data.x_save.begin() + data.Q.n, x_save_host.begin());
+    matrix_vector_multiply(data.Q, 1.0, x_save_host, 0.0, Qx_save);
+    f_t quad_objective = 0.5 * x_save_host.inner_product(Qx_save);
+    primal_objective_save += quad_objective;
+  }
+>>>>>>> chris/qp
 
   if (data.relative_primal_residual_save < settings.barrier_relaxed_feasibility_tol &&
       data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
@@ -3204,7 +3567,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
     settings.log.printf("\n");
     settings.log.printf(
       "Suboptimal solution found in %d iterations and %.2f seconds\n", iter, toc(start_time));
-    settings.log.printf("Objective %+.8e\n", compute_user_objective(lp, primal_objective));
+    settings.log.printf("Objective %+.8e\n", compute_user_objective(lp, primal_objective_save));
     settings.log.printf("Primal infeasibility (abs/rel): %8.2e/%8.2e\n",
                         data.primal_residual_norm_save,
                         data.relative_primal_residual_save);
@@ -3255,11 +3618,15 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       if (lp.upper[j] < inf) { num_upper_bounds++; }
     }
 
-    iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, settings);
+    csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
+    if (lp.Q.n > 0) { create_Q(lp, Q); }
+
+    iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
     }
+    if (data.indefinite_Q) { return lp_status_t::NUMERICAL_ISSUES; }
     if (data.symbolic_status != 0) {
       settings.log.printf("Error in symbolic analysis\n");
       return lp_status_t::NUMERICAL_ISSUES;
@@ -3307,7 +3674,13 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     f_t norm_b = vector_norm_inf<i_t, f_t>(data.b, stream_view_);
     f_t norm_c = vector_norm_inf<i_t, f_t>(data.c, stream_view_);
 
-    f_t primal_objective = data.c.inner_product(data.x);
+    f_t quad_objective = 0.0;
+    if (data.Q.n > 0) {
+      dense_vector_t<i_t, f_t> Qx(data.Q.n);
+      matrix_vector_multiply(data.Q, 1.0, data.x, 0.0, Qx);
+      quad_objective = 0.5 * data.x.inner_product(Qx);
+    }
+    f_t primal_objective = data.c.inner_product(data.x) + quad_objective;
 
     f_t relative_primal_residual = primal_residual_norm / (1.0 + norm_b);
     f_t relative_dual_residual   = dual_residual_norm / (1.0 + norm_c);
@@ -3316,7 +3689,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
     dense_vector_t<i_t, f_t> upper(lp.upper);
     data.gather_upper_bounds(upper, data.restrict_u_);
-    f_t dual_objective = data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v);
+    f_t dual_objective =
+      data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
 
     i_t iter = 0;
     settings.log.printf("\n");
@@ -3479,7 +3853,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
           relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol) {
         if (relative_primal_residual < data.relative_primal_residual_save &&
             relative_dual_residual < data.relative_dual_residual_save &&
-            relative_complementarity_residual < data.relative_complementarity_residual_save) {
+            relative_complementarity_residual < data.relative_complementarity_residual_save &&
+            primal_objective == primal_objective && dual_objective == dual_objective) {
           settings.log.debug(
             "Saving solution: feasibility %.2e (%.2e), optimality %.2e (%.2e), complementarity "
             "%.2e (%.2e)\n",
@@ -3508,7 +3883,18 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
       if (primal_objective != primal_objective || dual_objective != dual_objective) {
         settings.log.printf("Numerical error in objective\n");
-        return lp_status_t::NUMERICAL_ISSUES;
+        return check_for_suboptimal_solution(options,
+                                             data,
+                                             start_time,
+                                             iter,
+                                             primal_objective,
+                                             primal_residual_norm,
+                                             dual_residual_norm,
+                                             complementarity_residual_norm,
+                                             relative_primal_residual,
+                                             relative_dual_residual,
+                                             relative_complementarity_residual,
+                                             solution);
       }
 
       settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
@@ -3552,6 +3938,32 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
                          solution);
         return lp_status_t::OPTIMAL;
       }
+
+      // Check if the solution is getting worse
+      if (data.Q.n > 0 &&
+          ((!primal_feasible &&
+            relative_primal_residual > 100 * data.relative_primal_residual_save) ||
+           (!dual_feasible && relative_dual_residual > 100 * data.relative_dual_residual_save) ||
+           (!small_gap && relative_complementarity_residual >
+                            10000 * data.relative_complementarity_residual_save))) {
+        if (data.relative_primal_residual_save < settings.barrier_relaxed_feasibility_tol &&
+            data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
+            data.relative_complementarity_residual_save <
+              settings.barrier_relaxed_complementarity_tol) {
+          return check_for_suboptimal_solution(options,
+                                               data,
+                                               start_time,
+                                               iter,
+                                               primal_objective,
+                                               primal_residual_norm,
+                                               dual_residual_norm,
+                                               complementarity_residual_norm,
+                                               relative_primal_residual,
+                                               relative_dual_residual,
+                                               relative_complementarity_residual,
+                                               solution);
+        }
+      }
     }
     data.to_solution(lp,
                      iter,
@@ -3563,10 +3975,17 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
                      solution);
     return lp_status_t::ITERATION_LIMIT;
   } catch (const raft::cuda_error& e) {
+<<<<<<< HEAD
     settings.log.debug("Error in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
   } catch (const rmm::out_of_memory& e) {
     settings.log.debug("Out of memory in barrier_solver_t: %s\n", e.what());
+=======
+    settings.log.printf("Error in barrier_solver_t: %s\n", e.what());
+    return lp_status_t::NUMERICAL_ISSUES;
+  } catch (const rmm::out_of_memory& e) {
+    settings.log.printf("Out of memory in barrier_solver_t: %s\n", e.what());
+>>>>>>> chris/qp
     return lp_status_t::NUMERICAL_ISSUES;
   }
 }

@@ -508,6 +508,19 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
                                            csr_result.indices.size(),
                                            csr_result.offsets.data(),
                                            csr_result.offsets.size());
+  } else if (!qmatrix_entries.empty()) {
+    // Convert quadratic objective entries to CSR format using double transpose
+    // QMATRIX stores full symmetric matrix
+    i_t num_vars    = static_cast<i_t>(var_names.size());
+    auto csr_result = build_csr_via_transpose(qmatrix_entries, num_vars, num_vars, false);
+
+    // Use optimized double transpose method - O(m+n+nnz) instead of O(nnz*log(nnz))
+    problem.set_quadratic_objective_matrix(csr_result.values.data(),
+                                           csr_result.values.size(),
+                                           csr_result.indices.data(),
+                                           csr_result.indices.size(),
+                                           csr_result.offsets.data(),
+                                           csr_result.offsets.size());
   }
 }
 
@@ -692,7 +705,19 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_ranges_   = false;
         inside_objname_  = false;
         inside_objsense_ = false;
+        inside_qmatrix_  = false;
         inside_quadobj_  = true;
+      } else if (line.find("QMATRIX", 0, 7) == 0) {
+        encountered_sections.insert("QMATRIX");
+        inside_rows_     = false;
+        inside_columns_  = false;
+        inside_rhs_      = false;
+        inside_bounds_   = false;
+        inside_ranges_   = false;
+        inside_objname_  = false;
+        inside_objsense_ = false;
+        inside_quadobj_  = false;
+        inside_qmatrix_  = true;
       } else if (line.find("ENDATA", 0, 6) == 0) {
         encountered_sections.insert("ENDATA");
         break;
@@ -707,6 +732,8 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_objsense_ = false;
         inside_ranges_   = false;
         inside_objname_  = false;
+        inside_quadobj_  = false;
+        inside_qmatrix_  = false;
       } else {
         mps_parser_expects(false,
                            error_type_t::ValidationError,
@@ -730,7 +757,9 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
     } else if (inside_objname_) {
       parse_objname(line);
     } else if (inside_quadobj_) {
-      parse_quadobj(line);
+      parse_quad(line, true);
+    } else if (inside_qmatrix_) {
+      parse_quad(line, false);
     } else {
       mps_parser_expects(false,
                          error_type_t::ValidationError,
@@ -1251,7 +1280,7 @@ void mps_parser_t<i_t, f_t>::parse_objname(std::string_view line)
 }
 
 template <typename i_t, typename f_t>
-void mps_parser_t<i_t, f_t>::parse_quadobj(std::string_view line)
+void mps_parser_t<i_t, f_t>::parse_quad(std::string_view line, bool is_quadobj)
 {
   // Parse QUADOBJ section for quadratic objective terms
   // Format: variable1 variable2 value
@@ -1295,8 +1324,12 @@ void mps_parser_t<i_t, f_t>::parse_quadobj(std::string_view line)
   i_t var1_id = var1_it->second;
   i_t var2_id = var2_it->second;
 
-  // Store quadratic objective entry (QUADOBJ stores upper triangular elements only)
-  quadobj_entries.emplace_back(var1_id, var2_id, value);
+  // Store quadratic objective entry
+  if (is_quadobj) {
+    quadobj_entries.emplace_back(var1_id, var2_id, value);
+  } else {
+    qmatrix_entries.emplace_back(var1_id, var2_id, value);
+  }
 }
 
 template <typename i_t, typename f_t>

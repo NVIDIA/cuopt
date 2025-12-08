@@ -57,11 +57,13 @@ struct simplex_solver_settings_t {
       cudss_deterministic(false),
       barrier(false),
       eliminate_dense_columns(true),
+      num_gpus(1),
       folding(-1),
       augmented(0),
       dualize(-1),
       ordering(-1),
       barrier_dual_initial_point(-1),
+      check_Q(false),
       crossover(false),
       refactor_frequency(100),
       iteration_log_frequency(1000),
@@ -120,12 +122,14 @@ struct simplex_solver_settings_t {
   bool cudss_deterministic;   // true to use cuDSS deterministic mode, false for non-deterministic
   bool barrier;               // true to use barrier method, false to use dual simplex method
   bool eliminate_dense_columns;  // true to eliminate dense columns from A*D*A^T
-  i_t folding;                   // -1 automatic, 0 don't fold, 1 fold
+  int num_gpus;   // Number of GPUs to use (maximum of 2 gpus are supported at the moment)
+  i_t folding;    // -1 automatic, 0 don't fold, 1 fold
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system
   i_t dualize;    // -1 automatic, 0 to not dualize, 1 to dualize
   i_t ordering;   // -1 automatic, 0 to use nested dissection, 1 to use AMD
   i_t barrier_dual_initial_point;  // -1 automatic, 0 to use Lustig, Marsten, and Shanno initial
                                    // point, 1 to use initial point form dual least squares problem
+  bool check_Q;                    // true to check if Q is positive semidefinite
   bool crossover;                  // true to do crossover, false to not
   i_t refactor_frequency;          // number of basis updates before refactorization
   i_t iteration_log_frequency;     // number of iterations between log updates
