@@ -25,7 +25,7 @@ namespace cuopt::linear_programming::detail {
 // Maintaining a single source of truth for all members would be nice
 template <typename i_t, typename f_t>
 struct fj_cpu_climber_t {
-  fj_cpu_climber_t()                                                             = default;
+  fj_cpu_climber_t(std::atomic<bool>& preemption_flag) : preemption_flag(preemption_flag) {}
   fj_cpu_climber_t(const fj_cpu_climber_t<i_t, f_t>& other)                      = delete;
   fj_cpu_climber_t<i_t, f_t>& operator=(const fj_cpu_climber_t<i_t, f_t>& other) = delete;
 
@@ -115,6 +115,8 @@ struct fj_cpu_climber_t {
   std::string log_prefix{""};
 
   std::atomic<bool> halted{false};
+  // TODO atomic ref? c++20
+  std::atomic<bool>& preemption_flag;
 };
 
 template <typename i_t, typename f_t>

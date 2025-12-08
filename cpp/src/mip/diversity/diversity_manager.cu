@@ -240,7 +240,7 @@ void diversity_manager_t<i_t, f_t>::generate_quick_feasible_solution()
 template <typename i_t, typename f_t>
 bool diversity_manager_t<i_t, f_t>::check_b_b_preemption()
 {
-  if (population.preempt_heuristic_solver_.load()) {
+  if (context.preempt_heuristic_solver_.load()) {
     if (population.current_size() == 0) { population.allocate_solutions(); }
     population.add_external_solutions_to_population();
     return true;
@@ -416,6 +416,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     population.add_external_solutions_to_population();
     return population.best_feasible();
   }
+  if (check_b_b_preemption()) { return population.best_feasible(); }
+
   run_fp_alone();
   population.add_external_solutions_to_population();
   return population.best_feasible();

@@ -10,6 +10,7 @@
 #include "feasibility_jump.cuh"
 #include "feasibility_jump_kernels.cuh"
 
+#include <mip/diversity/population.cuh>
 #include <mip/mip_constants.hpp>
 #include <mip/utils.cuh>
 #include <utilities/seed_generator.cuh>
@@ -867,7 +868,10 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
   for (steps = 0; steps < std::numeric_limits<i_t>::max(); steps += iterations_per_graph) {
     // to actualize time limit
     handle_ptr->sync_stream();
-    if (timer.check_time_limit() || steps >= settings.iteration_limit) { limit_reached = true; }
+    if (timer.check_time_limit() || steps >= settings.iteration_limit ||
+        context.preempt_heuristic_solver_.load()) {
+      limit_reached = true;
+    }
 
 #if !FJ_SINGLE_STEP
     if (steps % 500 == 0)

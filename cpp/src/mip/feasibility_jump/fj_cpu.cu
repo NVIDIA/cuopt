@@ -902,12 +902,13 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
   const std::vector<f_t>& left_weights,
   const std::vector<f_t>& right_weights,
   f_t objective_weight,
+  std::atomic<bool>& preemption_flag,
   fj_settings_t settings,
   bool randomize_params)
 {
   raft::common::nvtx::range scope("fj_cpu_init");
 
-  auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>();
+  auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
 
   // Initialize fj_cpu with all the data
   init_fj_cpu(*fj_cpu, solution, left_weights, right_weights, objective_weight);
@@ -932,7 +933,7 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_l
   auto loop_start      = std::chrono::high_resolution_clock::now();
   auto time_limit      = std::chrono::milliseconds((int)(in_time_limit * 1000));
   auto loop_time_start = std::chrono::high_resolution_clock::now();
-  while (!fj_cpu.halted) {
+  while (!fj_cpu.halted && !fj_cpu.preemption_flag.load()) {
     // Check if 5 seconds have passed
     auto now = std::chrono::high_resolution_clock::now();
     if (in_time_limit < std::numeric_limits<f_t>::infinity() &&

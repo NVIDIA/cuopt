@@ -31,13 +31,13 @@ struct diving_root_t {
 };
 
 // A min-heap for storing the starting nodes for the dives.
-// This has a maximum size of INT16_MAX, such that the container
+// This has a maximum size of 1024, such that the container
 // will discard the least promising node if the queue is full.
 template <typename i_t, typename f_t>
 class diving_queue_t {
  private:
   std::vector<diving_root_t<i_t, f_t>> buffer;
-  static constexpr i_t max_size_ = INT16_MAX;
+  static constexpr i_t max_size_ = 1024;
 
  public:
   diving_queue_t() { buffer.reserve(max_size_); }

@@ -221,8 +221,13 @@ void rins_t<i_t, f_t>::run_rins()
   fj_solution.copy_new_assignment(cuopt::host_copy(fixed_assignment));
   std::vector<f_t> default_weights(fixed_problem.n_constraints, 1.);
   cpu_fj_thread_t<i_t, f_t> cpu_fj_thread;
-  cpu_fj_thread.fj_cpu =
-    fj.create_cpu_climber(fj_solution, default_weights, default_weights, 0., fj_settings_t{}, true);
+  cpu_fj_thread.fj_cpu             = fj.create_cpu_climber(fj_solution,
+                                               default_weights,
+                                               default_weights,
+                                               0.,
+                                               context.preempt_heuristic_solver_,
+                                               fj_settings_t{},
+                                               true);
   cpu_fj_thread.fj_ptr             = &fj;
   cpu_fj_thread.fj_cpu->log_prefix = "[RINS] ";
   cpu_fj_thread.time_limit         = time_limit;
