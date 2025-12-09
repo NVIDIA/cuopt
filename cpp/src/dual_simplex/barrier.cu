@@ -1434,6 +1434,7 @@ class iteration_data_t {
 
     raft::copy(y.data(), d_y1.data(), n, stream_view_);
     raft::copy(y.data() + n, d_y2.data(), m, stream_view_);
+    handle_ptr->sync_stream();
   }
 
   raft::handle_t const* handle_ptr;
