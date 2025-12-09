@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <dual_simplex/bounds_strengthening.hpp>
 #include <dual_simplex/branch_and_bound.hpp>
+#include <dual_simplex/crossover.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/mip_node.hpp>
@@ -16,7 +17,6 @@
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/pseudo_costs.hpp>
 #include <dual_simplex/random.hpp>
-#include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
 
@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
+#include <future>
 #include <limits>
 #include <optional>
 #include <string>
@@ -217,6 +218,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     original_lp_(user_problem.handle_ptr, 1, 1, 1),
     incumbent_(1),
     root_relax_soln_(1, 1),
+    root_crossover_soln_(1, 1),
     pc_(1),
     solver_status_(mip_exploration_status_t::UNSET)
 {
@@ -1204,6 +1206,81 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
 }
 
 template <typename i_t, typename f_t>
+lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
+  simplex_solver_settings_t<i_t, f_t> const& lp_settings)
+{
+  // Root node path
+  lp_status_t root_status;
+  std::future<lp_status_t> root_status_future;
+  root_status_future = std::async(std::launch::async,
+                                  &solve_linear_program_advanced<i_t, f_t>,
+                                  std::ref(original_lp_),
+                                  exploration_stats_.start_time,
+                                  std::ref(lp_settings),
+                                  std::ref(root_relax_soln_),
+                                  std::ref(root_vstatus_),
+                                  std::ref(edge_norms_));
+  // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
+  // to finish
+  while (!root_crossover_solution_set_.load(std::memory_order_acquire) &&
+         *get_root_concurrent_halt() == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    continue;
+  }
+
+  if (root_crossover_solution_set_.load(std::memory_order_acquire)) {
+    // Crush the root relaxation solution on converted user problem
+    std::vector<f_t> crushed_root_x;
+    crush_primal_solution(
+      original_problem_, original_lp_, root_crossover_soln_.x, new_slacks_, crushed_root_x);
+    std::vector<f_t> crushed_root_y;
+    std::vector<f_t> crushed_root_z;
+
+    f_t dual_res_inf = crush_dual_solution(original_problem_,
+                                           original_lp_,
+                                           new_slacks_,
+                                           root_crossover_soln_.y,
+                                           root_crossover_soln_.z,
+                                           crushed_root_y,
+                                           crushed_root_z);
+
+    root_crossover_soln_.x = crushed_root_x;
+    root_crossover_soln_.y = crushed_root_y;
+    root_crossover_soln_.z = crushed_root_z;
+
+    // Call crossover on the crushed solution
+    auto root_crossover_settings            = settings_;
+    root_crossover_settings.log.log         = false;
+    root_crossover_settings.concurrent_halt = get_root_concurrent_halt();
+    crossover_status_t crossover_status     = crossover(original_lp_,
+                                                    root_crossover_settings,
+                                                    root_crossover_soln_,
+                                                    exploration_stats_.start_time,
+                                                    root_crossover_soln_,
+                                                    crossover_vstatus_);
+
+    if (crossover_status == crossover_status_t::OPTIMAL) {
+      settings_.log.printf("Crossover status: %d\n", crossover_status);
+    }
+
+    // Check if crossover was stopped by dual simplex
+    if (crossover_status == crossover_status_t::OPTIMAL) {
+      set_root_concurrent_halt(1);  // Stop dual simplex
+      root_status = root_status_future.get();
+      // Override the root relaxation solution with the crossover solution
+      root_relax_soln_ = root_crossover_soln_;
+      root_vstatus_    = crossover_vstatus_;
+      root_status      = lp_status_t::OPTIMAL;
+    } else {
+      root_status = root_status_future.get();
+    }
+  } else {
+    root_status = root_status_future.get();
+  }
+  return root_status;
+}
+
+template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solution)
 {
   logger_t log;
@@ -1233,14 +1310,24 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   root_relax_soln_.resize(original_lp_.num_rows, original_lp_.num_cols);
 
   settings_.log.printf("Solving LP root relaxation\n");
-  simplex_solver_settings_t lp_settings  = settings_;
-  lp_settings.inside_mip                 = 1;
-  lp_status_t root_status                = solve_linear_program_advanced(original_lp_,
-                                                          exploration_stats_.start_time,
-                                                          lp_settings,
-                                                          root_relax_soln_,
-                                                          root_vstatus_,
-                                                          edge_norms_);
+
+  lp_status_t root_status;
+  simplex_solver_settings_t lp_settings = settings_;
+  lp_settings.inside_mip                = 1;
+  lp_settings.concurrent_halt           = get_root_concurrent_halt();
+  // RINS/SUBMIP path
+  if (!enable_concurrent_lp_root_solve()) {
+    root_status = solve_linear_program_advanced(original_lp_,
+                                                exploration_stats_.start_time,
+                                                lp_settings,
+                                                root_relax_soln_,
+                                                root_vstatus_,
+                                                edge_norms_);
+
+  } else {
+    root_status = solve_root_relaxation(lp_settings);
+  }
+
   exploration_stats_.total_lp_iters      = root_relax_soln_.iterations;
   exploration_stats_.total_lp_solve_time = toc(exploration_stats_.start_time);
 

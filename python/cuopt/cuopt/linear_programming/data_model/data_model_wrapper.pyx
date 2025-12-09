@@ -53,6 +53,9 @@ cdef class DataModel:
         self.c = np.array([])
         self.objective_scaling_factor = 1.0
         self.objective_offset = 0.0
+        self.Q_values = np.array([])
+        self.Q_indices = np.array([])
+        self.Q_offsets = np.array([])
         self.variable_lower_bounds = np.array([])
         self.variable_upper_bounds = np.array([])
         self.constraint_lower_bounds = np.array([])
@@ -86,6 +89,11 @@ cdef class DataModel:
 
     def set_objective_offset(self, objective_offset):
         self.objective_offset = objective_offset
+
+    def set_quadratic_objective_matrix(self, Q_values, Q_indices, Q_offsets):
+        self.Q_values = type_cast(Q_values, np.float64, "Q_values")
+        self.Q_indices = type_cast(Q_indices, np.int32, "Q_indices")
+        self.Q_offsets = type_cast(Q_offsets, np.int32, "Q_offsets")
 
     def set_variable_lower_bounds(self, variable_lower_bounds):
         self.variable_lower_bounds = type_cast(
@@ -160,6 +168,15 @@ cdef class DataModel:
 
     def get_objective_offset(self):
         return self.objective_offset
+
+    def get_quadratic_objective_values(self):
+        return self.Q_values
+
+    def get_quadratic_objective_indices(self):
+        return self.Q_indices
+
+    def get_quadratic_objective_offsets(self):
+        return self.Q_offsets
 
     def get_variable_lower_bounds(self):
         return self.variable_lower_bounds
@@ -249,6 +266,27 @@ cdef class DataModel:
         c_data_model_view.set_objective_offset(
             <double> self.get_objective_offset()
         )
+
+        # Set self.fields on the C++ side if set on the Python side
+        cdef uintptr_t c_Q_values = (
+            get_data_ptr(self.get_quadratic_objective_values())
+        )
+        cdef uintptr_t c_Q_indices = (
+            get_data_ptr(self.get_quadratic_objective_indices())
+        )
+        cdef uintptr_t c_Q_offsets = (
+            get_data_ptr(self.get_quadratic_objective_offsets())
+        )
+        if self.get_quadratic_objective_values().shape[0] != 0 and self.get_quadratic_objective_indices().shape[0] != 0 and self.get_quadratic_objective_offsets().shape[0] != 0: # noqa
+            c_data_model_view.set_quadratic_objective_matrix(
+                <const double *> c_Q_values,
+                self.get_quadratic_objective_values().shape[0],
+                <const int *> c_Q_indices,
+                self.get_quadratic_objective_indices().shape[0],
+                <const int *> c_Q_offsets,
+                self.get_quadratic_objective_offsets().shape[0]
+            )
+
         c_data_model_view.set_maximize(<bool> self.maximize)
 
         cdef uintptr_t c_variable_lower_bounds = (

@@ -110,3 +110,21 @@ TEST(c_api, test_invalid_bounds)
   // Test MIP codepath
   EXPECT_EQ(test_invalid_bounds(true), CUOPT_SUCCESS);
 }
+
+TEST(c_api, test_quadratic_problem)
+{
+  cuopt_int_t termination_status;
+  cuopt_float_t objective;
+  EXPECT_EQ(test_quadratic_problem(&termination_status, &objective), CUOPT_SUCCESS);
+  EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_NEAR(objective, -32.0, 1e-3);
+}
+
+TEST(c_api, test_quadratic_ranged_problem)
+{
+  cuopt_int_t termination_status;
+  cuopt_float_t objective;
+  EXPECT_EQ(test_quadratic_ranged_problem(&termination_status, &objective), CUOPT_SUCCESS);
+  EXPECT_EQ(termination_status, (int)CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_NEAR(objective, -32.0, 1e-3);
+}

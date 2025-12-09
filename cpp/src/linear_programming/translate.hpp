@@ -97,6 +97,10 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
         : cuopt::linear_programming::dual_simplex::variable_type_t::INTEGER;
   }
 
+  user_problem.Q_offsets = model.Q_offsets;
+  user_problem.Q_indices = model.Q_indices;
+  user_problem.Q_values  = model.Q_values;
+
   return user_problem;
 }
 

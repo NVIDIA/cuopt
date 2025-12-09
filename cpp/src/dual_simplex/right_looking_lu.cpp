@@ -52,12 +52,12 @@ i_t initialize_degree_data(const csc_matrix_t<i_t, f_t>& A,
   }
 
   for (i_t k = 0; k < n; ++k) {
-    assert(Cdegree[k] <= n && Cdegree[k] >= 0);
+    assert(Cdegree[k] <= m && Cdegree[k] >= 0);
     col_count[Cdegree[k]].push_back(k);
   }
 
   for (i_t k = 0; k < m; ++k) {
-    assert(Rdegree[k] <= m && Rdegree[k] >= 0);
+    assert(Rdegree[k] <= n && Rdegree[k] >= 0);
     row_count[Rdegree[k]].push_back(k);
     if (Rdegree[k] == 0) {
       constexpr bool verbose = false;
