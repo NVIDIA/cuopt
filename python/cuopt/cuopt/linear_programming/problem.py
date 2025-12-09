@@ -1486,7 +1486,11 @@ class Problem:
         >>> problem.updateObjective(coeffs=[(x1, 1.0), (x2, 3.0)], constant=5,
                 sense=MINIMIZE)
         """
+        # Preserve quadratic part before reset
+        quad_obj = self.quad_objective
         self.reset_solved_values()
+        # Restore quadratic part after reset
+        self.quad_objective = quad_obj
         if isinstance(coeffs, dict):
             coeffs = coeffs.items()
         for var, coeff in coeffs:
