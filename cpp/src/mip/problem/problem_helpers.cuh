@@ -185,9 +185,13 @@ __global__ void kernel_check_transpose_validity(raft::device_span<const f_t> coe
     __syncthreads();
     // Would want to assert there but no easy way to gtest it, so moved it to the host
     if (!shared_found) {
-      DEVICE_LOG_DEBUG(
-        "For cstr %d, var %d, value %f was not found in the transpose", constraint_id, col, value);
-      *failed = true;
+      if (threadIdx.x == 0) {
+        DEVICE_LOG_DEBUG("For cstr %d, var %d, value %f was not found in the transpose",
+                         constraint_id,
+                         col,
+                         value);
+        *failed = true;
+      }
       return;
     }
     __syncthreads();
@@ -218,11 +222,8 @@ static bool check_transpose_validity(const rmm::device_uvector<f_t>& coefficient
       raft::device_span<const i_t>(reverse_offsets.data(), reverse_offsets.size()),
       raft::device_span<const i_t>(reverse_variables.data(), reverse_variables.size()),
       failed.data());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(handle_ptr->get_stream()));
   RAFT_CUDA_TRY(cudaPeekAtLastError());
-  cuopt_assert(!failed.value(handle_ptr->get_stream()),
-               "Difference between the matrix and its transpose");
-  return true;
+  return !failed.value(handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>

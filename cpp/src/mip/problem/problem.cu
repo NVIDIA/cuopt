@@ -299,6 +299,112 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
 {
 }
 
+// Scatter kernel for CSR to CSC transpose: 1 block per row, threads process row entries in parallel
+template <typename i_t, typename f_t>
+__global__ void csr_to_csc_scatter_kernel(i_t n_rows,
+                                          const i_t* __restrict__ row_ptr,
+                                          const i_t* __restrict__ col_ind,
+                                          const f_t* __restrict__ csr_val,
+                                          i_t* __restrict__ next_pos,
+                                          i_t* __restrict__ row_ind_out,
+                                          f_t* __restrict__ val_out)
+{
+  i_t row = blockIdx.x;
+  if (row >= n_rows) return;
+
+  i_t row_start = row_ptr[row];
+  i_t row_end   = row_ptr[row + 1];
+
+  for (i_t idx = threadIdx.x + row_start; idx < row_end; idx += blockDim.x) {
+    i_t k   = idx;
+    i_t col = col_ind[k];
+
+    i_t p          = atomicAdd(&next_pos[col], 1);
+    row_ind_out[p] = row;
+    val_out[p]     = csr_val[k];
+  }
+}
+
+// CSR to CSC transpose with sorted row indices within each column
+template <typename i_t, typename f_t>
+void csr_to_csc_transpose(const i_t* csr_offsets,
+                          const i_t* csr_indices,
+                          const f_t* csr_values,
+                          i_t* csc_offsets,
+                          i_t* csc_indices,
+                          f_t* csc_values,
+                          i_t n_rows,
+                          i_t n_cols,
+                          i_t nnz,
+                          const raft::handle_t* handle_ptr)
+{
+  auto stream = handle_ptr->get_stream();
+
+  // Count entries per column via histogram
+  rmm::device_uvector<i_t> col_counts(n_cols, stream);
+  thrust::fill(handle_ptr->get_thrust_policy(), col_counts.begin(), col_counts.end(), 0);
+
+  thrust::for_each(
+    handle_ptr->get_thrust_policy(),
+    csr_indices,
+    csr_indices + nnz,
+    [counts = col_counts.data()] __device__(i_t col) { atomicAdd(&counts[col], 1); });
+
+  // Exclusive scan to get column pointers
+  thrust::exclusive_scan(
+    handle_ptr->get_thrust_policy(), col_counts.begin(), col_counts.end(), csc_offsets);
+
+  // Set final entry
+  i_t last_count = col_counts.element(n_cols - 1, stream);
+  i_t last_ptr;
+  raft::copy(&last_ptr, csc_offsets + (n_cols - 1), 1, stream);
+  handle_ptr->sync_stream();
+  i_t total_nnz = last_ptr + last_count;
+  raft::copy(csc_offsets + n_cols, &total_nnz, 1, stream);
+
+  // Scatter values
+  rmm::device_uvector<i_t> next_pos(n_cols, stream);
+  raft::copy(next_pos.data(), csc_offsets, n_cols, stream);
+
+  csr_to_csc_scatter_kernel<i_t, f_t><<<n_rows, 256, 0, stream>>>(
+    n_rows, csr_offsets, csr_indices, csr_values, next_pos.data(), csc_indices, csc_values);
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+
+  // Sort row indices
+  rmm::device_uvector<i_t> row_ind_sorted(nnz, stream);
+  rmm::device_uvector<f_t> val_sorted(nnz, stream);
+
+  size_t temp_storage_bytes = 0;
+  cub::DeviceSegmentedSort::SortPairs(nullptr,
+                                      temp_storage_bytes,
+                                      csc_indices,
+                                      row_ind_sorted.data(),
+                                      csc_values,
+                                      val_sorted.data(),
+                                      nnz,
+                                      n_cols,
+                                      csc_offsets,
+                                      csc_offsets + 1,
+                                      stream);
+
+  rmm::device_uvector<std::byte> temp_storage(temp_storage_bytes, stream);
+  cub::DeviceSegmentedSort::SortPairs(temp_storage.data(),
+                                      temp_storage_bytes,
+                                      csc_indices,
+                                      row_ind_sorted.data(),
+                                      csc_values,
+                                      val_sorted.data(),
+                                      nnz,
+                                      n_cols,
+                                      csc_offsets,
+                                      csc_offsets + 1,
+                                      stream);
+
+  // Copy sorted results back
+  raft::copy(csc_indices, row_ind_sorted.data(), nnz, stream);
+  raft::copy(csc_values, val_sorted.data(), nnz, stream);
+}
+
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_transpose_of_problem()
 {
@@ -322,17 +428,35 @@ void problem_t<i_t, f_t>::compute_transpose_of_problem()
     return;
   }
 
-  raft::sparse::linalg::csr_transpose(*handle_ptr,
-                                      offsets.data(),
-                                      variables.data(),
-                                      coefficients.data(),
-                                      reverse_offsets.data(),
-                                      reverse_constraints.data(),
-                                      reverse_coefficients.data(),
-                                      n_constraints,
-                                      n_variables,
-                                      nnz,
-                                      handle_ptr->get_stream());
+  check_csr_representation(
+    coefficients, offsets, variables, handle_ptr, n_variables, n_constraints);
+
+  csr_to_csc_transpose(offsets.data(),
+                       variables.data(),
+                       coefficients.data(),
+                       reverse_offsets.data(),
+                       reverse_constraints.data(),
+                       reverse_coefficients.data(),
+                       n_constraints,
+                       n_variables,
+                       nnz,
+                       handle_ptr);
+
+  check_csr_representation(reverse_coefficients,
+                           reverse_offsets,
+                           reverse_constraints,
+                           handle_ptr,
+                           n_constraints,
+                           n_variables);
+
+  cuopt_assert(check_transpose_validity(this->coefficients,
+                                        this->offsets,
+                                        this->variables,
+                                        this->reverse_coefficients,
+                                        this->reverse_offsets,
+                                        this->reverse_constraints,
+                                        handle_ptr),
+               "cuSparse returned an invalid transpose");
 }
 
 template <typename i_t, typename f_t>
@@ -391,7 +515,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                                           this->reverse_offsets,
                                           this->reverse_constraints,
                                           handle_ptr),
-                 "Tranpose invalide");
+                 "Invalid transpose");
   }
 
   // Check variable bounds are set and with the correct size
