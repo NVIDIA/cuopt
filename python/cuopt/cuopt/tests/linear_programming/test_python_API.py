@@ -18,7 +18,6 @@ from cuopt.linear_programming.problem import (
     MINIMIZE,
     CType,
     Problem,
-    QuadraticExpression,
     VType,
     sense,
 )
