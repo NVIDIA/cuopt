@@ -1290,6 +1290,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
       // Call crossover on the crushed solution
       auto root_crossover_settings            = settings_;
+      root_crossover_settings.log.log         = false;
       root_crossover_settings.concurrent_halt = get_root_concurrent_halt();
       crossover_status_t crossover_status     = crossover(original_lp_,
                                                       root_crossover_settings,
