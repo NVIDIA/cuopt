@@ -788,7 +788,7 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
   std::lock_guard<std::mutex> lock(relaxed_solution_mutex);
   simplex_solution_exists.store(true, std::memory_order_release);
   global_concurrent_halt = 1;
-  CUOPT_LOG_INFO("Setting concurrent halt for PDLP inside diversity manager");
+  CUOPT_LOG_DEBUG("Setting concurrent halt for PDLP inside diversity manager");
   // global_concurrent_halt.store(1, std::memory_order_release);
   // it is safe to use lp_optimal_solution while executing the copy operation
   // the operations are ordered as long as they are on the same stream

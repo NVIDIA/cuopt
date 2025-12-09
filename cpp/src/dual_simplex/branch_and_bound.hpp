@@ -14,6 +14,7 @@
 #include <dual_simplex/pseudo_costs.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
+#include <dual_simplex/solve.hpp>
 #include <dual_simplex/types.hpp>
 #include <utilities/macros.cuh>
 #include <utilities/omp_helpers.hpp>
@@ -114,6 +115,7 @@ class branch_and_bound_t {
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
   volatile int* get_root_concurrent_halt() { return &root_concurrent_halt_; }
   void set_root_concurrent_halt(int value) { root_concurrent_halt_ = value; }
+  lp_status_t solve_root_relaxation(simplex_solver_settings_t<i_t, f_t> const& lp_settings);
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
