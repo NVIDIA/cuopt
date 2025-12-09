@@ -827,9 +827,9 @@ def test_quadratic_expression_construction():
     quad_expr = QuadraticExpression(
         qvars1=[x, x, y],
         qvars2=[x, y, y],
-        quad_coefficients=[1.0, 2.0, 1.0],
-        linear_vars=[x, y],
-        linear_coefficients=[3.0, 4.0],
+        qcoefficients=[1.0, 2.0, 1.0],
+        vars=[x, y],
+        coefficients=[3.0, 4.0],
         constant=5.0,
     )
 
