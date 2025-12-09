@@ -30,8 +30,6 @@ void iterative_refinement_simple(T& op,
 
   f_t error = vector_norm_inf<i_t, f_t>(r);
   if (show_iterative_refinement_info) {
-    // printf(
-    //  "Iterative refinement. Initial error %e || x || %.16e\n", error, vector_norm2<i_t, f_t>(x));
     CUOPT_LOG_INFO(
       "Iterative refinement. Initial error %e || x || %.16e", error, vector_norm2<i_t, f_t>(x));
   }
@@ -50,8 +48,6 @@ void iterative_refinement_simple(T& op,
     if (new_error > error) {
       x = x_sav;
       if (show_iterative_refinement_info) {
-        // printf("%d Iterative refinement error increased %e %e. Stopping\n", iter, error,
-        // new_error);
         CUOPT_LOG_INFO(
           "Iterative refinement. Iter %d error increased %e %e. Stopping", iter, error, new_error);
       }
@@ -61,11 +57,6 @@ void iterative_refinement_simple(T& op,
     x_sav = x;
     iter++;
     if (show_iterative_refinement_info) {
-      // printf("%d Iterative refinement error %e. || x || %.16e || dx || %.16e Continuing\n",
-      //        iter,
-      //        error,
-      //        vector_norm2<i_t, f_t>(x),
-      //        vector_norm2<i_t, f_t>(delta_x));
       CUOPT_LOG_INFO(
         "Iterative refinement. Iter %d error %e. || x || %.16e || dx || %.16e Continuing",
         iter,
@@ -181,10 +172,7 @@ void iterative_refinement_gmres(T& op,
       e1[k]      = temp_e;
 
       rel_res = std::abs(e1[k + 1]);  // / bnorm;
-      if (show_info) {
-        // printf("GMRES IR: iter %d residual = %e\n", k+1, rel_res * bnorm);
-        CUOPT_LOG_INFO("GMRES IR: iter %d residual = %e", k + 1, rel_res);
-      }
+      if (show_info) { CUOPT_LOG_INFO("GMRES IR: iter %d residual = %e", k + 1, rel_res); }
 
       if (rel_res < tol) {
         k++;  // reached convergence
@@ -221,7 +209,6 @@ void iterative_refinement_gmres(T& op,
     auto l2_residual = vector_norm2<i_t, f_t>(r);
 
     if (show_info) {
-      // printf("GMRES IR: after outer_iter %d residual = %e\n", outer_iter, residual);
       CUOPT_LOG_INFO("GMRES IR: after outer_iter %d residual = %e, l2_residual = %e",
                      outer_iter,
                      residual,
@@ -235,8 +222,6 @@ void iterative_refinement_gmres(T& op,
     } else {
       // Residual increased or stagnated, restore best and stop
       if (show_info) {
-        //  printf("GMRES IR: residual increased from %e to %e, stopping\n", best_residual,
-        //  residual);
         CUOPT_LOG_INFO(
           "GMRES IR: residual increased from %e to %e, stopping", best_residual, residual);
       }
