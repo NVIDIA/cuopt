@@ -298,6 +298,7 @@ class QuadraticExpression:
     QuadraticExpressions can be added and subtracted with other
     QuadraticExpressions, LinearExpressions, and Variables, and can also
     be multiplied and divided by scalars.
+
     Parameters
     ----------
     qvars1 : List[Variable]
@@ -312,6 +313,7 @@ class QuadraticExpression:
         List of coefficients for linear terms.
     constant : float
         Constant of the quadratic expression.
+
     Examples
     --------
     >>> x = problem.addVariable()
