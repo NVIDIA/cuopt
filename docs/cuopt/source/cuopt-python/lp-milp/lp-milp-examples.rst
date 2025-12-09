@@ -30,6 +30,9 @@ The response is as follows:
 Simple Quadratic Programming Example
 ------------------------------------
 
+.. note::
+   Quadratic Programming support is currently **experimental** and may change in future releases.
+
 :download:`simple_qp_example.py <examples/simple_qp_example.py>`
 
 .. literalinclude:: examples/simple_qp_example.py

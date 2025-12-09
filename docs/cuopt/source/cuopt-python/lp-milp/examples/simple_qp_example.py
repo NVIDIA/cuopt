@@ -5,6 +5,10 @@
 Simple Quadratic Programming Example
 ====================================
 
+.. note::
+   Quadratic Programming support is currently experimental and may change
+   in future releases.
+
 This example demonstrates how to formulate and solve a simple
 Quadratic Programming (QP) problem using the cuOpt Python API.
 

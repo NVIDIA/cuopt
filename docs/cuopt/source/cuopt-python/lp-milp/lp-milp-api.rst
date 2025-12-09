@@ -16,6 +16,9 @@ LP and MILP API Reference
    :members:
    :undoc-members:
 
+.. note::
+   Quadratic Programming support (QuadraticExpression, QuadraticTerm) is currently **experimental** and may change in future releases.
+
 .. autoclass:: cuopt.linear_programming.problem.QuadraticExpression
    :members:
    :undoc-members:

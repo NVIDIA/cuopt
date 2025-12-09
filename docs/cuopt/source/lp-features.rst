@@ -26,6 +26,9 @@ Each option provide the same powerful linear optimization capabilities while off
 Quadratic Programming (QP)
 --------------------------
 
+.. note::
+   Quadratic Programming support is currently **experimental** and may change in future releases.
+
 cuOpt supports Quadratic Programming problems with quadratic objectives of the form:
 
 minimize (or maximize)    1/2 * x'Qx + c'x
