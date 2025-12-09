@@ -16,6 +16,14 @@ LP and MILP API Reference
    :members:
    :undoc-members:
 
+.. autoclass:: cuopt.linear_programming.problem.QuadraticExpression
+   :members:
+   :undoc-members:
+
+.. autoclass:: cuopt.linear_programming.problem.QuadraticTerm
+   :members:
+   :undoc-members:
+
 .. autoclass:: cuopt.linear_programming.problem.Constraint
    :members:
    :undoc-members:
