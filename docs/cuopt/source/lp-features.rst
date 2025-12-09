@@ -31,9 +31,11 @@ Quadratic Programming (QP)
 
 cuOpt supports Quadratic Programming problems with quadratic objectives of the form:
 
-minimize (or maximize)    1/2 * x'Qx + c'x
-subject to                Ax {<=, =, >=} b
-                          lb <= x <= ub
+.. code-block:: text
+
+    minimize (or maximize)    1/2 * x'Qx + c'x
+    subject to                Ax {<=, =, >=} b
+                              lb <= x <= ub
 
 where Q is a symmetric positive semi-definite matrix for minimization problems.
 

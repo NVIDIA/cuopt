@@ -234,9 +234,7 @@ class Variable:
             case int() | float():
                 return LinearExpression([self], [float(other)], 0.0)
             case Variable():
-                return QuadraticExpression(
-                    [self], [other], [1.0], [], [], 0.0
-                )
+                return QuadraticExpression([self], [other], [1.0], [], [], 0.0)
             case LinearExpression():
                 qvars1 = [self] * len(other.vars)
                 qvars2 = other.vars
@@ -574,7 +572,8 @@ class QuadraticTerm:
                 )
             case _:
                 raise ValueError(
-                    "Cannot add type %s to QuadraticTerm" % type(other).__name__
+                    "Cannot add type %s to QuadraticTerm"
+                    % type(other).__name__
                 )
 
     def __radd__(self, other):

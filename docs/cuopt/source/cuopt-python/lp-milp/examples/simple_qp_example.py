@@ -24,7 +24,6 @@ while requiring the sum of x and y to be at least 1.
 from cuopt.linear_programming.problem import (
     MINIMIZE,
     Problem,
-    QuadraticExpression,
 )
 
 
@@ -56,4 +55,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
