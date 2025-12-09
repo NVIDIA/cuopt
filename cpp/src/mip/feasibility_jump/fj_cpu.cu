@@ -710,10 +710,12 @@ static void perturb(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
   raft::random::PCGenerator rng(fj_cpu.settings.seed + fj_cpu.iterations, 0, 0);
 
   for (auto var_idx : sampled_vars) {
-    f_t lb  = ceil(std::max(get_lower(fj_cpu.h_var_bounds[var_idx]), -1e7));
-    f_t ub  = floor(std::min(get_upper(fj_cpu.h_var_bounds[var_idx]), 1e7));
+    f_t lb  = std::max(get_lower(fj_cpu.h_var_bounds[var_idx]), -1e7);
+    f_t ub  = std::min(get_upper(fj_cpu.h_var_bounds[var_idx]), 1e7);
     f_t val = lb + (ub - lb) * rng.next_double();
     if (fj_cpu.view.pb.is_integer_var(var_idx)) {
+      lb  = std::ceil(lb);
+      ub  = std::floor(ub);
       val = std::round(val);
       val = std::min(std::max(val, lb), ub);
     }
@@ -860,6 +862,13 @@ static void init_fj_cpu(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
 template <typename i_t, typename f_t>
 static void sanity_checks(fj_cpu_climber_t<i_t, f_t>& fj_cpu)
 {
+  // Check that each variable is within its bounds
+  for (i_t var_idx = 0; var_idx < fj_cpu.view.pb.n_variables; ++var_idx) {
+    f_t val = fj_cpu.h_assignment[var_idx];
+    cuopt_assert(fj_cpu.view.pb.check_variable_within_bounds(var_idx, val),
+                 "Variable is out of bounds");
+  }
+
   // Check that each violated constraint is actually violated and not present in
   // satisfied_constraints
   for (const auto& cstr_idx : fj_cpu.violated_constraints) {
