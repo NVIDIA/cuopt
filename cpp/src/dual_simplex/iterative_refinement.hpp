@@ -76,8 +76,11 @@ void iterative_refinement_gmres(T& op,
                                 dense_vector_t<i_t, f_t>& x)
 {
   // Parameters
-  const int max_restarts = 1;
-  const int m            = 30;  // Krylov space dimension
+  // Ideally, we do not need to restart here. But having restarts helps as a checkpoint to get
+  // better solutions in case of true residual is far from the measured residual and true residuals
+  // are not converging after some point
+  const int max_restarts = 3;
+  const int m            = 10;  // Krylov space dimension
   const f_t tol          = 1e-8;
 
   dense_vector_t<i_t, f_t> r(x.size());
@@ -206,9 +209,8 @@ void iterative_refinement_gmres(T& op,
 
     residual = vector_norm_inf<i_t, f_t>(r);
 
-    auto l2_residual = vector_norm2<i_t, f_t>(r);
-
     if (show_info) {
+      auto l2_residual = vector_norm2<i_t, f_t>(r);
       CUOPT_LOG_INFO("GMRES IR: after outer_iter %d residual = %e, l2_residual = %e",
                      outer_iter,
                      residual,
