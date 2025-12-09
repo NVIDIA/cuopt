@@ -668,70 +668,152 @@ def test_barrier_solver_settings(test_name, settings_config):
         )
 
 
-def test_quadratic_expression():
-    """Test QuadraticExpression class and operations."""
-    prob = Problem()
+def test_quadratic_expression_and_matrix():
+    problem = Problem()
+    x = problem.addVariable(lb=9.0, vtype="I", name="x")
+    y = problem.addVariable(name="y")
+    z = problem.addVariable(name="z")
 
-    x = prob.addVariable(name="x")
-    y = prob.addVariable(name="y")
-    z = prob.addVariable(name="z")
+    # Test Quadratic Expressions
+    expr1 = x * x  # var * var
+    expr2 = expr1 + y * z + 2  # QP + QP + const
+    expr3 = expr2 * 4  # QP * const
 
-    # Test Variable * Variable creates QuadraticExpression
-    term = x * y
-    assert isinstance(term, QuadraticExpression)
-    assert len(term.qvars1) == 1
-    assert term.qvars1[0] == x
-    assert term.qvars2[0] == y
-    assert term.quad_coefficients[0] == 1.0
+    assert expr1.getVariables() == [(x, x)]
+    assert expr1.getCoefficients() == [1]
+    assert expr2.getVariables() == [(x, x), (y, z)]
+    assert expr2.getCoefficients() == [1, 1]
+    assert expr3.getVariables() == [(x, x), (y, z)]
+    assert expr3.getCoefficients() == [4, 4]
+    assert expr3.getLinearExpression().getConstant() == 8
+    assert expr3.getLinearExpression().getVariables() == []
+    assert expr3.getLinearExpression().getCoefficients() == []
 
-    # Test scalar multiplication of QuadraticExpression
-    term2 = 2 * (x * x)
-    assert isinstance(term2, QuadraticExpression)
-    assert term2.quad_coefficients[0] == 2.0
+    expr3 /= 4  # QP / const
+    expr4 = expr3 - y  # QP - var
 
-    # Test QuadraticExpression + QuadraticExpression
-    expr = x * x + y * y
-    assert isinstance(expr, QuadraticExpression)
-    assert len(expr.qvars1) == 2
-    assert len(expr.quad_coefficients) == 2
+    assert expr4.getVariables() == [(x, x), (y, z)]
+    assert expr4.getCoefficients() == [1, 1]
+    assert expr4.getLinearExpression().getConstant() == 2
+    assert expr4.getLinearExpression().getVariables() == [y]
+    assert expr4.getLinearExpression().getCoefficients() == [-1]
 
-    # Test QuadraticExpression + Variable
-    expr2 = expr + z
-    assert isinstance(expr2, QuadraticExpression)
-    assert len(expr2.linear_vars) == 1
-    assert z in expr2.linear_vars
+    expr5 = z + 7 * y + 1  # LP
+    expr6 = y * expr5  # var * LP
+    expr7 = expr5 - x * x  # LP - QP
+    expr8 = (
+        expr4 - expr5
+    )  # QP - LP # x2 + yz + 2 - y - 7y -z - 1 + 7y2 + yz + y
+    expr8 += expr6  # QP + QP
 
-    # Test QuadraticExpression + constant
-    expr3 = expr + 5
-    assert expr3.constant == 5.0
+    assert expr6.getVariable1(0) is y
+    assert expr6.getVariable2(0) is y
+    assert expr6.getVariable1(1) is y
+    assert expr6.getVariable2(1) is z
+    assert expr6.getCoefficients() == [7, 1]
+    assert expr6.getLinearExpression().getConstant() == 0
+    assert expr6.getLinearExpression().getVariables() == [y]
+    assert expr6.getLinearExpression().getCoefficients() == [1]
 
-    # Test QuadraticExpression + LinearExpression
-    linear = 2 * x + 3 * y + 1
-    expr4 = expr + linear
-    assert isinstance(expr4, QuadraticExpression)
-    assert len(expr4.linear_vars) == 2
-    assert expr4.constant == 1.0
+    assert expr7.getVariable1(0) is x
+    assert expr7.getVariable2(0) is x
+    assert expr7.getCoefficients() == [-1]
+    assert expr7.getLinearExpression().getConstant() == 1
+    assert expr7.getLinearExpression().getVariable(0) is y
+    assert expr7.getLinearExpression().getVariable(1) is z
+    assert expr7.getLinearExpression().getCoefficients() == [7, 1]
 
-    # Test subtraction
-    expr5 = expr - 3
-    assert expr5.constant == -3.0
+    assert len(expr8.getVariables()) == 4
+    assert expr8.getCoefficients() == [1, 1, 7, 1]
+    assert expr8.getLinearExpression().getConstant() == 1
+    assert expr8.getLinearExpression().getCoefficients() == [-1, -7, -1, 1]
 
-    # Test scalar multiplication
-    expr6 = expr * 2
-    assert all(c == 2.0 for c in expr6.quad_coefficients)
+    expr9 = expr5 * (3 * x - y + z + 3)  # LP * LP
+    # expr9 = 21*y*x + 7*y*z + 21*y - 7*y*y + 3*x + z + 3 - y + 3*z*x + z*z +3*z - z*y
 
-    # Test scalar division
-    expr7 = expr6 / 2
-    assert all(c == 1.0 for c in expr7.quad_coefficients)
+    qvariables = [(y, x), (y, y), (y, z), (z, x), (z, y), (z, z)]
+    qcoeffs = [21, -7, 7, 3, -1, 1]
+    for i, (var1, var2) in enumerate(expr9.getVariables()):
+        assert var1 is qvariables[i][0]
+        assert var2 is qvariables[i][1]
+    assert expr9.getCoefficients() == qcoeffs
 
-    # Test Variable * LinearExpression
-    lin_expr = 2 * y + 3 * z + 4
-    quad_from_mul = x * lin_expr
-    assert isinstance(quad_from_mul, QuadraticExpression)
-    # Should have 2 quadratic terms: x*y and x*z
-    assert len(quad_from_mul.qvars1) == 2
-    # Should have linear term: 4*x (from constant)
-    assert len(quad_from_mul.linear_vars) == 1
+    linexpr = expr9.getLinearExpression()
+    lvariables = [y, z, x, y, z]
+    lcoeffs = [21, 3, 3, -1, 1]
+    constant = 3
+    for i, var in enumerate(linexpr.getVariables()):
+        assert var is lvariables[i]
+    assert linexpr.getCoefficients() == lcoeffs
+    assert linexpr.getConstant() == constant
+
+    # Test Quadratic Matrix
+    problem.setObjective(expr9)
+    Qcsr = problem.getQcsr()
+
+    exp_row_ptrs = [0, 0, 3, 6]
+    exp_col_inds = [0, 1, 2, 0, 1, 2]
+    exp_vals = [21, -7, 7, 3, -1, 1]
+
+    assert Qcsr.row_pointers == exp_row_ptrs
+    assert Qcsr.column_indices == exp_col_inds
+    assert Qcsr.values == exp_vals
+
+
+def test_quadratic_objective_1():
+    # Minimize x1 ^2 + 4 x2 ^2 - 8 x1 - 16 x2
+    # subject to x1 + x2 >= 5
+    #         x1 >= 3
+    #         x2 >= 0
+
+    problem = Problem()
+    x1 = problem.addVariable(lb=3.0, name="x")
+    x2 = problem.addVariable(lb=0, name="y")
+
+    problem.addConstraint(x1 + x2 >= 5)
+    problem.setObjective(x1 * x1 + 4 * x2 * x2 - 8 * x1 - 16 * x2)
+
+    problem.solve()
+
+    assert problem.Status.name == "Optimal"
+    assert x1.getValue() == pytest.approx(4.0)
+    assert x2.getValue() == pytest.approx(2.0)
+    assert problem.ObjValue == pytest.approx(-32.0)
+
+
+def test_quadratic_objective_2():
+    # Minimize 4 x1^2 + 2 x2^2 + 3 x3^2 + 1.5 x1 x3 - 2 x1 + 0.5 x2 - x3
+    # subject to x1 + 2*x2 + x3 <= 3
+    #         x1 >= 0
+    #         x2 >= 0
+    #         x3 >= 0
+
+    problem = Problem()
+    x1 = problem.addVariable(lb=0, name="x")
+    x2 = problem.addVariable(lb=0, name="y")
+    x3 = problem.addVariable(lb=0, name="z")
+
+    problem.addConstraint(x1 + 2 * x2 + x3 <= 3)
+    problem.setObjective(
+        2 * x1 * x1
+        + 2 * x2 * x2
+        + 3 * x3 * x3
+        + 1.5 * x1 * x3
+        - 2 * x1
+        + 0.5 * x2
+        - 2 * x1 * x2
+        - 1.0 * x3
+        + 2 * x1 * x1
+        + 2 * x1 * x2
+    )
+
+    problem.solve()
+
+    assert problem.Status.name == "Optimal"
+    assert x1.getValue() == pytest.approx(0.2295081)
+    assert x2.getValue() == pytest.approx(0.0000000, abs=0.000001)
+    assert x3.getValue() == pytest.approx(0.1092896)
+    assert problem.ObjValue == pytest.approx(-0.284153)
 
 
 def test_quadratic_expression_construction():
