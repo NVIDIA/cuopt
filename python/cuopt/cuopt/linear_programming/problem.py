@@ -1218,7 +1218,8 @@ class Problem:
                 key = (i, j)
                 Q_dict[key] = Q_dict.get(key, 0.0) + coeff
 
-            # Build CSR format for Q matrix
+            # Build CSR format for Q matrix (upper triangular only)
+            # C++ backend will symmetrize via Q + Q^T
             n = len(self.vars)
             Q_offsets = [0]
             Q_indices = []
@@ -1227,11 +1228,9 @@ class Problem:
             for row in range(n):
                 row_entries = []
                 for (i, j), val in Q_dict.items():
-                    if i == row:
+                    # Only emit upper triangular entries (i <= j)
+                    if i == row and i <= j:
                         row_entries.append((j, val))
-                    elif j == row and i != j:
-                        # For symmetric matrix, also add the transpose
-                        row_entries.append((i, val))
                 row_entries.sort(key=lambda x: x[0])
                 for col, val in row_entries:
                     Q_indices.append(col)

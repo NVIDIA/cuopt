@@ -33,7 +33,7 @@ cuOpt supports Quadratic Programming problems with quadratic objectives of the f
 
 .. code-block:: text
 
-    minimize (or maximize)    1/2 * x'Qx + c'x
+    minimize (or maximize)    x'Qx + c'x
     subject to                Ax {<=, =, >=} b
                               lb <= x <= ub
 
