@@ -233,6 +233,19 @@ class Variable:
         match other:
             case int() | float():
                 return LinearExpression([self], [float(other)], 0.0)
+            case Variable():
+                return QuadraticExpression(
+                    [self], [other], [1.0], [], [], 0.0
+                )
+            case LinearExpression():
+                qvars1 = [self] * len(other.vars)
+                qvars2 = other.vars
+                qcoeffs = other.coefficients
+                linear_vars = [self]
+                linear_coeffs = [other.constant]
+                return QuadraticExpression(
+                    qvars1, qvars2, qcoeffs, linear_vars, linear_coeffs, 0.0
+                )
             case _:
                 raise ValueError(
                     "Cannot multiply type %s with variable"
@@ -277,6 +290,369 @@ class Variable:
                 return Constraint(expr, EQ, 0.0)
             case _:
                 raise ValueError("Unsupported operation")
+
+
+class QuadraticExpression:
+    """
+    QuadraticExpressions contain quadratic terms, linear terms, and a constant.
+    QuadraticExpressions can be used to create quadratic objectives in
+    the Problem.
+    QuadraticExpressions can be added and subtracted with other
+    QuadraticExpressions, LinearExpressions, and Variables, and can also
+    be multiplied and divided by scalars.
+
+    Parameters
+    ----------
+    qvars1 : List[Variable]
+        List of first variables for quadratic terms.
+    qvars2 : List[Variable]
+        List of second variables for quadratic terms.
+    quad_coefficients : List[float]
+        List of coefficients for the quadratic terms.
+    linear_vars : List[Variable]
+        List of Variables for linear terms.
+    linear_coefficients : List[float]
+        List of coefficients for linear terms.
+    constant : float
+        Constant of the quadratic expression.
+
+    Examples
+    --------
+    >>> x = problem.addVariable()
+    >>> y = problem.addVariable()
+    >>> # Create x^2 + 2*x*y + 3*x + 4
+    >>> quad_expr = QuadraticExpression(
+    ...     [x, x], [x, y], [1.0, 2.0],
+    ...     [x], [3.0], 4.0
+    ... )
+    """
+
+    def __init__(
+        self,
+        qvars1=None,
+        qvars2=None,
+        quad_coefficients=None,
+        linear_vars=None,
+        linear_coefficients=None,
+        constant=0.0,
+    ):
+        self.qvars1 = qvars1 if qvars1 is not None else []
+        self.qvars2 = qvars2 if qvars2 is not None else []
+        self.quad_coefficients = (
+            quad_coefficients if quad_coefficients is not None else []
+        )
+        self.linear_vars = linear_vars if linear_vars is not None else []
+        self.linear_coefficients = (
+            linear_coefficients if linear_coefficients is not None else []
+        )
+        self.constant = constant
+
+    def getQuadraticTerms(self):
+        """
+        Returns all the quadratic variable pairs as tuples.
+        """
+        return list(zip(self.qvars1, self.qvars2))
+
+    def getQuadraticCoefficients(self):
+        """
+        Returns all the coefficients for quadratic terms.
+        """
+        return self.quad_coefficients
+
+    def getLinearVariables(self):
+        """
+        Returns all the variables in the linear part.
+        """
+        return self.linear_vars
+
+    def getLinearCoefficients(self):
+        """
+        Returns all the coefficients for linear terms.
+        """
+        return self.linear_coefficients
+
+    def getConstant(self):
+        """
+        Returns the constant in the quadratic expression.
+        """
+        return self.constant
+
+    def __add__(self, other):
+        match other:
+            case int() | float():
+                return QuadraticExpression(
+                    list(self.qvars1),
+                    list(self.qvars2),
+                    list(self.quad_coefficients),
+                    list(self.linear_vars),
+                    list(self.linear_coefficients),
+                    self.constant + float(other),
+                )
+            case Variable():
+                return QuadraticExpression(
+                    list(self.qvars1),
+                    list(self.qvars2),
+                    list(self.quad_coefficients),
+                    self.linear_vars + [other],
+                    self.linear_coefficients + [1.0],
+                    self.constant,
+                )
+            case LinearExpression():
+                return QuadraticExpression(
+                    list(self.qvars1),
+                    list(self.qvars2),
+                    list(self.quad_coefficients),
+                    self.linear_vars + other.vars,
+                    self.linear_coefficients + other.coefficients,
+                    self.constant + other.constant,
+                )
+            case QuadraticExpression():
+                return QuadraticExpression(
+                    self.qvars1 + other.qvars1,
+                    self.qvars2 + other.qvars2,
+                    self.quad_coefficients + other.quad_coefficients,
+                    self.linear_vars + other.linear_vars,
+                    self.linear_coefficients + other.linear_coefficients,
+                    self.constant + other.constant,
+                )
+            case _:
+                raise ValueError(
+                    "Cannot add type %s to QuadraticExpression"
+                    % type(other).__name__
+                )
+
+    def __radd__(self, other):
+        return self + other
+
+    def __sub__(self, other):
+        match other:
+            case int() | float():
+                return QuadraticExpression(
+                    list(self.qvars1),
+                    list(self.qvars2),
+                    list(self.quad_coefficients),
+                    list(self.linear_vars),
+                    list(self.linear_coefficients),
+                    self.constant - float(other),
+                )
+            case Variable():
+                return QuadraticExpression(
+                    list(self.qvars1),
+                    list(self.qvars2),
+                    list(self.quad_coefficients),
+                    self.linear_vars + [other],
+                    self.linear_coefficients + [-1.0],
+                    self.constant,
+                )
+            case LinearExpression():
+                neg_coeffs = [-c for c in other.coefficients]
+                return QuadraticExpression(
+                    list(self.qvars1),
+                    list(self.qvars2),
+                    list(self.quad_coefficients),
+                    self.linear_vars + other.vars,
+                    self.linear_coefficients + neg_coeffs,
+                    self.constant - other.constant,
+                )
+            case QuadraticExpression():
+                neg_quad_coeffs = [-c for c in other.quad_coefficients]
+                neg_linear_coeffs = [-c for c in other.linear_coefficients]
+                return QuadraticExpression(
+                    self.qvars1 + other.qvars1,
+                    self.qvars2 + other.qvars2,
+                    self.quad_coefficients + neg_quad_coeffs,
+                    self.linear_vars + other.linear_vars,
+                    self.linear_coefficients + neg_linear_coeffs,
+                    self.constant - other.constant,
+                )
+            case _:
+                raise ValueError(
+                    "Cannot subtract type %s from QuadraticExpression"
+                    % type(other).__name__
+                )
+
+    def __rsub__(self, other):
+        return other + self * -1.0
+
+    def __mul__(self, other):
+        match other:
+            case int() | float():
+                scalar = float(other)
+                return QuadraticExpression(
+                    list(self.qvars1),
+                    list(self.qvars2),
+                    [c * scalar for c in self.quad_coefficients],
+                    list(self.linear_vars),
+                    [c * scalar for c in self.linear_coefficients],
+                    self.constant * scalar,
+                )
+            case _:
+                raise ValueError(
+                    "Cannot multiply QuadraticExpression by type %s"
+                    % type(other).__name__
+                )
+
+    def __rmul__(self, other):
+        return self * other
+
+    def __truediv__(self, other):
+        match other:
+            case int() | float():
+                scalar = float(other)
+                return QuadraticExpression(
+                    list(self.qvars1),
+                    list(self.qvars2),
+                    [c / scalar for c in self.quad_coefficients],
+                    list(self.linear_vars),
+                    [c / scalar for c in self.linear_coefficients],
+                    self.constant / scalar,
+                )
+            case _:
+                raise ValueError(
+                    "Cannot divide QuadraticExpression by type %s"
+                    % type(other).__name__
+                )
+
+
+class QuadraticTerm:
+    """
+    Represents a quadratic term (coefficient * var1 * var2).
+    Used internally to build QuadraticExpressions.
+    """
+
+    def __init__(self, var1, var2, coefficient=1.0):
+        self.var1 = var1
+        self.var2 = var2
+        self.coefficient = coefficient
+
+    def __add__(self, other):
+        match other:
+            case int() | float():
+                return QuadraticExpression(
+                    [self.var1],
+                    [self.var2],
+                    [self.coefficient],
+                    [],
+                    [],
+                    float(other),
+                )
+            case Variable():
+                return QuadraticExpression(
+                    [self.var1],
+                    [self.var2],
+                    [self.coefficient],
+                    [other],
+                    [1.0],
+                    0.0,
+                )
+            case LinearExpression():
+                return QuadraticExpression(
+                    [self.var1],
+                    [self.var2],
+                    [self.coefficient],
+                    other.vars,
+                    other.coefficients,
+                    other.constant,
+                )
+            case QuadraticTerm():
+                return QuadraticExpression(
+                    [self.var1, other.var1],
+                    [self.var2, other.var2],
+                    [self.coefficient, other.coefficient],
+                    [],
+                    [],
+                    0.0,
+                )
+            case QuadraticExpression():
+                return QuadraticExpression(
+                    [self.var1] + other.qvars1,
+                    [self.var2] + other.qvars2,
+                    [self.coefficient] + other.quad_coefficients,
+                    other.linear_vars,
+                    other.linear_coefficients,
+                    other.constant,
+                )
+            case _:
+                raise ValueError(
+                    "Cannot add type %s to QuadraticTerm" % type(other).__name__
+                )
+
+    def __radd__(self, other):
+        return self + other
+
+    def __sub__(self, other):
+        match other:
+            case int() | float():
+                return QuadraticExpression(
+                    [self.var1],
+                    [self.var2],
+                    [self.coefficient],
+                    [],
+                    [],
+                    -float(other),
+                )
+            case Variable():
+                return QuadraticExpression(
+                    [self.var1],
+                    [self.var2],
+                    [self.coefficient],
+                    [other],
+                    [-1.0],
+                    0.0,
+                )
+            case LinearExpression():
+                neg_coeffs = [-c for c in other.coefficients]
+                return QuadraticExpression(
+                    [self.var1],
+                    [self.var2],
+                    [self.coefficient],
+                    other.vars,
+                    neg_coeffs,
+                    -other.constant,
+                )
+            case QuadraticTerm():
+                return QuadraticExpression(
+                    [self.var1, other.var1],
+                    [self.var2, other.var2],
+                    [self.coefficient, -other.coefficient],
+                    [],
+                    [],
+                    0.0,
+                )
+            case QuadraticExpression():
+                neg_quad_coeffs = [-c for c in other.quad_coefficients]
+                neg_linear_coeffs = [-c for c in other.linear_coefficients]
+                return QuadraticExpression(
+                    [self.var1] + other.qvars1,
+                    [self.var2] + other.qvars2,
+                    [self.coefficient] + neg_quad_coeffs,
+                    other.linear_vars,
+                    neg_linear_coeffs,
+                    -other.constant,
+                )
+            case _:
+                raise ValueError(
+                    "Cannot subtract type %s from QuadraticTerm"
+                    % type(other).__name__
+                )
+
+    def __rsub__(self, other):
+        return other + self * -1.0
+
+    def __mul__(self, other):
+        match other:
+            case int() | float():
+                return QuadraticTerm(
+                    self.var1, self.var2, self.coefficient * float(other)
+                )
+            case _:
+                raise ValueError(
+                    "Cannot multiply QuadraticTerm by type %s"
+                    % type(other).__name__
+                )
+
+    def __rmul__(self, other):
+        return self * other
 
 
 class LinearExpression:
@@ -689,6 +1065,7 @@ class Problem:
         self.Status = -1
         self.ObjValue = float("nan")
         self.warmstart_data = None
+        self.quad_objective = None
 
         self.model = None
         self.solved = False
@@ -827,6 +1204,47 @@ class Problem:
         dm.set_row_names(self.row_names)
         dm.set_problem_name(self.Name)
 
+        # Set quadratic objective if present
+        if self.quad_objective is not None:
+            Q_dict = {}
+            for var1, var2, coeff in zip(
+                self.quad_objective.qvars1,
+                self.quad_objective.qvars2,
+                self.quad_objective.quad_coefficients,
+            ):
+                i, j = var1.index, var2.index
+                # Ensure i <= j for upper triangular storage
+                if i > j:
+                    i, j = j, i
+                key = (i, j)
+                Q_dict[key] = Q_dict.get(key, 0.0) + coeff
+
+            # Build CSR format for Q matrix
+            n = len(self.vars)
+            Q_offsets = [0]
+            Q_indices = []
+            Q_values = []
+
+            for row in range(n):
+                row_entries = []
+                for (i, j), val in Q_dict.items():
+                    if i == row:
+                        row_entries.append((j, val))
+                    elif j == row and i != j:
+                        # For symmetric matrix, also add the transpose
+                        row_entries.append((i, val))
+                row_entries.sort(key=lambda x: x[0])
+                for col, val in row_entries:
+                    Q_indices.append(col)
+                    Q_values.append(val)
+                Q_offsets.append(len(Q_indices))
+
+            dm.set_quadratic_objective_matrix(
+                np.array(Q_values),
+                np.array(Q_indices),
+                np.array(Q_offsets),
+            )
+
         self.model = dm
 
     def update(self):
@@ -851,6 +1269,7 @@ class Problem:
         self.constraint_csr_matrix = None
         self.ObjValue = float("nan")
         self.warmstart_data = None
+        self.quad_objective = None
         self.solved = False
 
     def addVariable(
@@ -967,7 +1386,7 @@ class Problem:
 
         Parameters
         ----------
-        expr : :py:class:`LinearExpression` or :py:class:`Variable` or Constant
+        expr : :py:class:`LinearExpression` or :py:class:`QuadraticExpression` or :py:class:`Variable` or Constant
             Objective expression that needs maximization or minimization.
         sense : enum :py:class:`sense`
             Sets whether the problem is a maximization or a minimization
@@ -983,10 +1402,14 @@ class Problem:
         >>> expr = 3*x + y
         >>> problem.addConstraint(expr + x == 20, name="Constr2")
         >>> problem.setObjective(x + y, sense=MAXIMIZE)
+        >>> # For quadratic objectives:
+        >>> problem.setObjective(x * x + 2 * x * y + y, sense=MINIMIZE)
         """
         if self.solved:
             self.reset_solved_values()  # Reset all solved values
         self.ObjSense = sense
+        # Reset quadratic objective
+        self.quad_objective = None
         match expr:
             case int() | float():
                 for var in self.vars:
@@ -1007,9 +1430,38 @@ class Problem:
                         sum_coeff
                     )
                 self.ObjConstant = expr.getConstant()
+            case QuadraticExpression():
+                # Set linear part
+                for var in self.vars:
+                    var.setObjectiveCoefficient(0.0)
+                for var, coeff in zip(
+                    expr.linear_vars, expr.linear_coefficients
+                ):
+                    c_val = self.vars[var.getIndex()].getObjectiveCoefficient()
+                    sum_coeff = coeff + c_val
+                    self.vars[var.getIndex()].setObjectiveCoefficient(
+                        sum_coeff
+                    )
+                self.ObjConstant = expr.getConstant()
+                # Store quadratic part
+                self.quad_objective = expr
+            case QuadraticTerm():
+                # Convert single QuadraticTerm to QuadraticExpression
+                for var in self.vars:
+                    var.setObjectiveCoefficient(0.0)
+                self.ObjConstant = 0.0
+                self.quad_objective = QuadraticExpression(
+                    [expr.var1],
+                    [expr.var2],
+                    [expr.coefficient],
+                    [],
+                    [],
+                    0.0,
+                )
             case _:
                 raise ValueError(
-                    "Objective must be a LinearExpression or a constant"
+                    "Objective must be a LinearExpression, "
+                    "QuadraticExpression, or a constant"
                 )
 
     def updateObjective(self, coeffs=[], constant=None, sense=None):

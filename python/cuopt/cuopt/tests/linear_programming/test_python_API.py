@@ -18,6 +18,7 @@ from cuopt.linear_programming.problem import (
     MINIMIZE,
     CType,
     Problem,
+    QuadraticExpression,
     VType,
     sense,
 )
@@ -665,3 +666,118 @@ def test_barrier_solver_settings(test_name, settings_config):
         assert c.Slack >= -1e-6, (
             f"Negative slack for {c.getConstraintName()} in {test_name}"
         )
+
+
+def test_quadratic_expression():
+    """Test QuadraticExpression class and operations."""
+    prob = Problem()
+
+    x = prob.addVariable(name="x")
+    y = prob.addVariable(name="y")
+    z = prob.addVariable(name="z")
+
+    # Test Variable * Variable creates QuadraticExpression
+    term = x * y
+    assert isinstance(term, QuadraticExpression)
+    assert len(term.qvars1) == 1
+    assert term.qvars1[0] == x
+    assert term.qvars2[0] == y
+    assert term.quad_coefficients[0] == 1.0
+
+    # Test scalar multiplication of QuadraticExpression
+    term2 = 2 * (x * x)
+    assert isinstance(term2, QuadraticExpression)
+    assert term2.quad_coefficients[0] == 2.0
+
+    # Test QuadraticExpression + QuadraticExpression
+    expr = x * x + y * y
+    assert isinstance(expr, QuadraticExpression)
+    assert len(expr.qvars1) == 2
+    assert len(expr.quad_coefficients) == 2
+
+    # Test QuadraticExpression + Variable
+    expr2 = expr + z
+    assert isinstance(expr2, QuadraticExpression)
+    assert len(expr2.linear_vars) == 1
+    assert z in expr2.linear_vars
+
+    # Test QuadraticExpression + constant
+    expr3 = expr + 5
+    assert expr3.constant == 5.0
+
+    # Test QuadraticExpression + LinearExpression
+    linear = 2 * x + 3 * y + 1
+    expr4 = expr + linear
+    assert isinstance(expr4, QuadraticExpression)
+    assert len(expr4.linear_vars) == 2
+    assert expr4.constant == 1.0
+
+    # Test subtraction
+    expr5 = expr - 3
+    assert expr5.constant == -3.0
+
+    # Test scalar multiplication
+    expr6 = expr * 2
+    assert all(c == 2.0 for c in expr6.quad_coefficients)
+
+    # Test scalar division
+    expr7 = expr6 / 2
+    assert all(c == 1.0 for c in expr7.quad_coefficients)
+
+    # Test Variable * LinearExpression
+    lin_expr = 2 * y + 3 * z + 4
+    quad_from_mul = x * lin_expr
+    assert isinstance(quad_from_mul, QuadraticExpression)
+    # Should have 2 quadratic terms: x*y and x*z
+    assert len(quad_from_mul.qvars1) == 2
+    # Should have linear term: 4*x (from constant)
+    assert len(quad_from_mul.linear_vars) == 1
+
+
+def test_quadratic_expression_construction():
+    """Test various ways to construct QuadraticExpressions."""
+    prob = Problem()
+
+    x = prob.addVariable(name="x")
+    y = prob.addVariable(name="y")
+
+    # Build: x^2 + 2*x*y + y^2 + 3*x + 4*y + 5
+    quad_expr = QuadraticExpression(
+        qvars1=[x, x, y],
+        qvars2=[x, y, y],
+        quad_coefficients=[1.0, 2.0, 1.0],
+        linear_vars=[x, y],
+        linear_coefficients=[3.0, 4.0],
+        constant=5.0,
+    )
+
+    assert len(quad_expr.getQuadraticTerms()) == 3
+    assert quad_expr.getQuadraticCoefficients() == [1.0, 2.0, 1.0]
+    assert len(quad_expr.getLinearVariables()) == 2
+    assert quad_expr.getLinearCoefficients() == [3.0, 4.0]
+    assert quad_expr.getConstant() == 5.0
+
+
+def test_quadratic_objective_setting():
+    """Test setting quadratic objectives in Problem."""
+    prob = Problem("QP Test")
+
+    x = prob.addVariable(lb=0, name="x")
+    y = prob.addVariable(lb=0, name="y")
+
+    # Add constraints
+    prob.addConstraint(x + y >= 1, name="c1")
+
+    # Set quadratic objective: minimize x^2 + y^2
+    quad_obj = x * x + y * y
+    prob.setObjective(quad_obj, sense=MINIMIZE)
+
+    assert prob.quad_objective is not None
+    assert prob.ObjSense == MINIMIZE
+
+    # Test setting a more complex quadratic objective
+    quad_obj2 = 2 * (x * x) + x * y + 3 * (y * y) + 4 * x + 5 * y + 6
+    prob.setObjective(quad_obj2, sense=MINIMIZE)
+
+    assert prob.quad_objective is not None
+    assert prob.ObjConstant == 6.0
