@@ -5,15 +5,17 @@
  */
 /* clang-format on */
 
+#include "cuda_profiler_api.h"
+#include "diversity_manager.cuh"
+
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/probing_cache.cuh>
 #include <mip/presolve/trivial_presolve.cuh>
 #include <mip/problem/problem_helpers.cuh>
-#include "diversity_manager.cuh"
+
+#include <linear_programming/solve.cuh>
 
 #include <utilities/scope_guard.hpp>
-
-#include "cuda_profiler_api.h"
 
 constexpr bool fj_only_run = false;
 
@@ -34,6 +36,7 @@ std::vector<recombiner_enum_t> recombiner_t<i_t, f_t>::enabled_recombiners;
 template <typename i_t, typename f_t>
 diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t>& context_)
   : context(context_),
+    branch_and_bound_ptr(nullptr),
     problem_ptr(context.problem_ptr),
     diversity_config(),
     population("population",
@@ -336,17 +339,29 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   if (bb_thread_solution_exists) {
     ls.lp_optimal_exists = true;
   } else if (!fj_only_run) {
-    relaxed_lp_settings_t lp_settings;
-    lp_settings.time_limit            = lp_time_limit;
-    lp_settings.tolerance             = context.settings.tolerances.absolute_tolerance;
-    lp_settings.return_first_feasible = false;
-    lp_settings.save_state            = true;
-    lp_settings.concurrent_halt       = &global_concurrent_halt;
-    lp_settings.has_initial_primal    = false;
+    convert_greater_to_less(*problem_ptr);
+
+    f_t tolerance_divisor =
+      problem_ptr->tolerances.absolute_tolerance / problem_ptr->tolerances.relative_tolerance;
+    if (tolerance_divisor == 0) { tolerance_divisor = 1; }
+    f_t absolute_tolerance = context.settings.tolerances.absolute_tolerance;
+
+    pdlp_solver_settings_t<i_t, f_t> pdlp_settings{};
+    pdlp_settings.tolerances.relative_primal_tolerance = absolute_tolerance / tolerance_divisor;
+    pdlp_settings.tolerances.relative_dual_tolerance   = absolute_tolerance / tolerance_divisor;
+    pdlp_settings.time_limit                           = lp_time_limit;
+    pdlp_settings.first_primal_feasible                = false;
+    pdlp_settings.concurrent_halt                      = &global_concurrent_halt;
+    pdlp_settings.method                               = method_t::Concurrent;
+    pdlp_settings.inside_mip                           = true;
+    pdlp_settings.pdlp_solver_mode                     = pdlp_solver_mode_t::Stable2;
+    pdlp_settings.num_gpus                             = context.settings.num_gpus;
+
     rmm::device_uvector<f_t> lp_optimal_solution_copy(lp_optimal_solution.size(),
                                                       problem_ptr->handle_ptr->get_stream());
-    auto lp_result =
-      get_relaxed_lp_solution(*problem_ptr, lp_optimal_solution_copy, lp_state, lp_settings);
+    timer_t lp_timer(lp_time_limit);
+    auto lp_result = solve_lp_with_method<i_t, f_t>(*problem_ptr, pdlp_settings, lp_timer);
+
     {
       std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
       if (!simplex_solution_exists.load()) {
@@ -382,6 +397,41 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
       // note to developer, in debug mode the LP run might be too slow and it might cause PDLP not
       // to bring variables within the bounds
     }
+
+    // Send PDLP relaxed solution to branch and bound before it solves the root node
+    if (problem_ptr->set_root_relaxation_solution_callback != nullptr) {
+      auto& d_primal_solution = lp_result.get_primal_solution();
+      auto& d_dual_solution   = lp_result.get_dual_solution();
+      auto& d_reduced_costs   = lp_result.get_reduced_cost();
+
+      std::vector<f_t> host_primal(d_primal_solution.size());
+      std::vector<f_t> host_dual(d_dual_solution.size());
+      std::vector<f_t> host_reduced_costs(d_reduced_costs.size());
+      raft::copy(host_primal.data(),
+                 d_primal_solution.data(),
+                 d_primal_solution.size(),
+                 problem_ptr->handle_ptr->get_stream());
+      raft::copy(host_dual.data(),
+                 d_dual_solution.data(),
+                 d_dual_solution.size(),
+                 problem_ptr->handle_ptr->get_stream());
+      raft::copy(host_reduced_costs.data(),
+                 d_reduced_costs.data(),
+                 d_reduced_costs.size(),
+                 problem_ptr->handle_ptr->get_stream());
+      problem_ptr->handle_ptr->sync_stream();
+
+      auto user_obj   = problem_ptr->get_user_obj_from_solver_obj(lp_result.get_objective_value());
+      auto iterations = lp_result.get_additional_termination_information().number_of_steps_taken;
+      // Set for the B&B
+      problem_ptr->set_root_relaxation_solution_callback(host_primal,
+                                                         host_dual,
+                                                         host_reduced_costs,
+                                                         lp_result.get_objective_value(),
+                                                         user_obj,
+                                                         iterations);
+    }
+
     // in case the pdlp returned var boudns that are out of bounds
     clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
   }
@@ -738,6 +788,7 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
   std::lock_guard<std::mutex> lock(relaxed_solution_mutex);
   simplex_solution_exists.store(true, std::memory_order_release);
   global_concurrent_halt = 1;
+  CUOPT_LOG_DEBUG("Setting concurrent halt for PDLP inside diversity manager");
   // global_concurrent_halt.store(1, std::memory_order_release);
   // it is safe to use lp_optimal_solution while executing the copy operation
   // the operations are ordered as long as they are on the same stream

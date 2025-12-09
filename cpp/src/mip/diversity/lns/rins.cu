@@ -23,7 +23,6 @@
 #include <mip/presolve/trivial_presolve.cuh>
 
 namespace cuopt::linear_programming::detail {
-
 template <typename i_t, typename f_t>
 rins_t<i_t, f_t>::rins_t(mip_solver_context_t<i_t, f_t>& context_,
                          diversity_manager_t<i_t, f_t>& dm_,

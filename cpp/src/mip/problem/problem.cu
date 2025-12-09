@@ -143,7 +143,8 @@ problem_t<i_t, f_t>::problem_t(
     Q_values(problem_.get_quadratic_objective_values())
 {
   op_problem_cstr_body(problem_);
-  branch_and_bound_callback = nullptr;
+  branch_and_bound_callback             = nullptr;
+  set_root_relaxation_solution_callback = nullptr;
 }
 
 template <typename i_t, typename f_t>
@@ -154,6 +155,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     integer_fixed_problem(problem_.integer_fixed_problem),
     integer_fixed_variable_map(problem_.integer_fixed_variable_map, handle_ptr->get_stream()),
     branch_and_bound_callback(nullptr),
+    set_root_relaxation_solution_callback(nullptr),
     n_variables(problem_.n_variables),
     n_constraints(problem_.n_constraints),
     n_binary_vars(problem_.n_binary_vars),
@@ -348,7 +350,7 @@ void csr_to_csc_transpose(const i_t* csr_offsets,
     csr_indices + nnz,
     [counts = col_counts.data()] __device__(i_t col) { atomicAdd(&counts[col], 1); });
 
-  // 5Exclusive scan to get column pointers
+  // Exclusive scan to get column pointers
   thrust::exclusive_scan(
     handle_ptr->get_thrust_policy(), col_counts.begin(), col_counts.end(), csc_offsets);
 
@@ -366,6 +368,7 @@ void csr_to_csc_transpose(const i_t* csr_offsets,
 
   csr_to_csc_scatter_kernel<i_t, f_t><<<n_rows, 256, 0, stream>>>(
     n_rows, csr_offsets, csr_indices, csr_values, next_pos.data(), csc_indices, csc_values);
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   // Sort row indices
   rmm::device_uvector<i_t> row_ind_sorted(nnz, stream);

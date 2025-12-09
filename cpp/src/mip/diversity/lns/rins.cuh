@@ -21,6 +21,7 @@
 #include <mip/solution/solution.cuh>
 #include <mip/solver.cuh>
 #include <mip/utilities/cpu_worker_thread.cuh>
+
 #include <utilities/timer.hpp>
 
 #include <atomic>
