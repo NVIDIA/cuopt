@@ -7,8 +7,7 @@
 ### New Features (25.12)
 
 - New quadratic programming solver using the barrier method (currently in beta).  
-- Support for quadratic objectives added to the C API.
-- Support for quadratic expressions and objectives added to the Python modeling API.
+- Support for quadratic objectives added to the C and Python modeling APIs.
 - LP concurrent mode now supports multiple GPUs. PDLP and barrier can now be run on separate GPUs.
 - MIP root relaxation solves now use concurrent mode: PDLP, barrier, and dual simplex.
 
