@@ -70,9 +70,10 @@ void strong_branch_helper(i_t start,
                                           iter,
                                           child_edge_norms);
 
-      f_t obj = std::numeric_limits<f_t>::infinity();
+      f_t obj = std::numeric_limits<f_t>::quiet_NaN();
       if (status == dual::status_t::DUAL_UNBOUNDED) {
         // LP was infeasible
+        obj = std::numeric_limits<f_t>::infinity();
       } else if (status == dual::status_t::OPTIMAL || status == dual::status_t::ITERATION_LIMIT) {
         obj = compute_objective(child_problem, solution.x);
       } else {
@@ -227,11 +228,17 @@ void pseudo_costs_t<i_t, f_t>::initialized(i_t& num_initialized_down,
   for (i_t j = 0; j < n; j++) {
     if (pseudo_cost_num_down[j] > 0) {
       num_initialized_down++;
-      pseudo_cost_down_avg += pseudo_cost_sum_down[j] / pseudo_cost_num_down[j];
+      if (std::isfinite(pseudo_cost_sum_down[j])) {
+        pseudo_cost_down_avg += pseudo_cost_sum_down[j] / pseudo_cost_num_down[j];
+      }
     }
+
     if (pseudo_cost_num_up[j] > 0) {
       num_initialized_up++;
-      pseudo_cost_up_avg += pseudo_cost_sum_up[j] / pseudo_cost_num_up[j];
+
+      if (std::isfinite(pseudo_cost_sum_up[j])) {
+        pseudo_cost_up_avg += pseudo_cost_sum_up[j] / pseudo_cost_num_up[j];
+      }
     }
   }
   if (num_initialized_down > 0) {
@@ -317,14 +324,16 @@ void pseudo_costs_t<i_t, f_t>::update_pseudo_costs_from_strong_branching(
   for (i_t k = 0; k < fractional.size(); k++) {
     const i_t j = fractional[k];
     for (i_t branch = 0; branch < 2; branch++) {
-      const f_t frac = branch == 0 ? root_soln[j] - std::floor(root_soln[j])
-                                   : std::ceil(root_soln[j]) - root_soln[j];
       if (branch == 0) {
         f_t change_in_obj = strong_branch_down[k];
+        if (std::isnan(change_in_obj)) { continue; }
+        f_t frac = root_soln[j] - std::floor(root_soln[j]);
         pseudo_cost_sum_down[j] += change_in_obj / frac;
         pseudo_cost_num_down[j]++;
       } else {
         f_t change_in_obj = strong_branch_up[k];
+        if (std::isnan(change_in_obj)) { continue; }
+        f_t frac = std::ceil(root_soln[j]) - root_soln[j];
         pseudo_cost_sum_up[j] += change_in_obj / frac;
         pseudo_cost_num_up[j]++;
       }
