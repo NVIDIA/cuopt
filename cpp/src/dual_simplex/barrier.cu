@@ -1760,7 +1760,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     i_t solve_status = data.chol->solve(rhs, soln);
     struct op_t {
       op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
-      iteration_data_t<i_t, f_t>& data_;      
+      iteration_data_t<i_t, f_t>& data_;
       void a_multiply(f_t alpha,
                       const rmm::device_uvector<f_t>& x,
                       f_t beta,
@@ -2460,7 +2460,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     struct op_t {
       op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
       iteration_data_t<i_t, f_t>& data_;
-     
+
       void a_multiply(f_t alpha,
                       const rmm::device_uvector<f_t>& x,
                       f_t beta,
@@ -2468,7 +2468,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       {
         data_.augmented_multiply(alpha, x, beta, y);
       }
-      
+
       void solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) const
       {
         data_.chol->solve(b, x);
