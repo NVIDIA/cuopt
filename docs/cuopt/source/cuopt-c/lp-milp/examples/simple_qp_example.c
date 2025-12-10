@@ -52,7 +52,7 @@ const char* termination_status_to_string(cuopt_int_t termination_status)
 }
 
 // Test simple QP problem
-cuopt_int_t test_simple_lp()
+cuopt_int_t test_simple_qp()
 {
   cuOptOptimizationProblem problem = NULL;
   cuOptSolverSettings settings = NULL;
@@ -206,7 +206,7 @@ DONE:
 
 int main() {
   // Run the test
-  cuopt_int_t status = test_simple_lp();
+  cuopt_int_t status = test_simple_qp();
 
   if (status == CUOPT_SUCCESS) {
     printf("\nTest completed successfully!\n");
