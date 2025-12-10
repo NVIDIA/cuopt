@@ -1377,26 +1377,22 @@ class iteration_data_t {
 
   // y <- alpha * Augmented * x + beta * y
   void augmented_multiply(f_t alpha,
-                          const dense_vector_t<i_t, f_t>& x,
+                          const rmm::device_uvector<f_t>& x,
                           f_t beta,
-                          dense_vector_t<i_t, f_t>& y)
+                          rmm::device_uvector<f_t>& y)
   {
-    const i_t m                 = A.m;
-    const i_t n                 = A.n;
-    dense_vector_t<i_t, f_t> x1 = x.head(n);
-    dense_vector_t<i_t, f_t> x2 = x.tail(m);
-    dense_vector_t<i_t, f_t> y1 = y.head(n);
-    dense_vector_t<i_t, f_t> y2 = y.tail(m);
+    const i_t m = A.m;
+    const i_t n = A.n;
 
     rmm::device_uvector<f_t> d_x1(n, handle_ptr->get_stream());
     rmm::device_uvector<f_t> d_x2(m, handle_ptr->get_stream());
     rmm::device_uvector<f_t> d_y1(n, handle_ptr->get_stream());
     rmm::device_uvector<f_t> d_y2(m, handle_ptr->get_stream());
 
-    raft::copy(d_x1.data(), x1.data(), n, handle_ptr->get_stream());
-    raft::copy(d_x2.data(), x2.data(), m, handle_ptr->get_stream());
-    raft::copy(d_y1.data(), y1.data(), n, handle_ptr->get_stream());
-    raft::copy(d_y2.data(), y2.data(), m, handle_ptr->get_stream());
+    raft::copy(d_x1.data(), x.data(), n, handle_ptr->get_stream());
+    raft::copy(d_x2.data(), x.data() + n, m, handle_ptr->get_stream());
+    raft::copy(d_y1.data(), y.data(), n, handle_ptr->get_stream());
+    raft::copy(d_y2.data(), y.data() + n, m, handle_ptr->get_stream());
 
     // y1 <- alpha ( -D * x_1 + A^T x_2) + beta * y1
 
@@ -1434,6 +1430,20 @@ class iteration_data_t {
 
     raft::copy(y.data(), d_y1.data(), n, stream_view_);
     raft::copy(y.data() + n, d_y2.data(), m, stream_view_);
+    handle_ptr->sync_stream();
+  }
+
+  void augmented_multiply(f_t alpha,
+                          const dense_vector_t<i_t, f_t>& x,
+                          f_t beta,
+                          dense_vector_t<i_t, f_t>& y)
+  {
+    rmm::device_uvector<f_t> d_x(x.size(), handle_ptr->get_stream());
+    raft::copy(d_x.data(), x.data(), x.size(), handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_y(y.size(), handle_ptr->get_stream());
+    raft::copy(d_y.data(), y.data(), y.size(), handle_ptr->get_stream());
+    augmented_multiply(alpha, d_x, beta, d_y);
+    raft::copy(y.data(), d_y.data(), y.size(), handle_ptr->get_stream());
     handle_ptr->sync_stream();
   }
 
@@ -1750,15 +1760,15 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     i_t solve_status = data.chol->solve(rhs, soln);
     struct op_t {
       op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
-      iteration_data_t<i_t, f_t>& data_;
+      iteration_data_t<i_t, f_t>& data_;      
       void a_multiply(f_t alpha,
-                      const dense_vector_t<i_t, f_t>& x,
+                      const rmm::device_uvector<f_t>& x,
                       f_t beta,
-                      dense_vector_t<i_t, f_t>& y) const
+                      rmm::device_uvector<f_t>& y) const
       {
         data_.augmented_multiply(alpha, x, beta, y);
       }
-      void solve(const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x) const
+      void solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) const
       {
         data_.chol->solve(b, x);
       }
@@ -2450,14 +2460,16 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     struct op_t {
       op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
       iteration_data_t<i_t, f_t>& data_;
+     
       void a_multiply(f_t alpha,
-                      const dense_vector_t<i_t, f_t>& x,
+                      const rmm::device_uvector<f_t>& x,
                       f_t beta,
-                      dense_vector_t<i_t, f_t>& y)
+                      rmm::device_uvector<f_t>& y)
       {
         data_.augmented_multiply(alpha, x, beta, y);
       }
-      void solve(const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x) const
+      
+      void solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) const
       {
         data_.chol->solve(b, x);
       }
