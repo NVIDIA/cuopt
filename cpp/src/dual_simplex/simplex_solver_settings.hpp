@@ -15,6 +15,7 @@
 #include <atomic>
 #include <functional>
 #include <limits>
+#include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
 

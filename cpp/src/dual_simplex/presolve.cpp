@@ -508,13 +508,15 @@ i_t find_dependent_rows(lp_problem_t<i_t, f_t>& problem,
 
 template <typename i_t, typename f_t>
 i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
-                            std::vector<i_t>& equality_rows,
+                            const std::vector<i_t>& range_rows,
+                            const std::vector<i_t>& equality_rows,
                             std::vector<i_t>& new_slacks)
 {
-  const i_t n        = problem.num_cols;
-  const i_t m        = problem.num_rows;
-  const i_t num_cols = n + equality_rows.size();
-  const i_t nnz      = problem.A.col_start[n] + equality_rows.size();
+  const i_t n                   = problem.num_cols;
+  const i_t m                   = problem.num_rows;
+  const i_t num_artificial_vars = equality_rows.size() - range_rows.size();
+  const i_t num_cols            = n + num_artificial_vars;
+  i_t nnz                       = problem.A.col_start[n] + num_artificial_vars;
   problem.A.col_start.resize(num_cols + 1);
   problem.A.i.resize(nnz);
   problem.A.x.resize(nnz);
@@ -522,9 +524,15 @@ i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
   problem.upper.resize(num_cols);
   problem.objective.resize(num_cols);
 
+  std::vector<bool> is_range_row(problem.num_rows, false);
+  for (i_t i : range_rows) {
+    is_range_row[i] = true;
+  }
+
   i_t p = problem.A.col_start[n];
   i_t j = n;
   for (i_t i : equality_rows) {
+    if (is_range_row[i]) { continue; }
     // Add an artifical variable z to the equation a_i^T x == b
     // This now becomes a_i^T x + z == b,   0 <= z =< 0
     problem.A.col_start[j] = p;
@@ -541,7 +549,7 @@ i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
   assert(j == num_cols);
   assert(p == nnz);
   constexpr bool verbose = false;
-  if (verbose) { printf("Added %d artificial variables\n", num_cols - n); }
+  if (verbose) { printf("Added %d artificial variables\n", num_artificial_vars); }
   problem.A.n      = num_cols;
   problem.num_cols = num_cols;
   return 0;
@@ -800,7 +808,9 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   }
 
   // Add artifical variables
-  if (!settings.barrier_presolve) { add_artifical_variables(problem, equality_rows, new_slacks); }
+  if (!settings.barrier_presolve) {
+    add_artifical_variables(problem, user_problem.range_rows, equality_rows, new_slacks);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -1227,13 +1237,13 @@ void crush_primal_solution_with_slack(const user_problem_t<i_t, f_t>& user_probl
 }
 
 template <typename i_t, typename f_t>
-void crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
-                         const lp_problem_t<i_t, f_t>& problem,
-                         const std::vector<i_t>& new_slacks,
-                         const std::vector<f_t>& user_y,
-                         const std::vector<f_t>& user_z,
-                         std::vector<f_t>& y,
-                         std::vector<f_t>& z)
+f_t crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
+                        const lp_problem_t<i_t, f_t>& problem,
+                        const std::vector<i_t>& new_slacks,
+                        const std::vector<f_t>& user_y,
+                        const std::vector<f_t>& user_z,
+                        std::vector<f_t>& y,
+                        std::vector<f_t>& z)
 {
   y.resize(problem.num_rows);
   for (i_t i = 0; i < user_problem.num_rows; i++) {
@@ -1243,6 +1253,12 @@ void crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
   for (i_t j = 0; j < user_problem.num_cols; j++) {
     z[j] = user_z[j];
   }
+
+  std::vector<bool> is_range_row(problem.num_rows, false);
+  for (i_t i = 0; i < user_problem.range_rows.size(); i++) {
+    is_range_row[user_problem.range_rows[i]] = true;
+  }
+  assert(user_problem.num_rows == problem.num_rows);
 
   for (i_t j : new_slacks) {
     const i_t col_start = problem.A.col_start[j];
@@ -1255,7 +1271,11 @@ void crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
     // e_i^T y + z_j = c_j = 0
     // y_i + z_j = 0
     // z_j = - y_i;
-    z[j] = -y[i];
+    if (is_range_row[i]) {
+      z[j] = y[i];
+    } else {
+      z[j] = -y[i];
+    }
   }
 
   // A^T y + z = c or A^T y + z - c = 0
@@ -1292,6 +1312,7 @@ void crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
   }
   const f_t dual_res_inf = vector_norm_inf<i_t, f_t>(dual_residual);
   assert(dual_res_inf < 1e-6);
+  return dual_res_inf;
 }
 
 template <typename i_t, typename f_t>
@@ -1510,6 +1531,14 @@ template void crush_primal_solution<int, double>(const user_problem_t<int, doubl
                                                  const std::vector<double>& user_solution,
                                                  const std::vector<int>& new_slacks,
                                                  std::vector<double>& solution);
+
+template double crush_dual_solution<int, double>(const user_problem_t<int, double>& user_problem,
+                                                 const lp_problem_t<int, double>& problem,
+                                                 const std::vector<int>& new_slacks,
+                                                 const std::vector<double>& user_y,
+                                                 const std::vector<double>& user_z,
+                                                 std::vector<double>& y,
+                                                 std::vector<double>& z);
 
 template void uncrush_primal_solution<int, double>(const user_problem_t<int, double>& user_problem,
                                                    const lp_problem_t<int, double>& problem,

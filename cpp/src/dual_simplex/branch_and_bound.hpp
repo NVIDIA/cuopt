@@ -14,7 +14,9 @@
 #include <dual_simplex/pseudo_costs.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
+#include <dual_simplex/solve.hpp>
 #include <dual_simplex/types.hpp>
+#include <utilities/macros.cuh>
 #include <utilities/omp_helpers.hpp>
 
 #include <omp.h>
@@ -78,8 +80,28 @@ class branch_and_bound_t {
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
 
+  // Set the root solution found by PDLP
+  void set_root_relaxation_solution(const std::vector<f_t>& primal,
+                                    const std::vector<f_t>& dual,
+                                    const std::vector<f_t>& reduced_costs,
+                                    f_t objective,
+                                    f_t user_objective,
+                                    i_t iterations)
+  {
+    root_crossover_soln_.x              = primal;
+    root_crossover_soln_.y              = dual;
+    root_crossover_soln_.z              = reduced_costs;
+    root_objective_                     = objective;
+    root_crossover_soln_.objective      = objective;
+    root_crossover_soln_.user_objective = user_objective;
+    root_crossover_soln_.iterations     = iterations;
+    root_crossover_solution_set_.store(true, std::memory_order_release);
+  }
+
   // Set a solution based on the user problem during the course of the solve
   void set_new_solution(const std::vector<f_t>& solution);
+
+  void set_concurrent_lp_root_solve(bool enable) { enable_concurrent_lp_root_solve_ = enable; }
 
   // Repair a low-quality solution from the heuristics.
   bool repair_solution(const std::vector<f_t>& leaf_edge_norms,
@@ -90,6 +112,10 @@ class branch_and_bound_t {
   f_t get_upper_bound();
   f_t get_lower_bound();
   i_t get_heap_size();
+  bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
+  volatile int* get_root_concurrent_halt() { return &root_concurrent_halt_; }
+  void set_root_concurrent_halt(int value) { root_concurrent_halt_ = value; }
+  lp_status_t solve_root_relaxation(simplex_solver_settings_t<i_t, f_t> const& lp_settings);
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
@@ -137,9 +163,14 @@ class branch_and_bound_t {
 
   // Variables for the root node in the search tree.
   std::vector<variable_status_t> root_vstatus_;
+  std::vector<variable_status_t> crossover_vstatus_;
   f_t root_objective_;
   lp_solution_t<i_t, f_t> root_relax_soln_;
+  lp_solution_t<i_t, f_t> root_crossover_soln_;
   std::vector<f_t> edge_norms_;
+  std::atomic<bool> root_crossover_solution_set_{false};
+  bool enable_concurrent_lp_root_solve_{false};
+  volatile int root_concurrent_halt_{0};
 
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;

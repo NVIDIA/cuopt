@@ -133,8 +133,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     auto lp_timer       = timer_t(settings.time_limit);
     settings.method     = method_t::Concurrent;
 
-    auto opt_sol = solve_lp_with_method<i_t, f_t>(
-      *context.problem_ptr->original_problem_ptr, *context.problem_ptr, settings, lp_timer);
+    auto opt_sol = solve_lp_with_method<i_t, f_t>(*context.problem_ptr, settings, lp_timer);
 
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.copy_new_assignment(host_copy(opt_sol.get_primal_solution()));
@@ -207,12 +206,22 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(
       branch_and_bound_problem, branch_and_bound_settings);
     context.branch_and_bound_ptr = branch_and_bound.get();
+    branch_and_bound->set_concurrent_lp_root_solve(true);
 
     // Set the primal heuristics -> branch and bound callback
     context.problem_ptr->branch_and_bound_callback =
       std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_new_solution,
                 branch_and_bound.get(),
                 std::placeholders::_1);
+    context.problem_ptr->set_root_relaxation_solution_callback =
+      std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_root_relaxation_solution,
+                branch_and_bound.get(),
+                std::placeholders::_1,
+                std::placeholders::_2,
+                std::placeholders::_3,
+                std::placeholders::_4,
+                std::placeholders::_5,
+                std::placeholders::_6);
 
     // Fork a thread for branch and bound
     // std::async and std::future allow us to get the return value of bb::solve()

@@ -207,6 +207,9 @@ class problem_t {
   rmm::device_uvector<i_t> integer_fixed_variable_map;
 
   std::function<void(const std::vector<f_t>&)> branch_and_bound_callback;
+  std::function<void(
+    const std::vector<f_t>&, const std::vector<f_t>&, const std::vector<f_t>&, f_t, f_t, i_t)>
+    set_root_relaxation_solution_callback;
 
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances{};
   i_t n_variables{0};
