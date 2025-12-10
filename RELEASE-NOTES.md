@@ -39,7 +39,7 @@
 - Missing parameters added to the documentation for LP and MILP.
 - Release notes added to the main repository for easy access.
 - Examples in the documentation improved.
-- The openapi spec for the service showed the 'status' value for LP/MILP results as an int but it is actually a string
+- The openapi spec for the service showed the 'status' value for LP/MILP results as an int but it is actually a string.
 
 ## Release Notes 25.10
 
