@@ -121,7 +121,7 @@ Presolve
 --------
 
 Presolve procedure is applied to the problem before the solver is called. It can be used to reduce the problem size and improve solve time. It is enabled by default for MIP problems, and disabled by default for LP problems.
-Furthermore, for LP problems, when the dual solution is not needed, additional presolve procedures can be applied to further improve solve times. This is achived by turned off dual postsolve with the ``CUOPT_DUAL_POSTSOLVE`` setting.
+Furthermore, for LP problems, when the dual solution is not needed, additional presolve procedures can be applied to further improve solve times. This is achieved by turning off dual postsolve with the ``CUOPT_DUAL_POSTSOLVE`` setting.
 
 
 Logging
