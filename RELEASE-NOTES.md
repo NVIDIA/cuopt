@@ -7,11 +7,13 @@
 ### New Features (25.12)
 
 - Added a feature to enable PDLP and Barrier racing on separate GPUs in concurrent mode.
+- Added the python modeling API for Quadratic objective and expressions - Experimental .
 - RINS heuristic support adds a new mixed-integer improvement strategy in the MIP solver.
 - Propagating bounds from parent to child nodes and reusing basis factorizations in the branch-and-bound tree to improve the MIP search behavior.
 
 ### Improvements (25.12)
 
+- Added GMRES-based iterative refinement with Cholesky/LDL preconditioning for QP problems - Experimental.
 - Improves numerical stability of dual simplex when the basis is ill-conditioned.
 - The barrier method and PDLP implementation improve robustness by fixing cuSPARSE related leaks and adding RAII-style wrappers for cuSPARSE structures.
 - Papilo-based Pre-Solve carries over implied integer information from reductions, improving consistency of integrality handling.
