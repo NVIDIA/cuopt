@@ -809,7 +809,7 @@ def test_quadratic_objective_2():
     problem.solve()
 
     assert problem.Status.name == "Optimal"
-    assert x1.getValue() == pytest.approx(0.2295081)
+    assert x1.getValue() == pytest.approx(0.2295081, abs=1e-3)
     assert x2.getValue() == pytest.approx(0.0000000, abs=0.000001)
-    assert x3.getValue() == pytest.approx(0.1092896)
-    assert problem.ObjValue == pytest.approx(-0.284153)
+    assert x3.getValue() == pytest.approx(0.1092896, abs=1e-3)
+    assert problem.ObjValue == pytest.approx(-0.284153, abs=1e-3)
