@@ -6,26 +6,29 @@
 
 ### New Features (25.12)
 
-- Added a feature to enable PDLP and Barrier racing on separate GPUs in concurrent mode.
-- Added the python modeling API for Quadratic objective and expressions - Experimental .
-- RINS heuristic support adds a new mixed-integer improvement strategy in the MIP solver.
-- Propagating bounds from parent to child nodes and reusing basis factorizations in the branch-and-bound tree to improve the MIP search behavior.
+- New quadratic programming solver using the barrier method (currently in beta).  
+- Support for quadratic objectives added to the C API.
+- Support for quadratic expressions and objectives added to the Python modeling API.
+- LP concurrent mode now supports multiple GPUs. PDLP and barrier can now be run on separate GPUs.
+- MIP root relaxation solves now use concurrent mode: PDLP, barrier, and dual \simplex.
 
 ### Improvements (25.12)
 
-- Added GMRES-based iterative refinement with Cholesky/LDL preconditioning for QP problems - Experimental.
-- Improves numerical stability of dual simplex when the basis is ill-conditioned.
-- The barrier method and PDLP implementation improve robustness by fixing cuSPARSE related leaks and adding RAII-style wrappers for cuSPARSE structures.
-- Papilo-based Pre-Solve carries over implied integer information from reductions, improving consistency of integrality handling.
-- Each LP method gains a default accuracy setting.
-- Build and CI workflows improve through assertion-default changes, better handling of git-hash rebuilds, and fixes to the nightly build matrix.
-- Package sizes are reduced by adjusting build outputs and test-only library linkage, and the TSP dataset download logic disables unneeded downloads.
+- RINS heuristic adds a new improvement strategy in the MIP solver.
+- Basis factorizations are now reused in the branch and bound tree.
+- Improvement in propagating bounds from parent to child nodes in the branch and bound tree.
+- GMRES with Cholesky/LDL preconditioning is now used for iterative refinement on QPs.
+- Improved numerical stability of dual simplex when the basis is ill-conditioned.
+- Improved robustness in barrier and PDLP: fixed cuSPARSE related leaks and added RAII-style wrappers for cuSPARSE structures.
+- Papilo-based presolve carries over implied integer information from reductions, improving consistency of integrality handling.
+- Build and CI workflows improved through assertion-default changes, better handling of git-hash rebuilds, and fixes to the nightly build matrix.
+- Reduced package sizes by adjusting build outputs and test-only library linkage, and the TSP dataset download logic disables unneeded downloads.
 
 ### Bug Fixes (25.12)
 
 - A crash in the incumbent test is resolved.
-- Memory leaks in the barrier solver and PDLP's cuSPARSE usage fixes through corrected resource management.
-- The explored-nodes counter fixes so that the reported node count reflects the actual search.
+- Fixed memory leaks in Barrier and PDLP's cuSPARSE usage.
+- The explored nodes in the MIP log now correctly reflects the actual nodes examined.
 - A compilation issue in the solve_MIP benchmarking executable is fixed, restoring benchmark builds.
 - A logger bug when log_to_console is false is fixed.
 - Routing fixes improve TSP behavior when order locations are set.
