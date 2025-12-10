@@ -31,7 +31,7 @@ Simple Quadratic Programming Example
 ------------------------------------
 
 .. note::
-   Quadratic Programming support is currently **experimental** and may change in future releases.
+   The QP solver is currently in beta.
 
 :download:`simple_qp_example.py <examples/simple_qp_example.py>`
 
