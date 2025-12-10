@@ -5,7 +5,7 @@
 /*
  * Simple QP C API Example
  *
- * This example demonstrates how to use the cuOpt C API for linear programming.
+ * This example demonstrates how to use the cuOpt C API for quadratic programming.
  *
  * Problem:
  *   Minimize: x^2 + y^2
@@ -86,7 +86,7 @@ cuopt_int_t test_simple_qp()
   // 1 is the coefficient of the quadratic term on x^2
   // 1 is the coefficient of the quadratic term on y^2
   cuopt_float_t quadratic_objective_matrix_values[] = {1.0, 1.0};
-  cuopt_int_t quadratic_objective_matrix_row_offsets[] = {0, 1};
+  cuopt_int_t quadratic_objective_matrix_row_offsets[] = {0, 1, 2};
   cuopt_int_t quadratic_objective_matrix_column_indices[] = {0, 1};
 
   // Constraint bounds
@@ -112,7 +112,7 @@ cuopt_int_t test_simple_qp()
   cuopt_int_t termination_status;
   cuopt_float_t objective_value;
 
-  printf("Creating and solving simple LP problem...\n");
+  printf("Creating and solving simple QP problem...\n");
 
   // Create the problem
   status = cuOptCreateQuadraticProblem(num_constraints,
@@ -123,9 +123,9 @@ cuopt_int_t test_simple_qp()
                                        quadratic_objective_matrix_row_offsets,
                                        quadratic_objective_matrix_column_indices,
                                        quadratic_objective_matrix_values,
-                                       constraint_matrix_row_offsets,
-                                       constraint_matrix_column_indices,
-                                       constraint_matrix_values,
+                                       row_offsets,
+                                       column_indices,
+                                       values,
                                        constraint_sense,
                                        constraint_rhs,
                                        var_lower_bounds,
