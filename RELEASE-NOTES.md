@@ -10,7 +10,7 @@
 - Support for quadratic objectives added to the C API.
 - Support for quadratic expressions and objectives added to the Python modeling API.
 - LP concurrent mode now supports multiple GPUs. PDLP and barrier can now be run on separate GPUs.
-- MIP root relaxation solves now use concurrent mode: PDLP, barrier, and dual \simplex.
+- MIP root relaxation solves now use concurrent mode: PDLP, barrier, and dual simplex.
 
 ### Improvements (25.12)
 
