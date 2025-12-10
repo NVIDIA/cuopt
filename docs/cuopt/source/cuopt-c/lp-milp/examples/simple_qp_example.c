@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 /*
- * Simple LP C API Example
+ * Simple QP C API Example
  *
  * This example demonstrates how to use the cuOpt C API for linear programming.
  *
@@ -51,14 +51,14 @@ const char* termination_status_to_string(cuopt_int_t termination_status)
   }
 }
 
-// Test simple LP problem
+// Test simple QP problem
 cuopt_int_t test_simple_lp()
 {
   cuOptOptimizationProblem problem = NULL;
   cuOptSolverSettings settings = NULL;
   cuOptSolution solution = NULL;
 
-  /* Solve the following LP:
+  /* Solve the following QP:
      minimize x^2 + y^2
      subject to:
      x + y >= 1
