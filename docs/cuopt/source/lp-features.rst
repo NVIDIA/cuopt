@@ -73,8 +73,8 @@ where Q is a symmetric positive semidefinite matrix. Please note that the Q matr
 
 .. note:: Currently, barrier is the only method that supports QPs.
 
-See :ref:`cuopt-python/lp-milp/examples/simple_qp_example.py` for an example of how to create a QP problem with the Python Modeling API.
-See :ref:`cuopt-c/lp-milp/examples/simple_qp_example.c` for an example of how to create a QP problem with the C API.
+See :ref:`simple-qp-example-python` for an example of how to create a QP problem with the Python Modeling API.
+See :ref:`simple-qp-example-c` for an example of how to create a QP problem with the C API.
 
 Warm Start
 -----------

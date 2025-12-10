@@ -27,6 +27,8 @@ The response is as follows:
     y = 0.0
     Objective value = 10.0
 
+.. _simple-qp-example-python:
+
 Simple Quadratic Programming Example
 ------------------------------------
 
