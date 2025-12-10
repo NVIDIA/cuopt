@@ -134,6 +134,74 @@ void optimization_problem_t<i_t, f_t>::set_objective_offset(f_t objective_offset
 }
 
 template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
+  const f_t* Q_values,
+  i_t size_values,
+  const i_t* Q_indices,
+  i_t size_indices,
+  const i_t* Q_offsets,
+  i_t size_offsets,
+  bool validate_positive_semi_definite)
+{
+  cuopt_expects(Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
+  cuopt_expects(
+    size_values > 0, error_type_t::ValidationError, "size_values must be greater than 0");
+
+  if (size_indices != 0) {
+    cuopt_expects(Q_indices != nullptr, error_type_t::ValidationError, "Q_indices cannot be null");
+  }
+
+  if (size_offsets != 0) {
+    cuopt_expects(Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
+  }
+
+  // Replace Q with Q + Q^T
+  i_t qn    = size_offsets - 1;  // Number of variables
+  i_t q_nnz = size_indices;
+  Q_offsets_.resize(qn + 1);
+  std::fill(Q_offsets_.begin(), Q_offsets_.end(), 0);
+  Q_indices_.reserve(2 * q_nnz);
+  Q_values_.reserve(2 * q_nnz);
+
+  // TODO: This is very inefficient for large Q matrices
+  // Build a map from (row,col) to value for Q+Q^T
+  std::map<std::pair<i_t, i_t>, f_t> Q_map;
+  for (i_t row = 0; row < qn; ++row) {
+    size_t start = Q_offsets[row];
+    size_t end   = Q_offsets[row + 1];
+    for (size_t idx = start; idx < end; ++idx) {
+      i_t col = Q_indices[idx];
+      f_t val = Q_values[idx];
+      auto ij = std::make_pair(row, col);
+      auto ji = std::make_pair(col, row);
+      Q_map[ij] += val;
+      Q_map[ji] += val;
+    }
+  }
+
+  // Write map into CSR format (rows are built in key order, so each row's columns are sorted)
+  for (i_t row = 0; row < qn; ++row) {
+    for (auto it = Q_map.lower_bound(std::make_pair(row, 0));
+         it != Q_map.upper_bound(std::make_pair(row, std::numeric_limits<i_t>::max()));
+         ++it) {
+      i_t col = it->first.second;
+      f_t v   = it->second;
+      if (v != 0.0) {
+        Q_indices_.push_back(col);
+        Q_values_.push_back(v);
+        Q_offsets_[row + 1]++;
+      }
+    }
+  }
+  // Convert Q_offsets_new to cumulative sum
+  for (i_t i = 0; i < qn; ++i) {
+    Q_offsets_[i + 1] += Q_offsets_[i];
+  }
+
+  // FIX ME:: check for positive semi definite matrix
+}
+
+template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::set_variable_lower_bounds(const f_t* variable_lower_bounds,
                                                                  i_t size)
 {
@@ -357,6 +425,24 @@ template <typename i_t, typename f_t>
 f_t optimization_problem_t<i_t, f_t>::get_objective_offset() const
 {
   return objective_offset_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<f_t>& optimization_problem_t<i_t, f_t>::get_quadratic_objective_values() const
+{
+  return Q_values_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<i_t>& optimization_problem_t<i_t, f_t>::get_quadratic_objective_indices() const
+{
+  return Q_indices_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<i_t>& optimization_problem_t<i_t, f_t>::get_quadratic_objective_offsets() const
+{
+  return Q_offsets_;
 }
 
 template <typename i_t, typename f_t>
@@ -666,6 +752,11 @@ void optimization_problem_t<i_t, f_t>::print_scaling_information() const
   CUOPT_LOG_INFO("");
 }
 
+template <typename i_t, typename f_t>
+bool optimization_problem_t<i_t, f_t>::has_quadratic_objective() const
+{
+  return !Q_values_.empty();
+}
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
 #if MIP_INSTANTIATE_FLOAT
 template class optimization_problem_t<int, float>;

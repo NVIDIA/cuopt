@@ -36,6 +36,7 @@ class cusparse_view_t {
             const std::vector<f_t, AllocatorA>& x,
             f_t beta,
             std::vector<f_t, AllocatorB>& y);
+  void spmv(f_t alpha, rmm::device_uvector<f_t> const& x, f_t beta, rmm::device_uvector<f_t>& y);
   void spmv(f_t alpha,
             detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
             f_t beta,
@@ -45,6 +46,10 @@ class cusparse_view_t {
                       const std::vector<f_t, AllocatorA>& x,
                       f_t beta,
                       std::vector<f_t, AllocatorB>& y);
+  void transpose_spmv(f_t alpha,
+                      rmm::device_uvector<f_t> const& x,
+                      f_t beta,
+                      rmm::device_uvector<f_t>& y);
   void transpose_spmv(f_t alpha,
                       detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
                       f_t beta,

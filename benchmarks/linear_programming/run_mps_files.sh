@@ -127,6 +127,11 @@ while [[ $# -gt 0 ]]; do
             TIME_LIMIT="$2"
             shift 2
             ;;
+        --iteration-limit)
+            echo "ITERATION_LIMIT: $2"
+            ITERATION_LIMIT="$2"
+            shift 2
+            ;;
         --output-dir)
             echo "OUTPUT_DIR: $2"
             OUTPUT_DIR="$2"
@@ -150,6 +155,11 @@ while [[ $# -gt 0 ]]; do
         --num-cpu-threads)
             echo "NUM_CPU_THREADS: $2"
             NUM_CPU_THREADS="$2"
+            shift 2
+            ;;
+        --method)
+            echo "METHOD: $2"
+            METHOD="$2"
             shift 2
             ;;
         --presolve)
@@ -199,8 +209,7 @@ OUTPUT_DIR=${OUTPUT_DIR:-.}
 RELAXATION=${RELAXATION:-false}
 MIP_HEURISTICS_ONLY=${MIP_HEURISTICS_ONLY:-false}
 WRITE_LOG_FILE=${WRITE_LOG_FILE:-false}
-NUM_CPU_THREADS=${NUM_CPU_THREADS:-1}
-PRESOLVE=${PRESOLVE:-true}
+NUM_CPU_THREADS=${NUM_CPU_THREADS:--1}
 BATCH_NUM=${BATCH_NUM:-0}
 N_BATCHES=${N_BATCHES:-1}
 LOG_TO_CONSOLE=${LOG_TO_CONSOLE:-true}
@@ -281,7 +290,8 @@ if [[ -n "$MODEL_LIST" && -f "$MODEL_LIST" ]]; then
         # Skip empty lines
         [[ -z "$line" ]] && continue
         # If the line does not end with .mps, append it
-        if [[ "$line" != *.mps ]]; then
+        # ignore if it ends with .SIF
+        if [[ "$line" != *.mps && "$line" != *.SIF ]]; then
             echo "${line}.mps" >> "$TMP_MODEL_LIST"
         else
             echo "$line" >> "$TMP_MODEL_LIST"
@@ -314,7 +324,10 @@ if [[ -n "$MODEL_LIST" ]]; then
         exit 1
     fi
 else
-    mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps)
+    # Gather both .mps and .SIF files in the directory
+    mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps "$MPS_DIR"/*.SIF 2>/dev/null)
+
+    echo "Found ${#mps_files[@]} .mps and .SIF files in $MPS_DIR"
 fi
 
 # Calculate batch size and start/end indices
@@ -375,6 +388,9 @@ worker() {
 
         # Build arguments string
         args=""
+        if [ -n "$ITERATION_LIMIT" ]; then
+            args="$args --iteration-limit $ITERATION_LIMIT"
+        fi
         if [ -n "$NUM_CPU_THREADS" ]; then
             args="$args --num-cpu-threads $NUM_CPU_THREADS"
         fi
@@ -391,7 +407,12 @@ worker() {
             args="$args --num-gpus $GPUS_PER_INSTANCE"
         fi
         args="$args --log-to-console $LOG_TO_CONSOLE"
-        args="$args --presolve $PRESOLVE"
+        if [ -n "$PRESOLVE" ]; then
+            args="$args --presolve $PRESOLVE"
+        fi
+        if [ -n "$METHOD" ]; then
+            args="$args --method $METHOD"
+        fi
 
         CUDA_VISIBLE_DEVICES=$gpu_devices cuopt_cli "$mps_file" --time-limit $TIME_LIMIT $args
     done

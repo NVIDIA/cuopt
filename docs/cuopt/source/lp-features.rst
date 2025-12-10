@@ -23,6 +23,36 @@ The LP solver can be accessed in the following ways:
 
 Each option provide the same powerful linear optimization capabilities while offering flexibility in deployment and integration.
 
+Quadratic Programming (QP)
+--------------------------
+
+.. note::
+   Quadratic Programming support is currently **experimental** and may change in future releases.
+
+cuOpt supports Quadratic Programming problems with quadratic objectives of the form:
+
+.. code-block:: text
+
+    minimize (or maximize)    x'Qx + c'x
+    subject to                Ax {<=, =, >=} b
+                              lb <= x <= ub
+
+where Q is a symmetric positive semi-definite matrix for minimization problems.
+
+In the Python API, quadratic objectives can be constructed using the ``QuadraticExpression`` class or by multiplying variables directly:
+
+.. code-block:: python
+
+    from cuopt.linear_programming.problem import Problem, MINIMIZE
+
+    prob = Problem("QP Example")
+    x = prob.addVariable(lb=0, name="x")
+    y = prob.addVariable(lb=0, name="y")
+
+    # Create quadratic objective: x^2 + 2*x*y + y^2
+    quad_obj = x * x + 2 * (x * y) + y * y
+    prob.setObjective(quad_obj, sense=MINIMIZE)
+
 Variable Bounds
 ---------------
 
