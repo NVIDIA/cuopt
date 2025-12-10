@@ -22,7 +22,7 @@ The Linear Programming (LP) and Quadratic Programming (QP) solvers can be access
 
 - **Python SDK**: A Python package that provides direct access to cuOpt's LP/QP capabilities through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
 
-- **As a Self-Hosted Service**: cuOpt's LP/QP solver can be deployed as a self-hostedservice in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
+- **As a Self-Hosted Service**: cuOpt's LP/QP solver can be deployed as a self-hosted service in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
 Each option provide the same powerful linear optimization capabilities while offering flexibility in deployment and integration.
 
