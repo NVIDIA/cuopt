@@ -1,6 +1,10 @@
 # cuOpt - GPU accelerated Optimization Engine
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
+[![Version](https://img.shields.io/badge/version-26.02.00-blue)](https://github.com/NVIDIA/cuopt/releases)
+[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen)](https://docs.nvidia.com/cuopt/)
+[![Docker Hub](https://img.shields.io/badge/docker-nvidia%2Fcuopt-blue?logo=docker)](https://hub.docker.com/r/nvidia/cuopt)
+[![Examples](https://img.shields.io/badge/examples-cuopt--examples-orange)](https://github.com/NVIDIA/cuopt-examples)
 
 NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer linear programming (MILP), linear programming (LP), and vehicle routing problems (VRP). It enables near real-time solutions for large-scale challenges with millions of variables and constraints, offering
 easy integration into existing solvers and seamless deployment across hybrid and multi-cloud environments.
