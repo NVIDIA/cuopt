@@ -76,7 +76,7 @@ class iteration_data_t {
       AD(lp.num_cols, lp.num_rows, 0),
       AT(lp.num_rows, lp.num_cols, 0),
       ADAT(lp.num_rows, lp.num_rows, 0),
-      augmented(lp.num_cols + lp.num_rows, lp.num_cols + lp.num_rows, 0),
+      // augmented(lp.num_cols + lp.num_rows, lp.num_cols + lp.num_rows, 0),
       A_dense(lp.num_rows, 0),
       AD_dense(0, 0),
       H(0, 0),
@@ -109,6 +109,8 @@ class iteration_data_t {
       device_AD(lp.num_cols, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_A(lp.num_cols, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_ADAT(lp.num_rows, lp.num_rows, 0, lp.handle_ptr->get_stream()),
+      device_augmented(
+        lp.num_cols + lp.num_rows, lp.num_cols + lp.num_rows, 0, lp.handle_ptr->get_stream()),
       d_original_A_values(0, lp.handle_ptr->get_stream()),
       device_A_x_values(0, lp.handle_ptr->get_stream()),
       d_inv_diag_prime(0, lp.handle_ptr->get_stream()),
@@ -116,6 +118,7 @@ class iteration_data_t {
       d_num_flag(lp.handle_ptr->get_stream()),
       d_inv_diag(lp.num_cols, lp.handle_ptr->get_stream()),
       d_cols_to_remove(0, lp.handle_ptr->get_stream()),
+      d_augmented_diagonal_indices_(0, lp.handle_ptr->get_stream()),
       use_augmented(false),
       has_factorization(false),
       num_factorizations(0),
@@ -370,7 +373,7 @@ class iteration_data_t {
       // Build the sparsity pattern of the augmented system
       form_augmented(true);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-      symbolic_status = chol->analyze(augmented);
+      symbolic_status = chol->analyze(device_augmented);
     } else {
       form_adat(true);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
@@ -392,18 +395,17 @@ class iteration_data_t {
     const f_t dual_perturb   = 0.0;
     const f_t primal_perturb = 1e-6;
     if (first_call) {
-      augmented_diagonal_indices.resize(n + m, -1);
       i_t new_nnz = 2 * nnzA + n + m + nnzQ;
-      augmented.reallocate(2 * nnzA + n + m + nnzQ);
+      csc_matrix_t<i_t, f_t> augmented(n + m, n + m, new_nnz);
       i_t q            = 0;
       i_t off_diag_Qnz = 0;
       for (i_t j = 0; j < n; j++) {
         cuopt_assert(std::isfinite(diag[j]), "diag[j] is not finite");
         augmented.col_start[j] = q;
         if (nnzQ == 0) {
-          augmented_diagonal_indices[j] = q;
-          augmented.i[q]                = j;
-          augmented.x[q++]              = -diag[j] - dual_perturb;
+          // augmented_diagonal_indices[j] = q;
+          augmented.i[q]   = j;
+          augmented.x[q++] = -diag[j] - dual_perturb;
         } else {
           const i_t q_col_beg = Q.col_start[j];
           const i_t q_col_end = Q.col_start[j + 1];
@@ -411,18 +413,18 @@ class iteration_data_t {
           for (i_t p = q_col_beg; p < q_col_end; ++p) {
             augmented.i[q] = Q.i[p];
             if (Q.i[p] == j) {
-              has_diagonal                  = true;
-              augmented_diagonal_indices[j] = q;
-              augmented.x[q++]              = -Q.x[p] - diag[j] - dual_perturb;
+              has_diagonal = true;
+              // augmented_diagonal_indices[j] = q;
+              augmented.x[q++] = -Q.x[p] - diag[j] - dual_perturb;
             } else {
               off_diag_Qnz++;
               augmented.x[q++] = -Q.x[p];
             }
           }
           if (!has_diagonal) {
-            augmented_diagonal_indices[j] = q;
-            augmented.i[q]                = j;
-            augmented.x[q++]              = -diag[j] - dual_perturb;
+            // augmented_diagonal_indices[j] = q;
+            augmented.i[q]   = j;
+            augmented.x[q++] = -diag[j] - dual_perturb;
           }
         }
         const i_t col_beg = A.col_start[j];
@@ -442,14 +444,35 @@ class iteration_data_t {
           augmented.i[q]   = AT.i[p];
           augmented.x[q++] = AT.x[p];
         }
-        augmented_diagonal_indices[k] = q;
-        augmented.i[q]                = k;
-        augmented.x[q++]              = primal_perturb;
+        // augmented_diagonal_indices[k] = q;
+        augmented.i[q]   = k;
+        augmented.x[q++] = primal_perturb;
       }
       augmented.col_start[n + m] = q;
       cuopt_assert(q == 2 * nnzA + n + m + off_diag_Qnz, "augmented nnz != predicted");
       cuopt_assert(A.col_start[n] == AT.col_start[m], "A nz != AT nz");
 
+      csr_matrix_t<i_t, f_t> augmented_CSR(n + m, n + m, augmented.col_start[n + m]);
+      augmented.to_compressed_row(augmented_CSR);
+
+      std::vector<i_t> augmented_diagonal_indices(augmented_CSR.n, -1);
+      // Extract the diagonal indices from augmented_CSR
+      for (i_t row = 0; row < augmented_CSR.n; ++row) {
+        for (i_t k = augmented_CSR.row_start[row]; k < augmented_CSR.row_start[row + 1]; ++k) {
+          if (augmented_CSR.j[k] == row) {
+            augmented_diagonal_indices[row] = k;
+            break;
+          }
+        }
+      }
+
+      device_augmented.copy(augmented_CSR, handle_ptr->get_stream());
+      d_augmented_diagonal_indices_.resize(augmented_diagonal_indices.size(),
+                                           handle_ptr->get_stream());
+      raft::copy(d_augmented_diagonal_indices_.data(),
+                 augmented_diagonal_indices.data(),
+                 augmented_diagonal_indices.size(),
+                 handle_ptr->get_stream());
 #ifdef CHECK_SYMMETRY
       csc_matrix_t<i_t, f_t> augmented_transpose(1, 1, 1);
       augmented.transpose(augmented_transpose);
@@ -464,16 +487,38 @@ class iteration_data_t {
       cuopt_assert(error.norm1() <= 1e-2, "|| Aug - Aug^T ||_1 > 1e-2");
 #endif
     } else {
-      for (i_t j = 0; j < n; ++j) {
-        f_t q_diag = nnzQ > 0 ? Qdiag[j] : 0.0;
+      /*
+       for (i_t j = 0; j < n; ++j) {
+         f_t q_diag = nnzQ > 0 ? Qdiag[j] : 0.0;
 
-        const i_t p    = augmented_diagonal_indices[j];
-        augmented.x[p] = -q_diag - diag[j] - dual_perturb;
-      }
-      for (i_t j = n; j < n + m; ++j) {
-        const i_t p    = augmented_diagonal_indices[j];
-        augmented.x[p] = primal_perturb;
-      }
+         const i_t p    = augmented_diagonal_indices[j];
+         augmented.x[p] = -q_diag - diag[j] - dual_perturb;
+       }
+       for (i_t j = n; j < n + m; ++j) {
+         const i_t p    = augmented_diagonal_indices[j];
+         augmented.x[p] = primal_perturb;
+       }
+         */
+
+      thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
+                         thrust::make_counting_iterator<i_t>(0),
+                         i_t(n),
+                         [span_x            = cuopt::make_span(device_augmented.x),
+                          span_diag_indices = cuopt::make_span(d_augmented_diagonal_indices_),
+                          span_q_diag       = cuopt::make_span(d_Q_diag_),
+                          span_diag         = cuopt::make_span(d_diag_)] __device__(i_t j) {
+                           f_t q_diag = span_q_diag.size() > 0 ? span_q_diag[j] : 0.0;
+                           span_x[span_diag_indices[j]] = -q_diag - span_diag[j] - dual_perturb;
+                         });
+
+      thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
+                         thrust::make_counting_iterator<i_t>(n),
+                         i_t(m),
+                         [span_x               = cuopt::make_span(device_augmented.x),
+                          span_diag_indices    = cuopt::make_span(d_augmented_diagonal_indices_),
+                          primal_perturb_value = primal_perturb] __device__(i_t j) {
+                           span_x[span_diag_indices[j]] = primal_perturb_value;
+                         });
     }
   }
 
@@ -1481,7 +1526,9 @@ class iteration_data_t {
   csc_matrix_t<i_t, f_t> AD;
   csc_matrix_t<i_t, f_t> AT;
   csc_matrix_t<i_t, f_t> ADAT;
-  csc_matrix_t<i_t, f_t> augmented;
+  // csc_matrix_t<i_t, f_t> augmented;
+  device_csr_matrix_t<i_t, f_t> device_augmented;
+
   device_csr_matrix_t<i_t, f_t> device_ADAT;
   device_csr_matrix_t<i_t, f_t> device_A;
   device_csc_matrix_t<i_t, f_t> device_AD;
@@ -1507,7 +1554,7 @@ class iteration_data_t {
   const csc_matrix_t<i_t, f_t>& Q;
   std::vector<f_t> Qdiag;
   bool Q_diagonal;
-  std::vector<i_t> augmented_diagonal_indices;
+  rmm::device_uvector<i_t> d_augmented_diagonal_indices_;
   bool indefinite_Q;
   cusparse_view_t<i_t, f_t> cusparse_Q_view_;
 
@@ -1719,7 +1766,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   // Perform a numerical factorization
   i_t status;
   if (use_augmented) {
-    status = data.chol->factorize(data.augmented);
+    status = data.chol->factorize(data.device_augmented);
 
 #ifdef CHOLESKY_DEBUG_CHECK
     cholesky_debug_check(data, lp, use_augmented);
@@ -1912,6 +1959,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     for (i_t k = 0; k < lp.num_rows; k++) {
       data.y[k] = py[lp.num_cols + k];
     }
+#if 0
     dense_vector_t<i_t, f_t> full_res = dual_rhs;
     matrix_vector_multiply(data.augmented, 1.0, py, -1.0, full_res);
     settings.log.printf("|| Aug (x y) - b || %e\n", vector_norm_inf<i_t, f_t>(full_res));
@@ -1920,6 +1968,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     matrix_vector_multiply(lp.A, -1.0, data.z, 0.0, res1);
     settings.log.printf("|| A p || %e\n", vector_norm2<i_t, f_t>(res1));
 
+#endif
     // v = -E'*z
     data.gather_upper_bounds(data.z, data.v);
     data.v.multiply_scalar(-1.0);
@@ -2369,7 +2418,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     if (use_augmented) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
       data.form_augmented();
-      status = data.chol->factorize(data.augmented);
+      status = data.chol->factorize(data.device_augmented);
 
 #ifdef CHOLESKY_DEBUG_CHECK
       cholesky_debug_check(data, lp, use_augmented);
@@ -2475,12 +2524,15 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       }
     } op(data);
     iterative_refinement(op, augmented_rhs, augmented_soln);
+
+#if 0
     dense_vector_t<i_t, f_t> augmented_residual = augmented_rhs;
     matrix_vector_multiply(data.augmented, 1.0, augmented_soln, -1.0, augmented_residual);
     f_t solve_err = vector_norm_inf<i_t, f_t>(augmented_residual);
     if (solve_err > 1e-1) {
       settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
     }
+#endif
     for (i_t k = 0; k < lp.num_cols; k++) {
       dx[k] = augmented_soln[k];
     }
@@ -2495,6 +2547,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     // TMP should only be init once
     data.cusparse_dy_ = data.cusparse_view_.create_vector(data.d_dy_);
 
+#if 0
     dense_vector_t<i_t, f_t> res = data.primal_rhs;
     matrix_vector_multiply(lp.A, 1.0, dx, -1.0, res);
     f_t prim_err = vector_norm_inf<i_t, f_t>(res);
@@ -2528,6 +2581,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     data.augmented_multiply(1.0, dxdy, -1.0, res2);
     f_t res2_err = vector_norm_inf<i_t, f_t>(res2);
     if (res2_err > 1e-1) { settings.log.printf("|| Aug_0 (dx, dy) - aug_rhs || %e\n", res2_err); }
+#endif
   } else {
     {
       raft::common::nvtx::range fun_scope("Barrier: Solve A D^{-1} A^T dy = h");
