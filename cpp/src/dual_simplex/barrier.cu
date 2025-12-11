@@ -213,8 +213,6 @@ class iteration_data_t {
     }
 
     // Allocating GPU flag data for Form ADAT
-    raft::common::nvtx::range fun_scope("Barrier: GPU Flag memory allocation");
-
     cub::DeviceSelect::Flagged(
       nullptr,
       flag_buffer_size,
@@ -2140,51 +2138,6 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residual_norms(const rmm::device_uv
 }
 
 template <typename i_t, typename f_t>
-void barrier_solver_t<i_t, f_t>::cpu_compute_residual_norms(const dense_vector_t<i_t, f_t>& w,
-                                                            const dense_vector_t<i_t, f_t>& x,
-                                                            const dense_vector_t<i_t, f_t>& y,
-                                                            const dense_vector_t<i_t, f_t>& v,
-                                                            const dense_vector_t<i_t, f_t>& z,
-                                                            iteration_data_t<i_t, f_t>& data,
-                                                            f_t& primal_residual_norm,
-                                                            f_t& dual_residual_norm,
-                                                            f_t& complementarity_residual_norm)
-{
-  raft::common::nvtx::range fun_scope("Barrier: CPU compute_residual_norms");
-
-  compute_residuals(w, x, y, v, z, data);
-  primal_residual_norm = std::max(vector_norm_inf<i_t, f_t>(data.primal_residual, stream_view_),
-                                  vector_norm_inf<i_t, f_t>(data.bound_residual, stream_view_));
-  dual_residual_norm   = vector_norm_inf<i_t, f_t>(data.dual_residual, stream_view_);
-  complementarity_residual_norm =
-    std::max(vector_norm_inf<i_t, f_t>(data.complementarity_xz_residual, stream_view_),
-             vector_norm_inf<i_t, f_t>(data.complementarity_wv_residual, stream_view_));
-}
-
-template <typename i_t, typename f_t>
-template <typename AllocatorA, typename AllocatorB>
-f_t barrier_solver_t<i_t, f_t>::max_step_to_boundary(const dense_vector_t<i_t, f_t, AllocatorA>& x,
-                                                     const dense_vector_t<i_t, f_t, AllocatorB>& dx,
-                                                     i_t& index) const
-{
-  float64_t max_step = 1.0;
-  index              = -1;
-  for (i_t i = 0; i < static_cast<i_t>(x.size()); i++) {
-    // x_i + alpha * dx_i >= 0, x_i >= 0, alpha >= 0
-    // We only need to worry about the case where dx_i < 0
-    // alpha * dx_i >= -x_i => alpha <= -x_i / dx_i
-    if (dx[i] < 0.0) {
-      const f_t ratio = -x[i] / dx[i];
-      if (ratio < max_step) {
-        max_step = ratio;
-        index    = i;
-      }
-    }
-  }
-  return max_step;
-}
-
-template <typename i_t, typename f_t>
 f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f_t>& data,
                                                          const rmm::device_uvector<f_t>& x,
                                                          const rmm::device_uvector<f_t>& dx)
@@ -2202,16 +2155,6 @@ f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f
     f_t(1.0),
     x.size(),
     stream_view_);
-}
-
-template <typename i_t, typename f_t>
-template <typename AllocatorA, typename AllocatorB>
-f_t barrier_solver_t<i_t, f_t>::max_step_to_boundary(
-  const dense_vector_t<i_t, f_t, AllocatorA>& x,
-  const dense_vector_t<i_t, f_t, AllocatorB>& dx) const
-{
-  i_t index;
-  return max_step_to_boundary(x, dx, index);
 }
 
 template <typename i_t, typename f_t>
@@ -3055,7 +2998,6 @@ template <typename i_t, typename f_t>
 void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f_t>& data)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_final_direction");
-  raft::common::nvtx::range fun_scope("Barrier: GPU vector operations");
   // TODO Nicolas: Redundant copies
   data.d_y_.resize(data.y.size(), stream_view_);
   data.d_dy_aff_.resize(data.dy_aff.size(), stream_view_);
