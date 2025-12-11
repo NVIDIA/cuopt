@@ -42,8 +42,6 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
-auto constexpr use_gpu = true;
-
 template <typename i_t, typename f_t>
 class iteration_data_t {
  public:
@@ -215,21 +213,20 @@ class iteration_data_t {
     }
 
     // Allocating GPU flag data for Form ADAT
-    if (use_gpu) {
-      raft::common::nvtx::range fun_scope("Barrier: GPU Flag memory allocation");
+    raft::common::nvtx::range fun_scope("Barrier: GPU Flag memory allocation");
 
-      cub::DeviceSelect::Flagged(
-        nullptr,
-        flag_buffer_size,
-        d_inv_diag_prime.data(),  // Not the actual input but just to allcoate the memory
-        thrust::make_transform_iterator(d_cols_to_remove.data(), cuda::std::logical_not<i_t>{}),
-        d_inv_diag_prime.data(),
-        d_num_flag.data(),
-        inv_diag.size(),
-        stream_view_);
+    cub::DeviceSelect::Flagged(
+      nullptr,
+      flag_buffer_size,
+      d_inv_diag_prime.data(),  // Not the actual input but just to allcoate the memory
+      thrust::make_transform_iterator(d_cols_to_remove.data(), cuda::std::logical_not<i_t>{}),
+      d_inv_diag_prime.data(),
+      d_num_flag.data(),
+      inv_diag.size(),
+      stream_view_);
 
-      d_flag_buffer.resize(flag_buffer_size, stream_view_);
-    }
+    d_flag_buffer.resize(flag_buffer_size, stream_view_);
+
     // Create the upper bounds vector
     n_upper_bounds = 0;
     for (i_t j = 0; j < lp.num_cols; j++) {
@@ -304,10 +301,8 @@ class iteration_data_t {
     inv_diag.set_scalar(1.0);
     if (use_augmented) { diag.multiply_scalar(-1.0); }
     if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { diag.inverse(inv_diag); }
-    if (use_gpu) {
-      // TMP diag and inv_diag should directly created and filled on the GPU
-      raft::copy(d_inv_diag.data(), inv_diag.data(), inv_diag.size(), stream_view_);
-    }
+    // TMP diag and inv_diag should directly created and filled on the GPU
+    raft::copy(d_inv_diag.data(), inv_diag.data(), inv_diag.size(), stream_view_);
     inv_sqrt_diag.set_scalar(1.0);
     if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { inv_diag.sqrt(inv_sqrt_diag); }
 
@@ -342,24 +337,20 @@ class iteration_data_t {
       }
     }
     original_A_values = AD.x;
-    if (use_gpu) {
-      d_original_A_values.resize(original_A_values.size(), handle_ptr->get_stream());
-      raft::copy(d_original_A_values.data(), AD.x.data(), AD.x.size(), handle_ptr->get_stream());
-    }
+    d_original_A_values.resize(original_A_values.size(), handle_ptr->get_stream());
+    raft::copy(d_original_A_values.data(), AD.x.data(), AD.x.size(), handle_ptr->get_stream());
     AD.transpose(AT);
 
-    if (use_gpu) {
-      device_AD.copy(AD, handle_ptr->get_stream());
-      // For efficient scaling of AD col we form the col index array
-      device_AD.form_col_index(handle_ptr->get_stream());
-      device_A_x_values.resize(original_A_values.size(), handle_ptr->get_stream());
-      raft::copy(
-        device_A_x_values.data(), device_AD.x.data(), device_AD.x.size(), handle_ptr->get_stream());
-      csr_matrix_t<i_t, f_t> host_A_CSR(1, 1, 1);  // Sizes will be set by to_compressed_row()
-      AD.to_compressed_row(host_A_CSR);
-      device_A.copy(host_A_CSR, lp.handle_ptr->get_stream());
-      RAFT_CHECK_CUDA(handle_ptr->get_stream());
-    }
+    device_AD.copy(AD, handle_ptr->get_stream());
+    // For efficient scaling of AD col we form the col index array
+    device_AD.form_col_index(handle_ptr->get_stream());
+    device_A_x_values.resize(original_A_values.size(), handle_ptr->get_stream());
+    raft::copy(
+      device_A_x_values.data(), device_AD.x.data(), device_AD.x.size(), handle_ptr->get_stream());
+    csr_matrix_t<i_t, f_t> host_A_CSR(1, 1, 1);  // Sizes will be set by to_compressed_row()
+    AD.to_compressed_row(host_A_CSR);
+    device_A.copy(host_A_CSR, lp.handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(handle_ptr->get_stream());
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
     i_t factorization_size = use_augmented ? lp.num_rows + lp.num_cols : lp.num_rows;
@@ -377,11 +368,7 @@ class iteration_data_t {
     } else {
       form_adat(true);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-      if (use_gpu) {
-        symbolic_status = chol->analyze(device_ADAT);
-      } else {
-        symbolic_status = chol->analyze(ADAT);
-      }
+      symbolic_status = chol->analyze(device_ADAT);
     }
   }
 
@@ -529,99 +516,66 @@ class iteration_data_t {
     float64_t start_form_adat = tic();
     const i_t m               = AD.m;
 
-    if (use_gpu) {
-      // TODO do we really need this copy? (it's ok since gpu to gpu)
-      raft::copy(device_AD.x.data(),
-                 d_original_A_values.data(),
-                 d_original_A_values.size(),
-                 handle_ptr->get_stream());
-      if (n_dense_columns > 0) {
-        // Adjust inv_diag
-        d_inv_diag_prime.resize(AD.n, stream_view_);
-        // Copy If
-        cub::DeviceSelect::Flagged(
-          d_flag_buffer.data(),
-          flag_buffer_size,
-          d_inv_diag.data(),
-          thrust::make_transform_iterator(d_cols_to_remove.data(), cuda::std::logical_not<i_t>{}),
-          d_inv_diag_prime.data(),
-          d_num_flag.data(),
-          d_inv_diag.size(),
-          stream_view_);
-      } else {
-        d_inv_diag_prime.resize(inv_diag.size(), stream_view_);
-        raft::copy(d_inv_diag_prime.data(), d_inv_diag.data(), inv_diag.size(), stream_view_);
-      }
-
-      cuopt_assert(static_cast<i_t>(d_inv_diag_prime.size()) == AD.n,
-                   "inv_diag_prime.size() != AD.n");
-
-      thrust::for_each_n(rmm::exec_policy(stream_view_),
-                         thrust::make_counting_iterator<i_t>(0),
-                         i_t(device_AD.x.size()),
-                         [span_x       = cuopt::make_span(device_AD.x),
-                          span_scale   = cuopt::make_span(d_inv_diag_prime),
-                          span_col_ind = cuopt::make_span(device_AD.col_index)] __device__(i_t i) {
-                           span_x[i] *= span_scale[span_col_ind[i]];
-                         });
-      if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
-      if (first_call) {
-        try {
-          initialize_cusparse_data<i_t, f_t>(
-            handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
-        } catch (const raft::cuda_error& e) {
-          settings_.log.printf("Error in initialize_cusparse_data: %s\n", e.what());
-          return;
-        }
-      }
-      if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
-
-      multiply_kernels<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
-      handle_ptr->sync_stream();
-
-      auto adat_nnz       = device_ADAT.row_start.element(device_ADAT.m, handle_ptr->get_stream());
-      float64_t adat_time = toc(start_form_adat);
-
-      if (num_factorizations == 0) {
-        settings_.log.printf("ADAT time                   : %.2fs\n", adat_time);
-        settings_.log.printf("ADAT nonzeros               : %.2e\n",
-                             static_cast<float64_t>(adat_nnz));
-        settings_.log.printf(
-          "ADAT density                : %.2f\n",
-          static_cast<float64_t>(adat_nnz) /
-            (static_cast<float64_t>(device_ADAT.m) * static_cast<float64_t>(device_ADAT.m)));
-      }
+    // TODO do we really need this copy? (it's ok since gpu to gpu)
+    raft::copy(device_AD.x.data(),
+               d_original_A_values.data(),
+               d_original_A_values.size(),
+               handle_ptr->get_stream());
+    if (n_dense_columns > 0) {
+      // Adjust inv_diag
+      d_inv_diag_prime.resize(AD.n, stream_view_);
+      // Copy If
+      cub::DeviceSelect::Flagged(
+        d_flag_buffer.data(),
+        flag_buffer_size,
+        d_inv_diag.data(),
+        thrust::make_transform_iterator(d_cols_to_remove.data(), cuda::std::logical_not<i_t>{}),
+        d_inv_diag_prime.data(),
+        d_num_flag.data(),
+        d_inv_diag.size(),
+        stream_view_);
     } else {
-      // Restore the columns of AD to A
-      AD.x = original_A_values;
-      std::vector<f_t> inv_diag_prime;
-      if (n_dense_columns > 0) {
-        // Adjust inv_diag
-        inv_diag_prime.resize(AD.n);
-        const i_t n = A.n;
+      d_inv_diag_prime.resize(inv_diag.size(), stream_view_);
+      raft::copy(d_inv_diag_prime.data(), d_inv_diag.data(), inv_diag.size(), stream_view_);
+    }
 
-        i_t new_j = 0;
-        for (i_t j = 0; j < n; j++) {
-          if (cols_to_remove[j]) { continue; }
-          inv_diag_prime[new_j++] = inv_diag[j];
-        }
-      } else {
-        inv_diag_prime = copy(inv_diag);
+    cuopt_assert(static_cast<i_t>(d_inv_diag_prime.size()) == AD.n,
+                 "inv_diag_prime.size() != AD.n");
+
+    thrust::for_each_n(rmm::exec_policy(stream_view_),
+                       thrust::make_counting_iterator<i_t>(0),
+                       i_t(device_AD.x.size()),
+                       [span_x       = cuopt::make_span(device_AD.x),
+                        span_scale   = cuopt::make_span(d_inv_diag_prime),
+                        span_col_ind = cuopt::make_span(device_AD.col_index)] __device__(i_t i) {
+                         span_x[i] *= span_scale[span_col_ind[i]];
+                       });
+    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
+    if (first_call) {
+      try {
+        initialize_cusparse_data<i_t, f_t>(
+          handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+      } catch (const raft::cuda_error& e) {
+        settings_.log.printf("Error in initialize_cusparse_data: %s\n", e.what());
+        return;
       }
+    }
+    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
 
-      cuopt_assert(static_cast<i_t>(inv_diag_prime.size()) == AD.n,
-                   "inv_diag_prime.size() != AD.n");
-      AD.scale_columns(inv_diag_prime);
-      multiply(AD, AT, ADAT);
+    multiply_kernels<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+    handle_ptr->sync_stream();
 
-      float64_t adat_time = toc(start_form_adat);
-      if (num_factorizations == 0) {
-        settings_.log.printf("ADAT time %.2fs\n", adat_time);
-        settings_.log.printf("ADAT nonzeros %e density %.2f\n",
-                             static_cast<float64_t>(ADAT.col_start[m]),
-                             static_cast<float64_t>(ADAT.col_start[m]) /
-                               (static_cast<float64_t>(m) * static_cast<float64_t>(m)));
-      }
+    auto adat_nnz       = device_ADAT.row_start.element(device_ADAT.m, handle_ptr->get_stream());
+    float64_t adat_time = toc(start_form_adat);
+
+    if (num_factorizations == 0) {
+      settings_.log.printf("ADAT time                   : %.2fs\n", adat_time);
+      settings_.log.printf("ADAT nonzeros               : %.2e\n",
+                           static_cast<float64_t>(adat_nnz));
+      settings_.log.printf(
+        "ADAT density                : %.2f\n",
+        static_cast<float64_t>(adat_nnz) /
+          (static_cast<float64_t>(device_ADAT.m) * static_cast<float64_t>(device_ADAT.m)));
     }
   }
 
@@ -1038,12 +992,7 @@ class iteration_data_t {
 
     dense_vector_t<i_t, f_t> dual_res = z_tilde;
     dual_res.axpy(-1.0, lp.objective, 1.0);
-    if (use_gpu) {
-      cusparse_view.transpose_spmv(1.0, solution.y, 1.0, dual_res);
-
-    } else {
-      matrix_transpose_vector_multiply(lp.A, 1.0, solution.y, 1.0, dual_res);
-    }
+    cusparse_view.transpose_spmv(1.0, solution.y, 1.0, dual_res);
     f_t dual_residual_norm = vector_norm_inf<i_t, f_t>(dual_res, stream_view_);
 #ifdef PRINT_INFO
     settings_.log.printf("Solution Dual residual: %e\n", dual_residual_norm);
@@ -1772,11 +1721,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     cholesky_debug_check(data, lp, use_augmented);
 #endif
   } else {
-    if (use_gpu) {
-      status = data.chol->factorize(data.device_ADAT);
-    } else {
-      status = data.chol->factorize(data.ADAT);
-    }
+    status = data.chol->factorize(data.device_ADAT);
   }
   if (status == -2) { return -2; }
   if (status != 0) {
@@ -1830,11 +1775,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     }
   } else {
     // rhs_x <-  A * Dinv * F * u  - b
-    if (use_gpu) {
-      data.cusparse_view_.spmv(1.0, DinvFu, -1.0, rhs_x);
-    } else {
-      matrix_vector_multiply(lp.A, 1.0, DinvFu, -1.0, rhs_x);
-    }
+    data.cusparse_view_.spmv(1.0, DinvFu, -1.0, rhs_x);
 #ifdef PRINT_INFO
     settings.log.printf("||DinvFu|| = %e\n", vector_norm2<i_t, f_t>(DinvFu));
 #endif
@@ -1861,12 +1802,9 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 
     // x = Dinv*(F*u - A'*q)
     // Fu <- -1.0 * A' * q + 1.0 * Fu
-    if (use_gpu) {
-      data.cusparse_view_.transpose_spmv(-1.0, q, 1.0, Fu);
-      data.handle_ptr->get_stream().synchronize();
-    } else {
-      matrix_transpose_vector_multiply(lp.A, -1.0, q, 1.0, Fu);
-    }
+    data.cusparse_view_.transpose_spmv(-1.0, q, 1.0, Fu);
+    data.handle_ptr->get_stream().synchronize();
+
     // x <- Dinv * (F*u - A'*q)
     data.inv_diag.pairwise_product(Fu, data.x);
   }
@@ -1881,12 +1819,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 
   // Verify A*x = b
   data.primal_residual = lp.rhs;
-  if (use_gpu) {
-    data.cusparse_view_.spmv(1.0, data.x, -1.0, data.primal_residual);
-    data.handle_ptr->get_stream().synchronize();
-  } else {
-    matrix_vector_multiply(lp.A, 1.0, data.x, -1.0, data.primal_residual);
-  }
+  data.cusparse_view_.spmv(1.0, data.x, -1.0, data.primal_residual);
+  data.handle_ptr->get_stream().synchronize();
 #ifdef PRINT_INFO
   settings.log.printf("||b - A * x||: %.16e\n", vector_norm2<i_t, f_t>(data.primal_residual));
 #endif
@@ -1981,11 +1915,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     dense_vector_t<i_t, f_t> Dinvc(lp.num_cols);
     data.inv_diag.pairwise_product(lp.objective, Dinvc);
     // rhs = 1.0 * A * Dinv * c
-    if (use_gpu) {
-      data.cusparse_view_.spmv(1.0, Dinvc, 0.0, rhs);
-    } else {
-      matrix_vector_multiply(lp.A, 1.0, Dinvc, 0.0, rhs);
-    }
+    data.cusparse_view_.spmv(1.0, Dinvc, 0.0, rhs);
 
     // Solve A*Dinv*A'*q = A*Dinv*c
     // data.chol->solve(rhs, data.y);
@@ -1994,11 +1924,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 
     // z = Dinv*(c - A'*y)
     dense_vector_t<i_t, f_t> cmATy = data.c;
-    if (use_gpu) {
-      data.cusparse_view_.transpose_spmv(-1.0, data.y, 1.0, cmATy);
-    } else {
-      matrix_transpose_vector_multiply(lp.A, -1.0, data.y, 1.0, cmATy);
-    }
+    data.cusparse_view_.transpose_spmv(-1.0, data.y, 1.0, cmATy);
     // z <- Dinv * (c - A'*y)
     data.inv_diag.pairwise_product(cmATy, data.z);
 
@@ -2012,11 +1938,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   // Verify A'*y + z - E*v  - Q*x = c
   data.z.pairwise_subtract(data.c, data.dual_residual);
   if (data.Q.n > 0) { matrix_vector_multiply(data.Q, -1.0, data.x, 1.0, data.dual_residual); }
-  if (use_gpu) {
-    data.cusparse_view_.transpose_spmv(1.0, data.y, 1.0, data.dual_residual);
-  } else {
-    matrix_transpose_vector_multiply(lp.A, 1.0, data.y, 1.0, data.dual_residual);
-  }
+  data.cusparse_view_.transpose_spmv(1.0, data.y, 1.0, data.dual_residual);
   if (data.n_upper_bounds > 0) {
     for (i_t k = 0; k < data.n_upper_bounds; k++) {
       i_t j = data.upper_bounds[k];
@@ -2165,11 +2087,7 @@ void barrier_solver_t<i_t, f_t>::compute_residuals(const dense_vector_t<i_t, f_t
 
   // Compute primal_residual = b - A*x
   data.primal_residual = lp.rhs;
-  if (use_gpu) {
-    data.cusparse_view_.spmv(-1.0, x, 1.0, data.primal_residual);
-  } else {
-    matrix_vector_multiply(lp.A, -1.0, x, 1.0, data.primal_residual);
-  }
+  data.cusparse_view_.spmv(-1.0, x, 1.0, data.primal_residual);
 
   // Compute bound_residual = E'*u - w - E'*x
   if (data.n_upper_bounds > 0) {
@@ -2181,11 +2099,7 @@ void barrier_solver_t<i_t, f_t>::compute_residuals(const dense_vector_t<i_t, f_t
 
   // Compute dual_residual = c - A'*y - z + E*v + Q*x
   data.c.pairwise_subtract(z, data.dual_residual);
-  if (use_gpu) {
-    data.cusparse_view_.transpose_spmv(-1.0, y, 1.0, data.dual_residual);
-  } else {
-    matrix_transpose_vector_multiply(lp.A, -1.0, y, 1.0, data.dual_residual);
-  }
+  data.cusparse_view_.transpose_spmv(-1.0, y, 1.0, data.dual_residual);
   if (data.n_upper_bounds > 0) {
     for (i_t k = 0; k < data.n_upper_bounds; k++) {
       i_t j = data.upper_bounds[k];
@@ -2427,11 +2341,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       // compute ADAT = A Dinv * A^T
       data.form_adat();
       // factorize
-      if (use_gpu) {
-        status = data.chol->factorize(data.device_ADAT);
-      } else {
-        status = data.chol->factorize(data.ADAT);
-      }
+      status = data.chol->factorize(data.device_ADAT);
     }
     data.has_factorization = true;
     data.num_factorizations++;
@@ -2805,11 +2715,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     // x_residual <- A * dx - primal_rhs
     // TMP data should only be on the GPU
     pinned_dense_vector_t<i_t, f_t> x_residual = data.primal_rhs;
-    if (use_gpu) {
-      data.cusparse_view_.spmv(1.0, dx, -1.0, x_residual);
-    } else {
-      matrix_vector_multiply(lp.A, 1.0, dx, -1.0, x_residual);
-    }
+    data.cusparse_view_.spmv(1.0, dx, -1.0, x_residual);
     const f_t x_residual_norm = vector_norm_inf<i_t, f_t>(x_residual, stream_view_);
     max_residual              = std::max(max_residual, x_residual_norm);
     if (x_residual_norm > 1e-2) {
@@ -3019,40 +2925,30 @@ void barrier_solver_t<i_t, f_t>::compute_affine_rhs(iteration_data_t<i_t, f_t>& 
   data.bound_rhs  = data.bound_residual;
   data.dual_rhs   = data.dual_residual;
 
-  if (use_gpu) {
-    raft::copy(data.d_complementarity_xz_rhs_.data(),
-               data.d_complementarity_xz_residual_.data(),
-               data.d_complementarity_xz_residual_.size(),
-               stream_view_);
-    raft::copy(data.d_complementarity_wv_rhs_.data(),
-               data.d_complementarity_wv_residual_.data(),
-               data.d_complementarity_wv_residual_.size(),
-               stream_view_);
+  raft::copy(data.d_complementarity_xz_rhs_.data(),
+             data.d_complementarity_xz_residual_.data(),
+             data.d_complementarity_xz_residual_.size(),
+             stream_view_);
+  raft::copy(data.d_complementarity_wv_rhs_.data(),
+             data.d_complementarity_wv_residual_.data(),
+             data.d_complementarity_wv_residual_.size(),
+             stream_view_);
 
-    // x.*z ->  -x .* z
-    cub::DeviceTransform::Transform(
-      data.d_complementarity_xz_rhs_.data(),
-      data.d_complementarity_xz_rhs_.data(),
-      data.d_complementarity_xz_rhs_.size(),
-      [] HD(f_t xz_rhs) { return -xz_rhs; },
-      stream_view_);
+  // x.*z ->  -x .* z
+  cub::DeviceTransform::Transform(
+    data.d_complementarity_xz_rhs_.data(),
+    data.d_complementarity_xz_rhs_.data(),
+    data.d_complementarity_xz_rhs_.size(),
+    [] HD(f_t xz_rhs) { return -xz_rhs; },
+    stream_view_);
 
-    // w.*v -> -w .* v
-    cub::DeviceTransform::Transform(
-      data.d_complementarity_wv_rhs_.data(),
-      data.d_complementarity_wv_rhs_.data(),
-      data.d_complementarity_wv_rhs_.size(),
-      [] HD(f_t wv_rhs) { return -wv_rhs; },
-      stream_view_);
-  } else {
-    data.complementarity_xz_rhs = data.complementarity_xz_residual;
-    data.complementarity_wv_rhs = data.complementarity_wv_residual;
-
-    // x.*z ->  -x .* z
-    data.complementarity_xz_rhs.multiply_scalar(-1.0);
-    // w.*v -> -w .* v
-    data.complementarity_wv_rhs.multiply_scalar(-1.0);
-  }
+  // w.*v -> -w .* v
+  cub::DeviceTransform::Transform(
+    data.d_complementarity_wv_rhs_.data(),
+    data.d_complementarity_wv_rhs_.data(),
+    data.d_complementarity_wv_rhs_.size(),
+    [] HD(f_t wv_rhs) { return -wv_rhs; },
+    stream_view_);
 }
 
 template <typename i_t, typename f_t>
@@ -3062,101 +2958,68 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
   raft::common::nvtx::range fun_scope("Barrier: compute_target_mu");
 
   f_t complementarity_aff_sum = 0.0;
-  if (!use_gpu) {
-    f_t step_primal_aff = std::min(max_step_to_boundary(data.w, data.dw_aff),
-                                   max_step_to_boundary(data.x, data.dx_aff));
-    f_t step_dual_aff   = std::min(max_step_to_boundary(data.v, data.dv_aff),
-                                 max_step_to_boundary(data.z, data.dz_aff));
+  // TMP no copy and data should always be on the GPU
+  data.d_dw_aff_.resize(data.dw_aff.size(), stream_view_);
+  data.d_dx_aff_.resize(data.dx_aff.size(), stream_view_);
+  data.d_dv_aff_.resize(data.dv_aff.size(), stream_view_);
+  data.d_dz_aff_.resize(data.dz_aff.size(), stream_view_);
 
-    if (data.Q.n > 0) {
-      step_primal_aff = step_dual_aff = std::min(step_primal_aff, step_dual_aff);
-    }
+  raft::copy(data.d_dw_aff_.data(), data.dw_aff.data(), data.dw_aff.size(), stream_view_);
+  raft::copy(data.d_dx_aff_.data(), data.dx_aff.data(), data.dx_aff.size(), stream_view_);
+  raft::copy(data.d_dv_aff_.data(), data.dv_aff.data(), data.dv_aff.size(), stream_view_);
+  raft::copy(data.d_dz_aff_.data(), data.dz_aff.data(), data.dz_aff.size(), stream_view_);
 
-    // w_aff = w + step_primal_aff * dw_aff
-    // x_aff = x + step_primal_aff * dx_aff
-    // v_aff = v + step_dual_aff * dv_aff
-    // z_aff = z + step_dual_aff * dz_aff
-    dense_vector_t<i_t, f_t> w_aff = data.w;
-    dense_vector_t<i_t, f_t> x_aff = data.x;
-    dense_vector_t<i_t, f_t> v_aff = data.v;
-    dense_vector_t<i_t, f_t> z_aff = data.z;
-    w_aff.axpy(step_primal_aff, data.dw_aff, 1.0);
-    x_aff.axpy(step_primal_aff, data.dx_aff, 1.0);
-    v_aff.axpy(step_dual_aff, data.dv_aff, 1.0);
-    z_aff.axpy(step_dual_aff, data.dz_aff, 1.0);
+  f_t step_primal_aff = std::min(gpu_max_step_to_boundary(data, data.d_w_, data.d_dw_aff_),
+                                 gpu_max_step_to_boundary(data, data.d_x_, data.d_dx_aff_));
+  f_t step_dual_aff   = std::min(gpu_max_step_to_boundary(data, data.d_v_, data.d_dv_aff_),
+                               gpu_max_step_to_boundary(data, data.d_z_, data.d_dz_aff_));
 
-    dense_vector_t<i_t, f_t> complementarity_xz_aff(lp.num_cols);
-    dense_vector_t<i_t, f_t> complementarity_wv_aff(data.n_upper_bounds);
-    x_aff.pairwise_product(z_aff, complementarity_xz_aff);
-    w_aff.pairwise_product(v_aff, complementarity_wv_aff);
+  if (data.Q.n > 0) { step_primal_aff = step_dual_aff = std::min(step_primal_aff, step_dual_aff); }
 
-    complementarity_aff_sum = complementarity_xz_aff.sum() + complementarity_wv_aff.sum();
+  f_t complementarity_xz_aff_sum = data.transform_reduce_helper_.transform_reduce(
+    thrust::make_zip_iterator(
+      data.d_x_.data(), data.d_z_.data(), data.d_dx_aff_.data(), data.d_dz_aff_.data()),
+    cuda::std::plus<f_t>{},
+    [step_primal_aff, step_dual_aff] HD(const thrust::tuple<f_t, f_t, f_t, f_t> t) {
+      const f_t x      = thrust::get<0>(t);
+      const f_t z      = thrust::get<1>(t);
+      const f_t dx_aff = thrust::get<2>(t);
+      const f_t dz_aff = thrust::get<3>(t);
 
-  } else {
-    // TMP no copy and data should always be on the GPU
-    data.d_dw_aff_.resize(data.dw_aff.size(), stream_view_);
-    data.d_dx_aff_.resize(data.dx_aff.size(), stream_view_);
-    data.d_dv_aff_.resize(data.dv_aff.size(), stream_view_);
-    data.d_dz_aff_.resize(data.dz_aff.size(), stream_view_);
+      const f_t x_aff = x + step_primal_aff * dx_aff;
+      const f_t z_aff = z + step_dual_aff * dz_aff;
 
-    raft::copy(data.d_dw_aff_.data(), data.dw_aff.data(), data.dw_aff.size(), stream_view_);
-    raft::copy(data.d_dx_aff_.data(), data.dx_aff.data(), data.dx_aff.size(), stream_view_);
-    raft::copy(data.d_dv_aff_.data(), data.dv_aff.data(), data.dv_aff.size(), stream_view_);
-    raft::copy(data.d_dz_aff_.data(), data.dz_aff.data(), data.dz_aff.size(), stream_view_);
+      const f_t complementarity_xz_aff = x_aff * z_aff;
 
-    f_t step_primal_aff = std::min(gpu_max_step_to_boundary(data, data.d_w_, data.d_dw_aff_),
-                                   gpu_max_step_to_boundary(data, data.d_x_, data.d_dx_aff_));
-    f_t step_dual_aff   = std::min(gpu_max_step_to_boundary(data, data.d_v_, data.d_dv_aff_),
-                                 gpu_max_step_to_boundary(data, data.d_z_, data.d_dz_aff_));
+      return complementarity_xz_aff;
+    },
+    f_t(0),
+    data.d_x_.size(),
+    stream_view_);
 
-    if (data.Q.n > 0) {
-      step_primal_aff = step_dual_aff = std::min(step_primal_aff, step_dual_aff);
-    }
+  f_t complementarity_wv_aff_sum = data.transform_reduce_helper_.transform_reduce(
+    thrust::make_zip_iterator(
+      data.d_w_.data(), data.d_v_.data(), data.d_dw_aff_.data(), data.d_dv_aff_.data()),
+    cuda::std::plus<f_t>{},
+    [step_primal_aff, step_dual_aff] HD(const thrust::tuple<f_t, f_t, f_t, f_t> t) {
+      const f_t w      = thrust::get<0>(t);
+      const f_t v      = thrust::get<1>(t);
+      const f_t dw_aff = thrust::get<2>(t);
+      const f_t dv_aff = thrust::get<3>(t);
 
-    f_t complementarity_xz_aff_sum = data.transform_reduce_helper_.transform_reduce(
-      thrust::make_zip_iterator(
-        data.d_x_.data(), data.d_z_.data(), data.d_dx_aff_.data(), data.d_dz_aff_.data()),
-      cuda::std::plus<f_t>{},
-      [step_primal_aff, step_dual_aff] HD(const thrust::tuple<f_t, f_t, f_t, f_t> t) {
-        const f_t x      = thrust::get<0>(t);
-        const f_t z      = thrust::get<1>(t);
-        const f_t dx_aff = thrust::get<2>(t);
-        const f_t dz_aff = thrust::get<3>(t);
+      const f_t w_aff = w + step_primal_aff * dw_aff;
+      const f_t v_aff = v + step_dual_aff * dv_aff;
 
-        const f_t x_aff = x + step_primal_aff * dx_aff;
-        const f_t z_aff = z + step_dual_aff * dz_aff;
+      const f_t complementarity_wv_aff = w_aff * v_aff;
 
-        const f_t complementarity_xz_aff = x_aff * z_aff;
+      return complementarity_wv_aff;
+    },
+    f_t(0),
+    data.d_w_.size(),
+    stream_view_);
 
-        return complementarity_xz_aff;
-      },
-      f_t(0),
-      data.d_x_.size(),
-      stream_view_);
+  complementarity_aff_sum = complementarity_xz_aff_sum + complementarity_wv_aff_sum;
 
-    f_t complementarity_wv_aff_sum = data.transform_reduce_helper_.transform_reduce(
-      thrust::make_zip_iterator(
-        data.d_w_.data(), data.d_v_.data(), data.d_dw_aff_.data(), data.d_dv_aff_.data()),
-      cuda::std::plus<f_t>{},
-      [step_primal_aff, step_dual_aff] HD(const thrust::tuple<f_t, f_t, f_t, f_t> t) {
-        const f_t w      = thrust::get<0>(t);
-        const f_t v      = thrust::get<1>(t);
-        const f_t dw_aff = thrust::get<2>(t);
-        const f_t dv_aff = thrust::get<3>(t);
-
-        const f_t w_aff = w + step_primal_aff * dw_aff;
-        const f_t v_aff = v + step_dual_aff * dv_aff;
-
-        const f_t complementarity_wv_aff = w_aff * v_aff;
-
-        return complementarity_wv_aff;
-      },
-      f_t(0),
-      data.d_w_.size(),
-      stream_view_);
-
-    complementarity_aff_sum = complementarity_xz_aff_sum + complementarity_wv_aff_sum;
-  }
   mu_aff = (complementarity_aff_sum) /
            (static_cast<f_t>(data.x.size()) + static_cast<f_t>(data.n_upper_bounds));
   sigma  = std::max(0.0, std::min(1.0, std::pow(mu_aff / mu, 3.0)));
@@ -3168,31 +3031,19 @@ void barrier_solver_t<i_t, f_t>::compute_cc_rhs(iteration_data_t<i_t, f_t>& data
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_cc_rhs");
 
-  if (use_gpu) {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(data.d_dx_aff_.data(), data.d_dz_aff_.data()),
-      data.d_complementarity_xz_rhs_.data(),
-      data.d_complementarity_xz_rhs_.size(),
-      [new_mu] HD(f_t dx_aff, f_t dz_aff) { return -(dx_aff * dz_aff) + new_mu; },
-      stream_view_);
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(data.d_dx_aff_.data(), data.d_dz_aff_.data()),
+    data.d_complementarity_xz_rhs_.data(),
+    data.d_complementarity_xz_rhs_.size(),
+    [new_mu] HD(f_t dx_aff, f_t dz_aff) { return -(dx_aff * dz_aff) + new_mu; },
+    stream_view_);
 
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(data.d_dw_aff_.data(), data.d_dv_aff_.data()),
-      data.d_complementarity_wv_rhs_.data(),
-      data.d_complementarity_wv_rhs_.size(),
-      [new_mu] HD(f_t dw_aff, f_t dv_aff) { return -(dw_aff * dv_aff) + new_mu; },
-      stream_view_);
-  } else {
-    // complementarity_xz_rhs = -dx_aff .* dz_aff + sigma * mu
-    data.dx_aff.pairwise_product(data.dz_aff, data.complementarity_xz_rhs);
-    data.complementarity_xz_rhs.multiply_scalar(-1.0);
-    data.complementarity_xz_rhs.add_scalar(new_mu);
-
-    // complementarity_wv_rhs = -dw_aff .* dv_aff + sigma * mu
-    data.dw_aff.pairwise_product(data.dv_aff, data.complementarity_wv_rhs);
-    data.complementarity_wv_rhs.multiply_scalar(-1.0);
-    data.complementarity_wv_rhs.add_scalar(new_mu);
-  }
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(data.d_dw_aff_.data(), data.d_dv_aff_.data()),
+    data.d_complementarity_wv_rhs_.data(),
+    data.d_complementarity_wv_rhs_.size(),
+    [new_mu] HD(f_t dw_aff, f_t dv_aff) { return -(dw_aff * dv_aff) + new_mu; },
+    stream_view_);
 
   // TMP should be CPU to 0 if CPU and GPU to 0 if GPU
   data.primal_rhs.set_scalar(0.0);
@@ -3204,79 +3055,63 @@ template <typename i_t, typename f_t>
 void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f_t>& data)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_final_direction");
-  if (use_gpu) {
-    raft::common::nvtx::range fun_scope("Barrier: GPU vector operations");
-    // TODO Nicolas: Redundant copies
-    data.d_y_.resize(data.y.size(), stream_view_);
-    data.d_dy_aff_.resize(data.dy_aff.size(), stream_view_);
-    raft::copy(data.d_y_.data(), data.y.data(), data.y.size(), stream_view_);
-    raft::copy(data.d_dy_aff_.data(), data.dy_aff.data(), data.dy_aff.size(), stream_view_);
+  raft::common::nvtx::range fun_scope("Barrier: GPU vector operations");
+  // TODO Nicolas: Redundant copies
+  data.d_y_.resize(data.y.size(), stream_view_);
+  data.d_dy_aff_.resize(data.dy_aff.size(), stream_view_);
+  raft::copy(data.d_y_.data(), data.y.data(), data.y.size(), stream_view_);
+  raft::copy(data.d_dy_aff_.data(), data.dy_aff.data(), data.dy_aff.size(), stream_view_);
 
 #ifdef FINITE_CHECK
-    for (i_t i = 0; i < (int)data.y.size(); i++) {
-      cuopt_assert(std::isfinite(data.y[i]), "data.d_y_[i] is not finite");
-    }
+  for (i_t i = 0; i < (int)data.y.size(); i++) {
+    cuopt_assert(std::isfinite(data.y[i]), "data.d_y_[i] is not finite");
+  }
 
-    for (i_t i = 0; i < (int)data.dy_aff.size(); i++) {
-      cuopt_assert(std::isfinite(data.dy_aff[i]), "data.dy_aff_[i] is not finite");
-    }
+  for (i_t i = 0; i < (int)data.dy_aff.size(); i++) {
+    cuopt_assert(std::isfinite(data.dy_aff[i]), "data.dy_aff_[i] is not finite");
+  }
 #endif
 
-    // dw = dw_aff + dw_cc
-    // dx = dx_aff + dx_cc
-    // dy = dy_aff + dy_cc
-    // dv = dv_aff + dv_cc
-    // dz = dz_aff + dz_cc
-    // Note: dw_cc - dz_cc are stored in dw - dz
+  // dw = dw_aff + dw_cc
+  // dx = dx_aff + dx_cc
+  // dy = dy_aff + dy_cc
+  // dv = dv_aff + dv_cc
+  // dz = dz_aff + dz_cc
+  // Note: dw_cc - dz_cc are stored in dw - dz
 
-    // Transforms are grouped according to vector sizes.
-    assert(data.d_dw_.size() == data.d_dv_.size());
-    assert(data.d_dx_.size() == data.d_dz_.size());
-    assert(data.d_dw_aff_.size() == data.d_dv_aff_.size());
-    assert(data.d_dx_aff_.size() == data.d_dz_aff_.size());
-    assert(data.d_dy_aff_.size() == data.d_dy_.size());
+  // Transforms are grouped according to vector sizes.
+  assert(data.d_dw_.size() == data.d_dv_.size());
+  assert(data.d_dx_.size() == data.d_dz_.size());
+  assert(data.d_dw_aff_.size() == data.d_dv_aff_.size());
+  assert(data.d_dx_aff_.size() == data.d_dz_aff_.size());
+  assert(data.d_dy_aff_.size() == data.d_dy_.size());
 
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(
-        data.d_dw_aff_.data(), data.d_dv_aff_.data(), data.d_dw_.data(), data.d_dv_.data()),
-      thrust::make_zip_iterator(data.d_dw_.data(), data.d_dv_.data()),
-      data.d_dw_.size(),
-      [] HD(f_t dw_aff, f_t dv_aff, f_t dw, f_t dv) -> thrust::tuple<f_t, f_t> {
-        return {dw + dw_aff, dv + dv_aff};
-      },
-      stream_view_);
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(
+      data.d_dw_aff_.data(), data.d_dv_aff_.data(), data.d_dw_.data(), data.d_dv_.data()),
+    thrust::make_zip_iterator(data.d_dw_.data(), data.d_dv_.data()),
+    data.d_dw_.size(),
+    [] HD(f_t dw_aff, f_t dv_aff, f_t dw, f_t dv) -> thrust::tuple<f_t, f_t> {
+      return {dw + dw_aff, dv + dv_aff};
+    },
+    stream_view_);
 
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(
-        data.d_dx_aff_.data(), data.d_dz_aff_.data(), data.d_dx_.data(), data.d_dz_.data()),
-      thrust::make_zip_iterator(data.d_dx_.data(), data.d_dz_.data()),
-      data.d_dx_.size(),
-      [] HD(f_t dx_aff, f_t dz_aff, f_t dx, f_t dz) -> thrust::tuple<f_t, f_t> {
-        return {dx + dx_aff, dz + dz_aff};
-      },
-      stream_view_);
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(
+      data.d_dx_aff_.data(), data.d_dz_aff_.data(), data.d_dx_.data(), data.d_dz_.data()),
+    thrust::make_zip_iterator(data.d_dx_.data(), data.d_dz_.data()),
+    data.d_dx_.size(),
+    [] HD(f_t dx_aff, f_t dz_aff, f_t dx, f_t dz) -> thrust::tuple<f_t, f_t> {
+      return {dx + dx_aff, dz + dz_aff};
+    },
+    stream_view_);
 
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(data.d_dy_aff_.data(), data.d_dy_.data()),
-      data.d_dy_.data(),
-      data.d_dy_.size(),
-      [] HD(f_t dy_aff, f_t dy) { return dy + dy_aff; },
-      stream_view_);
-
-  } else {
-    raft::common::nvtx::range fun_scope("Barrier: CPU vector operations");
-    // dw = dw_aff + dw_cc
-    // dx = dx_aff + dx_cc
-    // dy = dy_aff + dy_cc
-    // dv = dv_aff + dv_cc
-    // dz = dz_aff + dz_cc
-    // Note: dw_cc - dz_cc are stored in dw - dz
-    data.dw.axpy(1.0, data.dw_aff, 1.0);
-    data.dx.axpy(1.0, data.dx_aff, 1.0);
-    data.dy.axpy(1.0, data.dy_aff, 1.0);
-    data.dv.axpy(1.0, data.dv_aff, 1.0);
-    data.dz.axpy(1.0, data.dz_aff, 1.0);
-  }
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(data.d_dy_aff_.data(), data.d_dy_.data()),
+    data.d_dy_.data(),
+    data.d_dy_.size(),
+    [] HD(f_t dy_aff, f_t dy) { return dy + dy_aff; },
+    stream_view_);
 }
 
 template <typename i_t, typename f_t>
@@ -3288,17 +3123,10 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_step_length(iteration_data_
   raft::common::nvtx::range fun_scope("Barrier: compute_primal_dual_step_length");
   f_t max_step_primal = 0.0;
   f_t max_step_dual   = 0.0;
-  if (use_gpu) {
-    max_step_primal = std::min(gpu_max_step_to_boundary(data, data.d_w_, data.d_dw_),
-                               gpu_max_step_to_boundary(data, data.d_x_, data.d_dx_));
-    max_step_dual   = std::min(gpu_max_step_to_boundary(data, data.d_v_, data.d_dv_),
-                             gpu_max_step_to_boundary(data, data.d_z_, data.d_dz_));
-  } else {
-    max_step_primal =
-      std::min(max_step_to_boundary(data.w, data.dw), max_step_to_boundary(data.x, data.dx));
-    max_step_dual =
-      std::min(max_step_to_boundary(data.v, data.dv), max_step_to_boundary(data.z, data.dz));
-  }
+  max_step_primal     = std::min(gpu_max_step_to_boundary(data, data.d_w_, data.d_dw_),
+                             gpu_max_step_to_boundary(data, data.d_x_, data.d_dx_));
+  max_step_dual       = std::min(gpu_max_step_to_boundary(data, data.d_v_, data.d_dv_),
+                           gpu_max_step_to_boundary(data, data.d_z_, data.d_dz_));
 
   step_primal = step_scale * max_step_primal;
   step_dual   = step_scale * max_step_dual;
@@ -3314,86 +3142,61 @@ void barrier_solver_t<i_t, f_t>::compute_next_iterate(iteration_data_t<i_t, f_t>
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_next_iterate");
 
-  if (use_gpu) {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(
-        data.d_w_.data(), data.d_v_.data(), data.d_dw_.data(), data.d_dv_.data()),
-      thrust::make_zip_iterator(data.d_w_.data(), data.d_v_.data()),
-      data.d_dw_.size(),
-      [step_primal, step_dual] HD(f_t w, f_t v, f_t dw, f_t dv) -> thrust::tuple<f_t, f_t> {
-        return {w + step_primal * dw, v + step_dual * dv};
-      },
-      stream_view_);
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(data.d_w_.data(), data.d_v_.data(), data.d_dw_.data(), data.d_dv_.data()),
+    thrust::make_zip_iterator(data.d_w_.data(), data.d_v_.data()),
+    data.d_dw_.size(),
+    [step_primal, step_dual] HD(f_t w, f_t v, f_t dw, f_t dv) -> thrust::tuple<f_t, f_t> {
+      return {w + step_primal * dw, v + step_dual * dv};
+    },
+    stream_view_);
 
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(
-        data.d_x_.data(), data.d_z_.data(), data.d_dx_.data(), data.d_dz_.data()),
-      thrust::make_zip_iterator(data.d_x_.data(), data.d_z_.data()),
-      data.d_dx_.size(),
-      [step_primal, step_dual] HD(f_t x, f_t z, f_t dx, f_t dz) -> thrust::tuple<f_t, f_t> {
-        return {x + step_primal * dx, z + step_dual * dz};
-      },
-      stream_view_);
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(data.d_x_.data(), data.d_z_.data(), data.d_dx_.data(), data.d_dz_.data()),
+    thrust::make_zip_iterator(data.d_x_.data(), data.d_z_.data()),
+    data.d_dx_.size(),
+    [step_primal, step_dual] HD(f_t x, f_t z, f_t dx, f_t dz) -> thrust::tuple<f_t, f_t> {
+      return {x + step_primal * dx, z + step_dual * dz};
+    },
+    stream_view_);
 
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(data.d_y_.data(), data.d_dy_.data()),
-      data.d_y_.data(),
-      data.d_y_.size(),
-      [step_dual] HD(f_t y, f_t dy) { return y + step_dual * dy; },
-      stream_view_);
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(data.d_y_.data(), data.d_dy_.data()),
+    data.d_y_.data(),
+    data.d_y_.size(),
+    [step_dual] HD(f_t y, f_t dy) { return y + step_dual * dy; },
+    stream_view_);
 
-    // Do not handle free variables for quadratic problems
-    i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
-    if (num_free_variables > 0 && data.Q.n == 0) {
-      auto d_free_variable_pairs = device_copy(presolve_info.free_variable_pairs, stream_view_);
-      thrust::for_each(rmm::exec_policy(stream_view_),
-                       thrust::make_counting_iterator(0),
-                       thrust::make_counting_iterator(num_free_variables),
-                       [span_free_variable_pairs = cuopt::make_span(d_free_variable_pairs),
-                        span_x                   = cuopt::make_span(data.d_x_),
-                        my_step_scale            = step_scale] __device__(i_t i) {
-                         // Not coalesced
-                         i_t k       = 2 * i;
-                         i_t u       = span_free_variable_pairs[k];
-                         i_t v       = span_free_variable_pairs[k + 1];
-                         f_t u_val   = span_x[u];
-                         f_t v_val   = span_x[v];
-                         f_t min_val = cuda::std::min(u_val, v_val);
-                         f_t eta     = my_step_scale * min_val;
-                         span_x[u] -= eta;
-                         span_x[v] -= eta;
-                       });
-    }
-
-    raft::copy(data.w.data(), data.d_w_.data(), data.d_w_.size(), stream_view_);
-    raft::copy(data.x.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
-    raft::copy(data.y.data(), data.d_y_.data(), data.d_y_.size(), stream_view_);
-    raft::copy(data.v.data(), data.d_v_.data(), data.d_v_.size(), stream_view_);
-    raft::copy(data.z.data(), data.d_z_.data(), data.d_z_.size(), stream_view_);
-    // Sync to make sure all host variable are done copying
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
-  } else {
-    data.w.axpy(step_primal, data.dw, 1.0);
-    data.x.axpy(step_primal, data.dx, 1.0);
-    data.y.axpy(step_dual, data.dy, 1.0);
-    data.v.axpy(step_dual, data.dv, 1.0);
-    data.z.axpy(step_dual, data.dz, 1.0);
-
-    // Handle free variables
-    i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
-    if (num_free_variables > 0 && data.Q.n == 0) {
-      for (i_t k = 0; k < 2 * num_free_variables; k += 2) {
-        i_t u       = presolve_info.free_variable_pairs[k];
-        i_t v       = presolve_info.free_variable_pairs[k + 1];
-        f_t u_val   = data.x[u];
-        f_t v_val   = data.x[v];
-        f_t min_val = std::min(u_val, v_val);
-        f_t eta     = step_scale * min_val;
-        data.x[u] -= eta;
-        data.x[v] -= eta;
-      }
-    }
+  // Do not handle free variables for quadratic problems
+  i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
+  if (num_free_variables > 0 && data.Q.n == 0) {
+    auto d_free_variable_pairs = device_copy(presolve_info.free_variable_pairs, stream_view_);
+    thrust::for_each(rmm::exec_policy(stream_view_),
+                     thrust::make_counting_iterator(0),
+                     thrust::make_counting_iterator(num_free_variables),
+                     [span_free_variable_pairs = cuopt::make_span(d_free_variable_pairs),
+                      span_x                   = cuopt::make_span(data.d_x_),
+                      my_step_scale            = step_scale] __device__(i_t i) {
+                       // Not coalesced
+                       i_t k       = 2 * i;
+                       i_t u       = span_free_variable_pairs[k];
+                       i_t v       = span_free_variable_pairs[k + 1];
+                       f_t u_val   = span_x[u];
+                       f_t v_val   = span_x[v];
+                       f_t min_val = cuda::std::min(u_val, v_val);
+                       f_t eta     = my_step_scale * min_val;
+                       span_x[u] -= eta;
+                       span_x[v] -= eta;
+                     });
   }
+
+  raft::copy(data.w.data(), data.d_w_.data(), data.d_w_.size(), stream_view_);
+  raft::copy(data.x.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
+  raft::copy(data.y.data(), data.d_y_.data(), data.d_y_.size(), stream_view_);
+  raft::copy(data.v.data(), data.d_v_.data(), data.d_v_.size(), stream_view_);
+  raft::copy(data.z.data(), data.d_z_.data(), data.d_z_.size(), stream_view_);
+  // Sync to make sure all host variable are done copying
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 }
 
 template <typename i_t, typename f_t>
@@ -3403,27 +3206,15 @@ void barrier_solver_t<i_t, f_t>::compute_residual_norms(iteration_data_t<i_t, f_
                                                         f_t& complementarity_residual_norm)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_residual_norms");
-  if (use_gpu) {
-    gpu_compute_residual_norms(data.d_w_,
-                               data.d_x_,
-                               data.d_y_,
-                               data.d_v_,
-                               data.d_z_,
-                               data,
-                               primal_residual_norm,
-                               dual_residual_norm,
-                               complementarity_residual_norm);
-  } else {
-    cpu_compute_residual_norms(data.w,
-                               data.x,
-                               data.y,
-                               data.v,
-                               data.z,
-                               data,
-                               primal_residual_norm,
-                               dual_residual_norm,
-                               complementarity_residual_norm);
-  }
+  gpu_compute_residual_norms(data.d_w_,
+                             data.d_x_,
+                             data.d_y_,
+                             data.d_v_,
+                             data.d_z_,
+                             data,
+                             primal_residual_norm,
+                             dual_residual_norm,
+                             complementarity_residual_norm);
 }
 
 template <typename i_t, typename f_t>
@@ -3431,18 +3222,13 @@ void barrier_solver_t<i_t, f_t>::compute_mu(iteration_data_t<i_t, f_t>& data, f_
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_mu");
 
-  if (use_gpu) {
-    mu = (data.sum_reduce_helper_.sum(data.d_complementarity_xz_residual_.begin(),
-                                      data.d_complementarity_xz_residual_.size(),
-                                      stream_view_) +
-          data.sum_reduce_helper_.sum(data.d_complementarity_wv_residual_.begin(),
-                                      data.d_complementarity_wv_residual_.size(),
-                                      stream_view_)) /
-         (static_cast<f_t>(data.x.size()) + static_cast<f_t>(data.n_upper_bounds));
-  } else {
-    mu = (data.complementarity_xz_residual.sum() + data.complementarity_wv_residual.sum()) /
-         (static_cast<f_t>(data.x.size()) + static_cast<f_t>(data.n_upper_bounds));
-  }
+  mu = (data.sum_reduce_helper_.sum(data.d_complementarity_xz_residual_.begin(),
+                                    data.d_complementarity_xz_residual_.size(),
+                                    stream_view_) +
+        data.sum_reduce_helper_.sum(data.d_complementarity_wv_residual_.begin(),
+                                    data.d_complementarity_wv_residual_.size(),
+                                    stream_view_)) /
+       (static_cast<f_t>(data.x.size()) + static_cast<f_t>(data.n_upper_bounds));
 }
 
 template <typename i_t, typename f_t>
@@ -3451,161 +3237,147 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
                                                                f_t& dual_objective)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_primal_dual_objective");
-  if (use_gpu) {
-    raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
-    auto d_b          = device_copy(data.b, stream_view_);
-    auto d_restrict_u = device_copy(data.restrict_u_, stream_view_);
-    rmm::device_scalar<f_t> d_cx(stream_view_);
-    rmm::device_scalar<f_t> d_by(stream_view_);
-    rmm::device_scalar<f_t> d_uv(stream_view_);
+  raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
+  auto d_b          = device_copy(data.b, stream_view_);
+  auto d_restrict_u = device_copy(data.restrict_u_, stream_view_);
+  rmm::device_scalar<f_t> d_cx(stream_view_);
+  rmm::device_scalar<f_t> d_by(stream_view_);
+  rmm::device_scalar<f_t> d_uv(stream_view_);
 
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_c_.size(),
+                                                  data.d_c_.data(),
+                                                  1,
+                                                  data.d_x_.data(),
+                                                  1,
+                                                  d_cx.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  d_b.size(),
+                                                  d_b.data(),
+                                                  1,
+                                                  data.d_y_.data(),
+                                                  1,
+                                                  d_by.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  d_restrict_u.size(),
+                                                  d_restrict_u.data(),
+                                                  1,
+                                                  data.d_v_.data(),
+                                                  1,
+                                                  d_uv.data(),
+                                                  stream_view_));
+  f_t quad_objective = 0.0;
+  if (data.Q.n > 0) {
+    auto cusparse_d_x = data.cusparse_view_.create_vector(data.d_x_);
+    auto cusparse_Qx  = data.cusparse_view_.create_vector(data.d_Qx_);
+    data.cusparse_Q_view_.spmv(1.0, cusparse_d_x, 0.0, cusparse_Qx);
+    rmm::device_scalar<f_t> d_xQx(stream_view_);
     RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                    data.d_c_.size(),
-                                                    data.d_c_.data(),
+                                                    data.d_Qx_.size(),
+                                                    data.d_Qx_.data(),
                                                     1,
                                                     data.d_x_.data(),
                                                     1,
-                                                    d_cx.data(),
+                                                    d_xQx.data(),
                                                     stream_view_));
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                    d_b.size(),
-                                                    d_b.data(),
-                                                    1,
-                                                    data.d_y_.data(),
-                                                    1,
-                                                    d_by.data(),
-                                                    stream_view_));
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                    d_restrict_u.size(),
-                                                    d_restrict_u.data(),
-                                                    1,
-                                                    data.d_v_.data(),
-                                                    1,
-                                                    d_uv.data(),
-                                                    stream_view_));
-    f_t quad_objective = 0.0;
-    if (data.Q.n > 0) {
-      auto cusparse_d_x = data.cusparse_view_.create_vector(data.d_x_);
-      auto cusparse_Qx  = data.cusparse_view_.create_vector(data.d_Qx_);
-      data.cusparse_Q_view_.spmv(1.0, cusparse_d_x, 0.0, cusparse_Qx);
-      rmm::device_scalar<f_t> d_xQx(stream_view_);
-      RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                      data.d_Qx_.size(),
-                                                      data.d_Qx_.data(),
-                                                      1,
-                                                      data.d_x_.data(),
-                                                      1,
-                                                      d_xQx.data(),
-                                                      stream_view_));
-      quad_objective = 0.5 * d_xQx.value(stream_view_);
-    }
+    quad_objective = 0.5 * d_xQx.value(stream_view_);
+  }
 
-    primal_objective = d_cx.value(stream_view_) + quad_objective;
-    dual_objective   = d_by.value(stream_view_) - d_uv.value(stream_view_) - quad_objective;
+  primal_objective = d_cx.value(stream_view_) + quad_objective;
+  dual_objective   = d_by.value(stream_view_) - d_uv.value(stream_view_) - quad_objective;
 
 #ifdef CHECK_OBJECTIVE_GAP
-    rmm::device_scalar<f_t> d_xz(stream_view_);
-    rmm::device_scalar<f_t> d_wv(stream_view_);
-    rmm::device_scalar<f_t> d_rdx(stream_view_);
-    rmm::device_scalar<f_t> d_rpy(stream_view_);
-    rmm::device_scalar<f_t> d_rwv(stream_view_);
-    rmm::device_scalar<f_t> d_p(stream_view_);
-    rmm::device_scalar<f_t> d_y(stream_view_);
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                    data.d_x_.size(),
-                                                    data.d_x_.data(),
-                                                    1,
-                                                    data.d_z_.data(),
-                                                    1,
-                                                    d_xz.data(),
-                                                    stream_view_));
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                    data.d_w_.size(),
-                                                    data.d_w_.data(),
-                                                    1,
-                                                    data.d_v_.data(),
-                                                    1,
-                                                    d_wv.data(),
-                                                    stream_view_));
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                    data.d_x_.size(),
-                                                    data.d_x_.data(),
-                                                    1,
-                                                    data.d_dual_residual_.data(),
-                                                    1,
-                                                    d_rdx.data(),
-                                                    stream_view_));
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                    data.d_y_.size(),
-                                                    data.d_y_.data(),
-                                                    1,
-                                                    data.d_primal_residual_.data(),
-                                                    1,
-                                                    d_rpy.data(),
-                                                    stream_view_));
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                    data.d_bound_residual_.size(),
-                                                    data.d_bound_residual_.data(),
-                                                    1,
-                                                    data.d_v_.data(),
-                                                    1,
-                                                    d_rwv.data(),
-                                                    stream_view_));
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                    data.d_primal_residual_.size(),
-                                                    data.d_primal_residual_.data(),
-                                                    1,
-                                                    data.d_primal_residual_.data(),
-                                                    1,
-                                                    d_p.data(),
-                                                    stream_view_));
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
-                                                    data.d_y_.size(),
-                                                    data.d_y_.data(),
-                                                    1,
-                                                    data.d_y_.data(),
-                                                    1,
-                                                    d_y.data(),
-                                                    stream_view_));
-    f_t xz  = d_xz.value(stream_view_);
-    f_t wv  = d_wv.value(stream_view_);
-    f_t rdx = d_rdx.value(stream_view_);
-    f_t rpy = d_rpy.value(stream_view_);
-    f_t rwv = d_rwv.value(stream_view_);
-    f_t p   = d_p.value(stream_view_);
-    f_t y   = d_y.value(stream_view_);
+  rmm::device_scalar<f_t> d_xz(stream_view_);
+  rmm::device_scalar<f_t> d_wv(stream_view_);
+  rmm::device_scalar<f_t> d_rdx(stream_view_);
+  rmm::device_scalar<f_t> d_rpy(stream_view_);
+  rmm::device_scalar<f_t> d_rwv(stream_view_);
+  rmm::device_scalar<f_t> d_p(stream_view_);
+  rmm::device_scalar<f_t> d_y(stream_view_);
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_x_.size(),
+                                                  data.d_x_.data(),
+                                                  1,
+                                                  data.d_z_.data(),
+                                                  1,
+                                                  d_xz.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_w_.size(),
+                                                  data.d_w_.data(),
+                                                  1,
+                                                  data.d_v_.data(),
+                                                  1,
+                                                  d_wv.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_x_.size(),
+                                                  data.d_x_.data(),
+                                                  1,
+                                                  data.d_dual_residual_.data(),
+                                                  1,
+                                                  d_rdx.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_y_.size(),
+                                                  data.d_y_.data(),
+                                                  1,
+                                                  data.d_primal_residual_.data(),
+                                                  1,
+                                                  d_rpy.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_bound_residual_.size(),
+                                                  data.d_bound_residual_.data(),
+                                                  1,
+                                                  data.d_v_.data(),
+                                                  1,
+                                                  d_rwv.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_primal_residual_.size(),
+                                                  data.d_primal_residual_.data(),
+                                                  1,
+                                                  data.d_primal_residual_.data(),
+                                                  1,
+                                                  d_p.data(),
+                                                  stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(lp.handle_ptr->get_cublas_handle(),
+                                                  data.d_y_.size(),
+                                                  data.d_y_.data(),
+                                                  1,
+                                                  data.d_y_.data(),
+                                                  1,
+                                                  d_y.data(),
+                                                  stream_view_));
+  f_t xz  = d_xz.value(stream_view_);
+  f_t wv  = d_wv.value(stream_view_);
+  f_t rdx = d_rdx.value(stream_view_);
+  f_t rpy = d_rpy.value(stream_view_);
+  f_t rwv = d_rwv.value(stream_view_);
+  f_t p   = d_p.value(stream_view_);
+  f_t y   = d_y.value(stream_view_);
 
-    stream_view_.synchronize();
+  stream_view_.synchronize();
 
-    f_t objective_gap_1 = primal_objective - dual_objective;
-    f_t objective_gap_2 = xz + wv + rdx - rpy + rwv;
+  f_t objective_gap_1 = primal_objective - dual_objective;
+  f_t objective_gap_2 = xz + wv + rdx - rpy + rwv;
 
-    settings.log.printf("Objective gap 1: %.2e, Objective gap 2: %.2e Diff: %.2e\n",
-                        objective_gap_1,
-                        objective_gap_2,
-                        std::abs(objective_gap_1 - objective_gap_2));
-    settings.log.printf(
-      "Objective - Complementarity: %.2e, rdx: %.2e, rpy: %.2e, rwv: %.2e, p: %.2e, y: %.2e\n",
-      std::abs(objective_gap_1 - (xz + wv)),
-      rdx,
-      rpy,
-      rwv,
-      p,
-      y);
+  settings.log.printf("Objective gap 1: %.2e, Objective gap 2: %.2e Diff: %.2e\n",
+                      objective_gap_1,
+                      objective_gap_2,
+                      std::abs(objective_gap_1 - objective_gap_2));
+  settings.log.printf(
+    "Objective - Complementarity: %.2e, rdx: %.2e, rpy: %.2e, rwv: %.2e, p: %.2e, y: %.2e\n",
+    std::abs(objective_gap_1 - (xz + wv)),
+    rdx,
+    rpy,
+    rwv,
+    p,
+    y);
 #endif
-  } else {
-    f_t quad_objective = 0.0;
-    if (data.Q.n > 0) {
-      dense_vector_t<i_t, f_t> x_host(data.Q.n);
-      std::copy(data.x.begin(), data.x.begin() + data.Q.n, x_host.begin());
-      dense_vector_t<i_t, f_t> Qx(data.Q.n);
-      matrix_vector_multiply(data.Q, 1.0, x_host, 0.0, Qx);
-      quad_objective = 0.5 * x_host.inner_product(Qx);
-    }
-    primal_objective = data.c.inner_product(data.x) + quad_objective;
-    dual_objective =
-      data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
-  }
 }
 
 template <typename i_t, typename f_t>
@@ -3879,7 +3651,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
         return lp_status_t::CONCURRENT_LIMIT;
       }
       // Sync to make sure all the async copies to host done inside are finished
-      if (use_gpu) RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+      RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
       if (status < 0) {
         return check_for_suboptimal_solution(options,
@@ -3918,7 +3690,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
         return lp_status_t::CONCURRENT_LIMIT;
       }
       // Sync to make sure all the async copies to host done inside are finished
-      if (use_gpu) RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+      RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
       if (status < 0) {
         return check_for_suboptimal_solution(options,
                                              data,
