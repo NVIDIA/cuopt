@@ -56,6 +56,11 @@ repos:
   - repo: https://github.com/rapidsai/pre-commit-hooks
     rev: v1.2.1
     hooks:
+      - id: verify-alpha-spec
+        args:
+          - --fix
+          - --mode
+          - release
       - id: verify-copyright
         args: [--fix, --spdx]
         files: |
@@ -83,7 +88,5 @@ repos:
         entry: python ci/utils/update_doc_versions.py
         language: system
         files: docs/cuopt/source/versions1.json
-
-
 default_language_version:
-      python: python3
+  python: python3

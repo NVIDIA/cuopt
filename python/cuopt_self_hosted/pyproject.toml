@@ -19,7 +19,11 @@ authors = [
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
+<<<<<<< HEAD
     "cuopt-mps-parser==26.2.*,>=0.0.0a0",
+=======
+    "cuopt-mps-parser==25.12.*",
+>>>>>>> release/25.12
     "msgpack-numpy==0.4.8",
     "msgpack==1.1.0",
     "requests",
