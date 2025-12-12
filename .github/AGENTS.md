@@ -235,7 +235,7 @@ compute-sanitizer --tool memcheck python script.py
 
 ```cmake
 # In cpp/CMakeLists.txt - only for specific files
-set_source_files_properties(src/routing/data_model_view.cu 
+set_source_files_properties(src/routing/data_model_view.cu
   PROPERTIES COMPILE_OPTIONS "-G")
 ```
 
@@ -310,4 +310,3 @@ pytest -v python/cuopt/cuopt/tests
 ---
 
 *Last updated: December 2024 | cuOpt v25.12*
-
