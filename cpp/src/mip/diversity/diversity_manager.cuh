@@ -95,7 +95,7 @@ class diversity_manager_t {
   // mutex for the simplex solution update
   std::mutex relaxed_solution_mutex;
   // atomic for signalling pdlp to stop
-  volatile int global_concurrent_halt{0};
+  std::atomic<int> global_concurrent_halt{0};
 
   rins_t<i_t, f_t> rins;
 

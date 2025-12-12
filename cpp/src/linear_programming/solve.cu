@@ -306,7 +306,7 @@ void setup_device_symbols(rmm::cuda_stream_view stream_view)
   detail::set_pdlp_hyper_parameters(stream_view);
 }
 
-volatile int global_concurrent_halt;
+std::atomic<int> global_concurrent_halt{0};
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
