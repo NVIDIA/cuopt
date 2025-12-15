@@ -113,7 +113,7 @@ class branch_and_bound_t {
   f_t get_lower_bound();
   i_t get_heap_size();
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
-  volatile int* get_root_concurrent_halt() { return &root_concurrent_halt_; }
+  std::atomic<int>* get_root_concurrent_halt() { return &root_concurrent_halt_; }
   void set_root_concurrent_halt(int value) { root_concurrent_halt_ = value; }
   lp_status_t solve_root_relaxation(simplex_solver_settings_t<i_t, f_t> const& lp_settings);
 
@@ -170,7 +170,7 @@ class branch_and_bound_t {
   std::vector<f_t> edge_norms_;
   std::atomic<bool> root_crossover_solution_set_{false};
   bool enable_concurrent_lp_root_solve_{false};
-  volatile int root_concurrent_halt_{0};
+  std::atomic<int> root_concurrent_halt_{0};
 
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;

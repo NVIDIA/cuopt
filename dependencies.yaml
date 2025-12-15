@@ -560,7 +560,7 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - rapids-logger==0.2.*,>=0.0.0a0
+          - rapids-logger==0.2.*
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
@@ -642,9 +642,6 @@ dependencies:
             packages:
               - pylibraft-cu13==26.2.*,>=0.0.0a0
           - matrix:
-            packages:
-              - *pylibraft_unsuffixed
-  cuda_version:
     specific:
       - output_types: conda
         matrices:
