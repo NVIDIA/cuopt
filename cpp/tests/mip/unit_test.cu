@@ -180,7 +180,7 @@ TEST(LPTest, TestSampleLP2)
   ASSERT_EQ(result.get_primal_solution().size(), 1);
 
   // Copy solution to host to access values
-  auto primal_host = cuopt::host_copy(result.get_primal_solution());
+  auto primal_host = cuopt::host_copy(result.get_primal_solution(), handle.get_stream());
   EXPECT_NEAR(primal_host[0], 0.0, 1e-6);
 
   EXPECT_NEAR(result.get_additional_termination_information().primal_objective, 0.0, 1e-6);

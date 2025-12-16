@@ -65,7 +65,7 @@ TEST(two_variable_test, simple_test)
             cuopt::linear_programming::pdlp_termination_status_t::Optimal);
   EXPECT_NEAR(solution.get_objective_value(), -32.0, 1e-6);
 
-  auto sol_vec = cuopt::host_copy(solution.get_primal_solution());
+  auto sol_vec = cuopt::host_copy(solution.get_primal_solution(), handle.get_stream());
   EXPECT_NEAR(sol_vec[0], 4.0, 1e-6);
   EXPECT_NEAR(sol_vec[1], 2.0, 1e-6);
 }

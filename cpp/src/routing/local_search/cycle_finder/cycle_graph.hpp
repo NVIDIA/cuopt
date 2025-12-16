@@ -45,13 +45,13 @@ struct graph_t {
     std::vector<double> weights;
   };
 
-  host_t to_host()
+  host_t to_host(rmm::cuda_stream_view stream)
   {
     host_t h;
-    h.row_sizes = host_copy(row_sizes);
-    h.route_ids = host_copy(route_ids);
-    h.indices   = host_copy(indices);
-    h.weights   = host_copy(weights);
+    h.row_sizes = host_copy(row_sizes, stream);
+    h.route_ids = host_copy(route_ids, stream);
+    h.indices   = host_copy(indices, stream);
+    h.weights   = host_copy(weights, stream);
     return h;
   }
 

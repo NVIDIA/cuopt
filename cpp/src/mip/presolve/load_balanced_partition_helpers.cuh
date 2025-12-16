@@ -181,7 +181,7 @@ class log_dist_t {
   log_dist_t() = default;
 
   log_dist_t(rmm::device_uvector<i_t>& vertex_id, rmm::device_uvector<i_t>& bin_offsets)
-    : vertex_id_begin_(vertex_id.data()), bin_offsets_(host_copy(bin_offsets))
+    : vertex_id_begin_(vertex_id.data()), bin_offsets_(host_copy(bin_offsets, bin_offsets.stream()))
   {
     // If bin_offsets_ is smaller than NumberBins<i_t> then resize it
     // so that the last element is repeated
