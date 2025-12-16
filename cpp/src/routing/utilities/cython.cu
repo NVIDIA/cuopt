@@ -7,9 +7,13 @@
 
 #include <cuopt/routing/cython/cython.hpp>
 #include <cuopt/routing/solve.hpp>
+#include <raft/common/nvtx.hpp>
 #include <raft/core/handle.hpp>
 #include <rmm/device_buffer.hpp>
 #include <routing/generator/generator.hpp>
+
+#include <omp.h>
+#include <chrono>
 
 namespace cuopt {
 namespace cython {
@@ -84,6 +88,54 @@ std::unique_ptr<vehicle_routing_ret_t> call_solve(
     routing_solution.get_error_status().get_error_type(),
     routing_solution.get_error_status().what()};
   return std::make_unique<vehicle_routing_ret_t>(std::move(vr_ret));
+}
+
+/**
+ * @brief Wrapper for batch vehicle_routing to expose the API to cython
+ *
+ * @param data_models Vector of data model pointers
+ * @param settings  Composable solver settings object
+ * @return std::pair<std::vector<std::unique_ptr<vehicle_routing_ret_t>>, double>
+ */
+std::pair<std::vector<std::unique_ptr<vehicle_routing_ret_t>>, double> call_batch_solve(
+  std::vector<routing::data_model_view_t<int, float>*> data_models,
+  routing::solver_settings_t<int, float>* settings)
+{
+  raft::common::nvtx::range fun_scope("Call batch solve routing");
+
+  const std::size_t size = data_models.size();
+  std::vector<std::unique_ptr<vehicle_routing_ret_t>> list(size);
+
+  auto start_solver = std::chrono::high_resolution_clock::now();
+
+  // Use OpenMP for parallel execution
+  const int max_thread = std::min(static_cast<int>(size), omp_get_max_threads());
+
+#pragma omp parallel for num_threads(max_thread)
+  for (std::size_t i = 0; i < size; ++i) {
+    auto routing_solution = cuopt::routing::solve(*data_models[i], *settings);
+    vehicle_routing_ret_t vr_ret{
+      routing_solution.get_vehicle_count(),
+      routing_solution.get_total_objective(),
+      routing_solution.get_objectives(),
+      std::make_unique<rmm::device_buffer>(routing_solution.get_route().release()),
+      std::make_unique<rmm::device_buffer>(routing_solution.get_order_locations().release()),
+      std::make_unique<rmm::device_buffer>(routing_solution.get_arrival_stamp().release()),
+      std::make_unique<rmm::device_buffer>(routing_solution.get_truck_id().release()),
+      std::make_unique<rmm::device_buffer>(routing_solution.get_node_types().release()),
+      std::make_unique<rmm::device_buffer>(routing_solution.get_unserviced_nodes().release()),
+      std::make_unique<rmm::device_buffer>(routing_solution.get_accepted().release()),
+      routing_solution.get_status(),
+      routing_solution.get_status_string(),
+      routing_solution.get_error_status().get_error_type(),
+      routing_solution.get_error_status().what()};
+    list[i] = std::make_unique<vehicle_routing_ret_t>(std::move(vr_ret));
+  }
+
+  auto end      = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
+
+  return {std::move(list), duration.count() / 1000.0};
 }
 
 /**

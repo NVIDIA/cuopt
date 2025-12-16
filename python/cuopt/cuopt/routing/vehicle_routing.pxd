@@ -8,7 +8,9 @@
 # cython: language_level = 3
 
 from libcpp cimport bool
+from libcpp.pair cimport pair
 from libcpp.string cimport string
+from libcpp.vector cimport vector
 
 from pylibraft.common.handle cimport *
 
@@ -132,4 +134,9 @@ cdef extern from "cuopt/routing/cython/cython.hpp" namespace "cuopt::cython": # 
     cdef unique_ptr[vehicle_routing_ret_t] call_solve(
         data_model_view_t[int, float]* data_model,
         solver_settings_t[int, float]* solver_settings
+    ) except +
+
+    cdef pair[vector[unique_ptr[vehicle_routing_ret_t]], double] call_batch_solve(
+        vector[data_model_view_t[int, float] *] data_models,
+        solver_settings_t[int, float]* solver_settings,
     ) except +
