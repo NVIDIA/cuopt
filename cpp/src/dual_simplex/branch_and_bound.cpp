@@ -1135,6 +1135,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
       if (get_upper_bound() < start_node->node.lower_bound) { continue; }
 
       bool recompute_bounds_and_basis = true;
+      i_t nodes_explored              = 0;
       search_tree_t<i_t, f_t> subtree(std::move(start_node->node));
       std::deque<mip_node_t<i_t, f_t>*> stack;
       stack.push_front(&subtree.root);
@@ -1152,6 +1153,8 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
 
         if (toc(exploration_stats_.start_time) > settings_.time_limit) { return; }
 
+        if (nodes_explored >= 1000) { break; }
+
         node_solve_info_t status = solve_node(node_ptr,
                                               subtree,
                                               leaf_problem,
@@ -1164,6 +1167,8 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
                                               start_node->lower,
                                               start_node->upper,
                                               log);
+
+        nodes_explored++;
 
         recompute_bounds_and_basis = !has_children(status);
 
