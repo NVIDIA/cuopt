@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -23,21 +13,29 @@ namespace cuopt::linear_programming::detail {
 
 enum class recombiner_enum_t : int { BOUND_PROP = 0, FP, LINE_SEGMENT, SUB_MIP, SIZE };
 
+constexpr std::array<recombiner_enum_t, 4> recombiner_types = {recombiner_enum_t::BOUND_PROP,
+                                                               recombiner_enum_t::FP,
+                                                               recombiner_enum_t::LINE_SEGMENT,
+                                                               recombiner_enum_t::SUB_MIP};
+
 struct recombine_stats {
   int attempts;
   int success;
   int better_than_one;
   int better_than_both;
-
+  int best_updated;
   void reset()
   {
     attempts         = 0;
     success          = 0;
     better_than_one  = 0;
     better_than_both = 0;
+    best_updated     = 0;
   }
 
   void add_success() { ++success; }
+
+  void add_best_updated() { ++best_updated; }
 
   bool update_improve_stats(double cost_new, double cost_first, double cost_second)
   {
@@ -54,12 +52,15 @@ struct recombine_stats {
 
   void print([[maybe_unused]] const char* recombiner_name)
   {
-    CUOPT_LOG_DEBUG("%s : (better_than_one: %d better_than_both: %d success: %d attempts: %d)\t",
-                    recombiner_name,
-                    better_than_one,
-                    better_than_both,
-                    success,
-                    attempts);
+    CUOPT_LOG_DEBUG(
+      "%s : (better_than_one: %d better_than_both: %d success: %d best_updated: %d attempts: %d "
+      ")\t",
+      recombiner_name,
+      better_than_one,
+      better_than_both,
+      success,
+      best_updated,
+      attempts);
   }
 };
 
@@ -107,6 +108,8 @@ struct all_recombine_stats {
   }
 
   void add_success() { stats[static_cast<int>(last_attempt.value())].add_success(); }
+
+  void add_best_updated() { stats[static_cast<int>(last_attempt.value())].add_best_updated(); }
 
   bool update_improve_stats(double cost_new, double cost_first, double cost_second)
   {

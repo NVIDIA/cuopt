@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include "probing_cache.cuh"
 
@@ -201,9 +191,9 @@ __global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t p
     if (std::signbit(a) != std::signbit(first_coeff)) { different_coeff = true; }
     auto cnst_idx      = pb.reverse_constraints[var_offset + i];
     auto cnstr_slack   = cnst_slack[cnst_idx];
-    auto delta_min_act = cnstr_slack.x + ((a < 0) ? a * ub : a * lb);
+    auto delta_min_act = get_lower(cnstr_slack) + ((a < 0) ? a * ub : a * lb);
     th_var_unit_slack  = min(th_var_unit_slack, (delta_min_act / a));
-    auto delta_max_act = cnstr_slack.y + ((a > 0) ? a * ub : a * lb);
+    auto delta_max_act = get_upper(cnstr_slack) + ((a > 0) ? a * ub : a * lb);
     th_var_unit_slack  = min(th_var_unit_slack, (delta_max_act / a));
   }
   __shared__ f_t shmem[raft::WarpSize];
@@ -232,7 +222,7 @@ __global__ void compute_min_slack_per_var(typename problem_t<i_t, f_t>::view_t p
       th_max_excess = max(th_max_excess, excess);
       th_n_of_excess++;
     }
-    excess = max(0., cnstr_slack.y + diff);
+    excess = max(0., get_upper(cnstr_slack) + diff);
     if (excess > 0) {
       th_max_excess = max(th_max_excess, excess);
       th_n_of_excess++;

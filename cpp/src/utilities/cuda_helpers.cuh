@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -24,6 +14,8 @@
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
+#include <rmm/mr/cuda_async_memory_resource.hpp>
+#include <rmm/mr/limiting_resource_adaptor.hpp>
 
 namespace cuopt {
 
@@ -206,6 +198,29 @@ DI void sorted_insert(T* array, T item, int curr_size, int max_size)
     }
   }
   array[0] = item;
+}
+
+inline size_t get_device_memory_size()
+{
+  // Otherwise, we need to get the free memory from the device
+  size_t free_mem, total_mem;
+  cudaMemGetInfo(&free_mem, &total_mem);
+
+  auto res = rmm::mr::get_current_device_resource();
+  auto limiting_adaptor =
+    dynamic_cast<rmm::mr::limiting_resource_adaptor<rmm::mr::cuda_async_memory_resource>*>(res);
+  // Did we specifiy an explicit memory limit?
+  if (limiting_adaptor) {
+    printf("limiting_adaptor->get_allocation_limit(): %fMiB\n",
+           limiting_adaptor->get_allocation_limit() / (double)1e6);
+    printf("used_mem: %fMiB\n", limiting_adaptor->get_allocated_bytes() / (double)1e6);
+    printf("free_mem: %fMiB\n",
+           (limiting_adaptor->get_allocation_limit() - limiting_adaptor->get_allocated_bytes()) /
+             (double)1e6);
+    return std::min(total_mem, limiting_adaptor->get_allocation_limit());
+  } else {
+    return total_mem;
+  }
 }
 
 }  // namespace cuopt

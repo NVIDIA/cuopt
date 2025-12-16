@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 name: Build and push image variant
 
@@ -36,6 +24,10 @@ on:
       PYTHON_VER:
         required: true
         type: string
+      sha:
+        description: "sha: full git commit SHA to check out"
+        required: true
+        type: string
 
 jobs:
   build:
@@ -52,6 +44,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.sha }}
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
@@ -62,6 +55,9 @@ jobs:
           cp ./LICENSE ./ci/docker/context/LICENSE
           cp ./VERSION ./ci/docker/context/VERSION
           cp ./thirdparty/THIRD_PARTY_LICENSES ./ci/docker/context/THIRD_PARTY_LICENSES
+      - name: Copy Commit SHA
+        run: |
+          git rev-parse HEAD > ./ci/docker/context/COMMIT_SHA
       - name: Login to NGC
         uses: docker/login-action@v3
         with:
@@ -89,6 +85,10 @@ jobs:
           file: ./ci/docker/Dockerfile
           push: true
           pull: true
+          # Disable provenance and sbom to push single-arch images instead of manifest lists
+          # This is required for create_multiarch_manifest.sh to work correctly
+          provenance: false
+          sbom: false
           build-args: |
             CUDA_VER=${{ inputs.CUDA_VER }}
             PYTHON_SHORT_VER=${{ steps.trim.outputs.PYTHON_SHORT }}

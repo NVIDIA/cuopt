@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -50,9 +40,7 @@ class bound_presolve_t {
   // when we need to accept a vector, we can use input_lb version
   termination_criterion_t solve(problem_t<i_t, f_t>& pb, f_t lb, f_t ub, i_t var_idx);
 
-  termination_criterion_t solve(problem_t<i_t, f_t>& pb,
-                                raft::device_span<f_t> input_lb = {},
-                                raft::device_span<f_t> input_ub = {});
+  termination_criterion_t solve(problem_t<i_t, f_t>& pb);
 
   termination_criterion_t solve(problem_t<i_t, f_t>& pb,
                                 const std::vector<thrust::pair<i_t, f_t>>& var_probe_val_pairs,
@@ -62,6 +50,8 @@ class bound_presolve_t {
   void calculate_activity_on_problem_bounds(problem_t<i_t, f_t>& pb);
   bool calculate_bounds_update(problem_t<i_t, f_t>& pb);
   void set_updated_bounds(problem_t<i_t, f_t>& pb);
+  void set_updated_bounds(const raft::handle_t* handle_ptr,
+                          raft::device_span<typename type_2<f_t>::type> output_bounds);
   void set_updated_bounds(const raft::handle_t* handle_ptr,
                           raft::device_span<f_t> output_lb,
                           raft::device_span<f_t> output_ub);

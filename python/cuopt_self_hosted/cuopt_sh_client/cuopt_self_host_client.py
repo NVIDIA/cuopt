@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import json
 import logging
@@ -21,6 +9,7 @@ import threading
 import time
 import zlib
 from enum import Enum
+from types import NoneType
 from uuid import UUID
 
 import cuopt_mps_parser
@@ -147,7 +136,6 @@ def is_uuid(cuopt_problem_data):
 
 
 def _mps_parse(LP_problem_data, solver_config):
-
     if isinstance(LP_problem_data, cuopt_mps_parser.parser_wrapper.DataModel):
         model = LP_problem_data
         log.debug("Received Mps parser DataModel object")
@@ -233,9 +221,9 @@ def create_lp_response(response_dict):
         else:
             status, solution_obj = create_solution_obj(solver_responses)
             response_dict["response"]["solver_response"]["status"] = status
-            response_dict["response"]["solver_response"][
-                "solution"
-            ] = solution_obj
+            response_dict["response"]["solver_response"]["solution"] = (
+                solution_obj
+            )
         return response_dict
     except Exception:
         return response_dict
@@ -291,6 +279,20 @@ class CuOptServiceSelfHostClient:
             wildcard is used, the result mime_type will be set to the
             content_type mime_type of the original request.
             If not provided, result_type defaults to mime_type.MSGPACK
+    http_general_timeout: int
+            The time in seconds that http will wait before timing out
+            on a general request such as a job status check. Default is 30s.
+            Set to None to never timeout.
+    data_send_timeout: int
+            The time in seconds that http will wait before timing out
+            on a problem submission to the server. If set to -1,
+            the http_general_timeout value will be used. Default is -1.
+            Set to None to never timeout.
+    result_receive_timeout: int
+            The time in seconds that http will wait before timing out
+            on receiving a result from the server. If set to -1,
+            the http_general_timeout value will be used. Default is -1.
+            Set to None to never timeout.
     """
 
     # Initialize the CuOptServiceSelfHostClient
@@ -306,12 +308,32 @@ class CuOptServiceSelfHostClient:
         polling_timeout=600,
         timeout_exception=True,
         result_type=mime_type.MSGPACK,
+        http_general_timeout=30,
+        data_send_timeout=-1,
+        result_receive_timeout=-1,
     ):
         self.timeout_exception = timeout_exception
         self.ip = ip
         self.port = port
         self.only_validate = only_validate
         self.accept_type = result_type
+
+        if not isinstance(http_general_timeout, (NoneType, int, float)):
+            raise ValueError("Incompatible value for http_general_timeout")
+
+        self.http_general_timeout = http_general_timeout
+        self.data_send_timeout = (
+            data_send_timeout
+            if isinstance(data_send_timeout, (NoneType, int, float))
+            and data_send_timeout != -1
+            else self.http_general_timeout
+        )
+        self.result_receive_timeout = (
+            result_receive_timeout
+            if isinstance(result_receive_timeout, (NoneType, int, float))
+            and result_receive_timeout != -1
+            else self.http_general_timeout
+        )
 
         self.protocol = "https" if use_https else "http"
         self.verify = False
@@ -326,17 +348,17 @@ class CuOptServiceSelfHostClient:
         # name is exported from kubernetes (for example) and the port is
         # inherent in the hostname
         if self.port:
-            self.request_url = f"{self.protocol}://{self.ip}:{self.port}/cuopt/request"  # noqa
-            self.log_url = f"{self.protocol}://{self.ip}:{self.port}/cuopt/log"
-            self.solution_url = f"{self.protocol}://{self.ip}:{self.port}/cuopt/solution"  # noqa
-        else:
             self.request_url = (
-                f"{self.protocol}://{self.ip}/cuopt/request"  # noqa
+                f"{self.protocol}://{self.ip}:{self.port}/cuopt/request"  # noqa
             )
-            self.log_url = f"{self.protocol}://{self.ip}/cuopt/log"
+            self.log_url = f"{self.protocol}://{self.ip}:{self.port}/cuopt/log"
             self.solution_url = (
-                f"{self.protocol}://{self.ip}/cuopt/solution"  # noqa
+                f"{self.protocol}://{self.ip}:{self.port}/cuopt/solution"  # noqa
             )
+        else:
+            self.request_url = f"{self.protocol}://{self.ip}/cuopt/request"  # noqa
+            self.log_url = f"{self.protocol}://{self.ip}/cuopt/log"
+            self.solution_url = f"{self.protocol}://{self.ip}/cuopt/solution"  # noqa
 
         self.polling_interval = polling_interval
         self.timeout = (
@@ -377,7 +399,7 @@ class CuOptServiceSelfHostClient:
                 verify=self.verify,
                 headers=headers,
                 params=params,
-                timeout=30,
+                timeout=self.http_general_timeout,
             )
 
             # File has not been created yet
@@ -404,7 +426,7 @@ class CuOptServiceSelfHostClient:
                 self.solution_url + f"/{reqId}/incumbents",
                 verify=self.verify,
                 headers=headers,
-                timeout=30,
+                timeout=self.http_general_timeout,
             )
             response.raise_for_status()
             response = self._get_response(response)
@@ -429,7 +451,6 @@ class CuOptServiceSelfHostClient:
     def _poll_request(
         self, response, delete, incumbent_callback=None, logging_callback=None
     ):
-
         log_t = None
         inc_t = None
         complete = False
@@ -513,7 +534,7 @@ class CuOptServiceSelfHostClient:
                         self.solution_url + f"/{reqId}",
                         verify=self.verify,
                         headers=headers,
-                        timeout=30,
+                        timeout=self.result_receive_timeout,
                     )
                     response.raise_for_status()
                     response = self._get_response(response)
@@ -594,7 +615,7 @@ class CuOptServiceSelfHostClient:
                 data=data,
                 headers=headers,
                 verify=self.verify,
-                timeout=30,
+                timeout=self.data_send_timeout,
             )
             response.raise_for_status()
             log.debug(response.status_code)
@@ -853,7 +874,7 @@ class CuOptServiceSelfHostClient:
                     "cached": cached,
                 },
                 verify=self.verify,
-                timeout=30,
+                timeout=self.http_general_timeout,
             )
             response.raise_for_status()
             log.debug(response.status_code)
@@ -887,7 +908,7 @@ class CuOptServiceSelfHostClient:
                 self.solution_url + f"/{id}",
                 headers=headers,
                 verify=self.verify,
-                timeout=30,
+                timeout=self.http_general_timeout,
             )
             response.raise_for_status()
             log.debug(response.status_code)
@@ -898,7 +919,7 @@ class CuOptServiceSelfHostClient:
                 response = requests.delete(
                     self.log_url + f"/{id}",
                     verify=self.verify,
-                    timeout=30,
+                    timeout=self.http_general_timeout,
                 )
             except Exception:
                 pass
@@ -938,7 +959,7 @@ class CuOptServiceSelfHostClient:
                 self.solution_url + f"/{data}",
                 verify=self.verify,
                 headers=headers,
-                timeout=30,
+                timeout=self.result_receive_timeout,
             )
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
@@ -976,7 +997,7 @@ class CuOptServiceSelfHostClient:
                 self.request_url + f"/{id}?status",
                 verify=self.verify,
                 headers=headers,
-                timeout=30,
+                timeout=self.http_general_timeout,
             )
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
@@ -1014,7 +1035,7 @@ class CuOptServiceSelfHostClient:
                 verify=self.verify,
                 data=data,
                 headers=headers,
-                timeout=30,
+                timeout=self.data_send_timeout,
             )
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:

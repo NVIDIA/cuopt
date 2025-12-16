@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -58,10 +48,12 @@ class solution_t {
   void set_vars_to_values(const std::vector<thrust::pair<i_t, f_t>>& var_val_pairs);
   // copy new assignments
   void copy_new_assignment(const std::vector<f_t>& h_assignment);
+  void copy_new_assignment(const rmm::device_uvector<f_t>& d_assignment);
   // rounds integer variables to the nearest integer val, returns whether the rounding is feasible
   bool round_nearest();
   // rounds integers to random if fractionality is between 0.25 and 0.75. otherwise, to nearest
   bool round_random_nearest(i_t n_target_random_rounds);
+  bool round_simple();
   // makes the approximate integer values up to INTEGRALITY TOLERANCE whole integers
   void correct_integer_precision();
   // does a reduction and returns if the current solution is feasible

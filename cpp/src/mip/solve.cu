@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <cuopt/error.hpp>
 
@@ -21,16 +11,18 @@
 #include <mip/presolve/third_party_presolve.hpp>
 #include <mip/presolve/trivial_presolve.cuh>
 #include <mip/solver.cuh>
+#include <mip/utilities/sort_csr.cuh>
 #include <mip/utils.cuh>
 
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <linear_programming/pdlp.cuh>
 #include <linear_programming/restart_strategy/pdlp_restart_strategy.cuh>
 #include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
-#include <linear_programming/utilities/logger_init.hpp>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <linear_programming/utils.cuh>
+#include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
+#include <utilities/version_info.hpp>
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
@@ -43,6 +35,8 @@
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/common/nvtx.hpp>
 #include <raft/core/handle.hpp>
+
+#include <cuda_profiler_api.h>
 
 namespace cuopt::linear_programming {
 
@@ -69,6 +63,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                                  mip_solver_settings_t<i_t, f_t> const& settings,
                                  cuopt::timer_t& timer)
 {
+  raft::common::nvtx::range fun_scope("run_mip");
   auto constexpr const running_mip = true;
 
   pdlp_hyper_params::update_primal_weight_on_initial_solution = false;
@@ -81,23 +76,21 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                      thrust::make_counting_iterator(0),
                      thrust::make_counting_iterator(problem.n_variables),
                      [sol = solution.assignment.data(), pb = problem.view()] __device__(i_t index) {
-                       sol[index] = pb.objective_coefficients[index] > 0
-                                      ? pb.variable_lower_bounds[index]
-                                      : pb.variable_upper_bounds[index];
+                       auto bounds = pb.variable_bounds[index];
+                       sol[index]  = pb.objective_coefficients[index] > 0 ? get_lower(bounds)
+                                                                          : get_upper(bounds);
                      });
     problem.post_process_solution(solution);
     solution.compute_objective();  // just to ensure h_user_obj is set
     auto stats           = solver_stats_t<i_t, f_t>{};
     stats.solution_bound = solution.get_user_objective();
+    // log the objective for scripts which need it
+    CUOPT_LOG_INFO("Best feasible: %f", solution.get_user_objective());
     return solution.get_solution(true, stats, false);
   }
   // problem contains unpreprocessed data
   detail::problem_t<i_t, f_t> scaled_problem(problem);
-  CUOPT_LOG_INFO("Solving a problem with %d constraints %d variables (%d integers) and %d nonzeros",
-                 problem.n_constraints,
-                 problem.n_variables,
-                 problem.n_integer_vars,
-                 problem.nnz);
+
   CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
                  problem.presolve_data.objective_offset,
                  problem.presolve_data.objective_scaling_factor);
@@ -105,16 +98,15 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                "Size mismatch");
   cuopt_assert(problem.original_problem_ptr->get_n_constraints() == scaled_problem.n_constraints,
                "Size mismatch");
-  detail::pdhg_solver_t<i_t, f_t> pdhg_solver(scaled_problem.handle_ptr, scaled_problem);
   detail::pdlp_initial_scaling_strategy_t<i_t, f_t> scaling(
     scaled_problem.handle_ptr,
     scaled_problem,
     pdlp_hyper_params::default_l_inf_ruiz_iterations,
     (f_t)pdlp_hyper_params::default_alpha_pock_chambolle_rescaling,
-    pdhg_solver,
     scaled_problem.reverse_coefficients,
     scaled_problem.reverse_offsets,
     scaled_problem.reverse_constraints,
+    nullptr,
     running_mip);
 
   cuopt_func_call(auto saved_problem = scaled_problem);
@@ -156,13 +148,11 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 {
   try {
     constexpr f_t max_time_limit = 1000000000;
-    const f_t time_limit         = settings.time_limit == 0 ? max_time_limit : settings.time_limit;
-    if (settings.heuristics_only && time_limit == std::numeric_limits<f_t>::max()) {
-      CUOPT_LOG_ERROR("Time limit cannot be infinity when heuristics only is set");
-      cuopt_expects(false,
-                    error_type_t::RuntimeError,
-                    "Time limit cannot be infinity when heuristics only is set");
-    }
+    f_t time_limit =
+      (settings.time_limit == 0 || settings.time_limit == std::numeric_limits<f_t>::infinity() ||
+       settings.time_limit == std::numeric_limits<f_t>::max())
+        ? max_time_limit
+        : settings.time_limit;
 
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
@@ -170,11 +160,28 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
 
+    print_version_info();
+
     raft::common::nvtx::range fun_scope("Running solver");
 
     // This is required as user might forget to set some fields
     problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
+
+    CUOPT_LOG_INFO(
+      "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
+      op_problem.get_n_constraints(),
+      op_problem.get_n_variables(),
+      op_problem.get_n_integers(),
+      op_problem.get_nnz());
+    op_problem.print_scaling_information();
+
+    // Check for crossing bounds. Return infeasible if there are any
+    if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
+      return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
+                                      solver_stats_t<i_t, f_t>{},
+                                      op_problem.get_handle_ptr()->get_stream());
+    }
 
     auto timer = cuopt::timer_t(time_limit);
 
@@ -184,33 +191,42 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
     auto run_presolve = settings.presolve;
     run_presolve      = run_presolve && settings.get_mip_callbacks().empty();
+    run_presolve      = run_presolve && settings.initial_solutions.size() == 0;
 
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
 
     if (run_presolve) {
+      detail::sort_csr(op_problem);
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
-      const double presolve_time_limit = 0.1 * time_limit;
-      presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
-      auto [reduced_op_problem, feasible] =
-        presolver->apply(op_problem,
-                         cuopt::linear_programming::problem_category_t::MIP,
-                         settings.tolerances.absolute_tolerance,
-                         settings.tolerances.relative_tolerance,
-                         presolve_time_limit);
-      if (!feasible) {
+      const double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
+      const bool dual_postsolve        = false;
+      presolver   = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
+      auto result = presolver->apply(op_problem,
+                                     cuopt::linear_programming::problem_category_t::MIP,
+                                     dual_postsolve,
+                                     settings.tolerances.absolute_tolerance,
+                                     settings.tolerances.relative_tolerance,
+                                     presolve_time_limit,
+                                     settings.num_cpu_threads);
+      if (!result.has_value()) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
                                         solver_stats_t<i_t, f_t>{},
                                         op_problem.get_handle_ptr()->get_stream());
       }
 
-      problem       = detail::problem_t<i_t, f_t>(reduced_op_problem);
+      problem = detail::problem_t<i_t, f_t>(result->reduced_problem);
+      problem.set_implied_integers(result->implied_integer_indices);
       presolve_time = timer.elapsed_time();
-      CUOPT_LOG_INFO("Third party presolve time: %f", presolve_time);
+      if (result->implied_integer_indices.size() > 0) {
+        CUOPT_LOG_INFO("%d implied integers", result->implied_integer_indices.size());
+      }
+      if (problem.is_objective_integral()) { CUOPT_LOG_INFO("Objective function is integral"); }
+      CUOPT_LOG_INFO("Papilo presolve time: %f", presolve_time);
     }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      problem.write_as_mps(settings.user_problem_file);
+      op_problem.write_to_mps(settings.user_problem_file);
     }
 
     // this is for PDLP, i think this should be part of pdlp solver

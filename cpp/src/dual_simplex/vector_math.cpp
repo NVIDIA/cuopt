@@ -1,23 +1,13 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
-#include <dual_simplex/vector_math.hpp>
-
+#include <dual_simplex/pinned_host_allocator.hpp>
 #include <dual_simplex/types.hpp>
+#include <dual_simplex/vector_math.hpp>
 
 #include <cassert>
 #include <cmath>
@@ -26,20 +16,8 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
-template <typename i_t, typename f_t>
-f_t vector_norm_inf(const std::vector<f_t>& x)
-{
-  i_t n = x.size();
-  f_t a = 0.0;
-  for (i_t j = 0; j < n; ++j) {
-    f_t t = std::abs(x[j]);
-    if (t > a) { a = t; }
-  }
-  return a;
-}
-
-template <typename i_t, typename f_t>
-f_t vector_norm2_squared(const std::vector<f_t>& x)
+template <typename i_t, typename f_t, typename Allocator>
+f_t vector_norm2_squared(const std::vector<f_t, Allocator>& x)
 {
   i_t n   = x.size();
   f_t sum = 0.0;
@@ -49,10 +27,21 @@ f_t vector_norm2_squared(const std::vector<f_t>& x)
   return sum;
 }
 
-template <typename i_t, typename f_t>
-f_t vector_norm2(const std::vector<f_t>& x)
+template <typename i_t, typename f_t, typename Allocator>
+f_t vector_norm2(const std::vector<f_t, Allocator>& x)
 {
-  return std::sqrt(vector_norm2_squared<i_t, f_t>(x));
+  return std::sqrt(vector_norm2_squared<i_t, f_t, Allocator>(x));
+}
+
+template <typename i_t, typename f_t>
+f_t vector_norm1(const std::vector<f_t>& x)
+{
+  i_t n   = x.size();
+  f_t sum = 0.0;
+  for (i_t j = 0; j < n; ++j) {
+    sum += std::abs(x[j]);
+  }
+  return sum;
 }
 
 template <typename i_t, typename f_t>
@@ -174,11 +163,20 @@ i_t inverse_permutation(const std::vector<i_t>& p, std::vector<i_t>& pinv)
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template double vector_norm_inf<int, double>(const std::vector<double>& x);
+template double vector_norm_inf<int, double, std::allocator<double>>(const std::vector<double>& x);
 
-template double vector_norm2_squared<int, double>(const std::vector<double>& x);
+template double vector_norm2_squared<int, double, std::allocator<double>>(
+  const std::vector<double, std::allocator<double>>& x);
 
-template double vector_norm2<int, double>(const std::vector<double>& x);
+template double vector_norm2<int, double, std::allocator<double>>(
+  const std::vector<double, std::allocator<double>>& x);
+
+template double vector_norm2_squared<int, double, PinnedHostAllocator<double>>(
+  const std::vector<double, PinnedHostAllocator<double>>&);
+template double vector_norm2<int, double, PinnedHostAllocator<double>>(
+  const std::vector<double, PinnedHostAllocator<double>>&);
+
+template double vector_norm1<int, double>(const std::vector<double>& x);
 
 template double dot<int, double>(const std::vector<double>& x, const std::vector<double>& y);
 

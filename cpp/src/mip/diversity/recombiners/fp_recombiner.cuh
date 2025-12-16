@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -34,11 +24,14 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
  public:
   fp_recombiner_t(mip_solver_context_t<i_t, f_t>& context,
                   i_t n_vars,
-                  feasibility_pump_t<i_t, f_t>& fp_,
+                  fj_t<i_t, f_t>& fj,
+                  constraint_prop_t<i_t, f_t>& constraint_prop,
+                  line_segment_search_t<i_t, f_t>& line_segment_search,
+                  rmm::device_uvector<f_t>& lp_optimal_solution,
                   const raft::handle_t* handle_ptr)
     : recombiner_t<i_t, f_t>(context, n_vars, handle_ptr),
       vars_to_fix(n_vars, handle_ptr->get_stream()),
-      fp(fp_)
+      fp(context, fj, constraint_prop, line_segment_search, lp_optimal_solution)
   {
   }
 
@@ -146,7 +139,8 @@ class fp_recombiner_t : public recombiner_t<i_t, f_t> {
     return std::make_pair(offspring, !same_as_parents);
   }
   rmm::device_uvector<i_t> vars_to_fix;
-  feasibility_pump_t<i_t, f_t>& fp;
+  // keep a copy of FP to prevent interference with generation FP
+  feasibility_pump_t<i_t, f_t> fp;
 };
 
 }  // namespace cuopt::linear_programming::detail

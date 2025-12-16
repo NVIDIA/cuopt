@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
@@ -31,7 +21,7 @@
 #include <stdexcept>
 #include <string>
 
-#include <rmm/mr/device/pool_memory_resource.hpp>
+#include <rmm/mr/pool_memory_resource.hpp>
 
 #include "benchmark_helper.hpp"
 
@@ -54,18 +44,19 @@ static void parse_arguments(argparse::ArgumentParser& program)
     .default_value(1e-4)
     .scan<'g', double>();
 
+  // TODO replace all comments with Stable2 with Stable3
   program.add_argument("--pdlp-solver-mode")
-    .help("Solver mode for PDLP. Possible values: Stable2 (default), Methodical1, Fast1")
-    .default_value("Stable2")
-    .choices("Stable2", "Methodical1", "Fast1");
+    .help("Solver mode for PDLP. Possible values: Stable3 (default), Methodical1, Fast1")
+    .default_value("Stable3")
+    .choices("Stable3", "Methodical1", "Fast1");
 
   program.add_argument("--method")
     .help(
       "Method to solve the linear programming problem. 0: Concurrent (default), 1: PDLP, 2: "
-      "DualSimplex")
+      "DualSimplex, 3: Barrier")
     .default_value(0)
     .scan<'i', int>()
-    .choices(0, 1, 2);
+    .choices(0, 1, 2, 3);
 
   program.add_argument("--crossover")
     .help("Enable crossover. 0: disabled (default), 1: enabled")
@@ -77,6 +68,12 @@ static void parse_arguments(argparse::ArgumentParser& program)
     .help(
       "Path to PDLP hyper-params file to configure PDLP solver. Has priority over PDLP solver "
       "modes.");
+
+  program.add_argument("--presolve")
+    .help("enable/disable presolve (default: true for MIP problems, false for LP problems)")
+    .default_value(0)
+    .scan<'i', int>()
+    .choices(0, 1);
 
   program.add_argument("--solution-path").help("Path where solution file will be generated");
 }
@@ -90,7 +87,9 @@ static cuopt::linear_programming::pdlp_solver_mode_t string_to_pdlp_solver_mode(
     return cuopt::linear_programming::pdlp_solver_mode_t::Methodical1;
   else if (mode == "Fast1")
     return cuopt::linear_programming::pdlp_solver_mode_t::Fast1;
-  return cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
+  else if (mode == "Stable3")
+    return cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
+  return cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
 }
 
 static cuopt::linear_programming::pdlp_solver_settings_t<int, double> create_solver_settings(
@@ -106,6 +105,7 @@ static cuopt::linear_programming::pdlp_solver_settings_t<int, double> create_sol
     string_to_pdlp_solver_mode(program.get<std::string>("--pdlp-solver-mode"));
   settings.method = static_cast<cuopt::linear_programming::method_t>(program.get<int>("--method"));
   settings.crossover = program.get<int>("--crossover");
+  settings.presolve  = program.get<int>("--presolve");
 
   return settings;
 }
@@ -113,7 +113,7 @@ static cuopt::linear_programming::pdlp_solver_settings_t<int, double> create_sol
 int main(int argc, char* argv[])
 {
   // Parse binary arguments
-  argparse::ArgumentParser program("solve_mps_file");
+  argparse::ArgumentParser program("solve_LP");
   parse_arguments(program);
 
   try {

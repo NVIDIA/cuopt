@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #include <dual_simplex/bound_flipping_ratio_test.hpp>
 
@@ -93,6 +83,11 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::single_pass(i_t start,
   }
   step_length       = min_val;
   nonbasic_entering = candidate;
+  // this should be temporary, find root causes where the candidate is not filled
+  if (nonbasic_entering == -1) {
+    // -1,-2 and -3 are reserved for other things
+    return -4;
+  }
   const i_t j = entering_index = nonbasic_list_[nonbasic_entering];
 
   constexpr bool verbose = false;
@@ -137,6 +132,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
 
   i_t k_idx = single_pass(
     0, num_breakpoints, indicies, ratios, slope, step_length, nonbasic_entering, entering_index);
+  if (k_idx == -4) { return -4; }
   bool continue_search = k_idx >= 0 && num_breakpoints > 1 && slope > 0.0;
   if (!continue_search) {
     if constexpr (0) {
@@ -262,8 +258,7 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
       entering_index = -2;
       return;
     }
-    if (settings_.concurrent_halt != nullptr &&
-        settings_.concurrent_halt->load(std::memory_order_acquire) == 1) {
+    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       entering_index = -3;
       return;
     }

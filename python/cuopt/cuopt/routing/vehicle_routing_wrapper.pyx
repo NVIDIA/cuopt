@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 
 # cython: profile=False
@@ -32,9 +20,9 @@ from cuopt.routing.vehicle_routing cimport (
 
 from datetime import date, datetime
 
-from dateutil.relativedelta import relativedelta
+import pyarrow as pa
 
-from raft_dask.common import Comms, local_handle
+from dateutil.relativedelta import relativedelta
 
 from cuopt.routing.assignment import Assignment
 from cuopt.utilities import type_cast
@@ -59,7 +47,8 @@ import numpy as np
 from numba import cuda
 
 import cudf
-from cudf.core.buffer import as_buffer
+
+from cuopt.utilities import series_from_buf
 
 
 class ErrorStatus(IntEnum):
@@ -161,14 +150,11 @@ cdef class DataModel:
     cdef unique_ptr[data_model_view_t[int, float]] c_data_model_view
     cdef unique_ptr[handle_t] handle_ptr
 
-    def __init__(self, int num_locations, int fleet_size, int n_orders=-1,
-                 session_id=None):
+    def __init__(self, int num_locations, int fleet_size, int n_orders=-1):
         cdef handle_t* handle_ = <handle_t*><size_t>NULL
-        if session_id is None:
-            self.handle_ptr.reset(new handle_t())
-            handle_ = self.handle_ptr.get()
-        else:
-            handle_ = <handle_t*><size_t>local_handle(session_id).getHandle()
+
+        self.handle_ptr.reset(new handle_t())
+        handle_ = self.handle_ptr.get()
 
         self.c_data_model_view.reset(new data_model_view_t[int, float](
             handle_,
@@ -805,38 +791,18 @@ def Solve(DataModel data_model, SolverSettings solver_settings):
     accepted = \
         DeviceBuffer.c_from_unique_ptr(move(vr_ret.d_accepted_))
 
-    route = as_buffer(route)
-    route_locations = as_buffer(route_locations)
-    arrival_stamp = as_buffer(arrival_stamp)
-    truck_id = as_buffer(truck_id)
-    node_types = as_buffer(node_types)
-    unserviced_nodes = as_buffer(unserviced_nodes)
-    accepted = as_buffer(accepted)
-
     route_df = cudf.DataFrame()
-    route_df['route'] = cudf.core.column.build_column(
-        route, dtype=np.dtype(np.int32)
-    )
-    route_df['arrival_stamp'] = cudf.core.column.build_column(
-        arrival_stamp, dtype=np.dtype(np.float64)
-    )
-    route_df['truck_id'] = cudf.core.column.build_column(
-        truck_id, dtype=np.dtype(np.int32)
-    )
-    route_df['location'] = cudf.core.column.build_column(
-        route_locations, dtype=np.dtype(np.int32)
-    )
-    route_df['type'] = cudf.core.column.build_column(
-        node_types, dtype=np.dtype(np.int32)
-    )
+    route_df['route'] = series_from_buf(route, pa.int32())
+    route_df['arrival_stamp'] = series_from_buf(arrival_stamp, pa.float64())
+    route_df['truck_id'] = series_from_buf(truck_id, pa.int32())
+    route_df['location'] = series_from_buf(route_locations, pa.int32())
+    route_df['type'] = series_from_buf(node_types, pa.int32())
 
     unserviced_nodes = cudf.Series._from_column(
-        cudf.core.column.build_column(
-            unserviced_nodes, dtype=np.dtype(np.int32)
-        )
+        series_from_buf(unserviced_nodes, pa.int32())
     )
     accepted = cudf.Series._from_column(
-        cudf.core.column.build_column(accepted, dtype=np.dtype(np.int32))
+        series_from_buf(accepted, pa.int32())
     )
 
     def get_type_from_int(type_in_int):

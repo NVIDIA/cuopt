@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -26,6 +16,7 @@
 #include <utilities/copy_helpers.hpp>
 
 #include <cuda_runtime_api.h>
+#include <thrust/count.h>
 #include <thrust/functional.h>
 #include <thrust/logical.h>
 #include <thrust/sort.h>
@@ -59,6 +50,36 @@ struct transform_bounds_functor {
 };
 
 template <typename i_t, typename f_t>
+static void set_variable_bounds(detail::problem_t<i_t, f_t>& op_problem)
+{
+  op_problem.variable_bounds.resize(op_problem.n_variables, op_problem.handle_ptr->get_stream());
+  auto vars_bnd = make_span(op_problem.variable_bounds);
+
+  auto orig_problem          = op_problem.original_problem_ptr;
+  auto variable_lower_bounds = make_span(orig_problem->get_variable_lower_bounds());
+  auto variable_upper_bounds = make_span(orig_problem->get_variable_upper_bounds());
+
+  bool default_variable_lb = (orig_problem->get_variable_lower_bounds().is_empty());
+  bool default_variable_ub = (orig_problem->get_variable_upper_bounds().is_empty());
+
+  thrust::for_each(op_problem.handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator<i_t>(0),
+                   thrust::make_counting_iterator<i_t>(op_problem.n_variables),
+                   [vars_bnd,
+                    variable_lower_bounds,
+                    variable_upper_bounds,
+                    default_variable_lb,
+                    default_variable_ub] __device__(auto i) {
+                     using f_t2 = typename type_2<f_t>::type;
+                     auto lb    = f_t{0};
+                     auto ub    = std::numeric_limits<f_t>::infinity();
+                     if (!default_variable_lb) { lb = variable_lower_bounds[i]; }
+                     if (!default_variable_ub) { ub = variable_upper_bounds[i]; }
+                     vars_bnd[i] = f_t2{lb, ub};
+                   });
+}
+
+template <typename i_t, typename f_t>
 static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
 {
   raft::common::nvtx::range scope("set_bounds_if_not_set");
@@ -90,25 +111,7 @@ static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
                       transform_bounds_functor<f_t>());
   }
 
-  // If variable bound was not set, set it to default value
-  if (op_problem.variable_lower_bounds.is_empty() &&
-      !op_problem.objective_coefficients.is_empty()) {
-    op_problem.variable_lower_bounds.resize(op_problem.objective_coefficients.size(),
-                                            op_problem.handle_ptr->get_stream());
-    thrust::fill(op_problem.handle_ptr->get_thrust_policy(),
-                 op_problem.variable_lower_bounds.begin(),
-                 op_problem.variable_lower_bounds.end(),
-                 f_t(0));
-  }
-  if (op_problem.variable_upper_bounds.is_empty() &&
-      !op_problem.objective_coefficients.is_empty()) {
-    op_problem.variable_upper_bounds.resize(op_problem.objective_coefficients.size(),
-                                            op_problem.handle_ptr->get_stream());
-    thrust::fill(op_problem.handle_ptr->get_thrust_policy(),
-                 op_problem.variable_upper_bounds.begin(),
-                 op_problem.variable_upper_bounds.end(),
-                 std::numeric_limits<f_t>::infinity());
-  }
+  set_variable_bounds(op_problem);
   if (op_problem.variable_types.is_empty() && !op_problem.objective_coefficients.is_empty()) {
     op_problem.variable_types.resize(op_problem.objective_coefficients.size(),
                                      op_problem.handle_ptr->get_stream());
@@ -182,9 +185,13 @@ __global__ void kernel_check_transpose_validity(raft::device_span<const f_t> coe
     __syncthreads();
     // Would want to assert there but no easy way to gtest it, so moved it to the host
     if (!shared_found) {
-      DEVICE_LOG_DEBUG(
-        "For cstr %d, var %d, value %f was not found in the transpose", constraint_id, col, value);
-      *failed = true;
+      if (threadIdx.x == 0) {
+        DEVICE_LOG_DEBUG("For cstr %d, var %d, value %f was not found in the transpose",
+                         constraint_id,
+                         col,
+                         value);
+        *failed = true;
+      }
       return;
     }
     __syncthreads();
@@ -215,11 +222,8 @@ static bool check_transpose_validity(const rmm::device_uvector<f_t>& coefficient
       raft::device_span<const i_t>(reverse_offsets.data(), reverse_offsets.size()),
       raft::device_span<const i_t>(reverse_variables.data(), reverse_variables.size()),
       failed.data());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(handle_ptr->get_stream()));
   RAFT_CUDA_TRY(cudaPeekAtLastError());
-  cuopt_assert(!failed.value(handle_ptr->get_stream()),
-               "Difference between the matrix and its transpose");
-  return true;
+  return !failed.value(handle_ptr->get_stream());
 }
 
 template <typename i_t, typename f_t>
@@ -261,11 +265,11 @@ static bool check_var_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
   bool crossing_bounds_detected =
     thrust::any_of(problem.handle_ptr->get_thrust_policy(),
                    thrust::counting_iterator(0),
-                   thrust::counting_iterator((i_t)problem.variable_lower_bounds.size()),
+                   thrust::counting_iterator((i_t)problem.variable_bounds.size()),
                    [tolerance = problem.tolerances.presolve_absolute_tolerance,
-                    lb        = make_span(problem.variable_lower_bounds),
-                    ub        = make_span(problem.variable_upper_bounds)] __device__(i_t index) {
-                     return (lb[index] > ub[index] + tolerance);
+                    var_bnd   = make_span(problem.variable_bounds)] __device__(i_t index) {
+                     auto var_bounds = var_bnd[index];
+                     return (get_lower(var_bounds) > get_upper(var_bounds) + tolerance);
                    });
   return !crossing_bounds_detected;
 }
@@ -292,12 +296,12 @@ static void round_bounds(detail::problem_t<i_t, f_t>& problem)
   thrust::for_each(problem.handle_ptr->get_thrust_policy(),
                    thrust::make_counting_iterator(0),
                    thrust::make_counting_iterator(problem.n_variables),
-                   [lb    = make_span(problem.variable_lower_bounds),
-                    ub    = make_span(problem.variable_upper_bounds),
-                    types = make_span(problem.variable_types)] __device__(i_t index) {
+                   [bounds = make_span(problem.variable_bounds),
+                    types  = make_span(problem.variable_types)] __device__(i_t index) {
                      if (types[index] == var_t::INTEGER) {
-                       lb[index] = ceil(lb[index]);
-                       ub[index] = floor(ub[index]);
+                       using f_t2    = typename type_2<f_t>::type;
+                       auto bnd      = bounds[index];
+                       bounds[index] = f_t2{ceil(get_lower(bnd)), floor(get_upper(bnd))};
                      }
                    });
 }
@@ -307,6 +311,56 @@ static bool check_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
 {
   return check_var_bounds_sanity<i_t, f_t>(problem) &&
          check_constraint_bounds_sanity<i_t, f_t>(problem);
+}
+
+template <typename i_t, typename f_t>
+__global__ void kernel_convert_greater_to_less(raft::device_span<f_t> coefficients,
+                                               raft::device_span<const i_t> offsets,
+                                               raft::device_span<f_t> constraint_lower_bounds,
+                                               raft::device_span<f_t> constraint_upper_bounds)
+{
+  const i_t constraint_id = blockIdx.x;
+
+  const f_t lb = constraint_lower_bounds[constraint_id];
+  const f_t ub = constraint_upper_bounds[constraint_id];
+
+  if (!isfinite(lb) || isfinite(ub)) return;
+
+  auto row_start = offsets[constraint_id];
+  auto row_end   = offsets[constraint_id + 1];
+  auto row_size  = row_end - row_start;
+
+  for (i_t tid = threadIdx.x; tid < row_size; tid += blockDim.x) {
+    coefficients[row_start + tid] = -coefficients[row_start + tid];
+  }
+
+  if (threadIdx.x == 0) {
+    constraint_lower_bounds[constraint_id] = -ub;
+    constraint_upper_bounds[constraint_id] = -lb;
+  }
+}
+
+template <typename i_t, typename f_t>
+static void convert_greater_to_less(detail::problem_t<i_t, f_t>& problem)
+{
+  raft::common::nvtx::range scope("convert_greater_to_less");
+
+  auto* handle_ptr = problem.handle_ptr;
+
+  constexpr i_t TPB = 256;
+  kernel_convert_greater_to_less<i_t, f_t>
+    <<<problem.n_constraints, TPB, 0, handle_ptr->get_stream()>>>(
+      raft::device_span<f_t>(problem.coefficients.data(), problem.coefficients.size()),
+      raft::device_span<const i_t>(problem.offsets.data(), problem.offsets.size()),
+      raft::device_span<f_t>(problem.constraint_lower_bounds.data(),
+                             problem.constraint_lower_bounds.size()),
+      raft::device_span<f_t>(problem.constraint_upper_bounds.data(),
+                             problem.constraint_upper_bounds.size()));
+  RAFT_CHECK_CUDA(handle_ptr->get_stream());
+
+  problem.compute_transpose_of_problem();
+
+  handle_ptr->sync_stream();
 }
 
 }  // namespace cuopt::linear_programming::detail

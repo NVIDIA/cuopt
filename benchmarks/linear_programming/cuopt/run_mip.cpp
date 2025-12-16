@@ -1,38 +1,32 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 #include "initial_solution_reader.hpp"
 #include "mip_test_instances.hpp"
 
+#include <cstdio>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/logger.hpp>
 #include <mps_parser/parser.hpp>
+#include <utilities/logger.hpp>
 
-#include <omp.h>
 #include <raft/core/handle.hpp>
 
-#include <rmm/mr/device/cuda_async_memory_resource.hpp>
-#include <rmm/mr/device/pool_memory_resource.hpp>
+#include <rmm/mr/cuda_async_memory_resource.hpp>
+#include <rmm/mr/limiting_resource_adaptor.hpp>
+#include <rmm/mr/logging_resource_adaptor.hpp>
+#include <rmm/mr/pool_memory_resource.hpp>
+#include <rmm/mr/tracking_resource_adaptor.hpp>
 
-#include <rmm/mr/device/owning_wrapper.hpp>
+#include <rmm/mr/owning_wrapper.hpp>
 
 #include <fcntl.h>
+#include <omp.h>
 #include <sys/file.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -76,10 +70,11 @@ void merge_result_files(const std::string& out_dir,
 void write_to_output_file(const std::string& out_dir,
                           const std::string& base_filename,
                           int gpu_id,
+                          int n_gpus,
                           int batch_id,
                           const std::string& data)
 {
-  int output_id        = batch_id * 8 + gpu_id;
+  int output_id        = batch_id * n_gpus + gpu_id;
   std::string filename = out_dir + "/result_" + std::to_string(output_id) + ".txt";
   std::ofstream outfile(filename, std::ios_base::app);
   if (outfile.is_open()) {
@@ -145,6 +140,7 @@ std::vector<std::vector<double>> read_solution_from_dir(const std::string file_p
 int run_single_file(std::string file_path,
                     int device,
                     int batch_id,
+                    int n_gpus,
                     std::string out_dir,
                     std::optional<std::string> initial_solution_dir,
                     bool heuristics_only,
@@ -207,6 +203,7 @@ int run_single_file(std::string file_path,
   settings.log_to_console                = log_to_console;
   settings.tolerances.relative_tolerance = 1e-12;
   settings.tolerances.absolute_tolerance = 1e-6;
+  settings.presolve                      = true;
   cuopt::linear_programming::benchmark_info_t benchmark_info;
   settings.benchmark_info_ptr = &benchmark_info;
   auto start_run_solver       = std::chrono::high_resolution_clock::now();
@@ -238,7 +235,7 @@ int run_single_file(std::string file_path,
      << obj_val << "," << benchmark_info.objective_of_initial_population << ","
      << benchmark_info.last_improvement_of_best_feasible << ","
      << benchmark_info.last_improvement_after_recombination << "\n";
-  write_to_output_file(out_dir, base_filename, device, batch_id, ss.str());
+  write_to_output_file(out_dir, base_filename, device, n_gpus, batch_id, ss.str());
   CUOPT_LOG_INFO("Results written to the file %s", base_filename.c_str());
   return sol_found;
 }
@@ -246,6 +243,7 @@ int run_single_file(std::string file_path,
 void run_single_file_mp(std::string file_path,
                         int device,
                         int batch_id,
+                        int n_gpus,
                         std::string out_dir,
                         std::optional<std::string> input_file_dir,
                         bool heuristics_only,
@@ -260,6 +258,7 @@ void run_single_file_mp(std::string file_path,
   int sol_found = run_single_file(file_path,
                                   device,
                                   batch_id,
+                                  n_gpus,
                                   out_dir,
                                   input_file_dir,
                                   heuristics_only,
@@ -292,7 +291,7 @@ void return_gpu_to_the_queue(std::unordered_map<pid_t, int>& pid_gpu_map,
 
 int main(int argc, char* argv[])
 {
-  argparse::ArgumentParser program("solve_mps_file");
+  argparse::ArgumentParser program("solve_MIP");
 
   // Define all arguments with appropriate defaults and help messages
   program.add_argument("--path").help("input path").required();
@@ -338,7 +337,16 @@ int main(int argc, char* argv[])
   program.add_argument("--time-limit")
     .help("time limit")
     .scan<'g', double>()
-    .default_value(std::numeric_limits<double>::max());
+    .default_value(std::numeric_limits<double>::infinity());
+
+  program.add_argument("--memory-limit")
+    .help("memory limit in MB")
+    .scan<'g', double>()
+    .default_value(0.0);
+
+  program.add_argument("--track-allocations")
+    .help("track allocations (t/f)")
+    .default_value(std::string("f"));
 
   // Parse arguments
   try {
@@ -362,10 +370,14 @@ int main(int argc, char* argv[])
   std::string result_file;
   int batch_num = -1;
 
-  bool heuristics_only = program.get<std::string>("--heuristics-only")[0] == 't';
-  int num_cpu_threads  = program.get<int>("--num-cpu-threads");
-  bool write_log_file  = program.get<std::string>("--write-log-file")[0] == 't';
-  bool log_to_console  = program.get<std::string>("--log-to-console")[0] == 't';
+  bool heuristics_only   = program.get<std::string>("--heuristics-only")[0] == 't';
+  int num_cpu_threads    = program.get<int>("--num-cpu-threads");
+  bool write_log_file    = program.get<std::string>("--write-log-file")[0] == 't';
+  bool log_to_console    = program.get<std::string>("--log-to-console")[0] == 't';
+  double memory_limit    = program.get<double>("--memory-limit");
+  bool track_allocations = program.get<std::string>("--track-allocations")[0] == 't';
+
+  if (num_cpu_threads < 0) { num_cpu_threads = omp_get_max_threads() / n_gpus; }
 
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
@@ -444,6 +456,7 @@ int main(int argc, char* argv[])
             run_single_file_mp(file_name,
                                gpu_id,
                                batch_num,
+                               n_gpus,
                                out_dir,
                                initial_solution_file,
                                heuristics_only,
@@ -469,10 +482,21 @@ int main(int argc, char* argv[])
     merge_result_files(out_dir, result_file, n_gpus, batch_num);
   } else {
     auto memory_resource = make_async();
-    rmm::mr::set_current_device_resource(memory_resource.get());
+    if (memory_limit > 0) {
+      auto limiting_adaptor =
+        rmm::mr::limiting_resource_adaptor(memory_resource.get(), memory_limit * 1024ULL * 1024ULL);
+      rmm::mr::set_current_device_resource(&limiting_adaptor);
+    } else if (track_allocations) {
+      rmm::mr::tracking_resource_adaptor tracking_adaptor(memory_resource.get(),
+                                                          /*capture_stacks=*/true);
+      rmm::mr::set_current_device_resource(&tracking_adaptor);
+    } else {
+      rmm::mr::set_current_device_resource(memory_resource.get());
+    }
     run_single_file(path,
                     0,
                     0,
+                    n_gpus,
                     out_dir,
                     initial_solution_file,
                     heuristics_only,

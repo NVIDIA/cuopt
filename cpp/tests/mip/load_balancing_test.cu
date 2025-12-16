@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
@@ -31,7 +21,7 @@
 #include <utilities/error.hpp>
 #include <utilities/timer.hpp>
 
-#include <rmm/mr/device/cuda_async_memory_resource.hpp>
+#include <rmm/mr/cuda_async_memory_resource.hpp>
 
 #include <gtest/gtest.h>
 
@@ -59,15 +49,14 @@ std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_
   auto seed = std::random_device{}();
   std::cerr << "Tested with seed " << seed << "\n";
   problem.compute_n_integer_vars();
-  auto v_lb       = host_copy(problem.variable_lower_bounds);
-  auto v_ub       = host_copy(problem.variable_upper_bounds);
+  auto v_bnd      = host_copy(problem.variable_bounds);
   auto int_var_id = host_copy(problem.integer_indices);
-  int_var_id.erase(std::remove_if(int_var_id.begin(),
-                                  int_var_id.end(),
-                                  [v_lb, v_ub](auto id) {
-                                    return !(std::isfinite(v_lb[id]) && std::isfinite(v_ub[id]));
-                                  }),
-                   int_var_id.end());
+  int_var_id.erase(
+    std::remove_if(
+      int_var_id.begin(),
+      int_var_id.end(),
+      [v_bnd](auto id) { return !(std::isfinite(v_bnd[id].x) && std::isfinite(v_bnd[id].y)); }),
+    int_var_id.end());
   sample_size = std::min(sample_size, static_cast<int>(int_var_id.size()));
   std::vector<int> random_int_vars;
   std::mt19937 m{seed};
@@ -77,11 +66,11 @@ std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_
   std::vector<double> probe_1(sample_size);
   for (int i = 0; i < static_cast<int>(random_int_vars.size()); ++i) {
     if (i % 2) {
-      probe_0[i] = v_lb[random_int_vars[i]];
-      probe_1[i] = v_ub[random_int_vars[i]];
+      probe_0[i] = v_bnd[random_int_vars[i]].x;
+      probe_1[i] = v_bnd[random_int_vars[i]].y;
     } else {
-      probe_1[i] = v_lb[random_int_vars[i]];
-      probe_0[i] = v_ub[random_int_vars[i]];
+      probe_1[i] = v_bnd[random_int_vars[i]].x;
+      probe_0[i] = v_bnd[random_int_vars[i]].y;
     }
   }
   return std::make_tuple(std::move(random_int_vars), std::move(probe_0), std::move(probe_1));
@@ -142,10 +131,10 @@ void test_multi_probe(std::string path)
                                                                problem,
                                                                10,
                                                                1.0,
-                                                               pdhg_solver,
                                                                problem.reverse_coefficients,
                                                                problem.reverse_offsets,
                                                                problem.reverse_constraints,
+                                                               nullptr,
                                                                true);
   detail::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
   detail::load_balanced_problem_t<int, double> lb_problem(problem);

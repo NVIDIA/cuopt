@@ -1,27 +1,17 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
 namespace cuopt::linear_programming::detail {
 
 struct bp_recombiner_config_t {
-  static constexpr double bounds_prop_time_limit          = 2;
-  static constexpr double lp_after_bounds_prop_time_limit = 2;
+  static constexpr double bounds_prop_time_limit          = 2.;
+  static constexpr double lp_after_bounds_prop_time_limit = 2.;
   // number of repair iterations even if it fails during the repair
   static constexpr size_t n_repair_iterations          = 10;
   static constexpr size_t initial_n_of_vars_from_other = 200;
@@ -79,8 +69,8 @@ struct ls_recombiner_config_t {
 };
 
 struct fp_recombiner_config_t {
-  static constexpr double infeasibility_detection_time_limit = 0.5;
-  static constexpr double fp_time_limit                      = 3.;
+  static constexpr double infeasibility_detection_time_limit = 0.05;
+  static constexpr double fp_time_limit                      = 2.;
   static constexpr double alpha                              = 0.99;
   static constexpr double alpha_decrease_factor              = 0.9;
   static constexpr size_t initial_n_of_vars_from_other       = 200;
@@ -108,8 +98,9 @@ struct fp_recombiner_config_t {
 };
 
 struct sub_mip_recombiner_config_t {
-  static constexpr double sub_mip_time_limit                 = 3.;
-  static constexpr double infeasibility_detection_time_limit = 0.5;
+  static constexpr size_t max_continuous_vars                = 5000;
+  static constexpr double sub_mip_time_limit                 = 2.;
+  static constexpr double infeasibility_detection_time_limit = 0.05;
   static constexpr size_t initial_n_of_vars_from_other       = 40;
   static constexpr size_t max_different_var_limit            = 500;
   static constexpr size_t min_different_var_limit            = 10;

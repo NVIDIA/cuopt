@@ -1,28 +1,26 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 #pragma once
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 
-#include <mip/problem/problem.cuh>
+namespace rmm {
+template <typename T>
+class device_uvector;
+}  // namespace rmm
 
 namespace cuopt::linear_programming {
+
+namespace detail {
+template <typename i_t, typename f_t>
+class problem_t;
+}  // namespace detail
 
 template <typename i_t, typename f_t>
 class problem_checking_t {
@@ -30,6 +28,7 @@ class problem_checking_t {
   static void check_csr_representation(const optimization_problem_t<i_t, f_t>& op_problem);
   // Check all fields and convert row_types to constraints lower/upper bounds if needed
   static void check_problem_representation(const optimization_problem_t<i_t, f_t>& op_problem);
+  static bool has_crossing_bounds(const optimization_problem_t<i_t, f_t>& op_problem);
 
   static void check_scaled_problem(detail::problem_t<i_t, f_t> const& scaled_problem,
                                    detail::problem_t<i_t, f_t> const& op_problem);

@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 
 # cython: profile=False
@@ -36,6 +24,10 @@ import cudf
 from cudf.core.buffer import as_buffer
 
 from libcpp.utility cimport move
+
+from cuopt.utilities import series_from_buf
+
+import pyarrow as pa
 
 
 class DatasetDistribution(IntEnum):
@@ -111,10 +103,8 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
 
     x_pos = DeviceBuffer.c_from_unique_ptr(move(g_ret.d_x_pos_))
     y_pos = DeviceBuffer.c_from_unique_ptr(move(g_ret.d_y_pos_))
-    x_pos = as_buffer(x_pos)
-    y_pos = as_buffer(y_pos)
-    coordinates['x'] = cudf.core.column.build_column(x_pos, dtype=np.float32)
-    coordinates['y'] = cudf.core.column.build_column(y_pos, dtype=np.float32)
+    coordinates['x'] = series_from_buf(x_pos, pa.float32())
+    coordinates['y'] = series_from_buf(y_pos, pa.float32())
 
     matrices_buf = as_buffer(
         DeviceBuffer.c_from_unique_ptr(move(g_ret.d_matrices_))
@@ -140,21 +130,13 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
         move(g_ret.d_skip_first_trips_)
     )
 
-    vehicle_earliest = as_buffer(vehicle_earliest)
-    vehicle_latest = as_buffer(vehicle_latest)
-    vehicle_drop_return_trips = as_buffer(vehicle_drop_return_trips)
-    vehicle_skip_first_trips = as_buffer(vehicle_skip_first_trips)
-    vehicles["earliest_time"] = cudf.core.column.build_column(
-        vehicle_earliest, dtype=np.int32
+    vehicles["earliest_time"] = series_from_buf(vehicle_earliest, pa.int32())
+    vehicles["latest_time"] = series_from_buf(vehicle_latest, pa.int32())
+    vehicles["drop_return_trips"] = series_from_buf(
+        vehicle_drop_return_trips, pa.bool_()
     )
-    vehicles["latest_time"] = cudf.core.column.build_column(
-        vehicle_latest, dtype=np.int32
-    )
-    vehicles["drop_return_trips"] = cudf.core.column.build_column(
-        vehicle_drop_return_trips, dtype=np.bool_
-    )
-    vehicles["skip_first_trips"] = cudf.core.column.build_column(
-        vehicle_skip_first_trips, dtype=np.bool_
+    vehicles["skip_first_trips"] = series_from_buf(
+        vehicle_skip_first_trips, pa.bool_()
     )
 
     fleet_size = vehicles["earliest_time"].shape[0]
@@ -186,18 +168,12 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
     earliest_time = DeviceBuffer.c_from_unique_ptr(
         move(g_ret.d_earliest_time_)
     )
-    earliest_time = as_buffer(earliest_time)
     latest_time = DeviceBuffer.c_from_unique_ptr(
         move(g_ret.d_latest_time_)
     )
-    latest_time = as_buffer(latest_time)
 
-    orders["earliest_time"] = cudf.core.column.build_column(
-        earliest_time, dtype=np.int32
-    )
-    orders["latest_time"] = cudf.core.column.build_column(
-        latest_time, dtype=np.int32
-    )
+    orders["earliest_time"] = series_from_buf(earliest_time, pa.int32())
+    orders["latest_time"] = series_from_buf(latest_time, pa.int32())
 
     demands_buf = as_buffer(
         DeviceBuffer.c_from_unique_ptr(move(g_ret.d_demands_))

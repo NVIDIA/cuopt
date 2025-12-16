@@ -1,40 +1,35 @@
+# cmake-format: off
 # SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# cmake-format: on
 
-add_library(cuopttestutils STATIC
-    routing/utilities/check_constraints.cu
-)
+if(BUILD_TESTS)
+  add_library(cuopttestutils STATIC
+      routing/utilities/check_constraints.cu
+  )
 
-target_compile_options(cuopttestutils
-    PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
-    "$<BUILD_INTERFACE:$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>>"
-)
+  target_compile_options(cuopttestutils
+      PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+      "$<BUILD_INTERFACE:$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>>"
+  )
 
-target_include_directories(cuopttestutils
-    PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src"
-    "${CMAKE_CURRENT_SOURCE_DIR}"
-)
+  target_include_directories(cuopttestutils
+      PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+      "${CMAKE_CURRENT_SOURCE_DIR}"
+  )
 
-target_link_libraries(cuopttestutils
-    PUBLIC
-    cuopt
-    GTest::gmock
-    GTest::gtest
-    papilo-core
-)
+  target_link_libraries(cuopttestutils
+      PUBLIC
+      cuopt
+      GTest::gmock
+      GTest::gtest
+  )
+  if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+    target_link_options(cuopttestutils PRIVATE -Wl,--enable-new-dtags)
+  endif()
+endif()
+
 
 set(CUOPT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -60,6 +55,9 @@ function(ConfigureTest CMAKE_TEST_NAME)
         GTest::gtest_main
         ${CUOPT_PRIVATE_CUDA_LIBS}
     )
+    if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+      target_link_options(${CMAKE_TEST_NAME} PRIVATE -Wl,--enable-new-dtags)
+    endif()
 
     add_test(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME})
 
@@ -82,12 +80,19 @@ if(RAPIDS_DATASET_ROOT_DIR)
 endif(RAPIDS_DATASET_ROOT_DIR)
 
 # ## test sources
-add_subdirectory(routing)
-add_subdirectory(linear_programming)
-add_subdirectory(distance_engine)
-add_subdirectory(mip)
-add_subdirectory(dual_simplex)
-add_subdirectory(examples)
-add_subdirectory(utilities)
+if(BUILD_TESTS)
+  if(NOT SKIP_ROUTING_BUILD)
+    add_subdirectory(routing)
+    add_subdirectory(distance_engine)
+    add_subdirectory(examples)
+  endif()
+  if(NOT BUILD_LP_ONLY)
+    add_subdirectory(mip)
+  endif()
+  add_subdirectory(linear_programming)
+  add_subdirectory(dual_simplex)
+  add_subdirectory(qp)
+  add_subdirectory(utilities)
 
-enable_testing()
+  enable_testing()
+endif()

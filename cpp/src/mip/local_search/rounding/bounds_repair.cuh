@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #pragma once
 
@@ -43,17 +33,25 @@ struct bounds_t {
   }
   void update_from(const problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr)
   {
-    cuopt_assert(lb.size() == pb.variable_lower_bounds.size(), "");
-    cuopt_assert(ub.size() == pb.variable_upper_bounds.size(), "");
-    raft::copy(lb.data(), pb.variable_lower_bounds.data(), lb.size(), handle_ptr->get_stream());
-    raft::copy(ub.data(), pb.variable_upper_bounds.data(), ub.size(), handle_ptr->get_stream());
+    cuopt_assert(lb.size() == pb.variable_bounds.size(), "");
+    cuopt_assert(ub.size() == pb.variable_bounds.size(), "");
+    thrust::transform(
+      handle_ptr->get_thrust_policy(),
+      pb.variable_bounds.begin(),
+      pb.variable_bounds.end(),
+      thrust::make_zip_iterator(thrust::make_tuple(lb.begin(), ub.begin())),
+      [] __device__(auto i) { return thrust::make_tuple(get_lower(i), get_upper(i)); });
   };
   void update_to(problem_t<i_t, f_t>& pb, const raft::handle_t* handle_ptr)
   {
-    cuopt_assert(lb.size() == pb.variable_lower_bounds.size(), "");
-    cuopt_assert(ub.size() == pb.variable_upper_bounds.size(), "");
-    raft::copy(pb.variable_lower_bounds.data(), lb.data(), lb.size(), handle_ptr->get_stream());
-    raft::copy(pb.variable_upper_bounds.data(), ub.data(), ub.size(), handle_ptr->get_stream());
+    cuopt_assert(lb.size() == pb.variable_bounds.size(), "");
+    cuopt_assert(ub.size() == pb.variable_bounds.size(), "");
+    using f_t2 = typename type_2<f_t>::type;
+    thrust::transform(handle_ptr->get_thrust_policy(),
+                      thrust::make_zip_iterator(thrust::make_tuple(lb.begin(), ub.begin())),
+                      thrust::make_zip_iterator(thrust::make_tuple(lb.end(), ub.end())),
+                      pb.variable_bounds.begin(),
+                      [] __device__(auto i) { return f_t2{thrust::get<0>(i), thrust::get<1>(i)}; });
   };
   rmm::device_uvector<f_t> lb;
   rmm::device_uvector<f_t> ub;

@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -123,6 +113,11 @@ class mps_parser_t {
   /** Objection function sense (maximize of minimize) */
   bool maximize{false};
 
+  // QPS-specific data for quadratic programming
+  /** Quadratic objective matrix entries */
+  std::vector<std::tuple<i_t, i_t, f_t>> quadobj_entries{};
+  std::vector<std::tuple<i_t, i_t, f_t>> qmatrix_entries{};
+
  private:
   bool inside_rows_{false};
   bool inside_columns_{false};
@@ -132,6 +127,9 @@ class mps_parser_t {
   bool inside_objsense_{false};
   bool inside_intcapture_{false};
   bool inside_objname_{false};
+  // QPS-specific parsing states
+  bool inside_quadobj_{false};
+  bool inside_qmatrix_{false};
   std::unordered_set<std::string> encountered_sections{};
   std::unordered_map<std::string, i_t> row_names_map{};
   std::unordered_map<std::string, i_t> var_names_map{};
@@ -139,10 +137,10 @@ class mps_parser_t {
   std::unordered_set<i_t> bounds_defined_for_var_id{};
   static constexpr f_t unset_range_value = std::numeric_limits<f_t>::infinity();
 
-  /* Reads the equation from the input text file which is MPS formatted
+  /* Reads an MPS input file into a buffer.
    *
-   * Read this link http://lpsolve.sourceforge.net/5.5/mps-format.htm for more
-   * details on this format.
+   * If the file has a .gz or .bz2 suffix and zlib or libbzip2 are installed, respectively,
+   * the function directly reads and decompresses the compressed MPS file.
    */
   std::vector<char> file_to_string(const std::string& file);
   void fill_problem(mps_data_model_t<i_t, f_t>& problem);
@@ -168,6 +166,9 @@ class mps_parser_t {
   void read_bound_and_value(std::string_view line, BoundType type, i_t var_id, i_t start);
   void parse_ranges(std::string_view line);
   i_t insert_range_value(std::string_view line, bool skip_range = true);
+
+  // QPS-specific parsing methods
+  void parse_quad(std::string_view line, bool is_quadobj);
 
 };  // class mps_parser_t
 

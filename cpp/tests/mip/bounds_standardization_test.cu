@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
@@ -78,8 +68,9 @@ void test_bounds_standardization_test(std::string test_instance)
 
   mip_solver_settings_t<int, double> default_settings{};
   detail::relaxed_lp_settings_t lp_settings;
-  lp_settings.time_limit = 120.;
-  lp_settings.tolerance  = default_settings.tolerances.absolute_tolerance;
+  lp_settings.time_limit              = 120.;
+  lp_settings.tolerance               = default_settings.tolerances.absolute_tolerance;
+  lp_settings.per_constraint_residual = false;
 
   // run the problem through pdlp
   auto result_1 = detail::get_relaxed_lp_solution(standardized_problem, solution_1, lp_settings);

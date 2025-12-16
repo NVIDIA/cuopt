@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #include <dual_simplex/basis_solves.hpp>
 
@@ -363,8 +353,18 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
         for (i_t h = 0; h < Sdim; ++h) {
           identity[h] = h;
         }
-        Srank = right_looking_lu(
-          S, settings.threshold_partial_pivoting_tol, identity, S_col_perm, SL, SU, S_perm_inv);
+        Srank = right_looking_lu(S,
+                                 settings,
+                                 settings.threshold_partial_pivoting_tol,
+                                 identity,
+                                 S_col_perm,
+                                 SL,
+                                 SU,
+                                 S_perm_inv);
+        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+          settings.log.printf("Concurrent halt\n");
+          return -1;
+        }
         if (Srank != Sdim) {
           // Get the rank deficient columns
           deficient.clear();
@@ -565,12 +565,28 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
   }
   q.resize(m);
   f_t fact_start = tic();
-  right_looking_lu(A, medium_tol, basic_list, q, L, U, pinv);
+  rank           = right_looking_lu(A, settings, medium_tol, basic_list, q, L, U, pinv);
+  inverse_permutation(pinv, p);
+  if (rank != m) {
+    // Get the rank deficient columns
+    deficient.clear();
+    deficient.resize(m - rank);
+    for (i_t h = rank; h < m; ++h) {
+      deficient[h - rank] = q[h];
+    }
+    // Get the slacks needed
+    slacks_needed.resize(m - rank);
+    for (i_t h = rank; h < m; ++h) {
+      slacks_needed[h - rank] = p[h];
+    }
+  }
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    settings.log.printf("Concurrent halt\n");
+    return -1;
+  }
   if (verbose) {
     printf("Right Lnz+Unz %d t %.3f\n", L.col_start[m] + U.col_start[m], toc(fact_start));
   }
-  inverse_permutation(pinv, p);
-  rank                    = m;
   constexpr bool check_lu = false;
   if (check_lu) {
     csc_matrix_t<i_t, f_t> C(m, m, 1);
@@ -591,7 +607,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
     assert(norm_diff < 1e-3);
   }
 
-  return rank;
+  return (rank == m ? m : -1);
 }
 
 template <typename i_t, typename f_t>
@@ -625,11 +641,10 @@ i_t basis_repair(const csc_matrix_t<i_t, f_t>& A,
   assert(slacks_found == m);
 
   // Create nonbasic_map
-  std::vector<i_t> nonbasic_map(n);  // nonbasic_map[j] = p if nonbasic[p] = j, -1 if j is basic
-  for (i_t k = 0; k < m; ++k) {
-    nonbasic_map[basis_list[k]] = -1;
-  }
-  for (i_t k = 0; k < n - m; ++k) {
+  std::vector<i_t> nonbasic_map(
+    n, -1);  // nonbasic_map[j] = p if nonbasic[p] = j, -1 if j is basic/superbasic
+  const i_t num_nonbasic = nonbasic_list.size();
+  for (i_t k = 0; k < num_nonbasic; ++k) {
     nonbasic_map[nonbasic_list[k]] = k;
   }
 

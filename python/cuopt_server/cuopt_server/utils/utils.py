@@ -1,22 +1,10 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import json
 import os
 
-from cuopt_server.utils.job_queue import SolverLPJob, lp_datamodel_compat
+from cuopt_server.utils.job_queue import SolverLPJob
 from cuopt_server.utils.linear_programming.data_definition import LPData
 from cuopt_server.utils.linear_programming.solver import (
     create_data_model as lp_create_data_model,
@@ -73,14 +61,12 @@ def build_lp_datamodel_from_json(data):
     """
 
     if isinstance(data, dict):
-        lp_datamodel_compat(data)
         data = LPData.parse_obj(data)
     elif os.path.isfile(data):
         with open(data, "r") as f:
             data = json.loads(f.read())
             # Remove this once we support variable names
             data.pop("variable_names")
-            lp_datamodel_compat(data)
             data = LPData.parse_obj(data)
     else:
         raise ValueError(

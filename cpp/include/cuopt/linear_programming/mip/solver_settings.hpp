@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION &
- * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -72,8 +62,8 @@ class mip_solver_settings_t {
 
   struct tolerances_t {
     f_t presolve_absolute_tolerance = 1.0e-6;
-    f_t absolute_tolerance          = 1.0e-4;
-    f_t relative_tolerance          = 1.0e-6;
+    f_t absolute_tolerance          = 1.0e-6;
+    f_t relative_tolerance          = 1.0e-12;
     f_t integrality_tolerance       = 1.0e-5;
     f_t absolute_mip_gap            = 1.0e-10;
     f_t relative_mip_gap            = 1.0e-4;
@@ -91,6 +81,7 @@ class mip_solver_settings_t {
   f_t time_limit       = std::numeric_limits<f_t>::infinity();
   bool heuristics_only = false;
   i_t num_cpu_threads  = -1;  // -1 means use default number of threads in branch and bound
+  i_t num_gpus         = 1;
   bool log_to_console  = true;
   std::string log_file;
   std::string sol_file;

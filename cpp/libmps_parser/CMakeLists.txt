@@ -1,17 +1,7 @@
+# cmake-format: off
 # SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# cmake-format: on
 
 cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
 include(../../cmake/rapids_config.cmake)
@@ -22,7 +12,7 @@ include(rapids-find)
 
 project(
   MPS_PARSER
-  VERSION 25.10.00
+  VERSION "${RAPIDS_VERSION}"
   LANGUAGES CXX
 )
 
@@ -38,6 +28,8 @@ rapids_cmake_build_type(Release)
 # #############################################################################
 # - User Options  ------------------------------------------------------------
 option(BUILD_TESTS "Configure CMake to build tests" ON)
+option(MPS_PARSER_WITH_BZIP2 "Build with bzip2 decompression" ON)
+option(MPS_PARSER_WITH_ZLIB "Build with zlib decompression" ON)
 
 message(VERBOSE "cuOpt: Build mps-parser unit-tests: ${BUILD_TESTS}")
 
@@ -49,6 +41,16 @@ set(MPS_PARSER_CXX_FLAGS "")
 if(CMAKE_COMPILER_IS_GNUCXX)
   list(APPEND MPS_PARSER_CXX_FLAGS -Werror -Wno-error=deprecated-declarations)
 endif(CMAKE_COMPILER_IS_GNUCXX)
+
+if(MPS_PARSER_WITH_BZIP2)
+  find_package(BZip2 REQUIRED)
+  add_compile_definitions(-DMPS_PARSER_WITH_BZIP2)
+endif(MPS_PARSER_WITH_BZIP2)
+
+if(MPS_PARSER_WITH_ZLIB)
+  find_package(ZLIB REQUIRED)
+  add_compile_definitions(-DMPS_PARSER_WITH_ZLIB)
+endif(MPS_PARSER_WITH_ZLIB)
 
 if(DEFINE_ASSERT)
   add_definitions(-DASSERT_MODE)
@@ -66,7 +68,9 @@ add_library(mps_parser SHARED
   src/data_model_view.cpp
   src/mps_data_model.cpp
   src/mps_parser.cpp
+  src/mps_writer.cpp
   src/parser.cpp
+  src/writer.cpp
   src/utilities/cython_mps_parser.cpp
 )
 
@@ -84,15 +88,17 @@ target_compile_options(mps_parser
   PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${MPS_PARSER_CXX_FLAGS}>"
 )
 
-file(WRITE "${MPS_PARSER_BINARY_DIR}/fatbin.ld"
-  [=[
-SECTIONS
-{
-  .nvFatBinSegment : { *(.nvFatBinSegment) }
-  .nv_fatbin : { *(.nv_fatbin) }
-}
-]=])
-target_link_options(mps_parser PRIVATE "${MPS_PARSER_BINARY_DIR}/fatbin.ld")
+if(WRITE_FATBIN)
+  file(WRITE "${MPS_PARSER_BINARY_DIR}/fatbin.ld"
+    [=[
+  SECTIONS
+  {
+    .nvFatBinSegment : { *(.nvFatBinSegment) }
+    .nv_fatbin : { *(.nv_fatbin) }
+  }
+  ]=])
+  target_link_options(mps_parser PRIVATE "${MPS_PARSER_BINARY_DIR}/fatbin.ld")
+endif()
 
 add_library(cuopt::mps_parser ALIAS mps_parser)
 
@@ -106,6 +112,14 @@ target_include_directories(mps_parser
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include>"
 )
+
+if(MPS_PARSER_WITH_BZIP2)
+    target_include_directories(mps_parser PRIVATE BZip2::BZip2)
+endif(MPS_PARSER_WITH_BZIP2)
+
+if(MPS_PARSER_WITH_ZLIB)
+    target_include_directories(mps_parser PRIVATE ZLIB::ZLIB)
+endif(MPS_PARSER_WITH_ZLIB)
 
 # ##################################################################################################
 # - generate tests --------------------------------------------------------------------------------

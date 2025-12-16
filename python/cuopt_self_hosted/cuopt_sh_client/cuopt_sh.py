@@ -1,19 +1,7 @@
 #! /usr/bin/python3
 
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 
 import argparse
@@ -48,6 +36,7 @@ def status(args):
         self_signed_cert=args.self_signed_cert,
         timeout_exception=False,
         result_type=result_types[args.result_type],
+        http_general_timeout=args.http_timeout,
     )
 
     try:
@@ -65,7 +54,6 @@ def status(args):
 
 
 def delete_request(args):
-
     cuopt_service_client = CuOptServiceSelfHostClient(
         args.ip,
         args.port,
@@ -73,6 +61,7 @@ def delete_request(args):
         self_signed_cert=args.self_signed_cert,
         timeout_exception=False,
         result_type=result_types[args.result_type],
+        http_general_timeout=args.http_timeout,
     )
 
     try:
@@ -96,7 +85,6 @@ def delete_request(args):
 
 
 def upload_solution(args):
-
     cuopt_service_client = CuOptServiceSelfHostClient(
         args.ip,
         args.port,
@@ -104,6 +92,7 @@ def upload_solution(args):
         self_signed_cert=args.self_signed_cert,
         timeout_exception=False,
         result_type=result_types[args.result_type],
+        http_general_timeout=args.http_timeout,
     )
 
     try:
@@ -129,6 +118,7 @@ def delete_solution(args):
         self_signed_cert=args.self_signed_cert,
         timeout_exception=False,
         result_type=result_types[args.result_type],
+        http_general_timeout=args.http_timeout,
     )
 
     try:
@@ -146,7 +136,6 @@ def delete_solution(args):
 
 
 def solve(args):
-
     problem_data = args.data
 
     # Set the problem data
@@ -220,6 +209,7 @@ def solve(args):
         only_validate=args.only_validation,
         timeout_exception=False,
         result_type=result_types[args.result_type],
+        http_general_timeout=args.http_timeout,
     )
 
     try:
@@ -327,7 +317,6 @@ def solve(args):
 
 
 def main():
-
     levels = {
         "critical": logging.CRITICAL,
         "error": logging.ERROR,
@@ -569,7 +558,7 @@ def main():
         help="If set detailed MIP solver logs will be returned. If a filename "
         "argument is given logs will be written to that file. If no argument "
         "is given logs will be written to stdout.",
-    ),
+    )
     parser.add_argument(
         "-il",
         "--incumbent-logs",
@@ -579,7 +568,7 @@ def main():
         help="If set MIP incumbent solutions will be returned. If a filename "
         "argument is given incumbents will be written to that file. "
         "If no argument is given incumbents will be written to stdout.",
-    ),
+    )
     parser.add_argument(
         "-us",
         "--upload-solution",
@@ -587,6 +576,16 @@ def main():
         help="Upload a solution to be cached on the server. The reqId "
         "returned may be used as an initial solution for VRP.",
     )
+    parser.add_argument(
+        "-ht",
+        "--http-timeout",
+        type=int,
+        default=30,
+        help="Timeout in seconds for http requests. May need to be increased "
+        "for large datasets or slow networks. Default is 30s. "
+        "Set to None to never timeout.",
+    )
+
     args = parser.parse_args()
     set_log_level(levels[args.log_level])
     if args.version:

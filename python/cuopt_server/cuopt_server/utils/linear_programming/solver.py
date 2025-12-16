@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import logging
 import os
@@ -25,9 +13,16 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_DUAL_TOLERANCE,
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
+    CUOPT_AUGMENTED,
+    CUOPT_BARRIER_DUAL_INITIAL_POINT,
     CUOPT_CROSSOVER,
+    CUOPT_CUDSS_DETERMINISTIC,
     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
+    CUOPT_DUAL_POSTSOLVE,
+    CUOPT_DUALIZE,
+    CUOPT_ELIMINATE_DENSE_COLUMNS,
     CUOPT_FIRST_PRIMAL_FEASIBLE,
+    CUOPT_FOLDING,
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_ITERATION_LIMIT,
     CUOPT_LOG_FILE,
@@ -41,6 +36,8 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_MIP_RELATIVE_TOLERANCE,
     CUOPT_MIP_SCALING,
     CUOPT_NUM_CPU_THREADS,
+    CUOPT_NUM_GPUS,
+    CUOPT_ORDERING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PER_CONSTRAINT_RESIDUAL,
     CUOPT_PRESOLVE,
@@ -95,7 +92,6 @@ def warn_on_objectives(solver_config):
 
 
 def create_data_model(LP_data):
-
     warnings = []
 
     # Create data model object
@@ -374,6 +370,10 @@ def create_solver(LP_data, warmstart_data):
             solver_settings.set_parameter(
                 CUOPT_NUM_CPU_THREADS, solver_config.num_cpu_threads
             )
+        if solver_config.num_gpus is not None:
+            solver_settings.set_parameter(
+                CUOPT_NUM_GPUS, solver_config.num_gpus
+            )
         if solver_config.crossover is not None:
             solver_settings.set_parameter(
                 CUOPT_CROSSOVER, solver_config.crossover
@@ -396,6 +396,11 @@ def create_solver(LP_data, warmstart_data):
         if solver_config.presolve is not None:
             solver_settings.set_parameter(
                 CUOPT_PRESOLVE, solver_config.presolve
+            )
+
+        if solver_config.dual_postsolve is not None:
+            solver_settings.set_parameter(
+                CUOPT_DUAL_POSTSOLVE, solver_config.dual_postsolve
             )
 
         if solver_config.log_to_console is not None:
@@ -426,6 +431,32 @@ def create_solver(LP_data, warmstart_data):
         if solver_config.log_file != "":
             solver_settings.set_parameter(
                 CUOPT_LOG_FILE, solver_config.log_file
+            )
+        if solver_config.augmented is not None:
+            solver_settings.set_parameter(
+                CUOPT_AUGMENTED, solver_config.augmented
+            )
+        if solver_config.folding is not None:
+            solver_settings.set_parameter(CUOPT_FOLDING, solver_config.folding)
+        if solver_config.dualize is not None:
+            solver_settings.set_parameter(CUOPT_DUALIZE, solver_config.dualize)
+        if solver_config.ordering is not None:
+            solver_settings.set_parameter(
+                CUOPT_ORDERING, solver_config.ordering
+            )
+        if solver_config.barrier_dual_initial_point is not None:
+            solver_settings.set_parameter(
+                CUOPT_BARRIER_DUAL_INITIAL_POINT,
+                solver_config.barrier_dual_initial_point,
+            )
+        if solver_config.eliminate_dense_columns is not None:
+            solver_settings.set_parameter(
+                CUOPT_ELIMINATE_DENSE_COLUMNS,
+                solver_config.eliminate_dense_columns,
+            )
+        if solver_config.cudss_deterministic is not None:
+            solver_settings.set_parameter(
+                CUOPT_CUDSS_DETERMINISTIC, solver_config.cudss_deterministic
             )
         if solver_config.solution_file != "":
             warnings.append(ignored_warning("solution_file"))
@@ -493,7 +524,6 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data):
             MILPTerminationStatus.Optimal,
             MILPTerminationStatus.FeasibleFound,
         ):
-
             primal_solution = get_if_attribute_is_valid_else_none(
                 sol.get_primal_solution
             )

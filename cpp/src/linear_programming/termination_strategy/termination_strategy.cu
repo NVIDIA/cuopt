@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <linear_programming/pdlp_constants.hpp>
 #include <linear_programming/termination_strategy/termination_strategy.hpp>
@@ -81,6 +71,7 @@ pdlp_termination_status_t pdlp_termination_strategy_t<i_t, f_t>::evaluate_termin
   pdhg_solver_t<i_t, f_t>& current_pdhg_solver,
   rmm::device_uvector<f_t>& primal_iterate,
   rmm::device_uvector<f_t>& dual_iterate,
+  [[maybe_unused]] const rmm::device_uvector<f_t>& dual_slack,
   const rmm::device_uvector<f_t>& combined_bounds,
   const rmm::device_uvector<f_t>& objective_coefficients)
 {
@@ -89,6 +80,7 @@ pdlp_termination_status_t pdlp_termination_strategy_t<i_t, f_t>::evaluate_termin
   convergence_information_.compute_convergence_information(current_pdhg_solver,
                                                            primal_iterate,
                                                            dual_iterate,
+                                                           dual_slack,
                                                            combined_bounds,
                                                            objective_coefficients,
                                                            settings_);

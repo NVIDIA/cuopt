@@ -1,27 +1,15 @@
+# cmake-format: off
 # SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# cmake-format: on
 
 cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
-
-set(cuopt_version 25.10.00)
 
 include(../../../../cmake/rapids_config.cmake)
 
 project(
   mpsparser-python
-  VERSION ${cuopt_version}
+  VERSION "${RAPIDS_VERSION}"
   LANGUAGES # TODO: Building Python extension modules via the python_extension_module requires the C
             # language to be enabled here. The test project that is built in scikit-build to verify
             # various linking options for the python library is hardcoded to build with C, so until
@@ -34,7 +22,7 @@ option(CUOPT_BUILD_WHEELS "Whether this build is generating a Python wheel." ON)
 
 # If the user requested it we attempt to find MPS Parser.
 if(FIND_MPS_PARSER_CPP)
-  find_package(mps_parser ${cuopt_version})
+  find_package(mps_parser "${RAPIDS_VERSION}")
 else()
   set(mps_parser_FOUND OFF)
 endif()

@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 
 # cython: profile=False
@@ -60,6 +48,8 @@ cdef extern from "cuopt/linear_programming/constants.h": # noqa
     cdef const char* c_CUOPT_LOG_TO_CONSOLE "CUOPT_LOG_TO_CONSOLE" # noqa
     cdef const char* c_CUOPT_CROSSOVER "CUOPT_CROSSOVER" # noqa
     cdef const char* c_CUOPT_PRESOLVE "CUOPT_PRESOLVE" # noqa
+    cdef const char* c_CUOPT_DUAL_POSTSOLVE "CUOPT_DUAL_POSTSOLVE" # noqa
+    cdef const char* c_CUOPT_NUM_GPUS "CUOPT_NUM_GPUS" # noqa
     cdef const char* c_CUOPT_MIP_ABSOLUTE_TOLERANCE "CUOPT_MIP_ABSOLUTE_TOLERANCE" # noqa
     cdef const char* c_CUOPT_MIP_RELATIVE_TOLERANCE "CUOPT_MIP_RELATIVE_TOLERANCE" # noqa
     cdef const char* c_CUOPT_MIP_INTEGRALITY_TOLERANCE "CUOPT_MIP_INTEGRALITY_TOLERANCE" # noqa
@@ -70,7 +60,13 @@ cdef extern from "cuopt/linear_programming/constants.h": # noqa
     cdef const char* c_CUOPT_SOLUTION_FILE "CUOPT_SOLUTION_FILE" # noqa
     cdef const char* c_CUOPT_NUM_CPU_THREADS "CUOPT_NUM_CPU_THREADS" # noqa
     cdef const char* c_CUOPT_USER_PROBLEM_FILE "CUOPT_USER_PROBLEM_FILE" # noqa
-
+    cdef const char* c_CUOPT_AUGMENTED "CUOPT_AUGMENTED"
+    cdef const char* c_CUOPT_FOLDING "CUOPT_FOLDING"
+    cdef const char* c_CUOPT_DUALIZE "CUOPT_DUALIZE"
+    cdef const char* c_CUOPT_ELIMINATE_DENSE_COLUMNS "CUOPT_ELIMINATE_DENSE_COLUMNS" # noqa
+    cdef const char* c_CUOPT_CUDSS_DETERMINISTIC "CUOPT_CUDSS_DETERMINISTIC" # noqa
+    cdef const char* c_CUOPT_ORDERING "CUOPT_ORDERING" # noqa
+    cdef const char* c_CUOPT_BARRIER_DUAL_INITIAL_POINT "CUOPT_BARRIER_DUAL_INITIAL_POINT" # noqa
 
 # Create Python string constants from C string literals
 CUOPT_ABSOLUTE_DUAL_TOLERANCE = c_CUOPT_ABSOLUTE_DUAL_TOLERANCE.decode('utf-8') # noqa
@@ -94,6 +90,8 @@ CUOPT_LOG_FILE = c_CUOPT_LOG_FILE.decode('utf-8') # noqa
 CUOPT_LOG_TO_CONSOLE = c_CUOPT_LOG_TO_CONSOLE.decode('utf-8') # noqa
 CUOPT_CROSSOVER = c_CUOPT_CROSSOVER.decode('utf-8') # noqa
 CUOPT_PRESOLVE = c_CUOPT_PRESOLVE.decode('utf-8') # noqa
+CUOPT_DUAL_POSTSOLVE = c_CUOPT_DUAL_POSTSOLVE.decode('utf-8') # noqa
+CUOPT_NUM_GPUS = c_CUOPT_NUM_GPUS.decode('utf-8') # noqa
 CUOPT_MIP_ABSOLUTE_TOLERANCE = c_CUOPT_MIP_ABSOLUTE_TOLERANCE.decode('utf-8') # noqa
 CUOPT_MIP_RELATIVE_TOLERANCE = c_CUOPT_MIP_RELATIVE_TOLERANCE.decode('utf-8') # noqa
 CUOPT_MIP_INTEGRALITY_TOLERANCE = c_CUOPT_MIP_INTEGRALITY_TOLERANCE.decode('utf-8') # noqa
@@ -104,3 +102,10 @@ CUOPT_MIP_SCALING = c_CUOPT_MIP_SCALING.decode('utf-8') # noqa
 CUOPT_SOLUTION_FILE = c_CUOPT_SOLUTION_FILE.decode('utf-8') # noqa
 CUOPT_NUM_CPU_THREADS = c_CUOPT_NUM_CPU_THREADS.decode('utf-8') # noqa
 CUOPT_USER_PROBLEM_FILE = c_CUOPT_USER_PROBLEM_FILE.decode('utf-8') # noqa
+CUOPT_AUGMENTED = c_CUOPT_AUGMENTED.decode('utf-8') # noqa
+CUOPT_FOLDING = c_CUOPT_FOLDING.decode('utf-8') # noqa
+CUOPT_DUALIZE = c_CUOPT_DUALIZE.decode('utf-8') # noqa
+CUOPT_ELIMINATE_DENSE_COLUMNS = c_CUOPT_ELIMINATE_DENSE_COLUMNS.decode('utf-8') # noqa
+CUOPT_CUDSS_DETERMINISTIC = c_CUOPT_CUDSS_DETERMINISTIC.decode('utf-8') # noqa
+CUOPT_ORDERING = c_CUOPT_ORDERING.decode('utf-8') # noqa
+CUOPT_BARRIER_DUAL_INITIAL_POINT = c_CUOPT_BARRIER_DUAL_INITIAL_POINT.decode('utf-8') # noqa

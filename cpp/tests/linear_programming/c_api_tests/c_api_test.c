@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #include "c_api_tests.h"
 
@@ -871,4 +861,342 @@ DONE:
   cuOptDestroySolution(&solution);
 
   return status;
+}
+
+// Test invalid bounds scenario (what MOI wrapper was producing)
+cuopt_int_t test_invalid_bounds(cuopt_int_t test_mip)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings = NULL;
+  cuOptSolution solution = NULL;
+
+  /* Test the invalid bounds scenario:
+     maximize 2*x
+     subject to:
+     x >= 0.2
+     x <= 0.5
+     x is binary (0 or 1)
+
+     After MOI wrapper processing:
+     - Lower bound = ceil(max(0.0, 0.2)) = 1.0
+     - Upper bound = floor(min(1.0, 0.5)) = 0.0
+     - Result: 1.0 <= x <= 0.0 (INVALID!)
+  */
+
+  cuopt_int_t num_variables = 1;
+  cuopt_int_t num_constraints = 2;
+  cuopt_int_t nnz = 2;
+
+  // CSR format constraint matrix
+  // From the constraints:
+  // x >= 0.2
+  // x <= 0.5
+  cuopt_int_t row_offsets[] = {0, 1, 2};
+  cuopt_int_t column_indices[] = {0, 0};
+  cuopt_float_t values[] = {1.0, 1.0};
+
+  // Objective coefficients
+  // From the objective function: maximize 2*x
+  cuopt_float_t objective_coefficients[] = {2.0};
+
+  // Constraint bounds
+  // From the constraints:
+  // x >= 0.2
+  // x <= 0.5
+  cuopt_float_t constraint_upper_bounds[] = {CUOPT_INFINITY, 0.5};
+  cuopt_float_t constraint_lower_bounds[] = {0.2, -CUOPT_INFINITY};
+
+  // Variable bounds - INVALID: lower > upper
+  // After MOI wrapper processing:
+  cuopt_float_t var_lower_bounds[] = {1.0};  // ceil(max(0.0, 0.2)) = 1.0
+  cuopt_float_t var_upper_bounds[] = {0.0};  // floor(min(1.0, 0.5)) = 0.0
+
+  // Variable types (binary)
+  char variable_types[] = {CUOPT_INTEGER};  // Binary variable
+  if (!test_mip) variable_types[0] = CUOPT_CONTINUOUS;
+
+  cuopt_int_t status;
+  cuopt_float_t time;
+  cuopt_int_t termination_status;
+  cuopt_float_t objective_value;
+
+  printf("Testing invalid bounds scenario (MOI wrapper issue)...\n");
+  printf("Problem: Binary variable with bounds 1.0 <= x <= 0.0 (INVALID!)\n");
+
+  // Create the problem
+  status = cuOptCreateRangedProblem(num_constraints,
+                                   num_variables,
+                                   CUOPT_MAXIMIZE,  // maximize
+                                   0.0,            // objective offset
+                                   objective_coefficients,
+                                   row_offsets,
+                                   column_indices,
+                                   values,
+                                   constraint_lower_bounds,
+                                   constraint_upper_bounds,
+                                   var_lower_bounds,
+                                   var_upper_bounds,
+                                   variable_types,
+                                   &problem);
+
+  printf("cuOptCreateRangedProblem returned: %d\n", status);
+
+  if (status != CUOPT_SUCCESS) {
+    printf("✗ Unexpected error: %d\n", status);
+    goto DONE;
+  }
+
+  // If we get here, the problem was created successfully
+  printf("✓ Problem created successfully\n");
+
+  // Create solver settings
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  // Solve the problem
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  // Get solution information
+  status = cuOptGetSolveTime(solution, &time);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solve time: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, &termination_status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+  if (termination_status != CUOPT_TERIMINATION_STATUS_INFEASIBLE) {
+    printf("Error: expected termination status to be %d, but got %d\n",
+           CUOPT_TERIMINATION_STATUS_INFEASIBLE,
+           termination_status);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  else {
+    printf("✓ Problem found infeasible as expected\n");
+    status = CUOPT_SUCCESS;
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, &objective_value);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+  // Print results
+  printf("\nResults:\n");
+  printf("--------\n");
+  printf("Termination status: %s (%d)\n", termination_status_to_string(termination_status), termination_status);
+  printf("Solve time: %f seconds\n", time);
+  printf("Objective value: %f\n", objective_value);
+
+  // Get and print solution variables
+  cuopt_float_t* solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  status = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solution values: %d\n", status);
+    free(solution_values);
+    goto DONE;
+  }
+
+  printf("\nSolution: \n");
+  for (cuopt_int_t i = 0; i < num_variables; i++) {
+    printf("x%d = %f\n", i + 1, solution_values[i]);
+  }
+  free(solution_values);
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  return status;
+}
+
+cuopt_int_t test_quadratic_problem(cuopt_int_t* termination_status_ptr, cuopt_float_t* objective_ptr)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings = NULL;
+  cuOptSolution solution = NULL;
+
+  // minimize x1^2 + 4*x2^2 - 8*x1 - 16*x2
+  // subject to x1 + x2 >= 5
+  //         x1 >= 3
+  //         x2 >= 0
+  //         x1 <= 10
+  //         x2 <= 10
+
+  cuopt_int_t num_variables = 2;
+  cuopt_int_t num_constraints = 1;
+  cuopt_int_t objective_sense = CUOPT_MINIMIZE;
+  cuopt_float_t objective_offset = 0.0;
+  cuopt_float_t objective_coefficients[] = {-8.0, -16.0};
+
+  cuopt_int_t quadratic_objective_matrix_row_offsets[] = {0, 1, 2};
+  cuopt_int_t quadratic_objective_matrix_column_indices[] = {0, 1};
+  cuopt_float_t quadratic_objective_matrix_coefficent_values[] = {1.0, 4.0};
+
+  cuopt_int_t row_offsets[] = {0, 2};
+  cuopt_int_t column_indices[] = {0, 1};
+  cuopt_float_t values[] = {1.0, 1.0};
+
+  cuopt_float_t constraint_bounds[] = {5.0};
+  char constraint_sense[] = {'G'};
+
+  cuopt_float_t var_lower_bounds[] = {3.0, 0.0};
+  cuopt_float_t var_upper_bounds[] = {10.0, 10.0};
+
+  cuopt_int_t status;
+
+  status = cuOptCreateQuadraticProblem(num_constraints,
+                                       num_variables,
+                                       objective_sense,
+                                       objective_offset,
+                                       objective_coefficients,
+                                       quadratic_objective_matrix_row_offsets,
+                                       quadratic_objective_matrix_column_indices,
+                                       quadratic_objective_matrix_coefficent_values,
+                                       row_offsets,
+                                       column_indices,
+                                       values,
+                                       constraint_sense,
+                                       constraint_bounds,
+                                       var_lower_bounds,
+                                       var_upper_bounds,
+                                       &problem);
+
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, termination_status_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, objective_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+
+DONE:
+cuOptDestroyProblem(&problem);
+cuOptDestroySolverSettings(&settings);
+cuOptDestroySolution(&solution);
+
+return status;
+}
+
+cuopt_int_t test_quadratic_ranged_problem(cuopt_int_t* termination_status_ptr, cuopt_float_t* objective_ptr)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings = NULL;
+  cuOptSolution solution = NULL;
+
+  // minimize x1^2 + 4*x2^2 - 8*x1 - 16*x2
+  // subject to x1 + x2 >= 5
+  //         x1 >= 3
+  //         x2 >= 0
+  //         x1 <= 10
+  //         x2 <= 10
+  cuopt_int_t num_variables = 2;
+  cuopt_int_t num_constraints = 1;
+  cuopt_int_t objective_sense = CUOPT_MINIMIZE;
+  cuopt_float_t objective_offset = 0.0;
+  cuopt_float_t objective_coefficients[] = {-8.0, -16.0};
+  cuopt_int_t quadratic_objective_matrix_row_offsets[] = {0, 1, 2};
+  cuopt_int_t quadratic_objective_matrix_column_indices[] = {0, 1};
+  cuopt_float_t quadratic_objective_matrix_coefficent_values[] = {1.0, 4.0};
+
+  cuopt_int_t row_offsets[] = {0, 2};
+  cuopt_int_t column_indices[] = {0, 1};
+  cuopt_float_t values[] = {1.0, 1.0};
+
+  cuopt_float_t constraint_lower_bounds[] = {5.0};
+  cuopt_float_t constraint_upper_bounds[] = {100.0};
+
+  cuopt_float_t var_lower_bounds[] = {3.0, 0.0};
+  cuopt_float_t var_upper_bounds[] = {10.0, 10.0};
+
+  cuopt_int_t status;
+
+  status = cuOptCreateQuadraticRangedProblem(num_constraints,
+                                       num_variables,
+                                       objective_sense,
+                                       objective_offset,
+                                       objective_coefficients,
+                                       quadratic_objective_matrix_row_offsets,
+                                       quadratic_objective_matrix_column_indices,
+                                       quadratic_objective_matrix_coefficent_values,
+                                       row_offsets,
+                                       column_indices,
+                                       values,
+                                       constraint_lower_bounds,
+                                       constraint_upper_bounds,
+                                       var_lower_bounds,
+                                       var_upper_bounds,
+                                       &problem);
+
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, termination_status_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, objective_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+DONE:
+cuOptDestroyProblem(&problem);
+cuOptDestroySolverSettings(&settings);
+cuOptDestroySolution(&solution);
+
+return status;
 }

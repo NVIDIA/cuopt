@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #include <utilities/cuda_helpers.cuh>
 #include "../solution/solution.cuh"
@@ -275,7 +265,7 @@ __global__ void execute_sliding_moves_tsp(
   s_route.copy_from(route);
   __syncthreads();
 
-  s_route.copy_to_tsp_route(sol.problem.order_info.depot_included);
+  s_route.copy_to_tsp_route();
 
   __shared__ i_t sh_overlaps;
 
@@ -471,7 +461,7 @@ void compute_cumulative_distances(solution_t<i_t, f_t, REQUEST>& sol,
                                 n_temp_storage_bytes,
                                 distances_ptr,
                                 distances_ptr,
-                                n_nodes + 1,
+                                n_nodes + 2,
                                 sol.sol_handle->get_stream());
 
   if (n_temp_storage_bytes > 0) {
@@ -484,7 +474,7 @@ void compute_cumulative_distances(solution_t<i_t, f_t, REQUEST>& sol,
                                 temp_storage_bytes,
                                 distances_ptr,
                                 distances_ptr,
-                                n_nodes + 1,
+                                n_nodes + 2,
                                 sol.sol_handle->get_stream());
 }
 
@@ -504,7 +494,7 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
   sol.compute_max_active();
   moved_regions_.resize(sol.get_n_routes() * sol.get_max_active_nodes_for_all_routes(),
                         sol.sol_handle->get_stream());
-  auto n_nodes              = sol.get_num_orders();
+  auto n_nodes              = sol.problem_ptr->order_info.get_num_depot_excluded_orders();
   size_t temp_storage_bytes = 0;
   resize_temp_storage<i_t, f_t, REQUEST>(sol, move_candidates, n_nodes, temp_storage_bytes);
 

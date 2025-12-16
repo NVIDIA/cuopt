@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 #pragma once
 
 #include <utilities/event_handler.cuh>
@@ -74,12 +64,15 @@ class adaptive_step_size_strategy_t {
 
   i_t get_valid_step_size() const;
   void set_valid_step_size(i_t);
+  f_t get_interaction() const;
+  f_t get_norm_squared_delta_primal() const;
+  f_t get_norm_squared_delta_dual() const;
 
- private:
   void compute_interaction_and_movement(rmm::device_uvector<f_t>& tmp_primal,
                                         cusparse_view_t<i_t, f_t>& cusparse_view,
                                         saddle_point_state_t<i_t, f_t>& current_saddle_point_state);
 
+ private:
   // Stream pool to run different step size computation in parallel
   // Because we already have the main stream, we just need 2 extra streams from this
   rmm::cuda_stream_pool stream_pool_;

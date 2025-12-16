@@ -2,18 +2,6 @@
 
 # SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 
 set -e
@@ -27,7 +15,7 @@ REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -v -l= --verbose-pdlp  [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -44,9 +32,17 @@ HELP="$0 [<target> ...] [<flag> ...]
    -g               - build for debug
    -a               - Enable assertion (by default in debug mode)
    -b               - Build with benchmark settings
+   -fsanitize       - Build with sanitizer
    -n               - no install step
+   --no-fetch-rapids  - don't fetch rapids dependencies
    -l=              - log level. Options are: TRACE | DEBUG | INFO | WARN | ERROR | CRITICAL | OFF. Default=INFO
    --verbose-pdlp   - verbose mode for pdlp solver
+   --build-lp-only  - build only linear programming components, excluding routing package and MIP-specific files
+   --skip-c-python-adapters - skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)
+   --skip-tests-build  - disable building of all tests
+   --skip-routing-build - skip building routing components
+   --skip-fatbin-write      - skip the fatbin write
+   --host-lineinfo           - build with debug line information for host code
    --cache-tool=<tool> - pass the build cache tool (eg: ccache, sccache, distcc) that will be used
                       to speedup the build process.
    --cmake-args=\\\"<args>\\\"   - pass arbitrary list of CMake configuration options (escape all quotes in argument)
@@ -78,6 +74,13 @@ INSTALL_TARGET=install
 BUILD_DISABLE_DEPRECATION_WARNING=ON
 BUILD_ALL_GPU_ARCH=0
 BUILD_CI_ONLY=0
+BUILD_LP_ONLY=0
+BUILD_SANITIZER=0
+SKIP_C_PYTHON_ADAPTERS=0
+SKIP_TESTS_BUILD=0
+SKIP_ROUTING_BUILD=0
+WRITE_FATBIN=1
+HOST_LINEINFO=0
 CACHE_ARGS=()
 PYTHON_ARGS_FOR_INSTALL=("-m" "pip" "install" "--no-build-isolation" "--no-deps")
 LOGGING_ACTIVE_LEVEL="INFO"
@@ -120,7 +123,7 @@ function cacheTool {
 }
 
 function loggingArgs {
-    if [[ $(echo "$ARGS" | { grep -Eo "\-l" || true; } | wc -l ) -gt 1 ]]; then
+    if [[ $(echo "$ARGS" | { grep -Eo "\-l=" || true; } | wc -l ) -gt 1 ]]; then
         echo "Multiple -l logging options were provided, please provide only one: ${ARGS}"
         exit 1
     fi
@@ -128,7 +131,7 @@ function loggingArgs {
     LOG_LEVEL_LIST=("TRACE" "DEBUG" "INFO" "WARN" "ERROR" "CRITICAL" "OFF")
 
     # Check for logging option
-    if [[ -n $(echo "$ARGS" | { grep -E "\-l" || true; } ) ]]; then
+    if [[ -n $(echo "$ARGS" | { grep -E "\-l=" || true; } ) ]]; then
         LOGGING_ARGS=$(echo "$ARGS" | { grep -Eo "\-l=\S+" || true; })
         if [[ -n ${LOGGING_ARGS} ]]; then
             # Remove the full log argument from list of args so that it passes validArgs function
@@ -208,6 +211,9 @@ fi
 if hasArg -n; then
     INSTALL_TARGET=""
 fi
+if hasArg --no-fetch-rapids; then
+    FETCH_RAPIDS=OFF
+fi
 if hasArg --allgpuarch; then
     BUILD_ALL_GPU_ARCH=1
 fi
@@ -216,6 +222,28 @@ if hasArg --ci-only-arch; then
 fi
 if hasArg --show_depr_warn; then
     BUILD_DISABLE_DEPRECATION_WARNING=OFF
+fi
+if hasArg --build-lp-only; then
+    BUILD_LP_ONLY=1
+    SKIP_ROUTING_BUILD=1  # Automatically skip routing when building LP-only
+fi
+if hasArg -fsanitize; then
+    BUILD_SANITIZER=1
+fi
+if hasArg --skip-c-python-adapters; then
+    SKIP_C_PYTHON_ADAPTERS=1
+fi
+if hasArg --skip-tests-build; then
+    SKIP_TESTS_BUILD=1
+fi
+if hasArg --skip-routing-build; then
+    SKIP_ROUTING_BUILD=1
+fi
+if hasArg --skip-fatbin-write; then
+    WRITE_FATBIN=0
+fi
+if hasArg --host-lineinfo; then
+    HOST_LINEINFO=1
 fi
 
 function contains_string {
@@ -264,6 +292,12 @@ if [ ${BUILD_CI_ONLY} -eq 1 ] && [ ${BUILD_ALL_GPU_ARCH} -eq 1 ]; then
     exit 1
 fi
 
+if [ ${BUILD_LP_ONLY} -eq 1 ] && [ ${SKIP_C_PYTHON_ADAPTERS} -eq 0 ]; then
+    echo "ERROR: When using --build-lp-only, you must also specify --skip-c-python-adapters"
+    echo "The C and Python adapter files (cython_solve.cu and cuopt_c.cpp) are not compatible with LP-only builds"
+    exit 1
+fi
+
 if  [ ${BUILD_ALL_GPU_ARCH} -eq 1 ]; then
     CUOPT_CMAKE_CUDA_ARCHITECTURES="RAPIDS"
     echo "Building for *ALL* supported GPU architectures..."
@@ -308,6 +342,15 @@ if buildAll || hasArg libcuopt; then
           -DDISABLE_DEPRECATION_WARNING=${BUILD_DISABLE_DEPRECATION_WARNING} \
           -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
           -DFETCH_RAPIDS=${FETCH_RAPIDS} \
+          -DBUILD_LP_ONLY=${BUILD_LP_ONLY} \
+          -DBUILD_SANITIZER=${BUILD_SANITIZER} \
+          -DSKIP_C_PYTHON_ADAPTERS=${SKIP_C_PYTHON_ADAPTERS} \
+          -DBUILD_TESTS=$((1 - ${SKIP_TESTS_BUILD})) \
+          -DSKIP_ROUTING_BUILD=${SKIP_ROUTING_BUILD} \
+          -DWRITE_FATBIN=${WRITE_FATBIN} \
+          -DHOST_LINEINFO=${HOST_LINEINFO} \
+          -DINSTALL_TARGET="${INSTALL_TARGET}" \
+          "${CACHE_ARGS[@]}" \
           "${EXTRA_CMAKE_ARGS[@]}" \
           "${REPODIR}"/cpp
     if hasArg -n; then

@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <thrust/count.h>
 #include <thrust/functional.h>
@@ -93,15 +83,19 @@ HDI bool is_binary(f_t val)
 template <typename f_t>
 HDI f_t round_nearest(f_t val, f_t lb, f_t ub, f_t int_tol, raft::random::PCGenerator& rng)
 {
+  f_t int_lb = ceil(lb - int_tol);
+  f_t int_ub = floor(ub + int_tol);
+
   if (val > ub) {
-    return floor(ub + int_tol);
+    return int_ub;
   } else if (val < lb) {
-    return ceil(lb - int_tol);
+    return int_lb;
   } else {
     f_t w = rng.next_float();
     f_t t = 2 * w * (1 - w);
     if (w > 0.5) { t = 1 - t; }
-    return floor(val + t);
+    f_t result = floor(val + t);
+    return max(int_lb, min(result, int_ub));
   }
 }
 
@@ -221,6 +215,20 @@ bool check_integer_equal_on_indices(const rmm::device_uvector<i_t>& indices,
 template <typename i_t, typename f_t>
 f_t compute_objective_from_vec(const rmm::device_uvector<f_t>& assignment,
                                const rmm::device_uvector<f_t>& objective_coefficients,
+                               const raft::handle_t* handle_ptr)
+{
+  cuopt_assert(assignment.size() == objective_coefficients.size(), "Size mismatch!");
+  f_t computed_obj = thrust::inner_product(handle_ptr->get_thrust_policy(),
+                                           assignment.begin(),
+                                           assignment.end(),
+                                           objective_coefficients.begin(),
+                                           0.);
+  return computed_obj;
+}
+
+template <typename i_t, typename f_t>
+f_t compute_objective_from_vec(const rmm::device_uvector<f_t>& assignment,
+                               const rmm::device_uvector<f_t>& objective_coefficients,
                                rmm::cuda_stream_view stream)
 {
   cuopt_assert(assignment.size() == objective_coefficients.size(), "Size mismatch!");
@@ -239,18 +247,18 @@ void clamp_within_var_bounds(rmm::device_uvector<f_t>& assignment,
 {
   cuopt_assert(assignment.size() == problem_ptr->n_variables, "Size mismatch!");
   f_t* assignment_ptr = assignment.data();
-  thrust::for_each(handle_ptr->get_thrust_policy(),
-                   thrust::make_counting_iterator(0),
-                   thrust::make_counting_iterator(0) + problem_ptr->n_variables,
-                   [assignment_ptr,
-                    lower_bound = problem_ptr->variable_lower_bounds.data(),
-                    upper_bound = problem_ptr->variable_upper_bounds.data()] __device__(i_t idx) {
-                     if (assignment_ptr[idx] < lower_bound[idx]) {
-                       assignment_ptr[idx] = lower_bound[idx];
-                     } else if (assignment_ptr[idx] > upper_bound[idx]) {
-                       assignment_ptr[idx] = upper_bound[idx];
-                     }
-                   });
+  thrust::for_each(
+    handle_ptr->get_thrust_policy(),
+    thrust::make_counting_iterator(0),
+    thrust::make_counting_iterator(0) + problem_ptr->n_variables,
+    [assignment_ptr, variable_bound = problem_ptr->variable_bounds.data()] __device__(i_t idx) {
+      auto bound = variable_bound[idx];
+      if (assignment_ptr[idx] < get_lower(bound)) {
+        assignment_ptr[idx] = get_lower(bound);
+      } else if (assignment_ptr[idx] > get_upper(bound)) {
+        assignment_ptr[idx] = get_upper(bound);
+      }
+    });
 }
 
 template <typename i_t, typename f_t>

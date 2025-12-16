@@ -1,19 +1,8 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import math
+import os
 
 import pytest
 
@@ -26,15 +15,36 @@ from cuopt.linear_programming.problem import (
     CONTINUOUS,
     INTEGER,
     MAXIMIZE,
+    MINIMIZE,
     CType,
     Problem,
     VType,
     sense,
 )
+from cuopt.linear_programming.solver.solver_parameters import (
+    CUOPT_AUGMENTED,
+    CUOPT_BARRIER_DUAL_INITIAL_POINT,
+    CUOPT_CUDSS_DETERMINISTIC,
+    CUOPT_DUALIZE,
+    CUOPT_ELIMINATE_DENSE_COLUMNS,
+    CUOPT_FOLDING,
+    CUOPT_INFEASIBILITY_DETECTION,
+    CUOPT_METHOD,
+    CUOPT_ORDERING,
+    CUOPT_PDLP_SOLVER_MODE,
+)
+from cuopt.linear_programming.solver_settings import (
+    PDLPSolverMode,
+    SolverMethod,
+)
+
+RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
+if RAPIDS_DATASET_ROOT_DIR is None:
+    RAPIDS_DATASET_ROOT_DIR = os.getcwd()
+    RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
 
 
 def test_model():
-
     prob = Problem("Simple MIP")
     assert prob.Name == "Simple MIP"
 
@@ -79,7 +89,9 @@ def test_model():
     assert expr.getCoefficients() == expected_obj_coeff
     assert expr.getConstant() == 50
     assert prob.ObjSense == sense.MAXIMIZE
-    assert prob.getObjective() is expr
+    assert prob.getObjective().vars == [x, y]
+    assert prob.getObjective().coefficients == [5, 3]
+    assert prob.getObjective().constant == prob.ObjConstant
 
     # Initialize Settings
     settings = SolverSettings()
@@ -143,7 +155,6 @@ def test_model():
 
 
 def test_linear_expression():
-
     prob = Problem()
 
     x = prob.addVariable()
@@ -202,7 +213,6 @@ def test_linear_expression():
 
 
 def test_constraint_matrix():
-
     prob = Problem()
 
     a = prob.addVariable(lb=0, ub=float("inf"), vtype="C", name="a")
@@ -265,8 +275,53 @@ def test_constraint_matrix():
     assert rhs == exp_rhs
 
 
-def test_incumbent_solutions():
+def test_read_write_mps_and_relaxation():
+    # Create MIP model
+    m = Problem("SMALLMIP")
 
+    # Vars: continuous, nonnegative by default
+    x1 = m.addVariable(name="x1", lb=0.0, vtype=INTEGER)
+    x2 = m.addVariable(name="x2", lb=0.0, ub=4.0, vtype=INTEGER)
+    x3 = m.addVariable(name="x3", lb=0.0, ub=6.0, vtype=INTEGER)
+    x4 = m.addVariable(name="x4", lb=0.0, vtype=INTEGER)
+    x5 = m.addVariable(name="x5", lb=0.0, vtype=INTEGER)
+
+    # Objective (minimize)
+    m.setObjective(2 * x1 + 3 * x2 + x3 + 1 * x4 + 4 * x5, MINIMIZE)
+
+    # Constraints (5 total)
+    m.addConstraint(x1 + x2 + x3 <= 10, name="c1")
+    m.addConstraint(2 * x1 + x3 - x4 >= 3, name="c2")
+    m.addConstraint(x2 + 3 * x5 == 7)
+    m.addConstraint(x4 + x5 <= 8)
+    m.addConstraint(x1 + x2 + x3 + x4 + x5 >= 5, name="c5")
+
+    # Write MPS
+    m.writeMPS("small_mip.mps")
+
+    # Read MPS and solve
+    prob = Problem.readMPS("small_mip.mps")
+    assert prob.Name == "SMALLMIP"
+    assert prob.IsMIP
+    prob.solve()
+
+    expected_values_mip = [1.0, 1.0, 1.0, 0.0, 2.0]
+    assert prob.Status.name == "Optimal"
+    for i, v in enumerate(prob.getVariables()):
+        assert v.getValue() == pytest.approx(expected_values_mip[i])
+
+    # Relax the Problem into LP and solve
+    lp_prob = prob.relax()
+    assert not lp_prob.IsMIP
+    lp_prob.solve()
+
+    expected_values_lp = [0.33333333, 0.0, 2.33333333, 0.0, 2.33333333]
+    assert lp_prob.Status.name == "Optimal"
+    for i, v in enumerate(lp_prob.getVariables()):
+        assert v.getValue() == pytest.approx(expected_values_lp[i])
+
+
+def test_incumbent_solutions():
     # Callback for incumbent solution
     class CustomGetSolutionCallback(GetSolutionCallback):
         def __init__(self):
@@ -275,7 +330,6 @@ def test_incumbent_solutions():
             self.solutions = []
 
         def get_solution(self, solution, solution_cost):
-
             self.n_callbacks += 1
             assert len(solution) > 0
             assert len(solution_cost) == 1
@@ -326,3 +380,436 @@ def test_incumbent_solutions():
         assert 2 * x_val + 4 * y_val >= 230
         assert 3 * x_val + 2 * y_val <= 190
         assert 5 * x_val + 3 * y_val == cost
+
+
+def test_warm_start():
+    file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/a2864/a2864.mps"
+    problem = Problem.readMPS(file_path)
+
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    settings.set_optimality_tolerance(1e-3)
+    settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
+
+    problem.solve(settings)
+    iterations_first_solve = problem.SolutionStats.nb_iterations
+
+    settings.set_optimality_tolerance(1e-2)
+    problem.solve(settings)
+    iterations_second_solve = problem.SolutionStats.nb_iterations
+
+    settings.set_optimality_tolerance(1e-3)
+    warmstart_data = problem.get_pdlp_warm_start_data()
+    settings.set_pdlp_warm_start_data(warmstart_data)
+    problem.solve(settings)
+
+    iterations_third_solve = problem.SolutionStats.nb_iterations
+
+    assert (
+        iterations_third_solve + iterations_second_solve
+        == iterations_first_solve
+    )
+
+
+def test_problem_update():
+    prob = Problem()
+    x1 = prob.addVariable(vtype=INTEGER, lb=0, name="x1")
+    x2 = prob.addVariable(vtype=INTEGER, lb=0, name="x2")
+
+    prob.addConstraint(2 * x1 + x2 <= 7, name="c1")
+    prob.addConstraint(x1 + x2 <= 5, name="c2")
+
+    prob.setObjective(4 * x1 + 5 * x2 + 4 - 4 * x2, MAXIMIZE)
+    prob.solve()
+
+    assert prob.ObjValue == pytest.approx(17)
+
+    prob.updateObjective(coeffs=[(x1, 1.0), (x2, 3.0)])
+    prob.solve()
+    assert prob.ObjValue == pytest.approx(19)
+
+    c1 = prob.getConstraint("c1")
+    c2 = prob.getConstraint(1)
+
+    prob.updateConstraint(c1, coeffs=[(x1, 1)], rhs=10)
+    prob.updateConstraint(c2, rhs=10)
+    prob.solve()
+    assert prob.ObjValue == pytest.approx(34)
+
+    assert prob.getVariable("x1").Value == pytest.approx(0)
+    assert prob.getVariable("x2").Value == pytest.approx(10)
+
+    prob.updateObjective(constant=5, sense=MINIMIZE)
+    prob.solve()
+    assert prob.ObjValue == pytest.approx(5)
+
+
+@pytest.mark.parametrize(
+    "test_name,settings_config",
+    [
+        (
+            "automatic",
+            {
+                CUOPT_FOLDING: -1,
+                CUOPT_DUALIZE: -1,
+                CUOPT_ORDERING: -1,
+                CUOPT_AUGMENTED: -1,
+            },
+        ),
+        (
+            "forced_on",
+            {
+                CUOPT_FOLDING: 1,
+                CUOPT_DUALIZE: 1,
+                CUOPT_ORDERING: 1,
+                CUOPT_AUGMENTED: 1,
+                CUOPT_ELIMINATE_DENSE_COLUMNS: True,
+                CUOPT_CUDSS_DETERMINISTIC: True,
+            },
+        ),
+        (
+            "disabled",
+            {
+                CUOPT_FOLDING: 0,
+                CUOPT_DUALIZE: 0,
+                CUOPT_ORDERING: 0,
+                CUOPT_AUGMENTED: 0,
+                CUOPT_ELIMINATE_DENSE_COLUMNS: False,
+                CUOPT_CUDSS_DETERMINISTIC: False,
+            },
+        ),
+        (
+            "mixed",
+            {
+                CUOPT_FOLDING: 1,
+                CUOPT_DUALIZE: 0,
+                CUOPT_ORDERING: -1,
+                CUOPT_AUGMENTED: 1,
+            },
+        ),
+        (
+            "folding_on",
+            {
+                CUOPT_FOLDING: 1,
+            },
+        ),
+        (
+            "folding_off",
+            {
+                CUOPT_FOLDING: 0,
+            },
+        ),
+        (
+            "dualize_on",
+            {
+                CUOPT_DUALIZE: 1,
+            },
+        ),
+        (
+            "dualize_off",
+            {
+                CUOPT_DUALIZE: 0,
+            },
+        ),
+        (
+            "amd_ordering",
+            {
+                CUOPT_ORDERING: 1,
+            },
+        ),
+        (
+            "cudss_ordering",
+            {
+                CUOPT_ORDERING: 0,
+            },
+        ),
+        (
+            "augmented_system",
+            {
+                CUOPT_AUGMENTED: 1,
+            },
+        ),
+        (
+            "adat_system",
+            {
+                CUOPT_AUGMENTED: 0,
+            },
+        ),
+        (
+            "no_dense_elim",
+            {
+                CUOPT_ELIMINATE_DENSE_COLUMNS: False,
+            },
+        ),
+        (
+            "cudss_deterministic",
+            {
+                CUOPT_CUDSS_DETERMINISTIC: True,
+            },
+        ),
+        (
+            "combo1",
+            {
+                CUOPT_FOLDING: 1,
+                CUOPT_DUALIZE: 1,
+                CUOPT_ORDERING: 1,
+            },
+        ),
+        (
+            "combo2",
+            {
+                CUOPT_FOLDING: 0,
+                CUOPT_AUGMENTED: 0,
+                CUOPT_ELIMINATE_DENSE_COLUMNS: False,
+            },
+        ),
+        (
+            "dual_initial_point_automatic",
+            {
+                CUOPT_BARRIER_DUAL_INITIAL_POINT: -1,
+            },
+        ),
+        (
+            "dual_initial_point_lustig",
+            {
+                CUOPT_BARRIER_DUAL_INITIAL_POINT: 0,
+            },
+        ),
+        (
+            "dual_initial_point_least_squares",
+            {
+                CUOPT_BARRIER_DUAL_INITIAL_POINT: 1,
+            },
+        ),
+        (
+            "combo3_with_dual_init",
+            {
+                CUOPT_AUGMENTED: 1,
+                CUOPT_BARRIER_DUAL_INITIAL_POINT: 1,
+                CUOPT_ELIMINATE_DENSE_COLUMNS: True,
+            },
+        ),
+    ],
+)
+def test_barrier_solver_settings(test_name, settings_config):
+    """
+    Parameterized test for barrier solver with different configurations.
+
+    Tests the barrier solver across various settings combinations to ensure
+    correctness and robustness. Each configuration tests different aspects
+    of the barrier solver implementation.
+
+    Problem:
+        maximize   5*xs + 20*xl
+        subject to  1*xs +  3*xl <= 200
+                    3*xs +  2*xl <= 160
+                    xs, xl >= 0
+
+    Expected Solution:
+        Optimal objective: 1333.33
+        xs = 0, xl = 66.67 (corner solution where constraint 1 is binding)
+
+    Args
+    ----
+        test_name: Descriptive name for the test configuration
+        settings_config: Dictionary of barrier solver parameters to set
+    """
+    prob = Problem(f"Barrier Test - {test_name}")
+
+    # Add variables
+    xs = prob.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xs")
+    xl = prob.addVariable(lb=0, vtype=VType.CONTINUOUS, name="xl")
+
+    # Add constraints
+    prob.addConstraint(xs + 3 * xl <= 200, name="constraint1")
+    prob.addConstraint(3 * xs + 2 * xl <= 160, name="constraint2")
+
+    # Set objective: maximize 5*xs + 20*xl
+    prob.setObjective(5 * xs + 20 * xl, sense=MAXIMIZE)
+
+    # Configure solver settings
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings.set_parameter("time_limit", 10)
+
+    # Apply test-specific settings
+    for param_name, param_value in settings_config.items():
+        settings.set_parameter(param_name, param_value)
+
+    print(f"\nTesting configuration: {test_name}")
+    print(f"Settings: {settings_config}")
+
+    # Solve the problem
+    prob.solve(settings)
+
+    print(f"Status: {prob.Status.name}")
+    print(f"Objective: {prob.ObjValue}")
+    print(f"xs = {xs.Value}, xl = {xl.Value}")
+
+    # Verify solution
+    assert prob.solved, f"Problem not solved for {test_name}"
+    assert prob.Status.name == "Optimal", f"Not optimal for {test_name}"
+    assert prob.ObjValue == pytest.approx(1333.33, rel=0.01), (
+        f"Incorrect objective for {test_name}"
+    )
+    assert xs.Value == pytest.approx(0.0, abs=1e-4), (
+        f"Incorrect xs value for {test_name}"
+    )
+    assert xl.Value == pytest.approx(66.67, rel=0.01), (
+        f"Incorrect xl value for {test_name}"
+    )
+
+    # Verify constraint slacks are non-negative
+    for c in prob.getConstraints():
+        assert c.Slack >= -1e-6, (
+            f"Negative slack for {c.getConstraintName()} in {test_name}"
+        )
+
+
+def test_quadratic_expression_and_matrix():
+    problem = Problem()
+    x = problem.addVariable(lb=9.0, vtype="I", name="x")
+    y = problem.addVariable(name="y")
+    z = problem.addVariable(name="z")
+
+    # Test Quadratic Expressions
+    expr1 = x * x  # var * var
+    expr2 = expr1 + y * z + 2  # QP + QP + const
+    expr3 = expr2 * 4  # QP * const
+
+    assert expr1.getVariables() == [(x, x)]
+    assert expr1.getCoefficients() == [1]
+    assert expr2.getVariables() == [(x, x), (y, z)]
+    assert expr2.getCoefficients() == [1, 1]
+    assert expr3.getVariables() == [(x, x), (y, z)]
+    assert expr3.getCoefficients() == [4, 4]
+    assert expr3.getLinearExpression().getConstant() == 8
+    assert expr3.getLinearExpression().getVariables() == []
+    assert expr3.getLinearExpression().getCoefficients() == []
+
+    expr3 /= 4  # QP / const
+    expr4 = expr3 - y  # QP - var
+
+    assert expr4.getVariables() == [(x, x), (y, z)]
+    assert expr4.getCoefficients() == [1, 1]
+    assert expr4.getLinearExpression().getConstant() == 2
+    assert expr4.getLinearExpression().getVariables() == [y]
+    assert expr4.getLinearExpression().getCoefficients() == [-1]
+
+    expr5 = z + 7 * y + 1  # LP
+    expr6 = y * expr5  # var * LP
+    expr7 = expr5 - x * x  # LP - QP
+    expr8 = (
+        expr4 - expr5
+    )  # QP - LP # x2 + yz + 2 - y - 7y -z - 1 + 7y2 + yz + y
+    expr8 += expr6  # QP + QP
+
+    assert expr6.getVariable1(0) is y
+    assert expr6.getVariable2(0) is y
+    assert expr6.getVariable1(1) is y
+    assert expr6.getVariable2(1) is z
+    assert expr6.getCoefficients() == [7, 1]
+    assert expr6.getLinearExpression().getConstant() == 0
+    assert expr6.getLinearExpression().getVariables() == [y]
+    assert expr6.getLinearExpression().getCoefficients() == [1]
+
+    assert expr7.getVariable1(0) is x
+    assert expr7.getVariable2(0) is x
+    assert expr7.getCoefficients() == [-1]
+    assert expr7.getLinearExpression().getConstant() == 1
+    assert expr7.getLinearExpression().getVariable(0) is y
+    assert expr7.getLinearExpression().getVariable(1) is z
+    assert expr7.getLinearExpression().getCoefficients() == [7, 1]
+
+    assert len(expr8.getVariables()) == 4
+    assert expr8.getCoefficients() == [1, 1, 7, 1]
+    assert expr8.getLinearExpression().getConstant() == 1
+    assert expr8.getLinearExpression().getCoefficients() == [-1, -7, -1, 1]
+
+    expr9 = expr5 * (3 * x - y + z + 3)  # LP * LP
+    # expr9 = 21*y*x + 7*y*z + 21*y - 7*y*y + 3*x + z + 3 - y + 3*z*x + z*z +3*z - z*y
+
+    qvariables = [(y, x), (y, y), (y, z), (z, x), (z, y), (z, z)]
+    qcoeffs = [21, -7, 7, 3, -1, 1]
+    for i, (var1, var2) in enumerate(expr9.getVariables()):
+        assert var1 is qvariables[i][0]
+        assert var2 is qvariables[i][1]
+    assert expr9.getCoefficients() == qcoeffs
+
+    linexpr = expr9.getLinearExpression()
+    lvariables = [y, z, x, y, z]
+    lcoeffs = [21, 3, 3, -1, 1]
+    constant = 3
+    for i, var in enumerate(linexpr.getVariables()):
+        assert var is lvariables[i]
+    assert linexpr.getCoefficients() == lcoeffs
+    assert linexpr.getConstant() == constant
+
+    # Test Quadratic Matrix
+    problem.setObjective(expr9)
+    Qcsr = problem.getQcsr()
+
+    exp_row_ptrs = [0, 0, 3, 6]
+    exp_col_inds = [0, 1, 2, 0, 1, 2]
+    exp_vals = [21, -7, 7, 3, -1, 1]
+
+    assert Qcsr.row_pointers == exp_row_ptrs
+    assert Qcsr.column_indices == exp_col_inds
+    assert Qcsr.values == exp_vals
+
+
+def test_quadratic_objective_1():
+    # Minimize x1 ^2 + 4 x2 ^2 - 8 x1 - 16 x2
+    # subject to x1 + x2 >= 5
+    #         x1 >= 3
+    #         x2 >= 0
+
+    problem = Problem()
+    x1 = problem.addVariable(lb=3.0, name="x")
+    x2 = problem.addVariable(lb=0, name="y")
+
+    problem.addConstraint(x1 + x2 >= 5)
+    problem.setObjective(x1 * x1 + 4 * x2 * x2 - 8 * x1 - 16 * x2)
+
+    problem.solve()
+
+    assert problem.Status.name == "Optimal"
+    assert x1.getValue() == pytest.approx(4.0)
+    assert x2.getValue() == pytest.approx(2.0)
+    assert problem.ObjValue == pytest.approx(-32.0)
+
+
+def test_quadratic_objective_2():
+    # Minimize 4 x1^2 + 2 x2^2 + 3 x3^2 + 1.5 x1 x3 - 2 x1 + 0.5 x2 - x3
+    # subject to x1 + 2*x2 + x3 <= 3
+    #         x1 >= 0
+    #         x2 >= 0
+    #         x3 >= 0
+
+    problem = Problem()
+    x1 = problem.addVariable(lb=0, name="x")
+    x2 = problem.addVariable(lb=0, name="y")
+    x3 = problem.addVariable(lb=0, name="z")
+
+    problem.addConstraint(x1 + 2 * x2 + x3 <= 3)
+    problem.setObjective(
+        2 * x1 * x1
+        + 2 * x2 * x2
+        + 3 * x3 * x3
+        + 1.5 * x1 * x3
+        - 2 * x1
+        + 0.5 * x2
+        - 2 * x1 * x2
+        - 1.0 * x3
+        + 2 * x1 * x1
+        + 2 * x1 * x2
+    )
+
+    problem.solve()
+
+    assert problem.Status.name == "Optimal"
+    assert x1.getValue() == pytest.approx(0.2295081, abs=1e-3)
+    assert x2.getValue() == pytest.approx(0.0000000, abs=0.000001)
+    assert x3.getValue() == pytest.approx(0.1092896, abs=1e-3)
+    assert problem.ObjValue == pytest.approx(-0.284153, abs=1e-3)
