@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
@@ -100,8 +90,8 @@ void test_elim_var_remap(std::string test_instance)
   auto fixed_vars = select_k_random(problem.n_variables - 1, 5);
   for (auto& v : fixed_vars) {
     double v_val = -v - 1;
-    problem.variable_lower_bounds.set_element(v, v_val, handle_.get_stream());
-    problem.variable_upper_bounds.set_element(v, v_val, handle_.get_stream());
+    double2 val  = double2{v_val, v_val};
+    problem.variable_bounds.set_element(v, val, handle_.get_stream());
     full_assignment.set_element(v, v_val, handle_.get_stream());
   }
   // Set free var assignments to 0
@@ -163,8 +153,9 @@ void test_elim_var_solution(std::string test_instance)
 
   detail::solution_t<int, double> solution_1(standardized_problem);
   detail::relaxed_lp_settings_t lp_settings;
-  lp_settings.time_limit = 120.;
-  lp_settings.tolerance  = default_settings.tolerances.absolute_tolerance;
+  lp_settings.time_limit              = 120.;
+  lp_settings.tolerance               = default_settings.tolerances.absolute_tolerance;
+  lp_settings.per_constraint_residual = false;
   // run the problem through pdlp
   auto result_1 = detail::get_relaxed_lp_solution(standardized_problem, solution_1, lp_settings);
   solution_1.compute_feasibility();
@@ -182,8 +173,8 @@ void test_elim_var_solution(std::string test_instance)
   auto fixed_vars = select_k_random(standardized_problem.n_variables - 1, 5);
   for (auto& v : fixed_vars) {
     double v_val = opt_sol_1.get_solution().element(v, handle_.get_stream());
-    sub_problem.variable_lower_bounds.set_element(v, v_val, handle_.get_stream());
-    sub_problem.variable_upper_bounds.set_element(v, v_val, handle_.get_stream());
+    double2 val  = double2{v_val, v_val};
+    sub_problem.variable_bounds.set_element(v, val, handle_.get_stream());
   }
 
   handle_.sync_stream();
@@ -192,8 +183,9 @@ void test_elim_var_solution(std::string test_instance)
 
   detail::solution_t<int, double> solution_2(sub_problem);
   detail::relaxed_lp_settings_t lp_settings_2;
-  lp_settings_2.time_limit = 120.;
-  lp_settings_2.tolerance  = default_settings.tolerances.absolute_tolerance;
+  lp_settings_2.time_limit              = 120.;
+  lp_settings_2.tolerance               = default_settings.tolerances.absolute_tolerance;
+  lp_settings_2.per_constraint_residual = false;
   // run the problem through pdlp
   auto result_2 = detail::get_relaxed_lp_solution(sub_problem, solution_2, lp_settings_2);
   solution_2.compute_feasibility();

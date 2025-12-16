@@ -1,17 +1,8 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+
+import os
+import time
 
 from cuopt.linear_programming.solver import solver_wrapper
 from cuopt.linear_programming.solver_settings import SolverSettings
@@ -78,6 +69,15 @@ def Solve(data_model, solver_settings=None):
     >>> # Print the value of one specific variable
     >>> print(solution.get_vars()["var_name"])
     """
+
+    emit_stamps = os.environ.get("CUOPT_EXTRA_TIMESTAMPS", False) in (
+        True,
+        "True",
+        "true",
+    )
+    if emit_stamps:
+        print(f"CUOPT_SOLVE_START: {time.time()}")
+
     if solver_settings is None:
         solver_settings = SolverSettings()
 
@@ -95,11 +95,14 @@ def Solve(data_model, solver_settings=None):
             # Mixed types - fallback to comprehensive check
             return any(vt == "I" or vt == b"I" for vt in var_types)
 
-    return solver_wrapper.Solve(
+    s = solver_wrapper.Solve(
         data_model,
         solver_settings,
         mip=is_mip(data_model.get_variable_types()),
     )
+    if emit_stamps:
+        print(f"CUOPT_SOLVE_RETURN: {time.time()}")
+    return s
 
 
 @catch_cuopt_exception

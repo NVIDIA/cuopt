@@ -1,22 +1,13 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #pragma once
 
+#include <thrust/fill.h>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -31,14 +22,10 @@ class lp_state_t {
   lp_state_t(problem_t<i_t, f_t>& problem, rmm::cuda_stream_view stream)
     : prev_primal(problem.n_variables, stream), prev_dual(problem.n_constraints, stream)
   {
-    thrust::fill(problem.handle_ptr->get_thrust_policy(),
-                 prev_primal.data(),
-                 prev_primal.data() + problem.n_variables,
-                 0);
-    thrust::fill(problem.handle_ptr->get_thrust_policy(),
-                 prev_dual.data(),
-                 prev_dual.data() + problem.n_constraints,
-                 0);
+    thrust::fill(
+      rmm::exec_policy(stream), prev_primal.data(), prev_primal.data() + problem.n_variables, 0);
+    thrust::fill(
+      rmm::exec_policy(stream), prev_dual.data(), prev_dual.data() + problem.n_constraints, 0);
   }
 
   lp_state_t(problem_t<i_t, f_t>& problem) : lp_state_t(problem, problem.handle_ptr->get_stream())

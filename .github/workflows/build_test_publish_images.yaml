@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 name: Build, Test and Publish cuopt images
 
@@ -32,11 +20,11 @@ on:
         description: 'JSON array of architectures to build for'
       cuda_ver:
         type: string
-        default: '["12.9.0"]'
+        default: '["12.9.0", "13.0.0"]'
         description: 'JSON array of CUDA versions to build for'
       python_ver:
         type: string
-        default: '["3.12.11"]'
+        default: '["3.13.7"]'
         description: 'JSON array of Python versions to build for'
       linux_ver:
         type: string
@@ -67,7 +55,7 @@ jobs:
   compute-matrix:
     runs-on: ubuntu-latest
     container:
-      image: rapidsai/ci-conda:25.10-latest
+      image: rapidsai/ci-conda:26.02-latest
     outputs:
       MATRIX: ${{ steps.compute-matrix.outputs.MATRIX }}
       CUOPT_VER: ${{ steps.compute-cuopt-ver.outputs.CUOPT_VER }}
@@ -79,6 +67,7 @@ jobs:
         with:
           fetch-depth: 0 # unshallow fetch for setuptools-scm
           persist-credentials: false
+          ref: ${{ inputs.sha }}
 
       - name: Compute matrix
         id: compute-matrix
@@ -128,6 +117,7 @@ jobs:
       IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
       LINUX_VER: ${{ matrix.linux_ver }}
       PYTHON_VER: ${{ matrix.python_ver }}
+      sha: ${{ inputs.sha }}
 
   build-cuopt-multiarch-manifest:
     name: Build cuopt multiarch manifest
@@ -141,6 +131,7 @@ jobs:
       - name: Checkout code repo
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.sha }}
           fetch-depth: 0
       - name: Login to DockerHub
         uses: docker/login-action@v3
@@ -183,3 +174,4 @@ jobs:
       CUDA_VER: ${{ matrix.CUDA_VER }}
       PYTHON_VER: ${{ matrix.PYTHON_VER }}
       IMAGE_TAG_PREFIX: ${{ needs.compute-matrix.outputs.IMAGE_TAG_PREFIX }}
+      sha: ${{ inputs.sha }}

@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <mps_parser/mps_data_model.hpp>
 #include <utilities/error.hpp>
@@ -197,6 +187,36 @@ void mps_data_model_t<i_t, f_t>::set_initial_dual_solution(const f_t* initial_du
                      "initial_dual_solution cannot be null");
   initial_dual_solution_.resize(size);
   std::copy(initial_dual_solution, initial_dual_solution + size, initial_dual_solution_.data());
+}
+
+template <typename i_t, typename f_t>
+void mps_data_model_t<i_t, f_t>::set_quadratic_objective_matrix(const f_t* Q_values,
+                                                                i_t size_values,
+                                                                const i_t* Q_indices,
+                                                                i_t size_indices,
+                                                                const i_t* Q_offsets,
+                                                                i_t size_offsets)
+{
+  if (size_values != 0) {
+    mps_parser_expects(
+      Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
+  }
+  Q_objective_values_.resize(size_values);
+  std::copy(Q_values, Q_values + size_values, Q_objective_values_.data());
+
+  if (size_indices != 0) {
+    mps_parser_expects(
+      Q_indices != nullptr, error_type_t::ValidationError, "Q_indices cannot be null");
+  }
+  Q_objective_indices_.resize(size_indices);
+  std::copy(Q_indices, Q_indices + size_indices, Q_objective_indices_.data());
+
+  mps_parser_expects(
+    Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
+  mps_parser_expects(
+    size_offsets > 0, error_type_t::ValidationError, "size_offsets cannot be empty");
+  Q_objective_offsets_.resize(size_offsets);
+  std::copy(Q_offsets, Q_offsets + size_offsets, Q_objective_offsets_.data());
 }
 
 template <typename i_t, typename f_t>
@@ -395,6 +415,49 @@ template <typename i_t, typename f_t>
 i_t mps_data_model_t<i_t, f_t>::get_nnz() const
 {
   return A_.size();
+}
+
+// QPS-specific getter implementations
+template <typename i_t, typename f_t>
+const std::vector<f_t>& mps_data_model_t<i_t, f_t>::get_quadratic_objective_values() const
+{
+  return Q_objective_values_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t>& mps_data_model_t<i_t, f_t>::get_quadratic_objective_values()
+{
+  return Q_objective_values_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<i_t>& mps_data_model_t<i_t, f_t>::get_quadratic_objective_indices() const
+{
+  return Q_objective_indices_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<i_t>& mps_data_model_t<i_t, f_t>::get_quadratic_objective_indices()
+{
+  return Q_objective_indices_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<i_t>& mps_data_model_t<i_t, f_t>::get_quadratic_objective_offsets() const
+{
+  return Q_objective_offsets_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<i_t>& mps_data_model_t<i_t, f_t>::get_quadratic_objective_offsets()
+{
+  return Q_objective_offsets_;
+}
+
+template <typename i_t, typename f_t>
+bool mps_data_model_t<i_t, f_t>::has_quadratic_objective() const noexcept
+{
+  return !Q_objective_values_.empty();
 }
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error

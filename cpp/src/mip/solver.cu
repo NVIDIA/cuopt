@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include "feasibility_jump/feasibility_jump.cuh"
 
@@ -73,12 +63,20 @@ struct branch_and_bound_solution_helper_t {
 
   void solution_callback(std::vector<f_t>& solution, f_t objective)
   {
-    dm->population.add_external_solution(solution, objective);
+    dm->population.add_external_solution(solution, objective, solution_origin_t::BRANCH_AND_BOUND);
+    dm->rins.new_best_incumbent_callback(solution);
   }
 
-  void set_simplex_solution(std::vector<f_t>& solution, f_t objective)
+  void set_simplex_solution(std::vector<f_t>& solution,
+                            std::vector<f_t>& dual_solution,
+                            f_t objective)
   {
-    dm->set_simplex_solution(solution, objective);
+    dm->set_simplex_solution(solution, dual_solution, objective);
+  }
+
+  void node_processed_callback(const std::vector<f_t>& solution, f_t objective)
+  {
+    dm->rins.node_callback(solution, objective);
   }
 
   void preempt_heuristic_solver() { dm->population.preempt_heuristic_solver(); }
@@ -132,10 +130,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     CUOPT_LOG_INFO("Problem reduced to a LP, running concurrent LP");
     pdlp_solver_settings_t<i_t, f_t> settings{};
     settings.time_limit = timer_.remaining_time();
+    auto lp_timer       = timer_t(settings.time_limit);
     settings.method     = method_t::Concurrent;
 
-    auto opt_sol = solve_lp_with_method<i_t, f_t>(
-      *context.problem_ptr->original_problem_ptr, *context.problem_ptr, settings);
+    auto opt_sol = solve_lp_with_method<i_t, f_t>(*context.problem_ptr, settings, lp_timer);
 
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.copy_new_assignment(host_copy(opt_sol.get_primal_solution()));
@@ -150,7 +148,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
   namespace dual_simplex = cuopt::linear_programming::dual_simplex;
   std::future<dual_simplex::mip_status_t> branch_and_bound_status_future;
-  dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem;
+  dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
   dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
   std::unique_ptr<dual_simplex::branch_and_bound_t<i_t, f_t>> branch_and_bound;
   branch_and_bound_solution_helper_t solution_helper(&dm, branch_and_bound_settings);
@@ -169,9 +167,18 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
     branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
 
-    if (context.settings.num_cpu_threads != -1) {
+    if (context.settings.num_cpu_threads < 0) {
+      branch_and_bound_settings.num_threads = omp_get_max_threads() - 1;
+    } else {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
     }
+    CUOPT_LOG_INFO("Using %d CPU threads for B&B", branch_and_bound_settings.num_threads);
+
+    i_t num_threads                              = branch_and_bound_settings.num_threads;
+    i_t num_bfs_threads                          = std::max(1, num_threads / 4);
+    i_t num_diving_threads                       = std::max(1, num_threads - num_bfs_threads);
+    branch_and_bound_settings.num_bfs_threads    = num_bfs_threads;
+    branch_and_bound_settings.num_diving_threads = num_diving_threads;
 
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =
@@ -186,17 +193,35 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       std::bind(&branch_and_bound_solution_helper_t<i_t, f_t>::set_simplex_solution,
                 &solution_helper,
                 std::placeholders::_1,
+                std::placeholders::_2,
+                std::placeholders::_3);
+
+    branch_and_bound_settings.node_processed_callback =
+      std::bind(&branch_and_bound_solution_helper_t<i_t, f_t>::node_processed_callback,
+                &solution_helper,
+                std::placeholders::_1,
                 std::placeholders::_2);
 
     // Create the branch and bound object
     branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(
       branch_and_bound_problem, branch_and_bound_settings);
+    context.branch_and_bound_ptr = branch_and_bound.get();
+    branch_and_bound->set_concurrent_lp_root_solve(true);
 
     // Set the primal heuristics -> branch and bound callback
     context.problem_ptr->branch_and_bound_callback =
       std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_new_solution,
                 branch_and_bound.get(),
                 std::placeholders::_1);
+    context.problem_ptr->set_root_relaxation_solution_callback =
+      std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_root_relaxation_solution,
+                branch_and_bound.get(),
+                std::placeholders::_1,
+                std::placeholders::_2,
+                std::placeholders::_3,
+                std::placeholders::_4,
+                std::placeholders::_5,
+                std::placeholders::_6);
 
     // Fork a thread for branch and bound
     // std::async and std::future allow us to get the return value of bb::solve()
@@ -232,6 +257,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     return sol;
   }
   context.problem_ptr->post_process_solution(sol);
+  dm.rins.stop_rins();
   return sol;
 }
 

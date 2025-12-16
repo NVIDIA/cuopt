@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION &
- * AFFILIATES. All rights reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -35,13 +25,13 @@ class solver_settings_t;
  * @brief Enum representing the different solver modes under which PDLP can
  * operate.
  *
- * Stable2: Best overall mode from experiments; balances speed and convergence
- * success. If you want to use the legacy version, use Stable1.
+ * Stable3: Best overall mode from experiments; balances speed and convergence
+ * success. If you want to use the legacy version, use Stable2.
  * Methodical1: Usually leads to slower individual steps but fewer are needed to
  * converge. It uses from 1.3x up to 1.7x times more memory.
  * Fast1: Less convergence success but usually yields the highest speed
  *
- * @note Default mode is Stable2.
+ * @note Default mode is Stable3.
  */
 // Forced to use an enum instead of an enum class for compatibility with the
 // Cython layer
@@ -49,7 +39,8 @@ enum pdlp_solver_mode_t : int {
   Stable1     = CUOPT_PDLP_SOLVER_MODE_STABLE1,
   Stable2     = CUOPT_PDLP_SOLVER_MODE_STABLE2,
   Methodical1 = CUOPT_PDLP_SOLVER_MODE_METHODICAL1,
-  Fast1       = CUOPT_PDLP_SOLVER_MODE_FAST1
+  Fast1       = CUOPT_PDLP_SOLVER_MODE_FAST1,
+  Stable3     = CUOPT_PDLP_SOLVER_MODE_STABLE3
 };
 
 /**
@@ -65,7 +56,8 @@ enum pdlp_solver_mode_t : int {
 enum method_t : int {
   Concurrent  = CUOPT_METHOD_CONCURRENT,
   PDLP        = CUOPT_METHOD_PDLP,
-  DualSimplex = CUOPT_METHOD_DUAL_SIMPLEX
+  DualSimplex = CUOPT_METHOD_DUAL_SIMPLEX,
+  Barrier     = CUOPT_METHOD_BARRIER
 };
 
 template <typename i_t, typename f_t>
@@ -73,8 +65,6 @@ class pdlp_solver_settings_t {
  public:
   pdlp_solver_settings_t() = default;
 
-  // Copy constructor for when copying in the PDLP object
-  pdlp_solver_settings_t(const pdlp_solver_settings_t& other, rmm::cuda_stream_view stream_view);
   /**
    * @brief Set both absolute and relative tolerance on the primal feasibility,
    dual feasibility and gap.
@@ -200,19 +190,29 @@ class pdlp_solver_settings_t {
   bool strict_infeasibility{false};
   i_t iteration_limit{std::numeric_limits<i_t>::max()};
   double time_limit{std::numeric_limits<double>::infinity()};
-  pdlp_solver_mode_t pdlp_solver_mode{pdlp_solver_mode_t::Stable2};
+  pdlp_solver_mode_t pdlp_solver_mode{pdlp_solver_mode_t::Stable3};
   bool log_to_console{true};
   std::string log_file{""};
   std::string sol_file{""};
   std::string user_problem_file{""};
   bool per_constraint_residual{false};
   bool crossover{false};
+  bool cudss_deterministic{false};
+  i_t folding{-1};
+  i_t augmented{-1};
+  i_t dualize{-1};
+  i_t ordering{-1};
+  i_t barrier_dual_initial_point{-1};
+  bool eliminate_dense_columns{true};
   bool save_best_primal_so_far{false};
   bool first_primal_feasible{false};
   bool presolve{false};
+  bool dual_postsolve{true};
+  int num_gpus{1};
   method_t method{method_t::Concurrent};
+  bool inside_mip{false};
   // For concurrent termination
-  std::atomic<i_t>* concurrent_halt;
+  std::atomic<int>* concurrent_halt{nullptr};
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
 
  private:

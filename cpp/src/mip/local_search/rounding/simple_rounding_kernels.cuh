@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -24,6 +14,63 @@
 #include <utilities/device_utils.cuh>
 
 namespace cuopt::linear_programming::detail {
+
+template <typename i_t, typename f_t>
+__global__ void simple_rounding_kernel(typename solution_t<i_t, f_t>::view_t solution,
+                                       bool* successful)
+{
+  for (i_t idx = TH_ID_X; idx < solution.problem.n_integer_vars; idx += gridDim.x * blockDim.x) {
+    i_t var_id   = solution.problem.integer_indices[idx];
+    f_t curr_val = solution.assignment[var_id];
+    if (solution.problem.is_integer(curr_val)) { continue; }
+
+    i_t up_locks   = 0;
+    i_t down_locks = 0;
+
+    auto [offset_begin, offset_end] = solution.problem.reverse_range_for_var(var_id);
+    for (i_t i = offset_begin; i < offset_end; i += 1) {
+      auto cstr_idx   = solution.problem.reverse_constraints[i];
+      auto cstr_coeff = solution.problem.reverse_coefficients[i];
+
+      // boxed constraint. can't be rounded safely
+      if (std::isfinite(solution.problem.constraint_lower_bounds[cstr_idx]) &&
+          std::isfinite(solution.problem.constraint_upper_bounds[cstr_idx])) {
+        up_locks += 1;
+        down_locks += 1;
+        continue;
+      }
+
+      f_t sign = std::isfinite(solution.problem.constraint_upper_bounds[cstr_idx]) ? 1 : -1;
+
+      if (cstr_coeff * sign > 0) {
+        up_locks += 1;
+      } else {
+        down_locks += 1;
+      }
+    }
+
+    auto var_bnd = solution.problem.variable_bounds[var_id];
+    f_t lb       = get_lower(var_bnd);
+    f_t ub       = get_upper(var_bnd);
+
+    bool can_round_up   = up_locks == 0 && ceil(curr_val) <= floor(ub);
+    bool can_round_down = down_locks == 0 && floor(curr_val) >= ceil(lb);
+
+    if (can_round_up && can_round_down) {
+      if (solution.problem.objective_coefficients[var_id] > 0) {
+        solution.assignment[var_id] = floor(curr_val);
+      } else {
+        solution.assignment[var_id] = ceil(curr_val);
+      }
+    } else if (can_round_up) {
+      solution.assignment[var_id] = ceil(curr_val);
+    } else if (can_round_down) {
+      solution.assignment[var_id] = floor(curr_val);
+    } else {
+      *successful = false;
+    }
+  }
+}
 
 // rounds each integer variable to the nearest integer value that doesn't violate the bounds
 template <typename i_t, typename f_t>
@@ -36,8 +83,9 @@ __global__ void nearest_rounding_kernel(typename solution_t<i_t, f_t>::view_t so
   f_t curr_val = solution.assignment[var_id];
   if (solution.problem.is_integer(curr_val)) { return; }
   const f_t int_tol           = solution.problem.tolerances.integrality_tolerance;
-  f_t lb                      = solution.problem.variable_lower_bounds[var_id];
-  f_t ub                      = solution.problem.variable_upper_bounds[var_id];
+  auto var_bnd                = solution.problem.variable_bounds[var_id];
+  f_t lb                      = get_lower(var_bnd);
+  f_t ub                      = get_upper(var_bnd);
   f_t nearest_val             = round_nearest(curr_val, lb, ub, int_tol, rng);
   solution.assignment[var_id] = nearest_val;
 }

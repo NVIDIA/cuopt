@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <linear_programming/pdlp.cuh>
 #include <linear_programming/pdlp_constants.hpp>
@@ -166,8 +156,7 @@ TEST(pdlp_class, run_time_limit)
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
 
-  // 200 ms
-  constexpr double time_limit_seconds = 0.2;
+  constexpr double time_limit_seconds = 2;
   settings.time_limit                 = time_limit_seconds;
   // To make sure it doesn't return before the time limit
   settings.set_optimality_tolerance(0);
@@ -212,24 +201,32 @@ TEST(pdlp_class, run_sub_mittleman)
     // Testing for each solver_mode is ok as it's parsing that is the bottleneck here, not
     // solving
     auto solver_mode_list = {
+      cuopt::linear_programming::pdlp_solver_mode_t::Stable3,
       cuopt::linear_programming::pdlp_solver_mode_t::Stable2,
+      cuopt::linear_programming::pdlp_solver_mode_t::Stable1,
       cuopt::linear_programming::pdlp_solver_mode_t::Methodical1,
       cuopt::linear_programming::pdlp_solver_mode_t::Fast1,
     };
     for (auto solver_mode : solver_mode_list) {
       auto settings             = pdlp_solver_settings_t<int, double>{};
       settings.pdlp_solver_mode = solver_mode;
-      const raft::handle_t handle_{};
-      optimization_problem_solution_t<int, double> solution =
-        solve_lp(&handle_, op_problem, settings);
-      EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
-      EXPECT_FALSE(
-        is_incorrect_objective(expected_objective_value,
-                               solution.get_additional_termination_information().primal_objective));
-      test_objective_sanity(op_problem,
-                            solution.get_primal_solution(),
-                            solution.get_additional_termination_information().primal_objective);
-      test_constraint_sanity(op_problem, solution);
+      for (auto [presolve, epsilon] : {std::pair{true, 1e-1}, std::pair{false, 1e-6}}) {
+        settings.presolve = presolve;
+        settings.method   = cuopt::linear_programming::method_t::PDLP;
+        const raft::handle_t handle_{};
+        optimization_problem_solution_t<int, double> solution =
+          solve_lp(&handle_, op_problem, settings);
+        printf("running %s mode %d presolve? %d\n", name.c_str(), (int)solver_mode, presolve);
+        EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+        EXPECT_FALSE(is_incorrect_objective(
+          expected_objective_value,
+          solution.get_additional_termination_information().primal_objective));
+        test_objective_sanity(op_problem,
+                              solution.get_primal_solution(),
+                              solution.get_additional_termination_information().primal_objective,
+                              epsilon);
+        test_constraint_sanity(op_problem, solution, epsilon, presolve);
+      }
     }
   }
 }
@@ -275,8 +272,8 @@ TEST(pdlp_class, initial_solution_test)
 
   {
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
-    solver.run_solver(start_solver);
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
+    solver.run_solver(pdlp_timer);
     RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
@@ -286,36 +283,36 @@ TEST(pdlp_class, initial_solution_test)
   // scale on initial option is not toggled
   {
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_primal(op_problem.get_n_variables(), 1);
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
   }
   {
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_dual(op_problem.get_n_constraints(), 1);
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
   }
   {
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_primal(op_problem.get_n_variables(), 1);
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
     std::vector<double> initial_dual(op_problem.get_n_constraints(), 1);
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
@@ -324,9 +321,9 @@ TEST(pdlp_class, initial_solution_test)
   // Toggle the scale on initial solution while not providing should yield the same
   {
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     cuopt::linear_programming::pdlp_hyper_params::update_step_size_on_initial_solution = true;
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
@@ -334,9 +331,9 @@ TEST(pdlp_class, initial_solution_test)
   }
   {
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = true;
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
@@ -344,10 +341,10 @@ TEST(pdlp_class, initial_solution_test)
   }
   {
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = true;
     cuopt::linear_programming::pdlp_hyper_params::update_step_size_on_initial_solution     = true;
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
@@ -360,11 +357,11 @@ TEST(pdlp_class, initial_solution_test)
   {
     cuopt::linear_programming::pdlp_hyper_params::update_step_size_on_initial_solution = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_primal(op_problem.get_n_variables(), 1);
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
@@ -373,11 +370,11 @@ TEST(pdlp_class, initial_solution_test)
   {
     cuopt::linear_programming::pdlp_hyper_params::update_step_size_on_initial_solution = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_dual(op_problem.get_n_constraints(), 1);
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
@@ -389,11 +386,11 @@ TEST(pdlp_class, initial_solution_test)
   {
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_primal(op_problem.get_n_variables(), 1);
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = false;
@@ -401,11 +398,11 @@ TEST(pdlp_class, initial_solution_test)
   {
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_dual(op_problem.get_n_constraints(), 1);
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = false;
@@ -416,14 +413,14 @@ TEST(pdlp_class, initial_solution_test)
   {
     cuopt::linear_programming::pdlp_hyper_params::update_step_size_on_initial_solution = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_primal(op_problem.get_n_variables(), 0);
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
     std::vector<double> initial_dual(op_problem.get_n_constraints(), 0);
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
     cuopt::linear_programming::pdlp_hyper_params::update_step_size_on_initial_solution = false;
@@ -434,11 +431,11 @@ TEST(pdlp_class, initial_solution_test)
   {
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_primal(op_problem.get_n_variables(), 0);
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = false;
@@ -446,11 +443,11 @@ TEST(pdlp_class, initial_solution_test)
   {
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_dual(op_problem.get_n_constraints(), 0);
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = false;
@@ -458,14 +455,14 @@ TEST(pdlp_class, initial_solution_test)
   {
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_primal(op_problem.get_n_variables(), 0);
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
     std::vector<double> initial_dual(op_problem.get_n_constraints(), 0);
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = false;
@@ -476,14 +473,14 @@ TEST(pdlp_class, initial_solution_test)
   {
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_primal(op_problem.get_n_variables(), 1);
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
     std::vector<double> initial_dual(op_problem.get_n_constraints(), 1);
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     EXPECT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NOT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = false;
@@ -491,14 +488,14 @@ TEST(pdlp_class, initial_solution_test)
   {
     cuopt::linear_programming::pdlp_hyper_params::update_step_size_on_initial_solution = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_primal(op_problem.get_n_variables(), 1);
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
     std::vector<double> initial_dual(op_problem.get_n_constraints(), 1);
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     EXPECT_NOT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
     cuopt::linear_programming::pdlp_hyper_params::update_step_size_on_initial_solution = false;
@@ -507,14 +504,14 @@ TEST(pdlp_class, initial_solution_test)
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = true;
     cuopt::linear_programming::pdlp_hyper_params::update_step_size_on_initial_solution     = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_primal(op_problem.get_n_variables(), 1);
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
     std::vector<double> initial_dual(op_problem.get_n_constraints(), 1);
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     EXPECT_NOT_NEAR(initial_step_size_afiro, solver.get_step_size_h(), factor_tolerance);
     EXPECT_NOT_NEAR(initial_primal_weight_afiro, solver.get_primal_weight_h(), factor_tolerance);
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = false;
@@ -547,12 +544,12 @@ TEST(pdlp_class, initial_primal_weight_step_size_test)
   // Check setting an initial primal weight and step size
   {
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver                           = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer                             = timer_t(solver_settings.time_limit);
     constexpr double test_initial_step_size     = 1.0;
     constexpr double test_initial_primal_weight = 2.0;
     solver.set_initial_primal_weight(test_initial_primal_weight);
     solver.set_initial_step_size(test_initial_step_size);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     EXPECT_EQ(test_initial_step_size, solver.get_step_size_h());
     EXPECT_EQ(test_initial_primal_weight, solver.get_primal_weight_h());
@@ -565,27 +562,27 @@ TEST(pdlp_class, initial_primal_weight_step_size_test)
     cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution = true;
     cuopt::linear_programming::pdlp_hyper_params::update_step_size_on_initial_solution     = true;
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-    auto start_solver = std::chrono::high_resolution_clock::now();
+    auto pdlp_timer = timer_t(solver_settings.time_limit);
     std::vector<double> initial_primal(op_problem.get_n_variables(), 1);
     auto d_initial_primal = device_copy(initial_primal, handle_.get_stream());
     solver.set_initial_primal_solution(d_initial_primal);
     std::vector<double> initial_dual(op_problem.get_n_constraints(), 1);
     auto d_initial_dual = device_copy(initial_dual, handle_.get_stream());
     solver.set_initial_dual_solution(d_initial_dual);
-    solver.run_solver(start_solver);
+    solver.run_solver(pdlp_timer);
     const double previous_step_size     = solver.get_step_size_h();
     const double previous_primal_weight = solver.get_primal_weight_h();
 
     // Start again but with an initial and check the impact
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver2(problem, solver_settings);
-    start_solver                                = std::chrono::high_resolution_clock::now();
+    pdlp_timer                                  = timer_t(solver_settings.time_limit);
     constexpr double test_initial_step_size     = 1.0;
     constexpr double test_initial_primal_weight = 2.0;
     solver2.set_initial_primal_weight(test_initial_primal_weight);
     solver2.set_initial_step_size(test_initial_step_size);
     solver2.set_initial_primal_solution(d_initial_primal);
     solver2.set_initial_dual_solution(d_initial_dual);
-    solver2.run_solver(start_solver);
+    solver2.run_solver(pdlp_timer);
     RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     const double sovler2_step_size     = solver2.get_step_size_h();
     const double sovler2_primal_weight = solver2.get_primal_weight_h();
@@ -594,14 +591,14 @@ TEST(pdlp_class, initial_primal_weight_step_size_test)
 
     // Again but with an initial k which should change the step size only, not the primal weight
     cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver3(problem, solver_settings);
-    start_solver = std::chrono::high_resolution_clock::now();
+    pdlp_timer = timer_t(solver_settings.time_limit);
     solver3.set_initial_primal_weight(test_initial_primal_weight);
     solver3.set_initial_step_size(test_initial_step_size);
     solver3.set_initial_primal_solution(d_initial_primal);
     solver3.set_initial_k(10000);
     solver3.set_initial_dual_solution(d_initial_dual);
     solver3.set_initial_dual_solution(d_initial_dual);
-    solver3.run_solver(start_solver);
+    solver3.run_solver(pdlp_timer);
     RAFT_CUDA_TRY(cudaStreamSynchronize(handle_.get_stream()));
     EXPECT_NOT_NEAR(sovler2_step_size, solver3.get_step_size_h(), factor_tolerance);
     EXPECT_NEAR(sovler2_primal_weight, solver3.get_primal_weight_h(), factor_tolerance);
@@ -683,11 +680,13 @@ TEST(pdlp_class, per_constraint_test)
 
     auto& current_termination_strategy = solver.get_current_termination_strategy();
     pdlp_termination_status_t termination_average =
-      current_termination_strategy.evaluate_termination_criteria(solver.pdhg_solver_,
-                                                                 d_initial_primal,
-                                                                 d_initial_primal,
-                                                                 problem.combined_bounds,
-                                                                 problem.objective_coefficients);
+      current_termination_strategy.evaluate_termination_criteria(
+        solver.pdhg_solver_,
+        d_initial_primal,
+        d_initial_primal,
+        solver.pdhg_solver_.get_dual_slack(),
+        problem.combined_bounds,
+        problem.objective_coefficients);
 
     EXPECT_TRUE(termination_average != pdlp_termination_status_t::Optimal);
   }
@@ -702,11 +701,13 @@ TEST(pdlp_class, per_constraint_test)
 
     auto& current_termination_strategy = solver.get_current_termination_strategy();
     pdlp_termination_status_t termination_average =
-      current_termination_strategy.evaluate_termination_criteria(solver.pdhg_solver_,
-                                                                 d_initial_primal,
-                                                                 d_initial_primal,
-                                                                 problem.combined_bounds,
-                                                                 problem.objective_coefficients);
+      current_termination_strategy.evaluate_termination_criteria(
+        solver.pdhg_solver_,
+        d_initial_primal,
+        d_initial_primal,
+        solver.pdhg_solver_.get_dual_slack(),
+        problem.combined_bounds,
+        problem.objective_coefficients);
     EXPECT_EQ(current_termination_strategy.get_convergence_information()
                 .get_relative_linf_primal_residual()
                 .value(handle.get_stream()),
@@ -917,8 +918,9 @@ TEST(pdlp_class, test_max)
   cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
     cuopt::mps_parser::parse_mps<int, double>(path);
 
-  auto solver_settings   = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
+  auto solver_settings             = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode = cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
 
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, op_problem, solver_settings);

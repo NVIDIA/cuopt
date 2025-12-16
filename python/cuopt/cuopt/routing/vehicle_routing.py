@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import numpy as np
 
@@ -34,7 +22,7 @@ from .validation import (
 class DataModel(vehicle_routing_wrapper.DataModel):
     """
 
-    DataModel(n_locations, n_fleet, n_orders: int = -1, session_id=None)
+    DataModel(n_locations, n_fleet, n_orders: int = -1)
 
     Initialize a Data Model.
 
@@ -46,8 +34,6 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         number of vehicles/technician in the fleet.
     n_orders : Integer
         number of orders.
-    session_id : Integer
-        This is used with dask for Multi GPU scenario.
 
     Note:
       - A cost matrix must be set before passing
@@ -67,16 +53,8 @@ class DataModel(vehicle_routing_wrapper.DataModel):
     """
 
     @catch_cuopt_exception
-    def __init__(
-        self,
-        n_locations,
-        n_fleet,
-        n_orders: int = -1,
-        session_id=None,
-    ):
-        super().__init__(
-            n_locations, n_fleet, n_orders=n_orders, session_id=session_id
-        )
+    def __init__(self, n_locations, n_fleet, n_orders: int = -1):
+        super().__init__(n_locations, n_fleet, n_orders=n_orders)
 
     @catch_cuopt_exception
     def add_cost_matrix(self, cost_mat, vehicle_type=0):

@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -245,10 +235,11 @@ class route_t {
       return get_node(*n_nodes).time_dim.forward_feasible(this->vehicle_info());
     }
 
-    DI void copy_to_tsp_route(bool depot_included)
+    DI void copy_to_tsp_route()
     {
       dimensions.requests.tsp_requests.start = get_node(0).node_info();
       dimensions.requests.tsp_requests.end   = get_node(*n_nodes).node_info();
+
       for (i_t tid = threadIdx.x; tid < *n_nodes; tid += blockDim.x) {
         if (get_node(tid).node_info().is_depot()) { continue; }
         dimensions.requests.tsp_requests.pred[get_node(tid).node_info().node()] =
@@ -257,10 +248,10 @@ class route_t {
           get_node(tid + 1).node_info();
       }
 
-      if (depot_included) {
-        dimensions.requests.tsp_requests.pred[0] = get_node(*n_nodes - 1).node_info();
-        dimensions.requests.tsp_requests.succ[0] = get_node(1).node_info();
-      }
+      dimensions.requests.tsp_requests.pred[dimensions.requests.tsp_requests.end.node()] =
+        get_node(*n_nodes - 1).node_info();
+      dimensions.requests.tsp_requests.succ[dimensions.requests.tsp_requests.start.node()] =
+        get_node(1).node_info();
     }
 
     // insert a single node to the route

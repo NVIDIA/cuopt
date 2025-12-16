@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #include <cstdio>
 
@@ -33,7 +23,8 @@ namespace cuopt::linear_programming::dual_simplex::test {
 TEST(dual_simplex, chess_set)
 {
   namespace dual_simplex = cuopt::linear_programming::dual_simplex;
-  dual_simplex::user_problem_t<int, double> user_problem;
+  raft::handle_t handle{};
+  dual_simplex::user_problem_t<int, double> user_problem(&handle);
   // maximize   5*xs + 20*xl
   // subject to  1*xs +  3*xl <= 200
   //             3*xs +  2*xl <= 160
@@ -114,7 +105,8 @@ TEST(dual_simplex, burglar)
   //           sum_i weight[i] * take[i] <= max_weight
   //           take[i] binary for all i
 
-  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem;
+  raft::handle_t handle{};
+  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem(&handle);
   constexpr int m  = 1;
   constexpr int n  = num_items;
   constexpr int nz = num_items;
@@ -159,6 +151,7 @@ TEST(dual_simplex, burglar)
   for (int j = 0; j < num_items; ++j) {
     user_problem.var_types[j] = cuopt::linear_programming::dual_simplex::variable_type_t::INTEGER;
   }
+
   cuopt::linear_programming::dual_simplex::simplex_solver_settings_t<int, double> settings;
   std::vector<double> solution(num_items);
   EXPECT_EQ((cuopt::linear_programming::dual_simplex::solve(user_problem, settings, solution)), 0);
@@ -187,7 +180,8 @@ TEST(dual_simplex, empty_columns)
   //           sum_i weight[i] * take[i] <= max_weight
   //           take[i] binary for all i
 
-  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem;
+  raft::handle_t handle{};
+  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem(&handle);
   constexpr int m  = 1;
   constexpr int n  = num_items;
   constexpr int nz = num_items - 1;
@@ -268,7 +262,8 @@ TEST(dual_simplex, dual_variable_greater_than)
   //             x0 + 2x1 >= 3
   //             x0, x1 >= 0
 
-  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem;
+  raft::handle_t handle{};
+  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem(&handle);
   constexpr int m  = 2;
   constexpr int n  = 2;
   constexpr int nz = 4;

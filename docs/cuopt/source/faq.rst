@@ -23,7 +23,7 @@ General FAQ
 
     1. Log into NGC using the invite and choose the appropriate NGC org.
 
-    2. Generate an NGC API key from settings. If you have not generated an API Key, you can generate it by going to the Setup option in your profile and choose `Get API Key <https://docs.nvidia.com/ngc/gpu-cloud/ngc-private-registry-user-guide/index.html#generating-api-key>`_. Store this or generate a new one next time.
+    2. Generate an NGC API key from settings. If you have not generated an API Key, you can generate it by going to the Setup option in your profile and choose `Get API Key <https://docs.nvidia.com/ngc/latest/ngc-private-registry-user-guide.html#generating-a-personal-api-key>`_. Store this or generate a new one next time.
 
     3. Go to the container section for cuOpt and copy the pull tag for the latest image.
         - Within the Select a tag dropdown, locate the container image release that you want to run.
@@ -283,7 +283,7 @@ Routing FAQ
 
     So in either case, task locations are actually integer indices into another structure.
 
-    If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt as shown `here <https://github.com/NVIDIA/cuOpt-Resources/blob/branch-22.12/notebooks/routing/service/cost_matrix_creation.ipynb>`__.
+    If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt as shown `here <https://github.com/NVIDIA/cuOpt-Resources/blob/main/notebooks/routing/service/cost_matrix_creation.ipynb>`__.
 
 .. dropdown:: Is it possible to define constraints such as refrigerated vehicles required for certain orders?
 

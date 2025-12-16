@@ -1,18 +1,6 @@
 # syntax=docker/dockerfile:1.2
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 ARG CUDA_VER=unset
 ARG CUOPT_VER=unset
@@ -54,15 +42,15 @@ ARG CUOPT_VER
 ARG PYTHON_SHORT_VER
 
 # Install cuOpt as root to make it available to all users
-RUN cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
+RUN \
+    cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
     cuda_major_minor=$(echo ${CUDA_VER} | cut -d'.' -f1-2) && \
     python -m pip install \
       --extra-index-url https://pypi.nvidia.com \
       --extra-index-url https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \
       --no-cache-dir \
       "cuopt-server-${cuda_suffix}==${CUOPT_VER}" \
-      "cuopt-sh-client==${CUOPT_VER}" \
-      "nvidia-cuda-runtime-${cuda_suffix}==${cuda_major_minor}.*" && \
+      "cuopt-sh-client==${CUOPT_VER}" && \
     python -m pip list
 
 # Remove gcc to save space, gcc was required for building psutils
@@ -107,7 +95,7 @@ RUN mkdir -p /opt/cuopt && \
 WORKDIR /opt/cuopt
 
 # Copy all static files in a single layer
-COPY ./LICENSE ./VERSION ./THIRD_PARTY_LICENSES /opt/cuopt/
+COPY ./LICENSE ./VERSION ./THIRD_PARTY_LICENSES ./COMMIT_SHA /opt/cuopt/
 
 # Copy CUDA libraries from the cuda-libs stage
 COPY --from=cuda-libs /usr/local/cuda/lib64/libnvrtc* /usr/local/cuda/lib64/

@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -55,8 +45,8 @@ __global__ void test_variable_bounds_kernel(typename solution_t<i_t, f_t>::view_
     printf("inf var %d val %f l %f u %f integer %d\n",
            v,
            val,
-           sol.problem.variable_lower_bounds[v],
-           sol.problem.variable_upper_bounds[v],
+           get_lower(sol.problem.variable_bounds[v]),
+           get_upper(sol.problem.variable_bounds[v]),
            sol.problem.is_integer_var(v));
   }
   cuopt_assert(isfinite(val), "assignment should be finite!");
@@ -72,8 +62,8 @@ __global__ void test_variable_bounds_kernel(typename solution_t<i_t, f_t>::view_
     printf("oob var %d val %f l %f u %f integer %d\n",
            v,
            val,
-           sol.problem.variable_lower_bounds[v],
-           sol.problem.variable_upper_bounds[v],
+           get_lower(sol.problem.variable_bounds[v]),
+           get_upper(sol.problem.variable_bounds[v]),
            sol.problem.is_integer_var(v));
   }
   cuopt_assert(feasible, "Variables should be feasible");

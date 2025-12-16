@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 #pragma once
 
 #include <linear_programming/cusparse_view.hpp>
@@ -45,6 +35,7 @@ class convergence_information_t {
     pdhg_solver_t<i_t, f_t>& current_pdhg_solver,
     rmm::device_uvector<f_t>& primal_iterate,
     rmm::device_uvector<f_t>& dual_iterate,
+    [[maybe_unused]] const rmm::device_uvector<f_t>& dual_slack,
     const rmm::device_uvector<f_t>& combined_bounds,  // Only useful if per_constraint_residual
     const rmm::device_uvector<f_t>&
       objective_coefficients,  // Only useful if per_constraint_residual
@@ -91,9 +82,6 @@ class convergence_information_t {
     f_t* gap;
     f_t* abs_objective;
 
-    f_t* l2_primal_variable;
-    f_t* l2_dual_variable;
-
     f_t* primal_residual;
     f_t* dual_residual;
     f_t* reduced_cost;
@@ -125,17 +113,21 @@ class convergence_information_t {
 
   primal_quality_adapter_t to_primal_quality_adapter(bool is_primal_feasible) const noexcept;
 
- private:
   void compute_primal_residual(cusparse_view_t<i_t, f_t>& cusparse_view,
-                               rmm::device_uvector<f_t>& tmp_dual);
+                               rmm::device_uvector<f_t>& tmp_dual,
+                               [[maybe_unused]] const rmm::device_uvector<f_t>& dual_iterate);
 
+ private:
   void compute_primal_objective(rmm::device_uvector<f_t>& primal_solution);
 
   void compute_dual_residual(cusparse_view_t<i_t, f_t>& cusparse_view,
                              rmm::device_uvector<f_t>& tmp_primal,
-                             rmm::device_uvector<f_t>& primal_solution);
+                             rmm::device_uvector<f_t>& primal_solution,
+                             [[maybe_unused]] const rmm::device_uvector<f_t>& dual_slack);
 
-  void compute_dual_objective(rmm::device_uvector<f_t>& dual_solution);
+  void compute_dual_objective(rmm::device_uvector<f_t>& dual_solution,
+                              [[maybe_unused]] const rmm::device_uvector<f_t>& primal_solution,
+                              [[maybe_unused]] const rmm::device_uvector<f_t>& dual_slack);
 
   void compute_reduced_cost_from_primal_gradient(const rmm::device_uvector<f_t>& primal_gradient,
                                                  const rmm::device_uvector<f_t>& primal_solution);
@@ -172,14 +164,14 @@ class convergence_information_t {
   rmm::device_scalar<f_t> gap_;
   rmm::device_scalar<f_t> abs_objective_;
 
-  rmm::device_scalar<f_t> l2_primal_variable_;
-  rmm::device_scalar<f_t> l2_dual_variable_;
-
   // used for computations and can be reused
   rmm::device_uvector<f_t> primal_residual_;
   rmm::device_uvector<f_t> dual_residual_;
   rmm::device_uvector<f_t> reduced_cost_;
   rmm::device_uvector<f_t> bound_value_;
+
+  // used for reflected
+  rmm::device_uvector<f_t> primal_slack_;
 
   rmm::device_buffer rmm_tmp_buffer_;
   size_t size_of_buffer_;
@@ -187,5 +179,8 @@ class convergence_information_t {
   const rmm::device_scalar<f_t> reusable_device_scalar_value_1_;
   const rmm::device_scalar<f_t> reusable_device_scalar_value_0_;
   const rmm::device_scalar<f_t> reusable_device_scalar_value_neg_1_;
+
+  rmm::device_scalar<f_t> dual_dot_;
+  rmm::device_scalar<f_t> sum_primal_slack_;
 };
 }  // namespace cuopt::linear_programming::detail

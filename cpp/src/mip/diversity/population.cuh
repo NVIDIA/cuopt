@@ -1,22 +1,13 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
+#include "assignment_hash_map.cuh"
 #include "population.cuh"
 
 #include <mip/solution/solution.cuh>
@@ -30,11 +21,29 @@
 
 namespace cuopt::linear_programming::detail {
 
+// forward declare
+template <typename i_t, typename f_t>
+class diversity_manager_t;
+
+enum class solution_origin_t { BRANCH_AND_BOUND, CPUFJ, RINS, EXTERNAL };
+
+constexpr const char* solution_origin_to_string(solution_origin_t origin)
+{
+  switch (origin) {
+    case solution_origin_t::BRANCH_AND_BOUND: return "B&B";
+    case solution_origin_t::CPUFJ: return "CPUFJ";
+    case solution_origin_t::RINS: return "RINS";
+    case solution_origin_t::EXTERNAL: return "injected";
+    default: return "unknown";
+  }
+}
+
 template <typename i_t, typename f_t>
 class population_t {
  public:
   population_t(std::string const& name,
                mip_solver_context_t<i_t, f_t>& context,
+               diversity_manager_t<i_t, f_t>& dm,
                int var_threshold_,
                size_t max_solutions_,
                f_t infeasibility_weight_);
@@ -44,10 +53,10 @@ class population_t {
   // functions without logic:
   // --------------------
   /*! \brief { Current number of solutions in the pool }*/
-  size_t current_size() { return indices.size() - 1; }
+  size_t current_size() { return indices.empty() ? 0 : indices.size() - 1; }
 
   /*! \brief { Is feasible soution in the pool? } */
-  bool is_feasible() { return solutions[0].first; }
+  bool is_feasible() { return indices.empty() ? false : solutions[0].first; }
 
   /*! \brief { Best feasible quality }*/
   f_t feasible_quality() { return indices[0].second; }
@@ -64,6 +73,7 @@ class population_t {
   // initializes the population lazily. after presolve and var removals
   void initialize_population();
   bool is_better_than_best_feasible(solution_t<i_t, f_t>& sol);
+  void run_all_recombiners(solution_t<i_t, f_t>& sol);
 
   void allocate_solutions();
 
@@ -93,9 +103,12 @@ class population_t {
   /*! \brief { Add a solution to population. Similar solutions may be ejected from the pool. }
    *  \return { -1 = not inserted , others = inserted index}
    */
-  i_t add_solution(solution_t<i_t, f_t>&& sol);
-  void add_external_solution(std::vector<f_t>& solution, f_t objective);
+  std::pair<i_t, bool> add_solution(solution_t<i_t, f_t>&& sol);
+  void add_external_solution(const std::vector<f_t>& solution,
+                             f_t objective,
+                             solution_origin_t origin);
   std::vector<solution_t<i_t, f_t>> get_external_solutions();
+  void add_external_solutions_to_population();
   size_t get_external_solution_size();
   void preempt_heuristic_solver();
 
@@ -146,6 +159,8 @@ class population_t {
 
   void start_threshold_adjustment();
 
+  void diversity_step(i_t max_iterations_without_improvement);
+
   // does some consistency tests
   bool test_invariant();
 
@@ -154,6 +169,7 @@ class population_t {
   std::string name;
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;
+  diversity_manager_t<i_t, f_t>& dm;
   i_t var_threshold;
   i_t initial_threshold;
   double population_start_time;
@@ -164,13 +180,32 @@ class population_t {
   weight_t<i_t, f_t> weights;
   std::vector<std::pair<size_t, f_t>> indices;
   std::vector<std::pair<bool, solution_t<i_t, f_t>>> solutions;
-  std::vector<std::vector<f_t>> external_solution_queue;
+
+  struct external_solution_t {
+    external_solution_t() = default;
+    external_solution_t(const std::vector<f_t>& solution, f_t objective, solution_origin_t origin)
+      : solution(solution),
+        objective(objective),
+        origin(origin),
+        timer(std::numeric_limits<double>::infinity())
+    {
+    }
+    std::vector<f_t> solution;
+    f_t objective;
+    solution_origin_t origin;
+    timer_t timer;  // debug timer to track how long a solution has lingered in the queue
+  };
+
+  std::vector<external_solution_t> external_solution_queue;
+  std::vector<external_solution_t> external_solution_queue_cpufj;
   std::mt19937 rng;
   i_t update_iter = 0;
+  std::recursive_mutex write_mutex;
   std::mutex solution_mutex;
-  bool early_exit_primal_generation = false;
-  f_t best_feasible_objective       = std::numeric_limits<f_t>::max();
-  bool preempt_heuristic_solver_    = false;
+  std::atomic<bool> early_exit_primal_generation = false;
+  std::atomic<bool> solutions_in_external_queue_ = false;
+  f_t best_feasible_objective                    = std::numeric_limits<f_t>::max();
+  assignment_hash_map_t<i_t, f_t> population_hash_map;
   cuopt::timer_t timer;
 };
 

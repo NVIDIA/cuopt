@@ -1,17 +1,7 @@
+# cmake-format: off
 # SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# cmake-format: on
 
 cmake_minimum_required(VERSION 3.30.4 FATAL_ERROR)
 
@@ -30,14 +20,14 @@ include(rapids-find)
 
 rapids_cuda_init_architectures(CUOPT)
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
+message(STATUS "CMAKE_MODULE_PATH = ${CMAKE_MODULE_PATH}")
+
 project(
   CUOPT
-  VERSION 25.10.00
+  VERSION "${RAPIDS_VERSION}"
   LANGUAGES CXX CUDA C
 )
-
-set(DEPENDENT_LIB_MAJOR_VERSION "25")
-set(DEPENDENT_LIB_MINOR_VERSION "10")
 
 rapids_cmake_write_version_file(include/cuopt/version_config.hpp)
 # ##################################################################################################
@@ -52,11 +42,21 @@ option(CMAKE_CUDA_LINEINFO "Enable the -lineinfo option for nvcc useful for cuda
 option(BUILD_TESTS "Configure CMake to build tests" ON)
 option(DISABLE_OPENMP "Disable OpenMP" OFF)
 option(CUDA_STATIC_RUNTIME "Statically link the CUDA toolkit runtime and libraries" OFF)
+option(BUILD_LP_ONLY "Build only linear programming components, exclude routing and MIP-specific files" OFF)
+option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
+option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
+option(WRITE_FATBIN "Enable fatbin writing" ON)
+option(HOST_LINEINFO "Build with debug line information for host code" OFF)
 
 message(VERBOSE "cuOpt: Enable nvcc -lineinfo: ${CMAKE_CUDA_LINEINFO}")
 message(VERBOSE "cuOpt: Build cuOpt unit-tests: ${BUILD_TESTS}")
 message(VERBOSE "cuOpt: Build cuOpt multigpu tests: ${BUILD_TESTS}")
 message(VERBOSE "cuOpt: Disable OpenMP: ${DISABLE_OPENMP}")
+message(VERBOSE "cuOpt: Build LP-only mode: ${BUILD_LP_ONLY}")
+message(VERBOSE "cuOpt: Skip C/Python adapters: ${SKIP_C_PYTHON_ADAPTERS}")
+message(VERBOSE "cuOpt: Skip routing build: ${SKIP_ROUTING_BUILD}")
+message(VERBOSE "cuOpt: Build with debug line information for host code: ${HOST_LINEINFO}")
+message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
 
 # ##################################################################################################
 # - compiler options ------------------------------------------------------------------------------
@@ -75,6 +75,14 @@ set(CUOPT_CUDA_FLAGS "")
 if(CMAKE_COMPILER_IS_GNUCXX)
   list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations)
 endif(CMAKE_COMPILER_IS_GNUCXX)
+
+# To use sanitizer with cuda runtime, one must follow a few steps:
+# 1. Run the binary with env var set: LD_PRELOAD="$(gcc -print-file-name=libasan.so)" ASAN_OPTIONS='protect_shadow_gap=0:replace_intrin=0'
+# 2. (Optional) To run with a debugger (gdb or cuda-gdb) use the additional ASAN option alloc_dealloc_mismatch=0
+if(BUILD_SANITIZER)
+  list(APPEND CUOPT_CXX_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer -g -Wno-error=maybe-uninitialized)
+  add_link_options(-fsanitize=address,undefined)
+endif(BUILD_SANITIZER)
 
 if(DEFINE_ASSERT)
   add_definitions(-DASSERT_MODE)
@@ -100,14 +108,15 @@ message(VERBOSE "CUOPT: LIBCUOPT_LOGGING_LEVEL = '${LIBCUOPT_LOGGING_LEVEL}'.")
 
 message("-- Building with logging level = ${LIBCUOPT_LOGGING_LEVEL}")
 
-message("-- Building for GPU_ARCHS = ${CMAKE_CUDA_ARCHITECTURES}")
+message("-- Building for GPU_ARCHS = '${CMAKE_CUDA_ARCHITECTURES}'")
+message("-- Host target architecture = '${CMAKE_SYSTEM_PROCESSOR}'")
 
 # make the flags global in order to propagate flags to test cmake files
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extended-lambda")
-if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
+if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.9)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -static-global-template-stub=false")
 endif()
-list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror)
+list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror --default-stream=per-thread)
 list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall -Wno-error=non-template-friend)
 list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=-compress-all)
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
@@ -164,12 +173,20 @@ endif()
 FetchContent_Declare(
   papilo
   GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
-  GIT_TAG "v2.4.3"
+  # We would want to get the main branch. However, the main branch
+  # does not have some of the presolvers and settings that we need
+  # Mainly, probing and clique merging.
+  # This is the reason we are using the development branch
+  # from Oct 12, 2025. Once these changes are merged into the main branch,
+  #we can switch to the main branch.
+  GIT_TAG "741a2b9c8155b249d6df574d758b4d97d4417520"
+  GIT_PROGRESS TRUE
+  EXCLUDE_FROM_ALL
   SYSTEM
 )
 
+find_package(TBB REQUIRED)
 set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
-set(TBB OFF CACHE BOOL "Disable TBB")
 set(PAPILO_NO_BINARIES ON)
 option(LUSOL "Disable LUSOL" OFF)
 
@@ -180,12 +197,17 @@ include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 rapids_cpm_rapids_logger(BUILD_EXPORT_SET cuopt-exports INSTALL_EXPORT_SET cuopt-exports)
 create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
 
+find_package(CUDSS REQUIRED)
+
 if(BUILD_TESTS)
   include(cmake/thirdparty/get_gtest.cmake)
 endif()
 
 set(CUOPT_SRC_FILES )
 add_subdirectory(src)
+if (HOST_LINEINFO)
+  set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
+endif()
 add_library(cuopt SHARED
   ${CUOPT_SRC_FILES}
 )
@@ -209,19 +231,22 @@ target_compile_options(cuopt
   "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
 )
 
-file(WRITE "${CUOPT_BINARY_DIR}/fatbin.ld"
-  [=[
-SECTIONS
-{
-  .nvFatBinSegment : { *(.nvFatBinSegment) }
-  .nv_fatbin : { *(.nv_fatbin) }
-}
-]=])
-target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
+if(WRITE_FATBIN)
+  file(WRITE "${CUOPT_BINARY_DIR}/fatbin.ld"
+    [=[
+  SECTIONS
+  {
+    .nvFatBinSegment : { *(.nvFatBinSegment) }
+    .nv_fatbin : { *(.nv_fatbin) }
+  }
+  ]=])
+  target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
+endif()
 
 add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
 # - include paths ---------------------------------------------------------------------------------
+message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
 
 target_include_directories(cuopt SYSTEM PRIVATE "${papilo_SOURCE_DIR}/src" "${papilo_BINARY_DIR}")
 
@@ -229,12 +254,14 @@ target_include_directories(cuopt
   PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  "${CUDSS_INCLUDE}"
   PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include>"
   INTERFACE
   "$<INSTALL_INTERFACE:include>"
+  ${CUDSS_INCLUDE}
 )
 
 # ##################################################################################################
@@ -243,6 +270,7 @@ target_include_directories(cuopt
 set(CUOPT_PRIVATE_CUDA_LIBS
   CUDA::curand
   CUDA::cusolver
+  TBB::tbb
   OpenMP::OpenMP_CXX)
 
 list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
@@ -250,6 +278,34 @@ list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser)
 set(CMAKE_LIBRARY_PATH ${CMAKE_CURRENT_BINARY_DIR}/libmps_parser/)
 
+
+# Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
+get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
+target_compile_definitions(cuopt PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}")
+
+execute_process(
+  COMMAND git rev-parse --short HEAD
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_COMMIT_HASH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+message("-- Building with GIT_COMMIT_HASH = '${GIT_COMMIT_HASH}'")
+
+# Generate build_info.hpp from template
+# configure_file() only updates the output if content changes, avoiding unnecessary rebuilds
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/utilities/build_info.hpp.in
+  ${CMAKE_CURRENT_BINARY_DIR}/include/utilities/build_info.hpp
+  @ONLY
+)
+
+# Add the generated include directory
+target_include_directories(cuopt PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include)
+
+list(JOIN CMAKE_CUDA_ARCHITECTURES "," JOINED_CUDA_ARCHITECTURES)
+target_compile_definitions(cuopt PUBLIC
+  CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
+  CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}")
 
 target_link_libraries(cuopt
   PUBLIC
@@ -260,6 +316,7 @@ target_link_libraries(cuopt
   CCCL::CCCL
   raft::raft
   cuopt::mps_parser
+  ${CUDSS_LIB_FILE}
   PRIVATE
   ${CUOPT_PRIVATE_CUDA_LIBS}
   )
@@ -361,6 +418,7 @@ if(Doxygen_FOUND)
 endif()
 
 
+if(NOT BUILD_LP_ONLY)
 add_executable(cuopt_cli cuopt_cli.cpp)
 target_compile_options(cuopt_cli
   PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
@@ -373,6 +431,7 @@ target_include_directories(cuopt_cli
   PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+  ${CUDSS_INCLUDE}
   "$<INSTALL_INTERFACE:include>"
 )
 
@@ -380,9 +439,14 @@ target_link_libraries(cuopt_cli
   PUBLIC
   cuopt
   OpenMP::OpenMP_CXX
+  ${CUDSS_LIBRARIES}
+  TBB::tbb
   PRIVATE
-  papilo-core
 )
+  # Use RUNPATH when building locally in order to allow LD_LIBRARY_PATH to override the conda env path
+if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+  target_link_options(cuopt_cli PRIVATE -Wl,--enable-new-dtags)
+endif()
 set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
 # adds the cuopt_cli executable to the runtime deb package
@@ -390,21 +454,49 @@ install(TARGETS cuopt_cli
   COMPONENT runtime
   RUNTIME DESTINATION ${_BIN_DEST}
 )
+endif()
 
-option(BUILD_BENCHMARKS "Build benchmarks" ON)
-if(BUILD_BENCHMARKS)
-  add_executable(solve_MPS_file ../benchmarks/linear_programming/cuopt/run_mip.cpp)
-  target_compile_options(solve_MPS_file
+
+option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
+if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
+  add_executable(solve_MIP ../benchmarks/linear_programming/cuopt/run_mip.cpp)
+  target_compile_options(solve_MIP
     PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
   )
-  target_link_libraries(solve_MPS_file
+  target_link_libraries(solve_MIP
     PUBLIC
     cuopt
     OpenMP::OpenMP_CXX
     PRIVATE
-    papilo-core
   )
+  if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+    target_link_options(solve_MIP PRIVATE -Wl,--enable-new-dtags)
+  endif()
+
+  target_include_directories(solve_MIP
+    PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+
+endif()
+
+option(BUILD_LP_BENCHMARKS "Build LP benchmarks" OFF)
+if(BUILD_LP_BENCHMARKS)
+  add_executable(solve_LP ../benchmarks/linear_programming/cuopt/run_pdlp.cu)
+  target_compile_options(solve_LP
+    PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+    "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
+  )
+  target_link_libraries(solve_LP
+    PUBLIC
+    cuopt
+    OpenMP::OpenMP_CXX
+    PRIVATE
+  )
+  if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+    target_link_options(solve_LP PRIVATE -Wl,--enable-new-dtags)
+  endif()
 endif()
 
 

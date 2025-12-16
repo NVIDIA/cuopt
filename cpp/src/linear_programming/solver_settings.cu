@@ -1,27 +1,17 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/logger.hpp>
 #include <math_optimization/solution_writer.hpp>
 #include <mip/mip_constants.hpp>
 #include <mps_parser/utilities/span.hpp>
+#include <utilities/logger.hpp>
 
 #include <raft/util/cudart_utils.hpp>
 
@@ -31,26 +21,6 @@
 #include <thrust/scatter.h>
 
 namespace cuopt::linear_programming {
-
-template <typename i_t, typename f_t>
-pdlp_solver_settings_t<i_t, f_t>::pdlp_solver_settings_t(const pdlp_solver_settings_t& other,
-                                                         rmm::cuda_stream_view stream_view)
-  : tolerances(other.tolerances),
-    detect_infeasibility(other.detect_infeasibility),
-    strict_infeasibility(other.strict_infeasibility),
-    iteration_limit(other.iteration_limit),
-    time_limit(other.time_limit),
-    pdlp_solver_mode(other.pdlp_solver_mode),
-    log_file(other.log_file),
-    sol_file(other.sol_file),
-    per_constraint_residual(other.per_constraint_residual),
-    crossover(other.crossover),
-    save_best_primal_so_far(other.save_best_primal_so_far),
-    first_primal_feasible(other.first_primal_feasible),
-    pdlp_warm_start_data_(other.pdlp_warm_start_data_, stream_view),
-    concurrent_halt(other.concurrent_halt)
-{
-}
 
 template <typename i_t, typename f_t>
 void pdlp_solver_settings_t<i_t, f_t>::set_optimality_tolerance(f_t eps_optimal)

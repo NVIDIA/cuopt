@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <linear_programming/pdlp_constants.hpp>
@@ -58,7 +48,8 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
     reusable_device_scalar_value_0_{f_t(0.0), stream_view_},
     graph(stream_view_, is_batch_mode)
 {
-  valid_step_size_ = make_unique_cuda_host_pinned<i_t>();
+  valid_step_size_  = make_unique_cuda_host_pinned<i_t>();
+  *valid_step_size_ = 0;
 }
 
 void set_adaptive_step_size_hyper_parameters(rmm::cuda_stream_view stream_view)
@@ -192,6 +183,24 @@ template <typename i_t, typename f_t>
 i_t adaptive_step_size_strategy_t<i_t, f_t>::get_valid_step_size() const
 {
   return *valid_step_size_;
+}
+
+template <typename i_t, typename f_t>
+f_t adaptive_step_size_strategy_t<i_t, f_t>::get_interaction() const
+{
+  return interaction_.value(stream_view_);
+}
+
+template <typename i_t, typename f_t>
+f_t adaptive_step_size_strategy_t<i_t, f_t>::get_norm_squared_delta_primal() const
+{
+  return norm_squared_delta_primal_.value(stream_view_);
+}
+
+template <typename i_t, typename f_t>
+f_t adaptive_step_size_strategy_t<i_t, f_t>::get_norm_squared_delta_dual() const
+{
+  return norm_squared_delta_dual_.value(stream_view_);
 }
 
 template <typename i_t, typename f_t>

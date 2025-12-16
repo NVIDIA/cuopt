@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 from enum import IntEnum, auto
 
@@ -27,6 +15,7 @@ class SolverMethod(IntEnum):
     Concurrent = 0
     PDLP = auto()
     DualSimplex = auto()
+    Barrier = auto()
 
     def __str__(self):
         """Convert the solver method to a string.
@@ -48,7 +37,7 @@ class PDLPSolverMode(IntEnum):
 
     Attributes
     ----------
-    Stable2
+    Stable3
         Best overall mode from experiments; balances speed and convergence
         success. If you want to use the legacy version, use Stable1.
     Methodical1
@@ -58,13 +47,14 @@ class PDLPSolverMode(IntEnum):
 
     Notes
     -----
-    Default mode is Stable2.
+    Default mode is Stable3.
     """
 
     Stable1 = 0
     Stable2 = auto()
     Methodical1 = auto()
     Fast1 = auto()
+    Stable3 = auto()
 
     def __str__(self):
         """Convert the solver mode to a string.

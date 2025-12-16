@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
@@ -55,24 +45,33 @@ class pdlp_initial_scaling_strategy_t {
                                   problem_t<i_t, f_t>& op_problem_scaled,
                                   i_t number_of_ruiz_iterations,
                                   f_t alpha,
-                                  pdhg_solver_t<i_t, f_t>& pdhg_solver,
                                   rmm::device_uvector<f_t>& A_T,
                                   rmm::device_uvector<i_t>& A_T_offsets,
                                   rmm::device_uvector<i_t>& A_T_indices,
+                                  pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr,
                                   bool running_mip = false);
 
   void scale_problem();
 
+  void scale_solutions(rmm::device_uvector<f_t>& primal_solution) const;
   void scale_solutions(rmm::device_uvector<f_t>& primal_solution,
                        rmm::device_uvector<f_t>& dual_solution) const;
+  void scale_solutions(rmm::device_uvector<f_t>& primal_solution,
+                       rmm::device_uvector<f_t>& dual_solution,
+                       rmm::device_uvector<f_t>& dual_slack) const;
   void scale_primal(rmm::device_uvector<f_t>& primal_solution) const;
   void scale_dual(rmm::device_uvector<f_t>& dual_solution) const;
   void unscale_solutions(rmm::device_uvector<f_t>& primal_solution,
                          rmm::device_uvector<f_t>& dual_solution) const;
+  void unscale_solutions(rmm::device_uvector<f_t>& primal_solution,
+                         rmm::device_uvector<f_t>& dual_solution,
+                         rmm::device_uvector<f_t>& dual_slack) const;
   void unscale_solutions(solution_t<i_t, f_t>& solution) const;
   rmm::device_uvector<f_t>& get_constraint_matrix_scaling_vector();
   rmm::device_uvector<f_t>& get_variable_scaling_vector();
   const problem_t<i_t, f_t>& get_scaled_op_problem();
+
+  void bound_objective_rescaling();
 
   /**
    * @brief Gets the device-side view (with raw pointers), for ease of access
@@ -96,9 +95,15 @@ class pdlp_initial_scaling_strategy_t {
   rmm::device_uvector<f_t> iteration_constraint_matrix_scaling_;
   rmm::device_uvector<f_t> iteration_variable_scaling_;
 
+  rmm::device_scalar<f_t> bound_rescaling_;
+  rmm::device_scalar<f_t> objective_rescaling_;
+  // Since we need it on the host
+  f_t h_bound_rescaling     = std::numeric_limits<f_t>::signaling_NaN();
+  f_t h_objective_rescaling = std::numeric_limits<f_t>::signaling_NaN();
+
   rmm::device_uvector<f_t> cummulative_constraint_matrix_scaling_;
   rmm::device_uvector<f_t> cummulative_variable_scaling_;
-  pdhg_solver_t<i_t, f_t>& pdhg_solver_;
+  pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr_;
   rmm::device_uvector<f_t>& A_T_;
   rmm::device_uvector<i_t>& A_T_offsets_;
   rmm::device_uvector<i_t>& A_T_indices_;

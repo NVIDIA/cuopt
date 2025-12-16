@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
@@ -160,12 +150,16 @@ TEST(docs, user_problem_file)
   // Get solution values
   const auto& sol_values = solution.get_solution();
   // x should be approximately 37 and integer
-  EXPECT_NEAR(37.0, sol_values.element(0, handle_.get_stream()), 0.1);
-  EXPECT_NEAR(std::round(sol_values.element(0, handle_.get_stream())),
-              sol_values.element(0, handle_.get_stream()),
-              settings.tolerances.integrality_tolerance);  // Check x is integer
-  // y should be approximately 39.5
-  EXPECT_NEAR(39.5, sol_values.element(1, handle_.get_stream()), 0.1);
+  for (int i = 0; i < problem2.get_n_variables(); i++) {
+    if (problem2.get_variable_names()[i] == "x") {
+      EXPECT_NEAR(37.0, sol_values.element(i, handle_.get_stream()), 0.1);
+      EXPECT_NEAR(std::round(sol_values.element(i, handle_.get_stream())),
+                  sol_values.element(i, handle_.get_stream()),
+                  settings.tolerances.integrality_tolerance);  // Check x is integer
+    } else {                                                   // y should be approximately 39.5
+      EXPECT_NEAR(39.5, sol_values.element(i, handle_.get_stream()), 0.1);
+    }
+  }
 }
 
 }  // namespace cuopt::linear_programming::test

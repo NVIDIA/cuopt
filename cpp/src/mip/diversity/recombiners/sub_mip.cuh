@@ -1,22 +1,13 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #pragma once
 
+#include "cuopt/linear_programming/mip/solver_settings.hpp"
 #include "recombiner.cuh"
 
 #include <dual_simplex/branch_and_bound.hpp>
@@ -79,6 +70,17 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       "n_vars_from_guiding %d n_vars_from_other %d", n_vars_from_guiding, n_vars_from_other);
     this->compute_vars_to_fix(offspring, vars_to_fix, n_vars_from_other, n_vars_from_guiding);
     auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
+    pdlp_initial_scaling_strategy_t<i_t, f_t> scaling(
+      fixed_problem.handle_ptr,
+      fixed_problem,
+      pdlp_hyper_params::default_l_inf_ruiz_iterations,
+      (f_t)pdlp_hyper_params::default_alpha_pock_chambolle_rescaling,
+      fixed_problem.reverse_coefficients,
+      fixed_problem.reverse_offsets,
+      fixed_problem.reverse_constraints,
+      nullptr,
+      true);
+    scaling.scale_problem();
     fixed_problem.presolve_data.reset_additional_vars(fixed_problem, offspring.handle_ptr);
     fixed_problem.presolve_data.initialize_var_mapping(fixed_problem, offspring.handle_ptr);
     trivial_presolve(fixed_problem);
@@ -90,7 +92,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     if (run_sub_mip) {
       // run sub-mip
       namespace dual_simplex = cuopt::linear_programming::dual_simplex;
-      dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem;
+      dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(offspring.handle_ptr);
       dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
       fixed_problem.get_host_user_problem(branch_and_bound_problem);
       branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
@@ -99,11 +101,15 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       branch_and_bound_settings.print_presolve_stats = false;
       branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
       branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
-      branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
-      branch_and_bound_settings.solution_callback = [this](std::vector<f_t>& solution,
+      branch_and_bound_settings.integer_tol     = context.settings.tolerances.integrality_tolerance;
+      branch_and_bound_settings.num_threads     = 2;
+      branch_and_bound_settings.num_bfs_threads = 1;
+      branch_and_bound_settings.num_diving_threads = 1;
+      branch_and_bound_settings.solution_callback  = [this](std::vector<f_t>& solution,
                                                            f_t objective) {
         this->solution_callback(solution, objective);
       };
+
       // disable B&B logs, so that it is not interfering with the main B&B thread
       branch_and_bound_settings.log.log = false;
       dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(branch_and_bound_problem,
@@ -131,8 +137,12 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       offspring.handle_ptr->sync_stream();
     }
     if (solution_vector.size() > 0) {
+      rmm::device_uvector<f_t> dummy(0, offspring.handle_ptr->get_stream());
+      scaling.unscale_solutions(fixed_assignment, dummy);
       // unfix the assignment on given result no matter if it is feasible
       offspring.unfix_variables(fixed_assignment, variable_map);
+      offspring
+        .clamp_within_bounds();  // Scaling might bring some very slight variable bound violations
     } else {
       offspring.round_nearest();
     }
@@ -148,9 +158,10 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
         sub_mip_recombiner_config_t::decrease_max_n_of_vars_from_other();
       }
     }
-    // try adding all intermediate solutions to the population
-    for (const auto& solution : solution_vector) {
+    // try adding all intermediate solutions to the population, except the final one
+    for (i_t i = 0; i < (i_t)solution_vector.size() - 1; i++) {
       CUOPT_LOG_DEBUG("Adding intermediate submip solution to population");
+      const auto& solution = solution_vector[i];
       solution_t<i_t, f_t> sol(offspring);
       rmm::device_uvector<f_t> fixed_assignment(solution.size(),
                                                 offspring.handle_ptr->get_stream());
@@ -159,7 +170,10 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
                  solution.size(),
                  offspring.handle_ptr->get_stream());
       fixed_problem.post_process_assignment(fixed_assignment, false);
+      rmm::device_uvector<f_t> dummy(0, offspring.handle_ptr->get_stream());
+      scaling.unscale_solutions(fixed_assignment, dummy);
       sol.unfix_variables(fixed_assignment, variable_map);
+      sol.clamp_within_bounds();  // Scaling might bring some very slight variable bound violations
       sol.compute_feasibility();
       cuopt_func_call(sol.test_variable_bounds());
       population.add_solution(std::move(sol));

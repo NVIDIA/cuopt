@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Full production-ready CuOpt NIMService configuration
+apiVersion: apps.nvidia.com/v1alpha1
+kind: NIMService
+metadata:
+  name: cuopt-service
+  namespace: nim-service
+spec:
+  image:
+    repository: nvcr.io/nvidia/cuopt/cuopt
+    tag: "25.12.0-cuda12.9-py3.13"
+    pullPolicy: IfNotPresent
+    pullSecrets:
+      - ngc-secret
+  authSecret: ngc-api-secret
+  env:
+    - name: CUOPT_DATA_DIR
+      value: /model-store
+    - name: CUOPT_SERVER_LOG_LEVEL
+      value: info
+    - name: CUOPT_SERVER_PORT
+      value: "8000"
+  storage:
+    pvc:
+      create: true
+      size: 20Gi
+      storageClass: "fast-ssd"
+      volumeAccessMode: "ReadWriteOnce"
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+      memory: "32Gi"
+    requests:
+      memory: "16Gi"
+  expose:
+    service:
+      type: ClusterIP
+      port: 8000
+    ingress:
+      enabled: true
+      spec:
+        ingressClassName: nginx
+        tls:
+          - hosts:
+              - cuopt.example.com
+            secretName: cuopt-tls-secret
+        rules:
+          - host: cuopt.example.com
+            http:
+              paths:
+              - backend:
+                  service:
+                    name: cuopt-service
+                    port:
+                      number: 8000
+                path: /
+                pathType: Prefix
+  metrics:
+    enabled: true
+    serviceMonitor:
+      additionalLabels:
+        release: kube-prometheus-stack
+  scale:
+    enabled: false
+  livenessProbe:
+    enabled: true
+    probe:
+      failureThreshold: 3
+      httpGet:
+        path: /v2/health/live
+        port: api
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 1
+  readinessProbe:
+    enabled: true
+    probe:
+      failureThreshold: 30
+      httpGet:
+        path: /v2/health/ready
+        port: api
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 1

@@ -1,17 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import os
 
@@ -21,6 +9,12 @@ import msgpack
 from cuopt.linear_programming import solver_settings
 from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_INFEASIBILITY_DETECTION,
+    CUOPT_METHOD,
+    CUOPT_PDLP_SOLVER_MODE,
+)
+from cuopt.linear_programming.solver_settings import (
+    PDLPSolverMode,
+    SolverMethod,
 )
 
 from cuopt_server.tests.utils.utils import cuoptproc  # noqa
@@ -42,6 +36,8 @@ def test_warmstart(cuoptproc):  # noqa
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-4)
     settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
+    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
     data["solver_config"] = settings.toDict()
 
     headers = {"CLIENT-VERSION": "custom"}

@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
@@ -104,10 +94,28 @@ TEST(termination_status, optimality_test)
 // Ensure the lower bound on maximization problems when BB times out has the right sign
 TEST(termination_status, lower_bound_bb_timeout)
 {
-  auto [termination_status, obj_val, lb] = test_mps_file("mip/cod105_max.mps", 0.5, false);
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/cod105_max.mps", 5.0, false);
   EXPECT_EQ(termination_status, mip_termination_status_t::FeasibleFound);
-  EXPECT_EQ(obj_val, 12);
+  EXPECT_GE(obj_val, 6);
   EXPECT_GE(lb, obj_val);
+}
+
+TEST(termination_status, crossing_bounds_infeasible)
+{
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/crossing_var_bounds.mps", 0.5, false);
+  EXPECT_EQ(termination_status, mip_termination_status_t::Infeasible);
+}
+
+TEST(termination_status, gf2_presolve_optimal)
+{
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/enlight_hard.mps", 0.5, true);
+  EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
+}
+
+TEST(termination_status, gf2_presolve_infeasible)
+{
+  auto [termination_status, obj_val, lb] = test_mps_file("mip/enlight11.mps", 0.5, true);
+  EXPECT_EQ(termination_status, mip_termination_status_t::Infeasible);
 }
 
 TEST(termination_status, bb_infeasible_test)

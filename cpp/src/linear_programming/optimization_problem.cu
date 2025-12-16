@@ -1,25 +1,17 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <mps_parser/data_model_view.hpp>
+#include <mps_parser/writer.hpp>
+#include <utilities/logger.hpp>
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <mip/mip_constants.hpp>
+#include <utilities/copy_helpers.hpp>
 
 #include <raft/common/nvtx.hpp>
 #include <raft/util/cuda_utils.cuh>
@@ -139,6 +131,74 @@ template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::set_objective_offset(f_t objective_offset)
 {
   objective_offset_ = objective_offset;
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
+  const f_t* Q_values,
+  i_t size_values,
+  const i_t* Q_indices,
+  i_t size_indices,
+  const i_t* Q_offsets,
+  i_t size_offsets,
+  bool validate_positive_semi_definite)
+{
+  cuopt_expects(Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
+  cuopt_expects(
+    size_values > 0, error_type_t::ValidationError, "size_values must be greater than 0");
+
+  if (size_indices != 0) {
+    cuopt_expects(Q_indices != nullptr, error_type_t::ValidationError, "Q_indices cannot be null");
+  }
+
+  if (size_offsets != 0) {
+    cuopt_expects(Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
+  }
+
+  // Replace Q with Q + Q^T
+  i_t qn    = size_offsets - 1;  // Number of variables
+  i_t q_nnz = size_indices;
+  Q_offsets_.resize(qn + 1);
+  std::fill(Q_offsets_.begin(), Q_offsets_.end(), 0);
+  Q_indices_.reserve(2 * q_nnz);
+  Q_values_.reserve(2 * q_nnz);
+
+  // TODO: This is very inefficient for large Q matrices
+  // Build a map from (row,col) to value for Q+Q^T
+  std::map<std::pair<i_t, i_t>, f_t> Q_map;
+  for (i_t row = 0; row < qn; ++row) {
+    size_t start = Q_offsets[row];
+    size_t end   = Q_offsets[row + 1];
+    for (size_t idx = start; idx < end; ++idx) {
+      i_t col = Q_indices[idx];
+      f_t val = Q_values[idx];
+      auto ij = std::make_pair(row, col);
+      auto ji = std::make_pair(col, row);
+      Q_map[ij] += val;
+      Q_map[ji] += val;
+    }
+  }
+
+  // Write map into CSR format (rows are built in key order, so each row's columns are sorted)
+  for (i_t row = 0; row < qn; ++row) {
+    for (auto it = Q_map.lower_bound(std::make_pair(row, 0));
+         it != Q_map.upper_bound(std::make_pair(row, std::numeric_limits<i_t>::max()));
+         ++it) {
+      i_t col = it->first.second;
+      f_t v   = it->second;
+      if (v != 0.0) {
+        Q_indices_.push_back(col);
+        Q_values_.push_back(v);
+        Q_offsets_[row + 1]++;
+      }
+    }
+  }
+  // Convert Q_offsets_new to cumulative sum
+  for (i_t i = 0; i < qn; ++i) {
+    Q_offsets_[i + 1] += Q_offsets_[i];
+  }
+
+  // FIX ME:: check for positive semi definite matrix
 }
 
 template <typename i_t, typename f_t>
@@ -273,6 +333,20 @@ i_t optimization_problem_t<i_t, f_t>::get_nnz() const
 }
 
 template <typename i_t, typename f_t>
+i_t optimization_problem_t<i_t, f_t>::get_n_integers() const
+{
+  i_t n_integers = 0;
+  if (get_n_variables() != 0) {
+    auto enum_variable_types = cuopt::host_copy(get_variable_types());
+
+    for (size_t i = 0; i < enum_variable_types.size(); ++i) {
+      if (enum_variable_types[i] == var_t::INTEGER) { n_integers++; }
+    }
+  }
+  return n_integers;
+}
+
+template <typename i_t, typename f_t>
 raft::handle_t const* optimization_problem_t<i_t, f_t>::get_handle_ptr() const noexcept
 {
   return handle_ptr_;
@@ -351,6 +425,24 @@ template <typename i_t, typename f_t>
 f_t optimization_problem_t<i_t, f_t>::get_objective_offset() const
 {
   return objective_offset_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<f_t>& optimization_problem_t<i_t, f_t>::get_quadratic_objective_values() const
+{
+  return Q_values_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<i_t>& optimization_problem_t<i_t, f_t>::get_quadratic_objective_indices() const
+{
+  return Q_indices_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<i_t>& optimization_problem_t<i_t, f_t>::get_quadratic_objective_offsets() const
+{
+  return Q_offsets_;
 }
 
 template <typename i_t, typename f_t>
@@ -490,6 +582,181 @@ void optimization_problem_t<i_t, f_t>::set_maximize(bool _maximize)
   maximize_ = _maximize;
 }
 
+template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_path)
+{
+  cuopt::mps_parser::data_model_view_t<i_t, f_t> data_model_view;
+
+  // Set optimization sense
+  data_model_view.set_maximize(get_sense());
+
+  // Copy to host
+  auto constraint_matrix_values  = cuopt::host_copy(get_constraint_matrix_values());
+  auto constraint_matrix_indices = cuopt::host_copy(get_constraint_matrix_indices());
+  auto constraint_matrix_offsets = cuopt::host_copy(get_constraint_matrix_offsets());
+  auto constraint_bounds         = cuopt::host_copy(get_constraint_bounds());
+  auto objective_coefficients    = cuopt::host_copy(get_objective_coefficients());
+  auto variable_lower_bounds     = cuopt::host_copy(get_variable_lower_bounds());
+  auto variable_upper_bounds     = cuopt::host_copy(get_variable_upper_bounds());
+  auto constraint_lower_bounds   = cuopt::host_copy(get_constraint_lower_bounds());
+  auto constraint_upper_bounds   = cuopt::host_copy(get_constraint_upper_bounds());
+  auto row_types                 = cuopt::host_copy(get_row_types());
+
+  // Set constraint matrix in CSR format
+  if (get_nnz() != 0) {
+    data_model_view.set_csr_constraint_matrix(constraint_matrix_values.data(),
+                                              constraint_matrix_values.size(),
+                                              constraint_matrix_indices.data(),
+                                              constraint_matrix_indices.size(),
+                                              constraint_matrix_offsets.data(),
+                                              constraint_matrix_offsets.size());
+  }
+
+  // Set constraint bounds (RHS)
+  if (get_n_constraints() != 0) {
+    data_model_view.set_constraint_bounds(constraint_bounds.data(), constraint_bounds.size());
+  }
+
+  // Set objective coefficients
+  if (get_n_variables() != 0) {
+    data_model_view.set_objective_coefficients(objective_coefficients.data(),
+                                               objective_coefficients.size());
+  }
+
+  // Set objective scaling and offset
+  data_model_view.set_objective_scaling_factor(get_objective_scaling_factor());
+  data_model_view.set_objective_offset(get_objective_offset());
+
+  // Set variable bounds
+  if (get_n_variables() != 0) {
+    data_model_view.set_variable_lower_bounds(variable_lower_bounds.data(),
+                                              variable_lower_bounds.size());
+    data_model_view.set_variable_upper_bounds(variable_upper_bounds.data(),
+                                              variable_upper_bounds.size());
+  }
+
+  // Set row types (constraint types)
+  if (get_row_types().size() != 0) {
+    data_model_view.set_row_types(row_types.data(), row_types.size());
+  }
+
+  // Set constraint bounds (lower and upper)
+  if (get_constraint_lower_bounds().size() != 0 && get_constraint_upper_bounds().size() != 0) {
+    data_model_view.set_constraint_lower_bounds(constraint_lower_bounds.data(),
+                                                constraint_lower_bounds.size());
+    data_model_view.set_constraint_upper_bounds(constraint_upper_bounds.data(),
+                                                constraint_upper_bounds.size());
+  }
+
+  // Create a temporary vector to hold the converted variable types
+  std::vector<char> variable_types(get_n_variables());
+  // Set variable types (convert from enum to char)
+  if (get_n_variables() != 0) {
+    auto enum_variable_types = cuopt::host_copy(get_variable_types());
+
+    // Convert enum types to char types
+    for (size_t i = 0; i < variable_types.size(); ++i) {
+      variable_types[i] = (enum_variable_types[i] == var_t::INTEGER) ? 'I' : 'C';
+    }
+
+    data_model_view.set_variable_types(variable_types.data(), variable_types.size());
+  }
+
+  // Set problem and variable names if available
+  if (!get_problem_name().empty()) { data_model_view.set_problem_name(get_problem_name()); }
+
+  if (!get_objective_name().empty()) { data_model_view.set_objective_name(get_objective_name()); }
+
+  if (!get_variable_names().empty()) { data_model_view.set_variable_names(get_variable_names()); }
+
+  if (!get_row_names().empty()) { data_model_view.set_row_names(get_row_names()); }
+
+  cuopt::mps_parser::write_mps(data_model_view, mps_file_path);
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::print_scaling_information() const
+{
+  std::vector<f_t> constraint_matrix_values = cuopt::host_copy(get_constraint_matrix_values());
+  std::vector<f_t> constraint_rhs           = cuopt::host_copy(get_constraint_bounds());
+  std::vector<f_t> objective_coefficients   = cuopt::host_copy(get_objective_coefficients());
+  std::vector<f_t> variable_lower_bounds    = cuopt::host_copy(get_variable_lower_bounds());
+  std::vector<f_t> variable_upper_bounds    = cuopt::host_copy(get_variable_upper_bounds());
+  std::vector<f_t> constraint_lower_bounds  = cuopt::host_copy(get_constraint_lower_bounds());
+  std::vector<f_t> constraint_upper_bounds  = cuopt::host_copy(get_constraint_upper_bounds());
+
+  auto findMaxAbs = [](const std::vector<f_t>& vec) -> f_t {
+    if (vec.empty()) { return 0.0; }
+    const f_t inf = std::numeric_limits<f_t>::infinity();
+
+    const size_t sz = vec.size();
+    f_t max_abs_val = 0.0;
+    for (size_t i = 0; i < sz; ++i) {
+      const f_t val = std::abs(vec[i]);
+      if (val < inf) { max_abs_val = std::max(max_abs_val, val); }
+    }
+    return max_abs_val;
+  };
+
+  auto findMinAbs = [](const std::vector<f_t>& vec) -> f_t {
+    if (vec.empty()) { return 0.0; }
+    const size_t sz = vec.size();
+    const f_t inf   = std::numeric_limits<f_t>::infinity();
+    f_t min_abs_val = inf;
+    for (size_t i = 0; i < sz; ++i) {
+      const f_t val = std::abs(vec[i]);
+      if (val > 0.0) { min_abs_val = std::min(min_abs_val, val); }
+    }
+    return min_abs_val < inf ? min_abs_val : 0.0;
+  };
+
+  f_t A_max          = findMaxAbs(constraint_matrix_values);
+  f_t A_min          = findMinAbs(constraint_matrix_values);
+  f_t b_max          = findMaxAbs(constraint_rhs);
+  f_t b_min          = findMinAbs(constraint_rhs);
+  f_t c_max          = findMaxAbs(objective_coefficients);
+  f_t c_min          = findMinAbs(objective_coefficients);
+  f_t x_lower_max    = findMaxAbs(variable_lower_bounds);
+  f_t x_lower_min    = findMinAbs(variable_lower_bounds);
+  f_t x_upper_max    = findMaxAbs(variable_upper_bounds);
+  f_t x_upper_min    = findMinAbs(variable_upper_bounds);
+  f_t cstr_lower_max = findMaxAbs(constraint_lower_bounds);
+  f_t cstr_lower_min = findMinAbs(constraint_lower_bounds);
+  f_t cstr_upper_max = findMaxAbs(constraint_upper_bounds);
+  f_t cstr_upper_min = findMinAbs(constraint_upper_bounds);
+
+  f_t rhs_max = std::max(b_max, std::max(cstr_lower_max, cstr_upper_max));
+  f_t rhs_min = std::min(b_min, std::min(cstr_lower_min, cstr_upper_min));
+
+  f_t bound_max = std::max(x_upper_max, x_lower_max);
+  f_t bound_min = std::min(x_upper_min, x_lower_min);
+
+  CUOPT_LOG_INFO("Problem scaling:");
+  CUOPT_LOG_INFO("Objective coefficents range:          [%.0e, %.0e]", c_min, c_max);
+  CUOPT_LOG_INFO("Constraint matrix coefficients range: [%.0e, %.0e]", A_min, A_max);
+  CUOPT_LOG_INFO("Constraint rhs / bounds range:        [%.0e, %.0e]", rhs_min, rhs_max);
+  CUOPT_LOG_INFO("Variable bounds range:                [%.0e, %.0e]", bound_min, bound_max);
+
+  auto safelog10 = [](f_t x) { return x > 0 ? std::log10(x) : 0.0; };
+
+  f_t obj_range   = safelog10(c_max) - safelog10(c_min);
+  f_t A_range     = safelog10(A_max) - safelog10(A_min);
+  f_t rhs_range   = safelog10(rhs_max) - safelog10(rhs_min);
+  f_t bound_range = safelog10(bound_max) - safelog10(bound_min);
+
+  if (obj_range >= 6.0 || A_range >= 6.0 || rhs_range >= 6.0 || bound_range >= 6.0) {
+    CUOPT_LOG_INFO(
+      "Warning: input problem contains a large range of coefficients: consider reformulating to "
+      "avoid numerical difficulties.");
+  }
+  CUOPT_LOG_INFO("");
+}
+
+template <typename i_t, typename f_t>
+bool optimization_problem_t<i_t, f_t>::has_quadratic_objective() const
+{
+  return !Q_values_.empty();
+}
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
 #if MIP_INSTANTIATE_FLOAT
 template class optimization_problem_t<int, float>;

@@ -1,25 +1,16 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
+/* clang-format on */
 
 #include <cuopt/error.hpp>
 
 #include "feasibility_jump.cuh"
 #include "feasibility_jump_kernels.cuh"
 
+#include <mip/diversity/population.cuh>
 #include <mip/mip_constants.hpp>
 #include <mip/utils.cuh>
 #include <utilities/seed_generator.cuh>
@@ -75,12 +66,18 @@ fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_, fj_settings_t in_
 {
   setval_launch_dims = get_launch_dims_max_occupancy(
     (void*)update_assignment_kernel<i_t, f_t>, TPB_setval, pb_ptr->handle_ptr);
-  resetmoves_launch_dims = get_launch_dims_max_occupancy(
-    (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED>, TPB_resetmoves, pb_ptr->handle_ptr);
-  resetmoves_bin_launch_dims =
-    get_launch_dims_max_occupancy((void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED, true>,
-                                  TPB_resetmoves,
+  update_changed_constraints_launch_dims =
+    get_launch_dims_max_occupancy((void*)update_changed_constraints_kernel<i_t, f_t>,
+                                  TPB_update_changed_constraints,
                                   pb_ptr->handle_ptr);
+  resetmoves_launch_dims = get_launch_dims_max_occupancy(
+    (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED>,
+    TPB_resetmoves,
+    pb_ptr->handle_ptr);
+  resetmoves_bin_launch_dims = get_launch_dims_max_occupancy(
+    (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>,
+    TPB_resetmoves,
+    pb_ptr->handle_ptr);
   update_weights_launch_dims = get_launch_dims_max_occupancy(
     (void*)handle_local_minimum_kernel<i_t, f_t>, TPB_localmin, pb_ptr->handle_ptr);
   lift_move_launch_dims = get_launch_dims_max_occupancy(
@@ -145,6 +142,10 @@ void fj_t<i_t, f_t>::randomize_weights(const raft::handle_t* handle_ptr)
   f_t h_max_weight = *std::max_element(h_cstr_vec.begin(), h_cstr_vec.end());
   max_cstr_weight.set_value_async(h_max_weight, handle_ptr->get_stream());
   raft::copy(cstr_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
+  raft::copy(
+    cstr_left_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
+  raft::copy(
+    cstr_right_weights.data(), h_cstr_vec.data(), h_cstr_vec.size(), handle_ptr->get_stream());
   handle_ptr->sync_stream();
 }
 
@@ -291,8 +292,8 @@ void fj_t<i_t, f_t>::device_init(const rmm::cuda_stream_view& stream)
 
                      cuopt_assert(var_idx < pb.is_binary_variable.size(), "");
                      if (pb.is_binary_variable[var_idx]) {
-                       cuopt_assert(pb.variable_lower_bounds[var_idx] == 0 &&
-                                      pb.variable_upper_bounds[var_idx] == 1,
+                       cuopt_assert(get_lower(pb.variable_bounds[var_idx]) == 0 &&
+                                      get_upper(pb.variable_bounds[var_idx]) == 1,
                                     "invalid bounds for binary variable");
                      }
                    });
@@ -392,9 +393,9 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
         incumbent_assignment[var_idx] = round(incumbent_assignment[var_idx]);
       }
       // clamp to bounds
+      auto bounds = pb.variable_bounds[var_idx];
       incumbent_assignment[var_idx] =
-        max(pb.variable_lower_bounds[var_idx],
-            min(pb.variable_upper_bounds[var_idx], incumbent_assignment[var_idx]));
+        max(get_lower(bounds), min(get_upper(bounds), incumbent_assignment[var_idx]));
     });
 
   thrust::for_each(
@@ -643,7 +644,9 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                                      bool use_graph)
 {
   raft::common::nvtx::range scope("run_step_device");
-  auto [grid_setval, blocks_setval]                 = setval_launch_dims;
+  auto [grid_setval, blocks_setval] = setval_launch_dims;
+  auto [grid_update_changed_constraints, blocks_update_changed_constraints] =
+    update_changed_constraints_launch_dims;
   auto [grid_resetmoves, blocks_resetmoves]         = resetmoves_launch_dims;
   auto [grid_resetmoves_bin, blocks_resetmoves_bin] = resetmoves_bin_launch_dims;
   auto [grid_update_weights, blocks_update_weights] = update_weights_launch_dims;
@@ -699,10 +702,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
       data.cub_storage_bytes.resize(compaction_temp_storage_bytes, climber_stream);
     }
 
-    if (use_graph) {
-      cudaGraphCreate(&graph, 0);
-      cudaStreamBeginCapture(climber_stream, cudaStreamCaptureModeThreadLocal);
-    }
+    if (use_graph) { cudaStreamBeginCapture(climber_stream, cudaStreamCaptureModeThreadLocal); }
     for (i_t i = 0; i < (use_graph ? iterations_per_graph : 1); ++i) {
       {
         // related varialbe array has to be dynamically computed each iteration
@@ -716,7 +716,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
         } else {
           if (is_binary_pb) {
             cudaLaunchCooperativeKernel(
-              (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED, true>,
+              (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>,
               grid_resetmoves_bin,
               blocks_resetmoves_bin,
               reset_moves_args,
@@ -724,7 +724,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
               climber_stream);
           } else {
             cudaLaunchCooperativeKernel(
-              (void*)compute_mtm_moves_kernel<i_t, f_t, FJ_MTM_VIOLATED, false>,
+              (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>,
               grid_resetmoves,
               blocks_resetmoves,
               reset_moves_args,
@@ -795,7 +795,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                        climber_stream);
       cudaLaunchKernel((void*)update_changed_constraints_kernel<i_t, f_t>,
                        1,
-                       blocks_setval,
+                       blocks_update_changed_constraints,
                        kernel_args,
                        0,
                        climber_stream);
@@ -868,7 +868,10 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
   for (steps = 0; steps < std::numeric_limits<i_t>::max(); steps += iterations_per_graph) {
     // to actualize time limit
     handle_ptr->sync_stream();
-    if (timer.check_time_limit() || steps >= settings.iteration_limit) { limit_reached = true; }
+    if (timer.check_time_limit() || steps >= settings.iteration_limit ||
+        context.preempt_heuristic_solver_.load()) {
+      limit_reached = true;
+    }
 
 #if !FJ_SINGLE_STEP
     if (steps % 500 == 0)
@@ -1055,6 +1058,7 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
   resize_vectors(solution.handle_ptr);
 
   bool is_initial_feasible = solution.compute_feasibility();
+  auto initial_solution    = solution;
   // if we're in rounding mode, split the time/iteration limit between the first and second stage
   cuopt_assert(settings.parameters.rounding_second_stage_split >= 0 &&
                  settings.parameters.rounding_second_stage_split <= 1,
@@ -1102,6 +1106,7 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
       settings.iteration_limit * settings.parameters.rounding_second_stage_split;
 
     round_remaining_fractionals(solution);
+
     // if time limit exceeded: round all remaining fractionals if any by nearest rounding.
     if (climbers[0]->fractional_variables.set_size.value(handle_ptr->get_stream()) > 0) {
       solution.round_nearest();
@@ -1126,11 +1131,11 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
   bool is_new_feasible = solution.compute_feasibility();
 
   if (is_initial_feasible && !is_new_feasible) {
-    CUOPT_LOG_ERROR(
-      "Feasibility jump caused feasible solution to become infeasible\n"
-      "Best excess is %g",
+    CUOPT_LOG_WARN(
+      "Feasibility jump caused feasible solution to become infeasible: Best excess is %g",
       climbers[0]->best_excess.value(handle_ptr->get_stream()));
-    cuopt_assert(false, "Feasibility jump caused feasible solution to become infeasible");
+    solution.copy_from(initial_solution);
+    cuopt_assert(solution.compute_feasibility(), "Reverted solution should be feasible");
   }
 
   return is_new_feasible;

@@ -1,19 +1,9 @@
+/* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
+/* clang-format on */
 
 #pragma once
 
@@ -21,8 +11,9 @@
 #include <dual_simplex/mip_node.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/types.hpp>
+#include <utilities/omp_helpers.hpp>
 
-#include <mutex>
+#include <omp.h>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -39,6 +30,14 @@ class pseudo_costs_t {
 
   void update_pseudo_costs(mip_node_t<i_t, f_t>* node_ptr, f_t leaf_objective);
 
+  void resize(i_t num_variables)
+  {
+    pseudo_cost_sum_down.resize(num_variables);
+    pseudo_cost_sum_up.resize(num_variables);
+    pseudo_cost_num_down.resize(num_variables);
+    pseudo_cost_num_up.resize(num_variables);
+  }
+
   void initialized(i_t& num_initialized_down,
                    i_t& num_initialized_up,
                    f_t& pseudo_cost_down_avg,
@@ -46,9 +45,7 @@ class pseudo_costs_t {
 
   i_t variable_selection(const std::vector<i_t>& fractional,
                          const std::vector<f_t>& solution,
-                         const std::vector<f_t>& lower,
-                         const std::vector<f_t>& upper,
-                         logger_t& log) const;
+                         logger_t& log);
 
   void update_pseudo_costs_from_strong_branching(const std::vector<i_t>& fractional,
                                                  const std::vector<f_t>& root_soln);
@@ -59,8 +56,8 @@ class pseudo_costs_t {
   std::vector<f_t> strong_branch_down;
   std::vector<f_t> strong_branch_up;
 
-  std::mutex strong_branches_completed;
-  i_t num_strong_branches_completed = 0;
+  omp_mutex_t mutex;
+  omp_atomic_t<i_t> num_strong_branches_completed = 0;
 };
 
 template <typename i_t, typename f_t>

@@ -1,20 +1,11 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.  # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
+
+import copy
 from enum import Enum
 
+import cuopt_mps_parser
 import numpy as np
 
 import cuopt.linear_programming.data_model as data_model
@@ -44,7 +35,7 @@ class CType(str, Enum):
     Constraint Sense Types can be directly used as a constant.
     LE is CType.LE
     GE is CType.GE
-    EQ is CType EQ
+    EQ is CType.EQ
     """
 
     LE = "L"
@@ -78,7 +69,7 @@ class Variable:
     cuOpt variable object initialized with details of the variable
     such as lower bound, upper bound, type and name.
     Variables are always associated with a problem and can be
-    created using problem.addVariable (See problem class).
+    created using :py:meth:`Problem.addVariable`.
 
     Parameters
     ----------
@@ -242,6 +233,17 @@ class Variable:
         match other:
             case int() | float():
                 return LinearExpression([self], [float(other)], 0.0)
+            case Variable():
+                return QuadraticExpression([self], [other], [1.0], [], [], 0.0)
+            case LinearExpression():
+                qvars1 = [self] * len(other.vars)
+                qvars2 = other.vars
+                qcoeffs = other.coefficients
+                vars = [self]
+                coeffs = [other.constant]
+                return QuadraticExpression(
+                    qvars1, qvars2, qcoeffs, vars, coeffs, 0.0
+                )
             case _:
                 raise ValueError(
                     "Cannot multiply type %s with variable"
@@ -286,6 +288,397 @@ class Variable:
                 return Constraint(expr, EQ, 0.0)
             case _:
                 raise ValueError("Unsupported operation")
+
+
+class QuadraticExpression:
+    """
+    QuadraticExpressions contain quadratic terms, linear terms, and a constant.
+    QuadraticExpressions can be used to create quadratic objectives in
+    the Problem.
+    QuadraticExpressions can be added and subtracted with other
+    QuadraticExpressions, LinearExpressions, and Variables, and can also
+    be multiplied and divided by scalars.
+
+    Parameters
+    ----------
+    qvars1 : List[Variable]
+        List of first variables for quadratic terms.
+    qvars2 : List[Variable]
+        List of second variables for quadratic terms.
+    qcoefficients : List[float]
+        List of coefficients for the quadratic terms.
+    vars : List[Variable]
+        List of Variables for linear terms.
+    coefficients : List[float]
+        List of coefficients for linear terms.
+    constant : float
+        Constant of the quadratic expression.
+
+    Examples
+    --------
+    >>> x = problem.addVariable()
+    >>> y = problem.addVariable()
+    >>> # Create x^2 + 2*x*y + 3*x + 4
+    >>> quad_expr = QuadraticExpression(
+    ...     [x, x], [x, y], [1.0, 2.0],
+    ...     [x], [3.0], 4.0
+    ... )
+    """
+
+    def __init__(
+        self, qvars1, qvars2, qcoefficients, vars, coefficients, constant
+    ):
+        self.qvars1 = qvars1
+        self.qvars2 = qvars2
+        self.qcoefficients = qcoefficients
+        self.vars = vars
+        self.coefficients = coefficients
+        self.constant = constant
+
+    def getVariables(self):
+        """
+        Returns all the quadractic variables in the expression as list
+        of tuples containing Variable 1 and Variable 2 for each term.
+        """
+        return list(zip(self.qvars1, self.qvars2))
+
+    def getVariable1(self, i):
+        """
+        Gets first Variable at ith index in the quadratic term.
+        """
+        return self.qvars1[i]
+
+    def getVariable2(self, i):
+        """
+        Gets second Variable at ith index in the quadratic term.
+        """
+        return self.qvars2[i]
+
+    def getCoefficients(self):
+        """
+        Returns all the coefficients of the quadratic term.
+        """
+        return self.qcoefficients
+
+    def getCoefficient(self, i):
+        """
+        Gets the coefficient of the quadratic term at ith index.
+        """
+        return self.qcoefficients[i]
+
+    def getLinearExpression(self):
+        """
+        Returns the Linear Expression associated with the
+        Quadratic Expression.
+        """
+        return LinearExpression(self.vars, self.coefficients, self.constant)
+
+    def getValue(self):
+        """
+        Returns the value of the expression computed with the
+        current solution.
+        """
+        value = 0.0
+        for i, var in enumerate(self.vars):
+            value += var.Value * self.coefficients[i]
+        for i, (var1, var2) in enumerate(self.getVariables()):
+            value += var1.Value * var2.Value * self.qcoefficients[i]
+        return value + self.constant
+
+    def __len__(self):
+        return len(self.vars) + len(self.qvars1)
+
+    def __iadd__(self, other):
+        # Compute expr1 += expr2
+        match other:
+            case int() | float():
+                # Update just the constant value
+                self.constant += float(other)
+                return self
+            case Variable():
+                # Append just a variable with coefficient 1.0
+                self.vars.append(other)
+                self.coefficients.append(1.0)
+                return self
+            case LinearExpression():
+                # Append all linear variables, coefficients and constants
+                self.vars.extend(other.vars)
+                self.coefficients.extend(other.coefficients)
+                self.constant += other.constant
+                return self
+            case QuadraticExpression():
+                # Append all quadratic variables, coefficients and constants
+                self.vars.extend(other.vars)
+                self.coefficients.extend(other.coefficients)
+                self.constant += other.constant
+                self.qvars2.extend(other.qvars2)
+                self.qvars1.extend(other.qvars1)
+                self.qcoefficients.extend(other.qcoefficients)
+                return self
+            case _:
+                raise ValueError(
+                    "Can't add type %s to Quadratic Expression"
+                    % type(other).__name__
+                )
+
+    def __add__(self, other):
+        # Compute expr3 = expr1 + expr2
+        match other:
+            case int() | float():
+                # Update just the constant value
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    self.qcoefficients,
+                    self.vars,
+                    self.coefficients,
+                    self.constant + float(other),
+                )
+            case Variable():
+                # Append just a variable with coefficient 1.0
+                vars = self.vars + [other]
+                coeffs = self.coefficients + [1.0]
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    self.qcoefficients,
+                    vars,
+                    coeffs,
+                    self.constant,
+                )
+            case LinearExpression():
+                # Append all linear variables, coefficients and constants
+                vars = self.vars + other.vars
+                coeffs = self.coefficients + other.coefficients
+                constant = self.constant + other.constant
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    self.qcoefficients,
+                    vars,
+                    coeffs,
+                    constant,
+                )
+            case QuadraticExpression():
+                # Append all quadratic variables, coefficients and constants
+                qvars1 = self.qvars1 + other.qvars1
+                qvars2 = self.qvars2 + other.qvars2
+                qcoeffs = self.qcoefficients + other.qcoefficients
+                vars = self.vars + other.vars
+                coeffs = self.coefficients + other.coefficients
+                constant = self.constant + other.constant
+                return QuadraticExpression(
+                    qvars1, qvars2, qcoeffs, vars, coeffs, constant
+                )
+            case _:
+                raise ValueError(
+                    "Can't add type %s to Quadratic Expression"
+                    % type(other).__name__
+                )
+
+    def __radd__(self, other):
+        return self + other
+
+    def __isub__(self, other):
+        # Compute expr1 -= expr2
+        match other:
+            case int() | float():
+                # Update just the constant value
+                self.constant -= float(other)
+                return self
+            case Variable():
+                # Append just a variable with coefficient -1.0
+                self.vars.append(other)
+                self.coefficients.append(-1.0)
+                return self
+            case LinearExpression():
+                # Append all linear variables, coefficients and constants
+                self.vars.extend(other.vars)
+                for coeff in other.coefficients:
+                    self.coefficients.append(-coeff)
+                self.constant -= other.constant
+                return self
+            case QuadraticExpression():
+                # Append all quadratic variables, coefficients and constants
+                self.vars.extend(other.vars)
+                for coeff in other.coefficients:
+                    self.coefficients.append(-coeff)
+                self.constant -= other.constant
+                self.qvars2.extend(other.qvars2)
+                self.qvars1.extend(other.qvars1)
+                for qcoeff in other.qcoefficients:
+                    self.qcoefficients.append(-qcoeff)
+                return self
+            case _:
+                raise ValueError(
+                    "Can't sub type %s from Quadratic Expression"
+                    % type(other).__name__
+                )
+
+    def __sub__(self, other):
+        # Compute expr3 = expr1 - expr2
+        match other:
+            case int() | float():
+                # Update just the constant value
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    self.qcoefficients,
+                    self.vars,
+                    self.coefficients,
+                    self.constant - float(other),
+                )
+            case Variable():
+                # Append just a variable with coefficient -1.0
+                vars = self.vars + [other]
+                coeffs = self.coefficients + [-1.0]
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    self.qcoefficients,
+                    vars,
+                    coeffs,
+                    self.constant,
+                )
+            case LinearExpression():
+                # Append all linear variables, coefficients and constants
+                vars = self.vars + other.vars
+                coeffs = []
+                for i in self.coefficients:
+                    coeffs.append(i)
+                for i in other.coefficients:
+                    coeffs.append(-1.0 * i)
+                constant = self.constant - other.constant
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    self.qcoefficients,
+                    vars,
+                    coeffs,
+                    constant,
+                )
+            case QuadraticExpression():
+                # Append all quadratic variables, coefficients and constants
+                vars = self.vars + other.vars
+                coeffs = []
+                for i in self.coefficients:
+                    coeffs.append(i)
+                for i in other.coefficients:
+                    coeffs.append(-1.0 * i)
+                constant = self.constant - other.constant
+                qvars1 = self.qvars1 + other.qvars1
+                qvars2 = self.qvars2 + other.qvars2
+                qcoeffs = []
+                for i in self.qcoefficients:
+                    qcoeffs.append(i)
+                for i in other.qcoefficients:
+                    qcoeffs.append(-1.0 * i)
+                return QuadraticExpression(
+                    qvars1, qvars2, qcoeffs, vars, coeffs, constant
+                )
+            case _:
+                raise ValueError(
+                    "Can't sub type %s from Quadratic Expression"
+                    % type(other).__name__
+                )
+
+    def __rsub__(self, other):
+        # other - self  -> other + self * -1.0
+        return other + self * -1.0
+
+    def __imul__(self, other):
+        # Compute expr *= constant
+        match other:
+            case int() | float():
+                self.coefficients = [
+                    coeff * float(other) for coeff in self.coefficients
+                ]
+                self.constant = self.constant * float(other)
+                self.qcoefficients = [
+                    qcoeff * float(other) for qcoeff in self.qcoefficients
+                ]
+                return self
+            case _:
+                raise ValueError(
+                    "Can't multiply type %s by QuadraticExpresson"
+                    % type(other).__name__
+                )
+
+    def __mul__(self, other):
+        # Compute expr2 = expr1 * constant
+        match other:
+            case int() | float():
+                coeffs = [coeff * float(other) for coeff in self.coefficients]
+                qcoeffs = [
+                    qcoeff * float(other) for qcoeff in self.qcoefficients
+                ]
+                constant = self.constant * float(other)
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    qcoeffs,
+                    self.vars,
+                    coeffs,
+                    constant,
+                )
+            case _:
+                raise ValueError(
+                    "Can't multiply type %s by QuadraticExpresson"
+                    % type(other).__name__
+                )
+
+    def __rmul__(self, other):
+        return self * other
+
+    def __itruediv__(self, other):
+        # Compute expr /= constant
+        match other:
+            case int() | float():
+                self.coefficients = [
+                    qcoeff / float(other) for qcoeff in self.coefficients
+                ]
+                self.qcoefficients = [
+                    coeff / float(other) for coeff in self.qcoefficients
+                ]
+                self.constant = self.constant / float(other)
+                return self
+            case _:
+                raise ValueError(
+                    "Can't divide QuadraticExpression by type %s"
+                    % type(other).__name__
+                )
+
+    def __truediv__(self, other):
+        # Compute expr2 = expr1 / constant
+        match other:
+            case int() | float():
+                coeffs = [coeff / float(other) for coeff in self.coefficients]
+                qcoeffs = [
+                    qcoeff / float(other) for qcoeff in self.qcoefficients
+                ]
+                constant = self.constant / float(other)
+                return QuadraticExpression(
+                    self.qvars1,
+                    self.qvars2,
+                    qcoeffs,
+                    self.vars,
+                    coeffs,
+                    constant,
+                )
+            case _:
+                raise ValueError(
+                    "Can't divide LinearExpression by type %s"
+                    % type(other).__name__
+                )
+
+    def __le__(self, other):
+        raise Exception("Quadratic constraints not supported")
+
+    def __ge__(self, other):
+        raise Exception("Quadratic constraints not supported")
+
+    def __eq__(self, other):
+        raise Exception("Quadratic constraints not supported")
 
 
 class LinearExpression:
@@ -380,6 +773,8 @@ class LinearExpression:
                 self.coefficients.extend(other.coefficients)
                 self.constant += other.constant
                 return self
+            case QuadraticExpression():
+                return other + self
             case _:
                 raise ValueError(
                     "Can't add type %s to Linear Expression"
@@ -405,6 +800,13 @@ class LinearExpression:
                 coeffs = self.coefficients + other.coefficients
                 constant = self.constant + other.constant
                 return LinearExpression(vars, coeffs, constant)
+            case QuadraticExpression():
+                return other + self
+            case _:
+                raise ValueError(
+                    "Can't add type %s to Linear Expression"
+                    % type(other).__name__
+                )
 
     def __radd__(self, other):
         return self + other
@@ -428,6 +830,8 @@ class LinearExpression:
                     self.coefficients.append(-coeff)
                 self.constant -= other.constant
                 return self
+            case QuadraticExpression():
+                return other * -1 + self
             case _:
                 raise ValueError(
                     "Can't sub type %s from LinearExpression"
@@ -457,13 +861,20 @@ class LinearExpression:
                     coeffs.append(-1.0 * i)
                 constant = self.constant - other.constant
                 return LinearExpression(vars, coeffs, constant)
+            case QuadraticExpression():
+                return other * -1 + self
+            case _:
+                raise ValueError(
+                    "Can't sub type %s from LinearExpression"
+                    % type(other).__name__
+                )
 
     def __rsub__(self, other):
         # other - self  -> other + self * -1.0
-        return other + self * -1.0
+        return self * -1.0 + other
 
     def __imul__(self, other):
-        # Compute expr *= constant
+        # Compute expr *= other
         match other:
             case int() | float():
                 self.coefficients = [
@@ -471,6 +882,25 @@ class LinearExpression:
                 ]
                 self.constant = self.constant * float(other)
                 return self
+            case Variable():
+                return other * self
+            case LinearExpression():
+                qvars1, qvars2, qcoeffs = [], [], []
+                for i in range(len(self.vars)):
+                    for j in range(len(other.vars)):
+                        qvars1.append(self.vars[i])
+                        qvars2.append(other.vars[j])
+                        qcoeffs.append(
+                            self.coefficients[i] * other.coefficients[j]
+                        )
+                vars = self.vars + other.vars
+                coeffs = [other.constant * i for i in self.coefficients] + [
+                    self.constant * i for i in other.coefficients
+                ]
+                constant = self.constant * other.constant
+                return QuadraticExpression(
+                    qvars1, qvars2, qcoeffs, vars, coeffs, constant
+                )
             case _:
                 raise ValueError(
                     "Can't multiply type %s by LinearExpresson"
@@ -484,14 +914,28 @@ class LinearExpression:
                 coeffs = [coeff * float(other) for coeff in self.coefficients]
                 constant = self.constant * float(other)
                 return LinearExpression(self.vars, coeffs, constant)
-            case _:
-                raise ValueError(
-                    "Can't multiply type %s by LinearExpresson"
-                    % type(other).__name__
+            case LinearExpression():
+                qvars1, qvars2, qcoeffs = [], [], []
+                for i in range(len(self.vars)):
+                    for j in range(len(other.vars)):
+                        qvars1.append(self.vars[i])
+                        qvars2.append(other.vars[j])
+                        qcoeffs.append(
+                            self.coefficients[i] * other.coefficients[j]
+                        )
+                vars = self.vars + other.vars
+                coeffs = [other.constant * i for i in self.coefficients] + [
+                    self.constant * i for i in other.coefficients
+                ]
+                constant = self.constant * other.constant
+                return QuadraticExpression(
+                    qvars1, qvars2, qcoeffs, vars, coeffs, constant
                 )
+            case Variable():
+                return other * self
 
     def __rmul__(self, other):
-        return self * other
+        return other * self
 
     def __itruediv__(self, other):
         # Compute expr /= constant
@@ -555,7 +999,7 @@ class Constraint:
     the sense of the constraint, and the right-hand side of
     the constraint.
     Constraints are associated with a problem and can be
-    created using problem.addConstraint (See problem class).
+    created using :py:meth:`Problem.addConstraint`.
 
     Parameters
     ----------
@@ -694,17 +1138,18 @@ class Problem:
         self.vars = []
         self.constrs = []
         self.ObjSense = MINIMIZE
-        self.Obj = None
         self.ObjConstant = 0.0
         self.Status = -1
         self.ObjValue = float("nan")
+        self.warmstart_data = None
 
+        self.model = None
         self.solved = False
         self.rhs = None
         self.row_sense = None
-        self.row_pointers = None
-        self.column_indicies = None
-        self.values = None
+        self.constraint_csr_matrix = None
+        self.objective_qcsr_matrix = None
+        self.objective_qcoo_matrix = [], [], []
         self.lower_bound = None
         self.upper_bound = None
         self.var_type = None
@@ -713,6 +1158,145 @@ class Problem:
         def __init__(self, mdict):
             for key, value in mdict.items():
                 setattr(self, key, value)
+
+    def _from_data_model(self, dm):
+        self.Name = dm.get_problem_name()
+        obj_coeffs = dm.get_objective_coefficients()
+        obj_constant = dm.get_objective_offset()
+        num_vars = len(obj_coeffs)
+        sense = dm.get_sense()
+        if sense:
+            sense = MAXIMIZE
+        else:
+            sense = MINIMIZE
+        v_lb = dm.get_variable_lower_bounds()
+        v_ub = dm.get_variable_upper_bounds()
+        v_types = dm.get_variable_types()
+        v_names = dm.get_variable_names().tolist()
+
+        # Add all Variables and Objective Coefficients
+        for i in range(num_vars):
+            v_name = ""
+            if v_names:
+                v_name = v_names[i]
+            self.addVariable(v_lb[i], v_ub[i], vtype=v_types[i], name=v_name)
+        vars = self.getVariables()
+        expr = LinearExpression(vars, obj_coeffs, obj_constant)
+        self.setObjective(expr, sense)
+
+        # Add all Constraints
+        c_lb = dm.get_constraint_lower_bounds()
+        c_ub = dm.get_constraint_upper_bounds()
+        c_b = dm.get_constraint_bounds()
+        c_names = dm.get_row_names()
+        offsets = dm.get_constraint_matrix_offsets()
+        indices = dm.get_constraint_matrix_indices()
+        values = dm.get_constraint_matrix_values()
+
+        num_constrs = len(offsets) - 1
+        for i in range(num_constrs):
+            start = offsets[i]
+            end = offsets[i + 1]
+            c_coeffs = values[start:end]
+            c_indices = indices[start:end]
+            c_vars = [vars[j] for j in c_indices]
+            expr = LinearExpression(c_vars, c_coeffs, 0.0)
+            if c_lb[i] == c_ub[i]:
+                self.addConstraint(expr == c_b[i], name=c_names[i])
+            elif c_lb[i] == c_b[i]:
+                self.addConstraint(expr >= c_b[i], name=c_names[i])
+            elif c_ub[i] == c_b[i]:
+                self.addConstraint(expr <= c_b[i], name=c_names[i])
+            else:
+                raise Exception("Couldn't initialize constraints")
+
+    def _to_data_model(self):
+        dm = data_model.DataModel()
+
+        # iterate through the constraints and construct the constraint matrix
+        n = len(self.vars)
+        self.rhs = []
+        self.row_sense = []
+        self.row_names = []
+
+        if self.constraint_csr_matrix is None:
+            csr_dict = {
+                "row_pointers": [0],
+                "column_indices": [],
+                "values": [],
+            }
+            for constr in self.constrs:
+                csr_dict["column_indices"].extend(
+                    list(constr.vindex_coeff_dict.keys())
+                )
+                csr_dict["values"].extend(
+                    list(constr.vindex_coeff_dict.values())
+                )
+                csr_dict["row_pointers"].append(
+                    len(csr_dict["column_indices"])
+                )
+                self.rhs.append(constr.RHS)
+                self.row_sense.append(constr.Sense)
+                constr_name = constr.ConstraintName
+                if constr_name == "":
+                    constr_name = "R" + str(constr.index)
+                self.row_names.append(constr_name)
+            self.constraint_csr_matrix = csr_dict
+
+        else:
+            for constr in self.constrs:
+                self.rhs.append(constr.RHS)
+                self.row_sense.append(constr.Sense)
+
+        self.objective = np.zeros(n)
+        self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
+        self.var_type = np.empty(n, dtype="S1")
+        self.var_names = []
+
+        for j in range(n):
+            self.objective[j] = self.vars[j].getObjectiveCoefficient()
+            self.var_type[j] = self.vars[j].getVariableType()
+            self.lower_bound[j] = self.vars[j].getLowerBound()
+            self.upper_bound[j] = self.vars[j].getUpperBound()
+            var_name = self.vars[j].VariableName
+            if var_name == "":
+                var_name = "C" + str(self.vars[j].index)
+            self.var_names.append(var_name)
+
+        # Initialize datamodel
+        dm.set_csr_constraint_matrix(
+            np.array(self.constraint_csr_matrix["values"]),
+            np.array(self.constraint_csr_matrix["column_indices"]),
+            np.array(self.constraint_csr_matrix["row_pointers"]),
+        )
+        if self.ObjSense == -1:
+            dm.set_maximize(True)
+        dm.set_constraint_bounds(np.array(self.rhs))
+        dm.set_row_types(np.array(self.row_sense, dtype="S1"))
+        dm.set_objective_coefficients(self.objective)
+        dm.set_objective_offset(self.ObjConstant)
+        if self.getQcsr():
+            dm.set_quadratic_objective_matrix(
+                np.array(self.objective_qcsr_matrix["values"]),
+                np.array(self.objective_qcsr_matrix["column_indices"]),
+                np.array(self.objective_qcsr_matrix["row_pointers"]),
+            )
+        dm.set_variable_lower_bounds(self.lower_bound)
+        dm.set_variable_upper_bounds(self.upper_bound)
+        dm.set_variable_types(self.var_type)
+        dm.set_variable_names(self.var_names)
+        dm.set_row_names(self.row_names)
+        dm.set_problem_name(self.Name)
+
+        self.model = dm
+
+    def update(self):
+        """
+        Update the problem. This is mandatory if attributes of
+        existing Variables, Constraints or Objective has been
+        modified.
+        """
+        self.reset_solved_values()
 
     def reset_solved_values(self):
         # Resets all post solve values
@@ -724,7 +1308,12 @@ class Problem:
             constr.Slack = float("nan")
             constr.DualValue = float("nan")
 
+        self.model = None
+        self.constraint_csr_matrix = None
+        self.objective_qcoo_matrix = [], [], []
+        self.objective_qcsr_matrix = None
         self.ObjValue = float("nan")
+        self.warmstart_data = None
         self.solved = False
 
     def addVariable(
@@ -740,10 +1329,15 @@ class Problem:
             Lower bound of the variable. Defaults to  0.
         ub : float
             Upper bound of the variable. Defaults to infinity.
-        vtype : enum
+        vtype : enum :py:class:`VType`
             vtype.CONTINUOUS or vtype.INTEGER. Defaults to CONTINUOUS.
         name : string
             Name of the variable. Optional.
+
+        Returns
+        -------
+        variable : :py:class:`Variable`
+            Variable object added to the problem.
 
         Examples
         --------
@@ -767,7 +1361,7 @@ class Problem:
 
         Parameters
         ----------
-        constr : Constraint
+        constr : :py:class:`Constraint`
             Constructed using LinearExpressions (See Examples)
         name : string
             Name of the variable. Optional.
@@ -791,6 +1385,43 @@ class Problem:
                 self.constrs.append(constr)
             case _:
                 raise ValueError("addConstraint requires a Constraint object")
+        return constr
+
+    def updateConstraint(self, constr, coeffs=[], rhs=None):
+        """
+        Updates a previously added constraint. Values that can be updated are
+        constraint coefficients and RHS.
+
+        Parameters
+        ----------
+        constr : :py:class:`Constraint`
+            Constraint to be updated.
+        coeffs : List[Tuple[:py:class:`Variable`, coefficient]]
+            List of Tuples containing variable and corresponding coefficient.
+            Optional.
+        rhs : int|float
+            New RHS value for the constraint.
+
+        Examples
+        --------
+        >>> problem = problem.Problem("MIP_model")
+        >>> x = problem.addVariable(lb=0.0, vtype=INTEGER)
+        >>> y = problem.addVariable(lb=0.0, vtype=INTEGER)
+        >>> c1 = problem.addConstraint(2 * x + y <= 7, name="c1")
+        >>> c2 = problem.addConstraint(x + y <= 5, name="c2")
+        >>> problem.updateConstraint(c1, coeffs=[(x, 1)], rhs=10)
+        """
+        self.reset_solved_values()
+        if isinstance(constr, Constraint):
+            if isinstance(coeffs, dict):
+                coeffs = coeffs.items()
+            for var, coeff in coeffs:
+                idx = var.index
+                constr.vindex_coeff_dict[idx] = coeff
+            if rhs:
+                constr.RHS = rhs
+        else:
+            raise ValueError("Object to update must be a Constraint")
 
     def setObjective(self, expr, sense=MINIMIZE):
         """
@@ -799,9 +1430,9 @@ class Problem:
 
         Parameters
         ----------
-        expr : LinearExpression or Variable or Constant
+        expr : :py:class:`LinearExpression` or :py:class:`Variable` or Constant
             Objective expression that needs maximization or minimization.
-        sense : enum
+        sense : enum :py:class:`sense`
             Sets whether the problem is a maximization or a minimization
             problem. Values passed can either be MINIMIZE or MAXIMIZE.
             Defaults to MINIMIZE.
@@ -823,20 +1454,103 @@ class Problem:
             case int() | float():
                 for var in self.vars:
                     var.setObjectiveCoefficient(0.0)
-                self.ObjCon = float(expr)
+                self.ObjConstant = float(expr)
             case Variable():
                 for var in self.vars:
                     var.setObjectiveCoefficient(0.0)
                     if var.getIndex() == expr.getIndex():
                         var.setObjectiveCoefficient(1.0)
             case LinearExpression():
+                for var in self.vars:
+                    var.setObjectiveCoefficient(0.0)
                 for var, coeff in expr.zipVarCoefficients():
-                    self.vars[var.getIndex()].setObjectiveCoefficient(coeff)
+                    c_val = self.vars[var.getIndex()].getObjectiveCoefficient()
+                    sum_coeff = coeff + c_val
+                    self.vars[var.getIndex()].setObjectiveCoefficient(
+                        sum_coeff
+                    )
+                self.ObjConstant = expr.getConstant()
+            case QuadraticExpression():
+                for var in self.vars:
+                    var.setObjectiveCoefficient(0.0)
+                for var, coeff in zip(expr.vars, expr.coefficients):
+                    c_val = self.vars[var.getIndex()].getObjectiveCoefficient()
+                    sum_coeff = coeff + c_val
+                    self.vars[var.getIndex()].setObjectiveCoefficient(
+                        sum_coeff
+                    )
+                self.ObjConstant = expr.constant
+                self.objective_qcoo_matrix = (
+                    expr.qvars1,
+                    expr.qvars2,
+                    expr.qcoefficients,
+                )
             case _:
                 raise ValueError(
                     "Objective must be a LinearExpression or a constant"
                 )
-        self.Obj = expr
+
+    def updateObjective(self, coeffs=[], constant=None, sense=None):
+        """
+        Updates the objective of the problem. Values that can be updated are
+        objective coefficients, constant and sense.
+
+        Parameters
+        ----------
+        coeffs : List[Tuple[:py:class:`Variable`, coefficient]]
+            List of Tuples containing variable and corresponding coefficient.
+            Optional.
+        constant : int|float
+            New Objective constant for the problem. Optional.
+        sense : enum :py:class:`sense`
+            Sets the objective sense to either maximize or minimize. Optional.
+
+        Examples
+        --------
+        >>> problem = problem.Problem("MIP_model")
+        >>> x = problem.addVariable(lb=0.0, vtype=INTEGER)
+        >>> y = problem.addVariable(lb=0.0, vtype=INTEGER)
+        >>> problem.setObjective(4*x + y + 4, MAXIMIZE)
+        >>> problem.updateObjective(coeffs=[(x1, 1.0), (x2, 3.0)], constant=5,
+                sense=MINIMIZE)
+        """
+        self.reset_solved_values()
+        if isinstance(coeffs, dict):
+            coeffs = coeffs.items()
+        for var, coeff in coeffs:
+            var.setObjectiveCoefficient(coeff)
+        if constant:
+            self.ObjConstant = constant
+        if sense:
+            self.ObjSense = sense
+
+    def get_incumbent_values(self, solution, vars):
+        """
+        Extract incumbent values of the vars from a problem solution.
+        """
+        values = []
+        for var in vars:
+            values.append(solution[var.index])
+        return values
+
+    def get_pdlp_warm_start_data(self):
+        """
+        Note: Applicable to only LP.
+        Allows to retrieve the warm start data from the PDLP solver
+        once the problem is solved.
+        This data can be used to warmstart the next PDLP solve by setting it
+        in :py:meth:`cuopt.linear_programming.solver_settings.SolverSettings.set_pdlp_warm_start_data`  # noqa
+
+        Examples
+        --------
+        >>> problem = problem.Problem.readMPS("LP.mps")
+        >>> problem.solve()
+        >>> warmstart_data = problem.get_pdlp_warm_start_data()
+        >>> settings.set_pdlp_warm_start_data(warmstart_data)
+        >>> updated_problem = problem.Problem.readMPS("updated_LP.mps")
+        >>> updated_problem.solve(settings)
+        """
+        return self.warmstart_data
 
     def getObjective(self):
         """
@@ -850,11 +1564,52 @@ class Problem:
         """
         return self.vars
 
+    def getVariable(self, identifier):
+        """
+        Get a Variable by its index or name.
+        """
+        for v in self.vars:
+            if v.index == identifier or v.VariableName == identifier:
+                return v
+
     def getConstraints(self):
         """
         Get a list of all the Constraints in a problem.
         """
         return self.constrs
+
+    def getConstraint(self, identifier):
+        """
+        Get a Constraint by its index or name.
+        """
+        for c in self.constrs:
+            if c.index == identifier or c.ConstraintName == identifier:
+                return c
+
+    @classmethod
+    def readMPS(cls, mps_file):
+        """
+        Initiliaze a problem from an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
+        Examples
+        --------
+        >>> problem = problem.Problem.readMPS("model.mps")
+        """
+        problem = cls()
+        data_model = cuopt_mps_parser.ParseMps(mps_file)
+        problem._from_data_model(data_model)
+        problem.model = data_model
+        return problem
+
+    def writeMPS(self, mps_file):
+        """
+        Write the problem into an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
+        Examples
+        --------
+        >>> problem.writeMPS("model.mps")
+        """
+        if self.model is None:
+            self._to_data_model()
+        self.model.writeMPS(mps_file)
 
     @property
     def NumVariables(self):
@@ -882,11 +1637,29 @@ class Problem:
                 return True
         return False
 
+    @property
+    def Obj(self):
+        # Returns objective expression of the problem.
+        coeffs = []
+        for var in self.vars:
+            coeffs.append(var.getObjectiveCoefficient())
+        if not self.objective_qcoo_matrix:
+            return LinearExpression(self.vars, coeffs, self.ObjConstant)
+        else:
+            return QuadraticExpression(
+                *self.objective_qcoo_matrix,
+                self.vars,
+                coeffs,
+                self.ObjConstant,
+            )
+
     def getCSR(self):
         """
         Computes and returns the CSR representation of the
         constraint matrix.
         """
+        if self.constraint_csr_matrix is not None:
+            return self.dict_to_object(self.constraint_csr_matrix)
         csr_dict = {"row_pointers": [0], "column_indices": [], "values": []}
         for constr in self.constrs:
             csr_dict["column_indices"].extend(
@@ -894,20 +1667,57 @@ class Problem:
             )
             csr_dict["values"].extend(list(constr.vindex_coeff_dict.values()))
             csr_dict["row_pointers"].append(len(csr_dict["column_indices"]))
+        self.constraint_csr_matrix = csr_dict
         return self.dict_to_object(csr_dict)
 
-    def get_incumbent_values(self, solution, vars):
-        """
-        Extract incumbent values of the vars from a problem solution.
-        """
-        values = []
-        for var in vars:
-            values.append(solution[var.index])
-        return values
+    def getQcsr(self):
+        if self.objective_qcsr_matrix is not None:
+            return self.dict_to_object(self.objective_qcsr_matrix)
+        vars1, vars2, coeffs = self.objective_qcoo_matrix
+        if not vars1:
+            return None
+        Qdict = {}
+        Qcsr_dict = {"row_pointers": [0], "column_indices": [], "values": []}
+        for i, var1 in enumerate(vars1):
+            if var1.index not in Qdict:
+                Qdict[var1.index] = {}
+            row_dict = Qdict[var1.index]
+            var2 = vars2[i]
+            coeff = coeffs[i]
+            row_dict[var2.index] = (
+                row_dict[var2.index] + coeff
+                if var2.index in row_dict
+                else coeff
+            )
+        for i in range(0, self.NumVariables):
+            if i in Qdict:
+                Qcsr_dict["column_indices"].extend(list(Qdict[i].keys()))
+                Qcsr_dict["values"].extend(list(Qdict[i].values()))
+            Qcsr_dict["row_pointers"].append(len(Qcsr_dict["column_indices"]))
+        self.objective_qcsr_matrix = Qcsr_dict
+        return self.dict_to_object(Qcsr_dict)
 
-    def post_solve(self, solution):
+    def relax(self):
+        """
+        Relax a MIP problem into an LP problem and return the relaxed model.
+        The relaxed model has all variable types set to CONTINUOUS.
+
+        Examples
+        --------
+        >>> mip_problem = problem.Problem.readMPS("MIP.mps")
+        >>> lp_problem = problem.relax()
+        """
+        self.reset_solved_values()
+        relaxed_problem = copy.deepcopy(self)
+        vars = relaxed_problem.getVariables()
+        for v in vars:
+            v.VariableType = CONTINUOUS
+        return relaxed_problem
+
+    def populate_solution(self, solution):
         self.Status = solution.get_termination_status()
         self.SolveTime = solution.get_solve_time()
+        self.warmstart_data = solution.get_pdlp_warm_start_data()
 
         IsMIP = False
         if solution.problem_category == 0:
@@ -921,13 +1731,17 @@ class Problem:
         if len(primal_sol) > 0:
             for var in self.vars:
                 var.Value = primal_sol[var.index]
-                if not IsMIP:
+                if (
+                    not IsMIP
+                    and reduced_cost is not None
+                    and len(reduced_cost) > 0
+                ):
                     var.ReducedCost = reduced_cost[var.index]
         dual_sol = None
         if not IsMIP:
             dual_sol = solution.get_dual_solution()
         for i, constr in enumerate(self.constrs):
-            if dual_sol is not None:
+            if dual_sol is not None and len(dual_sol) > 0:
                 constr.DualValue = dual_sol[i]
             constr.Slack = constr.compute_slack()
         self.ObjValue = self.Obj.getValue()
@@ -949,49 +1763,11 @@ class Problem:
         >>> problem.setObjective(x + y, sense=MAXIMIZE)
         >>> problem.solve()
         """
-
-        # iterate through the constraints and construct the constraint matrix
-        n = len(self.vars)
-        self.row_pointers = [0]
-        self.column_indicies = []
-        self.values = []
-        self.rhs = []
-        self.row_sense = []
-        for constr in self.constrs:
-            self.column_indicies.extend(list(constr.vindex_coeff_dict.keys()))
-            self.values.extend(list(constr.vindex_coeff_dict.values()))
-            self.row_pointers.append(len(self.column_indicies))
-            self.rhs.append(constr.RHS)
-            self.row_sense.append(constr.Sense)
-
-        self.objective = np.zeros(n)
-        self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
-        self.var_type = np.empty(n, dtype="S1")
-
-        for j in range(n):
-            self.objective[j] = self.vars[j].getObjectiveCoefficient()
-            self.var_type[j] = self.vars[j].getVariableType()
-            self.lower_bound[j] = self.vars[j].getLowerBound()
-            self.upper_bound[j] = self.vars[j].getUpperBound()
-
-        # Initialize datamodel
-        dm = data_model.DataModel()
-        dm.set_csr_constraint_matrix(
-            np.array(self.values),
-            np.array(self.column_indicies),
-            np.array(self.row_pointers),
-        )
-        if self.ObjSense == -1:
-            dm.set_maximize(True)
-        dm.set_constraint_bounds(np.array(self.rhs))
-        dm.set_row_types(np.array(self.row_sense, dtype="S1"))
-        dm.set_objective_coefficients(self.objective)
-        dm.set_variable_lower_bounds(self.lower_bound)
-        dm.set_variable_upper_bounds(self.upper_bound)
-        dm.set_variable_types(self.var_type)
+        if self.model is None:
+            self._to_data_model()
 
         # Call Solver
-        solution = solver.Solve(dm, settings)
+        solution = solver.Solve(self.model, settings)
 
         # Post Solve
-        self.post_solve(solution)
+        self.populate_solution(solution)
