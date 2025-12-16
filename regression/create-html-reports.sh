@@ -48,7 +48,6 @@ else
 <br>"
 fi
 
-
 ################################################################################
 # create the html reports for each individual run (each
 # pytest-results*.txt file)

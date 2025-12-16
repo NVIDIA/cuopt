@@ -3,7 +3,7 @@
     "metrics": {
         "primal_objective_value": {
             "threshold": 1,
-            "unit": "primal_objective_value",
+            "unit": "primal_objective_value"
         },
         "solver_time": {
             "threshold": 1,

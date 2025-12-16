@@ -859,7 +859,6 @@ MittelmannInstances = {
 }
 
 def download(url, dst):
-    print("HERE")
     if os.path.exists(dst):
         return
     print(f"Downloading {url} into {dst}...")
@@ -929,6 +928,10 @@ def download_mip_dataset(name, dir):
     base_url = "https://miplib.zib.de/WebData/instances"
     url = f"{base_url}/{name}.gz"
     outfile = f"{dir}/{name}.gz"
+    if os.path.exists(dir):
+        if os.path.exists(os.path.join(dir, f"{name}")):
+            print(f"Dir for dataset {name} exists and contains {name}.mps. Skipping...")
+            return
     download(url, outfile)
     extract(outfile, dir, "")
 

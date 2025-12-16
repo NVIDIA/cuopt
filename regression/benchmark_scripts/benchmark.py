@@ -91,14 +91,16 @@ def get_bks_change(
 def record_result(
     test_name, metrics, required_metrics, csv_path, test_type_string
 ):
-
-    file_path = csv_path + "/" + test_type_string + "_" + test_name + ".csv"
-
+    file_path = csv_path + "/"
+    if test_type_string=="lp" or test_type_string=="mip":
+        file_path += test_type_string + "_" + test_name + ".csv"
+    else:
+        file_path += test_name + ".csv"
     bks_metrics = get_bks_change(metrics, required_metrics)
+
     # Add default metrics to data
     required_metrics.update(bks_metrics)
     metrics.update(bks_metrics)
-
     req_metrics = list(required_metrics.keys()) + ["date_time", "git_commit"]
 
     current_data = pd.DataFrame({key : [metrics[key]] for key in sorted(req_metrics)})
@@ -107,9 +109,7 @@ def record_result(
         updated_data = pd.concat([previous_data, current_data], ignore_index=True)
     else:
         updated_data = current_data
-
     record_regressions(test_name, updated_data, required_metrics, csv_path, test_type_string)
-
     updated_data.to_csv(file_path)
 
 
@@ -178,9 +178,7 @@ def run_benchmark(
                 metrics["cost"] = objectives[routing.Objective.COST]
             if "travel_time" in required_metrics:
                 metrics["travel_time"] = objectives[routing.Objective.TRAVEL_TIME]
-
             record_result(test_name, metrics, required_metrics, csv_path, d_type)
-
     return "SUCCESS" if success_status is True else "FAILED"
 
 def reinitialize_rmm():
@@ -207,7 +205,7 @@ def worker(gpu_id, dataset_file_path, csv_path, git_commit, log_path, test_statu
     else:
         data_files = glob.glob(dataset_file_path + "/*_config.json")
     idx = int(gpu_id)
-    n_files = len(data_files)
+    n_files = 3 #len(data_files)
 
     while idx < n_files:
         mr, stats_mr = reinitialize_rmm()
@@ -247,66 +245,10 @@ def worker(gpu_id, dataset_file_path, csv_path, git_commit, log_path, test_statu
         log.info(f"------------- Test End : {test_name} gpu id : {gpu_id} -------------------")
         idx = idx + n_gpus
 
+
 def run(dataset_file_path, csv_path, git_commit, log_path, test_status_file, n_gpus, d_type):
-
-    """def worker(gpu_id, n_gpus):
-        import os
-        #log.info(f"------------- GPU id : {gpu_id} -------------------")
-        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
-        import rmm
-        pool = rmm.mr.PoolMemoryResource(
-            rmm.mr.CudaMemoryResource()
-        )
-
-        rmm.mr.set_current_device_resource(pool)
-        idx = int(gpu_id)
-        n_files = len(config_files)
-
-        def reinitialize_rmm():
-
-            pool = rmm.mr.PoolMemoryResource(
-                rmm.mr.CudaMemoryResource()
-            )
-
-            rmm.mr.set_current_device_resource(pool)
-            #rmm.reinitialize(pool_allocator=True, initial_pool_size=pool_size)
-
-            #base_mr = rmm.mr.get_current_device_resource()
-            #stats_mr = rmm.mr.StatisticsResourceAdaptor(base_mr)
-            #rmm.mr.set_current_device_resource(stats_mr)
-
-            return "", ""
-
-        while idx < n_files:
-            config = config_files[idx]
-
-            test_name = str(config)
-            status = "FAILED"
-            try:
-
-                test_name, data_model, solver_settings, requested_metrics = get_configuration(config, config_file_path)
-
-                log.basicConfig(level=log.INFO, filename=log_path+"/"+test_name+"_log.txt", filemode="a+",
-                            format="%(asctime)-15s %(levelname)-8s %(message)s")
-                log.info(f"------------- Test Start : {test_name} -------------------")
-                log.info(f"------------- GPU id : {gpu_id} -------------------")
-                #status = run_benchmark(
-                #    test_name,
-                #    data_model,
-                #    solver_settings,
-                #    requested_metrics,
-                #    csv_path,
-                #    git_commit,
-                #    test_status_file
-                #)
-
-            except Exception as e:
-                log.error(str(e))
-
-            with open(test_status_file, "a") as f:
-                f.write("\n")
-                f.write(test_name +": " + status)"""
-
+    # Restricting n_gpus to one to avoid resource sharing
+    n_gpus = 1
     procs = []
     for gpu_id in range(int(n_gpus)):
         p = Process(target=worker, args=(str(gpu_id), dataset_file_path, csv_path, git_commit, log_path, test_status_file, int(n_gpus), d_type))
@@ -316,6 +258,7 @@ def run(dataset_file_path, csv_path, git_commit, log_path, test_status_file, n_g
     for p in procs:
         p.join()
     print("All processes finished.")
+
 
 if __name__ == "__main__":
 
@@ -340,7 +283,7 @@ if __name__ == "__main__":
         "-n", "--num-gpus", type=str, help="Number of GPUs available"
     )
     parser.add_argument(
-        "-t", "--type", type=str, help="Type of benchmark"
+        "-t", "--type", type=str, default="", help="Type of benchmark"
     )
     args = parser.parse_args()
     run(args.config_path, args.csv_path, args.git_commit, args.log_path, args.test_status_file, args.num_gpus, args.type)
