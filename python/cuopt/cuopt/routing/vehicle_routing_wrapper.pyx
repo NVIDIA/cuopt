@@ -945,16 +945,13 @@ def BatchSolve(py_data_model_list, SolverSettings solver_settings):
             (<DataModel>data_model_obj).c_data_model_view.get()
         )
 
-    cdef pair[
-        vector[unique_ptr[vehicle_routing_ret_t]],
-        double] batch_solve_result = (
+    cdef vector[unique_ptr[vehicle_routing_ret_t]] batch_solve_result = (
         move(call_batch_solve(data_model_views, c_solver_settings))
     )
 
     cdef vector[unique_ptr[vehicle_routing_ret_t]] c_solutions = (
-        move(batch_solve_result.first)
+        move(batch_solve_result)
     )
-    cdef double solve_time = batch_solve_result.second
 
     solutions = []
     for i in range(c_solutions.size()):
@@ -962,4 +959,4 @@ def BatchSolve(py_data_model_list, SolverSettings solver_settings):
             create_assignment_from_vr_ret(c_solutions[i].get()[0])
         )
 
-    return solutions, solve_time
+    return solutions

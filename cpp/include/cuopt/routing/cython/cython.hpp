@@ -16,7 +16,6 @@
 #include <raft/core/handle.hpp>
 
 #include <memory>
-#include <utility>
 #include <vector>
 
 namespace cuopt {
@@ -85,7 +84,7 @@ std::unique_ptr<vehicle_routing_ret_t> call_solve(routing::data_model_view_t<int
                                                   routing::solver_settings_t<int, float>*);
 
 // Wrapper for batch solve to expose the API to cython.
-std::pair<std::vector<std::unique_ptr<vehicle_routing_ret_t>>, double> call_batch_solve(
+std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
   std::vector<routing::data_model_view_t<int, float>*>, routing::solver_settings_t<int, float>*);
 
 // Wrapper for dataset to expose the API to cython.

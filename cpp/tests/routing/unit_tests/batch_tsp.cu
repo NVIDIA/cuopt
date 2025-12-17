@@ -72,7 +72,7 @@ TEST(batch_tsp, varying_sizes)
   settings.set_time_limit(5);
 
   // Call batch solve
-  auto [solutions, solve_time] = cuopt::cython::call_batch_solve(data_model_ptrs, &settings);
+  auto solutions = cuopt::cython::call_batch_solve(data_model_ptrs, &settings);
 
   // Verify all solutions
   ASSERT_EQ(solutions.size(), n_problems);
@@ -82,9 +82,6 @@ TEST(batch_tsp, varying_sizes)
     EXPECT_EQ(solutions[i]->vehicle_count_, 1)
       << "TSP " << i << " (size " << tsp_sizes[i] << ") used multiple vehicles";
   }
-
-  // Verify solve time is reasonable
-  EXPECT_GT(solve_time, 0.0) << "Solve time should be positive";
 }
 
 }  // namespace test

@@ -8,7 +8,6 @@
 # cython: language_level = 3
 
 from libcpp cimport bool
-from libcpp.pair cimport pair
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
@@ -136,7 +135,7 @@ cdef extern from "cuopt/routing/cython/cython.hpp" namespace "cuopt::cython": # 
         solver_settings_t[int, float]* solver_settings
     ) except +
 
-    cdef pair[vector[unique_ptr[vehicle_routing_ret_t]], double] call_batch_solve(
+    cdef vector[unique_ptr[vehicle_routing_ret_t]] call_batch_solve(
         vector[data_model_view_t[int, float] *] data_models,
-        solver_settings_t[int, float]* solver_settings,
+        solver_settings_t[int, float]* solver_settings
     ) except +

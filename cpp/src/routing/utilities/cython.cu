@@ -95,27 +95,24 @@ std::unique_ptr<vehicle_routing_ret_t> call_solve(
  *
  * @param data_models Vector of data model pointers
  * @param settings  Composable solver settings object
- * @return std::pair<std::vector<std::unique_ptr<vehicle_routing_ret_t>>, double>
+ * @return std::vector<std::unique_ptr<vehicle_routing_ret_t>>
  */
-std::pair<std::vector<std::unique_ptr<vehicle_routing_ret_t>>, double> call_batch_solve(
+std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
   std::vector<routing::data_model_view_t<int, float>*> data_models,
   routing::solver_settings_t<int, float>* settings)
 {
-  raft::common::nvtx::range fun_scope("Call batch solve routing");
-
   const std::size_t size = data_models.size();
   std::vector<std::unique_ptr<vehicle_routing_ret_t>> list(size);
 
-  auto start_solver = std::chrono::high_resolution_clock::now();
-
   // Use OpenMP for parallel execution
   const int max_thread = std::min(static_cast<int>(size), omp_get_max_threads());
-  rmm::cuda_stream_pool stream_pool(data_models.size());
+  // rmm::cuda_stream_pool stream_pool(data_models.size());
 
 #pragma omp parallel for num_threads(max_thread)
   for (std::size_t i = 0; i < size; ++i) {
-    data_models[i]->get_handle_ptr()->sync_stream();
-    raft::resource::set_cuda_stream(*(data_models[i]->get_handle_ptr()), stream_pool.get_stream(i));
+    // data_models[i]->get_handle_ptr()->sync_stream();
+    // raft::resource::set_cuda_stream(*(data_models[i]->get_handle_ptr()),
+    // stream_pool.get_stream(i));
     auto routing_solution = cuopt::routing::solve(*data_models[i], *settings);
     vehicle_routing_ret_t vr_ret{
       routing_solution.get_vehicle_count(),
@@ -135,10 +132,7 @@ std::pair<std::vector<std::unique_ptr<vehicle_routing_ret_t>>, double> call_batc
     list[i] = std::make_unique<vehicle_routing_ret_t>(std::move(vr_ret));
   }
 
-  auto end      = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);
-
-  return {std::move(list), duration.count() / 1000.0};
+  return list;
 }
 
 /**
