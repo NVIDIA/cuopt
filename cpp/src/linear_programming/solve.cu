@@ -924,6 +924,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                       reduced_costs,
                       cuopt::linear_programming::problem_category_t::LP,
                       status_to_skip,
+                      settings.dual_postsolve,
                       op_problem.get_handle_ptr()->get_stream());
 
       thrust::fill(rmm::exec_policy(op_problem.get_handle_ptr()->get_stream()),
