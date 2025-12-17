@@ -30,7 +30,10 @@ ges_solver_t<i_t, f_t, REQUEST>::ges_solver_t(const data_model_view_t<i_t, f_t>&
   : timer(time_limit_),
     problem(data_model, solver_settings),
     // override for now
-    pool_allocator(problem, max_sol_per_population, expected_route_count_),
+    pool_allocator(problem,
+                   max_sol_per_population,
+                   data_model.get_handle_ptr()->get_stream(),
+                   expected_route_count_),
     expected_route_count(expected_route_count_),
     intermediate_file(intermediate_file_)
 {

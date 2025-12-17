@@ -110,9 +110,12 @@ std::pair<std::vector<std::unique_ptr<vehicle_routing_ret_t>>, double> call_batc
 
   // Use OpenMP for parallel execution
   const int max_thread = std::min(static_cast<int>(size), omp_get_max_threads());
+  rmm::cuda_stream_pool stream_pool(data_models.size());
 
 #pragma omp parallel for num_threads(max_thread)
   for (std::size_t i = 0; i < size; ++i) {
+    data_models[i]->get_handle_ptr()->sync_stream();
+    raft::resource::set_cuda_stream(*(data_models[i]->get_handle_ptr()), stream_pool.get_stream(i));
     auto routing_solution = cuopt::routing::solve(*data_models[i], *settings);
     vehicle_routing_ret_t vr_ret{
       routing_solution.get_vehicle_count(),
