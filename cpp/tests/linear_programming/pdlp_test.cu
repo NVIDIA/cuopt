@@ -871,16 +871,14 @@ TEST(pdlp_class, dual_postsolve_size)
   solver_settings.method   = cuopt::linear_programming::method_t::PDLP;
   solver_settings.presolve = true;
 
-  // With dual_postsolve on, dual solution size should match number of constraints
   {
     solver_settings.dual_postsolve = true;
     optimization_problem_solution_t<int, double> solution =
       solve_lp(&handle_, op_problem, solver_settings);
     EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
-    EXPECT_EQ(solution.get_dual_solution().size(), op_problem.get_n_variables());
+    EXPECT_EQ(solution.get_dual_solution().size(), op_problem.get_n_constraints());
   }
 
-  // With dual_postsolve off, dual solution size should be 0
   {
     solver_settings.dual_postsolve = false;
     optimization_problem_solution_t<int, double> solution =

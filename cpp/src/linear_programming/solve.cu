@@ -927,14 +927,16 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                       settings.dual_postsolve,
                       op_problem.get_handle_ptr()->get_stream());
 
-      thrust::fill(rmm::exec_policy(op_problem.get_handle_ptr()->get_stream()),
-                   dual_solution.data(),
-                   dual_solution.data() + dual_solution.size(),
-                   std::numeric_limits<f_t>::signaling_NaN());
-      thrust::fill(rmm::exec_policy(op_problem.get_handle_ptr()->get_stream()),
-                   reduced_costs.data(),
-                   reduced_costs.data() + reduced_costs.size(),
-                   std::numeric_limits<f_t>::signaling_NaN());
+      if (!settings.dual_postsolve) {
+        thrust::fill(rmm::exec_policy(op_problem.get_handle_ptr()->get_stream()),
+                     dual_solution.data(),
+                     dual_solution.data() + dual_solution.size(),
+                     std::numeric_limits<f_t>::signaling_NaN());
+        thrust::fill(rmm::exec_policy(op_problem.get_handle_ptr()->get_stream()),
+                     reduced_costs.data(),
+                     reduced_costs.data() + reduced_costs.size(),
+                     std::numeric_limits<f_t>::signaling_NaN());
+      }
 
       auto full_stats = solution.get_additional_termination_information();
 
