@@ -1,5 +1,46 @@
 # Release Notes
 
+
+
+## Release Notes 25.12
+
+### New Features (25.12)
+
+- New quadratic programming solver using the barrier method (currently in beta).
+- Support for quadratic objectives added to the C and Python modeling APIs.
+- LP concurrent mode now supports multiple GPUs. PDLP and barrier can now be run on separate GPUs.
+- MIP root relaxation solves now use concurrent mode: PDLP, barrier, and dual simplex.
+
+### Improvements (25.12)
+
+- RINS heuristic adds a new improvement strategy in the MIP solver.
+- Basis factorizations are now reused in the branch and bound tree.
+- Improvement in propagating bounds from parent to child nodes in the branch and bound tree.
+- GMRES with Cholesky/LDL preconditioning is now used for iterative refinement on QPs.
+- Improved numerical stability of dual simplex when the basis is ill-conditioned.
+- Improved robustness in barrier and PDLP: fixed cuSPARSE related leaks and added RAII-style wrappers for cuSPARSE structures.
+- Papilo-based presolve carries over implied integer information from reductions, improving consistency of integrality handling.
+- Build and CI workflows improved through assertion-default changes, better handling of git-hash rebuilds, and fixes to the nightly build matrix.
+- Reduced package sizes by adjusting build outputs and test-only library linkage, and the TSP dataset download logic disables unneeded downloads.
+
+### Bug Fixes (25.12)
+
+- A crash in the incumbent test is resolved.
+- Fixed memory leaks in Barrier and PDLP's cuSPARSE usage.
+- The explored nodes in the MIP log now correctly reflects the actual nodes examined.
+- A compilation issue in the solve_MIP benchmarking executable is fixed, restoring benchmark builds.
+- A logger bug when log_to_console is false is fixed.
+- Routing fixes improve TSP behavior when order locations are set.
+- Nightly container testing and CI handling fix issues in the nightly container test suite and build jobs.
+- A cuDF build_column deprecation issue fixed to keep compatibility with newer cuDF versions.
+
+### Documentation (25.12)
+
+- Missing parameters added to the documentation for LP and MILP.
+- Release notes added to the main repository for easy access.
+- Examples in the documentation improved.
+- The openapi spec for the service showed the 'status' value for LP/MILP results as an int but it is actually a string.
+
 ## Release Notes 25.10
 
 ### New Features (25.10)

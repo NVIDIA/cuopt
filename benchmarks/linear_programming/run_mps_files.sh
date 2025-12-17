@@ -13,6 +13,7 @@
 # Arguments:
 #   --path        : Directory containing .mps files (required)
 #   --ngpus       : Number of GPUs to use (default: 1)
+#   --gpus-per-instance : Number of GPUs per benchmark instance (default: 1, set to 2 for multi-GPU)
 #   --time-limit  : Time limit in seconds for each problem (default: 360)
 #   --output-dir  : Directory to store output log files (default: current directory)
 #   --relaxation  : Run relaxation instead of solving the MIP
@@ -28,6 +29,9 @@
 #   # Run all MPS files in /data/lp using 2 GPUs with 1 hour time limit
 #   ./run_mps_files.sh --path /data/lp --ngpus 2 --time-limit 3600
 #
+#   # Run with multi-GPU mode using 4 GPUs (2 GPUs per instance, 2 parallel instances)
+#   ./run_mps_files.sh --path /data/lp --ngpus 4 --gpus-per-instance 2 --time-limit 3600
+#
 #   # Run with specific GPU devices using CUDA_VISIBLE_DEVICES
 #   CUDA_VISIBLE_DEVICES=0,2,3 ./run_mps_files.sh --path /data/mip
 #
@@ -42,6 +46,7 @@
 #   - Each problem's results are logged to a separate file in the output directory
 #   - The script uses file locking to safely distribute work across parallel processes
 #   - If CUDA_VISIBLE_DEVICES is set, it can override the --ngpus argument
+#   - With --gpus-per-instance 2, benchmarks use 2 GPUs each (e.g., 4 GPUs = 2 parallel instances)
 
 # Help function
 print_help() {
@@ -57,6 +62,7 @@ Required Arguments:
 
 Optional Arguments:
     --ngpus N           Number of GPUs to use (default: 1)
+    --gpus-per-instance N  Number of GPUs per benchmark instance (default: 1, set to 2 for multi-GPU)
     --time-limit N      Time limit in seconds for each problem (default: 360)
     --output-dir PATH   Directory to store output log files (default: current directory)
     --relaxation       Run relaxation instead of solving the MIP
@@ -74,6 +80,9 @@ Examples:
     # Run all MPS files in /data/lp using 2 GPUs with 1 hour time limit
     $(basename "$0") --path /data/lp --ngpus 2 --time-limit 3600
 
+    # Run with multi-GPU mode using 4 GPUs (2 GPUs per instance, 2 parallel instances)
+    $(basename "$0") --path /data/lp --ngpus 4 --gpus-per-instance 2 --time-limit 3600
+
     # Run with specific GPU devices using CUDA_VISIBLE_DEVICES
     CUDA_VISIBLE_DEVICES=0,2,3 $(basename "$0") --path /data/mip
 
@@ -85,6 +94,7 @@ Notes:
     - Each problem's results are logged to a separate file in the output directory
     - The script uses file locking to safely distribute work across parallel processes
     - If CUDA_VISIBLE_DEVICES is set, it can override the --ngpus argument
+    - With --gpus-per-instance 2, benchmarks use 2 GPUs each (e.g., 4 GPUs = 2 parallel instances)
 EOF
     exit 0
 }
@@ -107,9 +117,19 @@ while [[ $# -gt 0 ]]; do
             GPU_COUNT="$2"
             shift 2
             ;;
+        --gpus-per-instance)
+            echo "GPUS_PER_INSTANCE: $2"
+            GPUS_PER_INSTANCE="$2"
+            shift 2
+            ;;
         --time-limit)
             echo "TIME_LIMIT: $2"
             TIME_LIMIT="$2"
+            shift 2
+            ;;
+        --iteration-limit)
+            echo "ITERATION_LIMIT: $2"
+            ITERATION_LIMIT="$2"
             shift 2
             ;;
         --output-dir)
@@ -135,6 +155,11 @@ while [[ $# -gt 0 ]]; do
         --num-cpu-threads)
             echo "NUM_CPU_THREADS: $2"
             NUM_CPU_THREADS="$2"
+            shift 2
+            ;;
+        --method)
+            echo "METHOD: $2"
+            METHOD="$2"
             shift 2
             ;;
         --presolve)
@@ -178,17 +203,24 @@ fi
 
 # Set defaults if not provided
 GPU_COUNT=${GPU_COUNT:-1}
+GPUS_PER_INSTANCE=${GPUS_PER_INSTANCE:-1}
 TIME_LIMIT=${TIME_LIMIT:-360}
 OUTPUT_DIR=${OUTPUT_DIR:-.}
 RELAXATION=${RELAXATION:-false}
 MIP_HEURISTICS_ONLY=${MIP_HEURISTICS_ONLY:-false}
 WRITE_LOG_FILE=${WRITE_LOG_FILE:-false}
-NUM_CPU_THREADS=${NUM_CPU_THREADS:-1}
-PRESOLVE=${PRESOLVE:-true}
+NUM_CPU_THREADS=${NUM_CPU_THREADS:--1}
 BATCH_NUM=${BATCH_NUM:-0}
 N_BATCHES=${N_BATCHES:-1}
 LOG_TO_CONSOLE=${LOG_TO_CONSOLE:-true}
 MODEL_LIST=${MODEL_LIST:-}
+
+# Validate GPUS_PER_INSTANCE
+if [[ "$GPUS_PER_INSTANCE" != "1" && "$GPUS_PER_INSTANCE" != "2" ]]; then
+    echo "Error: --gpus-per-instance must be 1 or 2"
+    exit 1
+fi
+
 # Determine GPU list
 if [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
     IFS=',' read -ra GPU_LIST <<< "$CUDA_VISIBLE_DEVICES"
@@ -198,7 +230,57 @@ else
         GPU_LIST+=("$i")
     done
 fi
-GPU_COUNT=${#GPU_LIST[@]}
+# Check that requested number of GPUs does not exceed available GPUs (if nvidia-smi is present)
+if command -v nvidia-smi &> /dev/null; then
+    AVAILABLE_GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
+    if [[ "$GPU_COUNT" -gt "$AVAILABLE_GPU_COUNT" ]]; then
+        echo "Error: Requested --ngpus $GPU_COUNT, but only $AVAILABLE_GPU_COUNT GPU(s) available according to nvidia-smi."
+        exit 1
+    fi
+fi
+
+# Group GPUs into sets based on GPUS_PER_INSTANCE
+GPU_GROUPS=()
+if [[ "$GPUS_PER_INSTANCE" == "2" ]]; then
+    # Group GPUs into pairs
+    echo "Grouping ${#GPU_LIST[@]} GPUs into pairs..."
+    for ((i=0; i<${#GPU_LIST[@]}; i+=2)); do
+        if (( i+1 < ${#GPU_LIST[@]} )); then
+            pair="${GPU_LIST[$i]},${GPU_LIST[$((i+1))]}"
+            echo "  Creating pair: $pair"
+            GPU_GROUPS+=("$pair")
+        else
+            echo "Error: Odd number of GPUs (${#GPU_LIST[@]}) for multi-GPU mode (2 GPUs per instance). Exiting."
+            exit 1
+        fi
+    done
+else
+    # Single GPU per instance
+    echo "Using single GPU per instance..."
+    GPU_GROUPS=("${GPU_LIST[@]}")
+fi
+
+GPU_COUNT=${#GPU_GROUPS[@]}
+echo "Total GPU groups created: $GPU_COUNT"
+
+# Print configuration information
+echo "=========================================="
+echo "Benchmark Configuration:"
+echo "  GPUs per instance: $GPUS_PER_INSTANCE"
+echo "  Total GPU groups: $GPU_COUNT"
+if [[ "$GPUS_PER_INSTANCE" == "2" ]]; then
+    echo "  GPU groups (pairs):"
+    for ((i=0; i<${#GPU_GROUPS[@]}; i++)); do
+        echo "    Group $((i+1)): ${GPU_GROUPS[$i]}"
+    done
+else
+    echo "  GPU groups (single):"
+    for ((i=0; i<${#GPU_GROUPS[@]}; i++)); do
+        echo "    Group $((i+1)): ${GPU_GROUPS[$i]}"
+    done
+fi
+echo "=========================================="
+echo ""
 
 # Ensure all entries in MODEL_LIST have .mps extension
 if [[ -n "$MODEL_LIST" && -f "$MODEL_LIST" ]]; then
@@ -208,7 +290,8 @@ if [[ -n "$MODEL_LIST" && -f "$MODEL_LIST" ]]; then
         # Skip empty lines
         [[ -z "$line" ]] && continue
         # If the line does not end with .mps, append it
-        if [[ "$line" != *.mps ]]; then
+        # ignore if it ends with .SIF
+        if [[ "$line" != *.mps && "$line" != *.SIF ]]; then
             echo "${line}.mps" >> "$TMP_MODEL_LIST"
         else
             echo "$line" >> "$TMP_MODEL_LIST"
@@ -241,7 +324,10 @@ if [[ -n "$MODEL_LIST" ]]; then
         exit 1
     fi
 else
-    mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps)
+    # Gather both .mps and .SIF files in the directory
+    mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps "$MPS_DIR"/*.SIF 2>/dev/null)
+
+    echo "Found ${#mps_files[@]} .mps and .SIF files in $MPS_DIR"
 fi
 
 # Calculate batch size and start/end indices
@@ -271,16 +357,16 @@ echo 0 > "$INDEX_FILE"
 
 # Adjust GPU_COUNT if there are fewer files than GPUs
 if ((GPU_COUNT > file_count)); then
-    echo "Reducing number of GPUs from $GPU_COUNT to $file_count since there are fewer files than GPUs"
+    echo "Reducing number of GPU groups from $GPU_COUNT to $file_count since there are fewer files than GPU groups"
     GPU_COUNT=$file_count
-    # Trim GPU_LIST to match file_count
-    GPU_LIST=("${GPU_LIST[@]:0:$file_count}")
+    # Trim GPU_GROUPS to match file_count
+    GPU_GROUPS=("${GPU_GROUPS[@]:0:$file_count}")
 fi
 
-# Function for each worker (GPU)
+# Function for each worker (GPU group)
 worker() {
-    local gpu_id=$1
-    # echo "GPU $gpu_id Using index file $INDEX_FILE"
+    local gpu_devices=$1
+    # echo "GPU(s) $gpu_devices Using index file $INDEX_FILE"
     while :; do
         # Atomically get and increment the index
         my_index=$(flock "$INDEX_FILE" bash -c '
@@ -298,10 +384,13 @@ worker() {
         fi
 
         mps_file="${mps_files[my_index]}"
-        echo "GPU $gpu_id processing $my_index"
+        echo "GPU(s) $gpu_devices processing $my_index"
 
         # Build arguments string
         args=""
+        if [ -n "$ITERATION_LIMIT" ]; then
+            args="$args --iteration-limit $ITERATION_LIMIT"
+        fi
         if [ -n "$NUM_CPU_THREADS" ]; then
             args="$args --num-cpu-threads $NUM_CPU_THREADS"
         fi
@@ -314,17 +403,28 @@ worker() {
         if [ "$RELAXATION" = true ]; then
             args="$args --relaxation"
         fi
+        if [ "$GPUS_PER_INSTANCE" -gt 1 ]; then
+            args="$args --num-gpus $GPUS_PER_INSTANCE"
+        fi
         args="$args --log-to-console $LOG_TO_CONSOLE"
-        args="$args --presolve $PRESOLVE"
+        if [ -n "$PRESOLVE" ]; then
+            args="$args --presolve $PRESOLVE"
+        fi
+        if [ -n "$METHOD" ]; then
+            args="$args --method $METHOD"
+        fi
 
-        CUDA_VISIBLE_DEVICES=$gpu_id cuopt_cli "$mps_file" --time-limit $TIME_LIMIT $args
+        CUDA_VISIBLE_DEVICES=$gpu_devices cuopt_cli "$mps_file" --time-limit $TIME_LIMIT $args
     done
 }
 
-# Start one worker per GPU in the list
-for gpu_id in "${GPU_LIST[@]}"; do
-    worker "$gpu_id" &
+# Start one worker per GPU group
+echo "Starting workers for ${#GPU_GROUPS[@]} GPU groups..."
+for gpu_devices in "${GPU_GROUPS[@]}"; do
+    echo "  Starting worker for GPU(s): $gpu_devices"
+    worker "$gpu_devices" &
 done
+echo "All workers started."
 
 wait
 

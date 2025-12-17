@@ -83,15 +83,19 @@ HDI bool is_binary(f_t val)
 template <typename f_t>
 HDI f_t round_nearest(f_t val, f_t lb, f_t ub, f_t int_tol, raft::random::PCGenerator& rng)
 {
+  f_t int_lb = ceil(lb - int_tol);
+  f_t int_ub = floor(ub + int_tol);
+
   if (val > ub) {
-    return floor(ub + int_tol);
+    return int_ub;
   } else if (val < lb) {
-    return ceil(lb - int_tol);
+    return int_lb;
   } else {
     f_t w = rng.next_float();
     f_t t = 2 * w * (1 - w);
     if (w > 0.5) { t = 1 - t; }
-    return floor(val + t);
+    f_t result = floor(val + t);
+    return max(int_lb, min(result, int_ub));
   }
 }
 

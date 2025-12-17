@@ -36,6 +36,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_MIP_RELATIVE_TOLERANCE,
     CUOPT_MIP_SCALING,
     CUOPT_NUM_CPU_THREADS,
+    CUOPT_NUM_GPUS,
     CUOPT_ORDERING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PER_CONSTRAINT_RESIDUAL,
@@ -368,6 +369,10 @@ def create_solver(LP_data, warmstart_data):
         if solver_config.num_cpu_threads is not None:
             solver_settings.set_parameter(
                 CUOPT_NUM_CPU_THREADS, solver_config.num_cpu_threads
+            )
+        if solver_config.num_gpus is not None:
+            solver_settings.set_parameter(
+                CUOPT_NUM_GPUS, solver_config.num_gpus
             )
         if solver_config.crossover is not None:
             solver_settings.set_parameter(

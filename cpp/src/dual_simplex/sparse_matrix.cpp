@@ -500,8 +500,9 @@ i_t scatter(const csc_matrix_t<i_t, f_t>& A,
 }
 
 template <typename i_t, typename f_t>
-i_t csc_matrix_t<i_t, f_t>::check_matrix() const
+i_t csc_matrix_t<i_t, f_t>::check_matrix(std::string matrix_name) const
 {
+#ifdef CHECK_MATRIX
   std::vector<i_t> row_marker(this->m, -1);
   for (i_t j = 0; j < this->n; ++j) {
     const i_t col_start = this->col_start[j];
@@ -516,15 +517,19 @@ i_t csc_matrix_t<i_t, f_t>::check_matrix() const
     for (i_t p = col_start; p < col_end; ++p) {
       const i_t i = this->i[p];
       if (i < 0 || i >= this->m) {
-        printf("CSC error: row index %d not in range [0, %d]\n", i, this->m - 1);
+        printf("CSC error (%s) : row index %d not in range [0, %d]\n",
+               matrix_name.c_str(),
+               i,
+               this->m - 1);
       }
       if (row_marker[i] == j) {
-        printf("CSC error: repeated row index %d in column %d\n", i, j);
+        printf("CSC error (%s) : repeated row index %d in column %d\n", matrix_name.c_str(), i, j);
         return -1;
       }
       row_marker[i] = j;
     }
   }
+#endif
   return 0;
 }
 
@@ -554,7 +559,7 @@ size_t csc_matrix_t<i_t, f_t>::hash() const
 }
 
 template <typename i_t, typename f_t>
-void csr_matrix_t<i_t, f_t>::check_matrix() const
+void csr_matrix_t<i_t, f_t>::check_matrix(std::string matrix_name) const
 {
   std::vector<i_t> col_marker(this->n, -1);
   for (i_t i = 0; i < this->m; ++i) {
@@ -562,7 +567,9 @@ void csr_matrix_t<i_t, f_t>::check_matrix() const
     const i_t row_end   = this->row_start[i + 1];
     for (i_t p = row_start; p < row_end; ++p) {
       const i_t j = this->j[p];
-      if (col_marker[j] == i) { printf("CSR Error: repeated column index %d in row %d\n", j, i); }
+      if (col_marker[j] == i) {
+        printf("CSR Error (%s) : repeated column index %d in row %d\n", matrix_name.c_str(), j, i);
+      }
       col_marker[j] = i;
     }
   }

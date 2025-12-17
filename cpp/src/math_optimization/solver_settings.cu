@@ -86,7 +86,9 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_FOLDING, &pdlp_settings.folding, -1, 1, -1},
     {CUOPT_DUALIZE, &pdlp_settings.dualize, -1, 1, -1},
     {CUOPT_ORDERING, &pdlp_settings.ordering, -1, 1, -1},
-    {CUOPT_BARRIER_DUAL_INITIAL_POINT, &pdlp_settings.barrier_dual_initial_point, -1, 1, -1}
+    {CUOPT_BARRIER_DUAL_INITIAL_POINT, &pdlp_settings.barrier_dual_initial_point, -1, 1, -1},
+    {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, 1, 2, 1},
+    {CUOPT_NUM_GPUS, &mip_settings.num_gpus, 1, 2, 1}
   };
 
     // Bool parameters

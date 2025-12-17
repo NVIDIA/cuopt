@@ -85,6 +85,10 @@ jobs:
           file: ./ci/docker/Dockerfile
           push: true
           pull: true
+          # Disable provenance and sbom to push single-arch images instead of manifest lists
+          # This is required for create_multiarch_manifest.sh to work correctly
+          provenance: false
+          sbom: false
           build-args: |
             CUDA_VER=${{ inputs.CUDA_VER }}
             PYTHON_SHORT_VER=${{ steps.trim.outputs.PYTHON_SHORT }}

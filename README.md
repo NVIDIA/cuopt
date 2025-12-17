@@ -69,7 +69,7 @@ For CUDA 12.x:
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
   nvidia-cuda-runtime-cu12=12.9.* \
-  cuopt-server-cu12==25.12.* cuopt-sh-client==25.12.*
+  cuopt-server-cu12==26.02.* cuopt-sh-client==26.02.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -77,7 +77,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu12==25.12.* cuopt-sh-client==25.12.*
+  cuopt-server-cu12==26.02.* cuopt-sh-client==26.02.*
 ```
 
 For CUDA 13.x:
@@ -85,7 +85,7 @@ For CUDA 13.x:
 ```bash
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
-  cuopt-server-cu13==25.12.* cuopt-sh-client==25.12.*
+  cuopt-server-cu13==26.02.* cuopt-sh-client==26.02.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -93,7 +93,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu13==25.12.* cuopt-sh-client==25.12.*
+  cuopt-server-cu13==26.02.* cuopt-sh-client==26.02.*
 ```
 
 
@@ -104,7 +104,7 @@ cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forg
 All other dependencies are installed automatically when `cuopt-server` and `cuopt-sh-client` are installed.
 
 ```bash
-conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=25.12.* cuopt-sh-client=25.12.*
+conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=26.02.* cuopt-sh-client=26.02.*
 ```
 
 We also provide [nightly conda packages](https://anaconda.org/rapidsai-nightly) built from the HEAD
@@ -131,6 +131,17 @@ Users who are using cuOpt for quick testing or research can use the cuOpt contai
 ## Build from Source and Test
 
 Please see our [guide for building cuOpt from source](CONTRIBUTING.md#setting-up-your-build-environment). This will be helpful if users want to add new features or fix bugs for cuOpt. This would also be very helpful in case users want to customize cuOpt for their own use cases which require changes to the cuOpt source code.
+
+## Release Timeline
+
+cuOpt follows the RAPIDS release schedule and is part of the **"others"** category in the release timeline. The release cycle consists of:
+
+- **Development**: Active feature development and bug fixes targeting `main`
+- **Burn Down**: Focus shifts to stabilization; new features should target the next release
+- **Code Freeze**: Only critical bug fixes allowed; PRs require admin approval
+- **Release**: Final testing, tagging, and official release
+
+For current release timelines and dates, refer to the [RAPIDS Maintainers Docs](https://docs.rapids.ai/maintainers/).
 
 ## Contributing Guide
 

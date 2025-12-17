@@ -211,3 +211,31 @@ def test_barrier_solver_options(
         res.json()["response"]["solver_response"],
         LPTerminationStatus.Optimal.name,
     )
+
+
+def test_termination_status_enum_sync():
+    """
+    Ensure local status values in data_definition.py stay in sync
+    with actual LPTerminationStatus and MILPTerminationStatus enums.
+
+    The data_definition module cannot import these enums directly
+    because it triggers CUDA/RMM initialization before the server
+    has configured memory management. So we maintain local copies
+    and this test ensures they stay in sync.
+    """
+    from cuopt_server.utils.linear_programming.data_definition import (
+        LP_STATUS_NAMES,
+        MILP_STATUS_NAMES,
+    )
+
+    expected_lp = {e.name for e in LPTerminationStatus}
+    expected_milp = {e.name for e in MILPTerminationStatus}
+
+    assert LP_STATUS_NAMES == expected_lp, (
+        f"LP_STATUS_NAMES out of sync with LPTerminationStatus enum. "
+        f"Expected: {expected_lp}, Got: {LP_STATUS_NAMES}"
+    )
+    assert MILP_STATUS_NAMES == expected_milp, (
+        f"MILP_STATUS_NAMES out of sync with MILPTerminationStatus enum. "
+        f"Expected: {expected_milp}, Got: {MILP_STATUS_NAMES}"
+    )

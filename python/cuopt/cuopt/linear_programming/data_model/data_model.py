@@ -172,8 +172,7 @@ class DataModel(data_model_wrapper.DataModel):
         """
         Set the constraint matrix (A) in CSR format.
         For more information about CSR checkout:
-        https://docs.nvidia.com/cuda/cusparse/index.html
-        compressed-sparse-row-csr
+        https://docs.nvidia.com/cuda/cusparse/index.html#compressed-sparse-row-csr #noqa
 
         Parameters
         ----------
@@ -261,6 +260,33 @@ class DataModel(data_model_wrapper.DataModel):
         Setting before calling the solver is optional.
         """
         super().set_objective_offset(objective_offset)
+
+    @catch_cuopt_exception
+    def set_quadratic_objective_matrix(self, Q_values, Q_indices, Q_offsets):
+        """
+        Set the quadratic objective matrix (Q) in CSR format.
+        For more information about CSR checkout:
+        https://docs.nvidia.com/cuda/cusparse/index.html#compressed-sparse-row-csr #noqa
+
+        Parameters
+        ----------
+        Q_values : np.array dtype - float64
+            Values of the CSR representation of the quadratic objective
+            matrix as a device floating point array.
+        Q_indices : np.array dtype - int32
+            Indices of the CSR representation of the quadratic objective
+            matrix as a device integer array.
+        Q_offsets : np.array dtype - int32
+            Offsets of the CSR representation of the quadratic objective
+            matrix as a device integer array. (size: n_variables + 1)
+
+        Notes
+        -----
+        Setting before calling the solver is required for quadratic problems.
+        The input Q matrix is internally symmetrized as Q + Q^T. For convex
+        quadratic programming, Q + Q^T should be positive semi-definite.
+        """
+        super().set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets)
 
     @catch_cuopt_exception
     def set_variable_lower_bounds(self, variable_lower_bounds):
@@ -523,6 +549,30 @@ class DataModel(data_model_wrapper.DataModel):
         Get the offset of the objective function as a float64.
         """
         return super().get_objective_offset()
+
+    @catch_cuopt_exception
+    def get_quadratic_objective_values(self):
+        """
+        Get the values of the CSR representation of the quadratic
+        objective matrix as a numpy.array with float64 type.
+        """
+        return super().get_quadratic_objective_values()
+
+    @catch_cuopt_exception
+    def get_quadratic_objective_indices(self):
+        """
+        Get the indices of the CSR representation of the quadratic
+        objective matrix as a numpy.array with int32 type.
+        """
+        return super().get_quadratic_objective_indices()
+
+    @catch_cuopt_exception
+    def get_quadratic_objective_offsets(self):
+        """
+        Get the offsets of the CSR representation of the quadratic
+        objective matrix as a numpy.array with int32 type.
+        """
+        return super().get_quadratic_objective_offsets()
 
     @catch_cuopt_exception
     def get_variable_lower_bounds(self):

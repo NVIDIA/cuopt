@@ -207,6 +207,7 @@ class fj_t {
     const std::vector<f_t>& left_weights,
     const std::vector<f_t>& right_weights,
     f_t objective_weight,
+    std::atomic<bool>& preemption_flag,
     fj_settings_t settings = fj_settings_t{},
     bool randomize_params  = false);
   bool cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu,

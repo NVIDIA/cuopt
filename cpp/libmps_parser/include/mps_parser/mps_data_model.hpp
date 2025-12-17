@@ -115,6 +115,7 @@ class mps_data_model_t {
    * @param objective_offset Objective offset value.
    */
   void set_objective_offset(f_t objective_offset);
+
   /**
    * @brief Set the variables (x) lower bounds.
    * @note Setting before calling the solver is optional, default value for all is 0.
@@ -356,7 +357,7 @@ class mps_data_model_t {
 
   // QPS-specific data members for quadratic programming support
   /** Quadratic objective matrix in CSR format (for (1/2) * x^T * Q * x term) */
-  std::vector<f_t> Q_objective_;
+  std::vector<f_t> Q_objective_values_;
   std::vector<i_t> Q_objective_indices_;
   std::vector<i_t> Q_objective_offsets_;
 

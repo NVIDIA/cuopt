@@ -447,8 +447,13 @@ target_link_libraries(cuopt_cli
   cuopt
   OpenMP::OpenMP_CXX
   ${CUDSS_LIBRARIES}
+  TBB::tbb
   PRIVATE
 )
+  # Use RUNPATH when building locally in order to allow LD_LIBRARY_PATH to override the conda env path
+if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+  target_link_options(cuopt_cli PRIVATE -Wl,--enable-new-dtags)
+endif()
 set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
 # adds the cuopt_cli executable to the runtime deb package
@@ -472,6 +477,9 @@ if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     OpenMP::OpenMP_CXX
     PRIVATE
   )
+  if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+    target_link_options(solve_MIP PRIVATE -Wl,--enable-new-dtags)
+  endif()
 
   target_include_directories(solve_MIP
     PRIVATE
@@ -493,6 +501,9 @@ if(BUILD_LP_BENCHMARKS)
     OpenMP::OpenMP_CXX
     PRIVATE
   )
+  if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+    target_link_options(solve_LP PRIVATE -Wl,--enable-new-dtags)
+  endif()
 endif()
 
 

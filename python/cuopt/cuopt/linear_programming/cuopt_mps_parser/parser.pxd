@@ -23,6 +23,9 @@ cdef extern from "mps_parser/mps_data_model.hpp" namespace "cuopt::mps_parser": 
         vector[f_t] c_
         f_t objective_scaling_factor_
         f_t objective_offset_
+        vector[f_t] Q_objective_values_
+        vector[i_t] Q_objective_indices_
+        vector[i_t] Q_objective_offsets_
         vector[f_t] variable_lower_bounds_
         vector[f_t] variable_upper_bounds_
         vector[f_t] constraint_lower_bounds_

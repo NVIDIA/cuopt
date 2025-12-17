@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <dual_simplex/bounds_strengthening.hpp>
 #include <dual_simplex/branch_and_bound.hpp>
+#include <dual_simplex/crossover.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/mip_node.hpp>
@@ -16,7 +17,6 @@
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/pseudo_costs.hpp>
 #include <dual_simplex/random.hpp>
-#include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
 
@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
+#include <future>
 #include <limits>
 #include <optional>
 #include <string>
@@ -217,6 +218,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     original_lp_(user_problem.handle_ptr, 1, 1, 1),
     incumbent_(1),
     root_relax_soln_(1, 1),
+    root_crossover_soln_(1, 1),
     pc_(1),
     solver_status_(mip_exploration_status_t::UNSET)
 {
@@ -1133,6 +1135,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
       if (get_upper_bound() < start_node->node.lower_bound) { continue; }
 
       bool recompute_bounds_and_basis = true;
+      i_t nodes_explored              = 0;
       search_tree_t<i_t, f_t> subtree(std::move(start_node->node));
       std::deque<mip_node_t<i_t, f_t>*> stack;
       stack.push_front(&subtree.root);
@@ -1150,6 +1153,8 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
 
         if (toc(exploration_stats_.start_time) > settings_.time_limit) { return; }
 
+        if (nodes_explored >= 1000) { break; }
+
         node_solve_info_t status = solve_node(node_ptr,
                                               subtree,
                                               leaf_problem,
@@ -1162,6 +1167,8 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
                                               start_node->lower,
                                               start_node->upper,
                                               log);
+
+        nodes_explored++;
 
         recompute_bounds_and_basis = !has_children(status);
 
@@ -1204,6 +1211,81 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
 }
 
 template <typename i_t, typename f_t>
+lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
+  simplex_solver_settings_t<i_t, f_t> const& lp_settings)
+{
+  // Root node path
+  lp_status_t root_status;
+  std::future<lp_status_t> root_status_future;
+  root_status_future = std::async(std::launch::async,
+                                  &solve_linear_program_advanced<i_t, f_t>,
+                                  std::ref(original_lp_),
+                                  exploration_stats_.start_time,
+                                  std::ref(lp_settings),
+                                  std::ref(root_relax_soln_),
+                                  std::ref(root_vstatus_),
+                                  std::ref(edge_norms_));
+  // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
+  // to finish
+  while (!root_crossover_solution_set_.load(std::memory_order_acquire) &&
+         *get_root_concurrent_halt() == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    continue;
+  }
+
+  if (root_crossover_solution_set_.load(std::memory_order_acquire)) {
+    // Crush the root relaxation solution on converted user problem
+    std::vector<f_t> crushed_root_x;
+    crush_primal_solution(
+      original_problem_, original_lp_, root_crossover_soln_.x, new_slacks_, crushed_root_x);
+    std::vector<f_t> crushed_root_y;
+    std::vector<f_t> crushed_root_z;
+
+    f_t dual_res_inf = crush_dual_solution(original_problem_,
+                                           original_lp_,
+                                           new_slacks_,
+                                           root_crossover_soln_.y,
+                                           root_crossover_soln_.z,
+                                           crushed_root_y,
+                                           crushed_root_z);
+
+    root_crossover_soln_.x = crushed_root_x;
+    root_crossover_soln_.y = crushed_root_y;
+    root_crossover_soln_.z = crushed_root_z;
+
+    // Call crossover on the crushed solution
+    auto root_crossover_settings            = settings_;
+    root_crossover_settings.log.log         = false;
+    root_crossover_settings.concurrent_halt = get_root_concurrent_halt();
+    crossover_status_t crossover_status     = crossover(original_lp_,
+                                                    root_crossover_settings,
+                                                    root_crossover_soln_,
+                                                    exploration_stats_.start_time,
+                                                    root_crossover_soln_,
+                                                    crossover_vstatus_);
+
+    if (crossover_status == crossover_status_t::OPTIMAL) {
+      settings_.log.printf("Crossover status: %d\n", crossover_status);
+    }
+
+    // Check if crossover was stopped by dual simplex
+    if (crossover_status == crossover_status_t::OPTIMAL) {
+      set_root_concurrent_halt(1);  // Stop dual simplex
+      root_status = root_status_future.get();
+      // Override the root relaxation solution with the crossover solution
+      root_relax_soln_ = root_crossover_soln_;
+      root_vstatus_    = crossover_vstatus_;
+      root_status      = lp_status_t::OPTIMAL;
+    } else {
+      root_status = root_status_future.get();
+    }
+  } else {
+    root_status = root_status_future.get();
+  }
+  return root_status;
+}
+
+template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solution)
 {
   logger_t log;
@@ -1233,14 +1315,24 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   root_relax_soln_.resize(original_lp_.num_rows, original_lp_.num_cols);
 
   settings_.log.printf("Solving LP root relaxation\n");
-  simplex_solver_settings_t lp_settings  = settings_;
-  lp_settings.inside_mip                 = 1;
-  lp_status_t root_status                = solve_linear_program_advanced(original_lp_,
-                                                          exploration_stats_.start_time,
-                                                          lp_settings,
-                                                          root_relax_soln_,
-                                                          root_vstatus_,
-                                                          edge_norms_);
+
+  lp_status_t root_status;
+  simplex_solver_settings_t lp_settings = settings_;
+  lp_settings.inside_mip                = 1;
+  lp_settings.concurrent_halt           = get_root_concurrent_halt();
+  // RINS/SUBMIP path
+  if (!enable_concurrent_lp_root_solve()) {
+    root_status = solve_linear_program_advanced(original_lp_,
+                                                exploration_stats_.start_time,
+                                                lp_settings,
+                                                root_relax_soln_,
+                                                root_vstatus_,
+                                                edge_norms_);
+
+  } else {
+    root_status = solve_root_relaxation(lp_settings);
+  }
+
   exploration_stats_.total_lp_iters      = root_relax_soln_.iterations;
   exploration_stats_.total_lp_solve_time = toc(exploration_stats_.start_time);
 
@@ -1336,14 +1428,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   // Choose variable to branch on
   i_t branch_var = pc_.variable_selection(fractional, root_relax_soln_.x, log);
 
-  search_tree_t<i_t, f_t> search_tree(root_objective_, root_vstatus_);
-  search_tree.graphviz_node(settings_.log, &search_tree.root, "lower bound", root_objective_);
-  search_tree.branch(&search_tree.root,
-                     branch_var,
-                     root_relax_soln_.x[branch_var],
-                     root_vstatus_,
-                     original_lp_,
-                     log);
+  search_tree_.root      = std::move(mip_node_t<i_t, f_t>(root_objective_, root_vstatus_));
+  search_tree_.num_nodes = 0;
+  search_tree_.graphviz_node(settings_.log, &search_tree_.root, "lower bound", root_objective_);
+  search_tree_.branch(&search_tree_.root,
+                      branch_var,
+                      root_relax_soln_.x[branch_var],
+                      root_vstatus_,
+                      original_lp_,
+                      log);
 
   csr_matrix_t<i_t, f_t> Arow(1, 1, 0);
   original_lp_.A.to_compressed_row(Arow);
@@ -1371,15 +1464,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   {
 #pragma omp master
     {
-      auto down_child  = search_tree.root.get_down_child();
-      auto up_child    = search_tree.root.get_up_child();
+      auto down_child  = search_tree_.root.get_down_child();
+      auto up_child    = search_tree_.root.get_up_child();
       i_t initial_size = 2 * settings_.num_threads;
 
 #pragma omp task
-      exploration_ramp_up(down_child, &search_tree, Arow, initial_size);
+      exploration_ramp_up(down_child, &search_tree_, Arow, initial_size);
 
 #pragma omp task
-      exploration_ramp_up(up_child, &search_tree, Arow, initial_size);
+      exploration_ramp_up(up_child, &search_tree_, Arow, initial_size);
     }
 
 #pragma omp barrier
@@ -1388,7 +1481,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     {
       for (i_t i = 0; i < settings_.num_bfs_threads; i++) {
 #pragma omp task
-        best_first_thread(i, search_tree, Arow);
+        best_first_thread(i, search_tree_, Arow);
       }
 
       for (i_t i = 0; i < settings_.num_diving_threads; i++) {
@@ -1398,7 +1491,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
   }
 
-  f_t lower_bound = heap_.size() > 0 ? heap_.top()->lower_bound : search_tree.root.lower_bound;
+  f_t lower_bound = heap_.size() > 0 ? heap_.top()->lower_bound : search_tree_.root.lower_bound;
   return set_final_solution(solution, lower_bound);
 }
 
