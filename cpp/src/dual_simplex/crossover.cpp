@@ -502,7 +502,18 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
         std::vector<i_t> q(m);
         std::vector<i_t> deficient;
         std::vector<i_t> slacks_needed;
-        factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+        i_t rank = factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+        if (rank != m) {
+          settings.log.printf("Failed to factorize basis. rank %d m %d\n", rank, m);
+          basis_repair(lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
+          if (factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) ==
+              -1) {
+            settings.log.printf("Failed to factorize basis after repair. rank %d m %d\n", rank, m);
+            return -1;
+          } else {
+            settings.log.printf("Basis repaired\n");
+          }
+        }
         reorder_basic_list(q, basic_list);
         // Reordering the basic list causes us to mess up the superbasic list index
         // so we need to update it
@@ -1218,8 +1229,8 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     i_t primal_push_status  = primal_push(
       lp, settings, start_time, solution, ft, basic_list, nonbasic_list, superbasic_list, vstatus);
     if (primal_push_status < 0) { return return_to_status(primal_push_status); }
-    print_crossover_info(lp, settings, vstatus, solution, "Primal push complete");
     compute_dual_solution_from_basis(lp, ft, basic_list, nonbasic_list, solution.y, solution.z);
+    print_crossover_info(lp, settings, vstatus, solution, "Primal push complete");
   } else {
     settings.log.printf("No primal push needed. No superbasic variables\n");
   }
@@ -1376,7 +1387,6 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
         }
       }
       settings.log.debug("Num flips %d\n", num_flips);
-      // solution = phase1_solution;
       print_crossover_info(lp, settings, vstatus, solution, "Dual phase 1 complete");
       dual_infeas           = dual_infeasibility(lp, settings, vstatus, solution.z);
       dual::status_t status = dual::status_t::NUMERICAL;
