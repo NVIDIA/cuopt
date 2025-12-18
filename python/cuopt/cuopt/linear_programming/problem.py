@@ -935,7 +935,7 @@ class LinearExpression:
                 return other * self
 
     def __rmul__(self, other):
-        return other * self
+        return self * other
 
     def __itruediv__(self, other):
         # Compute expr /= constant
