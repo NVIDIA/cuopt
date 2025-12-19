@@ -37,7 +37,7 @@ def main():
 
     # Add constraint: x + y >= 1
     prob.addConstraint(x + y >= 1)
-    prob.addConstraint(0.75*x + y <= 1)
+    prob.addConstraint(0.75 * x + y <= 1)
 
     # Set quadratic objective: minimize x^2 + y^2
     # Using Variable * Variable to create quadratic terms
