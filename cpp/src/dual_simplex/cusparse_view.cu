@@ -116,7 +116,7 @@ void my_cusparsespmv_preprocess(cusparseHandle_t handle,
 static cusparseSpMVAlg_t get_spmv_alg(int num_rows)
 {
   // The older version of ALG2 has a bug with single row matrices
-  if (num_rows == 1 && __CUDACC_VER_MAJOR__ < 13) { return CUSPARSE_SPMV_CSR_ALG1; }
+  if (num_rows == 1 && (CUSPARSE_VER_MAJOR <= 12 && CUSPARSE_VER_MINOR <= 6 && CUSPARSE_VER_PATCH <= 2)) { return CUSPARSE_SPMV_CSR_ALG1; }
   return CUSPARSE_SPMV_CSR_ALG2;
 }
 

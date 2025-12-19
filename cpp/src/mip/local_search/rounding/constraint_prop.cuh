@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <thrust/pair.h>
 #include <mip/local_search/rounding/bounds_repair.cuh>
 #include <mip/presolve/bounds_presolve.cuh>
 #include <mip/presolve/conditional_bound_strengthening.cuh>

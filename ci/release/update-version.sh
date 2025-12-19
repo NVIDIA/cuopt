@@ -104,6 +104,7 @@ DEPENDENCIES=(
   cuopt-server
   cuopt-sh-client
   libcuopt
+  libcuopt-tests
   libraft-headers
   librmm
   pylibraft
