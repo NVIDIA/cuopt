@@ -547,20 +547,21 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
   cuopt_expects(thrust::all_of(handle_ptr->get_thrust_policy(),
                                thrust::make_counting_iterator<i_t>(0),
                                thrust::make_counting_iterator<i_t>(n_variables),
-                               [vars_bnd = make_span(variable_bounds)] __device__(i_t idx) {
+                               [vars_bnd = make_span(variable_bounds)] __device__(i_t idx) -> bool {
                                  auto bounds = vars_bnd[idx];
                                  return get_lower(bounds) <= get_upper(bounds);
                                }),
                 error_type_t::ValidationError,
                 "Variable bounds are invalid");
   cuopt_expects(
-    thrust::all_of(handle_ptr->get_thrust_policy(),
-                   thrust::make_counting_iterator<i_t>(0),
-                   thrust::make_counting_iterator<i_t>(n_constraints),
-                   [constraint_lower_bounds = constraint_lower_bounds.data(),
-                    constraint_upper_bounds = constraint_upper_bounds.data()] __device__(i_t idx) {
-                     return constraint_lower_bounds[idx] <= constraint_upper_bounds[idx];
-                   }),
+    thrust::all_of(
+      handle_ptr->get_thrust_policy(),
+      thrust::make_counting_iterator<i_t>(0),
+      thrust::make_counting_iterator<i_t>(n_constraints),
+      [constraint_lower_bounds = constraint_lower_bounds.data(),
+       constraint_upper_bounds = constraint_upper_bounds.data()] __device__(i_t idx) -> bool {
+        return constraint_lower_bounds[idx] <= constraint_upper_bounds[idx];
+      }),
     error_type_t::ValidationError,
     "Constraints bounds are invalid");
 
@@ -582,23 +583,21 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
     cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
                                 integer_indices.cbegin(),
                                 integer_indices.cend(),
-                                [types = variable_types.data()] __device__(i_t idx) {
+                                [types = variable_types.data()] __device__(i_t idx) -> bool {
                                   return types[idx] == var_t::INTEGER;
                                 }),
                  "The integer indices table contains references to non-integer variables.");
     cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
                                 binary_indices.cbegin(),
                                 binary_indices.cend(),
-                                [bin_table = is_binary_variable.data()] __device__(i_t idx) {
-                                  return bin_table[idx];
-                                }),
+                                [bin_table = is_binary_variable.data()] __device__(
+                                  i_t idx) -> bool { return bin_table[idx]; }),
                  "The binary indices table contains references to non-binary variables.");
     cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
                                 nonbinary_indices.cbegin(),
                                 nonbinary_indices.cend(),
-                                [bin_table = is_binary_variable.data()] __device__(i_t idx) {
-                                  return !bin_table[idx];
-                                }),
+                                [bin_table = is_binary_variable.data()] __device__(
+                                  i_t idx) -> bool { return !bin_table[idx]; }),
                  "The non-binary indices table contains references to binary variables.");
     cuopt_assert(
       thrust::all_of(
@@ -607,7 +606,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
         thrust::make_counting_iterator<i_t>(n_variables),
         [types     = variable_types.data(),
          bin_table = is_binary_variable.data(),
-         pb_view   = view()] __device__(i_t idx) {
+         pb_view   = view()] __device__(i_t idx) -> bool {
           // ensure the binary variable tables are correct
           if (bin_table[idx]) {
             if (!thrust::binary_search(
@@ -640,7 +639,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
         thrust::make_counting_iterator<i_t>(n_variables),
         [types     = variable_types.data(),
          bin_table = is_binary_variable.data(),
-         pb_view   = view()] __device__(i_t idx) {
+         pb_view   = view()] __device__(i_t idx) -> bool {
           // ensure the binary variable tables are correct
           if (bin_table[idx]) {
             if (!thrust::binary_search(
@@ -673,7 +672,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
         thrust::make_counting_iterator<i_t>(n_variables),
         [types     = variable_types.data(),
          bin_table = is_binary_variable.data(),
-         pb_view   = view()] __device__(i_t idx) {
+         pb_view   = view()] __device__(i_t idx) -> bool {
           // ensure the binary variable tables are correct
           if (bin_table[idx]) {
             if (!thrust::binary_search(
@@ -1212,7 +1211,7 @@ void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_i
   objective_is_integral = thrust::all_of(handle_ptr->get_thrust_policy(),
                                          thrust::make_counting_iterator(0),
                                          thrust::make_counting_iterator(n_variables),
-                                         [v = view()] __device__(i_t var_idx) {
+                                         [v = view()] __device__(i_t var_idx) -> bool {
                                            if (v.objective_coefficients[var_idx] == 0) return true;
                                            return v.is_integer(v.objective_coefficients[var_idx]) &&
                                                   (v.variable_types[var_idx] == var_t::INTEGER ||

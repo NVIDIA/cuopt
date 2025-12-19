@@ -10,6 +10,7 @@
 #include "../utilities/cuopt_utils.cuh"
 #include "local_search.cuh"
 
+#include <thrust/pair.h>
 #include <cub/cub.cuh>
 
 namespace cuopt {

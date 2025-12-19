@@ -250,7 +250,7 @@ static void check_csr_representation([[maybe_unused]] const rmm::device_uvector<
   cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
                               variables.cbegin(),
                               variables.cend(),
-                              [n_variables = n_variables] __device__(i_t val) {
+                              [n_variables = n_variables] __device__(i_t val) -> bool {
                                 return val >= 0 && val < n_variables;
                               }),
                "A_indices values must positive lower than the number of variables (c size).");
@@ -267,7 +267,7 @@ static bool check_var_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
                    thrust::counting_iterator(0),
                    thrust::counting_iterator((i_t)problem.variable_bounds.size()),
                    [tolerance = problem.tolerances.presolve_absolute_tolerance,
-                    var_bnd   = make_span(problem.variable_bounds)] __device__(i_t index) {
+                    var_bnd   = make_span(problem.variable_bounds)] __device__(i_t index) -> bool {
                      auto var_bounds = var_bnd[index];
                      return (get_lower(var_bounds) > get_upper(var_bounds) + tolerance);
                    });
@@ -283,7 +283,7 @@ static bool check_constraint_bounds_sanity(const detail::problem_t<i_t, f_t>& pr
                    thrust::counting_iterator((i_t)problem.constraint_lower_bounds.size()),
                    [tolerance = problem.tolerances.presolve_absolute_tolerance,
                     lb        = make_span(problem.constraint_lower_bounds),
-                    ub        = make_span(problem.constraint_upper_bounds)] __device__(i_t index) {
+                    ub = make_span(problem.constraint_upper_bounds)] __device__(i_t index) -> bool {
                      return (lb[index] > ub[index] + tolerance);
                    });
   return !crossing_bounds_detected;
