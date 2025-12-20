@@ -83,15 +83,19 @@ HDI bool is_binary(f_t val)
 template <typename f_t>
 HDI f_t round_nearest(f_t val, f_t lb, f_t ub, f_t int_tol, raft::random::PCGenerator& rng)
 {
+  f_t int_lb = ceil(lb - int_tol);
+  f_t int_ub = floor(ub + int_tol);
+
   if (val > ub) {
-    return floor(ub + int_tol);
+    return int_ub;
   } else if (val < lb) {
-    return ceil(lb - int_tol);
+    return int_lb;
   } else {
     f_t w = rng.next_float();
     f_t t = 2 * w * (1 - w);
     if (w > 0.5) { t = 1 - t; }
-    return floor(val + t);
+    f_t result = floor(val + t);
+    return max(int_lb, min(result, int_ub));
   }
 }
 
@@ -184,11 +188,28 @@ inline i_t compute_number_of_integer_var_diff(const rmm::device_uvector<i_t>& in
     thrust::count_if(handle_ptr->get_thrust_policy(),
                      indices.begin(),
                      indices.end(),
-                     [first_ptr, second_ptr, int_tol] __host__ __device__(i_t idx) {
+                     [first_ptr, second_ptr, int_tol] __host__ __device__(i_t idx) -> bool {
                        return integer_equal<f_t>(first_ptr[idx], second_ptr[idx], int_tol);
                      });
   return same_vars;
 }
+
+template <typename i_t, typename f_t>
+struct integer_equal_on_indices_functor {
+  const f_t* first_ptr;
+  const f_t* second_ptr;
+  f_t int_tol;
+
+  integer_equal_on_indices_functor(const f_t* first, const f_t* second, f_t tol)
+    : first_ptr(first), second_ptr(second), int_tol(tol)
+  {
+  }
+
+  __host__ __device__ bool operator()(i_t idx) const
+  {
+    return integer_equal<f_t>(first_ptr[idx], second_ptr[idx], int_tol);
+  }
+};
 
 template <typename i_t, typename f_t>
 bool check_integer_equal_on_indices(const rmm::device_uvector<i_t>& indices,
@@ -198,14 +219,12 @@ bool check_integer_equal_on_indices(const rmm::device_uvector<i_t>& indices,
                                     const raft::handle_t* handle_ptr)
 {
   cuopt_assert(first_sol.size() == second_sol.size(), "Size mismatch!");
-  auto const first_ptr  = make_span(first_sol);
-  auto const second_ptr = make_span(second_sol);
+  const f_t* first_ptr  = first_sol.data();
+  const f_t* second_ptr = second_sol.data();
   return thrust::all_of(handle_ptr->get_thrust_policy(),
                         indices.begin(),
                         indices.end(),
-                        [first_ptr, second_ptr, int_tol] __host__ __device__(i_t idx) {
-                          return integer_equal<f_t>(first_ptr[idx], second_ptr[idx], int_tol);
-                        });
+                        integer_equal_on_indices_functor<i_t, f_t>(first_ptr, second_ptr, int_tol));
 }
 
 template <typename i_t, typename f_t>
@@ -324,10 +343,25 @@ template <typename f_t>
 bool has_nans(const raft::handle_t* handle_ptr, const rmm::device_uvector<f_t>& vec)
 {
   return thrust::any_of(
-    handle_ptr->get_thrust_policy(), vec.begin(), vec.end(), [] __device__(f_t val) {
+    handle_ptr->get_thrust_policy(), vec.begin(), vec.end(), [] __device__(f_t val) -> bool {
       return isnan(val);
     });
 }
+
+template <typename i_t, typename f_t>
+struct has_integrality_discrepancy_functor {
+  const f_t* assignment_ptr;
+  f_t int_tol;
+
+  has_integrality_discrepancy_functor(const f_t* ptr, f_t tol) : assignment_ptr(ptr), int_tol(tol)
+  {
+  }
+
+  __host__ __device__ bool operator()(i_t idx) const
+  {
+    return !is_integer<f_t>(assignment_ptr[idx], int_tol);
+  }
+};
 
 template <typename i_t, typename f_t>
 bool has_integrality_discrepancy(const raft::handle_t* handle_ptr,
@@ -335,28 +369,38 @@ bool has_integrality_discrepancy(const raft::handle_t* handle_ptr,
                                  const rmm::device_uvector<f_t>& assignment,
                                  f_t int_tol)
 {
-  auto const assignment_span = make_span(assignment);
   return thrust::any_of(handle_ptr->get_thrust_policy(),
                         integer_var_indices.begin(),
                         integer_var_indices.end(),
-                        [assignment_span, int_tol] __host__ __device__(i_t idx) {
-                          return !is_integer<f_t>(assignment_span[idx], int_tol);
-                        });
+                        has_integrality_discrepancy_functor<i_t, f_t>(assignment.data(), int_tol));
 }
+
+template <typename i_t, typename f_t>
+struct has_variable_bounds_violation_functor {
+  const f_t* assignment_ptr;
+  typename problem_t<i_t, f_t>::view_t problem_view;
+
+  has_variable_bounds_violation_functor(const f_t* ptr, typename problem_t<i_t, f_t>::view_t view)
+    : assignment_ptr(ptr), problem_view(view)
+  {
+  }
+
+  __device__ bool operator()(i_t idx) const
+  {
+    return !problem_view.check_variable_within_bounds(idx, assignment_ptr[idx]);
+  }
+};
 
 template <typename i_t, typename f_t>
 bool has_variable_bounds_violation(const raft::handle_t* handle_ptr,
                                    const rmm::device_uvector<f_t>& assignment,
                                    problem_t<i_t, f_t>* problem_ptr)
 {
-  auto const assignment_span = make_span(assignment);
-  return thrust::any_of(handle_ptr->get_thrust_policy(),
-                        thrust::make_counting_iterator(0),
-                        thrust::make_counting_iterator(0) + problem_ptr->n_variables,
-                        [assignment_span, problem_view = problem_ptr->view()] __device__(i_t idx) {
-                          return !problem_view.check_variable_within_bounds(idx,
-                                                                            assignment_span[idx]);
-                        });
+  return thrust::any_of(
+    handle_ptr->get_thrust_policy(),
+    thrust::make_counting_iterator(0),
+    thrust::make_counting_iterator(0) + problem_ptr->n_variables,
+    has_variable_bounds_violation_functor<i_t, f_t>(assignment.data(), problem_ptr->view()));
 }
 
 }  // namespace cuopt::linear_programming::detail

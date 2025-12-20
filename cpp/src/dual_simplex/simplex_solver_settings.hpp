@@ -15,6 +15,7 @@
 #include <atomic>
 #include <functional>
 #include <limits>
+#include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -63,6 +64,7 @@ struct simplex_solver_settings_t {
       dualize(-1),
       ordering(-1),
       barrier_dual_initial_point(-1),
+      check_Q(false),
       crossover(false),
       refactor_frequency(100),
       iteration_log_frequency(1000),
@@ -128,6 +130,7 @@ struct simplex_solver_settings_t {
   i_t ordering;   // -1 automatic, 0 to use nested dissection, 1 to use AMD
   i_t barrier_dual_initial_point;  // -1 automatic, 0 to use Lustig, Marsten, and Shanno initial
                                    // point, 1 to use initial point form dual least squares problem
+  bool check_Q;                    // true to check if Q is positive semidefinite
   bool crossover;                  // true to do crossover, false to not
   i_t refactor_frequency;          // number of basis updates before refactorization
   i_t iteration_log_frequency;     // number of iterations between log updates
@@ -142,8 +145,8 @@ struct simplex_solver_settings_t {
   std::function<void()> heuristic_preemption_callback;
   std::function<void(std::vector<f_t>&, std::vector<f_t>&, f_t)> set_simplex_solution_callback;
   mutable logger_t log;
-  volatile int* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
-                                  // continue, 1 if solver should halt
+  std::atomic<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
+                                      // continue, 1 if solver should halt
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

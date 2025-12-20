@@ -16,6 +16,8 @@
 
 #include <utilities/timer.hpp>
 
+#include <thrust/pair.h>
+
 #include "bounds_update_data.cuh"
 #include "utils.cuh"
 

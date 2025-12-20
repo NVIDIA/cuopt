@@ -43,11 +43,13 @@ An optimization problem is represented via a `cuOptOptimizationProblem`
 
 .. doxygentypedef:: cuOptOptimizationProblem
 
-Optimization problems can be created via three different functions
+Optimization problems can be created via five different functions
 
 .. doxygenfunction:: cuOptReadProblem
 .. doxygenfunction:: cuOptCreateProblem
 .. doxygenfunction:: cuOptCreateRangedProblem
+.. doxygenfunction:: cuOptCreateQuadraticProblem
+.. doxygenfunction:: cuOptCreateQuadraticRangedProblem
 
 A optimization problem must be destroyed with the following function
 

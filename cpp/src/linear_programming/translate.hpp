@@ -82,7 +82,11 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
   if (model.var_names.size() > 0) {
     user_problem.col_names.resize(n);
     for (int j = 0; j < n; ++j) {
-      user_problem.col_names[j] = model.var_names[j];
+      if (j < (int)model.var_names.size()) {
+        user_problem.col_names[j] = model.var_names[j];
+      } else {
+        user_problem.col_names[j] = "_CUOPT_x" + std::to_string(j);
+      }
     }
   }
   user_problem.obj_constant = model.presolve_data.objective_offset;
@@ -96,6 +100,10 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
         ? cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS
         : cuopt::linear_programming::dual_simplex::variable_type_t::INTEGER;
   }
+
+  user_problem.Q_offsets = model.Q_offsets;
+  user_problem.Q_indices = model.Q_indices;
+  user_problem.Q_values  = model.Q_values;
 
   return user_problem;
 }

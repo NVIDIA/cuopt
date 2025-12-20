@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <thrust/pair.h>
 #include <raft/core/device_span.hpp>
 #include <raft/util/cuda_utils.cuh>
 #include <rmm/device_uvector.hpp>

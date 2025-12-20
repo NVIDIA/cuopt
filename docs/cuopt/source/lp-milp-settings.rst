@@ -126,6 +126,12 @@ cuOpt will stop at the first limit (iteration or time) reached.
    or proves the problem is infeasible or unbounded.
 
 
+Number of GPUs
+^^^^^^^^^^^^^^
+
+``CUOPT_NUM_GPUS`` controls the number of GPUs to use for the solve. This setting is only relevant for LP problems that uses concurrent mode and supports up to 2 GPUs at the moment. Using this mode will run PDLP and barrier in parallel on different GPUs to avoid sharing single GPU resources.
+
+
 Infeasibility Detection
 ^^^^^^^^^^^^^^^^^^^^^^^^
 

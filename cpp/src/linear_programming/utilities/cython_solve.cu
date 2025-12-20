@@ -59,6 +59,17 @@ data_model_to_optimization_problem(
   }
   op_problem.set_objective_scaling_factor(data_model->get_objective_scaling_factor());
   op_problem.set_objective_offset(data_model->get_objective_offset());
+
+  if (data_model->get_quadratic_objective_values().size() != 0 &&
+      data_model->get_quadratic_objective_indices().size() != 0 &&
+      data_model->get_quadratic_objective_offsets().size() != 0) {
+    op_problem.set_quadratic_objective_matrix(data_model->get_quadratic_objective_values().data(),
+                                              data_model->get_quadratic_objective_values().size(),
+                                              data_model->get_quadratic_objective_indices().data(),
+                                              data_model->get_quadratic_objective_indices().size(),
+                                              data_model->get_quadratic_objective_offsets().data(),
+                                              data_model->get_quadratic_objective_offsets().size());
+  }
   if (data_model->get_variable_lower_bounds().size() != 0) {
     op_problem.set_variable_lower_bounds(data_model->get_variable_lower_bounds().data(),
                                          data_model->get_variable_lower_bounds().size());

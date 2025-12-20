@@ -132,6 +132,17 @@ Users who are using cuOpt for quick testing or research can use the cuOpt contai
 
 Please see our [guide for building cuOpt from source](CONTRIBUTING.md#setting-up-your-build-environment). This will be helpful if users want to add new features or fix bugs for cuOpt. This would also be very helpful in case users want to customize cuOpt for their own use cases which require changes to the cuOpt source code.
 
+## Release Timeline
+
+cuOpt follows the RAPIDS release schedule and is part of the **"others"** category in the release timeline. The release cycle consists of:
+
+- **Development**: Active feature development and bug fixes targeting `main`
+- **Burn Down**: Focus shifts to stabilization; new features should target the next release
+- **Code Freeze**: Only critical bug fixes allowed; PRs require admin approval
+- **Release**: Final testing, tagging, and official release
+
+For current release timelines and dates, refer to the [RAPIDS Maintainers Docs](https://docs.rapids.ai/maintainers/).
+
 ## Contributing Guide
 
 Review the [CONTRIBUTING.md](CONTRIBUTING.md) file for information on how to contribute code and issues to the project.

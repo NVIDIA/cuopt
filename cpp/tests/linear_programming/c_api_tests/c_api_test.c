@@ -1023,3 +1023,180 @@ DONE:
 
   return status;
 }
+
+cuopt_int_t test_quadratic_problem(cuopt_int_t* termination_status_ptr, cuopt_float_t* objective_ptr)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings = NULL;
+  cuOptSolution solution = NULL;
+
+  // minimize x1^2 + 4*x2^2 - 8*x1 - 16*x2
+  // subject to x1 + x2 >= 5
+  //         x1 >= 3
+  //         x2 >= 0
+  //         x1 <= 10
+  //         x2 <= 10
+
+  cuopt_int_t num_variables = 2;
+  cuopt_int_t num_constraints = 1;
+  cuopt_int_t objective_sense = CUOPT_MINIMIZE;
+  cuopt_float_t objective_offset = 0.0;
+  cuopt_float_t objective_coefficients[] = {-8.0, -16.0};
+
+  cuopt_int_t quadratic_objective_matrix_row_offsets[] = {0, 1, 2};
+  cuopt_int_t quadratic_objective_matrix_column_indices[] = {0, 1};
+  cuopt_float_t quadratic_objective_matrix_coefficent_values[] = {1.0, 4.0};
+
+  cuopt_int_t row_offsets[] = {0, 2};
+  cuopt_int_t column_indices[] = {0, 1};
+  cuopt_float_t values[] = {1.0, 1.0};
+
+  cuopt_float_t constraint_bounds[] = {5.0};
+  char constraint_sense[] = {'G'};
+
+  cuopt_float_t var_lower_bounds[] = {3.0, 0.0};
+  cuopt_float_t var_upper_bounds[] = {10.0, 10.0};
+
+  cuopt_int_t status;
+
+  status = cuOptCreateQuadraticProblem(num_constraints,
+                                       num_variables,
+                                       objective_sense,
+                                       objective_offset,
+                                       objective_coefficients,
+                                       quadratic_objective_matrix_row_offsets,
+                                       quadratic_objective_matrix_column_indices,
+                                       quadratic_objective_matrix_coefficent_values,
+                                       row_offsets,
+                                       column_indices,
+                                       values,
+                                       constraint_sense,
+                                       constraint_bounds,
+                                       var_lower_bounds,
+                                       var_upper_bounds,
+                                       &problem);
+
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, termination_status_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, objective_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+
+DONE:
+cuOptDestroyProblem(&problem);
+cuOptDestroySolverSettings(&settings);
+cuOptDestroySolution(&solution);
+
+return status;
+}
+
+cuopt_int_t test_quadratic_ranged_problem(cuopt_int_t* termination_status_ptr, cuopt_float_t* objective_ptr)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings = NULL;
+  cuOptSolution solution = NULL;
+
+  // minimize x1^2 + 4*x2^2 - 8*x1 - 16*x2
+  // subject to x1 + x2 >= 5
+  //         x1 >= 3
+  //         x2 >= 0
+  //         x1 <= 10
+  //         x2 <= 10
+  cuopt_int_t num_variables = 2;
+  cuopt_int_t num_constraints = 1;
+  cuopt_int_t objective_sense = CUOPT_MINIMIZE;
+  cuopt_float_t objective_offset = 0.0;
+  cuopt_float_t objective_coefficients[] = {-8.0, -16.0};
+  cuopt_int_t quadratic_objective_matrix_row_offsets[] = {0, 1, 2};
+  cuopt_int_t quadratic_objective_matrix_column_indices[] = {0, 1};
+  cuopt_float_t quadratic_objective_matrix_coefficent_values[] = {1.0, 4.0};
+
+  cuopt_int_t row_offsets[] = {0, 2};
+  cuopt_int_t column_indices[] = {0, 1};
+  cuopt_float_t values[] = {1.0, 1.0};
+
+  cuopt_float_t constraint_lower_bounds[] = {5.0};
+  cuopt_float_t constraint_upper_bounds[] = {100.0};
+
+  cuopt_float_t var_lower_bounds[] = {3.0, 0.0};
+  cuopt_float_t var_upper_bounds[] = {10.0, 10.0};
+
+  cuopt_int_t status;
+
+  status = cuOptCreateQuadraticRangedProblem(num_constraints,
+                                       num_variables,
+                                       objective_sense,
+                                       objective_offset,
+                                       objective_coefficients,
+                                       quadratic_objective_matrix_row_offsets,
+                                       quadratic_objective_matrix_column_indices,
+                                       quadratic_objective_matrix_coefficent_values,
+                                       row_offsets,
+                                       column_indices,
+                                       values,
+                                       constraint_lower_bounds,
+                                       constraint_upper_bounds,
+                                       var_lower_bounds,
+                                       var_upper_bounds,
+                                       &problem);
+
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, termination_status_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, objective_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+DONE:
+cuOptDestroyProblem(&problem);
+cuOptDestroySolverSettings(&settings);
+cuOptDestroySolution(&solution);
+
+return status;
+}
