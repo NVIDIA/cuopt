@@ -205,7 +205,7 @@ def worker(gpu_id, dataset_file_path, csv_path, git_commit, log_path, test_statu
     else:
         data_files = glob.glob(dataset_file_path + "/*_config.json")
     idx = int(gpu_id)
-    n_files = 3 #len(data_files)
+    n_files = 1 #len(data_files)
 
     while idx < n_files:
         mr, stats_mr = reinitialize_rmm()
@@ -215,10 +215,10 @@ def worker(gpu_id, dataset_file_path, csv_path, git_commit, log_path, test_statu
         test_name = str(data_file)
         status = "FAILED"
         try:
-
             test_name, data_model, solver_settings, requested_metrics = get_configuration(data_file, dataset_file_path, d_type)
             log.basicConfig(level=log.INFO, filename=log_path+"/"+test_name+"_log.txt", filemode="a+",
                         format="%(asctime)-15s %(levelname)-8s %(message)s")
+            log.getLogger().setLevel(log.INFO)
             log.info(f"------------- Test Start : {test_name} gpu id : {gpu_id} -------------------")
             status = run_benchmark(
                 test_name,
@@ -230,7 +230,6 @@ def worker(gpu_id, dataset_file_path, csv_path, git_commit, log_path, test_statu
                 test_status_file,
                 d_type
             )
-
         except Exception as e:
             log.error(str(e))
 
@@ -248,7 +247,7 @@ def worker(gpu_id, dataset_file_path, csv_path, git_commit, log_path, test_statu
 
 def run(dataset_file_path, csv_path, git_commit, log_path, test_status_file, n_gpus, d_type):
     # Restricting n_gpus to one to avoid resource sharing
-    n_gpus = 1
+    #n_gpus = 1
     procs = []
     for gpu_id in range(int(n_gpus)):
         p = Process(target=worker, args=(str(gpu_id), dataset_file_path, csv_path, git_commit, log_path, test_status_file, int(n_gpus), d_type))

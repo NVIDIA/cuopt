@@ -36,10 +36,10 @@ RESULT_DIR_NAME=cuopt-regression
 SSH_CREDS=/home/iroy/.ssh/
 
 # Assume CUOPT_SLACK_APP_ID is defined!
-CUOPT_SLACK_APP_ID="T04SYRAP3/B04BKLJ7R0F/8EPiEMTDcXFeB5FzQVEJp8t2"
+CUOPT_SLACK_APP_ID="MY_SLACK_APP_ID"
 WEBHOOK_URL=${WEBHOOK_URL:-https://hooks.slack.com/services/${CUOPT_SLACK_APP_ID}}
-S3_FILE_PREFIX=s3://reopt-testing-public/regression_tests
-S3_URL_PREFIX=https://reopt-testing-public.s3.amazonaws.com/regression_tests
+S3_FILE_PREFIX="MY_S3_FILE_PREFIX"
+S3_URL_PREFIX="MY_S3_URL_PREFIX"
 
 # Most are defined using the bash := or :- syntax, which means they
 # will be set only if they were previously unset. The project config

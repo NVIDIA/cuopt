@@ -123,8 +123,7 @@ if [[ $TESTING_FAILED == 0 ]]; then
             bash ${CUOPT_SCRIPTS_DIR}/mip_regression_test.sh &
         PID_3=$!
 
-        #wait $PID_1 $PID_2 $PID_3
-        wait $PID_1
+        wait $PID_1 $PID_2 $PID_3
     fi
 
 else   # if [[ $TESTING_FAILED == 0 ]]
@@ -179,13 +178,12 @@ rm -rf $RESULTS_DIR/tests
 
 ${SCRIPTS_DIR}/create-html-reports.sh $RUN_ASV_OPTION
 
-: <<'END'
 if hasArg --skip-sending-report; then
     logger "Skipping sending report."
 else
     logger "Uploading to S3, posting to Slack"
     ${PROJECT_DIR}/send-slack-report.sh
 fi
-END
+
 logger "cronjob.sh done."
 
