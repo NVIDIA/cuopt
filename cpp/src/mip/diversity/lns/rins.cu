@@ -141,7 +141,7 @@ void rins_t<i_t, f_t>::run_rins()
                              vars_to_fix.begin(),
                              [lpopt     = lp_opt_device.data(),
                               pb        = problem_copy->view(),
-                              incumbent = best_sol.assignment.data()] __device__(i_t var_idx) {
+                              incumbent = best_sol.assignment.data()] __device__(i_t var_idx) -> bool {
                                return pb.integer_equal(lpopt[var_idx], incumbent[var_idx]);
                              });
   vars_to_fix.resize(end - vars_to_fix.begin(), rins_handle.get_stream());
@@ -167,7 +167,7 @@ void rins_t<i_t, f_t>::run_rins()
   cuopt_assert(thrust::all_of(rins_handle.get_thrust_policy(),
                               vars_to_fix.begin(),
                               vars_to_fix.end(),
-                              [pb = problem_copy->view()] __device__(i_t var_idx) {
+                              [pb = problem_copy->view()] __device__(i_t var_idx) -> bool {
                                 return pb.is_integer_var(var_idx);
                               }),
                "All variables to fix must be integer variables");
