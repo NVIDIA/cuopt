@@ -1134,15 +1134,11 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool problem_checking,
   bool use_pdlp_solver_mode)
 {
-  // Check if remote solve is configured - if so, use the view-based path
-  if (is_remote_solve_enabled()) {
-    auto view = create_view_from_mps_data_model(mps_data_model);
-    return solve_lp(handle_ptr, view, settings, problem_checking, use_pdlp_solver_mode);
-  }
-
-  // Local solve: convert directly to optimization_problem_t (no extra copy)
-  auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
-  return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode);
+  // Create a view pointing to CPU data and delegate to the view-based overload.
+  // The view overload handles local vs remote solve automatically.
+  auto view = create_view_from_mps_data_model(mps_data_model);
+  view.set_is_device_memory(false);  // MPS data is always in CPU memory
+  return solve_lp(handle_ptr, view, settings, problem_checking, use_pdlp_solver_mode);
 }
 
 template <typename i_t, typename f_t>
@@ -1277,6 +1273,122 @@ optimization_problem_t<i_t, f_t> data_model_view_to_optimization_problem(
   return op_problem;
 }
 
+// Helper struct to hold CPU copies of GPU data for remote solve
+template <typename i_t, typename f_t>
+struct cpu_problem_data_t {
+  std::vector<f_t> A_values;
+  std::vector<i_t> A_indices;
+  std::vector<i_t> A_offsets;
+  std::vector<f_t> constraint_bounds;
+  std::vector<f_t> constraint_lower_bounds;
+  std::vector<f_t> constraint_upper_bounds;
+  std::vector<f_t> objective_coefficients;
+  std::vector<f_t> variable_lower_bounds;
+  std::vector<f_t> variable_upper_bounds;
+  std::vector<char> variable_types;
+  std::vector<f_t> quadratic_objective_values;
+  std::vector<i_t> quadratic_objective_indices;
+  std::vector<i_t> quadratic_objective_offsets;
+  bool maximize;
+  f_t objective_scaling_factor;
+  f_t objective_offset;
+
+  data_model_view_t<i_t, f_t> create_view() const
+  {
+    data_model_view_t<i_t, f_t> v;
+    v.set_maximize(maximize);
+    v.set_objective_scaling_factor(objective_scaling_factor);
+    v.set_objective_offset(objective_offset);
+
+    if (!A_values.empty()) {
+      v.set_csr_constraint_matrix(A_values.data(),
+                                  A_values.size(),
+                                  A_indices.data(),
+                                  A_indices.size(),
+                                  A_offsets.data(),
+                                  A_offsets.size());
+    }
+    if (!constraint_bounds.empty()) {
+      v.set_constraint_bounds(constraint_bounds.data(), constraint_bounds.size());
+    }
+    if (!constraint_lower_bounds.empty() && !constraint_upper_bounds.empty()) {
+      v.set_constraint_lower_bounds(constraint_lower_bounds.data(), constraint_lower_bounds.size());
+      v.set_constraint_upper_bounds(constraint_upper_bounds.data(), constraint_upper_bounds.size());
+    }
+    if (!objective_coefficients.empty()) {
+      v.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
+    }
+    if (!variable_lower_bounds.empty()) {
+      v.set_variable_lower_bounds(variable_lower_bounds.data(), variable_lower_bounds.size());
+    }
+    if (!variable_upper_bounds.empty()) {
+      v.set_variable_upper_bounds(variable_upper_bounds.data(), variable_upper_bounds.size());
+    }
+    if (!variable_types.empty()) {
+      v.set_variable_types(variable_types.data(), variable_types.size());
+    }
+    if (!quadratic_objective_values.empty()) {
+      v.set_quadratic_objective_matrix(quadratic_objective_values.data(),
+                                       quadratic_objective_values.size(),
+                                       quadratic_objective_indices.data(),
+                                       quadratic_objective_indices.size(),
+                                       quadratic_objective_offsets.data(),
+                                       quadratic_objective_offsets.size());
+    }
+    v.set_is_device_memory(false);
+    return v;
+  }
+};
+
+// Helper to copy GPU view data to CPU
+template <typename i_t, typename f_t>
+cpu_problem_data_t<i_t, f_t> copy_view_to_cpu(raft::handle_t const* handle_ptr,
+                                              const data_model_view_t<i_t, f_t>& gpu_view)
+{
+  cpu_problem_data_t<i_t, f_t> cpu_data;
+  auto stream = handle_ptr->get_stream();
+
+  cpu_data.maximize                 = gpu_view.get_sense();
+  cpu_data.objective_scaling_factor = gpu_view.get_objective_scaling_factor();
+  cpu_data.objective_offset         = gpu_view.get_objective_offset();
+
+  auto copy_to_host = [stream](auto& dst_vec, auto src_span) {
+    if (src_span.size() > 0) {
+      dst_vec.resize(src_span.size());
+      raft::copy(dst_vec.data(), src_span.data(), src_span.size(), stream);
+    }
+  };
+
+  copy_to_host(cpu_data.A_values, gpu_view.get_constraint_matrix_values());
+  copy_to_host(cpu_data.A_indices, gpu_view.get_constraint_matrix_indices());
+  copy_to_host(cpu_data.A_offsets, gpu_view.get_constraint_matrix_offsets());
+  copy_to_host(cpu_data.constraint_bounds, gpu_view.get_constraint_bounds());
+  copy_to_host(cpu_data.constraint_lower_bounds, gpu_view.get_constraint_lower_bounds());
+  copy_to_host(cpu_data.constraint_upper_bounds, gpu_view.get_constraint_upper_bounds());
+  copy_to_host(cpu_data.objective_coefficients, gpu_view.get_objective_coefficients());
+  copy_to_host(cpu_data.variable_lower_bounds, gpu_view.get_variable_lower_bounds());
+  copy_to_host(cpu_data.variable_upper_bounds, gpu_view.get_variable_upper_bounds());
+  copy_to_host(cpu_data.quadratic_objective_values, gpu_view.get_quadratic_objective_values());
+  copy_to_host(cpu_data.quadratic_objective_indices, gpu_view.get_quadratic_objective_indices());
+  copy_to_host(cpu_data.quadratic_objective_offsets, gpu_view.get_quadratic_objective_offsets());
+
+  // Variable types need special handling (char array)
+  auto var_types_span = gpu_view.get_variable_types();
+  if (var_types_span.size() > 0) {
+    cpu_data.variable_types.resize(var_types_span.size());
+    cudaMemcpyAsync(cpu_data.variable_types.data(),
+                    var_types_span.data(),
+                    var_types_span.size() * sizeof(char),
+                    cudaMemcpyDeviceToHost,
+                    stream);
+  }
+
+  // Synchronize to ensure all copies are complete
+  cudaStreamSynchronize(stream);
+
+  return cpu_data;
+}
+
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp(raft::handle_t const* handle_ptr,
                                                    const data_model_view_t<i_t, f_t>& view,
@@ -1287,8 +1399,33 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(raft::handle_t const* handle_
   // Initialize logger for this overload (needed for early returns)
   init_logger_t log(settings.log_file, settings.log_to_console);
 
-  // Check if remote solve is enabled
+  // Check for remote solve configuration first
   auto remote_config = get_remote_solve_config();
+
+  if (view.is_device_memory()) {
+    if (remote_config.has_value()) {
+      // GPU data + remote solve requested: copy to CPU and proceed with remote
+      CUOPT_LOG_WARN(
+        "[solve_lp] Remote solve requested but data is on GPU. "
+        "Copying to CPU for serialization (performance impact).");
+      auto cpu_data = copy_view_to_cpu(handle_ptr, view);
+      auto cpu_view = cpu_data.create_view();
+
+      CUOPT_LOG_INFO("[solve_lp] Remote solve detected: CUOPT_REMOTE_HOST=%s, CUOPT_REMOTE_PORT=%d",
+                     remote_config->host.c_str(),
+                     remote_config->port);
+      // TODO: Implement remote solve - serialize cpu_view and send to remote server
+      CUOPT_LOG_ERROR("[solve_lp] Remote solve not yet implemented");
+      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::NumericalError,
+                                                       handle_ptr->get_stream());
+    }
+
+    // Local solve: data already on GPU - convert view to optimization_problem_t and solve
+    auto op_problem = data_model_view_to_optimization_problem(handle_ptr, view);
+    return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode);
+  }
+
+  // Data is on CPU
   if (remote_config.has_value()) {
     CUOPT_LOG_INFO("[solve_lp] Remote solve detected: CUOPT_REMOTE_HOST=%s, CUOPT_REMOTE_PORT=%d",
                    remote_config->host.c_str(),
@@ -1299,7 +1436,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(raft::handle_t const* handle_
                                                      handle_ptr->get_stream());
   }
 
-  // Local solve: convert data_model_view_t to optimization_problem_t and solve
+  // Local solve with CPU data: copy to GPU and solve
   auto op_problem = data_model_view_to_optimization_problem(handle_ptr, view);
   return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode);
 }

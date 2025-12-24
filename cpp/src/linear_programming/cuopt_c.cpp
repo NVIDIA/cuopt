@@ -147,8 +147,7 @@ struct problem_cpu_data_t {
 
 struct problem_and_stream_view_t {
   problem_and_stream_view_t()
-    : is_remote_configured(false),
-      cpu_data(nullptr),
+    : cpu_data(nullptr),
       gpu_problem(nullptr),
       stream_view(rmm::cuda_stream_per_thread),
       handle(stream_view)
@@ -162,25 +161,88 @@ struct problem_and_stream_view_t {
    */
   bool is_mip() const
   {
-    if (is_remote_configured) {
-      return cpu_data && cpu_data->is_mip();
-    } else {
+    if (view.is_device_memory()) {
+      // GPU path: check gpu_problem's problem category
       if (!gpu_problem) return false;
       auto cat = gpu_problem->get_problem_category();
       return (cat == problem_category_t::MIP) || (cat == problem_category_t::IP);
+    } else {
+      // CPU path: check variable types in cpu_data
+      if (!cpu_data) return false;
+      return cpu_data->is_mip();
     }
   }
-
-  // Remote solve configured at creation time
-  bool is_remote_configured;
 
   // Only ONE of these is allocated (optimized memory usage):
   std::unique_ptr<problem_cpu_data_t> cpu_data;  // for remote solve (CPU memory)
   std::unique_ptr<optimization_problem_t<cuopt_int_t, cuopt_float_t>>
     gpu_problem;  // for local solve (GPU memory)
 
+  // Non-owning view pointing to whichever storage is active
+  // Use view.is_device_memory() to check if data is on GPU or CPU
+  cuopt::linear_programming::data_model_view_t<cuopt_int_t, cuopt_float_t> view;
+
   rmm::cuda_stream_view stream_view;
   raft::handle_t handle;
+
+  /**
+   * @brief Create a view pointing to GPU data from the gpu_problem.
+   * Call this after gpu_problem is fully populated.
+   */
+  void create_view_from_gpu_problem()
+  {
+    if (!gpu_problem) return;
+    auto& gpu = *gpu_problem;
+
+    view.set_maximize(gpu.get_sense());
+    view.set_objective_offset(gpu.get_objective_offset());
+    view.set_objective_coefficients(gpu.get_objective_coefficients().data(), gpu.get_n_variables());
+    view.set_csr_constraint_matrix(gpu.get_constraint_matrix_values().data(),
+                                   gpu.get_constraint_matrix_values().size(),
+                                   gpu.get_constraint_matrix_indices().data(),
+                                   gpu.get_constraint_matrix_indices().size(),
+                                   gpu.get_constraint_matrix_offsets().data(),
+                                   gpu.get_constraint_matrix_offsets().size());
+
+    if (!gpu.get_constraint_lower_bounds().is_empty()) {
+      view.set_constraint_lower_bounds(gpu.get_constraint_lower_bounds().data(),
+                                       gpu.get_n_constraints());
+      view.set_constraint_upper_bounds(gpu.get_constraint_upper_bounds().data(),
+                                       gpu.get_n_constraints());
+    } else if (!gpu.get_row_types().is_empty()) {
+      view.set_row_types(gpu.get_row_types().data(), gpu.get_n_constraints());
+      view.set_constraint_bounds(gpu.get_constraint_bounds().data(), gpu.get_n_constraints());
+    }
+
+    view.set_variable_lower_bounds(gpu.get_variable_lower_bounds().data(), gpu.get_n_variables());
+    view.set_variable_upper_bounds(gpu.get_variable_upper_bounds().data(), gpu.get_n_variables());
+
+    // Note: variable_types in optimization_problem_t uses var_t enum, not char
+    // The view's variable_types span will point to GPU memory with var_t values
+    // This is handled specially in solve routines
+
+    if (gpu.has_quadratic_objective()) {
+      view.set_quadratic_objective_matrix(gpu.get_quadratic_objective_values().data(),
+                                          gpu.get_quadratic_objective_values().size(),
+                                          gpu.get_quadratic_objective_indices().data(),
+                                          gpu.get_quadratic_objective_indices().size(),
+                                          gpu.get_quadratic_objective_offsets().data(),
+                                          gpu.get_quadratic_objective_offsets().size());
+    }
+
+    view.set_is_device_memory(true);
+  }
+
+  /**
+   * @brief Create a view pointing to CPU data from cpu_data.
+   * Call this after cpu_data is fully populated.
+   */
+  void create_view_from_cpu_data()
+  {
+    if (!cpu_data) return;
+    view = cpu_data->create_view();
+    view.set_is_device_memory(false);
+  }
 };
 
 struct solution_and_stream_view_t {
@@ -235,9 +297,9 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
   }
 
   // Check remote solve configuration at creation time
-  problem_and_stream->is_remote_configured = is_remote_solve_enabled();
+  bool is_remote = is_remote_solve_enabled();
 
-  if (problem_and_stream->is_remote_configured) {
+  if (is_remote) {
     // Remote: store in CPU memory
     problem_and_stream->cpu_data = std::make_unique<problem_cpu_data_t>();
     auto& cpu_data               = *problem_and_stream->cpu_data;
@@ -277,12 +339,17 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
       cpu_data.variable_types[i] =
         (mps_var_types[i] == 'I' || mps_var_types[i] == 'B') ? CUOPT_INTEGER : CUOPT_CONTINUOUS;
     }
+
+    // Create view pointing to CPU data
+    problem_and_stream->create_view_from_cpu_data();
   } else {
     // Local: store in GPU memory using existing mps_data_model_to_optimization_problem
     problem_and_stream->gpu_problem =
       std::make_unique<optimization_problem_t<cuopt_int_t, cuopt_float_t>>(
         mps_data_model_to_optimization_problem(problem_and_stream->get_handle_ptr(),
                                                *mps_data_model_ptr));
+    // Create view pointing to GPU data
+    problem_and_stream->create_view_from_gpu_problem();
   }
 
   *problem_ptr = static_cast<cuOptOptimizationProblem>(problem_and_stream);
@@ -315,12 +382,12 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
   }
 
   problem_and_stream_view_t* problem_and_stream = new problem_and_stream_view_t();
-  problem_and_stream->is_remote_configured      = is_remote_solve_enabled();
+  bool is_remote                                = is_remote_solve_enabled();
 
   try {
     cuopt_int_t nnz = constraint_matrix_row_offsets[num_constraints];
 
-    if (problem_and_stream->is_remote_configured) {
+    if (is_remote) {
       // Remote: store in CPU memory
       problem_and_stream->cpu_data = std::make_unique<problem_cpu_data_t>();
       auto& cpu_data               = *problem_and_stream->cpu_data;
@@ -346,6 +413,9 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
       cpu_data.variable_lower_bounds.assign(lower_bounds, lower_bounds + num_variables);
       cpu_data.variable_upper_bounds.assign(upper_bounds, upper_bounds + num_variables);
       cpu_data.variable_types.assign(variable_types, variable_types + num_variables);
+
+      // Create view pointing to CPU data
+      problem_and_stream->create_view_from_cpu_data();
     } else {
       // Local: store in GPU memory
       problem_and_stream->gpu_problem =
@@ -374,6 +444,9 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
           variable_types[j] == CUOPT_CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
       }
       gpu_problem.set_variable_types(variable_types_host.data(), num_variables);
+
+      // Create view pointing to GPU data
+      problem_and_stream->create_view_from_gpu_problem();
     }
 
     *problem_ptr = static_cast<cuOptOptimizationProblem>(problem_and_stream);
@@ -410,12 +483,12 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
   }
 
   problem_and_stream_view_t* problem_and_stream = new problem_and_stream_view_t();
-  problem_and_stream->is_remote_configured      = is_remote_solve_enabled();
+  bool is_remote                                = is_remote_solve_enabled();
 
   try {
     cuopt_int_t nnz = constraint_matrix_row_offsets[num_constraints];
 
-    if (problem_and_stream->is_remote_configured) {
+    if (is_remote) {
       // Remote: store in CPU memory
       problem_and_stream->cpu_data = std::make_unique<problem_cpu_data_t>();
       auto& cpu_data               = *problem_and_stream->cpu_data;
@@ -445,6 +518,9 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
       cpu_data.variable_upper_bounds.assign(variable_upper_bounds,
                                             variable_upper_bounds + num_variables);
       cpu_data.variable_types.assign(variable_types, variable_types + num_variables);
+
+      // Create view pointing to CPU data
+      problem_and_stream->create_view_from_cpu_data();
     } else {
       // Local: store in GPU memory
       problem_and_stream->gpu_problem =
@@ -472,6 +548,9 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
           variable_types[j] == CUOPT_CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
       }
       gpu_problem.set_variable_types(variable_types_host.data(), num_variables);
+
+      // Create view pointing to GPU data
+      problem_and_stream->create_view_from_gpu_problem();
     }
 
     *problem_ptr = static_cast<cuOptOptimizationProblem>(problem_and_stream);
@@ -513,13 +592,13 @@ cuopt_int_t cuOptCreateQuadraticProblem(
   }
 
   problem_and_stream_view_t* problem_and_stream = new problem_and_stream_view_t();
-  problem_and_stream->is_remote_configured      = is_remote_solve_enabled();
+  bool is_remote                                = is_remote_solve_enabled();
 
   try {
     cuopt_int_t Q_nnz = quadratic_objective_matrix_row_offsets[num_variables];
     cuopt_int_t nnz   = constraint_matrix_row_offsets[num_constraints];
 
-    if (problem_and_stream->is_remote_configured) {
+    if (is_remote) {
       // Remote: store in CPU memory
       problem_and_stream->cpu_data = std::make_unique<problem_cpu_data_t>();
       auto& cpu_data               = *problem_and_stream->cpu_data;
@@ -553,6 +632,9 @@ cuopt_int_t cuOptCreateQuadraticProblem(
       cpu_data.variable_lower_bounds.assign(lower_bounds, lower_bounds + num_variables);
       cpu_data.variable_upper_bounds.assign(upper_bounds, upper_bounds + num_variables);
       cpu_data.variable_types.assign(num_variables, CUOPT_CONTINUOUS);
+
+      // Create view pointing to CPU data
+      problem_and_stream->create_view_from_cpu_data();
     } else {
       // Local: store in GPU memory
       problem_and_stream->gpu_problem =
@@ -579,6 +661,9 @@ cuopt_int_t cuOptCreateQuadraticProblem(
       gpu_problem.set_constraint_bounds(rhs, num_constraints);
       gpu_problem.set_variable_lower_bounds(lower_bounds, num_variables);
       gpu_problem.set_variable_upper_bounds(upper_bounds, num_variables);
+
+      // Create view pointing to GPU data
+      problem_and_stream->create_view_from_gpu_problem();
     }
 
     *problem_ptr = static_cast<cuOptOptimizationProblem>(problem_and_stream);
@@ -621,13 +706,13 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
   }
 
   problem_and_stream_view_t* problem_and_stream = new problem_and_stream_view_t();
-  problem_and_stream->is_remote_configured      = is_remote_solve_enabled();
+  bool is_remote                                = is_remote_solve_enabled();
 
   try {
     cuopt_int_t Q_nnz = quadratic_objective_matrix_row_offsets[num_variables];
     cuopt_int_t nnz   = constraint_matrix_row_offsets[num_constraints];
 
-    if (problem_and_stream->is_remote_configured) {
+    if (is_remote) {
       // Remote: store in CPU memory
       problem_and_stream->cpu_data = std::make_unique<problem_cpu_data_t>();
       auto& cpu_data               = *problem_and_stream->cpu_data;
@@ -665,6 +750,9 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
       cpu_data.variable_upper_bounds.assign(variable_upper_bounds,
                                             variable_upper_bounds + num_variables);
       cpu_data.variable_types.assign(num_variables, CUOPT_CONTINUOUS);
+
+      // Create view pointing to CPU data
+      problem_and_stream->create_view_from_cpu_data();
     } else {
       // Local: store in GPU memory
       problem_and_stream->gpu_problem =
@@ -691,6 +779,9 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
       gpu_problem.set_constraint_upper_bounds(constraint_upper_bounds, num_constraints);
       gpu_problem.set_variable_lower_bounds(variable_lower_bounds, num_variables);
       gpu_problem.set_variable_upper_bounds(variable_upper_bounds, num_variables);
+
+      // Create view pointing to GPU data
+      problem_and_stream->create_view_from_gpu_problem();
     }
 
     *problem_ptr = static_cast<cuOptOptimizationProblem>(problem_and_stream);
@@ -718,7 +809,7 @@ cuopt_int_t cuOptGetNumConstraints(cuOptOptimizationProblem problem,
   if (num_constraints_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     *num_constraints_ptr = problem_and_stream_view->cpu_data->num_constraints;
   } else {
     *num_constraints_ptr = problem_and_stream_view->gpu_problem->get_n_constraints();
@@ -732,7 +823,7 @@ cuopt_int_t cuOptGetNumVariables(cuOptOptimizationProblem problem, cuopt_int_t* 
   if (num_variables_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     *num_variables_ptr = problem_and_stream_view->cpu_data->num_variables;
   } else {
     *num_variables_ptr = problem_and_stream_view->gpu_problem->get_n_variables();
@@ -747,7 +838,7 @@ cuopt_int_t cuOptGetObjectiveSense(cuOptOptimizationProblem problem,
   if (objective_sense_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     *objective_sense_ptr =
       problem_and_stream_view->cpu_data->maximize ? CUOPT_MAXIMIZE : CUOPT_MINIMIZE;
   } else {
@@ -764,7 +855,7 @@ cuopt_int_t cuOptGetObjectiveOffset(cuOptOptimizationProblem problem,
   if (objective_offset_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     *objective_offset_ptr = problem_and_stream_view->cpu_data->objective_offset;
   } else {
     *objective_offset_ptr = problem_and_stream_view->gpu_problem->get_objective_offset();
@@ -779,7 +870,7 @@ cuopt_int_t cuOptGetObjectiveCoefficients(cuOptOptimizationProblem problem,
   if (objective_coefficients_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     const auto& coeffs = problem_and_stream_view->cpu_data->objective_coefficients;
     std::copy(coeffs.begin(), coeffs.end(), objective_coefficients_ptr);
   } else {
@@ -800,7 +891,7 @@ cuopt_int_t cuOptGetNumNonZeros(cuOptOptimizationProblem problem,
   if (num_non_zero_elements_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     *num_non_zero_elements_ptr =
       static_cast<cuopt_int_t>(problem_and_stream_view->cpu_data->A_values.size());
   } else {
@@ -822,7 +913,7 @@ cuopt_int_t cuOptGetConstraintMatrix(cuOptOptimizationProblem problem,
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
 
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     const auto& cpu_data = *problem_and_stream_view->cpu_data;
     std::copy(
       cpu_data.A_values.begin(), cpu_data.A_values.end(), constraint_matrix_coefficients_ptr);
@@ -857,7 +948,7 @@ cuopt_int_t cuOptGetConstraintSense(cuOptOptimizationProblem problem, char* cons
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
 
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     const auto& row_types = problem_and_stream_view->cpu_data->row_types;
     std::copy(row_types.begin(), row_types.end(), constraint_sense_ptr);
   } else {
@@ -879,7 +970,7 @@ cuopt_int_t cuOptGetConstraintRightHandSide(cuOptOptimizationProblem problem,
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
 
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     const auto& bounds = problem_and_stream_view->cpu_data->constraint_bounds;
     std::copy(bounds.begin(), bounds.end(), rhs_ptr);
   } else {
@@ -901,7 +992,7 @@ cuopt_int_t cuOptGetConstraintLowerBounds(cuOptOptimizationProblem problem,
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
 
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     const auto& bounds = problem_and_stream_view->cpu_data->constraint_lower_bounds;
     std::copy(bounds.begin(), bounds.end(), lower_bounds_ptr);
   } else {
@@ -923,7 +1014,7 @@ cuopt_int_t cuOptGetConstraintUpperBounds(cuOptOptimizationProblem problem,
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
 
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     const auto& bounds = problem_and_stream_view->cpu_data->constraint_upper_bounds;
     std::copy(bounds.begin(), bounds.end(), upper_bounds_ptr);
   } else {
@@ -945,7 +1036,7 @@ cuopt_int_t cuOptGetVariableLowerBounds(cuOptOptimizationProblem problem,
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
 
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     const auto& bounds = problem_and_stream_view->cpu_data->variable_lower_bounds;
     std::copy(bounds.begin(), bounds.end(), lower_bounds_ptr);
   } else {
@@ -967,7 +1058,7 @@ cuopt_int_t cuOptGetVariableUpperBounds(cuOptOptimizationProblem problem,
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
 
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     const auto& bounds = problem_and_stream_view->cpu_data->variable_upper_bounds;
     std::copy(bounds.begin(), bounds.end(), upper_bounds_ptr);
   } else {
@@ -988,7 +1079,7 @@ cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variab
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
 
-  if (problem_and_stream_view->is_remote_configured) {
+  if (!problem_and_stream_view->view.is_device_memory()) {
     const auto& var_types = problem_and_stream_view->cpu_data->variable_types;
     std::copy(var_types.begin(), var_types.end(), variable_types_ptr);
   } else {
@@ -1171,48 +1262,12 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
 
   bool is_mip = problem_and_stream_view->is_mip();
 
-  if (problem_and_stream_view->is_remote_configured) {
-    // Remote path: use data_model_view_t from CPU data
-    auto view = problem_and_stream_view->cpu_data->create_view();
+  // Use the view - solve_lp/solve_mip will check is_device_memory() to determine path
+  const auto& view = problem_and_stream_view->view;
 
-    if (is_mip) {
-      mip_solver_settings_t<cuopt_int_t, cuopt_float_t>& mip_settings =
-        solver_settings->get_mip_settings();
-
-      solution_and_stream_view_t* solution_and_stream_view =
-        new solution_and_stream_view_t(true, problem_and_stream_view->stream_view);
-
-      solution_and_stream_view->mip_solution_ptr =
-        new mip_solution_t<cuopt_int_t, cuopt_float_t>(solve_mip<cuopt_int_t, cuopt_float_t>(
-          problem_and_stream_view->get_handle_ptr(), view, mip_settings));
-
-      *solution_ptr = static_cast<cuOptSolution>(solution_and_stream_view);
-
-      cuopt::utilities::printTimestamp("CUOPT_SOLVE_RETURN");
-
-      return static_cast<cuopt_int_t>(
-        solution_and_stream_view->mip_solution_ptr->get_error_status().get_error_type());
-    } else {
-      pdlp_solver_settings_t<cuopt_int_t, cuopt_float_t>& pdlp_settings =
-        solver_settings->get_pdlp_settings();
-
-      solution_and_stream_view_t* solution_and_stream_view =
-        new solution_and_stream_view_t(false, problem_and_stream_view->stream_view);
-
-      solution_and_stream_view->lp_solution_ptr =
-        new optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>(
-          solve_lp<cuopt_int_t, cuopt_float_t>(
-            problem_and_stream_view->get_handle_ptr(), view, pdlp_settings));
-
-      *solution_ptr = static_cast<cuOptSolution>(solution_and_stream_view);
-
-      cuopt::utilities::printTimestamp("CUOPT_SOLVE_RETURN");
-
-      return static_cast<cuopt_int_t>(
-        solution_and_stream_view->lp_solution_ptr->get_error_status().get_error_type());
-    }
-  } else {
-    // Local path: use GPU problem directly (already in GPU memory)
+  if (view.is_device_memory()) {
+    // Local path: data is already on GPU
+    // Use gpu_problem directly for optimal performance (no extra copy)
     auto& gpu_problem = *problem_and_stream_view->gpu_problem;
 
     if (is_mip) {
@@ -1241,6 +1296,44 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
       solution_and_stream_view->lp_solution_ptr =
         new optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>(
           solve_lp<cuopt_int_t, cuopt_float_t>(gpu_problem, pdlp_settings));
+
+      *solution_ptr = static_cast<cuOptSolution>(solution_and_stream_view);
+
+      cuopt::utilities::printTimestamp("CUOPT_SOLVE_RETURN");
+
+      return static_cast<cuopt_int_t>(
+        solution_and_stream_view->lp_solution_ptr->get_error_status().get_error_type());
+    }
+  } else {
+    // CPU path: use view directly - solve_lp/solve_mip handle remote vs local conversion
+    if (is_mip) {
+      mip_solver_settings_t<cuopt_int_t, cuopt_float_t>& mip_settings =
+        solver_settings->get_mip_settings();
+
+      solution_and_stream_view_t* solution_and_stream_view =
+        new solution_and_stream_view_t(true, problem_and_stream_view->stream_view);
+
+      solution_and_stream_view->mip_solution_ptr =
+        new mip_solution_t<cuopt_int_t, cuopt_float_t>(solve_mip<cuopt_int_t, cuopt_float_t>(
+          problem_and_stream_view->get_handle_ptr(), view, mip_settings));
+
+      *solution_ptr = static_cast<cuOptSolution>(solution_and_stream_view);
+
+      cuopt::utilities::printTimestamp("CUOPT_SOLVE_RETURN");
+
+      return static_cast<cuopt_int_t>(
+        solution_and_stream_view->mip_solution_ptr->get_error_status().get_error_type());
+    } else {
+      pdlp_solver_settings_t<cuopt_int_t, cuopt_float_t>& pdlp_settings =
+        solver_settings->get_pdlp_settings();
+
+      solution_and_stream_view_t* solution_and_stream_view =
+        new solution_and_stream_view_t(false, problem_and_stream_view->stream_view);
+
+      solution_and_stream_view->lp_solution_ptr =
+        new optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>(
+          solve_lp<cuopt_int_t, cuopt_float_t>(
+            problem_and_stream_view->get_handle_ptr(), view, pdlp_settings));
 
       *solution_ptr = static_cast<cuOptSolution>(solution_and_stream_view);
 
