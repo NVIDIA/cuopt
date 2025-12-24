@@ -293,13 +293,131 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
   }
 }
 
+// Helper to create a data_model_view_t from mps_data_model_t (for remote solve path)
+template <typename i_t, typename f_t>
+static data_model_view_t<i_t, f_t> create_view_from_mps_data_model(
+  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model)
+{
+  data_model_view_t<i_t, f_t> view;
+
+  view.set_maximize(mps_data_model.get_sense());
+
+  if (!mps_data_model.get_constraint_matrix_values().empty()) {
+    view.set_csr_constraint_matrix(mps_data_model.get_constraint_matrix_values().data(),
+                                   mps_data_model.get_constraint_matrix_values().size(),
+                                   mps_data_model.get_constraint_matrix_indices().data(),
+                                   mps_data_model.get_constraint_matrix_indices().size(),
+                                   mps_data_model.get_constraint_matrix_offsets().data(),
+                                   mps_data_model.get_constraint_matrix_offsets().size());
+  }
+
+  if (!mps_data_model.get_constraint_bounds().empty()) {
+    view.set_constraint_bounds(mps_data_model.get_constraint_bounds().data(),
+                               mps_data_model.get_constraint_bounds().size());
+  }
+
+  if (!mps_data_model.get_objective_coefficients().empty()) {
+    view.set_objective_coefficients(mps_data_model.get_objective_coefficients().data(),
+                                    mps_data_model.get_objective_coefficients().size());
+  }
+
+  view.set_objective_scaling_factor(mps_data_model.get_objective_scaling_factor());
+  view.set_objective_offset(mps_data_model.get_objective_offset());
+
+  if (!mps_data_model.get_variable_lower_bounds().empty()) {
+    view.set_variable_lower_bounds(mps_data_model.get_variable_lower_bounds().data(),
+                                   mps_data_model.get_variable_lower_bounds().size());
+  }
+
+  if (!mps_data_model.get_variable_upper_bounds().empty()) {
+    view.set_variable_upper_bounds(mps_data_model.get_variable_upper_bounds().data(),
+                                   mps_data_model.get_variable_upper_bounds().size());
+  }
+
+  if (!mps_data_model.get_variable_types().empty()) {
+    view.set_variable_types(mps_data_model.get_variable_types().data(),
+                            mps_data_model.get_variable_types().size());
+  }
+
+  if (!mps_data_model.get_row_types().empty()) {
+    view.set_row_types(mps_data_model.get_row_types().data(),
+                       mps_data_model.get_row_types().size());
+  }
+
+  if (!mps_data_model.get_constraint_lower_bounds().empty()) {
+    view.set_constraint_lower_bounds(mps_data_model.get_constraint_lower_bounds().data(),
+                                     mps_data_model.get_constraint_lower_bounds().size());
+  }
+
+  if (!mps_data_model.get_constraint_upper_bounds().empty()) {
+    view.set_constraint_upper_bounds(mps_data_model.get_constraint_upper_bounds().data(),
+                                     mps_data_model.get_constraint_upper_bounds().size());
+  }
+
+  view.set_objective_name(mps_data_model.get_objective_name());
+  view.set_problem_name(mps_data_model.get_problem_name());
+
+  if (!mps_data_model.get_variable_names().empty()) {
+    view.set_variable_names(mps_data_model.get_variable_names());
+  }
+
+  if (!mps_data_model.get_row_names().empty()) {
+    view.set_row_names(mps_data_model.get_row_names());
+  }
+
+  if (!mps_data_model.get_initial_primal_solution().empty()) {
+    view.set_initial_primal_solution(mps_data_model.get_initial_primal_solution().data(),
+                                     mps_data_model.get_initial_primal_solution().size());
+  }
+
+  if (!mps_data_model.get_initial_dual_solution().empty()) {
+    view.set_initial_dual_solution(mps_data_model.get_initial_dual_solution().data(),
+                                   mps_data_model.get_initial_dual_solution().size());
+  }
+
+  return view;
+}
+
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(
   raft::handle_t const* handle_ptr,
   const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
   mip_solver_settings_t<i_t, f_t> const& settings)
 {
+  // Check if remote solve is configured - if so, use the view-based path
+  if (is_remote_solve_enabled()) {
+    auto view = create_view_from_mps_data_model(mps_data_model);
+    return solve_mip(handle_ptr, view, settings);
+  }
+
+  // Local solve: convert directly to optimization_problem_t (no extra copy)
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
+  return solve_mip(op_problem, settings);
+}
+
+template <typename i_t, typename f_t>
+mip_solution_t<i_t, f_t> solve_mip(raft::handle_t const* handle_ptr,
+                                   const data_model_view_t<i_t, f_t>& view,
+                                   mip_solver_settings_t<i_t, f_t> const& settings)
+{
+  // Initialize logger for this overload (needed for early returns)
+  init_logger_t log(settings.log_file, settings.log_to_console);
+
+  // Check if remote solve is enabled
+  auto remote_config = get_remote_solve_config();
+  if (remote_config.has_value()) {
+    CUOPT_LOG_INFO("[solve_mip] Remote solve detected: CUOPT_REMOTE_HOST=%s, CUOPT_REMOTE_PORT=%d",
+                   remote_config->host.c_str(),
+                   remote_config->port);
+    // TODO: Implement remote solve - serialize view (CPU memory) and send to remote server
+    CUOPT_LOG_ERROR("[solve_mip] Remote solve not yet implemented");
+    return mip_solution_t<i_t, f_t>(
+      cuopt::logic_error("Remote solve not yet implemented", cuopt::error_type_t::RuntimeError),
+      handle_ptr->get_stream());
+  }
+
+  // Local solve: convert data_model_view_t to optimization_problem_t and solve
+  auto op_problem = data_model_view_to_optimization_problem(handle_ptr, view);
   return solve_mip(op_problem, settings);
 }
 
@@ -311,6 +429,11 @@ mip_solution_t<i_t, f_t> solve_mip(
   template mip_solution_t<int, F_TYPE> solve_mip(                           \
     raft::handle_t const* handle_ptr,                                       \
     const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& mps_data_model, \
+    mip_solver_settings_t<int, F_TYPE> const& settings);                    \
+                                                                            \
+  template mip_solution_t<int, F_TYPE> solve_mip(                           \
+    raft::handle_t const* handle_ptr,                                       \
+    const data_model_view_t<int, F_TYPE>& view,                             \
     mip_solver_settings_t<int, F_TYPE> const& settings);
 
 #if MIP_INSTANTIATE_FLOAT

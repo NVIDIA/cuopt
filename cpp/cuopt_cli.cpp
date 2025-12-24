@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/linear_programming/data_model_view.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/solve.hpp>
@@ -67,6 +68,108 @@ static char cuda_module_loading_env[] = "CUDA_MODULE_LOADING=EAGER";
 inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_resource>(); }
 
 /**
+ * @brief Create a data_model_view_t from mps_data_model_t
+ *
+ * This creates a non-owning view with spans pointing to the CPU data in the mps_data_model.
+ * Used for remote solve where data stays in CPU memory.
+ *
+ * @param mps_data_model The owning mps_data_model_t
+ * @return data_model_view_t with spans pointing to the mps_data_model's vectors
+ */
+template <typename i_t, typename f_t>
+cuopt::linear_programming::data_model_view_t<i_t, f_t> create_view_from_mps_data_model(
+  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model)
+{
+  cuopt::linear_programming::data_model_view_t<i_t, f_t> view;
+
+  view.set_maximize(mps_data_model.get_sense());
+
+  if (!mps_data_model.get_constraint_matrix_values().empty()) {
+    view.set_csr_constraint_matrix(mps_data_model.get_constraint_matrix_values().data(),
+                                   mps_data_model.get_constraint_matrix_values().size(),
+                                   mps_data_model.get_constraint_matrix_indices().data(),
+                                   mps_data_model.get_constraint_matrix_indices().size(),
+                                   mps_data_model.get_constraint_matrix_offsets().data(),
+                                   mps_data_model.get_constraint_matrix_offsets().size());
+  }
+
+  if (!mps_data_model.get_constraint_bounds().empty()) {
+    view.set_constraint_bounds(mps_data_model.get_constraint_bounds().data(),
+                               mps_data_model.get_constraint_bounds().size());
+  }
+
+  if (!mps_data_model.get_objective_coefficients().empty()) {
+    view.set_objective_coefficients(mps_data_model.get_objective_coefficients().data(),
+                                    mps_data_model.get_objective_coefficients().size());
+  }
+
+  view.set_objective_scaling_factor(mps_data_model.get_objective_scaling_factor());
+  view.set_objective_offset(mps_data_model.get_objective_offset());
+
+  if (!mps_data_model.get_variable_lower_bounds().empty()) {
+    view.set_variable_lower_bounds(mps_data_model.get_variable_lower_bounds().data(),
+                                   mps_data_model.get_variable_lower_bounds().size());
+  }
+
+  if (!mps_data_model.get_variable_upper_bounds().empty()) {
+    view.set_variable_upper_bounds(mps_data_model.get_variable_upper_bounds().data(),
+                                   mps_data_model.get_variable_upper_bounds().size());
+  }
+
+  if (!mps_data_model.get_variable_types().empty()) {
+    view.set_variable_types(mps_data_model.get_variable_types().data(),
+                            mps_data_model.get_variable_types().size());
+  }
+
+  if (!mps_data_model.get_row_types().empty()) {
+    view.set_row_types(mps_data_model.get_row_types().data(),
+                       mps_data_model.get_row_types().size());
+  }
+
+  if (!mps_data_model.get_constraint_lower_bounds().empty()) {
+    view.set_constraint_lower_bounds(mps_data_model.get_constraint_lower_bounds().data(),
+                                     mps_data_model.get_constraint_lower_bounds().size());
+  }
+
+  if (!mps_data_model.get_constraint_upper_bounds().empty()) {
+    view.set_constraint_upper_bounds(mps_data_model.get_constraint_upper_bounds().data(),
+                                     mps_data_model.get_constraint_upper_bounds().size());
+  }
+
+  view.set_objective_name(mps_data_model.get_objective_name());
+  view.set_problem_name(mps_data_model.get_problem_name());
+
+  if (!mps_data_model.get_variable_names().empty()) {
+    view.set_variable_names(mps_data_model.get_variable_names());
+  }
+
+  if (!mps_data_model.get_row_names().empty()) {
+    view.set_row_names(mps_data_model.get_row_names());
+  }
+
+  if (!mps_data_model.get_initial_primal_solution().empty()) {
+    view.set_initial_primal_solution(mps_data_model.get_initial_primal_solution().data(),
+                                     mps_data_model.get_initial_primal_solution().size());
+  }
+
+  if (!mps_data_model.get_initial_dual_solution().empty()) {
+    view.set_initial_dual_solution(mps_data_model.get_initial_dual_solution().data(),
+                                   mps_data_model.get_initial_dual_solution().size());
+  }
+
+  if (mps_data_model.has_quadratic_objective()) {
+    view.set_quadratic_objective_matrix(mps_data_model.get_quadratic_objective_values().data(),
+                                        mps_data_model.get_quadratic_objective_values().size(),
+                                        mps_data_model.get_quadratic_objective_indices().data(),
+                                        mps_data_model.get_quadratic_objective_indices().size(),
+                                        mps_data_model.get_quadratic_objective_offsets().data(),
+                                        mps_data_model.get_quadratic_objective_offsets().size());
+  }
+
+  return view;
+}
+
+/**
  * @brief Handle logger when error happens before logger is initialized
  * @param settings Solver settings
  * @return cuopt::init_logger_t
@@ -122,13 +225,15 @@ int run_single_file(const std::string& file_path,
     return -1;
   }
 
-  auto op_problem =
-    cuopt::linear_programming::mps_data_model_to_optimization_problem(&handle_, mps_data_model);
-
-  const bool is_mip =
-    (op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP ||
-     op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::IP) &&
-    !solve_relaxation;
+  // Determine if this is a MIP problem by checking variable types
+  bool has_integers = false;
+  for (const auto& vt : mps_data_model.get_variable_types()) {
+    if (vt == 'I' || vt == 'B') {
+      has_integers = true;
+      break;
+    }
+  }
+  const bool is_mip = has_integers && !solve_relaxation;
 
   try {
     auto initial_solution =
@@ -154,13 +259,25 @@ int run_single_file(const std::string& file_path,
     return -1;
   }
 
+  // Create a non-owning view from the mps_data_model
+  // solve_lp/solve_mip will handle remote vs local solve based on env vars
+  auto view = create_view_from_mps_data_model(mps_data_model);
+
   try {
     if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
-      auto solution      = cuopt::linear_programming::solve_mip(op_problem, mip_settings);
+      auto solution      = cuopt::linear_programming::solve_mip(&handle_, view, mip_settings);
+      if (solution.get_error_status().get_error_type() != cuopt::error_type_t::Success) {
+        CUOPT_LOG_ERROR("MIP solve failed: %s", solution.get_error_status().what());
+        return -1;
+      }
     } else {
       auto& lp_settings = settings.get_pdlp_settings();
-      auto solution     = cuopt::linear_programming::solve_lp(op_problem, lp_settings);
+      auto solution     = cuopt::linear_programming::solve_lp(&handle_, view, lp_settings);
+      if (solution.get_error_status().get_error_type() != cuopt::error_type_t::Success) {
+        CUOPT_LOG_ERROR("LP solve failed: %s", solution.get_error_status().what());
+        return -1;
+      }
     }
   } catch (const std::exception& e) {
     CUOPT_LOG_ERROR("Error: %s", e.what());
