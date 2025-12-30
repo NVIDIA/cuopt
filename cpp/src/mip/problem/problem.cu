@@ -698,23 +698,24 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
           return true;
         }),
       "Some variables aren't referenced in the appropriate indice tables");
-    cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
-                                thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(0),
-                                                          is_binary_variable.cbegin()),
-                                thrust::make_zip_iterator(
-                                  thrust::make_counting_iterator<i_t>(is_binary_variable.size()),
+    cuopt_assert(
+      thrust::all_of(
+        handle_ptr->get_thrust_policy(),
+        thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(0),
+                                  is_binary_variable.cbegin()),
+        thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(is_binary_variable.size()),
                                   is_binary_variable.cend()),
-                                [types    = variable_types.data(),
-                                 vars_bnd = make_span(variable_bounds),
-                                 v = view()] __device__(const thrust::tuple<int, int> tuple) {
-                                  i_t idx     = thrust::get<0>(tuple);
-                                  i_t pred    = thrust::get<1>(tuple);
-                                  auto bounds = vars_bnd[idx];
-                                  return pred == (types[idx] != var_t::CONTINUOUS &&
-                                                  v.integer_equal(get_lower(bounds), 0.) &&
-                                                  v.integer_equal(get_upper(bounds), 1.));
-                                }),
-                 "The binary variable table is incorrect.");
+        [types    = variable_types.data(),
+         vars_bnd = make_span(variable_bounds),
+         v        = view()] __device__(const thrust::tuple<int, int> tuple) -> bool {
+          i_t idx     = thrust::get<0>(tuple);
+          i_t pred    = thrust::get<1>(tuple);
+          auto bounds = vars_bnd[idx];
+          return pred ==
+                 (types[idx] != var_t::CONTINUOUS && v.integer_equal(get_lower(bounds), 0.) &&
+                  v.integer_equal(get_upper(bounds), 1.));
+        }),
+      "The binary variable table is incorrect.");
     if (!empty) {
       cuopt_assert(is_binary_pb == (n_variables == thrust::count(handle_ptr->get_thrust_policy(),
                                                                  is_binary_variable.begin(),
