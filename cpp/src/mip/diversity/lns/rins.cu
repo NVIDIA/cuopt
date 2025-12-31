@@ -135,15 +135,16 @@ void rins_t<i_t, f_t>::run_rins()
   cuopt_assert(best_sol.assignment.size() == problem_copy->n_variables, "Assignment size mismatch");
 
   rmm::device_uvector<i_t> vars_to_fix(problem_copy->n_integer_vars, rins_handle.get_stream());
-  auto end = thrust::copy_if(rins_handle.get_thrust_policy(),
-                             problem_copy->integer_indices.begin(),
-                             problem_copy->integer_indices.end(),
-                             vars_to_fix.begin(),
-                             [lpopt     = lp_opt_device.data(),
-                              pb        = problem_copy->view(),
-                              incumbent = best_sol.assignment.data()] __device__(i_t var_idx) {
-                               return pb.integer_equal(lpopt[var_idx], incumbent[var_idx]);
-                             });
+  auto end =
+    thrust::copy_if(rins_handle.get_thrust_policy(),
+                    problem_copy->integer_indices.begin(),
+                    problem_copy->integer_indices.end(),
+                    vars_to_fix.begin(),
+                    [lpopt     = lp_opt_device.data(),
+                     pb        = problem_copy->view(),
+                     incumbent = best_sol.assignment.data()] __device__(i_t var_idx) -> bool {
+                      return pb.integer_equal(lpopt[var_idx], incumbent[var_idx]);
+                    });
   vars_to_fix.resize(end - vars_to_fix.begin(), rins_handle.get_stream());
   f_t fractional_ratio = (f_t)(vars_to_fix.size()) / (f_t)problem_copy->n_integer_vars;
 
@@ -167,7 +168,7 @@ void rins_t<i_t, f_t>::run_rins()
   cuopt_assert(thrust::all_of(rins_handle.get_thrust_policy(),
                               vars_to_fix.begin(),
                               vars_to_fix.end(),
-                              [pb = problem_copy->view()] __device__(i_t var_idx) {
+                              [pb = problem_copy->view()] __device__(i_t var_idx) -> bool {
                                 return pb.is_integer_var(var_idx);
                               }),
                "All variables to fix must be integer variables");

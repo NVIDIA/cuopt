@@ -230,9 +230,12 @@ std::unique_ptr<solver_ret_t> call_solve(
 {
   raft::common::nvtx::range fun_scope("Call Solve");
 
-  cudaStream_t stream;
-  RAFT_CUDA_TRY(cudaStreamCreateWithFlags(&stream, flags));
-  const raft::handle_t handle_{stream};
+  // FIX: Use default handle constructor like CLI does, instead of explicit stream creation
+  // Original code created a non-blocking stream which causes synchronization issues with PDLP
+  // This is a workaround to fix the synchronization issues, please fix this in the future and
+  // remove this workaround. cudaStream_t stream; RAFT_CUDA_TRY(cudaStreamCreateWithFlags(&stream,
+  // flags));  // flags=cudaStreamNonBlocking const raft::handle_t handle_{stream};
+  const raft::handle_t handle_{};
 
   auto op_problem = data_model_to_optimization_problem(data_model, solver_settings, &handle_);
   solver_ret_t response;
