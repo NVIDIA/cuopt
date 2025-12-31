@@ -30,7 +30,7 @@ requirements:
     - pip
     - python =${{ py_version }}
     - rapids-build-backend >=0.4.0,<0.5.0.dev0
-    - setuptools>=61.0.0
+    - setuptools>=77.0.0
   run:
     - cuopt =${{ version }}
     - fastapi >=0.104.1
@@ -51,5 +51,5 @@ tests:
 
 about:
   homepage: ${{ load_from_file("python/cuopt_server/pyproject.toml").project.urls.Homepage }}
-  license: ${{ load_from_file("python/cuopt_server/pyproject.toml").project.license.text }}
+  license: ${{ load_from_file("python/cuopt_server/pyproject.toml").project.license }}
   summary: ${{ load_from_file("python/cuopt_server/pyproject.toml").project.description }}
