@@ -54,12 +54,6 @@ test = [
 Homepage = "https://docs.nvidia.com/cuopt/introduction.html"
 Source = "https://github.com/nvidia/cuopt"
 
-[tool.setuptools]
-license-files = ["LICENSE"]
-
-[tool.setuptools.dynamic]
-version = {file = "cuopt/VERSION"}
-
 [tool.ruff]
 extend = "../../pyproject.toml"
 

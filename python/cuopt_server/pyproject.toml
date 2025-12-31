@@ -18,6 +18,7 @@ authors = [
     { name = "NVIDIA Corporation" },
 ]
 license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "cuopt==26.2.*,>=0.0.0a0",
@@ -56,7 +57,6 @@ Homepage = "https://docs.nvidia.com/cuopt/introduction.html"
 Source = "https://github.com/nvidia/cuopt"
 
 [tool.setuptools]
-license-files = ["LICENSE"]
 zip-safe = false
 
 [tool.setuptools.dynamic]
