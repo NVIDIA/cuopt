@@ -125,7 +125,7 @@ outputs:
           - lib/libmps_parser.so
     about:
       homepage: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.urls.Homepage }}
-      license: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.license.text }}
+      license: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.license }}
       summary: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.description }}
 
   - package:
@@ -182,7 +182,7 @@ outputs:
           - bin/cuopt_cli
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
-      license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license.text }}
+      license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
       summary: ${{ load_from_file("python/cuopt/pyproject.toml").project.description }}
 
   - package:
@@ -228,5 +228,5 @@ outputs:
           - libboost_iostreams
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
-      license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license.text }}
+      license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
       summary: libcuopt test & benchmark executables

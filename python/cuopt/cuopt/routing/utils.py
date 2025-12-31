@@ -367,7 +367,7 @@ def create_pickup_delivery_data(
             matrix[i][j] = matrix_pdf[my_ix][my_iy] / vehicle_constraints.speed
 
     pdf = pd.DataFrame(matrix)
-    matrix_df = cudf.DataFrame.from_pandas(pdf).astype("float32")
+    matrix_df = cudf.from_pandas(pdf).astype("float32")
 
     pickup_indices = cudf.Series(
         i for i in range(0, int(len(raw_order_df) / 2))
