@@ -27,11 +27,13 @@ The response is as follows:
     y = 0.0
     Objective value = 10.0
 
+.. _simple-qp-example-python:
+
 Simple Quadratic Programming Example
 ------------------------------------
 
 .. note::
-   Quadratic Programming support is currently **experimental** and may change in future releases.
+   The QP solver is currently in beta.
 
 :download:`simple_qp_example.py <examples/simple_qp_example.py>`
 

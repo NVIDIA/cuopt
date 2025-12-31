@@ -2,7 +2,7 @@
 Introduction
 ==========================
 
-**NVIDIA® cuOpt™** is a GPU-accelerated optimization library that solves `Mixed Integer Linear Programming (MILP) <https://en.wikipedia.org/wiki/Linear_programming#Integer_unknowns>`_, `Linear Programming (LP) <https://en.wikipedia.org/wiki/Linear_programming>`_, and `Vehicle Routing Problems (VRP) <https://en.wikipedia.org/wiki/Vehicle_routing_problem>`_. It enables solutions for large-scale problems with millions of variables and constraints, offering seamless deployment across hybrid and multi-cloud environments.
+**NVIDIA® cuOpt™** is a GPU-accelerated optimization library that solves `Mixed Integer Linear Programming (MILP) <https://en.wikipedia.org/wiki/Linear_programming#Integer_unknowns>`_, `Linear Programming (LP) <https://en.wikipedia.org/wiki/Linear_programming>`_, `Quadratic Programming (QP) <https://en.wikipedia.org/wiki/Quadratic_programming>`_, and `Vehicle Routing Problems (VRP) <https://en.wikipedia.org/wiki/Vehicle_routing_problem>`_. It enables solutions for large-scale problems with millions of variables and constraints, offering seamless deployment across hybrid and multi-cloud environments.
 
 Using accelerated computing, NVIDIA® cuOpt optimizes operations research and logistics by enabling better, faster decisions.
 
@@ -112,13 +112,13 @@ Supported APIs
 cuOpt supports the following APIs:
 
 - C API support
-   - :doc:`Linear Programming (LP) - C <cuopt-c/quick-start>`
+   - :doc:`Linear Programming (LP) / Quadratic Programming (QP) - C <cuopt-c/quick-start>`
    - :doc:`Mixed Integer Linear Programming (MILP) - C <cuopt-c/quick-start>`
 - C++ API support
    - cuOpt is written in C++ and includes a native C++ API. However, we do not provide documentation for the C++ API at this time. We anticipate that the C++ API will change significantly in the future. Use it at your own risk.
 - Python support
    - :doc:`Routing (TSP, VRP, and PDP) - Python <cuopt-python/quick-start>`
-   - :doc:`Linear Programming (LP) and Mixed Integer Linear Programming (MILP) - Python <cuopt-python/quick-start>`
+   - :doc:`Linear Programming (LP) / Quadratic Programming (QP) and Mixed Integer Linear Programming (MILP) - Python <cuopt-python/quick-start>`
 - Server support
    - :doc:`Linear Programming (LP) - Server <cuopt-server/quick-start>`
    - :doc:`Mixed Integer Linear Programming (MILP) - Server <cuopt-server/quick-start>`

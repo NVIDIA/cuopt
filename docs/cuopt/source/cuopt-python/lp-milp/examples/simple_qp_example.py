@@ -6,8 +6,7 @@ Simple Quadratic Programming Example
 ====================================
 
 .. note::
-   Quadratic Programming support is currently experimental and may change
-   in future releases.
+   The QP solver is currently in beta.
 
 This example demonstrates how to formulate and solve a simple
 Quadratic Programming (QP) problem using the cuOpt Python API.
@@ -36,7 +35,7 @@ def main():
     y = prob.addVariable(lb=0, name="y")
 
     # Add constraint: x + y >= 1
-    prob.addConstraint(x + y >= 1, name="sum_constraint")
+    prob.addConstraint(x + y >= 1)
 
     # Set quadratic objective: minimize x^2 + y^2
     # Using Variable * Variable to create quadratic terms

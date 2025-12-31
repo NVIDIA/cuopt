@@ -5,9 +5,9 @@ LP Features
 Availability
 -------------
 
-The LP solver can be accessed in the following ways:
+The Linear Programming (LP) and Quadratic Programming (QP) solvers can be accessed in the following ways:
 
-- **Third-Party Modeling Languages**: cuOpt's LP and MILP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
+- **Third-Party Modeling Languages**: cuOpt's LP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
 
   Supported modeling languages:
    -  AMPL
@@ -15,43 +15,16 @@ The LP solver can be accessed in the following ways:
    -  PuLP
    -  JuMP
 
-- **C API**: A native C API that provides direct low-level access to cuOpt's LP capabilities, enabling integration into any application or system that can interface with C.
+.. note::
+   The QP solver is not currently supported in third-party modeling languages.
 
-- **Python SDK**: A Python package that provides direct access to cuOpt's LP capabilities through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
+- **C API**: A native C API that provides direct low-level access to cuOpt's LP/QP capabilities, enabling integration into any application or system that can interface with C.
 
-- **As a Self-Hosted Service**: cuOpt's LP solver can be deployed as a in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
+- **Python SDK**: A Python package that provides direct access to cuOpt's LP/QP capabilities through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
+
+- **As a Self-Hosted Service**: cuOpt's LP/QP solver can be deployed as a self-hosted service in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
 Each option provide the same powerful linear optimization capabilities while offering flexibility in deployment and integration.
-
-Quadratic Programming (QP)
---------------------------
-
-.. note::
-   Quadratic Programming support is currently **experimental** and may change in future releases.
-
-cuOpt supports Quadratic Programming problems with quadratic objectives of the form:
-
-.. code-block:: text
-
-    minimize (or maximize)    x'Qx + c'x
-    subject to                Ax {<=, =, >=} b
-                              lb <= x <= ub
-
-where Q is a symmetric positive semi-definite matrix for minimization problems.
-
-In the Python API, quadratic objectives can be constructed using the ``QuadraticExpression`` class or by multiplying variables directly:
-
-.. code-block:: python
-
-    from cuopt.linear_programming.problem import Problem, MINIMIZE
-
-    prob = Problem("QP Example")
-    x = prob.addVariable(lb=0, name="x")
-    y = prob.addVariable(lb=0, name="y")
-
-    # Create quadratic objective: x^2 + 2*x*y + y^2
-    quad_obj = x * x + 2 * (x * y) + y * y
-    prob.setObjective(quad_obj, sense=MINIMIZE)
 
 Variable Bounds
 ---------------
@@ -81,6 +54,28 @@ There are two ways to specify constraints to the LP solver:
 
    where lb and ub are vectors of lower and upper bounds respectively. This form allows specifying both bounds on a single constraint.
 
+
+Quadratic Programming
+---------------------
+
+.. note::
+   The QP solver is currently in beta.
+
+cuOpt supports problems with quadratic objectives of the form:
+
+.. code-block:: text
+
+    minimize        x^T*Q*x + c^T*x
+    subject to      A*x {<=, =, >=} b
+                    lb <= x <= ub
+
+where Q is a symmetric positive semidefinite matrix. Please note that the Q matrix is specified without the 1/2 factor that may be used by other solvers.
+
+.. note:: Currently, barrier is the only method that supports QPs.
+
+See :ref:`simple-qp-example-python` for an example of how to create a QP problem with the Python Modeling API.
+See :ref:`simple-qp-example-c` for an example of how to create a QP problem with the C API.
+
 Warm Start
 -----------
 
@@ -103,7 +98,7 @@ Method
 .. note::
    PDLP solves to 1e-4 relative accuracy by default.
 
-**Barrier**: The barrier method (also known as interior-point method) solves linear programs using a primal-dual predictor-corrector algorithm. This method uses GPU-accelerated sparse Cholesky and sparse LDLT solves via cuDSS, and GPU-accelerated sparse matrix-vector and matrix-matrix operations via cuSparse. Barrier is particularly effective for large-scale problems and can automatically apply techniques like folding, dualization, and dense column elimination to improve performance. This method solves the linear systems at each iteration using the augmented system or the normal equations (ADAT). Enable crossover to obtain a highly accurate basic solution from a barrier solution.
+**Barrier**: The barrier method (also known as interior-point method) solves linear and quadratic programs using a primal-dual predictor-corrector algorithm. This method uses GPU-accelerated sparse Cholesky and sparse LDLT solves via cuDSS, and GPU-accelerated sparse matrix-vector and matrix-matrix operations via cuSparse. Barrier is particularly effective for large-scale problems and can automatically apply techniques like folding, dualization, and dense column elimination to improve performance. This method solves the linear systems at each iteration using the augmented system or the normal equations (ADAT). Enable crossover to obtain a highly accurate basic solution from a barrier solution.
 
 .. note::
    Barrier solves to 1e-8 relative accuracy by default.
@@ -117,20 +112,22 @@ Method
 Crossover
 ---------
 
-Crossover allows you to obtain a high-quality basic solution from the results of a PDLP or barrier solve. When enabled, crossover converts these solutions to a vertex solution (basic solution) with high accuracy. More details can be found :ref:`here <crossover>`.
+Crossover allows you to obtain a high-quality basic solution from the results of a PDLP or barrier solve. When enabled, crossover converts the PDLP or barrier solution to a vertex solution (basic solution) with high accuracy. More details can be found :ref:`here <crossover>`.
 
+.. note::
+   Crossover is not supported for QP problems.
 
 Presolve
 --------
 
 Presolve procedure is applied to the problem before the solver is called. It can be used to reduce the problem size and improve solve time. It is enabled by default for MIP problems, and disabled by default for LP problems.
-Furthermore, for LP problems, when the dual solution is not needed, additional presolve procedures can be applied to further improve solve times. This is achived by turned off dual postsolve.
+Furthermore, for LP problems, when the dual solution is not needed, additional presolve procedures can be applied to further improve solve times. This is achieved by turning off dual postsolve with the ``CUOPT_DUAL_POSTSOLVE`` setting.
 
 
 Logging
 -------
 
-The CUOPT_LOG_FILE parameter can be set to write detailed solver logs for LP problems. This parameter is available in all APIs that allow setting solver parameters except the cuOpt service. For the service, see the logging callback below.
+The ``CUOPT_LOG_FILE`` parameter can be set to write detailed solver logs for LP/QP problems. This parameter is available in all APIs that allow setting solver parameters except the cuOpt service. For the service, see the logging callback below.
 
 Logging Callback in the Service
 -------------------------------
@@ -166,4 +163,4 @@ Users can submit a set of problems which will be solved in a batch. Problems wil
 Multi-GPU Mode
 --------------
 
-Users can use multiple GPUs to solve a problem by specifying the ``num_gpus`` parameter. The feature is restricted to LP problems that uses concurrent mode and supports up to 2 GPUs at the moment. Using this mode will run PDLP and IPM in parallel on different GPUs to avoid sharing single GPU resources.
+Users can use multiple GPUs to solve a problem by specifying the ``num_gpus`` parameter. The feature is restricted to LP problems that uses concurrent mode and supports up to 2 GPUs at the moment. Using this mode will run PDLP and barrier in parallel on different GPUs to avoid sharing single GPU resources.

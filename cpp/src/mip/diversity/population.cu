@@ -283,10 +283,11 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
           context.scaling.unscale_solutions(temp_sol.assignment, dummy);
           // Need to get unscaled problem as well
           problem_t<i_t, f_t> n_problem(*sol.problem_ptr->original_problem_ptr);
-          temp_sol.problem_ptr = &n_problem;
-          temp_sol.resize_to_original_problem();
-          temp_sol.compute_feasibility();
-          if (!temp_sol.get_feasible()) {
+          auto scaled_sol(temp_sol);
+          scaled_sol.problem_ptr = &n_problem;
+          scaled_sol.resize_to_original_problem();
+          scaled_sol.compute_feasibility();
+          if (!scaled_sol.get_feasible()) {
             CUOPT_LOG_DEBUG("Discard infeasible after unscaling");
             return;
           }

@@ -357,17 +357,23 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     pdlp_settings.pdlp_solver_mode                     = pdlp_solver_mode_t::Stable2;
     pdlp_settings.num_gpus                             = context.settings.num_gpus;
 
-    rmm::device_uvector<f_t> lp_optimal_solution_copy(lp_optimal_solution.size(),
-                                                      problem_ptr->handle_ptr->get_stream());
     timer_t lp_timer(lp_time_limit);
     auto lp_result = solve_lp_with_method<i_t, f_t>(*problem_ptr, pdlp_settings, lp_timer);
 
     {
       std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
       if (!simplex_solution_exists.load()) {
+        cuopt_assert(lp_result.get_primal_solution().size() == lp_optimal_solution.size(),
+                     "LP optimal solution size mismatch");
+        cuopt_assert(lp_result.get_dual_solution().size() == lp_dual_optimal_solution.size(),
+                     "LP dual optimal solution size mismatch");
         raft::copy(lp_optimal_solution.data(),
-                   lp_optimal_solution_copy.data(),
+                   lp_result.get_primal_solution().data(),
                    lp_optimal_solution.size(),
+                   problem_ptr->handle_ptr->get_stream());
+        raft::copy(lp_dual_optimal_solution.data(),
+                   lp_result.get_dual_solution().data(),
+                   lp_dual_optimal_solution.size(),
                    problem_ptr->handle_ptr->get_stream());
       } else {
         // copy the lp state
@@ -382,6 +388,11 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
       }
       problem_ptr->handle_ptr->sync_stream();
     }
+    cuopt_assert(thrust::all_of(problem_ptr->handle_ptr->get_thrust_policy(),
+                                lp_optimal_solution.begin(),
+                                lp_optimal_solution.end(),
+                                [] __host__ __device__(f_t val) { return std::isfinite(val); }),
+                 "LP optimal solution contains non-finite values");
     ls.lp_optimal_exists = true;
     if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
       set_new_user_bound(lp_result.get_objective_value());
