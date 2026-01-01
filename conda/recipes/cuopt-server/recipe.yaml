@@ -29,7 +29,7 @@ requirements:
   host:
     - pip
     - python =${{ py_version }}
-    - rapids-build-backend >=0.4.0,<0.5.0.dev0
+    - rapids-build-backend >=0.4.0,<0.5.0
     - setuptools>=77.0.0
   run:
     - cuopt =${{ version }}
@@ -37,7 +37,7 @@ requirements:
     - jsonref =1.1.0
     - msgpack-python =1.1.0
     - msgpack-numpy =0.4.8
-    - numpy >=1.23,<3.0a0
+    - numpy >=1.23,<3.0
     - pandas>=2
     - psutil>=6.0.0
     - python
