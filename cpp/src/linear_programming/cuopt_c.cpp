@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -23,6 +23,7 @@
 
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -146,15 +147,22 @@ struct problem_cpu_data_t {
 };
 
 struct problem_and_stream_view_t {
-  problem_and_stream_view_t()
-    : cpu_data(nullptr),
-      gpu_problem(nullptr),
-      stream_view(rmm::cuda_stream_per_thread),
-      handle(stream_view)
+  problem_and_stream_view_t() : cpu_data(nullptr), gpu_problem(nullptr), handle(nullptr) {}
+
+  /**
+   * @brief Ensure CUDA resources are initialized (lazy initialization).
+   * Only call this when local solve is needed.
+   */
+  void ensure_cuda_initialized()
   {
+    if (!handle) { handle = std::make_unique<raft::handle_t>(); }
   }
 
-  raft::handle_t* get_handle_ptr() { return &handle; }
+  raft::handle_t* get_handle_ptr()
+  {
+    ensure_cuda_initialized();
+    return handle.get();
+  }
 
   /**
    * @brief Check if this is a MIP problem.
@@ -182,8 +190,8 @@ struct problem_and_stream_view_t {
   // Use view.is_device_memory() to check if data is on GPU or CPU
   cuopt::linear_programming::data_model_view_t<cuopt_int_t, cuopt_float_t> view;
 
-  rmm::cuda_stream_view stream_view;
-  raft::handle_t handle;
+  // Lazy-initialized CUDA handle (only created for local solve)
+  std::unique_ptr<raft::handle_t> handle;
 
   /**
    * @brief Create a view pointing to GPU data from the gpu_problem.
@@ -246,17 +254,16 @@ struct problem_and_stream_view_t {
 };
 
 struct solution_and_stream_view_t {
-  solution_and_stream_view_t(bool solution_for_mip, rmm::cuda_stream_view stream_view)
-    : is_mip(solution_for_mip),
-      mip_solution_ptr(nullptr),
-      lp_solution_ptr(nullptr),
-      stream_view(stream_view)
+  solution_and_stream_view_t(bool solution_for_mip, raft::handle_t* handle_ptr = nullptr)
+    : is_mip(solution_for_mip), mip_solution_ptr(nullptr), lp_solution_ptr(nullptr)
   {
+    // Store stream only if we have a handle (local solve)
+    if (handle_ptr) { stream_view = handle_ptr->get_stream(); }
   }
   bool is_mip;
   mip_solution_t<cuopt_int_t, cuopt_float_t>* mip_solution_ptr;
   optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* lp_solution_ptr;
-  rmm::cuda_stream_view stream_view;
+  std::optional<rmm::cuda_stream_view> stream_view;  // Only present for local solve
 };
 
 int8_t cuOptGetFloatSize() { return sizeof(cuopt_float_t); }
@@ -1275,7 +1282,7 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
         solver_settings->get_mip_settings();
 
       solution_and_stream_view_t* solution_and_stream_view =
-        new solution_and_stream_view_t(true, problem_and_stream_view->stream_view);
+        new solution_and_stream_view_t(true, problem_and_stream_view->handle.get());
 
       solution_and_stream_view->mip_solution_ptr = new mip_solution_t<cuopt_int_t, cuopt_float_t>(
         solve_mip<cuopt_int_t, cuopt_float_t>(gpu_problem, mip_settings));
@@ -1291,7 +1298,7 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
         solver_settings->get_pdlp_settings();
 
       solution_and_stream_view_t* solution_and_stream_view =
-        new solution_and_stream_view_t(false, problem_and_stream_view->stream_view);
+        new solution_and_stream_view_t(false, problem_and_stream_view->handle.get());
 
       solution_and_stream_view->lp_solution_ptr =
         new optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>(
@@ -1306,16 +1313,20 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
     }
   } else {
     // CPU path: use view directly - solve_lp/solve_mip handle remote vs local conversion
+    // For remote solve, handle may be nullptr (no CUDA)
+    // For local solve with CPU data, handle will be created lazily
+    raft::handle_t* handle_ptr =
+      is_remote_solve_enabled() ? nullptr : problem_and_stream_view->get_handle_ptr();
+
     if (is_mip) {
       mip_solver_settings_t<cuopt_int_t, cuopt_float_t>& mip_settings =
         solver_settings->get_mip_settings();
 
       solution_and_stream_view_t* solution_and_stream_view =
-        new solution_and_stream_view_t(true, problem_and_stream_view->stream_view);
+        new solution_and_stream_view_t(true, handle_ptr);
 
-      solution_and_stream_view->mip_solution_ptr =
-        new mip_solution_t<cuopt_int_t, cuopt_float_t>(solve_mip<cuopt_int_t, cuopt_float_t>(
-          problem_and_stream_view->get_handle_ptr(), view, mip_settings));
+      solution_and_stream_view->mip_solution_ptr = new mip_solution_t<cuopt_int_t, cuopt_float_t>(
+        solve_mip<cuopt_int_t, cuopt_float_t>(handle_ptr, view, mip_settings));
 
       *solution_ptr = static_cast<cuOptSolution>(solution_and_stream_view);
 
@@ -1328,12 +1339,11 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
         solver_settings->get_pdlp_settings();
 
       solution_and_stream_view_t* solution_and_stream_view =
-        new solution_and_stream_view_t(false, problem_and_stream_view->stream_view);
+        new solution_and_stream_view_t(false, handle_ptr);
 
       solution_and_stream_view->lp_solution_ptr =
         new optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>(
-          solve_lp<cuopt_int_t, cuopt_float_t>(
-            problem_and_stream_view->get_handle_ptr(), view, pdlp_settings));
+          solve_lp<cuopt_int_t, cuopt_float_t>(handle_ptr, view, pdlp_settings));
 
       *solution_ptr = static_cast<cuOptSolution>(solution_and_stream_view);
 
@@ -1432,24 +1442,34 @@ cuopt_int_t cuOptGetPrimalSolution(cuOptSolution solution, cuopt_float_t* soluti
     mip_solution_t<cuopt_int_t, cuopt_float_t>* mip_solution =
       static_cast<mip_solution_t<cuopt_int_t, cuopt_float_t>*>(
         solution_and_stream_view->mip_solution_ptr);
-    const rmm::device_uvector<cuopt_float_t>& solution_values = mip_solution->get_solution();
-    rmm::cuda_stream_view stream_view{};
-    raft::copy(solution_values_ptr,
-               solution_values.data(),
-               solution_values.size(),
-               solution_and_stream_view->stream_view);
-    solution_and_stream_view->stream_view.synchronize();
+    if (mip_solution->is_device_memory()) {
+      const rmm::device_uvector<cuopt_float_t>& solution_values = mip_solution->get_solution();
+      raft::copy(solution_values_ptr,
+                 solution_values.data(),
+                 solution_values.size(),
+                 solution_and_stream_view->stream_view.value());
+      solution_and_stream_view->stream_view->synchronize();
+    } else {
+      const std::vector<cuopt_float_t>& solution_values = mip_solution->get_solution_host();
+      std::copy(solution_values.begin(), solution_values.end(), solution_values_ptr);
+    }
   } else {
     optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* optimization_problem_solution =
       static_cast<optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>*>(
         solution_and_stream_view->lp_solution_ptr);
-    const rmm::device_uvector<cuopt_float_t>& solution_values =
-      optimization_problem_solution->get_primal_solution();
-    raft::copy(solution_values_ptr,
-               solution_values.data(),
-               solution_values.size(),
-               solution_and_stream_view->stream_view);
-    solution_and_stream_view->stream_view.synchronize();
+    if (optimization_problem_solution->is_device_memory()) {
+      const rmm::device_uvector<cuopt_float_t>& solution_values =
+        optimization_problem_solution->get_primal_solution();
+      raft::copy(solution_values_ptr,
+                 solution_values.data(),
+                 solution_values.size(),
+                 solution_and_stream_view->stream_view.value());
+      solution_and_stream_view->stream_view->synchronize();
+    } else {
+      const std::vector<cuopt_float_t>& solution_values =
+        optimization_problem_solution->get_primal_solution_host();
+      std::copy(solution_values.begin(), solution_values.end(), solution_values_ptr);
+    }
   }
   return CUOPT_SUCCESS;
 }
@@ -1540,13 +1560,19 @@ cuopt_int_t cuOptGetDualSolution(cuOptSolution solution, cuopt_float_t* dual_sol
     optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* optimization_problem_solution =
       static_cast<optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>*>(
         solution_and_stream_view->lp_solution_ptr);
-    const rmm::device_uvector<cuopt_float_t>& dual_solution =
-      optimization_problem_solution->get_dual_solution();
-    raft::copy(dual_solution_ptr,
-               dual_solution.data(),
-               dual_solution.size(),
-               solution_and_stream_view->stream_view);
-    solution_and_stream_view->stream_view.synchronize();
+    if (optimization_problem_solution->is_device_memory()) {
+      const rmm::device_uvector<cuopt_float_t>& dual_solution =
+        optimization_problem_solution->get_dual_solution();
+      raft::copy(dual_solution_ptr,
+                 dual_solution.data(),
+                 dual_solution.size(),
+                 solution_and_stream_view->stream_view.value());
+      solution_and_stream_view->stream_view->synchronize();
+    } else {
+      const std::vector<cuopt_float_t>& dual_solution =
+        optimization_problem_solution->get_dual_solution_host();
+      std::copy(dual_solution.begin(), dual_solution.end(), dual_solution_ptr);
+    }
     return CUOPT_SUCCESS;
   }
 }
@@ -1581,13 +1607,19 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
     optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* optimization_problem_solution =
       static_cast<optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>*>(
         solution_and_stream_view->lp_solution_ptr);
-    const rmm::device_uvector<cuopt_float_t>& reduced_cost =
-      optimization_problem_solution->get_reduced_cost();
-    raft::copy(reduced_cost_ptr,
-               reduced_cost.data(),
-               reduced_cost.size(),
-               solution_and_stream_view->stream_view);
-    solution_and_stream_view->stream_view.synchronize();
+    if (optimization_problem_solution->is_device_memory()) {
+      const rmm::device_uvector<cuopt_float_t>& reduced_cost =
+        optimization_problem_solution->get_reduced_cost();
+      raft::copy(reduced_cost_ptr,
+                 reduced_cost.data(),
+                 reduced_cost.size(),
+                 solution_and_stream_view->stream_view.value());
+      solution_and_stream_view->stream_view->synchronize();
+    } else {
+      const std::vector<cuopt_float_t>& reduced_cost =
+        optimization_problem_solution->get_reduced_cost_host();
+      std::copy(reduced_cost.begin(), reduced_cost.end(), reduced_cost_ptr);
+    }
     return CUOPT_SUCCESS;
   }
 }
