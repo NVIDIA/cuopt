@@ -520,7 +520,14 @@ mip_solution_t<i_t, f_t> solve_mip(raft::handle_t const* handle_ptr,
 
   if (view.is_device_memory()) {
     if (remote_config.has_value()) {
-      // GPU data + remote solve requested: copy to CPU and proceed with remote
+      // GPU data + remote solve requested: need valid handle to copy GPU→CPU
+      if (handle_ptr == nullptr) {
+        CUOPT_LOG_ERROR(
+          "[solve_mip] Remote solve requested with GPU data but no CUDA handle. "
+          "This is an internal error - GPU data should not exist without CUDA initialization.");
+        return mip_solution_t<i_t, f_t>(
+          cuopt::logic_error("No CUDA handle for GPU data", cuopt::error_type_t::RuntimeError));
+      }
       CUOPT_LOG_WARN(
         "[solve_mip] Remote solve requested but data is on GPU. "
         "Copying to CPU for serialization (performance impact).");
@@ -533,9 +540,9 @@ mip_solution_t<i_t, f_t> solve_mip(raft::handle_t const* handle_ptr,
         remote_config->port);
       // TODO: Implement remote solve - serialize cpu_view and send to remote server
       CUOPT_LOG_ERROR("[solve_mip] Remote solve not yet implemented");
+      // Use CPU-only constructor - no stream needed for remote solve error
       return mip_solution_t<i_t, f_t>(
-        cuopt::logic_error("Remote solve not yet implemented", cuopt::error_type_t::RuntimeError),
-        handle_ptr->get_stream());
+        cuopt::logic_error("Remote solve not yet implemented", cuopt::error_type_t::RuntimeError));
     }
 
     // Local solve: data already on GPU - convert view to optimization_problem_t and solve
@@ -550,9 +557,9 @@ mip_solution_t<i_t, f_t> solve_mip(raft::handle_t const* handle_ptr,
                    remote_config->port);
     // TODO: Implement remote solve - serialize view (CPU memory) and send to remote server
     CUOPT_LOG_ERROR("[solve_mip] Remote solve not yet implemented");
+    // Use CPU-only constructor - no stream/handle needed for remote solve
     return mip_solution_t<i_t, f_t>(
-      cuopt::logic_error("Remote solve not yet implemented", cuopt::error_type_t::RuntimeError),
-      handle_ptr->get_stream());
+      cuopt::logic_error("Remote solve not yet implemented", cuopt::error_type_t::RuntimeError));
   }
 
   // Local solve with CPU data: copy to GPU and solve

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,12 +9,13 @@
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/linear_programming/utilities/remote_solve.hpp>
 #include <mps_parser/parser.hpp>
 #include <utilities/logger.hpp>
 
+// CUDA headers - only included for local solve path
 #include <raft/core/device_setter.hpp>
 #include <raft/core/handle.hpp>
-
 #include <rmm/mr/cuda_async_memory_resource.hpp>
 
 #include <unistd.h>
@@ -186,13 +187,18 @@ inline cuopt::init_logger_t dummy_logger(
  * @param file_path Path to the MPS format input file containing the optimization problem
  * @param initial_solution_file Path to initial solution file in SOL format
  * @param settings_strings Map of solver parameters
+ * @param is_remote_solve Whether remote solve is enabled (skips CUDA handle creation)
  */
 int run_single_file(const std::string& file_path,
                     const std::string& initial_solution_file,
                     bool solve_relaxation,
-                    const std::map<std::string, std::string>& settings_strings)
+                    const std::map<std::string, std::string>& settings_strings,
+                    bool is_remote_solve)
 {
-  const raft::handle_t handle_{};
+  // Only create raft handle for local solve - it triggers CUDA initialization
+  std::unique_ptr<raft::handle_t> handle_ptr;
+  if (!is_remote_solve) { handle_ptr = std::make_unique<raft::handle_t>(); }
+
   cuopt::linear_programming::solver_settings_t<int, double> settings;
 
   try {
@@ -264,16 +270,17 @@ int run_single_file(const std::string& file_path,
   auto view = create_view_from_mps_data_model(mps_data_model);
 
   try {
+    // Pass handle_ptr.get() - can be nullptr for remote solve
     if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
-      auto solution      = cuopt::linear_programming::solve_mip(&handle_, view, mip_settings);
+      auto solution = cuopt::linear_programming::solve_mip(handle_ptr.get(), view, mip_settings);
       if (solution.get_error_status().get_error_type() != cuopt::error_type_t::Success) {
         CUOPT_LOG_ERROR("MIP solve failed: %s", solution.get_error_status().what());
         return -1;
       }
     } else {
       auto& lp_settings = settings.get_pdlp_settings();
-      auto solution     = cuopt::linear_programming::solve_lp(&handle_, view, lp_settings);
+      auto solution     = cuopt::linear_programming::solve_lp(handle_ptr.get(), view, lp_settings);
       if (solution.get_error_status().get_error_type() != cuopt::error_type_t::Success) {
         CUOPT_LOG_ERROR("LP solve failed: %s", solution.get_error_status().what());
         return -1;
@@ -451,19 +458,26 @@ int main(int argc, char* argv[])
   const auto initial_solution_file = program.get<std::string>("--initial-solution");
   const auto solve_relaxation      = program.get<bool>("--relaxation");
 
-  // All arguments are parsed as string, default values are parsed as int if unused.
-  const auto num_gpus = program.is_used("--num-gpus")
-                          ? std::stoi(program.get<std::string>("--num-gpus"))
-                          : program.get<int>("--num-gpus");
+  // Check for remote solve BEFORE any CUDA initialization
+  const bool is_remote_solve = cuopt::linear_programming::is_remote_solve_enabled();
 
   std::vector<std::shared_ptr<rmm::mr::device_memory_resource>> memory_resources;
 
-  for (int i = 0; i < std::min(raft::device_setter::get_device_count(), num_gpus); ++i) {
-    cudaSetDevice(i);
-    memory_resources.push_back(make_async());
-    rmm::mr::set_per_device_resource(rmm::cuda_device_id{i}, memory_resources.back().get());
-  }
-  cudaSetDevice(0);
+  if (!is_remote_solve) {
+    // Only initialize CUDA resources for local solve
+    // All arguments are parsed as string, default values are parsed as int if unused.
+    const auto num_gpus = program.is_used("--num-gpus")
+                            ? std::stoi(program.get<std::string>("--num-gpus"))
+                            : program.get<int>("--num-gpus");
 
-  return run_single_file(file_name, initial_solution_file, solve_relaxation, settings_strings);
+    for (int i = 0; i < std::min(raft::device_setter::get_device_count(), num_gpus); ++i) {
+      cudaSetDevice(i);
+      memory_resources.push_back(make_async());
+      rmm::mr::set_per_device_resource(rmm::cuda_device_id{i}, memory_resources.back().get());
+    }
+    cudaSetDevice(0);
+  }
+
+  return run_single_file(
+    file_name, initial_solution_file, solve_relaxation, settings_strings, is_remote_solve);
 }
