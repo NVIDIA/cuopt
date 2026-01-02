@@ -143,47 +143,58 @@ linear_programming_ret_t call_solve_lp(
   const bool use_pdlp_solver_mode = true;
   auto solution                   = cuopt::linear_programming::solve_lp(
     op_problem, solver_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
-  linear_programming_ret_t lp_ret{
-    std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release()),
-    std::make_unique<rmm::device_buffer>(solution.get_dual_solution().release()),
-    std::make_unique<rmm::device_buffer>(solution.get_reduced_cost().release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().current_primal_solution_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().current_dual_solution_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().initial_primal_average_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().initial_dual_average_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().current_ATY_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().sum_primal_solutions_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().sum_dual_solutions_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().last_restart_duality_gap_primal_solution_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.release()),
-    solution.get_pdlp_warm_start_data().initial_primal_weight_,
-    solution.get_pdlp_warm_start_data().initial_step_size_,
-    solution.get_pdlp_warm_start_data().total_pdlp_iterations_,
-    solution.get_pdlp_warm_start_data().total_pdhg_iterations_,
-    solution.get_pdlp_warm_start_data().last_candidate_kkt_score_,
-    solution.get_pdlp_warm_start_data().last_restart_kkt_score_,
-    solution.get_pdlp_warm_start_data().sum_solution_weight_,
-    solution.get_pdlp_warm_start_data().iterations_since_last_restart_,
-    solution.get_termination_status(),
-    solution.get_error_status().get_error_type(),
-    solution.get_error_status().what(),
-    solution.get_additional_termination_information().l2_primal_residual,
-    solution.get_additional_termination_information().l2_dual_residual,
-    solution.get_additional_termination_information().primal_objective,
-    solution.get_additional_termination_information().dual_objective,
-    solution.get_additional_termination_information().gap,
-    solution.get_additional_termination_information().number_of_steps_taken,
-    solution.get_additional_termination_information().solve_time,
-    solution.get_additional_termination_information().solved_by_pdlp};
+
+  linear_programming_ret_t lp_ret;
+
+  // GPU data (local solve always uses GPU)
+  lp_ret.primal_solution_ =
+    std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release());
+  lp_ret.dual_solution_ =
+    std::make_unique<rmm::device_buffer>(solution.get_dual_solution().release());
+  lp_ret.reduced_cost_ =
+    std::make_unique<rmm::device_buffer>(solution.get_reduced_cost().release());
+  lp_ret.is_device_memory_ = true;
+
+  // Warm start data
+  lp_ret.current_primal_solution_ = std::make_unique<rmm::device_buffer>(
+    solution.get_pdlp_warm_start_data().current_primal_solution_.release());
+  lp_ret.current_dual_solution_ = std::make_unique<rmm::device_buffer>(
+    solution.get_pdlp_warm_start_data().current_dual_solution_.release());
+  lp_ret.initial_primal_average_ = std::make_unique<rmm::device_buffer>(
+    solution.get_pdlp_warm_start_data().initial_primal_average_.release());
+  lp_ret.initial_dual_average_ = std::make_unique<rmm::device_buffer>(
+    solution.get_pdlp_warm_start_data().initial_dual_average_.release());
+  lp_ret.current_ATY_ = std::make_unique<rmm::device_buffer>(
+    solution.get_pdlp_warm_start_data().current_ATY_.release());
+  lp_ret.sum_primal_solutions_ = std::make_unique<rmm::device_buffer>(
+    solution.get_pdlp_warm_start_data().sum_primal_solutions_.release());
+  lp_ret.sum_dual_solutions_ = std::make_unique<rmm::device_buffer>(
+    solution.get_pdlp_warm_start_data().sum_dual_solutions_.release());
+  lp_ret.last_restart_duality_gap_primal_solution_ = std::make_unique<rmm::device_buffer>(
+    solution.get_pdlp_warm_start_data().last_restart_duality_gap_primal_solution_.release());
+  lp_ret.last_restart_duality_gap_dual_solution_ = std::make_unique<rmm::device_buffer>(
+    solution.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.release());
+  lp_ret.initial_primal_weight_    = solution.get_pdlp_warm_start_data().initial_primal_weight_;
+  lp_ret.initial_step_size_        = solution.get_pdlp_warm_start_data().initial_step_size_;
+  lp_ret.total_pdlp_iterations_    = solution.get_pdlp_warm_start_data().total_pdlp_iterations_;
+  lp_ret.total_pdhg_iterations_    = solution.get_pdlp_warm_start_data().total_pdhg_iterations_;
+  lp_ret.last_candidate_kkt_score_ = solution.get_pdlp_warm_start_data().last_candidate_kkt_score_;
+  lp_ret.last_restart_kkt_score_   = solution.get_pdlp_warm_start_data().last_restart_kkt_score_;
+  lp_ret.sum_solution_weight_      = solution.get_pdlp_warm_start_data().sum_solution_weight_;
+  lp_ret.iterations_since_last_restart_ =
+    solution.get_pdlp_warm_start_data().iterations_since_last_restart_;
+
+  lp_ret.termination_status_ = solution.get_termination_status();
+  lp_ret.error_status_       = solution.get_error_status().get_error_type();
+  lp_ret.error_message_      = solution.get_error_status().what();
+  lp_ret.l2_primal_residual_ = solution.get_additional_termination_information().l2_primal_residual;
+  lp_ret.l2_dual_residual_   = solution.get_additional_termination_information().l2_dual_residual;
+  lp_ret.primal_objective_   = solution.get_additional_termination_information().primal_objective;
+  lp_ret.dual_objective_     = solution.get_additional_termination_information().dual_objective;
+  lp_ret.gap_                = solution.get_additional_termination_information().gap;
+  lp_ret.nb_iterations_  = solution.get_additional_termination_information().number_of_steps_taken;
+  lp_ret.solve_time_     = solution.get_additional_termination_information().solve_time;
+  lp_ret.solved_by_pdlp_ = solution.get_additional_termination_information().solved_by_pdlp;
 
   return lp_ret;
 }
@@ -206,20 +217,24 @@ mip_ret_t call_solve_mip(
     error_type_t::ValidationError,
     "MIP solve cannot be called on an LP problem!");
   auto solution = cuopt::linear_programming::solve_mip(op_problem, solver_settings);
-  mip_ret_t mip_ret{std::make_unique<rmm::device_buffer>(solution.get_solution().release()),
-                    solution.get_termination_status(),
-                    solution.get_error_status().get_error_type(),
-                    solution.get_error_status().what(),
-                    solution.get_objective_value(),
-                    solution.get_mip_gap(),
-                    solution.get_solution_bound(),
-                    solution.get_total_solve_time(),
-                    solution.get_presolve_time(),
-                    solution.get_max_constraint_violation(),
-                    solution.get_max_int_violation(),
-                    solution.get_max_variable_bound_violation(),
-                    solution.get_num_nodes(),
-                    solution.get_num_simplex_iterations()};
+
+  mip_ret_t mip_ret;
+  mip_ret.solution_ = std::make_unique<rmm::device_buffer>(solution.get_solution().release());
+  mip_ret.is_device_memory_             = true;
+  mip_ret.termination_status_           = solution.get_termination_status();
+  mip_ret.error_status_                 = solution.get_error_status().get_error_type();
+  mip_ret.error_message_                = solution.get_error_status().what();
+  mip_ret.objective_                    = solution.get_objective_value();
+  mip_ret.mip_gap_                      = solution.get_mip_gap();
+  mip_ret.solution_bound_               = solution.get_solution_bound();
+  mip_ret.total_solve_time_             = solution.get_total_solve_time();
+  mip_ret.presolve_time_                = solution.get_presolve_time();
+  mip_ret.max_constraint_violation_     = solution.get_max_constraint_violation();
+  mip_ret.max_int_violation_            = solution.get_max_int_violation();
+  mip_ret.max_variable_bound_violation_ = solution.get_max_variable_bound_violation();
+  mip_ret.nodes_                        = solution.get_num_nodes();
+  mip_ret.simplex_iterations_           = solution.get_num_simplex_iterations();
+
   return mip_ret;
 }
 
@@ -262,40 +277,56 @@ std::unique_ptr<solver_ret_t> call_solve(
 
       // Convert solution to linear_programming_ret_t
       auto term_info = solution.get_additional_termination_information();
-      linear_programming_ret_t lp_ret{
-        std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release()),
-        std::make_unique<rmm::device_buffer>(solution.get_dual_solution().release()),
-        std::make_unique<rmm::device_buffer>(solution.get_reduced_cost().release()),
-        // Warm start data - create empty buffers to avoid null pointer issues in Python wrapper
-        std::make_unique<rmm::device_buffer>(),  // current_primal_solution
-        std::make_unique<rmm::device_buffer>(),  // current_dual_solution
-        std::make_unique<rmm::device_buffer>(),  // initial_primal_average
-        std::make_unique<rmm::device_buffer>(),  // initial_dual_average
-        std::make_unique<rmm::device_buffer>(),  // current_ATY
-        std::make_unique<rmm::device_buffer>(),  // sum_primal_solutions
-        std::make_unique<rmm::device_buffer>(),  // sum_dual_solutions
-        std::make_unique<rmm::device_buffer>(),  // last_restart_duality_gap_primal_solution
-        std::make_unique<rmm::device_buffer>(),  // last_restart_duality_gap_dual_solution
-        0.0,                                     // initial_primal_weight
-        0.0,                                     // initial_step_size
-        0,                                       // total_pdlp_iterations
-        0,                                       // total_pdhg_iterations
-        0.0,                                     // last_candidate_kkt_score
-        0.0,                                     // last_restart_kkt_score
-        0.0,                                     // sum_solution_weight
-        0,                                       // iterations_since_last_restart
-        solution.get_termination_status(),
-        solution.get_error_status().get_error_type(),
-        solution.get_error_status().what(),
-        term_info.l2_primal_residual,
-        term_info.l2_dual_residual,
-        term_info.primal_objective,
-        term_info.dual_objective,
-        term_info.gap,
-        term_info.number_of_steps_taken,
-        solution.get_solve_time(),
-        false  // solved_by_pdlp
-      };
+      linear_programming_ret_t lp_ret;
+
+      if (solution.is_device_memory()) {
+        // GPU data (shouldn't happen for remote solve, but handle gracefully)
+        lp_ret.primal_solution_ =
+          std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release());
+        lp_ret.dual_solution_ =
+          std::make_unique<rmm::device_buffer>(solution.get_dual_solution().release());
+        lp_ret.reduced_cost_ =
+          std::make_unique<rmm::device_buffer>(solution.get_reduced_cost().release());
+        lp_ret.is_device_memory_ = true;
+      } else {
+        // CPU data from remote solve
+        lp_ret.primal_solution_host_ = std::move(solution.get_primal_solution_host());
+        lp_ret.dual_solution_host_   = std::move(solution.get_dual_solution_host());
+        lp_ret.reduced_cost_host_    = std::move(solution.get_reduced_cost_host());
+        lp_ret.is_device_memory_     = false;
+      }
+
+      // Warm start data - create empty buffers to avoid null pointer issues in Python wrapper
+      lp_ret.current_primal_solution_                  = std::make_unique<rmm::device_buffer>();
+      lp_ret.current_dual_solution_                    = std::make_unique<rmm::device_buffer>();
+      lp_ret.initial_primal_average_                   = std::make_unique<rmm::device_buffer>();
+      lp_ret.initial_dual_average_                     = std::make_unique<rmm::device_buffer>();
+      lp_ret.current_ATY_                              = std::make_unique<rmm::device_buffer>();
+      lp_ret.sum_primal_solutions_                     = std::make_unique<rmm::device_buffer>();
+      lp_ret.sum_dual_solutions_                       = std::make_unique<rmm::device_buffer>();
+      lp_ret.last_restart_duality_gap_primal_solution_ = std::make_unique<rmm::device_buffer>();
+      lp_ret.last_restart_duality_gap_dual_solution_   = std::make_unique<rmm::device_buffer>();
+      lp_ret.initial_primal_weight_                    = 0.0;
+      lp_ret.initial_step_size_                        = 0.0;
+      lp_ret.total_pdlp_iterations_                    = 0;
+      lp_ret.total_pdhg_iterations_                    = 0;
+      lp_ret.last_candidate_kkt_score_                 = 0.0;
+      lp_ret.last_restart_kkt_score_                   = 0.0;
+      lp_ret.sum_solution_weight_                      = 0.0;
+      lp_ret.iterations_since_last_restart_            = 0;
+
+      lp_ret.termination_status_ = solution.get_termination_status();
+      lp_ret.error_status_       = solution.get_error_status().get_error_type();
+      lp_ret.error_message_      = solution.get_error_status().what();
+      lp_ret.l2_primal_residual_ = term_info.l2_primal_residual;
+      lp_ret.l2_dual_residual_   = term_info.l2_dual_residual;
+      lp_ret.primal_objective_   = term_info.primal_objective;
+      lp_ret.dual_objective_     = term_info.dual_objective;
+      lp_ret.gap_                = term_info.gap;
+      lp_ret.nb_iterations_      = term_info.number_of_steps_taken;
+      lp_ret.solve_time_         = solution.get_solve_time();
+      lp_ret.solved_by_pdlp_     = false;
+
       response.lp_ret       = std::move(lp_ret);
       response.problem_type = linear_programming::problem_category_t::LP;
     } else {
@@ -303,20 +334,32 @@ std::unique_ptr<solver_ret_t> call_solve(
       auto solution =
         linear_programming::solve_mip(&handle_, *data_model, solver_settings->get_mip_settings());
 
-      mip_ret_t mip_ret{std::make_unique<rmm::device_buffer>(solution.get_solution().release()),
-                        solution.get_termination_status(),
-                        solution.get_error_status().get_error_type(),
-                        solution.get_error_status().what(),
-                        solution.get_objective_value(),
-                        solution.get_mip_gap(),
-                        solution.get_solution_bound(),
-                        solution.get_total_solve_time(),
-                        solution.get_presolve_time(),
-                        solution.get_max_constraint_violation(),
-                        solution.get_max_int_violation(),
-                        solution.get_max_variable_bound_violation(),
-                        solution.get_num_nodes(),
-                        solution.get_num_simplex_iterations()};
+      mip_ret_t mip_ret;
+
+      if (solution.is_device_memory()) {
+        // GPU data (shouldn't happen for remote solve, but handle gracefully)
+        mip_ret.solution_ = std::make_unique<rmm::device_buffer>(solution.get_solution().release());
+        mip_ret.is_device_memory_ = true;
+      } else {
+        // CPU data from remote solve
+        mip_ret.solution_host_    = std::move(solution.get_solution_host());
+        mip_ret.is_device_memory_ = false;
+      }
+
+      mip_ret.termination_status_           = solution.get_termination_status();
+      mip_ret.error_status_                 = solution.get_error_status().get_error_type();
+      mip_ret.error_message_                = solution.get_error_status().what();
+      mip_ret.objective_                    = solution.get_objective_value();
+      mip_ret.mip_gap_                      = solution.get_mip_gap();
+      mip_ret.solution_bound_               = solution.get_solution_bound();
+      mip_ret.total_solve_time_             = solution.get_total_solve_time();
+      mip_ret.presolve_time_                = solution.get_presolve_time();
+      mip_ret.max_constraint_violation_     = solution.get_max_constraint_violation();
+      mip_ret.max_int_violation_            = solution.get_max_int_violation();
+      mip_ret.max_variable_bound_violation_ = solution.get_max_variable_bound_violation();
+      mip_ret.nodes_                        = solution.get_num_nodes();
+      mip_ret.simplex_iterations_           = solution.get_num_simplex_iterations();
+
       response.mip_ret      = std::move(mip_ret);
       response.problem_type = linear_programming::problem_category_t::MIP;
     }

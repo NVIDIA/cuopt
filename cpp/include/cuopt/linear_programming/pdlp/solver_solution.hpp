@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -18,6 +18,7 @@
 #include <raft/core/handle.hpp>
 
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -169,6 +170,42 @@ class optimization_problem_solution_t : public base_solution_t {
                                   bool deep_copy);
 
   /**
+   * @brief Construct an optimization problem solution with CPU (host) memory storage.
+   * Used for remote solve scenarios where no GPU is available.
+   *
+   * @param[in] primal_solution The primal solution in host memory
+   * @param[in] dual_solution The dual solution in host memory
+   * @param[in] reduced_cost The reduced cost in host memory
+   * @param[in] objective_name The objective name
+   * @param[in] var_names The variables names
+   * @param[in] row_names The rows name
+   * @param[in] termination_stats The termination statistics
+   * @param[in] termination_status The termination reason
+   */
+  optimization_problem_solution_t(std::vector<f_t> primal_solution,
+                                  std::vector<f_t> dual_solution,
+                                  std::vector<f_t> reduced_cost,
+                                  const std::string objective_name,
+                                  const std::vector<std::string>& var_names,
+                                  const std::vector<std::string>& row_names,
+                                  additional_termination_information_t& termination_stats,
+                                  pdlp_termination_status_t termination_status);
+
+  /**
+   * @brief Construct an empty solution for CPU-only scenarios (e.g., remote solve error)
+   *
+   * @param[in] termination_status Reason for termination
+   */
+  optimization_problem_solution_t(pdlp_termination_status_t termination_status);
+
+  /**
+   * @brief Construct an error solution for CPU-only scenarios
+   *
+   * @param[in] error_status The error object
+   */
+  optimization_problem_solution_t(cuopt::logic_error error_status);
+
+  /**
    * @brief Set the solve time in seconds
    *
    * @param ms Time in ms
@@ -235,6 +272,40 @@ class optimization_problem_solution_t : public base_solution_t {
   rmm::device_uvector<f_t>& get_reduced_cost();
 
   /**
+   * @brief Check if solution data is stored in device (GPU) memory
+   *
+   * @return true if data is in GPU memory, false if in CPU memory
+   */
+  bool is_device_memory() const;
+
+  /**
+   * @brief Returns the primal solution in host (CPU) memory.
+   * Only valid when is_device_memory() returns false.
+   *
+   * @return std::vector<f_t>& The host memory container for the primal solution.
+   */
+  std::vector<f_t>& get_primal_solution_host();
+  const std::vector<f_t>& get_primal_solution_host() const;
+
+  /**
+   * @brief Returns the dual solution in host (CPU) memory.
+   * Only valid when is_device_memory() returns false.
+   *
+   * @return std::vector<f_t>& The host memory container for the dual solution.
+   */
+  std::vector<f_t>& get_dual_solution_host();
+  const std::vector<f_t>& get_dual_solution_host() const;
+
+  /**
+   * @brief Returns the reduced cost in host (CPU) memory.
+   * Only valid when is_device_memory() returns false.
+   *
+   * @return std::vector<f_t>& The host memory container for the reduced cost.
+   */
+  std::vector<f_t>& get_reduced_cost_host();
+  const std::vector<f_t>& get_reduced_cost_host() const;
+
+  /**
    * @brief Get termination reason
    * @return Termination reason
    */
@@ -285,9 +356,19 @@ class optimization_problem_solution_t : public base_solution_t {
  private:
   void write_additional_termination_statistics_to_file(std::ofstream& myfile);
 
-  rmm::device_uvector<f_t> primal_solution_;
-  rmm::device_uvector<f_t> dual_solution_;
-  rmm::device_uvector<f_t> reduced_cost_;
+  // GPU (device) storage - populated for local GPU solves
+  std::unique_ptr<rmm::device_uvector<f_t>> primal_solution_;
+  std::unique_ptr<rmm::device_uvector<f_t>> dual_solution_;
+  std::unique_ptr<rmm::device_uvector<f_t>> reduced_cost_;
+
+  // CPU (host) storage - populated for remote solves
+  std::unique_ptr<std::vector<f_t>> primal_solution_host_;
+  std::unique_ptr<std::vector<f_t>> dual_solution_host_;
+  std::unique_ptr<std::vector<f_t>> reduced_cost_host_;
+
+  // Flag indicating where solution data is stored
+  bool is_device_memory_ = true;
+
   pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
 
   pdlp_termination_status_t termination_status_;

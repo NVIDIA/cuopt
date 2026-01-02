@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -18,6 +18,7 @@
 #include <raft/core/handle.hpp>
 
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -51,9 +52,37 @@ class mip_solution_t : public base_solution_t {
                  rmm::cuda_stream_view stream_view);
   mip_solution_t(const cuopt::logic_error& error_status, rmm::cuda_stream_view stream_view);
 
+  // CPU-only constructors for remote solve
+  mip_solution_t(std::vector<f_t> solution,
+                 std::vector<std::string> var_names,
+                 f_t objective,
+                 f_t mip_gap,
+                 mip_termination_status_t termination_status,
+                 f_t max_constraint_violation,
+                 f_t max_int_violation,
+                 f_t max_variable_bound_violation,
+                 solver_stats_t<i_t, f_t> stats);
+
+  mip_solution_t(mip_termination_status_t termination_status, solver_stats_t<i_t, f_t> stats);
+  mip_solution_t(const cuopt::logic_error& error_status);
+
   bool is_mip() const override { return true; }
+
+  /**
+   * @brief Check if solution data is stored in device (GPU) memory
+   * @return true if data is in GPU memory, false if in CPU memory
+   */
+  bool is_device_memory() const;
+
   const rmm::device_uvector<f_t>& get_solution() const;
   rmm::device_uvector<f_t>& get_solution();
+
+  /**
+   * @brief Returns the solution in host (CPU) memory.
+   * Only valid when is_device_memory() returns false.
+   */
+  std::vector<f_t>& get_solution_host();
+  const std::vector<f_t>& get_solution_host() const;
 
   f_t get_objective_value() const;
   f_t get_mip_gap() const;
@@ -76,7 +105,15 @@ class mip_solution_t : public base_solution_t {
   void log_summary() const;
 
  private:
-  rmm::device_uvector<f_t> solution_;
+  // GPU (device) storage - populated for local GPU solves
+  std::unique_ptr<rmm::device_uvector<f_t>> solution_;
+
+  // CPU (host) storage - populated for remote solves
+  std::unique_ptr<std::vector<f_t>> solution_host_;
+
+  // Flag indicating where solution data is stored
+  bool is_device_memory_ = true;
+
   std::vector<std::string> var_names_;
   f_t objective_;
   f_t mip_gap_;

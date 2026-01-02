@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -21,9 +21,10 @@ namespace cuopt::linear_programming {
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
   pdlp_termination_status_t termination_status, rmm::cuda_stream_view stream_view)
-  : primal_solution_{0, stream_view},
-    dual_solution_{0, stream_view},
-    reduced_cost_{0, stream_view},
+  : primal_solution_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
+    dual_solution_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
+    reduced_cost_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
+    is_device_memory_(true),
     termination_status_(termination_status),
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
@@ -32,11 +33,38 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
   cuopt::logic_error error_status_, rmm::cuda_stream_view stream_view)
-  : primal_solution_{0, stream_view},
-    dual_solution_{0, stream_view},
-    reduced_cost_{0, stream_view},
+  : primal_solution_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
+    dual_solution_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
+    reduced_cost_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
+    is_device_memory_(true),
     termination_status_(pdlp_termination_status_t::NoTermination),
     error_status_(error_status_)
+{
+}
+
+// CPU-only constructor for remote solve error cases
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
+  pdlp_termination_status_t termination_status)
+  : primal_solution_host_(std::make_unique<std::vector<f_t>>()),
+    dual_solution_host_(std::make_unique<std::vector<f_t>>()),
+    reduced_cost_host_(std::make_unique<std::vector<f_t>>()),
+    is_device_memory_(false),
+    termination_status_(termination_status),
+    error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
+{
+}
+
+// CPU-only constructor for remote solve error cases
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
+  cuopt::logic_error error_status)
+  : primal_solution_host_(std::make_unique<std::vector<f_t>>()),
+    dual_solution_host_(std::make_unique<std::vector<f_t>>()),
+    reduced_cost_host_(std::make_unique<std::vector<f_t>>()),
+    is_device_memory_(false),
+    termination_status_(pdlp_termination_status_t::NoTermination),
+    error_status_(error_status)
 {
 }
 
@@ -51,15 +79,16 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
   const std::vector<std::string>& row_names,
   additional_termination_information_t& termination_stats,
   pdlp_termination_status_t termination_status)
-  : primal_solution_(std::move(final_primal_solution)),
-    dual_solution_(std::move(final_dual_solution)),
-    reduced_cost_(std::move(final_reduced_cost)),
+  : primal_solution_(std::make_unique<rmm::device_uvector<f_t>>(std::move(final_primal_solution))),
+    dual_solution_(std::make_unique<rmm::device_uvector<f_t>>(std::move(final_dual_solution))),
+    reduced_cost_(std::make_unique<rmm::device_uvector<f_t>>(std::move(final_reduced_cost))),
+    is_device_memory_(true),
     pdlp_warm_start_data_(std::move(warm_start_data)),
+    termination_status_(termination_status),
+    termination_stats_(std::move(termination_stats)),
     objective_name_(objective_name),
     var_names_(std::move(var_names)),
     row_names_(std::move(row_names)),
-    termination_stats_(std::move(termination_stats)),
-    termination_status_(termination_status),
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
 }
@@ -74,14 +103,15 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
   const std::vector<std::string>& row_names,
   additional_termination_information_t& termination_stats,
   pdlp_termination_status_t termination_status)
-  : primal_solution_(std::move(final_primal_solution)),
-    dual_solution_(std::move(final_dual_solution)),
-    reduced_cost_(std::move(final_reduced_cost)),
+  : primal_solution_(std::make_unique<rmm::device_uvector<f_t>>(std::move(final_primal_solution))),
+    dual_solution_(std::make_unique<rmm::device_uvector<f_t>>(std::move(final_dual_solution))),
+    reduced_cost_(std::make_unique<rmm::device_uvector<f_t>>(std::move(final_reduced_cost))),
+    is_device_memory_(true),
+    termination_status_(termination_status),
+    termination_stats_(std::move(termination_stats)),
     objective_name_(objective_name),
     var_names_(std::move(var_names)),
     row_names_(std::move(row_names)),
-    termination_stats_(std::move(termination_stats)),
-    termination_status_(termination_status),
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
 }
@@ -98,14 +128,42 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
   pdlp_termination_status_t termination_status,
   const raft::handle_t* handler_ptr,
   [[maybe_unused]] bool deep_copy)
-  : primal_solution_(final_primal_solution, handler_ptr->get_stream()),
-    dual_solution_(final_dual_solution, handler_ptr->get_stream()),
-    reduced_cost_(final_reduced_cost, handler_ptr->get_stream()),
+  : primal_solution_(
+      std::make_unique<rmm::device_uvector<f_t>>(final_primal_solution, handler_ptr->get_stream())),
+    dual_solution_(
+      std::make_unique<rmm::device_uvector<f_t>>(final_dual_solution, handler_ptr->get_stream())),
+    reduced_cost_(
+      std::make_unique<rmm::device_uvector<f_t>>(final_reduced_cost, handler_ptr->get_stream())),
+    is_device_memory_(true),
+    termination_status_(termination_status),
+    termination_stats_(termination_stats),
     objective_name_(objective_name),
     var_names_(var_names),
     row_names_(row_names),
-    termination_stats_(termination_stats),
+    error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
+{
+}
+
+// CPU-only constructor for remote solve with solution data
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
+  std::vector<f_t> primal_solution,
+  std::vector<f_t> dual_solution,
+  std::vector<f_t> reduced_cost,
+  const std::string objective_name,
+  const std::vector<std::string>& var_names,
+  const std::vector<std::string>& row_names,
+  additional_termination_information_t& termination_stats,
+  pdlp_termination_status_t termination_status)
+  : primal_solution_host_(std::make_unique<std::vector<f_t>>(std::move(primal_solution))),
+    dual_solution_host_(std::make_unique<std::vector<f_t>>(std::move(dual_solution))),
+    reduced_cost_host_(std::make_unique<std::vector<f_t>>(std::move(reduced_cost))),
+    is_device_memory_(false),
     termination_status_(termination_status),
+    termination_stats_(std::move(termination_stats)),
+    objective_name_(objective_name),
+    var_names_(var_names),
+    row_names_(row_names),
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
 }
@@ -114,31 +172,56 @@ template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::copy_from(
   const raft::handle_t* handle_ptr, const optimization_problem_solution_t<i_t, f_t>& other)
 {
-  // Resize to make sure they are of same size
-  primal_solution_.resize(other.primal_solution_.size(), handle_ptr->get_stream());
-  dual_solution_.resize(other.dual_solution_.size(), handle_ptr->get_stream());
-  reduced_cost_.resize(other.reduced_cost_.size(), handle_ptr->get_stream());
+  is_device_memory_ = other.is_device_memory_;
 
-  // Copy the data
-  raft::copy(primal_solution_.data(),
-             other.primal_solution_.data(),
-             primal_solution_.size(),
-             handle_ptr->get_stream());
-  raft::copy(dual_solution_.data(),
-             other.dual_solution_.data(),
-             dual_solution_.size(),
-             handle_ptr->get_stream());
-  raft::copy(reduced_cost_.data(),
-             other.reduced_cost_.data(),
-             reduced_cost_.size(),
-             handle_ptr->get_stream());
+  if (other.is_device_memory_) {
+    // Copy GPU data
+    if (!primal_solution_) {
+      primal_solution_ = std::make_unique<rmm::device_uvector<f_t>>(0, handle_ptr->get_stream());
+    }
+    if (!dual_solution_) {
+      dual_solution_ = std::make_unique<rmm::device_uvector<f_t>>(0, handle_ptr->get_stream());
+    }
+    if (!reduced_cost_) {
+      reduced_cost_ = std::make_unique<rmm::device_uvector<f_t>>(0, handle_ptr->get_stream());
+    }
+
+    // Resize to make sure they are of same size
+    primal_solution_->resize(other.primal_solution_->size(), handle_ptr->get_stream());
+    dual_solution_->resize(other.dual_solution_->size(), handle_ptr->get_stream());
+    reduced_cost_->resize(other.reduced_cost_->size(), handle_ptr->get_stream());
+
+    // Copy the data
+    raft::copy(primal_solution_->data(),
+               other.primal_solution_->data(),
+               primal_solution_->size(),
+               handle_ptr->get_stream());
+    raft::copy(dual_solution_->data(),
+               other.dual_solution_->data(),
+               dual_solution_->size(),
+               handle_ptr->get_stream());
+    raft::copy(reduced_cost_->data(),
+               other.reduced_cost_->data(),
+               reduced_cost_->size(),
+               handle_ptr->get_stream());
+    handle_ptr->sync_stream();
+  } else {
+    // Copy CPU data
+    if (!primal_solution_host_) { primal_solution_host_ = std::make_unique<std::vector<f_t>>(); }
+    if (!dual_solution_host_) { dual_solution_host_ = std::make_unique<std::vector<f_t>>(); }
+    if (!reduced_cost_host_) { reduced_cost_host_ = std::make_unique<std::vector<f_t>>(); }
+
+    *primal_solution_host_ = *other.primal_solution_host_;
+    *dual_solution_host_   = *other.dual_solution_host_;
+    *reduced_cost_host_    = *other.reduced_cost_host_;
+  }
+
   termination_stats_  = other.termination_stats_;
   termination_status_ = other.termination_status_;
   objective_name_     = other.objective_name_;
   var_names_          = other.var_names_;
   row_names_          = other.row_names_;
   // We do not copy the warm start info. As it is not needed for this purpose.
-  handle_ptr->sync_stream();
 }
 
 template <typename i_t, typename f_t>
@@ -203,18 +286,31 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_file(std::string_view f
            << std::endl;
     return;
   }
+
   std::vector<f_t> primal_solution;
   std::vector<f_t> dual_solution;
   std::vector<f_t> reduced_cost;
-  primal_solution.resize(primal_solution_.size());
-  dual_solution.resize(dual_solution_.size());
-  reduced_cost.resize(reduced_cost_.size());
-  raft::copy(
-    primal_solution.data(), primal_solution_.data(), primal_solution_.size(), stream_view.value());
-  raft::copy(
-    dual_solution.data(), dual_solution_.data(), dual_solution_.size(), stream_view.value());
-  raft::copy(reduced_cost.data(), reduced_cost_.data(), reduced_cost_.size(), stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+
+  if (is_device_memory_) {
+    // Copy from GPU to CPU
+    primal_solution.resize(primal_solution_->size());
+    dual_solution.resize(dual_solution_->size());
+    reduced_cost.resize(reduced_cost_->size());
+    raft::copy(primal_solution.data(),
+               primal_solution_->data(),
+               primal_solution_->size(),
+               stream_view.value());
+    raft::copy(
+      dual_solution.data(), dual_solution_->data(), dual_solution_->size(), stream_view.value());
+    raft::copy(
+      reduced_cost.data(), reduced_cost_->data(), reduced_cost_->size(), stream_view.value());
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  } else {
+    // Already on CPU
+    primal_solution = *primal_solution_host_;
+    dual_solution   = *dual_solution_host_;
+    reduced_cost    = *reduced_cost_host_;
+  }
 
   myfile << "{ " << std::endl;
   myfile << "\t\"Termination reason\" : \"" << get_termination_status_string() << "\","
@@ -306,34 +402,77 @@ f_t optimization_problem_solution_t<i_t, f_t>::get_dual_objective_value() const
 }
 
 template <typename i_t, typename f_t>
+bool optimization_problem_solution_t<i_t, f_t>::is_device_memory() const
+{
+  return is_device_memory_;
+}
+
+template <typename i_t, typename f_t>
 rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_primal_solution()
 {
-  return primal_solution_;
+  return *primal_solution_;
 }
 
 template <typename i_t, typename f_t>
 const rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_primal_solution()
   const
 {
-  return primal_solution_;
+  return *primal_solution_;
 }
 
 template <typename i_t, typename f_t>
 rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_dual_solution()
 {
-  return dual_solution_;
+  return *dual_solution_;
 }
 
 template <typename i_t, typename f_t>
 const rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_dual_solution() const
 {
-  return dual_solution_;
+  return *dual_solution_;
 }
 
 template <typename i_t, typename f_t>
 rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_reduced_cost()
 {
-  return reduced_cost_;
+  return *reduced_cost_;
+}
+
+// Host (CPU) getters
+template <typename i_t, typename f_t>
+std::vector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_primal_solution_host()
+{
+  return *primal_solution_host_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_primal_solution_host() const
+{
+  return *primal_solution_host_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_dual_solution_host()
+{
+  return *dual_solution_host_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_dual_solution_host() const
+{
+  return *dual_solution_host_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_reduced_cost_host()
+{
+  return *reduced_cost_host_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_reduced_cost_host() const
+{
+  return *reduced_cost_host_;
 }
 
 template <typename i_t, typename f_t>
@@ -374,10 +513,18 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_sol_file(
 
   auto objective_value = get_objective_value();
   std::vector<f_t> solution;
-  solution.resize(primal_solution_.size());
-  raft::copy(
-    solution.data(), primal_solution_.data(), primal_solution_.size(), stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+
+  if (is_device_memory_) {
+    // Copy from GPU to CPU
+    solution.resize(primal_solution_->size());
+    raft::copy(
+      solution.data(), primal_solution_->data(), primal_solution_->size(), stream_view.value());
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  } else {
+    // Already on CPU
+    solution = *primal_solution_host_;
+  }
+
   solution_writer_t::write_solution_to_sol_file(
     std::string(filename), status, objective_value, var_names_, solution);
 }

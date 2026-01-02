@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -120,9 +120,16 @@ cdef extern from "cuopt/linear_programming/pdlp/solver_solution.hpp" namespace "
 
 cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace "cuopt::cython": # noqa
     cdef cppclass linear_programming_ret_t:
+        # GPU (device) storage
         unique_ptr[device_buffer] primal_solution_
         unique_ptr[device_buffer] dual_solution_
         unique_ptr[device_buffer] reduced_cost_
+        # CPU (host) storage for remote solve
+        vector[double] primal_solution_host_
+        vector[double] dual_solution_host_
+        vector[double] reduced_cost_host_
+        # Flag indicating where solution data is stored
+        bool is_device_memory_
         # PDLP warm start data
         unique_ptr[device_buffer] current_primal_solution_
         unique_ptr[device_buffer] current_dual_solution_
@@ -155,7 +162,12 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         bool solved_by_pdlp_
 
     cdef cppclass mip_ret_t:
+        # GPU (device) storage
         unique_ptr[device_buffer] solution_
+        # CPU (host) storage for remote solve
+        vector[double] solution_host_
+        # Flag indicating where solution data is stored
+        bool is_device_memory_
         mip_termination_status_t termination_status_
         error_type_t error_status_
         string error_message_

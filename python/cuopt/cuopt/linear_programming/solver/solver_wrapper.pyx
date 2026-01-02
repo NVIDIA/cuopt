@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -300,9 +300,17 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
     sol_ret = move(sol_ret_ptr.get()[0])
 
     if sol_ret.problem_type == ProblemCategory.MIP or sol_ret.problem_type == ProblemCategory.IP: # noqa
-        solution = DeviceBuffer.c_from_unique_ptr(
-            move(sol_ret.mip_ret.solution_)
-        )
+        # Check if data is on GPU or CPU
+        if sol_ret.mip_ret.is_device_memory_:
+            # GPU data - use DeviceBuffer
+            solution = DeviceBuffer.c_from_unique_ptr(
+                move(sol_ret.mip_ret.solution_)
+            )
+            solution = series_from_buf(solution, pa.float64()).to_numpy()
+        else:
+            # CPU data - convert vector directly to numpy
+            solution = np.array(sol_ret.mip_ret.solution_host_, dtype=np.float64)
+
         termination_status = sol_ret.mip_ret.termination_status_
         error_status = sol_ret.mip_ret.error_status_
         error_message = sol_ret.mip_ret.error_message_
@@ -316,8 +324,6 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         max_variable_bound_violation = sol_ret.mip_ret.max_variable_bound_violation_ # noqa
         num_nodes = sol_ret.mip_ret.nodes_
         num_simplex_iterations = sol_ret.mip_ret.simplex_iterations_
-
-        solution = series_from_buf(solution, pa.float64()).to_numpy()
 
         return Solution(
             ProblemCategory(sol_ret.problem_type),
@@ -339,15 +345,23 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         )
 
     else:
-        primal_solution = DeviceBuffer.c_from_unique_ptr(
-            move(sol_ret.lp_ret.primal_solution_)
-        )
-        dual_solution = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.dual_solution_)) # noqa
-        reduced_cost = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.reduced_cost_)) # noqa
+        # Check if data is on GPU or CPU
+        if sol_ret.lp_ret.is_device_memory_:
+            # GPU data - use DeviceBuffer
+            primal_solution = DeviceBuffer.c_from_unique_ptr(
+                move(sol_ret.lp_ret.primal_solution_)
+            )
+            dual_solution = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.dual_solution_)) # noqa
+            reduced_cost = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.reduced_cost_)) # noqa
 
-        primal_solution = series_from_buf(primal_solution, pa.float64()).to_numpy()
-        dual_solution = series_from_buf(dual_solution, pa.float64()).to_numpy()
-        reduced_cost = series_from_buf(reduced_cost, pa.float64()).to_numpy()
+            primal_solution = series_from_buf(primal_solution, pa.float64()).to_numpy()
+            dual_solution = series_from_buf(dual_solution, pa.float64()).to_numpy()
+            reduced_cost = series_from_buf(reduced_cost, pa.float64()).to_numpy()
+        else:
+            # CPU data - convert vectors directly to numpy
+            primal_solution = np.array(sol_ret.lp_ret.primal_solution_host_, dtype=np.float64)
+            dual_solution = np.array(sol_ret.lp_ret.dual_solution_host_, dtype=np.float64)
+            reduced_cost = np.array(sol_ret.lp_ret.reduced_cost_host_, dtype=np.float64)
 
         termination_status = sol_ret.lp_ret.termination_status_
         error_status = sol_ret.lp_ret.error_status_
