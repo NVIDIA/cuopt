@@ -10,6 +10,7 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/cython_solve.hpp>
+#include <cuopt/linear_programming/utilities/remote_solve.hpp>
 #include <mip/logger.hpp>
 #include <mps_parser/data_model_view.hpp>
 #include <mps_parser/mps_data_model.hpp>
@@ -237,6 +238,93 @@ std::unique_ptr<solver_ret_t> call_solve(
   // flags));  // flags=cudaStreamNonBlocking const raft::handle_t handle_{stream};
   const raft::handle_t handle_{};
 
+  // Check if remote solve is configured
+  if (linear_programming::is_remote_solve_enabled()) {
+    // Data coming from Python is in CPU memory - mark it as such
+    data_model->set_is_device_memory(false);
+
+    solver_ret_t response;
+
+    // Determine if LP or MIP based on variable types
+    bool is_mip    = false;
+    auto var_types = data_model->get_variable_types();
+    for (size_t i = 0; i < var_types.size(); ++i) {
+      if (var_types.data()[i] != 'C') {
+        is_mip = true;
+        break;
+      }
+    }
+
+    if (!is_mip) {
+      // LP: call solve_lp with view - it will handle remote
+      auto solution =
+        linear_programming::solve_lp(&handle_, *data_model, solver_settings->get_pdlp_settings());
+
+      // Convert solution to linear_programming_ret_t
+      auto term_info = solution.get_additional_termination_information();
+      linear_programming_ret_t lp_ret{
+        std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release()),
+        std::make_unique<rmm::device_buffer>(solution.get_dual_solution().release()),
+        std::make_unique<rmm::device_buffer>(solution.get_reduced_cost().release()),
+        // Warm start data - create empty buffers to avoid null pointer issues in Python wrapper
+        std::make_unique<rmm::device_buffer>(),  // current_primal_solution
+        std::make_unique<rmm::device_buffer>(),  // current_dual_solution
+        std::make_unique<rmm::device_buffer>(),  // initial_primal_average
+        std::make_unique<rmm::device_buffer>(),  // initial_dual_average
+        std::make_unique<rmm::device_buffer>(),  // current_ATY
+        std::make_unique<rmm::device_buffer>(),  // sum_primal_solutions
+        std::make_unique<rmm::device_buffer>(),  // sum_dual_solutions
+        std::make_unique<rmm::device_buffer>(),  // last_restart_duality_gap_primal_solution
+        std::make_unique<rmm::device_buffer>(),  // last_restart_duality_gap_dual_solution
+        0.0,                                     // initial_primal_weight
+        0.0,                                     // initial_step_size
+        0,                                       // total_pdlp_iterations
+        0,                                       // total_pdhg_iterations
+        0.0,                                     // last_candidate_kkt_score
+        0.0,                                     // last_restart_kkt_score
+        0.0,                                     // sum_solution_weight
+        0,                                       // iterations_since_last_restart
+        solution.get_termination_status(),
+        solution.get_error_status().get_error_type(),
+        solution.get_error_status().what(),
+        term_info.l2_primal_residual,
+        term_info.l2_dual_residual,
+        term_info.primal_objective,
+        term_info.dual_objective,
+        term_info.gap,
+        term_info.number_of_steps_taken,
+        solution.get_solve_time(),
+        false  // solved_by_pdlp
+      };
+      response.lp_ret       = std::move(lp_ret);
+      response.problem_type = linear_programming::problem_category_t::LP;
+    } else {
+      // MIP: call solve_mip with view - it will handle remote
+      auto solution =
+        linear_programming::solve_mip(&handle_, *data_model, solver_settings->get_mip_settings());
+
+      mip_ret_t mip_ret{std::make_unique<rmm::device_buffer>(solution.get_solution().release()),
+                        solution.get_termination_status(),
+                        solution.get_error_status().get_error_type(),
+                        solution.get_error_status().what(),
+                        solution.get_objective_value(),
+                        solution.get_mip_gap(),
+                        solution.get_solution_bound(),
+                        solution.get_total_solve_time(),
+                        solution.get_presolve_time(),
+                        solution.get_max_constraint_violation(),
+                        solution.get_max_int_violation(),
+                        solution.get_max_variable_bound_violation(),
+                        solution.get_num_nodes(),
+                        solution.get_num_simplex_iterations()};
+      response.mip_ret      = std::move(mip_ret);
+      response.problem_type = linear_programming::problem_category_t::MIP;
+    }
+
+    return std::make_unique<solver_ret_t>(std::move(response));
+  }
+
+  // Local solve: proceed as before - create GPU problem and solve
   auto op_problem = data_model_to_optimization_problem(data_model, solver_settings, &handle_);
   solver_ret_t response;
   if (op_problem.get_problem_category() == linear_programming::problem_category_t::LP) {
