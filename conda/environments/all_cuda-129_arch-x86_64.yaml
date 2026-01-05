@@ -5,7 +5,6 @@ channels:
 - rapidsai
 - conda-forge
 dependencies:
-- boost
 - breathe
 - bzip2
 - c-compiler
@@ -24,11 +23,11 @@ dependencies:
 - cxx-compiler
 - cython>=3.0.3
 - doxygen=1.9.1
-- exhale
 - fastapi
 - gcc_linux-64=14.*
 - ipython
 - jsonref==1.1.0
+- libboost-devel
 - libcudss-dev >=0.7
 - libcurand-dev
 - libcusolver-dev
@@ -54,10 +53,9 @@ dependencies:
 - pylibraft==26.2.*,>=0.0.0a0
 - pyrsistent
 - pytest-cov
-- pytest<8
+- pytest<9.0
 - python>=3.10,<3.14
 - rapids-build-backend>=0.4.0,<0.5.0
-- rapids-dask-dependency==26.2.*,>=0.0.0a0
 - rapids-logger==0.2.*,>=0.0.0a0
 - requests
 - rmm==26.2.*,>=0.0.0a0
@@ -74,7 +72,7 @@ dependencies:
 - uvicorn==0.34.*
 - zlib
 - pip:
-  - nvidia_sphinx_theme
+  - nvidia-sphinx-theme
   - swagger-plugin-for-sphinx
   - veroviz
 name: all_cuda-129_arch-x86_64

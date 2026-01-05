@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: Apache-2.0
 schema_version: 1
 
@@ -65,7 +65,6 @@ requirements:
     - rapids-build-backend >=0.4.0,<0.5.0
     - rmm =${{ minor_version }}
     - scikit-build-core>=0.11.0
-    - cuda-cudart-dev
     - if: cuda_major == "12"
       then: cuda-python >=12.9.2,<13.0
       else: cuda-python >=13.0.1,<14.0
@@ -82,8 +81,6 @@ requirements:
     - pandas >=2.0
     - pylibraft =${{ minor_version }}
     - python
-    - raft-dask =${{ minor_version }}
-    - rapids-dask-dependency =${{ minor_version }}
     - rmm =${{ minor_version }}
     # Needed by Numba for CUDA support
     - cuda-nvcc-impl
@@ -94,7 +91,6 @@ requirements:
       else: cuda-python >=13.0.1,<14.0
   ignore_run_exports:
     by_name:
-      - cuda-cudart
       - cuda-version
 
 tests:

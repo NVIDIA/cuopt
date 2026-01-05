@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: Apache-2.0
 schema_version: 1
 
@@ -41,7 +41,7 @@ requirements:
     - pandas>=2
     - psutil>=6.0.0
     - python
-    - uvicorn ${{ uvicorn_version }}
+    - uvicorn =0.34
 
 tests:
   - python:
