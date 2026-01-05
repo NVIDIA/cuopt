@@ -366,21 +366,30 @@ void solution_t<i_t, f_t>::compute_infeasibility()
 template <typename i_t, typename f_t>
 bool solution_t<i_t, f_t>::round_nearest()
 {
+  clamp_within_bounds();
   invoke_round_nearest(*this);
+  cuopt_assert(compute_max_variable_violation() == 0., "Variables are not within bounds");
+  cuopt_assert(test_number_all_integer(), "Not all variables are integers");
   return compute_feasibility();
 }
 
 template <typename i_t, typename f_t>
 bool solution_t<i_t, f_t>::round_random_nearest(i_t n_target_random_rounds)
 {
+  clamp_within_bounds();
   invoke_random_round_nearest(*this, n_target_random_rounds);
+  cuopt_assert(compute_max_variable_violation() == 0., "Variables are not within bounds");
+  cuopt_assert(test_number_all_integer(), "Not all variables are integers");
   return compute_feasibility();
 }
 
 template <typename i_t, typename f_t>
 bool solution_t<i_t, f_t>::round_simple()
 {
+  clamp_within_bounds();
   invoke_simple_rounding(*this);
+  cuopt_assert(compute_max_variable_violation() == 0., "Variables are not within bounds");
+  cuopt_assert(test_number_all_integer(), "Not all variables are integers");
   return compute_feasibility();
 }
 
@@ -454,6 +463,7 @@ void solution_t<i_t, f_t>::clamp_within_bounds()
   clamp_within_var_bounds(assignment, problem_ptr, handle_ptr);
   handle_ptr->sync_stream();
   compute_feasibility();
+  cuopt_assert(compute_max_variable_violation() == 0., "Variables are not within bounds");
 }
 
 template <typename i_t, typename f_t>

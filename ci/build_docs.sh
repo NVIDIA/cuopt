@@ -8,6 +8,9 @@ set -euo pipefail
 rapids-logger "Create test conda environment"
 . /opt/conda/etc/profile.d/conda.sh
 
+rapids-logger "Configuring conda strict channel priority"
+conda config --set channel_priority strict
+
 ENV_YAML_DIR="$(mktemp -d)"
 
 RAPIDS_VERSION_MAJOR_MINOR="$(rapids-version-major-minor)"

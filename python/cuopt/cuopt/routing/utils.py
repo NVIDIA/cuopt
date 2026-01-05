@@ -13,9 +13,6 @@ import cudf
 from cuopt import routing
 from cuopt.routing import utils_wrapper
 
-# Enable once cupy 13.4.0 is available
-# from cupyx.scipy.spatial import distance
-
 
 def generate_dataset(
     locations=100,
@@ -370,7 +367,7 @@ def create_pickup_delivery_data(
             matrix[i][j] = matrix_pdf[my_ix][my_iy] / vehicle_constraints.speed
 
     pdf = pd.DataFrame(matrix)
-    matrix_df = cudf.DataFrame.from_pandas(pdf).astype("float32")
+    matrix_df = cudf.from_pandas(pdf).astype("float32")
 
     pickup_indices = cudf.Series(
         i for i in range(0, int(len(raw_order_df) / 2))
@@ -969,8 +966,6 @@ def create_from_yaml_file(file_path):
     return df, vehicle_capacity, vehicle_num
 
 
-# This is temporary till cupy releases new version > 13.3.0
-# which has fix with cuvs for cdist
 def euclidean_distance(coord):
     coord = np.array(coord)
     n_coord = len(coord)

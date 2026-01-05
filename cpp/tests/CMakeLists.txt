@@ -25,6 +25,9 @@ if(BUILD_TESTS)
       GTest::gmock
       GTest::gtest
   )
+  if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+    target_link_options(cuopttestutils PRIVATE -Wl,--enable-new-dtags)
+  endif()
 endif()
 
 
@@ -52,6 +55,9 @@ function(ConfigureTest CMAKE_TEST_NAME)
         GTest::gtest_main
         ${CUOPT_PRIVATE_CUDA_LIBS}
     )
+    if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+      target_link_options(${CMAKE_TEST_NAME} PRIVATE -Wl,--enable-new-dtags)
+    endif()
 
     add_test(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME})
 
@@ -85,6 +91,7 @@ if(BUILD_TESTS)
   endif()
   add_subdirectory(linear_programming)
   add_subdirectory(dual_simplex)
+  add_subdirectory(qp)
   add_subdirectory(utilities)
 
   enable_testing()

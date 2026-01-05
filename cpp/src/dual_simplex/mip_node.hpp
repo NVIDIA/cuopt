@@ -19,28 +19,46 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 enum class node_status_t : int {
-  ACTIVE           = 0,  // Node still in the tree
+  PENDING          = 0,  // Node is still in the tree, waiting to be solved
   INTEGER_FEASIBLE = 1,  // Node has an integer feasible solution
   INFEASIBLE       = 2,  // Node is infeasible
   FATHOMED         = 3,  // Node objective is greater than the upper bound
   HAS_CHILDREN     = 4,  // Node has children to explore
-  NUMERICAL        = 5,  // Encountered numerical issue when solving the LP relaxation
-  TIME_LIMIT       = 6   // Time out during the LP relaxation
+  NUMERICAL        = 5   // Encountered numerical issue when solving the LP relaxation
 };
+
+enum class rounding_direction_t : int8_t { NONE = -1, DOWN = 0, UP = 1 };
 
 bool inactive_status(node_status_t status);
 
 template <typename i_t, typename f_t>
 class mip_node_t {
  public:
+  mip_node_t()
+    : status(node_status_t::PENDING),
+      lower_bound(-std::numeric_limits<f_t>::infinity()),
+      depth(0),
+      parent(nullptr),
+      node_id(0),
+      branch_var(-1),
+      branch_dir(rounding_direction_t::NONE),
+      branch_var_lower(-std::numeric_limits<f_t>::infinity()),
+      branch_var_upper(std::numeric_limits<f_t>::infinity()),
+      fractional_val(std::numeric_limits<f_t>::infinity()),
+      vstatus(0)
+  {
+    children[0] = nullptr;
+    children[1] = nullptr;
+  }
+
   mip_node_t(f_t root_lower_bound, const std::vector<variable_status_t>& basis)
-    : status(node_status_t::ACTIVE),
+    : status(node_status_t::PENDING),
       lower_bound(root_lower_bound),
       depth(0),
       parent(nullptr),
       node_id(0),
       branch_var(-1),
-      branch_dir(-1),
+      branch_dir(rounding_direction_t::NONE),
       vstatus(basis)
   {
     children[0] = nullptr;
@@ -51,10 +69,10 @@ class mip_node_t {
              mip_node_t* parent_node,
              i_t node_num,
              i_t branch_variable,
-             i_t branch_direction,
+             rounding_direction_t branch_direction,
              f_t branch_var_value,
              const std::vector<variable_status_t>& basis)
-    : status(node_status_t::ACTIVE),
+    : status(node_status_t::PENDING),
       lower_bound(parent_node->lower_bound),
       depth(parent_node->depth + 1),
       parent(parent_node),
@@ -65,36 +83,47 @@ class mip_node_t {
       vstatus(basis)
 
   {
-    branch_var_lower =
-      branch_direction == 0 ? problem.lower[branch_var] : std::ceil(branch_var_value);
-    branch_var_upper =
-      branch_direction == 0 ? std::floor(branch_var_value) : problem.upper[branch_var];
-    children[0] = nullptr;
-    children[1] = nullptr;
+    branch_var_lower = branch_direction == rounding_direction_t::DOWN ? problem.lower[branch_var]
+                                                                      : std::ceil(branch_var_value);
+    branch_var_upper = branch_direction == rounding_direction_t::DOWN ? std::floor(branch_var_value)
+                                                                      : problem.upper[branch_var];
+    children[0]      = nullptr;
+    children[1]      = nullptr;
   }
 
   void get_variable_bounds(std::vector<f_t>& lower,
                            std::vector<f_t>& upper,
                            std::vector<bool>& bounds_changed) const
   {
-    std::fill(bounds_changed.begin(), bounds_changed.end(), false);
-    // Apply the bounds at the current node
+    update_branched_variable_bounds(lower, upper, bounds_changed);
+
+    mip_node_t<i_t, f_t>* parent_ptr = parent;
+    while (parent_ptr != nullptr && parent_ptr->node_id != 0) {
+      parent_ptr->update_branched_variable_bounds(lower, upper, bounds_changed);
+      parent_ptr = parent_ptr->parent;
+    }
+  }
+
+  // Here we assume that we are traversing from the deepest node to the
+  // root of the tree
+  void update_branched_variable_bounds(std::vector<f_t>& lower,
+                                       std::vector<f_t>& upper,
+                                       std::vector<bool>& bounds_changed) const
+  {
+    assert(branch_var >= 0);
     assert(lower.size() > branch_var);
     assert(upper.size() > branch_var);
-    lower[branch_var]                = branch_var_lower;
-    upper[branch_var]                = branch_var_upper;
-    bounds_changed[branch_var]       = true;
-    mip_node_t<i_t, f_t>* parent_ptr = parent;
-    while (parent_ptr != nullptr) {
-      if (parent_ptr->node_id == 0) { break; }
-      assert(parent_ptr->branch_var >= 0);
-      assert(lower.size() > parent_ptr->branch_var);
-      assert(upper.size() > parent_ptr->branch_var);
-      lower[parent_ptr->branch_var]          = parent_ptr->branch_var_lower;
-      upper[parent_ptr->branch_var]          = parent_ptr->branch_var_upper;
-      bounds_changed[parent_ptr->branch_var] = true;
-      parent_ptr                             = parent_ptr->parent;
-    }
+    assert(bounds_changed.size() > branch_var);
+
+    // If the bounds have already been updated on another node,
+    // skip this node as it contains looser bounds, since we
+    // are traversing up the tree toward the root
+    if (bounds_changed[branch_var]) { return; }
+
+    // Apply the bounds at the current node
+    lower[branch_var]          = branch_var_lower;
+    upper[branch_var]          = branch_var_upper;
+    bounds_changed[branch_var] = true;
   }
 
   mip_node_t* get_down_child() const { return children[0].get(); }
@@ -193,9 +222,8 @@ class mip_node_t {
   }
 
   // This method creates a copy of the current node
-  // with its parent set to `nullptr`, `node_id = 0`
-  // and `depth = 0` such that it is the root
-  // of a separated tree.
+  // with its parent set to `nullptr` and `depth = 0`.
+  // This detaches the node from the tree.
   mip_node_t<i_t, f_t> detach_copy() const
   {
     mip_node_t<i_t, f_t> copy(lower_bound, vstatus);
@@ -213,7 +241,7 @@ class mip_node_t {
   i_t depth;
   i_t node_id;
   i_t branch_var;
-  i_t branch_dir;
+  rounding_direction_t branch_dir;
   f_t branch_var_lower;
   f_t branch_var_upper;
   f_t fractional_val;
@@ -253,20 +281,16 @@ class node_compare_t {
 template <typename i_t, typename f_t>
 class search_tree_t {
  public:
-  search_tree_t(f_t root_lower_bound, const std::vector<variable_status_t>& basis)
-    : root(root_lower_bound, basis), num_nodes(0)
-  {
-  }
+  search_tree_t() : num_nodes(0) {}
 
   search_tree_t(mip_node_t<i_t, f_t>&& node) : root(std::move(node)), num_nodes(0) {}
 
-  void update_tree(mip_node_t<i_t, f_t>* node_ptr, node_status_t status)
+  void update(mip_node_t<i_t, f_t>* node_ptr, node_status_t status)
   {
-    mutex.lock();
+    std::lock_guard<omp_mutex_t> lock(mutex);
     std::vector<mip_node_t<i_t, f_t>*> stack;
     node_ptr->set_status(status, stack);
     remove_fathomed_nodes(stack);
-    mutex.unlock();
   }
 
   void branch(mip_node_t<i_t, f_t>* parent_node,
@@ -278,17 +302,35 @@ class search_tree_t {
   {
     i_t id = num_nodes.fetch_add(2);
 
-    // down child
-    auto down_child = std::make_unique<mip_node_t<i_t, f_t>>(
-      original_lp, parent_node, ++id, branch_var, 0, fractional_val, parent_vstatus);
+    auto down_child = std::make_unique<mip_node_t<i_t, f_t>>(original_lp,
+                                                             parent_node,
+                                                             ++id,
+                                                             branch_var,
+                                                             rounding_direction_t::DOWN,
+                                                             fractional_val,
+                                                             parent_vstatus);
 
-    graphviz_edge(log, parent_node, down_child.get(), branch_var, 0, std::floor(fractional_val));
+    graphviz_edge(log,
+                  parent_node,
+                  down_child.get(),
+                  branch_var,
+                  rounding_direction_t::DOWN,
+                  std::floor(fractional_val));
 
-    // up child
-    auto up_child = std::make_unique<mip_node_t<i_t, f_t>>(
-      original_lp, parent_node, ++id, branch_var, 1, fractional_val, parent_vstatus);
+    auto up_child = std::make_unique<mip_node_t<i_t, f_t>>(original_lp,
+                                                           parent_node,
+                                                           ++id,
+                                                           branch_var,
+                                                           rounding_direction_t::UP,
+                                                           fractional_val,
+                                                           parent_vstatus);
 
-    graphviz_edge(log, parent_node, up_child.get(), branch_var, 1, std::ceil(fractional_val));
+    graphviz_edge(log,
+                  parent_node,
+                  up_child.get(),
+                  branch_var,
+                  rounding_direction_t::UP,
+                  std::ceil(fractional_val));
 
     assert(parent_vstatus.size() == original_lp.num_cols);
     parent_node->add_children(std::move(down_child),
@@ -309,7 +351,7 @@ class search_tree_t {
                      const mip_node_t<i_t, f_t>* origin_ptr,
                      const mip_node_t<i_t, f_t>* dest_ptr,
                      const i_t branch_var,
-                     const i_t branch_dir,
+                     rounding_direction_t branch_dir,
                      const f_t bound)
   {
     if (write_graphviz) {
@@ -317,7 +359,7 @@ class search_tree_t {
                  origin_ptr->node_id,
                  dest_ptr->node_id,
                  branch_var,
-                 branch_dir == 0 ? "<=" : ">=",
+                 branch_dir == rounding_direction_t::DOWN ? "<=" : ">=",
                  bound);
     }
   }

@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nim-service
+  labels:
+    app.kubernetes.io/name: cuopt
+    app.kubernetes.io/component: nim-service

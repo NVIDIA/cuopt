@@ -59,6 +59,17 @@ data_model_to_optimization_problem(
   }
   op_problem.set_objective_scaling_factor(data_model->get_objective_scaling_factor());
   op_problem.set_objective_offset(data_model->get_objective_offset());
+
+  if (data_model->get_quadratic_objective_values().size() != 0 &&
+      data_model->get_quadratic_objective_indices().size() != 0 &&
+      data_model->get_quadratic_objective_offsets().size() != 0) {
+    op_problem.set_quadratic_objective_matrix(data_model->get_quadratic_objective_values().data(),
+                                              data_model->get_quadratic_objective_values().size(),
+                                              data_model->get_quadratic_objective_indices().data(),
+                                              data_model->get_quadratic_objective_indices().size(),
+                                              data_model->get_quadratic_objective_offsets().data(),
+                                              data_model->get_quadratic_objective_offsets().size());
+  }
   if (data_model->get_variable_lower_bounds().size() != 0) {
     op_problem.set_variable_lower_bounds(data_model->get_variable_lower_bounds().data(),
                                          data_model->get_variable_lower_bounds().size());
@@ -219,9 +230,12 @@ std::unique_ptr<solver_ret_t> call_solve(
 {
   raft::common::nvtx::range fun_scope("Call Solve");
 
-  cudaStream_t stream;
-  RAFT_CUDA_TRY(cudaStreamCreateWithFlags(&stream, flags));
-  const raft::handle_t handle_{stream};
+  // FIX: Use default handle constructor like CLI does, instead of explicit stream creation
+  // Original code created a non-blocking stream which causes synchronization issues with PDLP
+  // This is a workaround to fix the synchronization issues, please fix this in the future and
+  // remove this workaround. cudaStream_t stream; RAFT_CUDA_TRY(cudaStreamCreateWithFlags(&stream,
+  // flags));  // flags=cudaStreamNonBlocking const raft::handle_t handle_{stream};
+  const raft::handle_t handle_{};
 
   auto op_problem = data_model_to_optimization_problem(data_model, solver_settings, &handle_);
   solver_ret_t response;

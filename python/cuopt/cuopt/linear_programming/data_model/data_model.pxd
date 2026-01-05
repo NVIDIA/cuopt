@@ -26,6 +26,10 @@ cdef extern from "mps_parser/data_model_view.hpp" namespace "cuopt::mps_parser" 
             f_t objective_scaling_factor) except +
         void set_objective_offset(
             f_t objective_offset) except +
+        void set_quadratic_objective_matrix(
+            const f_t* Q_values, i_t size_values,
+            const i_t* Q_indices, i_t size_indices,
+            const i_t* Q_offsets, i_t size_offsets) except +
         void set_variable_lower_bounds(
             const f_t* variable_lower_bounds,
             i_t size) except +

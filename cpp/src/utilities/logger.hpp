@@ -33,11 +33,13 @@ rapids_logger::logger& default_logger();
  */
 void reset_default_logger();
 
+// Ref-counted logger initializer
 class init_logger_t {
+  // Using shared_ptr for ref-counting
+  std::shared_ptr<void> guard_;
+
  public:
   init_logger_t(std::string log_file, bool log_to_console);
-
-  ~init_logger_t();
 };
 
 }  // namespace cuopt

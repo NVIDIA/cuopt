@@ -18,6 +18,32 @@ Contributions to NVIDIA cuOpt fall into the following categories:
 
 ## Code contributions
 
+### Branching Strategy
+
+Starting with RAPIDS v25.12, cuOpt follows the new RAPIDS branching strategy. The `main` branch represents the latest development state and is the default target for all pull requests during the development phase. During release preparation, a release branch (`release/YY.MM`) is created from `main` and serves as the release branch.
+
+Key points:
+- **Default branch**: Always `main` (latest and greatest)
+- **During development phase**: All PRs target `main`
+- **During burn down**: A release branch `release/YY.MM` is created from `main`
+  - PRs intended for the current release must be **re-targeted to the release branch**
+  - PRs intended for the next release should continue targeting `main`
+- **Forward merging**: PRs merged into the release branch are automatically forward-merged to `main`
+- **After release**: The release branch is used only for hotfixes; all new development targets `main`
+
+For more details, see the [RAPIDS Branching Strategy Notice (RSN 47)](https://docs.rapids.ai/notices/rsn0047/).
+
+### Release Timeline
+
+cuOpt follows the RAPIDS release schedule and is part of the **"others"** category in the release timeline. The release cycle consists of:
+
+- **Development**: Active feature development and bug fixes targeting `main`
+- **Burn Down**: Focus shifts to stabilization; new features should target the next release
+- **Code Freeze**: Only critical bug fixes allowed; PRs require admin approval
+- **Release**: Final testing, tagging, and official release
+
+For current release timelines and dates, refer to the [RAPIDS Maintainers Docs](https://docs.rapids.ai/maintainers/).
+
 ### Your first issue
 
 1. Follow the guide at the bottom of this page for
@@ -142,6 +168,8 @@ cd $CUOPT_HOME
 ```bash
 ./build.sh --help
 ```
+
+**Note**: when building the Python components, Python will by default look in ~/.local/lib/pythonX.Y/site-packages for any dependencies before looking in the site-packages directory in the conda environment. If you have cuOpt direct or indirect dependencies installed under ~/.local/lib, these may conflict with packages in the conda environment and cause build errors. If you have persistent build errors that do not seem to be related to local code changes, check the contents of ~/.local/lib. To work around this issue you can set the environment variable PYTHONNOUSERSITE=1 which will skip ~/.local/lib, or remove select packages from ~/.local/lib if they are not needed, or modify your $PYTHONPATH to look at the conda env first.
 
 #### Deb package
 

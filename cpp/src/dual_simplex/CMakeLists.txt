@@ -17,6 +17,7 @@ set(DUAL_SIMPLEX_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/phase1.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/phase2.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/bounds_strengthening.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/primal.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/pseudo_costs.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/right_looking_lu.cpp

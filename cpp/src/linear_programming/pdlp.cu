@@ -65,7 +65,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     step_size_{(f_t)pdlp_hyper_params::initial_step_size_scaling, stream_view_},
     step_size_strategy_{handle_ptr_, &primal_weight_, &step_size_, is_batch_mode},
     pdhg_solver_{handle_ptr_, op_problem_scaled_, is_batch_mode},
-    settings_(settings, stream_view_),
+    settings_(settings),
     initial_scaling_strategy_{handle_ptr_,
                               op_problem_scaled_,
                               pdlp_hyper_params::default_l_inf_ruiz_iterations,
@@ -313,7 +313,8 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   }
 
   // Check for concurrent limit
-  if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
+  if (settings_.method == method_t::Concurrent && settings_.concurrent_halt != nullptr &&
+      *settings_.concurrent_halt == 1) {
 #ifdef PDLP_VERBOSE_MODE
     RAFT_CUDA_TRY(cudaDeviceSynchronize());
     std::cout << "Concurrent Limit reached, returning current solution" << std::endl;
@@ -1043,10 +1044,8 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(bool& has_restarted)
 
   auto& cusparse_view = pdhg_solver_.get_cusparse_view();
   // Make potential_next_dual_solution point towards reflected dual solution to reuse the code
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &cusparse_view.potential_next_dual_solution,
-    op_problem_scaled_.n_constraints,
-    const_cast<f_t*>(pdhg_solver_.get_reflected_dual().data())));
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution,
+                                           (void*)pdhg_solver_.get_reflected_dual().data()));
 
   step_size_strategy_.compute_interaction_and_movement(
     pdhg_solver_.get_primal_tmp_resource(), cusparse_view, pdhg_solver_.get_saddle_point_state());
@@ -1066,10 +1065,9 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(bool& has_restarted)
 #endif
 
   // Put back
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &cusparse_view.potential_next_dual_solution,
-    op_problem_scaled_.n_constraints,
-    const_cast<f_t*>(pdhg_solver_.get_potential_next_dual_solution().data())));
+  RAFT_CUSPARSE_TRY(
+    cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution,
+                           (void*)pdhg_solver_.get_potential_next_dual_solution().data()));
 
   if (has_restarted) {
     restart_strategy_.initial_fixed_point_error_ = restart_strategy_.fixed_point_error_;
@@ -1589,6 +1587,9 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
 
     // Sync since we are using local variable
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(vecZ));
+    RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(vecQ));
+    RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(vecATQ));
   }
 }
 

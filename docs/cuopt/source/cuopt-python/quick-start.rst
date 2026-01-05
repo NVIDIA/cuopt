@@ -13,10 +13,10 @@ pip
 .. code-block:: bash
 
     # CUDA 13
-    pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu13==25.12.*'
+    pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu13==26.2.*'
 
     # CUDA 12
-    pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu12==25.12.*'
+    pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu12==26.2.*'
 
 
 .. note::
@@ -26,11 +26,11 @@ pip
 
     # CUDA 13
     pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-      'cuopt-cu13==25.12.*'
+      'cuopt-cu13==26.2.*'
 
     # CUDA 12
     pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-      'cuopt-cu12==25.12.*'
+      'cuopt-cu12==26.2.*'
 
 
 Conda
@@ -41,10 +41,10 @@ NVIDIA cuOpt can be installed with Conda (via `miniforge <https://github.com/con
 .. code-block:: bash
 
     # CUDA 13
-    conda install -c rapidsai -c conda-forge -c nvidia cuopt=25.12.* cuda-version=25.12.*
+    conda install -c rapidsai -c conda-forge -c nvidia cuopt=26.02.* cuda-version=26.02.*
 
     # CUDA 12
-    conda install -c rapidsai -c conda-forge -c nvidia cuopt=25.12.* cuda-version=25.12.*
+    conda install -c rapidsai -c conda-forge -c nvidia cuopt=26.02.* cuda-version=26.02.*
 
 .. note::
    For development conda packages which are available as nightlies, please update `-c rapidsai` to `-c rapidsai-nightly`.
@@ -85,25 +85,14 @@ NVIDIA cuOpt can be tested with `NVIDIA Launchable <https://brev.nvidia.com/laun
 Smoke Test
 ----------
 
-After installation, you can verify that NVIDIA cuOpt is working correctly by running a simple test:
+After installation, you can verify that NVIDIA cuOpt is working correctly by running a simple test.
 
-.. code-block:: bash
+Copy and paste this script directly into your terminal (:download:`smoke_test_example.sh <routing/examples/smoke_test_example.sh>`):
 
-   python -c "
-   import cudf
-   from cuopt import routing
-   cost_matrix = cudf.DataFrame([[0,2,2,2],[2,0,2,2],[2,2,0,2],[2,2,2,0]], dtype='float32')
-   task_locations = cudf.Series([1,2,3])
-   n_vehicles = 2
-   dm = routing.DataModel(cost_matrix.shape[0], n_vehicles, len(task_locations))
-   dm.add_cost_matrix(cost_matrix)
-   dm.add_transit_time_matrix(cost_matrix.copy(deep=True))
-   ss = routing.SolverSettings()
-   sol = routing.Solve(dm, ss)
-   print(sol.get_route())
-   print('\n\n****************** Display Routes *************************')
-   sol.display_routes()
-   "
+.. literalinclude:: routing/examples/smoke_test_example.sh
+   :language: bash
+   :linenos:
+   :start-after: # Users can copy
 
 
 Example Response:

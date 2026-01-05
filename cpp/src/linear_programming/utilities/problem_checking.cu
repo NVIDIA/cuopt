@@ -45,9 +45,8 @@ void problem_checking_t<i_t, f_t>::check_csr_representation(
   cuopt_expects(thrust::all_of(op_problem.get_handle_ptr()->get_thrust_policy(),
                                op_problem.get_constraint_matrix_indices().cbegin(),
                                op_problem.get_constraint_matrix_indices().cend(),
-                               [n_variables = op_problem.get_n_variables()] __device__(i_t val) {
-                                 return val >= 0 && val < n_variables;
-                               }),
+                               [n_variables = op_problem.get_n_variables()] __device__(
+                                 i_t val) -> bool { return val >= 0 && val < n_variables; }),
                 error_type_t::ValidationError,
                 "A_indices values must positive lower than the number of variables (c size).");
 }
@@ -72,7 +71,7 @@ void problem_checking_t<i_t, f_t>::check_initial_primal_representation(
                                   [lower_bounds = make_span(op_problem.get_variable_lower_bounds()),
                                    upper_bounds = make_span(op_problem.get_variable_upper_bounds()),
                                    assignment_span = make_span(primal_initial_solution),
-                                   int_tol         = 1e-8] __device__(i_t idx) {
+                                   int_tol         = 1e-8] __device__(i_t idx) -> bool {
                                     return assignment_span[idx] < lower_bounds[idx] - int_tol ||
                                            assignment_span[idx] > upper_bounds[idx] + int_tol;
                                   }),
@@ -171,13 +170,14 @@ void problem_checking_t<i_t, f_t>::check_problem_representation(
 
   // Check row type if set
   if (!op_problem.get_row_types().is_empty()) {
-    cuopt_expects(
-      thrust::all_of(op_problem.get_handle_ptr()->get_thrust_policy(),
-                     op_problem.get_row_types().cbegin(),
-                     op_problem.get_row_types().cend(),
-                     [] __device__(char val) { return val == 'E' || val == 'G' || val == 'L'; }),
-      error_type_t::ValidationError,
-      "row_types values must equal to 'E', 'G' or 'L'.");
+    cuopt_expects(thrust::all_of(op_problem.get_handle_ptr()->get_thrust_policy(),
+                                 op_problem.get_row_types().cbegin(),
+                                 op_problem.get_row_types().cend(),
+                                 [] __device__(char val) -> bool {
+                                   return val == 'E' || val == 'G' || val == 'L';
+                                 }),
+                  error_type_t::ValidationError,
+                  "row_types values must equal to 'E', 'G' or 'L'.");
 
     cuopt_expects(
       op_problem.get_row_types().size() == op_problem.get_constraint_bounds().size(),
@@ -322,9 +322,8 @@ bool problem_checking_t<i_t, f_t>::has_crossing_bounds(
     thrust::make_counting_iterator(0),
     thrust::make_counting_iterator(0) + op_problem.get_variable_upper_bounds().size(),
     [upper_bounds = make_span(op_problem.get_variable_upper_bounds()),
-     lower_bounds = make_span(op_problem.get_variable_lower_bounds())] __device__(size_t i) {
-      return upper_bounds[i] >= lower_bounds[i];
-    });
+     lower_bounds = make_span(op_problem.get_variable_lower_bounds())] __device__(size_t i)
+      -> bool { return upper_bounds[i] >= lower_bounds[i]; });
 
   // Check if all constraint bounds are valid (upper >= lower)
   bool all_constraint_bounds_valid = thrust::all_of(
@@ -332,9 +331,8 @@ bool problem_checking_t<i_t, f_t>::has_crossing_bounds(
     thrust::make_counting_iterator(0),
     thrust::make_counting_iterator(0) + op_problem.get_constraint_upper_bounds().size(),
     [upper_bounds = make_span(op_problem.get_constraint_upper_bounds()),
-     lower_bounds = make_span(op_problem.get_constraint_lower_bounds())] __device__(size_t i) {
-      return upper_bounds[i] >= lower_bounds[i];
-    });
+     lower_bounds = make_span(op_problem.get_constraint_lower_bounds())] __device__(size_t i)
+      -> bool { return upper_bounds[i] >= lower_bounds[i]; });
 
   // Return true if any bounds are invalid (crossing)
   return !all_variable_bounds_valid || !all_constraint_bounds_valid;

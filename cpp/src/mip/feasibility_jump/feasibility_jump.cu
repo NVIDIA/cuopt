@@ -10,6 +10,7 @@
 #include "feasibility_jump.cuh"
 #include "feasibility_jump_kernels.cuh"
 
+#include <mip/diversity/population.cuh>
 #include <mip/mip_constants.hpp>
 #include <mip/utils.cuh>
 #include <utilities/seed_generator.cuh>
@@ -553,7 +554,7 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
   cuopt_assert(thrust::all_of(rmm::exec_policy(climber_stream),
                               thrust::counting_iterator<i_t>(0),
                               thrust::counting_iterator<i_t>(cstr_coeff_reciprocal.size()),
-                              [v = view] __device__(i_t offset) {
+                              [v = view] __device__(i_t offset) -> bool {
                                 return v.cstr_coeff_reciprocal[offset] != 0 &&
                                        isfinite(v.cstr_coeff_reciprocal[offset]);
                               }),
@@ -701,10 +702,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
       data.cub_storage_bytes.resize(compaction_temp_storage_bytes, climber_stream);
     }
 
-    if (use_graph) {
-      cudaGraphCreate(&graph, 0);
-      cudaStreamBeginCapture(climber_stream, cudaStreamCaptureModeThreadLocal);
-    }
+    if (use_graph) { cudaStreamBeginCapture(climber_stream, cudaStreamCaptureModeThreadLocal); }
     for (i_t i = 0; i < (use_graph ? iterations_per_graph : 1); ++i) {
       {
         // related varialbe array has to be dynamically computed each iteration
@@ -870,7 +868,10 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
   for (steps = 0; steps < std::numeric_limits<i_t>::max(); steps += iterations_per_graph) {
     // to actualize time limit
     handle_ptr->sync_stream();
-    if (timer.check_time_limit() || steps >= settings.iteration_limit) { limit_reached = true; }
+    if (timer.check_time_limit() || steps >= settings.iteration_limit ||
+        context.preempt_heuristic_solver_.load()) {
+      limit_reached = true;
+    }
 
 #if !FJ_SINGLE_STEP
     if (steps % 500 == 0)

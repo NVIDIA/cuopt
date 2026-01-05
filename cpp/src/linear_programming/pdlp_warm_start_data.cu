@@ -138,19 +138,20 @@ pdlp_warm_start_data_t<i_t, f_t>::pdlp_warm_start_data_t(
 }
 
 template <typename i_t, typename f_t>
-pdlp_warm_start_data_t<i_t, f_t>::pdlp_warm_start_data_t(const pdlp_warm_start_data_t& other,
-                                                         rmm::cuda_stream_view stream_view)
-  : current_primal_solution_(other.current_primal_solution_, stream_view),
-    current_dual_solution_(other.current_dual_solution_, stream_view),
-    initial_primal_average_(other.initial_primal_average_, stream_view),
-    initial_dual_average_(other.initial_dual_average_, stream_view),
-    current_ATY_(other.current_ATY_, stream_view),
-    sum_primal_solutions_(other.sum_primal_solutions_, stream_view),
-    sum_dual_solutions_(other.sum_dual_solutions_, stream_view),
-    last_restart_duality_gap_primal_solution_(other.last_restart_duality_gap_primal_solution_,
-                                              stream_view),
+pdlp_warm_start_data_t<i_t, f_t>::pdlp_warm_start_data_t(const pdlp_warm_start_data_t& other)
+  : current_primal_solution_(other.current_primal_solution_,
+                             other.current_primal_solution_.stream()),
+    current_dual_solution_(other.current_dual_solution_, other.current_dual_solution_.stream()),
+    initial_primal_average_(other.initial_primal_average_, other.initial_primal_average_.stream()),
+    initial_dual_average_(other.initial_dual_average_, other.initial_dual_average_.stream()),
+    current_ATY_(other.current_ATY_, other.current_ATY_.stream()),
+    sum_primal_solutions_(other.sum_primal_solutions_, other.sum_primal_solutions_.stream()),
+    sum_dual_solutions_(other.sum_dual_solutions_, other.sum_dual_solutions_.stream()),
+    last_restart_duality_gap_primal_solution_(
+      other.last_restart_duality_gap_primal_solution_,
+      other.last_restart_duality_gap_primal_solution_.stream()),
     last_restart_duality_gap_dual_solution_(other.last_restart_duality_gap_dual_solution_,
-                                            stream_view),
+                                            other.last_restart_duality_gap_dual_solution_.stream()),
     initial_primal_weight_(other.initial_primal_weight_),
     initial_step_size_(other.initial_step_size_),
     total_pdlp_iterations_(other.total_pdlp_iterations_),

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: Apache-2.0
 schema_version: 1
 
@@ -9,6 +9,7 @@ context:
   cuda_major: '${{ (env.get("RAPIDS_CUDA_VERSION") | split("."))[0] }}'
   date_string: '${{ env.get("RAPIDS_DATE_STRING") }}'
   head_rev: '${{ git.head_rev(".")[:8] }}'
+  build_type: '${{ env.get("RAPIDS_BUILD_TYPE") }}'
 
 recipe:
   name: libcuopt-split
@@ -28,12 +29,14 @@ cache:
         export CXXFLAGS=$(echo $CXXFLAGS | sed -E 's@\-fdebug\-prefix\-map[^ ]*@@g')
         set +x
 
-        ./build.sh -n -v -a libmps_parser libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib\"
+        ./build.sh -n -v ${BUILD_EXTRA_FLAGS} libmps_parser libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib\"
       secrets:
         - AWS_ACCESS_KEY_ID
         - AWS_SECRET_ACCESS_KEY
         - AWS_SESSION_TOKEN
       env:
+        # Enable assertions (-a flag) for PR builds, but not for nightly or release builds
+        BUILD_EXTRA_FLAGS: '${{ "-a" if build_type == "pull-request" else "" }}'
         CMAKE_C_COMPILER_LAUNCHER: ${{ env.get("CMAKE_C_COMPILER_LAUNCHER") }}
         CMAKE_CUDA_COMPILER_LAUNCHER: ${{ env.get("CMAKE_CUDA_COMPILER_LAUNCHER") }}
         CMAKE_CXX_COMPILER_LAUNCHER: ${{ env.get("CMAKE_CXX_COMPILER_LAUNCHER") }}
@@ -48,7 +51,7 @@ cache:
 
   requirements:
     build:
-      - boost
+      - libboost-devel
       - ${{ compiler("c") }}
       - ${{ compiler("cxx") }}
       - ${{ compiler("cuda") }} =${{ cuda_version }}
@@ -62,8 +65,6 @@ cache:
     host:
       - cpp-argparse
       - cuda-version =${{ cuda_version }}
-      - gmock ${{ gtest_version }}
-      - gtest ${{ gtest_version }}
       - libraft-headers =${{ minor_version }}
       - librmm =${{ minor_version }}
       - rapids-logger =0.2
@@ -71,8 +72,7 @@ cache:
       - libcudss-dev >=0.7
       - libcurand-dev
       - libcusparse-dev
-      - cuda-cudart-dev
-      - boost
+      - libboost-devel
       - tbb-devel
       - zlib
       - bzip2
@@ -106,10 +106,8 @@ outputs:
         - bzip2
       ignore_run_exports:
         by_name:
-          - cuda-cudart
           - cuda-nvtx
           - cuda-version
-          - gtest
           - libcurand
           - libcudss
           - libcusparse
@@ -122,7 +120,7 @@ outputs:
           - lib/libmps_parser.so
     about:
       homepage: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.urls.Homepage }}
-      license: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.license.text }}
+      license: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.license }}
       summary: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.description }}
 
   - package:
@@ -145,27 +143,24 @@ outputs:
         - ${{ stdlib("c") }}
       host:
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
-        - boost
+        - libboost-devel
         - cuda-version =${{ cuda_version }}
         - rapids-logger =0.2
         - librmm =${{ minor_version }}
-        - cuda-cudart-dev
         - libcublas
         - libcudss-dev >=0.7
         - libcusparse-dev
       run:
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
-        - boost
+        - libboost-devel
         - librmm =${{ minor_version }}
         - cuda-nvrtc
         - libcudss
       ignore_run_exports:
         by_name:
-          - cuda-cudart
           - cuda-nvtx
           - cuda-version
-          - gtest
           - libcudss
           - libcurand
           - libcusparse
@@ -179,7 +174,7 @@ outputs:
           - bin/cuopt_cli
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
-      license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license.text }}
+      license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
       summary: ${{ load_from_file("python/cuopt/pyproject.toml").project.description }}
 
   - package:
@@ -199,24 +194,17 @@ outputs:
       host:
         - ${{ pin_subpackage("libcuopt", exact=True) }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
-        - boost
-        - gmock ${{ gtest_version }}
-        - gtest ${{ gtest_version }}
-        - cuda-cudart-dev
+        - libboost-devel
         - libcublas
         - libcudss-dev >=0.7
         - libcusparse-dev
       run:
-        - gmock ${{ gtest_version }}
-        - gtest ${{ gtest_version }}
         - ${{ pin_subpackage("libcuopt", exact=True) }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
       ignore_run_exports:
         by_name:
-          - cuda-cudart
           - cuda-nvtx
           - cuda-version
-          - gtest
           - libcurand
           - libcusparse
           - libcudss
@@ -225,5 +213,5 @@ outputs:
           - libboost_iostreams
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
-      license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license.text }}
+      license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
       summary: libcuopt test & benchmark executables

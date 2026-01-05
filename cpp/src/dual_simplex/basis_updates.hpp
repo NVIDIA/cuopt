@@ -391,7 +391,11 @@ class basis_update_mpf_t {
     mu_values_.clear();
     mu_values_.reserve(refactor_frequency_);
     num_updates_ = 0;
+
+    std::fill(xi_workspace_.begin(), xi_workspace_.end(), 0);
+    std::fill(x_workspace_.begin(), x_workspace_.end(), 0.0);
   }
+
   void grow_storage(i_t nz, i_t& S_start, i_t& S_nz);
   i_t index_map(i_t leaving) const;
   f_t u_diagonal(i_t j) const;

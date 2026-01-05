@@ -141,6 +141,8 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       scaling.unscale_solutions(fixed_assignment, dummy);
       // unfix the assignment on given result no matter if it is feasible
       offspring.unfix_variables(fixed_assignment, variable_map);
+      offspring
+        .clamp_within_bounds();  // Scaling might bring some very slight variable bound violations
     } else {
       offspring.round_nearest();
     }
@@ -171,6 +173,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       rmm::device_uvector<f_t> dummy(0, offspring.handle_ptr->get_stream());
       scaling.unscale_solutions(fixed_assignment, dummy);
       sol.unfix_variables(fixed_assignment, variable_map);
+      sol.clamp_within_bounds();  // Scaling might bring some very slight variable bound violations
       sol.compute_feasibility();
       cuopt_func_call(sol.test_variable_bounds());
       population.add_solution(std::move(sol));

@@ -1,6 +1,15 @@
 # cuOpt - GPU accelerated Optimization Engine
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
+[![Version](https://img.shields.io/badge/version-26.02.00-blue)](https://github.com/NVIDIA/cuopt/releases)
+[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen)](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
+[![Docker Hub](https://img.shields.io/badge/docker-nvidia%2Fcuopt-blue?logo=docker)](https://hub.docker.com/r/nvidia/cuopt)
+[![Examples](https://img.shields.io/badge/examples-cuopt--examples-orange)](https://github.com/NVIDIA/cuopt-examples)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/NVIDIA/cuopt-examples/blob/cuopt_examples_launcher/cuopt_examples_launcher.ipynb)
+[![NVIDIA Launchable](https://img.shields.io/badge/NVIDIA-Launchable-76b900?logo=nvidia)](https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ)
+[![Videos and Tutorials](https://img.shields.io/badge/Videos_and_Tutorials-red?logo=youtube)](https://docs.nvidia.com/cuopt/user-guide/latest/resources.html#cuopt-examples-and-tutorials-videos)
+
+
 
 NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer linear programming (MILP), linear programming (LP), and vehicle routing problems (VRP). It enables near real-time solutions for large-scale challenges with millions of variables and constraints, offering
 easy integration into existing solvers and seamless deployment across hybrid and multi-cloud environments.
@@ -68,8 +77,8 @@ For CUDA 12.x:
 ```bash
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
-  nvidia-cuda-runtime-cu12=12.9.* \
-  cuopt-server-cu12==25.12.* cuopt-sh-client==25.12.*
+  nvidia-cuda-runtime-cu12==12.9.* \
+  cuopt-server-cu12==26.02.* cuopt-sh-client==26.02.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -77,7 +86,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu12==25.12.* cuopt-sh-client==25.12.*
+  cuopt-server-cu12==26.02.* cuopt-sh-client==26.02.*
 ```
 
 For CUDA 13.x:
@@ -85,7 +94,7 @@ For CUDA 13.x:
 ```bash
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
-  cuopt-server-cu13==25.12.* cuopt-sh-client==25.12.*
+  cuopt-server-cu13==26.02.* cuopt-sh-client==26.02.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -93,7 +102,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu13==25.12.* cuopt-sh-client==25.12.*
+  cuopt-server-cu13==26.02.* cuopt-sh-client==26.02.*
 ```
 
 
@@ -104,7 +113,7 @@ cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forg
 All other dependencies are installed automatically when `cuopt-server` and `cuopt-sh-client` are installed.
 
 ```bash
-conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=25.12.* cuopt-sh-client=25.12.*
+conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=26.02.* cuopt-sh-client=26.02.*
 ```
 
 We also provide [nightly conda packages](https://anaconda.org/rapidsai-nightly) built from the HEAD
@@ -132,16 +141,17 @@ Users who are using cuOpt for quick testing or research can use the cuOpt contai
 
 Please see our [guide for building cuOpt from source](CONTRIBUTING.md#setting-up-your-build-environment). This will be helpful if users want to add new features or fix bugs for cuOpt. This would also be very helpful in case users want to customize cuOpt for their own use cases which require changes to the cuOpt source code.
 
+## Release Timeline
+
+cuOpt follows the RAPIDS release schedule and is part of the **"others"** category in the release timeline. The release cycle consists of:
+
+- **Development**: Active feature development and bug fixes targeting `main`
+- **Burn Down**: Focus shifts to stabilization; new features should target the next release
+- **Code Freeze**: Only critical bug fixes allowed; PRs require admin approval
+- **Release**: Final testing, tagging, and official release
+
+For current release timelines and dates, refer to the [RAPIDS Maintainers Docs](https://docs.rapids.ai/maintainers/).
+
 ## Contributing Guide
 
 Review the [CONTRIBUTING.md](CONTRIBUTING.md) file for information on how to contribute code and issues to the project.
-
-## Resources
-
-- [libcuopt (C) documentation](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-c/index.html)
-- [cuopt (Python) documentation](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-python/index.html)
-- [cuopt (Server) documentation](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/index.html)
-- [Examples and Notebooks](https://github.com/NVIDIA/cuopt-examples)
-- [Test cuopt with NVIDIA Launchable](https://brev.nvidia.com/launchable/deploy?launchableID=env-2qIG6yjGKDtdMSjXHcuZX12mDNJ): Examples notebooks are pulled and hosted on [NVIDIA Launchable](https://docs.nvidia.com/brev/latest/).
-- [Test cuopt on Google Colab](https://colab.research.google.com/github/nvidia/cuopt-examples/): Examples notebooks can be opened in Google Colab. Please note that you need to choose a `Runtime` as `GPU` in order to run the notebooks.
-- [cuOpt Examples and Tutorial Videos](https://docs.nvidia.com/cuopt/user-guide/latest/resources.html#cuopt-examples-and-tutorials-videos)

@@ -9,6 +9,7 @@
 
 #include "feasibility_jump.cuh"
 
+#include <thrust/pair.h>
 #include <cuda/atomic>
 #include <raft/core/device_span.hpp>
 #include <rmm/device_scalar.hpp>

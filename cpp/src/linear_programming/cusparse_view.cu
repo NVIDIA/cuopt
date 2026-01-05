@@ -21,6 +21,83 @@
 
 namespace cuopt::linear_programming::detail {
 
+// cusparse_sp_mat_descr_wrapper_t implementation
+template <typename i_t, typename f_t>
+cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::cusparse_sp_mat_descr_wrapper_t()
+  : need_destruction_(false)
+{
+}
+
+template <typename i_t, typename f_t>
+cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::~cusparse_sp_mat_descr_wrapper_t()
+{
+  if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(descr_)); }
+}
+
+template <typename i_t, typename f_t>
+cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::cusparse_sp_mat_descr_wrapper_t(
+  const cusparse_sp_mat_descr_wrapper_t& other)
+  : descr_(other.descr_), need_destruction_(false)
+{
+}
+
+template <typename i_t, typename f_t>
+void cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::create(
+  int64_t m, int64_t n, int64_t nnz, i_t* offsets, i_t* indices, f_t* values)
+{
+  RAFT_CUSPARSE_TRY(
+    raft::sparse::detail::cusparsecreatecsr(&descr_, m, n, nnz, offsets, indices, values));
+  need_destruction_ = true;
+}
+
+template <typename i_t, typename f_t>
+cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::operator cusparseSpMatDescr_t() const
+{
+  return descr_;
+}
+
+// cusparse_dn_vec_descr_wrapper_t implementation
+template <typename f_t>
+cusparse_dn_vec_descr_wrapper_t<f_t>::cusparse_dn_vec_descr_wrapper_t() : need_destruction_(false)
+{
+}
+
+template <typename f_t>
+cusparse_dn_vec_descr_wrapper_t<f_t>::~cusparse_dn_vec_descr_wrapper_t()
+{
+  if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(descr_)); }
+}
+
+template <typename f_t>
+cusparse_dn_vec_descr_wrapper_t<f_t>::cusparse_dn_vec_descr_wrapper_t(
+  const cusparse_dn_vec_descr_wrapper_t& other)
+  : descr_(other.descr_), need_destruction_(false)
+{
+}
+
+template <typename f_t>
+cusparse_dn_vec_descr_wrapper_t<f_t>& cusparse_dn_vec_descr_wrapper_t<f_t>::operator=(
+  cusparse_dn_vec_descr_wrapper_t<f_t>&& other)
+{
+  if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(descr_)); }
+  descr_                  = other.descr_;
+  other.need_destruction_ = false;
+  return *this;
+}
+
+template <typename f_t>
+void cusparse_dn_vec_descr_wrapper_t<f_t>::create(int64_t size, f_t* values)
+{
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&descr_, size, values));
+  need_destruction_ = true;
+}
+
+template <typename f_t>
+cusparse_dn_vec_descr_wrapper_t<f_t>::operator cusparseDnVecDescr_t() const
+{
+  return descr_;
+}
+
 #define CUDA_VER_12_4_UP (CUDART_VERSION >= 12040)
 
 #if CUDA_VER_12_4_UP
@@ -153,67 +230,46 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 #endif
 
   // setup cusparse view
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatecsr(
-    &A,
-    op_problem_scaled.n_constraints,
-    op_problem_scaled.n_variables,
-    op_problem_scaled.nnz,
-    const_cast<i_t*>(op_problem_scaled.offsets.data()),
-    const_cast<i_t*>(op_problem_scaled.variables.data()),
-    const_cast<f_t*>(op_problem_scaled.coefficients.data())));
+  A.create(op_problem_scaled.n_constraints,
+           op_problem_scaled.n_variables,
+           op_problem_scaled.nnz,
+           const_cast<i_t*>(op_problem_scaled.offsets.data()),
+           const_cast<i_t*>(op_problem_scaled.variables.data()),
+           const_cast<f_t*>(op_problem_scaled.coefficients.data()));
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatecsr(&A_T,
-                                                            op_problem_scaled.n_variables,
-                                                            op_problem_scaled.n_constraints,
-                                                            op_problem_scaled.nnz,
-                                                            const_cast<i_t*>(A_T_offsets_.data()),
-                                                            const_cast<i_t*>(A_T_indices_.data()),
-                                                            const_cast<f_t*>(A_T_.data())));
+  A_T.create(op_problem_scaled.n_variables,
+             op_problem_scaled.n_constraints,
+             op_problem_scaled.nnz,
+             const_cast<i_t*>(A_T_offsets_.data()),
+             const_cast<i_t*>(A_T_indices_.data()),
+             const_cast<f_t*>(A_T_.data()));
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &c,
-    op_problem_scaled.n_variables,
-    const_cast<f_t*>(op_problem_scaled.objective_coefficients.data())));
+  c.create(op_problem_scaled.n_variables,
+           const_cast<f_t*>(op_problem_scaled.objective_coefficients.data()));
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &primal_solution,
-    op_problem_scaled.n_variables,
-    current_saddle_point_state.get_primal_solution().data()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &dual_solution,
-    op_problem_scaled.n_constraints,
-    current_saddle_point_state.get_dual_solution().data()));
+  primal_solution.create(op_problem_scaled.n_variables,
+                         current_saddle_point_state.get_primal_solution().data());
+  dual_solution.create(op_problem_scaled.n_constraints,
+                       current_saddle_point_state.get_dual_solution().data());
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &primal_gradient,
-    op_problem_scaled.n_variables,
-    current_saddle_point_state.get_primal_gradient().data()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &dual_gradient,
-    op_problem_scaled.n_constraints,
-    current_saddle_point_state.get_dual_gradient().data()));
+  primal_gradient.create(op_problem_scaled.n_variables,
+                         current_saddle_point_state.get_primal_gradient().data());
+  dual_gradient.create(op_problem_scaled.n_constraints,
+                       current_saddle_point_state.get_dual_gradient().data());
 
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsecreatednvec(&current_AtY,
-                                              op_problem_scaled.n_variables,
-                                              current_saddle_point_state.get_current_AtY().data()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &next_AtY, op_problem_scaled.n_variables, current_saddle_point_state.get_next_AtY().data()));
+  current_AtY.create(op_problem_scaled.n_variables,
+                     current_saddle_point_state.get_current_AtY().data());
+  next_AtY.create(op_problem_scaled.n_variables, current_saddle_point_state.get_next_AtY().data());
 
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsecreatednvec(&potential_next_dual_solution,
-                                              op_problem_scaled.n_constraints,
-                                              _potential_next_dual_solution.data()));
+  potential_next_dual_solution.create(op_problem_scaled.n_constraints,
+                                      _potential_next_dual_solution.data());
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &tmp_primal, op_problem_scaled.n_variables, _tmp_primal.data()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &tmp_dual, op_problem_scaled.n_constraints, _tmp_dual.data()));
+  tmp_primal.create(op_problem_scaled.n_variables, _tmp_primal.data());
+  tmp_dual.create(op_problem_scaled.n_constraints, _tmp_dual.data());
   if (pdlp_hyper_params::use_reflected_primal_dual) {
     cuopt_assert(_reflected_primal_solution.size() > 0, "Reflected primal solution empty");
-    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&reflected_primal_solution,
-                                                                op_problem_scaled.n_variables,
-                                                                _reflected_primal_solution.data()));
+    reflected_primal_solution.create(op_problem_scaled.n_variables,
+                                     _reflected_primal_solution.data());
   }
 
   const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
@@ -314,42 +370,32 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
     handle_ptr_->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
 
   // setup cusparse view
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsecreatecsr(&A,
-                                            op_problem.n_constraints,
-                                            op_problem.n_variables,
-                                            op_problem.nnz,
-                                            const_cast<i_t*>(op_problem.offsets.data()),
-                                            const_cast<i_t*>(op_problem.variables.data()),
-                                            const_cast<f_t*>(op_problem.coefficients.data())));
+  A.create(op_problem.n_constraints,
+           op_problem.n_variables,
+           op_problem.nnz,
+           const_cast<i_t*>(op_problem.offsets.data()),
+           const_cast<i_t*>(op_problem.variables.data()),
+           const_cast<f_t*>(op_problem.coefficients.data()));
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatecsr(&A_T,
-                                                            op_problem.n_variables,
-                                                            op_problem.n_constraints,
-                                                            op_problem.nnz,
-                                                            const_cast<i_t*>(A_T_offsets_.data()),
-                                                            const_cast<i_t*>(A_T_indices_.data()),
-                                                            const_cast<f_t*>(A_T_.data())));
+  A_T.create(op_problem.n_variables,
+             op_problem.n_constraints,
+             op_problem.nnz,
+             const_cast<i_t*>(A_T_offsets_.data()),
+             const_cast<i_t*>(A_T_indices_.data()),
+             const_cast<f_t*>(A_T_.data()));
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &c, op_problem.n_variables, const_cast<f_t*>(op_problem.objective_coefficients.data())));
+  c.create(op_problem.n_variables, const_cast<f_t*>(op_problem.objective_coefficients.data()));
 
   if (!pdlp_hyper_params::use_adaptive_step_size_strategy) {
-    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-      &primal_solution, op_problem.n_variables, _potential_next_primal.data()));
-    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-      &dual_solution, op_problem.n_constraints, _potential_next_dual.data()));
+    primal_solution.create(op_problem.n_variables, _potential_next_primal.data());
+    dual_solution.create(op_problem.n_constraints, _potential_next_dual.data());
   } else {
-    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-      &primal_solution, op_problem.n_variables, _primal_solution.data()));
-    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-      &dual_solution, op_problem.n_constraints, _dual_solution.data()));
+    primal_solution.create(op_problem.n_variables, _primal_solution.data());
+    dual_solution.create(op_problem.n_constraints, _dual_solution.data());
   }
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &tmp_primal, op_problem.n_variables, _tmp_primal.data()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &tmp_dual, op_problem.n_constraints, _tmp_dual.data()));
+  tmp_primal.create(op_problem.n_variables, _tmp_primal.data());
+  tmp_dual.create(op_problem.n_constraints, _tmp_dual.data());
 
   const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
   const rmm::device_scalar<f_t> beta{1, handle_ptr->get_stream()};
@@ -446,32 +492,25 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   // Copying them from the existing cuSparse view is a bad practice and creates segfault post
   // CUDA 12.4 Using the saved pointer of the existing cusparse view to make sure we capture the
   // correct pointer
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatecsr(&A,
-                                                            op_problem.n_constraints,
-                                                            op_problem.n_variables,
-                                                            op_problem.nnz,
-                                                            const_cast<i_t*>(A_offsets_.data()),
-                                                            const_cast<i_t*>(A_indices_.data()),
-                                                            const_cast<f_t*>(A_.data())));
+  A.create(op_problem.n_constraints,
+           op_problem.n_variables,
+           op_problem.nnz,
+           const_cast<i_t*>(A_offsets_.data()),
+           const_cast<i_t*>(A_indices_.data()),
+           const_cast<f_t*>(A_.data()));
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatecsr(
-    &A_T,
-    op_problem.n_variables,
-    op_problem.n_constraints,
-    op_problem.nnz,
-    const_cast<i_t*>(existing_cusparse_view.A_T_offsets_.data()),
-    const_cast<i_t*>(existing_cusparse_view.A_T_indices_.data()),
-    const_cast<f_t*>(existing_cusparse_view.A_T_.data())));
+  A_T.create(op_problem.n_variables,
+             op_problem.n_constraints,
+             op_problem.nnz,
+             const_cast<i_t*>(existing_cusparse_view.A_T_offsets_.data()),
+             const_cast<i_t*>(existing_cusparse_view.A_T_indices_.data()),
+             const_cast<f_t*>(existing_cusparse_view.A_T_.data()));
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &primal_solution, op_problem.n_variables, _primal_solution));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &dual_solution, op_problem.n_constraints, _dual_solution));
+  primal_solution.create(op_problem.n_variables, _primal_solution);
+  dual_solution.create(op_problem.n_constraints, _dual_solution);
 
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &primal_gradient, op_problem.n_variables, _primal_gradient));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
-    &dual_gradient, op_problem.n_constraints, _dual_gradient));
+  primal_gradient.create(op_problem.n_variables, _primal_gradient);
+  dual_gradient.create(op_problem.n_constraints, _dual_gradient);
 
   const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
   const rmm::device_scalar<f_t> beta{1, handle_ptr->get_stream()};
@@ -549,9 +588,13 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 }
 
 #if MIP_INSTANTIATE_FLOAT
+template class cusparse_sp_mat_descr_wrapper_t<int, float>;
+template class cusparse_dn_vec_descr_wrapper_t<float>;
 template class cusparse_view_t<int, float>;
 #endif
 #if MIP_INSTANTIATE_DOUBLE
+template class cusparse_sp_mat_descr_wrapper_t<int, double>;
+template class cusparse_dn_vec_descr_wrapper_t<double>;
 template class cusparse_view_t<int, double>;
 #endif
 

@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <thrust/pair.h>
 #include <mip/problem/problem.cuh>
 #include <mip/utils.cuh>
 #include "bounds_update_data.cuh"
