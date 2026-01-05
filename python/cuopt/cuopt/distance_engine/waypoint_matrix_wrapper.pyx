@@ -26,6 +26,8 @@ from cuopt.utilities import series_from_buf
 
 import pyarrow as pa
 
+import pyarrow as pa
+
 
 cdef class WaypointMatrix:
 

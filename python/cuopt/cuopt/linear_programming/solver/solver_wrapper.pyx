@@ -7,8 +7,6 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
-from pylibraft.common.handle cimport *
-
 from datetime import date, datetime
 
 from dateutil.relativedelta import relativedelta
@@ -25,7 +23,7 @@ from libcpp.string cimport string
 from libcpp.utility cimport move
 from libcpp.vector cimport vector
 
-from rmm.pylibrmm.device_buffer cimport DeviceBuffer
+# DeviceBuffer not needed - using host vectors from C++
 
 from cuopt.linear_programming.data_model.data_model cimport data_model_view_t
 from cuopt.linear_programming.data_model.data_model_wrapper cimport DataModel
@@ -46,7 +44,6 @@ import sys
 import warnings
 from enum import IntEnum
 
-import cupy as cp
 import numpy as np
 from numba import cuda
 
@@ -56,7 +53,7 @@ from cuopt.linear_programming.solver_settings.solver_settings import (
     PDLPSolverMode,
     SolverSettings,
 )
-from cuopt.utilities import InputValidationError, series_from_buf
+from cuopt.utilities import InputValidationError
 
 import pyarrow as pa
 
@@ -300,9 +297,14 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
     sol_ret = move(sol_ret_ptr.get()[0])
 
     if sol_ret.problem_type == ProblemCategory.MIP or sol_ret.problem_type == ProblemCategory.IP: # noqa
-        solution = DeviceBuffer.c_from_unique_ptr(
-            move(sol_ret.mip_ret.solution_)
-        )
+        # Extract host solution vector from C++ and copy to NumPy
+        solution_data = sol_ret.mip_ret.solution_.data()
+        solution_size = sol_ret.mip_ret.solution_.size()
+        if solution_size > 0:
+            solution = np.asarray(<double[:solution_size]>solution_data).copy()
+        else:
+            solution = np.array([], dtype=np.float64)
+
         termination_status = sol_ret.mip_ret.termination_status_
         error_status = sol_ret.mip_ret.error_status_
         error_message = sol_ret.mip_ret.error_message_
@@ -316,8 +318,6 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         max_variable_bound_violation = sol_ret.mip_ret.max_variable_bound_violation_ # noqa
         num_nodes = sol_ret.mip_ret.nodes_
         num_simplex_iterations = sol_ret.mip_ret.simplex_iterations_
-
-        solution = series_from_buf(solution, pa.float64()).to_numpy()
 
         return Solution(
             ProblemCategory(sol_ret.problem_type),
@@ -339,15 +339,33 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         )
 
     else:
-        primal_solution = DeviceBuffer.c_from_unique_ptr(
-            move(sol_ret.lp_ret.primal_solution_)
-        )
-        dual_solution = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.dual_solution_)) # noqa
-        reduced_cost = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.reduced_cost_)) # noqa
+        # Extract host solution vectors from C++ and copy to NumPy for LP
+        primal_data = sol_ret.lp_ret.primal_solution_.data()
+        primal_size = sol_ret.lp_ret.primal_solution_.size()
+        dual_data = sol_ret.lp_ret.dual_solution_.data()
+        dual_size = sol_ret.lp_ret.dual_solution_.size()
+        reduced_data = sol_ret.lp_ret.reduced_cost_.data()
+        reduced_size = sol_ret.lp_ret.reduced_cost_.size()
 
-        primal_solution = series_from_buf(primal_solution, pa.float64()).to_numpy()
-        dual_solution = series_from_buf(dual_solution, pa.float64()).to_numpy()
-        reduced_cost = series_from_buf(reduced_cost, pa.float64()).to_numpy()
+        # Handle potentially empty vectors
+        if primal_size > 0:
+            primal_solution = np.asarray(
+                <double[:primal_size]>primal_data
+            ).copy()
+        else:
+            primal_solution = np.array([], dtype=np.float64)
+
+        if dual_size > 0:
+            dual_solution = np.asarray(<double[:dual_size]>dual_data).copy()
+        else:
+            dual_solution = np.array([], dtype=np.float64)
+
+        if reduced_size > 0:
+            reduced_cost = np.asarray(
+                <double[:reduced_size]>reduced_data
+            ).copy()
+        else:
+            reduced_cost = np.array([], dtype=np.float64)
 
         termination_status = sol_ret.lp_ret.termination_status_
         error_status = sol_ret.lp_ret.error_status_
@@ -363,33 +381,94 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
 
         # In BatchSolve, we don't get the warm start data
         if not is_batch:
-            current_primal_solution = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_primal_solution_)
-            )
-            current_dual_solution = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_dual_solution_)
-            )
-            initial_primal_average = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.initial_primal_average_)
-            )
-            initial_dual_average = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.initial_dual_average_)
-            )
-            current_ATY = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_ATY_)
-            )
-            sum_primal_solutions = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.sum_primal_solutions_)
-            )
-            sum_dual_solutions = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.sum_dual_solutions_)
-            )
-            last_restart_duality_gap_primal_solution = DeviceBuffer.c_from_unique_ptr( # noqa
-                move(sol_ret.lp_ret.last_restart_duality_gap_primal_solution_)
-            )
-            last_restart_duality_gap_dual_solution = DeviceBuffer.c_from_unique_ptr( # noqa
-                move(sol_ret.lp_ret.last_restart_duality_gap_dual_solution_)
-            )
+            # Extract host warm start vectors from C++ and copy to NumPy
+            curr_primal_data = sol_ret.lp_ret.current_primal_solution_.data()
+            curr_primal_size = sol_ret.lp_ret.current_primal_solution_.size()
+            curr_dual_data = sol_ret.lp_ret.current_dual_solution_.data()
+            curr_dual_size = sol_ret.lp_ret.current_dual_solution_.size()
+            init_primal_avg_data = sol_ret.lp_ret.initial_primal_average_.data()
+            init_primal_avg_size = sol_ret.lp_ret.initial_primal_average_.size()
+            init_dual_avg_data = sol_ret.lp_ret.initial_dual_average_.data()
+            init_dual_avg_size = sol_ret.lp_ret.initial_dual_average_.size()
+            curr_aty_data = sol_ret.lp_ret.current_ATY_.data()
+            curr_aty_size = sol_ret.lp_ret.current_ATY_.size()
+            sum_primal_data = sol_ret.lp_ret.sum_primal_solutions_.data()
+            sum_primal_size = sol_ret.lp_ret.sum_primal_solutions_.size()
+            sum_dual_data = sol_ret.lp_ret.sum_dual_solutions_.data()
+            sum_dual_size = sol_ret.lp_ret.sum_dual_solutions_.size()
+            last_rst_primal_data = sol_ret.lp_ret.last_restart_duality_gap_primal_solution_.data()  # noqa
+            last_rst_primal_size = sol_ret.lp_ret.last_restart_duality_gap_primal_solution_.size()  # noqa
+            last_rst_dual_data = sol_ret.lp_ret.last_restart_duality_gap_dual_solution_.data()  # noqa
+            last_rst_dual_size = sol_ret.lp_ret.last_restart_duality_gap_dual_solution_.size()  # noqa
+
+            # Handle potentially empty vectors (barrier solver may have empty warm start data)
+            if curr_primal_size > 0:
+                current_primal_solution = np.asarray(
+                    <double[:curr_primal_size]>curr_primal_data
+                ).copy()
+            else:
+                current_primal_solution = np.array([], dtype=np.float64)
+
+            if curr_dual_size > 0:
+                current_dual_solution = np.asarray(
+                    <double[:curr_dual_size]>curr_dual_data
+                ).copy()
+            else:
+                current_dual_solution = np.array([], dtype=np.float64)
+
+            if init_primal_avg_size > 0:
+                initial_primal_average = np.asarray(
+                    <double[:init_primal_avg_size]>init_primal_avg_data
+                ).copy()
+            else:
+                initial_primal_average = np.array([], dtype=np.float64)
+
+            if init_dual_avg_size > 0:
+                initial_dual_average = np.asarray(
+                    <double[:init_dual_avg_size]>init_dual_avg_data
+                ).copy()
+            else:
+                initial_dual_average = np.array([], dtype=np.float64)
+
+            if curr_aty_size > 0:
+                current_ATY = np.asarray(
+                    <double[:curr_aty_size]>curr_aty_data
+                ).copy()
+            else:
+                current_ATY = np.array([], dtype=np.float64)
+
+            if sum_primal_size > 0:
+                sum_primal_solutions = np.asarray(
+                    <double[:sum_primal_size]>sum_primal_data
+                ).copy()
+            else:
+                sum_primal_solutions = np.array([], dtype=np.float64)
+
+            if sum_dual_size > 0:
+                sum_dual_solutions = np.asarray(
+                    <double[:sum_dual_size]>sum_dual_data
+                ).copy()
+            else:
+                sum_dual_solutions = np.array([], dtype=np.float64)
+
+            if last_rst_primal_size > 0:
+                last_restart_duality_gap_primal_solution = np.asarray(
+                    <double[:last_rst_primal_size]>last_rst_primal_data
+                ).copy()
+            else:
+                last_restart_duality_gap_primal_solution = np.array(
+                    [], dtype=np.float64
+                )
+
+            if last_rst_dual_size > 0:
+                last_restart_duality_gap_dual_solution = np.asarray(
+                    <double[:last_rst_dual_size]>last_rst_dual_data
+                ).copy()
+            else:
+                last_restart_duality_gap_dual_solution = np.array(
+                    [], dtype=np.float64
+                )
+
             initial_primal_weight = sol_ret.lp_ret.initial_primal_weight_
             initial_step_size = sol_ret.lp_ret.initial_step_size_
             total_pdlp_iterations = sol_ret.lp_ret.total_pdlp_iterations_
@@ -398,36 +477,6 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             last_restart_kkt_score = sol_ret.lp_ret.last_restart_kkt_score_
             sum_solution_weight = sol_ret.lp_ret.sum_solution_weight_
             iterations_since_last_restart = sol_ret.lp_ret.iterations_since_last_restart_ # noqa
-
-            current_primal_solution = series_from_buf(
-                current_primal_solution, pa.float64()
-            ).to_numpy()
-            current_dual_solution = series_from_buf(
-                current_dual_solution, pa.float64()
-            ).to_numpy()
-            initial_primal_average = series_from_buf(
-                initial_primal_average, pa.float64()
-            ).to_numpy()
-            initial_dual_average = series_from_buf(
-                initial_dual_average, pa.float64()
-            ).to_numpy()
-            current_ATY = series_from_buf(
-                current_ATY, pa.float64()
-            ).to_numpy()
-            sum_primal_solutions = series_from_buf(
-                sum_primal_solutions, pa.float64()
-            ).to_numpy()
-            sum_dual_solutions = series_from_buf(
-                sum_dual_solutions, pa.float64()
-            ).to_numpy()
-            last_restart_duality_gap_primal_solution = series_from_buf(
-                last_restart_duality_gap_primal_solution,
-                pa.float64()
-            ).to_numpy()
-            last_restart_duality_gap_dual_solution = series_from_buf(
-                last_restart_duality_gap_dual_solution,
-                pa.float64()
-            ).to_numpy()
 
             return Solution(
                 ProblemCategory(sol_ret.problem_type),
