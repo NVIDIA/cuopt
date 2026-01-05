@@ -1,10 +1,7 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
-
-import cudf
-import pylibcudf as plc
 
 from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
@@ -15,6 +12,9 @@ from cuopt.linear_programming.solver.solver_parameters import (
 
 def series_from_buf(buf, dtype):
     """Helper function to create a cudf series from a buffer.
+
+    This function lazily imports cudf and pylibcudf to support
+    CPU-only execution when remote solve is enabled.
 
     Parameters
     ----------
@@ -28,6 +28,10 @@ def series_from_buf(buf, dtype):
     cudf.Series
         A cudf Series built from the buffer
     """
+    # Lazy imports to support CPU-only hosts with remote solve
+    import cudf
+    import pylibcudf as plc
+
     col = plc.column.Column.from_rmm_buffer(
         buf,
         dtype=plc.types.DataType.from_arrow(dtype),

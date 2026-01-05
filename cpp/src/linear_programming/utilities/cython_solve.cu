@@ -244,16 +244,7 @@ std::unique_ptr<solver_ret_t> call_solve(
   unsigned int flags,
   bool is_batch_mode)
 {
-  raft::common::nvtx::range fun_scope("Call Solve");
-
-  // FIX: Use default handle constructor like CLI does, instead of explicit stream creation
-  // Original code created a non-blocking stream which causes synchronization issues with PDLP
-  // This is a workaround to fix the synchronization issues, please fix this in the future and
-  // remove this workaround. cudaStream_t stream; RAFT_CUDA_TRY(cudaStreamCreateWithFlags(&stream,
-  // flags));  // flags=cudaStreamNonBlocking const raft::handle_t handle_{stream};
-  const raft::handle_t handle_{};
-
-  // Check if remote solve is configured
+  // Check if remote solve is configured FIRST (before any CUDA operations)
   if (linear_programming::is_remote_solve_enabled()) {
     // Data coming from Python is in CPU memory - mark it as such
     data_model->set_is_device_memory(false);
@@ -271,9 +262,9 @@ std::unique_ptr<solver_ret_t> call_solve(
     }
 
     if (!is_mip) {
-      // LP: call solve_lp with view - it will handle remote
+      // LP: call solve_lp with nullptr handle - remote solve doesn't need GPU
       auto solution =
-        linear_programming::solve_lp(&handle_, *data_model, solver_settings->get_pdlp_settings());
+        linear_programming::solve_lp(nullptr, *data_model, solver_settings->get_pdlp_settings());
 
       // Convert solution to linear_programming_ret_t
       auto term_info = solution.get_additional_termination_information();
@@ -289,7 +280,10 @@ std::unique_ptr<solver_ret_t> call_solve(
           std::make_unique<rmm::device_buffer>(solution.get_reduced_cost().release());
         lp_ret.is_device_memory_ = true;
       } else {
-        // CPU data from remote solve
+        // CPU data from remote solve - initialize empty device buffers for Python compatibility
+        lp_ret.primal_solution_      = std::make_unique<rmm::device_buffer>();
+        lp_ret.dual_solution_        = std::make_unique<rmm::device_buffer>();
+        lp_ret.reduced_cost_         = std::make_unique<rmm::device_buffer>();
         lp_ret.primal_solution_host_ = std::move(solution.get_primal_solution_host());
         lp_ret.dual_solution_host_   = std::move(solution.get_dual_solution_host());
         lp_ret.reduced_cost_host_    = std::move(solution.get_reduced_cost_host());
@@ -330,9 +324,9 @@ std::unique_ptr<solver_ret_t> call_solve(
       response.lp_ret       = std::move(lp_ret);
       response.problem_type = linear_programming::problem_category_t::LP;
     } else {
-      // MIP: call solve_mip with view - it will handle remote
+      // MIP: call solve_mip with nullptr handle - remote solve doesn't need GPU
       auto solution =
-        linear_programming::solve_mip(&handle_, *data_model, solver_settings->get_mip_settings());
+        linear_programming::solve_mip(nullptr, *data_model, solver_settings->get_mip_settings());
 
       mip_ret_t mip_ret;
 
@@ -341,7 +335,8 @@ std::unique_ptr<solver_ret_t> call_solve(
         mip_ret.solution_ = std::make_unique<rmm::device_buffer>(solution.get_solution().release());
         mip_ret.is_device_memory_ = true;
       } else {
-        // CPU data from remote solve
+        // CPU data from remote solve - initialize empty device buffer for Python compatibility
+        mip_ret.solution_         = std::make_unique<rmm::device_buffer>();
         mip_ret.solution_host_    = std::move(solution.get_solution_host());
         mip_ret.is_device_memory_ = false;
       }
@@ -366,6 +361,13 @@ std::unique_ptr<solver_ret_t> call_solve(
 
     return std::make_unique<solver_ret_t>(std::move(response));
   }
+
+  // Local solve: create CUDA resources only when needed
+  raft::common::nvtx::range fun_scope("Call Solve");
+
+  // FIX: Use default handle constructor like CLI does, instead of explicit stream creation
+  // Original code created a non-blocking stream which causes synchronization issues with PDLP
+  const raft::handle_t handle_{};
 
   // Local solve: proceed as before - create GPU problem and solve
   auto op_problem = data_model_to_optimization_problem(data_model, solver_settings, &handle_);

@@ -13,8 +13,6 @@ from datetime import date, datetime
 
 from dateutil.relativedelta import relativedelta
 
-from cuopt.utilities import type_cast
-
 from libc.stdint cimport uintptr_t
 from libc.stdlib cimport free, malloc
 from libc.string cimport memcpy, strcpy, strlen
@@ -42,23 +40,54 @@ from cuopt.linear_programming.solver.solver cimport (
 )
 
 import math
+import os
 import sys
 import warnings
 from enum import IntEnum
 
-import cupy as cp
 import numpy as np
-from numba import cuda
-
-import cudf
 
 from cuopt.linear_programming.solver_settings.solver_settings import (
     PDLPSolverMode,
     SolverSettings,
 )
-from cuopt.utilities import InputValidationError, series_from_buf
+from cuopt.utilities import InputValidationError
 
 import pyarrow as pa
+
+
+def is_remote_solve_enabled():
+    """Check if remote solve is enabled via environment variables.
+
+    Remote solve is enabled when both CUOPT_REMOTE_HOST and CUOPT_REMOTE_PORT
+    environment variables are set and valid.
+
+    Returns
+    -------
+    bool
+        True if remote solve is enabled, False otherwise.
+    """
+    host = os.environ.get("CUOPT_REMOTE_HOST", "")
+    port = os.environ.get("CUOPT_REMOTE_PORT", "")
+
+    if host and port:
+        try:
+            int(port)  # Validate port is a valid integer
+            return True
+        except ValueError:
+            return False
+    return False
+
+
+def _get_cuda_imports():
+    """Lazily import CUDA-dependent modules.
+
+    Only call this when GPU operations are actually needed.
+    """
+    import cupy as cp
+    import cudf
+    from cuopt.utilities import series_from_buf
+    return cp, cudf, series_from_buf
 
 
 cdef extern from "cuopt/linear_programming/utilities/internals.hpp" namespace "cuopt::internals": # noqa
@@ -108,39 +137,52 @@ cdef char* c_get_string(string in_str):
 
 
 def get_data_ptr(array):
-    if isinstance(array, cudf.Series):
-        return array.__cuda_array_interface__['data'][0]
-    elif isinstance(array, np.ndarray):
+    """Get the data pointer from an array.
+
+    Works with both numpy arrays (CPU) and cudf Series (GPU).
+    """
+    if isinstance(array, np.ndarray):
         return array.__array_interface__['data'][0]
+    elif hasattr(array, '__cuda_array_interface__'):
+        # cudf.Series or other CUDA array
+        return array.__cuda_array_interface__['data'][0]
     else:
         raise Exception(
             "get_data_ptr must be called with cudf.Series or np.ndarray"
         )
 
 
-def type_cast(cudf_obj, np_type, name):
-    if isinstance(cudf_obj, cudf.Series):
-        cudf_type = cudf_obj.dtype
-    elif isinstance(cudf_obj, np.ndarray):
-        cudf_type = cudf_obj.dtype
-    elif isinstance(cudf_obj, cudf.DataFrame):
-        if all([np.issubdtype(dtype, np.number) for dtype in cudf_obj.dtypes]):  # noqa
-            cudf_type = cudf_obj.dtypes[0]
+def type_cast(obj, np_type, name):
+    """Cast array to the specified numpy type.
+
+    Works with both numpy arrays and cudf objects.
+    """
+    if isinstance(obj, np.ndarray):
+        obj_type = obj.dtype
+    elif hasattr(obj, 'dtype'):
+        obj_type = obj.dtype
+    elif hasattr(obj, 'dtypes'):
+        # DataFrame-like object
+        if all([np.issubdtype(dtype, np.number) for dtype in obj.dtypes]):  # noqa
+            obj_type = obj.dtypes[0]
         else:
             msg = "All columns in " + name + " should be numeric"
             raise Exception(msg)
+    else:
+        obj_type = type(obj)
+
     if ((np.issubdtype(np_type, np.floating) and
-         (not np.issubdtype(cudf_type, np.floating)))
+         (not np.issubdtype(obj_type, np.floating)))
        or (np.issubdtype(np_type, np.integer) and
-           (not np.issubdtype(cudf_type, np.integer)))
+           (not np.issubdtype(obj_type, np.integer)))
        or (np.issubdtype(np_type, np.bool_) and
-           (not np.issubdtype(cudf_type, np.bool_)))
+           (not np.issubdtype(obj_type, np.bool_)))
        or (np.issubdtype(np_type, np.int8) and
-           (not np.issubdtype(cudf_type, np.int8)))):
-        msg = "Casting " + name + " from " + str(cudf_type) + " to " + str(np.dtype(np_type))  # noqa
+           (not np.issubdtype(obj_type, np.int8)))):
+        msg = "Casting " + name + " from " + str(obj_type) + " to " + str(np.dtype(np_type))  # noqa
         warnings.warn(msg)
-    cudf_obj = cudf_obj.astype(np.dtype(np_type))
-    return cudf_obj
+    obj = obj.astype(np.dtype(np_type))
+    return obj
 
 
 cdef set_solver_setting(
@@ -291,6 +333,12 @@ cdef set_solver_setting(
             settings.get_pdlp_warm_start_data().iterations_since_last_restart # noqa
         )
 
+cdef _convert_device_buffer_to_numpy(device_buffer, dtype):
+    """Convert a DeviceBuffer to numpy array using lazy CUDA imports."""
+    _, _, series_from_buf = _get_cuda_imports()
+    return series_from_buf(device_buffer, dtype).to_numpy()
+
+
 cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                      DataModel data_model_obj,
                      is_batch=False):
@@ -302,11 +350,11 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
     if sol_ret.problem_type == ProblemCategory.MIP or sol_ret.problem_type == ProblemCategory.IP: # noqa
         # Check if data is on GPU or CPU
         if sol_ret.mip_ret.is_device_memory_:
-            # GPU data - use DeviceBuffer
+            # GPU data - use DeviceBuffer with lazy imports
             solution = DeviceBuffer.c_from_unique_ptr(
                 move(sol_ret.mip_ret.solution_)
             )
-            solution = series_from_buf(solution, pa.float64()).to_numpy()
+            solution = _convert_device_buffer_to_numpy(solution, pa.float64())
         else:
             # CPU data - convert vector directly to numpy
             solution = np.array(sol_ret.mip_ret.solution_host_, dtype=np.float64)
@@ -347,16 +395,16 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
     else:
         # Check if data is on GPU or CPU
         if sol_ret.lp_ret.is_device_memory_:
-            # GPU data - use DeviceBuffer
+            # GPU data - use DeviceBuffer with lazy imports
             primal_solution = DeviceBuffer.c_from_unique_ptr(
                 move(sol_ret.lp_ret.primal_solution_)
             )
             dual_solution = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.dual_solution_)) # noqa
             reduced_cost = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.reduced_cost_)) # noqa
 
-            primal_solution = series_from_buf(primal_solution, pa.float64()).to_numpy()
-            dual_solution = series_from_buf(dual_solution, pa.float64()).to_numpy()
-            reduced_cost = series_from_buf(reduced_cost, pa.float64()).to_numpy()
+            primal_solution = _convert_device_buffer_to_numpy(primal_solution, pa.float64())
+            dual_solution = _convert_device_buffer_to_numpy(dual_solution, pa.float64())
+            reduced_cost = _convert_device_buffer_to_numpy(reduced_cost, pa.float64())
         else:
             # CPU data - convert vectors directly to numpy
             primal_solution = np.array(sol_ret.lp_ret.primal_solution_host_, dtype=np.float64)
@@ -377,33 +425,77 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
 
         # In BatchSolve, we don't get the warm start data
         if not is_batch:
-            current_primal_solution = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_primal_solution_)
-            )
-            current_dual_solution = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_dual_solution_)
-            )
-            initial_primal_average = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.initial_primal_average_)
-            )
-            initial_dual_average = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.initial_dual_average_)
-            )
-            current_ATY = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_ATY_)
-            )
-            sum_primal_solutions = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.sum_primal_solutions_)
-            )
-            sum_dual_solutions = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.sum_dual_solutions_)
-            )
-            last_restart_duality_gap_primal_solution = DeviceBuffer.c_from_unique_ptr( # noqa
-                move(sol_ret.lp_ret.last_restart_duality_gap_primal_solution_)
-            )
-            last_restart_duality_gap_dual_solution = DeviceBuffer.c_from_unique_ptr( # noqa
-                move(sol_ret.lp_ret.last_restart_duality_gap_dual_solution_)
-            )
+            # Warm start data is only available for GPU solves
+            if sol_ret.lp_ret.is_device_memory_:
+                current_primal_solution = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.current_primal_solution_)
+                )
+                current_dual_solution = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.current_dual_solution_)
+                )
+                initial_primal_average = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.initial_primal_average_)
+                )
+                initial_dual_average = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.initial_dual_average_)
+                )
+                current_ATY = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.current_ATY_)
+                )
+                sum_primal_solutions = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.sum_primal_solutions_)
+                )
+                sum_dual_solutions = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.sum_dual_solutions_)
+                )
+                last_restart_duality_gap_primal_solution = DeviceBuffer.c_from_unique_ptr( # noqa
+                    move(sol_ret.lp_ret.last_restart_duality_gap_primal_solution_)
+                )
+                last_restart_duality_gap_dual_solution = DeviceBuffer.c_from_unique_ptr( # noqa
+                    move(sol_ret.lp_ret.last_restart_duality_gap_dual_solution_)
+                )
+
+                current_primal_solution = _convert_device_buffer_to_numpy(
+                    current_primal_solution, pa.float64()
+                )
+                current_dual_solution = _convert_device_buffer_to_numpy(
+                    current_dual_solution, pa.float64()
+                )
+                initial_primal_average = _convert_device_buffer_to_numpy(
+                    initial_primal_average, pa.float64()
+                )
+                initial_dual_average = _convert_device_buffer_to_numpy(
+                    initial_dual_average, pa.float64()
+                )
+                current_ATY = _convert_device_buffer_to_numpy(
+                    current_ATY, pa.float64()
+                )
+                sum_primal_solutions = _convert_device_buffer_to_numpy(
+                    sum_primal_solutions, pa.float64()
+                )
+                sum_dual_solutions = _convert_device_buffer_to_numpy(
+                    sum_dual_solutions, pa.float64()
+                )
+                last_restart_duality_gap_primal_solution = _convert_device_buffer_to_numpy(
+                    last_restart_duality_gap_primal_solution,
+                    pa.float64()
+                )
+                last_restart_duality_gap_dual_solution = _convert_device_buffer_to_numpy(
+                    last_restart_duality_gap_dual_solution,
+                    pa.float64()
+                )
+            else:
+                # CPU/remote solve - no warm start data available
+                current_primal_solution = np.array([], dtype=np.float64)
+                current_dual_solution = np.array([], dtype=np.float64)
+                initial_primal_average = np.array([], dtype=np.float64)
+                initial_dual_average = np.array([], dtype=np.float64)
+                current_ATY = np.array([], dtype=np.float64)
+                sum_primal_solutions = np.array([], dtype=np.float64)
+                sum_dual_solutions = np.array([], dtype=np.float64)
+                last_restart_duality_gap_primal_solution = np.array([], dtype=np.float64)
+                last_restart_duality_gap_dual_solution = np.array([], dtype=np.float64)
+
             initial_primal_weight = sol_ret.lp_ret.initial_primal_weight_
             initial_step_size = sol_ret.lp_ret.initial_step_size_
             total_pdlp_iterations = sol_ret.lp_ret.total_pdlp_iterations_
@@ -412,36 +504,6 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             last_restart_kkt_score = sol_ret.lp_ret.last_restart_kkt_score_
             sum_solution_weight = sol_ret.lp_ret.sum_solution_weight_
             iterations_since_last_restart = sol_ret.lp_ret.iterations_since_last_restart_ # noqa
-
-            current_primal_solution = series_from_buf(
-                current_primal_solution, pa.float64()
-            ).to_numpy()
-            current_dual_solution = series_from_buf(
-                current_dual_solution, pa.float64()
-            ).to_numpy()
-            initial_primal_average = series_from_buf(
-                initial_primal_average, pa.float64()
-            ).to_numpy()
-            initial_dual_average = series_from_buf(
-                initial_dual_average, pa.float64()
-            ).to_numpy()
-            current_ATY = series_from_buf(
-                current_ATY, pa.float64()
-            ).to_numpy()
-            sum_primal_solutions = series_from_buf(
-                sum_primal_solutions, pa.float64()
-            ).to_numpy()
-            sum_dual_solutions = series_from_buf(
-                sum_dual_solutions, pa.float64()
-            ).to_numpy()
-            last_restart_duality_gap_primal_solution = series_from_buf(
-                last_restart_duality_gap_primal_solution,
-                pa.float64()
-            ).to_numpy()
-            last_restart_duality_gap_dual_solution = series_from_buf(
-                last_restart_duality_gap_dual_solution,
-                pa.float64()
-            ).to_numpy()
 
             return Solution(
                 ProblemCategory(sol_ret.problem_type),
