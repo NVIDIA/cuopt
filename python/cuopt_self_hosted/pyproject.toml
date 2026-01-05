@@ -67,11 +67,6 @@ known-first-party = [
 ]
 
 [tool.ruff.lint.isort.sections]
-dask = [
-    "dask",
-    "distributed",
-    "dask_cuda",
-]
 rapids = [
     "cudf",
     "pylibraft",

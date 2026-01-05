@@ -29,11 +29,13 @@ files:
       - test_python_common
       - test_python_cuopt
       - test_python_cuopt_server
-      - depends_on_rmm
-      - depends_on_cupy
       - depends_on_cudf
+      - depends_on_cupy
+      - depends_on_libraft_headers
+      - depends_on_librmm
       - depends_on_pylibraft
       - depends_on_rapids_logger
+      - depends_on_rmm
       - rapids_build_backend
   test_cpp:
     output: none
@@ -297,8 +299,6 @@ dependencies:
         packages:
           - libboost-devel
           - cpp-argparse
-          - librmm==26.2.*,>=0.0.0a0
-          - libraft-headers==26.2.*,>=0.0.0a0
           - tbb-devel
           - zlib
           - bzip2
@@ -348,7 +348,6 @@ dependencies:
         packages:
           - numba-cuda>=0.22.1,<0.23.0
           - numba>=0.60.0
-          - rapids-dask-dependency==26.2.*,>=0.0.0a0
           - &pandas pandas>=2.0
       - output_types: requirements
         packages:
@@ -374,7 +373,7 @@ dependencies:
           - &jsonref jsonref==1.1.0
           - &msgpack_numpy msgpack-numpy==0.4.8
           - pexpect
-          - requests
+          - &requests requests
       - output_types: [requirements, pyproject]
         packages:
           - &msgpack msgpack==1.1.0
@@ -390,23 +389,22 @@ dependencies:
           - *jsonref
           - *msgpack_numpy
           - *pandas
+          - psutil>=6.0.0
           - uvicorn==0.34.*
       - output_types: conda
         packages:
           - *msgpack_python
           - pip
-          - psutil>=6.0.0
       - output_types: [requirements, pyproject]
         packages:
           - *msgpack
-          - psutil>=6.0.0
 
   run_cuopt_sh_client:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
           - *msgpack_numpy
-          - requests
+          - *requests
       - output_types: conda
         packages:
           - *msgpack_python
@@ -732,7 +730,7 @@ dependencies:
       - output_types: [conda]
         packages:
           - *doxygen
-          - ipython
+          - &ipython ipython
           - *jsonref
           - make
           - *msgpack_python
@@ -757,7 +755,7 @@ dependencies:
     common:
       - output_types: [conda, requirements]
         packages:
-          - ipython
+          - *ipython
           - notebook
       - output_types: [conda]
         packages:
@@ -766,11 +764,11 @@ dependencies:
           - *msgpack_python
           - *numpy
           - pip:
-              - veroviz
+              - &veroviz veroviz
       - output_types: [requirements]
         packages:
           - *numpy
-          - veroviz
+          - *veroviz
   py_version:
     specific:
       - output_types: conda
