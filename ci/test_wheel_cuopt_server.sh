@@ -27,8 +27,10 @@ rapids-pip-retry install \
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
 ./datasets/mip/download_miplib_test_dataset.sh
 
+RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
+export RAPIDS_DATASET_ROOT_DIR
 
-RAPIDS_DATASET_ROOT_DIR=./datasets timeout 30m python -m pytest --verbose --capture=no ./python/cuopt_server/cuopt_server/tests/
+timeout 30m ./ci/run_cuopt_server_pytests.sh --verbose --capture=no
 
 # Run documentation tests
 ./ci/test_doc_examples.sh

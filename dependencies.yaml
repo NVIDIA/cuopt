@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # Dependency list for https://github.com/rapidsai/dependency-file-generator
@@ -29,11 +29,13 @@ files:
       - test_python_common
       - test_python_cuopt
       - test_python_cuopt_server
-      - depends_on_rmm
-      - depends_on_cupy
       - depends_on_cudf
+      - depends_on_cupy
+      - depends_on_libraft_headers
+      - depends_on_librmm
       - depends_on_pylibraft
       - depends_on_rapids_logger
+      - depends_on_rmm
       - rapids_build_backend
   test_cpp:
     output: none
@@ -252,19 +254,19 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - &rapids_build_backend rapids-build-backend>=0.4.0,<0.5.0.dev0
+          - &rapids_build_backend rapids-build-backend>=0.4.0,<0.5.0
       - output_types: [conda]
         packages:
-          - scikit-build-core>=0.10.0
+          - scikit-build-core>=0.11.0
       - output_types: [requirements, pyproject]
         packages:
-          - scikit-build-core[pyproject]>=0.10.0
+          - scikit-build-core[pyproject]>=0.11.0
   rapids_build_setuptools:
     common:
       - output_types: [requirements, pyproject]
         packages:
           - *rapids_build_backend
-          - setuptools
+          - setuptools>=77.0.0
           - wheel
   build_common:
     common:
@@ -295,10 +297,8 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - boost
+          - libboost-devel
           - cpp-argparse
-          - librmm==26.2.*,>=0.0.0a0
-          - libraft-headers==26.2.*,>=0.0.0a0
           - tbb-devel
           - zlib
           - bzip2
@@ -307,8 +307,6 @@ dependencies:
       - output_types: [conda]
         packages:
           - cuda-sanitizer-api
-          - gmock
-          - gtest
   test_cpp_cuopt:
     common:
       - output_types: [conda]
@@ -319,12 +317,12 @@ dependencies:
       - output_types: [requirements, pyproject]
         packages:
           - wheel
-          - setuptools
+          - setuptools>=77.0.0
   run_common:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - &numpy numpy>=1.23.5,<3.0a0
+          - &numpy numpy>=1.23.5,<3.0
   build_python_common:
     common:
       - output_types: [conda, requirements, pyproject]
@@ -334,7 +332,7 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - pytest<8
+          - pytest<9.0
           - pytest-cov
   test_python_cuopt:
     common:
@@ -350,7 +348,6 @@ dependencies:
         packages:
           - numba-cuda>=0.22.1,<0.23.0
           - numba>=0.60.0
-          - rapids-dask-dependency==26.2.*,>=0.0.0a0
           - &pandas pandas>=2.0
       - output_types: requirements
         packages:
@@ -363,11 +360,11 @@ dependencies:
           - matrix:
               cuda: "12.*"
             packages:
-              - cuda-python>=12.9.2,<13.0a0
+              - cuda-python>=12.9.2,<13.0
           # fallback to CUDA 13 versions if 'cuda' is '13.*' or not provided
           - matrix:
             packages:
-              - cuda-python>=13.0.1,<14.0a0
+              - cuda-python>=13.0.1,<14.0
 
   test_python_cuopt_server:
     common:
@@ -376,7 +373,7 @@ dependencies:
           - &jsonref jsonref==1.1.0
           - &msgpack_numpy msgpack-numpy==0.4.8
           - pexpect
-          - requests
+          - &requests requests
       - output_types: [requirements, pyproject]
         packages:
           - &msgpack msgpack==1.1.0
@@ -392,23 +389,22 @@ dependencies:
           - *jsonref
           - *msgpack_numpy
           - *pandas
+          - psutil>=6.0.0
           - uvicorn==0.34.*
       - output_types: conda
         packages:
           - *msgpack_python
           - pip
-          - psutil>=6.0.0
       - output_types: [requirements, pyproject]
         packages:
           - *msgpack
-          - psutil>=6.0.0
 
   run_cuopt_sh_client:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
           - *msgpack_numpy
-          - requests
+          - *requests
       - output_types: conda
         packages:
           - *msgpack_python
@@ -734,7 +730,7 @@ dependencies:
       - output_types: [conda]
         packages:
           - *doxygen
-          - ipython
+          - &ipython ipython
           - *jsonref
           - make
           - *msgpack_python
@@ -744,7 +740,6 @@ dependencies:
           - numpydoc
           - pyrsistent
           - breathe
-          - exhale
           - sphinx
           - sphinx-copybutton
           - sphinx-markdown-tables
@@ -754,13 +749,13 @@ dependencies:
           - sphinx-design
           - pip:
             - swagger-plugin-for-sphinx
-            - nvidia_sphinx_theme
+            - nvidia-sphinx-theme
 
   notebooks:
     common:
       - output_types: [conda, requirements]
         packages:
-          - ipython
+          - *ipython
           - notebook
       - output_types: [conda]
         packages:
@@ -769,11 +764,11 @@ dependencies:
           - *msgpack_python
           - *numpy
           - pip:
-              - veroviz
+              - &veroviz veroviz
       - output_types: [requirements]
         packages:
           - *numpy
-          - veroviz
+          - *veroviz
   py_version:
     specific:
       - output_types: conda

@@ -27,7 +27,7 @@ requirements:
   host:
     - pip
     - python =${{ py_version }}
-    - setuptools>=61.0.0
+    - setuptools>=77.0.0
   run:
     - msgpack-python =1.1.0
     - python
@@ -41,5 +41,5 @@ tests:
 
 about:
   homepage: ${{ load_from_file("python/cuopt_self_hosted/pyproject.toml").project.urls.Homepage }}
-  license: ${{ load_from_file("python/cuopt_self_hosted/pyproject.toml").project.license.text }}
+  license: ${{ load_from_file("python/cuopt_self_hosted/pyproject.toml").project.license }}
   summary: ${{ load_from_file("python/cuopt_self_hosted/pyproject.toml").project.description }}
