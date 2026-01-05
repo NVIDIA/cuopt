@@ -65,8 +65,6 @@ class pdlp_solver_settings_t {
  public:
   pdlp_solver_settings_t() = default;
 
-  // Copy constructor for when copying in the PDLP object
-  pdlp_solver_settings_t(const pdlp_solver_settings_t& other, rmm::cuda_stream_view stream_view);
   /**
    * @brief Set both absolute and relative tolerance on the primal feasibility,
    dual feasibility and gap.
@@ -210,9 +208,11 @@ class pdlp_solver_settings_t {
   bool first_primal_feasible{false};
   bool presolve{false};
   bool dual_postsolve{true};
+  int num_gpus{1};
   method_t method{method_t::Concurrent};
+  bool inside_mip{false};
   // For concurrent termination
-  volatile int* concurrent_halt;
+  std::atomic<int>* concurrent_halt{nullptr};
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
 
  private:

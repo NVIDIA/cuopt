@@ -99,12 +99,12 @@ echo "${RAPIDS_BRANCH_NAME}" > RAPIDS_BRANCH
 
 DEPENDENCIES=(
   cudf
-  cuvs
   cuopt
   cuopt-mps-parser
   cuopt-server
   cuopt-sh-client
   libcuopt
+  libcuopt-tests
   libraft-headers
   librmm
   pylibraft

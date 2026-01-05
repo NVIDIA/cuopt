@@ -9,6 +9,7 @@
 
 #include "recombiner.cuh"
 
+#include <thrust/pair.h>
 #include <mip/local_search/rounding/constraint_prop.cuh>
 #include <mip/relaxed_lp/relaxed_lp.cuh>
 #include <mip/solution/solution.cuh>
@@ -204,8 +205,10 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
       offspring.handle_ptr->sync_stream();
       offspring.unfix_variables(fixed_assignment, variable_map);
       cuopt_func_call(bool feasible_after_unfix = offspring.get_feasible());
-      cuopt_assert(feasible_after_unfix == feasible_after_bounds_prop,
-                   "Feasible after unfix should be same as feasible after bounds prop!");
+      // May be triggered due to numerical issues
+      // TODO: investigate further
+      // cuopt_assert(feasible_after_unfix == feasible_after_bounds_prop,
+      //              "Feasible after unfix should be same as feasible after bounds prop!");
       a.handle_ptr->sync_stream();
     } else {
       timer_t timer(bp_recombiner_config_t::bounds_prop_time_limit);

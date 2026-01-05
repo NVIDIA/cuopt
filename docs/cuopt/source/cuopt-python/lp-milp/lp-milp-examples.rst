@@ -27,6 +27,29 @@ The response is as follows:
     y = 0.0
     Objective value = 10.0
 
+.. _simple-qp-example-python:
+
+Simple Quadratic Programming Example
+------------------------------------
+
+.. note::
+   The QP solver is currently in beta.
+
+:download:`simple_qp_example.py <examples/simple_qp_example.py>`
+
+.. literalinclude:: examples/simple_qp_example.py
+   :language: python
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Optimal solution found in 0.01 seconds
+    x = 0.5
+    y = 0.5
+    Objective value = 0.5
+
 Mixed Integer Linear Programming Example
 ----------------------------------------
 

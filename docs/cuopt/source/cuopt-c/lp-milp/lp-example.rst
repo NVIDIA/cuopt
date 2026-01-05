@@ -135,3 +135,40 @@ You should see the following output:
    x2 = 0.000000
 
    Solver completed successfully!
+
+
+.. _simple-qp-example-c:
+
+Simple Quadratic Programming Example
+------------------------------------
+
+.. note::
+   The QP solver is currently in beta.
+
+This example demonstrates how to use the cuOpt C API for quadratic programming.
+
+The example code is available at ``examples/cuopt-c/lp/simple_qp_example.c`` (:download:`download <examples/simple_qp_example.c>`):
+
+.. literalinclude:: examples/simple_qp_example.c
+   :language: c
+   :linenos:
+
+Build and run the example
+
+.. code-block:: bash
+
+   # Build and run the example
+   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o simple_qp_example simple_qp_example.c -lcuopt
+   ./simple_qp_example
+
+You should see the following output:
+
+.. code-block:: bash
+   :caption: Output
+
+   Creating and solving simple QP problem...
+   Status: Optimal
+   Objective value: 0.500000
+   x = 0.500000
+   y = 0.500000
+   Test completed successfully!

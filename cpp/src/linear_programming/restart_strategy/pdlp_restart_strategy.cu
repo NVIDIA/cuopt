@@ -112,7 +112,9 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
     primal_size_{primal_size, stream_view_},
     dual_size_{dual_size, stream_view_},
     primal_norm_weight_{stream_view_},
-    weights_{(is_KKT_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(primal_size_h_ + dual_size_h_),
+    weights_{(!is_trust_region_restart<i_t, f_t>())
+               ? 0
+               : static_cast<size_t>(primal_size_h_ + dual_size_h_),
              stream_view_},
     dual_norm_weight_{stream_view_},
     restart_triggered_{0, stream_view_},
@@ -122,7 +124,7 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
     last_restart_duality_gap_{handle_ptr_, primal_size, dual_size},
     // If KKT restart, call the empty cusparse_view constructor
     avg_duality_gap_cusparse_view_{
-      (is_KKT_restart<i_t, f_t>())
+      (!is_trust_region_restart<i_t, f_t>())
         ? cusparse_view_t<i_t, f_t>(handle_ptr_, cusparse_view.A_, cusparse_view.A_indices_)
         : cusparse_view_t<i_t, f_t>(handle_ptr_,
                                     op_problem,
@@ -132,7 +134,7 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
                                     avg_duality_gap_.primal_gradient_.data(),
                                     avg_duality_gap_.dual_gradient_.data())},
     current_duality_gap_cusparse_view_{
-      (is_KKT_restart<i_t, f_t>())
+      (!is_trust_region_restart<i_t, f_t>())
         ? cusparse_view_t<i_t, f_t>(handle_ptr_, cusparse_view.A_, cusparse_view.A_indices_)
         : cusparse_view_t<i_t, f_t>(handle_ptr_,
                                     op_problem,
@@ -142,7 +144,7 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
                                     current_duality_gap_.primal_gradient_.data(),
                                     current_duality_gap_.dual_gradient_.data())},
     last_restart_duality_gap_cusparse_view_{
-      (is_KKT_restart<i_t, f_t>())
+      (!is_trust_region_restart<i_t, f_t>())
         ? cusparse_view_t<i_t, f_t>(handle_ptr_, cusparse_view.A_, cusparse_view.A_indices_)
         : cusparse_view_t<i_t, f_t>(handle_ptr_,
                                     op_problem,
@@ -153,35 +155,43 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
                                     last_restart_duality_gap_.dual_gradient_.data())},
     gap_reduction_ratio_last_trial_{stream_view_},
     last_restart_length_{0},
-    // If KKT restart, don't need to init all of those
-    center_point_{
-      (is_KKT_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-      stream_view_},
-    objective_vector_{
-      (is_KKT_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-      stream_view_},
-    unsorted_direction_full_{
-      (is_KKT_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-      stream_view_},
-    direction_full_{
-      (is_KKT_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-      stream_view_},
-    threshold_{
-      (is_KKT_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-      stream_view_},
-    lower_bound_{
-      (is_KKT_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-      stream_view_},
-    upper_bound_{
-      (is_KKT_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-      stream_view_},
-    test_point_{
-      (is_KKT_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(primal_size_h_ + dual_size_h_),
-      stream_view_},
+    // If trust region restart is not used, no need to init all of those
+    center_point_{(!is_trust_region_restart<i_t, f_t>())
+                    ? 0
+                    : static_cast<size_t>(primal_size_h_ + dual_size_h_),
+                  stream_view_},
+    objective_vector_{(!is_trust_region_restart<i_t, f_t>())
+                        ? 0
+                        : static_cast<size_t>(primal_size_h_ + dual_size_h_),
+                      stream_view_},
+    unsorted_direction_full_{(!is_trust_region_restart<i_t, f_t>())
+                               ? 0
+                               : static_cast<size_t>(primal_size_h_ + dual_size_h_),
+                             stream_view_},
+    direction_full_{(!is_trust_region_restart<i_t, f_t>())
+                      ? 0
+                      : static_cast<size_t>(primal_size_h_ + dual_size_h_),
+                    stream_view_},
+    threshold_{(!is_trust_region_restart<i_t, f_t>())
+                 ? 0
+                 : static_cast<size_t>(primal_size_h_ + dual_size_h_),
+               stream_view_},
+    lower_bound_{(!is_trust_region_restart<i_t, f_t>())
+                   ? 0
+                   : static_cast<size_t>(primal_size_h_ + dual_size_h_),
+                 stream_view_},
+    upper_bound_{(!is_trust_region_restart<i_t, f_t>())
+                   ? 0
+                   : static_cast<size_t>(primal_size_h_ + dual_size_h_),
+                 stream_view_},
+    test_point_{(!is_trust_region_restart<i_t, f_t>())
+                  ? 0
+                  : static_cast<size_t>(primal_size_h_ + dual_size_h_),
+                stream_view_},
     transformed_constraint_lower_bounds_{
-      (is_KKT_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(dual_size_h_), stream_view_},
+      (!is_trust_region_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(dual_size_h_), stream_view_},
     transformed_constraint_upper_bounds_{
-      (is_KKT_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(dual_size_h_), stream_view_},
+      (!is_trust_region_restart<i_t, f_t>()) ? 0 : static_cast<size_t>(dual_size_h_), stream_view_},
     shared_live_kernel_accumulator_{0, stream_view_},
     target_threshold_{stream_view_},
     low_radius_squared_{stream_view_},
@@ -847,7 +857,7 @@ bool pdlp_restart_strategy_t<i_t, f_t>::compute_restart(
 {
   raft::common::nvtx::range fun_scope("compute_restart");
 
-  if (is_KKT_restart<i_t, f_t>()) {
+  if (pdlp_hyper_params::restart_strategy == static_cast<int>(restart_strategy_t::KKT_RESTART)) {
     return run_kkt_restart(pdhg_solver,
                            primal_solution_avg,
                            dual_solution_avg,

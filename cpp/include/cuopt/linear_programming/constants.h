@@ -59,6 +59,7 @@
 #define CUOPT_MIP_PRESOLVE                "mip_presolve"
 #define CUOPT_SOLUTION_FILE               "solution_file"
 #define CUOPT_NUM_CPU_THREADS             "num_cpu_threads"
+#define CUOPT_NUM_GPUS                    "num_gpus"
 #define CUOPT_USER_PROBLEM_FILE           "user_problem_file"
 
 /* @brief LP/MIP termination status constants */

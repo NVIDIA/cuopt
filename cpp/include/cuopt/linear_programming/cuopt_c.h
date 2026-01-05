@@ -114,9 +114,9 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
 /** @brief Create an optimization problem of the form
  *
  * @verbatim
- *                minimize/maximize  cᵀx + offset
- *                  subject to       A x {=, ≤, ≥} b
- *                                   l ≤ x ≤ u
+ *                minimize/maximize  c^T x + offset
+ *                  subject to       A x {=, <=, >=} b
+ *                                   l <= x <= u
  *                                   x_i integer for some i
  * @endverbatim
  *
@@ -237,6 +237,160 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
                                      const cuopt_float_t* variable_upper_bounds,
                                      const char* variable_types,
                                      cuOptOptimizationProblem* problem_ptr);
+
+/** @brief Create an optimization problem of the form
+ *
+ * @verbatim
+ *                minimize/maximize  c^T x + x^T Q x + offset
+ *                  subject to       A x {=, <=, >=} b
+ *                                   l ≤ x ≤ u
+ * @endverbatim
+ *
+ * @param[in] num_constraints The number of constraints
+ * @param[in] num_variables The number of variables
+ * @param[in] objective_sense The objective sense (CUOPT_MINIMIZE for
+ *            minimization or CUOPT_MAXIMIZE for maximization)
+ * @param[in] objective_offset An offset to add to the linear objective
+ * @param[in] objective_coefficients A pointer to an array of type cuopt_float_t
+ *            of size num_variables containing the coefficients of the linear objective
+ * @param[in] quadratic_objective_matrix_row_offsets A pointer to an array of type
+ *            cuopt_int_t of size num_variables + 1. quadratic_objective_matrix_row_offsets[i] is
+ * the index of the first non-zero element of the i-th row of the quadratic objective matrix in
+ *            quadratic_objective_matrix_column_indices and
+ * quadratic_objective_matrix_coefficent_values. This is part of the compressed sparse row
+ * representation of the quadratic objective matrix.
+ * @param[in] quadratic_objective_matrix_column_indices A pointer to an array of type
+ *            cuopt_int_t of size quadratic_objective_matrix_row_offsets[num_variables] containing
+ *            the column indices of the non-zero elements of the quadratic objective matrix.
+ *            This is part of the compressed sparse row representation of the quadratic objective
+ * matrix.
+ * @param[in] quadratic_objective_matrix_coefficent_values A pointer to an array of type
+ *            cuopt_float_t of size quadratic_objective_matrix_row_offsets[num_variables] containing
+ *            the values of the non-zero elements of the quadratic objective matrix.
+ * @param[in] constraint_matrix_row_offsets A pointer to an array of type
+ *            cuopt_int_t of size num_constraints + 1. constraint_matrix_row_offsets[i] is the
+ *            index of the first non-zero element of the i-th constraint in
+ *            constraint_matrix_column_indices and constraint_matrix_coefficent_values. This is
+ *            part of the compressed sparse row representation of the constraint matrix
+ * @param[in] constraint_matrix_column_indices A pointer to an array of type
+ *            cuopt_int_t of size constraint_matrix_row_offsets[num_constraints] containing
+ *            the column indices of the non-zero elements of the constraint matrix. This is
+ *            part of the compressed sparse row representation of the constraint matrix
+ * @param[in] constraint_matrix_coefficent_values A pointer to an array of type
+ *            cuopt_float_t of size constraint_matrix_row_offsets[num_constraints] containing
+ *            the values of the non-zero elements of the constraint matrix. This is
+ *            part of the compressed sparse row representation of the constraint matrix
+ * @param[in] constraint_sense A pointer to an array of type char of size
+ *            num_constraints containing the sense of the constraints (CUOPT_LESS_THAN,
+ *            CUOPT_GREATER_THAN, or CUOPT_EQUAL)
+ * @param[in] rhs A pointer to an array of type cuopt_float_t of size num_constraints
+ *            containing the right-hand side of the constraints
+ * @param[in] lower_bounds A pointer to an array of type cuopt_float_t of size num_variables
+ *            containing the lower bounds of the variables
+ * @param[in] upper_bounds A pointer to an array of type cuopt_float_t of size num_variables
+ *            containing the upper bounds of the variables
+ * @param[out] problem_ptr Pointer to store the created optimization problem
+ * @return CUOPT_SUCCESS if successful, CUOPT_ERROR otherwise
+ */
+cuopt_int_t cuOptCreateQuadraticProblem(
+  cuopt_int_t num_constraints,
+  cuopt_int_t num_variables,
+  cuopt_int_t objective_sense,
+  cuopt_float_t objective_offset,
+  const cuopt_float_t* objective_coefficients,
+  const cuopt_int_t* quadratic_objective_matrix_row_offsets,
+  const cuopt_int_t* quadratic_objective_matrix_column_indices,
+  const cuopt_float_t* quadratic_objective_matrix_coefficent_values,
+  const cuopt_int_t* constraint_matrix_row_offsets,
+  const cuopt_int_t* constraint_matrix_column_indices,
+  const cuopt_float_t* constraint_matrix_coefficent_values,
+  const char* constraint_sense,
+  const cuopt_float_t* rhs,
+  const cuopt_float_t* lower_bounds,
+  const cuopt_float_t* upper_bounds,
+  cuOptOptimizationProblem* problem_ptr);
+
+/** @brief Create an optimization problem of the form *
+ * @verbatim
+ *                minimize/maximize  c^T x + x^T Q x + offset
+ *                  subject to       bl <= A*x <= bu
+ *                                   l <= x <= u
+ * @endverbatim
+ *
+ * @param[in] num_constraints - The number of constraints.
+ *
+ * @param[in] num_variables - The number of variables.
+ *
+ * @param[in] objective_sense - The objective sense (CUOPT_MINIMIZE for
+ *  minimization or CUOPT_MAXIMIZE for maximization)
+ *
+ * @param[in] objective_offset - An offset to add to the linear objective.
+ *
+ * @param[in] objective_coefficients - A pointer to an array of type cuopt_float_t
+ *  of size num_variables containing the coefficients of the linear objective.
+ *
+ * @param[in] quadratic_objective_matrix_row_offsets - A pointer to an array of type
+ *  cuopt_int_t of size num_variables + 1. quadratic_objective_matrix_row_offsets[i] is the
+ *  index of the first non-zero element of the i-th row of the quadratic objective matrix in
+ *  quadratic_objective_matrix_column_indices and quadratic_objective_matrix_coefficent_values.
+ *  This is part of the compressed sparse row representation of the quadratic objective matrix.
+ *
+ * @param[in] quadratic_objective_matrix_column_indices - A pointer to an array of type
+ *  cuopt_int_t of size quadratic_objective_matrix_row_offsets[num_variables] containing
+ *  the column indices of the non-zero elements of the quadratic objective matrix.
+ *  This is part of the compressed sparse row representation of the quadratic objective matrix.
+ *
+ * @param[in] quadratic_objective_matrix_coefficent_values - A pointer to an array of type
+ *  cuopt_float_t of size quadratic_objective_matrix_row_offsets[num_variables] containing
+ *  the values of the non-zero elements of the quadratic objective matrix.
+ *
+ * @param[in] constraint_matrix_row_offsets - A pointer to an array of type
+ *  cuopt_int_t of size num_constraints + 1. constraint_matrix_row_offsets[i] is the
+ *  index of the first non-zero element of the i-th constraint in
+ *  constraint_matrix_column_indices and constraint_matrix_coefficients.
+ *
+ * @param[in] constraint_matrix_column_indices - A pointer to an array of type
+ *  cuopt_int_t of size constraint_matrix_row_offsets[num_constraints] containing
+ *  the column indices of the non-zero elements of the constraint matrix.
+ *
+ * @param[in] constraint_matrix_coefficients - A pointer to an array of type
+ *  cuopt_float_t of size constraint_matrix_row_offsets[num_constraints] containing
+ *  the values of the non-zero elements of the constraint matrix.
+ *
+ * @param[in] constraint_lower_bounds - A pointer to an array of type
+ *  cuopt_float_t of size num_constraints containing the lower bounds of the constraints.
+ *
+ * @param[in] constraint_upper_bounds - A pointer to an array of type
+ *  cuopt_float_t of size num_constraints containing the upper bounds of the constraints.
+ *
+ * @param[in] variable_lower_bounds - A pointer to an array of type
+ *  cuopt_float_t of size num_variables containing the lower bounds of the variables.
+ *
+ * @param[in] variable_upper_bounds - A pointer to an array of type
+ *  cuopt_float_t of size num_variables containing the upper bounds of the variables.
+ *
+ * @param[out] problem_ptr - A pointer to a cuOptOptimizationProblem.
+ * On output the problem will be created and initialized with the provided data.
+ *
+ * @return A status code indicating success or failure.
+ */
+cuopt_int_t cuOptCreateQuadraticRangedProblem(
+  cuopt_int_t num_constraints,
+  cuopt_int_t num_variables,
+  cuopt_int_t objective_sense,
+  cuopt_float_t objective_offset,
+  const cuopt_float_t* objective_coefficients,
+  const cuopt_int_t* quadratic_objective_matrix_row_offsets,
+  const cuopt_int_t* quadratic_objective_matrix_column_indices,
+  const cuopt_float_t* quadratic_objective_matrix_coefficent_values,
+  const cuopt_int_t* constraint_matrix_row_offsets,
+  const cuopt_int_t* constraint_matrix_column_indices,
+  const cuopt_float_t* constraint_matrix_coefficients,
+  const cuopt_float_t* constraint_lower_bounds,
+  const cuopt_float_t* constraint_upper_bounds,
+  const cuopt_float_t* variable_lower_bounds,
+  const cuopt_float_t* variable_upper_bounds,
+  cuOptOptimizationProblem* problem_ptr);
 
 /** @brief Destroy an optimization problem
  *

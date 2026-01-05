@@ -137,10 +137,14 @@ problem_t<i_t, f_t>::problem_t(
     objective_name(problem_.get_objective_name()),
     objective_offset(problem_.get_objective_offset()),
     lp_state(*this, problem_.get_handle_ptr()->get_stream()),
-    fixing_helpers(n_constraints, n_variables, handle_ptr)
+    fixing_helpers(n_constraints, n_variables, handle_ptr),
+    Q_offsets(problem_.get_quadratic_objective_offsets()),
+    Q_indices(problem_.get_quadratic_objective_indices()),
+    Q_values(problem_.get_quadratic_objective_values())
 {
   op_problem_cstr_body(problem_);
-  branch_and_bound_callback = nullptr;
+  branch_and_bound_callback             = nullptr;
+  set_root_relaxation_solution_callback = nullptr;
 }
 
 template <typename i_t, typename f_t>
@@ -151,6 +155,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     integer_fixed_problem(problem_.integer_fixed_problem),
     integer_fixed_variable_map(problem_.integer_fixed_variable_map, handle_ptr->get_stream()),
     branch_and_bound_callback(nullptr),
+    set_root_relaxation_solution_callback(nullptr),
     n_variables(problem_.n_variables),
     n_constraints(problem_.n_constraints),
     n_binary_vars(problem_.n_binary_vars),
@@ -189,7 +194,10 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
-    expensive_to_fix_vars(problem_.expensive_to_fix_vars)
+    expensive_to_fix_vars(problem_.expensive_to_fix_vars),
+    Q_offsets(problem_.Q_offsets),
+    Q_indices(problem_.Q_indices),
+    Q_values(problem_.Q_values)
 {
 }
 
@@ -284,8 +292,117 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
-    expensive_to_fix_vars(problem_.expensive_to_fix_vars)
+    expensive_to_fix_vars(problem_.expensive_to_fix_vars),
+    Q_offsets(problem_.Q_offsets),
+    Q_indices(problem_.Q_indices),
+    Q_values(problem_.Q_values)
 {
+}
+
+// Scatter kernel for CSR to CSC transpose: 1 block per row, threads process row entries in parallel
+template <typename i_t, typename f_t>
+__global__ void csr_to_csc_scatter_kernel(i_t n_rows,
+                                          const i_t* __restrict__ row_ptr,
+                                          const i_t* __restrict__ col_ind,
+                                          const f_t* __restrict__ csr_val,
+                                          i_t* __restrict__ next_pos,
+                                          i_t* __restrict__ row_ind_out,
+                                          f_t* __restrict__ val_out)
+{
+  i_t row = blockIdx.x;
+  if (row >= n_rows) return;
+
+  i_t row_start = row_ptr[row];
+  i_t row_end   = row_ptr[row + 1];
+
+  for (i_t idx = threadIdx.x + row_start; idx < row_end; idx += blockDim.x) {
+    i_t k   = idx;
+    i_t col = col_ind[k];
+
+    i_t p          = atomicAdd(&next_pos[col], 1);
+    row_ind_out[p] = row;
+    val_out[p]     = csr_val[k];
+  }
+}
+
+// CSR to CSC transpose with sorted row indices within each column
+template <typename i_t, typename f_t>
+void csr_to_csc_transpose(const i_t* csr_offsets,
+                          const i_t* csr_indices,
+                          const f_t* csr_values,
+                          i_t* csc_offsets,
+                          i_t* csc_indices,
+                          f_t* csc_values,
+                          i_t n_rows,
+                          i_t n_cols,
+                          i_t nnz,
+                          const raft::handle_t* handle_ptr)
+{
+  auto stream = handle_ptr->get_stream();
+
+  // Count entries per column via histogram
+  rmm::device_uvector<i_t> col_counts(n_cols, stream);
+  thrust::fill(handle_ptr->get_thrust_policy(), col_counts.begin(), col_counts.end(), 0);
+
+  thrust::for_each(
+    handle_ptr->get_thrust_policy(),
+    csr_indices,
+    csr_indices + nnz,
+    [counts = col_counts.data()] __device__(i_t col) { atomicAdd(&counts[col], 1); });
+
+  // Exclusive scan to get column pointers
+  thrust::exclusive_scan(
+    handle_ptr->get_thrust_policy(), col_counts.begin(), col_counts.end(), csc_offsets);
+
+  // Set final entry
+  i_t last_count = col_counts.element(n_cols - 1, stream);
+  i_t last_ptr;
+  raft::copy(&last_ptr, csc_offsets + (n_cols - 1), 1, stream);
+  handle_ptr->sync_stream();
+  i_t total_nnz = last_ptr + last_count;
+  raft::copy(csc_offsets + n_cols, &total_nnz, 1, stream);
+
+  // Scatter values
+  rmm::device_uvector<i_t> next_pos(n_cols, stream);
+  raft::copy(next_pos.data(), csc_offsets, n_cols, stream);
+
+  csr_to_csc_scatter_kernel<i_t, f_t><<<n_rows, 256, 0, stream>>>(
+    n_rows, csr_offsets, csr_indices, csr_values, next_pos.data(), csc_indices, csc_values);
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+
+  // Sort row indices
+  rmm::device_uvector<i_t> row_ind_sorted(nnz, stream);
+  rmm::device_uvector<f_t> val_sorted(nnz, stream);
+
+  size_t temp_storage_bytes = 0;
+  cub::DeviceSegmentedSort::SortPairs(nullptr,
+                                      temp_storage_bytes,
+                                      csc_indices,
+                                      row_ind_sorted.data(),
+                                      csc_values,
+                                      val_sorted.data(),
+                                      nnz,
+                                      n_cols,
+                                      csc_offsets,
+                                      csc_offsets + 1,
+                                      stream);
+
+  rmm::device_uvector<std::byte> temp_storage(temp_storage_bytes, stream);
+  cub::DeviceSegmentedSort::SortPairs(temp_storage.data(),
+                                      temp_storage_bytes,
+                                      csc_indices,
+                                      row_ind_sorted.data(),
+                                      csc_values,
+                                      val_sorted.data(),
+                                      nnz,
+                                      n_cols,
+                                      csc_offsets,
+                                      csc_offsets + 1,
+                                      stream);
+
+  // Copy sorted results back
+  raft::copy(csc_indices, row_ind_sorted.data(), nnz, stream);
+  raft::copy(csc_values, val_sorted.data(), nnz, stream);
 }
 
 template <typename i_t, typename f_t>
@@ -311,17 +428,35 @@ void problem_t<i_t, f_t>::compute_transpose_of_problem()
     return;
   }
 
-  raft::sparse::linalg::csr_transpose(*handle_ptr,
-                                      offsets.data(),
-                                      variables.data(),
-                                      coefficients.data(),
-                                      reverse_offsets.data(),
-                                      reverse_constraints.data(),
-                                      reverse_coefficients.data(),
-                                      n_constraints,
-                                      n_variables,
-                                      nnz,
-                                      handle_ptr->get_stream());
+  check_csr_representation(
+    coefficients, offsets, variables, handle_ptr, n_variables, n_constraints);
+
+  csr_to_csc_transpose(offsets.data(),
+                       variables.data(),
+                       coefficients.data(),
+                       reverse_offsets.data(),
+                       reverse_constraints.data(),
+                       reverse_coefficients.data(),
+                       n_constraints,
+                       n_variables,
+                       nnz,
+                       handle_ptr);
+
+  check_csr_representation(reverse_coefficients,
+                           reverse_offsets,
+                           reverse_constraints,
+                           handle_ptr,
+                           n_constraints,
+                           n_variables);
+
+  cuopt_assert(check_transpose_validity(this->coefficients,
+                                        this->offsets,
+                                        this->variables,
+                                        this->reverse_coefficients,
+                                        this->reverse_offsets,
+                                        this->reverse_constraints,
+                                        handle_ptr),
+               "cuSparse returned an invalid transpose");
 }
 
 template <typename i_t, typename f_t>
@@ -380,7 +515,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                                           this->reverse_offsets,
                                           this->reverse_constraints,
                                           handle_ptr),
-                 "Tranpose invalide");
+                 "Invalid transpose");
   }
 
   // Check variable bounds are set and with the correct size
@@ -412,20 +547,21 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
   cuopt_expects(thrust::all_of(handle_ptr->get_thrust_policy(),
                                thrust::make_counting_iterator<i_t>(0),
                                thrust::make_counting_iterator<i_t>(n_variables),
-                               [vars_bnd = make_span(variable_bounds)] __device__(i_t idx) {
+                               [vars_bnd = make_span(variable_bounds)] __device__(i_t idx) -> bool {
                                  auto bounds = vars_bnd[idx];
                                  return get_lower(bounds) <= get_upper(bounds);
                                }),
                 error_type_t::ValidationError,
                 "Variable bounds are invalid");
   cuopt_expects(
-    thrust::all_of(handle_ptr->get_thrust_policy(),
-                   thrust::make_counting_iterator<i_t>(0),
-                   thrust::make_counting_iterator<i_t>(n_constraints),
-                   [constraint_lower_bounds = constraint_lower_bounds.data(),
-                    constraint_upper_bounds = constraint_upper_bounds.data()] __device__(i_t idx) {
-                     return constraint_lower_bounds[idx] <= constraint_upper_bounds[idx];
-                   }),
+    thrust::all_of(
+      handle_ptr->get_thrust_policy(),
+      thrust::make_counting_iterator<i_t>(0),
+      thrust::make_counting_iterator<i_t>(n_constraints),
+      [constraint_lower_bounds = constraint_lower_bounds.data(),
+       constraint_upper_bounds = constraint_upper_bounds.data()] __device__(i_t idx) -> bool {
+        return constraint_lower_bounds[idx] <= constraint_upper_bounds[idx];
+      }),
     error_type_t::ValidationError,
     "Constraints bounds are invalid");
 
@@ -447,23 +583,21 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
     cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
                                 integer_indices.cbegin(),
                                 integer_indices.cend(),
-                                [types = variable_types.data()] __device__(i_t idx) {
+                                [types = variable_types.data()] __device__(i_t idx) -> bool {
                                   return types[idx] == var_t::INTEGER;
                                 }),
                  "The integer indices table contains references to non-integer variables.");
     cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
                                 binary_indices.cbegin(),
                                 binary_indices.cend(),
-                                [bin_table = is_binary_variable.data()] __device__(i_t idx) {
-                                  return bin_table[idx];
-                                }),
+                                [bin_table = is_binary_variable.data()] __device__(
+                                  i_t idx) -> bool { return bin_table[idx]; }),
                  "The binary indices table contains references to non-binary variables.");
     cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
                                 nonbinary_indices.cbegin(),
                                 nonbinary_indices.cend(),
-                                [bin_table = is_binary_variable.data()] __device__(i_t idx) {
-                                  return !bin_table[idx];
-                                }),
+                                [bin_table = is_binary_variable.data()] __device__(
+                                  i_t idx) -> bool { return !bin_table[idx]; }),
                  "The non-binary indices table contains references to binary variables.");
     cuopt_assert(
       thrust::all_of(
@@ -472,7 +606,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
         thrust::make_counting_iterator<i_t>(n_variables),
         [types     = variable_types.data(),
          bin_table = is_binary_variable.data(),
-         pb_view   = view()] __device__(i_t idx) {
+         pb_view   = view()] __device__(i_t idx) -> bool {
           // ensure the binary variable tables are correct
           if (bin_table[idx]) {
             if (!thrust::binary_search(
@@ -505,7 +639,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
         thrust::make_counting_iterator<i_t>(n_variables),
         [types     = variable_types.data(),
          bin_table = is_binary_variable.data(),
-         pb_view   = view()] __device__(i_t idx) {
+         pb_view   = view()] __device__(i_t idx) -> bool {
           // ensure the binary variable tables are correct
           if (bin_table[idx]) {
             if (!thrust::binary_search(
@@ -538,7 +672,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
         thrust::make_counting_iterator<i_t>(n_variables),
         [types     = variable_types.data(),
          bin_table = is_binary_variable.data(),
-         pb_view   = view()] __device__(i_t idx) {
+         pb_view   = view()] __device__(i_t idx) -> bool {
           // ensure the binary variable tables are correct
           if (bin_table[idx]) {
             if (!thrust::binary_search(
@@ -564,23 +698,24 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
           return true;
         }),
       "Some variables aren't referenced in the appropriate indice tables");
-    cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
-                                thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(0),
-                                                          is_binary_variable.cbegin()),
-                                thrust::make_zip_iterator(
-                                  thrust::make_counting_iterator<i_t>(is_binary_variable.size()),
+    cuopt_assert(
+      thrust::all_of(
+        handle_ptr->get_thrust_policy(),
+        thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(0),
+                                  is_binary_variable.cbegin()),
+        thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(is_binary_variable.size()),
                                   is_binary_variable.cend()),
-                                [types    = variable_types.data(),
-                                 vars_bnd = make_span(variable_bounds),
-                                 v = view()] __device__(const thrust::tuple<int, int> tuple) {
-                                  i_t idx     = thrust::get<0>(tuple);
-                                  i_t pred    = thrust::get<1>(tuple);
-                                  auto bounds = vars_bnd[idx];
-                                  return pred == (types[idx] != var_t::CONTINUOUS &&
-                                                  v.integer_equal(get_lower(bounds), 0.) &&
-                                                  v.integer_equal(get_upper(bounds), 1.));
-                                }),
-                 "The binary variable table is incorrect.");
+        [types    = variable_types.data(),
+         vars_bnd = make_span(variable_bounds),
+         v        = view()] __device__(const thrust::tuple<int, int> tuple) -> bool {
+          i_t idx     = thrust::get<0>(tuple);
+          i_t pred    = thrust::get<1>(tuple);
+          auto bounds = vars_bnd[idx];
+          return pred ==
+                 (types[idx] != var_t::CONTINUOUS && v.integer_equal(get_lower(bounds), 0.) &&
+                  v.integer_equal(get_upper(bounds), 1.));
+        }),
+      "The binary variable table is incorrect.");
     if (!empty) {
       cuopt_assert(is_binary_pb == (n_variables == thrust::count(handle_ptr->get_thrust_policy(),
                                                                  is_binary_variable.begin(),
@@ -1077,7 +1212,7 @@ void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_i
   objective_is_integral = thrust::all_of(handle_ptr->get_thrust_policy(),
                                          thrust::make_counting_iterator(0),
                                          thrust::make_counting_iterator(n_variables),
-                                         [v = view()] __device__(i_t var_idx) {
+                                         [v = view()] __device__(i_t var_idx) -> bool {
                                            if (v.objective_coefficients[var_idx] == 0) return true;
                                            return v.is_integer(v.objective_coefficients[var_idx]) &&
                                                   (v.variable_types[var_idx] == var_t::INTEGER ||

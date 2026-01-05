@@ -5,7 +5,7 @@
 
 function(find_and_configure_gtest)
     include(${rapids-cmake-dir}/cpm/gtest.cmake)
-    rapids_cpm_gtest()
+    rapids_cpm_gtest(BUILD_STATIC)
 endfunction()
 
 find_and_configure_gtest()

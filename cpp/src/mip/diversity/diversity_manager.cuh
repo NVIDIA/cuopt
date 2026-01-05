@@ -71,6 +71,7 @@ class diversity_manager_t {
                             f_t objective);
 
   mip_solver_context_t<i_t, f_t>& context;
+  dual_simplex::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
   problem_t<i_t, f_t>* problem_ptr;
   diversity_config_t diversity_config;
   population_t<i_t, f_t> population;
@@ -94,7 +95,7 @@ class diversity_manager_t {
   // mutex for the simplex solution update
   std::mutex relaxed_solution_mutex;
   // atomic for signalling pdlp to stop
-  volatile int global_concurrent_halt{0};
+  std::atomic<int> global_concurrent_halt{0};
 
   rins_t<i_t, f_t> rins;
 

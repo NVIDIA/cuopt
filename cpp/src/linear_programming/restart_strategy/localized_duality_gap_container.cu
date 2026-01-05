@@ -28,13 +28,13 @@ localized_duality_gap_container_t<i_t, f_t>::localized_duality_gap_container_t(
     primal_solution_{static_cast<size_t>(primal_size),
                      handle_ptr->get_stream()},                                // Needed even in kkt
     dual_solution_{static_cast<size_t>(dual_size), handle_ptr->get_stream()},  // Needed even in kkt
-    primal_gradient_{is_KKT_restart<i_t, f_t>() ? 0 : static_cast<size_t>(primal_size),
+    primal_gradient_{!is_trust_region_restart<i_t, f_t>() ? 0 : static_cast<size_t>(primal_size),
                      handle_ptr->get_stream()},
-    dual_gradient_{is_KKT_restart<i_t, f_t>() ? 0 : static_cast<size_t>(dual_size),
+    dual_gradient_{!is_trust_region_restart<i_t, f_t>() ? 0 : static_cast<size_t>(dual_size),
                    handle_ptr->get_stream()},
-    primal_solution_tr_{is_KKT_restart<i_t, f_t>() ? 0 : static_cast<size_t>(primal_size),
+    primal_solution_tr_{!is_trust_region_restart<i_t, f_t>() ? 0 : static_cast<size_t>(primal_size),
                         handle_ptr->get_stream()},
-    dual_solution_tr_{is_KKT_restart<i_t, f_t>() ? 0 : static_cast<size_t>(dual_size),
+    dual_solution_tr_{!is_trust_region_restart<i_t, f_t>() ? 0 : static_cast<size_t>(dual_size),
                       handle_ptr->get_stream()}
 {
   RAFT_CUDA_TRY(cudaMemsetAsync(primal_solution_.data(),

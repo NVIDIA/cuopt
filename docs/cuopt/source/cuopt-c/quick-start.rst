@@ -19,10 +19,10 @@ This wheel is a Python wrapper around the C++ library and eases installation and
     pip uninstall cuopt-thin-client
 
     # CUDA 13
-    pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu13==25.12.*'
+    pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu13==26.2.*'
 
     # CUDA 12
-    pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu12==25.12.*'
+    pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu12==26.2.*'
 
 
 .. note::
@@ -32,11 +32,11 @@ This wheel is a Python wrapper around the C++ library and eases installation and
 
     # CUDA 13
     pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-      'libcuopt-cu13==25.12.*'
+      'libcuopt-cu13==26.2.*'
 
     # CUDA 12
     pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-      'libcuopt-cu12==25.12.*'
+      'libcuopt-cu12==26.2.*'
 
 Conda
 -----
@@ -49,10 +49,10 @@ NVIDIA cuOpt can be installed with Conda (via `miniforge <https://github.com/con
     conda remove cuopt-thin-client
 
     # CUDA 13
-    conda install -c rapidsai -c conda-forge -c nvidia libcuopt=25.12.* cuda-version=25.12.*
+    conda install -c rapidsai -c conda-forge -c nvidia libcuopt=26.02.* cuda-version=26.02.*
 
     # CUDA 12
-    conda install -c rapidsai -c conda-forge -c nvidia libcuopt=25.12.* cuda-version=25.12.*
+    conda install -c rapidsai -c conda-forge -c nvidia libcuopt=26.02.* cuda-version=26.02.*
 
 Please visit examples under each section to learn how to use the cuOpt C API.
 

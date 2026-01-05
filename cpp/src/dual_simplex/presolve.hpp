@@ -22,6 +22,7 @@ struct lp_problem_t {
       num_rows(m),
       num_cols(n),
       objective(n),
+      Q(0, 0, 0),
       A(m, n, nz),
       rhs(m),
       lower(n),
@@ -33,6 +34,7 @@ struct lp_problem_t {
   i_t num_rows;
   i_t num_cols;
   std::vector<f_t> objective;
+  csr_matrix_t<i_t, f_t> Q;
   csc_matrix_t<i_t, f_t> A;
   std::vector<f_t> rhs;
   std::vector<f_t> lower;
@@ -148,13 +150,13 @@ void crush_primal_solution_with_slack(const user_problem_t<i_t, f_t>& user_probl
                                       std::vector<f_t>& solution);
 
 template <typename i_t, typename f_t>
-void crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
-                         const lp_problem_t<i_t, f_t>& problem,
-                         const std::vector<i_t>& new_slacks,
-                         const std::vector<f_t>& user_y,
-                         const std::vector<f_t>& user_z,
-                         std::vector<f_t>& y,
-                         std::vector<f_t>& z);
+f_t crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
+                        const lp_problem_t<i_t, f_t>& problem,
+                        const std::vector<i_t>& new_slacks,
+                        const std::vector<f_t>& user_y,
+                        const std::vector<f_t>& user_z,
+                        std::vector<f_t>& y,
+                        std::vector<f_t>& z);
 
 template <typename i_t, typename f_t>
 void uncrush_primal_solution(const user_problem_t<i_t, f_t>& user_problem,
@@ -179,14 +181,5 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
                       std::vector<f_t>& uncrushed_x,
                       std::vector<f_t>& uncrushed_y,
                       std::vector<f_t>& uncrushed_z);
-
-// For pure LP bounds strengthening, var_types should be defaulted (i.e. left empty)
-template <typename i_t, typename f_t>
-bool bound_strengthening(const std::vector<char>& row_sense,
-                         const simplex_solver_settings_t<i_t, f_t>& settings,
-                         lp_problem_t<i_t, f_t>& problem,
-                         const csc_matrix_t<i_t, f_t>& Arow,
-                         const std::vector<variable_type_t>& var_types = {},
-                         const std::vector<bool>& bounds_changed       = {});
 
 }  // namespace cuopt::linear_programming::dual_simplex

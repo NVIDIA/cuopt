@@ -29,6 +29,7 @@ struct user_problem_t {
     : handle_ptr(handle_ptr_), A(1, 1, 1), obj_constant(0.0), obj_scale(1.0)
   {
   }
+
   raft::handle_t const* handle_ptr;
   i_t num_rows;
   i_t num_cols;
@@ -47,6 +48,9 @@ struct user_problem_t {
   f_t obj_constant;
   f_t obj_scale;  // 1.0 for min, -1.0 for max
   std::vector<variable_type_t> var_types;
+  std::vector<i_t> Q_offsets;
+  std::vector<i_t> Q_indices;
+  std::vector<f_t> Q_values;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

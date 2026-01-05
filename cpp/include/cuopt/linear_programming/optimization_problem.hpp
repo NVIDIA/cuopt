@@ -186,6 +186,48 @@ class optimization_problem_t {
    * @param objective_offset Objective offset value.
    */
   void set_objective_offset(f_t objective_offset);
+
+  /**
+   * @brief Set the quadratic objective matrix (Q) in CSR format for QPS files.
+   *
+   * @note This is used for quadratic programming problems where the objective
+   * function contains quadratic terms: x^T * Q * x + c^T * x
+   *
+   * @param[in] Q_values Values of the CSR representation of the quadratic objective matrix
+   * @param size_values Size of the Q_values array
+   * @param[in] Q_indices Indices of the CSR representation of the quadratic objective matrix
+   * @param size_indices Size of the Q_indices array
+   * @param[in] Q_offsets Offsets of the CSR representation of the quadratic objective matrix
+   * @param size_offsets Size of the Q_offsets array
+   * @param validate_positive_semi_definite Whether to validate if the matrix is positive semi
+   * definite
+   */
+  void set_quadratic_objective_matrix(const f_t* Q_values,
+                                      i_t size_values,
+                                      const i_t* Q_indices,
+                                      i_t size_indices,
+                                      const i_t* Q_offsets,
+                                      i_t size_offsets,
+                                      bool validate_positive_semi_definite = false);
+
+  /**
+   * @brief Get the quadratic objective matrix offsets
+   * @return const reference to the Q_offsets vector
+   */
+  const std::vector<i_t>& get_quadratic_objective_offsets() const;
+
+  /**
+   * @brief Get the quadratic objective matrix indices
+   * @return const reference to the Q_indices vector
+   */
+  const std::vector<i_t>& get_quadratic_objective_indices() const;
+
+  /**
+   * @brief Get the quadratic objective matrix values
+   * @return const reference to the Q_values vector
+   */
+  const std::vector<f_t>& get_quadratic_objective_values() const;
+
   /**
    * @brief Set the variables (x) lower bounds.
    * @note Setting before calling the solver is optional, default value for all
@@ -341,6 +383,8 @@ class optimization_problem_t {
   const std::vector<std::string>& get_variable_names() const;
   const std::vector<std::string>& get_row_names() const;
 
+  bool has_quadratic_objective() const;
+
   /**
    * @brief Gets the device-side view (with raw pointers), for ease of access
    *        inside cuda kernels
@@ -382,6 +426,12 @@ class optimization_problem_t {
   f_t objective_scaling_factor_{1};
   /** offset of the objective function */
   f_t objective_offset_{0};
+
+  /** Quadratic objective matrix in CSR format (for (1/2) * x^T * Q * x term) */
+  std::vector<i_t> Q_offsets_;
+  std::vector<i_t> Q_indices_;
+  std::vector<f_t> Q_values_;
+
   /** lower bounds of the variables (primal part) */
   rmm::device_uvector<f_t> variable_lower_bounds_;
   /** upper bounds of the variables (primal part) */

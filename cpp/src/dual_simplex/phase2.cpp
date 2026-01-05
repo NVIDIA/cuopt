@@ -2235,6 +2235,8 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   phase2::bound_info(lp, settings);
   if (initialize_basis) {
     std::vector<i_t> superbasic_list;
+    nonbasic_list.clear();
+    nonbasic_list.reserve(n - m);
     get_basis_from_vstatus(m, vstatus, basic_list, nonbasic_list, superbasic_list);
     assert(superbasic_list.size() == 0);
     assert(nonbasic_list.size() == n - m);
@@ -2978,6 +2980,10 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                           dense_delta_z,
                           100.0 * dense_delta_z / (sparse_delta_z + dense_delta_z));
       ft.print_stats();
+    }
+    if (settings.inside_mip && settings.concurrent_halt != nullptr) {
+      settings.log.debug("Setting concurrent halt in Dual Simplex Phase 2\n");
+      *settings.concurrent_halt = 1;
     }
   }
   return status;

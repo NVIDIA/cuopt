@@ -7,6 +7,7 @@
 
 #include <dual_simplex/presolve.hpp>
 
+#include <dual_simplex/bounds_strengthening.hpp>
 #include <dual_simplex/folding.hpp>
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/solve.hpp>
@@ -17,272 +18,6 @@
 #include <numeric>
 
 namespace cuopt::linear_programming::dual_simplex {
-
-template <typename f_t>
-static inline f_t update_lb(f_t curr_lb, f_t coeff, f_t delta_min_act, f_t delta_max_act)
-{
-  auto comp_bnd = (coeff < 0.) ? delta_min_act / coeff : delta_max_act / coeff;
-  return std::max(curr_lb, comp_bnd);
-}
-
-template <typename f_t>
-static inline f_t update_ub(f_t curr_ub, f_t coeff, f_t delta_min_act, f_t delta_max_act)
-{
-  auto comp_bnd = (coeff < 0.) ? delta_max_act / coeff : delta_min_act / coeff;
-  return std::min(curr_ub, comp_bnd);
-}
-
-template <typename i_t, typename f_t>
-static inline bool check_infeasibility(f_t min_a, f_t max_a, f_t cnst_lb, f_t cnst_ub, f_t eps)
-{
-  return (min_a > cnst_ub + eps) || (max_a < cnst_lb - eps);
-}
-
-#define DEBUG_BOUND_STRENGTHENING 0
-
-template <typename i_t, typename f_t>
-void print_bounds_stats(const std::vector<f_t>& lower,
-                        const std::vector<f_t>& upper,
-                        const simplex_solver_settings_t<i_t, f_t>& settings,
-                        const std::string msg)
-{
-#if DEBUG_BOUND_STRENGTHENING
-  f_t lb_norm = 0.0;
-  f_t ub_norm = 0.0;
-
-  i_t sz = lower.size();
-  for (i_t i = 0; i < sz; ++i) {
-    if (std::isfinite(lower[i])) { lb_norm += abs(lower[i]); }
-    if (std::isfinite(upper[i])) { ub_norm += abs(upper[i]); }
-  }
-  settings.log.printf("%s :: lb norm %e, ub norm %e\n", msg.c_str(), lb_norm, ub_norm);
-#endif
-}
-
-template <typename i_t, typename f_t>
-bool bound_strengthening(const std::vector<char>& row_sense,
-                         const simplex_solver_settings_t<i_t, f_t>& settings,
-                         lp_problem_t<i_t, f_t>& problem,
-                         const csc_matrix_t<i_t, f_t>& Arow,
-                         const std::vector<variable_type_t>& var_types,
-                         const std::vector<bool>& bounds_changed)
-{
-  const i_t m = problem.num_rows;
-  const i_t n = problem.num_cols;
-
-  std::vector<f_t> delta_min_activity(m);
-  std::vector<f_t> delta_max_activity(m);
-  std::vector<f_t> constraint_lb(m);
-  std::vector<f_t> constraint_ub(m);
-
-  // FIXME:: Instead of initializing constraint_changed to true, we can only look
-  // at the constraints corresponding to branched variable in branch and bound
-  // This is because, the parent LP already checked for feasibility of the constraints
-  // without the branched variable bounds
-  std::vector<bool> constraint_changed(m, true);
-  std::vector<bool> variable_changed(n, false);
-  std::vector<bool> constraint_changed_next(m, false);
-
-  if (false && !bounds_changed.empty()) {
-    std::fill(constraint_changed.begin(), constraint_changed.end(), false);
-    for (i_t i = 0; i < n; ++i) {
-      if (bounds_changed[i]) {
-        const i_t row_start = problem.A.col_start[i];
-        const i_t row_end   = problem.A.col_start[i + 1];
-        for (i_t p = row_start; p < row_end; ++p) {
-          const i_t j           = problem.A.i[p];
-          constraint_changed[j] = true;
-        }
-      }
-    }
-  }
-
-  const bool is_row_sense_empty = row_sense.empty();
-  if (is_row_sense_empty) {
-    std::copy(problem.rhs.begin(), problem.rhs.end(), constraint_lb.begin());
-    std::copy(problem.rhs.begin(), problem.rhs.end(), constraint_ub.begin());
-  } else {
-    //  Set the constraint bounds
-    for (i_t i = 0; i < m; ++i) {
-      if (row_sense[i] == 'E') {
-        constraint_lb[i] = problem.rhs[i];
-        constraint_ub[i] = problem.rhs[i];
-      } else if (row_sense[i] == 'L') {
-        constraint_ub[i] = problem.rhs[i];
-        constraint_lb[i] = -inf;
-      } else {
-        constraint_lb[i] = problem.rhs[i];
-        constraint_ub[i] = inf;
-      }
-    }
-  }
-
-  std::vector<f_t> lower = problem.lower;
-  std::vector<f_t> upper = problem.upper;
-  print_bounds_stats(lower, upper, settings, "Initial bounds");
-
-  i_t iter             = 0;
-  const i_t iter_limit = 10;
-  while (iter < iter_limit) {
-    for (i_t i = 0; i < m; ++i) {
-      if (!constraint_changed[i]) { continue; }
-      const i_t row_start = Arow.col_start[i];
-      const i_t row_end   = Arow.col_start[i + 1];
-
-      f_t min_a = 0.0;
-      f_t max_a = 0.0;
-      for (i_t p = row_start; p < row_end; ++p) {
-        const i_t j    = Arow.i[p];
-        const f_t a_ij = Arow.x[p];
-
-        variable_changed[j] = true;
-        if (a_ij > 0) {
-          min_a += a_ij * lower[j];
-          max_a += a_ij * upper[j];
-        } else if (a_ij < 0) {
-          min_a += a_ij * upper[j];
-          max_a += a_ij * lower[j];
-        }
-        if (upper[j] == inf && a_ij > 0) { max_a = inf; }
-        if (lower[j] == -inf && a_ij < 0) { max_a = inf; }
-
-        if (lower[j] == -inf && a_ij > 0) { min_a = -inf; }
-        if (upper[j] == inf && a_ij < 0) { min_a = -inf; }
-      }
-
-      f_t cnst_lb = constraint_lb[i];
-      f_t cnst_ub = constraint_ub[i];
-      bool is_infeasible =
-        check_infeasibility<i_t, f_t>(min_a, max_a, cnst_lb, cnst_ub, settings.primal_tol);
-      if (is_infeasible) {
-        settings.log.printf(
-          "Iter:: %d, Infeasible constraint %d, cnst_lb %e, cnst_ub %e, min_a %e, max_a %e\n",
-          iter,
-          i,
-          cnst_lb,
-          cnst_ub,
-          min_a,
-          max_a);
-        return false;
-      }
-
-      delta_min_activity[i] = cnst_ub - min_a;
-      delta_max_activity[i] = cnst_lb - max_a;
-    }
-
-    i_t num_bounds_changed = 0;
-
-    for (i_t k = 0; k < n; ++k) {
-      if (!variable_changed[k]) { continue; }
-      f_t old_lb = lower[k];
-      f_t old_ub = upper[k];
-
-      f_t new_lb = old_lb;
-      f_t new_ub = old_ub;
-
-      const i_t row_start = problem.A.col_start[k];
-      const i_t row_end   = problem.A.col_start[k + 1];
-      for (i_t p = row_start; p < row_end; ++p) {
-        const i_t i = problem.A.i[p];
-
-        if (!constraint_changed[i]) { continue; }
-        const f_t a_ik = problem.A.x[p];
-
-        f_t delta_min_act = delta_min_activity[i];
-        f_t delta_max_act = delta_max_activity[i];
-
-        delta_min_act += (a_ik < 0) ? a_ik * old_ub : a_ik * old_lb;
-        delta_max_act += (a_ik > 0) ? a_ik * old_ub : a_ik * old_lb;
-
-        new_lb = std::max(new_lb, update_lb(old_lb, a_ik, delta_min_act, delta_max_act));
-        new_ub = std::min(new_ub, update_ub(old_ub, a_ik, delta_min_act, delta_max_act));
-      }
-
-      // Integer rounding
-      if (!var_types.empty() &&
-          (var_types[k] == variable_type_t::INTEGER || var_types[k] == variable_type_t::BINARY)) {
-        new_lb = std::ceil(new_lb - settings.integer_tol);
-        new_ub = std::floor(new_ub + settings.integer_tol);
-      }
-
-      bool lb_updated = abs(new_lb - old_lb) > 1e3 * settings.primal_tol;
-      bool ub_updated = abs(new_ub - old_ub) > 1e3 * settings.primal_tol;
-
-      new_lb = std::max(new_lb, problem.lower[k]);
-      new_ub = std::min(new_ub, problem.upper[k]);
-
-      if (new_lb > new_ub + 1e-6) {
-        settings.log.printf(
-          "Iter:: %d, Infeasible variable after update %d, %e > %e\n", iter, k, new_lb, new_ub);
-        return false;
-      }
-      if (new_lb != old_lb || new_ub != old_ub) {
-        for (i_t p = row_start; p < row_end; ++p) {
-          const i_t i                = problem.A.i[p];
-          constraint_changed_next[i] = true;
-        }
-      }
-
-      lower[k] = std::min(new_lb, new_ub);
-      upper[k] = std::max(new_lb, new_ub);
-
-      bool bounds_changed = lb_updated || ub_updated;
-      if (bounds_changed) { num_bounds_changed++; }
-    }
-
-    if (num_bounds_changed == 0) { break; }
-
-    std::swap(constraint_changed, constraint_changed_next);
-    std::fill(constraint_changed_next.begin(), constraint_changed_next.end(), false);
-    std::fill(variable_changed.begin(), variable_changed.end(), false);
-
-    iter++;
-  }
-
-  // settings.log.printf("Total strengthened variables %d\n", total_strengthened_variables);
-
-#if DEBUG_BOUND_STRENGTHENING
-  f_t lb_change      = 0.0;
-  f_t ub_change      = 0.0;
-  int num_lb_changed = 0;
-  int num_ub_changed = 0;
-
-  for (i_t i = 0; i < n; ++i) {
-    if (lower[i] > problem.lower[i] + settings.primal_tol ||
-        (!std::isfinite(problem.lower[i]) && std::isfinite(lower[i]))) {
-      num_lb_changed++;
-      lb_change +=
-        std::isfinite(problem.lower[i])
-          ? (lower[i] - problem.lower[i]) / (1e-6 + std::max(abs(lower[i]), abs(problem.lower[i])))
-          : 1.0;
-    }
-    if (upper[i] < problem.upper[i] - settings.primal_tol ||
-        (!std::isfinite(problem.upper[i]) && std::isfinite(upper[i]))) {
-      num_ub_changed++;
-      ub_change +=
-        std::isfinite(problem.upper[i])
-          ? (problem.upper[i] - upper[i]) / (1e-6 + std::max(abs(problem.upper[i]), abs(upper[i])))
-          : 1.0;
-    }
-  }
-
-  if (num_lb_changed > 0 || num_ub_changed > 0) {
-    settings.log.printf(
-      "lb change %e, ub change %e, num lb changed %d, num ub changed %d, iter %d\n",
-      100 * lb_change / std::max(1, num_lb_changed),
-      100 * ub_change / std::max(1, num_ub_changed),
-      num_lb_changed,
-      num_ub_changed,
-      iter);
-  }
-  print_bounds_stats(lower, upper, settings, "Final bounds");
-#endif
-
-  problem.lower = lower;
-  problem.upper = upper;
-
-  return true;
-}
 
 template <typename i_t, typename f_t>
 i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
@@ -301,16 +36,30 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
   presolve_info.removed_variables.reserve(num_empty_cols);
   presolve_info.removed_values.reserve(num_empty_cols);
   presolve_info.removed_reduced_costs.reserve(num_empty_cols);
+
+  // Check to see if a variable participates in a quadratic objective
+  std::vector<bool> has_quadratic_term(problem.num_cols, false);
+
+  if (problem.Q.n > 0) {
+    for (i_t j = 0; j < problem.num_cols; ++j) {
+      const i_t row_start = problem.Q.row_start[j];
+      const i_t row_end   = problem.Q.row_start[j + 1];
+      if (row_end - row_start == 0) { continue; }
+      // Q is symmetric, so its sufficient to check only the row size
+      has_quadratic_term[j] = true;
+    }
+  }
+
   std::vector<i_t> col_marker(problem.num_cols);
   i_t new_cols = 0;
   for (i_t j = 0; j < problem.num_cols; ++j) {
     bool remove_var = false;
     if ((problem.A.col_start[j + 1] - problem.A.col_start[j]) == 0) {
-      if (problem.objective[j] >= 0 && problem.lower[j] > -inf) {
+      if (problem.objective[j] >= 0 && problem.lower[j] > -inf && !has_quadratic_term[j]) {
         presolve_info.removed_values.push_back(problem.lower[j]);
         problem.obj_constant += problem.objective[j] * problem.lower[j];
         remove_var = true;
-      } else if (problem.objective[j] <= 0 && problem.upper[j] < inf) {
+      } else if (problem.objective[j] <= 0 && problem.upper[j] < inf && !has_quadratic_term[j]) {
         presolve_info.removed_values.push_back(problem.upper[j]);
         problem.obj_constant += problem.objective[j] * problem.upper[j];
         remove_var = true;
@@ -335,6 +84,7 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
   std::vector<f_t> lower(new_cols, -INFINITY);
   std::vector<f_t> upper(new_cols, INFINITY);
 
+  std::vector<i_t> col_old_to_new(problem.num_cols, -1);
   int new_j = 0;
   for (i_t j = 0; j < problem.num_cols; ++j) {
     if (!col_marker[j]) {
@@ -342,11 +92,36 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
       lower[new_j]     = problem.lower[j];
       upper[new_j]     = problem.upper[j];
       presolve_info.remaining_variables.push_back(j);
+      col_old_to_new[j] = new_j;
       new_j++;
     } else {
       num_empty_cols--;
     }
   }
+  if (problem.Q.n > 0) {
+    // There would not have been any non zero entry corresponding to the removed variables in the Q
+    // matrix So we can just copy the row_start array and change the column indices to the new
+    // indices
+    for (i_t j = 0; j < problem.num_cols; ++j) {
+      i_t new_j = col_old_to_new[j];
+      assert(new_j <= j);
+      if (new_j != -1) { problem.Q.row_start[new_j] = problem.Q.row_start[j]; }
+    }
+    problem.Q.row_start[new_cols] = problem.Q.row_start[problem.num_cols];
+    problem.Q.row_start.resize(new_cols + 1);
+
+    i_t Q_nnz = problem.Q.j.size();
+    for (i_t jj = 0; jj < Q_nnz; ++jj) {
+      i_t old_col = problem.Q.j[jj];
+      i_t new_col = col_old_to_new[old_col];
+      assert(new_col != -1);
+      problem.Q.j[jj] = new_col;
+    }
+    problem.Q.m = new_cols;
+    problem.Q.n = new_cols;
+    problem.Q.check_matrix("After removing empty columns");
+  }
+
   problem.objective = objective;
   problem.lower     = lower;
   problem.upper     = upper;
@@ -361,7 +136,7 @@ i_t remove_rows(lp_problem_t<i_t, f_t>& problem,
                 std::vector<i_t>& row_marker,
                 bool error_on_nonzero_rhs)
 {
-  constexpr bool verbose = true;
+  constexpr bool verbose = false;
   if (verbose) { printf("Removing rows %d %ld\n", Arow.m, row_marker.size()); }
   csr_matrix_t<i_t, f_t> Aout(0, 0, 0);
   Arow.remove_rows(row_marker, Aout);
@@ -389,6 +164,7 @@ i_t remove_rows(lp_problem_t<i_t, f_t>& problem,
   Aout.to_compressed_col(problem.A);
   assert(problem.A.m == new_rows);
   problem.num_rows = problem.A.m;
+  // No need to clean up the Q matrix since we are not removing any columns
   return 0;
 }
 
@@ -489,7 +265,9 @@ i_t convert_less_than_to_equal(const user_problem_t<i_t, f_t>& user_problem,
                                std::vector<i_t>& new_slacks)
 {
   constexpr bool verbose = false;
-  if (verbose) { printf("Converting %d less than inequalities to equalities\n", less_rows); }
+  if (verbose) {
+    CUOPT_LOG_DEBUG("Converting %d less than inequalities to equalities\n", less_rows);
+  }
   // We must convert rows in the form: a_i^T x <= beta
   // into: a_i^T x + s_i = beta, s_i >= 0
 
@@ -730,13 +508,15 @@ i_t find_dependent_rows(lp_problem_t<i_t, f_t>& problem,
 
 template <typename i_t, typename f_t>
 i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
-                            std::vector<i_t>& equality_rows,
+                            const std::vector<i_t>& range_rows,
+                            const std::vector<i_t>& equality_rows,
                             std::vector<i_t>& new_slacks)
 {
-  const i_t n        = problem.num_cols;
-  const i_t m        = problem.num_rows;
-  const i_t num_cols = n + equality_rows.size();
-  const i_t nnz      = problem.A.col_start[n] + equality_rows.size();
+  const i_t n                   = problem.num_cols;
+  const i_t m                   = problem.num_rows;
+  const i_t num_artificial_vars = equality_rows.size() - range_rows.size();
+  const i_t num_cols            = n + num_artificial_vars;
+  i_t nnz                       = problem.A.col_start[n] + num_artificial_vars;
   problem.A.col_start.resize(num_cols + 1);
   problem.A.i.resize(nnz);
   problem.A.x.resize(nnz);
@@ -744,9 +524,15 @@ i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
   problem.upper.resize(num_cols);
   problem.objective.resize(num_cols);
 
+  std::vector<bool> is_range_row(problem.num_rows, false);
+  for (i_t i : range_rows) {
+    is_range_row[i] = true;
+  }
+
   i_t p = problem.A.col_start[n];
   i_t j = n;
   for (i_t i : equality_rows) {
+    if (is_range_row[i]) { continue; }
     // Add an artifical variable z to the equation a_i^T x == b
     // This now becomes a_i^T x + z == b,   0 <= z =< 0
     problem.A.col_start[j] = p;
@@ -763,7 +549,7 @@ i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
   assert(j == num_cols);
   assert(p == nnz);
   constexpr bool verbose = false;
-  if (verbose) { printf("Added %d artificial variables\n", num_cols - n); }
+  if (verbose) { printf("Added %d artificial variables\n", num_artificial_vars); }
   problem.A.n      = num_cols;
   problem.num_cols = num_cols;
   return 0;
@@ -778,10 +564,10 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
 {
   constexpr bool verbose = false;
   if (verbose) {
-    printf("Converting problem with %d rows and %d columns and %d nonzeros\n",
-           user_problem.num_rows,
-           user_problem.num_cols,
-           user_problem.A.col_start[user_problem.num_cols]);
+    settings.log.printf("Converting problem with %d rows and %d columns and %d nonzeros\n",
+                        user_problem.num_rows,
+                        user_problem.num_cols,
+                        user_problem.A.col_start[user_problem.num_cols]);
   }
 
   // Copy info from user_problem to problem
@@ -820,7 +606,9 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
       equality_rows.push_back(i);
     }
   }
-  if (verbose) { printf("Constraints < %d = %d > %d\n", less_rows, equal_rows, greater_rows); }
+  if (verbose) {
+    settings.log.printf("Constraints < %d = %d > %d\n", less_rows, equal_rows, greater_rows);
+  }
 
   if (user_problem.num_range_rows > 0) {
     if (verbose) { printf("Problem has %d range rows\n", user_problem.num_range_rows); }
@@ -832,18 +620,22 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
     convert_greater_to_less(user_problem, row_sense, problem, greater_rows, less_rows);
   }
 
-  // At this point the problem representation is in the form: A*x {<=, =} b
-  // This is the time to run bound strengthening
-  constexpr bool run_bound_strengthening = false;
-  if constexpr (run_bound_strengthening) {
+  constexpr bool run_bounds_strengthening = false;
+  if (run_bounds_strengthening) {
+    csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
+    problem.A.to_compressed_row(Arow);
+
     settings.log.printf("Running bound strengthening\n");
-    csc_matrix_t<i_t, f_t> Arow(1, 1, 1);
-    problem.A.transpose(Arow);
-    bound_strengthening(row_sense, settings, problem, Arow);
+
+    // Empty var_types means that all variables are continuous
+    bounds_strengthening_t<i_t, f_t> strengthening(problem, Arow, row_sense, {});
+    std::fill(strengthening.bounds_changed.begin(), strengthening.bounds_changed.end(), true);
+    strengthening.bounds_strengthening(problem.lower, problem.upper, settings);
   }
+
   settings.log.debug(
     "equality rows %d less rows %d columns %d\n", equal_rows, less_rows, problem.num_cols);
-  if (settings.barrier && settings.dualize != 0 &&
+  if (settings.barrier && settings.dualize != 0 && user_problem.Q_values.size() == 0 &&
       (settings.dualize == 1 ||
        (settings.dualize == -1 && less_rows > 1.2 * problem.num_cols && equal_rows < 2e4))) {
     settings.log.debug("Dualizing in presolve\n");
@@ -995,8 +787,30 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
     convert_less_than_to_equal(user_problem, row_sense, problem, less_rows, new_slacks);
   }
 
+  if (user_problem.Q_values.size() > 0) {
+    settings.log.debug("Converting problem with %d quadratic nonzeros\n",
+                       user_problem.Q_values.size());
+    settings.log.debug(
+      "problem.num_cols: %d user_problem.num_cols: %d\n", problem.num_cols, user_problem.num_cols);
+    problem.Q.m      = problem.num_cols;
+    problem.Q.n      = problem.num_cols;
+    problem.Q.nz_max = user_problem.Q_values.size();
+    problem.Q.row_start.resize(problem.num_cols + 1);
+    for (i_t j = 0; j < user_problem.num_cols; j++) {
+      problem.Q.row_start[j] = user_problem.Q_offsets[j];
+    }
+    i_t nz = user_problem.Q_offsets[user_problem.num_cols];
+    for (i_t j = user_problem.num_cols; j <= problem.num_cols; j++) {
+      problem.Q.row_start[j] = nz;
+    }
+    problem.Q.j = user_problem.Q_indices;
+    problem.Q.x = user_problem.Q_values;
+  }
+
   // Add artifical variables
-  if (!settings.barrier_presolve) { add_artifical_variables(problem, equality_rows, new_slacks); }
+  if (!settings.barrier_presolve) {
+    add_artifical_variables(problem, user_problem.range_rows, equality_rows, new_slacks);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -1015,9 +829,13 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   for (i_t j = 0; j < problem.num_cols; j++) {
     if (problem.lower[j] == -inf && problem.upper[j] < inf) { no_lower_bound++; }
   }
-#ifdef PRINT_INFO
-  settings.log.printf("%d variables with no lower bound\n", no_lower_bound);
-#endif
+
+  if (no_lower_bound > 0) {
+    settings.log.printf("%d variables with no lower bound\n", no_lower_bound);
+  }
+
+  // FIXME:: handle no lower bound case for barrier presolve
+
   // The original problem may have nonzero lower bounds
   // 0 != l_j <= x_j <= u_j
   i_t nonzero_lower_bounds = 0;
@@ -1042,17 +860,49 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     // sum_{k != j} c_k x_k + c_j (x'_j + l_j)
     //
     // so we get the constant term c_j * l_j
+
+    std::vector<bool> lower_bounds_removed(problem.num_cols, false);
     for (i_t j = 0; j < problem.num_cols; j++) {
       if (problem.lower[j] != 0.0 && problem.lower[j] > -inf) {
-        for (i_t p = problem.A.col_start[j]; p < problem.A.col_start[j + 1]; p++) {
+        lower_bounds_removed[j]               = true;
+        presolve_info.removed_lower_bounds[j] = problem.lower[j];
+      }
+    }
+
+    auto old_objective = problem.objective;
+    if (problem.Q.n > 0) {
+      for (i_t row = 0; row < problem.num_cols; row++) {
+        i_t row_start = problem.Q.row_start[row];
+        i_t row_end   = problem.Q.row_start[row + 1];
+        for (i_t p = row_start; p < row_end; p++) {
+          i_t col = problem.Q.j[p];
+          f_t qij = problem.Q.x[p];
+
+          if (lower_bounds_removed[row]) {
+            problem.objective[col] += 0.5 * qij * problem.lower[row];
+          }
+          if (lower_bounds_removed[col]) {
+            problem.objective[row] += 0.5 * qij * problem.lower[col];
+          }
+          if (lower_bounds_removed[row] && lower_bounds_removed[col]) {
+            problem.obj_constant += 0.5 * qij * problem.lower[row] * problem.lower[col];
+          }
+        }
+      }
+    }
+
+    for (i_t j = 0; j < problem.num_cols; j++) {
+      if (lower_bounds_removed[j]) {
+        i_t col_start = problem.A.col_start[j];
+        i_t col_end   = problem.A.col_start[j + 1];
+        for (i_t p = col_start; p < col_end; p++) {
           i_t i   = problem.A.i[p];
           f_t aij = problem.A.x[p];
           problem.rhs[i] -= aij * problem.lower[j];
         }
-        problem.obj_constant += problem.objective[j] * problem.lower[j];
+        problem.obj_constant += old_objective[j] * problem.lower[j];
         problem.upper[j] -= problem.lower[j];
-        presolve_info.removed_lower_bounds[j] = problem.lower[j];
-        problem.lower[j]                      = 0.0;
+        problem.lower[j] = 0.0;
       }
     }
   }
@@ -1089,11 +939,10 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   for (i_t j = 0; j < problem.num_cols; j++) {
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
-  if (settings.barrier_presolve && free_variables > 0) {
-#ifdef PRINT_INFO
-    settings.log.printf("%d free variables\n", free_variables);
-#endif
 
+  problem.Q.check_matrix("Before free variable expansion");
+
+  if (settings.barrier_presolve && free_variables > 0) {
     // We have a variable x_j: with -inf < x_j < inf
     // we create new variables v and w with 0 <= v, w and x_j = v - w
     // Constraints
@@ -1106,6 +955,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     // becomes
     // sum_{k != j} c_k x_k + c_j v - c_j w
 
+    std::vector<i_t> pair_index(problem.num_cols, -1);
     i_t num_cols = problem.num_cols + free_variables;
     i_t nnz      = problem.A.col_start[problem.num_cols];
     for (i_t j = 0; j < problem.num_cols; j++) {
@@ -1139,16 +989,107 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
         problem.objective[col]                          = -problem.objective[j];
         presolve_info.free_variable_pairs[pair_count++] = j;
         presolve_info.free_variable_pairs[pair_count++] = col;
+        pair_index[j]                                   = col;
         problem.A.col_start[++col]                      = q;
         problem.lower[j]                                = 0.0;
       }
     }
+
+    if (problem.Q.n > 0) {
+      std::vector<i_t> row_counts(num_cols, 0);
+      i_t nz_count = problem.Q.row_start[problem.num_cols];
+      for (i_t row = 0; row < problem.Q.n; row++) {
+        i_t q_start     = problem.Q.row_start[row];
+        i_t q_end       = problem.Q.row_start[row + 1];
+        row_counts[row] = q_end - q_start;
+        for (i_t qj = q_start; qj < q_end; qj++) {
+          i_t col = problem.Q.j[qj];
+          if (pair_index[row] != -1 && pair_index[col] != -1) {
+            assert(pair_index[row] >= problem.num_cols);
+            assert(pair_index[col] >= problem.num_cols);
+            row_counts[row]++;
+            row_counts[pair_index[row]] += 2;
+            nz_count += 3;
+          } else if (pair_index[col] != -1) {
+            assert(pair_index[col] >= problem.num_cols);
+            row_counts[row]++;
+            nz_count++;
+          } else if (pair_index[row] != -1) {
+            assert(pair_index[row] >= problem.num_cols);
+            row_counts[pair_index[row]]++;
+            nz_count++;
+          }
+        }
+      }
+
+      std::vector<i_t> Q_row_start(num_cols + 1);
+      Q_row_start[0] = 0;
+      for (i_t row = 0; row < num_cols; row++) {
+        Q_row_start[row + 1] = Q_row_start[row] + row_counts[row];
+      }
+      std::vector<i_t> Q_j(nz_count);
+      std::vector<f_t> Q_x(nz_count);
+      auto row_starts = Q_row_start;
+      // First copy the original Q ma
+      for (i_t row = 0; row < problem.Q.n; row++) {
+        i_t q_start = problem.Q.row_start[row];
+        i_t q_end   = problem.Q.row_start[row + 1];
+        i_t q_nz    = Q_row_start[row];
+        for (i_t qj = q_start; qj < q_end; qj++) {
+          i_t col   = problem.Q.j[qj];
+          f_t qij   = problem.Q.x[qj];
+          Q_j[q_nz] = col;
+          Q_x[q_nz] = qij;
+          q_nz++;
+        }
+        row_starts[row] = q_nz;
+      }
+
+      // Expand the Q matrix for the free variables
+      for (i_t row = 0; row < problem.Q.n; row++) {
+        i_t q_start = problem.Q.row_start[row];
+        i_t q_end   = problem.Q.row_start[row + 1];
+        for (i_t qj = q_start; qj < q_end; qj++) {
+          i_t col = problem.Q.j[qj];
+          f_t qij = problem.Q.x[qj];
+          if (pair_index[row] != -1 && pair_index[col] != -1) {
+            Q_j[row_starts[row]] = pair_index[col];
+            Q_x[row_starts[row]] = -qij;
+            row_starts[row]++;
+
+            Q_j[row_starts[pair_index[row]]] = col;
+            Q_x[row_starts[pair_index[row]]] = -qij;
+            row_starts[pair_index[row]]++;
+
+            Q_j[row_starts[pair_index[row]]] = pair_index[col];
+            Q_x[row_starts[pair_index[row]]] = qij;
+            row_starts[pair_index[row]]++;
+          } else if (pair_index[col] != -1) {
+            Q_j[row_starts[row]] = pair_index[col];
+            Q_x[row_starts[row]] = -qij;
+            row_starts[row]++;
+          } else if (pair_index[row] != -1) {
+            Q_j[row_starts[pair_index[row]]] = col;
+            Q_x[row_starts[pair_index[row]]] = -qij;
+            row_starts[pair_index[row]]++;
+          }
+        }
+      }
+
+      problem.Q.m = problem.Q.n = num_cols;
+      problem.Q.nz_max          = Q_row_start[num_cols];
+      problem.Q.row_start       = Q_row_start;
+      problem.Q.j               = Q_j;
+      problem.Q.x               = Q_x;
+      problem.Q.check_matrix("After free variable expansion");
+    }
+
     // assert(problem.A.p[num_cols] == nnz);
     problem.A.n      = num_cols;
     problem.num_cols = num_cols;
   }
 
-  if (settings.barrier_presolve && settings.folding != 0) {
+  if (settings.barrier_presolve && settings.folding != 0 && problem.Q.n == 0) {
     folding(problem, settings, presolve_info);
   }
 
@@ -1296,13 +1237,13 @@ void crush_primal_solution_with_slack(const user_problem_t<i_t, f_t>& user_probl
 }
 
 template <typename i_t, typename f_t>
-void crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
-                         const lp_problem_t<i_t, f_t>& problem,
-                         const std::vector<i_t>& new_slacks,
-                         const std::vector<f_t>& user_y,
-                         const std::vector<f_t>& user_z,
-                         std::vector<f_t>& y,
-                         std::vector<f_t>& z)
+f_t crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
+                        const lp_problem_t<i_t, f_t>& problem,
+                        const std::vector<i_t>& new_slacks,
+                        const std::vector<f_t>& user_y,
+                        const std::vector<f_t>& user_z,
+                        std::vector<f_t>& y,
+                        std::vector<f_t>& z)
 {
   y.resize(problem.num_rows);
   for (i_t i = 0; i < user_problem.num_rows; i++) {
@@ -1312,6 +1253,12 @@ void crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
   for (i_t j = 0; j < user_problem.num_cols; j++) {
     z[j] = user_z[j];
   }
+
+  std::vector<bool> is_range_row(problem.num_rows, false);
+  for (i_t i = 0; i < user_problem.range_rows.size(); i++) {
+    is_range_row[user_problem.range_rows[i]] = true;
+  }
+  assert(user_problem.num_rows == problem.num_rows);
 
   for (i_t j : new_slacks) {
     const i_t col_start = problem.A.col_start[j];
@@ -1324,7 +1271,11 @@ void crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
     // e_i^T y + z_j = c_j = 0
     // y_i + z_j = 0
     // z_j = - y_i;
-    z[j] = -y[i];
+    if (is_range_row[i]) {
+      z[j] = y[i];
+    } else {
+      z[j] = -y[i];
+    }
   }
 
   // A^T y + z = c or A^T y + z - c = 0
@@ -1361,6 +1312,7 @@ void crush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
   }
   const f_t dual_res_inf = vector_norm_inf<i_t, f_t>(dual_residual);
   assert(dual_res_inf < 1e-6);
+  return dual_res_inf;
 }
 
 template <typename i_t, typename f_t>
@@ -1580,6 +1532,14 @@ template void crush_primal_solution<int, double>(const user_problem_t<int, doubl
                                                  const std::vector<int>& new_slacks,
                                                  std::vector<double>& solution);
 
+template double crush_dual_solution<int, double>(const user_problem_t<int, double>& user_problem,
+                                                 const lp_problem_t<int, double>& problem,
+                                                 const std::vector<int>& new_slacks,
+                                                 const std::vector<double>& user_y,
+                                                 const std::vector<double>& user_z,
+                                                 std::vector<double>& y,
+                                                 std::vector<double>& z);
+
 template void uncrush_primal_solution<int, double>(const user_problem_t<int, double>& user_problem,
                                                    const lp_problem_t<int, double>& problem,
                                                    const std::vector<double>& solution,
@@ -1601,13 +1561,6 @@ template void uncrush_solution<int, double>(const presolve_info_t<int, double>& 
                                             std::vector<double>& uncrushed_y,
                                             std::vector<double>& uncrushed_z);
 
-template bool bound_strengthening<int, double>(
-  const std::vector<char>& row_sense,
-  const simplex_solver_settings_t<int, double>& settings,
-  lp_problem_t<int, double>& problem,
-  const csc_matrix_t<int, double>& Arow,
-  const std::vector<variable_type_t>& var_types,
-  const std::vector<bool>& bounds_changed);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

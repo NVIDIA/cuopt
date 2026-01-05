@@ -14,7 +14,7 @@ fi
 # Test the CLI
 
 # Add a test for the help command
-cuopt_cli --help | grep -q "Usage: cuopt_cli" || (echo "Expected usage information not found" && exit 1)
+cuopt_cli --help | grep "Usage: cuopt_cli" > /dev/null || (echo "Expected usage information not found" && exit 1)
 
 # Add a test with a simple linear programming problem
 
