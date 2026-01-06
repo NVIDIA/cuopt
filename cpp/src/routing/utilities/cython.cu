@@ -106,28 +106,41 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
 
   // Use OpenMP for parallel execution
   const int max_thread = std::min(static_cast<int>(size), omp_get_max_threads());
-  rmm::cuda_stream_pool stream_pool(data_models.size(), rmm::cuda_stream::flags::non_blocking);
+  rmm::cuda_stream_pool stream_pool(max_thread, rmm::cuda_stream::flags::non_blocking);
 
 #pragma omp parallel for num_threads(max_thread)
   for (std::size_t i = 0; i < size; ++i) {
+    // Make sure previous operations are finished
     data_models[i]->get_handle_ptr()->sync_stream();
+
+    // Set new non blocking stream for current data model
     raft::resource::set_cuda_stream(*(data_models[i]->get_handle_ptr()), stream_pool.get_stream(i));
     auto routing_solution = cuopt::routing::solve(*data_models[i], *settings);
-    vehicle_routing_ret_t vr_ret{
-      routing_solution.get_vehicle_count(),
-      routing_solution.get_total_objective(),
-      routing_solution.get_objectives(),
-      std::make_unique<rmm::device_buffer>(routing_solution.get_route().release()),
-      std::make_unique<rmm::device_buffer>(routing_solution.get_order_locations().release()),
-      std::make_unique<rmm::device_buffer>(routing_solution.get_arrival_stamp().release()),
-      std::make_unique<rmm::device_buffer>(routing_solution.get_truck_id().release()),
-      std::make_unique<rmm::device_buffer>(routing_solution.get_node_types().release()),
-      std::make_unique<rmm::device_buffer>(routing_solution.get_unserviced_nodes().release()),
-      std::make_unique<rmm::device_buffer>(routing_solution.get_accepted().release()),
-      routing_solution.get_status(),
-      routing_solution.get_status_string(),
-      routing_solution.get_error_status().get_error_type(),
-      routing_solution.get_error_status().what()};
+
+    // Make sure current solve is finished
+    stream_pool.get_stream(i).synchronize();
+
+    // Create buffers and reassociate them with the default stream so they
+    // outlive the local stream which will be destroyed at end of loop iteration
+    auto make_buffer = [](rmm::device_buffer&& buf) {
+      buf.set_stream(rmm::cuda_stream_default);
+      return std::make_unique<rmm::device_buffer>(std::move(buf));
+    };
+
+    vehicle_routing_ret_t vr_ret{routing_solution.get_vehicle_count(),
+                                 routing_solution.get_total_objective(),
+                                 routing_solution.get_objectives(),
+                                 make_buffer(routing_solution.get_route().release()),
+                                 make_buffer(routing_solution.get_order_locations().release()),
+                                 make_buffer(routing_solution.get_arrival_stamp().release()),
+                                 make_buffer(routing_solution.get_truck_id().release()),
+                                 make_buffer(routing_solution.get_node_types().release()),
+                                 make_buffer(routing_solution.get_unserviced_nodes().release()),
+                                 make_buffer(routing_solution.get_accepted().release()),
+                                 routing_solution.get_status(),
+                                 routing_solution.get_status_string(),
+                                 routing_solution.get_error_status().get_error_type(),
+                                 routing_solution.get_error_status().what()};
     list[i] = std::make_unique<vehicle_routing_ret_t>(std::move(vr_ret));
   }
 
