@@ -659,6 +659,57 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_sol_file(
     std::string(filename), status, objective_value, var_names_, solution);
 }
 
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::to_host(rmm::cuda_stream_view stream_view)
+{
+  if (!is_device_memory_) {
+    // Already on CPU, nothing to do
+    return;
+  }
+
+  // Initialize host storage if needed
+  if (!primal_solution_host_) { primal_solution_host_ = std::make_unique<std::vector<f_t>>(); }
+  if (!dual_solution_host_) { dual_solution_host_ = std::make_unique<std::vector<f_t>>(); }
+  if (!reduced_cost_host_) { reduced_cost_host_ = std::make_unique<std::vector<f_t>>(); }
+
+  // Copy primal solution
+  if (primal_solution_ && primal_solution_->size() > 0) {
+    primal_solution_host_->resize(primal_solution_->size());
+    raft::copy(primal_solution_host_->data(),
+               primal_solution_->data(),
+               primal_solution_->size(),
+               stream_view.value());
+  }
+
+  // Copy dual solution
+  if (dual_solution_ && dual_solution_->size() > 0) {
+    dual_solution_host_->resize(dual_solution_->size());
+    raft::copy(dual_solution_host_->data(),
+               dual_solution_->data(),
+               dual_solution_->size(),
+               stream_view.value());
+  }
+
+  // Copy reduced cost
+  if (reduced_cost_ && reduced_cost_->size() > 0) {
+    reduced_cost_host_->resize(reduced_cost_->size());
+    raft::copy(reduced_cost_host_->data(),
+               reduced_cost_->data(),
+               reduced_cost_->size(),
+               stream_view.value());
+  }
+
+  // Synchronize to ensure copies are complete
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+
+  // Clear GPU storage to free memory
+  primal_solution_.reset();
+  dual_solution_.reset();
+  reduced_cost_.reset();
+
+  is_device_memory_ = false;
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template class optimization_problem_solution_t<int, float>;
 #endif

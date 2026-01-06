@@ -9,6 +9,7 @@
 
 #include <utilities/logger.hpp>
 
+#include <dlfcn.h>
 #include <cmath>
 #include <limits>
 
@@ -979,10 +980,49 @@ std::shared_ptr<remote_serializer_t<i_t, f_t>> get_serializer()
       // Try to load custom serializer
       CUOPT_LOG_INFO("[remote_solve] Loading custom serializer from: {}", custom_lib);
 
-      // Dynamic loading would go here
-      // For now, fall back to default
-      CUOPT_LOG_WARN("[remote_solve] Custom serializer loading not yet implemented, using default");
-      instance = get_default_serializer<i_t, f_t>();
+      // Open the shared library
+      void* handle = dlopen(custom_lib, RTLD_NOW | RTLD_LOCAL);
+      if (!handle) {
+        CUOPT_LOG_ERROR("[remote_solve] Failed to load serializer library: {}", dlerror());
+        instance = get_default_serializer<i_t, f_t>();
+        return;
+      }
+
+      // Look for the factory function
+      // The function name includes template types for proper linking
+      std::string factory_name = "create_cuopt_serializer";
+      if constexpr (std::is_same_v<i_t, int32_t> && std::is_same_v<f_t, double>) {
+        factory_name = "create_cuopt_serializer_i32_f64";
+      } else if constexpr (std::is_same_v<i_t, int32_t> && std::is_same_v<f_t, float>) {
+        factory_name = "create_cuopt_serializer_i32_f32";
+      } else if constexpr (std::is_same_v<i_t, int64_t> && std::is_same_v<f_t, double>) {
+        factory_name = "create_cuopt_serializer_i64_f64";
+      } else if constexpr (std::is_same_v<i_t, int64_t> && std::is_same_v<f_t, float>) {
+        factory_name = "create_cuopt_serializer_i64_f32";
+      }
+
+      using factory_fn_t = std::unique_ptr<remote_serializer_t<i_t, f_t>> (*)();
+      auto factory       = reinterpret_cast<factory_fn_t>(dlsym(handle, factory_name.c_str()));
+
+      if (!factory) {
+        CUOPT_LOG_ERROR(
+          "[remote_solve] Factory function '{}' not found: {}", factory_name, dlerror());
+        dlclose(handle);
+        instance = get_default_serializer<i_t, f_t>();
+        return;
+      }
+
+      auto custom_serializer = factory();
+      if (custom_serializer) {
+        CUOPT_LOG_INFO("[remote_solve] Using custom serializer: {}",
+                       custom_serializer->format_name());
+        instance = std::move(custom_serializer);
+      } else {
+        CUOPT_LOG_ERROR("[remote_solve] Factory returned null, using default");
+        dlclose(handle);
+        instance = get_default_serializer<i_t, f_t>();
+      }
+      // Note: We intentionally don't dlclose(handle) here to keep the library loaded
     } else {
       instance = get_default_serializer<i_t, f_t>();
     }

@@ -627,6 +627,11 @@ if(BUILD_REMOTE_SERVER AND NOT BUILD_LP_ONLY)
 endif()
 
 # ##################################################################################################
+# - Pluggable Serializers --------------------------------------------------------------------------
+# Build optional serializer plugins (e.g., msgpack)
+add_subdirectory(src/linear_programming/utilities/serializers)
+
+# ##################################################################################################
 # - CPack has to be the last item in the cmake file-------------------------------------------------
 # Used to create an installable deb package for cuOpt
 

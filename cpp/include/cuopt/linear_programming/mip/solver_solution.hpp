@@ -179,6 +179,20 @@ class mip_solution_t : public base_solution_t {
    */
   i_t get_simplex_iterations() const;
 
+  /**
+   * @brief Copy solution data from GPU to CPU memory.
+   *
+   * After calling this method, is_device_memory() will return false and
+   * the solution can be accessed via get_solution_host().
+   * This is useful for remote solve scenarios where serialization requires
+   * CPU-accessible data.
+   *
+   * If the solution is already in CPU memory, this is a no-op.
+   *
+   * @param stream_view The CUDA stream to use for the copy
+   */
+  void to_host(rmm::cuda_stream_view stream_view);
+
  private:
   // GPU (device) storage - populated for local GPU solves
   std::unique_ptr<rmm::device_uvector<f_t>> solution_;

@@ -337,6 +337,10 @@ void worker_thread(int worker_id)
           // Solve using the data model directly
           auto solution = solve_mip(&handle, mps_data, settings);
 
+          // Move solution to CPU memory for serialization
+          // (remote solve clients are typically CPU-only hosts)
+          solution.to_host(handle.get_stream());
+
           // Serialize result
           result_data = serializer->serialize_mip_solution(solution);
           success     = true;
@@ -374,6 +378,10 @@ void worker_thread(int worker_id)
 
           // Solve using the data model directly
           auto solution = solve_lp(&handle, mps_data, settings);
+
+          // Move solution to CPU memory for serialization
+          // (remote solve clients are typically CPU-only hosts)
+          solution.to_host(handle.get_stream());
 
           // Serialize result
           result_data = serializer->serialize_lp_solution(solution);
@@ -487,8 +495,13 @@ void handle_client(int client_fd, bool stream_logs)
 
   // Send response - always use streaming protocol for consistency
   // (stream_logs only controls whether LOG_MESSAGE are sent during solve)
+  std::cout << "[Server] Sending solution message, size = " << result_data.size() << " bytes\n";
+  std::cout.flush();
   if (!send_solution_message(client_fd, result_data)) {
     std::cerr << "[Server] Failed to send solution message\n";
+  } else {
+    std::cout << "[Server] Solution message sent successfully\n";
+    std::cout.flush();
   }
 
   close(client_fd);

@@ -407,6 +407,32 @@ i_t mip_solution_t<i_t, f_t>::get_simplex_iterations() const
   return stats_.num_simplex_iterations;
 }
 
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::to_host(rmm::cuda_stream_view stream_view)
+{
+  if (!is_device_memory_) {
+    // Already on CPU, nothing to do
+    return;
+  }
+
+  // Initialize host storage if needed
+  if (!solution_host_) { solution_host_ = std::make_unique<std::vector<f_t>>(); }
+
+  // Copy solution
+  if (solution_ && solution_->size() > 0) {
+    solution_host_->resize(solution_->size());
+    raft::copy(solution_host_->data(), solution_->data(), solution_->size(), stream_view.value());
+
+    // Synchronize to ensure copy is complete
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  }
+
+  // Clear GPU storage to free memory
+  solution_.reset();
+
+  is_device_memory_ = false;
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template class mip_solution_t<int, float>;
 #endif
