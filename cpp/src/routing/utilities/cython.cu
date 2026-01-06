@@ -110,6 +110,7 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
 
 #pragma omp parallel for num_threads(max_thread)
   for (std::size_t i = 0; i < size; ++i) {
+    auto old_stream = data_models[i]->get_handle_ptr()->get_stream();
     // Make sure previous operations are finished
     data_models[i]->get_handle_ptr()->sync_stream();
 
@@ -120,10 +121,10 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
     // Make sure current solve is finished
     stream_pool.get_stream(i).synchronize();
 
-    // Create buffers and reassociate them with the default stream so they
+    // Create buffers and reassociate them with the original stream so they
     // outlive the local stream which will be destroyed at end of loop iteration
-    auto make_buffer = [](rmm::device_buffer&& buf) {
-      buf.set_stream(rmm::cuda_stream_default);
+    auto make_buffer = [old_stream = old_stream](rmm::device_buffer&& buf) {
+      buf.set_stream(old_stream);
       return std::make_unique<rmm::device_buffer>(std::move(buf));
     };
 
@@ -142,6 +143,10 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
                                  routing_solution.get_error_status().get_error_type(),
                                  routing_solution.get_error_status().what()};
     list[i] = std::make_unique<vehicle_routing_ret_t>(std::move(vr_ret));
+
+    // Restore the old stream
+    raft::resource::set_cuda_stream(*(data_models[i]->get_handle_ptr()), old_stream);
+    old_stream.synchronize();
   }
 
   return list;
