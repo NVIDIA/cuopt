@@ -9,6 +9,7 @@
 
 #include "recombiner.cuh"
 
+#include <thrust/pair.h>
 #include <mip/local_search/rounding/constraint_prop.cuh>
 #include <mip/relaxed_lp/relaxed_lp.cuh>
 #include <mip/solution/solution.cuh>

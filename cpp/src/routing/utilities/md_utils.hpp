@@ -149,17 +149,19 @@ bool limit_matrix_entries(f_t* matrix, i_t width, raft::handle_t const* handle_p
   i_t mat_size  = width * width;
   f_t max_value = 1.0e+30;
 
-  bool exceeds_max = thrust::any_of(
-    handle_ptr->get_thrust_policy(), matrix, matrix + mat_size, [max_value] __device__(auto& x) {
-      return x > max_value;
-    });
+  bool exceeds_max =
+    thrust::any_of(handle_ptr->get_thrust_policy(),
+                   matrix,
+                   matrix + mat_size,
+                   [max_value] __device__(f_t x) -> bool { return x > max_value; });
 
   if (exceeds_max) {
-    thrust::transform(handle_ptr->get_thrust_policy(),
-                      matrix,
-                      matrix + mat_size,
-                      matrix,
-                      [max_value] __device__(auto& x) { return x > max_value ? max_value : x; });
+    thrust::transform(
+      handle_ptr->get_thrust_policy(),
+      matrix,
+      matrix + mat_size,
+      matrix,
+      [max_value] __device__(f_t x) -> f_t { return x > max_value ? max_value : x; });
   }
   return exceeds_max;
 }
