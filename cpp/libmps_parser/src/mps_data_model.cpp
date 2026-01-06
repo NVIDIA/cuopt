@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,6 +9,7 @@
 #include <utilities/error.hpp>
 
 #include <algorithm>
+#include <cstdint>
 
 namespace cuopt::mps_parser {
 
@@ -462,8 +463,9 @@ bool mps_data_model_t<i_t, f_t>::has_quadratic_objective() const noexcept
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
 template class mps_data_model_t<int, float>;
-
 template class mps_data_model_t<int, double>;
+template class mps_data_model_t<int64_t, float>;
+template class mps_data_model_t<int64_t, double>;
 //  TODO current raft to cusparse wrappers only support int64_t
 //  can be CUSPARSE_INDEX_16U, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_64I
 

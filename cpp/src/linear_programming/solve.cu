@@ -23,6 +23,7 @@
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/linear_programming/utilities/remote_solve.hpp>
 
 #include <mps_parser/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -1420,11 +1421,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(raft::handle_t const* handle_
       CUOPT_LOG_INFO("[solve_lp] Remote solve detected: CUOPT_REMOTE_HOST=%s, CUOPT_REMOTE_PORT=%d",
                      remote_config->host.c_str(),
                      remote_config->port);
-      // TODO: Implement remote solve - serialize cpu_view and send to remote server
-      CUOPT_LOG_ERROR("[solve_lp] Remote solve not yet implemented");
-      // Use CPU-only error constructor
-      return optimization_problem_solution_t<i_t, f_t>(
-        cuopt::logic_error("Remote solve not yet implemented", cuopt::error_type_t::RuntimeError));
+      // Call the remote solve function with CPU-side view
+      return solve_lp_remote(*remote_config, cpu_view, settings);
     }
 
     // Local solve: data already on GPU - convert view to optimization_problem_t and solve
@@ -1437,11 +1435,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(raft::handle_t const* handle_
     CUOPT_LOG_INFO("[solve_lp] Remote solve detected: CUOPT_REMOTE_HOST=%s, CUOPT_REMOTE_PORT=%d",
                    remote_config->host.c_str(),
                    remote_config->port);
-    // TODO: Implement remote solve - serialize view (CPU memory) and send to remote server
-    CUOPT_LOG_ERROR("[solve_lp] Remote solve not yet implemented");
-    // Use CPU-only error constructor
-    return optimization_problem_solution_t<i_t, f_t>(
-      cuopt::logic_error("Remote solve not yet implemented", cuopt::error_type_t::RuntimeError));
+    // Call the remote solve function
+    return solve_lp_remote(*remote_config, view, settings);
   }
 
   // Local solve with CPU data: copy to GPU and solve

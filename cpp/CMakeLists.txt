@@ -225,6 +225,27 @@ create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
 
 find_package(CUDSS REQUIRED)
 
+# Protocol Buffers for remote solve serialization
+find_package(Protobuf REQUIRED)
+include_directories(${Protobuf_INCLUDE_DIRS})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+# Generate C++ code from .proto file
+set(PROTO_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/linear_programming/utilities/cuopt_remote.proto")
+set(PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote.pb.cc")
+set(PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote.pb.h")
+
+add_custom_command(
+  OUTPUT "${PROTO_SRCS}" "${PROTO_HDRS}"
+  COMMAND ${Protobuf_PROTOC_EXECUTABLE}
+  ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
+       --proto_path ${CMAKE_CURRENT_SOURCE_DIR}/src/linear_programming/utilities
+       ${PROTO_FILE}
+  DEPENDS ${PROTO_FILE}
+  COMMENT "Generating C++ code from cuopt_remote.proto"
+  VERBATIM
+)
+
 if(BUILD_TESTS)
   include(cmake/thirdparty/get_gtest.cmake)
 endif()
@@ -236,6 +257,7 @@ if (HOST_LINEINFO)
 endif()
 add_library(cuopt SHARED
   ${CUOPT_SRC_FILES}
+  ${PROTO_SRCS}
 )
 
 set_target_properties(cuopt
@@ -341,10 +363,11 @@ target_link_libraries(cuopt
   rapids_logger::rapids_logger
   CCCL::CCCL
   raft::raft
-  cuopt::mps_parser
   ${CUDSS_LIB_FILE}
+  protobuf::libprotobuf
   PRIVATE
   ${CUOPT_PRIVATE_CUDA_LIBS}
+  cuopt::mps_parser_static  # Static link - symbols embedded in libcuopt.so
   )
 
 
@@ -525,6 +548,83 @@ if(BUILD_LP_BENCHMARKS)
   endif()
 endif()
 
+# ##################################################################################################
+# - cuOpt Remote Server ---------------------------------------------------------------------------
+option(BUILD_REMOTE_SERVER "Build cuOpt remote solve server" OFF)
+if(BUILD_REMOTE_SERVER AND NOT BUILD_LP_ONLY)
+  add_executable(cuopt_remote_server cuopt_remote_server.cpp)
+  target_compile_options(cuopt_remote_server
+    PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+  )
+  target_include_directories(cuopt_remote_server
+    PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include"
+    "${CMAKE_CURRENT_BINARY_DIR}"
+    PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+  )
+  target_link_libraries(cuopt_remote_server
+    PUBLIC
+    cuopt
+    OpenMP::OpenMP_CXX
+    protobuf::libprotobuf
+    PRIVATE
+  )
+  # Use RUNPATH so LD_LIBRARY_PATH can override conda paths during development
+  set_target_properties(cuopt_remote_server PROPERTIES
+    SKIP_BUILD_RPATH OFF
+    BUILD_WITH_INSTALL_RPATH OFF
+    INSTALL_RPATH "$ORIGIN/../${lib_dir}"
+  )
+  # Enable RUNPATH (new dtags) so LD_LIBRARY_PATH takes precedence
+  target_link_options(cuopt_remote_server PRIVATE -Wl,--enable-new-dtags)
+
+  # Install the server executable
+  install(TARGETS cuopt_remote_server
+    COMPONENT runtime
+    RUNTIME DESTINATION ${_BIN_DEST}
+  )
+
+  # Standalone remote solve test client
+  add_executable(remote_solve_test tests/linear_programming/remote_solve_test.cpp)
+  target_compile_options(remote_solve_test
+    PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+  )
+  target_include_directories(remote_solve_test
+    PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/include"
+  )
+  target_link_libraries(remote_solve_test
+    PUBLIC
+    cuopt
+  )
+  # Use RUNPATH so LD_LIBRARY_PATH can override during development
+  target_link_options(remote_solve_test PRIVATE -Wl,--enable-new-dtags)
+
+  # Local solve test (for debugging)
+  add_executable(local_solve_test tests/linear_programming/local_solve_test.cpp)
+  target_compile_options(local_solve_test
+    PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+  )
+  target_include_directories(local_solve_test
+    PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/include"
+  )
+  target_link_libraries(local_solve_test
+    PUBLIC
+    cuopt
+  )
+  target_link_options(local_solve_test PRIVATE -Wl,--enable-new-dtags)
+endif()
 
 # ##################################################################################################
 # - CPack has to be the last item in the cmake file-------------------------------------------------

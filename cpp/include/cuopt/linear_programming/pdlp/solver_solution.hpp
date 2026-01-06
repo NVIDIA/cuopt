@@ -326,6 +326,128 @@ class optimization_problem_solution_t : public base_solution_t {
 
   pdlp_warm_start_data_t<i_t, f_t>& get_pdlp_warm_start_data();
 
+  //============================================================================
+  // Setters for host solution data (used by remote solve deserialization)
+  //============================================================================
+
+  /**
+   * @brief Set the primal solution in host memory
+   * @param solution The primal solution vector
+   */
+  void set_primal_solution_host(std::vector<f_t> solution);
+
+  /**
+   * @brief Set the dual solution in host memory
+   * @param solution The dual solution vector
+   */
+  void set_dual_solution_host(std::vector<f_t> solution);
+
+  /**
+   * @brief Set the reduced cost in host memory
+   * @param reduced_cost The reduced cost vector
+   */
+  void set_reduced_cost_host(std::vector<f_t> reduced_cost);
+
+  /**
+   * @brief Set the termination statistics
+   * @param stats The termination statistics
+   */
+  void set_termination_stats(const additional_termination_information_t& stats);
+
+  //============================================================================
+  // Getters for termination statistics
+  //============================================================================
+
+  /**
+   * @brief Get the L2 primal residual
+   * @return L2 primal residual
+   */
+  f_t get_l2_primal_residual() const;
+
+  /**
+   * @brief Get the L2 dual residual
+   * @return L2 dual residual
+   */
+  f_t get_l2_dual_residual() const;
+
+  /**
+   * @brief Get the primal objective value
+   * @return Primal objective
+   */
+  f_t get_primal_objective() const;
+
+  /**
+   * @brief Get the dual objective value
+   * @return Dual objective
+   */
+  f_t get_dual_objective() const;
+
+  /**
+   * @brief Get the duality gap
+   * @return Gap
+   */
+  f_t get_gap() const;
+
+  /**
+   * @brief Get number of iterations
+   * @return Number of iterations
+   */
+  i_t get_nb_iterations() const;
+
+  /**
+   * @brief Check if solved by PDLP
+   * @return true if solved by PDLP
+   */
+  bool get_solved_by_pdlp() const;
+
+  /**
+   * @brief Set L2 primal residual
+   * @param value The value
+   */
+  void set_l2_primal_residual(f_t value);
+
+  /**
+   * @brief Set L2 dual residual
+   * @param value The value
+   */
+  void set_l2_dual_residual(f_t value);
+
+  /**
+   * @brief Set primal objective
+   * @param value The value
+   */
+  void set_primal_objective(f_t value);
+
+  /**
+   * @brief Set dual objective
+   * @param value The value
+   */
+  void set_dual_objective(f_t value);
+
+  /**
+   * @brief Set gap
+   * @param value The value
+   */
+  void set_gap(f_t value);
+
+  /**
+   * @brief Set number of iterations
+   * @param value The value
+   */
+  void set_nb_iterations(i_t value);
+
+  /**
+   * @brief Set solved by PDLP flag
+   * @param value The value
+   */
+  void set_solved_by_pdlp(bool value);
+
+  /**
+   * @brief Get error string
+   * @return Error message string
+   */
+  std::string get_error_string() const;
+
   /**
    * @brief Writes the solver_solution object as a JSON object to the 'filename' file using
    * 'stream_view' to transfer the data from device to host before it is written to the file.
@@ -368,6 +490,9 @@ class optimization_problem_solution_t : public base_solution_t {
 
   // Flag indicating where solution data is stored
   bool is_device_memory_ = true;
+
+  // Flag indicating if solved by PDLP (vs dual simplex)
+  bool solved_by_pdlp_ = true;
 
   pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
 

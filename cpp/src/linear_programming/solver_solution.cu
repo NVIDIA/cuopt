@@ -501,6 +501,136 @@ optimization_problem_solution_t<i_t, f_t>::get_pdlp_warm_start_data()
   return pdlp_warm_start_data_;
 }
 
+//============================================================================
+// Setters for host solution data
+//============================================================================
+
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::set_primal_solution_host(std::vector<f_t> solution)
+{
+  primal_solution_host_ = std::make_unique<std::vector<f_t>>(std::move(solution));
+  is_device_memory_     = false;
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::set_dual_solution_host(std::vector<f_t> solution)
+{
+  dual_solution_host_ = std::make_unique<std::vector<f_t>>(std::move(solution));
+  is_device_memory_   = false;
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::set_reduced_cost_host(std::vector<f_t> reduced_cost)
+{
+  reduced_cost_host_ = std::make_unique<std::vector<f_t>>(std::move(reduced_cost));
+  is_device_memory_  = false;
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::set_termination_stats(
+  const additional_termination_information_t& stats)
+{
+  termination_stats_ = stats;
+}
+
+//============================================================================
+// Getters for termination statistics
+//============================================================================
+
+template <typename i_t, typename f_t>
+f_t optimization_problem_solution_t<i_t, f_t>::get_l2_primal_residual() const
+{
+  return termination_stats_.l2_primal_residual;
+}
+
+template <typename i_t, typename f_t>
+f_t optimization_problem_solution_t<i_t, f_t>::get_l2_dual_residual() const
+{
+  return termination_stats_.l2_dual_residual;
+}
+
+template <typename i_t, typename f_t>
+f_t optimization_problem_solution_t<i_t, f_t>::get_primal_objective() const
+{
+  return termination_stats_.primal_objective;
+}
+
+template <typename i_t, typename f_t>
+f_t optimization_problem_solution_t<i_t, f_t>::get_dual_objective() const
+{
+  return termination_stats_.dual_objective;
+}
+
+template <typename i_t, typename f_t>
+f_t optimization_problem_solution_t<i_t, f_t>::get_gap() const
+{
+  return termination_stats_.gap;
+}
+
+template <typename i_t, typename f_t>
+i_t optimization_problem_solution_t<i_t, f_t>::get_nb_iterations() const
+{
+  return termination_stats_.number_of_steps_taken;
+}
+
+template <typename i_t, typename f_t>
+bool optimization_problem_solution_t<i_t, f_t>::get_solved_by_pdlp() const
+{
+  return solved_by_pdlp_;
+}
+
+//============================================================================
+// Setters for termination statistics
+//============================================================================
+
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::set_l2_primal_residual(f_t value)
+{
+  termination_stats_.l2_primal_residual = value;
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::set_l2_dual_residual(f_t value)
+{
+  termination_stats_.l2_dual_residual = value;
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::set_primal_objective(f_t value)
+{
+  termination_stats_.primal_objective = value;
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::set_dual_objective(f_t value)
+{
+  termination_stats_.dual_objective = value;
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::set_gap(f_t value)
+{
+  termination_stats_.gap = value;
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::set_nb_iterations(i_t value)
+{
+  termination_stats_.number_of_steps_taken = value;
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_solution_t<i_t, f_t>::set_solved_by_pdlp(bool value)
+{
+  solved_by_pdlp_ = value;
+}
+
+template <typename i_t, typename f_t>
+std::string optimization_problem_solution_t<i_t, f_t>::get_error_string() const
+{
+  return error_status_.what();
+}
+
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::write_to_sol_file(
   std::string_view filename, rmm::cuda_stream_view stream_view) const

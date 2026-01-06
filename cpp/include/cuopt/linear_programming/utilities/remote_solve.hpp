@@ -1,11 +1,17 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
+
+#include <cuopt/linear_programming/mip/solver_settings.hpp>
+#include <cuopt/linear_programming/mip/solver_solution.hpp>
+#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+#include <mps_parser/data_model_view.hpp>
 
 #include <cstdlib>
 #include <optional>
@@ -53,5 +59,37 @@ inline std::optional<remote_solve_config_t> get_remote_solve_config()
  * @return true if CUOPT_REMOTE_HOST and CUOPT_REMOTE_PORT are both set
  */
 inline bool is_remote_solve_enabled() { return get_remote_solve_config().has_value(); }
+
+/**
+ * @brief Solve an LP problem on a remote server.
+ *
+ * @tparam i_t Index type (int32_t)
+ * @tparam f_t Float type (float or double)
+ * @param config Remote server configuration
+ * @param view Problem data view
+ * @param settings Solver settings
+ * @return Solution from the remote server
+ */
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
+  const remote_solve_config_t& config,
+  const cuopt::mps_parser::data_model_view_t<i_t, f_t>& view,
+  const pdlp_solver_settings_t<i_t, f_t>& settings);
+
+/**
+ * @brief Solve a MIP problem on a remote server.
+ *
+ * @tparam i_t Index type (int32_t)
+ * @tparam f_t Float type (float or double)
+ * @param config Remote server configuration
+ * @param view Problem data view
+ * @param settings Solver settings
+ * @return Solution from the remote server
+ */
+template <typename i_t, typename f_t>
+mip_solution_t<i_t, f_t> solve_mip_remote(
+  const remote_solve_config_t& config,
+  const cuopt::mps_parser::data_model_view_t<i_t, f_t>& view,
+  const mip_solver_settings_t<i_t, f_t>& settings);
 
 }  // namespace cuopt::linear_programming

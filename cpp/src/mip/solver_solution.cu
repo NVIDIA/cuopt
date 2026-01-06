@@ -318,6 +318,95 @@ void mip_solution_t<i_t, f_t>::log_summary() const
   CUOPT_LOG_INFO("Total Solve Time: %f", get_total_solve_time());
 }
 
+//============================================================================
+// Setters for remote solve deserialization
+//============================================================================
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_solution_host(std::vector<f_t> solution)
+{
+  solution_host_    = std::make_unique<std::vector<f_t>>(std::move(solution));
+  is_device_memory_ = false;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_objective(f_t value)
+{
+  objective_ = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_mip_gap(f_t value)
+{
+  mip_gap_ = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_solution_bound(f_t value)
+{
+  stats_.solution_bound = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_total_solve_time(double value)
+{
+  stats_.total_solve_time = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_presolve_time(double value)
+{
+  stats_.presolve_time = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_max_constraint_violation(f_t value)
+{
+  max_constraint_violation_ = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_max_int_violation(f_t value)
+{
+  max_int_violation_ = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_max_variable_bound_violation(f_t value)
+{
+  max_variable_bound_violation_ = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_nodes(i_t value)
+{
+  stats_.num_nodes = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_simplex_iterations(i_t value)
+{
+  stats_.num_simplex_iterations = value;
+}
+
+template <typename i_t, typename f_t>
+std::string mip_solution_t<i_t, f_t>::get_error_string() const
+{
+  return error_status_.what();
+}
+
+template <typename i_t, typename f_t>
+i_t mip_solution_t<i_t, f_t>::get_nodes() const
+{
+  return stats_.num_nodes;
+}
+
+template <typename i_t, typename f_t>
+i_t mip_solution_t<i_t, f_t>::get_simplex_iterations() const
+{
+  return stats_.num_simplex_iterations;
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template class mip_solution_t<int, float>;
 #endif

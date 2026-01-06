@@ -20,6 +20,7 @@
 
 #include <unistd.h>
 #include <argparse/argparse.hpp>
+#include <iomanip>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -285,6 +286,7 @@ int run_single_file(const std::string& file_path,
         CUOPT_LOG_ERROR("LP solve failed: %s", solution.get_error_status().what());
         return -1;
       }
+      // Note: Solution output is now handled by solve_lp/solve_lp_remote via CUOPT_LOG_INFO
     }
   } catch (const std::exception& e) {
     CUOPT_LOG_ERROR("Error: %s", e.what());
