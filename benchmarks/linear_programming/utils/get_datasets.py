@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import os
@@ -663,7 +663,7 @@ def extract(file, dir, type):
         raise Exception(f"Unknown file extension found for extraction {file}")
     # download emps and compile
     # Disable emps for now
-    if type == "netlib" and False:
+    if type == "netlib":
         url = MittelmannInstances["emps"]
         file = os.path.join(dir, "emps.c")
         download(url, file)

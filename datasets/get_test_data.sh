@@ -1,10 +1,96 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -e
 set -o pipefail
 
+################################################################################
+# S3 Dataset Download Support
+################################################################################
+# Set CUOPT_DATASET_S3_URI to base S3 path
+# AWS credentials should be configured via:
+#   - Environment variables (CUOPT_AWS_ACCESS_KEY_ID, CUOPT_AWS_SECRET_ACCESS_KEY)
+#   - Standard AWS variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+#   - AWS CLI configuration (~/.aws/credentials)
+#   - IAM role (for EC2 instances)
+
+function try_download_from_s3() {
+    local s3_dirs=("$@")  # Array of directories to sync from S3
+
+    if [ -z "${CUOPT_DATASET_S3_URI:-}" ]; then
+        echo "CUOPT_DATASET_S3_URI not set, skipping S3 download..."
+        return 1
+    fi
+
+    if ! command -v aws &> /dev/null; then
+        echo "AWS CLI not found, skipping S3 download..."
+        return 1
+    fi
+
+    # Append routing subdirectory to base S3 URI
+    local s3_uri="${CUOPT_DATASET_S3_URI}routing/"
+    echo "Attempting to download datasets from S3: $s3_uri"
+
+    # Support custom credential variable names to avoid conflicts
+    # Priority: CUOPT_* variables > standard AWS_* variables > aws configure
+    local access_key="${CUOPT_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
+    local secret_key="${CUOPT_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
+    local session_token="${CUOPT_AWS_SESSION_TOKEN:-${AWS_SESSION_TOKEN:-}}"
+    local region="${CUOPT_AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+
+    # Temporarily export for AWS CLI if custom variables are used
+    if [ -n "$CUOPT_AWS_ACCESS_KEY_ID" ]; then
+        echo "Using custom CUOPT_AWS_ACCESS_KEY_ID credentials"
+        export AWS_ACCESS_KEY_ID="$access_key"
+        export AWS_SECRET_ACCESS_KEY="$secret_key"
+        [ -n "$session_token" ] && export AWS_SESSION_TOKEN="$session_token"
+        export AWS_DEFAULT_REGION="$region"
+    elif [ -n "$AWS_ACCESS_KEY_ID" ]; then
+        echo "Using AWS_ACCESS_KEY_ID credentials from environment"
+    else
+        echo "Using AWS credentials from aws configure"
+    fi
+
+    # Test AWS credentials
+    if ! aws sts get-caller-identity &> /dev/null; then
+        echo "AWS credentials not configured or invalid, skipping S3 download..."
+        echo "Set CUOPT_AWS_ACCESS_KEY_ID/CUOPT_AWS_SECRET_ACCESS_KEY or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY"
+        return 1
+    fi
+
+    # Try to sync from S3
+    local success=true
+    if [ ${#s3_dirs[@]} -eq 0 ]; then
+        # No specific directories - download everything
+        echo "Downloading all datasets from S3..."
+        if ! aws s3 sync "$s3_uri" . --exclude "tmp/*" --exclude "get_test_data.sh" --exclude "*.sh" --exclude "*.md"; then
+            success=false
+        fi
+    else
+        # Download specific directories only
+        echo "Downloading selected datasets: ${s3_dirs[*]}"
+        for dir in "${s3_dirs[@]}"; do
+            echo "Syncing ${dir}/..."
+            if ! aws s3 sync "${s3_uri}${dir}/" "${dir}/" --exclude "*.sh" --exclude "*.md"; then
+                echo "Warning: Failed to download ${dir}, will try HTTP fallback"
+                success=false
+            fi
+        done
+    fi
+
+    if $success; then
+        echo "Successfully downloaded datasets from S3!"
+        return 0
+    else
+        echo "Failed to download from S3, falling back to HTTP download..."
+        return 1
+    fi
+}
+
+################################################################################
+# HTTP Dataset Download Configuration
+################################################################################
 # Update this to add/remove/change a dataset, using the following format:
 #
 #  comment about the dataset
@@ -107,7 +193,13 @@ URLS=($(echo "$DATASET_DATA"|awk '{if (NR%4 == 3) print $0}'))  # extract 3rd fi
 # shellcheck disable=SC2207
 DESTDIRS=($(echo "$DATASET_DATA"|awk '{if (NR%4 == 0) print $0}'))  # extract 4th fields to a bash array
 
-echo Downloading ...
+# Try S3 download first with selected directories
+if try_download_from_s3 "${DESTDIRS[@]}"; then
+    echo "Datasets successfully retrieved from S3, skipping HTTP download."
+    exit 0
+fi
+
+echo "Downloading from HTTP sources..."
 
 # Download all tarfiles to a tmp dir
 rm -rf tmp
