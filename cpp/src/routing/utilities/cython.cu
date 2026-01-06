@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -106,13 +106,12 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
 
   // Use OpenMP for parallel execution
   const int max_thread = std::min(static_cast<int>(size), omp_get_max_threads());
-  // rmm::cuda_stream_pool stream_pool(data_models.size());
+  rmm::cuda_stream_pool stream_pool(data_models.size(), rmm::cuda_stream::flags::non_blocking);
 
 #pragma omp parallel for num_threads(max_thread)
   for (std::size_t i = 0; i < size; ++i) {
-    // data_models[i]->get_handle_ptr()->sync_stream();
-    // raft::resource::set_cuda_stream(*(data_models[i]->get_handle_ptr()),
-    // stream_pool.get_stream(i));
+    data_models[i]->get_handle_ptr()->sync_stream();
+    raft::resource::set_cuda_stream(*(data_models[i]->get_handle_ptr()), stream_pool.get_stream(i));
     auto routing_solution = cuopt::routing::solve(*data_models[i], *settings);
     vehicle_routing_ret_t vr_ret{
       routing_solution.get_vehicle_count(),
