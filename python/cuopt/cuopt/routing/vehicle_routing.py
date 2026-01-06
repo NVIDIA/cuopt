@@ -1560,7 +1560,6 @@ def BatchSolve(data_model_list, solver_settings=None):
     tuple
         A tuple containing:
         - list of Assignment: Solutions for each routing problem
-        - float: Total solve time in seconds
 
     Examples
     --------
@@ -1577,6 +1576,15 @@ def BatchSolve(data_model_list, solver_settings=None):
     >>> settings.set_time_limit(1.0)
     >>> solutions, solve_time = routing.BatchSolve(data_models, settings)
     """
+
+    if not isinstance(data_model_list, list):
+        raise ValueError("data_model_list must be a list of DataModel objects")
+    if len(data_model_list) == 0:
+        raise ValueError("data_model_list cannot be empty")
+    if not all(isinstance(dm, DataModel) for dm in data_model_list):
+        raise ValueError(
+            "All elements in data_model_list must be DataModel instances"
+        )
     if solver_settings is None:
         solver_settings = SolverSettings()
 
