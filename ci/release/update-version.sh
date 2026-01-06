@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ## Usage
@@ -108,8 +108,6 @@ DEPENDENCIES=(
   libraft-headers
   librmm
   pylibraft
-  raft-dask
-  rapids-dask-dependency
   rmm
 )
 
@@ -130,6 +128,9 @@ done
 # Update project.json
 PROJECT_FILE="docs/cuopt/source/project.json"
 sed_runner 's/\("version": "\)[0-9][0-9]\.[0-9][0-9]\.[0-9][0-9]"/\1'${NEXT_FULL_TAG}'"/g' "${PROJECT_FILE}"
+
+# Update README.md version badge
+sed_runner 's/badge\/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/badge\/version-'${NEXT_FULL_TAG}'-blue/g' README.md
 
 # Update nightly
 sed_runner 's/'"cuopt_version: \"[0-9][0-9].[0-9][0-9]\""'/'"cuopt_version: \"${NEXT_SHORT_TAG}\""'/g' .github/workflows/nightly.yaml

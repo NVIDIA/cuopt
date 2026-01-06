@@ -1,5 +1,5 @@
 # cmake-format: off
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
@@ -41,7 +41,6 @@ rapids_cmake_build_type(Release)
 option(CMAKE_CUDA_LINEINFO "Enable the -lineinfo option for nvcc useful for cuda-memcheck / profiler" ON)
 option(BUILD_TESTS "Configure CMake to build tests" ON)
 option(DISABLE_OPENMP "Disable OpenMP" OFF)
-option(CUDA_STATIC_RUNTIME "Statically link the CUDA toolkit runtime and libraries" OFF)
 option(BUILD_LP_ONLY "Build only linear programming components, exclude routing and MIP-specific files" OFF)
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
@@ -62,7 +61,7 @@ message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
 # - compiler options ------------------------------------------------------------------------------
 
 # CUDA runtime
-rapids_cuda_init_runtime(USE_STATIC ${CUDA_STATIC_RUNTIME})
+rapids_cuda_init_runtime(USE_STATIC ON)
 
 rapids_find_package(CUDAToolkit REQUIRED
   BUILD_EXPORT_SET cuopt-exports

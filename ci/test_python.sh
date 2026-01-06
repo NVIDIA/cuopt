@@ -58,29 +58,21 @@ rapids-logger "Test cuopt_cli"
 timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 
 rapids-logger "pytest cuopt"
-pushd python/cuopt/cuopt
-timeout 30m pytest \
-  --cache-clear \
+timeout 30m ./ci/run_cuopt_pytests.sh \
   --junitxml="${RAPIDS_TESTS_DIR}/junit-cuopt.xml" \
   --cov-config=.coveragerc \
   --cov=cuopt \
   --cov-report=xml:"${RAPIDS_COVERAGE_DIR}/cuopt-coverage.xml" \
   --cov-report=term \
-  --ignore=raft \
-  tests
-popd
+  --ignore=raft
 
 rapids-logger "pytest cuopt-server"
-pushd python/cuopt_server/cuopt_server
-timeout 20m pytest \
-  --cache-clear \
+timeout 20m ./ci/run_cuopt_server_pytests.sh \
   --junitxml="${RAPIDS_TESTS_DIR}/junit-cuopt-server.xml" \
   --cov-config=.coveragerc \
   --cov=cuopt_server \
   --cov-report=xml:"${RAPIDS_COVERAGE_DIR}/cuopt-server-coverage.xml" \
-  --cov-report=term \
-  tests
-popd
+  --cov-report=term
 
 rapids-logger "Test script exiting with value: $EXITCODE"
 exit ${EXITCODE}
