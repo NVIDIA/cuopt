@@ -184,16 +184,22 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
     // Try to parse as async request first
     cuopt::remote::AsyncRequest async_request;
     if (async_request.ParseFromArray(data.data(), data.size())) {
-      return async_request.has_mip_request();
+      if (async_request.has_mip_request()) { return true; }
+      if (async_request.has_lp_request()) { return false; }
     }
 
-    // Try LP request
-    cuopt::remote::SolveLPRequest lp_request;
-    if (lp_request.ParseFromArray(data.data(), data.size())) { return false; }
-
-    // Try MIP request
+    // Try to parse as direct request and check the header's problem_type
+    // MIP request - check if header indicates MIP
     cuopt::remote::SolveMIPRequest mip_request;
-    if (mip_request.ParseFromArray(data.data(), data.size())) { return true; }
+    if (mip_request.ParseFromArray(data.data(), data.size()) && mip_request.has_header()) {
+      if (mip_request.header().problem_type() == cuopt::remote::MIP) { return true; }
+    }
+
+    // LP request - check if header indicates LP
+    cuopt::remote::SolveLPRequest lp_request;
+    if (lp_request.ParseFromArray(data.data(), data.size()) && lp_request.has_header()) {
+      if (lp_request.header().problem_type() == cuopt::remote::LP) { return false; }
+    }
 
     return false;  // Default to LP if can't determine
   }
@@ -592,6 +598,18 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
     for (const auto& name : row_names) {
       pb_problem->add_row_names(name);
     }
+
+    // Variable types (for MIP problems)
+    auto var_types_span = view.get_variable_types();
+    if (var_types_span.size() > 0) {
+      const char* var_types_ptr = var_types_span.data();
+      for (i_t i = 0; i < n_cols; ++i) {
+        char vtype = var_types_ptr[i];
+        // 'I' = integer, 'B' = binary, 'C' = continuous (default)
+        pb_problem->add_is_integer(vtype == 'I' || vtype == 'B');
+        pb_problem->add_is_binary(vtype == 'B');
+      }
+    }
   }
 
   void serialize_lp_settings_to_proto(const pdlp_solver_settings_t<i_t, f_t>& settings,
@@ -689,6 +707,21 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
       std::vector<std::string> row_names(pb_problem.row_names().begin(),
                                          pb_problem.row_names().end());
       mps_data.set_row_names(row_names);
+    }
+
+    // Variable types (for MIP problems)
+    // is_integer and is_binary arrays indicate variable types
+    if (pb_problem.is_integer_size() > 0) {
+      i_t n_vars = static_cast<i_t>(pb_problem.is_integer_size());
+      std::vector<char> var_types(n_vars, 'C');  // Default to continuous
+      for (i_t i = 0; i < n_vars; ++i) {
+        if (pb_problem.is_binary_size() > i && pb_problem.is_binary(i)) {
+          var_types[i] = 'B';  // Binary
+        } else if (pb_problem.is_integer(i)) {
+          var_types[i] = 'I';  // Integer
+        }
+      }
+      mps_data.set_variable_types(var_types);
     }
   }
 
