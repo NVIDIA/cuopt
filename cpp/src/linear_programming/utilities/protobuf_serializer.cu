@@ -525,14 +525,60 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
       pb_problem->add_variable_upper_bounds(static_cast<double>(ub_ptr[i]));
     }
 
-    // Constraint bounds
-    auto c_lb_span      = view.get_constraint_lower_bounds();
-    auto c_ub_span      = view.get_constraint_upper_bounds();
-    const f_t* c_lb_ptr = c_lb_span.data();
-    const f_t* c_ub_ptr = c_ub_span.data();
-    for (i_t i = 0; i < n_rows; ++i) {
-      pb_problem->add_constraint_lower_bounds(static_cast<double>(c_lb_ptr[i]));
-      pb_problem->add_constraint_upper_bounds(static_cast<double>(c_ub_ptr[i]));
+    // Constraint bounds - need to handle both formats:
+    // 1. Direct lower/upper bounds (set_constraint_lower/upper_bounds)
+    // 2. RHS + row_types format (set_constraint_bounds + set_row_types)
+    auto c_lb_span = view.get_constraint_lower_bounds();
+    auto c_ub_span = view.get_constraint_upper_bounds();
+
+    if (c_lb_span.size() == static_cast<size_t>(n_rows) &&
+        c_ub_span.size() == static_cast<size_t>(n_rows)) {
+      // Direct format - use as-is
+      const f_t* c_lb_ptr = c_lb_span.data();
+      const f_t* c_ub_ptr = c_ub_span.data();
+      for (i_t i = 0; i < n_rows; ++i) {
+        pb_problem->add_constraint_lower_bounds(static_cast<double>(c_lb_ptr[i]));
+        pb_problem->add_constraint_upper_bounds(static_cast<double>(c_ub_ptr[i]));
+      }
+    } else {
+      // RHS + row_types format - compute lower/upper bounds
+      auto b_span         = view.get_constraint_bounds();
+      auto row_types_span = view.get_row_types();
+      const f_t* b_ptr    = b_span.data();
+      const char* rt_ptr  = row_types_span.data();
+
+      constexpr f_t inf = std::numeric_limits<f_t>::infinity();
+
+      for (i_t i = 0; i < n_rows; ++i) {
+        f_t lb, ub;
+        char row_type = (rt_ptr && row_types_span.size() > 0) ? rt_ptr[i] : 'E';
+        f_t rhs       = (b_ptr && b_span.size() > 0) ? b_ptr[i] : 0;
+
+        switch (row_type) {
+          case 'E':  // Equality: lb = ub = rhs
+            lb = rhs;
+            ub = rhs;
+            break;
+          case 'L':  // Less-than-or-equal: -inf <= Ax <= rhs
+            lb = -inf;
+            ub = rhs;
+            break;
+          case 'G':  // Greater-than-or-equal: rhs <= Ax <= inf
+            lb = rhs;
+            ub = inf;
+            break;
+          case 'N':  // Non-constraining (free)
+            lb = -inf;
+            ub = inf;
+            break;
+          default:  // Default to equality
+            lb = rhs;
+            ub = rhs;
+            break;
+        }
+        pb_problem->add_constraint_lower_bounds(static_cast<double>(lb));
+        pb_problem->add_constraint_upper_bounds(static_cast<double>(ub));
+      }
     }
 
     // Variable names (if available)

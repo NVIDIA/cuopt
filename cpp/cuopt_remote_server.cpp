@@ -485,17 +485,10 @@ void handle_client(int client_fd, bool stream_logs)
     std::cout << "[Server] Completed job: " << job_id << " (success: " << success << ")\n";
   }
 
-  // Send response
-  if (stream_logs) {
-    // Use streaming protocol
-    if (!send_solution_message(client_fd, result_data)) {
-      std::cerr << "[Server] Failed to send solution message\n";
-    }
-  } else {
-    // Use legacy protocol
-    if (!send_response(client_fd, result_data)) {
-      std::cerr << "[Server] Failed to send response\n";
-    }
+  // Send response - always use streaming protocol for consistency
+  // (stream_logs only controls whether LOG_MESSAGE are sent during solve)
+  if (!send_solution_message(client_fd, result_data)) {
+    std::cerr << "[Server] Failed to send solution message\n";
   }
 
   close(client_fd);
