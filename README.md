@@ -77,7 +77,7 @@ For CUDA 12.x:
 ```bash
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
-  nvidia-cuda-runtime-cu12=12.9.* \
+  nvidia-cuda-runtime-cu12==12.9.* \
   cuopt-server-cu12==26.02.* cuopt-sh-client==26.02.*
 ```
 
