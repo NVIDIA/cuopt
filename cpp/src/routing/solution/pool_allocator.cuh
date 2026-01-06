@@ -70,21 +70,7 @@ class pool_allocator_t {
     }
   }
 
-  void sync_all_streams() const
-  {
-    // for (size_t i = 0; i < stream_pool.get_pool_size(); ++i) {
-    //   stream_pool.get_stream(i).synchronize();
-    // }
-    stream.synchronize();
-  }
-
-  // a stream pool that will be used to execute different solutions on
-  // we are currently not using raft handles stream pool as it is constructed in python layer
-  // TODO: later consider using raft stream pool and construct it on python layer
-  // however that pushes some internal logic to the higher levels which we want to avoid
-  // rmm::cuda_stream_pool is non-movable as it contains an atomic variables
-  // KEEP THIS MEMBER ABOVE OTHER MEMBERS, so that it is destructed the last
-  // rmm::cuda_stream_pool stream_pool;
+  void sync_all_streams() const { stream.synchronize(); }
 
   // problem description
   rmm::cuda_stream_view stream;
