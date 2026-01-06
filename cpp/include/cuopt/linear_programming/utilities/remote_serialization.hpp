@@ -196,9 +196,28 @@ class remote_serializer_t {
   virtual std::vector<uint8_t> serialize_delete_request(const std::string& job_id) = 0;
 
   /**
+   * @brief Serialize a get logs request.
+   *
+   * @param job_id The job ID to get logs for
+   * @param frombyte Byte offset to start reading from (0 = beginning)
+   * @return Serialized request bytes
+   */
+  virtual std::vector<uint8_t> serialize_get_logs_request(const std::string& job_id,
+                                                          int64_t frombyte = 0) = 0;
+
+  /**
    * @brief Job status enumeration.
    */
   enum class job_status_t { QUEUED, PROCESSING, COMPLETED, FAILED, NOT_FOUND };
+
+  /**
+   * @brief Structure to hold log retrieval results.
+   */
+  struct logs_result_t {
+    std::vector<std::string> log_lines;  ///< Log lines read from file
+    int64_t nbytes;                      ///< Ending byte position (use as frombyte next time)
+    bool job_exists;                     ///< False if job_id not found
+  };
 
   /**
    * @brief Deserialize job submission response.
@@ -237,6 +256,122 @@ class remote_serializer_t {
    */
   virtual mip_solution_t<i_t, f_t> deserialize_mip_result_response(
     const std::vector<uint8_t>& data) = 0;
+
+  /**
+   * @brief Deserialize logs response.
+   *
+   * @param data Response bytes
+   * @return Logs result structure
+   */
+  virtual logs_result_t deserialize_logs_response(const std::vector<uint8_t>& data) = 0;
+
+  //============================================================================
+  // Server-side Async Request Handling
+  //============================================================================
+
+  /**
+   * @brief Check if serialized data is an async protocol request.
+   *
+   * Async requests contain RequestType field (SUBMIT_JOB, CHECK_STATUS, etc.)
+   *
+   * @param data The serialized request bytes
+   * @return true if this is an async protocol request
+   */
+  virtual bool is_async_request(const std::vector<uint8_t>& data) = 0;
+
+  /**
+   * @brief Get the async request type.
+   *
+   * @param data The serialized request bytes
+   * @return Request type: 0=SUBMIT_JOB, 1=CHECK_STATUS, 2=GET_RESULT, 3=DELETE_RESULT
+   */
+  virtual int get_async_request_type(const std::vector<uint8_t>& data) = 0;
+
+  /**
+   * @brief Check if async request has blocking flag set.
+   *
+   * @param data The serialized request bytes
+   * @return true if blocking mode is requested
+   */
+  virtual bool is_blocking_request(const std::vector<uint8_t>& data) = 0;
+
+  /**
+   * @brief Extract problem data from an async SUBMIT_JOB request.
+   *
+   * @param data The serialized async request bytes
+   * @return The extracted problem data (LP or MIP request)
+   */
+  virtual std::vector<uint8_t> extract_problem_data(const std::vector<uint8_t>& data) = 0;
+
+  /**
+   * @brief Get job_id from async request (for CHECK_STATUS, GET_RESULT, DELETE_RESULT, GET_LOGS).
+   *
+   * @param data The serialized request bytes
+   * @return The job ID string
+   */
+  virtual std::string get_job_id(const std::vector<uint8_t>& data) = 0;
+
+  /**
+   * @brief Get frombyte from GET_LOGS request.
+   *
+   * @param data The serialized request bytes
+   * @return The byte offset to start reading from
+   */
+  virtual int64_t get_frombyte(const std::vector<uint8_t>& data) = 0;
+
+  /**
+   * @brief Serialize a job submission response.
+   *
+   * @param success Whether submission succeeded
+   * @param result On success: job_id, on failure: error message
+   * @return Serialized response bytes
+   */
+  virtual std::vector<uint8_t> serialize_submit_response(bool success,
+                                                         const std::string& result) = 0;
+
+  /**
+   * @brief Serialize a status check response.
+   *
+   * @param status_code Job status: 0=QUEUED, 1=PROCESSING, 2=COMPLETED, 3=FAILED, 4=NOT_FOUND
+   * @param message Status message
+   * @return Serialized response bytes
+   */
+  virtual std::vector<uint8_t> serialize_status_response(int status_code,
+                                                         const std::string& message) = 0;
+
+  /**
+   * @brief Serialize a get result response.
+   *
+   * @param success Whether result retrieval succeeded
+   * @param result_data The solution data (if success)
+   * @param error_message Error message (if failure)
+   * @return Serialized response bytes
+   */
+  virtual std::vector<uint8_t> serialize_result_response(bool success,
+                                                         const std::vector<uint8_t>& result_data,
+                                                         const std::string& error_message) = 0;
+
+  /**
+   * @brief Serialize a delete response.
+   *
+   * @param success Whether deletion succeeded
+   * @return Serialized response bytes
+   */
+  virtual std::vector<uint8_t> serialize_delete_response(bool success) = 0;
+
+  /**
+   * @brief Serialize a logs response.
+   *
+   * @param job_id The job ID
+   * @param log_lines Log lines read from file
+   * @param nbytes Ending byte position in log file
+   * @param job_exists False if job_id not found
+   * @return Serialized response bytes
+   */
+  virtual std::vector<uint8_t> serialize_logs_response(const std::string& job_id,
+                                                       const std::vector<std::string>& log_lines,
+                                                       int64_t nbytes,
+                                                       bool job_exists) = 0;
 
   //============================================================================
   // Metadata

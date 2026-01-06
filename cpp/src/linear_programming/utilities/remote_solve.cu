@@ -16,6 +16,7 @@
 
 #include <cstring>
 #include <iostream>
+#include <thread>
 #include <vector>
 
 namespace cuopt::linear_programming {
@@ -27,6 +28,13 @@ enum class MessageType : uint8_t {
   LOG_MESSAGE = 0,  // Log output from server
   SOLUTION    = 1,  // Final solution data
 };
+
+// Check if sync mode is enabled (default is async)
+static bool use_sync_mode()
+{
+  const char* sync_env = std::getenv("CUOPT_REMOTE_USE_SYNC");
+  return (sync_env != nullptr && std::string(sync_env) == "1");
+}
 
 /**
  * @brief Simple socket client for remote solve with streaming support
@@ -68,7 +76,6 @@ class remote_client_t {
       return false;
     }
 
-    CUOPT_LOG_INFO("[remote_solve] Connected to {}:{}", host_, port_);
     return true;
   }
 
@@ -215,7 +222,169 @@ class remote_client_t {
   int sockfd_;
 };
 
+//============================================================================
+// Async Mode Helpers
+//============================================================================
+
+template <typename i_t, typename f_t>
+static std::pair<bool, std::string> submit_job(const std::string& host,
+                                               int port,
+                                               const std::vector<uint8_t>& request_data)
+{
+  remote_client_t client(host, port);
+  if (!client.connect()) { return {false, "Failed to connect to server"}; }
+
+  if (!client.send_request(request_data)) { return {false, "Failed to send request"}; }
+
+  std::vector<uint8_t> response_data;
+  if (!client.receive_response(response_data)) { return {false, "Failed to receive response"}; }
+
+  auto serializer = get_serializer<i_t, f_t>();
+  std::string job_id;
+  std::string error_message;
+  if (!serializer->deserialize_submit_response(response_data, job_id, error_message)) {
+    return {false, error_message};
+  }
+
+  return {true, job_id};
+}
+
+/**
+ * @brief Retrieve and display buffered logs from the server.
+ *
+ * @param host Server host
+ * @param port Server port
+ * @param job_id Job ID
+ * @param frombyte Byte offset to start reading from
+ * @return std::pair<bool, int64_t> - (job_exists, new_frombyte)
+ */
+template <typename i_t, typename f_t>
+static std::pair<bool, int64_t> get_logs(const std::string& host,
+                                         int port,
+                                         const std::string& job_id,
+                                         int64_t frombyte)
+{
+  remote_client_t client(host, port);
+  if (!client.connect()) { return {false, frombyte}; }
+
+  auto serializer   = get_serializer<i_t, f_t>();
+  auto logs_request = serializer->serialize_get_logs_request(job_id, frombyte);
+
+  if (!client.send_request(logs_request)) { return {false, frombyte}; }
+
+  std::vector<uint8_t> response_data;
+  if (!client.receive_response(response_data)) { return {false, frombyte}; }
+
+  auto result = serializer->deserialize_logs_response(response_data);
+
+  // Print any new log lines
+  for (const auto& line : result.log_lines) {
+    std::cout << line << "\n";
+  }
+  if (!result.log_lines.empty()) { std::cout.flush(); }
+
+  return {result.job_exists, result.nbytes};
+}
+
+template <typename i_t, typename f_t>
+static bool poll_until_complete(const std::string& host,
+                                int port,
+                                const std::string& job_id,
+                                bool verbose)
+{
+  auto serializer    = get_serializer<i_t, f_t>();
+  using job_status_t = typename remote_serializer_t<i_t, f_t>::job_status_t;
+
+  int64_t log_frombyte = 0;  // Track position in log file
+
+  while (true) {
+    // Fetch and display any new log entries
+    if (verbose) {
+      auto [job_exists, new_frombyte] = get_logs<i_t, f_t>(host, port, job_id, log_frombyte);
+      if (job_exists) { log_frombyte = new_frombyte; }
+    }
+
+    remote_client_t client(host, port);
+    if (!client.connect()) {
+      CUOPT_LOG_ERROR("[remote_solve] Failed to connect for status check");
+      return false;
+    }
+
+    auto status_request = serializer->serialize_status_request(job_id);
+    if (!client.send_request(status_request)) {
+      CUOPT_LOG_ERROR("[remote_solve] Failed to send status request");
+      return false;
+    }
+
+    std::vector<uint8_t> response_data;
+    if (!client.receive_response(response_data)) {
+      CUOPT_LOG_ERROR("[remote_solve] Failed to receive status response");
+      return false;
+    }
+
+    auto status = serializer->deserialize_status_response(response_data);
+
+    if (status == job_status_t::COMPLETED) {
+      // Fetch any remaining log entries
+      if (verbose) {
+        get_logs<i_t, f_t>(host, port, job_id, log_frombyte);
+        CUOPT_LOG_INFO("[remote_solve] Job {} completed", job_id);
+      }
+      return true;
+    } else if (status == job_status_t::FAILED) {
+      // Fetch any remaining log entries (may contain error info)
+      if (verbose) { get_logs<i_t, f_t>(host, port, job_id, log_frombyte); }
+      CUOPT_LOG_ERROR("[remote_solve] Job {} failed", job_id);
+      return false;
+    } else if (status == job_status_t::NOT_FOUND) {
+      CUOPT_LOG_ERROR("[remote_solve] Job {} not found", job_id);
+      return false;
+    }
+
+    // Job still queued or processing, wait and try again
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+}
+
+template <typename i_t, typename f_t>
+static std::pair<bool, std::vector<uint8_t>> get_result(const std::string& host,
+                                                        int port,
+                                                        const std::string& job_id)
+{
+  remote_client_t client(host, port);
+  if (!client.connect()) { return {false, {}}; }
+
+  auto serializer     = get_serializer<i_t, f_t>();
+  auto result_request = serializer->serialize_get_result_request(job_id);
+
+  if (!client.send_request(result_request)) { return {false, {}}; }
+
+  std::vector<uint8_t> response_data;
+  if (!client.receive_response(response_data)) { return {false, {}}; }
+
+  return {true, response_data};
+}
+
+template <typename i_t, typename f_t>
+static void delete_job(const std::string& host, int port, const std::string& job_id)
+{
+  remote_client_t client(host, port);
+  if (!client.connect()) { return; }
+
+  auto serializer     = get_serializer<i_t, f_t>();
+  auto delete_request = serializer->serialize_delete_request(job_id);
+
+  if (!client.send_request(delete_request)) { return; }
+
+  std::vector<uint8_t> response_data;
+  client.receive_response(response_data);  // Ignore result
+}
+
 }  // namespace
+
+//============================================================================
+// LP Remote Solve
+//============================================================================
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
@@ -223,7 +392,12 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
   const cuopt::mps_parser::data_model_view_t<i_t, f_t>& view,
   const pdlp_solver_settings_t<i_t, f_t>& settings)
 {
-  CUOPT_LOG_INFO("[remote_solve] Solving LP remotely on {}:{}", config.host, config.port);
+  const bool sync_mode = use_sync_mode();
+
+  CUOPT_LOG_INFO("[remote_solve] Solving LP remotely on {}:{} ({} mode)",
+                 config.host,
+                 config.port,
+                 sync_mode ? "sync" : "async");
 
   // Log problem info (similar to local solve)
   if (settings.log_to_console) {
@@ -240,39 +414,87 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
 
   auto serializer = get_serializer<i_t, f_t>();
 
-  // Serialize the request
-  std::vector<uint8_t> request_data = serializer->serialize_lp_request(view, settings);
-  CUOPT_LOG_DEBUG("[remote_solve] Serialized LP request: {} bytes", request_data.size());
+  if (sync_mode) {
+    //=========================================================================
+    // SYNC MODE: Use blocking request with streaming logs
+    //=========================================================================
 
-  // Connect and send
-  remote_client_t client(config.host, config.port);
-  if (!client.connect()) {
-    return optimization_problem_solution_t<i_t, f_t>(
-      cuopt::logic_error("Failed to connect to remote server", cuopt::error_type_t::RuntimeError));
+    // Serialize as async request with blocking=true
+    std::vector<uint8_t> request_data =
+      serializer->serialize_async_lp_request(view, settings, true /* blocking */);
+    CUOPT_LOG_DEBUG("[remote_solve] Serialized LP request (sync): {} bytes", request_data.size());
+
+    // Connect and send
+    remote_client_t client(config.host, config.port);
+    if (!client.connect()) {
+      return optimization_problem_solution_t<i_t, f_t>(cuopt::logic_error(
+        "Failed to connect to remote server", cuopt::error_type_t::RuntimeError));
+    }
+
+    if (!client.send_request(request_data)) {
+      return optimization_problem_solution_t<i_t, f_t>(cuopt::logic_error(
+        "Failed to send request to remote server", cuopt::error_type_t::RuntimeError));
+    }
+
+    // Receive response with streaming log support
+    std::vector<uint8_t> response_data;
+    if (!client.receive_streaming_response(response_data, settings.log_to_console)) {
+      return optimization_problem_solution_t<i_t, f_t>(cuopt::logic_error(
+        "Failed to receive response from remote server", cuopt::error_type_t::RuntimeError));
+    }
+
+    CUOPT_LOG_DEBUG("[remote_solve] Received LP solution (sync): {} bytes", response_data.size());
+
+    // Deserialize solution
+    return serializer->deserialize_lp_solution(response_data);
+
+  } else {
+    //=========================================================================
+    // ASYNC MODE: Submit → Poll → Get Result → Delete
+    //=========================================================================
+
+    // Serialize as async request with blocking=false
+    std::vector<uint8_t> request_data =
+      serializer->serialize_async_lp_request(view, settings, false /* blocking */);
+    CUOPT_LOG_DEBUG("[remote_solve] Serialized LP request (async): {} bytes", request_data.size());
+
+    // Submit job
+    auto [submit_ok, job_id_or_error] =
+      submit_job<i_t, f_t>(config.host, config.port, request_data);
+    if (!submit_ok) {
+      return optimization_problem_solution_t<i_t, f_t>(cuopt::logic_error(
+        "Job submission failed: " + job_id_or_error, cuopt::error_type_t::RuntimeError));
+    }
+    std::string job_id = job_id_or_error;
+    CUOPT_LOG_INFO("[remote_solve] Job submitted, ID: {}", job_id);
+
+    // Poll until complete
+    if (!poll_until_complete<i_t, f_t>(config.host, config.port, job_id, settings.log_to_console)) {
+      delete_job<i_t, f_t>(config.host, config.port, job_id);
+      return optimization_problem_solution_t<i_t, f_t>(
+        cuopt::logic_error("Job failed or not found", cuopt::error_type_t::RuntimeError));
+    }
+
+    // Get result
+    auto [result_ok, result_data] = get_result<i_t, f_t>(config.host, config.port, job_id);
+    if (!result_ok) {
+      delete_job<i_t, f_t>(config.host, config.port, job_id);
+      return optimization_problem_solution_t<i_t, f_t>(
+        cuopt::logic_error("Failed to retrieve result", cuopt::error_type_t::RuntimeError));
+    }
+
+    // Delete job from server
+    delete_job<i_t, f_t>(config.host, config.port, job_id);
+    CUOPT_LOG_DEBUG("[remote_solve] Job {} deleted from server", job_id);
+
+    // Deserialize solution from async result response
+    return serializer->deserialize_lp_result_response(result_data);
   }
-
-  if (!client.send_request(request_data)) {
-    return optimization_problem_solution_t<i_t, f_t>(cuopt::logic_error(
-      "Failed to send request to remote server", cuopt::error_type_t::RuntimeError));
-  }
-
-  // Receive response with streaming log support
-  // Server sends LOG_MESSAGE types during solve, then SOLUTION at end
-  std::vector<uint8_t> response_data;
-  if (!client.receive_streaming_response(response_data, settings.log_to_console)) {
-    return optimization_problem_solution_t<i_t, f_t>(cuopt::logic_error(
-      "Failed to receive response from remote server", cuopt::error_type_t::RuntimeError));
-  }
-
-  CUOPT_LOG_DEBUG("[remote_solve] Received LP solution: {} bytes", response_data.size());
-
-  // Deserialize solution
-  auto solution = serializer->deserialize_lp_solution(response_data);
-
-  // Note: Detailed logs were already streamed from server, no need to duplicate summary here
-
-  return solution;
 }
+
+//============================================================================
+// MIP Remote Solve
+//============================================================================
 
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip_remote(
@@ -280,10 +502,14 @@ mip_solution_t<i_t, f_t> solve_mip_remote(
   const cuopt::mps_parser::data_model_view_t<i_t, f_t>& view,
   const mip_solver_settings_t<i_t, f_t>& settings)
 {
-  CUOPT_LOG_INFO("[remote_solve] Solving MIP remotely on {}:{}", config.host, config.port);
+  const bool sync_mode = use_sync_mode();
 
-  // Log problem info (similar to local solve)
-  // Note: MIP settings don't have log_to_console, so we always log
+  CUOPT_LOG_INFO("[remote_solve] Solving MIP remotely on {}:{} ({} mode)",
+                 config.host,
+                 config.port,
+                 sync_mode ? "sync" : "async");
+
+  // Log problem info
   {
     auto n_rows = view.get_constraint_matrix_offsets().size() > 0
                     ? static_cast<i_t>(view.get_constraint_matrix_offsets().size()) - 1
@@ -299,37 +525,77 @@ mip_solution_t<i_t, f_t> solve_mip_remote(
 
   auto serializer = get_serializer<i_t, f_t>();
 
-  // Serialize the request
-  std::vector<uint8_t> request_data = serializer->serialize_mip_request(view, settings);
-  CUOPT_LOG_DEBUG("[remote_solve] Serialized MIP request: {} bytes", request_data.size());
+  if (sync_mode) {
+    //=========================================================================
+    // SYNC MODE: Use blocking request with streaming logs
+    //=========================================================================
 
-  // Connect and send
-  remote_client_t client(config.host, config.port);
-  if (!client.connect()) {
-    return mip_solution_t<i_t, f_t>(
-      cuopt::logic_error("Failed to connect to remote server", cuopt::error_type_t::RuntimeError));
+    std::vector<uint8_t> request_data =
+      serializer->serialize_async_mip_request(view, settings, true /* blocking */);
+    CUOPT_LOG_DEBUG("[remote_solve] Serialized MIP request (sync): {} bytes", request_data.size());
+
+    remote_client_t client(config.host, config.port);
+    if (!client.connect()) {
+      return mip_solution_t<i_t, f_t>(cuopt::logic_error("Failed to connect to remote server",
+                                                         cuopt::error_type_t::RuntimeError));
+    }
+
+    if (!client.send_request(request_data)) {
+      return mip_solution_t<i_t, f_t>(cuopt::logic_error("Failed to send request to remote server",
+                                                         cuopt::error_type_t::RuntimeError));
+    }
+
+    std::vector<uint8_t> response_data;
+    if (!client.receive_streaming_response(response_data, true /* log_to_console */)) {
+      return mip_solution_t<i_t, f_t>(cuopt::logic_error(
+        "Failed to receive response from remote server", cuopt::error_type_t::RuntimeError));
+    }
+
+    CUOPT_LOG_DEBUG("[remote_solve] Received MIP solution (sync): {} bytes", response_data.size());
+
+    return serializer->deserialize_mip_solution(response_data);
+
+  } else {
+    //=========================================================================
+    // ASYNC MODE: Submit → Poll → Get Result → Delete
+    //=========================================================================
+
+    std::vector<uint8_t> request_data =
+      serializer->serialize_async_mip_request(view, settings, false /* blocking */);
+    CUOPT_LOG_DEBUG("[remote_solve] Serialized MIP request (async): {} bytes", request_data.size());
+
+    // Submit job
+    auto [submit_ok, job_id_or_error] =
+      submit_job<i_t, f_t>(config.host, config.port, request_data);
+    if (!submit_ok) {
+      return mip_solution_t<i_t, f_t>(cuopt::logic_error(
+        "Job submission failed: " + job_id_or_error, cuopt::error_type_t::RuntimeError));
+    }
+    std::string job_id = job_id_or_error;
+    CUOPT_LOG_INFO("[remote_solve] Job submitted, ID: {}", job_id);
+
+    // Poll until complete
+    if (!poll_until_complete<i_t, f_t>(config.host, config.port, job_id, true /* verbose */)) {
+      delete_job<i_t, f_t>(config.host, config.port, job_id);
+      return mip_solution_t<i_t, f_t>(
+        cuopt::logic_error("Job failed or not found", cuopt::error_type_t::RuntimeError));
+    }
+
+    // Get result
+    auto [result_ok, result_data] = get_result<i_t, f_t>(config.host, config.port, job_id);
+    if (!result_ok) {
+      delete_job<i_t, f_t>(config.host, config.port, job_id);
+      return mip_solution_t<i_t, f_t>(
+        cuopt::logic_error("Failed to retrieve result", cuopt::error_type_t::RuntimeError));
+    }
+
+    // Delete job from server
+    delete_job<i_t, f_t>(config.host, config.port, job_id);
+    CUOPT_LOG_DEBUG("[remote_solve] Job {} deleted from server", job_id);
+
+    // Deserialize solution from async result response
+    return serializer->deserialize_mip_result_response(result_data);
   }
-
-  if (!client.send_request(request_data)) {
-    return mip_solution_t<i_t, f_t>(cuopt::logic_error("Failed to send request to remote server",
-                                                       cuopt::error_type_t::RuntimeError));
-  }
-
-  // Receive response with streaming log support
-  std::vector<uint8_t> response_data;
-  if (!client.receive_streaming_response(response_data, true /* log_to_console */)) {
-    return mip_solution_t<i_t, f_t>(cuopt::logic_error(
-      "Failed to receive response from remote server", cuopt::error_type_t::RuntimeError));
-  }
-
-  CUOPT_LOG_DEBUG("[remote_solve] Received MIP solution: {} bytes", response_data.size());
-
-  // Deserialize solution
-  auto solution = serializer->deserialize_mip_solution(response_data);
-
-  // Note: Detailed logs were already streamed from server, no need to duplicate summary here
-
-  return solution;
 }
 
 // Explicit instantiations

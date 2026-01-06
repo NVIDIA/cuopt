@@ -369,6 +369,19 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
     return result;
   }
 
+  std::vector<uint8_t> serialize_get_logs_request(const std::string& job_id,
+                                                  int64_t frombyte) override
+  {
+    cuopt::remote::AsyncRequest request;
+    request.set_request_type(cuopt::remote::GET_LOGS);
+    request.set_job_id(job_id);
+    request.set_frombyte(frombyte);
+
+    std::vector<uint8_t> result(request.ByteSizeLong());
+    request.SerializeToArray(result.data(), result.size());
+    return result;
+  }
+
   bool deserialize_submit_response(const std::vector<uint8_t>& data,
                                    std::string& job_id,
                                    std::string& error_message) override
@@ -465,6 +478,222 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
     }
 
     return proto_to_mip_solution(result.mip_solution());
+  }
+
+  typename remote_serializer_t<i_t, f_t>::logs_result_t deserialize_logs_response(
+    const std::vector<uint8_t>& data) override
+  {
+    typename remote_serializer_t<i_t, f_t>::logs_result_t result;
+    result.nbytes     = 0;
+    result.job_exists = false;
+
+    cuopt::remote::AsyncResponse response;
+    if (!response.ParseFromArray(data.data(), data.size()) || !response.has_logs_response()) {
+      return result;
+    }
+
+    const auto& logs  = response.logs_response();
+    result.job_exists = logs.job_exists();
+    result.nbytes     = logs.nbytes();
+
+    result.log_lines.reserve(logs.log_lines_size());
+    for (int i = 0; i < logs.log_lines_size(); ++i) {
+      result.log_lines.push_back(logs.log_lines(i));
+    }
+
+    return result;
+  }
+
+  //============================================================================
+  // Server-side Async Request Handling
+  //============================================================================
+
+  bool is_async_request(const std::vector<uint8_t>& data) override
+  {
+    // An AsyncRequest is characterized by having the request_type field set
+    // and containing either lp_request or mip_request.
+    // We can detect it by checking if it parses as AsyncRequest AND has a job_data set.
+    cuopt::remote::AsyncRequest request;
+    if (!request.ParseFromArray(data.data(), data.size())) { return false; }
+
+    // AsyncRequest must have either lp_request or mip_request set
+    // (the job_data oneof). If neither is set, it's not an async request
+    // or it's a status/result/delete request that has job_id instead.
+    bool has_job_data = request.has_lp_request() || request.has_mip_request();
+    bool has_job_id   = !request.job_id().empty();
+
+    // It's an async request if it has job_data OR job_id (for non-submit requests)
+    return has_job_data || has_job_id;
+  }
+
+  int get_async_request_type(const std::vector<uint8_t>& data) override
+  {
+    cuopt::remote::AsyncRequest request;
+    if (!request.ParseFromArray(data.data(), data.size())) { return -1; }
+
+    switch (request.request_type()) {
+      case cuopt::remote::SUBMIT_JOB: return 0;
+      case cuopt::remote::CHECK_STATUS: return 1;
+      case cuopt::remote::GET_RESULT: return 2;
+      case cuopt::remote::DELETE_RESULT: return 3;
+      case cuopt::remote::GET_LOGS: return 4;
+      default: return -1;
+    }
+  }
+
+  bool is_blocking_request(const std::vector<uint8_t>& data) override
+  {
+    cuopt::remote::AsyncRequest request;
+    if (!request.ParseFromArray(data.data(), data.size())) { return false; }
+    return request.blocking();
+  }
+
+  std::vector<uint8_t> extract_problem_data(const std::vector<uint8_t>& data) override
+  {
+    cuopt::remote::AsyncRequest request;
+    if (!request.ParseFromArray(data.data(), data.size())) { return {}; }
+
+    std::string serialized;
+    if (request.has_lp_request()) {
+      serialized = request.lp_request().SerializeAsString();
+    } else if (request.has_mip_request()) {
+      serialized = request.mip_request().SerializeAsString();
+    } else {
+      return {};
+    }
+
+    return std::vector<uint8_t>(serialized.begin(), serialized.end());
+  }
+
+  std::string get_job_id(const std::vector<uint8_t>& data) override
+  {
+    cuopt::remote::AsyncRequest request;
+    if (!request.ParseFromArray(data.data(), data.size())) { return ""; }
+    return request.job_id();
+  }
+
+  int64_t get_frombyte(const std::vector<uint8_t>& data) override
+  {
+    cuopt::remote::AsyncRequest request;
+    if (!request.ParseFromArray(data.data(), data.size())) { return 0; }
+    return request.frombyte();
+  }
+
+  std::vector<uint8_t> serialize_submit_response(bool success, const std::string& result) override
+  {
+    cuopt::remote::AsyncResponse response;
+    response.set_request_type(cuopt::remote::SUBMIT_JOB);
+
+    auto* submit = response.mutable_submit_response();
+    if (success) {
+      submit->set_status(cuopt::remote::SUCCESS);
+      submit->set_job_id(result);
+      submit->set_message("Job submitted successfully");
+    } else {
+      submit->set_status(cuopt::remote::ERROR_INTERNAL);
+      submit->set_message(result);
+    }
+
+    std::vector<uint8_t> bytes(response.ByteSizeLong());
+    response.SerializeToArray(bytes.data(), bytes.size());
+    return bytes;
+  }
+
+  std::vector<uint8_t> serialize_status_response(int status_code,
+                                                 const std::string& message) override
+  {
+    cuopt::remote::AsyncResponse response;
+    response.set_request_type(cuopt::remote::CHECK_STATUS);
+
+    auto* status = response.mutable_status_response();
+
+    switch (status_code) {
+      case 0: status->set_job_status(cuopt::remote::QUEUED); break;
+      case 1: status->set_job_status(cuopt::remote::PROCESSING); break;
+      case 2: status->set_job_status(cuopt::remote::COMPLETED); break;
+      case 3: status->set_job_status(cuopt::remote::FAILED); break;
+      case 4:
+      default: status->set_job_status(cuopt::remote::NOT_FOUND); break;
+    }
+    status->set_message(message);
+
+    std::vector<uint8_t> bytes(response.ByteSizeLong());
+    response.SerializeToArray(bytes.data(), bytes.size());
+    return bytes;
+  }
+
+  std::vector<uint8_t> serialize_result_response(bool success,
+                                                 const std::vector<uint8_t>& result_data,
+                                                 const std::string& error_message) override
+  {
+    cuopt::remote::AsyncResponse response;
+    response.set_request_type(cuopt::remote::GET_RESULT);
+
+    auto* result = response.mutable_result_response();
+
+    if (success) {
+      result->set_status(cuopt::remote::SUCCESS);
+      // The result_data is the raw serialized solution (LP or MIP)
+      // We need to wrap it properly. For simplicity, we'll embed it as raw bytes
+      // and the client will know to parse it based on the original request type.
+      // Actually, we should try to parse it and embed properly.
+
+      // Try to parse as LP solution first
+      cuopt::remote::LPSolution lp_sol;
+      if (lp_sol.ParseFromArray(result_data.data(), result_data.size())) {
+        result->mutable_lp_solution()->CopyFrom(lp_sol);
+      } else {
+        // Try MIP solution
+        cuopt::remote::MIPSolution mip_sol;
+        if (mip_sol.ParseFromArray(result_data.data(), result_data.size())) {
+          result->mutable_mip_solution()->CopyFrom(mip_sol);
+        }
+      }
+    } else {
+      result->set_status(cuopt::remote::ERROR_INTERNAL);
+      result->set_error_message(error_message);
+    }
+
+    std::vector<uint8_t> bytes(response.ByteSizeLong());
+    response.SerializeToArray(bytes.data(), bytes.size());
+    return bytes;
+  }
+
+  std::vector<uint8_t> serialize_delete_response(bool success) override
+  {
+    cuopt::remote::AsyncResponse response;
+    response.set_request_type(cuopt::remote::DELETE_RESULT);
+
+    auto* del = response.mutable_delete_response();
+    del->set_status(success ? cuopt::remote::SUCCESS : cuopt::remote::ERROR_NOT_FOUND);
+    del->set_message(success ? "Job deleted" : "Job not found");
+
+    std::vector<uint8_t> bytes(response.ByteSizeLong());
+    response.SerializeToArray(bytes.data(), bytes.size());
+    return bytes;
+  }
+
+  std::vector<uint8_t> serialize_logs_response(const std::string& job_id,
+                                               const std::vector<std::string>& log_lines,
+                                               int64_t nbytes,
+                                               bool job_exists) override
+  {
+    cuopt::remote::AsyncResponse response;
+    response.set_request_type(cuopt::remote::GET_LOGS);
+
+    auto* logs = response.mutable_logs_response();
+    logs->set_status(job_exists ? cuopt::remote::SUCCESS : cuopt::remote::ERROR_NOT_FOUND);
+    logs->set_job_id(job_id);
+    logs->set_nbytes(nbytes);
+    logs->set_job_exists(job_exists);
+
+    for (const auto& line : log_lines) {
+      logs->add_log_lines(line);
+    }
+
+    std::vector<uint8_t> bytes(response.ByteSizeLong());
+    response.SerializeToArray(bytes.data(), bytes.size());
+    return bytes;
   }
 
   //============================================================================

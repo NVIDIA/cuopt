@@ -202,6 +202,7 @@ enum RequestType {
   CHECK_STATUS = 1;      // Check job status
   GET_RESULT = 2;        // Retrieve completed result
   DELETE_RESULT = 3;     // Delete result from server
+  GET_LOGS = 4;          // Retrieve buffered log entries
 }
 
 // Job status for async operations
@@ -216,8 +217,9 @@ enum JobStatus {
 // Generic request wrapper for async operations
 message AsyncRequest {
   RequestType request_type = 1;
-  string job_id = 2;  // For status/get/delete operations
+  string job_id = 2;  // For status/get/delete/get_logs operations
   bool blocking = 3;  // If true, server waits and returns solution (sync mode)
+  int64 frombyte = 4; // For GET_LOGS: byte offset to start reading from
 
   // For SUBMIT_JOB requests
   oneof job_data {
@@ -257,6 +259,15 @@ message DeleteResponse {
   string message = 2;
 }
 
+// Response for log retrieval (file-based, like Python server)
+message LogsResponse {
+  ResponseStatus status = 1;
+  string job_id = 2;
+  repeated string log_lines = 3;  // Log lines read from file
+  int64 nbytes = 4;               // Ending byte position (use as frombyte in next request)
+  bool job_exists = 5;            // False if job_id not found
+}
+
 // Generic response wrapper
 message AsyncResponse {
   RequestType request_type = 1;
@@ -266,6 +277,7 @@ message AsyncResponse {
     StatusResponse status_response = 11;
     ResultResponse result_response = 12;
     DeleteResponse delete_response = 13;
+    LogsResponse logs_response = 14;
   }
 }
 

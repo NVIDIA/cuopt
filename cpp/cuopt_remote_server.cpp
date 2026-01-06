@@ -8,11 +8,20 @@
  * @brief Remote solve server with sync and async support using pluggable serialization
  *
  * Features:
- * - Sync mode: Submit job, wait for result, return immediately
- * - Async mode: Submit job, get job_id, poll for status, retrieve result
+ * - Sync mode: Submit job with blocking=true, wait for result, return immediately
+ * - Async mode: Submit job, get job_id, poll for status, retrieve result, delete
  * - Uses pluggable serialization (default: Protocol Buffers)
- * - Threaded request handling
- * - Real-time log streaming to client
+ * - Worker processes with shared memory job queues
+ * - Real-time log streaming to client (sync mode only)
+ *
+ * Async workflow:
+ *   1. Client sends SUBMIT_JOB request → Server returns job_id
+ *   2. Client sends CHECK_STATUS request → Server returns job status
+ *   3. Client sends GET_RESULT request → Server returns solution
+ *   4. Client sends DELETE_RESULT request → Server cleans up job
+ *
+ * Sync workflow:
+ *   1. Client sends SUBMIT_JOB with blocking=true → Server solves and returns result directly
  */
 
 #include <cuopt/linear_programming/solve.hpp>
@@ -20,8 +29,12 @@
 #include <mps_parser/mps_data_model.hpp>
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -30,6 +43,7 @@
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -40,7 +54,44 @@
 
 using namespace cuopt::linear_programming;
 
+// ============================================================================
+// Shared Memory Structures (must match between main process and workers)
+// ============================================================================
+
+constexpr size_t MAX_JOBS          = 100;
+constexpr size_t MAX_RESULTS       = 100;
+constexpr size_t MAX_JOB_DATA_SIZE = 64 * 1024 * 1024;   // 64MB max problem size
+constexpr size_t MAX_RESULT_SIZE   = 128 * 1024 * 1024;  // 128MB max result size
+
+struct JobQueueEntry {
+  char job_id[64];
+  uint32_t problem_type;  // 0 = LP, 1 = MIP
+  uint32_t data_size;
+  uint8_t data[MAX_JOB_DATA_SIZE];
+  std::atomic<bool> ready;    // Job is ready to be processed
+  std::atomic<bool> claimed;  // Worker has claimed this job
+};
+
+struct ResultQueueEntry {
+  char job_id[64];
+  uint32_t status;  // 0 = success, 1 = error
+  uint32_t data_size;
+  uint8_t data[MAX_RESULT_SIZE];
+  char error_message[1024];
+  std::atomic<bool> ready;      // Result is ready
+  std::atomic<bool> retrieved;  // Result has been retrieved
+};
+
+// Shared memory control block
+struct SharedMemoryControl {
+  std::atomic<bool> shutdown_requested;
+  std::atomic<int> active_workers;
+};
+
+// ============================================================================
 // Message types for streaming protocol
+// ============================================================================
+
 enum class MessageType : uint8_t {
   LOG_MESSAGE = 0,  // Log output from server
   SOLUTION    = 1,  // Final solution data
@@ -49,15 +100,11 @@ enum class MessageType : uint8_t {
 // Helper to send a framed message with type
 static bool send_typed_message(int sockfd, MessageType type, const void* data, size_t size)
 {
-  // Message format: [type:1][size:4][payload:size]
   uint8_t msg_type      = static_cast<uint8_t>(type);
   uint32_t payload_size = static_cast<uint32_t>(size);
 
-  // Write type
   if (::write(sockfd, &msg_type, 1) != 1) return false;
-  // Write size
   if (::write(sockfd, &payload_size, 4) != 4) return false;
-  // Write payload
   if (size > 0) {
     const uint8_t* ptr = static_cast<const uint8_t*>(data);
     size_t remaining   = size;
@@ -71,12 +118,10 @@ static bool send_typed_message(int sockfd, MessageType type, const void* data, s
   return true;
 }
 
-/**
- * @brief RAII class to redirect stdout to a pipe and stream output to client
- *
- * This captures all stdout output from the solver and sends it to the client
- * in real-time while also echoing to the original stdout (server console).
- */
+// ============================================================================
+// RAII stdout streamer for log streaming to client
+// ============================================================================
+
 class stdout_streamer_t {
  public:
   stdout_streamer_t(int client_fd, bool enabled)
@@ -84,17 +129,14 @@ class stdout_streamer_t {
   {
     if (!enabled_) return;
 
-    // Flush any buffered stdout to prevent old content from being captured
     fflush(stdout);
 
-    // Create pipe
     if (pipe(pipe_fds_) < 0) {
       std::cerr << "[Server] Failed to create pipe for stdout streaming\n";
       enabled_ = false;
       return;
     }
 
-    // Save original stdout
     original_stdout_ = dup(STDOUT_FILENO);
     if (original_stdout_ < 0) {
       close(pipe_fds_[0]);
@@ -103,7 +145,6 @@ class stdout_streamer_t {
       return;
     }
 
-    // Redirect stdout to pipe
     if (dup2(pipe_fds_[1], STDOUT_FILENO) < 0) {
       close(original_stdout_);
       close(pipe_fds_[0]);
@@ -112,10 +153,8 @@ class stdout_streamer_t {
       return;
     }
 
-    // Close write end of pipe (stdout now writes to it)
     close(pipe_fds_[1]);
 
-    // Start reader thread
     running_       = true;
     reader_thread_ = std::thread(&stdout_streamer_t::reader_loop, this);
   }
@@ -124,18 +163,13 @@ class stdout_streamer_t {
   {
     if (!enabled_) return;
 
-    // Flush stdout to ensure all output is in the pipe
     fflush(stdout);
-
-    // Restore original stdout
     dup2(original_stdout_, STDOUT_FILENO);
     close(original_stdout_);
 
-    // Signal reader to stop and close pipe read end
     running_ = false;
     close(pipe_fds_[0]);
 
-    // Wait for reader thread
     if (reader_thread_.joinable()) { reader_thread_.join(); }
   }
 
@@ -149,10 +183,7 @@ class stdout_streamer_t {
 
       buffer[n] = '\0';
 
-      // Echo to original stdout (server console)
       if (original_stdout_ >= 0) { write(original_stdout_, buffer, n); }
-
-      // Send to client
       send_typed_message(client_fd_, MessageType::LOG_MESSAGE, buffer, n);
     }
   }
@@ -165,46 +196,87 @@ class stdout_streamer_t {
   std::thread reader_thread_;
 };
 
-// Job status
+// ============================================================================
+// Job status tracking (main process only)
+// ============================================================================
+
 enum class JobStatus { QUEUED, PROCESSING, COMPLETED, FAILED, NOT_FOUND };
 
-// Job info for tracking
 struct JobInfo {
   std::string job_id;
   JobStatus status;
   std::chrono::steady_clock::time_point submit_time;
-  std::vector<uint8_t> request_data;  // Stored request
-  std::vector<uint8_t> result_data;   // Stored result
-  bool is_mip;                        // true for MIP, false for LP
+  std::vector<uint8_t> result_data;
+  bool is_mip;
   std::string error_message;
+  bool is_blocking;  // True if a client is waiting synchronously
 };
 
+// Per-job condition variable for synchronous waiting
+struct JobWaiter {
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::vector<uint8_t> result_data;
+  std::string error_message;
+  bool success;
+  bool ready;
+
+  JobWaiter() : success(false), ready(false) {}
+};
+
+// ============================================================================
 // Global state
+// ============================================================================
+
 std::atomic<bool> keep_running{true};
 std::map<std::string, JobInfo> job_tracker;
 std::mutex tracker_mutex;
-std::condition_variable job_cv;
+std::condition_variable result_cv;  // Notified when results arrive
+
+std::map<std::string, std::shared_ptr<JobWaiter>> waiting_threads;
+std::mutex waiters_mutex;
+
+// Shared memory
+JobQueueEntry* job_queue       = nullptr;
+ResultQueueEntry* result_queue = nullptr;
+SharedMemoryControl* shm_ctrl  = nullptr;
+
+// Worker PIDs
+std::vector<pid_t> worker_pids;
 
 // Server configuration
 struct ServerConfig {
   int port         = 9090;
   int num_workers  = 1;
   bool verbose     = true;
-  bool stream_logs = true;  // Enable real-time log streaming to clients
+  bool stream_logs = true;
 };
 
 ServerConfig config;
+
+// Shared memory names
+const char* SHM_JOB_QUEUE    = "/cuopt_job_queue";
+const char* SHM_RESULT_QUEUE = "/cuopt_result_queue";
+const char* SHM_CONTROL      = "/cuopt_control";
+
+// ============================================================================
+// Signal handling
+// ============================================================================
 
 void signal_handler(int signal)
 {
   if (signal == SIGINT || signal == SIGTERM) {
     std::cout << "\n[Server] Received shutdown signal\n";
     keep_running = false;
-    job_cv.notify_all();
+    if (shm_ctrl) { shm_ctrl->shutdown_requested = true; }
+    result_cv.notify_all();
   }
 }
 
-// Generate unique job ID
+// ============================================================================
+// Utilities
+// ============================================================================
+
 std::string generate_job_id()
 {
   static std::random_device rd;
@@ -217,7 +289,6 @@ std::string generate_job_id()
   return std::string(buf);
 }
 
-// Socket helpers
 static bool write_all(int sockfd, const void* data, size_t size)
 {
   const uint8_t* ptr = static_cast<const uint8_t*>(data);
@@ -244,16 +315,6 @@ static bool read_all(int sockfd, void* data, size_t size)
   return true;
 }
 
-static bool send_response(int sockfd, const std::vector<uint8_t>& data)
-{
-  // Legacy response format (for non-streaming clients)
-  uint32_t size = static_cast<uint32_t>(data.size());
-  if (!write_all(sockfd, &size, sizeof(size))) return false;
-  if (!write_all(sockfd, data.data(), data.size())) return false;
-  return true;
-}
-
-// Send solution using streaming protocol
 static bool send_solution_message(int sockfd, const std::vector<uint8_t>& data)
 {
   return send_typed_message(sockfd, MessageType::SOLUTION, data.data(), data.size());
@@ -264,8 +325,7 @@ static bool receive_request(int sockfd, std::vector<uint8_t>& data)
   uint32_t size;
   if (!read_all(sockfd, &size, sizeof(size))) return false;
 
-  // Sanity check
-  if (size > 100 * 1024 * 1024) {  // Max 100MB
+  if (size > 100 * 1024 * 1024) {
     std::cerr << "[Server] Request too large: " << size << " bytes\n";
     return false;
   }
@@ -275,10 +335,122 @@ static bool receive_request(int sockfd, std::vector<uint8_t>& data)
   return true;
 }
 
-// Worker thread - processes jobs from the queue
-void worker_thread(int worker_id)
+// ============================================================================
+// Shared Memory Management
+// ============================================================================
+
+bool init_shared_memory()
 {
-  std::cout << "[Worker " << worker_id << "] Started\n";
+  // Create job queue shared memory
+  int fd_jobs = shm_open(SHM_JOB_QUEUE, O_CREAT | O_RDWR, 0666);
+  if (fd_jobs < 0) {
+    std::cerr << "[Server] Failed to create job queue shared memory\n";
+    return false;
+  }
+  size_t job_queue_size = sizeof(JobQueueEntry) * MAX_JOBS;
+  if (ftruncate(fd_jobs, job_queue_size) < 0) {
+    std::cerr << "[Server] Failed to size job queue shared memory\n";
+    close(fd_jobs);
+    return false;
+  }
+  job_queue = static_cast<JobQueueEntry*>(
+    mmap(nullptr, job_queue_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_jobs, 0));
+  close(fd_jobs);
+  if (job_queue == MAP_FAILED) {
+    std::cerr << "[Server] Failed to map job queue\n";
+    return false;
+  }
+
+  // Initialize job queue entries
+  for (size_t i = 0; i < MAX_JOBS; ++i) {
+    job_queue[i].ready   = false;
+    job_queue[i].claimed = false;
+  }
+
+  // Create result queue shared memory
+  int fd_results = shm_open(SHM_RESULT_QUEUE, O_CREAT | O_RDWR, 0666);
+  if (fd_results < 0) {
+    std::cerr << "[Server] Failed to create result queue shared memory\n";
+    return false;
+  }
+  size_t result_queue_size = sizeof(ResultQueueEntry) * MAX_RESULTS;
+  if (ftruncate(fd_results, result_queue_size) < 0) {
+    std::cerr << "[Server] Failed to size result queue shared memory\n";
+    close(fd_results);
+    return false;
+  }
+  result_queue = static_cast<ResultQueueEntry*>(
+    mmap(nullptr, result_queue_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_results, 0));
+  close(fd_results);
+  if (result_queue == MAP_FAILED) {
+    std::cerr << "[Server] Failed to map result queue\n";
+    return false;
+  }
+
+  // Initialize result queue entries
+  for (size_t i = 0; i < MAX_RESULTS; ++i) {
+    result_queue[i].ready     = false;
+    result_queue[i].retrieved = false;
+  }
+
+  // Create control shared memory
+  int fd_ctrl = shm_open(SHM_CONTROL, O_CREAT | O_RDWR, 0666);
+  if (fd_ctrl < 0) {
+    std::cerr << "[Server] Failed to create control shared memory\n";
+    return false;
+  }
+  if (ftruncate(fd_ctrl, sizeof(SharedMemoryControl)) < 0) {
+    std::cerr << "[Server] Failed to size control shared memory\n";
+    close(fd_ctrl);
+    return false;
+  }
+  shm_ctrl = static_cast<SharedMemoryControl*>(
+    mmap(nullptr, sizeof(SharedMemoryControl), PROT_READ | PROT_WRITE, MAP_SHARED, fd_ctrl, 0));
+  close(fd_ctrl);
+  if (shm_ctrl == MAP_FAILED) {
+    std::cerr << "[Server] Failed to map control\n";
+    return false;
+  }
+
+  shm_ctrl->shutdown_requested = false;
+  shm_ctrl->active_workers     = 0;
+
+  return true;
+}
+
+void cleanup_shared_memory()
+{
+  if (job_queue) {
+    munmap(job_queue, sizeof(JobQueueEntry) * MAX_JOBS);
+    shm_unlink(SHM_JOB_QUEUE);
+  }
+  if (result_queue) {
+    munmap(result_queue, sizeof(ResultQueueEntry) * MAX_RESULTS);
+    shm_unlink(SHM_RESULT_QUEUE);
+  }
+  if (shm_ctrl) {
+    munmap(shm_ctrl, sizeof(SharedMemoryControl));
+    shm_unlink(SHM_CONTROL);
+  }
+}
+
+// ============================================================================
+// Forward declarations for log file management
+// ============================================================================
+std::string get_log_file_path(const std::string& job_id);
+void ensure_log_dir_exists();
+void delete_log_file(const std::string& job_id);
+
+// ============================================================================
+// Worker Process
+// ============================================================================
+
+void worker_process(int worker_id)
+{
+  std::cout << "[Worker " << worker_id << "] Started (PID: " << getpid() << ")\n";
+
+  // Increment active worker count
+  shm_ctrl->active_workers++;
 
   // Create RAFT handle for GPU operations
   raft::handle_t handle;
@@ -286,104 +458,69 @@ void worker_thread(int worker_id)
   // Get serializer
   auto serializer = get_serializer<int, double>();
 
-  while (keep_running) {
-    std::string job_id;
-    std::vector<uint8_t> request_data;
-    bool is_mip = false;
-
-    // Find a queued job
-    {
-      std::unique_lock<std::mutex> lock(tracker_mutex);
-      job_cv.wait(lock, []() {
-        if (!keep_running) return true;
-        for (const auto& [id, info] : job_tracker) {
-          if (info.status == JobStatus::QUEUED) return true;
-        }
-        return false;
-      });
-
-      if (!keep_running) break;
-
-      // Find and claim a job
-      for (auto& [id, info] : job_tracker) {
-        if (info.status == JobStatus::QUEUED) {
-          info.status  = JobStatus::PROCESSING;
-          job_id       = id;
-          request_data = info.request_data;
-          is_mip       = info.is_mip;
+  while (!shm_ctrl->shutdown_requested) {
+    // Find a job to process
+    int job_slot = -1;
+    for (size_t i = 0; i < MAX_JOBS; ++i) {
+      if (job_queue[i].ready && !job_queue[i].claimed) {
+        // Try to claim this job atomically
+        bool expected = false;
+        if (job_queue[i].claimed.compare_exchange_strong(expected, true)) {
+          job_slot = i;
           break;
         }
       }
     }
 
-    if (job_id.empty()) continue;
-
-    if (config.verbose) {
-      std::cout << "[Worker " << worker_id << "] Processing job: " << job_id
-                << " (type: " << (is_mip ? "MIP" : "LP") << ")\n";
+    if (job_slot < 0) {
+      // No job available, sleep briefly
+      usleep(10000);  // 10ms
+      continue;
     }
 
+    // Process the job
+    JobQueueEntry& job = job_queue[job_slot];
+    std::string job_id(job.job_id);
+    bool is_mip = (job.problem_type == 1);
+
+    std::cout << "[Worker " << worker_id << "] Processing job: " << job_id
+              << " (type: " << (is_mip ? "MIP" : "LP") << ")\n";
+    std::cout.flush();
+
+    // Redirect stdout to per-job log file for client log retrieval
+    std::string log_file = get_log_file_path(job_id);
+    int saved_stdout     = dup(STDOUT_FILENO);
+    int log_fd           = open(log_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (log_fd >= 0) {
+      dup2(log_fd, STDOUT_FILENO);
+      close(log_fd);
+    }
+
+    std::vector<uint8_t> request_data(job.data, job.data + job.data_size);
     std::vector<uint8_t> result_data;
     std::string error_message;
     bool success = false;
 
     try {
       if (is_mip) {
-        // Deserialize MIP request
         cuopt::mps_parser::mps_data_model_t<int, double> mps_data;
         mip_solver_settings_t<int, double> settings;
 
         if (serializer->deserialize_mip_request(request_data, mps_data, settings)) {
-          // Solve using the data model directly
           auto solution = solve_mip(&handle, mps_data, settings);
-
-          // Move solution to CPU memory for serialization
-          // (remote solve clients are typically CPU-only hosts)
           solution.to_host(handle.get_stream());
-
-          // Serialize result
           result_data = serializer->serialize_mip_solution(solution);
           success     = true;
         } else {
           error_message = "Failed to deserialize MIP request";
         }
       } else {
-        // Deserialize LP request
         cuopt::mps_parser::mps_data_model_t<int, double> mps_data;
         pdlp_solver_settings_t<int, double> settings;
 
         if (serializer->deserialize_lp_request(request_data, mps_data, settings)) {
-          // Debug: print deserialized data
-          std::cout << "[Server DEBUG] Deserialized LP problem:\n";
-          std::cout << "  Maximize: " << mps_data.get_sense() << "\n";
-          std::cout << "  Objective coeffs: [";
-          for (size_t i = 0; i < mps_data.get_objective_coefficients().size(); ++i) {
-            std::cout << mps_data.get_objective_coefficients()[i];
-            if (i + 1 < mps_data.get_objective_coefficients().size()) std::cout << ", ";
-          }
-          std::cout << "]\n";
-          std::cout << "  Constraint lower bounds: [";
-          for (size_t i = 0; i < mps_data.get_constraint_lower_bounds().size(); ++i) {
-            std::cout << mps_data.get_constraint_lower_bounds()[i];
-            if (i + 1 < mps_data.get_constraint_lower_bounds().size()) std::cout << ", ";
-          }
-          std::cout << "]\n";
-          std::cout << "  Constraint upper bounds: [";
-          for (size_t i = 0; i < mps_data.get_constraint_upper_bounds().size(); ++i) {
-            std::cout << mps_data.get_constraint_upper_bounds()[i];
-            if (i + 1 < mps_data.get_constraint_upper_bounds().size()) std::cout << ", ";
-          }
-          std::cout << "]\n";
-          std::cout.flush();
-
-          // Solve using the data model directly
           auto solution = solve_lp(&handle, mps_data, settings);
-
-          // Move solution to CPU memory for serialization
-          // (remote solve clients are typically CPU-only hosts)
           solution.to_host(handle.get_stream());
-
-          // Serialize result
           result_data = serializer->serialize_lp_solution(solution);
           success     = true;
         } else {
@@ -394,59 +531,299 @@ void worker_thread(int worker_id)
       error_message = std::string("Exception: ") + e.what();
     }
 
-    // Update job status
-    {
-      std::lock_guard<std::mutex> lock(tracker_mutex);
-      auto it = job_tracker.find(job_id);
-      if (it != job_tracker.end()) {
+    // Restore stdout to console
+    fflush(stdout);
+    dup2(saved_stdout, STDOUT_FILENO);
+    close(saved_stdout);
+
+    // Store result in result queue
+    for (size_t i = 0; i < MAX_RESULTS; ++i) {
+      if (!result_queue[i].ready) {
+        bool expected = false;
+        // Claim this result slot
+        ResultQueueEntry& result = result_queue[i];
+        strncpy(result.job_id, job_id.c_str(), sizeof(result.job_id) - 1);
+        result.status = success ? 0 : 1;
         if (success) {
-          it->second.status      = JobStatus::COMPLETED;
-          it->second.result_data = std::move(result_data);
+          result.data_size = std::min(result_data.size(), MAX_RESULT_SIZE);
+          memcpy(result.data, result_data.data(), result.data_size);
         } else {
-          it->second.status        = JobStatus::FAILED;
-          it->second.error_message = error_message;
+          strncpy(result.error_message, error_message.c_str(), sizeof(result.error_message) - 1);
+          result.data_size = 0;
         }
+        result.retrieved = false;
+        result.ready     = true;  // Mark as ready last
+        break;
       }
     }
-    job_cv.notify_all();
 
-    if (config.verbose) {
-      std::cout << "[Worker " << worker_id << "] Completed job: " << job_id
-                << " (success: " << success << ")\n";
+    // Clear job slot
+    job.ready   = false;
+    job.claimed = false;
+
+    std::cout << "[Worker " << worker_id << "] Completed job: " << job_id
+              << " (success: " << success << ")\n";
+  }
+
+  shm_ctrl->active_workers--;
+  std::cout << "[Worker " << worker_id << "] Stopped\n";
+  _exit(0);
+}
+
+void spawn_workers()
+{
+  for (int i = 0; i < config.num_workers; ++i) {
+    pid_t pid = fork();
+    if (pid < 0) {
+      std::cerr << "[Server] Failed to fork worker " << i << "\n";
+    } else if (pid == 0) {
+      // Child process
+      worker_process(i);
+      _exit(0);  // Should not reach here
+    } else {
+      // Parent process
+      worker_pids.push_back(pid);
+    }
+  }
+}
+
+void wait_for_workers()
+{
+  for (pid_t pid : worker_pids) {
+    int status;
+    waitpid(pid, &status, 0);
+  }
+  worker_pids.clear();
+}
+
+// ============================================================================
+// Result Retrieval Thread (main process)
+// ============================================================================
+
+void result_retrieval_thread()
+{
+  std::cout << "[Server] Result retrieval thread started\n";
+
+  while (keep_running) {
+    bool found = false;
+
+    // Check for completed results
+    for (size_t i = 0; i < MAX_RESULTS; ++i) {
+      if (result_queue[i].ready && !result_queue[i].retrieved) {
+        std::string job_id(result_queue[i].job_id);
+        bool success = (result_queue[i].status == 0);
+
+        std::vector<uint8_t> result_data;
+        std::string error_message;
+
+        if (success) {
+          result_data.assign(result_queue[i].data,
+                             result_queue[i].data + result_queue[i].data_size);
+        } else {
+          error_message = result_queue[i].error_message;
+        }
+
+        // Check if there's a blocking waiter
+        {
+          std::lock_guard<std::mutex> lock(waiters_mutex);
+          auto wit = waiting_threads.find(job_id);
+          if (wit != waiting_threads.end()) {
+            // Wake up the waiting thread
+            auto waiter           = wit->second;
+            waiter->result_data   = std::move(result_data);
+            waiter->error_message = error_message;
+            waiter->success       = success;
+            waiter->ready         = true;
+            waiter->cv.notify_one();
+          }
+        }
+
+        // Update job tracker
+        {
+          std::lock_guard<std::mutex> lock(tracker_mutex);
+          auto it = job_tracker.find(job_id);
+          if (it != job_tracker.end()) {
+            if (success) {
+              it->second.status      = JobStatus::COMPLETED;
+              it->second.result_data = result_data;
+            } else {
+              it->second.status        = JobStatus::FAILED;
+              it->second.error_message = error_message;
+            }
+          }
+        }
+
+        result_queue[i].retrieved = true;
+        result_queue[i].ready     = false;  // Free slot
+        found                     = true;
+      }
+    }
+
+    if (!found) {
+      usleep(10000);  // 10ms
+    }
+
+    result_cv.notify_all();
+  }
+
+  std::cout << "[Server] Result retrieval thread stopped\n";
+}
+
+// ============================================================================
+// Async Request Handlers
+// ============================================================================
+
+// Submit a job asynchronously (returns job_id)
+std::pair<bool, std::string> submit_job_async(const std::vector<uint8_t>& request_data, bool is_mip)
+{
+  std::string job_id = generate_job_id();
+
+  if (request_data.size() > MAX_JOB_DATA_SIZE) { return {false, "Request data too large"}; }
+
+  // Find free job slot
+  for (size_t i = 0; i < MAX_JOBS; ++i) {
+    if (!job_queue[i].ready && !job_queue[i].claimed) {
+      strncpy(job_queue[i].job_id, job_id.c_str(), sizeof(job_queue[i].job_id) - 1);
+      job_queue[i].problem_type = is_mip ? 1 : 0;
+      job_queue[i].data_size    = request_data.size();
+      memcpy(job_queue[i].data, request_data.data(), request_data.size());
+      job_queue[i].claimed = false;
+      job_queue[i].ready   = true;  // Mark as ready last
+
+      // Track job
+      {
+        std::lock_guard<std::mutex> lock(tracker_mutex);
+        JobInfo info;
+        info.job_id         = job_id;
+        info.status         = JobStatus::QUEUED;
+        info.submit_time    = std::chrono::steady_clock::now();
+        info.is_mip         = is_mip;
+        info.is_blocking    = false;
+        job_tracker[job_id] = info;
+      }
+
+      if (config.verbose) { std::cout << "[Server] Job submitted (async): " << job_id << "\n"; }
+
+      return {true, job_id};
     }
   }
 
-  std::cout << "[Worker " << worker_id << "] Stopped\n";
+  return {false, "Job queue full"};
 }
 
-// Handle client connection with streaming log support
-void handle_client(int client_fd, bool stream_logs)
+// Check job status
+JobStatus check_job_status(const std::string& job_id, std::string& message)
 {
-  auto serializer = get_serializer<int, double>();
+  std::lock_guard<std::mutex> lock(tracker_mutex);
+  auto it = job_tracker.find(job_id);
 
-  // Receive request
-  std::vector<uint8_t> request_data;
-  if (!receive_request(client_fd, request_data)) {
-    std::cerr << "[Server] Failed to receive request\n";
-    close(client_fd);
-    return;
+  if (it == job_tracker.end()) {
+    message = "Job ID not found";
+    return JobStatus::NOT_FOUND;
   }
 
-  if (config.verbose) {
-    std::cout << "[Server] Received request, size: " << request_data.size() << " bytes\n";
+  switch (it->second.status) {
+    case JobStatus::QUEUED: message = "Job is queued"; break;
+    case JobStatus::PROCESSING: message = "Job is being processed"; break;
+    case JobStatus::COMPLETED: message = "Job completed"; break;
+    case JobStatus::FAILED: message = "Job failed: " + it->second.error_message; break;
+    default: message = "Unknown status";
   }
 
-  // Determine request type
-  bool is_mip = serializer->is_mip_request(request_data);
+  return it->second.status;
+}
 
-  // For sync mode with streaming, process directly in this thread
-  // to enable log streaming to the client
+// Get job result
+bool get_job_result(const std::string& job_id,
+                    std::vector<uint8_t>& result_data,
+                    std::string& error_message)
+{
+  std::lock_guard<std::mutex> lock(tracker_mutex);
+  auto it = job_tracker.find(job_id);
+
+  if (it == job_tracker.end()) {
+    error_message = "Job ID not found";
+    return false;
+  }
+
+  if (it->second.status == JobStatus::COMPLETED) {
+    result_data = it->second.result_data;
+    return true;
+  } else if (it->second.status == JobStatus::FAILED) {
+    error_message = it->second.error_message;
+    return false;
+  } else {
+    error_message = "Job not completed yet";
+    return false;
+  }
+}
+
+// ============================================================================
+// Log File Management
+// ============================================================================
+
+// Directory for per-job log files
+const std::string LOG_DIR = "/tmp/cuopt_logs";
+
+// Get the log file path for a given job_id
+std::string get_log_file_path(const std::string& job_id) { return LOG_DIR + "/log_" + job_id; }
+
+// Ensure log directory exists
+void ensure_log_dir_exists()
+{
+  struct stat st;
+  if (stat(LOG_DIR.c_str(), &st) != 0) { mkdir(LOG_DIR.c_str(), 0755); }
+}
+
+// Delete log file for a job
+void delete_log_file(const std::string& job_id)
+{
+  std::string log_file = get_log_file_path(job_id);
+  unlink(log_file.c_str());  // Ignore errors if file doesn't exist
+}
+
+// Delete job
+bool delete_job(const std::string& job_id)
+{
+  std::lock_guard<std::mutex> lock(tracker_mutex);
+  auto it = job_tracker.find(job_id);
+
+  if (it == job_tracker.end()) { return false; }
+
+  job_tracker.erase(it);
+
+  // Also delete the log file
+  delete_log_file(job_id);
+
+  if (config.verbose) { std::cout << "[Server] Job deleted: " << job_id << "\n"; }
+
+  return true;
+}
+
+// ============================================================================
+// Sync Mode Handler (with log streaming)
+// ============================================================================
+
+/**
+ * @brief Handle synchronous (blocking) solve requests directly.
+ *
+ * For sync mode, we solve directly in the main thread instead of using worker
+ * processes. This allows stdout log streaming to work correctly since the
+ * stdout_streamer_t captures output from the same process.
+ */
+void handle_sync_solve(int client_fd,
+                       const std::vector<uint8_t>& request_data,
+                       bool is_mip,
+                       bool stream_logs)
+{
   std::string job_id = generate_job_id();
 
   if (config.verbose) {
-    std::cout << "[Server] Processing job: " << job_id << " (type: " << (is_mip ? "MIP" : "LP")
-              << ", streaming: " << (stream_logs ? "yes" : "no") << ")\n";
+    std::cout << "[Server] Sync solve request, job_id: " << job_id
+              << " (streaming: " << (stream_logs ? "yes" : "no") << ")\n";
   }
+
+  auto serializer = get_serializer<int, double>();
 
   // Create RAFT handle for GPU operations
   raft::handle_t handle;
@@ -467,8 +844,9 @@ void handle_client(int client_fd, bool stream_logs)
 
         if (serializer->deserialize_mip_request(request_data, mps_data, settings)) {
           auto solution = solve_mip(&handle, mps_data, settings);
-          result_data   = serializer->serialize_mip_solution(solution);
-          success       = true;
+          solution.to_host(handle.get_stream());
+          result_data = serializer->serialize_mip_solution(solution);
+          success     = true;
         } else {
           error_message = "Failed to deserialize MIP request";
         }
@@ -478,8 +856,9 @@ void handle_client(int client_fd, bool stream_logs)
 
         if (serializer->deserialize_lp_request(request_data, mps_data, settings)) {
           auto solution = solve_lp(&handle, mps_data, settings);
-          result_data   = serializer->serialize_lp_solution(solution);
-          success       = true;
+          solution.to_host(handle.get_stream());
+          result_data = serializer->serialize_lp_solution(solution);
+          success     = true;
         } else {
           error_message = "Failed to deserialize LP request";
         }
@@ -490,35 +869,177 @@ void handle_client(int client_fd, bool stream_logs)
   }  // streamer destructor restores stdout
 
   if (config.verbose) {
-    std::cout << "[Server] Completed job: " << job_id << " (success: " << success << ")\n";
+    std::cout << "[Server] Sync solve completed: " << job_id << " (success: " << success << ")\n";
   }
 
-  // Send response - always use streaming protocol for consistency
-  // (stream_logs only controls whether LOG_MESSAGE are sent during solve)
-  std::cout << "[Server] Sending solution message, size = " << result_data.size() << " bytes\n";
-  std::cout.flush();
-  if (!send_solution_message(client_fd, result_data)) {
-    std::cerr << "[Server] Failed to send solution message\n";
+  // Send result to client
+  if (success) {
+    std::cout << "[Server] Sending solution message, size = " << result_data.size() << " bytes\n";
+    send_solution_message(client_fd, result_data);
   } else {
-    std::cout << "[Server] Solution message sent successfully\n";
-    std::cout.flush();
+    std::cerr << "[Server] Sync solve failed: " << error_message << "\n";
+    // Send empty solution to indicate failure
+    std::vector<uint8_t> empty;
+    send_solution_message(client_fd, empty);
   }
 
   close(client_fd);
 }
 
-// Legacy handle_client without streaming (backward compatible)
-void handle_client(int client_fd) { handle_client(client_fd, false); }
+// ============================================================================
+// Client Connection Handler
+// ============================================================================
+
+void handle_client(int client_fd, bool stream_logs)
+{
+  auto serializer = get_serializer<int, double>();
+
+  // Receive request
+  std::vector<uint8_t> request_data;
+  if (!receive_request(client_fd, request_data)) {
+    std::cerr << "[Server] Failed to receive request\n";
+    close(client_fd);
+    return;
+  }
+
+  if (config.verbose) {
+    std::cout << "[Server] Received request, size: " << request_data.size() << " bytes\n";
+  }
+
+  // Determine if this is an async protocol request
+  bool is_async_request = serializer->is_async_request(request_data);
+
+  if (is_async_request) {
+    // Parse async request type and handle accordingly
+    auto request_type = serializer->get_async_request_type(request_data);
+
+    if (request_type == 0) {  // SUBMIT_JOB
+      bool blocking = serializer->is_blocking_request(request_data);
+      bool is_mip   = serializer->is_mip_request(request_data);
+
+      // Extract the actual problem data from the async request
+      std::vector<uint8_t> problem_data = serializer->extract_problem_data(request_data);
+
+      if (blocking) {
+        // Sync mode - handle with log streaming
+        handle_sync_solve(client_fd, problem_data, is_mip, stream_logs);
+        return;
+      } else {
+        // Async mode - submit and return job_id
+        auto [success, result] = submit_job_async(problem_data, is_mip);
+        auto response          = serializer->serialize_submit_response(success, result);
+
+        uint32_t size = response.size();
+        write_all(client_fd, &size, sizeof(size));
+        write_all(client_fd, response.data(), response.size());
+      }
+    } else if (request_type == 1) {  // CHECK_STATUS
+      std::string job_id = serializer->get_job_id(request_data);
+      std::string message;
+      JobStatus status = check_job_status(job_id, message);
+
+      int status_code = 0;
+      switch (status) {
+        case JobStatus::QUEUED: status_code = 0; break;
+        case JobStatus::PROCESSING: status_code = 1; break;
+        case JobStatus::COMPLETED: status_code = 2; break;
+        case JobStatus::FAILED: status_code = 3; break;
+        case JobStatus::NOT_FOUND: status_code = 4; break;
+      }
+
+      auto response = serializer->serialize_status_response(status_code, message);
+
+      uint32_t size = response.size();
+      write_all(client_fd, &size, sizeof(size));
+      write_all(client_fd, response.data(), response.size());
+    } else if (request_type == 2) {  // GET_RESULT
+      std::string job_id = serializer->get_job_id(request_data);
+      std::vector<uint8_t> result_data;
+      std::string error_message;
+
+      bool success  = get_job_result(job_id, result_data, error_message);
+      auto response = serializer->serialize_result_response(success, result_data, error_message);
+
+      uint32_t size = response.size();
+      write_all(client_fd, &size, sizeof(size));
+      write_all(client_fd, response.data(), response.size());
+    } else if (request_type == 3) {  // DELETE_RESULT
+      std::string job_id = serializer->get_job_id(request_data);
+      bool success       = delete_job(job_id);
+
+      auto response = serializer->serialize_delete_response(success);
+
+      uint32_t size = response.size();
+      write_all(client_fd, &size, sizeof(size));
+      write_all(client_fd, response.data(), response.size());
+    } else if (request_type == 4) {  // GET_LOGS
+      std::string job_id = serializer->get_job_id(request_data);
+      int64_t frombyte   = serializer->get_frombyte(request_data);
+
+      std::vector<std::string> log_lines;
+      int64_t nbytes  = 0;
+      bool job_exists = false;
+
+      // Read logs from file
+      std::string log_file = get_log_file_path(job_id);
+      std::ifstream ifs(log_file);
+      if (ifs.is_open()) {
+        job_exists = true;
+        ifs.seekg(frombyte);
+        std::string line;
+        while (std::getline(ifs, line)) {
+          log_lines.push_back(line);
+        }
+        nbytes = ifs.tellg();
+        if (nbytes < 0) {
+          // tellg returns -1 at EOF, get actual file size
+          ifs.clear();
+          ifs.seekg(0, std::ios::end);
+          nbytes = ifs.tellg();
+        }
+        ifs.close();
+      } else {
+        // Check if job exists but log file doesn't (not started yet)
+        std::lock_guard<std::mutex> lock(tracker_mutex);
+        job_exists = (job_tracker.find(job_id) != job_tracker.end());
+      }
+
+      auto response = serializer->serialize_logs_response(job_id, log_lines, nbytes, job_exists);
+
+      uint32_t size = response.size();
+      write_all(client_fd, &size, sizeof(size));
+      write_all(client_fd, response.data(), response.size());
+
+      if (config.verbose) {
+        std::cout << "[Server] GET_LOGS: job=" << job_id << ", frombyte=" << frombyte
+                  << ", lines=" << log_lines.size() << ", nbytes=" << nbytes << "\n";
+      }
+    }
+
+    close(client_fd);
+  } else {
+    // Legacy/simple request format - treat as sync LP/MIP request
+    bool is_mip = serializer->is_mip_request(request_data);
+    handle_sync_solve(client_fd, request_data, is_mip, stream_logs);
+  }
+}
+
+// ============================================================================
+// Main
+// ============================================================================
 
 void print_usage(const char* prog)
 {
   std::cout << "Usage: " << prog << " [options]\n"
             << "Options:\n"
             << "  -p PORT    Port to listen on (default: 9090)\n"
-            << "  -w NUM     Number of worker threads (default: 1)\n"
+            << "  -w NUM     Number of worker processes (default: 1)\n"
             << "  -q         Quiet mode (less verbose output)\n"
             << "  --no-stream  Disable real-time log streaming to clients\n"
-            << "  -h         Show this help\n";
+            << "  -h         Show this help\n"
+            << "\n"
+            << "Environment Variables (client-side):\n"
+            << "  CUOPT_REMOTE_USE_SYNC=1  Force sync mode (default is async)\n";
 }
 
 int main(int argc, char** argv)
@@ -544,33 +1065,47 @@ int main(int argc, char** argv)
   signal(SIGTERM, signal_handler);
 
   // IMPORTANT: Clear remote solve environment variables to prevent infinite recursion
-  // The server should always do local solves, never try to connect to itself
   unsetenv("CUOPT_REMOTE_HOST");
   unsetenv("CUOPT_REMOTE_PORT");
 
-  std::cout << "=== cuOpt Remote Solve Server ===\n";
-  std::cout << "Port: " << config.port << "\n";
-  std::cout << "Workers: " << config.num_workers << "\n";
-  std::cout << "Log streaming: " << (config.stream_logs ? "enabled" : "disabled") << "\n";
+  // Ensure log directory exists for per-job log files
+  ensure_log_dir_exists();
 
-  // Start worker threads
-  std::vector<std::thread> workers;
-  for (int i = 0; i < config.num_workers; ++i) {
-    workers.emplace_back(worker_thread, i);
+  std::cout << "=== cuOpt Remote Solve Server (Async) ===\n";
+  std::cout << "Port: " << config.port << "\n";
+  std::cout << "Workers: " << config.num_workers << " (processes)\n";
+  std::cout << "Log streaming: " << (config.stream_logs ? "enabled" : "disabled") << "\n";
+  std::cout << "\n";
+  std::cout << "Async API:\n";
+  std::cout << "  SUBMIT_JOB    - Submit a job, get job_id\n";
+  std::cout << "  CHECK_STATUS  - Check job status\n";
+  std::cout << "  GET_RESULT    - Retrieve completed result\n";
+  std::cout << "  DELETE_RESULT - Delete job from server\n";
+  std::cout << "\n";
+
+  // Initialize shared memory
+  if (!init_shared_memory()) {
+    std::cerr << "[Server] Failed to initialize shared memory\n";
+    return 1;
   }
+
+  // Spawn worker processes
+  spawn_workers();
+
+  // Start result retrieval thread
+  std::thread result_thread(result_retrieval_thread);
 
   // Create server socket
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
     std::cerr << "[Server] Failed to create socket\n";
+    cleanup_shared_memory();
     return 1;
   }
 
-  // Allow address reuse
   int opt = 1;
   setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-  // Bind
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
   addr.sin_family      = AF_INET;
@@ -580,24 +1115,27 @@ int main(int argc, char** argv)
   if (bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
     std::cerr << "[Server] Failed to bind to port " << config.port << "\n";
     close(server_fd);
+    cleanup_shared_memory();
     return 1;
   }
 
-  // Listen
   if (listen(server_fd, 10) < 0) {
     std::cerr << "[Server] Failed to listen\n";
     close(server_fd);
+    cleanup_shared_memory();
     return 1;
   }
 
   std::cout << "[Server] Listening on port " << config.port << "\n";
+
+  // Flush stdout before accept loop
+  std::cout.flush();
 
   // Accept connections
   while (keep_running) {
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
 
-    // Use select for timeout so we can check keep_running
     fd_set read_fds;
     FD_ZERO(&read_fds);
     FD_SET(server_fd, &read_fds);
@@ -612,7 +1150,7 @@ int main(int argc, char** argv)
       std::cerr << "[Server] Select error\n";
       break;
     }
-    if (ready == 0) continue;  // Timeout
+    if (ready == 0) continue;
 
     int client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
     if (client_fd < 0) {
@@ -627,7 +1165,7 @@ int main(int argc, char** argv)
       std::cout << "[Server] Connection from " << client_ip << "\n";
     }
 
-    // Handle in separate thread with streaming based on config
+    // Handle client in separate thread
     std::thread([client_fd]() { handle_client(client_fd, config.stream_logs); }).detach();
   }
 
@@ -635,11 +1173,18 @@ int main(int argc, char** argv)
   std::cout << "[Server] Shutting down...\n";
   close(server_fd);
 
+  // Signal workers to stop
+  if (shm_ctrl) { shm_ctrl->shutdown_requested = true; }
+
+  // Wait for result retrieval thread
+  result_cv.notify_all();
+  if (result_thread.joinable()) { result_thread.join(); }
+
   // Wait for workers
-  job_cv.notify_all();
-  for (auto& w : workers) {
-    if (w.joinable()) w.join();
-  }
+  wait_for_workers();
+
+  // Cleanup
+  cleanup_shared_memory();
 
   std::cout << "[Server] Stopped\n";
   return 0;
