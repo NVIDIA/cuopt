@@ -18,17 +18,13 @@ inline auto get_driver_entry_point(const char* name)
   void* func = nullptr;
   cudaDriverEntryPointQueryResult driver_status;
 
-  // Use runtime version instead of compile-time CUDART_VERSION to ensure
-  // compatibility when code built with newer CUDA runs on older CUDA runtime
-  int runtime_version        = 0;
-  cudaError_t version_result = cudaRuntimeGetVersion(&runtime_version);
-
-  // Fall back to compile-time version if runtime query fails
-  int version_to_use = (version_result == cudaSuccess) ? runtime_version : CUDART_VERSION;
-
-  cudaGetDriverEntryPointByVersion(name, &func, version_to_use, cudaEnableDefault, &driver_status);
+  // Request CUDA 13.0 (13000) version of symbols for Green Context API
+  // Green contexts are guarded by CUDART_VERSION >= 13000, so we know they're only
+  // used when compiled with CUDA 13.0+. Requesting v13000 ensures compatibility
+  // across CUDA 13.x versions (e.g., built with 13.1, run on 13.0).
+  cudaGetDriverEntryPointByVersion(name, &func, 13000, cudaEnableDefault, &driver_status);
   if (driver_status != cudaDriverEntryPointSuccess) {
-    fprintf(stderr, "Failed to fetch symbol for %s (version %d)\n", name, version_to_use);
+    fprintf(stderr, "Failed to fetch symbol for %s\n", name);
     return static_cast<void*>(nullptr);
   }
   return func;
