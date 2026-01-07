@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
  * reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -221,7 +221,7 @@ void rins_t<i_t, f_t>::run_rins()
     &rins_handle, &fixed_problem, context.settings, context.scaling);
   fj_t<i_t, f_t> fj(fj_context);
   solution_t<i_t, f_t> fj_solution(fixed_problem);
-  fj_solution.copy_new_assignment(cuopt::host_copy(fixed_assignment));
+  fj_solution.copy_new_assignment(cuopt::host_copy(fixed_assignment, rins_handle.get_stream()));
   std::vector<f_t> default_weights(fixed_problem.n_constraints, 1.);
   cpu_fj_thread_t<i_t, f_t> cpu_fj_thread;
   cpu_fj_thread.fj_cpu             = fj.create_cpu_climber(fj_solution,

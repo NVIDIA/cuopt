@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -9,6 +9,7 @@
 
 from libcpp cimport bool
 from libcpp.string cimport string
+from libcpp.vector cimport vector
 
 from pylibraft.common.handle cimport *
 
@@ -131,5 +132,10 @@ cdef extern from "cuopt/routing/solve.hpp" namespace "cuopt::routing":
 cdef extern from "cuopt/routing/cython/cython.hpp" namespace "cuopt::cython": # noqa
     cdef unique_ptr[vehicle_routing_ret_t] call_solve(
         data_model_view_t[int, float]* data_model,
+        solver_settings_t[int, float]* solver_settings
+    ) except +
+
+    cdef vector[unique_ptr[vehicle_routing_ret_t]] call_batch_solve(
+        vector[data_model_view_t[int, float] *] data_models,
         solver_settings_t[int, float]* solver_settings
     ) except +

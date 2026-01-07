@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -116,22 +116,23 @@ void translate_to_crossover_problem(const detail::problem_t<i_t, f_t>& problem,
 {
   CUOPT_LOG_DEBUG("Starting translation");
 
-  std::vector<f_t> pdlp_objective = cuopt::host_copy(problem.objective_coefficients);
+  auto stream                     = problem.handle_ptr->get_stream();
+  std::vector<f_t> pdlp_objective = cuopt::host_copy(problem.objective_coefficients, stream);
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(
     problem.n_constraints, problem.n_variables, problem.nnz);
-  csr_A.x         = cuopt::host_copy(problem.coefficients);
-  csr_A.j         = cuopt::host_copy(problem.variables);
-  csr_A.row_start = cuopt::host_copy(problem.offsets);
+  csr_A.x         = cuopt::host_copy(problem.coefficients, stream);
+  csr_A.j         = cuopt::host_copy(problem.variables, stream);
+  csr_A.row_start = cuopt::host_copy(problem.offsets, stream);
 
-  problem.handle_ptr->get_stream().synchronize();
+  stream.synchronize();
   CUOPT_LOG_DEBUG("Converting to compressed column");
   csr_A.to_compressed_col(lp.A);
   CUOPT_LOG_DEBUG("Converted to compressed column");
 
   std::vector<f_t> slack(problem.n_constraints);
-  std::vector<f_t> tmp_x = cuopt::host_copy(sol.get_primal_solution());
-  problem.handle_ptr->get_stream().synchronize();
+  std::vector<f_t> tmp_x = cuopt::host_copy(sol.get_primal_solution(), stream);
+  stream.synchronize();
   dual_simplex::matrix_vector_multiply(lp.A, 1.0, tmp_x, 0.0, slack);
   CUOPT_LOG_DEBUG("Multiplied A and x");
 
@@ -161,8 +162,8 @@ void translate_to_crossover_problem(const detail::problem_t<i_t, f_t>& problem,
 
   auto [lower, upper] = extract_host_bounds<f_t>(problem.variable_bounds, problem.handle_ptr);
 
-  std::vector<f_t> constraint_lower = cuopt::host_copy(problem.constraint_lower_bounds);
-  std::vector<f_t> constraint_upper = cuopt::host_copy(problem.constraint_upper_bounds);
+  std::vector<f_t> constraint_lower = cuopt::host_copy(problem.constraint_lower_bounds, stream);
+  std::vector<f_t> constraint_upper = cuopt::host_copy(problem.constraint_upper_bounds, stream);
 
   lp.objective.resize(n, 0.0);
   std::copy(
@@ -187,10 +188,10 @@ void translate_to_crossover_problem(const detail::problem_t<i_t, f_t>& problem,
     if (initial_solution.x[j] > lp.upper[j]) { initial_solution.x[j] = lp.upper[j]; }
   }
   CUOPT_LOG_DEBUG("Finished with x");
-  initial_solution.y = cuopt::host_copy(sol.get_dual_solution());
+  initial_solution.y = cuopt::host_copy(sol.get_dual_solution(), stream);
 
-  std::vector<f_t> tmp_z = cuopt::host_copy(sol.get_reduced_cost());
-  problem.handle_ptr->get_stream().synchronize();
+  std::vector<f_t> tmp_z = cuopt::host_copy(sol.get_reduced_cost(), stream);
+  stream.synchronize();
   std::copy(tmp_z.begin(), tmp_z.begin() + problem.n_variables, initial_solution.z.begin());
   for (i_t j = problem.n_variables; j < n; ++j) {
     initial_solution.z[j] = initial_solution.y[j - problem.n_variables];
