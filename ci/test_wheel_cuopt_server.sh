@@ -24,6 +24,12 @@ rapids-pip-retry install \
     "${CUOPT_SH_CLIENT_WHEELHOUSE}"/cuopt_sh_client*.whl \
     "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl
 
+# Export S3 credentials for dataset downloads (inherited via secrets: inherit)
+# Note: These are only used by dataset download scripts and not logged
+export CUOPT_DATASET_S3_URI="${CUOPT_DATASET_S3_URI:-}"
+export CUOPT_AWS_ACCESS_KEY_ID="${CUOPT_AWS_ACCESS_KEY_ID:-}"
+export CUOPT_AWS_SECRET_ACCESS_KEY="${CUOPT_AWS_SECRET_ACCESS_KEY:-}"
+
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
 ./datasets/mip/download_miplib_test_dataset.sh
 

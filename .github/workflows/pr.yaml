@@ -193,10 +193,6 @@ jobs:
       build_type: pull-request
       script: ci/test_cpp.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
-      env_variables: |
-        CUOPT_DATASET_S3_URI=${{ vars.CUOPT_DATASET_S3_URI }}
-        CUOPT_AWS_ACCESS_KEY_ID=${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
-        CUOPT_AWS_SECRET_ACCESS_KEY=${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   conda-python-build:
     needs: [conda-cpp-build, compute-matrix-filters]
     secrets: inherit
@@ -215,10 +211,6 @@ jobs:
       build_type: pull-request
       script: ci/test_python.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
-      env_variables: |
-        CUOPT_DATASET_S3_URI=${{ vars.CUOPT_DATASET_S3_URI }}
-        CUOPT_AWS_ACCESS_KEY_ID=${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
-        CUOPT_AWS_SECRET_ACCESS_KEY=${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   docs-build:
     needs: conda-python-build
     secrets: inherit
@@ -273,10 +265,6 @@ jobs:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
-      env_variables: |
-        CUOPT_DATASET_S3_URI=${{ vars.CUOPT_DATASET_S3_URI }}
-        CUOPT_AWS_ACCESS_KEY_ID=${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
-        CUOPT_AWS_SECRET_ACCESS_KEY=${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   wheel-build-cuopt-server:
     needs: [checks, compute-matrix-filters]
     secrets: inherit
@@ -311,10 +299,6 @@ jobs:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
-      env_variables: |
-        CUOPT_DATASET_S3_URI=${{ vars.CUOPT_DATASET_S3_URI }}
-        CUOPT_AWS_ACCESS_KEY_ID=${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
-        CUOPT_AWS_SECRET_ACCESS_KEY=${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   test-self-hosted-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
     secrets: inherit
