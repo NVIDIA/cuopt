@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -313,12 +313,13 @@ void update_from_csr(problem_t<i_t, f_t>& pb)
 template <typename i_t, typename f_t>
 void test_reverse_matches(const problem_t<i_t, f_t>& pb)
 {
-  auto h_offsets              = cuopt::host_copy(pb.offsets);
-  auto h_coefficients         = cuopt::host_copy(pb.coefficients);
-  auto h_variables            = cuopt::host_copy(pb.variables);
-  auto h_reverse_offsets      = cuopt::host_copy(pb.reverse_offsets);
-  auto h_reverse_constraints  = cuopt::host_copy(pb.reverse_constraints);
-  auto h_reverse_coefficients = cuopt::host_copy(pb.reverse_coefficients);
+  auto stream                 = pb.handle_ptr->get_stream();
+  auto h_offsets              = cuopt::host_copy(pb.offsets, stream);
+  auto h_coefficients         = cuopt::host_copy(pb.coefficients, stream);
+  auto h_variables            = cuopt::host_copy(pb.variables, stream);
+  auto h_reverse_offsets      = cuopt::host_copy(pb.reverse_offsets, stream);
+  auto h_reverse_constraints  = cuopt::host_copy(pb.reverse_constraints, stream);
+  auto h_reverse_coefficients = cuopt::host_copy(pb.reverse_coefficients, stream);
 
   std::vector<std::unordered_set<i_t>> vars_per_constr(pb.n_constraints);
   std::vector<std::unordered_set<f_t>> coeff_per_constr(pb.n_constraints);
