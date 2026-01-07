@@ -68,8 +68,9 @@ struct JobQueueEntry {
   uint32_t problem_type;  // 0 = LP, 1 = MIP
   uint32_t data_size;
   uint8_t data[MAX_JOB_DATA_SIZE];
-  std::atomic<bool> ready;    // Job is ready to be processed
-  std::atomic<bool> claimed;  // Worker has claimed this job
+  std::atomic<bool> ready;        // Job is ready to be processed
+  std::atomic<bool> claimed;      // Worker has claimed this job
+  std::atomic<pid_t> worker_pid;  // PID of worker that claimed this job (0 if none)
 };
 
 struct ResultQueueEntry {
@@ -363,8 +364,9 @@ bool init_shared_memory()
 
   // Initialize job queue entries
   for (size_t i = 0; i < MAX_JOBS; ++i) {
-    job_queue[i].ready   = false;
-    job_queue[i].claimed = false;
+    job_queue[i].ready      = false;
+    job_queue[i].claimed    = false;
+    job_queue[i].worker_pid = 0;
   }
 
   // Create result queue shared memory
@@ -466,7 +468,8 @@ void worker_process(int worker_id)
         // Try to claim this job atomically
         bool expected = false;
         if (job_queue[i].claimed.compare_exchange_strong(expected, true)) {
-          job_slot = i;
+          job_queue[i].worker_pid = getpid();  // Record our PID
+          job_slot                = i;
           break;
         }
       }
@@ -558,8 +561,9 @@ void worker_process(int worker_id)
     }
 
     // Clear job slot
-    job.ready   = false;
-    job.claimed = false;
+    job.worker_pid = 0;
+    job.ready      = false;
+    job.claimed    = false;
 
     std::cout << "[Worker " << worker_id << "] Completed job: " << job_id
               << " (success: " << success << ")\n";
@@ -594,6 +598,127 @@ void wait_for_workers()
     waitpid(pid, &status, 0);
   }
   worker_pids.clear();
+}
+
+// Spawn a single replacement worker and return its PID
+pid_t spawn_single_worker(int worker_id)
+{
+  pid_t pid = fork();
+  if (pid < 0) {
+    std::cerr << "[Server] Failed to fork replacement worker " << worker_id << "\n";
+    return -1;
+  } else if (pid == 0) {
+    // Child process
+    worker_process(worker_id);
+    _exit(0);  // Should not reach here
+  }
+  return pid;
+}
+
+// Mark jobs being processed by a dead worker as failed
+void mark_worker_jobs_failed(pid_t dead_worker_pid)
+{
+  for (size_t i = 0; i < MAX_JOBS; ++i) {
+    if (job_queue[i].ready && job_queue[i].claimed && job_queue[i].worker_pid == dead_worker_pid) {
+      std::string job_id(job_queue[i].job_id);
+      std::cerr << "[Server] Worker " << dead_worker_pid << " died while processing job: " << job_id
+                << "\n";
+
+      // Store failure result in result queue
+      for (size_t j = 0; j < MAX_RESULTS; ++j) {
+        if (!result_queue[j].ready) {
+          strncpy(result_queue[j].job_id, job_id.c_str(), sizeof(result_queue[j].job_id) - 1);
+          result_queue[j].status    = 1;  // Error
+          result_queue[j].data_size = 0;
+          strncpy(result_queue[j].error_message,
+                  "Worker process died unexpectedly",
+                  sizeof(result_queue[j].error_message) - 1);
+          result_queue[j].retrieved = false;
+          result_queue[j].ready     = true;
+          break;
+        }
+      }
+
+      // Clear the job slot
+      job_queue[i].worker_pid = 0;
+      job_queue[i].ready      = false;
+      job_queue[i].claimed    = false;
+
+      // Update job tracker
+      {
+        std::lock_guard<std::mutex> lock(tracker_mutex);
+        auto it = job_tracker.find(job_id);
+        if (it != job_tracker.end()) {
+          it->second.status        = JobStatus::FAILED;
+          it->second.error_message = "Worker process died unexpectedly";
+        }
+      }
+    }
+  }
+}
+
+// Worker monitor thread - detects dead workers and restarts them
+void worker_monitor_thread()
+{
+  std::cout << "[Server] Worker monitor thread started\n";
+  std::cout.flush();
+
+  while (keep_running) {
+    // Check all worker PIDs for dead workers
+    for (size_t i = 0; i < worker_pids.size(); ++i) {
+      pid_t pid = worker_pids[i];
+      if (pid <= 0) continue;
+
+      int status;
+      pid_t result = waitpid(pid, &status, WNOHANG);
+
+      if (result == pid) {
+        // Worker has exited
+        int exit_code  = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+        bool signaled  = WIFSIGNALED(status);
+        int signal_num = signaled ? WTERMSIG(status) : 0;
+
+        if (signaled) {
+          std::cerr << "[Server] Worker " << pid << " killed by signal " << signal_num << "\n";
+          std::cerr.flush();
+        } else if (exit_code != 0) {
+          std::cerr << "[Server] Worker " << pid << " exited with code " << exit_code << "\n";
+          std::cerr.flush();
+        } else {
+          // Clean exit during shutdown - don't restart
+          if (shm_ctrl && shm_ctrl->shutdown_requested) {
+            worker_pids[i] = 0;
+            continue;
+          }
+          std::cerr << "[Server] Worker " << pid << " exited unexpectedly\n";
+          std::cerr.flush();
+        }
+
+        // Mark any jobs this worker was processing as failed
+        mark_worker_jobs_failed(pid);
+
+        // Spawn replacement worker (unless shutting down)
+        if (keep_running && shm_ctrl && !shm_ctrl->shutdown_requested) {
+          pid_t new_pid = spawn_single_worker(static_cast<int>(i));
+          if (new_pid > 0) {
+            worker_pids[i] = new_pid;
+            std::cout << "[Server] Restarted worker " << i << " with PID " << new_pid << "\n";
+            std::cout.flush();
+          } else {
+            worker_pids[i] = 0;  // Failed to restart
+          }
+        } else {
+          worker_pids[i] = 0;
+        }
+      }
+    }
+
+    // Check every 100ms
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+
+  std::cout << "[Server] Worker monitor thread stopped\n";
+  std::cout.flush();
 }
 
 // ============================================================================
@@ -687,8 +812,9 @@ std::pair<bool, std::string> submit_job_async(const std::vector<uint8_t>& reques
       job_queue[i].problem_type = is_mip ? 1 : 0;
       job_queue[i].data_size    = request_data.size();
       memcpy(job_queue[i].data, request_data.data(), request_data.size());
-      job_queue[i].claimed = false;
-      job_queue[i].ready   = true;  // Mark as ready last
+      job_queue[i].worker_pid = 0;
+      job_queue[i].claimed    = false;
+      job_queue[i].ready      = true;  // Mark as ready last
 
       // Track job
       {
@@ -1095,6 +1221,9 @@ int main(int argc, char** argv)
   // Start result retrieval thread
   std::thread result_thread(result_retrieval_thread);
 
+  // Start worker monitor thread (detects dead workers and restarts them)
+  std::thread monitor_thread(worker_monitor_thread);
+
   // Create server socket
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
@@ -1179,6 +1308,9 @@ int main(int argc, char** argv)
   // Wait for result retrieval thread
   result_cv.notify_all();
   if (result_thread.joinable()) { result_thread.join(); }
+
+  // Wait for worker monitor thread
+  if (monitor_thread.joinable()) { monitor_thread.join(); }
 
   // Wait for workers
   wait_for_workers();

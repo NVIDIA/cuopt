@@ -21,11 +21,23 @@
 
 namespace cuopt::linear_programming {
 
-// Message type identifiers
+// Message type identifiers for sync mode
 constexpr uint8_t MSG_LP_REQUEST   = 1;
 constexpr uint8_t MSG_MIP_REQUEST  = 2;
 constexpr uint8_t MSG_LP_SOLUTION  = 3;
 constexpr uint8_t MSG_MIP_SOLUTION = 4;
+
+// Message type identifiers for async mode
+constexpr uint8_t MSG_ASYNC_LP_REQUEST  = 10;
+constexpr uint8_t MSG_ASYNC_MIP_REQUEST = 11;
+constexpr uint8_t MSG_STATUS_REQUEST    = 12;
+constexpr uint8_t MSG_GET_RESULT        = 13;
+constexpr uint8_t MSG_DELETE_REQUEST    = 14;
+constexpr uint8_t MSG_GET_LOGS          = 15;
+
+constexpr uint8_t MSG_SUBMIT_RESPONSE = 20;
+constexpr uint8_t MSG_STATUS_RESPONSE = 21;
+constexpr uint8_t MSG_LOGS_RESPONSE   = 22;
 
 template <typename i_t, typename f_t>
 class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
@@ -183,7 +195,9 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
       msgpack::object_handle oh =
         msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
       if (oh.get().type == msgpack::type::POSITIVE_INTEGER) {
-        return oh.get().as<uint8_t>() == MSG_MIP_REQUEST;
+        uint8_t msg_type = oh.get().as<uint8_t>();
+        // Check both sync and async MIP request types
+        return msg_type == MSG_MIP_REQUEST || msg_type == MSG_ASYNC_MIP_REQUEST;
       }
     } catch (...) {
     }
@@ -331,7 +345,7 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
   }
 
   //============================================================================
-  // Async Operations (simplified for testing)
+  // Async Operations
   //============================================================================
 
   std::vector<uint8_t> serialize_async_lp_request(
@@ -339,7 +353,31 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     const pdlp_solver_settings_t<i_t, f_t>& settings,
     bool blocking) override
   {
-    return serialize_lp_request(view, settings);
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+    // Header: msg_type, blocking flag, job_id (empty for new submission)
+    pk.pack_uint8(MSG_ASYNC_LP_REQUEST);
+    pk.pack(blocking);
+    pk.pack(std::string(""));  // job_id empty for new submission
+    pk.pack(int64_t(0));       // frombyte (unused for LP requests)
+
+    // Pack the problem and settings
+    pk.pack_uint32(protocol_version());
+    pack_problem(pk, view);
+
+    // Pack LP settings
+    pk.pack_map(4);
+    pk.pack("time_limit");
+    pk.pack(settings.time_limit);
+    pk.pack("iteration_limit");
+    pk.pack(static_cast<int64_t>(settings.iteration_limit));
+    pk.pack("abs_gap_tol");
+    pk.pack(settings.tolerances.absolute_gap_tolerance);
+    pk.pack("rel_gap_tol");
+    pk.pack(settings.tolerances.relative_gap_tolerance);
+
+    return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
   }
 
   std::vector<uint8_t> serialize_async_mip_request(
@@ -347,41 +385,168 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     const mip_solver_settings_t<i_t, f_t>& settings,
     bool blocking) override
   {
-    return serialize_mip_request(view, settings);
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+    // Header: msg_type, blocking flag, job_id (empty for new submission)
+    pk.pack_uint8(MSG_ASYNC_MIP_REQUEST);
+    pk.pack(blocking);
+    pk.pack(std::string(""));  // job_id empty for new submission
+    pk.pack(int64_t(0));       // frombyte (unused for MIP requests)
+
+    // Pack the problem and settings
+    pk.pack_uint32(protocol_version());
+    pack_problem(pk, view);
+
+    pk.pack_map(2);
+    pk.pack("time_limit");
+    pk.pack(settings.time_limit);
+    pk.pack("mip_gap");
+    pk.pack(settings.tolerances.relative_mip_gap);
+
+    return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
   }
 
   std::vector<uint8_t> serialize_status_request(const std::string& job_id) override
   {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(1);
-    pk.pack("job_id");
+    pk.pack_uint8(MSG_STATUS_REQUEST);
+    pk.pack(false);  // blocking (unused)
     pk.pack(job_id);
+    pk.pack(int64_t(0));  // frombyte (unused)
     return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
   }
 
   std::vector<uint8_t> serialize_get_result_request(const std::string& job_id) override
   {
-    return serialize_status_request(job_id);
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_uint8(MSG_GET_RESULT);
+    pk.pack(false);  // blocking (unused)
+    pk.pack(job_id);
+    pk.pack(int64_t(0));  // frombyte (unused)
+    return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
   }
 
   std::vector<uint8_t> serialize_delete_request(const std::string& job_id) override
   {
-    return serialize_status_request(job_id);
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_uint8(MSG_DELETE_REQUEST);
+    pk.pack(false);  // blocking (unused)
+    pk.pack(job_id);
+    pk.pack(int64_t(0));  // frombyte (unused)
+    return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
+  }
+
+  std::vector<uint8_t> serialize_get_logs_request(const std::string& job_id,
+                                                  int64_t frombyte = 0) override
+  {
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_uint8(MSG_GET_LOGS);
+    pk.pack(false);  // blocking (unused)
+    pk.pack(job_id);
+    pk.pack(frombyte);
+    return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
   }
 
   bool deserialize_submit_response(const std::vector<uint8_t>& data,
                                    std::string& job_id,
                                    std::string& error_message) override
   {
-    job_id = "msgpack_job";
-    return true;
+    try {
+      size_t offset = 0;
+      msgpack::object_handle oh_type =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      uint8_t msg_type = oh_type.get().as<uint8_t>();
+
+      if (msg_type != MSG_SUBMIT_RESPONSE) {
+        error_message = "Invalid response type";
+        return false;
+      }
+
+      msgpack::object_handle oh_success =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      bool success = oh_success.get().as<bool>();
+
+      msgpack::object_handle oh_job_id =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      job_id = oh_job_id.get().as<std::string>();
+
+      if (!success) {
+        msgpack::object_handle oh_err =
+          msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+        error_message = oh_err.get().as<std::string>();
+      }
+
+      return success;
+    } catch (const std::exception& e) {
+      error_message = std::string("MsgPack parse error: ") + e.what();
+      return false;
+    }
   }
 
   typename remote_serializer_t<i_t, f_t>::job_status_t deserialize_status_response(
     const std::vector<uint8_t>& data) override
   {
-    return remote_serializer_t<i_t, f_t>::job_status_t::COMPLETED;
+    using job_status_t = typename remote_serializer_t<i_t, f_t>::job_status_t;
+    try {
+      size_t offset = 0;
+      msgpack::object_handle oh_type =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      uint8_t msg_type = oh_type.get().as<uint8_t>();
+
+      if (msg_type != MSG_STATUS_RESPONSE) { return job_status_t::NOT_FOUND; }
+
+      msgpack::object_handle oh_status =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      int status = oh_status.get().as<int>();
+
+      // Status codes: 0=QUEUED, 1=PROCESSING, 2=COMPLETED, 3=FAILED, 4=NOT_FOUND
+      switch (status) {
+        case 0: return job_status_t::QUEUED;
+        case 1: return job_status_t::PROCESSING;
+        case 2: return job_status_t::COMPLETED;
+        case 3: return job_status_t::FAILED;
+        default: return job_status_t::NOT_FOUND;
+      }
+    } catch (...) {
+      return job_status_t::NOT_FOUND;
+    }
+  }
+
+  typename remote_serializer_t<i_t, f_t>::logs_result_t deserialize_logs_response(
+    const std::vector<uint8_t>& data) override
+  {
+    typename remote_serializer_t<i_t, f_t>::logs_result_t result;
+    result.nbytes     = 0;
+    result.job_exists = false;
+
+    try {
+      size_t offset = 0;
+      msgpack::object_handle oh_type =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      uint8_t msg_type = oh_type.get().as<uint8_t>();
+
+      if (msg_type != MSG_LOGS_RESPONSE) { return result; }
+
+      msgpack::object_handle oh_exists =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      result.job_exists = oh_exists.get().as<bool>();
+
+      msgpack::object_handle oh_nbytes =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      result.nbytes = oh_nbytes.get().as<int64_t>();
+
+      msgpack::object_handle oh_lines =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      auto lines_array = oh_lines.get().as<std::vector<std::string>>();
+      result.log_lines = std::move(lines_array);
+    } catch (...) {
+    }
+    return result;
   }
 
   optimization_problem_solution_t<i_t, f_t> deserialize_lp_result_response(
@@ -394,6 +559,207 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     const std::vector<uint8_t>& data) override
   {
     return deserialize_mip_solution(data);
+  }
+
+  //============================================================================
+  // Server-side async request detection
+  //============================================================================
+
+  bool is_async_request(const std::vector<uint8_t>& data) override
+  {
+    if (data.empty()) return false;
+    try {
+      size_t offset = 0;
+      msgpack::object_handle oh =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      if (oh.get().type == msgpack::type::POSITIVE_INTEGER) {
+        uint8_t msg_type = oh.get().as<uint8_t>();
+        return msg_type >= MSG_ASYNC_LP_REQUEST && msg_type <= MSG_GET_LOGS;
+      }
+    } catch (...) {
+    }
+    return false;
+  }
+
+  bool is_blocking_request(const std::vector<uint8_t>& data) override
+  {
+    if (data.empty()) return false;
+    try {
+      size_t offset = 0;
+      // Skip msg_type
+      msgpack::object_handle oh_type =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+
+      // Read blocking flag
+      msgpack::object_handle oh_blocking =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      return oh_blocking.get().as<bool>();
+    } catch (...) {
+    }
+    return false;
+  }
+
+  std::vector<uint8_t> extract_problem_data(const std::vector<uint8_t>& data) override
+  {
+    // For msgpack, we extract the problem portion by repacking
+    // The full request contains: msg_type, blocking, job_id, frombyte, version, problem, settings
+    // We need to return a sync-style request: msg_type, version, problem, settings
+    if (data.empty()) return {};
+
+    try {
+      size_t offset = 0;
+
+      // Read header
+      msgpack::object_handle oh_type =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      uint8_t msg_type = oh_type.get().as<uint8_t>();
+
+      // Map async type to sync type
+      uint8_t sync_type = (msg_type == MSG_ASYNC_MIP_REQUEST) ? MSG_MIP_REQUEST : MSG_LP_REQUEST;
+
+      // Skip blocking, job_id, frombyte
+      msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);  // blocking
+      msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);  // job_id
+      msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);  // frombyte
+
+      // Create sync-style request: msg_type, then rest of data (version, problem, settings)
+      msgpack::sbuffer buffer;
+      msgpack::packer<msgpack::sbuffer> pk(&buffer);
+      pk.pack_uint8(sync_type);
+
+      // Append the rest of the data (version, problem, settings)
+      std::vector<uint8_t> result(buffer.data(), buffer.data() + buffer.size());
+      result.insert(result.end(), data.begin() + offset, data.end());
+      return result;
+
+    } catch (...) {
+    }
+    return {};
+  }
+
+  int64_t get_frombyte(const std::vector<uint8_t>& data) override
+  {
+    if (data.empty()) return 0;
+    try {
+      size_t offset = 0;
+      // Skip msg_type
+      msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      // Skip blocking
+      msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      // Skip job_id
+      msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      // Read frombyte
+      msgpack::object_handle oh_frombyte =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      return oh_frombyte.get().as<int64_t>();
+    } catch (...) {
+    }
+    return 0;
+  }
+
+  int get_async_request_type(const std::vector<uint8_t>& data) override
+  {
+    if (data.empty()) return -1;
+    try {
+      size_t offset = 0;
+      msgpack::object_handle oh =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      uint8_t msg_type = oh.get().as<uint8_t>();
+
+      // Map msgpack types to the RequestType enum expected by server
+      switch (msg_type) {
+        case MSG_ASYNC_LP_REQUEST:
+        case MSG_ASYNC_MIP_REQUEST: return 0;  // SUBMIT_JOB
+        case MSG_STATUS_REQUEST: return 1;     // CHECK_STATUS
+        case MSG_GET_RESULT: return 2;         // GET_RESULT
+        case MSG_DELETE_REQUEST: return 3;     // DELETE_RESULT
+        case MSG_GET_LOGS: return 4;           // GET_LOGS
+        default: return -1;
+      }
+    } catch (...) {
+    }
+    return -1;
+  }
+
+  std::string get_job_id(const std::vector<uint8_t>& data) override
+  {
+    if (data.empty()) return "";
+    try {
+      size_t offset = 0;
+      // Skip msg_type
+      msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      // Skip blocking
+      msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      // Read job_id
+      msgpack::object_handle oh_job_id =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      return oh_job_id.get().as<std::string>();
+    } catch (...) {
+    }
+    return "";
+  }
+
+  //============================================================================
+  // Server-side response serialization
+  //============================================================================
+
+  std::vector<uint8_t> serialize_submit_response(bool success, const std::string& result) override
+  {
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_uint8(MSG_SUBMIT_RESPONSE);
+    pk.pack(success);
+    pk.pack(result);                    // job_id on success, error message on failure
+    if (!success) { pk.pack(result); }  // error message duplicated for compatibility
+    return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
+  }
+
+  std::vector<uint8_t> serialize_status_response(int status_code,
+                                                 const std::string& message) override
+  {
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_uint8(MSG_STATUS_RESPONSE);
+    pk.pack(status_code);
+    pk.pack(message);
+    return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
+  }
+
+  std::vector<uint8_t> serialize_result_response(bool success,
+                                                 const std::vector<uint8_t>& result_data,
+                                                 const std::string& error_message) override
+  {
+    // For result response, we prepend success flag then the actual solution data
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack(success);
+    pk.pack(error_message);
+    // Append raw solution data
+    std::vector<uint8_t> response(buffer.data(), buffer.data() + buffer.size());
+    response.insert(response.end(), result_data.begin(), result_data.end());
+    return response;
+  }
+
+  std::vector<uint8_t> serialize_delete_response(bool success) override
+  {
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack(success);
+    return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
+  }
+
+  std::vector<uint8_t> serialize_logs_response(const std::string& job_id,
+                                               const std::vector<std::string>& log_lines,
+                                               int64_t nbytes,
+                                               bool job_exists) override
+  {
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_uint8(MSG_LOGS_RESPONSE);
+    pk.pack(job_exists);
+    pk.pack(nbytes);
+    pk.pack(log_lines);
+    return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
   }
 
  private:
