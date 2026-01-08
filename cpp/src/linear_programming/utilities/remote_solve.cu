@@ -380,6 +380,56 @@ static void delete_job(const std::string& host, int port, const std::string& job
   client.receive_response(response_data);  // Ignore result
 }
 
+template <typename i_t, typename f_t>
+static cancel_job_result_t cancel_job_impl(const std::string& host,
+                                           int port,
+                                           const std::string& job_id)
+{
+  cancel_job_result_t result;
+  result.success    = false;
+  result.message    = "Unknown error";
+  result.job_status = remote_job_status_t::NOT_FOUND;
+
+  remote_client_t client(host, port);
+  if (!client.connect()) {
+    result.message = "Failed to connect to server";
+    return result;
+  }
+
+  auto serializer     = get_serializer<i_t, f_t>();
+  auto cancel_request = serializer->serialize_cancel_request(job_id);
+
+  if (!client.send_request(cancel_request)) {
+    result.message = "Failed to send cancel request";
+    return result;
+  }
+
+  std::vector<uint8_t> response_data;
+  if (!client.receive_response(response_data)) {
+    result.message = "Failed to receive response";
+    return result;
+  }
+
+  // Deserialize the cancel response
+  auto cancel_result = serializer->deserialize_cancel_response(response_data);
+
+  result.success = cancel_result.success;
+  result.message = cancel_result.message;
+
+  // Map serializer job_status_t to remote_job_status_t
+  using serializer_status = typename remote_serializer_t<i_t, f_t>::job_status_t;
+  switch (cancel_result.job_status) {
+    case serializer_status::QUEUED: result.job_status = remote_job_status_t::QUEUED; break;
+    case serializer_status::PROCESSING: result.job_status = remote_job_status_t::PROCESSING; break;
+    case serializer_status::COMPLETED: result.job_status = remote_job_status_t::COMPLETED; break;
+    case serializer_status::FAILED: result.job_status = remote_job_status_t::FAILED; break;
+    case serializer_status::NOT_FOUND: result.job_status = remote_job_status_t::NOT_FOUND; break;
+    case serializer_status::CANCELLED: result.job_status = remote_job_status_t::CANCELLED; break;
+  }
+
+  return result;
+}
+
 }  // namespace
 
 //============================================================================
@@ -596,6 +646,27 @@ mip_solution_t<i_t, f_t> solve_mip_remote(
     // Deserialize solution from async result response
     return serializer->deserialize_mip_result_response(result_data);
   }
+}
+
+//============================================================================
+// Cancel Job Remote
+//============================================================================
+
+cancel_job_result_t cancel_job_remote(const remote_solve_config_t& config,
+                                      const std::string& job_id)
+{
+  CUOPT_LOG_INFO("[remote_solve] Cancelling job {} on {}:{}", job_id, config.host, config.port);
+
+  // Use int32_t, double as the type parameters (doesn't affect cancel logic)
+  auto result = cancel_job_impl<int32_t, double>(config.host, config.port, job_id);
+
+  if (result.success) {
+    CUOPT_LOG_INFO("[remote_solve] Job {} cancelled successfully", job_id);
+  } else {
+    CUOPT_LOG_WARN("[remote_solve] Failed to cancel job {}: {}", job_id, result.message);
+  }
+
+  return result;
 }
 
 // Explicit instantiations

@@ -92,4 +92,39 @@ mip_solution_t<i_t, f_t> solve_mip_remote(
   const cuopt::mps_parser::data_model_view_t<i_t, f_t>& view,
   const mip_solver_settings_t<i_t, f_t>& settings);
 
+/**
+ * @brief Job status enumeration for remote jobs.
+ */
+enum class remote_job_status_t {
+  QUEUED,      ///< Job is waiting in queue
+  PROCESSING,  ///< Job is being processed by a worker
+  COMPLETED,   ///< Job completed successfully
+  FAILED,      ///< Job failed with an error
+  NOT_FOUND,   ///< Job ID not found on server
+  CANCELLED    ///< Job was cancelled
+};
+
+/**
+ * @brief Result of a cancel job request.
+ */
+struct cancel_job_result_t {
+  bool success;                    ///< True if cancellation was successful
+  std::string message;             ///< Success/error message
+  remote_job_status_t job_status;  ///< Status of job after cancel attempt
+};
+
+/**
+ * @brief Cancel a job on a remote server.
+ *
+ * This function can cancel jobs that are queued (waiting for a worker) or
+ * currently running. For running jobs, the worker process is killed and
+ * automatically restarted by the server.
+ *
+ * @param config Remote server configuration
+ * @param job_id The job ID to cancel
+ * @return Result containing success status, message, and job status
+ */
+cancel_job_result_t cancel_job_remote(const remote_solve_config_t& config,
+                                      const std::string& job_id);
+
 }  // namespace cuopt::linear_programming

@@ -15,47 +15,14 @@
  *   cuopt_cancel_job job_1234567890abcdef -h 192.168.1.100 -p 9090
  */
 
-#include <cuopt/linear_programming/utilities/remote_serialization.hpp>
-
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <cuopt/linear_programming/utilities/remote_solve.hpp>
 
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <string>
-#include <vector>
 
 using namespace cuopt::linear_programming;
-
-static bool write_all(int sockfd, const void* data, size_t size)
-{
-  const uint8_t* ptr = static_cast<const uint8_t*>(data);
-  size_t remaining   = size;
-  while (remaining > 0) {
-    ssize_t written = ::write(sockfd, ptr, remaining);
-    if (written <= 0) return false;
-    ptr += written;
-    remaining -= written;
-  }
-  return true;
-}
-
-static bool read_all(int sockfd, void* data, size_t size)
-{
-  uint8_t* ptr     = static_cast<uint8_t*>(data);
-  size_t remaining = size;
-  while (remaining > 0) {
-    ssize_t nread = ::read(sockfd, ptr, remaining);
-    if (nread <= 0) return false;
-    ptr += nread;
-    remaining -= nread;
-  }
-  return true;
-}
 
 void print_usage(const char* prog)
 {
@@ -78,6 +45,19 @@ void print_usage(const char* prog)
             << "Examples:\n"
             << "  " << prog << " job_1234567890abcdef\n"
             << "  " << prog << " job_1234567890abcdef -h 192.168.1.100 -p 9090\n";
+}
+
+const char* status_to_string(remote_job_status_t status)
+{
+  switch (status) {
+    case remote_job_status_t::QUEUED: return "QUEUED";
+    case remote_job_status_t::PROCESSING: return "PROCESSING";
+    case remote_job_status_t::COMPLETED: return "COMPLETED";
+    case remote_job_status_t::FAILED: return "FAILED";
+    case remote_job_status_t::NOT_FOUND: return "NOT_FOUND";
+    case remote_job_status_t::CANCELLED: return "CANCELLED";
+    default: return "UNKNOWN";
+  }
 }
 
 int main(int argc, char** argv)
@@ -112,82 +92,15 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  // Connect to server
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0) {
-    std::cerr << "Error: Failed to create socket\n";
-    return 1;
-  }
-
-  struct sockaddr_in server_addr;
-  memset(&server_addr, 0, sizeof(server_addr));
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port   = htons(port);
-
-  if (inet_pton(AF_INET, host.c_str(), &server_addr.sin_addr) <= 0) {
-    // Try hostname resolution
-    struct hostent* he = gethostbyname(host.c_str());
-    if (he == nullptr) {
-      std::cerr << "Error: Invalid host: " << host << "\n";
-      close(sockfd);
-      return 1;
-    }
-    memcpy(&server_addr.sin_addr, he->h_addr_list[0], he->h_length);
-  }
-
-  if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-    std::cerr << "Error: Failed to connect to " << host << ":" << port << "\n";
-    close(sockfd);
-    return 1;
-  }
-
-  // Send cancel request
-  auto serializer    = get_serializer<int, double>();
-  auto request_bytes = serializer->serialize_cancel_request(job_id);
-
-  uint32_t size = request_bytes.size();
-  if (!write_all(sockfd, &size, sizeof(size)) ||
-      !write_all(sockfd, request_bytes.data(), request_bytes.size())) {
-    std::cerr << "Error: Failed to send cancel request\n";
-    close(sockfd);
-    return 1;
-  }
-
-  // Receive response
-  if (!read_all(sockfd, &size, sizeof(size))) {
-    std::cerr << "Error: Failed to receive response size\n";
-    close(sockfd);
-    return 1;
-  }
-
-  std::vector<uint8_t> response_bytes(size);
-  if (!read_all(sockfd, response_bytes.data(), size)) {
-    std::cerr << "Error: Failed to receive response\n";
-    close(sockfd);
-    return 1;
-  }
-
-  close(sockfd);
-
-  // Parse response
-  auto result = serializer->deserialize_cancel_response(response_bytes);
+  // Cancel the job using the remote solve API
+  remote_solve_config_t config{host, port};
+  auto result = cancel_job_remote(config, job_id);
 
   // Print result
   std::cout << "Job ID: " << job_id << "\n";
   std::cout << "Result: " << (result.success ? "SUCCESS" : "FAILED") << "\n";
   std::cout << "Message: " << result.message << "\n";
-
-  const char* status_str = "UNKNOWN";
-  using job_status_t     = remote_serializer_t<int, double>::job_status_t;
-  switch (result.job_status) {
-    case job_status_t::QUEUED: status_str = "QUEUED"; break;
-    case job_status_t::PROCESSING: status_str = "PROCESSING"; break;
-    case job_status_t::COMPLETED: status_str = "COMPLETED"; break;
-    case job_status_t::FAILED: status_str = "FAILED"; break;
-    case job_status_t::NOT_FOUND: status_str = "NOT_FOUND"; break;
-    case job_status_t::CANCELLED: status_str = "CANCELLED"; break;
-  }
-  std::cout << "Job Status: " << status_str << "\n";
+  std::cout << "Job Status: " << status_to_string(result.job_status) << "\n";
 
   return result.success ? 0 : 1;
 }
