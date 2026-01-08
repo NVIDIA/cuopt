@@ -341,16 +341,11 @@ void iterative_refinement_gmres(T& op,
 template <typename i_t, typename f_t, typename T>
 void iterative_refinement(T& op, const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x)
 {
-  const bool is_qp = op.data_.Q.n > 0;
   rmm::device_uvector<f_t> d_b(b.size(), op.data_.handle_ptr->get_stream());
   raft::copy(d_b.data(), b.data(), b.size(), op.data_.handle_ptr->get_stream());
   rmm::device_uvector<f_t> d_x(x.size(), op.data_.handle_ptr->get_stream());
   raft::copy(d_x.data(), x.data(), x.size(), op.data_.handle_ptr->get_stream());
-  if (is_qp) {
-    iterative_refinement_gmres<i_t, f_t, T>(op, d_b, d_x);
-  } else {
-    iterative_refinement_simple<i_t, f_t, T>(op, d_b, d_x);
-  }
+  iterative_refinement_gmres<i_t, f_t, T>(op, d_b, d_x);
 
   raft::copy(x.data(), d_x.data(), x.size(), op.data_.handle_ptr->get_stream());
   return;

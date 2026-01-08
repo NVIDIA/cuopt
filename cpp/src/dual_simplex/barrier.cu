@@ -472,19 +472,6 @@ class iteration_data_t {
       cuopt_assert(error.norm1() <= 1e-2, "|| Aug - Aug^T ||_1 > 1e-2");
 #endif
     } else {
-      /*
-       for (i_t j = 0; j < n; ++j) {
-         f_t q_diag = nnzQ > 0 ? Qdiag[j] : 0.0;
-
-         const i_t p    = augmented_diagonal_indices[j];
-         augmented.x[p] = -q_diag - diag[j] - dual_perturb;
-       }
-       for (i_t j = n; j < n + m; ++j) {
-         const i_t p    = augmented_diagonal_indices[j];
-         augmented.x[p] = primal_perturb;
-       }
-         */
-
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
                          thrust::make_counting_iterator<i_t>(0),
                          i_t(n),
@@ -1891,16 +1878,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     for (i_t k = 0; k < lp.num_rows; k++) {
       data.y[k] = py[lp.num_cols + k];
     }
-#if 0
-    dense_vector_t<i_t, f_t> full_res = dual_rhs;
-    matrix_vector_multiply(data.augmented, 1.0, py, -1.0, full_res);
-    settings.log.printf("|| Aug (x y) - b || %e\n", vector_norm_inf<i_t, f_t>(full_res));
 
-    dense_vector_t<i_t, f_t> res1(lp.num_rows);
-    matrix_vector_multiply(lp.A, -1.0, data.z, 0.0, res1);
-    settings.log.printf("|| A p || %e\n", vector_norm2<i_t, f_t>(res1));
-
-#endif
     // v = -E'*z
     data.gather_upper_bounds(data.z, data.v);
     data.v.multiply_scalar(-1.0);
@@ -2378,14 +2356,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     } op(data);
     iterative_refinement(op, augmented_rhs, augmented_soln);
 
-#if 0
-    dense_vector_t<i_t, f_t> augmented_residual = augmented_rhs;
-    matrix_vector_multiply(data.augmented, 1.0, augmented_soln, -1.0, augmented_residual);
-    f_t solve_err = vector_norm_inf<i_t, f_t>(augmented_residual);
-    if (solve_err > 1e-1) {
-      settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
-    }
-#endif
     for (i_t k = 0; k < lp.num_cols; k++) {
       dx[k] = augmented_soln[k];
     }
@@ -2399,42 +2369,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
 
     // TMP should only be init once
     data.cusparse_dy_ = data.cusparse_view_.create_vector(data.d_dy_);
-
-#if 0
-    dense_vector_t<i_t, f_t> res = data.primal_rhs;
-    matrix_vector_multiply(lp.A, 1.0, dx, -1.0, res);
-    f_t prim_err = vector_norm_inf<i_t, f_t>(res);
-    if (prim_err > 1e-1) { settings.log.printf("|| A * dx - r_p || %e\n", prim_err); }
-
-    dense_vector_t<i_t, f_t> res1(lp.num_cols);
-    data.diag.pairwise_product(dx, res1);
-    if (data.Q.n > 0) { matrix_vector_multiply(data.Q, 1.0, dx, 1.0, res1); }
-
-    res1.axpy(-1.0, r1, -1.0);
-    matrix_transpose_vector_multiply(lp.A, 1.0, dy, 1.0, res1);
-    f_t res1_err = vector_norm_inf<i_t, f_t>(res1);
-    if (res1_err > 1e-1) {
-      settings.log.printf("|| A'*dy - r_1 - D dx || %e", vector_norm_inf<i_t, f_t>(res1));
-    }
-
-    dense_vector_t<i_t, f_t> res2(lp.num_cols + lp.num_rows);
-    for (i_t k = 0; k < lp.num_cols; k++) {
-      res2[k] = r1[k];
-    }
-    for (i_t k = 0; k < lp.num_rows; k++) {
-      res2[k + lp.num_cols] = data.primal_rhs[k];
-    }
-    dense_vector_t<i_t, f_t> dxdy(lp.num_cols + lp.num_rows);
-    for (i_t k = 0; k < lp.num_cols; k++) {
-      dxdy[k] = dx[k];
-    }
-    for (i_t k = 0; k < lp.num_rows; k++) {
-      dxdy[k + lp.num_cols] = dy[k];
-    }
-    data.augmented_multiply(1.0, dxdy, -1.0, res2);
-    f_t res2_err = vector_norm_inf<i_t, f_t>(res2);
-    if (res2_err > 1e-1) { settings.log.printf("|| Aug_0 (dx, dy) - aug_rhs || %e\n", res2_err); }
-#endif
   } else {
     {
       raft::common::nvtx::range fun_scope("Barrier: Solve A D^{-1} A^T dy = h");
