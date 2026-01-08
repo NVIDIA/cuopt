@@ -182,15 +182,17 @@ inline bool set_shmem_of_kernel(Function* function, size_t dynamic_request_size)
 
   if (dynamic_request_size != 0) {
     dynamic_request_size = raft::alignTo(dynamic_request_size, size_t(1024));
-
-    std::lock_guard<std::mutex> lock(mtx);
-    size_t& current_size = shmem_sizes[function];
-
+    size_t current_size  = shmem_sizes[function];
     if (dynamic_request_size > current_size) {
-      cudaFuncSetAttribute(
-        function, cudaFuncAttributeMaxDynamicSharedMemorySize, dynamic_request_size);
-      current_size = dynamic_request_size;
-      return (cudaSuccess == cudaGetLastError());
+      std::lock_guard<std::mutex> lock(mtx);
+      current_size = shmem_sizes[function];
+
+      if (dynamic_request_size > current_size) {
+        cudaFuncSetAttribute(
+          function, cudaFuncAttributeMaxDynamicSharedMemorySize, dynamic_request_size);
+        shmem_sizes[function] = dynamic_request_size;
+        return (cudaSuccess == cudaGetLastError());
+      }
     }
   }
   return true;
