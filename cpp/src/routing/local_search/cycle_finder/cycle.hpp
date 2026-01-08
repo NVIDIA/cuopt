@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -45,11 +45,11 @@ struct ret_cycles_t {
     i_t n_cycles;
   };
 
-  host_t to_host()
+  host_t to_host(rmm::cuda_stream_view stream)
   {
     host_t h;
-    h.paths    = host_copy(paths);
-    h.offsets  = host_copy(offsets);
+    h.paths    = host_copy(paths, stream);
+    h.offsets  = host_copy(offsets, stream);
     h.n_cycles = size();
     return h;
   }
