@@ -466,13 +466,18 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
 
   if (sync_mode) {
     //=========================================================================
-    // SYNC MODE: Use blocking request with streaming logs
+    // SYNC/BLOCKING MODE: Unified architecture
+    //
+    // Server-side: Job goes through queue, handled by worker process.
+    // Client blocks until completion (server uses condition variable).
+    // This enables cancellation for "sync" jobs and concurrent solves.
     //=========================================================================
 
     // Serialize as async request with blocking=true
     std::vector<uint8_t> request_data =
       serializer->serialize_async_lp_request(view, settings, true /* blocking */);
-    CUOPT_LOG_DEBUG("[remote_solve] Serialized LP request (sync): {} bytes", request_data.size());
+    CUOPT_LOG_DEBUG("[remote_solve] Serialized LP request (blocking): {} bytes",
+                    request_data.size());
 
     // Connect and send
     remote_client_t client(config.host, config.port);
@@ -486,17 +491,17 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
         "Failed to send request to remote server", cuopt::error_type_t::RuntimeError));
     }
 
-    // Receive response with streaming log support
+    // Receive response (server blocks until job completes, then returns result)
     std::vector<uint8_t> response_data;
-    if (!client.receive_streaming_response(response_data, settings.log_to_console)) {
+    if (!client.receive_response(response_data)) {
       return optimization_problem_solution_t<i_t, f_t>(cuopt::logic_error(
         "Failed to receive response from remote server", cuopt::error_type_t::RuntimeError));
     }
 
-    CUOPT_LOG_DEBUG("[remote_solve] Received LP solution (sync): {} bytes", response_data.size());
+    CUOPT_LOG_DEBUG("[remote_solve] Received LP result (blocking): {} bytes", response_data.size());
 
-    // Deserialize solution
-    return serializer->deserialize_lp_solution(response_data);
+    // Deserialize solution from result response (same format as async GET_RESULT)
+    return serializer->deserialize_lp_result_response(response_data);
 
   } else {
     //=========================================================================
@@ -577,12 +582,17 @@ mip_solution_t<i_t, f_t> solve_mip_remote(
 
   if (sync_mode) {
     //=========================================================================
-    // SYNC MODE: Use blocking request with streaming logs
+    // SYNC/BLOCKING MODE: Unified architecture
+    //
+    // Server-side: Job goes through queue, handled by worker process.
+    // Client blocks until completion (server uses condition variable).
+    // This enables cancellation for "sync" jobs and concurrent solves.
     //=========================================================================
 
     std::vector<uint8_t> request_data =
       serializer->serialize_async_mip_request(view, settings, true /* blocking */);
-    CUOPT_LOG_DEBUG("[remote_solve] Serialized MIP request (sync): {} bytes", request_data.size());
+    CUOPT_LOG_DEBUG("[remote_solve] Serialized MIP request (blocking): {} bytes",
+                    request_data.size());
 
     remote_client_t client(config.host, config.port);
     if (!client.connect()) {
@@ -595,15 +605,18 @@ mip_solution_t<i_t, f_t> solve_mip_remote(
                                                          cuopt::error_type_t::RuntimeError));
     }
 
+    // Receive response (server blocks until job completes, then returns result)
     std::vector<uint8_t> response_data;
-    if (!client.receive_streaming_response(response_data, true /* log_to_console */)) {
+    if (!client.receive_response(response_data)) {
       return mip_solution_t<i_t, f_t>(cuopt::logic_error(
         "Failed to receive response from remote server", cuopt::error_type_t::RuntimeError));
     }
 
-    CUOPT_LOG_DEBUG("[remote_solve] Received MIP solution (sync): {} bytes", response_data.size());
+    CUOPT_LOG_DEBUG("[remote_solve] Received MIP result (blocking): {} bytes",
+                    response_data.size());
 
-    return serializer->deserialize_mip_solution(response_data);
+    // Deserialize solution from result response (same format as async GET_RESULT)
+    return serializer->deserialize_mip_result_response(response_data);
 
   } else {
     //=========================================================================

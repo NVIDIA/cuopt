@@ -1292,15 +1292,48 @@ void handle_client(int client_fd, bool stream_logs)
       // Extract the actual problem data from the async request
       std::vector<uint8_t> problem_data = serializer->extract_problem_data(request_data);
 
-      if (blocking) {
-        // Sync mode - handle with log streaming
-        handle_sync_solve(client_fd, problem_data, is_mip, stream_logs);
-        return;
-      } else {
-        // Async mode - submit and return job_id
-        auto [success, result] = submit_job_async(problem_data, is_mip);
-        auto response          = serializer->serialize_submit_response(success, result);
+      // UNIFIED ARCHITECTURE: All jobs go through the queue
+      // Submit job to queue (same for both sync and async)
+      auto [submit_ok, job_id_or_error] = submit_job_async(problem_data, is_mip);
 
+      if (!submit_ok) {
+        // Submission failed
+        auto response = serializer->serialize_submit_response(false, job_id_or_error);
+        uint32_t size = response.size();
+        write_all(client_fd, &size, sizeof(size));
+        write_all(client_fd, response.data(), response.size());
+      } else if (blocking) {
+        // BLOCKING MODE: Wait for result using condition variable (no polling)
+        // This unifies sync/async - job goes through queue but we wait here
+        std::string job_id = job_id_or_error;
+
+        if (config.verbose) {
+          std::cout << "[Server] Blocking request, job_id: " << job_id
+                    << " (waiting for completion)\n";
+        }
+
+        std::vector<uint8_t> result_data;
+        std::string error_message;
+
+        // Block on condition variable until job completes
+        bool success = wait_for_result(job_id, result_data, error_message);
+
+        // Auto-delete job after returning result (client doesn't need to call DELETE)
+        delete_job(job_id);
+
+        // Return result response (same format as GET_RESULT)
+        auto response = serializer->serialize_result_response(success, result_data, error_message);
+        uint32_t size = response.size();
+        write_all(client_fd, &size, sizeof(size));
+        write_all(client_fd, response.data(), response.size());
+
+        if (config.verbose) {
+          std::cout << "[Server] Blocking request completed: " << job_id << ", success=" << success
+                    << "\n";
+        }
+      } else {
+        // ASYNC MODE: Return job_id immediately
+        auto response = serializer->serialize_submit_response(true, job_id_or_error);
         uint32_t size = response.size();
         write_all(client_fd, &size, sizeof(size));
         write_all(client_fd, response.data(), response.size());
