@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 name: pr
@@ -191,7 +191,9 @@ jobs:
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
       build_type: pull-request
-      script: ci/test_cpp.sh
+      script: |
+        export CUOPT_DATASET_S3_URI="${{ vars.CUOPT_DATASET_S3_URI }}"
+        ci/test_cpp.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
   conda-python-build:
     needs: [conda-cpp-build, compute-matrix-filters]
@@ -209,7 +211,9 @@ jobs:
     with:
       run_codecov: false
       build_type: pull-request
-      script: ci/test_python.sh
+      script: |
+        export CUOPT_DATASET_S3_URI="${{ vars.CUOPT_DATASET_S3_URI }}"
+        ci/test_python.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
   docs-build:
     needs: conda-python-build
@@ -263,7 +267,9 @@ jobs:
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt
     with:
       build_type: pull-request
-      script: ci/test_wheel_cuopt.sh
+      script: |
+        export CUOPT_DATASET_S3_URI="${{ vars.CUOPT_DATASET_S3_URI }}"
+        ci/test_wheel_cuopt.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
   wheel-build-cuopt-server:
     needs: [checks, compute-matrix-filters]
@@ -297,7 +303,9 @@ jobs:
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt_server
     with:
       build_type: pull-request
-      script: ci/test_wheel_cuopt_server.sh
+      script: |
+        export CUOPT_DATASET_S3_URI="${{ vars.CUOPT_DATASET_S3_URI }}"
+        ci/test_wheel_cuopt_server.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
   test-self-hosted-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]

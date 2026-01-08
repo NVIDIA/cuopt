@@ -37,11 +37,22 @@ rapids-print-env
 
 rapids-logger "Download datasets"
 
-# Export S3 credentials for dataset downloads (inherited via secrets: inherit)
-# Note: Exported AFTER rapids-print-env to avoid logging sensitive credentials
-export CUOPT_DATASET_S3_URI="${CUOPT_DATASET_S3_URI:-}"
-export CUOPT_AWS_ACCESS_KEY_ID="${CUOPT_AWS_ACCESS_KEY_ID:-}"
-export CUOPT_AWS_SECRET_ACCESS_KEY="${CUOPT_AWS_SECRET_ACCESS_KEY:-}"
+# Debug: Check if S3 configuration is available
+if [ -n "${CUOPT_DATASET_S3_URI:-}" ]; then
+    echo "✓ CUOPT_DATASET_S3_URI is set: $CUOPT_DATASET_S3_URI"
+    export CUOPT_DATASET_S3_URI
+else
+    echo "✗ CUOPT_DATASET_S3_URI not set"
+fi
+
+if [ -n "${CUOPT_AWS_ACCESS_KEY_ID:-}" ]; then
+    echo "✓ CUOPT_AWS_ACCESS_KEY_ID is available (via secrets: inherit)"
+    export CUOPT_AWS_ACCESS_KEY_ID
+    export CUOPT_AWS_SECRET_ACCESS_KEY
+else
+    echo "✗ CUOPT_AWS_ACCESS_KEY_ID not found in environment"
+    echo "  S3 download will fall back to HTTP if configured"
+fi
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
