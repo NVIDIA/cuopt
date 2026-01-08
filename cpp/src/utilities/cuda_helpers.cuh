@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -177,12 +177,17 @@ inline bool set_shmem_of_kernel(Function* function, size_t dynamic_request_size)
 {
   if (dynamic_request_size != 0) {
     dynamic_request_size = raft::alignTo(dynamic_request_size, size_t(1024));
-    cudaFuncSetAttribute(
-      function, cudaFuncAttributeMaxDynamicSharedMemorySize, dynamic_request_size);
-    return (cudaSuccess == cudaGetLastError());
-  } else {
-    return true;
+
+    cudaFuncAttributes attr;
+    cudaError_t err = cudaFuncGetAttributes(&attr, function);
+    if (err != cudaSuccess) { return false; }
+    if (dynamic_request_size > (size_t)attr.maxDynamicSharedSizeBytes) {
+      cudaFuncSetAttribute(
+        function, cudaFuncAttributeMaxDynamicSharedMemorySize, dynamic_request_size);
+      return (cudaSuccess == cudaGetLastError());
+    }
   }
+  return true;
 }
 
 template <typename T>
