@@ -588,42 +588,28 @@ if(BUILD_REMOTE_SERVER AND NOT BUILD_LP_ONLY)
     RUNTIME DESTINATION ${_BIN_DEST}
   )
 
-  # Standalone remote solve test client
-  add_executable(remote_solve_test tests/linear_programming/remote_solve_test.cpp)
-  target_compile_options(remote_solve_test
+  # cuopt_cancel_job - standalone utility to cancel jobs
+  add_executable(cuopt_cancel_job cuopt_cancel_job.cpp)
+  target_compile_options(cuopt_cancel_job
     PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
   )
-  target_include_directories(remote_solve_test
+  target_include_directories(cuopt_cancel_job
     PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include"
     "${CMAKE_CURRENT_BINARY_DIR}/include"
   )
-  target_link_libraries(remote_solve_test
+  target_link_libraries(cuopt_cancel_job
     PUBLIC
     cuopt
   )
-  # Use RUNPATH so LD_LIBRARY_PATH can override during development
-  target_link_options(remote_solve_test PRIVATE -Wl,--enable-new-dtags)
+  target_link_options(cuopt_cancel_job PRIVATE -Wl,--enable-new-dtags)
 
-  # Local solve test (for debugging)
-  add_executable(local_solve_test tests/linear_programming/local_solve_test.cpp)
-  target_compile_options(local_solve_test
-    PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+  install(TARGETS cuopt_cancel_job
+    COMPONENT runtime
+    RUNTIME DESTINATION ${_BIN_DEST}
   )
-  target_include_directories(local_solve_test
-    PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include"
-    "${CMAKE_CURRENT_BINARY_DIR}/include"
-  )
-  target_link_libraries(local_solve_test
-    PUBLIC
-    cuopt
-  )
-  target_link_options(local_solve_test PRIVATE -Wl,--enable-new-dtags)
 endif()
 
 # ##################################################################################################

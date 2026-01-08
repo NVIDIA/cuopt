@@ -34,10 +34,13 @@ constexpr uint8_t MSG_STATUS_REQUEST    = 12;
 constexpr uint8_t MSG_GET_RESULT        = 13;
 constexpr uint8_t MSG_DELETE_REQUEST    = 14;
 constexpr uint8_t MSG_GET_LOGS          = 15;
+constexpr uint8_t MSG_CANCEL_REQUEST    = 16;
+constexpr uint8_t MSG_WAIT_REQUEST      = 17;
 
 constexpr uint8_t MSG_SUBMIT_RESPONSE = 20;
 constexpr uint8_t MSG_STATUS_RESPONSE = 21;
 constexpr uint8_t MSG_LOGS_RESPONSE   = 22;
+constexpr uint8_t MSG_CANCEL_RESPONSE = 23;
 
 template <typename i_t, typename f_t>
 class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
@@ -452,6 +455,17 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
   }
 
+  std::vector<uint8_t> serialize_cancel_request(const std::string& job_id) override
+  {
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_uint8(MSG_CANCEL_REQUEST);
+    pk.pack(false);  // blocking (unused)
+    pk.pack(job_id);
+    pk.pack(int64_t(0));  // frombyte (unused)
+    return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
+  }
+
   bool deserialize_submit_response(const std::vector<uint8_t>& data,
                                    std::string& job_id,
                                    std::string& error_message) override
@@ -504,12 +518,14 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
         msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
       int status = oh_status.get().as<int>();
 
-      // Status codes: 0=QUEUED, 1=PROCESSING, 2=COMPLETED, 3=FAILED, 4=NOT_FOUND
+      // Status codes: 0=QUEUED, 1=PROCESSING, 2=COMPLETED, 3=FAILED, 4=NOT_FOUND, 5=CANCELLED
       switch (status) {
         case 0: return job_status_t::QUEUED;
         case 1: return job_status_t::PROCESSING;
         case 2: return job_status_t::COMPLETED;
         case 3: return job_status_t::FAILED;
+        case 4: return job_status_t::NOT_FOUND;
+        case 5: return job_status_t::CANCELLED;
         default: return job_status_t::NOT_FOUND;
       }
     } catch (...) {
@@ -549,6 +565,49 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     return result;
   }
 
+  typename remote_serializer_t<i_t, f_t>::cancel_result_t deserialize_cancel_response(
+    const std::vector<uint8_t>& data) override
+  {
+    using job_status_t = typename remote_serializer_t<i_t, f_t>::job_status_t;
+    typename remote_serializer_t<i_t, f_t>::cancel_result_t result;
+    result.success    = false;
+    result.message    = "Failed to parse response";
+    result.job_status = job_status_t::NOT_FOUND;
+
+    try {
+      size_t offset = 0;
+      msgpack::object_handle oh_type =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      uint8_t msg_type = oh_type.get().as<uint8_t>();
+
+      if (msg_type != MSG_CANCEL_RESPONSE) { return result; }
+
+      msgpack::object_handle oh_success =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      result.success = oh_success.get().as<bool>();
+
+      msgpack::object_handle oh_message =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      result.message = oh_message.get().as<std::string>();
+
+      msgpack::object_handle oh_status =
+        msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
+      int status_code = oh_status.get().as<int>();
+
+      switch (status_code) {
+        case 0: result.job_status = job_status_t::QUEUED; break;
+        case 1: result.job_status = job_status_t::PROCESSING; break;
+        case 2: result.job_status = job_status_t::COMPLETED; break;
+        case 3: result.job_status = job_status_t::FAILED; break;
+        case 4: result.job_status = job_status_t::NOT_FOUND; break;
+        case 5: result.job_status = job_status_t::CANCELLED; break;
+        default: result.job_status = job_status_t::NOT_FOUND; break;
+      }
+    } catch (...) {
+    }
+    return result;
+  }
+
   optimization_problem_solution_t<i_t, f_t> deserialize_lp_result_response(
     const std::vector<uint8_t>& data) override
   {
@@ -574,7 +633,7 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
         msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
       if (oh.get().type == msgpack::type::POSITIVE_INTEGER) {
         uint8_t msg_type = oh.get().as<uint8_t>();
-        return msg_type >= MSG_ASYNC_LP_REQUEST && msg_type <= MSG_GET_LOGS;
+        return msg_type >= MSG_ASYNC_LP_REQUEST && msg_type <= MSG_CANCEL_REQUEST;
       }
     } catch (...) {
     }
@@ -674,6 +733,8 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
         case MSG_GET_RESULT: return 2;         // GET_RESULT
         case MSG_DELETE_REQUEST: return 3;     // DELETE_RESULT
         case MSG_GET_LOGS: return 4;           // GET_LOGS
+        case MSG_CANCEL_REQUEST: return 5;     // CANCEL_JOB
+        case MSG_WAIT_REQUEST: return 6;       // WAIT_FOR_RESULT
         default: return -1;
       }
     } catch (...) {
@@ -759,6 +820,19 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     pk.pack(job_exists);
     pk.pack(nbytes);
     pk.pack(log_lines);
+    return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
+  }
+
+  std::vector<uint8_t> serialize_cancel_response(bool success,
+                                                 const std::string& message,
+                                                 int status_code) override
+  {
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_uint8(MSG_CANCEL_RESPONSE);
+    pk.pack(success);
+    pk.pack(message);
+    pk.pack(status_code);
     return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
   }
 

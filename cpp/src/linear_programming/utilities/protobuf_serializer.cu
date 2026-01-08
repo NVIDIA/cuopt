@@ -382,6 +382,17 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
     return result;
   }
 
+  std::vector<uint8_t> serialize_cancel_request(const std::string& job_id) override
+  {
+    cuopt::remote::AsyncRequest request;
+    request.set_request_type(cuopt::remote::CANCEL_JOB);
+    request.set_job_id(job_id);
+
+    std::vector<uint8_t> result(request.ByteSizeLong());
+    request.SerializeToArray(result.data(), result.size());
+    return result;
+  }
+
   bool deserialize_submit_response(const std::vector<uint8_t>& data,
                                    std::string& job_id,
                                    std::string& error_message) override
@@ -419,6 +430,7 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
       case cuopt::remote::PROCESSING: return job_status_t::PROCESSING;
       case cuopt::remote::COMPLETED: return job_status_t::COMPLETED;
       case cuopt::remote::FAILED: return job_status_t::FAILED;
+      case cuopt::remote::CANCELLED: return job_status_t::CANCELLED;
       case cuopt::remote::NOT_FOUND:
       default: return job_status_t::NOT_FOUND;
     }
@@ -504,6 +516,36 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
     return result;
   }
 
+  typename remote_serializer_t<i_t, f_t>::cancel_result_t deserialize_cancel_response(
+    const std::vector<uint8_t>& data) override
+  {
+    typename remote_serializer_t<i_t, f_t>::cancel_result_t result;
+    result.success    = false;
+    result.message    = "Failed to parse response";
+    result.job_status = job_status_t::NOT_FOUND;
+
+    cuopt::remote::AsyncResponse response;
+    if (!response.ParseFromArray(data.data(), data.size()) || !response.has_cancel_response()) {
+      return result;
+    }
+
+    const auto& cancel = response.cancel_response();
+    result.success     = (cancel.status() == cuopt::remote::SUCCESS);
+    result.message     = cancel.message();
+
+    switch (cancel.job_status()) {
+      case cuopt::remote::QUEUED: result.job_status = job_status_t::QUEUED; break;
+      case cuopt::remote::PROCESSING: result.job_status = job_status_t::PROCESSING; break;
+      case cuopt::remote::COMPLETED: result.job_status = job_status_t::COMPLETED; break;
+      case cuopt::remote::FAILED: result.job_status = job_status_t::FAILED; break;
+      case cuopt::remote::CANCELLED: result.job_status = job_status_t::CANCELLED; break;
+      case cuopt::remote::NOT_FOUND:
+      default: result.job_status = job_status_t::NOT_FOUND; break;
+    }
+
+    return result;
+  }
+
   //============================================================================
   // Server-side Async Request Handling
   //============================================================================
@@ -537,6 +579,8 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
       case cuopt::remote::GET_RESULT: return 2;
       case cuopt::remote::DELETE_RESULT: return 3;
       case cuopt::remote::GET_LOGS: return 4;
+      case cuopt::remote::CANCEL_JOB: return 5;
+      case cuopt::remote::WAIT_FOR_RESULT: return 6;
       default: return -1;
     }
   }
@@ -612,7 +656,8 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
       case 1: status->set_job_status(cuopt::remote::PROCESSING); break;
       case 2: status->set_job_status(cuopt::remote::COMPLETED); break;
       case 3: status->set_job_status(cuopt::remote::FAILED); break;
-      case 4:
+      case 4: status->set_job_status(cuopt::remote::NOT_FOUND); break;
+      case 5: status->set_job_status(cuopt::remote::CANCELLED); break;
       default: status->set_job_status(cuopt::remote::NOT_FOUND); break;
     }
     status->set_message(message);
@@ -689,6 +734,32 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
 
     for (const auto& line : log_lines) {
       logs->add_log_lines(line);
+    }
+
+    std::vector<uint8_t> bytes(response.ByteSizeLong());
+    response.SerializeToArray(bytes.data(), bytes.size());
+    return bytes;
+  }
+
+  std::vector<uint8_t> serialize_cancel_response(bool success,
+                                                 const std::string& message,
+                                                 int status_code) override
+  {
+    cuopt::remote::AsyncResponse response;
+    response.set_request_type(cuopt::remote::CANCEL_JOB);
+
+    auto* cancel = response.mutable_cancel_response();
+    cancel->set_status(success ? cuopt::remote::SUCCESS : cuopt::remote::ERROR_INTERNAL);
+    cancel->set_message(message);
+
+    switch (status_code) {
+      case 0: cancel->set_job_status(cuopt::remote::QUEUED); break;
+      case 1: cancel->set_job_status(cuopt::remote::PROCESSING); break;
+      case 2: cancel->set_job_status(cuopt::remote::COMPLETED); break;
+      case 3: cancel->set_job_status(cuopt::remote::FAILED); break;
+      case 4: cancel->set_job_status(cuopt::remote::NOT_FOUND); break;
+      case 5: cancel->set_job_status(cuopt::remote::CANCELLED); break;
+      default: cancel->set_job_status(cuopt::remote::NOT_FOUND); break;
     }
 
     std::vector<uint8_t> bytes(response.ByteSizeLong());

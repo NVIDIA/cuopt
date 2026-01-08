@@ -71,6 +71,7 @@ struct JobQueueEntry {
   std::atomic<bool> ready;        // Job is ready to be processed
   std::atomic<bool> claimed;      // Worker has claimed this job
   std::atomic<pid_t> worker_pid;  // PID of worker that claimed this job (0 if none)
+  std::atomic<bool> cancelled;    // Job has been cancelled (worker should skip)
 };
 
 struct ResultQueueEntry {
@@ -201,7 +202,7 @@ class stdout_streamer_t {
 // Job status tracking (main process only)
 // ============================================================================
 
-enum class JobStatus { QUEUED, PROCESSING, COMPLETED, FAILED, NOT_FOUND };
+enum class JobStatus { QUEUED, PROCESSING, COMPLETED, FAILED, NOT_FOUND, CANCELLED };
 
 struct JobInfo {
   std::string job_id;
@@ -367,6 +368,7 @@ bool init_shared_memory()
     job_queue[i].ready      = false;
     job_queue[i].claimed    = false;
     job_queue[i].worker_pid = 0;
+    job_queue[i].cancelled  = false;
   }
 
   // Create result queue shared memory
@@ -486,6 +488,35 @@ void worker_process(int worker_id)
     std::string job_id(job.job_id);
     bool is_mip = (job.problem_type == 1);
 
+    // Check if job was cancelled before we start processing
+    if (job.cancelled) {
+      std::cout << "[Worker " << worker_id << "] Job cancelled before processing: " << job_id
+                << "\n";
+      std::cout.flush();
+
+      // Store cancelled result in result queue
+      for (size_t i = 0; i < MAX_RESULTS; ++i) {
+        if (!result_queue[i].ready) {
+          strncpy(result_queue[i].job_id, job_id.c_str(), sizeof(result_queue[i].job_id) - 1);
+          result_queue[i].status    = 2;  // Cancelled status
+          result_queue[i].data_size = 0;
+          strncpy(result_queue[i].error_message,
+                  "Job was cancelled",
+                  sizeof(result_queue[i].error_message) - 1);
+          result_queue[i].retrieved = false;
+          result_queue[i].ready     = true;
+          break;
+        }
+      }
+
+      // Clear job slot (don't exit/restart worker)
+      job.worker_pid = 0;
+      job.ready      = false;
+      job.claimed    = false;
+      job.cancelled  = false;
+      continue;  // Go back to waiting for next job
+    }
+
     std::cout << "[Worker " << worker_id << "] Processing job: " << job_id
               << " (type: " << (is_mip ? "MIP" : "LP") << ")\n";
     std::cout.flush();
@@ -564,6 +595,7 @@ void worker_process(int worker_id)
     job.worker_pid = 0;
     job.ready      = false;
     job.claimed    = false;
+    job.cancelled  = false;
 
     std::cout << "[Worker " << worker_id << "] Completed job: " << job_id
               << " (success: " << success << ")\n";
@@ -615,23 +647,30 @@ pid_t spawn_single_worker(int worker_id)
   return pid;
 }
 
-// Mark jobs being processed by a dead worker as failed
+// Mark jobs being processed by a dead worker as failed (or cancelled if it was cancelled)
 void mark_worker_jobs_failed(pid_t dead_worker_pid)
 {
   for (size_t i = 0; i < MAX_JOBS; ++i) {
     if (job_queue[i].ready && job_queue[i].claimed && job_queue[i].worker_pid == dead_worker_pid) {
       std::string job_id(job_queue[i].job_id);
-      std::cerr << "[Server] Worker " << dead_worker_pid << " died while processing job: " << job_id
-                << "\n";
+      bool was_cancelled = job_queue[i].cancelled;
 
-      // Store failure result in result queue
+      if (was_cancelled) {
+        std::cerr << "[Server] Worker " << dead_worker_pid
+                  << " killed for cancelled job: " << job_id << "\n";
+      } else {
+        std::cerr << "[Server] Worker " << dead_worker_pid
+                  << " died while processing job: " << job_id << "\n";
+      }
+
+      // Store result in result queue (cancelled or failed)
       for (size_t j = 0; j < MAX_RESULTS; ++j) {
         if (!result_queue[j].ready) {
           strncpy(result_queue[j].job_id, job_id.c_str(), sizeof(result_queue[j].job_id) - 1);
-          result_queue[j].status    = 1;  // Error
+          result_queue[j].status    = was_cancelled ? 2 : 1;  // 2=cancelled, 1=error
           result_queue[j].data_size = 0;
           strncpy(result_queue[j].error_message,
-                  "Worker process died unexpectedly",
+                  was_cancelled ? "Job was cancelled" : "Worker process died unexpectedly",
                   sizeof(result_queue[j].error_message) - 1);
           result_queue[j].retrieved = false;
           result_queue[j].ready     = true;
@@ -643,14 +682,20 @@ void mark_worker_jobs_failed(pid_t dead_worker_pid)
       job_queue[i].worker_pid = 0;
       job_queue[i].ready      = false;
       job_queue[i].claimed    = false;
+      job_queue[i].cancelled  = false;
 
       // Update job tracker
       {
         std::lock_guard<std::mutex> lock(tracker_mutex);
         auto it = job_tracker.find(job_id);
         if (it != job_tracker.end()) {
-          it->second.status        = JobStatus::FAILED;
-          it->second.error_message = "Worker process died unexpectedly";
+          if (was_cancelled) {
+            it->second.status        = JobStatus::CANCELLED;
+            it->second.error_message = "Job was cancelled";
+          } else {
+            it->second.status        = JobStatus::FAILED;
+            it->second.error_message = "Worker process died unexpectedly";
+          }
         }
       }
     }
@@ -736,7 +781,9 @@ void result_retrieval_thread()
     for (size_t i = 0; i < MAX_RESULTS; ++i) {
       if (result_queue[i].ready && !result_queue[i].retrieved) {
         std::string job_id(result_queue[i].job_id);
-        bool success = (result_queue[i].status == 0);
+        uint32_t result_status = result_queue[i].status;
+        bool success           = (result_status == 0);
+        bool cancelled         = (result_status == 2);
 
         std::vector<uint8_t> result_data;
         std::string error_message;
@@ -771,6 +818,9 @@ void result_retrieval_thread()
             if (success) {
               it->second.status      = JobStatus::COMPLETED;
               it->second.result_data = result_data;
+            } else if (cancelled) {
+              it->second.status        = JobStatus::CANCELLED;
+              it->second.error_message = error_message;
             } else {
               it->second.status        = JobStatus::FAILED;
               it->second.error_message = error_message;
@@ -814,6 +864,7 @@ std::pair<bool, std::string> submit_job_async(const std::vector<uint8_t>& reques
       memcpy(job_queue[i].data, request_data.data(), request_data.size());
       job_queue[i].worker_pid = 0;
       job_queue[i].claimed    = false;
+      job_queue[i].cancelled  = false;
       job_queue[i].ready      = true;  // Mark as ready last
 
       // Track job
@@ -848,11 +899,24 @@ JobStatus check_job_status(const std::string& job_id, std::string& message)
     return JobStatus::NOT_FOUND;
   }
 
+  // If status is QUEUED, check if the job has been claimed by a worker
+  // (which means it's now PROCESSING)
+  if (it->second.status == JobStatus::QUEUED) {
+    for (size_t i = 0; i < MAX_JOBS; ++i) {
+      if (job_queue[i].ready && job_queue[i].claimed &&
+          std::string(job_queue[i].job_id) == job_id) {
+        it->second.status = JobStatus::PROCESSING;
+        break;
+      }
+    }
+  }
+
   switch (it->second.status) {
     case JobStatus::QUEUED: message = "Job is queued"; break;
     case JobStatus::PROCESSING: message = "Job is being processed"; break;
     case JobStatus::COMPLETED: message = "Job completed"; break;
     case JobStatus::FAILED: message = "Job failed: " + it->second.error_message; break;
+    case JobStatus::CANCELLED: message = "Job was cancelled"; break;
     default: message = "Unknown status";
   }
 
@@ -880,6 +944,73 @@ bool get_job_result(const std::string& job_id,
     return false;
   } else {
     error_message = "Job not completed yet";
+    return false;
+  }
+}
+
+// Wait for job to complete (blocking)
+// This uses condition variables - the thread will sleep until the job is done
+bool wait_for_result(const std::string& job_id,
+                     std::vector<uint8_t>& result_data,
+                     std::string& error_message)
+{
+  // First check if job already completed
+  {
+    std::lock_guard<std::mutex> lock(tracker_mutex);
+    auto it = job_tracker.find(job_id);
+
+    if (it == job_tracker.end()) {
+      error_message = "Job ID not found";
+      return false;
+    }
+
+    // If already in terminal state, return immediately
+    if (it->second.status == JobStatus::COMPLETED) {
+      result_data = it->second.result_data;
+      return true;
+    } else if (it->second.status == JobStatus::FAILED) {
+      error_message = it->second.error_message;
+      return false;
+    } else if (it->second.status == JobStatus::CANCELLED) {
+      error_message = "Job was cancelled";
+      return false;
+    }
+  }
+
+  // Job is still running - create a waiter and wait on condition variable
+  auto waiter = std::make_shared<JobWaiter>();
+
+  {
+    std::lock_guard<std::mutex> lock(waiters_mutex);
+    waiting_threads[job_id] = waiter;
+  }
+
+  if (config.verbose) {
+    std::cout << "[Server] WAIT_FOR_RESULT: waiting for job " << job_id << "\n";
+  }
+
+  // Wait on the condition variable - this thread will sleep until signaled
+  {
+    std::unique_lock<std::mutex> lock(waiter->mutex);
+    waiter->cv.wait(lock, [&waiter] { return waiter->ready; });
+  }
+
+  // Remove from waiting_threads
+  {
+    std::lock_guard<std::mutex> lock(waiters_mutex);
+    waiting_threads.erase(job_id);
+  }
+
+  if (config.verbose) {
+    std::cout << "[Server] WAIT_FOR_RESULT: job " << job_id
+              << " completed, success=" << waiter->success << "\n";
+  }
+
+  if (waiter->success) {
+    result_data = std::move(waiter->result_data);
+    return true;
+  } else {
+    error_message = waiter->error_message;
     return false;
   }
 }
@@ -924,6 +1055,121 @@ bool delete_job(const std::string& job_id)
   if (config.verbose) { std::cout << "[Server] Job deleted: " << job_id << "\n"; }
 
   return true;
+}
+
+// Cancel job - returns: 0=success, 1=job_not_found, 2=already_completed, 3=already_cancelled
+// Also returns the job's status after cancel attempt via job_status_out
+int cancel_job(const std::string& job_id, JobStatus& job_status_out, std::string& message)
+{
+  std::lock_guard<std::mutex> lock(tracker_mutex);
+  auto it = job_tracker.find(job_id);
+
+  if (it == job_tracker.end()) {
+    message        = "Job ID not found";
+    job_status_out = JobStatus::NOT_FOUND;
+    return 1;
+  }
+
+  JobStatus current_status = it->second.status;
+
+  // Can't cancel completed jobs
+  if (current_status == JobStatus::COMPLETED) {
+    message        = "Cannot cancel completed job";
+    job_status_out = JobStatus::COMPLETED;
+    return 2;
+  }
+
+  // Already cancelled
+  if (current_status == JobStatus::CANCELLED) {
+    message        = "Job already cancelled";
+    job_status_out = JobStatus::CANCELLED;
+    return 3;
+  }
+
+  // Can't cancel failed jobs
+  if (current_status == JobStatus::FAILED) {
+    message        = "Cannot cancel failed job";
+    job_status_out = JobStatus::FAILED;
+    return 2;
+  }
+
+  // Find the job in the shared memory queue
+  for (size_t i = 0; i < MAX_JOBS; ++i) {
+    if (job_queue[i].ready && strcmp(job_queue[i].job_id, job_id.c_str()) == 0) {
+      // Check if job is being processed by a worker
+      pid_t worker_pid = job_queue[i].worker_pid;
+
+      if (worker_pid > 0 && job_queue[i].claimed) {
+        // Job is being processed - kill the worker
+        if (config.verbose) {
+          std::cout << "[Server] Cancelling running job " << job_id << " (killing worker "
+                    << worker_pid << ")\n";
+        }
+        kill(worker_pid, SIGKILL);
+        // The worker monitor thread will detect the dead worker, restart it,
+        // and mark_worker_jobs_failed will be called. But we want CANCELLED not FAILED.
+        // So we mark it as cancelled here first.
+        job_queue[i].cancelled = true;
+      } else {
+        // Job is queued but not yet claimed - mark as cancelled
+        if (config.verbose) { std::cout << "[Server] Cancelling queued job " << job_id << "\n"; }
+        job_queue[i].cancelled = true;
+      }
+
+      // Update job tracker
+      it->second.status        = JobStatus::CANCELLED;
+      it->second.error_message = "Job cancelled by user";
+      job_status_out           = JobStatus::CANCELLED;
+      message                  = "Job cancelled successfully";
+
+      // Delete the log file for this job
+      delete_log_file(job_id);
+
+      // Wake up any threads waiting for this job
+      {
+        std::lock_guard<std::mutex> wlock(waiters_mutex);
+        auto wit = waiting_threads.find(job_id);
+        if (wit != waiting_threads.end()) {
+          auto waiter           = wit->second;
+          waiter->error_message = "Job cancelled by user";
+          waiter->success       = false;
+          waiter->ready         = true;
+          waiter->cv.notify_one();
+        }
+      }
+
+      return 0;
+    }
+  }
+
+  // Job not found in queue (might have already finished processing)
+  // Re-check status since we hold the lock
+  if (it->second.status == JobStatus::COMPLETED) {
+    message        = "Cannot cancel completed job";
+    job_status_out = JobStatus::COMPLETED;
+    return 2;
+  }
+
+  // Job must be in flight or in an edge case - mark as cancelled anyway
+  it->second.status        = JobStatus::CANCELLED;
+  it->second.error_message = "Job cancelled by user";
+  job_status_out           = JobStatus::CANCELLED;
+  message                  = "Job cancelled";
+
+  // Wake up any threads waiting for this job
+  {
+    std::lock_guard<std::mutex> wlock(waiters_mutex);
+    auto wit = waiting_threads.find(job_id);
+    if (wit != waiting_threads.end()) {
+      auto waiter           = wit->second;
+      waiter->error_message = "Job cancelled by user";
+      waiter->success       = false;
+      waiter->ready         = true;
+      waiter->cv.notify_one();
+    }
+  }
+
+  return 0;
 }
 
 // ============================================================================
@@ -1071,6 +1317,7 @@ void handle_client(int client_fd, bool stream_logs)
         case JobStatus::COMPLETED: status_code = 2; break;
         case JobStatus::FAILED: status_code = 3; break;
         case JobStatus::NOT_FOUND: status_code = 4; break;
+        case JobStatus::CANCELLED: status_code = 5; break;
       }
 
       auto response = serializer->serialize_status_response(status_code, message);
@@ -1140,6 +1387,59 @@ void handle_client(int client_fd, bool stream_logs)
         std::cout << "[Server] GET_LOGS: job=" << job_id << ", frombyte=" << frombyte
                   << ", lines=" << log_lines.size() << ", nbytes=" << nbytes << "\n";
       }
+    } else if (request_type == 5) {  // CANCEL_JOB
+      std::string job_id = serializer->get_job_id(request_data);
+
+      JobStatus job_status_out;
+      std::string message;
+      int result = cancel_job(job_id, job_status_out, message);
+
+      // Convert JobStatus to status code
+      int status_code = 0;
+      switch (job_status_out) {
+        case JobStatus::QUEUED: status_code = 0; break;
+        case JobStatus::PROCESSING: status_code = 1; break;
+        case JobStatus::COMPLETED: status_code = 2; break;
+        case JobStatus::FAILED: status_code = 3; break;
+        case JobStatus::NOT_FOUND: status_code = 4; break;
+        case JobStatus::CANCELLED: status_code = 5; break;
+      }
+
+      bool success  = (result == 0);
+      auto response = serializer->serialize_cancel_response(success, message, status_code);
+
+      uint32_t size = response.size();
+      write_all(client_fd, &size, sizeof(size));
+      write_all(client_fd, response.data(), response.size());
+
+      if (config.verbose) {
+        std::cout << "[Server] CANCEL_JOB: job=" << job_id << ", success=" << success
+                  << ", message=" << message << "\n";
+      }
+    } else if (request_type == 6) {  // WAIT_FOR_RESULT
+      std::string job_id = serializer->get_job_id(request_data);
+
+      if (config.verbose) {
+        std::cout << "[Server] WAIT_FOR_RESULT: job=" << job_id << " (blocking until complete)\n";
+      }
+
+      std::vector<uint8_t> result_data;
+      std::string error_message;
+
+      // This will block until the job completes (uses condition variable, no polling)
+      bool success = wait_for_result(job_id, result_data, error_message);
+
+      // Send result response (same format as GET_RESULT)
+      auto response = serializer->serialize_result_response(success, result_data, error_message);
+
+      uint32_t size = response.size();
+      write_all(client_fd, &size, sizeof(size));
+      write_all(client_fd, response.data(), response.size());
+
+      if (config.verbose) {
+        std::cout << "[Server] WAIT_FOR_RESULT: job=" << job_id << " completed, success=" << success
+                  << "\n";
+      }
     }
 
     close(client_fd);
@@ -1203,10 +1503,13 @@ int main(int argc, char** argv)
   std::cout << "Log streaming: " << (config.stream_logs ? "enabled" : "disabled") << "\n";
   std::cout << "\n";
   std::cout << "Async API:\n";
-  std::cout << "  SUBMIT_JOB    - Submit a job, get job_id\n";
-  std::cout << "  CHECK_STATUS  - Check job status\n";
-  std::cout << "  GET_RESULT    - Retrieve completed result\n";
-  std::cout << "  DELETE_RESULT - Delete job from server\n";
+  std::cout << "  SUBMIT_JOB      - Submit a job, get job_id\n";
+  std::cout << "  CHECK_STATUS    - Check job status\n";
+  std::cout << "  GET_RESULT      - Retrieve completed result\n";
+  std::cout << "  DELETE_RESULT   - Delete job from server\n";
+  std::cout << "  GET_LOGS        - Retrieve log output\n";
+  std::cout << "  CANCEL_JOB      - Cancel a queued or running job\n";
+  std::cout << "  WAIT_FOR_RESULT - Block until job completes (no polling)\n";
   std::cout << "\n";
 
   // Initialize shared memory

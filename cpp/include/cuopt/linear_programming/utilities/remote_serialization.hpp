@@ -206,9 +206,17 @@ class remote_serializer_t {
                                                           int64_t frombyte = 0) = 0;
 
   /**
+   * @brief Serialize a cancel job request.
+   *
+   * @param job_id The job ID to cancel
+   * @return Serialized request bytes
+   */
+  virtual std::vector<uint8_t> serialize_cancel_request(const std::string& job_id) = 0;
+
+  /**
    * @brief Job status enumeration.
    */
-  enum class job_status_t { QUEUED, PROCESSING, COMPLETED, FAILED, NOT_FOUND };
+  enum class job_status_t { QUEUED, PROCESSING, COMPLETED, FAILED, NOT_FOUND, CANCELLED };
 
   /**
    * @brief Structure to hold log retrieval results.
@@ -217,6 +225,15 @@ class remote_serializer_t {
     std::vector<std::string> log_lines;  ///< Log lines read from file
     int64_t nbytes;                      ///< Ending byte position (use as frombyte next time)
     bool job_exists;                     ///< False if job_id not found
+  };
+
+  /**
+   * @brief Structure to hold cancel response results.
+   */
+  struct cancel_result_t {
+    bool success;             ///< True if cancel request was processed
+    std::string message;      ///< Success/error message
+    job_status_t job_status;  ///< Status of job after cancel attempt
   };
 
   /**
@@ -265,6 +282,14 @@ class remote_serializer_t {
    */
   virtual logs_result_t deserialize_logs_response(const std::vector<uint8_t>& data) = 0;
 
+  /**
+   * @brief Deserialize cancel response.
+   *
+   * @param data Response bytes
+   * @return Cancel result structure
+   */
+  virtual cancel_result_t deserialize_cancel_response(const std::vector<uint8_t>& data) = 0;
+
   //============================================================================
   // Server-side Async Request Handling
   //============================================================================
@@ -283,7 +308,8 @@ class remote_serializer_t {
    * @brief Get the async request type.
    *
    * @param data The serialized request bytes
-   * @return Request type: 0=SUBMIT_JOB, 1=CHECK_STATUS, 2=GET_RESULT, 3=DELETE_RESULT
+   * @return Request type: 0=SUBMIT_JOB, 1=CHECK_STATUS, 2=GET_RESULT, 3=DELETE_RESULT,
+   *         4=GET_LOGS, 5=CANCEL_JOB, 6=WAIT_FOR_RESULT
    */
   virtual int get_async_request_type(const std::vector<uint8_t>& data) = 0;
 
@@ -372,6 +398,19 @@ class remote_serializer_t {
                                                        const std::vector<std::string>& log_lines,
                                                        int64_t nbytes,
                                                        bool job_exists) = 0;
+
+  /**
+   * @brief Serialize a cancel response.
+   *
+   * @param success Whether cancel was successful
+   * @param message Success/error message
+   * @param status_code Job status after cancel: 0=QUEUED, 1=PROCESSING, 2=COMPLETED, 3=FAILED,
+   * 4=NOT_FOUND, 5=CANCELLED
+   * @return Serialized response bytes
+   */
+  virtual std::vector<uint8_t> serialize_cancel_response(bool success,
+                                                         const std::string& message,
+                                                         int status_code) = 0;
 
   //============================================================================
   // Metadata

@@ -203,6 +203,8 @@ enum RequestType {
   GET_RESULT = 2;        // Retrieve completed result
   DELETE_RESULT = 3;     // Delete result from server
   GET_LOGS = 4;          // Retrieve buffered log entries
+  CANCEL_JOB = 5;        // Cancel a queued or running job
+  WAIT_FOR_RESULT = 6;   // Block until job completes, returns result
 }
 
 // Job status for async operations
@@ -212,6 +214,7 @@ enum JobStatus {
   COMPLETED = 2;        // Job completed successfully
   FAILED = 3;           // Job failed with error
   NOT_FOUND = 4;        // Job ID not found
+  CANCELLED = 5;        // Job was cancelled by user
 }
 
 // Generic request wrapper for async operations
@@ -268,6 +271,13 @@ message LogsResponse {
   bool job_exists = 5;            // False if job_id not found
 }
 
+// Response for cancel job
+message CancelResponse {
+  ResponseStatus status = 1;
+  string message = 2;
+  JobStatus job_status = 3;       // Status of job after cancel attempt
+}
+
 // Generic response wrapper
 message AsyncResponse {
   RequestType request_type = 1;
@@ -278,6 +288,7 @@ message AsyncResponse {
     ResultResponse result_response = 12;
     DeleteResponse delete_response = 13;
     LogsResponse logs_response = 14;
+    CancelResponse cancel_response = 15;
   }
 }
 
