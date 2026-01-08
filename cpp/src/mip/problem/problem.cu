@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -1344,7 +1344,7 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
   // do an assignment from the original_ids of the current problem
   problem.original_ids.resize(variable_map.size());
   std::fill(problem.reverse_original_ids.begin(), problem.reverse_original_ids.end(), -1);
-  auto h_variable_map = cuopt::host_copy(variable_map);
+  auto h_variable_map = cuopt::host_copy(variable_map, handle_ptr->get_stream());
   for (size_t i = 0; i < variable_map.size(); ++i) {
     cuopt_assert(h_variable_map[i] < original_ids.size(), "Variable index out of bounds");
     problem.original_ids[i] = original_ids[h_variable_map[i]];
@@ -1522,9 +1522,10 @@ std::vector<std::vector<std::pair<i_t, f_t>>> compute_var_to_constraint_map(
 {
   raft::common::nvtx::range fun_scope("compute_var_to_constraint_map");
   std::vector<std::vector<std::pair<i_t, f_t>>> variable_constraint_map(pb.n_variables);
-  auto h_variables    = cuopt::host_copy(pb.variables);
-  auto h_coefficients = cuopt::host_copy(pb.coefficients);
-  auto h_offsets      = cuopt::host_copy(pb.offsets);
+  auto stream         = pb.handle_ptr->get_stream();
+  auto h_variables    = cuopt::host_copy(pb.variables, stream);
+  auto h_coefficients = cuopt::host_copy(pb.coefficients, stream);
+  auto h_offsets      = cuopt::host_copy(pb.offsets, stream);
   for (i_t cnst = 0; cnst < pb.n_constraints; ++cnst) {
     for (i_t i = h_offsets[cnst]; i < h_offsets[cnst + 1]; ++i) {
       i_t var   = h_variables[i];
@@ -1542,10 +1543,11 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
 {
   raft::common::nvtx::range fun_scope("standardize_bounds");
   auto handle_ptr               = pb.handle_ptr;
-  auto h_var_bounds             = cuopt::host_copy(pb.variable_bounds);
-  auto h_objective_coefficients = cuopt::host_copy(pb.objective_coefficients);
-  auto h_variable_types         = cuopt::host_copy(pb.variable_types);
-  auto h_var_flags              = cuopt::host_copy(pb.presolve_data.var_flags);
+  auto stream                   = handle_ptr->get_stream();
+  auto h_var_bounds             = cuopt::host_copy(pb.variable_bounds, stream);
+  auto h_objective_coefficients = cuopt::host_copy(pb.objective_coefficients, stream);
+  auto h_variable_types         = cuopt::host_copy(pb.variable_types, stream);
+  auto h_var_flags              = cuopt::host_copy(pb.presolve_data.var_flags, stream);
   handle_ptr->sync_stream();
 
   const i_t n_vars_originally = (i_t)h_var_bounds.size();
@@ -1687,12 +1689,13 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   i_t nz                 = nnz;
   user_problem.num_rows  = m;
   user_problem.num_cols  = n;
-  user_problem.objective = cuopt::host_copy(objective_coefficients);
+  auto stream            = handle_ptr->get_stream();
+  user_problem.objective = cuopt::host_copy(objective_coefficients, stream);
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.x         = cuopt::host_copy(coefficients);
-  csr_A.j         = cuopt::host_copy(variables);
-  csr_A.row_start = cuopt::host_copy(offsets);
+  csr_A.x         = cuopt::host_copy(coefficients, stream);
+  csr_A.j         = cuopt::host_copy(variables, stream);
+  csr_A.row_start = cuopt::host_copy(offsets, stream);
 
   csr_A.to_compressed_col(user_problem.A);
 
@@ -1701,8 +1704,8 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   user_problem.range_rows.clear();
   user_problem.range_value.clear();
 
-  auto model_constraint_lower_bounds = cuopt::host_copy(constraint_lower_bounds);
-  auto model_constraint_upper_bounds = cuopt::host_copy(constraint_upper_bounds);
+  auto model_constraint_lower_bounds = cuopt::host_copy(constraint_lower_bounds, stream);
+  auto model_constraint_upper_bounds = cuopt::host_copy(constraint_upper_bounds, stream);
 
   // All constraints have lower and upper bounds
   // lr <= a_i^T x <= ur
@@ -1763,7 +1766,7 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   user_problem.obj_scale    = presolve_data.objective_scaling_factor;
   user_problem.var_types.resize(n);
 
-  auto model_variable_types = cuopt::host_copy(variable_types);
+  auto model_variable_types = cuopt::host_copy(variable_types, stream);
   for (int j = 0; j < n; ++j) {
     user_problem.var_types[j] =
       model_variable_types[j] == var_t::CONTINUOUS
@@ -1781,7 +1784,8 @@ template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_vars_with_objective_coeffs()
 {
   raft::common::nvtx::range fun_scope("compute_vars_with_objective_coeffs");
-  auto h_objective_coefficients = cuopt::host_copy(objective_coefficients);
+  auto h_objective_coefficients =
+    cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());
   std::vector<i_t> vars_with_objective_coeffs_;
   std::vector<f_t> objective_coeffs_;
   for (i_t i = 0; i < n_variables; ++i) {

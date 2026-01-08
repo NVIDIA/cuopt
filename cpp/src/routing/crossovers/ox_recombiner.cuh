@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -433,7 +433,7 @@ struct OX {
       h_graph[i].reserve(problem_size);
     }
 
-    adj_to_host(h_graph);
+    adj_to_host(h_graph, A.sol.sol_handle->get_stream());
 
     std::vector<std::vector<double>> h_path_cost(problem_size + 1);
     // Vector of parents to recreate optimal path
@@ -500,7 +500,7 @@ struct OX {
     }
   }
 
-  void test_transpose_graph()
+  void test_transpose_graph(rmm::cuda_stream_view stream)
   {
     std::vector<std::vector<std::tuple<int, double, int>>> h_transpose_graph(offspring.size());
     for (size_t i = 0; i < h_transpose_graph.size(); ++i) {
@@ -512,7 +512,7 @@ struct OX {
       tmp_graph[i].reserve(problem_size);
     }
 
-    adj_to_host(tmp_graph);
+    adj_to_host(tmp_graph, stream);
 
     for (size_t i = 0; i < tmp_graph.size(); ++i) {
       for (size_t j = 0; j < tmp_graph[i].size(); ++j) {
@@ -521,7 +521,7 @@ struct OX {
       }
     }
 
-    auto tmp_transpose = transpose_graph.to_host();
+    auto tmp_transpose = transpose_graph.to_host(stream);
 
     for (size_t i = 0; i < h_transpose_graph.size(); ++i) {
       auto transpose_offset =
@@ -618,7 +618,7 @@ struct OX {
     raft::common::nvtx::range fun_scope("bellman_ford");
 
     compute_transpose_graph(A);
-    cuopt_func_call(test_transpose_graph());
+    cuopt_func_call(test_transpose_graph(A.sol.sol_handle->get_stream()));
 
     auto row_size = offspring.size();
     d_path_cost.resize((problem_size + 1) * row_size, A.sol.sol_handle->get_stream());
@@ -789,9 +789,10 @@ struct OX {
     offspring[0] = 0;
   }
 
-  void adj_to_host(std::vector<std::vector<std::tuple<int, double, int>>>& h_graph)
+  void adj_to_host(std::vector<std::vector<std::tuple<int, double, int>>>& h_graph,
+                   rmm::cuda_stream_view stream)
   {
-    auto tmp_graph = d_graph.to_host();
+    auto tmp_graph = d_graph.to_host(stream);
     for (int veh = 0; veh < n_buckets; ++veh) {
       for (size_t i = 0; i < d_graph.get_num_vertices(); ++i) {
         auto row_size      = tmp_graph.row_sizes[veh * d_graph.get_num_vertices() + i];
@@ -818,7 +819,7 @@ struct OX {
     for (size_t i = 0; i < h_graph.size(); ++i) {
       h_graph[i].reserve(max_route_len);
     }
-    adj_to_host(h_graph);
+    adj_to_host(h_graph, A.sol.sol_handle->get_stream());
 
     const auto& dimensions_info = A.problem->dimensions_info;
 

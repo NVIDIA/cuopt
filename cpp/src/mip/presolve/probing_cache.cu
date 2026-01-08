@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -346,7 +346,7 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
                         }
                         return false;
                       });
-  auto h_priority_indices = host_copy(priority_indices);
+  auto h_priority_indices = host_copy(priority_indices, problem.handle_ptr->get_stream());
   problem.handle_ptr->sync_stream();
   return h_priority_indices;
 }
@@ -461,8 +461,9 @@ void compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // we dont want to compute the probing cache for all variables for time and computation resources
   auto priority_indices = compute_prioritized_integer_indices(bound_presolve, problem);
   CUOPT_LOG_DEBUG("Computing probing cache");
-  auto h_integer_indices  = host_copy(problem.integer_indices);
-  const auto h_var_bounds = host_copy(problem.variable_bounds);
+  auto stream             = problem.handle_ptr->get_stream();
+  auto h_integer_indices  = host_copy(problem.integer_indices, stream);
+  const auto h_var_bounds = host_copy(problem.variable_bounds, stream);
   // TODO adjust the iteration limit depending on the total time limit and time it takes for single
   // var
   bound_presolve.settings.iteration_limit = 50;

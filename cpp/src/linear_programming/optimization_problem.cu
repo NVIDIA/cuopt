@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -337,7 +337,7 @@ i_t optimization_problem_t<i_t, f_t>::get_n_integers() const
 {
   i_t n_integers = 0;
   if (get_n_variables() != 0) {
-    auto enum_variable_types = cuopt::host_copy(get_variable_types());
+    auto enum_variable_types = cuopt::host_copy(get_variable_types(), handle_ptr_->get_stream());
 
     for (size_t i = 0; i < enum_variable_types.size(); ++i) {
       if (enum_variable_types[i] == var_t::INTEGER) { n_integers++; }
@@ -591,16 +591,17 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
   data_model_view.set_maximize(get_sense());
 
   // Copy to host
-  auto constraint_matrix_values  = cuopt::host_copy(get_constraint_matrix_values());
-  auto constraint_matrix_indices = cuopt::host_copy(get_constraint_matrix_indices());
-  auto constraint_matrix_offsets = cuopt::host_copy(get_constraint_matrix_offsets());
-  auto constraint_bounds         = cuopt::host_copy(get_constraint_bounds());
-  auto objective_coefficients    = cuopt::host_copy(get_objective_coefficients());
-  auto variable_lower_bounds     = cuopt::host_copy(get_variable_lower_bounds());
-  auto variable_upper_bounds     = cuopt::host_copy(get_variable_upper_bounds());
-  auto constraint_lower_bounds   = cuopt::host_copy(get_constraint_lower_bounds());
-  auto constraint_upper_bounds   = cuopt::host_copy(get_constraint_upper_bounds());
-  auto row_types                 = cuopt::host_copy(get_row_types());
+  auto stream                    = handle_ptr_->get_stream();
+  auto constraint_matrix_values  = cuopt::host_copy(get_constraint_matrix_values(), stream);
+  auto constraint_matrix_indices = cuopt::host_copy(get_constraint_matrix_indices(), stream);
+  auto constraint_matrix_offsets = cuopt::host_copy(get_constraint_matrix_offsets(), stream);
+  auto constraint_bounds         = cuopt::host_copy(get_constraint_bounds(), stream);
+  auto objective_coefficients    = cuopt::host_copy(get_objective_coefficients(), stream);
+  auto variable_lower_bounds     = cuopt::host_copy(get_variable_lower_bounds(), stream);
+  auto variable_upper_bounds     = cuopt::host_copy(get_variable_upper_bounds(), stream);
+  auto constraint_lower_bounds   = cuopt::host_copy(get_constraint_lower_bounds(), stream);
+  auto constraint_upper_bounds   = cuopt::host_copy(get_constraint_upper_bounds(), stream);
+  auto row_types                 = cuopt::host_copy(get_row_types(), stream);
 
   // Set constraint matrix in CSR format
   if (get_nnz() != 0) {
@@ -652,7 +653,7 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
   std::vector<char> variable_types(get_n_variables());
   // Set variable types (convert from enum to char)
   if (get_n_variables() != 0) {
-    auto enum_variable_types = cuopt::host_copy(get_variable_types());
+    auto enum_variable_types = cuopt::host_copy(get_variable_types(), stream);
 
     // Convert enum types to char types
     for (size_t i = 0; i < variable_types.size(); ++i) {
@@ -677,13 +678,17 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
 template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::print_scaling_information() const
 {
-  std::vector<f_t> constraint_matrix_values = cuopt::host_copy(get_constraint_matrix_values());
-  std::vector<f_t> constraint_rhs           = cuopt::host_copy(get_constraint_bounds());
-  std::vector<f_t> objective_coefficients   = cuopt::host_copy(get_objective_coefficients());
-  std::vector<f_t> variable_lower_bounds    = cuopt::host_copy(get_variable_lower_bounds());
-  std::vector<f_t> variable_upper_bounds    = cuopt::host_copy(get_variable_upper_bounds());
-  std::vector<f_t> constraint_lower_bounds  = cuopt::host_copy(get_constraint_lower_bounds());
-  std::vector<f_t> constraint_upper_bounds  = cuopt::host_copy(get_constraint_upper_bounds());
+  auto stream = handle_ptr_->get_stream();
+  std::vector<f_t> constraint_matrix_values =
+    cuopt::host_copy(get_constraint_matrix_values(), stream);
+  std::vector<f_t> constraint_rhs         = cuopt::host_copy(get_constraint_bounds(), stream);
+  std::vector<f_t> objective_coefficients = cuopt::host_copy(get_objective_coefficients(), stream);
+  std::vector<f_t> variable_lower_bounds  = cuopt::host_copy(get_variable_lower_bounds(), stream);
+  std::vector<f_t> variable_upper_bounds  = cuopt::host_copy(get_variable_upper_bounds(), stream);
+  std::vector<f_t> constraint_lower_bounds =
+    cuopt::host_copy(get_constraint_lower_bounds(), stream);
+  std::vector<f_t> constraint_upper_bounds =
+    cuopt::host_copy(get_constraint_upper_bounds(), stream);
 
   auto findMaxAbs = [](const std::vector<f_t>& vec) -> f_t {
     if (vec.empty()) { return 0.0; }

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -230,11 +230,12 @@ void conditional_bound_strengthening_t<i_t, f_t>::select_constraint_pairs_host(
 #ifdef DEBUG_COND_BOUNDS_PROP
   auto start_time = std::chrono::high_resolution_clock::now();
 #endif
-  auto variables = cuopt::host_copy(problem.variables);
-  auto offsets   = cuopt::host_copy(problem.offsets);
+  auto stream    = problem.handle_ptr->get_stream();
+  auto variables = cuopt::host_copy(problem.variables, stream);
+  auto offsets   = cuopt::host_copy(problem.offsets, stream);
 
-  auto reverse_constraints = cuopt::host_copy(problem.reverse_constraints);
-  auto reverse_offsets     = cuopt::host_copy(problem.reverse_offsets);
+  auto reverse_constraints = cuopt::host_copy(problem.reverse_constraints, stream);
+  auto reverse_offsets     = cuopt::host_copy(problem.reverse_offsets, stream);
 
   std::vector<int2> constraint_pairs_h(max_pair_per_row * problem.n_constraints, {-1, -1});
   std::unordered_set<int> cnstr_pair;
@@ -295,8 +296,8 @@ void conditional_bound_strengthening_t<i_t, f_t>::select_constraint_pairs_device
                   colsC,
                   valsC);
   std::vector<int2> constraint_pairs_h;
-  offsets_h = cuopt::host_copy(offsetsC);
-  cols_h    = cuopt::host_copy(colsC);
+  offsets_h = cuopt::host_copy(offsetsC, stream);
+  cols_h    = cuopt::host_copy(colsC, stream);
 
   constraint_pairs_h.reserve(max_pair_per_row * problem.n_constraints);
   for (int i = 0; i < problem.n_constraints; ++i) {
@@ -654,8 +655,9 @@ void conditional_bound_strengthening_t<i_t, f_t>::solve(problem_t<i_t, f_t>& pro
     raft::alignTo(5 * sizeof(f_t) + sizeof(i_t) + sizeof(var_t), sizeof(i_t)) * max_row_size;
 
 #ifdef DEBUG_COND_BOUNDS_PROP
-  auto old_lb_h = cuopt::host_copy(problem.constraint_lower_bounds);
-  auto old_ub_h = cuopt::host_copy(problem.constraint_upper_bounds);
+  auto debug_stream = problem.handle_ptr->get_stream();
+  auto old_lb_h     = cuopt::host_copy(problem.constraint_lower_bounds, debug_stream);
+  auto old_ub_h     = cuopt::host_copy(problem.constraint_upper_bounds, debug_stream);
 
   auto start_time = std::chrono::high_resolution_clock::now();
 #endif
@@ -674,8 +676,8 @@ void conditional_bound_strengthening_t<i_t, f_t>::solve(problem_t<i_t, f_t>& pro
   double time_for_presolve =
     std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
 
-  auto new_lb_h = cuopt::host_copy(problem.constraint_lower_bounds);
-  auto new_ub_h = cuopt::host_copy(problem.constraint_upper_bounds);
+  auto new_lb_h = cuopt::host_copy(problem.constraint_lower_bounds, debug_stream);
+  auto new_ub_h = cuopt::host_copy(problem.constraint_upper_bounds, debug_stream);
 
   int num_improvements = 0;
   int num_new_equality = 0;
