@@ -350,6 +350,8 @@ f_t iterative_refinement(T& op, const dense_vector_t<i_t, f_t>& b, dense_vector_
   auto err = iterative_refinement_gmres<i_t, f_t, T>(op, d_b, d_x);
 
   raft::copy(x.data(), d_x.data(), x.size(), op.data_.handle_ptr->get_stream());
+
+  RAFT_CUDA_TRY(cudaStreamSynchronize(op.data_.handle_ptr->get_stream()));
   return err;
 }
 
