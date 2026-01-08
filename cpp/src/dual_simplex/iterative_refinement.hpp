@@ -351,4 +351,12 @@ void iterative_refinement(T& op, const dense_vector_t<i_t, f_t>& b, dense_vector
   return;
 }
 
+
+template <typename i_t, typename f_t, typename T>
+void iterative_refinement(T& op, const rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x)
+{
+  iterative_refinement_gmres<i_t, f_t, T>(op, b, x);
+  return;
+}
+
 }  // namespace cuopt::linear_programming::dual_simplex

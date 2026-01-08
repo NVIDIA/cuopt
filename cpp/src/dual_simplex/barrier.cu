@@ -2324,19 +2324,12 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   if (use_augmented) {
     // r1 <- dual_rhs -complementarity_xz_rhs ./ x +  E * ((complementarity_wv_rhs - v .* bound_rhs)
     // ./ w)
-    dense_vector_t<i_t, f_t> r1(lp.num_cols);
-    raft::copy(r1.data(), data.d_r1_.data(), data.d_r1_.size(), stream_view_);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
-
-    dense_vector_t<i_t, f_t> augmented_rhs(lp.num_cols + lp.num_rows);
-    for (i_t k = 0; k < lp.num_cols; k++) {
-      augmented_rhs[k] = r1[k];
-    }
-    for (i_t k = 0; k < lp.num_rows; k++) {
-      augmented_rhs[k + lp.num_cols] = data.primal_rhs[k];
-    }
-    dense_vector_t<i_t, f_t> augmented_soln(lp.num_cols + lp.num_rows);
-    data.chol->solve(augmented_rhs, augmented_soln);
+    
+    rmm::device_uvector<f_t> d_augmented_rhs(lp.num_cols + lp.num_rows, stream_view_);
+    raft::copy(d_augmented_rhs.data(), data.d_r1_.data(), lp.num_cols, stream_view_);
+    raft::copy(d_augmented_rhs.data() + lp.num_cols, data.primal_rhs.data(), lp.num_rows, stream_view_);
+    rmm::device_uvector<f_t> d_augmented_soln(lp.num_cols + lp.num_rows, stream_view_);
+    data.chol->solve(d_augmented_rhs, d_augmented_soln);
     struct op_t {
       op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
       iteration_data_t<i_t, f_t>& data_;
@@ -2354,17 +2347,12 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         data_.chol->solve(b, x);
       }
     } op(data);
-    iterative_refinement(op, augmented_rhs, augmented_soln);
+    iterative_refinement<i_t, f_t, op_t>(op, d_augmented_rhs, d_augmented_soln);
 
-    for (i_t k = 0; k < lp.num_cols; k++) {
-      dx[k] = augmented_soln[k];
-    }
-    for (i_t k = 0; k < lp.num_rows; k++) {
-      dy[k] = augmented_soln[k + lp.num_cols];
-    }
-
-    raft::copy(data.d_dx_.data(), dx.data(), data.d_dx_.size(), stream_view_);
-    raft::copy(data.d_dy_.data(), dy.data(), data.d_dy_.size(), stream_view_);
+    raft::copy(data.d_dx_.data(), d_augmented_soln.data(), lp.num_cols, stream_view_);
+    raft::copy(data.d_dy_.data(), d_augmented_soln.data() + lp.num_cols, lp.num_rows, stream_view_);
+    raft::copy(dx.data(), data.d_dx_.data(), lp.num_cols, stream_view_);
+    raft::copy(dy.data(), data.d_dy_.data(), lp.num_rows, stream_view_);
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
     // TMP should only be init once
