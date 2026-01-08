@@ -29,6 +29,10 @@ jobs:
   conda-cpp-tests:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@cuda-13.1.0
+    env:
+      CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -38,6 +42,10 @@ jobs:
   conda-python-tests:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@cuda-13.1.0
+    env:
+      CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
     with:
       run_codecov: false
       build_type: ${{ inputs.build_type }}
@@ -48,6 +56,10 @@ jobs:
   wheel-tests-cuopt:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@cuda-13.1.0
+    env:
+      CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -57,6 +69,10 @@ jobs:
   wheel-tests-cuopt-server:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@cuda-13.1.0
+    env:
+      CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -66,6 +82,10 @@ jobs:
   conda-notebook-tests:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@cuda-13.1.0
+    env:
+      CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
