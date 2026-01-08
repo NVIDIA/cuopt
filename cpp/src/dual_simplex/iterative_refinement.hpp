@@ -78,9 +78,9 @@ f_t vector_norm2(const rmm::device_uvector<f_t>& x)
 }
 
 template <typename i_t, typename f_t, typename T>
-void iterative_refinement_simple(T& op,
-                                 const rmm::device_uvector<f_t>& b,
-                                 rmm::device_uvector<f_t>& x)
+f_t iterative_refinement_simple(T& op,
+                                const rmm::device_uvector<f_t>& b,
+                                rmm::device_uvector<f_t>& x)
 {
   rmm::device_uvector<f_t> x_sav(x, x.stream());
 
@@ -136,15 +136,16 @@ void iterative_refinement_simple(T& op,
         vector_norm2<f_t>(delta_x));
     }
   }
+  return error;
 }
 
 /**
 @brief Iterative refinement with GMRES as solver
  */
 template <typename i_t, typename f_t, typename T>
-void iterative_refinement_gmres(T& op,
-                                const rmm::device_uvector<f_t>& b,
-                                rmm::device_uvector<f_t>& x)
+f_t iterative_refinement_gmres(T& op,
+                               const rmm::device_uvector<f_t>& b,
+                               rmm::device_uvector<f_t>& x)
 {
   // Parameters
   // Ideally, we do not need to restart here. But having restarts helps as a checkpoint to get
@@ -177,7 +178,7 @@ void iterative_refinement_gmres(T& op,
 
   f_t norm_r = vector_norm_inf<f_t>(r);
   if (show_info) { CUOPT_LOG_INFO("GMRES IR: initial residual = %e, |b| = %e", norm_r, bnorm); }
-  if (norm_r <= 1e-8) { return; }
+  if (norm_r <= 1e-8) { return norm_r; }
 
   f_t residual      = norm_r;
   f_t best_residual = norm_r;
@@ -336,27 +337,26 @@ void iterative_refinement_gmres(T& op,
 
     ++outer_iter;
   }
+  return best_residual;
 }
 
 template <typename i_t, typename f_t, typename T>
-void iterative_refinement(T& op, const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x)
+f_t iterative_refinement(T& op, const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x)
 {
   rmm::device_uvector<f_t> d_b(b.size(), op.data_.handle_ptr->get_stream());
   raft::copy(d_b.data(), b.data(), b.size(), op.data_.handle_ptr->get_stream());
   rmm::device_uvector<f_t> d_x(x.size(), op.data_.handle_ptr->get_stream());
   raft::copy(d_x.data(), x.data(), x.size(), op.data_.handle_ptr->get_stream());
-  iterative_refinement_gmres<i_t, f_t, T>(op, d_b, d_x);
+  auto err = iterative_refinement_gmres<i_t, f_t, T>(op, d_b, d_x);
 
   raft::copy(x.data(), d_x.data(), x.size(), op.data_.handle_ptr->get_stream());
-  return;
+  return err;
 }
 
-
 template <typename i_t, typename f_t, typename T>
-void iterative_refinement(T& op, const rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x)
+f_t iterative_refinement(T& op, const rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x)
 {
-  iterative_refinement_gmres<i_t, f_t, T>(op, b, x);
-  return;
+  return iterative_refinement_gmres<i_t, f_t, T>(op, b, x);
 }
 
 }  // namespace cuopt::linear_programming::dual_simplex

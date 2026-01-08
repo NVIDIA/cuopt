@@ -2324,10 +2324,11 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   if (use_augmented) {
     // r1 <- dual_rhs -complementarity_xz_rhs ./ x +  E * ((complementarity_wv_rhs - v .* bound_rhs)
     // ./ w)
-    
+
     rmm::device_uvector<f_t> d_augmented_rhs(lp.num_cols + lp.num_rows, stream_view_);
     raft::copy(d_augmented_rhs.data(), data.d_r1_.data(), lp.num_cols, stream_view_);
-    raft::copy(d_augmented_rhs.data() + lp.num_cols, data.primal_rhs.data(), lp.num_rows, stream_view_);
+    raft::copy(
+      d_augmented_rhs.data() + lp.num_cols, data.primal_rhs.data(), lp.num_rows, stream_view_);
     rmm::device_uvector<f_t> d_augmented_soln(lp.num_cols + lp.num_rows, stream_view_);
     data.chol->solve(d_augmented_rhs, d_augmented_soln);
     struct op_t {
@@ -2347,7 +2348,10 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         data_.chol->solve(b, x);
       }
     } op(data);
-    iterative_refinement<i_t, f_t, op_t>(op, d_augmented_rhs, d_augmented_soln);
+    auto solve_err = iterative_refinement<i_t, f_t, op_t>(op, d_augmented_rhs, d_augmented_soln);
+    if (solve_err > 1e-1) {
+      settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
+    }
 
     raft::copy(data.d_dx_.data(), d_augmented_soln.data(), lp.num_cols, stream_view_);
     raft::copy(data.d_dy_.data(), d_augmented_soln.data() + lp.num_cols, lp.num_rows, stream_view_);
