@@ -10,12 +10,14 @@
 #include <utilities/macros.cuh>
 
 #include <thrust/host_vector.h>
+#include <mutex>
 #include <raft/core/device_span.hpp>
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
 #include <rmm/mr/cuda_async_memory_resource.hpp>
 #include <rmm/mr/limiting_resource_adaptor.hpp>
+#include <unordered_map>
 
 namespace cuopt {
 
@@ -175,15 +177,19 @@ HDI To bit_cast(const From& src)
 template <typename Function>
 inline bool set_shmem_of_kernel(Function* function, size_t dynamic_request_size)
 {
+  static std::mutex mtx;
+  static std::unordered_map<Function*, size_t> shmem_sizes;
+
   if (dynamic_request_size != 0) {
     dynamic_request_size = raft::alignTo(dynamic_request_size, size_t(1024));
 
-    cudaFuncAttributes attr;
-    cudaError_t err = cudaFuncGetAttributes(&attr, function);
-    if (err != cudaSuccess) { return false; }
-    if (dynamic_request_size > (size_t)attr.maxDynamicSharedSizeBytes) {
+    std::lock_guard<std::mutex> lock(mtx);
+    size_t& current_size = shmem_sizes[function];
+
+    if (dynamic_request_size > current_size) {
       cudaFuncSetAttribute(
         function, cudaFuncAttributeMaxDynamicSharedMemorySize, dynamic_request_size);
+      current_size = dynamic_request_size;
       return (cudaSuccess == cudaGetLastError());
     }
   }
