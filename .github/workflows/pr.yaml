@@ -17,10 +17,10 @@ jobs:
     needs:
       - checks
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@cuda-13.1.0
+    uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@secrets
 
   checks:
-    uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@cuda-13.1.0
+    uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@secrets
     with:
       enable_check_generated_files: false
     secrets:
