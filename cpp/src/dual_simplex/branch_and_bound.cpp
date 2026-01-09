@@ -1484,7 +1484,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   // Choose variable to branch on
-  auto branch_var = pc_.variable_selection(fractional, root_relax_soln_.x, log);
+  i_t branch_var = pc_.variable_selection(fractional, root_relax_soln_.x, log);
 
   search_tree_.root      = std::move(mip_node_t<i_t, f_t>(root_objective_, root_vstatus_));
   search_tree_.num_nodes = 0;
