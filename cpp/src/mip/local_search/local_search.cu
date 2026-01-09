@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -81,8 +81,7 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
                                                       /*randomize=*/counter > 0);
 
     cpu_fj.fj_cpu->log_prefix           = "******* scratch " + std::to_string(counter) + ": ";
-    cpu_fj.fj_cpu->improvement_callback = [this, &population, &cpu_fj](
-                                            f_t obj, const std::vector<f_t>& h_vec) {
+    cpu_fj.fj_cpu->improvement_callback = [&population](f_t obj, const std::vector<f_t>& h_vec) {
       population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
       if (obj < local_search_best_obj) {
         CUOPT_LOG_TRACE("******* New local search best obj %g, best overall %g",
@@ -110,7 +109,8 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
   std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
 
   solution_t<i_t, f_t> solution_lp(*context.problem_ptr);
-  solution_lp.copy_new_assignment(host_copy(lp_optimal_solution));
+  solution_lp.copy_new_assignment(
+    host_copy(lp_optimal_solution, context.problem_ptr->handle_ptr->get_stream()));
   solution_lp.round_random_nearest(500);
   scratch_cpu_fj_on_lp_opt.fj_cpu = fj.create_cpu_climber(
     solution_lp, default_weights, default_weights, 0., context.preempt_heuristic_solver_);

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -148,36 +148,6 @@ inline auto host_copy(bool const* device_ptr, size_t size, rmm::cuda_stream_view
   }
   stream_view.synchronize();
   return h_bool_vec;
-}
-
-/**
- * @brief Simple utility function to copy device_uvector to host
- *
- * @tparam T
- * @param device_vec
- * @param stream_view
- * @return auto
- */
-template <typename T>
-auto host_copy(rmm::device_uvector<T> const& device_vec)
-{
-  return host_copy(device_vec.data(), device_vec.size(), device_vec.stream());
-}
-
-/**
- * @brief Simple utility function to copy device_uvector to host
- *
- * @tparam T
- * @param device_vec
- * @return auto
- */
-template <typename T, typename Allocator>
-auto host_copy(rmm::device_uvector<T> const& device_vec)
-{
-  std::vector<T, Allocator> host_vec(device_vec.size());
-  raft::copy(host_vec.data(), device_vec.data(), device_vec.size(), device_vec.stream());
-  device_vec.stream().synchronize();
-  return host_vec;
 }
 
 /**
@@ -369,8 +339,9 @@ template <typename f_t, typename f_t2>
 std::tuple<std::vector<f_t>, std::vector<f_t>> extract_host_bounds(
   const rmm::device_uvector<f_t2>& variable_bounds, const raft::handle_t* handle_ptr)
 {
-  rmm::device_uvector<f_t> var_lb(variable_bounds.size(), handle_ptr->get_stream());
-  rmm::device_uvector<f_t> var_ub(variable_bounds.size(), handle_ptr->get_stream());
+  auto stream = handle_ptr->get_stream();
+  rmm::device_uvector<f_t> var_lb(variable_bounds.size(), stream);
+  rmm::device_uvector<f_t> var_ub(variable_bounds.size(), stream);
   thrust::transform(
     handle_ptr->get_thrust_policy(),
     variable_bounds.begin(),
@@ -378,8 +349,8 @@ std::tuple<std::vector<f_t>, std::vector<f_t>> extract_host_bounds(
     thrust::make_zip_iterator(thrust::make_tuple(var_lb.begin(), var_ub.begin())),
     [] __device__(auto i) { return thrust::make_tuple(get_lower(i), get_upper(i)); });
   handle_ptr->sync_stream();
-  auto h_var_lb = cuopt::host_copy(var_lb);
-  auto h_var_ub = cuopt::host_copy(var_ub);
+  auto h_var_lb = cuopt::host_copy(var_lb, stream);
+  auto h_var_ub = cuopt::host_copy(var_ub, stream);
   return std::make_tuple(h_var_lb, h_var_ub);
 }
 

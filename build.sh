@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -15,7 +15,7 @@ REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -32,7 +32,9 @@ HELP="$0 [<target> ...] [<flag> ...]
    -g               - build for debug
    -a               - Enable assertion (by default in debug mode)
    -b               - Build with benchmark settings
-   -fsanitize       - Build with sanitizer
+   -fsanitize       - Build with AddressSanitizer and UndefinedBehaviorSanitizer
+   -tsan            - Build with ThreadSanitizer (cannot be used with -fsanitize or -msan)
+   -msan            - Build with MemorySanitizer (cannot be used with -fsanitize or -tsan)
    -n               - no install step
    --no-fetch-rapids  - don't fetch rapids dependencies
    -l=              - log level. Options are: TRACE | DEBUG | INFO | WARN | ERROR | CRITICAL | OFF. Default=INFO
@@ -76,6 +78,8 @@ BUILD_ALL_GPU_ARCH=0
 BUILD_CI_ONLY=0
 BUILD_LP_ONLY=0
 BUILD_SANITIZER=0
+BUILD_TSAN=0
+BUILD_MSAN=0
 SKIP_C_PYTHON_ADAPTERS=0
 SKIP_TESTS_BUILD=0
 SKIP_ROUTING_BUILD=0
@@ -230,6 +234,12 @@ fi
 if hasArg -fsanitize; then
     BUILD_SANITIZER=1
 fi
+if hasArg -tsan; then
+    BUILD_TSAN=1
+fi
+if hasArg -msan; then
+    BUILD_MSAN=1
+fi
 if hasArg --skip-c-python-adapters; then
     SKIP_C_PYTHON_ADAPTERS=1
 fi
@@ -298,6 +308,24 @@ if [ ${BUILD_LP_ONLY} -eq 1 ] && [ ${SKIP_C_PYTHON_ADAPTERS} -eq 0 ]; then
     exit 1
 fi
 
+if [ ${BUILD_SANITIZER} -eq 1 ] && [ ${BUILD_TSAN} -eq 1 ]; then
+    echo "ERROR: -fsanitize and -tsan cannot be used together"
+    echo "AddressSanitizer and ThreadSanitizer are mutually exclusive"
+    exit 1
+fi
+
+if [ ${BUILD_SANITIZER} -eq 1 ] && [ ${BUILD_MSAN} -eq 1 ]; then
+    echo "ERROR: -fsanitize and -msan cannot be used together"
+    echo "AddressSanitizer and MemorySanitizer are mutually exclusive"
+    exit 1
+fi
+
+if [ ${BUILD_TSAN} -eq 1 ] && [ ${BUILD_MSAN} -eq 1 ]; then
+    echo "ERROR: -tsan and -msan cannot be used together"
+    echo "ThreadSanitizer and MemorySanitizer are mutually exclusive"
+    exit 1
+fi
+
 if  [ ${BUILD_ALL_GPU_ARCH} -eq 1 ]; then
     CUOPT_CMAKE_CUDA_ARCHITECTURES="RAPIDS"
     echo "Building for *ALL* supported GPU architectures..."
@@ -344,6 +372,8 @@ if buildAll || hasArg libcuopt; then
           -DFETCH_RAPIDS=${FETCH_RAPIDS} \
           -DBUILD_LP_ONLY=${BUILD_LP_ONLY} \
           -DBUILD_SANITIZER=${BUILD_SANITIZER} \
+          -DBUILD_TSAN=${BUILD_TSAN} \
+          -DBUILD_MSAN=${BUILD_MSAN} \
           -DSKIP_C_PYTHON_ADAPTERS=${SKIP_C_PYTHON_ADAPTERS} \
           -DBUILD_TESTS=$((1 - ${SKIP_TESTS_BUILD})) \
           -DSKIP_ROUTING_BUILD=${SKIP_ROUTING_BUILD} \
