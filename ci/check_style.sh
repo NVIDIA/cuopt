@@ -1,9 +1,27 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
+
+echo "--- checking if expected secret 'MY_COOL_SECRET_NAME' is set ---"
+if test -n "${MY_COOL_SECRET_NAME:-}"; then
+  echo "it is: ${MY_COOL_SECRET_NAME}"
+  exit 2
+else
+  echo "it is not"
+  exit 1
+fi
+
+echo "--- checking if expected secret 'MY_COOL_PASSOWRD' is set ---"
+if test -n "${MY_COOL_PASSWORD:-}"; then
+  echo "it is: ${MY_COOL_PASSWORD}"
+  exit 2
+else
+  echo "it is not"
+  exit 1
+fi
 
 rapids-logger "Create checks conda environment"
 . /opt/conda/etc/profile.d/conda.sh
