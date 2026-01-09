@@ -46,7 +46,6 @@ function try_download_from_s3() {
     # Support custom credential variable names
     local access_key="${CUOPT_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
     local secret_key="${CUOPT_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
-    local session_token="${CUOPT_AWS_SESSION_TOKEN:-${AWS_SESSION_TOKEN:-}}"
     local region="${CUOPT_AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 
     # Temporarily export for AWS CLI if custom variables are used
@@ -54,7 +53,8 @@ function try_download_from_s3() {
         echo "Using custom CUOPT_AWS_ACCESS_KEY_ID credentials"
         export AWS_ACCESS_KEY_ID="$access_key"
         export AWS_SECRET_ACCESS_KEY="$secret_key"
-        [ -n "$session_token" ] && export AWS_SESSION_TOKEN="$session_token"
+        # Unset session token to avoid mixing credentials
+        unset AWS_SESSION_TOKEN
         export AWS_DEFAULT_REGION="$region"
     fi
 
