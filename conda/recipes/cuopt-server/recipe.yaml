@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: Apache-2.0
 schema_version: 1
 
@@ -29,19 +29,19 @@ requirements:
   host:
     - pip
     - python =${{ py_version }}
-    - rapids-build-backend >=0.4.0,<0.5.0.dev0
-    - setuptools>=61.0.0
+    - rapids-build-backend >=0.4.0,<0.5.0
+    - setuptools>=77.0.0
   run:
     - cuopt =${{ version }}
     - fastapi >=0.104.1
     - jsonref =1.1.0
     - msgpack-python =1.1.0
     - msgpack-numpy =0.4.8
-    - numpy >=1.23,<3.0a0
+    - numpy >=1.23,<3.0
     - pandas>=2
     - psutil>=6.0.0
     - python
-    - uvicorn ${{ uvicorn_version }}
+    - uvicorn =0.34
 
 tests:
   - python:
@@ -51,5 +51,5 @@ tests:
 
 about:
   homepage: ${{ load_from_file("python/cuopt_server/pyproject.toml").project.urls.Homepage }}
-  license: ${{ load_from_file("python/cuopt_server/pyproject.toml").project.license.text }}
+  license: ${{ load_from_file("python/cuopt_server/pyproject.toml").project.license }}
   summary: ${{ load_from_file("python/cuopt_server/pyproject.toml").project.description }}

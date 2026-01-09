@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -14,11 +14,15 @@
 
 #include <raft/common/nvtx.hpp>
 
+#if !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-overflow"  // ignore boost error for pip wheel build
+#endif
 #include <papilo/core/Presolve.hpp>
 #include <papilo/core/ProblemBuilder.hpp>
+#if !defined(__clang__)
 #pragma GCC diagnostic pop
+#endif
 
 namespace cuopt::linear_programming::detail {
 

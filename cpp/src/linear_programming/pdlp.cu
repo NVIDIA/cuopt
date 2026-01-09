@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -1511,7 +1511,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
 
     const auto& cusparse_view_ = pdhg_solver_.get_cusparse_view();
 
-    int sing_iters = 0;
+    [[maybe_unused]] int sing_iters = 0;
     for (int i = 0; i < max_iterations; ++i) {
       ++sing_iters;
       // d_q = d_z

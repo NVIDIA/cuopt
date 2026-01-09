@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -449,8 +449,9 @@ struct adapted_sol_t {
   void populate_unserviced_nodes()
   {
     raft::common::nvtx::range fun_scope("populate_unserviced_nodes");
-    has_unserviced_nodes     = false;
-    auto h_route_id_per_node = host_copy(sol.route_node_map.route_id_per_node);
+    has_unserviced_nodes = false;
+    auto h_route_id_per_node =
+      host_copy(sol.route_node_map.route_id_per_node, sol.sol_handle->get_stream());
     for (size_t i = 0; i < h_route_id_per_node.size(); ++i) {
       if (h_route_id_per_node[i] == -1) {
         pred[i]            = NodeInfo<>();
@@ -487,12 +488,13 @@ struct adapted_sol_t {
       skip_route_copy = false;
     }
     std::vector<i_t> h_routes_to_copy;
-    if (!copy_all) h_routes_to_copy = host_copy(sol.routes_to_copy);
+    if (!copy_all) h_routes_to_copy = host_copy(sol.routes_to_copy, sol.sol_handle->get_stream());
     for (i_t i = 0; i < sol.n_routes && !skip_route_copy; ++i) {
       if (!copy_all && h_routes_to_copy[i] == 0) continue;
-      auto& curr_route     = sol.get_route(i);
-      auto node_infos_temp = host_copy(curr_route.dimensions.requests.node_info);
-      i_t n_nodes          = curr_route.n_nodes.value(sol.sol_handle->get_stream());
+      auto& curr_route = sol.get_route(i);
+      auto node_infos_temp =
+        host_copy(curr_route.dimensions.requests.node_info, sol.sol_handle->get_stream());
+      i_t n_nodes = curr_route.n_nodes.value(sol.sol_handle->get_stream());
 
       // Remove break nodes for diversity
       std::vector<NodeInfo<>> node_infos;

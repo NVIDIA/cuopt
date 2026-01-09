@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -44,7 +44,7 @@ TEST(problem, find_implied_integers)
   auto problem = detail::problem_t<int, double>(result->reduced_problem);
   problem.set_implied_integers(result->implied_integer_indices);
   ASSERT_TRUE(result->implied_integer_indices.size() > 0);
-  auto var_types = host_copy(problem.variable_types);
+  auto var_types = host_copy(problem.variable_types, handle_.get_stream());
   // Find the index of the one continuous variable
   auto it = std::find_if(var_types.begin(), var_types.end(), [](var_t var_type) {
     return var_type == var_t::CONTINUOUS;

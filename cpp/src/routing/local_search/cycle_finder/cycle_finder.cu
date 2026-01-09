@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -213,8 +213,9 @@ template <typename i_t, typename f_t, size_t max_routes>
 bool ExactCycleFinder<i_t, f_t, max_routes>::check_cycle(graph_t<i_t, f_t>& graph,
                                                          ret_cycles_t<i_t, f_t>& ret)
 {
-  auto h_graph      = graph.to_host();
-  auto h_cycles     = ret.to_host();
+  auto stream       = handle_ptr->get_stream();
+  auto h_graph      = graph.to_host(stream);
+  auto h_cycles     = ret.to_host(stream);
   bool cost_matches = true;
   std::unordered_set<i_t> changed_route_ids;
   for (i_t cycle = 0; cycle < h_cycles.n_cycles; ++cycle) {
