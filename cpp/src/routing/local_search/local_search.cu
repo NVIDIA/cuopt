@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -126,8 +126,8 @@ bool local_search_t<i_t, f_t, REQUEST>::run_cross_search(solution_t<i_t, f_t, RE
 
     cuopt_assert(cost_before - cost_after > EPSILON, "Cost should improve!");
     cuopt_assert(abs((cost_before - cost_after) -
-                       move_candidates.debug_delta.value(sol.sol_handle->get_stream()) <
-                     EPSILON * (1 + abs(cost_before))),
+                     move_candidates.debug_delta.value(sol.sol_handle->get_stream())) <
+                   EPSILON * (1 + abs(cost_before)),
                  "Cost mismatch on cross costs!");
     return true;
   }
