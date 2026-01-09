@@ -12,6 +12,7 @@
 #include <thrust/reduce.h>
 #include <thrust/transform.h>
 #include <thrust/transform_reduce.h>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <rmm/device_uvector.hpp>
@@ -168,7 +169,7 @@ f_t iterative_refinement_gmres(T& op,
 
   bool show_info = false;
 
-  f_t bnorm      = max(1.0, vector_norm_inf<f_t>(b));
+  f_t bnorm      = std::max(1.0, vector_norm_inf<f_t>(b));
   f_t rel_res    = 1.0;
   int outer_iter = 0;
 
