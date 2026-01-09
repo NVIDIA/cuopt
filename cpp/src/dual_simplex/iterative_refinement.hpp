@@ -289,7 +289,13 @@ f_t iterative_refinement_gmres(T& op,
       for (int j = i + 1; j < k; ++j) {
         s -= H[i][j] * y[j];
       }
-      y[i] = s / H[i][i];
+      // avoid inf/nan breakdown
+      if (H[i][i] == 0.0) {
+        y[i] = 0.0;
+        break;
+      } else {
+        y[i] = s / H[i][i];
+      }
     }
 
     // Compute GMRES update: delta_x = sum_j y_j * Z[j], where Z[j] = M^{-1} V[j]
