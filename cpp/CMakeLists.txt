@@ -471,14 +471,14 @@ endif()
 option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
   add_executable(solve_MIP ../benchmarks/linear_programming/cuopt/run_mip.cpp)
-  
+
   set_target_properties(solve_MIP
     PROPERTIES
     CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON
     CXX_SCAN_FOR_MODULES OFF
   )
-  
+
   target_compile_options(solve_MIP
     PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
@@ -503,7 +503,7 @@ endif()
 option(BUILD_LP_BENCHMARKS "Build LP benchmarks" OFF)
 if(BUILD_LP_BENCHMARKS)
   add_executable(solve_LP ../benchmarks/linear_programming/cuopt/run_pdlp.cu)
-  
+
   set_target_properties(solve_LP
     PROPERTIES
     CXX_STANDARD 20
@@ -512,7 +512,7 @@ if(BUILD_LP_BENCHMARKS)
     CUDA_STANDARD_REQUIRED ON
     CXX_SCAN_FOR_MODULES OFF
   )
-  
+
   target_compile_options(solve_LP
     PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
