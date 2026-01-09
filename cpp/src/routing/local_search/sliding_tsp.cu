@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -566,8 +566,8 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
                                sol.get_cost(false, move_candidates.weights));
 
   cuopt_assert(abs((cost_before - cost_after) +
-                     move_candidates.debug_delta.value(sol.sol_handle->get_stream()) <
-                   EPSILON * (1 + abs(cost_before))),
+                   move_candidates.debug_delta.value(sol.sol_handle->get_stream())) <
+                 EPSILON * (1 + abs(cost_before)),
                "Cost mismatch on sliding_tsp costs!");
   cuopt_assert(cost_before - cost_after >= EPSILON, "Cost should improve!");
 
