@@ -16,6 +16,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
         CXX_STANDARD 20
         CXX_STANDARD_REQUIRED ON
         INTERFACE_POSITION_INDEPENDENT_CODE ON
+        CXX_SCAN_FOR_MODULES OFF
         )
 
     target_include_directories(${CMAKE_TEST_NAME}

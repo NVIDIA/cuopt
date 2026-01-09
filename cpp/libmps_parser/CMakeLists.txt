@@ -16,6 +16,9 @@ project(
   LANGUAGES CXX
 )
 
+# Disable C++20 module scanning as the codebase doesn't use modules
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF CACHE BOOL "Disable C++20 module scanning")
+
 # Write the version header
 rapids_cmake_write_version_file(include/mps_parser/version_config.hpp)
 
@@ -82,6 +85,7 @@ set_target_properties(mps_parser
   CXX_STANDARD 20
   CXX_STANDARD_REQUIRED ON
   INTERFACE_POSITION_INDEPENDENT_CODE ON
+  CXX_SCAN_FOR_MODULES OFF
 )
 
 target_compile_options(mps_parser
