@@ -1,5 +1,5 @@
 # cmake-format: off
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
@@ -79,7 +79,7 @@ set_target_properties(mps_parser
   INSTALL_RPATH "\$ORIGIN"
 
   # set target compile options
-  CXX_STANDARD 17
+  CXX_STANDARD 20
   CXX_STANDARD_REQUIRED ON
   INTERFACE_POSITION_INDEPENDENT_CODE ON
 )

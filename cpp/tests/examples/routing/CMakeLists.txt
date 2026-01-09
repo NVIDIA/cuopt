@@ -1,5 +1,5 @@
 # cmake-format: off
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
@@ -17,7 +17,7 @@ set_target_properties(
   pdptw_mixed_fleet
   cvrp_daily_deliveries
   PROPERTIES
-  CUDA_STANDARD 17
+  CUDA_STANDARD 20
   CUDA_STANDARD_REQUIRED ON
 )
 
