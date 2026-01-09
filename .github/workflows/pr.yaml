@@ -189,10 +189,6 @@ jobs:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@cuda-13.1.0
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
-    env:
-      CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
-      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
-      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
@@ -210,10 +206,6 @@ jobs:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@cuda-13.1.0
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python
-    env:
-      CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
-      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
-      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
     with:
       run_codecov: false
       build_type: pull-request
@@ -269,10 +261,6 @@ jobs:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@cuda-13.1.0
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt
-    env:
-      CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
-      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
-      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
@@ -307,10 +295,6 @@ jobs:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@cuda-13.1.0
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt_server
-    env:
-      CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
-      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
-      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
