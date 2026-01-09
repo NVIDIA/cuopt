@@ -17,7 +17,7 @@ dependencies:
 - cuda-nvtx-dev
 - cuda-python>=13.0.1,<14.0
 - cuda-sanitizer-api
-- cuda-version=13.0
+- cuda-version=13.1
 - cudf==26.2.*,>=0.0.0a0
 - cupy>=13.6.0
 - cxx-compiler
@@ -75,4 +75,4 @@ dependencies:
   - nvidia-sphinx-theme
   - swagger-plugin-for-sphinx
   - veroviz
-name: all_cuda-130_arch-aarch64
+name: all_cuda-131_arch-aarch64

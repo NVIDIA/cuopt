@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -735,7 +735,7 @@ std::vector<i_t> solution_t<i_t, f_t, REQUEST>::get_unserviced_nodes() const
   std::vector<i_t> unserviced_nodes;
   unserviced_nodes.reserve(get_num_orders());
   const bool depot_included = problem_ptr->order_info.depot_included_;
-  auto h_route_id_per_node  = host_copy(route_node_map.route_id_per_node);
+  auto h_route_id_per_node  = host_copy(route_node_map.route_id_per_node, sol_handle->get_stream());
   for (size_t i = 0; i < h_route_id_per_node.size(); ++i) {
     if (h_route_id_per_node[i] == -1) {
       if (i > 0 || !depot_included) { unserviced_nodes.push_back(i); }
