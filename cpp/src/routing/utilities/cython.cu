@@ -113,7 +113,7 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
 #pragma omp parallel for num_threads(max_thread)
   for (std::size_t i = 0; i < size; ++i) {
     // Required in multi-GPU environments to set the device for each thread
-    cudaSetDevice(device_id);
+    RAFT_CUDA_TRY(cudaSetDevice(device_id));
 
     auto old_stream = data_models[i]->get_handle_ptr()->get_stream();
     // Make sure previous operations are finished
