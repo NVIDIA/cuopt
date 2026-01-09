@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -120,8 +120,8 @@ void test_elim_var_remap(std::string test_instance)
 
   sub_problem.post_process_solution(sol);
 
-  auto golden_full_assignment       = host_copy(full_assignment);
-  auto fixed_sub_problem_assignment = host_copy(sol.assignment);
+  auto golden_full_assignment       = host_copy(full_assignment, handle_.get_stream());
+  auto fixed_sub_problem_assignment = host_copy(sol.assignment, handle_.get_stream());
 
   EXPECT_EQ(op_problem.get_n_variables(), fixed_sub_problem_assignment.size());
 

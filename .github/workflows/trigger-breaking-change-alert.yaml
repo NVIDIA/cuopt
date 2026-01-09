@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 name: Trigger Breaking Change Notifications
@@ -15,7 +15,7 @@ jobs:
   trigger-notifier:
     if: contains(github.event.pull_request.labels.*.name, 'breaking')
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/breaking-change-alert.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/breaking-change-alert.yaml@cuda-13.1.0
     with:
       sender_login: ${{ github.event.sender.login }}
       sender_avatar: ${{ github.event.sender.avatar_url }}

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -84,18 +84,18 @@ assignment_t<i_t> ges_solver_t<i_t, f_t, REQUEST>::get_ges_assignment(
       auto route_id             = route.route_id.value(stream);
       auto vehicle_id           = route.vehicle_id.value(stream);
 
-      auto node_infos_h = cuopt::host_copy(route.dimensions.requests.node_info);
+      auto node_infos_h = cuopt::host_copy(route.dimensions.requests.node_info, stream);
       std::vector<double> departure_forward_h(node_infos_h.size(), 0.);
       std::vector<double> actual_arrival_h(node_infos_h.size(), 0.);
       std::vector<double> earliest_arrival_backward_h(node_infos_h.size(), 0.);
       std::vector<double> latest_arrival_forward_h(node_infos_h.size(), 0.);
       if (problem.dimensions_info.has_dimension(detail::dim_t::TIME)) {
-        departure_forward_h = cuopt::host_copy(route.dimensions.time_dim.departure_forward);
-        actual_arrival_h    = cuopt::host_copy(route.dimensions.time_dim.actual_arrival);
+        departure_forward_h = cuopt::host_copy(route.dimensions.time_dim.departure_forward, stream);
+        actual_arrival_h    = cuopt::host_copy(route.dimensions.time_dim.actual_arrival, stream);
         earliest_arrival_backward_h =
-          cuopt::host_copy(route.dimensions.time_dim.earliest_arrival_backward);
+          cuopt::host_copy(route.dimensions.time_dim.earliest_arrival_backward, stream);
         latest_arrival_forward_h =
-          cuopt::host_copy(route.dimensions.time_dim.latest_arrival_forward);
+          cuopt::host_copy(route.dimensions.time_dim.latest_arrival_forward, stream);
       }
 
       i_t drop_return_trip = sol.problem_ptr->drop_return_trip_h[vehicle_id];

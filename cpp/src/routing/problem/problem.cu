@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -55,7 +55,7 @@ problem_t<i_t, f_t>::problem_t(const data_model_view_t<i_t, f_t>& data_model_vie
              pair_indices_h.size(),
              handle_ptr->get_stream());
 
-  vehicle_types_h = cuopt::host_copy(fleet_info.v_types_);
+  vehicle_types_h = cuopt::host_copy(fleet_info.v_types_, handle_ptr->get_stream());
   for (auto& vtype : vehicle_types_h) {
     if (!distance_matrices_h.count(vtype)) {
       auto cost_matrix = fleet_info.matrices_.get_cost_matrix(vtype);
@@ -104,7 +104,7 @@ void problem_t<i_t, f_t>::populate_vehicle_buckets()
 {
   auto fleet_size = data_view_ptr->get_fleet_size();
   vehicle_buckets_h.resize(fleet_size);
-  fleet_info_h = fleet_info.to_host();
+  fleet_info_h = fleet_info.to_host(handle_ptr->get_stream());
 
   // infer vehicle types from data model
   for (int vehicle_id = 0; vehicle_id < fleet_size; ++vehicle_id) {
@@ -375,7 +375,7 @@ void problem_t<i_t, f_t>::populate_host_arrays()
   auto pickup_indices = data_view_ptr->get_pickup_delivery_pair().first;
   auto stream         = data_view_ptr->get_handle_ptr()->get_stream();
 
-  order_locations_h = cuopt::host_copy(order_info.v_order_locations_);
+  order_locations_h = cuopt::host_copy(order_info.v_order_locations_, stream);
   // Temporarily fill is_pickup_h for diversity, should use NodeInfo instead
   bool is_pdp = pickup_indices != nullptr;
   std::vector<i_t> h_pickup_indices(get_num_requests());
@@ -387,18 +387,20 @@ void problem_t<i_t, f_t>::populate_host_arrays()
     }
   }
 
-  drop_return_trip_h = cuopt::host_copy(fleet_info.v_drop_return_trip_);
-  skip_first_trip_h  = cuopt::host_copy(fleet_info.v_skip_first_trip_);
-  order_info_h       = order_info.to_host();
+  drop_return_trip_h = cuopt::host_copy(fleet_info.v_drop_return_trip_, stream);
+  skip_first_trip_h  = cuopt::host_copy(fleet_info.v_skip_first_trip_, stream);
+  order_info_h       = order_info.to_host(stream);
   handle_ptr->sync_stream();
 }
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::initialize_depot_info()
 {
-  int nvehicles                 = fleet_info.v_start_locations_.size();
-  auto vehicle_start_locations  = cuopt::host_copy(fleet_info.v_start_locations_);
-  auto vehicle_return_locations = cuopt::host_copy(fleet_info.v_return_locations_);
+  int nvehicles = fleet_info.v_start_locations_.size();
+  auto vehicle_start_locations =
+    cuopt::host_copy(fleet_info.v_start_locations_, handle_ptr->get_stream());
+  auto vehicle_return_locations =
+    cuopt::host_copy(fleet_info.v_return_locations_, handle_ptr->get_stream());
 
   start_depot_node_infos_h.resize(nvehicles);
   return_depot_node_infos_h.resize(nvehicles);
@@ -518,8 +520,8 @@ void problem_t<i_t, f_t>::populate_special_nodes()
 
   int n_vehicles = get_fleet_size();
 
-  auto vehicle_earliest_h = cuopt::host_copy(fleet_info.v_earliest_time_);
-  auto vehicle_latest_h   = cuopt::host_copy(fleet_info.v_latest_time_);
+  auto vehicle_earliest_h = cuopt::host_copy(fleet_info.v_earliest_time_, handle_ptr->get_stream());
+  auto vehicle_latest_h   = cuopt::host_copy(fleet_info.v_latest_time_, handle_ptr->get_stream());
   std::map<int, std::vector<int>> break_earliest_h, break_latest_h, break_duration_h;
   std::vector<int> break_offset_h(n_vehicles + 1, 0), break_nodes_offset_h;
 

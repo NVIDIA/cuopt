@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -30,7 +30,10 @@ ges_solver_t<i_t, f_t, REQUEST>::ges_solver_t(const data_model_view_t<i_t, f_t>&
   : timer(time_limit_),
     problem(data_model, solver_settings),
     // override for now
-    pool_allocator(problem, max_sol_per_population, expected_route_count_),
+    pool_allocator(problem,
+                   max_sol_per_population,
+                   data_model.get_handle_ptr()->get_stream(),
+                   expected_route_count_),
     expected_route_count(expected_route_count_),
     intermediate_file(intermediate_file_)
 {
