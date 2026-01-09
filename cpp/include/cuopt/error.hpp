@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -33,8 +33,6 @@ enum class error_type_t {
  */
 
 struct logic_error : public std::logic_error {
-  explicit logic_error() = default;
-
   logic_error(const logic_error& exception) = default;
 
   // Move constructor
