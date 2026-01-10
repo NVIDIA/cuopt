@@ -336,7 +336,7 @@ struct OX {
     int i                       = routes_number;
     if (optimal_routes_search) { i = optimal_routes_number; }
     int end_index = offspring.size() - 1;
-    double cost_n, cost_p, total_delta = 0.;
+    [[maybe_unused]] double cost_n, cost_p, total_delta = 0.;
 
     std::vector<std::pair<int, std::vector<NodeInfo<>>>> routes_to_add;
     std::vector<uint32_t> tmp_route;
@@ -530,7 +530,7 @@ struct OX {
                    "Mismatch number of edges");
       for (size_t j = 0; j < h_transpose_graph[i].size(); ++j) {
         auto [ref_edge, ref_weight, ref_veh] = h_transpose_graph[i][j];
-        bool found                           = false;
+        [[maybe_unused]] bool found          = false;
         for (int x = 0; x < tmp_transpose.row_sizes[i]; ++x) {
           auto edge = tmp_transpose.indices[transpose_offset + x];
           auto veh  = tmp_transpose.buckets[transpose_offset + x];
