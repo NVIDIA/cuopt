@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -44,7 +44,7 @@ class waypoint_matrix_waypoints_sequence_test_t
     this->expected_sequence_offsets = param.sequence_offsets;
   }
 
-  void TearDown() {}
+  void TearDown() override {}
 
   void test_compute_waypoint_sequence()
   {
@@ -131,7 +131,7 @@ class waypoint_matrix_shortest_path_cost_t
                                                         this->weights.data());
   }
 
-  void TearDown() {}
+  void TearDown() override {}
 
   void test_compute_shortest_path_costs()
   {
@@ -192,7 +192,7 @@ class waypoint_matrix_cost_matrix_test_t
                                                         this->weights.data());
   }
 
-  void TearDown() {}
+  void TearDown() override {}
 
   void test_compute_cost_matrix()
   {

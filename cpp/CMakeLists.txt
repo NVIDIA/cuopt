@@ -79,9 +79,32 @@ endif(CMAKE_COMPILER_IS_GNUCXX)
 # 1. Run the binary with env var set: LD_PRELOAD="$(gcc -print-file-name=libasan.so)" ASAN_OPTIONS='protect_shadow_gap=0:replace_intrin=0'
 # 2. (Optional) To run with a debugger (gdb or cuda-gdb) use the additional ASAN option alloc_dealloc_mismatch=0
 if(BUILD_SANITIZER)
-  list(APPEND CUOPT_CXX_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer -g -Wno-error=maybe-uninitialized)
+  list(APPEND CUOPT_CXX_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer -g)
+  if(NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+    list(APPEND CUOPT_CXX_FLAGS -Wno-error=maybe-uninitialized)
+  endif()
   add_link_options(-fsanitize=address,undefined)
 endif(BUILD_SANITIZER)
+
+# To use ThreadSanitizer:
+# 1. Build with clang and the -tsan flag
+# 2. Run the binary with env var set: OMP_TOOL_LIBRARIES=/usr/lib/llvm-17/lib/libarcher.so ARCHER_OPTIONS='verbose=1' TSAN_OPTIONS='suppresions=cpp/utilities/tsan_suppressions.txt:ignore_noninstrumented_modules=1:halt_on_error=1'
+#     Replace with local llvm install path. libarcher.so must be presetn
+if(BUILD_TSAN)
+  message(STATUS "Building with ThreadSanitizer enabled")
+  list(APPEND CUOPT_CXX_FLAGS -fsanitize=thread -fno-omit-frame-pointer -g)
+  add_link_options(-fsanitize=thread)
+endif(BUILD_TSAN)
+
+# To use MemorySanitizer:
+# 1. Build with clang and the -msan flag (MemorySanitizer requires clang)
+# 2. Run the binary with env var set: MSAN_OPTIONS='halt_on_error=1'
+# Note: MemorySanitizer requires all code (including libraries) to be instrumented for accurate results
+if(BUILD_MSAN)
+  message(STATUS "Building with MemorySanitizer enabled")
+  list(APPEND CUOPT_CXX_FLAGS -fsanitize=memory -fno-omit-frame-pointer -g -fsanitize-memory-track-origins=1)
+  add_link_options(-fsanitize=memory)
+endif(BUILD_MSAN)
 
 if(DEFINE_ASSERT)
   add_definitions(-DASSERT_MODE)
@@ -116,7 +139,11 @@ if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.9)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -static-global-template-stub=false")
 endif()
 list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror --default-stream=per-thread)
-list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall -Wno-error=non-template-friend)
+if("${CMAKE_CUDA_HOST_COMPILER}" MATCHES "clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+  list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall)
+else()
+  list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall -Wno-error=non-template-friend)
+endif()
 list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=-compress-all)
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
   list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=--compress-level=3)
