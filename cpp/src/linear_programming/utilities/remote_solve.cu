@@ -91,8 +91,8 @@ class remote_client_t {
   {
     if (sockfd_ < 0) return false;
 
-    // Send size first (4 bytes, network byte order)
-    uint32_t size = static_cast<uint32_t>(data.size());
+    // Send size first (8 bytes for large problem support)
+    uint64_t size = static_cast<uint64_t>(data.size());
     if (!write_all(&size, sizeof(size))) return false;
     if (!write_all(data.data(), data.size())) return false;
     return true;
@@ -122,12 +122,12 @@ class remote_client_t {
         return receive_response_legacy(data);
       }
 
-      // Read payload size (4 bytes)
-      uint32_t payload_size;
+      // Read payload size (8 bytes for large problem support)
+      uint64_t payload_size;
       if (!read_all(&payload_size, sizeof(payload_size))) return false;
 
-      // Sanity check
-      if (payload_size > 100 * 1024 * 1024) {
+      // Sanity check - reject messages larger than 16GB
+      if (payload_size > 16ULL * 1024 * 1024 * 1024) {
         CUOPT_LOG_ERROR("[remote_solve] Message too large: {} bytes", payload_size);
         return false;
       }
@@ -170,12 +170,12 @@ class remote_client_t {
   {
     if (sockfd_ < 0) return false;
 
-    // Read size first
-    uint32_t size;
+    // Read size first (8 bytes for large problem support)
+    uint64_t size;
     if (!read_all(&size, sizeof(size))) return false;
 
-    // Sanity check
-    if (size > 100 * 1024 * 1024) {
+    // Sanity check - reject responses larger than 16GB
+    if (size > 16ULL * 1024 * 1024 * 1024) {
       CUOPT_LOG_ERROR("[remote_solve] Response too large: {} bytes", size);
       return false;
     }

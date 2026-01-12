@@ -58,27 +58,27 @@ using namespace cuopt::linear_programming;
 // Shared Memory Structures (must match between main process and workers)
 // ============================================================================
 
-constexpr size_t MAX_JOBS          = 100;
-constexpr size_t MAX_RESULTS       = 100;
-constexpr size_t MAX_JOB_DATA_SIZE = 64 * 1024 * 1024;   // 64MB max problem size
-constexpr size_t MAX_RESULT_SIZE   = 128 * 1024 * 1024;  // 128MB max result size
+constexpr size_t MAX_JOBS    = 100;
+constexpr size_t MAX_RESULTS = 100;
 
+// Job queue entry - small fixed size, data stored in separate per-job shared memory
 struct JobQueueEntry {
   char job_id[64];
-  uint32_t problem_type;  // 0 = LP, 1 = MIP
-  uint32_t data_size;
-  uint8_t data[MAX_JOB_DATA_SIZE];
+  uint32_t problem_type;          // 0 = LP, 1 = MIP
+  uint64_t data_size;             // Size of problem data (uint64 for large problems)
+  char shm_data_name[128];        // Name of per-job shared memory segment
   std::atomic<bool> ready;        // Job is ready to be processed
   std::atomic<bool> claimed;      // Worker has claimed this job
   std::atomic<pid_t> worker_pid;  // PID of worker that claimed this job (0 if none)
   std::atomic<bool> cancelled;    // Job has been cancelled (worker should skip)
 };
 
+// Result queue entry - small fixed size, data stored in separate per-result shared memory
 struct ResultQueueEntry {
   char job_id[64];
-  uint32_t status;  // 0 = success, 1 = error
-  uint32_t data_size;
-  uint8_t data[MAX_RESULT_SIZE];
+  uint32_t status;          // 0 = success, 1 = error
+  uint64_t data_size;       // Size of result data (uint64 for large results)
+  char shm_data_name[128];  // Name of per-result shared memory segment
   char error_message[1024];
   std::atomic<bool> ready;      // Result is ready
   std::atomic<bool> retrieved;  // Result has been retrieved
@@ -103,7 +103,7 @@ enum class MessageType : uint8_t {
 static bool send_typed_message(int sockfd, MessageType type, const void* data, size_t size)
 {
   uint8_t msg_type      = static_cast<uint8_t>(type);
-  uint32_t payload_size = static_cast<uint32_t>(size);
+  uint64_t payload_size = static_cast<uint64_t>(size);
 
   if (::write(sockfd, &msg_type, 1) != 1) return false;
   if (::write(sockfd, &payload_size, 4) != 4) return false;
@@ -324,10 +324,11 @@ static bool send_solution_message(int sockfd, const std::vector<uint8_t>& data)
 
 static bool receive_request(int sockfd, std::vector<uint8_t>& data)
 {
-  uint32_t size;
+  uint64_t size;
   if (!read_all(sockfd, &size, sizeof(size))) return false;
 
-  if (size > 100 * 1024 * 1024) {
+  // Sanity check - reject requests larger than 16GB
+  if (size > 16ULL * 1024 * 1024 * 1024) {
     std::cerr << "[Server] Request too large: " << size << " bytes\n";
     return false;
   }
@@ -336,6 +337,17 @@ static bool receive_request(int sockfd, std::vector<uint8_t>& data)
   if (!read_all(sockfd, data.data(), size)) return false;
   return true;
 }
+
+// ============================================================================
+// Per-job Shared Memory Helpers (forward declarations)
+// ============================================================================
+
+static std::string create_job_shm(const std::string& job_id,
+                                  const std::vector<uint8_t>& data,
+                                  const char* prefix);
+static bool read_job_shm(const char* shm_name, size_t data_size, std::vector<uint8_t>& data);
+static std::string write_result_shm(const std::string& job_id, const std::vector<uint8_t>& data);
+static void cleanup_job_shm(const char* shm_name);
 
 // ============================================================================
 // Shared Memory Management
@@ -456,8 +468,8 @@ void worker_process(int worker_id)
   // Increment active worker count
   shm_ctrl->active_workers++;
 
-  // Create RAFT handle for GPU operations
-  raft::handle_t handle;
+  // NOTE: We create raft::handle_t AFTER stdout redirect (per-job) so that
+  // CUDA logging uses the redirected output streams.
 
   // Get serializer
   auto serializer = get_serializer<int, double>();
@@ -494,12 +506,16 @@ void worker_process(int worker_id)
                 << "\n";
       std::cout.flush();
 
+      // Cleanup job input shm
+      cleanup_job_shm(job.shm_data_name);
+
       // Store cancelled result in result queue
       for (size_t i = 0; i < MAX_RESULTS; ++i) {
         if (!result_queue[i].ready) {
           strncpy(result_queue[i].job_id, job_id.c_str(), sizeof(result_queue[i].job_id) - 1);
-          result_queue[i].status    = 2;  // Cancelled status
-          result_queue[i].data_size = 0;
+          result_queue[i].status           = 2;  // Cancelled status
+          result_queue[i].data_size        = 0;
+          result_queue[i].shm_data_name[0] = '\0';
           strncpy(result_queue[i].error_message,
                   "Job was cancelled",
                   sizeof(result_queue[i].error_message) - 1);
@@ -521,16 +537,73 @@ void worker_process(int worker_id)
               << " (type: " << (is_mip ? "MIP" : "LP") << ")\n";
     std::cout.flush();
 
-    // Redirect stdout to per-job log file for client log retrieval
+    // Redirect stdout AND stderr to per-job log file for client log retrieval
+    // (Solver may use either stream for output)
     std::string log_file = get_log_file_path(job_id);
     int saved_stdout     = dup(STDOUT_FILENO);
+    int saved_stderr     = dup(STDERR_FILENO);
     int log_fd           = open(log_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (log_fd >= 0) {
+      // Flush C++ streams before changing fd
+      std::cout.flush();
+      std::cerr.flush();
+      fflush(stdout);
+      fflush(stderr);
+
       dup2(log_fd, STDOUT_FILENO);
+      dup2(log_fd, STDERR_FILENO);
       close(log_fd);
+
+      // Use unbuffered output for real-time log streaming
+      setvbuf(stdout, NULL, _IONBF, 0);
+      setvbuf(stderr, NULL, _IONBF, 0);
+
+      // Test that redirection works
+      printf("[Worker %d] Log file initialized: %s\n", worker_id, log_file.c_str());
+      fflush(stdout);
     }
 
-    std::vector<uint8_t> request_data(job.data, job.data + job.data_size);
+    // Create RAFT handle AFTER stdout redirect so CUDA sees the new streams
+    const char* msg0 = "[Worker] Creating raft::handle_t...\n";
+    write(STDOUT_FILENO, msg0, 36);
+    fsync(STDOUT_FILENO);
+
+    raft::handle_t handle;
+
+    const char* msg01 = "[Worker] Handle created, starting solve...\n";
+    write(STDOUT_FILENO, msg01, 44);
+    fsync(STDOUT_FILENO);
+
+    // Read problem data from per-job shared memory
+    std::vector<uint8_t> request_data;
+    if (!read_job_shm(job.shm_data_name, job.data_size, request_data)) {
+      std::cerr << "[Worker " << worker_id << "] Failed to read job data from shm\n";
+      // Store error result
+      for (size_t i = 0; i < MAX_RESULTS; ++i) {
+        if (!result_queue[i].ready) {
+          strncpy(result_queue[i].job_id, job_id.c_str(), sizeof(result_queue[i].job_id) - 1);
+          result_queue[i].status           = 1;  // Error status
+          result_queue[i].data_size        = 0;
+          result_queue[i].shm_data_name[0] = '\0';
+          strncpy(result_queue[i].error_message,
+                  "Failed to read job data from shared memory",
+                  sizeof(result_queue[i].error_message) - 1);
+          result_queue[i].retrieved = false;
+          result_queue[i].ready     = true;
+          break;
+        }
+      }
+      // Cleanup job shm and slot
+      cleanup_job_shm(job.shm_data_name);
+      job.worker_pid = 0;
+      job.ready      = false;
+      job.claimed    = false;
+      continue;
+    }
+
+    // Cleanup job input shm now that we've read it
+    cleanup_job_shm(job.shm_data_name);
+
     std::vector<uint8_t> result_data;
     std::string error_message;
     bool success = false;
@@ -553,7 +626,13 @@ void worker_process(int worker_id)
         pdlp_solver_settings_t<int, double> settings;
 
         if (serializer->deserialize_lp_request(request_data, mps_data, settings)) {
-          auto solution = solve_lp(&handle, mps_data, settings);
+          const char* msg1 = "[Worker] Calling solve_lp via write()...\n";
+          write(STDOUT_FILENO, msg1, strlen(msg1));
+          fsync(STDOUT_FILENO);
+          auto solution    = solve_lp(&handle, mps_data, settings);
+          const char* msg2 = "[Worker] solve_lp done via write()\n";
+          write(STDOUT_FILENO, msg2, strlen(msg2));
+          fsync(STDOUT_FILENO);
           solution.to_host(handle.get_stream());
           result_data = serializer->serialize_lp_solution(solution);
           success     = true;
@@ -565,25 +644,42 @@ void worker_process(int worker_id)
       error_message = std::string("Exception: ") + e.what();
     }
 
-    // Restore stdout to console
+    // Restore stdout and stderr to console
     fflush(stdout);
+    fflush(stderr);
     dup2(saved_stdout, STDOUT_FILENO);
+    dup2(saved_stderr, STDERR_FILENO);
     close(saved_stdout);
+    close(saved_stderr);
 
-    // Store result in result queue
+    // Store result in result queue with per-result shared memory
     for (size_t i = 0; i < MAX_RESULTS; ++i) {
       if (!result_queue[i].ready) {
-        bool expected = false;
-        // Claim this result slot
         ResultQueueEntry& result = result_queue[i];
         strncpy(result.job_id, job_id.c_str(), sizeof(result.job_id) - 1);
         result.status = success ? 0 : 1;
-        if (success) {
-          result.data_size = std::min(result_data.size(), MAX_RESULT_SIZE);
-          memcpy(result.data, result_data.data(), result.data_size);
-        } else {
+        if (success && !result_data.empty()) {
+          // Create per-result shared memory
+          std::string shm_name = write_result_shm(job_id, result_data);
+          if (shm_name.empty()) {
+            // Failed to create shm - report error
+            result.status           = 1;
+            result.data_size        = 0;
+            result.shm_data_name[0] = '\0';
+            strncpy(result.error_message,
+                    "Failed to create shared memory for result",
+                    sizeof(result.error_message) - 1);
+          } else {
+            result.data_size = result_data.size();
+            strncpy(result.shm_data_name, shm_name.c_str(), sizeof(result.shm_data_name) - 1);
+          }
+        } else if (!success) {
           strncpy(result.error_message, error_message.c_str(), sizeof(result.error_message) - 1);
-          result.data_size = 0;
+          result.data_size        = 0;
+          result.shm_data_name[0] = '\0';
+        } else {
+          result.data_size        = 0;
+          result.shm_data_name[0] = '\0';
         }
         result.retrieved = false;
         result.ready     = true;  // Mark as ready last
@@ -663,12 +759,16 @@ void mark_worker_jobs_failed(pid_t dead_worker_pid)
                   << " died while processing job: " << job_id << "\n";
       }
 
+      // Cleanup job input shm (worker may not have done it)
+      cleanup_job_shm(job_queue[i].shm_data_name);
+
       // Store result in result queue (cancelled or failed)
       for (size_t j = 0; j < MAX_RESULTS; ++j) {
         if (!result_queue[j].ready) {
           strncpy(result_queue[j].job_id, job_id.c_str(), sizeof(result_queue[j].job_id) - 1);
-          result_queue[j].status    = was_cancelled ? 2 : 1;  // 2=cancelled, 1=error
-          result_queue[j].data_size = 0;
+          result_queue[j].status           = was_cancelled ? 2 : 1;  // 2=cancelled, 1=error
+          result_queue[j].data_size        = 0;
+          result_queue[j].shm_data_name[0] = '\0';
           strncpy(result_queue[j].error_message,
                   was_cancelled ? "Job was cancelled" : "Worker process died unexpectedly",
                   sizeof(result_queue[j].error_message) - 1);
@@ -788,10 +888,16 @@ void result_retrieval_thread()
         std::vector<uint8_t> result_data;
         std::string error_message;
 
-        if (success) {
-          result_data.assign(result_queue[i].data,
-                             result_queue[i].data + result_queue[i].data_size);
-        } else {
+        if (success && result_queue[i].data_size > 0) {
+          // Read result data from per-result shared memory
+          if (!read_job_shm(
+                result_queue[i].shm_data_name, result_queue[i].data_size, result_data)) {
+            error_message = "Failed to read result data from shared memory";
+            success       = false;
+          }
+          // Cleanup result shm after reading
+          cleanup_job_shm(result_queue[i].shm_data_name);
+        } else if (!success) {
           error_message = result_queue[i].error_message;
         }
 
@@ -848,12 +954,86 @@ void result_retrieval_thread()
 // Async Request Handlers
 // ============================================================================
 
+// Create per-job shared memory segment and copy data into it
+// Returns the shm name on success, empty string on failure
+static std::string create_job_shm(const std::string& job_id,
+                                  const std::vector<uint8_t>& data,
+                                  const char* prefix)
+{
+  std::string shm_name = std::string("/cuopt_") + prefix + "_" + job_id;
+
+  int fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, 0666);
+  if (fd < 0) {
+    std::cerr << "[Server] Failed to create shm " << shm_name << ": " << strerror(errno) << "\n";
+    return "";
+  }
+
+  if (ftruncate(fd, data.size()) < 0) {
+    std::cerr << "[Server] Failed to size shm " << shm_name << ": " << strerror(errno) << "\n";
+    close(fd);
+    shm_unlink(shm_name.c_str());
+    return "";
+  }
+
+  void* ptr = mmap(nullptr, data.size(), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  close(fd);
+
+  if (ptr == MAP_FAILED) {
+    std::cerr << "[Server] Failed to map shm " << shm_name << ": " << strerror(errno) << "\n";
+    shm_unlink(shm_name.c_str());
+    return "";
+  }
+
+  memcpy(ptr, data.data(), data.size());
+  munmap(ptr, data.size());
+
+  return shm_name;
+}
+
+// Read data from per-job shared memory segment
+static bool read_job_shm(const char* shm_name, size_t data_size, std::vector<uint8_t>& data)
+{
+  int fd = shm_open(shm_name, O_RDONLY, 0666);
+  if (fd < 0) {
+    std::cerr << "[Worker] Failed to open shm " << shm_name << ": " << strerror(errno) << "\n";
+    return false;
+  }
+
+  void* ptr = mmap(nullptr, data_size, PROT_READ, MAP_SHARED, fd, 0);
+  close(fd);
+
+  if (ptr == MAP_FAILED) {
+    std::cerr << "[Worker] Failed to map shm " << shm_name << ": " << strerror(errno) << "\n";
+    return false;
+  }
+
+  data.resize(data_size);
+  memcpy(data.data(), ptr, data_size);
+  munmap(ptr, data_size);
+
+  return true;
+}
+
+// Write data to per-result shared memory segment
+static std::string write_result_shm(const std::string& job_id, const std::vector<uint8_t>& data)
+{
+  return create_job_shm(job_id, data, "result");
+}
+
+// Cleanup per-job shared memory segment
+static void cleanup_job_shm(const char* shm_name)
+{
+  if (shm_name[0] != '\0') { shm_unlink(shm_name); }
+}
+
 // Submit a job asynchronously (returns job_id)
 std::pair<bool, std::string> submit_job_async(const std::vector<uint8_t>& request_data, bool is_mip)
 {
   std::string job_id = generate_job_id();
 
-  if (request_data.size() > MAX_JOB_DATA_SIZE) { return {false, "Request data too large"}; }
+  // Create per-job shared memory for problem data
+  std::string shm_name = create_job_shm(job_id, request_data, "job");
+  if (shm_name.empty()) { return {false, "Failed to create shared memory for job data"}; }
 
   // Find free job slot
   for (size_t i = 0; i < MAX_JOBS; ++i) {
@@ -861,7 +1041,7 @@ std::pair<bool, std::string> submit_job_async(const std::vector<uint8_t>& reques
       strncpy(job_queue[i].job_id, job_id.c_str(), sizeof(job_queue[i].job_id) - 1);
       job_queue[i].problem_type = is_mip ? 1 : 0;
       job_queue[i].data_size    = request_data.size();
-      memcpy(job_queue[i].data, request_data.data(), request_data.size());
+      strncpy(job_queue[i].shm_data_name, shm_name.c_str(), sizeof(job_queue[i].shm_data_name) - 1);
       job_queue[i].worker_pid = 0;
       job_queue[i].claimed    = false;
       job_queue[i].cancelled  = false;
@@ -885,6 +1065,8 @@ std::pair<bool, std::string> submit_job_async(const std::vector<uint8_t>& reques
     }
   }
 
+  // No free slot - cleanup the shm we created
+  shm_unlink(shm_name.c_str());
   return {false, "Job queue full"};
 }
 
@@ -1299,7 +1481,7 @@ void handle_client(int client_fd, bool stream_logs)
       if (!submit_ok) {
         // Submission failed
         auto response = serializer->serialize_submit_response(false, job_id_or_error);
-        uint32_t size = response.size();
+        uint64_t size = response.size();
         write_all(client_fd, &size, sizeof(size));
         write_all(client_fd, response.data(), response.size());
       } else if (blocking) {
@@ -1318,12 +1500,15 @@ void handle_client(int client_fd, bool stream_logs)
         // Block on condition variable until job completes
         bool success = wait_for_result(job_id, result_data, error_message);
 
-        // Auto-delete job after returning result (client doesn't need to call DELETE)
-        delete_job(job_id);
+        // NOTE: We do NOT auto-delete here. The client should call DELETE_RESULT
+        // after consuming all logs. This allows the pattern:
+        //   1. Submit job (blocking=true or async + WAIT_FOR_RESULT)
+        //   2. Retrieve logs (GET_LOGS) - can be done in parallel thread
+        //   3. Delete job (DELETE_RESULT) when done with logs
 
         // Return result response (same format as GET_RESULT)
         auto response = serializer->serialize_result_response(success, result_data, error_message);
-        uint32_t size = response.size();
+        uint64_t size = response.size();
         write_all(client_fd, &size, sizeof(size));
         write_all(client_fd, response.data(), response.size());
 
@@ -1334,7 +1519,7 @@ void handle_client(int client_fd, bool stream_logs)
       } else {
         // ASYNC MODE: Return job_id immediately
         auto response = serializer->serialize_submit_response(true, job_id_or_error);
-        uint32_t size = response.size();
+        uint64_t size = response.size();
         write_all(client_fd, &size, sizeof(size));
         write_all(client_fd, response.data(), response.size());
       }
@@ -1355,7 +1540,7 @@ void handle_client(int client_fd, bool stream_logs)
 
       auto response = serializer->serialize_status_response(status_code, message);
 
-      uint32_t size = response.size();
+      uint64_t size = response.size();
       write_all(client_fd, &size, sizeof(size));
       write_all(client_fd, response.data(), response.size());
     } else if (request_type == 2) {  // GET_RESULT
@@ -1366,7 +1551,7 @@ void handle_client(int client_fd, bool stream_logs)
       bool success  = get_job_result(job_id, result_data, error_message);
       auto response = serializer->serialize_result_response(success, result_data, error_message);
 
-      uint32_t size = response.size();
+      uint64_t size = response.size();
       write_all(client_fd, &size, sizeof(size));
       write_all(client_fd, response.data(), response.size());
     } else if (request_type == 3) {  // DELETE_RESULT
@@ -1375,7 +1560,7 @@ void handle_client(int client_fd, bool stream_logs)
 
       auto response = serializer->serialize_delete_response(success);
 
-      uint32_t size = response.size();
+      uint64_t size = response.size();
       write_all(client_fd, &size, sizeof(size));
       write_all(client_fd, response.data(), response.size());
     } else if (request_type == 4) {  // GET_LOGS
@@ -1412,7 +1597,7 @@ void handle_client(int client_fd, bool stream_logs)
 
       auto response = serializer->serialize_logs_response(job_id, log_lines, nbytes, job_exists);
 
-      uint32_t size = response.size();
+      uint64_t size = response.size();
       write_all(client_fd, &size, sizeof(size));
       write_all(client_fd, response.data(), response.size());
 
@@ -1441,7 +1626,7 @@ void handle_client(int client_fd, bool stream_logs)
       bool success  = (result == 0);
       auto response = serializer->serialize_cancel_response(success, message, status_code);
 
-      uint32_t size = response.size();
+      uint64_t size = response.size();
       write_all(client_fd, &size, sizeof(size));
       write_all(client_fd, response.data(), response.size());
 
@@ -1465,7 +1650,7 @@ void handle_client(int client_fd, bool stream_logs)
       // Send result response (same format as GET_RESULT)
       auto response = serializer->serialize_result_response(success, result_data, error_message);
 
-      uint32_t size = response.size();
+      uint64_t size = response.size();
       write_all(client_fd, &size, sizeof(size));
       write_all(client_fd, response.data(), response.size());
 
