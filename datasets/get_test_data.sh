@@ -23,6 +23,12 @@ function try_download_from_s3() {
         return 1
     fi
 
+    # Require explicit CUOPT credentials to avoid accidentally using generic AWS credentials
+    if [ -z "${CUOPT_AWS_ACCESS_KEY_ID:-}" ]; then
+        echo "CUOPT_AWS_ACCESS_KEY_ID not set, skipping S3 download..."
+        return 1
+    fi
+
     if ! command -v aws &> /dev/null; then
         echo "AWS CLI not found, skipping S3 download..."
         return 1
@@ -32,24 +38,19 @@ function try_download_from_s3() {
     local s3_uri="${CUOPT_DATASET_S3_URI}routing/"
     echo "Downloading datasets from S3..."
 
-    # Support custom credential variable names to avoid conflicts
-    # Priority: CUOPT_* variables > standard AWS_* variables > aws configure
-    local access_key="${CUOPT_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
-    local secret_key="${CUOPT_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
-    local region="${CUOPT_AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+    # Use CUOPT-specific credentials only
+    local region="${CUOPT_AWS_REGION:-us-east-1}"
 
-    # Temporarily export for AWS CLI if custom variables are used
-    if [ -n "$CUOPT_AWS_ACCESS_KEY_ID" ]; then
-        export AWS_ACCESS_KEY_ID="$access_key"
-        export AWS_SECRET_ACCESS_KEY="$secret_key"
-        # Unset session token to avoid mixing credentials
-        unset AWS_SESSION_TOKEN
-        export AWS_DEFAULT_REGION="$region"
-    fi
+    # Export credentials for AWS CLI
+    export AWS_ACCESS_KEY_ID="$CUOPT_AWS_ACCESS_KEY_ID"
+    export AWS_SECRET_ACCESS_KEY="$CUOPT_AWS_SECRET_ACCESS_KEY"
+    # Unset session token to avoid mixing credentials
+    unset AWS_SESSION_TOKEN
+    export AWS_DEFAULT_REGION="$region"
 
     # Test AWS credentials
     if ! aws sts get-caller-identity &> /dev/null 2>&1; then
-        echo "AWS credentials not configured, skipping S3 download..."
+        echo "AWS credentials invalid, skipping S3 download..."
         return 1
     fi
 
