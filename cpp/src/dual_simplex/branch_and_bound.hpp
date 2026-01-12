@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -198,6 +198,9 @@ class branch_and_bound_t {
   // In case, a best-first thread encounters a numerical issue when solving a node,
   // its blocks the progression of the lower bound.
   omp_atomic_t<f_t> lower_bound_ceiling_;
+
+  void report_heuristic(f_t obj);
+  void report(std::string symbol, f_t obj, f_t lower_bound, i_t node_depth);
 
   // Set the final solution.
   mip_status_t set_final_solution(mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
