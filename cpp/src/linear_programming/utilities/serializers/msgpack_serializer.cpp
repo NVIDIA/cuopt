@@ -1072,9 +1072,12 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
 
   std::vector<uint8_t> serialize_result_response(bool success,
                                                  const std::vector<uint8_t>& result_data,
-                                                 const std::string& error_message) override
+                                                 const std::string& error_message,
+                                                 bool is_mip = false) override
   {
     // For result response, we prepend success flag then the actual solution data
+    // Note: is_mip flag is not needed here as msgpack just passes through raw data
+    (void)is_mip;  // Unused but required for interface compatibility
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack(success);

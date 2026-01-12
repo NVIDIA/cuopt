@@ -1105,6 +1105,17 @@ JobStatus check_job_status(const std::string& job_id, std::string& message)
   return it->second.status;
 }
 
+// Check if a job is MIP (vs LP)
+bool get_job_is_mip(const std::string& job_id)
+{
+  std::lock_guard<std::mutex> lock(tracker_mutex);
+  auto it = job_tracker.find(job_id);
+  if (it == job_tracker.end()) {
+    return false;  // Default to LP if not found
+  }
+  return it->second.is_mip;
+}
+
 // Get job result
 bool get_job_result(const std::string& job_id,
                     std::vector<uint8_t>& result_data,
@@ -1507,7 +1518,9 @@ void handle_client(int client_fd, bool stream_logs)
         //   3. Delete job (DELETE_RESULT) when done with logs
 
         // Return result response (same format as GET_RESULT)
-        auto response = serializer->serialize_result_response(success, result_data, error_message);
+        bool job_is_mip = is_mip;  // Use the is_mip from the submit request
+        auto response =
+          serializer->serialize_result_response(success, result_data, error_message, job_is_mip);
         uint64_t size = response.size();
         write_all(client_fd, &size, sizeof(size));
         write_all(client_fd, response.data(), response.size());
@@ -1548,8 +1561,10 @@ void handle_client(int client_fd, bool stream_logs)
       std::vector<uint8_t> result_data;
       std::string error_message;
 
-      bool success  = get_job_result(job_id, result_data, error_message);
-      auto response = serializer->serialize_result_response(success, result_data, error_message);
+      bool success    = get_job_result(job_id, result_data, error_message);
+      bool job_is_mip = get_job_is_mip(job_id);
+      auto response =
+        serializer->serialize_result_response(success, result_data, error_message, job_is_mip);
 
       uint64_t size = response.size();
       write_all(client_fd, &size, sizeof(size));
@@ -1648,7 +1663,9 @@ void handle_client(int client_fd, bool stream_logs)
       bool success = wait_for_result(job_id, result_data, error_message);
 
       // Send result response (same format as GET_RESULT)
-      auto response = serializer->serialize_result_response(success, result_data, error_message);
+      bool job_is_mip = get_job_is_mip(job_id);
+      auto response =
+        serializer->serialize_result_response(success, result_data, error_message, job_is_mip);
 
       uint64_t size = response.size();
       write_all(client_fd, &size, sizeof(size));

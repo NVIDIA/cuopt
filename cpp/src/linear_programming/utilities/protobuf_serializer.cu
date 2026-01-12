@@ -689,7 +689,8 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
 
   std::vector<uint8_t> serialize_result_response(bool success,
                                                  const std::vector<uint8_t>& result_data,
-                                                 const std::string& error_message) override
+                                                 const std::string& error_message,
+                                                 bool is_mip = false) override
   {
     cuopt::remote::AsyncResponse response;
     response.set_request_type(cuopt::remote::GET_RESULT);
@@ -698,20 +699,16 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
 
     if (success) {
       result->set_status(cuopt::remote::SUCCESS);
-      // The result_data is the raw serialized solution (LP or MIP)
-      // We need to wrap it properly. For simplicity, we'll embed it as raw bytes
-      // and the client will know to parse it based on the original request type.
-      // Actually, we should try to parse it and embed properly.
-
-      // Try to parse as LP solution first
-      cuopt::remote::LPSolution lp_sol;
-      if (lp_sol.ParseFromArray(result_data.data(), result_data.size())) {
-        result->mutable_lp_solution()->CopyFrom(lp_sol);
-      } else {
-        // Try MIP solution
+      // Parse and embed the solution based on problem type
+      if (is_mip) {
         cuopt::remote::MIPSolution mip_sol;
         if (mip_sol.ParseFromArray(result_data.data(), result_data.size())) {
           result->mutable_mip_solution()->CopyFrom(mip_sol);
+        }
+      } else {
+        cuopt::remote::LPSolution lp_sol;
+        if (lp_sol.ParseFromArray(result_data.data(), result_data.size())) {
+          result->mutable_lp_solution()->CopyFrom(lp_sol);
         }
       }
     } else {

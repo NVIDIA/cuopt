@@ -371,11 +371,13 @@ class remote_serializer_t {
    * @param success Whether result retrieval succeeded
    * @param result_data The solution data (if success)
    * @param error_message Error message (if failure)
+   * @param is_mip Whether this is a MIP solution (vs LP)
    * @return Serialized response bytes
    */
   virtual std::vector<uint8_t> serialize_result_response(bool success,
                                                          const std::vector<uint8_t>& result_data,
-                                                         const std::string& error_message) = 0;
+                                                         const std::string& error_message,
+                                                         bool is_mip = false) = 0;
 
   /**
    * @brief Serialize a delete response.

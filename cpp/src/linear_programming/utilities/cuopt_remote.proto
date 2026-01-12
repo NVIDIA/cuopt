@@ -278,7 +278,7 @@ enum JobStatus {
 // Generic request wrapper for async operations
 message AsyncRequest {
   RequestType request_type = 1;
-  string job_id = 2;  // For status/get/delete/get_logs operations
+  bytes job_id = 2;  // For status/get/delete/get_logs operations (bytes to avoid UTF-8 validation warnings)
   bool blocking = 3;  // If true, server waits and returns solution (sync mode)
   int64 frombyte = 4; // For GET_LOGS: byte offset to start reading from
 
@@ -292,7 +292,7 @@ message AsyncRequest {
 // Response for job submission
 message SubmitResponse {
   ResponseStatus status = 1;
-  string job_id = 2;          // Unique job identifier
+  bytes job_id = 2;           // Unique job identifier (bytes to avoid UTF-8 validation warnings)
   string message = 3;         // Success/error message
 }
 
@@ -323,7 +323,7 @@ message DeleteResponse {
 // Response for log retrieval (file-based, like Python server)
 message LogsResponse {
   ResponseStatus status = 1;
-  string job_id = 2;
+  bytes job_id = 2;               // (bytes to avoid UTF-8 validation warnings)
   repeated string log_lines = 3;  // Log lines read from file
   int64 nbytes = 4;               // Ending byte position (use as frombyte in next request)
   bool job_exists = 5;            // False if job_id not found
