@@ -55,7 +55,7 @@ jobs:
           cp ./LICENSE ./ci/docker/context/LICENSE
           cp ./VERSION ./ci/docker/context/VERSION
           cp ./thirdparty/THIRD_PARTY_LICENSES ./ci/docker/context/THIRD_PARTY_LICENSES
-      - name: Copy Commit SHA, commit time and branch
+      - name: Copy Commit SHA and commit time
         run: |
           git rev-parse HEAD > ./ci/docker/context/COMMIT_SHA
           git log -n1 --pretty='%ct' > ./ci/docker/context/COMMIT_TIME
