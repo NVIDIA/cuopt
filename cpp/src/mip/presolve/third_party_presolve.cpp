@@ -442,6 +442,11 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
                  papilo_problem.getNCols(),
                  papilo_problem.getConstraintMatrix().getNnz());
 
+  // Check if presolve found the optimal solution (problem fully reduced)
+  if (papilo_problem.getNRows() == 0 && papilo_problem.getNCols() == 0) {
+    CUOPT_LOG_INFO("Optimal solution found during presolve");
+  }
+
   auto opt_problem =
     build_optimization_problem<i_t, f_t>(papilo_problem, op_problem.get_handle_ptr(), category);
   auto col_flags = papilo_problem.getColFlags();
