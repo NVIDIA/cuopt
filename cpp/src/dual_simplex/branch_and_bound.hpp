@@ -180,7 +180,7 @@ class branch_and_bound_t {
   pseudo_costs_t<i_t, f_t> pc_;
 
   // Heap storing the nodes waiting to be explored.
-  node_queue_t<i_t, f_t> node_queue;
+  node_queue_t<i_t, f_t> node_queue_;
 
   // Search tree
   search_tree_t<i_t, f_t> search_tree_;
@@ -220,7 +220,6 @@ class branch_and_bound_t {
   // Perform a plunge in the subtree determined by the `start_node`.
   void plunge_from(i_t task_id,
                    mip_node_t<i_t, f_t>* start_node,
-                   search_tree_t<i_t, f_t>& search_tree,
                    lp_problem_t<i_t, f_t>& leaf_problem,
                    bounds_strengthening_t<i_t, f_t>& node_presolver,
                    basis_update_mpf_t<i_t, f_t>& basis_update,
@@ -265,8 +264,7 @@ class branch_and_bound_t {
   branch_variable_t<i_t> variable_selection(mip_node_t<i_t, f_t>* node_ptr,
                                             const std::vector<i_t>& fractional,
                                             const std::vector<f_t>& solution,
-                                            bnb_worker_type_t type,
-                                            logger_t& log);
+                                            bnb_worker_type_t type);
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

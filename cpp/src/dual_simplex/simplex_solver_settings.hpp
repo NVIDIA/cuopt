@@ -29,7 +29,7 @@ struct diving_heuristics_settings_t {
   bool disable_guided_diving      = false;
   bool disable_coefficient_diving = false;
 
-  i_t min_node_depth         = 5;
+  i_t min_node_depth         = 10;
   i_t node_limit             = 500;
   f_t iteration_limit_factor = 0.05;
   i_t backtrack              = 5;

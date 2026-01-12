@@ -6,6 +6,10 @@
 #pragma once
 
 #include <algorithm>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include <dual_simplex/mip_node.hpp>
@@ -36,7 +40,7 @@ class heap_t {
   template <typename... Args>
   void emplace(Args&&... args)
   {
-    buffer.emplace_back(std::forward<Args&&>(args)...);
+    buffer.emplace_back(std::forward<Args>(args)...);
     std::push_heap(buffer.begin(), buffer.end(), comp);
   }
 

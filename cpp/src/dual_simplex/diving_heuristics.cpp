@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <dual_simplex/diving_heuristics.hpp>
+#include <tuple>
 
 namespace cuopt::linear_programming::dual_simplex {
 
