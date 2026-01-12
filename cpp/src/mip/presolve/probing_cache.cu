@@ -22,15 +22,6 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
-struct substitution_t {
-  f_t timestamp;
-  i_t substituting_var;
-  i_t substituted_var;
-  f_t offset;
-  f_t coefficient;
-};
-
-template <typename i_t, typename f_t>
 i_t probing_cache_t<i_t, f_t>::check_number_of_conflicting_vars(
   const std::vector<f_t>& host_lb,
   const std::vector<f_t>& host_ub,
@@ -707,6 +698,11 @@ void apply_substitution_queue_to_problem(
   std::vector<f_t> offset_values;
   std::vector<f_t> coefficient_values;
 
+  // Get variable_mapping to convert current indices to original indices
+  auto h_variable_mapping =
+    host_copy(problem.presolve_data.variable_mapping, problem.handle_ptr->get_stream());
+  problem.handle_ptr->sync_stream();
+
   for (const auto& [substituting_var, substitutions] : all_substitutions) {
     for (const auto& [substituted_var, substitution] : substitutions) {
       CUOPT_LOG_DEBUG("Applying substitution: %d -> %d",
@@ -716,6 +712,20 @@ void apply_substitution_queue_to_problem(
       substituting_var_indices.push_back(substitution.substituting_var);
       offset_values.push_back(substitution.offset);
       coefficient_values.push_back(substitution.coefficient);
+
+      // Store substitution for post-processing (convert to original variable IDs)
+      substitution_t<i_t, f_t> sub;
+      sub.timestamp        = substitution.timestamp;
+      sub.substituted_var  = h_variable_mapping[substitution.substituted_var];
+      sub.substituting_var = h_variable_mapping[substitution.substituting_var];
+      sub.offset           = substitution.offset;
+      sub.coefficient      = substitution.coefficient;
+      problem.presolve_data.variable_substitutions.push_back(sub);
+      CUOPT_LOG_DEBUG("Stored substitution for post-processing: x[%d] = %f + %f * x[%d]",
+                      sub.substituted_var,
+                      sub.offset,
+                      sub.coefficient,
+                      sub.substituting_var);
     }
   }
 
@@ -815,7 +825,7 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
                       count_per_variable.data() + problem.n_variables,
                       priority_indices.data(),
                       thrust::greater<i_t>());
-  auto h_priority_indices = host_copy(priority_indices);
+  auto h_priority_indices = host_copy(priority_indices, problem.handle_ptr->get_stream());
   // Find the index of the first 0 element in count_per_variable
   auto first_zero_it      = thrust::lower_bound(problem.handle_ptr->get_thrust_policy(),
                                            count_per_variable.begin(),
@@ -823,7 +833,7 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
                                            0,
                                            thrust::greater<i_t>());
   size_t first_zero_index = (first_zero_it != count_per_variable.end())
-                              ? thrust::distance(count_per_variable.begin(), first_zero_it)
+                              ? std::distance(count_per_variable.begin(), first_zero_it)
                               : count_per_variable.size();
   h_priority_indices.erase(h_priority_indices.begin() + first_zero_index, h_priority_indices.end());
   return h_priority_indices;
@@ -839,9 +849,9 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // auto priority_indices = compute_prioritized_integer_indices(bound_presolve, problem);
   auto priority_indices = compute_priority_indices_by_implied_integers(problem);
   CUOPT_LOG_DEBUG("Computing probing cache");
-  auto stream             = problem.handle_ptr->get_stream();
-  auto h_integer_indices  = host_copy(problem.integer_indices, stream);
-  const auto h_var_bounds = host_copy(problem.variable_bounds, stream);
+  auto stream            = problem.handle_ptr->get_stream();
+  auto h_integer_indices = host_copy(problem.integer_indices, stream);
+  auto h_var_bounds      = host_copy(problem.variable_bounds, stream);
   // TODO adjust the iteration limit depending on the total time limit and time it takes for single
   // var
   bound_presolve.settings.iteration_limit = 50;

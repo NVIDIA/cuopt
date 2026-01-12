@@ -823,6 +823,22 @@ void problem_t<i_t, f_t>::post_process_assignment(rmm::device_uvector<f_t>& curr
       h_assignment[i] -= h_assignment[presolve_data.additional_var_id_per_var[i]];
     }
   }
+
+  // Apply variable substitutions from probing: x_substituted = offset + coefficient *
+  // x_substituting
+  for (const auto& sub : presolve_data.variable_substitutions) {
+    cuopt_assert(sub.substituted_var < (i_t)h_assignment.size(), "substituted_var out of bounds");
+    cuopt_assert(sub.substituting_var < (i_t)h_assignment.size(), "substituting_var out of bounds");
+    h_assignment[sub.substituted_var] =
+      sub.offset + sub.coefficient * h_assignment[sub.substituting_var];
+    CUOPT_LOG_DEBUG("Post-process substitution: x[%d] = %f + %f * x[%d] = %f",
+                    sub.substituted_var,
+                    sub.offset,
+                    sub.coefficient,
+                    sub.substituting_var,
+                    h_assignment[sub.substituted_var]);
+  }
+
   raft::copy(
     current_assignment.data(), h_assignment.data(), h_assignment.size(), handle_ptr->get_stream());
   // this separate resizing is needed because of the callback
