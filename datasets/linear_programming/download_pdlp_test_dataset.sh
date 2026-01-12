@@ -25,9 +25,11 @@ BASEDIR=$(dirname "$0")
 ################################################################################
 # S3 Download Support
 ################################################################################
-# Set CUOPT_DATASET_S3_URI to base S3 path
-# Use CUOPT_AWS_ACCESS_KEY_ID and CUOPT_AWS_SECRET_ACCESS_KEY
-# or standard AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+# Requires explicit CUOPT credentials to avoid using unintended AWS credentials:
+#   - CUOPT_DATASET_S3_URI: Base S3 path
+#   - CUOPT_AWS_ACCESS_KEY_ID: AWS access key
+#   - CUOPT_AWS_SECRET_ACCESS_KEY: AWS secret key
+#   - CUOPT_AWS_REGION (optional): AWS region, defaults to us-east-1
 
 function try_download_from_s3() {
     if [ -z "${CUOPT_DATASET_S3_URI:-}" ]; then
@@ -37,6 +39,11 @@ function try_download_from_s3() {
     # Require explicit CUOPT credentials to avoid accidentally using generic AWS credentials
     if [ -z "${CUOPT_AWS_ACCESS_KEY_ID:-}" ]; then
         echo "CUOPT_AWS_ACCESS_KEY_ID not set, skipping S3 download..."
+        return 1
+    fi
+
+    if [ -z "${CUOPT_AWS_SECRET_ACCESS_KEY:-}" ]; then
+        echo "CUOPT_AWS_SECRET_ACCESS_KEY not set, skipping S3 download..."
         return 1
     fi
 
