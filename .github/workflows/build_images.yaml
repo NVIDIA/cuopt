@@ -59,7 +59,6 @@ jobs:
         run: |
           git rev-parse HEAD > ./ci/docker/context/COMMIT_SHA
           git log -n1 --pretty='%ct' > ./ci/docker/context/COMMIT_TIME
-          git rev-parse --abbrev-ref HEAD > ./ci/docker/context/BRANCH
       - name: Login to NGC
         uses: docker/login-action@v3
         with:
