@@ -28,7 +28,7 @@ enum FloatType {
   DOUBLE = 1;
 }
 
-// Optimization problem representation (matches optimization_problem_t)
+// Optimization problem representation (field names match data_model_view_t)
 message OptimizationProblem {
   // Problem metadata
   string problem_name = 1;
@@ -38,29 +38,37 @@ message OptimizationProblem {
   double objective_offset = 5;
   ProblemCategory problem_category = 6;
 
-  // Variable names (optional, can be large)
+  // Variable and row names (optional)
   repeated string variable_names = 7;
   repeated string row_names = 8;
 
-  // Constraint matrix in CSR format
-  repeated double constraint_matrix_values = 10;
-  repeated int32 constraint_matrix_indices = 11;
-  repeated int32 constraint_matrix_offsets = 12;
+  // Constraint matrix A in CSR format (names match data_model_view_t: A_, A_indices_, A_offsets_)
+  repeated double A_values = 10;
+  repeated int32 A_indices = 11;
+  repeated int32 A_offsets = 12;
 
-  // Problem vectors
-  repeated double objective_coefficients = 20;
-  repeated double constraint_bounds = 21;
+  // Problem vectors (names match data_model_view_t: c_, b_)
+  repeated double c = 20;              // objective coefficients
+  repeated double b = 21;              // constraint bounds (RHS)
   repeated double variable_lower_bounds = 22;
   repeated double variable_upper_bounds = 23;
 
-  // Constraint bounds (two representations supported by cuOpt)
+  // Constraint bounds (alternative to b + row_types)
   repeated double constraint_lower_bounds = 24;
   repeated double constraint_upper_bounds = 25;
-  bytes row_types = 26;  // char array of constraint types ('<', '>', '=')
+  bytes row_types = 26;  // char array: 'E' (=), 'L' (<=), 'G' (>=), 'N' (objective)
 
-  // Integer/binary variable indicators (for MIP)
-  repeated bool is_integer = 30;
-  repeated bool is_binary = 31;
+  // Variable types (matches data_model_view_t: variable_types_)
+  bytes variable_types = 30;  // char array: 'C' (continuous), 'I' (integer), 'B' (binary)
+
+  // Initial solutions (matches data_model_view_t)
+  repeated double initial_primal_solution = 40;
+  repeated double initial_dual_solution = 41;
+
+  // Quadratic objective matrix Q in CSR format for QPS (matches data_model_view_t: Q_objective_)
+  repeated double Q_values = 50;
+  repeated int32 Q_indices = 51;
+  repeated int32 Q_offsets = 52;
 }
 
 enum ProblemCategory {
@@ -69,23 +77,64 @@ enum ProblemCategory {
   IP_PROBLEM = 2;
 }
 
-// PDLP solver settings
-message PDLPSolverSettings {
-  // Termination criteria
-  double eps_optimal_absolute = 1;
-  double eps_optimal_relative = 2;
-  double eps_primal_infeasible = 3;
-  double eps_dual_infeasible = 4;
-  int32 time_sec_limit = 5;
-  int32 iteration_limit = 6;
+// PDLP solver mode enum (matches cuOpt pdlp_solver_mode_t)
+enum PDLPSolverMode {
+  PDLP_MODE_STABLE1 = 0;
+  PDLP_MODE_STABLE2 = 1;
+  PDLP_MODE_METHODICAL1 = 2;
+  PDLP_MODE_FAST1 = 3;
+  PDLP_MODE_STABLE3 = 4;
+}
 
-  // Algorithm parameters
-  double initial_primal_weight = 10;
-  double initial_step_size = 11;
-  int32 verbosity = 12;
+// LP solver method enum (matches cuOpt method_t)
+enum LPMethod {
+  METHOD_CONCURRENT = 0;
+  METHOD_PDLP = 1;
+  METHOD_DUAL_SIMPLEX = 2;
+  METHOD_BARRIER = 3;
+}
+
+// PDLP solver settings (field names match cuOpt Python/C++ API)
+message PDLPSolverSettings {
+  // Termination tolerances
+  double absolute_gap_tolerance = 1;
+  double relative_gap_tolerance = 2;
+  double primal_infeasible_tolerance = 3;
+  double dual_infeasible_tolerance = 4;
+  double absolute_dual_tolerance = 5;
+  double relative_dual_tolerance = 6;
+  double absolute_primal_tolerance = 7;
+  double relative_primal_tolerance = 8;
+
+  // Limits
+  double time_limit = 10;
+  int64 iteration_limit = 11;
+
+  // Solver configuration
+  bool log_to_console = 20;
+  bool detect_infeasibility = 21;
+  bool strict_infeasibility = 22;
+  PDLPSolverMode pdlp_solver_mode = 23;
+  LPMethod method = 24;
+  bool presolve = 25;
+  bool dual_postsolve = 26;
+  bool crossover = 27;
+  int32 num_gpus = 28;
+
+  // Advanced options
+  bool per_constraint_residual = 30;
+  bool cudss_deterministic = 31;
+  int32 folding = 32;
+  int32 augmented = 33;
+  int32 dualize = 34;
+  int32 ordering = 35;
+  int32 barrier_dual_initial_point = 36;
+  bool eliminate_dense_columns = 37;
+  bool save_best_primal_so_far = 38;
+  bool first_primal_feasible = 39;
 
   // Warm start data (if provided)
-  PDLPWarmStartData warm_start_data = 20;
+  PDLPWarmStartData warm_start_data = 50;
 }
 
 message PDLPWarmStartData {
@@ -109,12 +158,26 @@ message PDLPWarmStartData {
   int32 iterations_since_last_restart = 17;
 }
 
-// MIP solver settings
+// MIP solver settings (field names match cuOpt Python/C++ API)
 message MIPSolverSettings {
+  // Limits
   double time_limit = 1;
-  double mip_gap = 2;
-  int32 verbosity = 3;
-  // Additional MIP settings can be added here
+
+  // Tolerances
+  double relative_mip_gap = 2;
+  double absolute_mip_gap = 3;
+  double integrality_tolerance = 4;
+  double absolute_tolerance = 5;
+  double relative_tolerance = 6;
+  double presolve_absolute_tolerance = 7;
+
+  // Solver configuration
+  bool log_to_console = 10;
+  bool heuristics_only = 11;
+  int32 num_cpu_threads = 12;
+  int32 num_gpus = 13;
+  bool presolve = 14;
+  bool mip_scaling = 15;
 }
 
 // LP solve request

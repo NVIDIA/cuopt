@@ -136,12 +136,21 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
     // Serialize problem data
     serialize_problem_to_proto(view, request.mutable_problem());
 
-    // Serialize settings
+    // Serialize all MIP settings (names match cuOpt API)
     auto* pb_settings = request.mutable_settings();
     pb_settings->set_time_limit(settings.time_limit);
-    pb_settings->set_mip_gap(settings.tolerances.relative_mip_gap);
-    // Note: verbosity not directly available in mip_solver_settings_t
-    pb_settings->set_verbosity(0);
+    pb_settings->set_relative_mip_gap(settings.tolerances.relative_mip_gap);
+    pb_settings->set_absolute_mip_gap(settings.tolerances.absolute_mip_gap);
+    pb_settings->set_integrality_tolerance(settings.tolerances.integrality_tolerance);
+    pb_settings->set_absolute_tolerance(settings.tolerances.absolute_tolerance);
+    pb_settings->set_relative_tolerance(settings.tolerances.relative_tolerance);
+    pb_settings->set_presolve_absolute_tolerance(settings.tolerances.presolve_absolute_tolerance);
+    pb_settings->set_log_to_console(settings.log_to_console);
+    pb_settings->set_heuristics_only(settings.heuristics_only);
+    pb_settings->set_num_cpu_threads(settings.num_cpu_threads);
+    pb_settings->set_num_gpus(settings.num_gpus);
+    pb_settings->set_presolve(settings.presolve);
+    pb_settings->set_mip_scaling(settings.mip_scaling);
 
     // Serialize to bytes
     std::vector<uint8_t> result(request.ByteSizeLong());
@@ -326,10 +335,21 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
 
     serialize_problem_to_proto(view, mip_request->mutable_problem());
 
+    // Serialize all MIP settings (names match cuOpt API)
     auto* pb_settings = mip_request->mutable_settings();
     pb_settings->set_time_limit(settings.time_limit);
-    pb_settings->set_mip_gap(settings.tolerances.relative_mip_gap);
-    pb_settings->set_verbosity(0);
+    pb_settings->set_relative_mip_gap(settings.tolerances.relative_mip_gap);
+    pb_settings->set_absolute_mip_gap(settings.tolerances.absolute_mip_gap);
+    pb_settings->set_integrality_tolerance(settings.tolerances.integrality_tolerance);
+    pb_settings->set_absolute_tolerance(settings.tolerances.absolute_tolerance);
+    pb_settings->set_relative_tolerance(settings.tolerances.relative_tolerance);
+    pb_settings->set_presolve_absolute_tolerance(settings.tolerances.presolve_absolute_tolerance);
+    pb_settings->set_log_to_console(settings.log_to_console);
+    pb_settings->set_heuristics_only(settings.heuristics_only);
+    pb_settings->set_num_cpu_threads(settings.num_cpu_threads);
+    pb_settings->set_num_gpus(settings.num_gpus);
+    pb_settings->set_presolve(settings.presolve);
+    pb_settings->set_mip_scaling(settings.mip_scaling);
 
     std::vector<uint8_t> result(request.ByteSizeLong());
     request.SerializeToArray(result.data(), result.size());
@@ -804,22 +824,23 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
     const i_t* indices_ptr = indices_span.data();
     const i_t* offsets_ptr = offsets_span.data();
 
+    // Constraint matrix A in CSR format (field names match data_model_view_t)
     for (i_t i = 0; i < nnz; ++i) {
-      pb_problem->add_constraint_matrix_values(static_cast<double>(values_ptr[i]));
+      pb_problem->add_a_values(static_cast<double>(values_ptr[i]));
     }
     for (i_t i = 0; i < nnz; ++i) {
-      pb_problem->add_constraint_matrix_indices(static_cast<int32_t>(indices_ptr[i]));
+      pb_problem->add_a_indices(static_cast<int32_t>(indices_ptr[i]));
     }
     for (i_t i = 0; i <= n_rows; ++i) {
-      pb_problem->add_constraint_matrix_offsets(static_cast<int32_t>(offsets_ptr[i]));
+      pb_problem->add_a_offsets(static_cast<int32_t>(offsets_ptr[i]));
     }
 
-    // Objective coefficients
+    // Objective coefficients c (field name matches data_model_view_t: c_)
     auto obj_span      = view.get_objective_coefficients();
     auto n_cols        = static_cast<i_t>(obj_span.size());
     const f_t* obj_ptr = obj_span.data();
     for (i_t i = 0; i < n_cols; ++i) {
-      pb_problem->add_objective_coefficients(static_cast<double>(obj_ptr[i]));
+      pb_problem->add_c(static_cast<double>(obj_ptr[i]));
     }
 
     // Variable bounds
@@ -900,51 +921,130 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
       pb_problem->add_row_names(name);
     }
 
-    // Variable types (for MIP problems)
+    // Variable types (for MIP problems) - stored as bytes to match data_model_view_t
     auto var_types_span = view.get_variable_types();
     if (var_types_span.size() > 0) {
-      const char* var_types_ptr = var_types_span.data();
-      for (i_t i = 0; i < n_cols; ++i) {
-        char vtype = var_types_ptr[i];
-        // 'I' = integer, 'B' = binary, 'C' = continuous (default)
-        pb_problem->add_is_integer(vtype == 'I' || vtype == 'B');
-        pb_problem->add_is_binary(vtype == 'B');
+      pb_problem->set_variable_types(std::string(var_types_span.data(), var_types_span.size()));
+    }
+
+    // Row types - store directly as bytes
+    auto row_types_span = view.get_row_types();
+    if (row_types_span.size() > 0) {
+      pb_problem->set_row_types(std::string(row_types_span.data(), row_types_span.size()));
+    }
+
+    // Constraint bounds b (RHS) - store directly if available
+    auto b_span = view.get_constraint_bounds();
+    if (b_span.size() > 0) {
+      const f_t* b_ptr = b_span.data();
+      for (size_t i = 0; i < b_span.size(); ++i) {
+        pb_problem->add_b(static_cast<double>(b_ptr[i]));
       }
+    }
+
+    // Initial solutions (if available)
+    auto init_primal_span = view.get_initial_primal_solution();
+    if (init_primal_span.size() > 0) {
+      const f_t* init_primal_ptr = init_primal_span.data();
+      for (size_t i = 0; i < init_primal_span.size(); ++i) {
+        pb_problem->add_initial_primal_solution(static_cast<double>(init_primal_ptr[i]));
+      }
+    }
+
+    auto init_dual_span = view.get_initial_dual_solution();
+    if (init_dual_span.size() > 0) {
+      const f_t* init_dual_ptr = init_dual_span.data();
+      for (size_t i = 0; i < init_dual_span.size(); ++i) {
+        pb_problem->add_initial_dual_solution(static_cast<double>(init_dual_ptr[i]));
+      }
+    }
+
+    // Quadratic objective matrix Q (for QPS problems)
+    if (view.has_quadratic_objective()) {
+      auto q_values_span  = view.get_quadratic_objective_values();
+      auto q_indices_span = view.get_quadratic_objective_indices();
+      auto q_offsets_span = view.get_quadratic_objective_offsets();
+
+      const f_t* q_values_ptr  = q_values_span.data();
+      const i_t* q_indices_ptr = q_indices_span.data();
+      const i_t* q_offsets_ptr = q_offsets_span.data();
+
+      for (size_t i = 0; i < q_values_span.size(); ++i) {
+        pb_problem->add_q_values(static_cast<double>(q_values_ptr[i]));
+      }
+      for (size_t i = 0; i < q_indices_span.size(); ++i) {
+        pb_problem->add_q_indices(static_cast<int32_t>(q_indices_ptr[i]));
+      }
+      for (size_t i = 0; i < q_offsets_span.size(); ++i) {
+        pb_problem->add_q_offsets(static_cast<int32_t>(q_offsets_ptr[i]));
+      }
+    }
+  }
+
+  // Convert cuOpt pdlp_solver_mode_t to protobuf enum
+  cuopt::remote::PDLPSolverMode to_proto_pdlp_mode(pdlp_solver_mode_t mode)
+  {
+    switch (mode) {
+      case pdlp_solver_mode_t::Stable1: return cuopt::remote::PDLP_MODE_STABLE1;
+      case pdlp_solver_mode_t::Stable2: return cuopt::remote::PDLP_MODE_STABLE2;
+      case pdlp_solver_mode_t::Methodical1: return cuopt::remote::PDLP_MODE_METHODICAL1;
+      case pdlp_solver_mode_t::Fast1: return cuopt::remote::PDLP_MODE_FAST1;
+      case pdlp_solver_mode_t::Stable3: return cuopt::remote::PDLP_MODE_STABLE3;
+      default: return cuopt::remote::PDLP_MODE_STABLE3;
+    }
+  }
+
+  // Convert cuOpt method_t to protobuf enum
+  cuopt::remote::LPMethod to_proto_method(method_t method)
+  {
+    switch (method) {
+      case method_t::Concurrent: return cuopt::remote::METHOD_CONCURRENT;
+      case method_t::PDLP: return cuopt::remote::METHOD_PDLP;
+      case method_t::DualSimplex: return cuopt::remote::METHOD_DUAL_SIMPLEX;
+      case method_t::Barrier: return cuopt::remote::METHOD_BARRIER;
+      default: return cuopt::remote::METHOD_CONCURRENT;
     }
   }
 
   void serialize_lp_settings_to_proto(const pdlp_solver_settings_t<i_t, f_t>& settings,
                                       cuopt::remote::PDLPSolverSettings* pb_settings)
   {
-    // Map from cuOpt tolerances to protobuf settings
-    pb_settings->set_eps_optimal_absolute(settings.tolerances.absolute_gap_tolerance);
-    pb_settings->set_eps_optimal_relative(settings.tolerances.relative_gap_tolerance);
-    pb_settings->set_eps_primal_infeasible(settings.tolerances.primal_infeasible_tolerance);
-    pb_settings->set_eps_dual_infeasible(settings.tolerances.dual_infeasible_tolerance);
+    // Termination tolerances (all names match cuOpt API)
+    pb_settings->set_absolute_gap_tolerance(settings.tolerances.absolute_gap_tolerance);
+    pb_settings->set_relative_gap_tolerance(settings.tolerances.relative_gap_tolerance);
+    pb_settings->set_primal_infeasible_tolerance(settings.tolerances.primal_infeasible_tolerance);
+    pb_settings->set_dual_infeasible_tolerance(settings.tolerances.dual_infeasible_tolerance);
+    pb_settings->set_absolute_dual_tolerance(settings.tolerances.absolute_dual_tolerance);
+    pb_settings->set_relative_dual_tolerance(settings.tolerances.relative_dual_tolerance);
+    pb_settings->set_absolute_primal_tolerance(settings.tolerances.absolute_primal_tolerance);
+    pb_settings->set_relative_primal_tolerance(settings.tolerances.relative_primal_tolerance);
 
-    // Handle infinity time_limit: use -1 to signal "no limit" in the protobuf
-    // This avoids undefined behavior when casting infinity to int32_t
-    int32_t time_limit_sec = -1;  // -1 means no limit
-    if (std::isfinite(settings.time_limit) && settings.time_limit > 0) {
-      time_limit_sec = static_cast<int32_t>(
-        std::min(settings.time_limit, static_cast<double>(std::numeric_limits<int32_t>::max())));
-    }
-    pb_settings->set_time_sec_limit(time_limit_sec);
+    // Limits
+    pb_settings->set_time_limit(settings.time_limit);
+    pb_settings->set_iteration_limit(static_cast<int64_t>(settings.iteration_limit));
 
-    // Handle max iteration limit similarly
-    int32_t iter_limit = -1;  // -1 means no limit
-    if (settings.iteration_limit > 0 &&
-        settings.iteration_limit < std::numeric_limits<i_t>::max()) {
-      iter_limit =
-        static_cast<int32_t>(std::min(static_cast<int64_t>(settings.iteration_limit),
-                                      static_cast<int64_t>(std::numeric_limits<int32_t>::max())));
-    }
-    pb_settings->set_iteration_limit(iter_limit);
+    // Solver configuration
+    pb_settings->set_log_to_console(settings.log_to_console);
+    pb_settings->set_detect_infeasibility(settings.detect_infeasibility);
+    pb_settings->set_strict_infeasibility(settings.strict_infeasibility);
+    pb_settings->set_pdlp_solver_mode(to_proto_pdlp_mode(settings.pdlp_solver_mode));
+    pb_settings->set_method(to_proto_method(settings.method));
+    pb_settings->set_presolve(settings.presolve);
+    pb_settings->set_dual_postsolve(settings.dual_postsolve);
+    pb_settings->set_crossover(settings.crossover);
+    pb_settings->set_num_gpus(settings.num_gpus);
 
-    // initial_primal_weight and initial_step_size are not directly accessible, use defaults
-    pb_settings->set_initial_primal_weight(1.0);
-    pb_settings->set_initial_step_size(1.0);
-    pb_settings->set_verbosity(settings.log_to_console ? 1 : 0);
+    // Advanced options
+    pb_settings->set_per_constraint_residual(settings.per_constraint_residual);
+    pb_settings->set_cudss_deterministic(settings.cudss_deterministic);
+    pb_settings->set_folding(settings.folding);
+    pb_settings->set_augmented(settings.augmented);
+    pb_settings->set_dualize(settings.dualize);
+    pb_settings->set_ordering(settings.ordering);
+    pb_settings->set_barrier_dual_initial_point(settings.barrier_dual_initial_point);
+    pb_settings->set_eliminate_dense_columns(settings.eliminate_dense_columns);
+    pb_settings->set_save_best_primal_so_far(settings.save_best_primal_so_far);
+    pb_settings->set_first_primal_feasible(settings.first_primal_feasible);
   }
 
   //============================================================================
@@ -960,13 +1060,10 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
     mps_data.set_objective_scaling_factor(pb_problem.objective_scaling_factor());
     mps_data.set_objective_offset(pb_problem.objective_offset());
 
-    // Copy constraint matrix - mps_data_model_t copies the data
-    std::vector<f_t> values(pb_problem.constraint_matrix_values().begin(),
-                            pb_problem.constraint_matrix_values().end());
-    std::vector<i_t> indices(pb_problem.constraint_matrix_indices().begin(),
-                             pb_problem.constraint_matrix_indices().end());
-    std::vector<i_t> offsets(pb_problem.constraint_matrix_offsets().begin(),
-                             pb_problem.constraint_matrix_offsets().end());
+    // Constraint matrix A in CSR format (field names match data_model_view_t)
+    std::vector<f_t> values(pb_problem.a_values().begin(), pb_problem.a_values().end());
+    std::vector<i_t> indices(pb_problem.a_indices().begin(), pb_problem.a_indices().end());
+    std::vector<i_t> offsets(pb_problem.a_offsets().begin(), pb_problem.a_offsets().end());
 
     mps_data.set_csr_constraint_matrix(values.data(),
                                        static_cast<i_t>(values.size()),
@@ -975,9 +1072,8 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
                                        offsets.data(),
                                        static_cast<i_t>(offsets.size()));
 
-    // Objective coefficients
-    std::vector<f_t> obj(pb_problem.objective_coefficients().begin(),
-                         pb_problem.objective_coefficients().end());
+    // Objective coefficients c
+    std::vector<f_t> obj(pb_problem.c().begin(), pb_problem.c().end());
     mps_data.set_objective_coefficients(obj.data(), static_cast<i_t>(obj.size()));
 
     // Variable bounds
@@ -988,13 +1084,24 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
     mps_data.set_variable_lower_bounds(var_lb.data(), static_cast<i_t>(var_lb.size()));
     mps_data.set_variable_upper_bounds(var_ub.data(), static_cast<i_t>(var_ub.size()));
 
-    // Constraint bounds
-    std::vector<f_t> con_lb(pb_problem.constraint_lower_bounds().begin(),
-                            pb_problem.constraint_lower_bounds().end());
-    std::vector<f_t> con_ub(pb_problem.constraint_upper_bounds().begin(),
-                            pb_problem.constraint_upper_bounds().end());
-    mps_data.set_constraint_lower_bounds(con_lb.data(), static_cast<i_t>(con_lb.size()));
-    mps_data.set_constraint_upper_bounds(con_ub.data(), static_cast<i_t>(con_ub.size()));
+    // Constraint bounds (prefer lower/upper bounds if available)
+    if (pb_problem.constraint_lower_bounds_size() > 0) {
+      std::vector<f_t> con_lb(pb_problem.constraint_lower_bounds().begin(),
+                              pb_problem.constraint_lower_bounds().end());
+      std::vector<f_t> con_ub(pb_problem.constraint_upper_bounds().begin(),
+                              pb_problem.constraint_upper_bounds().end());
+      mps_data.set_constraint_lower_bounds(con_lb.data(), static_cast<i_t>(con_lb.size()));
+      mps_data.set_constraint_upper_bounds(con_ub.data(), static_cast<i_t>(con_ub.size()));
+    } else if (pb_problem.b_size() > 0) {
+      // Use b (RHS) + row_types format
+      std::vector<f_t> b(pb_problem.b().begin(), pb_problem.b().end());
+      mps_data.set_constraint_bounds(b.data(), static_cast<i_t>(b.size()));
+
+      if (!pb_problem.row_types().empty()) {
+        const std::string& row_types = pb_problem.row_types();
+        mps_data.set_row_types(row_types.data(), static_cast<i_t>(row_types.size()));
+      }
+    }
 
     // Variable names
     if (pb_problem.variable_names_size() > 0) {
@@ -1010,56 +1117,129 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
       mps_data.set_row_names(row_names);
     }
 
-    // Variable types (for MIP problems)
-    // is_integer and is_binary arrays indicate variable types
-    if (pb_problem.is_integer_size() > 0) {
-      i_t n_vars = static_cast<i_t>(pb_problem.is_integer_size());
-      std::vector<char> var_types(n_vars, 'C');  // Default to continuous
-      for (i_t i = 0; i < n_vars; ++i) {
-        if (pb_problem.is_binary_size() > i && pb_problem.is_binary(i)) {
-          var_types[i] = 'B';  // Binary
-        } else if (pb_problem.is_integer(i)) {
-          var_types[i] = 'I';  // Integer
-        }
-      }
+    // Variable types (stored as bytes, matching data_model_view_t)
+    if (!pb_problem.variable_types().empty()) {
+      const std::string& var_types_str = pb_problem.variable_types();
+      std::vector<char> var_types(var_types_str.begin(), var_types_str.end());
       mps_data.set_variable_types(var_types);
+    }
+
+    // Initial solutions (if provided)
+    if (pb_problem.initial_primal_solution_size() > 0) {
+      std::vector<f_t> init_primal(pb_problem.initial_primal_solution().begin(),
+                                   pb_problem.initial_primal_solution().end());
+      mps_data.set_initial_primal_solution(init_primal.data(),
+                                           static_cast<i_t>(init_primal.size()));
+    }
+
+    if (pb_problem.initial_dual_solution_size() > 0) {
+      std::vector<f_t> init_dual(pb_problem.initial_dual_solution().begin(),
+                                 pb_problem.initial_dual_solution().end());
+      mps_data.set_initial_dual_solution(init_dual.data(), static_cast<i_t>(init_dual.size()));
+    }
+
+    // Quadratic objective matrix Q (for QPS problems)
+    if (pb_problem.q_values_size() > 0) {
+      std::vector<f_t> q_values(pb_problem.q_values().begin(), pb_problem.q_values().end());
+      std::vector<i_t> q_indices(pb_problem.q_indices().begin(), pb_problem.q_indices().end());
+      std::vector<i_t> q_offsets(pb_problem.q_offsets().begin(), pb_problem.q_offsets().end());
+
+      mps_data.set_quadratic_objective_matrix(q_values.data(),
+                                              static_cast<i_t>(q_values.size()),
+                                              q_indices.data(),
+                                              static_cast<i_t>(q_indices.size()),
+                                              q_offsets.data(),
+                                              static_cast<i_t>(q_offsets.size()));
+    }
+  }
+
+  // Convert protobuf enum to cuOpt pdlp_solver_mode_t
+  pdlp_solver_mode_t from_proto_pdlp_mode(cuopt::remote::PDLPSolverMode mode)
+  {
+    switch (mode) {
+      case cuopt::remote::PDLP_MODE_STABLE1: return pdlp_solver_mode_t::Stable1;
+      case cuopt::remote::PDLP_MODE_STABLE2: return pdlp_solver_mode_t::Stable2;
+      case cuopt::remote::PDLP_MODE_METHODICAL1: return pdlp_solver_mode_t::Methodical1;
+      case cuopt::remote::PDLP_MODE_FAST1: return pdlp_solver_mode_t::Fast1;
+      case cuopt::remote::PDLP_MODE_STABLE3: return pdlp_solver_mode_t::Stable3;
+      default: return pdlp_solver_mode_t::Stable3;
+    }
+  }
+
+  // Convert protobuf enum to cuOpt method_t
+  method_t from_proto_method(cuopt::remote::LPMethod method)
+  {
+    switch (method) {
+      case cuopt::remote::METHOD_CONCURRENT: return method_t::Concurrent;
+      case cuopt::remote::METHOD_PDLP: return method_t::PDLP;
+      case cuopt::remote::METHOD_DUAL_SIMPLEX: return method_t::DualSimplex;
+      case cuopt::remote::METHOD_BARRIER: return method_t::Barrier;
+      default: return method_t::Concurrent;
     }
   }
 
   void proto_to_lp_settings(const cuopt::remote::PDLPSolverSettings& pb_settings,
                             pdlp_solver_settings_t<i_t, f_t>& settings)
   {
-    // Map from protobuf settings to cuOpt tolerances
-    settings.tolerances.absolute_gap_tolerance      = pb_settings.eps_optimal_absolute();
-    settings.tolerances.relative_gap_tolerance      = pb_settings.eps_optimal_relative();
-    settings.tolerances.primal_infeasible_tolerance = pb_settings.eps_primal_infeasible();
-    settings.tolerances.dual_infeasible_tolerance   = pb_settings.eps_dual_infeasible();
+    // Termination tolerances (all names match cuOpt API)
+    settings.tolerances.absolute_gap_tolerance      = pb_settings.absolute_gap_tolerance();
+    settings.tolerances.relative_gap_tolerance      = pb_settings.relative_gap_tolerance();
+    settings.tolerances.primal_infeasible_tolerance = pb_settings.primal_infeasible_tolerance();
+    settings.tolerances.dual_infeasible_tolerance   = pb_settings.dual_infeasible_tolerance();
+    settings.tolerances.absolute_dual_tolerance     = pb_settings.absolute_dual_tolerance();
+    settings.tolerances.relative_dual_tolerance     = pb_settings.relative_dual_tolerance();
+    settings.tolerances.absolute_primal_tolerance   = pb_settings.absolute_primal_tolerance();
+    settings.tolerances.relative_primal_tolerance   = pb_settings.relative_primal_tolerance();
 
-    // Handle time limit: -1 or 0 means no limit (infinity)
-    int32_t time_limit_sec = pb_settings.time_sec_limit();
-    if (time_limit_sec <= 0) {
-      settings.time_limit = std::numeric_limits<double>::infinity();
-    } else {
-      settings.time_limit = static_cast<double>(time_limit_sec);
-    }
+    // Limits
+    settings.time_limit      = pb_settings.time_limit();
+    settings.iteration_limit = static_cast<i_t>(pb_settings.iteration_limit());
 
-    // Handle iteration limit: -1 or 0 means no limit
-    int32_t iter_limit = pb_settings.iteration_limit();
-    if (iter_limit <= 0) {
-      settings.iteration_limit = std::numeric_limits<i_t>::max();
-    } else {
-      settings.iteration_limit = static_cast<i_t>(iter_limit);
-    }
+    // Solver configuration
+    settings.log_to_console       = pb_settings.log_to_console();
+    settings.detect_infeasibility = pb_settings.detect_infeasibility();
+    settings.strict_infeasibility = pb_settings.strict_infeasibility();
+    settings.pdlp_solver_mode     = from_proto_pdlp_mode(pb_settings.pdlp_solver_mode());
+    settings.method               = from_proto_method(pb_settings.method());
+    settings.presolve             = pb_settings.presolve();
+    settings.dual_postsolve       = pb_settings.dual_postsolve();
+    settings.crossover            = pb_settings.crossover();
+    settings.num_gpus             = pb_settings.num_gpus();
 
-    settings.log_to_console = pb_settings.verbosity() > 0;
+    // Advanced options
+    settings.per_constraint_residual    = pb_settings.per_constraint_residual();
+    settings.cudss_deterministic        = pb_settings.cudss_deterministic();
+    settings.folding                    = pb_settings.folding();
+    settings.augmented                  = pb_settings.augmented();
+    settings.dualize                    = pb_settings.dualize();
+    settings.ordering                   = pb_settings.ordering();
+    settings.barrier_dual_initial_point = pb_settings.barrier_dual_initial_point();
+    settings.eliminate_dense_columns    = pb_settings.eliminate_dense_columns();
+    settings.save_best_primal_so_far    = pb_settings.save_best_primal_so_far();
+    settings.first_primal_feasible      = pb_settings.first_primal_feasible();
   }
 
   void proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settings,
                              mip_solver_settings_t<i_t, f_t>& settings)
   {
-    settings.time_limit                  = pb_settings.time_limit();
-    settings.tolerances.relative_mip_gap = pb_settings.mip_gap();
-    // Note: verbosity not directly supported in mip_solver_settings_t
+    // Limits
+    settings.time_limit = pb_settings.time_limit();
+
+    // Tolerances (all names match cuOpt API)
+    settings.tolerances.relative_mip_gap            = pb_settings.relative_mip_gap();
+    settings.tolerances.absolute_mip_gap            = pb_settings.absolute_mip_gap();
+    settings.tolerances.integrality_tolerance       = pb_settings.integrality_tolerance();
+    settings.tolerances.absolute_tolerance          = pb_settings.absolute_tolerance();
+    settings.tolerances.relative_tolerance          = pb_settings.relative_tolerance();
+    settings.tolerances.presolve_absolute_tolerance = pb_settings.presolve_absolute_tolerance();
+
+    // Solver configuration
+    settings.log_to_console  = pb_settings.log_to_console();
+    settings.heuristics_only = pb_settings.heuristics_only();
+    settings.num_cpu_threads = pb_settings.num_cpu_threads();
+    settings.num_gpus        = pb_settings.num_gpus();
+    settings.presolve        = pb_settings.presolve();
+    settings.mip_scaling     = pb_settings.mip_scaling();
   }
 
   //============================================================================

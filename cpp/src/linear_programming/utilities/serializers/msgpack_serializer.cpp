@@ -68,16 +68,70 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     pk.pack_uint32(protocol_version());
     pack_problem(pk, view);
 
-    // Pack LP settings
-    pk.pack_map(4);
+    // Pack all LP settings (field names match cuOpt API)
+    pk.pack_map(28);
+    // Termination tolerances
+    pk.pack("absolute_gap_tolerance");
+    pk.pack(settings.tolerances.absolute_gap_tolerance);
+    pk.pack("relative_gap_tolerance");
+    pk.pack(settings.tolerances.relative_gap_tolerance);
+    pk.pack("primal_infeasible_tolerance");
+    pk.pack(settings.tolerances.primal_infeasible_tolerance);
+    pk.pack("dual_infeasible_tolerance");
+    pk.pack(settings.tolerances.dual_infeasible_tolerance);
+    pk.pack("absolute_dual_tolerance");
+    pk.pack(settings.tolerances.absolute_dual_tolerance);
+    pk.pack("relative_dual_tolerance");
+    pk.pack(settings.tolerances.relative_dual_tolerance);
+    pk.pack("absolute_primal_tolerance");
+    pk.pack(settings.tolerances.absolute_primal_tolerance);
+    pk.pack("relative_primal_tolerance");
+    pk.pack(settings.tolerances.relative_primal_tolerance);
+    // Limits
     pk.pack("time_limit");
     pk.pack(settings.time_limit);
     pk.pack("iteration_limit");
     pk.pack(static_cast<int64_t>(settings.iteration_limit));
-    pk.pack("abs_gap_tol");
-    pk.pack(settings.tolerances.absolute_gap_tolerance);
-    pk.pack("rel_gap_tol");
-    pk.pack(settings.tolerances.relative_gap_tolerance);
+    // Solver configuration
+    pk.pack("log_to_console");
+    pk.pack(settings.log_to_console);
+    pk.pack("detect_infeasibility");
+    pk.pack(settings.detect_infeasibility);
+    pk.pack("strict_infeasibility");
+    pk.pack(settings.strict_infeasibility);
+    pk.pack("pdlp_solver_mode");
+    pk.pack(static_cast<int>(settings.pdlp_solver_mode));
+    pk.pack("method");
+    pk.pack(static_cast<int>(settings.method));
+    pk.pack("presolve");
+    pk.pack(settings.presolve);
+    pk.pack("dual_postsolve");
+    pk.pack(settings.dual_postsolve);
+    pk.pack("crossover");
+    pk.pack(settings.crossover);
+    pk.pack("num_gpus");
+    pk.pack(settings.num_gpus);
+    // Advanced options
+    pk.pack("per_constraint_residual");
+    pk.pack(settings.per_constraint_residual);
+    pk.pack("cudss_deterministic");
+    pk.pack(settings.cudss_deterministic);
+    pk.pack("folding");
+    pk.pack(settings.folding);
+    pk.pack("augmented");
+    pk.pack(settings.augmented);
+    pk.pack("dualize");
+    pk.pack(settings.dualize);
+    pk.pack("ordering");
+    pk.pack(settings.ordering);
+    pk.pack("barrier_dual_initial_point");
+    pk.pack(settings.barrier_dual_initial_point);
+    pk.pack("eliminate_dense_columns");
+    pk.pack(settings.eliminate_dense_columns);
+    pk.pack("save_best_primal_so_far");
+    pk.pack(settings.save_best_primal_so_far);
+    pk.pack("first_primal_feasible");
+    pk.pack(settings.first_primal_feasible);
 
     return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
   }
@@ -93,11 +147,37 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     pk.pack_uint32(protocol_version());
     pack_problem(pk, view);
 
-    pk.pack_map(2);
+    // Pack all MIP settings (field names match cuOpt API)
+    pk.pack_map(13);
+    // Limits
     pk.pack("time_limit");
     pk.pack(settings.time_limit);
-    pk.pack("mip_gap");
+    // Tolerances
+    pk.pack("relative_mip_gap");
     pk.pack(settings.tolerances.relative_mip_gap);
+    pk.pack("absolute_mip_gap");
+    pk.pack(settings.tolerances.absolute_mip_gap);
+    pk.pack("integrality_tolerance");
+    pk.pack(settings.tolerances.integrality_tolerance);
+    pk.pack("absolute_tolerance");
+    pk.pack(settings.tolerances.absolute_tolerance);
+    pk.pack("relative_tolerance");
+    pk.pack(settings.tolerances.relative_tolerance);
+    pk.pack("presolve_absolute_tolerance");
+    pk.pack(settings.tolerances.presolve_absolute_tolerance);
+    // Solver configuration
+    pk.pack("log_to_console");
+    pk.pack(settings.log_to_console);
+    pk.pack("heuristics_only");
+    pk.pack(settings.heuristics_only);
+    pk.pack("num_cpu_threads");
+    pk.pack(settings.num_cpu_threads);
+    pk.pack("num_gpus");
+    pk.pack(settings.num_gpus);
+    pk.pack("presolve");
+    pk.pack(settings.presolve);
+    pk.pack("mip_scaling");
+    pk.pack(settings.mip_scaling);
 
     return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
   }
@@ -229,17 +309,102 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
         msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
       auto settings_map = oh_settings.get().as<std::map<std::string, msgpack::object>>();
 
+      // Deserialize all LP settings (field names match cuOpt API)
+      // Termination tolerances
+      if (settings_map.count("absolute_gap_tolerance")) {
+        settings.tolerances.absolute_gap_tolerance =
+          settings_map["absolute_gap_tolerance"].as<double>();
+      }
+      if (settings_map.count("relative_gap_tolerance")) {
+        settings.tolerances.relative_gap_tolerance =
+          settings_map["relative_gap_tolerance"].as<double>();
+      }
+      if (settings_map.count("primal_infeasible_tolerance")) {
+        settings.tolerances.primal_infeasible_tolerance =
+          settings_map["primal_infeasible_tolerance"].as<double>();
+      }
+      if (settings_map.count("dual_infeasible_tolerance")) {
+        settings.tolerances.dual_infeasible_tolerance =
+          settings_map["dual_infeasible_tolerance"].as<double>();
+      }
+      if (settings_map.count("absolute_dual_tolerance")) {
+        settings.tolerances.absolute_dual_tolerance =
+          settings_map["absolute_dual_tolerance"].as<double>();
+      }
+      if (settings_map.count("relative_dual_tolerance")) {
+        settings.tolerances.relative_dual_tolerance =
+          settings_map["relative_dual_tolerance"].as<double>();
+      }
+      if (settings_map.count("absolute_primal_tolerance")) {
+        settings.tolerances.absolute_primal_tolerance =
+          settings_map["absolute_primal_tolerance"].as<double>();
+      }
+      if (settings_map.count("relative_primal_tolerance")) {
+        settings.tolerances.relative_primal_tolerance =
+          settings_map["relative_primal_tolerance"].as<double>();
+      }
+      // Limits
       if (settings_map.count("time_limit")) {
         settings.time_limit = settings_map["time_limit"].as<double>();
       }
       if (settings_map.count("iteration_limit")) {
         settings.iteration_limit = settings_map["iteration_limit"].as<i_t>();
       }
-      if (settings_map.count("abs_gap_tol")) {
-        settings.tolerances.absolute_gap_tolerance = settings_map["abs_gap_tol"].as<double>();
+      // Solver configuration
+      if (settings_map.count("log_to_console")) {
+        settings.log_to_console = settings_map["log_to_console"].as<bool>();
       }
-      if (settings_map.count("rel_gap_tol")) {
-        settings.tolerances.relative_gap_tolerance = settings_map["rel_gap_tol"].as<double>();
+      if (settings_map.count("detect_infeasibility")) {
+        settings.detect_infeasibility = settings_map["detect_infeasibility"].as<bool>();
+      }
+      if (settings_map.count("strict_infeasibility")) {
+        settings.strict_infeasibility = settings_map["strict_infeasibility"].as<bool>();
+      }
+      if (settings_map.count("pdlp_solver_mode")) {
+        settings.pdlp_solver_mode =
+          static_cast<pdlp_solver_mode_t>(settings_map["pdlp_solver_mode"].as<int>());
+      }
+      if (settings_map.count("method")) {
+        settings.method = static_cast<method_t>(settings_map["method"].as<int>());
+      }
+      if (settings_map.count("presolve")) {
+        settings.presolve = settings_map["presolve"].as<bool>();
+      }
+      if (settings_map.count("dual_postsolve")) {
+        settings.dual_postsolve = settings_map["dual_postsolve"].as<bool>();
+      }
+      if (settings_map.count("crossover")) {
+        settings.crossover = settings_map["crossover"].as<bool>();
+      }
+      if (settings_map.count("num_gpus")) {
+        settings.num_gpus = settings_map["num_gpus"].as<int>();
+      }
+      // Advanced options
+      if (settings_map.count("per_constraint_residual")) {
+        settings.per_constraint_residual = settings_map["per_constraint_residual"].as<bool>();
+      }
+      if (settings_map.count("cudss_deterministic")) {
+        settings.cudss_deterministic = settings_map["cudss_deterministic"].as<bool>();
+      }
+      if (settings_map.count("folding")) { settings.folding = settings_map["folding"].as<i_t>(); }
+      if (settings_map.count("augmented")) {
+        settings.augmented = settings_map["augmented"].as<i_t>();
+      }
+      if (settings_map.count("dualize")) { settings.dualize = settings_map["dualize"].as<i_t>(); }
+      if (settings_map.count("ordering")) {
+        settings.ordering = settings_map["ordering"].as<i_t>();
+      }
+      if (settings_map.count("barrier_dual_initial_point")) {
+        settings.barrier_dual_initial_point = settings_map["barrier_dual_initial_point"].as<i_t>();
+      }
+      if (settings_map.count("eliminate_dense_columns")) {
+        settings.eliminate_dense_columns = settings_map["eliminate_dense_columns"].as<bool>();
+      }
+      if (settings_map.count("save_best_primal_so_far")) {
+        settings.save_best_primal_so_far = settings_map["save_best_primal_so_far"].as<bool>();
+      }
+      if (settings_map.count("first_primal_feasible")) {
+        settings.first_primal_feasible = settings_map["first_primal_feasible"].as<bool>();
       }
 
       return true;
@@ -270,11 +435,50 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
         msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
       auto settings_map = oh_settings.get().as<std::map<std::string, msgpack::object>>();
 
+      // Deserialize all MIP settings (field names match cuOpt API)
+      // Limits
       if (settings_map.count("time_limit")) {
         settings.time_limit = settings_map["time_limit"].as<double>();
       }
-      if (settings_map.count("mip_gap")) {
-        settings.tolerances.relative_mip_gap = settings_map["mip_gap"].as<double>();
+      // Tolerances
+      if (settings_map.count("relative_mip_gap")) {
+        settings.tolerances.relative_mip_gap = settings_map["relative_mip_gap"].as<double>();
+      }
+      if (settings_map.count("absolute_mip_gap")) {
+        settings.tolerances.absolute_mip_gap = settings_map["absolute_mip_gap"].as<double>();
+      }
+      if (settings_map.count("integrality_tolerance")) {
+        settings.tolerances.integrality_tolerance =
+          settings_map["integrality_tolerance"].as<double>();
+      }
+      if (settings_map.count("absolute_tolerance")) {
+        settings.tolerances.absolute_tolerance = settings_map["absolute_tolerance"].as<double>();
+      }
+      if (settings_map.count("relative_tolerance")) {
+        settings.tolerances.relative_tolerance = settings_map["relative_tolerance"].as<double>();
+      }
+      if (settings_map.count("presolve_absolute_tolerance")) {
+        settings.tolerances.presolve_absolute_tolerance =
+          settings_map["presolve_absolute_tolerance"].as<double>();
+      }
+      // Solver configuration
+      if (settings_map.count("log_to_console")) {
+        settings.log_to_console = settings_map["log_to_console"].as<bool>();
+      }
+      if (settings_map.count("heuristics_only")) {
+        settings.heuristics_only = settings_map["heuristics_only"].as<bool>();
+      }
+      if (settings_map.count("num_cpu_threads")) {
+        settings.num_cpu_threads = settings_map["num_cpu_threads"].as<i_t>();
+      }
+      if (settings_map.count("num_gpus")) {
+        settings.num_gpus = settings_map["num_gpus"].as<i_t>();
+      }
+      if (settings_map.count("presolve")) {
+        settings.presolve = settings_map["presolve"].as<bool>();
+      }
+      if (settings_map.count("mip_scaling")) {
+        settings.mip_scaling = settings_map["mip_scaling"].as<bool>();
       }
 
       return true;
@@ -369,16 +573,70 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     pk.pack_uint32(protocol_version());
     pack_problem(pk, view);
 
-    // Pack LP settings
-    pk.pack_map(4);
+    // Pack all LP settings (field names match cuOpt API)
+    pk.pack_map(28);
+    // Termination tolerances
+    pk.pack("absolute_gap_tolerance");
+    pk.pack(settings.tolerances.absolute_gap_tolerance);
+    pk.pack("relative_gap_tolerance");
+    pk.pack(settings.tolerances.relative_gap_tolerance);
+    pk.pack("primal_infeasible_tolerance");
+    pk.pack(settings.tolerances.primal_infeasible_tolerance);
+    pk.pack("dual_infeasible_tolerance");
+    pk.pack(settings.tolerances.dual_infeasible_tolerance);
+    pk.pack("absolute_dual_tolerance");
+    pk.pack(settings.tolerances.absolute_dual_tolerance);
+    pk.pack("relative_dual_tolerance");
+    pk.pack(settings.tolerances.relative_dual_tolerance);
+    pk.pack("absolute_primal_tolerance");
+    pk.pack(settings.tolerances.absolute_primal_tolerance);
+    pk.pack("relative_primal_tolerance");
+    pk.pack(settings.tolerances.relative_primal_tolerance);
+    // Limits
     pk.pack("time_limit");
     pk.pack(settings.time_limit);
     pk.pack("iteration_limit");
     pk.pack(static_cast<int64_t>(settings.iteration_limit));
-    pk.pack("abs_gap_tol");
-    pk.pack(settings.tolerances.absolute_gap_tolerance);
-    pk.pack("rel_gap_tol");
-    pk.pack(settings.tolerances.relative_gap_tolerance);
+    // Solver configuration
+    pk.pack("log_to_console");
+    pk.pack(settings.log_to_console);
+    pk.pack("detect_infeasibility");
+    pk.pack(settings.detect_infeasibility);
+    pk.pack("strict_infeasibility");
+    pk.pack(settings.strict_infeasibility);
+    pk.pack("pdlp_solver_mode");
+    pk.pack(static_cast<int>(settings.pdlp_solver_mode));
+    pk.pack("method");
+    pk.pack(static_cast<int>(settings.method));
+    pk.pack("presolve");
+    pk.pack(settings.presolve);
+    pk.pack("dual_postsolve");
+    pk.pack(settings.dual_postsolve);
+    pk.pack("crossover");
+    pk.pack(settings.crossover);
+    pk.pack("num_gpus");
+    pk.pack(settings.num_gpus);
+    // Advanced options
+    pk.pack("per_constraint_residual");
+    pk.pack(settings.per_constraint_residual);
+    pk.pack("cudss_deterministic");
+    pk.pack(settings.cudss_deterministic);
+    pk.pack("folding");
+    pk.pack(settings.folding);
+    pk.pack("augmented");
+    pk.pack(settings.augmented);
+    pk.pack("dualize");
+    pk.pack(settings.dualize);
+    pk.pack("ordering");
+    pk.pack(settings.ordering);
+    pk.pack("barrier_dual_initial_point");
+    pk.pack(settings.barrier_dual_initial_point);
+    pk.pack("eliminate_dense_columns");
+    pk.pack(settings.eliminate_dense_columns);
+    pk.pack("save_best_primal_so_far");
+    pk.pack(settings.save_best_primal_so_far);
+    pk.pack("first_primal_feasible");
+    pk.pack(settings.first_primal_feasible);
 
     return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
   }
@@ -401,11 +659,37 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     pk.pack_uint32(protocol_version());
     pack_problem(pk, view);
 
-    pk.pack_map(2);
+    // Pack all MIP settings (field names match cuOpt API)
+    pk.pack_map(13);
+    // Limits
     pk.pack("time_limit");
     pk.pack(settings.time_limit);
-    pk.pack("mip_gap");
+    // Tolerances
+    pk.pack("relative_mip_gap");
     pk.pack(settings.tolerances.relative_mip_gap);
+    pk.pack("absolute_mip_gap");
+    pk.pack(settings.tolerances.absolute_mip_gap);
+    pk.pack("integrality_tolerance");
+    pk.pack(settings.tolerances.integrality_tolerance);
+    pk.pack("absolute_tolerance");
+    pk.pack(settings.tolerances.absolute_tolerance);
+    pk.pack("relative_tolerance");
+    pk.pack(settings.tolerances.relative_tolerance);
+    pk.pack("presolve_absolute_tolerance");
+    pk.pack(settings.tolerances.presolve_absolute_tolerance);
+    // Solver configuration
+    pk.pack("log_to_console");
+    pk.pack(settings.log_to_console);
+    pk.pack("heuristics_only");
+    pk.pack(settings.heuristics_only);
+    pk.pack("num_cpu_threads");
+    pk.pack(settings.num_cpu_threads);
+    pk.pack("num_gpus");
+    pk.pack(settings.num_gpus);
+    pk.pack("presolve");
+    pk.pack(settings.presolve);
+    pk.pack("mip_scaling");
+    pk.pack(settings.mip_scaling);
 
     return std::vector<uint8_t>(buffer.data(), buffer.data() + buffer.size());
   }
@@ -840,6 +1124,7 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
   void pack_problem(msgpack::packer<msgpack::sbuffer>& pk,
                     const mps_parser::data_model_view_t<i_t, f_t>& view)
   {
+    // Field names match data_model_view_t (without trailing underscore)
     auto offsets_span = view.get_constraint_matrix_offsets();
     auto values_span  = view.get_constraint_matrix_values();
     auto obj_span     = view.get_objective_coefficients();
@@ -848,26 +1133,41 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     i_t n_cols = static_cast<i_t>(obj_span.size());
     i_t nnz    = static_cast<i_t>(values_span.size());
 
-    pk.pack_map(13);
+    // Count fields: base 20, plus optional fields
+    int num_fields        = 20;
+    auto init_primal_span = view.get_initial_primal_solution();
+    auto init_dual_span   = view.get_initial_dual_solution();
+    if (init_primal_span.size() > 0) num_fields++;
+    if (init_dual_span.size() > 0) num_fields++;
+    if (view.has_quadratic_objective()) num_fields += 3;
 
+    pk.pack_map(num_fields);
+
+    // Problem metadata
+    pk.pack("problem_name");
+    pk.pack(view.get_problem_name());
+    pk.pack("objective_name");
+    pk.pack(view.get_objective_name());
+    pk.pack("maximize");
+    pk.pack(view.get_sense());
+    pk.pack("objective_scaling_factor");
+    pk.pack(static_cast<double>(view.get_objective_scaling_factor()));
+    pk.pack("objective_offset");
+    pk.pack(static_cast<double>(view.get_objective_offset()));
+
+    // Dimensions
     pk.pack("n_rows");
     pk.pack(static_cast<int64_t>(n_rows));
-
     pk.pack("n_cols");
     pk.pack(static_cast<int64_t>(n_cols));
-
     pk.pack("nnz");
     pk.pack(static_cast<int64_t>(nnz));
 
-    pk.pack("maximize");
-    pk.pack(view.get_sense());
-
-    // CSR matrix
+    // Constraint matrix A in CSR format (names match data_model_view_t: A_, A_indices_, A_offsets_)
     pk.pack("A_values");
-    auto A_vals = view.get_constraint_matrix_values();
-    pk.pack_array(A_vals.size());
-    for (size_t i = 0; i < A_vals.size(); ++i) {
-      pk.pack(static_cast<double>(A_vals.data()[i]));
+    pk.pack_array(values_span.size());
+    for (size_t i = 0; i < values_span.size(); ++i) {
+      pk.pack(static_cast<double>(values_span.data()[i]));
     }
 
     pk.pack("A_indices");
@@ -878,35 +1178,48 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     }
 
     pk.pack("A_offsets");
-    auto A_off = view.get_constraint_matrix_offsets();
-    pk.pack_array(A_off.size());
-    for (size_t i = 0; i < A_off.size(); ++i) {
-      pk.pack(static_cast<int64_t>(A_off.data()[i]));
+    pk.pack_array(offsets_span.size());
+    for (size_t i = 0; i < offsets_span.size(); ++i) {
+      pk.pack(static_cast<int64_t>(offsets_span.data()[i]));
     }
 
-    pk.pack("obj_coeffs");
-    auto obj = view.get_objective_coefficients();
-    pk.pack_array(obj.size());
-    for (size_t i = 0; i < obj.size(); ++i) {
-      pk.pack(static_cast<double>(obj.data()[i]));
+    // Objective coefficients c (name matches data_model_view_t: c_)
+    pk.pack("c");
+    pk.pack_array(obj_span.size());
+    for (size_t i = 0; i < obj_span.size(); ++i) {
+      pk.pack(static_cast<double>(obj_span.data()[i]));
     }
 
-    pk.pack("var_lb");
+    // Variable bounds
+    pk.pack("variable_lower_bounds");
     auto vlb = view.get_variable_lower_bounds();
     pk.pack_array(vlb.size());
     for (size_t i = 0; i < vlb.size(); ++i) {
       pk.pack(static_cast<double>(vlb.data()[i]));
     }
 
-    pk.pack("var_ub");
+    pk.pack("variable_upper_bounds");
     auto vub = view.get_variable_upper_bounds();
     pk.pack_array(vub.size());
     for (size_t i = 0; i < vub.size(); ++i) {
       pk.pack(static_cast<double>(vub.data()[i]));
     }
 
-    // Constraint bounds - derive from row_types if needed
-    pk.pack("con_lb");
+    // Constraint bounds b (RHS)
+    pk.pack("b");
+    auto b_span = view.get_constraint_bounds();
+    pk.pack_array(b_span.size());
+    for (size_t i = 0; i < b_span.size(); ++i) {
+      pk.pack(static_cast<double>(b_span.data()[i]));
+    }
+
+    // Row types
+    pk.pack("row_types");
+    auto rt_span = view.get_row_types();
+    pk.pack(std::string(rt_span.data(), rt_span.size()));
+
+    // Constraint lower/upper bounds
+    pk.pack("constraint_lower_bounds");
     auto clb = view.get_constraint_lower_bounds();
     if (clb.size() > 0) {
       pk.pack_array(clb.size());
@@ -914,18 +1227,10 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
         pk.pack(static_cast<double>(clb.data()[i]));
       }
     } else {
-      auto b_span  = view.get_constraint_bounds();
-      auto rt_span = view.get_row_types();
-      pk.pack_array(n_rows);
-      for (i_t i = 0; i < n_rows; ++i) {
-        char rt = (rt_span.size() > 0) ? rt_span.data()[i] : 'E';
-        f_t b   = (b_span.size() > 0) ? b_span.data()[i] : 0;
-        f_t lb  = (rt == 'G' || rt == 'E') ? b : -1e20;
-        pk.pack(static_cast<double>(lb));
-      }
+      pk.pack_array(0);
     }
 
-    pk.pack("con_ub");
+    pk.pack("constraint_upper_bounds");
     auto cub = view.get_constraint_upper_bounds();
     if (cub.size() > 0) {
       pk.pack_array(cub.size());
@@ -933,24 +1238,53 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
         pk.pack(static_cast<double>(cub.data()[i]));
       }
     } else {
-      auto b_span  = view.get_constraint_bounds();
-      auto rt_span = view.get_row_types();
-      pk.pack_array(n_rows);
-      for (i_t i = 0; i < n_rows; ++i) {
-        char rt = (rt_span.size() > 0) ? rt_span.data()[i] : 'E';
-        f_t b   = (b_span.size() > 0) ? b_span.data()[i] : 0;
-        f_t ub  = (rt == 'L' || rt == 'E') ? b : 1e20;
-        pk.pack(static_cast<double>(ub));
+      pk.pack_array(0);
+    }
+
+    // Variable types (name matches data_model_view_t: variable_types_)
+    pk.pack("variable_types");
+    auto vt = view.get_variable_types();
+    pk.pack(std::string(vt.data(), vt.size()));
+
+    // Initial solutions (if available)
+    if (init_primal_span.size() > 0) {
+      pk.pack("initial_primal_solution");
+      pk.pack_array(init_primal_span.size());
+      for (size_t i = 0; i < init_primal_span.size(); ++i) {
+        pk.pack(static_cast<double>(init_primal_span.data()[i]));
       }
     }
 
-    // Variable types
-    pk.pack("var_types");
-    auto vt = view.get_variable_types();
-    pk.pack_array(n_cols);
-    for (i_t i = 0; i < n_cols; ++i) {
-      char t = (vt.size() > 0) ? vt.data()[i] : 'C';
-      pk.pack(std::string(1, t));
+    if (init_dual_span.size() > 0) {
+      pk.pack("initial_dual_solution");
+      pk.pack_array(init_dual_span.size());
+      for (size_t i = 0; i < init_dual_span.size(); ++i) {
+        pk.pack(static_cast<double>(init_dual_span.data()[i]));
+      }
+    }
+
+    // Quadratic objective matrix Q (for QPS problems)
+    if (view.has_quadratic_objective()) {
+      pk.pack("Q_values");
+      auto q_vals = view.get_quadratic_objective_values();
+      pk.pack_array(q_vals.size());
+      for (size_t i = 0; i < q_vals.size(); ++i) {
+        pk.pack(static_cast<double>(q_vals.data()[i]));
+      }
+
+      pk.pack("Q_indices");
+      auto q_idx = view.get_quadratic_objective_indices();
+      pk.pack_array(q_idx.size());
+      for (size_t i = 0; i < q_idx.size(); ++i) {
+        pk.pack(static_cast<int64_t>(q_idx.data()[i]));
+      }
+
+      pk.pack("Q_offsets");
+      auto q_off = view.get_quadratic_objective_offsets();
+      pk.pack_array(q_off.size());
+      for (size_t i = 0; i < q_off.size(); ++i) {
+        pk.pack(static_cast<int64_t>(q_off.data()[i]));
+      }
     }
   }
 
@@ -958,15 +1292,29 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
                       size_t& offset,
                       mps_parser::mps_data_model_t<i_t, f_t>& mps_data)
   {
+    // Field names match data_model_view_t (without trailing underscore)
     msgpack::object_handle oh =
       msgpack::unpack(reinterpret_cast<const char*>(data.data()), data.size(), offset);
     auto problem_map = oh.get().as<std::map<std::string, msgpack::object>>();
 
-    i_t n_cols = problem_map["n_cols"].as<int64_t>();
+    // Problem metadata
+    if (problem_map.count("problem_name")) {
+      mps_data.set_problem_name(problem_map["problem_name"].as<std::string>());
+    }
+    if (problem_map.count("objective_name")) {
+      mps_data.set_objective_name(problem_map["objective_name"].as<std::string>());
+    }
+    if (problem_map.count("maximize")) {
+      mps_data.set_maximize(problem_map["maximize"].as<bool>());
+    }
+    if (problem_map.count("objective_scaling_factor")) {
+      mps_data.set_objective_scaling_factor(problem_map["objective_scaling_factor"].as<double>());
+    }
+    if (problem_map.count("objective_offset")) {
+      mps_data.set_objective_offset(problem_map["objective_offset"].as<double>());
+    }
 
-    mps_data.set_maximize(problem_map["maximize"].as<bool>());
-
-    // CSR matrix
+    // Constraint matrix A in CSR format
     std::vector<f_t> A_values;
     problem_map["A_values"].convert(A_values);
     std::vector<i_t> A_indices;
@@ -981,39 +1329,89 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
                                        A_offsets.data(),
                                        static_cast<i_t>(A_offsets.size()));
 
-    std::vector<f_t> obj_coeffs;
-    problem_map["obj_coeffs"].convert(obj_coeffs);
-    mps_data.set_objective_coefficients(obj_coeffs.data(), static_cast<i_t>(obj_coeffs.size()));
+    // Objective coefficients c
+    std::vector<f_t> c;
+    problem_map["c"].convert(c);
+    mps_data.set_objective_coefficients(c.data(), static_cast<i_t>(c.size()));
 
+    // Variable bounds
     std::vector<f_t> var_lb, var_ub;
-    problem_map["var_lb"].convert(var_lb);
-    problem_map["var_ub"].convert(var_ub);
+    problem_map["variable_lower_bounds"].convert(var_lb);
+    problem_map["variable_upper_bounds"].convert(var_ub);
     mps_data.set_variable_lower_bounds(var_lb.data(), static_cast<i_t>(var_lb.size()));
     mps_data.set_variable_upper_bounds(var_ub.data(), static_cast<i_t>(var_ub.size()));
 
-    std::vector<f_t> con_lb, con_ub;
-    problem_map["con_lb"].convert(con_lb);
-    problem_map["con_ub"].convert(con_ub);
-    mps_data.set_constraint_lower_bounds(con_lb.data(), static_cast<i_t>(con_lb.size()));
-    mps_data.set_constraint_upper_bounds(con_ub.data(), static_cast<i_t>(con_ub.size()));
-
-    // Variable types
-    std::vector<char> var_types;
-    if (problem_map["var_types"].type == msgpack::type::ARRAY) {
-      auto arr = problem_map["var_types"].via.array;
-      for (size_t i = 0; i < arr.size; ++i) {
-        if (arr.ptr[i].type == msgpack::type::STR) {
-          std::string s;
-          arr.ptr[i].convert(s);
-          var_types.push_back(s.empty() ? 'C' : s[0]);
-        } else {
-          var_types.push_back('C');
-        }
+    // Constraint bounds (prefer lower/upper bounds if available)
+    if (problem_map.count("constraint_lower_bounds")) {
+      std::vector<f_t> con_lb;
+      problem_map["constraint_lower_bounds"].convert(con_lb);
+      if (con_lb.size() > 0) {
+        std::vector<f_t> con_ub;
+        problem_map["constraint_upper_bounds"].convert(con_ub);
+        mps_data.set_constraint_lower_bounds(con_lb.data(), static_cast<i_t>(con_lb.size()));
+        mps_data.set_constraint_upper_bounds(con_ub.data(), static_cast<i_t>(con_ub.size()));
       }
-    } else {
-      var_types.resize(n_cols, 'C');
     }
-    mps_data.set_variable_types(var_types);
+
+    // Constraint bounds b (RHS) + row_types format
+    if (problem_map.count("b")) {
+      std::vector<f_t> b;
+      problem_map["b"].convert(b);
+      if (b.size() > 0) { mps_data.set_constraint_bounds(b.data(), static_cast<i_t>(b.size())); }
+    }
+
+    if (problem_map.count("row_types")) {
+      std::string row_types_str = problem_map["row_types"].as<std::string>();
+      if (!row_types_str.empty()) {
+        mps_data.set_row_types(row_types_str.data(), static_cast<i_t>(row_types_str.size()));
+      }
+    }
+
+    // Variable types (stored as string, matching data_model_view_t)
+    if (problem_map.count("variable_types")) {
+      std::string var_types_str = problem_map["variable_types"].as<std::string>();
+      if (!var_types_str.empty()) {
+        std::vector<char> var_types(var_types_str.begin(), var_types_str.end());
+        mps_data.set_variable_types(var_types);
+      }
+    }
+
+    // Initial solutions (if provided)
+    if (problem_map.count("initial_primal_solution")) {
+      std::vector<f_t> init_primal;
+      problem_map["initial_primal_solution"].convert(init_primal);
+      if (init_primal.size() > 0) {
+        mps_data.set_initial_primal_solution(init_primal.data(),
+                                             static_cast<i_t>(init_primal.size()));
+      }
+    }
+
+    if (problem_map.count("initial_dual_solution")) {
+      std::vector<f_t> init_dual;
+      problem_map["initial_dual_solution"].convert(init_dual);
+      if (init_dual.size() > 0) {
+        mps_data.set_initial_dual_solution(init_dual.data(), static_cast<i_t>(init_dual.size()));
+      }
+    }
+
+    // Quadratic objective matrix Q (for QPS problems)
+    if (problem_map.count("Q_values")) {
+      std::vector<f_t> Q_values;
+      std::vector<i_t> Q_indices;
+      std::vector<i_t> Q_offsets;
+      problem_map["Q_values"].convert(Q_values);
+      problem_map["Q_indices"].convert(Q_indices);
+      problem_map["Q_offsets"].convert(Q_offsets);
+
+      if (Q_values.size() > 0) {
+        mps_data.set_quadratic_objective_matrix(Q_values.data(),
+                                                static_cast<i_t>(Q_values.size()),
+                                                Q_indices.data(),
+                                                static_cast<i_t>(Q_indices.size()),
+                                                Q_offsets.data(),
+                                                static_cast<i_t>(Q_offsets.size()));
+      }
+    }
   }
 };
 
