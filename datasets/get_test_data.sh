@@ -30,7 +30,7 @@ function try_download_from_s3() {
 
     # Append routing subdirectory to base S3 URI
     local s3_uri="${CUOPT_DATASET_S3_URI}routing/"
-    echo "Attempting to download datasets from S3: $s3_uri"
+    echo "Downloading datasets from S3..."
 
     # Support custom credential variable names to avoid conflicts
     # Priority: CUOPT_* variables > standard AWS_* variables > aws configure
@@ -40,22 +40,16 @@ function try_download_from_s3() {
 
     # Temporarily export for AWS CLI if custom variables are used
     if [ -n "$CUOPT_AWS_ACCESS_KEY_ID" ]; then
-        echo "Using custom CUOPT_AWS_ACCESS_KEY_ID credentials"
         export AWS_ACCESS_KEY_ID="$access_key"
         export AWS_SECRET_ACCESS_KEY="$secret_key"
         # Unset session token to avoid mixing credentials
         unset AWS_SESSION_TOKEN
         export AWS_DEFAULT_REGION="$region"
-    elif [ -n "$AWS_ACCESS_KEY_ID" ]; then
-        echo "Using AWS_ACCESS_KEY_ID credentials from environment"
-    else
-        echo "Using AWS credentials from aws configure"
     fi
 
     # Test AWS credentials
-    if ! aws sts get-caller-identity &> /dev/null; then
-        echo "AWS credentials not configured or invalid, skipping S3 download..."
-        echo "Set CUOPT_AWS_ACCESS_KEY_ID/CUOPT_AWS_SECRET_ACCESS_KEY or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY"
+    if ! aws sts get-caller-identity &> /dev/null 2>&1; then
+        echo "AWS credentials not configured, skipping S3 download..."
         return 1
     fi
 
@@ -63,27 +57,23 @@ function try_download_from_s3() {
     local success=true
     if [ ${#s3_dirs[@]} -eq 0 ]; then
         # No specific directories - download everything
-        echo "Downloading all datasets from S3..."
-        if ! aws s3 sync "$s3_uri" . --exclude "tmp/*" --exclude "get_test_data.sh" --exclude "*.sh" --exclude "*.md"; then
+        if ! aws s3 sync "$s3_uri" . --exclude "tmp/*" --exclude "get_test_data.sh" --exclude "*.sh" --exclude "*.md" --only-show-errors; then
             success=false
         fi
     else
         # Download specific directories only
-        echo "Downloading selected datasets: ${s3_dirs[*]}"
         for dir in "${s3_dirs[@]}"; do
-            echo "Syncing ${dir}/..."
-            if ! aws s3 sync "${s3_uri}${dir}/" "${dir}/" --exclude "*.sh" --exclude "*.md"; then
-                echo "Warning: Failed to download ${dir}, will try HTTP fallback"
+            if ! aws s3 sync "${s3_uri}${dir}/" "${dir}/" --exclude "*.sh" --exclude "*.md" --only-show-errors; then
                 success=false
             fi
         done
     fi
 
     if $success; then
-        echo "Successfully downloaded datasets from S3!"
+        echo "✓ Downloaded datasets from S3"
         return 0
     else
-        echo "Failed to download from S3, falling back to HTTP download..."
+        echo "S3 download failed, falling back to HTTP..."
         return 1
     fi
 }

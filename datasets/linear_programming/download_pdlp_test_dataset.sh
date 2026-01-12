@@ -41,7 +41,7 @@ function try_download_from_s3() {
 
     # Append linear_programming/pdlp subdirectory to base S3 URI
     local s3_uri="${CUOPT_DATASET_S3_URI}linear_programming/pdlp/"
-    echo "Attempting to download PDLP datasets from S3: $s3_uri"
+    echo "Downloading PDLP datasets from S3..."
 
     # Support custom credential variable names
     local access_key="${CUOPT_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
@@ -50,7 +50,6 @@ function try_download_from_s3() {
 
     # Temporarily export for AWS CLI if custom variables are used
     if [ -n "$CUOPT_AWS_ACCESS_KEY_ID" ]; then
-        echo "Using custom CUOPT_AWS_ACCESS_KEY_ID credentials"
         export AWS_ACCESS_KEY_ID="$access_key"
         export AWS_SECRET_ACCESS_KEY="$secret_key"
         # Unset session token to avoid mixing credentials
@@ -59,26 +58,29 @@ function try_download_from_s3() {
     fi
 
     # Test AWS credentials
-    if ! aws sts get-caller-identity &> /dev/null; then
+    if ! aws sts get-caller-identity &> /dev/null 2>&1; then
         echo "AWS credentials not configured, skipping S3 download..."
         return 1
     fi
 
     # Try to sync from S3 (downloads from pdlp/ subdirectory)
     local success=true
+    local total=${#datasets[@]}
+    local count=0
     for dataset in "${datasets[@]}"; do
-        echo "Downloading ${dataset} from S3..."
-        if ! aws s3 sync "${s3_uri}${dataset}/" "$BASEDIR/${dataset}/" --exclude "*.sh"; then
-            echo "Warning: Failed to download ${dataset}"
+        count=$((count + 1))
+        if ! aws s3 sync "${s3_uri}${dataset}/" "$BASEDIR/${dataset}/" --exclude "*.sh" --only-show-errors; then
             success=false
         fi
+        printf "\rProgress: %d/%d" "$count" "$total"
     done
+    echo ""
 
     if $success; then
-        echo "Successfully downloaded PDLP datasets from S3!"
+        echo "✓ Downloaded PDLP datasets from S3"
         return 0
     else
-        echo "Some downloads failed, falling back to HTTP download..."
+        echo "S3 download failed, falling back to HTTP..."
         return 1
     fi
 }
