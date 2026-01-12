@@ -117,7 +117,7 @@ static cusparseSpMVAlg_t get_spmv_alg(int num_rows)
 {
   // The older version of ALG2 has a bug with single row matrices
   if (num_rows == 1 &&
-      (CUSPARSE_VER_MAJOR <= 12 && CUSPARSE_VER_MINOR <= 6 && CUSPARSE_VER_PATCH <= 2)) {
+      (CUSPARSE_VER_MAJOR * 1000 + CUSPARSE_VER_MINOR * 100 + CUSPARSE_VER_PATCH < 12603)) {
     return CUSPARSE_SPMV_CSR_ALG1;
   }
   return CUSPARSE_SPMV_CSR_ALG2;
