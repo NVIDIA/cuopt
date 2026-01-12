@@ -1129,14 +1129,14 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     auto values_span  = view.get_constraint_matrix_values();
     auto obj_span     = view.get_objective_coefficients();
 
-    i_t n_rows = static_cast<i_t>(offsets_span.size()) - 1;
-    i_t n_cols = static_cast<i_t>(obj_span.size());
-    i_t nnz    = static_cast<i_t>(values_span.size());
-
-    // Count fields: base 20, plus optional fields
-    int num_fields        = 20;
-    auto init_primal_span = view.get_initial_primal_solution();
-    auto init_dual_span   = view.get_initial_dual_solution();
+    // Count fields: base 17, plus optional fields
+    int num_fields            = 17;
+    auto init_primal_span     = view.get_initial_primal_solution();
+    auto init_dual_span       = view.get_initial_dual_solution();
+    const auto& var_names     = view.get_variable_names();
+    const auto& row_names_vec = view.get_row_names();
+    if (!var_names.empty()) num_fields++;
+    if (!row_names_vec.empty()) num_fields++;
     if (init_primal_span.size() > 0) num_fields++;
     if (init_dual_span.size() > 0) num_fields++;
     if (view.has_quadratic_objective()) num_fields += 3;
@@ -1155,13 +1155,21 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     pk.pack("objective_offset");
     pk.pack(static_cast<double>(view.get_objective_offset()));
 
-    // Dimensions
-    pk.pack("n_rows");
-    pk.pack(static_cast<int64_t>(n_rows));
-    pk.pack("n_cols");
-    pk.pack(static_cast<int64_t>(n_cols));
-    pk.pack("nnz");
-    pk.pack(static_cast<int64_t>(nnz));
+    // Variable and row names (optional, matches protobuf)
+    if (!var_names.empty()) {
+      pk.pack("variable_names");
+      pk.pack_array(var_names.size());
+      for (const auto& name : var_names) {
+        pk.pack(name);
+      }
+    }
+    if (!row_names_vec.empty()) {
+      pk.pack("row_names");
+      pk.pack_array(row_names_vec.size());
+      for (const auto& name : row_names_vec) {
+        pk.pack(name);
+      }
+    }
 
     // Constraint matrix A in CSR format (names match data_model_view_t: A_, A_indices_, A_offsets_)
     pk.pack("A");
@@ -1333,6 +1341,18 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     std::vector<f_t> c;
     problem_map["c"].convert(c);
     mps_data.set_objective_coefficients(c.data(), static_cast<i_t>(c.size()));
+
+    // Variable and row names (optional)
+    if (problem_map.count("variable_names")) {
+      std::vector<std::string> var_names;
+      problem_map["variable_names"].convert(var_names);
+      if (!var_names.empty()) { mps_data.set_variable_names(var_names); }
+    }
+    if (problem_map.count("row_names")) {
+      std::vector<std::string> row_names;
+      problem_map["row_names"].convert(row_names);
+      if (!row_names.empty()) { mps_data.set_row_names(row_names); }
+    }
 
     // Variable bounds
     std::vector<f_t> var_lb, var_ub;
