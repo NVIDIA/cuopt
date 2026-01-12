@@ -826,7 +826,7 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
 
     // Constraint matrix A in CSR format (field names match data_model_view_t)
     for (i_t i = 0; i < nnz; ++i) {
-      pb_problem->add_a_values(static_cast<double>(values_ptr[i]));
+      pb_problem->add_a(static_cast<double>(values_ptr[i]));
     }
     for (i_t i = 0; i < nnz; ++i) {
       pb_problem->add_a_indices(static_cast<int32_t>(indices_ptr[i]));
@@ -985,12 +985,12 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
   cuopt::remote::PDLPSolverMode to_proto_pdlp_mode(pdlp_solver_mode_t mode)
   {
     switch (mode) {
-      case pdlp_solver_mode_t::Stable1: return cuopt::remote::PDLP_MODE_STABLE1;
-      case pdlp_solver_mode_t::Stable2: return cuopt::remote::PDLP_MODE_STABLE2;
-      case pdlp_solver_mode_t::Methodical1: return cuopt::remote::PDLP_MODE_METHODICAL1;
-      case pdlp_solver_mode_t::Fast1: return cuopt::remote::PDLP_MODE_FAST1;
-      case pdlp_solver_mode_t::Stable3: return cuopt::remote::PDLP_MODE_STABLE3;
-      default: return cuopt::remote::PDLP_MODE_STABLE3;
+      case pdlp_solver_mode_t::Stable1: return cuopt::remote::Stable1;
+      case pdlp_solver_mode_t::Stable2: return cuopt::remote::Stable2;
+      case pdlp_solver_mode_t::Methodical1: return cuopt::remote::Methodical1;
+      case pdlp_solver_mode_t::Fast1: return cuopt::remote::Fast1;
+      case pdlp_solver_mode_t::Stable3: return cuopt::remote::Stable3;
+      default: return cuopt::remote::Stable3;
     }
   }
 
@@ -998,11 +998,11 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
   cuopt::remote::LPMethod to_proto_method(method_t method)
   {
     switch (method) {
-      case method_t::Concurrent: return cuopt::remote::METHOD_CONCURRENT;
-      case method_t::PDLP: return cuopt::remote::METHOD_PDLP;
-      case method_t::DualSimplex: return cuopt::remote::METHOD_DUAL_SIMPLEX;
-      case method_t::Barrier: return cuopt::remote::METHOD_BARRIER;
-      default: return cuopt::remote::METHOD_CONCURRENT;
+      case method_t::Concurrent: return cuopt::remote::Concurrent;
+      case method_t::PDLP: return cuopt::remote::PDLP;
+      case method_t::DualSimplex: return cuopt::remote::DualSimplex;
+      case method_t::Barrier: return cuopt::remote::Barrier;
+      default: return cuopt::remote::Concurrent;
     }
   }
 
@@ -1061,7 +1061,7 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
     mps_data.set_objective_offset(pb_problem.objective_offset());
 
     // Constraint matrix A in CSR format (field names match data_model_view_t)
-    std::vector<f_t> values(pb_problem.a_values().begin(), pb_problem.a_values().end());
+    std::vector<f_t> values(pb_problem.a().begin(), pb_problem.a().end());
     std::vector<i_t> indices(pb_problem.a_indices().begin(), pb_problem.a_indices().end());
     std::vector<i_t> offsets(pb_problem.a_offsets().begin(), pb_problem.a_offsets().end());
 
@@ -1157,11 +1157,11 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
   pdlp_solver_mode_t from_proto_pdlp_mode(cuopt::remote::PDLPSolverMode mode)
   {
     switch (mode) {
-      case cuopt::remote::PDLP_MODE_STABLE1: return pdlp_solver_mode_t::Stable1;
-      case cuopt::remote::PDLP_MODE_STABLE2: return pdlp_solver_mode_t::Stable2;
-      case cuopt::remote::PDLP_MODE_METHODICAL1: return pdlp_solver_mode_t::Methodical1;
-      case cuopt::remote::PDLP_MODE_FAST1: return pdlp_solver_mode_t::Fast1;
-      case cuopt::remote::PDLP_MODE_STABLE3: return pdlp_solver_mode_t::Stable3;
+      case cuopt::remote::Stable1: return pdlp_solver_mode_t::Stable1;
+      case cuopt::remote::Stable2: return pdlp_solver_mode_t::Stable2;
+      case cuopt::remote::Methodical1: return pdlp_solver_mode_t::Methodical1;
+      case cuopt::remote::Fast1: return pdlp_solver_mode_t::Fast1;
+      case cuopt::remote::Stable3: return pdlp_solver_mode_t::Stable3;
       default: return pdlp_solver_mode_t::Stable3;
     }
   }
@@ -1170,10 +1170,10 @@ class protobuf_serializer_t : public remote_serializer_t<i_t, f_t> {
   method_t from_proto_method(cuopt::remote::LPMethod method)
   {
     switch (method) {
-      case cuopt::remote::METHOD_CONCURRENT: return method_t::Concurrent;
-      case cuopt::remote::METHOD_PDLP: return method_t::PDLP;
-      case cuopt::remote::METHOD_DUAL_SIMPLEX: return method_t::DualSimplex;
-      case cuopt::remote::METHOD_BARRIER: return method_t::Barrier;
+      case cuopt::remote::Concurrent: return method_t::Concurrent;
+      case cuopt::remote::PDLP: return method_t::PDLP;
+      case cuopt::remote::DualSimplex: return method_t::DualSimplex;
+      case cuopt::remote::Barrier: return method_t::Barrier;
       default: return method_t::Concurrent;
     }
   }

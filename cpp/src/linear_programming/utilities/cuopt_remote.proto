@@ -36,14 +36,14 @@ message OptimizationProblem {
   bool maximize = 3;
   double objective_scaling_factor = 4;
   double objective_offset = 5;
-  ProblemCategory problem_category = 6;
+  // Field 6 reserved (was problem_category, now inferred from variable_types)
 
   // Variable and row names (optional)
   repeated string variable_names = 7;
   repeated string row_names = 8;
 
   // Constraint matrix A in CSR format (names match data_model_view_t: A_, A_indices_, A_offsets_)
-  repeated double A_values = 10;
+  repeated double A = 10;
   repeated int32 A_indices = 11;
   repeated int32 A_offsets = 12;
 
@@ -71,27 +71,22 @@ message OptimizationProblem {
   repeated int32 Q_offsets = 52;
 }
 
-enum ProblemCategory {
-  LP_PROBLEM = 0;
-  MIP_PROBLEM = 1;
-  IP_PROBLEM = 2;
-}
-
 // PDLP solver mode enum (matches cuOpt pdlp_solver_mode_t)
+// Matches cuOpt pdlp_solver_mode_t enum values
 enum PDLPSolverMode {
-  PDLP_MODE_STABLE1 = 0;
-  PDLP_MODE_STABLE2 = 1;
-  PDLP_MODE_METHODICAL1 = 2;
-  PDLP_MODE_FAST1 = 3;
-  PDLP_MODE_STABLE3 = 4;
+  Stable1 = 0;
+  Stable2 = 1;
+  Methodical1 = 2;
+  Fast1 = 3;
+  Stable3 = 4;
 }
 
-// LP solver method enum (matches cuOpt method_t)
+// Matches cuOpt method_t enum values
 enum LPMethod {
-  METHOD_CONCURRENT = 0;
-  METHOD_PDLP = 1;
-  METHOD_DUAL_SIMPLEX = 2;
-  METHOD_BARRIER = 3;
+  Concurrent = 0;
+  PDLP = 1;
+  DualSimplex = 2;
+  Barrier = 3;
 }
 
 // PDLP solver settings (field names match cuOpt Python/C++ API)

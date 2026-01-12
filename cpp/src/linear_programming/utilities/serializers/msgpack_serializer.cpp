@@ -1164,7 +1164,7 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
     pk.pack(static_cast<int64_t>(nnz));
 
     // Constraint matrix A in CSR format (names match data_model_view_t: A_, A_indices_, A_offsets_)
-    pk.pack("A_values");
+    pk.pack("A");
     pk.pack_array(values_span.size());
     for (size_t i = 0; i < values_span.size(); ++i) {
       pk.pack(static_cast<double>(values_span.data()[i]));
@@ -1316,7 +1316,7 @@ class msgpack_serializer_t : public remote_serializer_t<i_t, f_t> {
 
     // Constraint matrix A in CSR format
     std::vector<f_t> A_values;
-    problem_map["A_values"].convert(A_values);
+    problem_map["A"].convert(A_values);
     std::vector<i_t> A_indices;
     problem_map["A_indices"].convert(A_indices);
     std::vector<i_t> A_offsets;
