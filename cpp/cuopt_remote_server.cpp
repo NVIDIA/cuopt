@@ -2134,6 +2134,7 @@ int main(int argc, char** argv)
   // Set up signal handlers
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
+  signal(SIGPIPE, SIG_IGN);  // Ignore SIGPIPE (broken pipe) - happens when writing to closed pipes
 
   // IMPORTANT: Clear remote solve environment variables to prevent infinite recursion
   unsetenv("CUOPT_REMOTE_HOST");
