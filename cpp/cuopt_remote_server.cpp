@@ -61,27 +61,32 @@ using namespace cuopt::linear_programming;
 constexpr size_t MAX_JOBS    = 100;
 constexpr size_t MAX_RESULTS = 100;
 
-// Job queue entry - small fixed size, data stored in separate per-job shared memory
+// Job queue entry - small fixed size, data stored in separate per-job shared memory or sent via
+// pipe
 struct JobQueueEntry {
   char job_id[64];
   uint32_t problem_type;          // 0 = LP, 1 = MIP
   uint64_t data_size;             // Size of problem data (uint64 for large problems)
-  char shm_data_name[128];        // Name of per-job shared memory segment
+  char shm_data_name[128];        // Name of per-job shared memory segment (shm mode only)
   std::atomic<bool> ready;        // Job is ready to be processed
   std::atomic<bool> claimed;      // Worker has claimed this job
   std::atomic<pid_t> worker_pid;  // PID of worker that claimed this job (0 if none)
   std::atomic<bool> cancelled;    // Job has been cancelled (worker should skip)
+  // Pipe mode fields
+  std::atomic<int> worker_index;  // Index of worker that claimed this job (-1 if none)
+  std::atomic<bool> data_sent;    // Server has sent data to worker's pipe (pipe mode)
 };
 
-// Result queue entry - small fixed size, data stored in separate per-result shared memory
+// Result queue entry - small fixed size, data stored in separate per-result shared memory or pipe
 struct ResultQueueEntry {
   char job_id[64];
-  uint32_t status;          // 0 = success, 1 = error
+  uint32_t status;          // 0 = success, 1 = error, 2 = cancelled
   uint64_t data_size;       // Size of result data (uint64 for large results)
-  char shm_data_name[128];  // Name of per-result shared memory segment
+  char shm_data_name[128];  // Name of per-result shared memory segment (shm mode only)
   char error_message[1024];
-  std::atomic<bool> ready;      // Result is ready
-  std::atomic<bool> retrieved;  // Result has been retrieved
+  std::atomic<bool> ready;        // Result is ready
+  std::atomic<bool> retrieved;    // Result has been retrieved
+  std::atomic<int> worker_index;  // Index of worker that produced this result (pipe mode)
 };
 
 // Shared memory control block
@@ -252,9 +257,24 @@ struct ServerConfig {
   int num_workers  = 1;
   bool verbose     = true;
   bool stream_logs = true;
+  bool use_pipes   = true;  // Default to pipes (container-friendly), --use-shm to disable
 };
 
 ServerConfig config;
+
+// Worker state for pipe-based IPC
+struct WorkerPipes {
+  int to_worker_fd;     // Server writes job data to this (pipe write end)
+  int from_worker_fd;   // Server reads results from this (pipe read end)
+  int worker_read_fd;   // Worker reads job data from this (inherited, closed in parent)
+  int worker_write_fd;  // Worker writes results to this (inherited, closed in parent)
+};
+
+std::vector<WorkerPipes> worker_pipes;
+
+// Pending job data for pipe mode (job_id -> serialized data)
+std::mutex pending_data_mutex;
+std::map<std::string, std::vector<uint8_t>> pending_job_data;
 
 // Shared memory names
 const char* SHM_JOB_QUEUE    = "/cuopt_job_queue";
@@ -377,10 +397,12 @@ bool init_shared_memory()
 
   // Initialize job queue entries
   for (size_t i = 0; i < MAX_JOBS; ++i) {
-    job_queue[i].ready      = false;
-    job_queue[i].claimed    = false;
-    job_queue[i].worker_pid = 0;
-    job_queue[i].cancelled  = false;
+    job_queue[i].ready        = false;
+    job_queue[i].claimed      = false;
+    job_queue[i].worker_pid   = 0;
+    job_queue[i].cancelled    = false;
+    job_queue[i].worker_index = -1;
+    job_queue[i].data_sent    = false;
   }
 
   // Create result queue shared memory
@@ -405,8 +427,9 @@ bool init_shared_memory()
 
   // Initialize result queue entries
   for (size_t i = 0; i < MAX_RESULTS; ++i) {
-    result_queue[i].ready     = false;
-    result_queue[i].retrieved = false;
+    result_queue[i].ready        = false;
+    result_queue[i].retrieved    = false;
+    result_queue[i].worker_index = -1;
   }
 
   // Create control shared memory
@@ -458,6 +481,16 @@ void ensure_log_dir_exists();
 void delete_log_file(const std::string& job_id);
 
 // ============================================================================
+// Forward declarations for pipe I/O helpers
+// ============================================================================
+static bool write_to_pipe(int fd, const void* data, size_t size);
+static bool read_from_pipe(int fd, void* data, size_t size);
+static bool send_job_data_pipe(int worker_idx, const std::vector<uint8_t>& data);
+static bool recv_job_data_pipe(int fd, uint64_t expected_size, std::vector<uint8_t>& data);
+static bool send_result_pipe(int fd, const std::vector<uint8_t>& data);
+static bool recv_result_pipe(int worker_idx, uint64_t expected_size, std::vector<uint8_t>& data);
+
+// ============================================================================
 // Worker Process
 // ============================================================================
 
@@ -482,8 +515,9 @@ void worker_process(int worker_id)
         // Try to claim this job atomically
         bool expected = false;
         if (job_queue[i].claimed.compare_exchange_strong(expected, true)) {
-          job_queue[i].worker_pid = getpid();  // Record our PID
-          job_slot                = i;
+          job_queue[i].worker_pid   = getpid();   // Record our PID
+          job_queue[i].worker_index = worker_id;  // Record worker index for pipe mode
+          job_slot                  = i;
           break;
         }
       }
@@ -506,8 +540,8 @@ void worker_process(int worker_id)
                 << "\n";
       std::cout.flush();
 
-      // Cleanup job input shm
-      cleanup_job_shm(job.shm_data_name);
+      // Cleanup job input shm (shm mode only)
+      if (!config.use_pipes) { cleanup_job_shm(job.shm_data_name); }
 
       // Store cancelled result in result queue
       for (size_t i = 0; i < MAX_RESULTS; ++i) {
@@ -516,6 +550,7 @@ void worker_process(int worker_id)
           result_queue[i].status           = 2;  // Cancelled status
           result_queue[i].data_size        = 0;
           result_queue[i].shm_data_name[0] = '\0';
+          result_queue[i].worker_index     = worker_id;  // For pipe mode
           strncpy(result_queue[i].error_message,
                   "Job was cancelled",
                   sizeof(result_queue[i].error_message) - 1);
@@ -526,10 +561,12 @@ void worker_process(int worker_id)
       }
 
       // Clear job slot (don't exit/restart worker)
-      job.worker_pid = 0;
-      job.ready      = false;
-      job.claimed    = false;
-      job.cancelled  = false;
+      job.worker_pid   = 0;
+      job.worker_index = -1;
+      job.data_sent    = false;
+      job.ready        = false;
+      job.claimed      = false;
+      job.cancelled    = false;
       continue;  // Go back to waiting for next job
     }
 
@@ -574,10 +611,41 @@ void worker_process(int worker_id)
     write(STDOUT_FILENO, msg01, 44);
     fsync(STDOUT_FILENO);
 
-    // Read problem data from per-job shared memory
+    // Read problem data (pipe mode or shm mode)
     std::vector<uint8_t> request_data;
-    if (!read_job_shm(job.shm_data_name, job.data_size, request_data)) {
-      std::cerr << "[Worker " << worker_id << "] Failed to read job data from shm\n";
+    bool read_success = false;
+
+    if (config.use_pipes) {
+      // Pipe mode: wait for server to send data, then read from pipe
+      // Wait for data_sent flag with timeout
+      int wait_count = 0;
+      while (!job.data_sent && !job.cancelled && !shm_ctrl->shutdown_requested) {
+        usleep(1000);                // 1ms
+        if (++wait_count > 30000) {  // 30 second timeout
+          std::cerr << "[Worker " << worker_id << "] Timeout waiting for job data\n";
+          break;
+        }
+      }
+
+      if (job.data_sent && !job.cancelled) {
+        // Read from our input pipe
+        int read_fd  = worker_pipes[worker_id].worker_read_fd;
+        read_success = recv_job_data_pipe(read_fd, job.data_size, request_data);
+        if (!read_success) {
+          std::cerr << "[Worker " << worker_id << "] Failed to read job data from pipe\n";
+        }
+      }
+    } else {
+      // SHM mode: read from shared memory
+      read_success = read_job_shm(job.shm_data_name, job.data_size, request_data);
+      if (!read_success) {
+        std::cerr << "[Worker " << worker_id << "] Failed to read job data from shm\n";
+      }
+      // Cleanup job input shm now that we've read it
+      cleanup_job_shm(job.shm_data_name);
+    }
+
+    if (!read_success) {
       // Store error result
       for (size_t i = 0; i < MAX_RESULTS; ++i) {
         if (!result_queue[i].ready) {
@@ -585,24 +653,23 @@ void worker_process(int worker_id)
           result_queue[i].status           = 1;  // Error status
           result_queue[i].data_size        = 0;
           result_queue[i].shm_data_name[0] = '\0';
+          result_queue[i].worker_index     = worker_id;
           strncpy(result_queue[i].error_message,
-                  "Failed to read job data from shared memory",
+                  "Failed to read job data",
                   sizeof(result_queue[i].error_message) - 1);
           result_queue[i].retrieved = false;
           result_queue[i].ready     = true;
           break;
         }
       }
-      // Cleanup job shm and slot
-      cleanup_job_shm(job.shm_data_name);
-      job.worker_pid = 0;
-      job.ready      = false;
-      job.claimed    = false;
+      // Clear job slot
+      job.worker_pid   = 0;
+      job.worker_index = -1;
+      job.data_sent    = false;
+      job.ready        = false;
+      job.claimed      = false;
       continue;
     }
-
-    // Cleanup job input shm now that we've read it
-    cleanup_job_shm(job.shm_data_name);
 
     std::vector<uint8_t> result_data;
     std::string error_message;
@@ -652,46 +719,81 @@ void worker_process(int worker_id)
     close(saved_stdout);
     close(saved_stderr);
 
-    // Store result in result queue with per-result shared memory
-    for (size_t i = 0; i < MAX_RESULTS; ++i) {
-      if (!result_queue[i].ready) {
-        ResultQueueEntry& result = result_queue[i];
-        strncpy(result.job_id, job_id.c_str(), sizeof(result.job_id) - 1);
-        result.status = success ? 0 : 1;
-        if (success && !result_data.empty()) {
-          // Create per-result shared memory
-          std::string shm_name = write_result_shm(job_id, result_data);
-          if (shm_name.empty()) {
-            // Failed to create shm - report error
-            result.status           = 1;
+    // Store result (pipe mode: write to pipe, shm mode: write to shared memory)
+    if (config.use_pipes) {
+      // Pipe mode: write result to output pipe
+      if (success && !result_data.empty()) {
+        int write_fd       = worker_pipes[worker_id].worker_write_fd;
+        bool write_success = send_result_pipe(write_fd, result_data);
+        if (!write_success) {
+          std::cerr << "[Worker " << worker_id << "] Failed to write result to pipe\n";
+          success       = false;
+          error_message = "Failed to write result to pipe";
+        }
+      }
+
+      // Store result metadata in result queue
+      for (size_t i = 0; i < MAX_RESULTS; ++i) {
+        if (!result_queue[i].ready) {
+          ResultQueueEntry& result = result_queue[i];
+          strncpy(result.job_id, job_id.c_str(), sizeof(result.job_id) - 1);
+          result.status           = success ? 0 : 1;
+          result.data_size        = success ? result_data.size() : 0;
+          result.shm_data_name[0] = '\0';  // Not used in pipe mode
+          result.worker_index     = worker_id;
+          if (!success) {
+            strncpy(result.error_message, error_message.c_str(), sizeof(result.error_message) - 1);
+          }
+          result.retrieved = false;
+          result.ready     = true;  // Mark as ready last
+          break;
+        }
+      }
+    } else {
+      // SHM mode: store result in shared memory
+      for (size_t i = 0; i < MAX_RESULTS; ++i) {
+        if (!result_queue[i].ready) {
+          ResultQueueEntry& result = result_queue[i];
+          strncpy(result.job_id, job_id.c_str(), sizeof(result.job_id) - 1);
+          result.status       = success ? 0 : 1;
+          result.worker_index = worker_id;
+          if (success && !result_data.empty()) {
+            // Create per-result shared memory
+            std::string shm_name = write_result_shm(job_id, result_data);
+            if (shm_name.empty()) {
+              // Failed to create shm - report error
+              result.status           = 1;
+              result.data_size        = 0;
+              result.shm_data_name[0] = '\0';
+              strncpy(result.error_message,
+                      "Failed to create shared memory for result",
+                      sizeof(result.error_message) - 1);
+            } else {
+              result.data_size = result_data.size();
+              strncpy(result.shm_data_name, shm_name.c_str(), sizeof(result.shm_data_name) - 1);
+            }
+          } else if (!success) {
+            strncpy(result.error_message, error_message.c_str(), sizeof(result.error_message) - 1);
             result.data_size        = 0;
             result.shm_data_name[0] = '\0';
-            strncpy(result.error_message,
-                    "Failed to create shared memory for result",
-                    sizeof(result.error_message) - 1);
           } else {
-            result.data_size = result_data.size();
-            strncpy(result.shm_data_name, shm_name.c_str(), sizeof(result.shm_data_name) - 1);
+            result.data_size        = 0;
+            result.shm_data_name[0] = '\0';
           }
-        } else if (!success) {
-          strncpy(result.error_message, error_message.c_str(), sizeof(result.error_message) - 1);
-          result.data_size        = 0;
-          result.shm_data_name[0] = '\0';
-        } else {
-          result.data_size        = 0;
-          result.shm_data_name[0] = '\0';
+          result.retrieved = false;
+          result.ready     = true;  // Mark as ready last
+          break;
         }
-        result.retrieved = false;
-        result.ready     = true;  // Mark as ready last
-        break;
       }
     }
 
     // Clear job slot
-    job.worker_pid = 0;
-    job.ready      = false;
-    job.claimed    = false;
-    job.cancelled  = false;
+    job.worker_pid   = 0;
+    job.worker_index = -1;
+    job.data_sent    = false;
+    job.ready        = false;
+    job.claimed      = false;
+    job.cancelled    = false;
 
     std::cout << "[Worker " << worker_id << "] Completed job: " << job_id
               << " (success: " << success << ")\n";
@@ -702,19 +804,111 @@ void worker_process(int worker_id)
   _exit(0);
 }
 
+// Create pipes for a worker (pipe mode only)
+bool create_worker_pipes(int worker_id)
+{
+  if (!config.use_pipes) return true;
+
+  // Ensure worker_pipes has enough slots
+  while (static_cast<int>(worker_pipes.size()) <= worker_id) {
+    worker_pipes.push_back({-1, -1, -1, -1});
+  }
+
+  WorkerPipes& wp = worker_pipes[worker_id];
+
+  // Create pipe for server -> worker data
+  int input_pipe[2];
+  if (pipe(input_pipe) < 0) {
+    std::cerr << "[Server] Failed to create input pipe for worker " << worker_id << "\n";
+    return false;
+  }
+  wp.worker_read_fd = input_pipe[0];  // Worker reads from this
+  wp.to_worker_fd   = input_pipe[1];  // Server writes to this
+
+  // Create pipe for worker -> server results
+  int output_pipe[2];
+  if (pipe(output_pipe) < 0) {
+    std::cerr << "[Server] Failed to create output pipe for worker " << worker_id << "\n";
+    close(input_pipe[0]);
+    close(input_pipe[1]);
+    return false;
+  }
+  wp.from_worker_fd  = output_pipe[0];  // Server reads from this
+  wp.worker_write_fd = output_pipe[1];  // Worker writes to this
+
+  return true;
+}
+
+// Close server-side pipe ends for a worker (called when restarting)
+void close_worker_pipes_server(int worker_id)
+{
+  if (!config.use_pipes) return;
+  if (worker_id < 0 || worker_id >= static_cast<int>(worker_pipes.size())) return;
+
+  WorkerPipes& wp = worker_pipes[worker_id];
+  if (wp.to_worker_fd >= 0) {
+    close(wp.to_worker_fd);
+    wp.to_worker_fd = -1;
+  }
+  if (wp.from_worker_fd >= 0) {
+    close(wp.from_worker_fd);
+    wp.from_worker_fd = -1;
+  }
+}
+
+// Close worker-side pipe ends in parent after fork
+void close_worker_pipes_child_ends(int worker_id)
+{
+  if (!config.use_pipes) return;
+  if (worker_id < 0 || worker_id >= static_cast<int>(worker_pipes.size())) return;
+
+  WorkerPipes& wp = worker_pipes[worker_id];
+  if (wp.worker_read_fd >= 0) {
+    close(wp.worker_read_fd);
+    wp.worker_read_fd = -1;
+  }
+  if (wp.worker_write_fd >= 0) {
+    close(wp.worker_write_fd);
+    wp.worker_write_fd = -1;
+  }
+}
+
 void spawn_workers()
 {
   for (int i = 0; i < config.num_workers; ++i) {
+    // Create pipes before forking (pipe mode)
+    if (config.use_pipes && !create_worker_pipes(i)) {
+      std::cerr << "[Server] Failed to create pipes for worker " << i << "\n";
+      continue;
+    }
+
     pid_t pid = fork();
     if (pid < 0) {
       std::cerr << "[Server] Failed to fork worker " << i << "\n";
+      close_worker_pipes_server(i);
     } else if (pid == 0) {
       // Child process
+      if (config.use_pipes) {
+        // Close all other workers' pipe fds
+        for (int j = 0; j < static_cast<int>(worker_pipes.size()); ++j) {
+          if (j != i) {
+            if (worker_pipes[j].worker_read_fd >= 0) close(worker_pipes[j].worker_read_fd);
+            if (worker_pipes[j].worker_write_fd >= 0) close(worker_pipes[j].worker_write_fd);
+            if (worker_pipes[j].to_worker_fd >= 0) close(worker_pipes[j].to_worker_fd);
+            if (worker_pipes[j].from_worker_fd >= 0) close(worker_pipes[j].from_worker_fd);
+          }
+        }
+        // Close server ends of our pipes
+        close(worker_pipes[i].to_worker_fd);
+        close(worker_pipes[i].from_worker_fd);
+      }
       worker_process(i);
       _exit(0);  // Should not reach here
     } else {
       // Parent process
       worker_pids.push_back(pid);
+      // Close worker ends of pipes (parent doesn't need them)
+      close_worker_pipes_child_ends(i);
     }
   }
 }
@@ -731,15 +925,43 @@ void wait_for_workers()
 // Spawn a single replacement worker and return its PID
 pid_t spawn_single_worker(int worker_id)
 {
+  // Create new pipes for the replacement worker (pipe mode)
+  if (config.use_pipes) {
+    // Close old pipes first
+    close_worker_pipes_server(worker_id);
+    if (!create_worker_pipes(worker_id)) {
+      std::cerr << "[Server] Failed to create pipes for replacement worker " << worker_id << "\n";
+      return -1;
+    }
+  }
+
   pid_t pid = fork();
   if (pid < 0) {
     std::cerr << "[Server] Failed to fork replacement worker " << worker_id << "\n";
+    close_worker_pipes_server(worker_id);
     return -1;
   } else if (pid == 0) {
     // Child process
+    if (config.use_pipes) {
+      // Close all other workers' pipe fds
+      for (int j = 0; j < static_cast<int>(worker_pipes.size()); ++j) {
+        if (j != worker_id) {
+          if (worker_pipes[j].worker_read_fd >= 0) close(worker_pipes[j].worker_read_fd);
+          if (worker_pipes[j].worker_write_fd >= 0) close(worker_pipes[j].worker_write_fd);
+          if (worker_pipes[j].to_worker_fd >= 0) close(worker_pipes[j].to_worker_fd);
+          if (worker_pipes[j].from_worker_fd >= 0) close(worker_pipes[j].from_worker_fd);
+        }
+      }
+      // Close server ends of our pipes
+      close(worker_pipes[worker_id].to_worker_fd);
+      close(worker_pipes[worker_id].from_worker_fd);
+    }
     worker_process(worker_id);
     _exit(0);  // Should not reach here
   }
+
+  // Parent: close worker ends of new pipes
+  close_worker_pipes_child_ends(worker_id);
   return pid;
 }
 
@@ -759,8 +981,15 @@ void mark_worker_jobs_failed(pid_t dead_worker_pid)
                   << " died while processing job: " << job_id << "\n";
       }
 
-      // Cleanup job input shm (worker may not have done it)
-      cleanup_job_shm(job_queue[i].shm_data_name);
+      // Cleanup job data
+      if (config.use_pipes) {
+        // Pipe mode: remove from pending data if not yet sent
+        std::lock_guard<std::mutex> lock(pending_data_mutex);
+        pending_job_data.erase(job_id);
+      } else {
+        // SHM mode: cleanup job input shm (worker may not have done it)
+        cleanup_job_shm(job_queue[i].shm_data_name);
+      }
 
       // Store result in result queue (cancelled or failed)
       for (size_t j = 0; j < MAX_RESULTS; ++j) {
@@ -769,6 +998,7 @@ void mark_worker_jobs_failed(pid_t dead_worker_pid)
           result_queue[j].status           = was_cancelled ? 2 : 1;  // 2=cancelled, 1=error
           result_queue[j].data_size        = 0;
           result_queue[j].shm_data_name[0] = '\0';
+          result_queue[j].worker_index     = -1;
           strncpy(result_queue[j].error_message,
                   was_cancelled ? "Job was cancelled" : "Worker process died unexpectedly",
                   sizeof(result_queue[j].error_message) - 1);
@@ -779,10 +1009,12 @@ void mark_worker_jobs_failed(pid_t dead_worker_pid)
       }
 
       // Clear the job slot
-      job_queue[i].worker_pid = 0;
-      job_queue[i].ready      = false;
-      job_queue[i].claimed    = false;
-      job_queue[i].cancelled  = false;
+      job_queue[i].worker_pid   = 0;
+      job_queue[i].worker_index = -1;
+      job_queue[i].data_sent    = false;
+      job_queue[i].ready        = false;
+      job_queue[i].claimed      = false;
+      job_queue[i].cancelled    = false;
 
       // Update job tracker
       {
@@ -868,6 +1100,7 @@ void worker_monitor_thread()
 
 // ============================================================================
 // Result Retrieval Thread (main process)
+// Also handles sending job data to workers in pipe mode
 // ============================================================================
 
 void result_retrieval_thread()
@@ -877,6 +1110,46 @@ void result_retrieval_thread()
   while (keep_running) {
     bool found = false;
 
+    // PIPE MODE: Check for jobs that need data sent to workers
+    if (config.use_pipes) {
+      for (size_t i = 0; i < MAX_JOBS; ++i) {
+        if (job_queue[i].ready && job_queue[i].claimed && !job_queue[i].data_sent &&
+            !job_queue[i].cancelled) {
+          std::string job_id(job_queue[i].job_id);
+          int worker_idx = job_queue[i].worker_index;
+
+          if (worker_idx >= 0) {
+            // Get pending job data
+            std::vector<uint8_t> job_data;
+            {
+              std::lock_guard<std::mutex> lock(pending_data_mutex);
+              auto it = pending_job_data.find(job_id);
+              if (it != pending_job_data.end()) {
+                job_data = std::move(it->second);
+                pending_job_data.erase(it);
+              }
+            }
+
+            if (!job_data.empty()) {
+              // Send data to worker's pipe
+              if (send_job_data_pipe(worker_idx, job_data)) {
+                job_queue[i].data_sent = true;
+                if (config.verbose) {
+                  std::cout << "[Server] Sent " << job_data.size() << " bytes to worker "
+                            << worker_idx << " for job " << job_id << "\n";
+                }
+              } else {
+                std::cerr << "[Server] Failed to send job data to worker " << worker_idx << "\n";
+                // Mark job as failed
+                job_queue[i].cancelled = true;
+              }
+              found = true;
+            }
+          }
+        }
+      }
+    }
+
     // Check for completed results
     for (size_t i = 0; i < MAX_RESULTS; ++i) {
       if (result_queue[i].ready && !result_queue[i].retrieved) {
@@ -884,19 +1157,28 @@ void result_retrieval_thread()
         uint32_t result_status = result_queue[i].status;
         bool success           = (result_status == 0);
         bool cancelled         = (result_status == 2);
+        int worker_idx         = result_queue[i].worker_index;
 
         std::vector<uint8_t> result_data;
         std::string error_message;
 
         if (success && result_queue[i].data_size > 0) {
-          // Read result data from per-result shared memory
-          if (!read_job_shm(
-                result_queue[i].shm_data_name, result_queue[i].data_size, result_data)) {
-            error_message = "Failed to read result data from shared memory";
-            success       = false;
+          if (config.use_pipes) {
+            // Pipe mode: read result from worker's output pipe
+            if (!recv_result_pipe(worker_idx, result_queue[i].data_size, result_data)) {
+              error_message = "Failed to read result data from pipe";
+              success       = false;
+            }
+          } else {
+            // SHM mode: read from shared memory
+            if (!read_job_shm(
+                  result_queue[i].shm_data_name, result_queue[i].data_size, result_data)) {
+              error_message = "Failed to read result data from shared memory";
+              success       = false;
+            }
+            // Cleanup result shm after reading
+            cleanup_job_shm(result_queue[i].shm_data_name);
           }
-          // Cleanup result shm after reading
-          cleanup_job_shm(result_queue[i].shm_data_name);
         } else if (!success) {
           error_message = result_queue[i].error_message;
         }
@@ -934,9 +1216,10 @@ void result_retrieval_thread()
           }
         }
 
-        result_queue[i].retrieved = true;
-        result_queue[i].ready     = false;  // Free slot
-        found                     = true;
+        result_queue[i].retrieved    = true;
+        result_queue[i].worker_index = -1;
+        result_queue[i].ready        = false;  // Free slot
+        found                        = true;
       }
     }
 
@@ -1026,14 +1309,124 @@ static void cleanup_job_shm(const char* shm_name)
   if (shm_name[0] != '\0') { shm_unlink(shm_name); }
 }
 
+// ============================================================================
+// Pipe I/O Helpers
+// ============================================================================
+
+// Write all data to a pipe (handles partial writes)
+static bool write_to_pipe(int fd, const void* data, size_t size)
+{
+  const uint8_t* ptr = static_cast<const uint8_t*>(data);
+  size_t remaining   = size;
+  while (remaining > 0) {
+    ssize_t written = ::write(fd, ptr, remaining);
+    if (written <= 0) {
+      if (errno == EINTR) continue;
+      return false;
+    }
+    ptr += written;
+    remaining -= written;
+  }
+  return true;
+}
+
+// Read all data from a pipe (handles partial reads)
+static bool read_from_pipe(int fd, void* data, size_t size)
+{
+  uint8_t* ptr     = static_cast<uint8_t*>(data);
+  size_t remaining = size;
+  while (remaining > 0) {
+    ssize_t nread = ::read(fd, ptr, remaining);
+    if (nread <= 0) {
+      if (errno == EINTR) continue;
+      return false;
+    }
+    ptr += nread;
+    remaining -= nread;
+  }
+  return true;
+}
+
+// Send job data to worker via pipe (length-prefixed)
+static bool send_job_data_pipe(int worker_idx, const std::vector<uint8_t>& data)
+{
+  if (worker_idx < 0 || worker_idx >= static_cast<int>(worker_pipes.size())) { return false; }
+  int fd = worker_pipes[worker_idx].to_worker_fd;
+  if (fd < 0) return false;
+
+  // Send size first
+  uint64_t size = data.size();
+  if (!write_to_pipe(fd, &size, sizeof(size))) return false;
+  // Send data
+  if (size > 0 && !write_to_pipe(fd, data.data(), data.size())) return false;
+  return true;
+}
+
+// Receive job data from pipe (length-prefixed) - called by worker
+static bool recv_job_data_pipe(int fd, uint64_t expected_size, std::vector<uint8_t>& data)
+{
+  // Read size
+  uint64_t size;
+  if (!read_from_pipe(fd, &size, sizeof(size))) return false;
+  if (size != expected_size) {
+    std::cerr << "[Worker] Size mismatch: expected " << expected_size << ", got " << size << "\n";
+    return false;
+  }
+  // Read data
+  data.resize(size);
+  if (size > 0 && !read_from_pipe(fd, data.data(), size)) return false;
+  return true;
+}
+
+// Send result data to server via pipe (length-prefixed) - called by worker
+static bool send_result_pipe(int fd, const std::vector<uint8_t>& data)
+{
+  // Send size first
+  uint64_t size = data.size();
+  if (!write_to_pipe(fd, &size, sizeof(size))) return false;
+  // Send data
+  if (size > 0 && !write_to_pipe(fd, data.data(), data.size())) return false;
+  return true;
+}
+
+// Receive result data from worker via pipe (length-prefixed)
+static bool recv_result_pipe(int worker_idx, uint64_t expected_size, std::vector<uint8_t>& data)
+{
+  if (worker_idx < 0 || worker_idx >= static_cast<int>(worker_pipes.size())) { return false; }
+  int fd = worker_pipes[worker_idx].from_worker_fd;
+  if (fd < 0) return false;
+
+  // Read size
+  uint64_t size;
+  if (!read_from_pipe(fd, &size, sizeof(size))) return false;
+  if (size != expected_size) {
+    std::cerr << "[Server] Result size mismatch: expected " << expected_size << ", got " << size
+              << "\n";
+    return false;
+  }
+  // Read data
+  data.resize(size);
+  if (size > 0 && !read_from_pipe(fd, data.data(), size)) return false;
+  return true;
+}
+
 // Submit a job asynchronously (returns job_id)
 std::pair<bool, std::string> submit_job_async(const std::vector<uint8_t>& request_data, bool is_mip)
 {
   std::string job_id = generate_job_id();
 
-  // Create per-job shared memory for problem data
-  std::string shm_name = create_job_shm(job_id, request_data, "job");
-  if (shm_name.empty()) { return {false, "Failed to create shared memory for job data"}; }
+  std::string shm_name;
+  if (config.use_pipes) {
+    // Pipe mode: store data in pending map (will be sent when worker claims job)
+    {
+      std::lock_guard<std::mutex> lock(pending_data_mutex);
+      pending_job_data[job_id] = request_data;
+    }
+  } else {
+    // SHM mode: create per-job shared memory for problem data
+    shm_name = create_job_shm(job_id, request_data, "job");
+    if (shm_name.empty()) { return {false, "Failed to create shared memory for job data"}; }
+  }
 
   // Find free job slot
   for (size_t i = 0; i < MAX_JOBS; ++i) {
@@ -1041,11 +1434,18 @@ std::pair<bool, std::string> submit_job_async(const std::vector<uint8_t>& reques
       strncpy(job_queue[i].job_id, job_id.c_str(), sizeof(job_queue[i].job_id) - 1);
       job_queue[i].problem_type = is_mip ? 1 : 0;
       job_queue[i].data_size    = request_data.size();
-      strncpy(job_queue[i].shm_data_name, shm_name.c_str(), sizeof(job_queue[i].shm_data_name) - 1);
-      job_queue[i].worker_pid = 0;
-      job_queue[i].claimed    = false;
-      job_queue[i].cancelled  = false;
-      job_queue[i].ready      = true;  // Mark as ready last
+      if (!config.use_pipes) {
+        strncpy(
+          job_queue[i].shm_data_name, shm_name.c_str(), sizeof(job_queue[i].shm_data_name) - 1);
+      } else {
+        job_queue[i].shm_data_name[0] = '\0';
+      }
+      job_queue[i].worker_pid   = 0;
+      job_queue[i].worker_index = -1;
+      job_queue[i].data_sent    = false;
+      job_queue[i].claimed      = false;
+      job_queue[i].cancelled    = false;
+      job_queue[i].ready        = true;  // Mark as ready last
 
       // Track job
       {
@@ -1065,8 +1465,13 @@ std::pair<bool, std::string> submit_job_async(const std::vector<uint8_t>& reques
     }
   }
 
-  // No free slot - cleanup the shm we created
-  shm_unlink(shm_name.c_str());
+  // No free slot - cleanup
+  if (config.use_pipes) {
+    std::lock_guard<std::mutex> lock(pending_data_mutex);
+    pending_job_data.erase(job_id);
+  } else {
+    shm_unlink(shm_name.c_str());
+  }
   return {false, "Job queue full"};
 }
 
@@ -1697,6 +2102,9 @@ void print_usage(const char* prog)
             << "  -w NUM     Number of worker processes (default: 1)\n"
             << "  -q         Quiet mode (less verbose output)\n"
             << "  --no-stream  Disable real-time log streaming to clients\n"
+            << "  --use-shm    Use POSIX shared memory for IPC (default: pipes)\n"
+            << "               Pipes are container-friendly; shm may be faster but\n"
+            << "               requires /dev/shm with sufficient size\n"
             << "  -h         Show this help\n"
             << "\n"
             << "Environment Variables (client-side):\n"
@@ -1715,6 +2123,8 @@ int main(int argc, char** argv)
       config.verbose = false;
     } else if (strcmp(argv[i], "--no-stream") == 0) {
       config.stream_logs = false;
+    } else if (strcmp(argv[i], "--use-shm") == 0) {
+      config.use_pipes = false;  // Use shared memory instead of pipes
     } else if (strcmp(argv[i], "-h") == 0) {
       print_usage(argv[0]);
       return 0;
@@ -1736,6 +2146,8 @@ int main(int argc, char** argv)
   std::cout << "Port: " << config.port << "\n";
   std::cout << "Workers: " << config.num_workers << " (processes)\n";
   std::cout << "Log streaming: " << (config.stream_logs ? "enabled" : "disabled") << "\n";
+  std::cout << "IPC mode: " << (config.use_pipes ? "pipes (container-friendly)" : "shared memory")
+            << "\n";
   std::cout << "\n";
   std::cout << "Async API:\n";
   std::cout << "  SUBMIT_JOB      - Submit a job, get job_id\n";
