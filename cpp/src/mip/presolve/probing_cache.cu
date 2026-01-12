@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -20,6 +20,15 @@
 #include <utilities/timer.hpp>
 
 namespace cuopt::linear_programming::detail {
+
+template <typename i_t, typename f_t>
+struct substitution_t {
+  f_t timestamp;
+  i_t substituting_var;
+  i_t substituted_var;
+  f_t offset;
+  f_t coefficient;
+};
 
 template <typename i_t, typename f_t>
 i_t probing_cache_t<i_t, f_t>::check_number_of_conflicting_vars(
@@ -365,7 +374,7 @@ void compute_cache_for_var(i_t var_idx,
                            std::atomic<size_t>& n_of_cached_probings,
                            std::atomic<bool>& problem_is_infeasible,
                            std::vector<std::tuple<f_t, i_t, f_t, f_t>>& modification_vector,
-                           std::vector<std::tuple<f_t, i_t, i_t, f_t, f_t>>& substitution_vector,
+                           std::vector<substitution_t<i_t, f_t>>& substitution_vector,
                            timer_t timer,
                            i_t device_id)
 {
@@ -496,6 +505,7 @@ void compute_cache_for_var(i_t var_idx,
   }
   // when both probes are feasible, we can infer some global bounds
   if (n_of_infeasible_probings == 0 && valid_host_bounds == 2) {
+    // TODO do the check in parallel
     for (size_t i = 0; i < h_improved_lower_bounds_0.size(); i++) {
       if (i == (size_t)var_idx) { continue; }
       f_t lower_bound = min(h_improved_lower_bounds_0[i], h_improved_lower_bounds_1[i]);
@@ -524,13 +534,13 @@ void compute_cache_for_var(i_t var_idx,
           // x_i = l_0 + (l_1 - l_0) * x_var_idx
           // this means
           CUOPT_LOG_DEBUG("Variable substitution found for var %d", i);
-          // timestamp, substituded var, var to substitude, offset, coefficient
-          substitution_vector.emplace_back(
-            timer.elapsed_time(),
-            i,
-            var_idx,
-            h_improved_lower_bounds_0[i],
-            h_improved_lower_bounds_1[i] - h_improved_lower_bounds_0[i]);
+          substitution_t<i_t, f_t> substitution;
+          substitution.timestamp        = timer.elapsed_time();
+          substitution.substituted_var  = i;
+          substitution.substituting_var = var_idx;
+          substitution.offset           = h_improved_lower_bounds_0[i];
+          substitution.coefficient = h_improved_lower_bounds_1[i] - h_improved_lower_bounds_0[i];
+          substitution_vector.emplace_back(substitution);
         }
       }
     }
@@ -572,34 +582,146 @@ void apply_modification_queue_to_problem(
   }
 }
 
+// Ensures that if A subs B and B subs A, we only keep one deterministic direction.
 template <typename i_t, typename f_t>
-void apply_substitution_queue_to_problem(
-  std::vector<std::vector<std::tuple<f_t, i_t, i_t, f_t, f_t>>>& substitution_vector_pool,
-  problem_t<i_t, f_t>& problem)
+void sanitize_graph(
+  std::unordered_map<i_t, std::vector<std::pair<i_t, substitution_t<i_t, f_t>>>>& all_substitutions)
 {
-  std::unordered_map<i_t, std::tuple<i_t, f_t, f_t>> substituted_vars;
-  for (const auto& substitution_vector : substitution_vector_pool) {
-    for (const auto& substitution : substitution_vector) {
-      auto [time, var_idx, var_to_substitude, offset, coefficient] = substitution;
-      // only take the first substitutions if multiple are there
-      if (substituted_vars.count(var_idx) == 0) {
-        substituted_vars[var_idx] = std::make_tuple(var_to_substitude, offset, coefficient);
-      }
+  for (auto& substitution : all_substitutions) {
+    auto& substituting_var = substitution.first;
+    auto& list             = substitution.second;
+    // Use remove_if with a lambda to clean up the vector in-place
+    auto it = std::remove_if(
+      list.begin(), list.end(), [&](const std::pair<i_t, substitution_t<i_t, f_t>>& item) {
+        i_t substituted_var = item.first;
+        // Check if the reverse edge exists, it should exists because of the nature of probing
+        if (all_substitutions.count(substituted_var)) {
+          const auto& reverse_list = all_substitutions[substituted_var];
+          for (const auto& reverse_item : reverse_list) {
+            if (reverse_item.first == substituting_var) {
+              // Bidirectional edge detected!
+              // Keep edge only if substituting_var < substituted_var.
+              if (substituting_var > substituted_var) {
+                CUOPT_LOG_DEBUG("Removing cycle edge: %d -> %d (keeping %d -> %d)",
+                                substituting_var,
+                                substituted_var,
+                                substituted_var,
+                                substituting_var);
+                return true;  // delete the edge
+              }
+            }
+          }
+        }
+        return false;  // keep the edge
+      });
+
+    list.erase(it, list.end());
+  }
+}
+
+template <typename i_t, typename f_t>
+void dfs(
+  std::unordered_map<i_t, std::vector<std::pair<i_t, substitution_t<i_t, f_t>>>>& all_substitutions,
+  std::unordered_set<i_t>& visited,
+  const substitution_t<i_t, f_t>& parent_substitution,
+  i_t curr_var)
+{
+  // If we have already processed this node in the current traversal.
+  if (visited.count(curr_var)) return;
+  visited.insert(curr_var);
+
+  // If 'curr_var' itself substitutes others, we must propagate the parent's substitution down.
+  if (all_substitutions.count(curr_var)) {
+    for (auto& [substituted_var_of_child, child_substitution] : all_substitutions[curr_var]) {
+      // Parent: curr_var = P_offset + P_coeff * Root_Var
+      // Child:  child_var = C_offset + C_coeff * curr_var
+      // Result: child_var = C_offset + C_coeff * (P_offset + P_coeff * Root_Var)
+      //                   = (C_offset + C_coeff * P_offset) + (C_coeff * P_coeff) * Root_Var
+      child_substitution.offset =
+        child_substitution.offset + child_substitution.coefficient * parent_substitution.offset;
+      child_substitution.coefficient =
+        child_substitution.coefficient * parent_substitution.coefficient;
+      child_substitution.substituting_var = parent_substitution.substituting_var;
+      CUOPT_LOG_DEBUG("Merged: Var %d is now substituted by %d via %d",
+                      substituted_var_of_child,
+                      child_substitution.substituting_var,
+                      curr_var);
+      dfs(all_substitutions, visited, child_substitution, substituted_var_of_child);
     }
   }
+}
+
+template <typename i_t, typename f_t>
+void merge_substitutions(
+  std::unordered_map<i_t, std::vector<std::pair<i_t, substitution_t<i_t, f_t>>>>& all_substitutions)
+{
+  // Remove cycles (A->B and B->A) as probing always generates a pair of equivalent substitutions
+  sanitize_graph(all_substitutions);
+
+  // Identify Roots
+  // A Root is a 'substituting' var that is never 'substituted' by anyone else.
+  std::unordered_set<i_t> all_substituted_vars;
+  for (const auto& [key, list] : all_substitutions) {
+    for (const auto& item : list) {
+      all_substituted_vars.insert(item.first);
+    }
+  }
+
+  std::vector<i_t> roots;
+  for (const auto& [key, list] : all_substitutions) {
+    if (all_substituted_vars.find(key) == all_substituted_vars.end()) { roots.push_back(key); }
+  }
+
+  // Run DFS from every Root
+
+  for (i_t root : roots) {
+    // For the root, there is no "parent substitution".
+    std::unordered_set<i_t> visited_in_this_path;
+    visited_in_this_path.insert(root);
+    for (auto& [substituted_var, substitution] : all_substitutions[root]) {
+      // Pass the substitution connecting Root->Child as the "parent" for the next level
+      dfs(all_substitutions, visited_in_this_path, substitution, substituted_var);
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+void apply_substitution_queue_to_problem(
+  std::vector<std::vector<substitution_t<i_t, f_t>>>& substitution_vector_pool,
+  problem_t<i_t, f_t>& problem)
+{
+  std::unordered_map<i_t, std::vector<std::pair<i_t, substitution_t<i_t, f_t>>>> all_substitutions;
+
+  for (const auto& substitution_vector : substitution_vector_pool) {
+    for (const auto& substitution : substitution_vector) {
+      all_substitutions[substitution.substituting_var].push_back(
+        {substitution.substituted_var, substitution});
+    }
+  }
+
+  // Flatten Graph
+  merge_substitutions(all_substitutions);
+
   std::vector<i_t> var_indices;
-  std::vector<i_t> var_to_substitude_indices;
+  std::vector<i_t> substituting_var_indices;
   std::vector<f_t> offset_values;
   std::vector<f_t> coefficient_values;
-  for (const auto& [var_idx, substitution] : substituted_vars) {
-    var_indices.push_back(var_idx);
-    var_to_substitude_indices.push_back(std::get<0>(substitution));
-    offset_values.push_back(std::get<1>(substitution));
-    coefficient_values.push_back(std::get<2>(substitution));
+
+  for (const auto& [substituting_var, substitutions] : all_substitutions) {
+    for (const auto& [substituted_var, substitution] : substitutions) {
+      CUOPT_LOG_DEBUG("Applying substitution: %d -> %d",
+                      substitution.substituting_var,
+                      substitution.substituted_var);
+      var_indices.push_back(substitution.substituted_var);
+      substituting_var_indices.push_back(substitution.substituting_var);
+      offset_values.push_back(substitution.offset);
+      coefficient_values.push_back(substitution.coefficient);
+    }
   }
-  if (var_indices.size() > 0) {
+
+  if (!var_indices.empty()) {
     problem.substitute_variables(
-      var_indices, var_to_substitude_indices, offset_values, coefficient_values);
+      var_indices, substituting_var_indices, offset_values, coefficient_values);
   }
 }
 
@@ -731,8 +853,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // Create a vector of multi_probe_t objects
   std::vector<multi_probe_t<i_t, f_t>> multi_probe_presolve_pool;
   std::vector<std::vector<std::tuple<f_t, i_t, f_t, f_t>>> modification_vector_pool(max_threads);
-  std::vector<std::vector<std::tuple<f_t, i_t, i_t, f_t, f_t>>> substitution_vector_pool(
-    max_threads);
+  std::vector<std::vector<substitution_t<i_t, f_t>>> substitution_vector_pool(max_threads);
 
   // Initialize multi_probe_presolve_pool
   for (size_t i = 0; i < max_threads; i++) {

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -320,6 +320,7 @@ static void check_cusparse_status(cusparseStatus_t status)
     throw std::runtime_error("CUSPARSE error: " + std::string(cusparseGetErrorString(status)));
   }
 }
+
 template <typename i_t, typename f_t>
 __global__ void kernel_convert_greater_to_less(raft::device_span<f_t> coefficients,
                                                raft::device_span<const i_t> offsets,
@@ -394,6 +395,7 @@ static void csrsort_cusparse(rmm::device_uvector<f_t>& values,
   check_csr_representation(values, offsets, indices, handle_ptr, cols, rows);
 }
 
+template <typename i_t, typename f_t>
 static void convert_greater_to_less(detail::problem_t<i_t, f_t>& problem)
 {
   raft::common::nvtx::range scope("convert_greater_to_less");

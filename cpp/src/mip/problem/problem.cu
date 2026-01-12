@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -1245,8 +1245,6 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
                                                const std::vector<f_t>& coefficient_values)
 {
   raft::common::nvtx::range fun_scope("substitute_variables");
-  // if there is a chain substitution handle the indices here:
-
   cuopt_assert((are_exclusive<i_t, f_t>(var_indices, var_to_substitude_indices)),
                "variables and var_to_substitude_indices are not exclusive");
   const i_t dummy_substituted_variable = var_indices[0];
