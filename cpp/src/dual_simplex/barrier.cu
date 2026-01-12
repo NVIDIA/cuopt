@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -43,6 +43,48 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 auto constexpr use_gpu = true;
+
+// non-template wrappers to work around clang compiler bug
+[[maybe_unused]] static void pairwise_multiply(
+  float* a, float* b, float* out, int size, rmm::cuda_stream_view stream)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(a, b), out, size, cuda::std::multiplies<>{}, stream);
+}
+
+[[maybe_unused]] static void pairwise_multiply(
+  double* a, double* b, double* out, int size, rmm::cuda_stream_view stream)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(a, b), out, size, cuda::std::multiplies<>{}, stream);
+}
+
+[[maybe_unused]] static void axpy(
+  float alpha, float* x, float beta, float* y, float* out, int size, rmm::cuda_stream_view stream)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(x, y),
+    out,
+    size,
+    [alpha, beta] __host__ __device__(float a, float b) { return alpha * a + beta * b; },
+    stream);
+}
+
+[[maybe_unused]] static void axpy(double alpha,
+                                  double* x,
+                                  double beta,
+                                  double* y,
+                                  double* out,
+                                  int size,
+                                  rmm::cuda_stream_view stream)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(x, y),
+    out,
+    size,
+    [alpha, beta] __host__ __device__(double a, double b) { return alpha * a + beta * b; },
+    stream);
+}
 
 template <typename i_t, typename f_t>
 class iteration_data_t {
@@ -1404,12 +1446,7 @@ class iteration_data_t {
 
     // diag.pairwise_product(x1, r1);
     // r1 <- D * x_1
-    thrust::transform(handle_ptr->get_thrust_policy(),
-                      d_x1.data(),
-                      d_x1.data() + n,
-                      d_diag_.data(),
-                      d_r1.data(),
-                      thrust::multiplies<f_t>());
+    pairwise_multiply(d_x1.data(), d_diag_.data(), d_r1.data(), n, stream_view_);
 
     // r1 <- Q x1 + D x1
     if (Q.n > 0) {
@@ -1419,12 +1456,7 @@ class iteration_data_t {
 
     // y1 <- - alpha * r1 + beta * y1
     // y1.axpy(-alpha, r1, beta);
-    thrust::transform(handle_ptr->get_thrust_policy(),
-                      d_r1.data(),
-                      d_r1.data() + n,
-                      d_y1.data(),
-                      d_y1.data(),
-                      axpy_op<f_t>{-alpha, beta});
+    axpy(-alpha, d_r1.data(), beta, d_y1.data(), d_y1.data(), n, stream_view_);
 
     // matrix_transpose_vector_multiply(A, alpha, x2, 1.0, y1);
     cusparse_view_.transpose_spmv(alpha, d_x2, 1.0, d_y1);

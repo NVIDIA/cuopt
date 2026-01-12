@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -20,7 +20,9 @@ namespace detail {
 struct cuda_graph_t {
   void start_capture(rmm::cuda_stream_view stream)
   {
-    cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal);
+    // Use ThreadLocal mode to allow multi-threaded batch execution
+    // Global mode blocks other streams from performing operations during capture
+    cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal);
     capture_started = true;
   }
 

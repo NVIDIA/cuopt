@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -30,22 +30,24 @@ class logger_t {
   {
   }
 
-  void enable_log_to_file(std::string mode = "w")
+  void enable_log_to_file(const char* mode = "w")
   {
     if (log_file != nullptr) { std::fclose(log_file); }
-    log_file    = std::fopen(log_filename.c_str(), mode.c_str());
+    log_file    = std::fopen(log_filename.c_str(), mode);
     log_to_file = true;
   }
 
-  void set_log_file(const std::string& filename)
+  void set_log_file(const std::string& filename, const char* mode = "w")
   {
     log_filename = filename;
-    enable_log_to_file();
+    enable_log_to_file(mode);
   }
 
   void close_log_file()
   {
     if (log_file != nullptr) { std::fclose(log_file); }
+    log_file    = nullptr;
+    log_to_file = false;
   }
 
   void printf(const char* fmt, ...)

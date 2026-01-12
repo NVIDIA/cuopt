@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,6 +9,7 @@
 
 #include "recombiner.cuh"
 
+#include <thrust/pair.h>
 #include <mip/local_search/rounding/constraint_prop.cuh>
 #include <mip/relaxed_lp/relaxed_lp.cuh>
 #include <mip/solution/solution.cuh>
@@ -189,7 +190,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
                                       probing_values,
                                       n_vars_from_other,
                                       variable_map);
-      probing_config.probing_values         = host_copy(probing_values);
+      probing_config.probing_values = host_copy(probing_values, offspring.handle_ptr->get_stream());
       probing_config.n_of_fixed_from_first  = fixed_from_guiding;
       probing_config.n_of_fixed_from_second = fixed_from_other;
       probing_config.use_balanced_probing   = true;
@@ -213,7 +214,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
       timer_t timer(bp_recombiner_config_t::bounds_prop_time_limit);
       get_probing_values_for_infeasible(
         guiding_solution, other_solution, offspring, probing_values, n_vars_from_other);
-      probing_config.probing_values = host_copy(probing_values);
+      probing_config.probing_values = host_copy(probing_values, offspring.handle_ptr->get_stream());
       constraint_prop.apply_round(offspring, lp_run_time_after_feasible, timer, probing_config);
     }
     constraint_prop.max_n_failed_repair_iterations = 1;

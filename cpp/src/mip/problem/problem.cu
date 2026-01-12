@@ -547,20 +547,21 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
   cuopt_expects(thrust::all_of(handle_ptr->get_thrust_policy(),
                                thrust::make_counting_iterator<i_t>(0),
                                thrust::make_counting_iterator<i_t>(n_variables),
-                               [vars_bnd = make_span(variable_bounds)] __device__(i_t idx) {
+                               [vars_bnd = make_span(variable_bounds)] __device__(i_t idx) -> bool {
                                  auto bounds = vars_bnd[idx];
                                  return get_lower(bounds) <= get_upper(bounds);
                                }),
                 error_type_t::ValidationError,
                 "Variable bounds are invalid");
   cuopt_expects(
-    thrust::all_of(handle_ptr->get_thrust_policy(),
-                   thrust::make_counting_iterator<i_t>(0),
-                   thrust::make_counting_iterator<i_t>(n_constraints),
-                   [constraint_lower_bounds = constraint_lower_bounds.data(),
-                    constraint_upper_bounds = constraint_upper_bounds.data()] __device__(i_t idx) {
-                     return constraint_lower_bounds[idx] <= constraint_upper_bounds[idx];
-                   }),
+    thrust::all_of(
+      handle_ptr->get_thrust_policy(),
+      thrust::make_counting_iterator<i_t>(0),
+      thrust::make_counting_iterator<i_t>(n_constraints),
+      [constraint_lower_bounds = constraint_lower_bounds.data(),
+       constraint_upper_bounds = constraint_upper_bounds.data()] __device__(i_t idx) -> bool {
+        return constraint_lower_bounds[idx] <= constraint_upper_bounds[idx];
+      }),
     error_type_t::ValidationError,
     "Constraints bounds are invalid");
 
@@ -582,23 +583,21 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
     cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
                                 integer_indices.cbegin(),
                                 integer_indices.cend(),
-                                [types = variable_types.data()] __device__(i_t idx) {
+                                [types = variable_types.data()] __device__(i_t idx) -> bool {
                                   return types[idx] == var_t::INTEGER;
                                 }),
                  "The integer indices table contains references to non-integer variables.");
     cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
                                 binary_indices.cbegin(),
                                 binary_indices.cend(),
-                                [bin_table = is_binary_variable.data()] __device__(i_t idx) {
-                                  return bin_table[idx];
-                                }),
+                                [bin_table = is_binary_variable.data()] __device__(
+                                  i_t idx) -> bool { return bin_table[idx]; }),
                  "The binary indices table contains references to non-binary variables.");
     cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
                                 nonbinary_indices.cbegin(),
                                 nonbinary_indices.cend(),
-                                [bin_table = is_binary_variable.data()] __device__(i_t idx) {
-                                  return !bin_table[idx];
-                                }),
+                                [bin_table = is_binary_variable.data()] __device__(
+                                  i_t idx) -> bool { return !bin_table[idx]; }),
                  "The non-binary indices table contains references to binary variables.");
     cuopt_assert(
       thrust::all_of(
@@ -607,7 +606,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
         thrust::make_counting_iterator<i_t>(n_variables),
         [types     = variable_types.data(),
          bin_table = is_binary_variable.data(),
-         pb_view   = view()] __device__(i_t idx) {
+         pb_view   = view()] __device__(i_t idx) -> bool {
           // ensure the binary variable tables are correct
           if (bin_table[idx]) {
             if (!thrust::binary_search(
@@ -640,7 +639,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
         thrust::make_counting_iterator<i_t>(n_variables),
         [types     = variable_types.data(),
          bin_table = is_binary_variable.data(),
-         pb_view   = view()] __device__(i_t idx) {
+         pb_view   = view()] __device__(i_t idx) -> bool {
           // ensure the binary variable tables are correct
           if (bin_table[idx]) {
             if (!thrust::binary_search(
@@ -673,7 +672,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
         thrust::make_counting_iterator<i_t>(n_variables),
         [types     = variable_types.data(),
          bin_table = is_binary_variable.data(),
-         pb_view   = view()] __device__(i_t idx) {
+         pb_view   = view()] __device__(i_t idx) -> bool {
           // ensure the binary variable tables are correct
           if (bin_table[idx]) {
             if (!thrust::binary_search(
@@ -699,23 +698,24 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
           return true;
         }),
       "Some variables aren't referenced in the appropriate indice tables");
-    cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
-                                thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(0),
-                                                          is_binary_variable.cbegin()),
-                                thrust::make_zip_iterator(
-                                  thrust::make_counting_iterator<i_t>(is_binary_variable.size()),
+    cuopt_assert(
+      thrust::all_of(
+        handle_ptr->get_thrust_policy(),
+        thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(0),
+                                  is_binary_variable.cbegin()),
+        thrust::make_zip_iterator(thrust::make_counting_iterator<i_t>(is_binary_variable.size()),
                                   is_binary_variable.cend()),
-                                [types    = variable_types.data(),
-                                 vars_bnd = make_span(variable_bounds),
-                                 v = view()] __device__(const thrust::tuple<int, int> tuple) {
-                                  i_t idx     = thrust::get<0>(tuple);
-                                  i_t pred    = thrust::get<1>(tuple);
-                                  auto bounds = vars_bnd[idx];
-                                  return pred == (types[idx] != var_t::CONTINUOUS &&
-                                                  v.integer_equal(get_lower(bounds), 0.) &&
-                                                  v.integer_equal(get_upper(bounds), 1.));
-                                }),
-                 "The binary variable table is incorrect.");
+        [types    = variable_types.data(),
+         vars_bnd = make_span(variable_bounds),
+         v        = view()] __device__(const thrust::tuple<int, int> tuple) -> bool {
+          i_t idx     = thrust::get<0>(tuple);
+          i_t pred    = thrust::get<1>(tuple);
+          auto bounds = vars_bnd[idx];
+          return pred ==
+                 (types[idx] != var_t::CONTINUOUS && v.integer_equal(get_lower(bounds), 0.) &&
+                  v.integer_equal(get_upper(bounds), 1.));
+        }),
+      "The binary variable table is incorrect.");
     if (!empty) {
       cuopt_assert(is_binary_pb == (n_variables == thrust::count(handle_ptr->get_thrust_policy(),
                                                                  is_binary_variable.begin(),
@@ -1212,7 +1212,7 @@ void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_i
   objective_is_integral = thrust::all_of(handle_ptr->get_thrust_policy(),
                                          thrust::make_counting_iterator(0),
                                          thrust::make_counting_iterator(n_variables),
-                                         [v = view()] __device__(i_t var_idx) {
+                                         [v = view()] __device__(i_t var_idx) -> bool {
                                            if (v.objective_coefficients[var_idx] == 0) return true;
                                            return v.is_integer(v.objective_coefficients[var_idx]) &&
                                                   (v.variable_types[var_idx] == var_t::INTEGER ||
@@ -1529,7 +1529,7 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
   // do an assignment from the original_ids of the current problem
   problem.original_ids.resize(variable_map.size());
   std::fill(problem.reverse_original_ids.begin(), problem.reverse_original_ids.end(), -1);
-  auto h_variable_map = cuopt::host_copy(variable_map);
+  auto h_variable_map = cuopt::host_copy(variable_map, handle_ptr->get_stream());
   for (size_t i = 0; i < variable_map.size(); ++i) {
     cuopt_assert(h_variable_map[i] < original_ids.size(), "Variable index out of bounds");
     problem.original_ids[i] = original_ids[h_variable_map[i]];
@@ -1707,9 +1707,10 @@ std::vector<std::vector<std::pair<i_t, f_t>>> compute_var_to_constraint_map(
 {
   raft::common::nvtx::range fun_scope("compute_var_to_constraint_map");
   std::vector<std::vector<std::pair<i_t, f_t>>> variable_constraint_map(pb.n_variables);
-  auto h_variables    = cuopt::host_copy(pb.variables);
-  auto h_coefficients = cuopt::host_copy(pb.coefficients);
-  auto h_offsets      = cuopt::host_copy(pb.offsets);
+  auto stream         = pb.handle_ptr->get_stream();
+  auto h_variables    = cuopt::host_copy(pb.variables, stream);
+  auto h_coefficients = cuopt::host_copy(pb.coefficients, stream);
+  auto h_offsets      = cuopt::host_copy(pb.offsets, stream);
   for (i_t cnst = 0; cnst < pb.n_constraints; ++cnst) {
     for (i_t i = h_offsets[cnst]; i < h_offsets[cnst + 1]; ++i) {
       i_t var   = h_variables[i];
@@ -1727,10 +1728,11 @@ void standardize_bounds(std::vector<std::vector<std::pair<i_t, f_t>>>& variable_
 {
   raft::common::nvtx::range fun_scope("standardize_bounds");
   auto handle_ptr               = pb.handle_ptr;
-  auto h_var_bounds             = cuopt::host_copy(pb.variable_bounds);
-  auto h_objective_coefficients = cuopt::host_copy(pb.objective_coefficients);
-  auto h_variable_types         = cuopt::host_copy(pb.variable_types);
-  auto h_var_flags              = cuopt::host_copy(pb.presolve_data.var_flags);
+  auto stream                   = handle_ptr->get_stream();
+  auto h_var_bounds             = cuopt::host_copy(pb.variable_bounds, stream);
+  auto h_objective_coefficients = cuopt::host_copy(pb.objective_coefficients, stream);
+  auto h_variable_types         = cuopt::host_copy(pb.variable_types, stream);
+  auto h_var_flags              = cuopt::host_copy(pb.presolve_data.var_flags, stream);
   handle_ptr->sync_stream();
 
   const i_t n_vars_originally = (i_t)h_var_bounds.size();
@@ -1873,12 +1875,13 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   i_t nz                 = nnz;
   user_problem.num_rows  = m;
   user_problem.num_cols  = n;
-  user_problem.objective = cuopt::host_copy(objective_coefficients);
+  auto stream            = handle_ptr->get_stream();
+  user_problem.objective = cuopt::host_copy(objective_coefficients, stream);
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.x         = cuopt::host_copy(coefficients);
-  csr_A.j         = cuopt::host_copy(variables);
-  csr_A.row_start = cuopt::host_copy(offsets);
+  csr_A.x         = cuopt::host_copy(coefficients, stream);
+  csr_A.j         = cuopt::host_copy(variables, stream);
+  csr_A.row_start = cuopt::host_copy(offsets, stream);
 
   csr_A.to_compressed_col(user_problem.A);
 
@@ -1887,8 +1890,8 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   user_problem.range_rows.clear();
   user_problem.range_value.clear();
 
-  auto model_constraint_lower_bounds = cuopt::host_copy(constraint_lower_bounds);
-  auto model_constraint_upper_bounds = cuopt::host_copy(constraint_upper_bounds);
+  auto model_constraint_lower_bounds = cuopt::host_copy(constraint_lower_bounds, stream);
+  auto model_constraint_upper_bounds = cuopt::host_copy(constraint_upper_bounds, stream);
 
   // All constraints have lower and upper bounds
   // lr <= a_i^T x <= ur
@@ -1949,7 +1952,7 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   user_problem.obj_scale    = presolve_data.objective_scaling_factor;
   user_problem.var_types.resize(n);
 
-  auto model_variable_types = cuopt::host_copy(variable_types);
+  auto model_variable_types = cuopt::host_copy(variable_types, stream);
   for (int j = 0; j < n; ++j) {
     user_problem.var_types[j] =
       model_variable_types[j] == var_t::CONTINUOUS
@@ -1967,7 +1970,8 @@ template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_vars_with_objective_coeffs()
 {
   raft::common::nvtx::range fun_scope("compute_vars_with_objective_coeffs");
-  auto h_objective_coefficients = cuopt::host_copy(objective_coefficients);
+  auto h_objective_coefficients =
+    cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());
   std::vector<i_t> vars_with_objective_coeffs_;
   std::vector<f_t> objective_coeffs_;
   for (i_t i = 0; i < n_variables; ++i) {

@@ -210,13 +210,15 @@ TEST(pdlp_class, run_sub_mittleman)
     for (auto solver_mode : solver_mode_list) {
       auto settings             = pdlp_solver_settings_t<int, double>{};
       settings.pdlp_solver_mode = solver_mode;
+      settings.dual_postsolve   = false;
       for (auto [presolve, epsilon] : {std::pair{true, 1e-1}, std::pair{false, 1e-6}}) {
         settings.presolve = presolve;
         settings.method   = cuopt::linear_programming::method_t::PDLP;
         const raft::handle_t handle_{};
         optimization_problem_solution_t<int, double> solution =
           solve_lp(&handle_, op_problem, settings);
-        printf("running %s mode %d presolve? %d\n", name.c_str(), (int)solver_mode, presolve);
+        printf(
+          "running %s mode %d presolve? %d\n", name.c_str(), (int)solver_mode, settings.presolve);
         EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
         EXPECT_FALSE(is_incorrect_objective(
           expected_objective_value,
@@ -854,6 +856,35 @@ TEST(pdlp_class, warm_start)
     EXPECT_EQ(solution1.get_additional_termination_information().number_of_steps_taken,
               solution3.get_additional_termination_information().number_of_steps_taken +
                 solution2.get_additional_termination_information().number_of_steps_taken);
+  }
+}
+
+TEST(pdlp_class, dual_postsolve_size)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  auto solver_settings     = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method   = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.presolve = true;
+
+  {
+    solver_settings.dual_postsolve = true;
+    optimization_problem_solution_t<int, double> solution =
+      solve_lp(&handle_, op_problem, solver_settings);
+    EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+    EXPECT_EQ(solution.get_dual_solution().size(), op_problem.get_n_constraints());
+  }
+
+  {
+    solver_settings.dual_postsolve = false;
+    optimization_problem_solution_t<int, double> solution =
+      solve_lp(&handle_, op_problem, solver_settings);
+    EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+    EXPECT_EQ(solution.get_dual_solution().size(), 0);
   }
 }
 
