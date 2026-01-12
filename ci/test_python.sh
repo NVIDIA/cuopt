@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -36,23 +36,6 @@ mkdir -p "${RAPIDS_TESTS_DIR}" "${RAPIDS_COVERAGE_DIR}"
 rapids-print-env
 
 rapids-logger "Download datasets"
-
-# Debug: Check if S3 configuration is available
-if [ -n "${CUOPT_DATASET_S3_URI:-}" ]; then
-    echo "✓ CUOPT_DATASET_S3_URI is set: $CUOPT_DATASET_S3_URI"
-    export CUOPT_DATASET_S3_URI
-else
-    echo "✗ CUOPT_DATASET_S3_URI not set"
-fi
-
-if [ -n "${CUOPT_AWS_ACCESS_KEY_ID:-}" ]; then
-    echo "✓ CUOPT_AWS_ACCESS_KEY_ID is available (via secrets: inherit)"
-    export CUOPT_AWS_ACCESS_KEY_ID
-    export CUOPT_AWS_SECRET_ACCESS_KEY
-else
-    echo "✗ CUOPT_AWS_ACCESS_KEY_ID not found in environment"
-    echo "  S3 download will fall back to HTTP if configured"
-fi
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
