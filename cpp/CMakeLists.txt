@@ -364,10 +364,10 @@ target_link_libraries(cuopt
   CCCL::CCCL
   raft::raft
   ${CUDSS_LIB_FILE}
-  protobuf::libprotobuf
   PRIVATE
   ${CUOPT_PRIVATE_CUDA_LIBS}
   cuopt::mps_parser_static  # Static link - symbols embedded in libcuopt.so
+  protobuf::libprotobuf
   )
 
 
@@ -570,8 +570,8 @@ if(BUILD_REMOTE_SERVER AND NOT BUILD_LP_ONLY)
     PUBLIC
     cuopt
     OpenMP::OpenMP_CXX
-    protobuf::libprotobuf
     PRIVATE
+    protobuf::libprotobuf
   )
   # Use RUNPATH so LD_LIBRARY_PATH can override conda paths during development
   set_target_properties(cuopt_remote_server PROPERTIES
