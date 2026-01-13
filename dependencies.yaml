@@ -302,6 +302,7 @@ dependencies:
           - tbb-devel
           - zlib
           - bzip2
+          - libprotobuf
   test_cpp:
     common:
       - output_types: [conda]

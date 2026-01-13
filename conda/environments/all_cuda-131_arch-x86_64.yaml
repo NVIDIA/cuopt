@@ -32,6 +32,7 @@ dependencies:
 - libcurand-dev
 - libcusolver-dev
 - libcusparse-dev
+- libprotobuf
 - libraft-headers==26.2.*,>=0.0.0a0
 - librmm==26.2.*,>=0.0.0a0
 - make
