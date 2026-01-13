@@ -209,7 +209,6 @@ class population_t {
   std::atomic<bool> preempt_heuristic_solver_    = false;
   std::atomic<bool> solutions_in_external_queue_ = false;
   f_t best_feasible_objective                    = std::numeric_limits<f_t>::max();
-  std::atomic<bool> solutions_in_external_queue_ = false;
   assignment_hash_map_t<i_t, f_t> population_hash_map;
   cuopt::timer_t timer;
 };
