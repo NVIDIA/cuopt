@@ -56,7 +56,7 @@ while IFS= read -r branch || [ -n "$branch" ]; do
   # Skip comments and empty lines
   [[ "$branch" =~ ^#.*$ ]] && continue
   [[ -z "${branch// }" ]] && continue
-  
+
   # Trim whitespace and add to array
   branch=$(echo "$branch" | xargs)
   branches+=("$branch")
@@ -82,11 +82,11 @@ for branch in "${branches[@]}"; do
   echo "=========================================="
   echo "Processing branch: $branch"
   echo "=========================================="
-  
+
   # Create a safe directory name from branch name
   safe_branch_name="${branch//\//_}"
   clone_dir="$WORK_DIR/$safe_branch_name"
-  
+
   # Clone the specific branch
   echo "Cloning branch: $branch into $clone_dir"
   if ! git clone --single-branch --branch "$branch" --depth 1 "$REPO_URL" "$clone_dir" 2>&1 | tee /tmp/clone_${safe_branch_name}.log; then
@@ -94,16 +94,16 @@ for branch in "${branches[@]}"; do
     failed_branches+=("$branch (clone failed)")
     continue
   fi
-  
+
   # Change to cloned directory
   cd "$clone_dir"
-  
+
   # Setup conda environment, build, and analyze
   echo "Setting up conda environment for: $branch"
-  
+
   # Create a unique conda environment name for this branch
   conda_env_name="cuopt_sonar_${safe_branch_name}"
-  
+
   # Create conda environment
   if ! conda env create -n "$conda_env_name" -f "$CONDA_ENV_FILE" 2>&1 | tee /tmp/conda_create_${safe_branch_name}.log; then
     echo "ERROR: Conda environment creation failed for branch: $branch. Check logs at /tmp/conda_create_${safe_branch_name}.log"
@@ -111,25 +111,25 @@ for branch in "${branches[@]}"; do
     rm -rf "$clone_dir"
     continue
   fi
-  
+
   # Activate conda environment and run build + analysis in a subshell
   echo "Building and analyzing branch: $branch in conda environment: $conda_env_name"
-  
+
   if ! bash -c "
     set -e
     source \$(conda info --base)/etc/profile.d/conda.sh
     conda activate $conda_env_name
-    
+
     echo 'Conda environment activated: $conda_env_name'
     echo 'Python version:' \$(python --version)
-    
+
     # Build the project
     echo 'Building project...'
     if ! ./build.sh 2>&1 | tee /tmp/build_${safe_branch_name}.log; then
       echo 'Build failed'
       exit 1
     fi
-    
+
     # Run SonarQube analysis
     echo 'Running SonarQube analysis...'
     if ! sonar-scanner \
@@ -139,7 +139,7 @@ for branch in "${branches[@]}"; do
       echo 'SonarQube analysis failed'
       exit 1
     fi
-    
+
     echo 'Build and analysis completed successfully'
   "; then
     echo "ERROR: Build or analysis failed for branch: $branch"
@@ -148,21 +148,21 @@ for branch in "${branches[@]}"; do
     else
       failed_branches+=("$branch (sonar analysis failed)")
     fi
-    
+
     # Clean up conda environment
     conda env remove -n "$conda_env_name" -y 2>/dev/null || true
     rm -rf "$clone_dir"
     continue
   fi
-  
+
   # Clean up conda environment after successful analysis
   echo "Cleaning up conda environment: $conda_env_name"
   conda env remove -n "$conda_env_name" -y 2>/dev/null || true
-  
+
   successful_branches+=("$branch")
   echo "✓ Successfully completed analysis for: $branch"
   echo "Progress: ${#successful_branches[@]} succeeded, ${#failed_branches[@]} failed out of ${#branches[@]} total"
-  
+
   # Clean up clone directory after successful analysis
   echo "Cleaning up clone directory for: $branch"
   rm -rf "$clone_dir"
