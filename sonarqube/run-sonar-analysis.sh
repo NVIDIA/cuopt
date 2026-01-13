@@ -96,7 +96,11 @@ for branch in "${branches[@]}"; do
   fi
 
   # Change to cloned directory
-  cd "$clone_dir"
+  if ! cd "$clone_dir"; then
+    echo "ERROR: Failed to change directory to: $clone_dir"
+    failed_branches+=("$branch (cd failed)")
+    continue
+  fi
 
   # Setup conda environment, build, and analyze
   echo "Setting up conda environment for: $branch"
