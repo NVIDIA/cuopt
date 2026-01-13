@@ -84,7 +84,8 @@ for branch in "${branches[@]}"; do
 
   # Clone the specific branch
   echo "Cloning branch: $branch into $clone_dir"
-  if ! git clone --single-branch --branch "$branch" --depth 1 "$REPO_URL" "$clone_dir" 2>&1 | tee /tmp/clone_${safe_branch_name}.log; then
+  git clone --single-branch --branch "$branch" --depth 1 "$REPO_URL" "$clone_dir" 2>&1 | tee /tmp/clone_${safe_branch_name}.log
+  if [ "${PIPESTATUS[0]}" -ne 0 ]; then
     echo "ERROR: Failed to clone branch: $branch"
     failed_branches+=("$branch (clone failed)")
     continue
@@ -104,7 +105,8 @@ for branch in "${branches[@]}"; do
   conda_env_name="cuopt_sonar_${safe_branch_name}"
 
   # Create conda environment
-  if ! mamba env create -n "$conda_env_name" -f "$CONDA_ENV_FILE" 2>&1 | tee /tmp/conda_create_${safe_branch_name}.log; then
+  mamba env create -n "$conda_env_name" -f "$CONDA_ENV_FILE" 2>&1 | tee /tmp/conda_create_${safe_branch_name}.log
+  if [ "${PIPESTATUS[0]}" -ne 0 ]; then
     echo "ERROR: Conda environment creation failed for branch: $branch. Check logs at /tmp/conda_create_${safe_branch_name}.log"
     failed_branches+=("$branch (conda env creation failed)")
     rm -rf "$clone_dir"
@@ -124,17 +126,19 @@ for branch in "${branches[@]}"; do
 
     # Build the project
     echo 'Building project...'
-    if ! ./build.sh 2>&1 | tee /tmp/build_${safe_branch_name}.log; then
+    ./build.sh 2>&1 | tee /tmp/build_${safe_branch_name}.log
+    if [ \${PIPESTATUS[0]} -ne 0 ]; then
       echo 'Build failed'
       exit 1
     fi
-
+    
     # Run SonarQube analysis
+    # Note: SONAR_TOKEN is read from environment automatically by sonar-scanner
     echo 'Running SonarQube analysis...'
-    if ! sonar-scanner \
-      -Dsonar.token='$SONAR_TOKEN' \
+    sonar-scanner \
       -Dsonar.branch.name='$branch' \
-      2>&1 | tee /tmp/sonar_${safe_branch_name}.log; then
+      2>&1 | tee /tmp/sonar_${safe_branch_name}.log
+    if [ \${PIPESTATUS[0]} -ne 0 ]; then
       echo 'SonarQube analysis failed'
       exit 1
     fi
