@@ -20,13 +20,8 @@ if [ -z "$SONAR_TOKEN" ]; then
   exit 1
 fi
 
-# Get git remote URL from current directory
-REPO_URL=$(git config --get remote.origin.url 2>/dev/null)
-if [ -z "$REPO_URL" ]; then
-  echo "ERROR: Could not determine git remote URL"
-  echo "Make sure you run this script from within the git repository"
-  exit 1
-fi
+# Repository URL
+REPO_URL="git@github.com:NVIDIA/cuopt.git"
 
 echo "Repository URL: $REPO_URL"
 echo "Working directory: $WORK_DIR"
