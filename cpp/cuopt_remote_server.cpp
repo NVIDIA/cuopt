@@ -616,24 +616,12 @@ void worker_process(int worker_id)
     bool read_success = false;
 
     if (config.use_pipes) {
-      // Pipe mode: wait for server to send data, then read from pipe
-      // Wait for data_sent flag with timeout
-      int wait_count = 0;
-      while (!job.data_sent && !job.cancelled && !shm_ctrl->shutdown_requested) {
-        usleep(1000);                // 1ms
-        if (++wait_count > 30000) {  // 30 second timeout
-          std::cerr << "[Worker " << worker_id << "] Timeout waiting for job data\n";
-          break;
-        }
-      }
-
-      if (job.data_sent && !job.cancelled) {
-        // Read from our input pipe
-        int read_fd  = worker_pipes[worker_id].worker_read_fd;
-        read_success = recv_job_data_pipe(read_fd, job.data_size, request_data);
-        if (!read_success) {
-          std::cerr << "[Worker " << worker_id << "] Failed to read job data from pipe\n";
-        }
+      // Pipe mode: read from pipe (blocks until server writes data)
+      // No need to wait for data_sent flag - pipe read naturally blocks
+      int read_fd  = worker_pipes[worker_id].worker_read_fd;
+      read_success = recv_job_data_pipe(read_fd, job.data_size, request_data);
+      if (!read_success) {
+        std::cerr << "[Worker " << worker_id << "] Failed to read job data from pipe\n";
       }
     } else {
       // SHM mode: read from shared memory
