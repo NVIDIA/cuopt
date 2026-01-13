@@ -485,7 +485,7 @@ void delete_log_file(const std::string& job_id);
 // Forward declarations for pipe I/O helpers
 // ============================================================================
 static bool write_to_pipe(int fd, const void* data, size_t size);
-static bool read_from_pipe(int fd, void* data, size_t size);
+static bool read_from_pipe(int fd, void* data, size_t size, int timeout_ms = 120000);
 static bool send_job_data_pipe(int worker_idx, const std::vector<uint8_t>& data);
 static bool recv_job_data_pipe(int fd, uint64_t expected_size, std::vector<uint8_t>& data);
 static bool send_result_pipe(int fd, const std::vector<uint8_t>& data);
@@ -1335,7 +1335,7 @@ static bool write_to_pipe(int fd, const void* data, size_t size)
 
 // Read all data from a pipe (handles partial reads) with timeout
 // timeout_ms: milliseconds to wait for data (default 120000 = 2 minutes)
-static bool read_from_pipe(int fd, void* data, size_t size, int timeout_ms = 120000)
+static bool read_from_pipe(int fd, void* data, size_t size, int timeout_ms)
 {
   uint8_t* ptr     = static_cast<uint8_t*>(data);
   size_t remaining = size;
