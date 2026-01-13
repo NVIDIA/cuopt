@@ -104,7 +104,7 @@ for branch in "${branches[@]}"; do
   conda_env_name="cuopt_sonar_${safe_branch_name}"
 
   # Create conda environment
-  if ! conda env create -n "$conda_env_name" -f "$CONDA_ENV_FILE" 2>&1 | tee /tmp/conda_create_${safe_branch_name}.log; then
+  if ! mamba env create -n "$conda_env_name" -f "$CONDA_ENV_FILE" 2>&1 | tee /tmp/conda_create_${safe_branch_name}.log; then
     echo "ERROR: Conda environment creation failed for branch: $branch. Check logs at /tmp/conda_create_${safe_branch_name}.log"
     failed_branches+=("$branch (conda env creation failed)")
     rm -rf "$clone_dir"
