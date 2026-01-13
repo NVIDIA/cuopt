@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -304,7 +304,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
     tmp_primal.data(),
     current_saddle_point_state.get_primal_size(),
     raft::sub_op(),
-    stream_view_);
+    stream_view_.value());
 
   // compute interaction (x'-x) . (A(y'-y))
   RAFT_CUBLAS_TRY(

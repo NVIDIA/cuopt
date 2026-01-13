@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -435,7 +435,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
                                   op_problem_scaled_.variable_bounds.data(),
                                   primal_size_h_,
                                   divide_check_zero<f_t, f_t2>(),
-                                  stream_view_);
+                                  stream_view_.value());
 
   raft::linalg::eltwiseMultiply(
     const_cast<rmm::device_uvector<f_t>&>(op_problem_scaled_.constraint_lower_bounds).data(),
@@ -471,7 +471,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
         return {constraint_lower_bound * *bound_rescaling,
                 constraint_upper_bound * *bound_rescaling};
       },
-      stream_view_);
+      stream_view_.value());
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(op_problem_scaled_.variable_bounds.data(),
@@ -486,7 +486,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
         return {{variable_bounds.x * *bound_rescaling, variable_bounds.y * *bound_rescaling},
                 objective_coefficient * *objective_rescaling};
       },
-      stream_view_);
+      stream_view_.value());
   }
 
 #ifdef CUPDLP_DEBUG_MODE
