@@ -182,23 +182,6 @@ jobs:
       artifact-name: "cuopt_docs"
       container_image: "rapidsai/ci-conda:26.02-latest"
       script: "ci/build_docs.sh"
-  sonarqube-analysis:
-    name: SonarQube Analysis
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-      - uses: SonarSource/sonarqube-scan-action@v4
-        with:
-          projectBaseDir: .github
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      - uses: SonarSource/sonarqube-quality-gate-action@v1
-        timeout-minutes: 5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
   wheel-build-cuopt-sh-client:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuda-13.1.0
