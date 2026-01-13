@@ -1,6 +1,8 @@
-=========================
-LP and MILP API Reference
-=========================
+.. _problem_modeling :
+
+=============================
+LP, QP and MILP API Reference
+=============================
 
 .. autoclass:: cuopt.linear_programming.problem.Problem
    :members:
