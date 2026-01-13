@@ -31,6 +31,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -111,7 +112,7 @@ static bool send_typed_message(int sockfd, MessageType type, const void* data, s
   uint64_t payload_size = static_cast<uint64_t>(size);
 
   if (::write(sockfd, &msg_type, 1) != 1) return false;
-  if (::write(sockfd, &payload_size, 4) != 4) return false;
+  if (::write(sockfd, &payload_size, sizeof(payload_size)) != sizeof(payload_size)) return false;
   if (size > 0) {
     const uint8_t* ptr = static_cast<const uint8_t*>(data);
     size_t remaining   = size;
@@ -707,22 +708,20 @@ void worker_process(int worker_id)
     close(saved_stdout);
     close(saved_stderr);
 
+
     // Store result (pipe mode: write to pipe, shm mode: write to shared memory)
     if (config.use_pipes) {
-      // Pipe mode: write result to output pipe
-      if (success && !result_data.empty()) {
-        int write_fd       = worker_pipes[worker_id].worker_write_fd;
-        bool write_success = send_result_pipe(write_fd, result_data);
-        if (!write_success) {
-          std::cerr << "[Worker " << worker_id << "] Failed to write result to pipe\n";
-          success       = false;
-          error_message = "Failed to write result to pipe";
-        }
-      }
+      // PIPE MODE: Set result_queue metadata FIRST, THEN write to pipe.
+      // This avoids deadlock: the main thread's result_retrieval_thread
+      // needs to see ready=true before it will read from the pipe,
+      // but if we write to pipe first with a large result, we'll block
+      // waiting for the reader that will never come.
 
-      // Store result metadata in result queue
+      // Find a free result slot and populate metadata
+      int result_slot = -1;
       for (size_t i = 0; i < MAX_RESULTS; ++i) {
         if (!result_queue[i].ready) {
+          result_slot = i;
           ResultQueueEntry& result = result_queue[i];
           strncpy(result.job_id, job_id.c_str(), sizeof(result.job_id) - 1);
           result.status           = success ? 0 : 1;
@@ -733,8 +732,24 @@ void worker_process(int worker_id)
             strncpy(result.error_message, error_message.c_str(), sizeof(result.error_message) - 1);
           }
           result.retrieved = false;
-          result.ready     = true;  // Mark as ready last
+          // Set ready=true BEFORE writing to pipe so reader thread starts reading
+          // This prevents deadlock with large results that exceed pipe buffer size
+          result.ready = true;
           break;
+        }
+      }
+
+      // Now write result data to pipe (reader thread should be ready to receive)
+      if (success && !result_data.empty() && result_slot >= 0) {
+        int write_fd       = worker_pipes[worker_id].worker_write_fd;
+        bool write_success = send_result_pipe(write_fd, result_data);
+        if (!write_success) {
+          std::cerr << "[Worker " << worker_id << "] Failed to write result to pipe\n";
+          // Mark as failed in result queue
+          result_queue[result_slot].status = 1;
+          strncpy(result_queue[result_slot].error_message,
+                  "Failed to write result to pipe",
+                  sizeof(result_queue[result_slot].error_message) - 1);
         }
       }
     } else {
@@ -1318,15 +1333,39 @@ static bool write_to_pipe(int fd, const void* data, size_t size)
   return true;
 }
 
-// Read all data from a pipe (handles partial reads)
-static bool read_from_pipe(int fd, void* data, size_t size)
+// Read all data from a pipe (handles partial reads) with timeout
+// timeout_ms: milliseconds to wait for data (default 120000 = 2 minutes)
+static bool read_from_pipe(int fd, void* data, size_t size, int timeout_ms = 120000)
 {
   uint8_t* ptr     = static_cast<uint8_t*>(data);
   size_t remaining = size;
   while (remaining > 0) {
+    // Use poll() to wait for data with timeout
+    struct pollfd pfd;
+    pfd.fd     = fd;
+    pfd.events = POLLIN;
+
+    int poll_result = poll(&pfd, 1, timeout_ms);
+    if (poll_result < 0) {
+      if (errno == EINTR) continue;
+      std::cerr << "[Server] poll() failed on pipe: " << strerror(errno) << "\n";
+      return false;
+    }
+    if (poll_result == 0) {
+      std::cerr << "[Server] Timeout waiting for pipe data (waited " << timeout_ms << "ms)\n";
+      return false;
+    }
+    if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+      std::cerr << "[Server] Pipe error/hangup detected\n";
+      return false;
+    }
+
     ssize_t nread = ::read(fd, ptr, remaining);
     if (nread <= 0) {
       if (errno == EINTR) continue;
+      if (nread == 0) {
+        std::cerr << "[Server] Pipe EOF (writer closed)\n";
+      }
       return false;
     }
     ptr += nread;
