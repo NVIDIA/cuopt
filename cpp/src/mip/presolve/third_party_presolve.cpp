@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -14,11 +14,15 @@
 
 #include <raft/common/nvtx.hpp>
 
+#if !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-overflow"  // ignore boost error for pip wheel build
+#endif
 #include <papilo/core/Presolve.hpp>
 #include <papilo/core/ProblemBuilder.hpp>
+#if !defined(__clang__)
 #pragma GCC diagnostic pop
+#endif
 
 namespace cuopt::linear_programming::detail {
 
@@ -437,6 +441,11 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
                  papilo_problem.getNRows(),
                  papilo_problem.getNCols(),
                  papilo_problem.getConstraintMatrix().getNnz());
+
+  // Check if presolve found the optimal solution (problem fully reduced)
+  if (papilo_problem.getNRows() == 0 && papilo_problem.getNCols() == 0) {
+    CUOPT_LOG_INFO("Optimal solution found during presolve");
+  }
 
   auto opt_problem =
     build_optimization_problem<i_t, f_t>(papilo_problem, op_problem.get_handle_ptr(), category);

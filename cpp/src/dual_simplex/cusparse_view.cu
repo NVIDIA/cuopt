@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -116,7 +116,10 @@ void my_cusparsespmv_preprocess(cusparseHandle_t handle,
 static cusparseSpMVAlg_t get_spmv_alg(int num_rows)
 {
   // The older version of ALG2 has a bug with single row matrices
-  if (num_rows == 1 && __CUDACC_VER_MAJOR__ < 13) { return CUSPARSE_SPMV_CSR_ALG1; }
+  if (num_rows == 1 &&
+      (CUSPARSE_VER_MAJOR * 1000 + CUSPARSE_VER_MINOR * 100 + CUSPARSE_VER_PATCH < 12603)) {
+    return CUSPARSE_SPMV_CSR_ALG1;
+  }
   return CUSPARSE_SPMV_CSR_ALG2;
 }
 

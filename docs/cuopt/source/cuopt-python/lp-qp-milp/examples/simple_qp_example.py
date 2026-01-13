@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES.
 # SPDX-License-Identifier: Apache-2.0
 
 """
@@ -14,10 +14,11 @@ Quadratic Programming (QP) problem using the cuOpt Python API.
 Problem:
     minimize    x^2 + y^2
     subject to  x + y >= 1
+                0.75 * x + y <= 1
                 x, y >= 0
 
 This is a convex QP that minimizes the squared distance from the origin
-while requiring the sum of x and y to be at least 1.
+while satisfying other constraints.
 """
 
 from cuopt.linear_programming.problem import (
@@ -31,11 +32,12 @@ def main():
     prob = Problem("Simple QP")
 
     # Add variables with non-negative bounds
-    x = prob.addVariable(lb=0, name="x")
-    y = prob.addVariable(lb=0, name="y")
+    x = prob.addVariable(lb=0)
+    y = prob.addVariable(lb=0)
 
     # Add constraint: x + y >= 1
     prob.addConstraint(x + y >= 1)
+    prob.addConstraint(0.75 * x + y <= 1)
 
     # Set quadratic objective: minimize x^2 + y^2
     # Using Variable * Variable to create quadratic terms
