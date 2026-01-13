@@ -66,6 +66,7 @@ class presolve_data_t {
                                fixed_var_assignment.begin(),
                                fixed_var_assignment.end(),
                                0.);
+    variable_substitutions.clear();
   }
 
   void reset_additional_vars(const problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)

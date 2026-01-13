@@ -933,8 +933,6 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   CUOPT_LOG_DEBUG("Total number of cached probings %lu number of implied singletons %lu",
                   n_of_cached_probings.load(),
                   n_of_implied_singletons.load());
-  const bool remap_cache_ids = true;
-  trivial_presolve(problem, remap_cache_ids);
   // restore the settings
   bound_presolve.settings = {};
   return problem_is_infeasible.load();

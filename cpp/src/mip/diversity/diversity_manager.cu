@@ -192,11 +192,13 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     f_t time_for_probing_cache =
       std::min(max_time_on_probing, time_limit * time_ratio_of_probing_cache);
     timer_t probing_timer{time_for_probing_cache};
+    // this function computes probing cache, finds singletons, substitutions and changes the problem
     bool problem_is_infeasible =
       compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
     if (problem_is_infeasible) { return false; }
   }
-  trivial_presolve(*problem_ptr);
+  const bool remap_cache_ids = true;
+  trivial_presolve(*problem_ptr, remap_cache_ids);
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   // May overconstrain if Papilo presolve has been run before
   if (!context.settings.presolve) {
