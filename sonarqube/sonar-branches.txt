@@ -1,0 +1,12 @@
+# SonarQube Branch List
+# One branch name per line
+# Lines starting with # are comments and should be ignored by the cron job
+# Empty lines are also ignored
+
+# Main development branches
+main
+release/26.02
+
+# Add release branches as needed
+# release/v1.0
+# release/v2.0
