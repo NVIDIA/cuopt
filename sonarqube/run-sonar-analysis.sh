@@ -131,7 +131,7 @@ for branch in "${branches[@]}"; do
       echo 'Build failed'
       exit 1
     fi
-    
+
     # Run SonarQube analysis
     # Note: SONAR_TOKEN is read from environment automatically by sonar-scanner
     echo 'Running SonarQube analysis...'
