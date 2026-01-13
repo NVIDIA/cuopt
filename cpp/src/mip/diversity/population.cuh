@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -207,6 +207,7 @@ class population_t {
   std::recursive_mutex write_mutex;
   std::mutex solution_mutex;
   std::atomic<bool> preempt_heuristic_solver_    = false;
+  std::atomic<bool> solutions_in_external_queue_ = false;
   f_t best_feasible_objective                    = std::numeric_limits<f_t>::max();
   std::atomic<bool> solutions_in_external_queue_ = false;
   assignment_hash_map_t<i_t, f_t> population_hash_map;

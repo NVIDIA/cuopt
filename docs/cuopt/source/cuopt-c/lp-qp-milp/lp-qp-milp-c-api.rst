@@ -1,7 +1,7 @@
-cuOpt LP/MILP C API Reference
+cuOpt LP/QP/MILP C API Reference
 ========================================
 
-This section contains the cuOpt LP/MILP C API reference.
+This section contains the cuOpt LP/QP/MILP C API reference.
 
 Integer and Floating-Point Types
 ---------------------------------
@@ -43,11 +43,13 @@ An optimization problem is represented via a `cuOptOptimizationProblem`
 
 .. doxygentypedef:: cuOptOptimizationProblem
 
-Optimization problems can be created via three different functions
+Optimization problems can be created via five different functions
 
 .. doxygenfunction:: cuOptReadProblem
 .. doxygenfunction:: cuOptCreateProblem
 .. doxygenfunction:: cuOptCreateRangedProblem
+.. doxygenfunction:: cuOptCreateQuadraticProblem
+.. doxygenfunction:: cuOptCreateQuadraticRangedProblem
 
 A optimization problem must be destroyed with the following function
 
@@ -128,7 +130,7 @@ When you are done with a solve you should destroy a `cuOptSolverSettings` object
 
 Setting Parameters
 ------------------
-The following functions are used to set and get parameters. You can find more details on the available parameters in the :doc:`LP/MILP settings <../../lp-milp-settings>` section.
+The following functions are used to set and get parameters. You can find more details on the available parameters in the :doc:`LP/MILP settings <../../lp-qp-milp-settings>` section.
 
 .. doxygenfunction:: cuOptSetParameter
 .. doxygenfunction:: cuOptGetParameter
@@ -142,7 +144,7 @@ The following functions are used to set and get parameters. You can find more de
 Parameter Constants
 -------------------
 
-These constants are used as parameter names in the :c:func:`cuOptSetParameter`, :c:func:`cuOptGetParameter`, and similar functions. For more details on the available parameters, see the :doc:`LP/MILP settings <../../lp-milp-settings>` section.
+These constants are used as parameter names in the :c:func:`cuOptSetParameter`, :c:func:`cuOptGetParameter`, and similar functions. For more details on the available parameters, see the :doc:`LP/MILP settings <../../lp-qp-milp-settings>` section.
 
 .. LP/MIP parameter string constants
 .. doxygendefine:: CUOPT_ABSOLUTE_DUAL_TOLERANCE

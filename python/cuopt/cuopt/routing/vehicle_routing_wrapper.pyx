@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -11,6 +11,7 @@ from pylibraft.common.handle cimport *
 
 from cuopt.routing.structure.routing_utilities cimport *
 from cuopt.routing.vehicle_routing cimport (
+    call_batch_solve,
     call_solve,
     data_model_view_t,
     node_type_t,
@@ -32,8 +33,10 @@ from libc.stdlib cimport free, malloc
 from libc.string cimport memcpy, strcpy, strlen
 from libcpp cimport bool
 from libcpp.memory cimport unique_ptr
+from libcpp.pair cimport pair
 from libcpp.string cimport string
 from libcpp.utility cimport move
+from libcpp.vector cimport vector
 
 from rmm.pylibrmm.device_buffer cimport DeviceBuffer
 
@@ -834,3 +837,126 @@ def Solve(DataModel data_model, SolverSettings solver_settings):
         error_message,
         unserviced_nodes
     )
+
+
+cdef create_assignment_from_vr_ret(vehicle_routing_ret_t& vr_ret):
+    """Helper function to create an Assignment from a vehicle_routing_ret_t"""
+    vehicle_count = vr_ret.vehicle_count_
+    total_objective_value = vr_ret.total_objective_value_
+
+    objective_values = {}
+    for k in vr_ret.objective_values_:
+        obj = Objective(int(k.first))
+        objective_values[obj] = k.second
+
+    status = vr_ret.status_
+    cdef char* c_sol_string = c_get_string(vr_ret.solution_string_)
+    try:
+        solver_status_string = \
+            c_sol_string[:vr_ret.solution_string_.length()].decode('UTF-8')
+    finally:
+        free(c_sol_string)
+
+    route = DeviceBuffer.c_from_unique_ptr(move(vr_ret.d_route_))
+    route_locations = DeviceBuffer.c_from_unique_ptr(
+        move(vr_ret.d_route_locations_)
+    )
+    arrival_stamp = DeviceBuffer.c_from_unique_ptr(
+        move(vr_ret.d_arrival_stamp_)
+    )
+    truck_id = DeviceBuffer.c_from_unique_ptr(move(vr_ret.d_truck_id_))
+    node_types = DeviceBuffer.c_from_unique_ptr(move(vr_ret.d_node_types_))
+    unserviced_nodes_buf = \
+        DeviceBuffer.c_from_unique_ptr(move(vr_ret.d_unserviced_nodes_))
+    accepted_buf = \
+        DeviceBuffer.c_from_unique_ptr(move(vr_ret.d_accepted_))
+
+    route_df = cudf.DataFrame()
+    route_df['route'] = series_from_buf(route, pa.int32())
+    route_df['arrival_stamp'] = series_from_buf(arrival_stamp, pa.float64())
+    route_df['truck_id'] = series_from_buf(truck_id, pa.int32())
+    route_df['location'] = series_from_buf(route_locations, pa.int32())
+    route_df['type'] = series_from_buf(node_types, pa.int32())
+
+    unserviced_nodes = cudf.Series._from_column(
+        series_from_buf(unserviced_nodes_buf, pa.int32())
+    )
+    accepted = cudf.Series._from_column(
+        series_from_buf(accepted_buf, pa.int32())
+    )
+
+    def get_type_from_int(type_in_int):
+        if type_in_int == int(NodeType.DEPOT):
+            return "Depot"
+        elif type_in_int == int(NodeType.PICKUP):
+            return "Pickup"
+        elif type_in_int == int(NodeType.DELIVERY):
+            return "Delivery"
+        elif type_in_int == int(NodeType.BREAK):
+            return "Break"
+
+    node_types_string = [
+        get_type_from_int(type_in_int)
+        for type_in_int in route_df['type'].to_pandas()]
+    route_df['type'] = node_types_string
+    error_status = vr_ret.error_status_
+    error_message = vr_ret.error_message_
+
+    return Assignment(
+        vehicle_count,
+        total_objective_value,
+        objective_values,
+        route_df,
+        accepted,
+        <solution_status_t> status,
+        solver_status_string,
+        <error_type_t> error_status,
+        error_message,
+        unserviced_nodes
+    )
+
+
+def BatchSolve(py_data_model_list, SolverSettings solver_settings):
+    """
+    Solve multiple routing problems in batch mode using parallel execution.
+
+    Parameters
+    ----------
+    py_data_model_list : list of DataModel
+        List of data model objects representing routing problems to solve.
+    solver_settings : SolverSettings
+        Solver settings to use for all problems.
+
+    Returns
+    -------
+    tuple
+        A tuple containing:
+        - list of Assignment: Solutions for each routing problem
+        - float: Total solve time in seconds
+    """
+    cdef solver_settings_t[int, float]* c_solver_settings = (
+        solver_settings.c_solver_settings.get()
+    )
+
+    cdef vector[data_model_view_t[int, float] *] data_model_views
+
+    for data_model_obj in py_data_model_list:
+        data_model_views.push_back(
+            (<DataModel>data_model_obj).c_data_model_view.get()
+        )
+
+    cdef vector[unique_ptr[vehicle_routing_ret_t]] batch_solve_result = (
+        move(call_batch_solve(data_model_views, c_solver_settings))
+    )
+
+    cdef vector[unique_ptr[vehicle_routing_ret_t]] c_solutions = (
+        move(batch_solve_result)
+    )
+
+    solutions = []
+    for i in range(c_solutions.size()):
+        solutions.append(
+            create_assignment_from_vr_ret(c_solutions[i].get()[0])
+        )
+
+    return solutions

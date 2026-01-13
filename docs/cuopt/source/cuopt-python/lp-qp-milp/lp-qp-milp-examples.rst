@@ -1,12 +1,12 @@
-====================
-LP and MILP Examples
-====================
+========================
+LP, QP and MILP Examples
+========================
 
-This section contains examples of how to use the cuOpt linear programming and mixed integer linear programming Python API.
+This section contains examples of how to use the cuOpt linear programming, quadratic programming and mixed integer linear programming Python API.
 
 .. note::
 
-    The examples in this section are not exhaustive. They are provided to help you get started with the cuOpt linear programming and mixed integer linear programming Python API. For more examples, please refer to the `cuopt-examples GitHub repository <https://github.com/NVIDIA/cuopt-examples>`_.
+    The examples in this section are not exhaustive. They are provided to help you get started with the cuOpt linear programming, quadratic programming and mixed integer linear programming Python API. For more examples, please refer to the `cuopt-examples GitHub repository <https://github.com/NVIDIA/cuopt-examples>`_.
 
 
 Simple Linear Programming Example
@@ -26,6 +26,31 @@ The response is as follows:
     x = 10.0
     y = 0.0
     Objective value = 10.0
+
+
+.. _simple-qp-example-python:
+
+Simple Quadratic Programming Example
+------------------------------------
+
+.. note::
+   The QP solver is currently in beta.
+
+:download:`simple_qp_example.py <examples/simple_qp_example.py>`
+
+.. literalinclude:: examples/simple_qp_example.py
+   :language: python
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Optimal solution found in 0.01 seconds
+    x = 0.5
+    y = 0.5
+    Objective value = 0.5
+
 
 Mixed Integer Linear Programming Example
 ----------------------------------------

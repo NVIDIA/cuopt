@@ -15,6 +15,3 @@ c_stdlib_version:
 
 cmake_version:
   - ">=3.30.4"
-
-gtest_version:
-  - ">=1.13.0"

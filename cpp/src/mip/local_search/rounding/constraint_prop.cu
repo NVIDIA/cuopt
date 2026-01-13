@@ -933,6 +933,7 @@ bool constraint_prop_t<i_t, f_t>::find_integer(
     update_host_assignment(sol);
     if (max_timer.check_time_limit()) {
       CUOPT_LOG_DEBUG("Second time limit is reached returning nearest rounding!");
+      collapse_crossing_bounds(*sol.problem_ptr, *orig_sol.problem_ptr, sol.handle_ptr);
       sol.round_nearest();
       timeout_happened = true;
       break;

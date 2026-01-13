@@ -1,15 +1,19 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include <cuopt/routing/cython/cython.hpp>
 #include <cuopt/routing/solve.hpp>
+#include <raft/common/nvtx.hpp>
 #include <raft/core/handle.hpp>
 #include <rmm/device_buffer.hpp>
 #include <routing/generator/generator.hpp>
+
+#include <omp.h>
+#include <chrono>
 
 namespace cuopt {
 namespace cython {
@@ -84,6 +88,73 @@ std::unique_ptr<vehicle_routing_ret_t> call_solve(
     routing_solution.get_error_status().get_error_type(),
     routing_solution.get_error_status().what()};
   return std::make_unique<vehicle_routing_ret_t>(std::move(vr_ret));
+}
+
+/**
+ * @brief Wrapper for batch vehicle_routing to expose the API to cython
+ *
+ * @param data_models Vector of data model pointers
+ * @param settings  Composable solver settings object
+ * @return std::vector<std::unique_ptr<vehicle_routing_ret_t>>
+ */
+std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
+  std::vector<routing::data_model_view_t<int, float>*> data_models,
+  routing::solver_settings_t<int, float>* settings)
+{
+  const std::size_t size = data_models.size();
+  std::vector<std::unique_ptr<vehicle_routing_ret_t>> list(size);
+
+  // Use OpenMP for parallel execution
+  const int max_thread = std::min(static_cast<int>(size), omp_get_max_threads());
+  rmm::cuda_stream_pool stream_pool(size, rmm::cuda_stream::flags::non_blocking);
+
+  int device_id = raft::resource::get_device_id(*(data_models[0]->get_handle_ptr()));
+
+#pragma omp parallel for num_threads(max_thread)
+  for (std::size_t i = 0; i < size; ++i) {
+    // Required in multi-GPU environments to set the device for each thread
+    RAFT_CUDA_TRY(cudaSetDevice(device_id));
+
+    auto old_stream = data_models[i]->get_handle_ptr()->get_stream();
+    // Make sure previous operations are finished
+    data_models[i]->get_handle_ptr()->sync_stream();
+
+    // Set new non blocking stream for current data model
+    raft::resource::set_cuda_stream(*(data_models[i]->get_handle_ptr()), stream_pool.get_stream(i));
+    auto routing_solution = cuopt::routing::solve(*data_models[i], *settings);
+
+    // Make sure current solve is finished
+    stream_pool.get_stream(i).synchronize();
+
+    // Create buffers and reassociate them with the original stream so they
+    // outlive the local stream which will be destroyed at end of loop iteration
+    auto make_buffer = [old_stream = old_stream](rmm::device_buffer&& buf) {
+      buf.set_stream(old_stream);
+      return std::make_unique<rmm::device_buffer>(std::move(buf));
+    };
+
+    vehicle_routing_ret_t vr_ret{routing_solution.get_vehicle_count(),
+                                 routing_solution.get_total_objective(),
+                                 routing_solution.get_objectives(),
+                                 make_buffer(routing_solution.get_route().release()),
+                                 make_buffer(routing_solution.get_order_locations().release()),
+                                 make_buffer(routing_solution.get_arrival_stamp().release()),
+                                 make_buffer(routing_solution.get_truck_id().release()),
+                                 make_buffer(routing_solution.get_node_types().release()),
+                                 make_buffer(routing_solution.get_unserviced_nodes().release()),
+                                 make_buffer(routing_solution.get_accepted().release()),
+                                 routing_solution.get_status(),
+                                 routing_solution.get_status_string(),
+                                 routing_solution.get_error_status().get_error_type(),
+                                 routing_solution.get_error_status().what()};
+    list[i] = std::make_unique<vehicle_routing_ret_t>(std::move(vr_ret));
+
+    // Restore the old stream
+    raft::resource::set_cuda_stream(*(data_models[i]->get_handle_ptr()), old_stream);
+    old_stream.synchronize();
+  }
+
+  return list;
 }
 
 /**

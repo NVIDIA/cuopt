@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -482,7 +482,7 @@ class base_test_t {
                vehicle_max_times_d.data(),
                vehicle_max_times_d.size(),
                stream_view_);
-    fleet_order_constraints_h = fleet_order_constraints_d.to_host();
+    fleet_order_constraints_h = fleet_order_constraints_d.to_host(stream_view_);
   }
 
   void check_time_windows(host_assignment_t<i_t> const& routing_solution, bool is_soft_tw = false)
@@ -492,7 +492,7 @@ class base_test_t {
     auto truck_id             = routing_solution.truck_id;
     auto locations            = routing_solution.locations;
     auto node_types           = routing_solution.node_types;
-    fleet_order_constraints_h = fleet_order_constraints_d.to_host();
+    fleet_order_constraints_h = fleet_order_constraints_d.to_host(stream_view_);
 
     std::vector<i_t> temp_truck_ids(truck_id);
     auto end_it = std::unique(temp_truck_ids.begin(), temp_truck_ids.end());

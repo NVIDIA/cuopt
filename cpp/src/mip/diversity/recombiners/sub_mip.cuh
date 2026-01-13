@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -142,6 +142,8 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       scaling.unscale_solutions(fixed_assignment, dummy);
       // unfix the assignment on given result no matter if it is feasible
       offspring.unfix_variables(fixed_assignment, variable_map);
+      offspring
+        .clamp_within_bounds();  // Scaling might bring some very slight variable bound violations
     } else {
       offspring.round_nearest();
     }
@@ -171,6 +173,8 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       rmm::device_uvector<f_t> dummy(0, offspring.handle_ptr->get_stream());
       scaling.unscale_solutions(fixed_assignment, dummy);
       sol.unfix_variables(fixed_assignment, variable_map);
+      sol.clamp_within_bounds();  // Scaling might bring some very slight variable bound violations
+      sol.compute_feasibility();
       // the current problem is the proble with objective cut
       // to add to the population, swap problem to original
       cuopt_assert(sol.compute_feasibility(), "Solution must be feasible");

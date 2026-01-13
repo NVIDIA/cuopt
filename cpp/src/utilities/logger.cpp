@@ -137,9 +137,26 @@ void reset_default_logger()
   default_logger().flush_on(rapids_logger::level_enum::debug);
 }
 
+// Guard object whose destructor resets the logger
+struct logger_config_guard {
+  ~logger_config_guard() { cuopt::reset_default_logger(); }
+};
+
+// Weak reference to detect if any init_logger_t instance is still alive
+static std::weak_ptr<logger_config_guard> g_active_guard;
+static std::mutex g_guard_mutex;
+
 init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
 {
-  // until this function is called, the default sink is the buffer sink
+  std::lock_guard<std::mutex> lock(g_guard_mutex);
+
+  auto existing_guard = g_active_guard.lock();
+  if (existing_guard) {
+    // Reuse existing configuration, just hold a reference to keep it alive
+    guard_ = existing_guard;
+    return;
+  }
+
   cuopt::default_logger().sinks().clear();
 
   // re-initialize sinks
@@ -164,8 +181,11 @@ init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
   for (const auto& entry : buffered_messages) {
     cuopt::default_logger().log(entry.level, entry.msg.c_str());
   }
-}
 
-init_logger_t::~init_logger_t() { cuopt::reset_default_logger(); }
+  // Create guard and store weak reference for future instances to find
+  auto guard     = std::make_shared<logger_config_guard>();
+  g_active_guard = guard;
+  guard_         = guard;
+}
 
 }  // namespace cuopt

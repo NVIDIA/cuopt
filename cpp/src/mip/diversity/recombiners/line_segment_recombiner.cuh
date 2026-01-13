@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -19,7 +19,7 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
  public:
-  line_segment_recombiner_t(mip_solver_context_t<i_t, f_t> context,
+  line_segment_recombiner_t(mip_solver_context_t<i_t, f_t>& context,
                             i_t n_vars,
                             line_segment_search_t<i_t, f_t>& line_segment_search_,
                             const raft::handle_t* handle_ptr)

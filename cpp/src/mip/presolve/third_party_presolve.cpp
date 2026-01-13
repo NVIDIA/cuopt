@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -14,11 +14,15 @@
 
 #include <raft/common/nvtx.hpp>
 
+#if !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-overflow"  // ignore boost error for pip wheel build
+#endif
 #include <papilo/core/Presolve.hpp>
 #include <papilo/core/ProblemBuilder.hpp>
+#if !defined(__clang__)
 #pragma GCC diagnostic pop
+#endif
 
 namespace cuopt::linear_programming::detail {
 
@@ -185,7 +189,9 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
 
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t> build_optimization_problem(
-  papilo::Problem<f_t> const& papilo_problem, raft::handle_t const* handle_ptr)
+  papilo::Problem<f_t> const& papilo_problem,
+  raft::handle_t const* handle_ptr,
+  problem_category_t category)
 {
   raft::common::nvtx::range fun_scope("Build optimization problem");
   optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
@@ -193,6 +199,7 @@ optimization_problem_t<i_t, f_t> build_optimization_problem(
   auto obj = papilo_problem.getObjective();
   op_problem.set_objective_offset(maximize_ ? -obj.offset : obj.offset);
   op_problem.set_maximize(maximize_);
+  op_problem.set_problem_category(category);
 
   if (papilo_problem.getNRows() == 0 && papilo_problem.getNCols() == 0) {
     // FIXME: Shouldn't need to set offsets
@@ -353,11 +360,16 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
                           f_t absolute_tolerance,
                           f_t relative_tolerance,
                           double time_limit,
+                          bool dual_postsolve,
                           i_t num_cpu_threads)
 {
   presolver.getPresolveOptions().tlim    = time_limit;
   presolver.getPresolveOptions().threads = num_cpu_threads;  //  user setting or  0 (automatic)
   presolver.getPresolveOptions().feastol = 1e-5;
+  if (dual_postsolve) {
+    presolver.getPresolveOptions().componentsmaxint = -1;
+    presolver.getPresolveOptions().detectlindep     = 0;
+  }
 }
 
 template <typename f_t>
@@ -401,8 +413,13 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
   if (category == problem_category_t::MIP) { dual_postsolve = false; }
   papilo::Presolve<f_t> presolver;
   set_presolve_methods<f_t>(presolver, category, dual_postsolve);
-  set_presolve_options<i_t, f_t>(
-    presolver, category, absolute_tolerance, relative_tolerance, time_limit, num_cpu_threads);
+  set_presolve_options<i_t, f_t>(presolver,
+                                 category,
+                                 absolute_tolerance,
+                                 relative_tolerance,
+                                 time_limit,
+                                 dual_postsolve,
+                                 num_cpu_threads);
   set_presolve_parameters<f_t>(
     presolver, category, op_problem.get_n_constraints(), op_problem.get_n_variables());
 
@@ -425,8 +442,13 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
                  papilo_problem.getNCols(),
                  papilo_problem.getConstraintMatrix().getNnz());
 
+  // Check if presolve found the optimal solution (problem fully reduced)
+  if (papilo_problem.getNRows() == 0 && papilo_problem.getNCols() == 0) {
+    CUOPT_LOG_INFO("Optimal solution found during presolve");
+  }
+
   auto opt_problem =
-    build_optimization_problem<i_t, f_t>(papilo_problem, op_problem.get_handle_ptr());
+    build_optimization_problem<i_t, f_t>(papilo_problem, op_problem.get_handle_ptr(), category);
   auto col_flags = papilo_problem.getColFlags();
   std::vector<i_t> implied_integer_indices;
   for (size_t i = 0; i < col_flags.size(); i++) {
@@ -443,6 +465,7 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
                                             rmm::device_uvector<f_t>& reduced_costs,
                                             problem_category_t category,
                                             bool status_to_skip,
+                                            bool dual_postsolve,
                                             rmm::cuda_stream_view stream_view)
 {
   if (status_to_skip) { return; }
@@ -452,8 +475,12 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
   raft::copy(dual_sol_vec_h.data(), dual_solution.data(), dual_solution.size(), stream_view);
   std::vector<f_t> reduced_costs_vec_h(reduced_costs.size());
   raft::copy(reduced_costs_vec_h.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
-
   papilo::Solution<f_t> reduced_sol(primal_sol_vec_h);
+  if (dual_postsolve) {
+    reduced_sol.dual         = dual_sol_vec_h;
+    reduced_sol.reducedCosts = reduced_costs_vec_h;
+    reduced_sol.type         = papilo::SolutionType::kPrimalDual;
+  }
   papilo::Solution<f_t> full_sol;
 
   papilo::Message Msg{};

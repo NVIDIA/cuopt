@@ -1,5 +1,5 @@
 # cmake-format: off
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
@@ -32,4 +32,5 @@ ConfigureTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/prize_collection.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/objective_function.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/top_k.cu
+      ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/batch_tsp.cu
 )

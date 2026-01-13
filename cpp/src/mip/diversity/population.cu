@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -217,7 +217,7 @@ void population_t<i_t, f_t>::add_external_solutions_to_population()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::preempt_heuristic_solver()
 {
-  preempt_heuristic_solver_ = true;
+  context.preempt_heuristic_solver_ = true;
 }
 
 template <typename i_t, typename f_t>
@@ -307,11 +307,12 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
         if (context.settings.mip_scaling) {
           context.scaling.unscale_solutions(temp_sol.assignment, dummy);
           // Need to get unscaled problem as well
-          problem_t<i_t, f_t> n_problem(*problem_ptr->original_problem_ptr);
-          temp_sol.problem_ptr = &n_problem;
-          temp_sol.resize_to_original_problem();
-          temp_sol.compute_feasibility();
-          if (!temp_sol.get_feasible()) {
+          problem_t<i_t, f_t> n_problem(*sol.problem_ptr->original_problem_ptr);
+          auto scaled_sol(temp_sol);
+          scaled_sol.problem_ptr = &n_problem;
+          scaled_sol.resize_to_original_problem();
+          scaled_sol.compute_feasibility();
+          if (!scaled_sol.get_feasible()) {
             CUOPT_LOG_DEBUG("Discard infeasible after unscaling");
             return;
           }

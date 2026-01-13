@@ -1,5 +1,5 @@
 # cmake-format: off
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
@@ -41,7 +41,6 @@ rapids_cmake_build_type(Release)
 option(CMAKE_CUDA_LINEINFO "Enable the -lineinfo option for nvcc useful for cuda-memcheck / profiler" ON)
 option(BUILD_TESTS "Configure CMake to build tests" ON)
 option(DISABLE_OPENMP "Disable OpenMP" OFF)
-option(CUDA_STATIC_RUNTIME "Statically link the CUDA toolkit runtime and libraries" OFF)
 option(BUILD_LP_ONLY "Build only linear programming components, exclude routing and MIP-specific files" OFF)
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
 option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
@@ -62,7 +61,7 @@ message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
 # - compiler options ------------------------------------------------------------------------------
 
 # CUDA runtime
-rapids_cuda_init_runtime(USE_STATIC ${CUDA_STATIC_RUNTIME})
+rapids_cuda_init_runtime(USE_STATIC ON)
 
 rapids_find_package(CUDAToolkit REQUIRED
   BUILD_EXPORT_SET cuopt-exports
@@ -87,9 +86,32 @@ endif()
 # 1. Run the binary with env var set: LD_PRELOAD="$(gcc -print-file-name=libasan.so)" ASAN_OPTIONS='protect_shadow_gap=0:replace_intrin=0'
 # 2. (Optional) To run with a debugger (gdb or cuda-gdb) use the additional ASAN option alloc_dealloc_mismatch=0
 if(BUILD_SANITIZER)
-  list(APPEND CUOPT_CXX_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer -g -Wno-error=maybe-uninitialized)
+  list(APPEND CUOPT_CXX_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer -g)
+  if(NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+    list(APPEND CUOPT_CXX_FLAGS -Wno-error=maybe-uninitialized)
+  endif()
   add_link_options(-fsanitize=address,undefined)
 endif(BUILD_SANITIZER)
+
+# To use ThreadSanitizer:
+# 1. Build with clang and the -tsan flag
+# 2. Run the binary with env var set: OMP_TOOL_LIBRARIES=/usr/lib/llvm-17/lib/libarcher.so ARCHER_OPTIONS='verbose=1' TSAN_OPTIONS='suppresions=cpp/utilities/tsan_suppressions.txt:ignore_noninstrumented_modules=1:halt_on_error=1'
+#     Replace with local llvm install path. libarcher.so must be presetn
+if(BUILD_TSAN)
+  message(STATUS "Building with ThreadSanitizer enabled")
+  list(APPEND CUOPT_CXX_FLAGS -fsanitize=thread -fno-omit-frame-pointer -g)
+  add_link_options(-fsanitize=thread)
+endif(BUILD_TSAN)
+
+# To use MemorySanitizer:
+# 1. Build with clang and the -msan flag (MemorySanitizer requires clang)
+# 2. Run the binary with env var set: MSAN_OPTIONS='halt_on_error=1'
+# Note: MemorySanitizer requires all code (including libraries) to be instrumented for accurate results
+if(BUILD_MSAN)
+  message(STATUS "Building with MemorySanitizer enabled")
+  list(APPEND CUOPT_CXX_FLAGS -fsanitize=memory -fno-omit-frame-pointer -g -fsanitize-memory-track-origins=1)
+  add_link_options(-fsanitize=memory)
+endif(BUILD_MSAN)
 
 if(DEFINE_ASSERT)
   add_definitions(-DASSERT_MODE)
@@ -124,7 +146,11 @@ if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.9)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -static-global-template-stub=false")
 endif()
 list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror --default-stream=per-thread)
-list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall -Wno-error=non-template-friend)
+if("${CMAKE_CUDA_HOST_COMPILER}" MATCHES "clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+  list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall)
+else()
+  list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall -Wno-error=non-template-friend)
+endif()
 list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=-compress-all)
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
   list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=--compress-level=3)
@@ -442,8 +468,13 @@ target_link_libraries(cuopt_cli
   cuopt
   OpenMP::OpenMP_CXX
   ${CUDSS_LIBRARIES}
+  TBB::tbb
   PRIVATE
 )
+  # Use RUNPATH when building locally in order to allow LD_LIBRARY_PATH to override the conda env path
+if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+  target_link_options(cuopt_cli PRIVATE -Wl,--enable-new-dtags)
+endif()
 set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
 # adds the cuopt_cli executable to the runtime deb package
@@ -467,6 +498,9 @@ if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     OpenMP::OpenMP_CXX
     PRIVATE
   )
+  if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+    target_link_options(solve_MIP PRIVATE -Wl,--enable-new-dtags)
+  endif()
 
   target_include_directories(solve_MIP
     PRIVATE
@@ -488,6 +522,9 @@ if(BUILD_LP_BENCHMARKS)
     OpenMP::OpenMP_CXX
     PRIVATE
   )
+  if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+    target_link_options(solve_LP PRIVATE -Wl,--enable-new-dtags)
+  endif()
 endif()
 
 

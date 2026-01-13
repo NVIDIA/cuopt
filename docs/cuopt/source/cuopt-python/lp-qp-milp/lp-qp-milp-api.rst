@@ -1,6 +1,8 @@
-=========================
-LP and MILP API Reference
-=========================
+.. _problem_modeling :
+
+=============================
+LP, QP and MILP API Reference
+=============================
 
 .. autoclass:: cuopt.linear_programming.problem.Problem
    :members:
@@ -13,6 +15,13 @@ LP and MILP API Reference
    :exclude-members:
 
 .. autoclass:: cuopt.linear_programming.problem.LinearExpression
+   :members:
+   :undoc-members:
+
+.. note::
+   The QP solver is currently in beta.
+
+.. autoclass:: cuopt.linear_programming.problem.QuadraticExpression
    :members:
    :undoc-members:
 
