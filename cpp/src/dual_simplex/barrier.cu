@@ -307,7 +307,7 @@ class iteration_data_t {
     settings.log.printf("Density estimator time      : %.2fs\n", column_density_time);
     if ((settings.augmented != 0) &&
         (n_dense_columns > 50 || n_dense_rows > 10 ||
-         max_row_nz == 0 /* handle case with no constraints */ ||
+         lp.A.m == 0 /* handle case with no constraints */ ||
          (max_row_nz > 5000 && estimated_nz_AAT > 1e10) || settings.augmented == 1)) {
       use_augmented   = true;
       n_dense_columns = 0;
