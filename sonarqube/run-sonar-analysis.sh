@@ -14,23 +14,11 @@ CONDA_ENV_FILE="conda/environments/all_cuda-131_arch-${ARCH}.yaml"
 
 # SonarQube Configuration
 # The token should be set via environment variable SONAR_TOKEN for security
-# You can also set SONAR_HOST_URL if using a custom SonarQube server
-# Default: https://sonarcloud.io (if not set)
 if [ -z "$SONAR_TOKEN" ]; then
   echo "ERROR: SONAR_TOKEN environment variable is not set"
   echo "Please set it with: export SONAR_TOKEN=your_sonarqube_token"
-  echo ""
-  echo "To generate a token:"
-  echo "  1. Log in to SonarQube/SonarCloud"
-  echo "  2. Go to My Account > Security"
-  echo "  3. Generate a new token"
   exit 1
 fi
-
-# Optional: Set SonarQube host URL (defaults to SonarCloud if not set)
-SONAR_HOST_URL="${SONAR_HOST_URL:-https://sonarcloud.io}"
-
-echo "SonarQube Host: $SONAR_HOST_URL"
 
 # Get git remote URL from current directory
 REPO_URL=$(git config --get remote.origin.url 2>/dev/null)
@@ -145,7 +133,6 @@ for branch in "${branches[@]}"; do
     # Run SonarQube analysis
     echo 'Running SonarQube analysis...'
     if ! sonar-scanner \
-      -Dsonar.host.url='$SONAR_HOST_URL' \
       -Dsonar.token='$SONAR_TOKEN' \
       -Dsonar.branch.name='$branch' \
       2>&1 | tee /tmp/sonar_${safe_branch_name}.log; then
