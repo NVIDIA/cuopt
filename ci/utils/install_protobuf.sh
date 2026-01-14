@@ -10,6 +10,12 @@ if [ -f /etc/os-release ]; then
     . /etc/os-release
     if [[ "$ID" == "rocky" ]]; then
         echo "Detected Rocky Linux. Installing Protobuf via dnf..."
+        # Enable PowerTools (Rocky 8) or CRB (Rocky 9) repository for protobuf-devel
+        if [[ "${VERSION_ID%%.*}" == "8" ]]; then
+            dnf config-manager --set-enabled powertools || dnf config-manager --set-enabled PowerTools || true
+        elif [[ "${VERSION_ID%%.*}" == "9" ]]; then
+            dnf config-manager --set-enabled crb || true
+        fi
         dnf install -y protobuf-devel protobuf-compiler
     elif [[ "$ID" == "ubuntu" ]]; then
         echo "Detected Ubuntu. Installing Protobuf via apt..."
