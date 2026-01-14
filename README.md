@@ -31,7 +31,7 @@ cuOpt supports the following APIs:
 - Python support
     - Routing (TSP, VRP, and PDP)
     - Linear Programming (LP), Mixed Integer Linear Programming (MILP) and Quadratic Programming (QP)
-        - Intuitive modeling Python API allows users to easily build constraints and objectives
+        - Algebraic modeling Python API allows users to easily build constraints and objectives
 - Server support
     - Linear Programming (LP)
     - Mixed Integer Linear Programming (MILP)
