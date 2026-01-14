@@ -591,7 +591,7 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
 
   // If there is no incumbent, use pseudocost diving instead of guided diving
   if (get_upper_bound() == inf && type == bnb_worker_type_t::GUIDED_DIVING) {
-    if (!settings_.diving_settings.with_pseudocost_diving) {
+    if (settings_.diving_settings.with_pseudocost_diving) {
       type = bnb_worker_type_t::PSEUDOCOST_DIVING;
     } else {
       type = bnb_worker_type_t::COEFFICIENT_DIVING;
