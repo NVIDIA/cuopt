@@ -139,6 +139,12 @@ if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.9)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -static-global-template-stub=false")
 endif()
 list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror --default-stream=per-thread)
+# GCC (especially newer versions) can emit false-positive -Warray-bounds diagnostics from
+# 3rd-party headers (e.g., Protobuf) that get promoted to hard errors via -Werror above.
+# Keep -Werror for our code but do not fail the build on this specific diagnostic.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wno-error=array-bounds -Xcompiler=-Wno-array-bounds)
+endif()
 if("${CMAKE_CUDA_HOST_COMPILER}" MATCHES "clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall)
 else()
@@ -227,7 +233,7 @@ find_package(CUDSS REQUIRED)
 
 # Protocol Buffers for remote solve serialization
 find_package(Protobuf REQUIRED)
-include_directories(${Protobuf_INCLUDE_DIRS})
+include_directories(SYSTEM ${Protobuf_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 # Generate C++ code from .proto file
