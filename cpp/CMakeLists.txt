@@ -144,6 +144,8 @@ list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-
 # Keep -Werror for our code but do not fail the build on this specific diagnostic.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wno-error=array-bounds -Xcompiler=-Wno-array-bounds)
+  # Protobuf headers can also trigger GCC -Wstringop-overread false-positives under heavy inlining.
+  list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wno-error=stringop-overread -Xcompiler=-Wno-stringop-overread)
 endif()
 if("${CMAKE_CUDA_HOST_COMPILER}" MATCHES "clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall)
