@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.2
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 ARG CUDA_VER=unset
@@ -95,7 +95,7 @@ RUN mkdir -p /opt/cuopt && \
 WORKDIR /opt/cuopt
 
 # Copy all static files in a single layer
-COPY ./LICENSE ./VERSION ./THIRD_PARTY_LICENSES ./COMMIT_SHA /opt/cuopt/
+COPY ./LICENSE ./VERSION ./THIRD_PARTY_LICENSES ./COMMIT_SHA ./COMMIT_TIME /opt/cuopt/
 
 # Copy CUDA libraries from the cuda-libs stage
 COPY --from=cuda-libs /usr/local/cuda/lib64/libnvrtc* /usr/local/cuda/lib64/

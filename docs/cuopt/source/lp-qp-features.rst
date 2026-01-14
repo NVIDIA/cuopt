@@ -1,5 +1,5 @@
 ==================
-LP Features
+LP/QP Features
 ==================
 
 Availability
