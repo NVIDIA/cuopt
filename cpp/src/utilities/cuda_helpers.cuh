@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -10,12 +10,14 @@
 #include <utilities/macros.cuh>
 
 #include <thrust/host_vector.h>
+#include <mutex>
 #include <raft/core/device_span.hpp>
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
 #include <rmm/mr/cuda_async_memory_resource.hpp>
 #include <rmm/mr/limiting_resource_adaptor.hpp>
+#include <unordered_map>
 
 namespace cuopt {
 
@@ -175,14 +177,25 @@ HDI To bit_cast(const From& src)
 template <typename Function>
 inline bool set_shmem_of_kernel(Function* function, size_t dynamic_request_size)
 {
+  static std::mutex mtx;
+  static std::unordered_map<Function*, size_t> shmem_sizes;
+
   if (dynamic_request_size != 0) {
     dynamic_request_size = raft::alignTo(dynamic_request_size, size_t(1024));
-    cudaFuncSetAttribute(
-      function, cudaFuncAttributeMaxDynamicSharedMemorySize, dynamic_request_size);
-    return (cudaSuccess == cudaGetLastError());
-  } else {
-    return true;
+    size_t current_size  = shmem_sizes[function];
+    if (dynamic_request_size > current_size) {
+      std::lock_guard<std::mutex> lock(mtx);
+      current_size = shmem_sizes[function];
+
+      if (dynamic_request_size > current_size) {
+        cudaFuncSetAttribute(
+          function, cudaFuncAttributeMaxDynamicSharedMemorySize, dynamic_request_size);
+        shmem_sizes[function] = dynamic_request_size;
+        return (cudaSuccess == cudaGetLastError());
+      }
+    }
   }
+  return true;
 }
 
 template <typename T>
