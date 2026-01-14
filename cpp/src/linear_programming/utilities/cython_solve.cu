@@ -229,8 +229,7 @@ std::unique_ptr<solver_ret_t> call_solve(
   bool is_batch_mode)
 {
   raft::common::nvtx::range fun_scope("Call Solve");
-  cudaStream_t stream;
-  RAFT_CUDA_TRY(cudaStreamCreateWithFlags(&stream, flags));
+  rmm::cuda_stream stream(static_cast<rmm::cuda_stream::flags>(flags));
   const raft::handle_t handle_{stream};
 
   auto op_problem = data_model_to_optimization_problem(data_model, solver_settings, &handle_);
@@ -239,9 +238,28 @@ std::unique_ptr<solver_ret_t> call_solve(
     response.lp_ret =
       call_solve_lp(op_problem, solver_settings->get_pdlp_settings(), is_batch_mode);
     response.problem_type = linear_programming::problem_category_t::LP;
+    // Reset stream to per-thread default as non-blocking stream is out of scope after the function
+    // returns.
+    response.lp_ret.primal_solution_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.dual_solution_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.reduced_cost_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.current_primal_solution_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.current_dual_solution_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.initial_primal_average_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.initial_dual_average_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.current_ATY_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.sum_primal_solutions_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.sum_dual_solutions_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.last_restart_duality_gap_primal_solution_->set_stream(
+      rmm::cuda_stream_per_thread);
+    response.lp_ret.last_restart_duality_gap_dual_solution_->set_stream(
+      rmm::cuda_stream_per_thread);
   } else {
     response.mip_ret      = call_solve_mip(op_problem, solver_settings->get_mip_settings());
     response.problem_type = linear_programming::problem_category_t::MIP;
+    // Reset stream to per-thread default as non-blocking stream is out of scope after the function
+    // returns.
+    response.mip_ret.solution_->set_stream(rmm::cuda_stream_per_thread);
   }
 
   return std::make_unique<solver_ret_t>(std::move(response));
