@@ -83,4 +83,3 @@ entrypoints:
   human_router:
     - .github/AGENTS.md
     - AGENTS.md
-
