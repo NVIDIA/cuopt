@@ -17,6 +17,9 @@ fi
 # Install Boost and TBB
 bash ci/utils/install_boost_tbb.sh
 
+# Install Protobuf
+bash ci/utils/install_protobuf.sh
+
 export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNING=ON"
 
 # For pull requests we are enabling assert mode.
