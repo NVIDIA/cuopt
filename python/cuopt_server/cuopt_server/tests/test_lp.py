@@ -123,7 +123,7 @@ def test_sample_milp(
     data = get_std_data_for_milp()
     data["maximize"] = maximize
     data["solver_config"]["mip_scaling"] = scaling
-    data["solver_config"]["heuristics_only"] = heuristics_only
+    data["solver_config"]["mip_heuristics_only"] = heuristics_only
     data["solver_config"]["num_cpu_threads"] = 4
     res = get_lp(client, data)
 
