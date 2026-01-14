@@ -1042,8 +1042,11 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(i_t task_id,
   while (solver_status_ == mip_exploration_status_t::RUNNING &&
          abs_gap > settings_.absolute_mip_gap_tol && rel_gap > settings_.relative_mip_gap_tol &&
          (active_subtrees_ > 0 || node_queue.best_first_queue_size() > 0)) {
+    node_queue.lock();
     // If there any node left in the heap, we pop the top node and explore it.
-    std::optional<mip_node_t<i_t, f_t>*> start_node = node_queue.pop_best_first(active_subtrees_);
+    std::optional<mip_node_t<i_t, f_t>*> start_node = node_queue.pop_best_first();
+    if (start_node.has_value()) { active_subtrees_++; };
+    node_queue.unlock();
 
     if (start_node.has_value()) {
       mip_node_t<i_t, f_t>* node = start_node.value();
@@ -1106,7 +1109,8 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
   std::vector<f_t> start_upper;
   bool reset_starting_bounds = true;
 
-  constexpr i_t node_limit = 500;
+  constexpr i_t diving_node_limit = 500;
+  constexpr i_t diving_backtrack  = 5;
 
   while (solver_status_ == mip_exploration_status_t::RUNNING &&
          (active_subtrees_ > 0 || node_queue.best_first_queue_size() > 0)) {
@@ -1117,14 +1121,23 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
       reset_starting_bounds = false;
     }
 
-    std::optional<mip_node_t<i_t, f_t>> start_node =
-      node_queue.pop_diving(start_lower, start_upper, node_presolver.bounds_changed);
+    node_queue.lock();
+    std::optional<mip_node_t<i_t, f_t>*> node_ptr  = node_queue.pop_diving();
+    std::optional<mip_node_t<i_t, f_t>> start_node = std::nullopt;
+
+    if (node_ptr.has_value()) {
+      node_ptr.value()->get_variable_bounds(
+        start_lower, start_upper, node_presolver.bounds_changed);
+      start_node = node_ptr.value()->detach_copy();
+    }
+    node_queue.unlock();
 
     if (start_node.has_value()) {
       reset_starting_bounds = true;
 
+      if (get_upper_bound() < start_node->lower_bound) { continue; }
       bool is_feasible = node_presolver.bounds_strengthening(start_lower, start_upper, settings_);
-      if (get_upper_bound() < start_node->lower_bound || !is_feasible) { continue; }
+      if (!is_feasible) { continue; }
 
       bool recompute_bounds_and_basis = true;
       search_tree_t<i_t, f_t> subtree(std::move(start_node.value()));
@@ -1149,7 +1162,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
         }
 
         if (toc(exploration_stats_.start_time) > settings_.time_limit) { break; }
-        if (dive_stats.nodes_explored > node_limit) { break; }
+        if (dive_stats.nodes_explored > diving_node_limit) { break; }
 
         node_solve_info_t status = solve_node(node_ptr,
                                               subtree,
@@ -1184,7 +1197,9 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(const csr_matrix_t<i_t, f_t>& A
           }
         }
 
-        if (stack.size() > 1 && stack.front()->depth - stack.back()->depth > 5) {
+        // Remove nodes that we no longer can backtrack to (i.e., from the current node, we can only
+        // backtrack to a node that is has a depth of at most 5 levels lower than the current node).
+        if (stack.size() > 1 && stack.front()->depth - stack.back()->depth > diving_backtrack) {
           stack.pop_back();
         }
       }

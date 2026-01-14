@@ -113,16 +113,10 @@ class node_queue_t {
   // time as we pop a node from the queue to avoid some threads exiting
   // the main loop thinking that the solver has already finished.
   // This will be not needed in the master-worker model.
-  std::optional<mip_node_t<i_t, f_t>*> pop_best_first(omp_atomic_t<i_t>& active_subtree)
+  std::optional<mip_node_t<i_t, f_t>*> pop_best_first()
   {
-    std::lock_guard<omp_mutex_t> lock(mutex);
     auto entry = best_first_heap.pop();
-
-    if (entry.has_value()) {
-      active_subtree++;
-      return std::exchange(entry.value()->node, nullptr);
-    }
-
+    if (entry.has_value()) { return std::exchange(entry.value()->node, nullptr); }
     return std::nullopt;
   }
 
@@ -131,25 +125,20 @@ class node_queue_t {
   // to avoid other thread fathoming the node (i.e., deleting) before we can read
   // the variable bounds from the tree.
   // This will be not needed in the master-worker model.
-  std::optional<mip_node_t<i_t, f_t>> pop_diving(std::vector<f_t>& lower,
-                                                 std::vector<f_t>& upper,
-                                                 std::vector<bool>& bounds_changed)
+  std::optional<mip_node_t<i_t, f_t>*> pop_diving()
   {
-    std::lock_guard<omp_mutex_t> lock(mutex);
-
     while (!diving_heap.empty()) {
       auto entry = diving_heap.pop();
-
       if (entry.has_value()) {
-        if (auto node_ptr = entry.value()->node; node_ptr != nullptr) {
-          node_ptr->get_variable_bounds(lower, upper, bounds_changed);
-          return node_ptr->detach_copy();
-        }
+        if (auto node_ptr = entry.value()->node; node_ptr != nullptr) { return node_ptr; }
       }
     }
-
     return std::nullopt;
   }
+
+  void lock() { mutex.lock(); }
+
+  void unlock() { mutex.unlock(); }
 
   i_t diving_queue_size()
   {

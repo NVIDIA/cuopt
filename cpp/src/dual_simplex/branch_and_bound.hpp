@@ -211,7 +211,9 @@ class branch_and_bound_t {
                            const csr_matrix_t<i_t, f_t>& Arow,
                            i_t initial_heap_size);
 
-  // Perform a plunge in the subtree determined by the `start_node`.
+  // We use best-first to pick the `start_node` and then perform a depth-first search
+  // from this node (i.e., a plunge). It can only backtrack to a sibling node.
+  // Unexplored nodes in the subtree are inserted back into the global heap.
   void plunge_from(i_t task_id,
                    mip_node_t<i_t, f_t>* start_node,
                    search_tree_t<i_t, f_t>& search_tree,
@@ -227,7 +229,8 @@ class branch_and_bound_t {
                          search_tree_t<i_t, f_t>& search_tree,
                          const csr_matrix_t<i_t, f_t>& Arow);
 
-  // Perform a deep dive in the subtree determined by the `start_node`.
+  // Perform a deep dive in the subtree determined by the `start_node` in order
+  // to find integer feasible solutions.
   void dive_from(mip_node_t<i_t, f_t>& start_node,
                  const std::vector<f_t>& start_lower,
                  const std::vector<f_t>& start_upper,
