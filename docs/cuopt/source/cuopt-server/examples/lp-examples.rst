@@ -261,7 +261,7 @@ The response is:
 Generate Datamodel from MPS Parser
 ----------------------------------
 
-Use a datamodel generated from mps file as input; this yields a solution object in response. For more details please refer to :doc:`LP/MILP parameters <../../lp-milp-settings>`.
+Use a datamodel generated from mps file as input; this yields a solution object in response. For more details please refer to :doc:`LP/QP/MILP parameters <../../lp-qp-milp-settings>`.
 
 :download:`mps_datamodel_example.py <lp/examples/mps_datamodel_example.py>`
 
