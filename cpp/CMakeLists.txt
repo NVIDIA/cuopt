@@ -79,7 +79,6 @@ endif(CMAKE_COMPILER_IS_GNUCXX)
 if(DEFINE_ASSERT)
   message(STATUS "Undefining NDEBUG with assert mode enabled")
   add_definitions(-UNDEBUG)
-  set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
 # To use sanitizer with cuda runtime, one must follow a few steps:
@@ -176,7 +175,6 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
 elseif(CMAKE_CUDA_LINEINFO)
   message(STATUS "Enabling line info")
   list(APPEND CUOPT_CUDA_FLAGS -lineinfo)
-  list(APPEND CUOPT_CXX_FLAGS  -lineinfo)
   set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -lineinfo")
 endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
