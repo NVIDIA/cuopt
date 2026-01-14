@@ -3142,14 +3142,14 @@ void barrier_solver_t<i_t, f_t>::compute_cc_rhs(iteration_data_t<i_t, f_t>& data
       data.d_complementarity_xz_rhs_.data(),
       data.d_complementarity_xz_rhs_.size(),
       [new_mu] HD(f_t dx_aff, f_t dz_aff) { return -(dx_aff * dz_aff) + new_mu; },
-      stream_view_);
+      stream_view_.value());
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(data.d_dw_aff_.data(), data.d_dv_aff_.data()),
       data.d_complementarity_wv_rhs_.data(),
       data.d_complementarity_wv_rhs_.size(),
       [new_mu] HD(f_t dw_aff, f_t dv_aff) { return -(dw_aff * dv_aff) + new_mu; },
-      stream_view_);
+      stream_view_.value());
   } else {
     // complementarity_xz_rhs = -dx_aff .* dz_aff + sigma * mu
     data.dx_aff.pairwise_product(data.dz_aff, data.complementarity_xz_rhs);
@@ -3212,7 +3212,7 @@ void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f
       [] HD(f_t dw_aff, f_t dv_aff, f_t dw, f_t dv) -> thrust::tuple<f_t, f_t> {
         return {dw + dw_aff, dv + dv_aff};
       },
-      stream_view_);
+      stream_view_.value());
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(
@@ -3222,14 +3222,14 @@ void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f
       [] HD(f_t dx_aff, f_t dz_aff, f_t dx, f_t dz) -> thrust::tuple<f_t, f_t> {
         return {dx + dx_aff, dz + dz_aff};
       },
-      stream_view_);
+      stream_view_.value());
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(data.d_dy_aff_.data(), data.d_dy_.data()),
       data.d_dy_.data(),
       data.d_dy_.size(),
       [] HD(f_t dy_aff, f_t dy) { return dy + dy_aff; },
-      stream_view_);
+      stream_view_.value());
 
   } else {
     raft::common::nvtx::range fun_scope("Barrier: CPU vector operations");
@@ -3291,7 +3291,7 @@ void barrier_solver_t<i_t, f_t>::compute_next_iterate(iteration_data_t<i_t, f_t>
       [step_primal, step_dual] HD(f_t w, f_t v, f_t dw, f_t dv) -> thrust::tuple<f_t, f_t> {
         return {w + step_primal * dw, v + step_dual * dv};
       },
-      stream_view_);
+      stream_view_.value());
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(
@@ -3301,14 +3301,14 @@ void barrier_solver_t<i_t, f_t>::compute_next_iterate(iteration_data_t<i_t, f_t>
       [step_primal, step_dual] HD(f_t x, f_t z, f_t dx, f_t dz) -> thrust::tuple<f_t, f_t> {
         return {x + step_primal * dx, z + step_dual * dz};
       },
-      stream_view_);
+      stream_view_.value());
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(data.d_y_.data(), data.d_dy_.data()),
       data.d_y_.data(),
       data.d_y_.size(),
       [step_dual] HD(f_t y, f_t dy) { return y + step_dual * dy; },
-      stream_view_);
+      stream_view_.value());
 
     // Do not handle free variables for quadratic problems
     i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
