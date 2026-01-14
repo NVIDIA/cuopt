@@ -43,14 +43,14 @@ class pseudo_costs_t {
                    f_t& pseudo_cost_down_avg,
                    f_t& pseudo_cost_up_avg) const;
 
-  i_t variable_selection(const std::vector<i_t>& fractional,
-                         const std::vector<f_t>& solution,
-                         logger_t& log);
-
   f_t obj_estimate(const std::vector<i_t>& fractional,
                    const std::vector<f_t>& solution,
                    f_t lower_bound,
                    logger_t& log);
+
+  i_t variable_selection(const std::vector<i_t>& fractional,
+                         const std::vector<f_t>& solution,
+                         logger_t& log);
 
   void update_pseudo_costs_from_strong_branching(const std::vector<i_t>& fractional,
                                                  const std::vector<f_t>& root_soln);

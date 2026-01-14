@@ -217,7 +217,9 @@ class branch_and_bound_t {
   // there is enough unexplored nodes. This is done recursively using OpenMP tasks.
   void exploration_ramp_up(mip_node_t<i_t, f_t>* node, i_t initial_heap_size);
 
-  // Perform a plunge in the subtree determined by the `start_node`.
+  // We use best-first to pick the `start_node` and then perform a depth-first search
+  // from this node (i.e., a plunge). It can only backtrack to a sibling node.
+  // Unexplored nodes in the subtree are inserted back into the global heap.
   void plunge_from(i_t task_id,
                    mip_node_t<i_t, f_t>* start_node,
                    lp_problem_t<i_t, f_t>& leaf_problem,
@@ -230,7 +232,8 @@ class branch_and_bound_t {
   // (i.e., a shallow dive) into the subtree determined by the node.
   void best_first_thread(i_t task_id);
 
-  // Perform a deep dive in the subtree determined by the `start_node`.
+  // Perform a deep dive in the subtree determined by the `start_node` in order
+  // to find integer feasible solutions.
   void dive_from(mip_node_t<i_t, f_t>& start_node,
                  const std::vector<f_t>& start_lower,
                  const std::vector<f_t>& start_upper,
