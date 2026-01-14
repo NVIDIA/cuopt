@@ -59,7 +59,7 @@ enum class node_solve_info_t {
 // [1] T. Achterberg, “Constraint Integer Programming,” PhD, Technischen Universität Berlin,
 // Berlin, 2007. doi: 10.14279/depositonce-1634.
 enum class bnb_worker_type_t {
-  EXPLORATION        = 0,  // Best-First + Plunging.
+  BEST_FIRST         = 0,  // Best-First + Plunging.
   PSEUDOCOST_DIVING  = 1,  // Pseudocost diving (9.2.5)
   LINE_SEARCH_DIVING = 2,  // Line search diving (9.2.4)
   GUIDED_DIVING = 3,  // Guided diving (9.2.3). If no incumbent is found yet, use pseudocost diving.
@@ -146,6 +146,12 @@ class branch_and_bound_t {
   std::vector<i_t> new_slacks_;
   std::vector<variable_type_t> var_types_;
 
+  // Variable locks (see definition 3.3 from T. Achterberg, “Constraint Integer Programming,”
+  // PhD, Technischen Universität Berlin, Berlin, 2007. doi: 10.14279/depositonce-1634).
+  // Here we assume that the constraints are in the form `Ax = b, l <= x <= u`.
+  std::vector<i_t> var_up_locks_;
+  std::vector<i_t> var_down_locks_;
+
   // Local lower bounds for each thread
   std::vector<omp_atomic_t<f_t>> local_lower_bounds_;
 
@@ -198,7 +204,7 @@ class branch_and_bound_t {
   omp_atomic_t<f_t> lower_bound_ceiling_;
 
   void report_heuristic(f_t obj);
-  void report(std::string symbol, f_t obj, f_t lower_bound, i_t node_depth);
+  void report(char symbol, f_t obj, f_t lower_bound, i_t node_depth);
 
   // Set the final solution.
   mip_status_t set_final_solution(mip_solution_t<i_t, f_t>& solution, f_t lower_bound);

@@ -24,10 +24,10 @@ template <typename i_t, typename f_t>
 struct diving_heuristics_settings_t {
   i_t num_diving_workers = -1;
 
-  bool disable_line_search_diving = false;
-  bool disable_pseudocost_diving  = false;
-  bool disable_guided_diving      = false;
-  bool disable_coefficient_diving = false;
+  bool with_line_search_diving = true;
+  bool with_pseudocost_diving  = true;
+  bool with_guided_diving      = true;
+  bool with_coefficient_diving = true;
 
   i_t min_node_depth         = 10;
   i_t node_limit             = 500;
