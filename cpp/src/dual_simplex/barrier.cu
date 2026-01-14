@@ -2883,6 +2883,8 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
 
   // Compute complementarity_xz_aff_sum = sum(x_aff * z_aff),
   // where x_aff = x + step_primal_aff * dx_aff and z_aff = z + step_dual_aff * dz_aff
+  // Here the update of x_aff and z_aff are done temporarily and sum of their products is
+  // computed without storing intermediate results.
   f_t complementarity_xz_aff_sum = data.transform_reduce_helper_.transform_reduce(
     thrust::make_zip_iterator(
       data.d_x_.data(), data.d_z_.data(), data.d_dx_aff_.data(), data.d_dz_aff_.data()),
@@ -2904,6 +2906,8 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
     data.d_x_.size(),
     stream_view_);
 
+  // Here the update of w_aff and v_aff are done temporarily and sum of their products is
+  // computed without storing intermediate results.
   f_t complementarity_wv_aff_sum = data.transform_reduce_helper_.transform_reduce(
     thrust::make_zip_iterator(
       data.d_w_.data(), data.d_v_.data(), data.d_dw_aff_.data(), data.d_dv_aff_.data()),
