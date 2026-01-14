@@ -425,75 +425,66 @@ class iteration_data_t {
     const f_t primal_perturb = 1e-6;
     if (first_call) {
       i_t new_nnz = 2 * nnzA + n + m + nnzQ;
-      csc_matrix_t<i_t, f_t> augmented(n + m, n + m, new_nnz);
+      csr_matrix_t<i_t, f_t> augmented_CSR(n + m, n + m, new_nnz);
+      std::vector<i_t> augmented_diagonal_indices(n + m, -1);
       i_t q            = 0;
       i_t off_diag_Qnz = 0;
-      for (i_t j = 0; j < n; j++) {
-        cuopt_assert(std::isfinite(diag[j]), "diag[j] is not finite");
-        augmented.col_start[j] = q;
+
+      for (i_t i = 0; i < n; i++) {
+        augmented_CSR.row_start[i] = q;
         if (nnzQ == 0) {
-          // augmented_diagonal_indices[j] = q;
-          augmented.i[q]   = j;
-          augmented.x[q++] = -diag[j] - dual_perturb;
+          augmented_diagonal_indices[i] = q;
+          augmented_CSR.j[q]            = i;
+          augmented_CSR.x[q++]          = -diag[i] - dual_perturb;
         } else {
-          const i_t q_col_beg = Q.col_start[j];
-          const i_t q_col_end = Q.col_start[j + 1];
+          // Q is symmetric
+          const i_t q_col_beg = Q.col_start[i];
+          const i_t q_col_end = Q.col_start[i + 1];
           bool has_diagonal   = false;
           for (i_t p = q_col_beg; p < q_col_end; ++p) {
-            augmented.i[q] = Q.i[p];
-            if (Q.i[p] == j) {
-              has_diagonal = true;
-              // augmented_diagonal_indices[j] = q;
-              augmented.x[q++] = -Q.x[p] - diag[j] - dual_perturb;
+            augmented_CSR.j[q] = Q.i[p];
+            if (Q.i[p] == i) {
+              has_diagonal                  = true;
+              augmented_diagonal_indices[i] = q;
+              augmented_CSR.x[q++]          = -Q.x[p] - diag[i] - dual_perturb;
             } else {
               off_diag_Qnz++;
-              augmented.x[q++] = -Q.x[p];
+              augmented_CSR.x[q++] = -Q.x[p];
             }
           }
           if (!has_diagonal) {
-            // augmented_diagonal_indices[j] = q;
-            augmented.i[q]   = j;
-            augmented.x[q++] = -diag[j] - dual_perturb;
+            augmented_diagonal_indices[i] = q;
+            augmented_CSR.j[q]            = i;
+            augmented_CSR.x[q++]          = -diag[i] - dual_perturb;
           }
         }
-        const i_t col_beg = A.col_start[j];
-        const i_t col_end = A.col_start[j + 1];
+        // AT block, we can use A in csc directly
+        const i_t col_beg = A.col_start[i];
+        const i_t col_end = A.col_start[i + 1];
         for (i_t p = col_beg; p < col_end; ++p) {
-          augmented.i[q]   = n + A.i[p];
-          augmented.x[q++] = A.x[p];
+          augmented_CSR.j[q]   = A.i[p] + n;
+          augmented_CSR.x[q++] = A.x[p];
         }
       }
-      settings_.log.debug("augmented nz %d predicted %d\n", q, off_diag_Qnz + nnzA + n);
+
       for (i_t k = n; k < n + m; ++k) {
-        augmented.col_start[k] = q;
-        const i_t l            = k - n;
-        const i_t col_beg      = AT.col_start[l];
-        const i_t col_end      = AT.col_start[l + 1];
+        // A block, we can use AT in csc directly
+        augmented_CSR.row_start[k] = q;
+        const i_t l                = k - n;
+        const i_t col_beg          = AT.col_start[l];
+        const i_t col_end          = AT.col_start[l + 1];
         for (i_t p = col_beg; p < col_end; ++p) {
-          augmented.i[q]   = AT.i[p];
-          augmented.x[q++] = AT.x[p];
+          augmented_CSR.j[q]   = AT.i[p];
+          augmented_CSR.x[q++] = AT.x[p];
         }
-        // augmented_diagonal_indices[k] = q;
-        augmented.i[q]   = k;
-        augmented.x[q++] = primal_perturb;
+        augmented_diagonal_indices[k] = q;
+        augmented_CSR.j[q]            = k;
+        augmented_CSR.x[q++]          = primal_perturb;
       }
-      augmented.col_start[n + m] = q;
+      augmented_CSR.row_start[n + m] = q;
+      settings_.log.debug("augmented nz %d predicted %d\n", q, off_diag_Qnz + nnzA + n);
       cuopt_assert(q == 2 * nnzA + n + m + off_diag_Qnz, "augmented nnz != predicted");
       cuopt_assert(A.col_start[n] == AT.col_start[m], "A nz != AT nz");
-
-      csr_matrix_t<i_t, f_t> augmented_CSR(n + m, n + m, augmented.col_start[n + m]);
-      augmented.to_compressed_row(augmented_CSR);
-
-      std::vector<i_t> augmented_diagonal_indices(augmented_CSR.n, -1);
-      // Extract the diagonal indices from augmented_CSR
-      for (i_t row = 0; row < augmented_CSR.n; ++row) {
-        for (i_t k = augmented_CSR.row_start[row]; k < augmented_CSR.row_start[row + 1]; ++k) {
-          if (augmented_CSR.j[k] == row) {
-            augmented_diagonal_indices[row] = k;
-            break;
-          }
-        }
-      }
 
       device_augmented.copy(augmented_CSR, handle_ptr->get_stream());
       d_augmented_diagonal_indices_.resize(augmented_diagonal_indices.size(),
