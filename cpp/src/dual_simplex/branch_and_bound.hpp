@@ -174,7 +174,7 @@ class branch_and_bound_t {
   pseudo_costs_t<i_t, f_t> pc_;
 
   // Heap storing the nodes waiting to be explored.
-  node_queue_t<i_t, f_t> node_queue;
+  node_queue_t<i_t, f_t> node_queue_;
 
   // Search tree
   search_tree_t<i_t, f_t> search_tree_;
