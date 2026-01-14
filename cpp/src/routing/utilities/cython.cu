@@ -108,8 +108,13 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
   const int max_thread = std::min(static_cast<int>(size), omp_get_max_threads());
   rmm::cuda_stream_pool stream_pool(size, rmm::cuda_stream::flags::non_blocking);
 
+  int device_id = raft::resource::get_device_id(*(data_models[0]->get_handle_ptr()));
+
 #pragma omp parallel for num_threads(max_thread)
   for (std::size_t i = 0; i < size; ++i) {
+    // Required in multi-GPU environments to set the device for each thread
+    RAFT_CUDA_TRY(cudaSetDevice(device_id));
+
     auto old_stream = data_models[i]->get_handle_ptr()->get_stream();
     // Make sure previous operations are finished
     data_models[i]->get_handle_ptr()->sync_stream();

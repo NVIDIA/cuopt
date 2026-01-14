@@ -5,7 +5,7 @@ MILP C API Examples
 Example With Data
 -----------------
 
-This example demonstrates how to use the MILP solver in C. More details on the API can be found in :doc:`C API <lp-milp-c-api>`.
+This example demonstrates how to use the MILP solver in C. More details on the API can be found in :doc:`C API <lp-qp-milp-c-api>`.
 
 The example code is available at ``../lp-milp/examples/simple_milp_example.c`` (:download:`download <examples/simple_milp_example.c>`):
 

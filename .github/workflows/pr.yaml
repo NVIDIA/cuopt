@@ -186,13 +186,19 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
   conda-cpp-tests:
     needs: [conda-cpp-build, changed-files, compute-matrix-filters]
-    secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@cuda-13.1.0
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
+    secrets:
+      script-env-secret-1-key: CUOPT_DATASET_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
+      script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
+      script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   conda-python-build:
     needs: [conda-cpp-build, compute-matrix-filters]
     secrets: inherit
@@ -203,7 +209,6 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
   conda-python-tests:
     needs: [conda-python-build, changed-files, compute-matrix-filters]
-    secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@cuda-13.1.0
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python
     with:
@@ -211,6 +216,13 @@ jobs:
       build_type: pull-request
       script: ci/test_python.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
+    secrets:
+      script-env-secret-1-key: CUOPT_DATASET_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
+      script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
+      script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   docs-build:
     needs: conda-python-build
     secrets: inherit
@@ -258,13 +270,19 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, wheel-build-cuopt-sh-client, changed-files, compute-matrix-filters]
-    secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@cuda-13.1.0
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
+    secrets:
+      script-env-secret-1-key: CUOPT_DATASET_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
+      script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
+      script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   wheel-build-cuopt-server:
     needs: [checks, compute-matrix-filters]
     secrets: inherit
@@ -292,13 +310,19 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_sh_client_filter }}
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files, compute-matrix-filters]
-    secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@cuda-13.1.0
     #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt_server
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
+    secrets:
+      script-env-secret-1-key: CUOPT_DATASET_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
+      script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
+      script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   test-self-hosted-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
     secrets: inherit
