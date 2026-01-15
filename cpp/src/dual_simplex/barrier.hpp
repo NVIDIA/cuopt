@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -59,14 +59,6 @@ class barrier_solver_t {
                          const dense_vector_t<i_t, f_t, AllocatorA>& v,
                          const dense_vector_t<i_t, f_t, AllocatorA>& z,
                          iteration_data_t<i_t, f_t>& data);
-  template <typename AllocatorA, typename AllocatorB>
-  f_t max_step_to_boundary(const dense_vector_t<i_t, f_t, AllocatorA>& x,
-                           const dense_vector_t<i_t, f_t, AllocatorB>& dx,
-                           i_t& index) const;
-  template <typename AllocatorA, typename AllocatorB>
-  f_t max_step_to_boundary(const dense_vector_t<i_t, f_t, AllocatorA>& x,
-                           const dense_vector_t<i_t, f_t, AllocatorB>& dx) const;
-
   void compute_primal_dual_step_length(iteration_data_t<i_t, f_t>& data,
                                        f_t step_scale,
                                        f_t& step_primal,
@@ -80,16 +72,6 @@ class barrier_solver_t {
   void compute_primal_dual_objective(iteration_data_t<i_t, f_t>& data,
                                      f_t& primal_objective,
                                      f_t& dual_objective);
-
-  void cpu_compute_residual_norms(const dense_vector_t<i_t, f_t>& w,
-                                  const dense_vector_t<i_t, f_t>& x,
-                                  const dense_vector_t<i_t, f_t>& y,
-                                  const dense_vector_t<i_t, f_t>& v,
-                                  const dense_vector_t<i_t, f_t>& z,
-                                  iteration_data_t<i_t, f_t>& data,
-                                  f_t& primal_residual_norm,
-                                  f_t& dual_residual_norm,
-                                  f_t& complementarity_residual_norm);
 
   // To be able to directly pass lambdas to transform functions
  public:
@@ -128,13 +110,6 @@ class barrier_solver_t {
                                    pinned_dense_vector_t<i_t, f_t>& dv,
                                    pinned_dense_vector_t<i_t, f_t>& dz,
                                    f_t& max_residual);
-  i_t compute_search_direction(iteration_data_t<i_t, f_t>& data,
-                               pinned_dense_vector_t<i_t, f_t>& dw,
-                               pinned_dense_vector_t<i_t, f_t>& dx,
-                               pinned_dense_vector_t<i_t, f_t>& dy,
-                               pinned_dense_vector_t<i_t, f_t>& dv,
-                               pinned_dense_vector_t<i_t, f_t>& dz,
-                               f_t& max_residual);
 
  private:
   lp_status_t check_for_suboptimal_solution(const barrier_solver_settings_t<i_t, f_t>& options,
