@@ -510,12 +510,14 @@ class iteration_data_t {
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
                          thrust::make_counting_iterator<i_t>(0),
                          i_t(n),
-                         [span_x            = cuopt::make_span(device_augmented.x),
-                          span_diag_indices = cuopt::make_span(d_augmented_diagonal_indices_),
-                          span_q_diag       = cuopt::make_span(d_Q_diag_),
-                          span_diag         = cuopt::make_span(d_diag_)] __device__(i_t j) {
+                         [span_x             = cuopt::make_span(device_augmented.x),
+                          span_diag_indices  = cuopt::make_span(d_augmented_diagonal_indices_),
+                          span_q_diag        = cuopt::make_span(d_Q_diag_),
+                          span_diag          = cuopt::make_span(d_diag_),
+                          dual_perturb_value = dual_perturb] __device__(i_t j) {
                            f_t q_diag = span_q_diag.size() > 0 ? span_q_diag[j] : 0.0;
-                           span_x[span_diag_indices[j]] = -q_diag - span_diag[j] - dual_perturb;
+                           span_x[span_diag_indices[j]] =
+                             -q_diag - span_diag[j] - dual_perturb_value;
                          });
 
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
