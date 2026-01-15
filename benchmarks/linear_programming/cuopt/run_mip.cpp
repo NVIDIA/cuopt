@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -231,10 +231,16 @@ int run_single_file(std::string file_path,
   }
   std::stringstream ss;
   int decimal_places = 2;
+  double mip_gap     = solution.get_mip_gap();
+  int is_optimal     = solution.get_termination_status() ==
+                       cuopt::linear_programming::mip_termination_status_t::Optimal
+                         ? 1
+                         : 0;
   ss << std::fixed << std::setprecision(decimal_places) << base_filename << "," << sol_found << ","
      << obj_val << "," << benchmark_info.objective_of_initial_population << ","
      << benchmark_info.last_improvement_of_best_feasible << ","
-     << benchmark_info.last_improvement_after_recombination << "\n";
+     << benchmark_info.last_improvement_after_recombination << "," << mip_gap << "," << is_optimal
+     << "\n";
   write_to_output_file(out_dir, base_filename, device, n_gpus, batch_id, ss.str());
   CUOPT_LOG_INFO("Results written to the file %s", base_filename.c_str());
   return sol_found;
