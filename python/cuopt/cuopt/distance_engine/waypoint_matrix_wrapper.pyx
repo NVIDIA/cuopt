@@ -20,7 +20,6 @@ import numpy as np
 from numba import cuda
 
 import cudf
-from cudf.core.column_accessor import ColumnAccessor
 
 from cuopt.utilities import series_from_buf
 
