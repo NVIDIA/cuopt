@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -358,7 +358,7 @@ void infeasibility_information_t<i_t, f_t>::compute_reduced_cost_from_primal_gra
     bound_value_.data(),
     primal_size_h_,
     bound_value_gradient<f_t, f_t2>(),
-    stream_view_);
+    stream_view_.value());
 
   if (pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals) {
     raft::linalg::ternaryOp(reduced_cost_.data(),
