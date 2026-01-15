@@ -538,7 +538,6 @@ class iteration_data_t {
     float64_t start_form_adat = tic();
     const i_t m               = AD.m;
 
-    // TODO do we really need this copy? (it's ok since gpu to gpu)
     raft::copy(device_AD.x.data(),
                d_original_A_values.data(),
                d_original_A_values.size(),
