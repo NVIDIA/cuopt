@@ -1238,10 +1238,10 @@ void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_i
 
 template <typename i_t, typename f_t>
 bool are_exclusive(const std::vector<i_t>& var_indices,
-                   const std::vector<i_t>& var_to_substitude_indices)
+                   const std::vector<i_t>& var_to_substitute_indices)
 {
   std::vector<i_t> A_sorted = var_indices;
-  std::vector<i_t> B_sorted = var_to_substitude_indices;
+  std::vector<i_t> B_sorted = var_to_substitute_indices;
   std::sort(A_sorted.begin(), A_sorted.end());
   std::sort(B_sorted.begin(), B_sorted.end());
   std::vector<i_t> intersection(std::min(A_sorted.size(), B_sorted.size()));
@@ -1252,24 +1252,24 @@ bool are_exclusive(const std::vector<i_t>& var_indices,
 
 // note that this only substitutes the variables, for problem modification trivial_presolve needs to
 // be called.
-// note that, this function assumes var_indices and var_to_substitude_indices don't contain any
+// note that, this function assumes var_indices and var_to_substitute_indices don't contain any
 // common indices
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indices,
-                                               const std::vector<i_t>& var_to_substitude_indices,
+                                               const std::vector<i_t>& var_to_substitute_indices,
                                                const std::vector<f_t>& offset_values,
                                                const std::vector<f_t>& coefficient_values)
 {
   raft::common::nvtx::range fun_scope("substitute_variables");
-  cuopt_assert((are_exclusive<i_t, f_t>(var_indices, var_to_substitude_indices)),
-               "variables and var_to_substitude_indices are not exclusive");
+  cuopt_assert((are_exclusive<i_t, f_t>(var_indices, var_to_substitute_indices)),
+               "variables and var_to_substitute_indices are not exclusive");
   const i_t dummy_substituted_variable = var_indices[0];
-  cuopt_assert(var_indices.size() == var_to_substitude_indices.size(), "size mismatch");
+  cuopt_assert(var_indices.size() == var_to_substitute_indices.size(), "size mismatch");
   cuopt_assert(var_indices.size() == offset_values.size(), "size mismatch");
   cuopt_assert(var_indices.size() == coefficient_values.size(), "size mismatch");
   auto d_var_indices = device_copy(var_indices, handle_ptr->get_stream());
-  auto d_var_to_substitude_indices =
-    device_copy(var_to_substitude_indices, handle_ptr->get_stream());
+  auto d_var_to_substitute_indices =
+    device_copy(var_to_substitute_indices, handle_ptr->get_stream());
   auto d_offset_values      = device_copy(offset_values, handle_ptr->get_stream());
   auto d_coefficient_values = device_copy(coefficient_values, handle_ptr->get_stream());
   fixing_helpers.reduction_in_rhs.resize(n_constraints, handle_ptr->get_stream());
@@ -1292,11 +1292,11 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
                     n_variables               = n_variables,
                     substitute_coefficient    = make_span(d_coefficient_values),
                     substitute_offset         = make_span(d_offset_values),
-                    var_to_substitude_indices = make_span(d_var_to_substitude_indices),
+                    var_to_substitute_indices = make_span(d_var_to_substitute_indices),
                     objective_coefficients    = make_span(objective_coefficients),
                     objective_offset          = objective_offset.data()] __device__(i_t idx) {
                      i_t var_idx                = var_indices[idx];
-                     i_t substituting_var_idx   = var_to_substitude_indices[idx];
+                     i_t substituting_var_idx   = var_to_substitute_indices[idx];
                      variable_fix_mask[var_idx] = idx;
                      f_t objective_offset_difference =
                        objective_coefficients[var_idx] * substitute_offset[idx];
@@ -1316,7 +1316,7 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
      variable_fix_mask      = make_span(fixing_helpers.variable_fix_mask),
      substitute_coefficient = make_span(d_coefficient_values),
      substitute_offset      = make_span(d_offset_values),
-     substitute_var_indices = make_span(d_var_to_substitude_indices),
+     substitute_var_indices = make_span(d_var_to_substitute_indices),
      int_tol                = tolerances.integrality_tolerance] __device__(i_t idx) -> f_t {
       i_t var_idx = variables[idx];
       if (variable_fix_mask[var_idx] != -1) {

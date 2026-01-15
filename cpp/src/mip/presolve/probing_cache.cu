@@ -120,7 +120,7 @@ f_t probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(problem_t<i_t, f_t
                                      problem.reverse_original_ids);
 
   if (n_conflicting_vars_other_probe < n_conflicting_vars) {
-    CUOPT_LOG_DEBUG(
+    CUOPT_LOG_TRACE(
       "For probing var %d with value %f better conflicting vars found %d in the other probing "
       "region (cache interval)!",
       var_id,
@@ -129,10 +129,10 @@ f_t probing_cache_t<i_t, f_t>::get_least_conflicting_rounding(problem_t<i_t, f_t
     update_bounds_with_selected(
       host_lb, host_ub, cache_row[other_interval_idx], problem.reverse_original_ids);
     if (other_interval_idx == hit_interval_for_second_probe) {
-      CUOPT_LOG_DEBUG("Better value on second probe val %f", second_probe);
+      CUOPT_LOG_TRACE("Better value on second probe val %f", second_probe);
       return second_probe;
     } else {
-      CUOPT_LOG_DEBUG("Better value on other interval cutoff %f",
+      CUOPT_LOG_TRACE("Better value on other interval cutoff %f",
                       cache_row[other_interval_idx].val_interval.val);
       return cache_row[other_interval_idx].val_interval.val;
     }
@@ -448,7 +448,7 @@ void compute_cache_for_var(i_t var_idx,
     auto& h_improved_lower_bounds = i == 0 ? h_improved_lower_bounds_0 : h_improved_lower_bounds_1;
     auto& h_improved_upper_bounds = i == 0 ? h_improved_upper_bounds_0 : h_improved_upper_bounds_1;
     if (infeas_constraints_count > 0) {
-      CUOPT_LOG_DEBUG("Var %d is infeasible for probe %d on value %f. Fixing other interval",
+      CUOPT_LOG_TRACE("Var %d is infeasible for probe %d on value %f. Fixing other interval",
                       var_idx,
                       i,
                       probe_val.val);
@@ -506,7 +506,7 @@ void compute_cache_for_var(i_t var_idx,
       // check why we might have invalid lower and upper bound here
       if (h_var_bounds[i].x < lower_bound || h_var_bounds[i].y > upper_bound) {
         modification_vector.emplace_back(timer.elapsed_time(), i, lower_bound, upper_bound);
-        CUOPT_LOG_DEBUG(
+        CUOPT_LOG_TRACE(
           "Var %d global bounds inferred from probing new bounds: [%f, %f] old bounds: [%f, %f]",
           i,
           lower_bound,
@@ -524,7 +524,7 @@ void compute_cache_for_var(i_t var_idx,
           // trivial presolve handles eliminations
           // x_i = l_0 + (l_1 - l_0) * x_var_idx
           // this means
-          CUOPT_LOG_DEBUG("Variable substitution found for var %d", i);
+          CUOPT_LOG_TRACE("Variable substitution found for var %d", i);
           substitution_t<i_t, f_t> substitution;
           substitution.timestamp        = timer.elapsed_time();
           substitution.substituted_var  = i;
@@ -593,7 +593,7 @@ void sanitize_graph(
               // Bidirectional edge detected!
               // Keep edge only if substituting_var < substituted_var.
               if (substituting_var > substituted_var) {
-                CUOPT_LOG_DEBUG("Removing cycle edge: %d -> %d (keeping %d -> %d)",
+                CUOPT_LOG_TRACE("Removing cycle edge: %d -> %d (keeping %d -> %d)",
                                 substituting_var,
                                 substituted_var,
                                 substituted_var,
@@ -633,7 +633,7 @@ void dfs(
       child_substitution.coefficient =
         child_substitution.coefficient * parent_substitution.coefficient;
       child_substitution.substituting_var = parent_substitution.substituting_var;
-      CUOPT_LOG_DEBUG("Merged: Var %d is now substituted by %d via %d",
+      CUOPT_LOG_TRACE("Merged: Var %d is now substituted by %d via %d",
                       substituted_var_of_child,
                       child_substitution.substituting_var,
                       curr_var);
@@ -705,7 +705,7 @@ void apply_substitution_queue_to_problem(
 
   for (const auto& [substituting_var, substitutions] : all_substitutions) {
     for (const auto& [substituted_var, substitution] : substitutions) {
-      CUOPT_LOG_DEBUG("Applying substitution: %d -> %d",
+      CUOPT_LOG_TRACE("Applying substitution: %d -> %d",
                       substitution.substituting_var,
                       substitution.substituted_var);
       var_indices.push_back(substitution.substituted_var);
@@ -721,7 +721,7 @@ void apply_substitution_queue_to_problem(
       sub.offset           = substitution.offset;
       sub.coefficient      = substitution.coefficient;
       problem.presolve_data.variable_substitutions.push_back(sub);
-      CUOPT_LOG_DEBUG("Stored substitution for post-processing: x[%d] = %f + %f * x[%d]",
+      CUOPT_LOG_TRACE("Stored substitution for post-processing: x[%d] = %f + %f * x[%d]",
                       sub.substituted_var,
                       sub.offset,
                       sub.coefficient,
@@ -846,7 +846,6 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
 {
   raft::common::nvtx::range fun_scope("compute_probing_cache");
   // we dont want to compute the probing cache for all variables for time and computation resources
-  // auto priority_indices = compute_prioritized_integer_indices(bound_presolve, problem);
   auto priority_indices = compute_priority_indices_by_implied_integers(problem);
   CUOPT_LOG_DEBUG("Computing probing cache");
   auto stream            = problem.handle_ptr->get_stream();

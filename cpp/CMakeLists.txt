@@ -18,14 +18,7 @@ include(rapids-cuda)
 include(rapids-export)
 include(rapids-find)
 
-# Check for environment variable CUOPT_USER_ARCH and set CMAKE_CUDA_ARCHITECTURES accordingly
-if(DEFINED ENV{CUOPT_USER_ARCH} AND NOT "$ENV{CUOPT_USER_ARCH}" STREQUAL "")
-  message(STATUS "CUOPT_USER_ARCH env variable set to '$ENV{CUOPT_USER_ARCH}' -- using as CMAKE_CUDA_ARCHITECTURES")
-  set(CMAKE_CUDA_ARCHITECTURES "$ENV{CUOPT_USER_ARCH}")
-else()
-  rapids_cuda_init_architectures(CUOPT)
-endif()
-
+rapids_cuda_init_architectures(CUOPT)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
 message(STATUS "CMAKE_MODULE_PATH = ${CMAKE_MODULE_PATH}")
