@@ -1284,28 +1284,40 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
                -1);
 
   rmm::device_scalar<f_t> objective_offset(0., handle_ptr->get_stream());
-  thrust::for_each(handle_ptr->get_thrust_policy(),
-                   thrust::make_counting_iterator(0),
-                   thrust::make_counting_iterator(0) + d_var_indices.size(),
-                   [variable_fix_mask         = make_span(fixing_helpers.variable_fix_mask),
-                    var_indices               = make_span(d_var_indices),
-                    n_variables               = n_variables,
-                    substitute_coefficient    = make_span(d_coefficient_values),
-                    substitute_offset         = make_span(d_offset_values),
-                    var_to_substitute_indices = make_span(d_var_to_substitute_indices),
-                    objective_coefficients    = make_span(objective_coefficients),
-                    objective_offset          = objective_offset.data()] __device__(i_t idx) {
-                     i_t var_idx                = var_indices[idx];
-                     i_t substituting_var_idx   = var_to_substitute_indices[idx];
-                     variable_fix_mask[var_idx] = idx;
-                     f_t objective_offset_difference =
-                       objective_coefficients[var_idx] * substitute_offset[idx];
-                     atomicAdd(objective_offset, objective_offset_difference);
-                     atomicAdd(&objective_coefficients[substituting_var_idx],
-                               objective_coefficients[var_idx] * substitute_coefficient[idx]);
-                   });
-  f_t objective_offset_value = objective_offset.value(handle_ptr->get_stream());
-  presolve_data.objective_offset += objective_offset_value;
+  constexpr f_t zero_value = f_t(0.);
+  rmm::device_uvector<f_t> objective_offset_delta_per_variable(d_var_indices.size(),
+                                                               handle_ptr->get_stream());
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               objective_offset_delta_per_variable.begin(),
+               objective_offset_delta_per_variable.end(),
+               zero_value);
+  thrust::for_each(
+    handle_ptr->get_thrust_policy(),
+    thrust::make_counting_iterator(0),
+    thrust::make_counting_iterator(0) + d_var_indices.size(),
+    [variable_fix_mask                   = make_span(fixing_helpers.variable_fix_mask),
+     var_indices                         = make_span(d_var_indices),
+     n_variables                         = n_variables,
+     substitute_coefficient              = make_span(d_coefficient_values),
+     substitute_offset                   = make_span(d_offset_values),
+     var_to_substitute_indices           = make_span(d_var_to_substitute_indices),
+     objective_coefficients              = make_span(objective_coefficients),
+     objective_offset_delta_per_variable = make_span(objective_offset_delta_per_variable),
+     objective_offset                    = objective_offset.data()] __device__(i_t idx) {
+      i_t var_idx                     = var_indices[idx];
+      i_t substituting_var_idx        = var_to_substitute_indices[idx];
+      variable_fix_mask[var_idx]      = idx;
+      f_t objective_offset_difference = objective_coefficients[var_idx] * substitute_offset[idx];
+      objective_offset_delta_per_variable[idx] += objective_offset_difference;
+      //  atomicAdd(objective_offset, objective_offset_difference);
+      atomicAdd(&objective_coefficients[substituting_var_idx],
+                objective_coefficients[var_idx] * substitute_coefficient[idx]);
+    });
+  presolve_data.objective_offset += thrust::reduce(handle_ptr->get_thrust_policy(),
+                                                   objective_offset_delta_per_variable.begin(),
+                                                   objective_offset_delta_per_variable.end(),
+                                                   f_t(0.),
+                                                   thrust::plus<f_t>());
   const i_t num_segments = n_constraints;
   f_t initial_value{0.};
 
