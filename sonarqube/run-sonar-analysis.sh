@@ -141,15 +141,15 @@ for branch in "${branches[@]}"; do
 
   # Activate conda environment and run build + analysis in a subshell
   echo "Building and analyzing branch: $branch in conda environment: $conda_env_name"
-  
+
   if ! bash -c "
     set -e
     source \$(conda info --base)/etc/profile.d/conda.sh
     conda activate $conda_env_name
-    
+
     echo 'Conda environment activated: $conda_env_name'
     echo 'Python version:' \$(python --version)
-    
+
     # Build the project
     echo 'Building project...'
     ./build.sh 2>&1 | tee '$LOG_DIR/build_${safe_branch_name}.log'
@@ -157,7 +157,7 @@ for branch in "${branches[@]}"; do
       echo 'Build failed'
       exit 1
     fi
-    
+
     # Run SonarQube analysis
     # Note: SONAR_TOKEN is read from environment automatically by sonar-scanner
     echo 'Running SonarQube analysis...'
@@ -168,7 +168,7 @@ for branch in "${branches[@]}"; do
       echo 'SonarQube analysis failed'
       exit 1
     fi
-    
+
     echo 'Build and analysis completed successfully'
   "; then
     echo "ERROR: Build or analysis failed for branch: $branch"
@@ -192,7 +192,7 @@ for branch in "${branches[@]}"; do
   successful_branches+=("$branch")
   echo "✓ Successfully completed analysis for: $branch"
   echo "Progress: ${#successful_branches[@]} succeeded, ${#failed_branches[@]} failed out of ${#branches[@]} total"
-  
+
   # Clean up clone directory after successful analysis
   echo "Cleaning up clone directory for: $branch"
   cd "$WORK_DIR"
