@@ -9,6 +9,11 @@ ARG LINUX_VER=unset
 
 FROM nvidia/cuda:${CUDA_VER}-runtime-ubuntu${LINUX_VER} AS cuda-libs
 
+# CUDA headers (e.g., cuda_fp16.h) are not present in `runtime`/`base` images.
+# Create a lightweight `devel` stage solely to copy `/usr/local/cuda/include`
+# into the final image for CuPy/NVRTC runtime compilation.
+FROM nvidia/cuda:${CUDA_VER}-devel-ubuntu${LINUX_VER} AS cuda-headers
+
 # Install cuOpt
 FROM nvidia/cuda:${CUDA_VER}-base-ubuntu${LINUX_VER} AS python-env
 
@@ -25,9 +30,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
         wget \
         unzip \
         gcc \
+        gnupg2 \
         python${PYTHON_SHORT_VER} \
         python${PYTHON_SHORT_VER}-dev \
         python${PYTHON_SHORT_VER}-venv \
+    && apt-get install -y --no-install-recommends --only-upgrade gnupg2 \
     && rm -rf /var/lib/apt/lists/* && \
     python${PYTHON_SHORT_VER} -m ensurepip --upgrade && \
     python${PYTHON_SHORT_VER} -m pip install --upgrade pip
@@ -49,12 +56,13 @@ RUN \
       --extra-index-url https://pypi.nvidia.com \
       --extra-index-url https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \
       --no-cache-dir \
+      "pyyaml" \
       "cuopt-server-${cuda_suffix}==${CUOPT_VER}" \
       "cuopt-sh-client==${CUOPT_VER}" && \
     python -m pip list
 
-# Remove gcc to save space, gcc was required for building psutils
-RUN apt-get purge -y gcc && rm -rf /var/lib/apt/lists/*
+# Remove build-only deps to save space and reduce CVE surface area
+RUN apt-get purge -y gcc gnupg2 && rm -rf /var/lib/apt/lists/*
 
 FROM install-env AS cuopt-final
 
@@ -100,6 +108,9 @@ COPY ./LICENSE ./VERSION ./THIRD_PARTY_LICENSES ./COMMIT_SHA ./COMMIT_TIME /opt/
 # Copy CUDA libraries from the cuda-libs stage
 COPY --from=cuda-libs /usr/local/cuda/lib64/libnvrtc* /usr/local/cuda/lib64/
 COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
+
+# Copy CUDA headers needed for runtime compilation (e.g., CuPy NVRTC).
+COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
 
 # Use the flexible entrypoint
 ENTRYPOINT ["/opt/cuopt/entrypoint.sh"]
