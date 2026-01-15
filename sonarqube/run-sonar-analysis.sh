@@ -134,7 +134,7 @@ for branch in "${branches[@]}"; do
   if [ "${PIPESTATUS[0]}" -ne 0 ]; then
     echo "ERROR: Conda environment creation failed for branch: $branch. Check logs at $LOG_DIR/conda_create_${safe_branch_name}.log"
     failed_branches+=("$branch (conda env creation failed)")
-    cd "$WORK_DIR"
+    cd "$WORK_DIR" || echo "WARNING: Failed to cd to $WORK_DIR"
     rm -rf "$clone_dir"
     continue
   fi
@@ -180,7 +180,7 @@ for branch in "${branches[@]}"; do
 
     # Clean up conda environment
     conda env remove -n "$conda_env_name" -y 2>/dev/null || true
-    cd "$WORK_DIR"
+    cd "$WORK_DIR" || echo "WARNING: Failed to cd to $WORK_DIR"
     rm -rf "$clone_dir"
     continue
   fi
@@ -195,7 +195,7 @@ for branch in "${branches[@]}"; do
 
   # Clean up clone directory after successful analysis
   echo "Cleaning up clone directory for: $branch"
-  cd "$WORK_DIR"
+  cd "$WORK_DIR" || echo "WARNING: Failed to cd to $WORK_DIR"
   rm -rf "$clone_dir"
 done
 
