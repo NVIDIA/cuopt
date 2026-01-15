@@ -482,6 +482,9 @@ class iteration_data_t {
         augmented_CSR.x[q++]          = primal_perturb;
       }
       augmented_CSR.row_start[n + m] = q;
+      augmented_CSR.nz_max           = q;
+      augmented_CSR.j.resize(q);
+      augmented_CSR.x.resize(q);
       settings_.log.debug("augmented nz %d predicted %d\n", q, off_diag_Qnz + nnzA + n);
       cuopt_assert(q == 2 * nnzA + n + m + off_diag_Qnz, "augmented nnz != predicted");
       cuopt_assert(A.col_start[n] == AT.col_start[m], "A nz != AT nz");
@@ -493,6 +496,7 @@ class iteration_data_t {
                  augmented_diagonal_indices.data(),
                  augmented_diagonal_indices.size(),
                  handle_ptr->get_stream());
+      handle_ptr->sync_stream();
 #ifdef CHECK_SYMMETRY
       csc_matrix_t<i_t, f_t> augmented_transpose(1, 1, 1);
       augmented.transpose(augmented_transpose);
