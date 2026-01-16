@@ -212,8 +212,6 @@ void calculate_variable_locks(const lp_problem_t<i_t, f_t>& lp_problem,
 
     for (i_t p = start; p < end; ++p) {
       f_t val = lp_problem.A.x[p];
-      i_t i   = lp_problem.A.i[p];
-
       if (std::abs(val) > eps) {
         up_locks[j]++;
         down_locks[j]++;
