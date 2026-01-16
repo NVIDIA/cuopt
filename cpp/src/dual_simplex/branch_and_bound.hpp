@@ -35,24 +35,6 @@ enum class mip_status_t {
   UNSET      = 6,  // The status is not set
 };
 
-enum class mip_exploration_status_t {
-  UNSET      = 0,  // The status is not set
-  TIME_LIMIT = 1,  // The solver reached a time limit
-  NODE_LIMIT = 2,  // The maximum number of nodes was reached (not implemented)
-  NUMERICAL  = 3,  // The solver encountered a numerical error
-  RUNNING    = 4,  // The solver is currently exploring the tree
-  COMPLETED  = 5,  // The solver finished exploring the tree
-};
-
-enum class node_solve_info_t {
-  NO_CHILDREN      = 0,  // The node does not produced children
-  UP_CHILD_FIRST   = 1,  // The up child should be explored first
-  DOWN_CHILD_FIRST = 2,  // The down child should be explored first
-  TIME_LIMIT       = 3,  // The solver reached a time limit
-  ITERATION_LIMIT  = 4,  // The solver reached a iteration limit
-  NUMERICAL        = 5   // The solver encounter a numerical error when solving the node
-};
-
 // Indicate the search and variable selection algorithms used by each thread
 // in B&B (See [1]).
 //
@@ -123,7 +105,6 @@ class branch_and_bound_t {
                        f_t& repaired_obj,
                        std::vector<f_t>& repaired_solution) const;
 
-  f_t get_upper_bound();
   f_t get_lower_bound();
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
   std::atomic<int>* get_root_concurrent_halt() { return &root_concurrent_halt_; }
@@ -159,7 +140,7 @@ class branch_and_bound_t {
   omp_mutex_t mutex_upper_;
 
   // Global variable for upper bound
-  f_t upper_bound_;
+  omp_atomic_t<f_t> upper_bound_;
 
   // Global variable for incumbent. The incumbent should be updated with the upper bound
   mip_solution_t<i_t, f_t> incumbent_;
@@ -195,7 +176,8 @@ class branch_and_bound_t {
   omp_atomic_t<i_t> active_subtrees_;
 
   // Global status of the solver.
-  omp_atomic_t<mip_exploration_status_t> solver_status_;
+  omp_atomic_t<mip_status_t> solver_status_;
+  omp_atomic_t<bool> is_running{false};
 
   omp_atomic_t<bool> should_report_;
 
@@ -207,7 +189,7 @@ class branch_and_bound_t {
   void report(char symbol, f_t obj, f_t lower_bound, i_t node_depth);
 
   // Set the final solution.
-  mip_status_t set_final_solution(mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
+  void set_final_solution(mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
 
   // Update the incumbent solution with the new feasible solution
   // found during branch and bound.
@@ -254,20 +236,31 @@ class branch_and_bound_t {
   // a deep dive into the subtree determined by the node.
   void diving_thread(bnb_worker_type_t diving_type);
 
-  // Solve the LP relaxation of a leaf node and update the tree.
-  node_solve_info_t solve_node(mip_node_t<i_t, f_t>* node_ptr,
-                               search_tree_t<i_t, f_t>& search_tree,
+  // Solve the LP relaxation of a leaf node
+  dual::status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
                                lp_problem_t<i_t, f_t>& leaf_problem,
+                               lp_solution_t<i_t, f_t>& leaf_solution,
                                basis_update_mpf_t<i_t, f_t>& basis_factors,
                                std::vector<i_t>& basic_list,
                                std::vector<i_t>& nonbasic_list,
                                bounds_strengthening_t<i_t, f_t>& node_presolver,
                                bnb_worker_type_t thread_type,
-                               bool recompute_basis_and_bounds,
+                               bool recompute_bounds_and_basis,
                                const std::vector<f_t>& root_lower,
                                const std::vector<f_t>& root_upper,
                                bnb_stats_t<i_t, f_t>& stats,
                                logger_t& log);
+
+  // Update the tree based on the LP relaxation. Returns the status
+  // of the node and, if appropriated, the preferred rounding direction
+  // when visiting the children.
+  std::pair<node_status_t, rounding_direction_t> update_tree(mip_node_t<i_t, f_t>* node_ptr,
+                                                             search_tree_t<i_t, f_t>& search_tree,
+                                                             lp_problem_t<i_t, f_t>& leaf_problem,
+                                                             lp_solution_t<i_t, f_t>& leaf_solution,
+                                                             bnb_worker_type_t thread_type,
+                                                             dual::status_t lp_status,
+                                                             logger_t& log);
 
   // Selects the variable to branch on.
   branch_variable_t<i_t> variable_selection(mip_node_t<i_t, f_t>* node_ptr,
