@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,6 +9,23 @@
 
 #include <algorithm>
 #include <cmath>
+
+#include <fenv.h>
+
+class fpe_disable {
+  int old_mask;
+
+ public:
+  explicit fpe_disable(int mask = FE_INVALID) : old_mask(fegetexcept()) { fedisableexcept(mask); }
+  ~fpe_disable()
+  {
+    fedisableexcept(FE_ALL_EXCEPT);
+    feenableexcept(old_mask);
+  }
+
+  fpe_disable(const fpe_disable&)            = delete;
+  fpe_disable& operator=(const fpe_disable&) = delete;
+};
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -95,6 +112,10 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
   std::vector<f_t>& upper_bounds,
   const simplex_solver_settings_t<i_t, f_t>& settings)
 {
+  // Disable FPEs to avoid inf + (-inf) issues
+  // TODO: actually resolve the numerical issues
+  fpe_disable fpe_guard(FE_INVALID);
+
   const i_t m = A.m;
   const i_t n = A.n;
 

@@ -159,6 +159,10 @@ f_t sgn(f_t x)
 template <typename f_t>
 f_t relative_gap(f_t obj_value, f_t lower_bound)
 {
+  // avoid raising a FPE
+  if (!std::isfinite(obj_value) || !std::isfinite(lower_bound)) {
+    return std::numeric_limits<f_t>::infinity();
+  }
   f_t user_mip_gap = obj_value == 0.0
                        ? (lower_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity())
                        : std::abs(obj_value - lower_bound) / std::abs(obj_value);
@@ -171,9 +175,13 @@ f_t user_relative_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lower
 {
   f_t user_obj         = compute_user_objective(lp, obj_value);
   f_t user_lower_bound = compute_user_objective(lp, lower_bound);
-  f_t user_mip_gap     = user_obj == 0.0
-                           ? (user_lower_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity())
-                           : std::abs(user_obj - user_lower_bound) / std::abs(user_obj);
+  // avoid raising a FPE
+  if (!std::isfinite(user_obj) || !std::isfinite(user_lower_bound)) {
+    return std::numeric_limits<f_t>::infinity();
+  }
+  f_t user_mip_gap = user_obj == 0.0
+                       ? (user_lower_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity())
+                       : std::abs(user_obj - user_lower_bound) / std::abs(user_obj);
   if (std::isnan(user_mip_gap)) { return std::numeric_limits<f_t>::infinity(); }
   return user_mip_gap;
 }
@@ -480,7 +488,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t
   }
 
   f_t upper_bound      = get_upper_bound();
-  f_t gap              = upper_bound - lower_bound;
+  f_t gap              = (std::isfinite(upper_bound) && std::isfinite(lower_bound))
+                           ? upper_bound - lower_bound
+                           : std::numeric_limits<f_t>::infinity();
   f_t obj              = compute_user_objective(original_lp_, upper_bound);
   f_t user_bound       = compute_user_objective(original_lp_, lower_bound);
   f_t gap_rel          = user_relative_gap(original_lp_, upper_bound, lower_bound);
@@ -1330,6 +1340,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return mip_status_t::UNBOUNDED;
   }
 
+  if (root_status == lp_status_t::CONCURRENT_LIMIT &&
+      toc(exploration_stats_.start_time) > settings_.time_limit) {
+    solver_status_ = mip_exploration_status_t::TIME_LIMIT;
+    return set_final_solution(solution, root_objective_);
+  }
   if (root_status == lp_status_t::TIME_LIMIT) {
     solver_status_ = mip_exploration_status_t::TIME_LIMIT;
     return set_final_solution(solution, -inf);

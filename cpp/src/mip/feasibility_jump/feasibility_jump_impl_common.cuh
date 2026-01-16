@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -166,12 +166,12 @@ HDI std::pair<f_t, f_t> feas_score_constraint(
     // simple improvement
     else if (!old_sat && !new_sat && old_lhs > new_lhs) {
       cuopt_assert(old_viol && new_viol, "");
-      base_feas += (i_t)(cstr_weight * fj.settings->parameters.excess_improvement_weight);
+      base_feas += round(cstr_weight * fj.settings->parameters.excess_improvement_weight);
     }
     // simple worsening
     else if (!old_sat && !new_sat && old_lhs <= new_lhs) {
       cuopt_assert(old_viol && new_viol, "");
-      base_feas -= (i_t)(cstr_weight * fj.settings->parameters.excess_improvement_weight);
+      base_feas -= round(cstr_weight * fj.settings->parameters.excess_improvement_weight);
     }
 
     // robustness score bonus if this would leave some strick slack

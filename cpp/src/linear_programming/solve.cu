@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -42,7 +42,24 @@
 
 #include <thread>  // For std::thread
 
+#include <fenv.h>
+
 namespace cuopt::linear_programming {
+
+class fpe_enable {
+  int old_mask;
+
+ public:
+  explicit fpe_enable(int mask = FE_INVALID) : old_mask(fegetexcept()) { feenableexcept(mask); }
+  ~fpe_enable()
+  {
+    fedisableexcept(FE_ALL_EXCEPT);
+    feenableexcept(old_mask);
+  }
+
+  fpe_enable(const fpe_enable&)            = delete;
+  fpe_enable& operator=(const fpe_enable&) = delete;
+};
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
@@ -555,7 +572,9 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
   if (sol.get_termination_status() != pdlp_termination_status_t::ConcurrentLimit) {
     CUOPT_LOG_INFO("Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs, Total time %.3fs",
                    sol.get_termination_status_string().c_str(),
-                   sol.get_objective_value(),
+                   // printf doesn't like signaling NaNs for some reason
+                   std::isnan(sol.get_objective_value()) ? std::numeric_limits<f_t>::quiet_NaN()
+                                                         : sol.get_objective_value(),
                    sol.get_additional_termination_information().number_of_steps_taken,
                    pdlp_solve_time,
                    sol.get_solve_time());
@@ -826,6 +845,11 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     // Init libraies before to not include it in solve time
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
+
+#if 1
+    CUOPT_LOG_DEBUG("Enabling host FPEs");
+    fpe_enable fpe_guard(FE_DIVBYZERO | FE_INVALID);
+#endif
 
     if (op_problem.has_quadratic_objective()) {
       CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier.");

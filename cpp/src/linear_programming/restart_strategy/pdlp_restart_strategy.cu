@@ -729,9 +729,13 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
     current_convergence_information.get_relative_l2_dual_residual_value();
   const f_t relative_l2_primal_residual_value =
     current_convergence_information.get_relative_l2_primal_residual_value();
-  const f_t ratio_infeas = (relative_l2_primal_residual_value == f_t(0.0))
-                             ? std::numeric_limits<f_t>::infinity()
-                             : relative_l2_dual_residual_value / relative_l2_primal_residual_value;
+
+  f_t ratio_infeas;
+  if (relative_l2_primal_residual_value < 1e-16) {
+    ratio_infeas = std::numeric_limits<f_t>::infinity();
+  } else {
+    ratio_infeas = relative_l2_dual_residual_value / relative_l2_primal_residual_value;
+  }
 
   if (l2_primal_distance > f_t(1e-16) && l2_dual_distance > f_t(1e-16) &&
       l2_primal_distance < f_t(1e12) && l2_dual_distance < f_t(1e12) && ratio_infeas > f_t(1e-8) &&
@@ -774,7 +778,9 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
 
   // TODO possible error if relative_l2_primal_residual_value == 0
   const f_t primal_dual_residual_gap =
-    std::abs(std::log10(relative_l2_dual_residual_value / relative_l2_primal_residual_value));
+    relative_l2_primal_residual_value > f_t(1e-16)
+      ? std::abs(std::log10(relative_l2_dual_residual_value / relative_l2_primal_residual_value))
+      : std::numeric_limits<f_t>::infinity();
   if (primal_dual_residual_gap < best_primal_dual_residual_gap_) {
     best_primal_dual_residual_gap_ = primal_dual_residual_gap;
     const f_t new_primal_weight    = primal_weight.value(stream_view_);

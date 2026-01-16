@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -85,9 +85,10 @@ void feasibility_pump_t<i_t, f_t>::adjust_objective_with_original(solution_t<i_t
                   l2_norm_of_original_obj,
                   l2_norm_of_distance_obj);
   // f_t orig_obj_weight = config.alpha * (l2_norm_of_distance_obj / l2_norm_of_original_obj);
-  f_t orig_obj_weight = config.alpha / l2_norm_of_original_obj;
-  distance_weight     = distance_weight / l2_norm_of_distance_obj;
-  if (!isfinite(orig_obj_weight)) {
+  f_t orig_obj_weight =
+    l2_norm_of_original_obj == 0.0 ? 0.0 : config.alpha / l2_norm_of_original_obj;
+  distance_weight = distance_weight / l2_norm_of_distance_obj;
+  if (l2_norm_of_original_obj == 0.0) {
     CUOPT_LOG_TRACE("orig_obj_weight is not finite, setting to zero");
     orig_obj_weight = 0.;
   }

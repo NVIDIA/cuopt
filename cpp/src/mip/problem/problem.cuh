@@ -91,6 +91,7 @@ class problem_t {
   void post_process_solution(solution_t<i_t, f_t>& solution);
   void compute_transpose_of_problem();
   f_t get_user_obj_from_solver_obj(f_t solver_obj) const;
+  f_t get_solver_obj_from_user_obj(f_t user_obj) const;
   bool is_objective_integral() const { return objective_is_integral; }
   void compute_integer_fixed_problem();
   void fill_integer_fixed_problem(rmm::device_uvector<f_t>& assignment,

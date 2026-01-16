@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -1354,7 +1354,8 @@ i_t basis_update_mpf_t<i_t, f_t>::b_transpose_solve(const sparse_vector_t<i_t, f
     solution.from_dense(solution_dense);
   }
   UTsol = solution;
-  sum_U_transpose_ += static_cast<f_t>(solution.i.size()) / input_size;
+  // avoid div-by-zero FPE
+  if (input_size > 0.0) { sum_U_transpose_ += static_cast<f_t>(solution.i.size()) / input_size; }
 
 #ifdef CHECK_U_TRANSPOSE_SOLVE
   std::vector<f_t> UTsol_dense;
@@ -1383,7 +1384,8 @@ i_t basis_update_mpf_t<i_t, f_t>::b_transpose_solve(const sparse_vector_t<i_t, f
     l_transpose_solve(solution_dense);
     solution.from_dense(solution_dense);
   }
-  sum_L_transpose_ += static_cast<f_t>(solution.i.size()) / rhs_size;
+  // avoid div-by-zero FPE
+  if (rhs_size > 0.0) { sum_L_transpose_ += static_cast<f_t>(solution.i.size()) / rhs_size; }
 
 #ifdef CHECK_L_TRANSPOSE_SOLVE
   std::vector<f_t> solution_dense;
@@ -1656,7 +1658,7 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
     solution.from_dense(solution_dense);
   }
   if (need_Lsol) { Lsol = solution; }
-  sum_L_ += static_cast<f_t>(solution.i.size()) / input_size;
+  if (input_size > 0.0) { sum_L_ += static_cast<f_t>(solution.i.size()) / input_size; }
 
 #ifdef CHECK_L_SOLVE
   std::vector<f_t> l_solve_dense;
@@ -1677,6 +1679,8 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
 #endif
 
   const f_t rhs_size = static_cast<f_t>(solution.i.size());
+  // (nothing to solve, avoids 0/0 in statistics)
+  if (rhs_size == 0.0) { return 0; }
   estimate_solution_density(rhs_size, sum_U_, num_calls_U_, use_hypersparse);
   if (use_hypersparse) {
     u_solve(solution);
@@ -2055,16 +2059,21 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
 
   if (L0_.m != A.m) { resize(A.m); }
   std::vector<i_t> q;
-  if (factorize_basis(A,
-                      settings,
-                      basic_list,
-                      L0_,
-                      U0_,
-                      row_permutation_,
-                      inverse_row_permutation_,
-                      q,
-                      deficient,
-                      slacks_needed) == -1) {
+  i_t factorize_result = factorize_basis(A,
+                                         settings,
+                                         basic_list,
+                                         L0_,
+                                         U0_,
+                                         row_permutation_,
+                                         inverse_row_permutation_,
+                                         q,
+                                         deficient,
+                                         slacks_needed);
+  if (factorize_result == -2) {
+    // Concurrent halt requested, return early
+    return -2;
+  }
+  if (factorize_result == -1) {
     settings.log.debug("Initial factorization failed\n");
     basis_repair(A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
 
@@ -2085,16 +2094,18 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
     }
 #endif
 
-    if (factorize_basis(A,
-                        settings,
-                        basic_list,
-                        L0_,
-                        U0_,
-                        row_permutation_,
-                        inverse_row_permutation_,
-                        q,
-                        deficient,
-                        slacks_needed) == -1) {
+    factorize_result = factorize_basis(A,
+                                       settings,
+                                       basic_list,
+                                       L0_,
+                                       U0_,
+                                       row_permutation_,
+                                       inverse_row_permutation_,
+                                       q,
+                                       deficient,
+                                       slacks_needed);
+    if (factorize_result == -2) { return -2; }
+    if (factorize_result == -1) {
 #ifdef CHECK_L_FACTOR
       if (L0_.check_matrix() == -1) { settings.log.printf("Bad L after basis repair\n"); }
 #endif

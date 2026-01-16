@@ -38,7 +38,24 @@
 
 #include <cuda_profiler_api.h>
 
+#include <fenv.h>
+
 namespace cuopt::linear_programming {
+
+class fpe_enable {
+  int old_mask;
+
+ public:
+  explicit fpe_enable(int mask = FE_INVALID) : old_mask(fegetexcept()) { feenableexcept(mask); }
+  ~fpe_enable()
+  {
+    fedisableexcept(FE_ALL_EXCEPT);
+    feenableexcept(old_mask);
+  }
+
+  fpe_enable(const fpe_enable&)            = delete;
+  fpe_enable& operator=(const fpe_enable&) = delete;
+};
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
@@ -159,6 +176,11 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     // Init libraies before to not include it in solve time
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
+
+#if 1
+    CUOPT_LOG_DEBUG("Enabling host FPEs");
+    fpe_enable fpe_guard(FE_DIVBYZERO | FE_INVALID);
+#endif
 
     print_version_info();
 

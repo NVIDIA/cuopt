@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -296,11 +296,14 @@ primal::status_t primal_phase2(i_t phase,
   std::vector<i_t> slacks_needed;
   i_t rank =
     factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+  if (rank == -2) { return primal::status_t::CONCURRENT_HALT; }
   if (rank != m) {
     settings.log.debug("Failed to factorize basis. rank %d m %d\n", rank, m);
     basis_repair(lp.A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
-    if (factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) ==
-        -1) {
+    i_t repair_rank =
+      factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+    if (repair_rank == -2) { return primal::status_t::CONCURRENT_HALT; }
+    if (repair_rank == -1) {
       settings.log.printf("Failed to factorize basis after repair. rank %d m %d\n", rank, m);
       return primal::status_t::NUMERICAL;
     } else {

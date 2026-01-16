@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -938,15 +938,17 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_l
 {
   raft::common::nvtx::range scope("fj_cpu");
 
+  auto time_limit_ms =
+    std::isfinite(in_time_limit) ? (int)(in_time_limit * 1000) : std::numeric_limits<int>::max();
+
   i_t local_mins       = 0;
   auto loop_start      = std::chrono::high_resolution_clock::now();
-  auto time_limit      = std::chrono::milliseconds((int)(in_time_limit * 1000));
+  auto time_limit      = std::chrono::milliseconds(time_limit_ms);
   auto loop_time_start = std::chrono::high_resolution_clock::now();
   while (!fj_cpu.halted && !fj_cpu.preemption_flag.load()) {
     // Check if 5 seconds have passed
     auto now = std::chrono::high_resolution_clock::now();
-    if (in_time_limit < std::numeric_limits<f_t>::infinity() &&
-        now - loop_time_start > time_limit) {
+    if (time_limit_ms != std::numeric_limits<int>::max() && now - loop_time_start > time_limit) {
       CUOPT_LOG_TRACE("%sTime limit of %.4f seconds reached, breaking loop at iteration %d\n",
                       fj_cpu.log_prefix.c_str(),
                       time_limit.count() / 1000.f,

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -767,7 +767,8 @@ i_t steepest_edge_pricing_with_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
   for (i_t k = 0; k < nz; ++k) {
     const i_t j              = infeasibility_indices[k];
     const f_t squared_infeas = squared_infeasibilities[j];
-    const f_t val            = squared_infeas / dy_steepest_edge[j];
+    const f_t val            = dy_steepest_edge[j] == 0.0 ? std::numeric_limits<f_t>::infinity()
+                                                          : squared_infeas / dy_steepest_edge[j];
     if (val > max_val || (val == max_val && j > leaving_index)) {
       max_val                = val;
       leaving_index          = j;
@@ -2241,9 +2242,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     assert(superbasic_list.size() == 0);
     assert(nonbasic_list.size() == n - m);
 
-    if (ft.refactor_basis(lp.A, settings, basic_list, nonbasic_list, vstatus) > 0) {
-      return dual::status_t::NUMERICAL;
-    }
+    i_t refactor_result = ft.refactor_basis(lp.A, settings, basic_list, nonbasic_list, vstatus);
+    if (refactor_result == -2) { return dual::status_t::CONCURRENT_LIMIT; }
+    if (refactor_result > 0) { return dual::status_t::NUMERICAL; }
 
     if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
   }
@@ -2883,7 +2884,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 #endif
     if (should_refactor) {
       bool should_recompute_x = false;
-      if (ft.refactor_basis(lp.A, settings, basic_list, nonbasic_list, vstatus) > 0) {
+      i_t refactor_result = ft.refactor_basis(lp.A, settings, basic_list, nonbasic_list, vstatus);
+      if (refactor_result == -2) { return dual::status_t::CONCURRENT_LIMIT; }
+      if (refactor_result > 0) {
         should_recompute_x = true;
         settings.log.printf("Failed to factorize basis. Iteration %d\n", iter);
         if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
@@ -2901,6 +2904,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
           count++;
           if (count > 10) { return dual::status_t::NUMERICAL; }
         }
+        if (deficient_size == -2) { return dual::status_t::CONCURRENT_LIMIT; }
 
         settings.log.printf("Successfully repaired basis. Iteration %d\n", iter);
       }

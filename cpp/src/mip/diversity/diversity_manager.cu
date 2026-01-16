@@ -434,15 +434,14 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
                  problem_ptr->handle_ptr->get_stream());
       problem_ptr->handle_ptr->sync_stream();
 
-      auto user_obj   = problem_ptr->get_user_obj_from_solver_obj(lp_result.get_objective_value());
+      // PDLP returns user-space objective (it applies objective_scaling_factor internally)
+      auto user_obj   = lp_result.get_objective_value();
+      auto solver_obj = problem_ptr->get_solver_obj_from_user_obj(user_obj);
       auto iterations = lp_result.get_additional_termination_information().number_of_steps_taken;
-      // Set for the B&B
-      problem_ptr->set_root_relaxation_solution_callback(host_primal,
-                                                         host_dual,
-                                                         host_reduced_costs,
-                                                         lp_result.get_objective_value(),
-                                                         user_obj,
-                                                         iterations);
+
+      // Set for the B&B (param4 expects solver space, param5 expects user space)
+      problem_ptr->set_root_relaxation_solution_callback(
+        host_primal, host_dual, host_reduced_costs, solver_obj, user_obj, iterations);
     }
 
     // in case the pdlp returned var boudns that are out of bounds

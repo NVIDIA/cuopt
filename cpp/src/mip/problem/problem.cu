@@ -1995,6 +1995,12 @@ f_t problem_t<i_t, f_t>::get_user_obj_from_solver_obj(f_t solver_obj) const
 }
 
 template <typename i_t, typename f_t>
+f_t problem_t<i_t, f_t>::get_solver_obj_from_user_obj(f_t user_obj) const
+{
+  return (user_obj / presolve_data.objective_scaling_factor) - presolve_data.objective_offset;
+}
+
+template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_vars_with_objective_coeffs()
 {
   raft::common::nvtx::range fun_scope("compute_vars_with_objective_coeffs");

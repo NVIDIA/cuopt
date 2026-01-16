@@ -108,6 +108,8 @@ endif(BUILD_MSAN)
 
 if(DEFINE_ASSERT)
   add_definitions(-DASSERT_MODE)
+    list(APPEND CUOPT_CXX_FLAGS -ftrapping-math)
+    list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-ftrapping-math)
 endif(DEFINE_ASSERT)
 
 if(DEFINE_BENCHMARK)
