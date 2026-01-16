@@ -194,6 +194,19 @@ std::string user_mip_gap(f_t obj_value, f_t lower_bound)
   }
 }
 
+#ifdef SHOW_DIVING_TYPE
+inline char feasible_solution_symbol(bnb_worker_type_t type)
+{
+  switch (type) {
+    case bnb_worker_type_t::BEST_FIRST: return 'B';
+    case bnb_worker_type_t::COEFFICIENT_DIVING: return 'C';
+    case bnb_worker_type_t::LINE_SEARCH_DIVING: return 'L';
+    case bnb_worker_type_t::PSEUDOCOST_DIVING: return 'P';
+    case bnb_worker_type_t::GUIDED_DIVING: return 'G';
+    default: return 'U';
+  }
+}
+#else
 inline char feasible_solution_symbol(bnb_worker_type_t type)
 {
   switch (type) {
@@ -205,6 +218,7 @@ inline char feasible_solution_symbol(bnb_worker_type_t type)
     default: return 'U';
   }
 }
+#endif
 
 }  // namespace
 
@@ -934,7 +948,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_from(i_t task_id,
   std::deque<mip_node_t<i_t, f_t>*> stack;
   stack.push_front(start_node);
 
-  while (stack.size() > 0 && solver_status_ == mip_status_t::UNSET) {
+  while (stack.size() > 0 && solver_status_ == mip_status_t::UNSET && is_running) {
     if (task_id == 0) { repair_heuristic_solutions(); }
 
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
@@ -1106,6 +1120,8 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(i_t task_id)
     rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
   }
 
+  is_running = false;
+
   // Check if it is the last thread that exited the loop and no
   // timeout or numerical error has happen.
   if (solver_status_ == mip_status_t::UNSET) {
@@ -1140,7 +1156,7 @@ void branch_and_bound_t<i_t, f_t>::dive_from(mip_node_t<i_t, f_t>& start_node,
   dive_stats.nodes_explored      = 0;
   dive_stats.nodes_unexplored    = 1;
 
-  while (stack.size() > 0 && solver_status_ == mip_status_t::UNSET) {
+  while (stack.size() > 0 && solver_status_ == mip_status_t::UNSET && is_running) {
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
@@ -1219,7 +1235,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(bnb_worker_type_t diving_type)
   std::vector<f_t> start_upper;
   bool reset_starting_bounds = true;
 
-  while (solver_status_ == mip_status_t::UNSET &&
+  while (solver_status_ == mip_status_t::UNSET && is_running &&
          (active_subtrees_ > 0 || node_queue_.best_first_queue_size() > 0)) {
     if (reset_starting_bounds) {
       start_lower = original_lp_.lower;
