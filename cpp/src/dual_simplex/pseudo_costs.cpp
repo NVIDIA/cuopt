@@ -148,8 +148,8 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       pseudo_costs_t<i_t, f_t>& pc)
 {
   pc.resize(original_lp.num_cols);
-  pc.strong_branch_down.resize(fractional.size());
-  pc.strong_branch_up.resize(fractional.size());
+  pc.strong_branch_down.assign(fractional.size(), 0);
+  pc.strong_branch_up.assign(fractional.size(), 0);
   pc.num_strong_branches_completed = 0;
 
   settings.log.printf("Strong branching using %d threads and %ld fractional variables\n",
