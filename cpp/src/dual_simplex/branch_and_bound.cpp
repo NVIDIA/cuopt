@@ -908,6 +908,10 @@ void branch_and_bound_t<i_t, f_t>::exploration_ramp_up(mip_node_t<i_t, f_t>* nod
     return;
   }
 
+  ++exploration_stats_.nodes_since_last_log;
+  ++exploration_stats_.nodes_explored;
+  --exploration_stats_.nodes_unexplored;
+
   auto [node_status, round_dir] = update_tree(node,
                                               search_tree_,
                                               leaf_problem,
