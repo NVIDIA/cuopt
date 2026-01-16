@@ -75,11 +75,6 @@ if(CMAKE_COMPILER_IS_GNUCXX)
   list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations)
 endif(CMAKE_COMPILER_IS_GNUCXX)
 
-# Undefine NDEBUG if assert mode is on
-if(DEFINE_ASSERT)
-  message(STATUS "Undefining NDEBUG with assert mode enabled")
-  add_definitions(-UNDEBUG)
-endif()
 
 # To use sanitizer with cuda runtime, one must follow a few steps:
 # 1. Run the binary with env var set: LD_PRELOAD="$(gcc -print-file-name=libasan.so)" ASAN_OPTIONS='protect_shadow_gap=0:replace_intrin=0'
@@ -178,6 +173,11 @@ elseif(CMAKE_CUDA_LINEINFO)
   set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -lineinfo")
 endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
+# Undefine NDEBUG if assert mode is on
+if(DEFINE_ASSERT)
+  message(STATUS "Undefining NDEBUG with assert mode enabled")
+  add_definitions(-UNDEBUG)
+endif()
 
 # ##################################################################################################
 # - find CPM based dependencies  ------------------------------------------------------------------
