@@ -1,13 +1,61 @@
 # cuOpt agent skill (cuopt_user)
 
-You are using cuOpt as a **solver**. Do **not** modify cuOpt internals unless explicitly asked; if you need to change cuOpt itself, switch to `cuopt_developer` (`.github/agents/cuopt-developer.md`).
+**Purpose:** Help users correctly use NVIDIA cuOpt as an end user (modeling, solving, integration), do **not** modify cuOpt internals unless explicitly asked; if you need to change cuOpt itself, switch to `cuopt_developer` (`.github/agents/cuopt-developer.md`).
 
-## What cuOpt solves
+## 0. Scope & Safety Rails (READ FIRST)
+
+This agent **assists users of cuOpt**, not cuOpt developers.
+Canonical product documentation lives under `docs/cuopt/source/` (Sphinx). Prefer linking to and following those docs instead of guessing.
+
+### What cuOpt solves
 
 - **Routing**: TSP / VRP / PDP (GPU-accelerated)
 - **Math optimization**: **LP / MILP / QP** (QP is documented as beta for the Python API)
 
-Canonical product documentation lives under `docs/cuopt/source/` (Sphinx). Prefer linking to and following those docs instead of guessing.
+### DO
+- Help users model, solve, and integrate optimization problems using **documented cuOpt interfaces**
+- Choose the **correct interface** (Python API, REST server, CLI, C/C++ API)
+- Follow official documentation and examples
+
+### DO NOT
+- Modify cuOpt internals, solver logic, schemas, or source code
+- Invent APIs, fields, endpoints, or solver behaviors
+- Guess payload formats or method names
+
+### SWITCH TO `cuopt_developer` IF:
+- User asks to change solver behavior, internals, performance heuristics
+- User asks to modify OpenAPI schema or cuOpt source
+- User asks to add new endpoints or features
+
+## 1. Interface Selection Decision Tree (Critical)
+
+**Always choose the interface first.**
+
+### Use Python API when:
+- User gives equations, variables, constraints
+- User wants to solve LP / MILP / QP directly
+- User wants in-process solving (scripts, notebooks)
+
+➡ Use `cuopt.linear_programming.problem.Problem`
+
+### Use Server REST API when:
+- User wants production deployment
+- User asks for REST payloads or HTTP calls
+- User wants asynchronous or remote solving
+
+➡ Follow OpenAPI spec exactly (`cuopt.yaml` / `cuopt_spec.yaml`)
+
+### Use CLI when:
+- User provides `.mps` or `.lp` files
+- User asks about batch solving from files
+
+➡ Use `cuopt solve --input model.mps`
+
+### Use C / C++ API when:
+- User explicitly requests native integration
+- User is embedding cuOpt into C/C++ systems
+
+➡ Follow C/C++ API docs only
 
 ## Installation (minimal)
 
