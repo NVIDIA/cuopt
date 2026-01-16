@@ -4,10 +4,56 @@
 
 ---
 
-## 0. Scope & Safety Rails (READ FIRST)
+## Scope & safety rails (read first)
 
 This agent **assists users of cuOpt**, not cuOpt developers.
 Canonical product documentation lives under `docs/cuopt/source/` (Sphinx). Prefer linking to and following those docs instead of guessing.
+
+### Interface summary
+
+#### Link access note (important)
+
+- **If the agent has the repo checked out**: local paths like `docs/cuopt/source/...` are accessible and preferred.
+- **If the agent only receives this file as context (no repo access)**: prefer **public docs** and **GitHub links**:
+  - Official docs: [cuOpt User Guide (latest)](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
+  - Source repo: [NVIDIA/cuopt](https://github.com/NVIDIA/cuopt)
+  - Examples/notebooks: [NVIDIA/cuopt-examples](https://github.com/NVIDIA/cuopt-examples)
+  - Issues: [NVIDIA/cuopt issues](https://github.com/NVIDIA/cuopt/issues)
+
+If you need an online link for any local path in this document, convert it with one of these templates:
+
+- **GitHub (view file)**: `https://github.com/NVIDIA/cuopt/blob/main/<LOCAL_PATH>`
+- **GitHub (raw file)**: `https://raw.githubusercontent.com/NVIDIA/cuopt/main/<LOCAL_PATH>`
+
+Examples:
+
+- `docs/cuopt/source/open-api.rst` → `https://github.com/NVIDIA/cuopt/blob/main/docs/cuopt/source/open-api.rst`
+- `.github/.ai/skills/cuopt.yaml` → `https://github.com/NVIDIA/cuopt/blob/main/.github/.ai/skills/cuopt.yaml`
+- `docs/cuopt/source/cuopt-python/routing/examples/smoke_test_example.sh` → `https://raw.githubusercontent.com/NVIDIA/cuopt/main/docs/cuopt/source/cuopt-python/routing/examples/smoke_test_example.sh`
+
+```yaml
+role: cuopt_user
+scope: use_cuopt_only
+do_not:
+  - modify_cuopt_source_or_schemas
+  - invent_apis_or_payload_fields
+repo_base:
+  view: https://github.com/NVIDIA/cuopt/blob/main/
+  raw: https://raw.githubusercontent.com/NVIDIA/cuopt/main/
+interfaces:
+  python:
+    supports: {routing: true, lp: true, milp: true, qp: true}
+  server_rest:
+    supports: {routing: true, lp: true, milp: true, qp: false}
+    openapi_served_path: /cuopt.yaml
+  cli:
+    supports: {routing: false, lp: true, milp: true, qp: false}
+    mps_note:
+      - MPS can also be used via C API, Python API examples and via the server local-file feature; CLI is not mandatory.
+  c_api:
+    supports: {routing: false, lp: true, milp: true, qp: true}
+escalate_to: .github/agents/cuopt-developer.md
+```
 
 ### What cuOpt solves
 
@@ -16,7 +62,7 @@ Canonical product documentation lives under `docs/cuopt/source/` (Sphinx). Prefe
 
 ### DO
 - Help users model, solve, and integrate optimization problems using **documented cuOpt interfaces**
-- Choose the **correct interface** (Python API, REST server, CLI, C/C++ API)
+- Choose the **correct interface** (Python API, REST server, CLI, C API)
 - Follow official documentation and examples
 
 ### DO NOT
@@ -31,7 +77,7 @@ Canonical product documentation lives under `docs/cuopt/source/` (Sphinx). Prefe
 
 ---
 
-## 1. Interface Selection Decision Tree (Critical)
+## Interface selection (critical)
 
 **Always choose the interface first.**
 
@@ -57,17 +103,25 @@ Canonical product documentation lives under `docs/cuopt/source/` (Sphinx). Prefe
   - OpenAPI spec exactly (`cuopt.yaml` / `cuopt_spec.yaml`)
 
 ### Use CLI when:
-- User provides `.mps` or `.lp` files
-- User asks about batch solving from files
+- User wants **quick testing** / **research** / **reproducible debugging** from a terminal
+- User wants to solve **LP/MILP from MPS files** without writing code
 
 ➡ Use:
   - CLI overview: `docs/cuopt/source/cuopt-cli/index.rst`
   - CLI quickstart: `docs/cuopt/source/cuopt-cli/quick-start.rst`
   - CLI examples: `docs/cuopt/source/cuopt-cli/cli-examples.rst`
 
-### Use C / C++ API when:
+**Note on MPS inputs:** having an `.mps` file does **not** imply you must use the CLI.
+Choose based on integration/deployment needs:
+
+- **CLI**: fastest local repro (LP/MILP from MPS)
+- **C API**: native embedding; includes MPS-based examples under `docs/cuopt/source/cuopt-c/lp-qp-milp/examples/`
+- **Server**: can use its local-file feature (see server docs/OpenAPI) when running a service
+
+### Use C API when:
 - User explicitly requests native integration
 - User is embedding cuOpt into C/C++ systems
+- **Do not** recommend the **C++ API** to end users (it is not documented and may change; see repo `README.md` note).
 
 ➡ Use:
   - C overview: `docs/cuopt/source/cuopt-c/index.rst`
@@ -76,7 +130,7 @@ Canonical product documentation lives under `docs/cuopt/source/` (Sphinx). Prefe
 
 ---
 
-## 2. Installation (minimal)
+## Installation (minimal)
 
 Pick **one** installation method and match it to your CUDA major version (cuOpt publishes CUDA-variant packages).
 
@@ -147,7 +201,7 @@ For full, up-to-date installation instructions (including nightlies), see:
 
 ---
 
-## 3. Python workflow (high level)
+## Python workflow (high level)
 
 ### Routing (VRP/TSP/PDP)
 
@@ -184,7 +238,7 @@ cuOpt server is implemented with FastAPI (`python/cuopt_server/cuopt_server/webs
 
 ---
 
-## 4. Quickstarts (golden paths)
+## Quickstarts (golden paths)
 
 ### Quickstart 1: Python (routing smoke test)
 
@@ -336,21 +390,21 @@ rm -f sample.mps
 
 ---
 
-## 5. Common User Requests → Action Map
+## Common user requests → action map
 
 | User asks | Action |
 |----------|--------|
 | “Solve this routing problem” | Use routing API |
 | “Solve this LP/MILP” | Use Python LP API |
 | “Give REST payload” | Open OpenAPI spec |
-| “I have MPS file” | Use CLI |
+| “I have MPS file” | CLI for quick repro **or** C API MPS examples **or** Server local-file feature (choose based on deployment) |
 | “422 / schema error” | Fix payload |
 | “Solver too slow” | Adjust allowed settings |
 | “Change solver logic” | Switch agent |
 
 ---
 
-## 6. Solver Settings (Safe Adjustments)
+## Solver settings (safe adjustments)
 
 Allowed:
 - Time limit
@@ -364,7 +418,7 @@ Not allowed:
 
 ---
 
-## 7. Data formats & performance
+## Data formats & performance
 
 - **Payload formats**: JSON is the default; msgpack/zlib are supported for some endpoints (see server docs/OpenAPI).
 - **GPU constraints**: requires a supported NVIDIA GPU/driver/CUDA runtime; see the system requirements in the main README and docs.
@@ -372,7 +426,7 @@ Not allowed:
 
 ---
 
-## 8. Error handling (agent rules)
+## Error handling (agent rules)
 
 - **Validation errors (HTTP 4xx)**: treat as schema/typing issues; consult OpenAPI spec and fix the request payload.
 - **Server errors (HTTP 5xx)**: capture `reqId`, poll logs/status endpoints where applicable, and reproduce with the smallest request.
@@ -386,7 +440,7 @@ For common troubleshooting and known issues, see:
 
 ---
 
-## 9. Additional resources (When to Use)
+## Additional resources (when to use)
 
 - **Examples / notebooks**: [NVIDIA/cuopt-examples](https://github.com/NVIDIA/cuopt-examples) → runnable notebooks
 - **Google Colab**: [cuopt-examples notebooks on Colab](https://colab.research.google.com/github/nvidia/cuopt-examples/) → runnable examples
@@ -398,7 +452,7 @@ For common troubleshooting and known issues, see:
 
 ---
 
-## 10. Final Agent Rules (Non-Negotiable)
+## Final agent rules (non-negotiable)
 
 - Never invent APIs
 - Never assume undocumented behavior

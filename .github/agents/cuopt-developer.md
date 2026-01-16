@@ -38,7 +38,7 @@ cuopt/
 | API Type | LP | MILP | QP | Routing |
 |----------|:--:|:----:|:--:|:-------:|
 | C API    | ✓  | ✓    | ✓  | ✗       |
-| C++ API  | ✓  | ✓    | ✓  | ✓       |
+| C++ API  | (internal) | (internal) | (internal) | (internal) |
 | Python   | ✓  | ✓    | ✓  | ✓       |
 | Server   | ✓  | ✓    | ✗  | ✓       |
 
