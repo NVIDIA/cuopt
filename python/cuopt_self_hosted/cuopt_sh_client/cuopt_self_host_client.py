@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import json
@@ -257,8 +257,6 @@ class CuOptServiceSelfHostClient:
     polling_interval : int
             The duration in seconds between
             consecutive polling attempts. Defaults to 1.
-    request_excess_timeout : int
-            Note: Deprecated, Use polling_timeout instead
     only_validate : boolean
             Only validates input. Defaults to False.
     polling_timeout : int
@@ -303,7 +301,6 @@ class CuOptServiceSelfHostClient:
         use_https: bool = False,
         self_signed_cert="",
         polling_interval=1,
-        request_excess_timeout=None,
         only_validate=False,
         polling_timeout=600,
         timeout_exception=True,
@@ -361,11 +358,7 @@ class CuOptServiceSelfHostClient:
             self.solution_url = f"{self.protocol}://{self.ip}/cuopt/solution"  # noqa
 
         self.polling_interval = polling_interval
-        self.timeout = (
-            request_excess_timeout
-            if request_excess_timeout is not None
-            else polling_timeout
-        )
+        self.timeout = polling_timeout
 
     def _get_response(self, response):
         if response.headers["content-type"] == mime_type.JSON.value:

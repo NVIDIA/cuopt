@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -107,7 +107,14 @@ class problem_t {
   void add_cutting_plane_at_objective(f_t objective);
   void compute_vars_with_objective_coeffs();
   void test_problem_fixing_time();
-
+  void update_variable_bounds(const std::vector<i_t>& var_indices,
+                              const std::vector<f_t>& lb_values,
+                              const std::vector<f_t>& ub_values);
+  void substitute_variables(const std::vector<i_t>& var_indices,
+                            const std::vector<i_t>& var_to_substitude_indices,
+                            const std::vector<f_t>& offset_values,
+                            const std::vector<f_t>& coefficient_values);
+  void sort_rows_by_variables(const raft::handle_t* handle_ptr);
   enum var_flags_t : i_t {
     VAR_IMPLIED_INTEGER = 1 << 0,
   };

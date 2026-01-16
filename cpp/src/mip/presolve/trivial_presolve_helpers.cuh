@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -28,6 +28,9 @@ struct is_variable_free_t {
   template <typename tuple_t>
   __device__ bool operator()(tuple_t edge)
   {
+    // eliminate zero coefficient entries
+    auto coeff = thrust::get<1>(edge);
+    if (coeff == 0.) { return false; }
     auto var    = thrust::get<2>(edge);
     auto bounds = bnd[var];
     return abs(get_upper(bounds) - get_lower(bounds)) > tol;
