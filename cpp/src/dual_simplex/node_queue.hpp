@@ -112,11 +112,6 @@ class node_queue_t {
     diving_heap.push(entry);
   }
 
-  // In the current implementation, we are use the active number of subtree to decide
-  // when to stop the execution. We need to increment the counter at the same
-  // time as we pop a node from the queue to avoid some threads exiting
-  // the main loop thinking that the solver has already finished.
-  // This will be not needed in the master-worker model.
   std::optional<mip_node_t<i_t, f_t>*> pop_best_first()
   {
     auto entry = best_first_heap.pop();
@@ -124,11 +119,6 @@ class node_queue_t {
     return std::nullopt;
   }
 
-  // In the current implementation, multiple threads can pop the nodes
-  // from the queue, so we need to pass the lower and upper bound here
-  // to avoid other thread fathoming the node (i.e., deleting) before we can read
-  // the variable bounds from the tree.
-  // This will be not needed in the master-worker model.
   std::optional<mip_node_t<i_t, f_t>*> pop_diving()
   {
     while (!diving_heap.empty()) {

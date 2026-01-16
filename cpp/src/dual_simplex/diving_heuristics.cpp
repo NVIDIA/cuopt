@@ -21,7 +21,7 @@ branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
   f_t min_score                  = std::numeric_limits<f_t>::max();
   rounding_direction_t round_dir = rounding_direction_t::NONE;
 
-  for (auto j : fractional) {
+  for (i_t j : fractional) {
     f_t score                = inf;
     rounding_direction_t dir = rounding_direction_t::NONE;
 
@@ -202,18 +202,13 @@ void calculate_variable_locks(const lp_problem_t<i_t, f_t>& lp_problem,
                               std::vector<i_t>& up_locks,
                               std::vector<i_t>& down_locks)
 {
-  up_locks.resize(lp_problem.num_cols);
-  down_locks.resize(lp_problem.num_cols);
+  constexpr f_t eps = 1E-6;
+  up_locks.assign(lp_problem.num_cols, 0);
+  down_locks.assign(lp_problem.num_cols, 0);
 
   for (i_t j = 0; j < lp_problem.num_cols; ++j) {
-    i_t up_lock       = 0;
-    i_t down_lock     = 0;
-    i_t start         = lp_problem.A.col_start[j];
-    i_t end           = lp_problem.A.col_start[j + 1];
-    constexpr f_t eps = 1E-6;
-
-    up_locks[j]   = 0;
-    down_locks[j] = 0;
+    i_t start = lp_problem.A.col_start[j];
+    i_t end   = lp_problem.A.col_start[j + 1];
 
     for (i_t p = start; p < end; ++p) {
       f_t val = lp_problem.A.x[p];

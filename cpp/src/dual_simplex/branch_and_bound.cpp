@@ -654,7 +654,7 @@ node_solve_info_t branch_and_bound_t<i_t, f_t>::solve_node(
 
   if (thread_type != bnb_worker_type_t::BEST_FIRST) {
     i_t bnb_lp_iters            = exploration_stats_.total_lp_iters;
-    f_t max_iter                = settings_.diving_settings.iteration_limit_factor * bnb_lp_iters;
+    i_t max_iter                = settings_.diving_settings.iteration_limit_factor * bnb_lp_iters;
     lp_settings.iteration_limit = max_iter - stats.total_lp_iters;
     if (lp_settings.iteration_limit <= 0) { return node_solve_info_t::ITERATION_LIMIT; }
   }
@@ -1071,6 +1071,11 @@ void branch_and_bound_t<i_t, f_t>::best_first_thread(i_t task_id)
   while (solver_status_ == mip_exploration_status_t::RUNNING &&
          abs_gap > settings_.absolute_mip_gap_tol && rel_gap > settings_.relative_mip_gap_tol &&
          (active_subtrees_ > 0 || node_queue_.best_first_queue_size() > 0)) {
+    // In the current implementation, we are use the active number of subtree to decide
+    // when to stop the execution. We need to increment the counter at the same
+    // time as we pop a node from the queue to avoid some threads exiting
+    // the main loop thinking that the solver has already finished.
+    // This will be not needed in the master-worker model.
     node_queue_.lock();
     // If there any node left in the heap, we pop the top node and explore it.
     std::optional<mip_node_t<i_t, f_t>*> start_node = node_queue_.pop_best_first();
@@ -1131,9 +1136,9 @@ void branch_and_bound_t<i_t, f_t>::dive_from(mip_node_t<i_t, f_t>& start_node,
   logger_t log;
   log.log = false;
 
-  const i_t diving_node_limit     = settings_.diving_settings.node_limit;
-  const i_t diving_backtrack      = settings_.diving_settings.backtrack;
-  bool recompute_bounds_and_basis = true;
+  const i_t diving_node_limit      = settings_.diving_settings.node_limit;
+  const i_t diving_backtrack_limit = settings_.diving_settings.backtrack_limit;
+  bool recompute_bounds_and_basis  = true;
   search_tree_t<i_t, f_t> dive_tree(std::move(start_node));
   std::deque<mip_node_t<i_t, f_t>*> stack;
   stack.push_front(&dive_tree.root);
@@ -1195,7 +1200,7 @@ void branch_and_bound_t<i_t, f_t>::dive_from(mip_node_t<i_t, f_t>& start_node,
 
     // Remove nodes that we no longer can backtrack to (i.e., from the current node, we can only
     // backtrack to a node that is has a depth of at most 5 levels lower than the current node).
-    if (stack.size() > 1 && stack.front()->depth - stack.back()->depth > diving_backtrack) {
+    if (stack.size() > 1 && stack.front()->depth - stack.back()->depth > diving_backtrack_limit) {
       stack.pop_back();
     }
   }
@@ -1227,6 +1232,11 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(bnb_worker_type_t diving_type)
       reset_starting_bounds = false;
     }
 
+    // In the current implementation, multiple threads can pop the nodes
+    // from the queue, so we need to initialize the lower and upper bound here
+    // to avoid other thread fathoming the node (i.e., deleting) before we can read
+    // the variable bounds from the tree.
+    // This will be not needed in the master-worker model.
     node_queue_.lock();
     std::optional<mip_node_t<i_t, f_t>*> node_ptr  = node_queue_.pop_diving();
     std::optional<mip_node_t<i_t, f_t>> start_node = std::nullopt;
@@ -1346,19 +1356,19 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   std::vector<bnb_worker_type_t> diving_strategies;
   diving_strategies.reserve(4);
 
-  if (settings_.diving_settings.with_pseudocost_diving) {
+  if (settings_.diving_settings.pseudocost_diving != 0) {
     diving_strategies.push_back(bnb_worker_type_t::PSEUDOCOST_DIVING);
   }
 
-  if (settings_.diving_settings.with_line_search_diving) {
+  if (settings_.diving_settings.line_search_diving != 0) {
     diving_strategies.push_back(bnb_worker_type_t::LINE_SEARCH_DIVING);
   }
 
-  if (settings_.diving_settings.with_guided_diving) {
+  if (settings_.diving_settings.guided_diving != 0) {
     diving_strategies.push_back(bnb_worker_type_t::GUIDED_DIVING);
   }
 
-  if (settings_.diving_settings.with_coefficient_diving) {
+  if (settings_.diving_settings.coefficient_diving != 0) {
     diving_strategies.push_back(bnb_worker_type_t::COEFFICIENT_DIVING);
     calculate_variable_locks(original_lp_, var_up_locks_, var_down_locks_);
   }

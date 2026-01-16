@@ -107,10 +107,10 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
 
       // In the future, let SubMIP use all the diving heuristics. For now,
       // restricting to guided diving.
-      branch_and_bound_settings.diving_settings.num_diving_workers      = 1;
-      branch_and_bound_settings.diving_settings.with_line_search_diving = false;
-      branch_and_bound_settings.diving_settings.with_coefficient_diving = false;
-      branch_and_bound_settings.diving_settings.with_pseudocost_diving  = false;
+      branch_and_bound_settings.diving_settings.num_diving_workers = 1;
+      branch_and_bound_settings.diving_settings.line_search_diving = 0;
+      branch_and_bound_settings.diving_settings.coefficient_diving = 0;
+      branch_and_bound_settings.diving_settings.pseudocost_diving  = 0;
       branch_and_bound_settings.solution_callback = [this](std::vector<f_t>& solution,
                                                            f_t objective) {
         this->solution_callback(solution, objective);

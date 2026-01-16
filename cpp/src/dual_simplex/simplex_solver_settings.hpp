@@ -24,15 +24,16 @@ template <typename i_t, typename f_t>
 struct diving_heuristics_settings_t {
   i_t num_diving_workers = -1;
 
-  bool with_line_search_diving = true;
-  bool with_pseudocost_diving  = true;
-  bool with_guided_diving      = true;
-  bool with_coefficient_diving = true;
+  // -1 automatic, 0 disabled, 1 enabled
+  i_t line_search_diving = -1;
+  i_t pseudocost_diving  = -1;
+  i_t guided_diving      = -1;
+  i_t coefficient_diving = -1;
 
   i_t min_node_depth         = 10;
   i_t node_limit             = 500;
   f_t iteration_limit_factor = 0.05;
-  i_t backtrack              = 5;
+  i_t backtrack_limit        = 5;
 };
 
 template <typename i_t, typename f_t>

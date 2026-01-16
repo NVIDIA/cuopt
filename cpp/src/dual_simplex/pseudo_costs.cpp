@@ -351,8 +351,7 @@ f_t pseudo_costs_t<i_t, f_t>::obj_estimate(const std::vector<i_t>& fractional,
     constexpr f_t eps = 1e-6;
     const f_t f_down  = solution[j] - std::floor(solution[j]);
     const f_t f_up    = std::ceil(solution[j]) - solution[j];
-    estimate +=
-      std::min(std::max(pseudo_cost_down * f_down, eps), std::max(pseudo_cost_up * f_up, eps));
+    estimate += std::min(pseudo_cost_down * f_down, pseudo_cost_up * f_up);
   }
 
   log.printf("pseudocost estimate = %e\n", estimate);
