@@ -140,7 +140,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     auto& other_solution   = a.get_feasible() ? b : a;
     // copy the solution from guiding
     solution_t<i_t, f_t> offspring(guiding_solution);
-    offspring.swap_problem_pointers();
+    // offspring.swap_problem_pointers();
     // find same values and populate it to offspring
     i_t n_different_vars = this->assign_same_integer_values(a, b, offspring);
     CUOPT_LOG_DEBUG("BP rec: Number of different variables %d MAX_VARS %d",
@@ -221,7 +221,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     }
     constraint_prop.max_n_failed_repair_iterations = 1;
     cuopt_func_call(offspring.test_number_all_integer());
-    offspring.swap_problem_pointers();
+    // offspring.swap_problem_pointers();
     bool better_cost_than_parents =
       offspring.get_quality(weights) <
       std::min(other_solution.get_quality(weights), guiding_solution.get_quality(weights));
