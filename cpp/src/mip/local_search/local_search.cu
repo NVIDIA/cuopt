@@ -260,8 +260,18 @@ bool local_search_t<i_t, f_t>::run_local_search(solution_t<i_t, f_t>& solution,
   raft::common::nvtx::range fun_scope("local search");
   fj_settings_t fj_settings;
   if (timer.check_time_limit()) return false;
-  fj_settings.time_limit      = std::min(1., timer.remaining_time());
-  timer                       = timer_t(fj_settings.time_limit);
+  // adjust these time limits
+  if (!solution.get_feasible()) {
+    if (ls_config.at_least_one_parent_feasible) {
+      fj_settings.time_limit = 0.5;
+      timer                  = timer_t(fj_settings.time_limit);
+    } else {
+      fj_settings.time_limit = 0.25;
+      timer                  = timer_t(fj_settings.time_limit);
+    }
+  } else {
+    fj_settings.time_limit = std::min(1., timer.remaining_time());
+  }
   fj_settings.update_weights  = false;
   fj_settings.feasibility_run = false;
   fj.set_fj_settings(fj_settings);
