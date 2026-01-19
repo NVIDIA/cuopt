@@ -648,15 +648,7 @@ diversity_manager_t<i_t, f_t>::recombine_and_local_search(solution_t<i_t, f_t>& 
   ls_config_t<i_t, f_t> ls_config;
   ls_config.best_objective_of_parents    = best_objective_of_parents;
   ls_config.at_least_one_parent_feasible = at_least_one_parent_feasible;
-  // offspring.swap_problem_pointers();
-  // population.weights_with_cuts.cstr_weights.resize(offspring.problem_ptr->n_constraints,
-  //                                                  offspring.handle_ptr->get_stream());
-  // raft::copy(population.weights_with_cuts.cstr_weights.data(),
-  //            population.weights.cstr_weights.data(),
-  //            population.weights.cstr_weights.size(),
-  //            offspring.handle_ptr->get_stream());
-  success = this->run_local_search(offspring, population.weights_with_cuts, timer, ls_config);
-  // offspring.swap_problem_pointers();
+  success = this->run_local_search(offspring, population.weights, timer, ls_config);
   if (!success) {
     // add the attempt
     mab_recombiner.add_mab_reward(mab_recombiner.last_chosen_option,

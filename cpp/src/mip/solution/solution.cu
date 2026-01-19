@@ -42,8 +42,6 @@ rmm::device_uvector<f_t> get_lower_bounds(
 template <typename i_t, typename f_t>
 solution_t<i_t, f_t>::solution_t(problem_t<i_t, f_t>& problem_)
   : problem_ptr(&problem_),
-    problem_with_cuts_ptr(&problem_),
-    current_problem_is_cut(false),
     handle_ptr(problem_.handle_ptr),
     assignment(std::move(get_lower_bounds<f_t>(problem_.variable_bounds, handle_ptr))),
     lower_excess(problem_.n_constraints, handle_ptr->get_stream()),
@@ -61,8 +59,6 @@ solution_t<i_t, f_t>::solution_t(problem_t<i_t, f_t>& problem_)
 template <typename i_t, typename f_t>
 solution_t<i_t, f_t>::solution_t(const solution_t<i_t, f_t>& other)
   : problem_ptr(other.problem_ptr),
-    problem_with_cuts_ptr(other.problem_with_cuts_ptr),
-    current_problem_is_cut(other.current_problem_is_cut),
     handle_ptr(other.handle_ptr),
     assignment(other.assignment, handle_ptr->get_stream()),
     lower_excess(other.lower_excess, handle_ptr->get_stream()),
@@ -89,13 +85,11 @@ template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::copy_from(const solution_t<i_t, f_t>& other_sol)
 {
   // TODO handle resize
-  problem_ptr            = other_sol.problem_ptr;
-  problem_with_cuts_ptr  = other_sol.problem_with_cuts_ptr;
-  current_problem_is_cut = other_sol.current_problem_is_cut;
-  handle_ptr             = other_sol.handle_ptr;
-  h_obj                  = other_sol.h_obj;
-  h_user_obj             = other_sol.h_user_obj;
-  h_infeasibility_cost   = other_sol.h_infeasibility_cost;
+  problem_ptr          = other_sol.problem_ptr;
+  handle_ptr           = other_sol.handle_ptr;
+  h_obj                = other_sol.h_obj;
+  h_user_obj           = other_sol.h_user_obj;
+  h_infeasibility_cost = other_sol.h_infeasibility_cost;
   expand_device_copy(assignment, other_sol.assignment, handle_ptr->get_stream());
   expand_device_copy(lower_excess, other_sol.lower_excess, handle_ptr->get_stream());
   expand_device_copy(upper_excess, other_sol.upper_excess, handle_ptr->get_stream());
@@ -130,34 +124,10 @@ void solution_t<i_t, f_t>::resize_to_problem()
 }
 
 template <typename i_t, typename f_t>
-void solution_t<i_t, f_t>::swap_problem_pointers()
-{
-  current_problem_is_cut = !current_problem_is_cut;
-  cuopt_assert(problem_with_cuts_ptr != nullptr, "Problem with cuts pointer must be set");
-  cuopt_assert(problem_with_cuts_ptr != problem_ptr, "Problem pointers must be different");
-  std::swap(problem_ptr, problem_with_cuts_ptr);
-  resize_to_problem();
-  compute_feasibility();
-}
-
-template <typename i_t, typename f_t>
-void solution_t<i_t, f_t>::set_problem_ptr(problem_t<i_t, f_t>* _problem_ptr, bool is_cuts_problem)
+void solution_t<i_t, f_t>::set_problem_ptr(problem_t<i_t, f_t>* _problem_ptr)
 {
   cuopt_assert(_problem_ptr != nullptr, "Problem pointer must be set");
-  // FIXME: when we create ping_pong problems with constant cuts, adjust this logic
-  if (is_cuts_problem) {
-    cuopt_assert(!current_problem_is_cut, "Current problem must not be with cuts");
-    // set original problem to be swap pointer
-    problem_with_cuts_ptr = problem_ptr;
-    // set current problem to new cut problem
-    problem_ptr            = _problem_ptr;
-    current_problem_is_cut = true;
-  } else {
-    problem_ptr = _problem_ptr;
-    // if we are setting non-cut problem, the cut version should be invalidated
-    problem_with_cuts_ptr  = nullptr;
-    current_problem_is_cut = false;
-  }
+  problem_ptr = _problem_ptr;
   resize_to_problem();
   compute_feasibility();
 }

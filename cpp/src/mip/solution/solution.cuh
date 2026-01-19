@@ -100,7 +100,7 @@ class solution_t {
   f_t compute_max_int_violation();
   f_t compute_max_variable_violation();
   void swap_problem_pointers();
-  void set_problem_ptr(problem_t<i_t, f_t>* _problem_ptr, bool is_cuts_problem = false);
+  void set_problem_ptr(problem_t<i_t, f_t>* _problem_ptr);
 
   struct view_t {
     // let's not bloat the class for every simple getter and setters
@@ -126,8 +126,6 @@ class solution_t {
   // we might need to change it later as we tighten the bounds
   // and run lp on fixed parts
   problem_t<i_t, f_t>* problem_ptr;
-  problem_t<i_t, f_t>* problem_with_cuts_ptr;
-  bool current_problem_is_cut = false;
   const raft::handle_t* handle_ptr;
   rmm::device_uvector<f_t> assignment;
   rmm::device_uvector<f_t> lower_excess;

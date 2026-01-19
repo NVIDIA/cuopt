@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -75,7 +75,6 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
     auto& other_solution   = a.get_feasible() ? b : a;
     // copy the solution from A
     solution_t<i_t, f_t> offspring(guiding_solution);
-    // offspring.swap_problem_pointers();
     timer_t line_segment_timer{ls_recombiner_config_t::time_limit};
     // TODO after we have the conic combination, detect the lambda change
     // (i.e. the integral variables flip on line segment)
@@ -100,7 +99,6 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
                                             is_feasibility_run,
                                             line_segment_timer);
     line_segment_search.settings = {};
-    // offspring.swap_problem_pointers();
     bool better_cost_than_parents =
       offspring.get_quality(weights) <
       std::min(other_solution.get_quality(weights), guiding_solution.get_quality(weights));

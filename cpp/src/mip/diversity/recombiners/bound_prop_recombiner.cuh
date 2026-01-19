@@ -140,7 +140,6 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     auto& other_solution   = a.get_feasible() ? b : a;
     // copy the solution from guiding
     solution_t<i_t, f_t> offspring(guiding_solution);
-    // offspring.swap_problem_pointers();
     // find same values and populate it to offspring
     i_t n_different_vars = this->assign_same_integer_values(a, b, offspring);
     CUOPT_LOG_DEBUG("BP rec: Number of different variables %d MAX_VARS %d",
@@ -182,9 +181,8 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
       rmm::device_uvector<f_t> old_assignment(offspring.assignment,
                                               offspring.handle_ptr->get_stream());
       offspring.handle_ptr->sync_stream();
-      offspring.assignment                  = std::move(fixed_assignment);
-      problem_t<i_t, f_t>* orig_problem_ptr = offspring.problem_ptr;
-      offspring.problem_ptr                 = &fixed_problem;
+      offspring.assignment  = std::move(fixed_assignment);
+      offspring.problem_ptr = &fixed_problem;
       cuopt_func_call(offspring.test_variable_bounds(false));
       get_probing_values_for_feasible(guiding_solution,
                                       other_solution,
@@ -201,7 +199,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
       constraint_prop.single_rounding_only = false;
       cuopt_func_call(bool feasible_after_bounds_prop = offspring.get_feasible());
       offspring.handle_ptr->sync_stream();
-      offspring.problem_ptr = orig_problem_ptr;
+      offspring.problem_ptr = a.problem_ptr;
       fixed_assignment      = std::move(offspring.assignment);
       offspring.assignment  = std::move(old_assignment);
       offspring.handle_ptr->sync_stream();
@@ -221,7 +219,6 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     }
     constraint_prop.max_n_failed_repair_iterations = 1;
     cuopt_func_call(offspring.test_number_all_integer());
-    // offspring.swap_problem_pointers();
     bool better_cost_than_parents =
       offspring.get_quality(weights) <
       std::min(other_solution.get_quality(weights), guiding_solution.get_quality(weights));
