@@ -543,7 +543,7 @@ void local_search_t<i_t, f_t>::handle_cutting_plane_and_weights(
   solution_t<i_t, f_t>& solution, population_t<i_t, f_t>* population_ptr, f_t& best_objective)
 {
   if (!cutting_plane_added_for_active_run) {
-    population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
+    // population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
     constexpr bool is_cuts_problem = true;
     solution.set_problem_ptr(&problem_with_objective_cut, is_cuts_problem);
     resize_to_new_problem();
@@ -559,7 +559,7 @@ void local_search_t<i_t, f_t>::handle_cutting_plane_and_weights(
   }
   population_ptr->update_weights();
   save_solution_and_add_cutting_plane(population_ptr->best_feasible(), solution, best_objective);
-  population_ptr->apply_problem_ptr_to_all_solutions();
+  // population_ptr->apply_problem_ptr_to_all_solutions();
 }
 
 template <typename i_t, typename f_t>
@@ -595,7 +595,7 @@ void local_search_t<i_t, f_t>::run_recombiners(solution_t<i_t, f_t>& solution,
   if (population_ptr->is_feasible()) {
     if (!cutting_plane_added_for_active_run) {
       solution.set_problem_ptr(&problem_with_objective_cut);
-      population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
+      // population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
       resize_to_new_problem();
       cutting_plane_added_for_active_run = true;
       raft::copy(population_ptr->weights.cstr_weights.data(),
@@ -612,7 +612,7 @@ void local_search_t<i_t, f_t>::run_recombiners(solution_t<i_t, f_t>& solution,
   }
   if (population_ptr->current_size() > 1 &&
       i - last_improved_iteration > iterations_for_stagnation) {
-    population_ptr->apply_problem_ptr_to_all_solutions();
+    // population_ptr->apply_problem_ptr_to_all_solutions();
     population_ptr->diversity_step(max_iterations_without_improvement);
     population_ptr->print();
     population_ptr->update_weights();
@@ -647,8 +647,8 @@ bool local_search_t<i_t, f_t>::run_fp(solution_t<i_t, f_t>& solution,
     fj.copy_weights(
       population_ptr->weights, solution.handle_ptr, problem_with_objective_cut.n_constraints);
     solution.set_problem_ptr(&problem_with_objective_cut);
-    population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
-    population_ptr->apply_problem_ptr_to_all_solutions();
+    // population_ptr->set_problem_ptr_with_cuts(&problem_with_objective_cut);
+    // population_ptr->apply_problem_ptr_to_all_solutions();
     resize_to_new_problem();
   }
   i_t last_improved_iteration = 0;
