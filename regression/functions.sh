@@ -1,15 +1,6 @@
-# Copyright (c) 2021, NVIDIA CORPORATION.
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+#!/bin/bash
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION.
+# SPDX-License-Identifier: Apache-2.0
 
 # This file is source'd from script-env.sh to add functions to the
 # calling environment, hence no #!/bin/bash as the first line. This
@@ -23,7 +14,7 @@ function hasArg {
 }
 
 function logger {
-  echo -e ">>>> $@"
+  echo -e ">>>> $*"
 }
 
 # Calling "setTee outfile" will cause all stdout and stderr of the
@@ -70,14 +61,14 @@ function unsetTee {
 function setupResultsDir {
     mkdir -p ${RESULTS_ARCHIVE_DIR}/${DATE}
     # Store the target of $RESULTS_DIR before $RESULTS_DIR get linked to
-    # a different dir 
+    # a different dir
     previous_results=$(readlink -f $RESULTS_DIR)
-  
+
     rm -rf $RESULTS_DIR
     ln -s ${RESULTS_ARCHIVE_DIR}/${DATE} $RESULTS_DIR
     mkdir -p $TESTING_RESULTS_DIR
     mkdir -p $BENCHMARK_RESULTS_DIR/results/
-    
+
     old_asv_dir=$previous_results/benchmarks/results/asv
     if [ -d $old_asv_dir ]; then
         cp -r $old_asv_dir $BENCHMARK_RESULTS_DIR/results

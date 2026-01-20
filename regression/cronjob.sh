@@ -1,13 +1,6 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
-#
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 
 # NOTE: this script is currently run from cron using this crontab entry:
 # 30 2 * * * bash --login -c 'env RAPIDS_MG_TOOLS_DIR=/lustre/fsw/datascience_rapids_cugraphgnn/ramakrishnap/Projects/regression_testing/multi-gpu-tools /lustre/fsw/datascience_rapids_cugraphgnn/ramakrishnap/Proje>
@@ -27,18 +20,13 @@ export PROJECT_DIR=${PROJECT_DIR:-$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)}
 source ${PROJECT_DIR}/config.sh
 source ${PROJECT_DIR}/functions.sh
 
-BUILD_FAILED=0
 RUN_BENCHMARKS=0
-RUN_TESTS=0
 
 if hasArg --benchmark; then
     RUN_BENCHMARKS=1
 fi
-if hasArg --test; then
-    RUN_TESTS=1
-fi
+
 if (! hasArg --test) && (! hasArg --benchmark); then
-    RUN_TESTS=1
     RUN_BENCHMARKS=1
 fi
 
@@ -143,14 +131,6 @@ if [ -f $METADATA_FILE ]; then
     source $METADATA_FILE
 fi
 
-#if [[ $BUILD_FAILED == 0 ]]; then
-#    if [[ $RUN_BENCHMARKS == 1 ]]; then
-#        # Push regression tests to repo
-#        cd ${WORKSPACE}/${RESULT_DIR_NAME}; git add data/*; git commit -m "Update for commit : ${PROJECT_VERSION}"; git push; cd -
-#        # bash ${CUOPT_SCRIPTS_DIR}/save_benchmarks.sh $PROJECT_VERSION
-#    fi
-#fi
-
 # Copy all config files to one folder
 cp $ROUTING_CONFIGS_PATH/*config.json $LP_DATASETS_PATH/*config.json $MIP_DATASETS_PATH/*config.json $ALL_CONFIGS_PATH/
 
@@ -186,4 +166,3 @@ else
 fi
 
 logger "cronjob.sh done."
-

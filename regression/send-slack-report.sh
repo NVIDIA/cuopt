@@ -1,5 +1,6 @@
 #!/bin/bash
-# Copyright (c) 2020-2021, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2020-2026, NVIDIA CORPORATION.
+# SPDX-License-Identifier: Apache-2.0
 
 # Abort script on first error
 set -e
@@ -23,7 +24,7 @@ fi
 
 activateCondaEnv
 
-# FIXME : These env variables should already be exported like RESULTS_DIR but 
+# FIXME : These env variables should already be exported like RESULTS_DIR but
 # verify that before removing them
 TESTING_RESULTS_DIR=${RESULTS_DIR}/tests
 BENCHMARK_RESULTS_DIR=${RESULTS_DIR}/benchmarks
@@ -40,7 +41,7 @@ if [ "$ALL_REPORTS" != "" ]; then
         STATUS='PASSED'
         STATUS_IMG='https://img.icons8.com/bubbles/100/000000/approval.png'
     fi
-    
+
 fi
 
 # Generate a one-line summary based on existance of certain reports, etc.
@@ -108,7 +109,7 @@ echo "REPORT_URL: ${REPORT_URL}"
 if hasArg --skip-sending-report; then
     logger "Skipping sending Slack report."
 else
-    echo "$(envsubst < ${PROJECT_DIR}/slack_msg.json)" 
+    echo "$(envsubst < ${PROJECT_DIR}/slack_msg.json)"
     curl -X POST \
          -H 'Content-type: application/json' \
          --data "$(envsubst < ${PROJECT_DIR}/slack_msg.json)" \

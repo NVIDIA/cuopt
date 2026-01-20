@@ -1,5 +1,6 @@
 #!/bin/bash
-# Copyright (c) 2021, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION.
+# SPDX-License-Identifier: Apache-2.0
 
 # Abort script on first error
 set -e
@@ -34,4 +35,3 @@ echo ${PROJECT_VERSION}
 python ${CUOPT_SCRIPTS_DIR}/save_benchmark_results.py -b ${RESULTS_DIR} -o ${CUOPT_SCRIPTS_DIR} -c $1
 
 cd ${CUOPT_SCRIPTS_DIR}; git add benchmarks/*; git commit -m "update benchmarks"; git push; cd -
-
