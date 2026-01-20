@@ -1,0 +1,9 @@
+# cuOpt agent skill manifest (shim)
+#
+# Canonical location:
+# - .github/.ai/skills/cuopt.yaml
+#
+# Many tools scan for `.ai/skills/*` at repo root; this file keeps those tools working.
+manifest_version: 1
+
+canonical: .github/.ai/skills/cuopt.yaml

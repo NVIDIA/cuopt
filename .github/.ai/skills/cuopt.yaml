@@ -1,0 +1,85 @@
+# cuOpt agent skill manifest (machine-readable)
+manifest_version: 1
+
+name: cuOpt
+vendor: NVIDIA
+summary: GPU-accelerated optimization engine for Routing (TSP/VRP/PDP) and Math Optimization (LP/MILP/QP).
+
+capabilities:
+  routing:
+    problems: [TSP, VRP, PDP]
+  mathematical_optimization:
+    problems: [LP, MILP, QP]
+    notes:
+      - QP support exists in the Python API and is currently documented as beta.
+
+compute:
+  accelerator: NVIDIA_GPU
+  requirements:
+    - CUDA 12.0+ (or CUDA 13.0+ depending on package)
+    - NVIDIA driver compatible with CUDA runtime
+    - Compute Capability >= 7.0 (Volta+)
+
+interfaces:
+  - name: python
+    kind: library
+    supports:
+      routing: true
+      lp: true
+      milp: true
+      qp: true
+    packages:
+      - cuopt-cu12
+      - cuopt-cu13
+    docs:
+      - docs/cuopt/source/cuopt-python/quick-start.rst
+      - docs/cuopt/source/cuopt-python/routing/index.rst
+      - docs/cuopt/source/cuopt-python/lp-qp-milp/index.rst
+
+  - name: c_api
+    kind: library
+    library: libcuopt
+    supports:
+      routing: false
+      lp: true
+      milp: true
+      qp: true
+    docs:
+      - docs/cuopt/source/cuopt-c/index.rst
+
+  - name: server_rest
+    kind: service
+    protocol: HTTP
+    supports:
+      routing: true
+      lp: true
+      milp: true
+      qp: false
+    implementation:
+      - python/cuopt_server/cuopt_server/webserver.py
+    openapi:
+      spec_file: docs/cuopt/source/cuopt_spec.yaml
+      served_path: /cuopt.yaml
+      ui_paths:
+        - /cuopt/docs
+        - /cuopt/redoc
+    docs:
+      - docs/cuopt/source/cuopt-server/quick-start.rst
+      - docs/cuopt/source/cuopt-server/server-api/index.rst
+      - docs/cuopt/source/open-api.rst
+
+roles:
+  cuopt_user:
+    description: Use cuOpt to solve routing and math optimization problems without modifying cuOpt internals.
+    rules:
+      - .github/agents/cuopt-user.md
+  cuopt_developer:
+    description: Develop and maintain cuOpt (C++/CUDA/Python/server/docs/CI).
+    rules:
+      - .github/agents/cuopt-developer.md
+      - .github/AGENTS.md
+
+entrypoints:
+  human_router:
+    - .github/AGENTS.md
+    - AGENTS.md
