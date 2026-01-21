@@ -876,7 +876,7 @@ REQID=$(curl -s --location "http://localhost:8000/cuopt/request" \
         ]
       }
     },
-    "transit_time_matrix_data": {
+    "travel_time_matrix_data": {
       "data": {
         "0": [
           [0, 10, 15, 20],
@@ -894,7 +894,7 @@ REQID=$(curl -s --location "http://localhost:8000/cuopt/request" \
     },
     "fleet_data": {
       "vehicle_locations": [[0, 0], [0, 0]],
-      "capacities": [[50], [50]],
+      "capacities": [[50, 50]],
       "vehicle_time_windows": [[0, 200], [0, 200]]
     },
     "solver_config": {
@@ -936,7 +936,7 @@ payload = {
             ]
         }
     },
-    "transit_time_matrix_data": {
+    "travel_time_matrix_data": {
         "data": {
             "0": [
                 [0, 10, 15, 20, 25],
@@ -955,7 +955,7 @@ payload = {
     },
     "fleet_data": {
         "vehicle_locations": [[0, 0], [0, 0]],
-        "capacities": [[100], [100]],
+        "capacities": [[100, 100]],
         "vehicle_time_windows": [[0, 200], [0, 200]]
     },
     "solver_config": {
@@ -983,12 +983,13 @@ for attempt in range(max_attempts):
     result = response.json()
 
     if "response" in result:
-        solution = result["response"]
+        solver_response = result["response"].get("solver_response", {})
         print(f"\nSolution found!")
-        print(f"Status: {solution.get('status', 'N/A')}")
+        print(f"Status: {solver_response.get('status', 'N/A')}")
+        print(f"Cost: {solver_response.get('solution_cost', 'N/A')}")
 
-        if "vehicle_data" in solution:
-            for vid, vdata in solution["vehicle_data"].items():
+        if "vehicle_data" in solver_response:
+            for vid, vdata in solver_response["vehicle_data"].items():
                 route = vdata.get("route", [])
                 print(f"Vehicle {vid}: {' -> '.join(map(str, route))}")
         break
@@ -1001,27 +1002,35 @@ for attempt in range(max_attempts):
 
 ```bash
 # Submit LP problem via REST
+# Production Planning: maximize 40*chairs + 30*tables
+#   subject to: 2*chairs + 3*tables <= 240 (wood)
+#               4*chairs + 2*tables <= 200 (labor)
+#               chairs, tables >= 0
 REQID=$(curl -s --location "http://localhost:8000/cuopt/request" \
   --header 'Content-Type: application/json' \
   --header "CLIENT-VERSION: custom" \
   -d '{
-    "problem_type": "lp",
-    "lp_data": {
-      "num_variables": 2,
-      "num_constraints": 2,
-      "objective_coefficients": [-40, -30],
-      "constraint_matrix": {
-        "row_offsets": [0, 2, 4],
-        "column_indices": [0, 1, 0, 1],
-        "values": [2, 3, 4, 2]
-      },
-      "constraint_lower_bounds": [-1e20, -1e20],
-      "constraint_upper_bounds": [240, 200],
-      "variable_lower_bounds": [0, 0],
-      "variable_upper_bounds": [1e20, 1e20],
-      "sense": "minimize"
+    "csr_constraint_matrix": {
+      "offsets": [0, 2, 4],
+      "indices": [0, 1, 0, 1],
+      "values": [2.0, 3.0, 4.0, 2.0]
     },
+    "constraint_bounds": {
+      "upper_bounds": [240.0, 200.0],
+      "lower_bounds": ["ninf", "ninf"]
+    },
+    "objective_data": {
+      "coefficients": [40.0, 30.0],
+      "scalability_factor": 1.0,
+      "offset": 0.0
+    },
+    "variable_bounds": {
+      "upper_bounds": ["inf", "inf"],
+      "lower_bounds": [0.0, 0.0]
+    },
+    "maximize": true,
     "solver_config": {
+      "tolerances": {"optimality": 0.0001},
       "time_limit": 60
     }
   }' | jq -r '.reqId')
@@ -1070,7 +1079,7 @@ EOF
 cuopt_cli production.mps
 
 # Solve with options
-cuopt_cli production.mps --time-limit 30 --verbose
+cuopt_cli production.mps --time-limit 30
 
 # Cleanup
 rm -f production.mps
@@ -1113,7 +1122,7 @@ ENDATA
 EOF
 
 # Solve MILP
-cuopt_cli facility.mps --time-limit 60 --mip-gap 0.01
+cuopt_cli facility.mps --time-limit 60 --mip-relative-tolerance 0.01
 
 # Cleanup
 rm -f facility.mps
@@ -1125,17 +1134,23 @@ rm -f facility.mps
 # Show all options
 cuopt_cli --help
 
-# Verbose output
-cuopt_cli problem.mps --verbose
-
-# Set time limit
+# Set time limit (seconds)
 cuopt_cli problem.mps --time-limit 120
 
-# Set MIP gap (for MILP)
-cuopt_cli problem.mps --mip-gap 0.001
+# Set MIP relative gap tolerance (for MILP, e.g., 0.1% = 0.001)
+cuopt_cli problem.mps --mip-relative-tolerance 0.001
 
-# Output solution to file
-cuopt_cli problem.mps --output solution.sol
+# Set MIP absolute tolerance (for MILP)
+cuopt_cli problem.mps --mip-absolute-tolerance 0.0001
+
+# Enable presolve
+cuopt_cli problem.mps --presolve
+
+# Set iteration limit
+cuopt_cli problem.mps --iteration-limit 10000
+
+# Specify solver method (0=auto, 1=pdlp, 2=dual_simplex, 3=barrier, etc.)
+cuopt_cli problem.mps --method 1
 ```
 
 ---
