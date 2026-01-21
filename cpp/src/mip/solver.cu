@@ -239,7 +239,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   }
 
   // Start the primal heuristics
-  auto sol = dm.run_solver();
+  context.diversity_manager_ptr = &dm;
+  auto sol                      = dm.run_solver();
   if (!context.settings.heuristics_only) {
     // Wait for the branch and bound to finish
     auto bb_status = branch_and_bound_status_future.get();

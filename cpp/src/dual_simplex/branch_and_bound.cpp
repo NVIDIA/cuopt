@@ -432,12 +432,13 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
   mutex_repair_.unlock();
 
   if (to_repair.size() > 0) {
-    settings_.log.debug("Attempting to repair %ld injected solutions\n", to_repair.size());
+    printf("Attempting to BB repair %ld injected solutions\n", to_repair.size());
     for (const std::vector<f_t>& potential_solution : to_repair) {
       std::vector<f_t> repaired_solution;
       f_t repaired_obj;
       bool is_feasible =
         repair_solution(edge_norms_, potential_solution, repaired_obj, repaired_solution);
+      if (!is_feasible) printf("BBR repair failed for solution %e\n", repaired_obj);
       if (is_feasible) {
         mutex_upper_.lock();
 

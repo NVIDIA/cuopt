@@ -10,6 +10,7 @@
 
 #include <cuopt/error.hpp>
 
+#include <mip/diversity/diversity_manager.cuh>
 #include <mip/mip_constants.hpp>
 #include <mip/relaxed_lp/relaxed_lp.cuh>
 #include <mip/utils.cuh>
@@ -245,7 +246,7 @@ void local_search_t<i_t, f_t>::generate_fast_solution(solution_t<i_t, f_t>& solu
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
-  while (!timer.check_time_limit()) {
+  while (!context.diversity_manager_ptr->check_b_b_preemption() && !timer.check_time_limit()) {
     timer_t constr_prop_timer = timer_t(std::min(timer.remaining_time(), 2.));
     // do constraint prop on lp optimal solution
     constraint_prop.apply_round(solution, 1., constr_prop_timer);
