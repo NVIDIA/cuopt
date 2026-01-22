@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -10,6 +10,8 @@
 #include <optional>
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
+
+#include "PSLP_API.h"
 
 namespace cuopt::linear_programming::detail {
 
@@ -41,6 +43,18 @@ class third_party_presolve_t {
             bool status_to_skip,
             bool dual_postsolve,
             rmm::cuda_stream_view stream_view);
+
+ private:
+  std::optional<third_party_presolve_result_t<i_t, f_t>> apply_pslp(
+    optimization_problem_t<i_t, f_t> const& op_problem);
+
+  void undo_pslp(rmm::device_uvector<f_t>& primal_solution,
+                 rmm::device_uvector<f_t>& dual_solution,
+                 rmm::device_uvector<f_t>& reduced_costs,
+                 rmm::cuda_stream_view stream_view);
+
+  Settings* pslp_stgs;
+  Presolver* pslp_presolver;
 };
 
 }  // namespace cuopt::linear_programming::detail

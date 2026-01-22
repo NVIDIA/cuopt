@@ -230,6 +230,13 @@ option(LUSOL "Disable LUSOL" OFF)
 
 FetchContent_MakeAvailable(papilo)
 
+# Build PSLP as static to embed in cuopt (avoids runtime library path issues)
+set(BUILD_SHARED_LIBS_SAVED ${BUILD_SHARED_LIBS})
+set(BUILD_SHARED_LIBS OFF)
+add_subdirectory(/home/nfs/rgandham/git-repos/PSLP ${CMAKE_BINARY_DIR}/PSLP EXCLUDE_FROM_ALL)
+set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
+
+
 include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 # generate logging macros
 rapids_cpm_rapids_logger(BUILD_EXPORT_SET cuopt-exports INSTALL_EXPORT_SET cuopt-exports)
@@ -302,6 +309,11 @@ target_include_directories(cuopt
   "$<INSTALL_INTERFACE:include>"
   ${CUDSS_INCLUDE}
 )
+
+# Link PSLP by file to avoid export dependency tracking
+target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
+target_include_directories(cuopt PRIVATE /home/nfs/rgandham/git-repos/PSLP/include/PSLP)
+add_dependencies(cuopt PSLP)
 
 # ##################################################################################################
 # - link libraries --------------------------------------------------------------------------------

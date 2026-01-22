@@ -5,12 +5,15 @@
  */
 /* clang-format on */
 
+#include <boost/serialization/void_cast.hpp>
 #include <cuopt/error.hpp>
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/gf2_presolve.hpp>
 #include <mip/presolve/third_party_presolve.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
+#include "PSLP_sol.h"
+#include "PSLP_stats.h"
 
 #include <raft/common/nvtx.hpp>
 
@@ -23,6 +26,8 @@
 #if !defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
+
+#define USE_PSLP 1
 
 namespace cuopt::linear_programming::detail {
 
@@ -185,6 +190,148 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
   }
 
   return problem;
+}
+
+struct PSLPContext {
+  Presolver* presolver = nullptr;
+  Settings* settings   = nullptr;
+};
+
+template <typename i_t, typename f_t>
+PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>& op_problem)
+{
+  PSLPContext ctx;
+  raft::common::nvtx::range fun_scope("Build and run PSLP presolver");
+
+  // Get problem dimensions
+  const i_t num_cols = op_problem.get_n_variables();
+  const i_t num_rows = op_problem.get_n_constraints();
+  const i_t nnz      = op_problem.get_nnz();
+
+  // Get problem data from optimization problem
+  const auto& coefficients = op_problem.get_constraint_matrix_values();
+  const auto& offsets      = op_problem.get_constraint_matrix_offsets();
+  const auto& variables    = op_problem.get_constraint_matrix_indices();
+  const auto& obj_coeffs   = op_problem.get_objective_coefficients();
+  const auto& var_lb       = op_problem.get_variable_lower_bounds();
+  const auto& var_ub       = op_problem.get_variable_upper_bounds();
+  const auto& bounds       = op_problem.get_constraint_bounds();
+  const auto& row_types    = op_problem.get_row_types();
+  const auto& constr_lb    = op_problem.get_constraint_lower_bounds();
+  const auto& constr_ub    = op_problem.get_constraint_upper_bounds();
+  const auto& var_types    = op_problem.get_variable_types();
+
+  // Copy data to host
+  std::vector<f_t> h_coefficients(coefficients.size());
+  auto stream_view = op_problem.get_handle_ptr()->get_stream();
+  raft::copy(h_coefficients.data(), coefficients.data(), coefficients.size(), stream_view);
+  std::vector<i_t> h_offsets(offsets.size());
+  raft::copy(h_offsets.data(), offsets.data(), offsets.size(), stream_view);
+  std::vector<i_t> h_variables(variables.size());
+  raft::copy(h_variables.data(), variables.data(), variables.size(), stream_view);
+  std::vector<f_t> h_obj_coeffs(obj_coeffs.size());
+  raft::copy(h_obj_coeffs.data(), obj_coeffs.data(), obj_coeffs.size(), stream_view);
+  std::vector<f_t> h_var_lb(var_lb.size());
+  raft::copy(h_var_lb.data(), var_lb.data(), var_lb.size(), stream_view);
+  std::vector<f_t> h_var_ub(var_ub.size());
+  raft::copy(h_var_ub.data(), var_ub.data(), var_ub.size(), stream_view);
+  std::vector<f_t> h_bounds(bounds.size());
+  raft::copy(h_bounds.data(), bounds.data(), bounds.size(), stream_view);
+  std::vector<char> h_row_types(row_types.size());
+  raft::copy(h_row_types.data(), row_types.data(), row_types.size(), stream_view);
+  std::vector<f_t> h_constr_lb(constr_lb.size());
+  raft::copy(h_constr_lb.data(), constr_lb.data(), constr_lb.size(), stream_view);
+  std::vector<f_t> h_constr_ub(constr_ub.size());
+  raft::copy(h_constr_ub.data(), constr_ub.data(), constr_ub.size(), stream_view);
+  std::vector<var_t> h_var_types(var_types.size());
+  raft::copy(h_var_types.data(), var_types.data(), var_types.size(), stream_view);
+
+  maximize_ = op_problem.get_sense();
+  if (maximize_) {
+    for (size_t i = 0; i < h_obj_coeffs.size(); ++i) {
+      h_obj_coeffs[i] = -h_obj_coeffs[i];
+    }
+  }
+
+  auto constr_bounds_empty = h_constr_lb.empty() && h_constr_ub.empty();
+  if (constr_bounds_empty) {
+    for (size_t i = 0; i < h_row_types.size(); ++i) {
+      if (h_row_types[i] == 'L') {
+        h_constr_lb.push_back(-std::numeric_limits<f_t>::infinity());
+        h_constr_ub.push_back(h_bounds[i]);
+      } else if (h_row_types[i] == 'G') {
+        h_constr_lb.push_back(h_bounds[i]);
+        h_constr_ub.push_back(std::numeric_limits<f_t>::infinity());
+      } else if (h_row_types[i] == 'E') {
+        h_constr_lb.push_back(h_bounds[i]);
+        h_constr_ub.push_back(h_bounds[i]);
+      }
+    }
+  }
+
+  // Call PSLP presolver
+  ctx.settings    = default_settings();
+  auto start_time = std::chrono::high_resolution_clock::now();
+  ctx.presolver   = new_presolver(h_coefficients.data(),
+                                h_variables.data(),
+                                h_offsets.data(),
+                                num_rows,
+                                num_cols,
+                                nnz,
+                                h_constr_lb.data(),
+                                h_constr_ub.data(),
+                                h_var_lb.data(),
+                                h_var_ub.data(),
+                                h_obj_coeffs.data(),
+                                ctx.settings);
+  assert(ctx.presolver != nullptr && "Presolver initialization failed");
+  PresolveStatus status = run_presolver(ctx.presolver);
+  auto end_time         = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+  CUOPT_LOG_INFO("PSLP presolver time: %d milliseconds", duration.count());
+  CUOPT_LOG_INFO("PSLP Presolved problem: %d constraints, %d variables, %d non-zeros",
+                 ctx.presolver->stats->n_rows_reduced,
+                 ctx.presolver->stats->n_cols_reduced,
+                 ctx.presolver->stats->nnz_reduced);
+
+  return ctx;
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
+  Presolver* pslp_presolver, raft::handle_t const* handle_ptr)
+{
+  raft::common::nvtx::range fun_scope("Build optimization problem from PSLP");
+  auto reduced_prob = pslp_presolver->reduced_prob;
+  int n_rows        = reduced_prob->m;
+  int n_cols        = reduced_prob->n;
+  int nnz           = reduced_prob->nnz;
+  double obj_offset = reduced_prob->obj_offset;
+
+  optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
+  op_problem.set_objective_offset(maximize_ ? -obj_offset : obj_offset);
+  op_problem.set_maximize(maximize_);
+  op_problem.set_problem_category(problem_category_t::LP);
+
+  op_problem.set_csr_constraint_matrix(
+    reduced_prob->Ax, nnz, reduced_prob->Ai, nnz, reduced_prob->Ap, n_rows + 1);
+
+  std::vector<f_t> h_obj_coeffs(n_cols);
+  // std::copy(h_obj_coeffs.begin(), h_obj_coeffs.end(), reduced_prob->c);
+  std::copy(reduced_prob->c, reduced_prob->c + n_cols, h_obj_coeffs.begin());
+  if (maximize_) {
+    for (size_t i = 0; i < n_cols; ++i) {
+      h_obj_coeffs[i] = -h_obj_coeffs[i];
+    }
+  }
+  op_problem.set_objective_coefficients(h_obj_coeffs.data(), n_cols);
+  op_problem.set_constraint_lower_bounds(reduced_prob->lhs, n_rows);
+  op_problem.set_constraint_upper_bounds(reduced_prob->rhs, n_rows);
+  op_problem.set_variable_lower_bounds(reduced_prob->lbs, n_cols);
+  op_problem.set_variable_upper_bounds(reduced_prob->ubs, n_cols);
+  // op_problem.set_variable_types(h_var_types.data(), n_cols);
+
+  return op_problem;
 }
 
 template <typename i_t, typename f_t>
@@ -393,6 +540,20 @@ void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
 }
 
 template <typename i_t, typename f_t>
+std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_t, f_t>::apply_pslp(
+  optimization_problem_t<i_t, f_t> const& op_problem)
+{
+  auto ctx       = build_and_run_pslp_presolver(op_problem);
+  pslp_presolver = ctx.presolver;
+  pslp_stgs      = ctx.settings;
+
+  auto opt_problem =
+    build_optimization_problem_from_pslp<i_t, f_t>(pslp_presolver, op_problem.get_handle_ptr());
+
+  return std::make_optional(third_party_presolve_result_t<i_t, f_t>{opt_problem, {}});
+}
+
+template <typename i_t, typename f_t>
 std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_t, f_t>::apply(
   optimization_problem_t<i_t, f_t> const& op_problem,
   problem_category_t category,
@@ -402,6 +563,9 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
   double time_limit,
   i_t num_cpu_threads)
 {
+#if USE_PSLP
+  return apply_pslp(op_problem);
+#else
   papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem, category);
 
   CUOPT_LOG_INFO("Original problem: %d constraints, %d variables, %d nonzeros",
@@ -457,6 +621,7 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
 
   return std::make_optional(
     third_party_presolve_result_t<i_t, f_t>{opt_problem, implied_integer_indices});
+#endif
 }
 
 template <typename i_t, typename f_t>
@@ -468,6 +633,9 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
                                             bool dual_postsolve,
                                             rmm::cuda_stream_view stream_view)
 {
+#if USE_PSLP
+  undo_pslp(primal_solution, dual_solution, reduced_costs, stream_view);
+#else
   if (status_to_skip) { return; }
   std::vector<f_t> primal_sol_vec_h(primal_solution.size());
   raft::copy(primal_sol_vec_h.data(), primal_solution.data(), primal_solution.size(), stream_view);
@@ -498,6 +666,35 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
   raft::copy(dual_solution.data(), full_sol.dual.data(), full_sol.dual.size(), stream_view);
   raft::copy(
     reduced_costs.data(), full_sol.reducedCosts.data(), full_sol.reducedCosts.size(), stream_view);
+#endif
+}
+
+template <typename i_t, typename f_t>
+void third_party_presolve_t<i_t, f_t>::undo_pslp(rmm::device_uvector<f_t>& primal_solution,
+                                                 rmm::device_uvector<f_t>& dual_solution,
+                                                 rmm::device_uvector<f_t>& reduced_costs,
+                                                 rmm::cuda_stream_view stream_view)
+{
+  std::vector<f_t> h_primal_solution(primal_solution.size());
+  std::vector<f_t> h_dual_solution(dual_solution.size());
+  std::vector<f_t> h_reduced_costs(reduced_costs.size());
+  raft::copy(h_primal_solution.data(), primal_solution.data(), primal_solution.size(), stream_view);
+  raft::copy(h_dual_solution.data(), dual_solution.data(), dual_solution.size(), stream_view);
+  raft::copy(h_reduced_costs.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
+
+  postsolve(
+    pslp_presolver, h_primal_solution.data(), h_dual_solution.data(), h_reduced_costs.data());
+
+  auto reduced_prob = pslp_presolver->reduced_prob;
+  int n_rows        = reduced_prob->m;
+  int n_cols        = reduced_prob->n;
+
+  primal_solution.resize(n_cols, stream_view);
+  dual_solution.resize(n_rows, stream_view);
+  reduced_costs.resize(n_cols, stream_view);
+  raft::copy(primal_solution.data(), pslp_presolver->sol->x, n_cols, stream_view);
+  raft::copy(dual_solution.data(), pslp_presolver->sol->y, n_rows, stream_view);
+  raft::copy(reduced_costs.data(), pslp_presolver->sol->z, n_cols, stream_view);
 }
 
 #if MIP_INSTANTIATE_FLOAT

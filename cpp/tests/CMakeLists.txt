@@ -1,5 +1,5 @@
 # cmake-format: off
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
@@ -42,6 +42,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
         "${CUOPT_TEST_DIR}/../src"
         "${CUOPT_TEST_DIR}/../libmps_parser/src"
         "${CUOPT_TEST_DIR}"
+        "/home/nfs/rgandham/git-repos/PSLP/include/PSLP"
     )
 
     target_link_libraries(${CMAKE_TEST_NAME}
