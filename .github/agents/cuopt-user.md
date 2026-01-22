@@ -151,6 +151,38 @@ Choose based on integration/deployment needs:
 
 ---
 
+## ⚠️ Status Checking (Critical for LP/MILP)
+
+**Status enum values use PascalCase, not ALL_CAPS.**
+
+| Correct | Wrong |
+|---------|-------|
+| `"Optimal"` | `"OPTIMAL"` |
+| `"FeasibleFound"` | `"FEASIBLE"` |
+| `"Infeasible"` | `"INFEASIBLE"` |
+
+**Always check status like this:**
+
+```python
+# ✅ CORRECT - matches actual enum names
+if problem.Status.name in ["Optimal", "FeasibleFound"]:
+    print(f"Solution: {problem.ObjValue}")
+
+# ✅ ALSO CORRECT - case-insensitive
+if problem.Status.name.upper() == "OPTIMAL":
+    print(f"Solution: {problem.ObjValue}")
+
+# ❌ WRONG - will silently fail!
+if problem.Status.name == "OPTIMAL":  # Never matches
+    print(f"Solution: {problem.ObjValue}")
+```
+
+**LP status values:** `Optimal`, `NoTermination`, `NumericalError`, `PrimalInfeasible`, `DualInfeasible`, `IterationLimit`, `TimeLimit`, `PrimalFeasible`
+
+**MILP status values:** `Optimal`, `FeasibleFound`, `Infeasible`, `Unbounded`, `TimeLimit`, `NoTermination`
+
+---
+
 ## Installation (minimal)
 
 Pick **one** installation method and match it to your CUDA major version (cuOpt publishes CUDA-variant packages).
@@ -682,17 +714,22 @@ settings.set_parameter("log_to_console", 1)
 # Solve
 problem.solve(settings)
 
-# Results
-print(f"Status: {problem.Status.name}")
-print(f"Optimal profit: ${problem.ObjValue:.2f}")
-print(f"Chairs to produce: {chairs.getValue():.1f}")
-print(f"Tables to produce: {tables.getValue():.1f}")
+# Check status and extract results
+status = problem.Status.name
+print(f"Status: {status}")
 
-# Get dual values (shadow prices)
-wood_constraint = problem.getConstraint("wood")
-labor_constraint = problem.getConstraint("labor")
-print(f"\nShadow price (wood): ${wood_constraint.DualValue:.2f} per unit")
-print(f"Shadow price (labor): ${labor_constraint.DualValue:.2f} per unit")
+if status in ["Optimal", "PrimalFeasible"]:
+    print(f"Optimal profit: ${problem.ObjValue:.2f}")
+    print(f"Chairs to produce: {chairs.getValue():.1f}")
+    print(f"Tables to produce: {tables.getValue():.1f}")
+
+    # Get dual values (shadow prices)
+    wood_constraint = problem.getConstraint("wood")
+    labor_constraint = problem.getConstraint("labor")
+    print(f"\nShadow price (wood): ${wood_constraint.DualValue:.2f} per unit")
+    print(f"Shadow price (labor): ${labor_constraint.DualValue:.2f} per unit")
+else:
+    print(f"No optimal solution found. Status: {status}")
 ```
 
 ### Python: Mixed-Integer Linear Programming (MILP)
@@ -767,20 +804,25 @@ settings.set_parameter("mip_relative_gap", 0.01)  # 1% optimality gap
 # Solve
 problem.solve(settings)
 
-# Results
-print(f"Status: {problem.Status.name}")
-print(f"Total cost: ${problem.ObjValue:.2f}")
-print("\nOpen warehouses:")
-for w in warehouses:
-    if y[w].getValue() > 0.5:
-        print(f"  {w} (fixed cost: ${fixed_costs[w]})")
+# Check status and extract results
+status = problem.Status.name
+print(f"Status: {status}")
 
-print("\nShipments:")
-for w in warehouses:
-    for c in customers:
-        shipped = x[w, c].getValue()
-        if shipped > 0.01:
-            print(f"  {w} -> {c}: {shipped:.1f} units")
+if status in ["Optimal", "FeasibleFound"]:
+    print(f"Total cost: ${problem.ObjValue:.2f}")
+    print("\nOpen warehouses:")
+    for w in warehouses:
+        if y[w].getValue() > 0.5:
+            print(f"  {w} (fixed cost: ${fixed_costs[w]})")
+
+    print("\nShipments:")
+    for w in warehouses:
+        for c in customers:
+            shipped = x[w, c].getValue()
+            if shipped > 0.01:
+                print(f"  {w} -> {c}: {shipped:.1f} units")
+else:
+    print(f"No solution found. Status: {status}")
 ```
 
 ### Python: Quadratic Programming (QP) - Beta
@@ -830,16 +872,21 @@ settings = SolverSettings()
 settings.set_parameter("time_limit", 60)
 problem.solve(settings)
 
-# Results
-print(f"Status: {problem.Status.name}")
-print(f"Portfolio variance: {problem.ObjValue:.6f}")
-print(f"Portfolio std dev: {problem.ObjValue**0.5:.4f}")
-print(f"\nOptimal allocation:")
-print(f"  Stock A: {x1.getValue()*100:.2f}%")
-print(f"  Stock B: {x2.getValue()*100:.2f}%")
-print(f"  Stock C: {x3.getValue()*100:.2f}%")
-exp_return = r1*x1.getValue() + r2*x2.getValue() + r3*x3.getValue()
-print(f"\nExpected return: {exp_return*100:.2f}%")
+# Check status and extract results
+status = problem.Status.name
+print(f"Status: {status}")
+
+if status in ["Optimal", "PrimalFeasible"]:
+    print(f"Portfolio variance: {problem.ObjValue:.6f}")
+    print(f"Portfolio std dev: {problem.ObjValue**0.5:.4f}")
+    print(f"\nOptimal allocation:")
+    print(f"  Stock A: {x1.getValue()*100:.2f}%")
+    print(f"  Stock B: {x2.getValue()*100:.2f}%")
+    print(f"  Stock C: {x3.getValue()*100:.2f}%")
+    exp_return = r1*x1.getValue() + r2*x2.getValue() + r3*x3.getValue()
+    print(f"\nExpected return: {exp_return*100:.2f}%")
+else:
+    print(f"No optimal solution found. Status: {status}")
 ```
 
 ---
@@ -1151,6 +1198,145 @@ cuopt_cli problem.mps --iteration-limit 10000
 
 # Specify solver method (0=auto, 1=pdlp, 2=dual_simplex, 3=barrier, etc.)
 cuopt_cli problem.mps --method 1
+```
+
+---
+
+## Debugging Checklist
+
+### Problem: Results are empty/None when status looks OK
+
+**Diagnosis:**
+```python
+# Check actual status string (case matters!)
+print(f"Status: '{problem.Status.name}'")
+print(f"Is 'Optimal'?: {problem.Status.name == 'Optimal'}")
+print(f"Is 'OPTIMAL'?: {problem.Status.name == 'OPTIMAL'}")  # Wrong case!
+```
+
+**Fix:** Use `status in ["Optimal", "FeasibleFound"]` not `status == "OPTIMAL"`
+
+### Problem: Objective near zero when expecting large value
+
+**Diagnosis:**
+```python
+# Check if variables are all zero
+for var in [var1, var2, var3]:
+    print(f"{var.name}: {var.getValue()}")
+print(f"ObjValue: {problem.ObjValue}")
+```
+
+**Common causes:**
+- Model formulation error (constraints too restrictive)
+- Objective coefficients have wrong sign
+- "Do nothing" is optimal (check constraint logic)
+
+### Problem: Integer variables have fractional values
+
+**Diagnosis:**
+```python
+# Verify variable was defined as INTEGER
+val = int_var.getValue()
+print(f"Value: {val}, Is integer?: {abs(val - round(val)) < 1e-6}")
+```
+
+**Common causes:**
+- Variable defined as `CONTINUOUS` instead of `INTEGER`
+- Solver hit time limit before finding integer solution (check `FeasibleFound` vs `Optimal`)
+
+### Problem: Routing solution empty or status != 0
+
+**Diagnosis:**
+```python
+print(f"Status: {solution.get_status()}")  # 0=SUCCESS, 1=FAIL, 2=TIMEOUT, 3=EMPTY
+print(f"Message: {solution.get_message()}")
+print(f"Error: {solution.get_error_message()}")
+
+# Check for dropped/infeasible orders
+infeasible = solution.get_infeasible_orders()
+if len(infeasible) > 0:
+    print(f"Infeasible orders: {infeasible.to_list()}")
+```
+
+**Common causes:**
+- Time windows too tight (order earliest > vehicle latest)
+- Total demand exceeds total capacity
+- Cost/time matrix dimensions don't match n_locations
+- Missing `add_transit_time_matrix()` when using time windows
+
+### Problem: Server REST API returns 422 validation error
+
+**Diagnosis:**
+- Check the `error` field in response for specific validation message
+- Common issues:
+  - `transit_time_matrix_data` → should be `travel_time_matrix_data`
+  - `capacities` format: `[[cap_v1, cap_v2]]` not `[[cap_v1], [cap_v2]]`
+  - Missing required fields: `fleet_data`, `task_data`
+
+**Fix:** Compare payload against OpenAPI spec at `/cuopt.yaml`
+
+### Problem: OutOfMemoryError
+
+**Diagnosis:**
+```python
+# Check problem size
+print(f"Variables: {problem.num_variables}")
+print(f"Constraints: {problem.num_constraints}")
+# For routing:
+print(f"Locations: {n_locations}, Orders: {n_orders}, Fleet: {n_fleet}")
+```
+
+**Common causes:**
+- Problem too large for GPU memory
+- Dense constraint matrix (try sparse representation)
+- Too many vehicles × locations in routing
+
+### Problem: cudf type casting warnings or errors
+
+**Diagnosis:**
+```python
+# Check dtypes before passing to cuOpt
+print(f"cost_matrix dtype: {cost_matrix.dtypes}")
+print(f"demand dtype: {demand.dtype}")
+```
+
+**Fix:** Explicitly cast to expected types:
+```python
+cost_matrix = cost_matrix.astype("float32")
+demand = demand.astype("int32")
+order_locations = order_locations.astype("int32")
+```
+
+### Problem: MPS file parsing fails
+
+**Diagnosis:**
+```bash
+# Check MPS file format
+head -20 problem.mps
+# Look for: NAME, ROWS, COLUMNS, RHS, BOUNDS, ENDATA sections
+```
+
+**Common causes:**
+- Missing `ENDATA` marker
+- Incorrect section order
+- Invalid characters or encoding
+- Integer markers (`'MARKER'`, `'INTORG'`, `'INTEND'`) malformed
+
+### Problem: Time windows make problem infeasible
+
+**Diagnosis:**
+```python
+# Check for impossible time windows
+for i in range(len(order_earliest)):
+    if order_earliest[i] > order_latest[i]:
+        print(f"Order {i}: earliest {order_earliest[i]} > latest {order_latest[i]}")
+
+# Check vehicle can reach orders in time
+for i in range(len(order_locations)):
+    loc = order_locations[i]
+    travel_time = transit_time_matrix[0][loc]  # from depot
+    if travel_time > order_latest[i]:
+        print(f"Order {i}: unreachable (travel={travel_time}, latest={order_latest[i]})")
 ```
 
 ---
