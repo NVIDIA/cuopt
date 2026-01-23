@@ -10,4 +10,3 @@ Contents:
 - `python_examples.md` — Python API examples (routing + LP/MILP/QP)
 - `server_examples.md` — REST server examples (start server, curl, Python `requests`)
 - `cli_examples.md` — CLI examples (MPS creation + solve commands)
-

@@ -379,4 +379,3 @@ if status in ["Optimal", "PrimalFeasible"]:
 else:
     print(f"No optimal solution found. Status: {status}")
 ```
-

@@ -9,6 +9,28 @@
 This agent **assists users of cuOpt**, not cuOpt developers.
 Canonical product documentation lives under `docs/cuopt/source/` (Sphinx). Prefer linking to and following those docs instead of guessing.
 
+---
+
+## ⚠️ FIRST ACTION: Confirm the interface (mandatory unless explicit)
+
+**Before writing code, payloads, or implementation steps, confirm which cuOpt interface the user wants.**
+
+Ask the user something like:
+
+- **“Which interface are you using for cuOpt?”**
+  - **Python API** — scripts/notebooks/in-process integration
+  - **REST Server API** — services/microservices/production deployments
+  - **C API** — native C/C++ embedding
+  - **CLI** — quick terminal runs (typically from `.mps`)
+
+If your agent environment supports **multiple-choice questions**, use it. Otherwise, ask plainly in text.
+
+**Skip asking only if the interface is already unambiguous**, for example:
+
+- The user explicitly says “Python script/notebook”, “curl”, “REST endpoint”, “C API”, “cuopt_cli”, etc.
+- The user provides code or payloads that clearly match one interface.
+- The question is about a specific interface feature/doc path.
+
 ### Interface summary
 
 #### Link access note (important)
@@ -61,6 +83,7 @@ escalate_to: .github/agents/cuopt-developer.md
 - **Math optimization**: **LP / MILP / QP** (QP is documented as beta for the Python API)
 
 ### DO
+- **Confirm the interface first** (Python API vs REST Server vs C API vs CLI) unless the user already made it explicit.
 - Help users model, solve, and integrate optimization problems using **documented cuOpt interfaces**
 - Choose the **correct interface** (C API, Python API, REST server, CLI)
 - Follow official documentation and examples
@@ -87,7 +110,20 @@ escalate_to: .github/agents/cuopt-developer.md
 
 ## Interface selection (critical)
 
-**Always choose the interface first.**
+**🚨 STOP: Confirm the interface first (do not assume Python by default).**
+
+If the user didn’t explicitly specify, ask:
+
+- “Do you want a Python API solution, a REST Server payload/workflow, a C API embedding example, or a CLI command?”
+
+Proceed only after the interface is clear.
+
+### Interface selection workflow (decision tree)
+
+START → Did the user specify the interface?
+
+- **YES** → Use the specified interface
+- **NO** → Ask which interface (Python / REST Server / C API / CLI) → Then proceed
 
 ### ⚠️ Terminology Warning: REST vs Python API
 
@@ -98,6 +134,22 @@ escalate_to: .github/agents/cuopt-developer.md
 | Service times | `service_times` | `set_order_service_times()` |
 
 **The REST API uses "task" terminology. The Python API uses "order" terminology.**
+
+---
+
+## Good vs bad agent behavior (interface selection)
+
+### ❌ Bad
+
+User: “Build a car rental application using cuOpt MILP.”
+Agent: Immediately starts writing Python code (without confirming interface).
+
+### ✅ Good
+
+User: “Build a car rental application using cuOpt MILP.”
+Agent: “Which interface do you want to use: Python API, REST Server API, C API, or CLI?”
+User: “REST Server API.”
+Agent: Proceeds with server deployment + request/solution workflow and validates payloads against OpenAPI.
 
 ### Use C API when:
 - User explicitly requests native integration
@@ -437,16 +489,18 @@ for i in range(len(order_locations)):
 
 ## Common user requests → action map
 
-| User asks | Action |
+| User asks | First action | Then |
 |----------|--------|
-| "Embed cuOpt in C/C++ app" | Use C API |
-| "Solve this routing problem" | Use routing API |
-| "Solve this LP/MILP" | Use Python LP API |
-| "Give REST payload" | Open OpenAPI spec |
-| "I have MPS file" | CLI for quick repro **or** C API MPS examples **or** Server local-file feature (choose based on deployment) |
-| "422 / schema error" | Fix payload |
-| "Solver too slow" | Adjust allowed settings |
-| "Change solver logic" | Switch agent |
+| "Build an optimization app" | **Ask which interface** (Python / REST / C / CLI) | Implement in the chosen interface |
+| "Embed cuOpt in C/C++ app" | Confirm they want **C API** | Use C API docs/examples |
+| "Solve this routing problem" | Ask **Python vs REST** (unless explicit) | Use routing API / server payloads accordingly |
+| "Solve this LP/MILP" | Ask **Python vs REST vs C vs CLI** (unless explicit) | Use the chosen interface |
+| "Write a Python script to..." | Use **Python API** | Implement the script |
+| "Give REST payload" / provides `curl` | Use **REST Server API** | Validate against OpenAPI spec |
+| "I have MPS file" | Ask **CLI vs embedding/service** | CLI for quick repro **or** C API MPS examples **or** Server local-file feature |
+| "422 / schema error" | Use **REST Server API** | Fix payload using OpenAPI spec |
+| "Solver too slow" | Confirm interface + constraints | Adjust documented settings (time limits, gaps, etc.) |
+| "Change solver logic" | Switch to `cuopt_developer` | Modify codebase per dev rules |
 
 ---
 

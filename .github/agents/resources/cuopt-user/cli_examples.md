@@ -104,4 +104,3 @@ cuopt_cli problem.mps --iteration-limit 10000
 # Specify solver method (0=auto, 1=pdlp, 2=dual_simplex, 3=barrier, etc.)
 cuopt_cli problem.mps --method 1
 ```
-

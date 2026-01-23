@@ -197,4 +197,3 @@ curl -s --location "http://localhost:8000/cuopt/solution/${REQID}" \
   --header 'Content-Type: application/json' \
   --header "CLIENT-VERSION: custom" | jq .
 ```
-
