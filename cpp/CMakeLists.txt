@@ -29,6 +29,9 @@ project(
   LANGUAGES CXX CUDA C
 )
 
+# Disable C++20 module scanning as the codebase doesn't use modules
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF CACHE BOOL "Disable C++20 module scanning")
+
 rapids_cmake_write_version_file(include/cuopt/version_config.hpp)
 # ##################################################################################################
 # - build type ------------------------------------------------------------------------------------
@@ -243,11 +246,12 @@ set_target_properties(cuopt
   INSTALL_RPATH "\$ORIGIN"
 
   # set target compile options
-  CXX_STANDARD 17
+  CXX_STANDARD 20
   CXX_STANDARD_REQUIRED ON
-  CUDA_STANDARD 17
+  CUDA_STANDARD 20
   CUDA_STANDARD_REQUIRED ON
   INTERFACE_POSITION_INDEPENDENT_CODE ON
+  CXX_SCAN_FOR_MODULES OFF
 )
 
 target_compile_definitions(cuopt PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}")
@@ -446,6 +450,14 @@ endif()
 
 if(NOT BUILD_LP_ONLY)
 add_executable(cuopt_cli cuopt_cli.cpp)
+
+set_target_properties(cuopt_cli
+  PROPERTIES
+  CXX_STANDARD 20
+  CXX_STANDARD_REQUIRED ON
+  CXX_SCAN_FOR_MODULES OFF
+)
+
 target_compile_options(cuopt_cli
   PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
   "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
@@ -486,6 +498,14 @@ endif()
 option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
   add_executable(solve_MIP ../benchmarks/linear_programming/cuopt/run_mip.cpp)
+
+  set_target_properties(solve_MIP
+    PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+    CXX_SCAN_FOR_MODULES OFF
+  )
+
   target_compile_options(solve_MIP
     PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
@@ -510,6 +530,16 @@ endif()
 option(BUILD_LP_BENCHMARKS "Build LP benchmarks" OFF)
 if(BUILD_LP_BENCHMARKS)
   add_executable(solve_LP ../benchmarks/linear_programming/cuopt/run_pdlp.cu)
+
+  set_target_properties(solve_LP
+    PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+    CUDA_STANDARD 20
+    CUDA_STANDARD_REQUIRED ON
+    CXX_SCAN_FOR_MODULES OFF
+  )
+
   target_compile_options(solve_LP
     PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"

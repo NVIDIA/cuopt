@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -47,15 +47,15 @@ __global__ void kernel_get_best_insertion_ejection_solution(
 
   cuopt_assert(route_id >= 0 || route_id == -1,
                "Route id from route_id_per_node should be positive or flagged");
-  cuopt_assert(route_id < solution.n_routes, "Route id should be smalled than number of routes");
+  cuopt_assert(route_id < solution.n_routes, "Route id should be smaller than number of routes");
   // Discard deleted requests
   if (route_id == -1) return;
 
   auto& route             = solution.routes[route_id];
   const auto route_length = route.get_num_nodes();
 
-  cuopt_assert(route_length > 1, "Route length should be greated than one");
-  cuopt_assert(intra_pickup_id > 0, "Intra pickup id must be stricly positive");
+  cuopt_assert(route_length > 1, "Route length should be greater than one");
+  cuopt_assert(intra_pickup_id > 0, "Intra pickup id must be strictly positive");
   cuopt_assert(intra_pickup_id < route_length, "Intra pickup id must be inferior to route length");
   if constexpr (REQUEST == request_t::PDP) {
     cuopt_assert(route.requests().is_pickup_node(intra_pickup_id),

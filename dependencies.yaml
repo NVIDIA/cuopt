@@ -349,6 +349,7 @@ dependencies:
           - numba-cuda>=0.22.1,<0.23.0
           - numba>=0.60.0
           - &pandas pandas>=2.0
+          - &pyyaml pyyaml>=6.0.0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file

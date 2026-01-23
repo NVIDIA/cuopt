@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /*
@@ -130,7 +130,6 @@ cuopt_int_t test_simple_qp()
                                        constraint_rhs,
                                        var_lower_bounds,
                                        var_upper_bounds,
-                                       variable_types,
                                        &problem);
   if (status != CUOPT_SUCCESS) {
     printf("Error creating problem: %d\n", status);

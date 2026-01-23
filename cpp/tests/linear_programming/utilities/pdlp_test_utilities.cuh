@@ -127,7 +127,7 @@ static void test_constraint_sanity(
 
   // std::all_of would work but we would need C++23 zip views
   for (size_t i = 0; i < primal_vars.size(); ++i) {
-    // Not always stricly true because we apply variable bound clamping on the scaled problem
+    // Not always strictly true because we apply variable bound clamping on the scaled problem
     // After unscaling it, the variables might not respect exactly (this adding an epsilon)
     auto condition = primal_vars[i] >= variable_lower_bounds[i] - epsilon &&
                      primal_vars[i] <= variable_upper_bounds[i] + epsilon;

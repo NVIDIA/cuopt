@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -265,7 +265,7 @@ class route_t {
                        int nb_nodes            = 1)
     {
       cuopt_assert(__popc(__activemask()) == 1, "eject_node should be single threaded");
-      cuopt_assert(ejection_idx >= 0, "ejection_idx should be greated than 0");
+      cuopt_assert(ejection_idx >= 0, "ejection_idx should be greater than 0");
       cuopt_assert(ejection_idx + nb_nodes - 1 < *n_nodes,
                    "ejection_idx should be smaller than n_nodes");
       cuopt_assert(*n_nodes >= 1, "Size cannot be smaller than 1");
@@ -294,7 +294,7 @@ class route_t {
                                 int nb_nodes            = 1)
     {
       if (nb_nodes == 0) return;
-      cuopt_assert(ejection_idx > 0, "ejection_idx should be greated than 0");
+      cuopt_assert(ejection_idx > 0, "ejection_idx should be greater than 0");
       cuopt_assert(ejection_idx + nb_nodes - 1 < *n_nodes,
                    "ejection_idx should be smaller than n_nodes");
       cuopt_assert(*n_nodes >= 1, "Size cannot be smaller than 1");
@@ -339,7 +339,7 @@ class route_t {
       i_t nb_nodes            = 1)
     {
       if (nb_nodes == 0) return;
-      cuopt_assert(insertion_idx >= 0, "insertion_idx should be greated than 0");
+      cuopt_assert(insertion_idx >= 0, "insertion_idx should be greater than 0");
       // copy to open up space
       const i_t n_nodes_w_depot = *n_nodes + 1;
       // copy nodes to be shifted
@@ -382,7 +382,7 @@ class route_t {
                         i_t nb_nodes            = 1)
     {
       cuopt_assert(__popc(__activemask()) == 1, "Insert node should be single threaded");
-      cuopt_assert(insertion_idx >= 0, "insertion_idx should be greated than 0");
+      cuopt_assert(insertion_idx >= 0, "insertion_idx should be greater than 0");
       cuopt_assert(insertion_idx <= *n_nodes, "insertion_idx should be less than n_nodes");
       cuopt_assert(*n_nodes + nb_nodes + 1 <= max_nodes_per_route(),
                    "Can not insert more nodes than the max nodes per route");
@@ -591,7 +591,7 @@ class route_t {
       }
       copy_fixed_route_data(orig_route, 0, intra_idx, 0);
       cuopt_assert(intra_idx < delivery_intra_idx,
-                   "Intra pickup and delivery indices should be in stricly increasing order");
+                   "Intra pickup and delivery indices should be in strictly increasing order");
       copy_fixed_route_data(orig_route, intra_idx + 1, delivery_intra_idx, intra_idx);
       // + 1 to include end depot
       // Start index : intra_idx + (delivery_intra_idx - intra_idx - 1)
@@ -613,7 +613,7 @@ class route_t {
       cuopt_assert((n_ejections % request_info_t<i_t, REQUEST>::size()) == 0,
                    "Number of ejection should be even");
       cuopt_assert(0 < intra_ejection_indices[0],
-                   "Intra indices should be in stricly increasing order");
+                   "Intra indices should be in strictly increasing order");
 
       const auto route_length = *orig_route.n_nodes;
 
@@ -628,14 +628,14 @@ class route_t {
       for (int i = 0; i < n_ejections - 1; ++i) {
         const i_t curr = intra_ejection_indices[i];
         const i_t next = intra_ejection_indices[i + 1];
-        cuopt_assert(curr < next, "Intra indices should be in stricly increasing order");
+        cuopt_assert(curr < next, "Intra indices should be in strictly increasing order");
         copy_fixed_route_data(orig_route, curr + 1, next, curr_size);
         curr_size += next - curr - 1;
       }
 
       // + 1 to go up to end depot
       cuopt_assert(intra_ejection_indices[n_ejections - 1] < route_length + 1,
-                   "Intra indices should be in stricly increasing order");
+                   "Intra indices should be in strictly increasing order");
       copy_fixed_route_data(
         orig_route, intra_ejection_indices[n_ejections - 1] + 1, route_length + 1, curr_size);
 
@@ -738,7 +738,7 @@ class route_t {
     static DI void compute_forward_in_between(view_t& curr_route, i_t start, i_t end)
     {
       cuopt_assert(start >= 0, "Start has to be positive.");
-      cuopt_assert(end > 0, "End has to be stricly positive.");
+      cuopt_assert(end > 0, "End has to be strictly positive.");
       cuopt_assert(end >= start, "End should be bigger than start.");
       cuopt_assert(start <= curr_route.get_num_nodes(), "Start should be smaller than n_nodes+1.");
       auto curr_node = curr_route.get_node(start);
@@ -759,7 +759,7 @@ class route_t {
     static DI void compute_backward_in_between(view_t& curr_route, i_t start, i_t end)
     {
       cuopt_assert(start >= 0, "Start has to be positive.");
-      cuopt_assert(end > 0, "End has to be stricly positive.");
+      cuopt_assert(end > 0, "End has to be strictly positive.");
       cuopt_assert(end >= start, "End should be bigger than start.");
       cuopt_assert(end <= curr_route.get_num_nodes(), "End should be smaller than n_nodes+1.");
       auto curr_node = curr_route.get_node(end);

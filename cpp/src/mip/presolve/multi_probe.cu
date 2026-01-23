@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -302,7 +302,12 @@ termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t
     iter_1 += !skip_1;
   }
   handle_ptr->sync_stream();
-  if (compute_stats) { constraint_stats(pb, handle_ptr); }
+  if (compute_stats) {
+    upd_0.init_changed_constraints(handle_ptr);
+    upd_1.init_changed_constraints(handle_ptr);
+    calculate_activity(pb, handle_ptr);
+    constraint_stats(pb, handle_ptr);
+  }
 
   return criteria;
 }

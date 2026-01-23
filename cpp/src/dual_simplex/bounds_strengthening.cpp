@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -154,7 +154,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
       bool is_infeasible =
         check_infeasibility<i_t, f_t>(min_a, max_a, cnst_lb, cnst_ub, settings.primal_tol);
       if (is_infeasible) {
-        settings.log.printf(
+        settings.log.debug(
           "Iter:: %d, Infeasible constraint %d, cnst_lb %e, cnst_ub %e, min_a %e, max_a %e\n",
           iter,
           i,
@@ -211,7 +211,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
       new_ub = std::min(new_ub, upper_bounds[k]);
 
       if (new_lb > new_ub + 1e-6) {
-        settings.log.printf(
+        settings.log.debug(
           "Iter:: %d, Infeasible variable after update %d, %e > %e\n", iter, k, new_lb, new_ub);
         return false;
       }

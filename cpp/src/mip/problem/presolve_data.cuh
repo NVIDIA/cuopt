@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -18,6 +18,15 @@ namespace linear_programming::detail {
 
 template <typename i_t, typename f_t>
 class problem_t;
+
+template <typename i_t, typename f_t>
+struct substitution_t {
+  f_t timestamp;
+  i_t substituting_var;
+  i_t substituted_var;
+  f_t offset;
+  f_t coefficient;
+};
 
 template <typename i_t, typename f_t>
 class presolve_data_t {
@@ -42,7 +51,8 @@ class presolve_data_t {
       objective_scaling_factor(other.objective_scaling_factor),
       variable_mapping(other.variable_mapping, stream),
       fixed_var_assignment(other.fixed_var_assignment, stream),
-      var_flags(other.var_flags, stream)
+      var_flags(other.var_flags, stream),
+      variable_substitutions(other.variable_substitutions)
   {
   }
 
@@ -56,6 +66,7 @@ class presolve_data_t {
                                fixed_var_assignment.begin(),
                                fixed_var_assignment.end(),
                                0.);
+    variable_substitutions.clear();
   }
 
   void reset_additional_vars(const problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
@@ -79,6 +90,10 @@ class presolve_data_t {
   rmm::device_uvector<i_t> variable_mapping;
   rmm::device_uvector<f_t> fixed_var_assignment;
   rmm::device_uvector<i_t> var_flags;
+
+  // Variable substitutions from probing: x_substituted = offset + coefficient * x_substituting
+  // Applied in post_process_assignment to recover substituted variable values
+  std::vector<substitution_t<i_t, f_t>> variable_substitutions;
 };
 
 }  // namespace linear_programming::detail

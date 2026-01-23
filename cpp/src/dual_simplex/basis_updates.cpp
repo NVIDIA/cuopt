@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -2046,6 +2046,8 @@ template <typename i_t, typename f_t>
 int basis_update_mpf_t<i_t, f_t>::refactor_basis(
   const csc_matrix_t<i_t, f_t>& A,
   const simplex_solver_settings_t<i_t, f_t>& settings,
+  const std::vector<f_t>& lower,
+  const std::vector<f_t>& upper,
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
   std::vector<variable_status_t>& vstatus)
@@ -2066,7 +2068,8 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
                       deficient,
                       slacks_needed) == -1) {
     settings.log.debug("Initial factorization failed\n");
-    basis_repair(A, settings, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
+    basis_repair(
+      A, settings, lower, upper, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
 
 #ifdef CHECK_BASIS_REPAIR
     const i_t m = A.m;

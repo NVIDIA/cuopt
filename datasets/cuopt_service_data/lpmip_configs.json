@@ -66,19 +66,7 @@
 	"mip_absolute_gap": 0.0001,
 	"mip_relative_gap": 0.0001,
 	"mip_absolute_tolerance": 0.0001,
-	"mip_relative_tolerance": 0.0001,
-	
-	"absolute_primal": 0.0001,
-	"absolute_dual": 0.0001,
-	"absolute_gap": 0.0001,
-	"relative_primal": 0.0001,
-	"relative_dual": 0.0001,
-	"relative_gap": 0.0001,
-	"primal_infeasible": 0.0001,
-	"dual_infeasible": 0.0001,
-	"integrality_tolerance": 0.0001,
-	"absolute_mip_gap": 0.0001,
-	"relative_mip_gap": 0.0001
+	"mip_relative_tolerance": 0.0001
     },
     "infeasibility_detection": true,
     "time_limit": 5,
@@ -96,8 +84,6 @@
     "save_best_primal_so_far": true,
     "first_primal_feasible": true,
     "log_file": "bill",
-    "solution_file": "barry",
-    "solver_mode": 3,
-    "heuristics_only": false
+    "solution_file": "barry"
   }
 }

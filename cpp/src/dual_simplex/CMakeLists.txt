@@ -1,5 +1,5 @@
 # cmake-format: off
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
@@ -31,6 +31,7 @@ set(DUAL_SIMPLEX_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/triangle_solve.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/vector_math.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/pinned_host_allocator.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/diving_heuristics.cpp
   )
 
 # Uncomment to enable debug info

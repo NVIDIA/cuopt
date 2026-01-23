@@ -229,23 +229,55 @@ std::unique_ptr<solver_ret_t> call_solve(
   bool is_batch_mode)
 {
   raft::common::nvtx::range fun_scope("Call Solve");
+  rmm::cuda_stream stream(static_cast<rmm::cuda_stream::flags>(flags));
+  const raft::handle_t handle_{stream};
 
-  // FIX: Use default handle constructor like CLI does, instead of explicit stream creation
-  // Original code created a non-blocking stream which causes synchronization issues with PDLP
-  // This is a workaround to fix the synchronization issues, please fix this in the future and
-  // remove this workaround. cudaStream_t stream; RAFT_CUDA_TRY(cudaStreamCreateWithFlags(&stream,
-  // flags));  // flags=cudaStreamNonBlocking const raft::handle_t handle_{stream};
-  const raft::handle_t handle_{};
+  solver_ret_t response;
 
   auto op_problem = data_model_to_optimization_problem(data_model, solver_settings, &handle_);
-  solver_ret_t response;
   if (op_problem.get_problem_category() == linear_programming::problem_category_t::LP) {
     response.lp_ret =
       call_solve_lp(op_problem, solver_settings->get_pdlp_settings(), is_batch_mode);
     response.problem_type = linear_programming::problem_category_t::LP;
+    // Reset stream to per-thread default as non-blocking stream is out of scope after the
+    // function returns.
+    response.lp_ret.primal_solution_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.dual_solution_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.reduced_cost_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.current_primal_solution_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.current_dual_solution_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.initial_primal_average_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.initial_dual_average_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.current_ATY_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.sum_primal_solutions_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.sum_dual_solutions_->set_stream(rmm::cuda_stream_per_thread);
+    response.lp_ret.last_restart_duality_gap_primal_solution_->set_stream(
+      rmm::cuda_stream_per_thread);
+    response.lp_ret.last_restart_duality_gap_dual_solution_->set_stream(
+      rmm::cuda_stream_per_thread);
   } else {
     response.mip_ret      = call_solve_mip(op_problem, solver_settings->get_mip_settings());
     response.problem_type = linear_programming::problem_category_t::MIP;
+    // Reset stream to per-thread default as non-blocking stream is out of scope after the
+    // function returns.
+    response.mip_ret.solution_->set_stream(rmm::cuda_stream_per_thread);
+  }
+
+  // Reset warmstart data streams in solver_settings to per-thread default before destroying our
+  // local stream. The warmstart data was created using our stream and its uvectors are associated
+  // with it.
+  auto& warmstart_data = solver_settings->get_pdlp_settings().get_pdlp_warm_start_data();
+  if (warmstart_data.current_primal_solution_.size() > 0) {
+    warmstart_data.current_primal_solution_.set_stream(rmm::cuda_stream_per_thread);
+    warmstart_data.current_dual_solution_.set_stream(rmm::cuda_stream_per_thread);
+    warmstart_data.initial_primal_average_.set_stream(rmm::cuda_stream_per_thread);
+    warmstart_data.initial_dual_average_.set_stream(rmm::cuda_stream_per_thread);
+    warmstart_data.current_ATY_.set_stream(rmm::cuda_stream_per_thread);
+    warmstart_data.sum_primal_solutions_.set_stream(rmm::cuda_stream_per_thread);
+    warmstart_data.sum_dual_solutions_.set_stream(rmm::cuda_stream_per_thread);
+    warmstart_data.last_restart_duality_gap_primal_solution_.set_stream(
+      rmm::cuda_stream_per_thread);
+    warmstart_data.last_restart_duality_gap_dual_solution_.set_stream(rmm::cuda_stream_per_thread);
   }
 
   return std::make_unique<solver_ret_t>(std::move(response));
@@ -265,8 +297,8 @@ static int compute_max_thread(
   for (const auto data_model : data_models) {
     const int nb_variables   = data_model->get_objective_coefficients().size();
     const int nb_constraints = data_model->get_constraint_bounds().size();
-    // Currently we roughly need 8 times more memory than the size of each structure in the problem
-    // representation
+    // Currently we roughly need 8 times more memory than the size of each structure in the
+    // problem representation
     needed_memory += ((nb_variables * 3 * sizeof(double)) + (nb_constraints * 3 * sizeof(double)) +
                       data_model->get_constraint_matrix_values().size() * sizeof(double) +
                       data_model->get_constraint_matrix_indices().size() * sizeof(int) +
@@ -277,8 +309,8 @@ static int compute_max_thread(
   const int res = std::min(max_total, std::min(total_mem / needed_memory, data_models.size()));
   cuopt_expects(
     res > 0, error_type_t::RuntimeError, "Problems too big to be solved in batch mode.");
-  // A front end mecanism should prevent users to pick one or more problems so large that this would
-  // return 0
+  // A front end mecanism should prevent users to pick one or more problems so large that this
+  // would return 0
   return res;
 }
 

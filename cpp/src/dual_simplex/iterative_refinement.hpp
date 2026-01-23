@@ -1,52 +1,127 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 #pragma once
 
+#include <thrust/execution_policy.h>
+#include <thrust/fill.h>
+#include <thrust/inner_product.h>
+#include <thrust/reduce.h>
+#include <thrust/transform.h>
+#include <thrust/transform_reduce.h>
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <rmm/device_uvector.hpp>
+#include <vector>
 #include "dual_simplex/dense_vector.hpp"
 #include "dual_simplex/simplex_solver_settings.hpp"
 #include "dual_simplex/types.hpp"
 #include "dual_simplex/vector_math.hpp"
 
-#include <cmath>
-#include <cstdio>
-#include <vector>
-
 namespace cuopt::linear_programming::dual_simplex {
 
-template <typename i_t, typename f_t, typename T>
-void iterative_refinement_simple(T& op,
-                                 const dense_vector_t<i_t, f_t>& b,
-                                 dense_vector_t<i_t, f_t>& x)
+// Functors for device operations (defined at namespace scope to avoid CUDA lambda restrictions)
+template <typename T>
+struct scale_op {
+  T scale;
+  __host__ __device__ T operator()(T val) const { return val * scale; }
+};
+
+template <typename T>
+struct multiply_op {
+  __host__ __device__ T operator()(T a, T b) const { return a * b; }
+};
+
+template <typename T>
+struct axpy_op {
+  T alpha;
+  __host__ __device__ T operator()(T x, T y) const { return x + alpha * y; }
+};
+
+template <typename T>
+struct subtract_scaled_op {
+  T scale;
+  __host__ __device__ T operator()(T a, T b) const { return a - scale * b; }
+};
+
+template <typename f_t>
+f_t vector_norm_inf(const rmm::device_uvector<f_t>& x)
 {
-  dense_vector_t<i_t, f_t> x_sav            = x;
-  dense_vector_t<i_t, f_t> r                = b;
+  auto begin   = x.data();
+  auto end     = x.data() + x.size();
+  auto max_abs = thrust::transform_reduce(
+    rmm::exec_policy(x.stream()),
+    begin,
+    end,
+    [] __host__ __device__(f_t val) { return abs(val); },
+    static_cast<f_t>(0),
+    thrust::maximum<f_t>{});
+  RAFT_CHECK_CUDA(x.stream());
+  return max_abs;
+}
+
+template <typename f_t>
+f_t vector_norm2(const rmm::device_uvector<f_t>& x)
+{
+  auto begin          = x.data();
+  auto end            = x.data() + x.size();
+  auto sum_of_squares = thrust::transform_reduce(
+    rmm::exec_policy(x.stream()),
+    begin,
+    end,
+    [] __host__ __device__(f_t val) { return val * val; },
+    f_t(0),
+    thrust::plus<f_t>{});
+  RAFT_CHECK_CUDA(x.stream());
+  return std::sqrt(sum_of_squares);
+}
+
+template <typename i_t, typename f_t, typename T>
+f_t iterative_refinement_simple(T& op,
+                                const rmm::device_uvector<f_t>& b,
+                                rmm::device_uvector<f_t>& x)
+{
+  rmm::device_uvector<f_t> x_sav(x, x.stream());
+
   const bool show_iterative_refinement_info = false;
 
+  // r = b - Ax
+  rmm::device_uvector<f_t> r(b, b.stream());
   op.a_multiply(-1.0, x, 1.0, r);
 
-  f_t error = vector_norm_inf<i_t, f_t>(r);
+  f_t error = vector_norm_inf<f_t>(r);
   if (show_iterative_refinement_info) {
     CUOPT_LOG_INFO(
-      "Iterative refinement. Initial error %e || x || %.16e", error, vector_norm2<i_t, f_t>(x));
+      "Iterative refinement. Initial error %e || x || %.16e", error, vector_norm2<f_t>(x));
   }
-  dense_vector_t<i_t, f_t> delta_x(x.size());
+  rmm::device_uvector<f_t> delta_x(x.size(), op.data_.handle_ptr->get_stream());
   i_t iter = 0;
   while (error > 1e-8 && iter < 30) {
-    delta_x.set_scalar(0.0);
+    thrust::fill(op.data_.handle_ptr->get_thrust_policy(),
+                 delta_x.data(),
+                 delta_x.data() + delta_x.size(),
+                 0.0);
+    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
     op.solve(r, delta_x);
 
-    x.axpy(1.0, delta_x, 1.0);
-
-    r = b;
+    thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
+                      x.data(),
+                      x.data() + x.size(),
+                      delta_x.data(),
+                      x.data(),
+                      thrust::plus<f_t>());
+    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
+    // r = b - Ax
+    raft::copy(r.data(), b.data(), b.size(), x.stream());
     op.a_multiply(-1.0, x, 1.0, r);
 
-    f_t new_error = vector_norm_inf<i_t, f_t>(r);
+    f_t new_error = vector_norm_inf<f_t>(r);
     if (new_error > error) {
-      x = x_sav;
+      raft::copy(x.data(), x_sav.data(), x.size(), x.stream());
       if (show_iterative_refinement_info) {
         CUOPT_LOG_INFO(
           "Iterative refinement. Iter %d error increased %e %e. Stopping", iter, error, new_error);
@@ -54,26 +129,27 @@ void iterative_refinement_simple(T& op,
       break;
     }
     error = new_error;
-    x_sav = x;
+    raft::copy(x_sav.data(), x.data(), x.size(), x.stream());
     iter++;
     if (show_iterative_refinement_info) {
       CUOPT_LOG_INFO(
         "Iterative refinement. Iter %d error %e. || x || %.16e || dx || %.16e Continuing",
         iter,
         error,
-        vector_norm2<i_t, f_t>(x),
-        vector_norm2<i_t, f_t>(delta_x));
+        vector_norm2<f_t>(x),
+        vector_norm2<f_t>(delta_x));
     }
   }
+  return error;
 }
 
 /**
 @brief Iterative refinement with GMRES as solver
  */
 template <typename i_t, typename f_t, typename T>
-void iterative_refinement_gmres(T& op,
-                                const dense_vector_t<i_t, f_t>& b,
-                                dense_vector_t<i_t, f_t>& x)
+f_t iterative_refinement_gmres(T& op,
+                               const rmm::device_uvector<f_t>& b,
+                               rmm::device_uvector<f_t>& x)
 {
   // Parameters
   // Ideally, we do not need to restart here. But having restarts helps as a checkpoint to get
@@ -83,9 +159,9 @@ void iterative_refinement_gmres(T& op,
   const int m            = 10;  // Krylov space dimension
   const f_t tol          = 1e-8;
 
-  dense_vector_t<i_t, f_t> r(x.size());
-  dense_vector_t<i_t, f_t> x_sav = x;
-  dense_vector_t<i_t, f_t> delta_x(x.size());
+  rmm::device_uvector<f_t> r(x.size(), x.stream());
+  rmm::device_uvector<f_t> x_sav(x, x.stream());
+  rmm::device_uvector<f_t> delta_x(x.size(), x.stream());
 
   // Host workspace for the Hessenberg matrix and other small arrays
   std::vector<std::vector<f_t>> H(m + 1, std::vector<f_t>(m, 0.0));
@@ -96,17 +172,17 @@ void iterative_refinement_gmres(T& op,
 
   bool show_info = false;
 
-  f_t bnorm      = max(1.0, vector_norm_inf<i_t, f_t>(b));
+  f_t bnorm      = std::max(1.0, vector_norm_inf<f_t>(b));
   f_t rel_res    = 1.0;
   int outer_iter = 0;
 
   // r = b - A*x
-  r = b;
+  raft::copy(r.data(), b.data(), b.size(), x.stream());
   op.a_multiply(-1.0, x, 1.0, r);
 
-  f_t norm_r = vector_norm_inf<i_t, f_t>(r);
+  f_t norm_r = vector_norm_inf<f_t>(r);
   if (show_info) { CUOPT_LOG_INFO("GMRES IR: initial residual = %e, |b| = %e", norm_r, bnorm); }
-  if (norm_r <= 1e-8) { return; }
+  if (norm_r <= 1e-8) { return norm_r; }
 
   f_t residual      = norm_r;
   f_t best_residual = norm_r;
@@ -115,17 +191,23 @@ void iterative_refinement_gmres(T& op,
   while (residual > tol && outer_iter < max_restarts) {
     // For right preconditioning: Apply preconditioner on Krylov directions, not on the residual.
     // So, start GMRES on r = b - A*x. v0 = r / ||r||
-    std::vector<dense_vector_t<i_t, f_t>> V;
-    std::vector<dense_vector_t<i_t, f_t>> Z;  // Store preconditioned vectors Z[k] = M^{-1} V[k]
+    std::vector<rmm::device_uvector<f_t>> V;
+    std::vector<rmm::device_uvector<f_t>> Z;  // Store preconditioned vectors Z[k] = M^{-1} V[k]
     for (int k = 0; k < m + 1; ++k) {
-      V.emplace_back(x.size());
-      Z.emplace_back(x.size());
+      V.emplace_back(x.size(), x.stream());
+      Z.emplace_back(x.size(), x.stream());
     }
     // v0 = r / ||r||
-    f_t rnorm     = vector_norm2<i_t, f_t>(r);
+    f_t rnorm     = vector_norm2<f_t>(r);
     f_t inv_rnorm = (rnorm > 0) ? (f_t(1) / rnorm) : f_t(1);
-    V[0]          = r;
-    V[0].multiply_scalar(inv_rnorm);
+
+    raft::copy(V[0].data(), r.data(), r.size(), x.stream());
+    thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
+                      V[0].data(),
+                      V[0].data() + V[0].size(),
+                      V[0].data(),
+                      scale_op<f_t>{inv_rnorm});
+    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
     e1.assign(m + 1, 0.0);
     e1[0] = rnorm;
 
@@ -141,19 +223,35 @@ void iterative_refinement_gmres(T& op,
       // Modified Gram-Schmidt orthogonalization
       for (int j = 0; j <= k; ++j) {
         // H[j][k] = dot(w, V[j])
-        f_t hij = V[k + 1].inner_product(V[j]);
+        f_t hij = thrust::inner_product(op.data_.handle_ptr->get_thrust_policy(),
+                                        V[k + 1].data(),
+                                        V[k + 1].data() + x.size(),
+                                        V[j].data(),
+                                        f_t(0));
+        RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
         H[j][k] = hij;
         // w -= H[j][k] * V[j]
-        V[k + 1].axpy(-hij, V[j], 1.0);
+        thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
+                          V[k + 1].data(),
+                          V[k + 1].data() + x.size(),
+                          V[j].data(),
+                          V[k + 1].data(),
+                          subtract_scaled_op<f_t>{hij});
+        RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
       }
 
       // H[k+1][k] = ||w||
-      f_t h_k1k   = vector_norm2<i_t, f_t>(V[k + 1]);
+      f_t h_k1k   = vector_norm2<f_t>(V[k + 1]);
       H[k + 1][k] = h_k1k;
       if (h_k1k != 0.0) {
         // V[k+1] = V[k+1] / H[k+1][k]
         f_t inv_h = f_t(1) / h_k1k;
-        V[k + 1].multiply_scalar(inv_h);
+        thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
+                          V[k + 1].data(),
+                          V[k + 1].data() + x.size(),
+                          V[k + 1].data(),
+                          scale_op<f_t>{inv_h});
+        RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
       }
 
       // Apply Given's rotations to new column
@@ -191,26 +289,47 @@ void iterative_refinement_gmres(T& op,
       for (int j = i + 1; j < k; ++j) {
         s -= H[i][j] * y[j];
       }
-      y[i] = s / H[i][i];
+      // avoid inf/nan breakdown
+      if (H[i][i] == 0.0) {
+        y[i] = 0.0;
+        break;
+      } else {
+        y[i] = s / H[i][i];
+      }
     }
 
     // Compute GMRES update: delta_x = sum_j y_j * Z[j], where Z[j] = M^{-1} V[j]
-    std::fill(delta_x.begin(), delta_x.end(), 0.0);
+    thrust::fill(op.data_.handle_ptr->get_thrust_policy(),
+                 delta_x.data(),
+                 delta_x.data() + delta_x.size(),
+                 0.0);
+    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
     for (int j = 0; j < k; ++j) {
-      delta_x.axpy(y[j], Z[j], 1.0);
+      thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
+                        delta_x.data(),
+                        delta_x.data() + delta_x.size(),
+                        Z[j].data(),
+                        delta_x.data(),
+                        axpy_op<f_t>{y[j]});
+      RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
     }
 
     // Update x = x + delta_x
-    x.axpy(1.0, delta_x, 1.0);
-
+    thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
+                      x.data(),
+                      x.data() + x.size(),
+                      delta_x.data(),
+                      x.data(),
+                      thrust::plus<f_t>());
+    RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
     // r = b - A*x
-    r = b;
+    raft::copy(r.data(), b.data(), b.size(), x.stream());
     op.a_multiply(-1.0, x, 1.0, r);
 
-    residual = vector_norm_inf<i_t, f_t>(r);
+    residual = vector_norm_inf<f_t>(r);
 
     if (show_info) {
-      auto l2_residual = vector_norm2<i_t, f_t>(r);
+      auto l2_residual = vector_norm2<f_t>(r);
       CUOPT_LOG_INFO("GMRES IR: after outer_iter %d residual = %e, l2_residual = %e",
                      outer_iter,
                      residual,
@@ -220,31 +339,41 @@ void iterative_refinement_gmres(T& op,
     // Track best solution
     if (residual < best_residual) {
       best_residual = residual;
-      x_sav         = x;
+      raft::copy(x_sav.data(), x.data(), x.size(), x.stream());
     } else {
       // Residual increased or stagnated, restore best and stop
       if (show_info) {
         CUOPT_LOG_INFO(
           "GMRES IR: residual increased from %e to %e, stopping", best_residual, residual);
       }
-      x = x_sav;
+      raft::copy(x.data(), x_sav.data(), x.size(), x.stream());
       break;
     }
 
     ++outer_iter;
   }
+  return best_residual;
 }
 
 template <typename i_t, typename f_t, typename T>
-void iterative_refinement(T& op, const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x)
+f_t iterative_refinement(T& op, const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x)
 {
-  const bool is_qp = op.data_.Q.n > 0;
-  if (is_qp) {
-    iterative_refinement_gmres(op, b, x);
-  } else {
-    iterative_refinement_simple(op, b, x);
-  }
-  return;
+  rmm::device_uvector<f_t> d_b(b.size(), op.data_.handle_ptr->get_stream());
+  raft::copy(d_b.data(), b.data(), b.size(), op.data_.handle_ptr->get_stream());
+  rmm::device_uvector<f_t> d_x(x.size(), op.data_.handle_ptr->get_stream());
+  raft::copy(d_x.data(), x.data(), x.size(), op.data_.handle_ptr->get_stream());
+  auto err = iterative_refinement_gmres<i_t, f_t, T>(op, d_b, d_x);
+
+  raft::copy(x.data(), d_x.data(), x.size(), op.data_.handle_ptr->get_stream());
+
+  RAFT_CUDA_TRY(cudaStreamSynchronize(op.data_.handle_ptr->get_stream()));
+  return err;
+}
+
+template <typename i_t, typename f_t, typename T>
+f_t iterative_refinement(T& op, const rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x)
+{
+  return iterative_refinement_gmres<i_t, f_t, T>(op, b, x);
 }
 
 }  // namespace cuopt::linear_programming::dual_simplex

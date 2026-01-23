@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -184,9 +184,22 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   }
   if (termination_criterion_t::NO_UPDATE != term_crit) {
     ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
-    trivial_presolve(*problem_ptr);
-    if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   }
+  if (!fj_only_run) {
+    // Run probing cache before trivial presolve to discover variable implications
+    const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
+    const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
+    f_t time_for_probing_cache =
+      std::min(max_time_on_probing, time_limit * time_ratio_of_probing_cache);
+    timer_t probing_timer{time_for_probing_cache};
+    // this function computes probing cache, finds singletons, substitutions and changes the problem
+    bool problem_is_infeasible =
+      compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
+    if (problem_is_infeasible) { return false; }
+  }
+  const bool remap_cache_ids = true;
+  trivial_presolve(*problem_ptr, remap_cache_ids);
+  if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   // May overconstrain if Papilo presolve has been run before
   if (!context.settings.presolve) {
     if (!problem_ptr->empty) {
@@ -319,17 +332,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   // Run CPUFJ early to find quick initial solutions
   ls_cpufj_raii_guard_t ls_cpufj_raii_guard(ls);  // RAII to stop cpufj threads on solve stop
   ls.start_cpufj_scratch_threads(population);
-
-  // before probing cache or LP, run FJ to generate initial primal feasible solution
-  const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
-  const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
-  f_t time_for_probing_cache =
-    std::min(max_time_on_probing, time_limit * time_ratio_of_probing_cache);
-  timer_t probing_timer{time_for_probing_cache};
-  if (check_b_b_preemption()) { return population.best_feasible(); }
-  if (!fj_only_run) {
-    compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
-  }
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
   lp_state_t<i_t, f_t>& lp_state = problem_ptr->lp_state;

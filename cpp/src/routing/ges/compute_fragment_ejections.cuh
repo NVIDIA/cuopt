@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -50,7 +50,7 @@ DI i_t fill_to_delete(const typename solution_t<i_t, f_t, REQUEST>::view_t& solu
   cuopt_assert(BLOCK_SIZE % raft::WarpSize == 0, "Block size should be modulo of warp size");
 
   const auto route_length = route.get_num_nodes();
-  cuopt_assert(route_length >= 1, "Route lenght should be stricly positive");
+  cuopt_assert(route_length >= 1, "Route length should be strictly positive");
 
   if (intra_pickup_id + fragment_size >= route_length) {
     // Not enough to delete vrp case
@@ -73,7 +73,7 @@ DI i_t fill_to_delete(const typename solution_t<i_t, f_t, REQUEST>::view_t& solu
       }
 
       cuopt_assert(i < route_length, "Intra pickup id can only be smaller than route size");
-      cuopt_assert(i > 0, "Intra pickup id can only be stricly positive");
+      cuopt_assert(i > 0, "Intra pickup id can only be strictly positive");
       if (p_scores != nullptr) p_score += p_scores[node_info.node()];
       to_delete[counter] = i;
       ++counter;
@@ -106,7 +106,7 @@ DI i_t fill_to_delete(const typename solution_t<i_t, f_t, REQUEST>::view_t& solu
   cuopt_assert(BLOCK_SIZE % raft::WarpSize == 0, "Block size should be modulo of warp size");
 
   const auto route_length = route.get_num_nodes();
-  cuopt_assert(route_length >= 1, "Route lenght should be stricly positive");
+  cuopt_assert(route_length >= 1, "Route length should be strictly positive");
 
   // Check for fragement spanning to large (no looping around)
   // Range covered goes from intra_pickup_id to intra_pickup_id + blockDim.x
@@ -150,7 +150,7 @@ DI i_t fill_to_delete(const typename solution_t<i_t, f_t, REQUEST>::view_t& solu
       if (route.requests().is_pickup_node(i) && i != route_length) {
         to_delete[counter] = i;
         cuopt_assert(i < route_length, "Intra pickup id can only be smaller than route size");
-        cuopt_assert(i > 0, "Intra pickup id can only be stricly positive");
+        cuopt_assert(i > 0, "Intra pickup id can only be strictly positive");
         cuopt_assert(route.requests().is_pickup_node(i), "Node should be pickup");
         cuopt_assert(route.get_node(i).request.is_pickup(), "Node should be pickup");
         if (p_scores != nullptr) { p_score += p_scores[route.node_id(i)]; }
@@ -161,7 +161,7 @@ DI i_t fill_to_delete(const typename solution_t<i_t, f_t, REQUEST>::view_t& solu
         to_delete[counter] = brother_intra_idx;
         cuopt_assert(brother_intra_idx < route.get_num_nodes(),
                      "Intra delivery id can only be smaller than route size");
-        cuopt_assert(brother_intra_idx > 0, "Intra delivery id can only be stricly positive");
+        cuopt_assert(brother_intra_idx > 0, "Intra delivery id can only be strictly positive");
         ++counter;
       }
     }

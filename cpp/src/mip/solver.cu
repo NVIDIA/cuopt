@@ -173,13 +173,12 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     } else {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
     }
-    CUOPT_LOG_INFO("Using %d CPU threads for B&B", branch_and_bound_settings.num_threads);
 
-    i_t num_threads                              = branch_and_bound_settings.num_threads;
-    i_t num_bfs_threads                          = std::max(1, num_threads / 4);
-    i_t num_diving_threads                       = std::max(1, num_threads - num_bfs_threads);
-    branch_and_bound_settings.num_bfs_threads    = num_bfs_threads;
-    branch_and_bound_settings.num_diving_threads = num_diving_threads;
+    i_t num_threads                           = branch_and_bound_settings.num_threads;
+    i_t num_bfs_workers                       = std::max(1, num_threads / 4);
+    i_t num_diving_workers                    = std::max(1, num_threads - num_bfs_workers);
+    branch_and_bound_settings.num_bfs_workers = num_bfs_workers;
+    branch_and_bound_settings.diving_settings.num_diving_workers = num_diving_workers;
 
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =

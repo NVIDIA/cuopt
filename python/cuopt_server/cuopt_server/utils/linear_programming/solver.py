@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
@@ -167,15 +167,7 @@ def create_solver(LP_data, warmstart_data):
                 CUOPT_INFEASIBILITY_DETECTION,
                 solver_config.infeasibility_detection,
             )
-        if solver_config.solver_mode is not None:
-            solver_settings.set_parameter(
-                CUOPT_PDLP_SOLVER_MODE,
-                linear_programming.solver_settings.PDLPSolverMode(
-                    solver_config.solver_mode
-                ),
-            )
-            warnings.append(dep_warning("solver_mode"))
-        elif solver_config.pdlp_solver_mode is not None:
+        if solver_config.pdlp_solver_mode is not None:
             solver_settings.set_parameter(
                 CUOPT_PDLP_SOLVER_MODE,
                 linear_programming.solver_settings.PDLPSolverMode(
@@ -236,111 +228,54 @@ def create_solver(LP_data, warmstart_data):
                     CUOPT_ABSOLUTE_DUAL_TOLERANCE,
                     tolerance.absolute_dual_tolerance,
                 )
-            elif tolerance.absolute_dual is not None:
-                solver_settings.set_parameter(
-                    CUOPT_ABSOLUTE_DUAL_TOLERANCE, tolerance.absolute_dual
-                )
-                warnings.append(dep_warning("absolute_dual"))
             if tolerance.absolute_primal_tolerance is not None:
                 solver_settings.set_parameter(
                     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
                     tolerance.absolute_primal_tolerance,
                 )
-            elif tolerance.absolute_primal is not None:
-                solver_settings.set_parameter(
-                    CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, tolerance.absolute_primal
-                )
-                warnings.append(dep_warning("absolute_primal"))
             if tolerance.absolute_gap_tolerance is not None:
                 solver_settings.set_parameter(
                     CUOPT_ABSOLUTE_GAP_TOLERANCE,
                     tolerance.absolute_gap_tolerance,
                 )
-            elif tolerance.absolute_gap is not None:
-                solver_settings.set_parameter(
-                    CUOPT_ABSOLUTE_GAP_TOLERANCE, tolerance.absolute_gap
-                )
-                warnings.append(dep_warning("absolute_gap"))
             if tolerance.relative_dual_tolerance is not None:
                 solver_settings.set_parameter(
                     CUOPT_RELATIVE_DUAL_TOLERANCE,
                     tolerance.relative_dual_tolerance,
                 )
-            elif tolerance.relative_dual is not None:
-                solver_settings.set_parameter(
-                    CUOPT_RELATIVE_DUAL_TOLERANCE, tolerance.relative_dual
-                )
-                warnings.append(dep_warning("relative_dual"))
             if tolerance.relative_primal_tolerance is not None:
                 solver_settings.set_parameter(
                     CUOPT_RELATIVE_PRIMAL_TOLERANCE,
                     tolerance.relative_primal_tolerance,
                 )
-            elif tolerance.relative_primal is not None:
-                solver_settings.set_parameter(
-                    CUOPT_RELATIVE_PRIMAL_TOLERANCE, tolerance.relative_primal
-                )
-                warnings.append(dep_warning("relative_primal"))
             if tolerance.relative_gap_tolerance is not None:
                 solver_settings.set_parameter(
                     CUOPT_RELATIVE_GAP_TOLERANCE,
                     tolerance.relative_gap_tolerance,
                 )
-            elif tolerance.relative_gap is not None:
-                solver_settings.set_parameter(
-                    CUOPT_RELATIVE_GAP_TOLERANCE, tolerance.relative_gap
-                )
-                warnings.append(dep_warning("relative_gap"))
             if tolerance.primal_infeasible_tolerance is not None:
                 solver_settings.set_parameter(
                     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
                     tolerance.primal_infeasible_tolerance,
                 )
-            elif tolerance.primal_infeasible is not None:
-                solver_settings.set_parameter(
-                    CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
-                    tolerance.primal_infeasible,
-                )
-                warnings.append(dep_warning("primal_infeasible"))
             if tolerance.dual_infeasible_tolerance is not None:
                 solver_settings.set_parameter(
                     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
                     tolerance.dual_infeasible_tolerance,
                 )
-            elif tolerance.dual_infeasible is not None:
-                solver_settings.set_parameter(
-                    CUOPT_DUAL_INFEASIBLE_TOLERANCE, tolerance.dual_infeasible
-                )
-                warnings.append(dep_warning("dual_infeasible"))
             if tolerance.mip_integrality_tolerance is not None:
                 solver_settings.set_parameter(
                     CUOPT_MIP_INTEGRALITY_TOLERANCE,
                     tolerance.mip_integrality_tolerance,
                 )
-            elif tolerance.integrality_tolerance is not None:
-                solver_settings.set_parameter(
-                    CUOPT_MIP_INTEGRALITY_TOLERANCE,
-                    tolerance.integrality_tolerance,
-                )
-                warnings.append(dep_warning("integrality_tolerance"))
             if tolerance.mip_absolute_gap is not None:
                 solver_settings.set_parameter(
                     CUOPT_MIP_ABSOLUTE_GAP, tolerance.mip_absolute_gap
                 )
-            elif tolerance.absolute_mip_gap is not None:
-                solver_settings.set_parameter(
-                    CUOPT_MIP_ABSOLUTE_GAP, tolerance.absolute_mip_gap
-                )
-                warnings.append(dep_warning("absolute_mip_gap"))
             if tolerance.mip_relative_gap is not None:
                 solver_settings.set_parameter(
                     CUOPT_MIP_RELATIVE_GAP, tolerance.mip_relative_gap
                 )
-            elif tolerance.relative_mip_gap is not None:
-                solver_settings.set_parameter(
-                    CUOPT_MIP_RELATIVE_GAP, tolerance.relative_mip_gap
-                )
-                warnings.append(dep_warning("relative_mip_gap"))
             if tolerance.mip_absolute_tolerance is not None:
                 solver_settings.set_parameter(
                     CUOPT_MIP_ABSOLUTE_TOLERANCE,
@@ -357,12 +292,7 @@ def create_solver(LP_data, warmstart_data):
             solver_settings.set_parameter(
                 CUOPT_MIP_SCALING, solver_config.mip_scaling
             )
-        if solver_config.heuristics_only is not None:
-            solver_settings.set_parameter(
-                CUOPT_MIP_HEURISTICS_ONLY, solver_config.heuristics_only
-            )
-            warnings.append(dep_warning("heuristics_only"))
-        elif solver_config.mip_heuristics_only is not None:
+        if solver_config.mip_heuristics_only is not None:
             solver_settings.set_parameter(
                 CUOPT_MIP_HEURISTICS_ONLY, solver_config.mip_heuristics_only
             )
