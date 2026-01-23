@@ -1121,9 +1121,10 @@ class iteration_data_t {
     csr_matrix_t<i_t, f_t> A_row(0, 0, 0);
     A.to_compressed_row(A_row);
 
-    std::vector<i_t> histogram(m, 0);
+    std::vector<i_t> histogram(m + 1, 0);
     for (i_t j = 0; j < n; j++) {
       const i_t col_nz_j = A.col_start[j + 1] - A.col_start[j];
+      cuopt_assert(col_nz_j <= m, "Column nonzero count exceeds histogram size");
       histogram[col_nz_j]++;
     }
 #ifdef HISTOGRAM
@@ -1143,10 +1144,11 @@ class iteration_data_t {
       }
     }
 
-    std::vector<i_t> histogram_row(n, 0);
+    std::vector<i_t> histogram_row(n + 1, 0);
     max_row_nz = 0;
     for (i_t k = 0; k < m; k++) {
       histogram_row[row_nz[k]]++;
+      cuopt_assert(row_nz[k] <= n, "Row nonzero count exceeds histogram_row size");
       max_row_nz = std::max(max_row_nz, row_nz[k]);
     }
 #ifdef HISTOGRAM
