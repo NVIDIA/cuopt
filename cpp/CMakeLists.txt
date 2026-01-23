@@ -230,10 +230,21 @@ option(LUSOL "Disable LUSOL" OFF)
 
 FetchContent_MakeAvailable(papilo)
 
+# PSLP - Lightweight C presolver for linear programs
+# https://github.com/dance858/PSLP
+FetchContent_Declare(
+  pslp
+  GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
+  GIT_TAG "v0.0.4"
+  GIT_PROGRESS TRUE
+  EXCLUDE_FROM_ALL
+  SYSTEM
+)
+
 # Build PSLP as static to embed in cuopt (avoids runtime library path issues)
 set(BUILD_SHARED_LIBS_SAVED ${BUILD_SHARED_LIBS})
 set(BUILD_SHARED_LIBS OFF)
-add_subdirectory(/home/nfs/rgandham/git-repos/PSLP ${CMAKE_BINARY_DIR}/PSLP EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(pslp)
 set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
 
 
@@ -312,7 +323,7 @@ target_include_directories(cuopt
 
 # Link PSLP by file to avoid export dependency tracking
 target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
-target_include_directories(cuopt PRIVATE /home/nfs/rgandham/git-repos/PSLP/include/PSLP)
+target_include_directories(cuopt PRIVATE $<TARGET_PROPERTY:PSLP,INTERFACE_INCLUDE_DIRECTORIES>)
 add_dependencies(cuopt PSLP)
 
 # ##################################################################################################
