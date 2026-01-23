@@ -57,6 +57,16 @@ cuopt/
 - **Don’t bypass CI**: don’t suggest skipping checks or using `--no-verify` unless explicitly required and approved.
 - **CUDA/GPU hygiene**: keep operations stream-ordered, follow existing RAFT/RMM patterns, avoid raw `new`/`delete`.
 
+### ⚠️ Mandatory: test impact check (ask before finalizing a change)
+
+Before landing any behavioral change or new feature, **explicitly ask**:
+
+- **What scenarios must be covered?** (happy path, edge cases, failure modes, performance regressions)
+- **What’s the expected behavior contract?** (inputs/outputs, errors, compatibility constraints)
+- **Where should tests live?** (C++ gtests under `cpp/tests/`, Python `pytest` under `python/.../tests`, server tests, etc.)
+
+**Recommendation:** add or update at least one **unit test** that covers the new behavior so **CI prevents regressions**. If full coverage isn’t feasible, document what’s untested and why, and add the smallest meaningful regression test.
+
 ### Security bar (commands & installs)
 
 - **Do not run shell commands by default**: Provide commands/instructions; only execute commands if the user explicitly asks you to run them.
