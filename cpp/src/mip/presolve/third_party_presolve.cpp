@@ -17,26 +17,12 @@
 
 #include <raft/common/nvtx.hpp>
 
-#if !defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-overflow"  // ignore boost error for pip wheel build
-#endif
-#include <papilo/core/Presolve.hpp>
-#include <papilo/core/ProblemBuilder.hpp>
-#if !defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
-
-#define USE_PSLP 1
-
 namespace cuopt::linear_programming::detail {
-
-static papilo::PostsolveStorage<double> post_solve_storage_;
-static bool maximize_ = false;
 
 template <typename i_t, typename f_t>
 papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem,
-                                          problem_category_t category)
+                                          problem_category_t category,
+                                          bool maximize)
 {
   raft::common::nvtx::range fun_scope("Build papilo problem");
   // Build papilo problem from optimization problem
@@ -87,8 +73,7 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
   std::vector<var_t> h_var_types(var_types.size());
   raft::copy(h_var_types.data(), var_types.data(), var_types.size(), stream_view);
 
-  maximize_ = op_problem.get_sense();
-  if (maximize_) {
+  if (maximize) {
     for (size_t i = 0; i < h_obj_coeffs.size(); ++i) {
       h_obj_coeffs[i] = -h_obj_coeffs[i];
     }
@@ -114,8 +99,8 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
   builder.setNumRows(num_rows);
 
   builder.setObjAll(h_obj_coeffs);
-  builder.setObjOffset(maximize_ ? -op_problem.get_objective_offset()
-                                 : op_problem.get_objective_offset());
+  builder.setObjOffset(maximize ? -op_problem.get_objective_offset()
+                                : op_problem.get_objective_offset());
 
   if (!h_var_lb.empty() && !h_var_ub.empty()) {
     builder.setColLbAll(h_var_lb);
@@ -198,7 +183,8 @@ struct PSLPContext {
 };
 
 template <typename i_t, typename f_t>
-PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>& op_problem)
+PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>& op_problem,
+                                         bool maximize)
 {
   PSLPContext ctx;
   raft::common::nvtx::range fun_scope("Build and run PSLP presolver");
@@ -246,8 +232,7 @@ PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>&
   std::vector<var_t> h_var_types(var_types.size());
   raft::copy(h_var_types.data(), var_types.data(), var_types.size(), stream_view);
 
-  maximize_ = op_problem.get_sense();
-  if (maximize_) {
+  if (maximize) {
     for (size_t i = 0; i < h_obj_coeffs.size(); ++i) {
       h_obj_coeffs[i] = -h_obj_coeffs[i];
     }
@@ -299,7 +284,7 @@ PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>&
 
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
-  Presolver* pslp_presolver, raft::handle_t const* handle_ptr)
+  Presolver* pslp_presolver, raft::handle_t const* handle_ptr, bool maximize)
 {
   raft::common::nvtx::range fun_scope("Build optimization problem from PSLP");
   auto reduced_prob = pslp_presolver->reduced_prob;
@@ -309,8 +294,8 @@ optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
   double obj_offset = reduced_prob->obj_offset;
 
   optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
-  op_problem.set_objective_offset(maximize_ ? -obj_offset : obj_offset);
-  op_problem.set_maximize(maximize_);
+  op_problem.set_objective_offset(maximize ? -obj_offset : obj_offset);
+  op_problem.set_maximize(maximize);
   op_problem.set_problem_category(problem_category_t::LP);
 
   op_problem.set_csr_constraint_matrix(
@@ -319,7 +304,7 @@ optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
   std::vector<f_t> h_obj_coeffs(n_cols);
   // std::copy(h_obj_coeffs.begin(), h_obj_coeffs.end(), reduced_prob->c);
   std::copy(reduced_prob->c, reduced_prob->c + n_cols, h_obj_coeffs.begin());
-  if (maximize_) {
+  if (maximize) {
     for (size_t i = 0; i < n_cols; ++i) {
       h_obj_coeffs[i] = -h_obj_coeffs[i];
     }
@@ -338,14 +323,15 @@ template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t> build_optimization_problem(
   papilo::Problem<f_t> const& papilo_problem,
   raft::handle_t const* handle_ptr,
-  problem_category_t category)
+  problem_category_t category,
+  bool maximize)
 {
   raft::common::nvtx::range fun_scope("Build optimization problem");
   optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
 
   auto obj = papilo_problem.getObjective();
-  op_problem.set_objective_offset(maximize_ ? -obj.offset : obj.offset);
-  op_problem.set_maximize(maximize_);
+  op_problem.set_objective_offset(maximize ? -obj.offset : obj.offset);
+  op_problem.set_maximize(maximize);
   op_problem.set_problem_category(category);
 
   if (papilo_problem.getNRows() == 0 && papilo_problem.getNCols() == 0) {
@@ -362,7 +348,7 @@ optimization_problem_t<i_t, f_t> build_optimization_problem(
 
     return op_problem;
   }
-  if (maximize_) {
+  if (maximize) {
     for (size_t i = 0; i < obj.coefficients.size(); ++i) {
       obj.coefficients[i] = -obj.coefficients[i];
     }
@@ -543,12 +529,12 @@ template <typename i_t, typename f_t>
 std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_t, f_t>::apply_pslp(
   optimization_problem_t<i_t, f_t> const& op_problem)
 {
-  auto ctx        = build_and_run_pslp_presolver(op_problem);
+  auto ctx        = build_and_run_pslp_presolver(op_problem, maximize_);
   pslp_presolver_ = ctx.presolver;
   pslp_stgs_      = ctx.settings;
 
-  auto opt_problem =
-    build_optimization_problem_from_pslp<i_t, f_t>(pslp_presolver_, op_problem.get_handle_ptr());
+  auto opt_problem = build_optimization_problem_from_pslp<i_t, f_t>(
+    pslp_presolver_, op_problem.get_handle_ptr(), maximize_);
 
   return std::make_optional(third_party_presolve_result_t<i_t, f_t>{opt_problem, {}});
 }
@@ -565,6 +551,7 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
   i_t num_cpu_threads)
 {
   presolver_ = presolver;
+  maximize_  = op_problem.get_sense();
   if (category == problem_category_t::MIP &&
       presolver == cuopt::linear_programming::presolver_t::PSLP) {
     cuopt_expects(
@@ -573,7 +560,7 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
 
   if (presolver == cuopt::linear_programming::presolver_t::PSLP) { return apply_pslp(op_problem); }
 
-  papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem, category);
+  papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem, category, maximize_);
 
   CUOPT_LOG_INFO("Original problem: %d constraints, %d variables, %d nonzeros",
                  papilo_problem.getNRows(),
@@ -603,7 +590,7 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
       result.status == papilo::PresolveStatus::kUnbndOrInfeas) {
     return std::nullopt;
   }
-  post_solve_storage_ = result.postsolve;
+  papilo_post_solve_storage_ = result.postsolve;
   CUOPT_LOG_INFO("Presolve removed: %d constraints, %d variables, %d nonzeros",
                  op_problem.get_n_constraints() - papilo_problem.getNRows(),
                  op_problem.get_n_variables() - papilo_problem.getNCols(),
@@ -618,8 +605,8 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
     CUOPT_LOG_INFO("Optimal solution found during presolve");
   }
 
-  auto opt_problem =
-    build_optimization_problem<i_t, f_t>(papilo_problem, op_problem.get_handle_ptr(), category);
+  auto opt_problem = build_optimization_problem<i_t, f_t>(
+    papilo_problem, op_problem.get_handle_ptr(), category, maximize_);
   auto col_flags = papilo_problem.getColFlags();
   std::vector<i_t> implied_integer_indices;
   for (size_t i = 0; i < col_flags.size(); i++) {
@@ -661,10 +648,10 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
 
   papilo::Message Msg{};
   Msg.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
-  papilo::Postsolve<f_t> post_solver{Msg, post_solve_storage_.getNum()};
+  papilo::Postsolve<f_t> post_solver{Msg, papilo_post_solve_storage_.getNum()};
 
   bool is_optimal = false;
-  auto status     = post_solver.undo(reduced_sol, full_sol, post_solve_storage_, is_optimal);
+  auto status     = post_solver.undo(reduced_sol, full_sol, papilo_post_solve_storage_, is_optimal);
   check_postsolve_status(status);
 
   primal_solution.resize(full_sol.primal.size(), stream_view);

@@ -13,6 +13,16 @@
 
 #include "PSLP_API.h"
 
+#if !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"  // ignore boost error for pip wheel build
+#endif
+#include <papilo/core/Presolve.hpp>
+#include <papilo/core/ProblemBuilder.hpp>
+#if !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
@@ -56,10 +66,14 @@ class third_party_presolve_t {
                  rmm::device_uvector<f_t>& reduced_costs,
                  rmm::cuda_stream_view stream_view);
 
+  bool maximize_                                    = false;
   cuopt::linear_programming::presolver_t presolver_ = cuopt::linear_programming::presolver_t::PSLP;
   // PSLP settings
   Settings* pslp_stgs_{nullptr};
   Presolver* pslp_presolver_{nullptr};
+
+  // Papilo postsolve storage
+  papilo::PostsolveStorage<double> papilo_post_solve_storage_;
 };
 
 }  // namespace cuopt::linear_programming::detail
