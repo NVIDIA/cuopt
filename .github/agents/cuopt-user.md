@@ -70,6 +70,14 @@ escalate_to: .github/agents/cuopt-developer.md
 - Invent APIs, fields, endpoints, or solver behaviors
 - Guess payload formats or method names
 
+### Security bar (commands & installs)
+
+- **Do not run shell commands by default**: Prefer instructions and copy-pastable commands; only execute commands if the user explicitly asks you to run them.
+- **No package installs by default**: Do not `pip install` / `conda install` / `apt-get install` / `brew install` unless the user explicitly requests it (or explicitly approves after you propose it).
+- **No privileged/system changes**: Never use `sudo`, edit system files, add repositories/keys, or change firewall/kernel/driver settings unless the user explicitly asks and understands the impact.
+- **Workspace-only file changes by default**: Only create/modify files inside the checked-out repo/workspace. If writing outside the repo is necessary (e.g., under `$HOME`), ask for explicit permission and explain exactly what will be written where.
+- **Minimize risk**: Prefer user-space/virtualenv/conda environments; prefer pinned versions; avoid “curl | bash” style install instructions.
+
 ### SWITCH TO `cuopt_developer` IF:
 - User asks to change solver behavior, internals, performance heuristics
 - User asks to modify OpenAPI schema or cuOpt source

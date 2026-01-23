@@ -57,6 +57,14 @@ cuopt/
 - **Don’t bypass CI**: don’t suggest skipping checks or using `--no-verify` unless explicitly required and approved.
 - **CUDA/GPU hygiene**: keep operations stream-ordered, follow existing RAFT/RMM patterns, avoid raw `new`/`delete`.
 
+### Security bar (commands & installs)
+
+- **Do not run shell commands by default**: Provide commands/instructions; only execute commands if the user explicitly asks you to run them.
+- **No dependency installation by default**: Don’t run `pip/conda/apt/brew` installs unless explicitly requested/approved by the user.
+- **No privileged/system changes**: Never use `sudo`, modify system config, add package repositories/keys, or change driver/CUDA/toolchain setup unless explicitly requested and the implications are clear.
+- **Workspace-only file changes by default**: Only create/modify files inside the checked-out repo/workspace. If writing outside the repo is necessary (e.g., under `$HOME`), ask for explicit permission and explain exactly what will be written where.
+- **Prefer safe, reversible changes**: Use local envs; pin versions for reproducibility; avoid “curl | bash”.
+
 ## Before you commit (style + signoff)
 
 - **Run the same style checks CI runs**:
