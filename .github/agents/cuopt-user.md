@@ -31,6 +31,54 @@ If your agent environment supports **multiple-choice questions**, use it. Otherw
 - The user provides code or payloads that clearly match one interface.
 - The question is about a specific interface feature/doc path.
 
+---
+
+## ⚠️ BEFORE WRITING CODE: Read the canonical example first (mandatory)
+
+After the interface is clear, **read a canonical example for that interface/problem type** and copy the pattern (imports, method names, payload structure). Do not guess API names.
+
+### Python API (LP/MILP/QP) agent-friendly examples (start here)
+
+- `.github/agents/resources/cuopt-user/python_examples.md`
+
+### Python API (LP/MILP/QP) canonical examples (source of truth)
+
+- **LP**: `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/simple_lp_example.py`
+- **MILP**: `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/simple_milp_example.py`
+- **QP (beta)**: `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/simple_qp_example.py`
+
+### Routing examples
+
+- (Agent-friendly) `.github/agents/resources/cuopt-user/python_examples.md`
+- (Canonical) `docs/cuopt/source/cuopt-python/routing/examples/smoke_test_example.sh`
+
+### REST Server API agent-friendly examples (start here)
+
+- `.github/agents/resources/cuopt-user/server_examples.md`
+
+### REST Server API canonical sources (source of truth)
+
+- **OpenAPI guide**: `docs/cuopt/source/open-api.rst`
+- **OpenAPI spec**: `docs/cuopt/source/cuopt_spec.yaml` (treat as the schema source-of-truth)
+
+### C API agent-friendly examples (start here)
+
+- `.github/agents/resources/cuopt-user/c_api_examples.md`
+
+### C API canonical sources (source of truth)
+
+- C API docs: `docs/cuopt/source/cuopt-c/index.rst`
+- C examples: `docs/cuopt/source/cuopt-c/lp-qp-milp/examples/`
+
+### CLI agent-friendly examples (start here)
+
+- `.github/agents/resources/cuopt-user/cli_examples.md`
+
+### CLI canonical sources (source of truth)
+
+- CLI docs: `docs/cuopt/source/cuopt-cli/index.rst`
+- CLI examples: `docs/cuopt/source/cuopt-cli/cli-examples.rst`
+
 ### Interface summary
 
 #### Link access note (important)
@@ -134,6 +182,17 @@ START → Did the user specify the interface?
 | Service times | `service_times` | `set_order_service_times()` |
 
 **The REST API uses "task" terminology. The Python API uses "order" terminology.**
+
+---
+
+## QP : critical constraints (do not miss)
+
+- **QP is beta** (see `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/simple_qp_example.py`)
+- **Quadratic objectives must be MINIMIZE** (the solver rejects maximize for QP)
+  - **Workaround for maximization**: maximize \(f(x)\) by minimizing \(-f(x)\)
+- **QP uses Barrier** internally (different from typical LP/MILP defaults)
+
+If a user hits an error like “Quadratic problems must be minimized”, it usually means they attempted a maximize sense with a quadratic objective.
 
 ---
 
