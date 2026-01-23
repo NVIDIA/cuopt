@@ -543,12 +543,12 @@ template <typename i_t, typename f_t>
 std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_t, f_t>::apply_pslp(
   optimization_problem_t<i_t, f_t> const& op_problem)
 {
-  auto ctx       = build_and_run_pslp_presolver(op_problem);
-  pslp_presolver = ctx.presolver;
-  pslp_stgs      = ctx.settings;
+  auto ctx        = build_and_run_pslp_presolver(op_problem);
+  pslp_presolver_ = ctx.presolver;
+  pslp_stgs_      = ctx.settings;
 
   auto opt_problem =
-    build_optimization_problem_from_pslp<i_t, f_t>(pslp_presolver, op_problem.get_handle_ptr());
+    build_optimization_problem_from_pslp<i_t, f_t>(pslp_presolver_, op_problem.get_handle_ptr());
 
   return std::make_optional(third_party_presolve_result_t<i_t, f_t>{opt_problem, {}});
 }
@@ -557,15 +557,22 @@ template <typename i_t, typename f_t>
 std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_t, f_t>::apply(
   optimization_problem_t<i_t, f_t> const& op_problem,
   problem_category_t category,
+  cuopt::linear_programming::presolver_t presolver,
   bool dual_postsolve,
   f_t absolute_tolerance,
   f_t relative_tolerance,
   double time_limit,
   i_t num_cpu_threads)
 {
-#if USE_PSLP
-  return apply_pslp(op_problem);
-#else
+  presolver_ = presolver;
+  if (category == problem_category_t::MIP &&
+      presolver == cuopt::linear_programming::presolver_t::PSLP) {
+    cuopt_expects(
+      false, error_type_t::RuntimeError, "PSLP presolver is not supported for MIP problems");
+  }
+
+  if (presolver == cuopt::linear_programming::presolver_t::PSLP) { return apply_pslp(op_problem); }
+
   papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem, category);
 
   CUOPT_LOG_INFO("Original problem: %d constraints, %d variables, %d nonzeros",
@@ -575,9 +582,9 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
 
   CUOPT_LOG_INFO("Calling Papilo presolver");
   if (category == problem_category_t::MIP) { dual_postsolve = false; }
-  papilo::Presolve<f_t> presolver;
-  set_presolve_methods<f_t>(presolver, category, dual_postsolve);
-  set_presolve_options<i_t, f_t>(presolver,
+  papilo::Presolve<f_t> papilo_presolver;
+  set_presolve_methods<f_t>(papilo_presolver, category, dual_postsolve);
+  set_presolve_options<i_t, f_t>(papilo_presolver,
                                  category,
                                  absolute_tolerance,
                                  relative_tolerance,
@@ -585,12 +592,12 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
                                  dual_postsolve,
                                  num_cpu_threads);
   set_presolve_parameters<f_t>(
-    presolver, category, op_problem.get_n_constraints(), op_problem.get_n_variables());
+    papilo_presolver, category, op_problem.get_n_constraints(), op_problem.get_n_variables());
 
   // Disable papilo logs
-  presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
+  papilo_presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
 
-  auto result = presolver.apply(papilo_problem);
+  auto result = papilo_presolver.apply(papilo_problem);
   check_presolve_status(result.status);
   if (result.status == papilo::PresolveStatus::kInfeasible ||
       result.status == papilo::PresolveStatus::kUnbndOrInfeas) {
@@ -621,7 +628,6 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
 
   return std::make_optional(
     third_party_presolve_result_t<i_t, f_t>{opt_problem, implied_integer_indices});
-#endif
 }
 
 template <typename i_t, typename f_t>
@@ -633,9 +639,11 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
                                             bool dual_postsolve,
                                             rmm::cuda_stream_view stream_view)
 {
-#if USE_PSLP
-  undo_pslp(primal_solution, dual_solution, reduced_costs, stream_view);
-#else
+  if (presolver_ == cuopt::linear_programming::presolver_t::PSLP) {
+    undo_pslp(primal_solution, dual_solution, reduced_costs, stream_view);
+    return;
+  }
+
   if (status_to_skip) { return; }
   std::vector<f_t> primal_sol_vec_h(primal_solution.size());
   raft::copy(primal_sol_vec_h.data(), primal_solution.data(), primal_solution.size(), stream_view);
@@ -666,7 +674,6 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
   raft::copy(dual_solution.data(), full_sol.dual.data(), full_sol.dual.size(), stream_view);
   raft::copy(
     reduced_costs.data(), full_sol.reducedCosts.data(), full_sol.reducedCosts.size(), stream_view);
-#endif
 }
 
 template <typename i_t, typename f_t>
@@ -683,18 +690,25 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(rmm::device_uvector<f_t>& prima
   raft::copy(h_reduced_costs.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
 
   postsolve(
-    pslp_presolver, h_primal_solution.data(), h_dual_solution.data(), h_reduced_costs.data());
+    pslp_presolver_, h_primal_solution.data(), h_dual_solution.data(), h_reduced_costs.data());
 
-  auto reduced_prob = pslp_presolver->reduced_prob;
+  auto reduced_prob = pslp_presolver_->reduced_prob;
   int n_rows        = reduced_prob->m;
   int n_cols        = reduced_prob->n;
 
   primal_solution.resize(n_cols, stream_view);
   dual_solution.resize(n_rows, stream_view);
   reduced_costs.resize(n_cols, stream_view);
-  raft::copy(primal_solution.data(), pslp_presolver->sol->x, n_cols, stream_view);
-  raft::copy(dual_solution.data(), pslp_presolver->sol->y, n_rows, stream_view);
-  raft::copy(reduced_costs.data(), pslp_presolver->sol->z, n_cols, stream_view);
+  raft::copy(primal_solution.data(), pslp_presolver_->sol->x, n_cols, stream_view);
+  raft::copy(dual_solution.data(), pslp_presolver_->sol->y, n_rows, stream_view);
+  raft::copy(reduced_costs.data(), pslp_presolver_->sol->z, n_cols, stream_view);
+}
+
+template <typename i_t, typename f_t>
+third_party_presolve_t<i_t, f_t>::~third_party_presolve_t()
+{
+  if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
+  if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
 }
 
 #if MIP_INSTANTIATE_FLOAT

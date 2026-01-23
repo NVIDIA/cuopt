@@ -30,6 +30,7 @@ class third_party_presolve_t {
   std::optional<third_party_presolve_result_t<i_t, f_t>> apply(
     optimization_problem_t<i_t, f_t> const& op_problem,
     problem_category_t category,
+    cuopt::linear_programming::presolver_t presolver,
     bool dual_postsolve,
     f_t absolute_tolerance,
     f_t relative_tolerance,
@@ -44,6 +45,8 @@ class third_party_presolve_t {
             bool dual_postsolve,
             rmm::cuda_stream_view stream_view);
 
+  ~third_party_presolve_t();
+
  private:
   std::optional<third_party_presolve_result_t<i_t, f_t>> apply_pslp(
     optimization_problem_t<i_t, f_t> const& op_problem);
@@ -53,8 +56,10 @@ class third_party_presolve_t {
                  rmm::device_uvector<f_t>& reduced_costs,
                  rmm::cuda_stream_view stream_view);
 
-  Settings* pslp_stgs;
-  Presolver* pslp_presolver;
+  cuopt::linear_programming::presolver_t presolver_ = cuopt::linear_programming::presolver_t::PSLP;
+  // PSLP settings
+  Settings* pslp_stgs_{nullptr};
+  Presolver* pslp_presolver_{nullptr};
 };
 
 }  // namespace cuopt::linear_programming::detail

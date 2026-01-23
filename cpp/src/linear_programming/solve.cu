@@ -1087,8 +1087,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     if (op_problem.has_quadratic_objective()) {
       CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier.");
-      settings.method   = method_t::Barrier;
-      settings.presolve = false;
+      settings.method    = method_t::Barrier;
+      settings.presolver = presolver_t::None;
       // check for sense of the problem
       if (op_problem.get_sense()) {
         CUOPT_LOG_ERROR("Quadratic problems must be minimized");
@@ -1096,6 +1096,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                                                          op_problem.get_handle_ptr()->get_stream());
       }
     }
+
+    // For LP, if presolver is default, use PSLP
+    if (settings.presolver == presolver_t::Default) { settings.presolver = presolver_t::PSLP; }
 
     raft::common::nvtx::range fun_scope("Running solver");
 
@@ -1129,7 +1132,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     [[maybe_unused]] double presolve_time = 0.0;
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
-    auto run_presolve = settings.presolve;
+    auto run_presolve = settings.presolver != presolver_t::None;
     run_presolve = run_presolve && settings.get_pdlp_warm_start_data().total_pdlp_iterations_ == -1;
     if (!run_presolve && !settings_const.inside_mip) {
       CUOPT_LOG_INFO("Third-party presolve is disabled, skipping");
@@ -1145,6 +1148,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       presolver   = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
       auto result = presolver->apply(op_problem,
                                      cuopt::linear_programming::problem_category_t::LP,
+                                     settings.presolver,
                                      settings.dual_postsolve,
                                      settings.tolerances.absolute_primal_tolerance,
                                      settings.tolerances.relative_primal_tolerance,

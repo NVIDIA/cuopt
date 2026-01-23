@@ -201,7 +201,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   trivial_presolve(*problem_ptr, remap_cache_ids);
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   // May overconstrain if Papilo presolve has been run before
-  if (!context.settings.presolve) {
+  if (context.settings.presolver == presolver_t::None) {
     if (!problem_ptr->empty) {
       // do the resizing no-matter what, bounds presolve might not change the bounds but initial
       // trivial presolve might have

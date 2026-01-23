@@ -139,9 +139,13 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
 
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
-                                   mip_solver_settings_t<i_t, f_t> const& settings)
+                                   mip_solver_settings_t<i_t, f_t> const& settings_const)
 {
   try {
+    mip_solver_settings_t<i_t, f_t> settings(settings_const);
+    if (settings.presolver == presolver_t::Default || settings.presolver == presolver_t::PSLP) {
+      settings.presolver = presolver_t::Papilo;
+    }
     constexpr f_t max_time_limit = 1000000000;
     f_t time_limit =
       (settings.time_limit == 0 || settings.time_limit == std::numeric_limits<f_t>::infinity() ||
@@ -184,7 +188,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
     detail::problem_t<i_t, f_t> problem(op_problem, settings.get_tolerances());
 
-    auto run_presolve = settings.presolve;
+    auto run_presolve = settings.presolver != presolver_t::None;
     run_presolve      = run_presolve && settings.get_mip_callbacks().empty();
     run_presolve      = run_presolve && settings.initial_solutions.size() == 0;
 
@@ -199,6 +203,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       presolver   = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
       auto result = presolver->apply(op_problem,
                                      cuopt::linear_programming::problem_category_t::MIP,
+                                     settings.presolver,
                                      dual_postsolve,
                                      settings.tolerances.absolute_tolerance,
                                      settings.tolerances.relative_tolerance,
