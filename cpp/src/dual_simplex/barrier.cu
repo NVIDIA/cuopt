@@ -1147,8 +1147,8 @@ class iteration_data_t {
     std::vector<i_t> histogram_row(n + 1, 0);
     max_row_nz = 0;
     for (i_t k = 0; k < m; k++) {
-      histogram_row[row_nz[k]]++;
       cuopt_assert(row_nz[k] <= n, "Row nonzero count exceeds histogram_row size");
+      histogram_row[row_nz[k]]++;
       max_row_nz = std::max(max_row_nz, row_nz[k]);
     }
 #ifdef HISTOGRAM
