@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,6 +9,7 @@
 
 #include <dual_simplex/tic_toc.hpp>
 
+#include <map>
 #include <numeric>
 #include <unordered_map>
 #include <unordered_set>
@@ -224,8 +225,8 @@ void split_colors(i_t color,
                   i_t refining_color,
                   int8_t side_being_split,
                   std::vector<f_t>& vertex_to_sum,
-                  std::unordered_map<f_t, std::vector<i_t>>& color_sums,
-                  std::unordered_map<f_t, i_t>& sum_to_sizes,
+                  std::map<f_t, std::vector<i_t>>& color_sums,
+                  std::map<f_t, i_t>& sum_to_sizes,
                   std::vector<color_t<i_t>>& colors,
                   std::vector<i_t>& color_stack,
                   std::vector<i_t>& color_in_stack,
@@ -458,8 +459,8 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
   color_in_stack[0] = 1;
   color_in_stack[1] = 1;
 
-  std::unordered_map<f_t, std::vector<i_t>> color_sums;
-  std::unordered_map<f_t, i_t> sum_to_sizes;
+  std::map<f_t, std::vector<i_t>> color_sums;
+  std::map<f_t, i_t> sum_to_sizes;
 
   std::vector<std::vector<i_t>> vertices_to_refine_by_color(max_colors);
   std::vector<f_t> max_sum_by_color(max_colors, std::numeric_limits<f_t>::quiet_NaN());
