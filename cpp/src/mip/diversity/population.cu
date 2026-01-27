@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -265,6 +265,11 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
   bool better_solution_found = is_better_than_best_feasible(sol);
   auto user_callbacks        = context.settings.get_mip_callbacks();
   if (better_solution_found) {
+    if (!user_callbacks.empty()) {
+      CUOPT_LOG_INFO("Population: incumbent callbacks=%zu objective=%g",
+                     user_callbacks.size(),
+                     sol.get_user_objective());
+    }
     if (context.settings.benchmark_info_ptr != nullptr) {
       context.settings.benchmark_info_ptr->last_improvement_of_best_feasible = timer.elapsed_time();
     }
@@ -275,6 +280,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
 
     for (auto callback : user_callbacks) {
       if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
+        callback->set_memory_location(internals::callback_memory_location::DEVICE);
         auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
         solution_t<i_t, f_t> temp_sol(sol);
         problem_ptr->post_process_assignment(temp_sol.assignment);
@@ -298,7 +304,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
         f_t user_objective =
           temp_sol.problem_ptr->get_user_obj_from_solver_obj(temp_sol.get_objective());
         user_objective_vec.set_element_async(0, user_objective, temp_sol.handle_ptr->get_stream());
-        CUOPT_LOG_DEBUG("Returning incumbent solution with objective %g", user_objective);
+        CUOPT_LOG_INFO("Returning incumbent solution with objective %g", user_objective);
         get_sol_callback->get_solution(temp_sol.assignment.data(), user_objective_vec.data());
       }
     }
@@ -311,6 +317,7 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
 
   for (auto callback : user_callbacks) {
     if (callback->get_type() == internals::base_solution_callback_type::SET_SOLUTION) {
+      callback->set_memory_location(internals::callback_memory_location::DEVICE);
       auto set_sol_callback = static_cast<internals::set_solution_callback_t*>(callback);
       rmm::device_uvector<f_t> incumbent_assignment(
         problem_ptr->original_problem_ptr->get_n_variables(), sol.handle_ptr->get_stream());

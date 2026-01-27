@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -40,8 +40,10 @@ class default_get_solution_callback_t : public get_solution_callback_t {
 
   void get_solution(void* data, void* objective_value) override
   {
-    PyObject* numba_matrix = get_numba_matrix(data, n_variables);
-    PyObject* numpy_array  = get_numba_matrix(objective_value, 1);
+    PyObject* numba_matrix =
+      data_on_device() ? get_numba_matrix(data, n_variables) : get_numpy_array(data, n_variables);
+    PyObject* numpy_array =
+      data_on_device() ? get_numba_matrix(objective_value, 1) : get_numpy_array(objective_value, 1);
     PyObject* res =
       PyObject_CallMethod(this->pyCallbackClass, "get_solution", "(OO)", numba_matrix, numpy_array);
     Py_DECREF(numba_matrix);
@@ -77,8 +79,10 @@ class default_set_solution_callback_t : public set_solution_callback_t {
 
   void set_solution(void* data, void* objective_value) override
   {
-    PyObject* numba_matrix = get_numba_matrix(data, n_variables);
-    PyObject* numpy_array  = get_numba_matrix(objective_value, 1);
+    PyObject* numba_matrix =
+      data_on_device() ? get_numba_matrix(data, n_variables) : get_numpy_array(data, n_variables);
+    PyObject* numpy_array =
+      data_on_device() ? get_numba_matrix(objective_value, 1) : get_numpy_array(objective_value, 1);
     PyObject* res =
       PyObject_CallMethod(this->pyCallbackClass, "set_solution", "(OO)", numba_matrix, numpy_array);
     Py_DECREF(numba_matrix);

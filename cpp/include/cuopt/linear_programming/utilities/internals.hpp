@@ -21,6 +21,7 @@ class Callback {
 };
 
 enum class base_solution_callback_type { GET_SOLUTION, SET_SOLUTION };
+enum class callback_memory_location { DEVICE, HOST };
 
 class base_solution_callback_t : public Callback {
  public:
@@ -31,11 +32,18 @@ class base_solution_callback_t : public Callback {
     this->n_variables = n_variables_;
   }
 
+  void set_memory_location(callback_memory_location location) { memory_location = location; }
+
+  callback_memory_location get_memory_location() const { return memory_location; }
+
+  bool data_on_device() const { return memory_location == callback_memory_location::DEVICE; }
+
   virtual base_solution_callback_type get_type() const = 0;
 
  protected:
-  bool isFloat       = true;
-  size_t n_variables = 0;
+  bool isFloat                             = true;
+  size_t n_variables                       = 0;
+  callback_memory_location memory_location = callback_memory_location::DEVICE;
 };
 
 class get_solution_callback_t : public base_solution_callback_t {

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -25,9 +25,19 @@ namespace cython {
 // aggregate for call_solve() return type
 // to be exposed to cython:
 struct linear_programming_ret_t {
+  // GPU (device) storage - populated for local GPU solves
   std::unique_ptr<rmm::device_buffer> primal_solution_;
   std::unique_ptr<rmm::device_buffer> dual_solution_;
   std::unique_ptr<rmm::device_buffer> reduced_cost_;
+
+  // CPU (host) storage - populated for remote solves
+  std::vector<double> primal_solution_host_;
+  std::vector<double> dual_solution_host_;
+  std::vector<double> reduced_cost_host_;
+
+  // Flag indicating where solution data is stored
+  bool is_device_memory_ = true;
+
   /* -- PDLP Warm Start Data -- */
   std::unique_ptr<rmm::device_buffer> current_primal_solution_;
   std::unique_ptr<rmm::device_buffer> current_dual_solution_;
@@ -64,7 +74,14 @@ struct linear_programming_ret_t {
 };
 
 struct mip_ret_t {
+  // GPU (device) storage - populated for local GPU solves
   std::unique_ptr<rmm::device_buffer> solution_;
+
+  // CPU (host) storage - populated for remote solves
+  std::vector<double> solution_host_;
+
+  // Flag indicating where solution data is stored
+  bool is_device_memory_ = true;
 
   linear_programming::mip_termination_status_t termination_status_;
   error_type_t error_status_;

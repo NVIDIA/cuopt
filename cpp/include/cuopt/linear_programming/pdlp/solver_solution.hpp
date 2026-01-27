@@ -18,6 +18,7 @@
 #include <raft/core/handle.hpp>
 
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -171,6 +172,42 @@ class optimization_problem_solution_t : public base_solution_t {
                                   bool deep_copy);
 
   /**
+   * @brief Construct an optimization problem solution with CPU (host) memory storage.
+   * Used for remote solve scenarios where no GPU is available.
+   *
+   * @param[in] primal_solution The primal solution in host memory
+   * @param[in] dual_solution The dual solution in host memory
+   * @param[in] reduced_cost The reduced cost in host memory
+   * @param[in] objective_name The objective name
+   * @param[in] var_names The variables names
+   * @param[in] row_names The rows name
+   * @param[in] termination_stats The termination statistics
+   * @param[in] termination_status The termination reason
+   */
+  optimization_problem_solution_t(std::vector<f_t> primal_solution,
+                                  std::vector<f_t> dual_solution,
+                                  std::vector<f_t> reduced_cost,
+                                  const std::string objective_name,
+                                  const std::vector<std::string>& var_names,
+                                  const std::vector<std::string>& row_names,
+                                  additional_termination_information_t& termination_stats,
+                                  pdlp_termination_status_t termination_status);
+
+  /**
+   * @brief Construct an empty solution for CPU-only scenarios (e.g., remote solve error)
+   *
+   * @param[in] termination_status Reason for termination
+   */
+  optimization_problem_solution_t(pdlp_termination_status_t termination_status);
+
+  /**
+   * @brief Construct an error solution for CPU-only scenarios
+   *
+   * @param[in] error_status The error object
+   */
+  optimization_problem_solution_t(cuopt::logic_error error_status);
+
+  /**
    * @brief Set the solve time in seconds
    *
    * @param ms Time in ms
@@ -237,6 +274,40 @@ class optimization_problem_solution_t : public base_solution_t {
   rmm::device_uvector<f_t>& get_reduced_cost();
 
   /**
+   * @brief Check if solution data is stored in device (GPU) memory
+   *
+   * @return true if data is in GPU memory, false if in CPU memory
+   */
+  bool is_device_memory() const;
+
+  /**
+   * @brief Returns the primal solution in host (CPU) memory.
+   * Only valid when is_device_memory() returns false.
+   *
+   * @return std::vector<f_t>& The host memory container for the primal solution.
+   */
+  std::vector<f_t>& get_primal_solution_host();
+  const std::vector<f_t>& get_primal_solution_host() const;
+
+  /**
+   * @brief Returns the dual solution in host (CPU) memory.
+   * Only valid when is_device_memory() returns false.
+   *
+   * @return std::vector<f_t>& The host memory container for the dual solution.
+   */
+  std::vector<f_t>& get_dual_solution_host();
+  const std::vector<f_t>& get_dual_solution_host() const;
+
+  /**
+   * @brief Returns the reduced cost in host (CPU) memory.
+   * Only valid when is_device_memory() returns false.
+   *
+   * @return std::vector<f_t>& The host memory container for the reduced cost.
+   */
+  std::vector<f_t>& get_reduced_cost_host();
+  const std::vector<f_t>& get_reduced_cost_host() const;
+
+  /**
    * @brief Get termination reason
    * @return Termination reason
    */
@@ -259,6 +330,128 @@ class optimization_problem_solution_t : public base_solution_t {
   std::vector<additional_termination_information_t>& get_additional_termination_informations();
 
   pdlp_warm_start_data_t<i_t, f_t>& get_pdlp_warm_start_data();
+
+  //============================================================================
+  // Setters for host solution data (used by remote solve deserialization)
+  //============================================================================
+
+  /**
+   * @brief Set the primal solution in host memory
+   * @param solution The primal solution vector
+   */
+  void set_primal_solution_host(std::vector<f_t> solution);
+
+  /**
+   * @brief Set the dual solution in host memory
+   * @param solution The dual solution vector
+   */
+  void set_dual_solution_host(std::vector<f_t> solution);
+
+  /**
+   * @brief Set the reduced cost in host memory
+   * @param reduced_cost The reduced cost vector
+   */
+  void set_reduced_cost_host(std::vector<f_t> reduced_cost);
+
+  /**
+   * @brief Set the termination statistics
+   * @param stats The termination statistics
+   */
+  void set_termination_stats(const additional_termination_information_t& stats);
+
+  //============================================================================
+  // Getters for termination statistics
+  //============================================================================
+
+  /**
+   * @brief Get the L2 primal residual
+   * @return L2 primal residual
+   */
+  f_t get_l2_primal_residual() const;
+
+  /**
+   * @brief Get the L2 dual residual
+   * @return L2 dual residual
+   */
+  f_t get_l2_dual_residual() const;
+
+  /**
+   * @brief Get the primal objective value
+   * @return Primal objective
+   */
+  f_t get_primal_objective() const;
+
+  /**
+   * @brief Get the dual objective value
+   * @return Dual objective
+   */
+  f_t get_dual_objective() const;
+
+  /**
+   * @brief Get the duality gap
+   * @return Gap
+   */
+  f_t get_gap() const;
+
+  /**
+   * @brief Get number of iterations
+   * @return Number of iterations
+   */
+  i_t get_nb_iterations() const;
+
+  /**
+   * @brief Check if solved by PDLP
+   * @return true if solved by PDLP
+   */
+  bool get_solved_by_pdlp() const;
+
+  /**
+   * @brief Set L2 primal residual
+   * @param value The value
+   */
+  void set_l2_primal_residual(f_t value);
+
+  /**
+   * @brief Set L2 dual residual
+   * @param value The value
+   */
+  void set_l2_dual_residual(f_t value);
+
+  /**
+   * @brief Set primal objective
+   * @param value The value
+   */
+  void set_primal_objective(f_t value);
+
+  /**
+   * @brief Set dual objective
+   * @param value The value
+   */
+  void set_dual_objective(f_t value);
+
+  /**
+   * @brief Set gap
+   * @param value The value
+   */
+  void set_gap(f_t value);
+
+  /**
+   * @brief Set number of iterations
+   * @param value The value
+   */
+  void set_nb_iterations(i_t value);
+
+  /**
+   * @brief Set solved by PDLP flag
+   * @param value The value
+   */
+  void set_solved_by_pdlp(bool value);
+
+  /**
+   * @brief Get error string
+   * @return Error message string
+   */
+  std::string get_error_string() const;
 
   /**
    * @brief Writes the solver_solution object as a JSON object to the 'filename' file using
@@ -287,12 +480,39 @@ class optimization_problem_solution_t : public base_solution_t {
   void copy_from(const raft::handle_t* handle_ptr,
                  const optimization_problem_solution_t<i_t, f_t>& other);
 
+  /**
+   * @brief Copy solution data from GPU to CPU memory.
+   *
+   * After calling this method, is_device_memory() will return false and
+   * the solution can be accessed via get_primal_solution_host(), etc.
+   * This is useful for remote solve scenarios where serialization requires
+   * CPU-accessible data.
+   *
+   * If the solution is already in CPU memory, this is a no-op.
+   *
+   * @param stream_view The CUDA stream to use for the copy
+   */
+  void to_host(rmm::cuda_stream_view stream_view);
+
  private:
   void write_additional_termination_statistics_to_file(std::ofstream& myfile);
 
-  rmm::device_uvector<f_t> primal_solution_;
-  rmm::device_uvector<f_t> dual_solution_;
-  rmm::device_uvector<f_t> reduced_cost_;
+  // GPU (device) storage - populated for local GPU solves
+  std::unique_ptr<rmm::device_uvector<f_t>> primal_solution_;
+  std::unique_ptr<rmm::device_uvector<f_t>> dual_solution_;
+  std::unique_ptr<rmm::device_uvector<f_t>> reduced_cost_;
+
+  // CPU (host) storage - populated for remote solves
+  std::unique_ptr<std::vector<f_t>> primal_solution_host_;
+  std::unique_ptr<std::vector<f_t>> dual_solution_host_;
+  std::unique_ptr<std::vector<f_t>> reduced_cost_host_;
+
+  // Flag indicating where solution data is stored
+  bool is_device_memory_ = true;
+
+  // Flag indicating if solved by PDLP (vs dual simplex)
+  bool solved_by_pdlp_ = true;
+
   pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
 
   std::vector<pdlp_termination_status_t> termination_status_{1};

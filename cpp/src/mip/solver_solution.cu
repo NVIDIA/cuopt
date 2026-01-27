@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -28,7 +28,8 @@ mip_solution_t<i_t, f_t>::mip_solution_t(rmm::device_uvector<f_t> solution,
                                          f_t max_variable_bound_violation,
                                          solver_stats_t<i_t, f_t> stats,
                                          std::vector<rmm::device_uvector<f_t>> solution_pool)
-  : solution_(std::move(solution)),
+  : solution_(std::make_unique<rmm::device_uvector<f_t>>(std::move(solution))),
+    is_device_memory_(true),
     var_names_(std::move(var_names)),
     objective_(objective),
     mip_gap_(mip_gap),
@@ -46,7 +47,8 @@ template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t>::mip_solution_t(mip_termination_status_t termination_status,
                                          solver_stats_t<i_t, f_t> stats,
                                          rmm::cuda_stream_view stream_view)
-  : solution_(0, stream_view),
+  : solution_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
+    is_device_memory_(true),
     objective_(0),
     mip_gap_(0),
     termination_status_(termination_status),
@@ -61,7 +63,65 @@ mip_solution_t<i_t, f_t>::mip_solution_t(mip_termination_status_t termination_st
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t>::mip_solution_t(const cuopt::logic_error& error_status,
                                          rmm::cuda_stream_view stream_view)
-  : solution_(0, stream_view),
+  : solution_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
+    is_device_memory_(true),
+    objective_(0),
+    mip_gap_(0),
+    termination_status_(mip_termination_status_t::NoTermination),
+    max_constraint_violation_(0),
+    max_int_violation_(0),
+    max_variable_bound_violation_(0),
+    error_status_(error_status)
+{
+}
+
+// CPU-only constructor for remote solve with solution data
+template <typename i_t, typename f_t>
+mip_solution_t<i_t, f_t>::mip_solution_t(std::vector<f_t> solution,
+                                         std::vector<std::string> var_names,
+                                         f_t objective,
+                                         f_t mip_gap,
+                                         mip_termination_status_t termination_status,
+                                         f_t max_constraint_violation,
+                                         f_t max_int_violation,
+                                         f_t max_variable_bound_violation,
+                                         solver_stats_t<i_t, f_t> stats)
+  : solution_host_(std::make_unique<std::vector<f_t>>(std::move(solution))),
+    is_device_memory_(false),
+    var_names_(std::move(var_names)),
+    objective_(objective),
+    mip_gap_(mip_gap),
+    termination_status_(termination_status),
+    max_constraint_violation_(max_constraint_violation),
+    max_int_violation_(max_int_violation),
+    max_variable_bound_violation_(max_variable_bound_violation),
+    stats_(stats),
+    error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
+{
+}
+
+// CPU-only constructor for remote solve error cases
+template <typename i_t, typename f_t>
+mip_solution_t<i_t, f_t>::mip_solution_t(mip_termination_status_t termination_status,
+                                         solver_stats_t<i_t, f_t> stats)
+  : solution_host_(std::make_unique<std::vector<f_t>>()),
+    is_device_memory_(false),
+    objective_(0),
+    mip_gap_(0),
+    termination_status_(termination_status),
+    max_constraint_violation_(0),
+    max_int_violation_(0),
+    max_variable_bound_violation_(0),
+    stats_(stats),
+    error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
+{
+}
+
+// CPU-only constructor for remote solve error cases
+template <typename i_t, typename f_t>
+mip_solution_t<i_t, f_t>::mip_solution_t(const cuopt::logic_error& error_status)
+  : solution_host_(std::make_unique<std::vector<f_t>>()),
+    is_device_memory_(false),
     objective_(0),
     mip_gap_(0),
     termination_status_(mip_termination_status_t::NoTermination),
@@ -79,15 +139,33 @@ const cuopt::logic_error& mip_solution_t<i_t, f_t>::get_error_status() const
 }
 
 template <typename i_t, typename f_t>
+bool mip_solution_t<i_t, f_t>::is_device_memory() const
+{
+  return is_device_memory_;
+}
+
+template <typename i_t, typename f_t>
 const rmm::device_uvector<f_t>& mip_solution_t<i_t, f_t>::get_solution() const
 {
-  return solution_;
+  return *solution_;
 }
 
 template <typename i_t, typename f_t>
 rmm::device_uvector<f_t>& mip_solution_t<i_t, f_t>::get_solution()
 {
-  return solution_;
+  return *solution_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t>& mip_solution_t<i_t, f_t>::get_solution_host()
+{
+  return *solution_host_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<f_t>& mip_solution_t<i_t, f_t>::get_solution_host() const
+{
+  return *solution_host_;
 }
 
 template <typename i_t, typename f_t>
@@ -211,9 +289,16 @@ void mip_solution_t<i_t, f_t>::write_to_sol_file(std::string_view filename,
   double objective_value = get_objective_value();
   auto& var_names        = get_variable_names();
   std::vector<f_t> solution;
-  solution.resize(solution_.size());
-  raft::copy(solution.data(), solution_.data(), solution_.size(), stream_view.value());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+
+  if (is_device_memory_) {
+    // Copy from GPU to CPU
+    solution.resize(solution_->size());
+    raft::copy(solution.data(), solution_->data(), solution_->size(), stream_view.value());
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  } else {
+    // Already on CPU
+    solution = *solution_host_;
+  }
 
   solution_writer_t::write_solution_to_sol_file(
     std::string(filename), status, objective_value, var_names, solution);
@@ -231,6 +316,121 @@ void mip_solution_t<i_t, f_t>::log_summary() const
   CUOPT_LOG_INFO("Solution Bound: %f", get_solution_bound());
   CUOPT_LOG_INFO("Presolve Time: %f", get_presolve_time());
   CUOPT_LOG_INFO("Total Solve Time: %f", get_total_solve_time());
+}
+
+//============================================================================
+// Setters for remote solve deserialization
+//============================================================================
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_solution_host(std::vector<f_t> solution)
+{
+  solution_host_    = std::make_unique<std::vector<f_t>>(std::move(solution));
+  is_device_memory_ = false;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_objective(f_t value)
+{
+  objective_ = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_mip_gap(f_t value)
+{
+  mip_gap_ = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_solution_bound(f_t value)
+{
+  stats_.solution_bound = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_total_solve_time(double value)
+{
+  stats_.total_solve_time = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_presolve_time(double value)
+{
+  stats_.presolve_time = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_max_constraint_violation(f_t value)
+{
+  max_constraint_violation_ = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_max_int_violation(f_t value)
+{
+  max_int_violation_ = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_max_variable_bound_violation(f_t value)
+{
+  max_variable_bound_violation_ = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_nodes(i_t value)
+{
+  stats_.num_nodes = value;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::set_simplex_iterations(i_t value)
+{
+  stats_.num_simplex_iterations = value;
+}
+
+template <typename i_t, typename f_t>
+std::string mip_solution_t<i_t, f_t>::get_error_string() const
+{
+  return error_status_.what();
+}
+
+template <typename i_t, typename f_t>
+i_t mip_solution_t<i_t, f_t>::get_nodes() const
+{
+  return stats_.num_nodes;
+}
+
+template <typename i_t, typename f_t>
+i_t mip_solution_t<i_t, f_t>::get_simplex_iterations() const
+{
+  return stats_.num_simplex_iterations;
+}
+
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::to_host(rmm::cuda_stream_view stream_view)
+{
+  if (!is_device_memory_) {
+    // Already on CPU, nothing to do
+    return;
+  }
+
+  // Initialize host storage if needed
+  if (!solution_host_) { solution_host_ = std::make_unique<std::vector<f_t>>(); }
+
+  // Copy solution
+  if (solution_ && solution_->size() > 0) {
+    solution_host_->resize(solution_->size());
+    raft::copy(solution_host_->data(), solution_->data(), solution_->size(), stream_view.value());
+
+    // Synchronize to ensure copy is complete
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
+  }
+
+  // Clear GPU storage to free memory
+  solution_.reset();
+
+  is_device_memory_ = false;
 }
 
 #if MIP_INSTANTIATE_FLOAT

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -406,8 +406,24 @@ class data_model_view_t {
    */
   bool has_quadratic_objective() const noexcept;
 
+  /**
+   * @brief Set whether the data pointed to by this view is in device (GPU) memory.
+   * @note Default is false (CPU memory). Set to true when view points to GPU buffers.
+   *
+   * @param is_device true if data is in GPU memory, false if in CPU memory
+   */
+  void set_is_device_memory(bool is_device) noexcept { is_device_memory_ = is_device; }
+
+  /**
+   * @brief Check if the data pointed to by this view is in device (GPU) memory.
+   *
+   * @return true if data is in GPU memory, false if in CPU memory
+   */
+  bool is_device_memory() const noexcept { return is_device_memory_; }
+
  private:
   bool maximize_{false};
+  bool is_device_memory_{false};  // true if spans point to GPU memory, false for CPU
   span<f_t const> A_;
   span<i_t const> A_indices_;
   span<i_t const> A_offsets_;
