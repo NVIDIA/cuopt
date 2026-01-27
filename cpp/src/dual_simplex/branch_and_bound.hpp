@@ -121,7 +121,7 @@ class branch_and_bound_t {
                                     std::vector<i_t>& nonbasic_list,
                                     std::vector<f_t>& edge_norms);
 
-  void find_reduced_cost_fixings(f_t upper_bound);
+  i_t find_reduced_cost_fixings(f_t upper_bound, std::vector<f_t>& lower_bounds, std::vector<f_t>& upper_bounds);
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);

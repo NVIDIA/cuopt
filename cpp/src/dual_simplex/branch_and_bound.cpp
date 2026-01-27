@@ -337,12 +337,14 @@ void branch_and_bound_t<i_t, f_t>::report(char symbol, f_t obj, f_t lower_bound,
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound)
+i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
+                                                             std::vector<f_t>& lower_bounds,
+                                                             std::vector<f_t>& upper_bounds)
 {
   mutex_original_lp_.lock();
   std::vector<f_t> reduced_costs = root_relax_soln_.z;
-  std::vector<f_t> lower_bounds = original_lp_.lower;
-  std::vector<f_t> upper_bounds = original_lp_.upper;
+  lower_bounds = original_lp_.lower;
+  upper_bounds = original_lp_.upper;
   std::vector<bool> bounds_changed(original_lp_.num_cols, false);
   const f_t root_obj = compute_objective(original_lp_, root_relax_soln_.x);
   const f_t threshold = 1e-3;
@@ -390,11 +392,11 @@ void branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound)
     }
   }
 
-  if (num_fixed > 0) {
+  if (num_fixed > 0 || num_improved > 0) {
     printf("Reduced costs: Found %d improved bounds and %d fixed variables (%.1f%%)\n", num_improved, num_fixed, 100.0*static_cast<f_t>(num_fixed)/static_cast<f_t>(num_integer_variables_));
   }
 
-  if (num_improved > 0) {
+  if (0 && num_improved > 0) {
     lp_problem_t<i_t, f_t> new_lp = original_lp_;
     new_lp.lower                  = lower_bounds;
     new_lp.upper                  = upper_bounds;
@@ -413,8 +415,8 @@ void branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound)
       printf("Bound strengthening: Found %d improved bounds\n", bnd_num_improved);
     }
   }
-
   mutex_original_lp_.unlock();
+  return num_fixed;
 }
 
 template <typename i_t, typename f_t>
@@ -565,8 +567,6 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
             uncrush_primal_solution(original_problem_, original_lp_, repaired_solution, original_x);
             settings_.solution_callback(original_x, repaired_obj);
           }
-
-          find_reduced_cost_fixings(repaired_obj);
         }
 
         mutex_upper_.unlock();
@@ -1838,6 +1838,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   read_saved_solution_for_cut_verification(original_lp_, settings_, saved_solution);
 #endif
 
+  f_t last_upper_bound = upper_bound_.load();
+  f_t last_objective = root_objective_;
+  f_t root_relax_objective = root_objective_;
+
 
   i_t cut_pool_size = 0;
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
@@ -1887,7 +1891,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
           cut_info.num_cg_cuts++;
         }
       }
-#ifdef PRINT_CUT_INFO
+#if 1
       cut_pool.print_cutpool_types();
       print_cut_types("In LP      ", cut_types, settings_);
       printf("Cut pool size: %d\n", cut_pool.pool_size());
@@ -1949,6 +1953,19 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       if (add_cuts_status != 0) {
         settings_.log.printf("Failed to add cuts\n");
         return mip_status_t::NUMERICAL;
+      }
+
+
+      if (settings_.reduced_cost_strengthening >= 1 && upper_bound_.load() < last_upper_bound) {
+        mutex_upper_.lock();
+        last_upper_bound = upper_bound_.load();
+        settings_.log.printf("Looking for reduced cost fixings\n");
+        std::vector<f_t> lower_bounds;
+        std::vector<f_t> upper_bounds;
+        find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);
+        original_lp_.lower = lower_bounds;
+        original_lp_.upper = upper_bounds;
+        mutex_upper_.unlock();
       }
 
       // Try to do bound strengthening
@@ -2068,6 +2085,18 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         set_final_solution(solution, root_objective_);
         return mip_status_t::OPTIMAL;
       }
+
+      if (cut_pass > 0)
+      {
+        f_t change_in_objective = root_objective_ - last_objective;
+        const f_t factor = settings_.cut_change_threshold;
+        const f_t min_objective = 1e-3;
+        if (change_in_objective <= factor*std::max(min_objective, std::abs(root_relax_objective))) {
+          settings_.log.printf("Change in objective %.16e is less than 1e-3 of root relax objective %.16e\n", change_in_objective, root_relax_objective);
+          break;
+        }
+      }
+      last_objective = root_objective_;
     }
   }
 
@@ -2107,6 +2136,49 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, root_objective_);
     return solver_status_;
+  }
+
+  if (settings_.reduced_cost_strengthening >= 2 && upper_bound_.load() < last_upper_bound) {
+    settings_.log.printf("Looking for reduced cost fixings\n");
+    std::vector<f_t> lower_bounds;
+    std::vector<f_t> upper_bounds;
+    i_t num_fixed = find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);
+    if (num_fixed > 0) {
+      original_lp_.lower = lower_bounds;
+      original_lp_.upper = upper_bounds;
+
+      std::vector<bool> bounds_changed(original_lp_.num_cols, true);
+      std::vector<char> row_sense;
+
+      mutex_original_lp_.lock();
+      f_t node_presolve_start_time = tic();
+      bounds_strengthening_t<i_t, f_t> node_presolve(original_lp_, Arow_, row_sense, var_types_);
+      bool feasible = node_presolve.bounds_strengthening(original_lp_.lower, original_lp_.upper, settings_);
+      f_t node_presolve_time = toc(node_presolve_start_time);
+      mutex_original_lp_.unlock();
+
+      // Go through and check the fractional variables and remove any that are now fixed to their bounds
+      std::vector<i_t> to_remove(fractional.size(), 0);
+      i_t num_to_remove = 0;
+      for (i_t k = 0; k < fractional.size(); k++)
+      {
+        const i_t j = fractional[k];
+        if (original_lp_.lower[j] == original_lp_.upper[j]) {
+          to_remove[k] = 1;
+          num_to_remove++;
+        }
+      }
+      if (num_to_remove > 0)
+      {
+        std::vector<i_t> new_fractional;
+        new_fractional.reserve(fractional.size() - num_to_remove);
+        for (i_t k = 0; k < fractional.size(); k++) {
+          if (!to_remove[k]) { new_fractional.push_back(fractional[k]); }
+        }
+        fractional     = new_fractional;
+        num_fractional = fractional.size();
+      }
+    }
   }
 
   // Choose variable to branch on
