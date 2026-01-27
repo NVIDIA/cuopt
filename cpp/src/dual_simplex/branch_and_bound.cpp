@@ -1838,7 +1838,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   read_saved_solution_for_cut_verification(original_lp_, settings_, saved_solution);
 #endif
 
-  f_t last_upper_bound = upper_bound_.load();
+  f_t last_upper_bound = std::numeric_limits<f_t>::infinity();
   f_t last_objective = root_objective_;
   f_t root_relax_objective = root_objective_;
 
