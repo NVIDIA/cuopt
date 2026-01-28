@@ -2091,15 +2091,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         return mip_status_t::OPTIMAL;
       }
 
-      if (cut_pass > 0)
-      {
-        f_t change_in_objective = root_objective_ - last_objective;
-        const f_t factor = settings_.cut_change_threshold;
-        const f_t min_objective = 1e-3;
-        if (change_in_objective <= factor*std::max(min_objective, std::abs(root_relax_objective))) {
-          settings_.log.printf("Change in objective %.16e is less than 1e-3 of root relax objective %.16e\n", change_in_objective, root_relax_objective);
-          break;
-        }
+      f_t change_in_objective = root_objective_ - last_objective;
+      const f_t factor        = settings_.cut_change_threshold;
+      const f_t min_objective = 1e-3;
+      if (change_in_objective <= factor * std::max(min_objective, std::abs(root_relax_objective))) {
+        settings_.log.printf(
+          "Change in objective %.16e is less than 1e-3 of root relax objective %.16e\n",
+          change_in_objective,
+          root_relax_objective);
+        break;
       }
       last_objective = root_objective_;
     }

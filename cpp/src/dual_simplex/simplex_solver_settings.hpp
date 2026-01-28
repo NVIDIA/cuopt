@@ -94,6 +94,7 @@ struct simplex_solver_settings_t {
       strong_chvatal_gomory_cuts(-1),
       reduced_cost_strengthening(-1),
       cut_change_threshold(1e-3),
+      cut_min_orthogonality(0.5),
       num_bfs_workers(std::max(num_threads / 4, 1)),
       random_seed(0),
       inside_mip(0),
@@ -170,6 +171,7 @@ struct simplex_solver_settings_t {
   i_t strong_chvatal_gomory_cuts;   // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory cuts
   i_t reduced_cost_strengthening;   // -1 automatic, 0 to disable, >0 to enable reduced cost strengthening
   f_t cut_change_threshold;        // threshold for cut change
+  f_t cut_min_orthogonality;       // minimum orthogonality for cuts
   i_t num_bfs_workers;             // number of threads dedicated to the best-first search
 
   diving_heuristics_settings_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics

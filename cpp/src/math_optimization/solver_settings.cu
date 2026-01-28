@@ -73,7 +73,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_RELATIVE_GAP, &mip_settings.tolerances.relative_mip_gap, 0.0, 1e-1, 1e-4},
     {CUOPT_PRIMAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.primal_infeasible_tolerance, 0.0, 1e-1, 1e-8},
     {CUOPT_DUAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.dual_infeasible_tolerance, 0.0, 1e-1, 1e-8},
-    {CUOPT_MIP_CUT_CHANGE_THRESHOLD, &mip_settings.cut_change_threshold, 0.0, std::numeric_limits<f_t>::infinity(), 1e-3}
+    {CUOPT_MIP_CUT_CHANGE_THRESHOLD, &mip_settings.cut_change_threshold, 0.0, std::numeric_limits<f_t>::infinity(), 1e-3},
+    {CUOPT_MIP_CUT_MIN_ORTHOGONALITY, &mip_settings.cut_min_orthogonality, 0.0, 1.0, 0.5}
    };
 
   // Int parameters

@@ -64,6 +64,7 @@
 #define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS "mip_strong_chvatal_gomory_cuts"
 #define CUOPT_MIP_REDUCED_COST_STRENGTHENING "mip_reduced_cost_strengthening"
 #define CUOPT_MIP_CUT_CHANGE_THRESHOLD       "mip_cut_change_threshold"
+#define CUOPT_MIP_CUT_MIN_ORTHOGONALITY      "mip_cut_min_orthogonality"
 #define CUOPT_MIP_NODE_LIMIT                 "mip_node_limit"
 #define CUOPT_MIP_RELIABILITY_BRANCHING      "mip_reliability_branching"
 #define CUOPT_SOLUTION_FILE                  "solution_file"
