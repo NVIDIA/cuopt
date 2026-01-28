@@ -24,9 +24,10 @@ if [ -f /etc/os-release ]; then
         dnf install -y git curl ca-certificates
 
         # Base build deps for source builds (safe even if grpc-devel exists)
-        dnf install -y \
-            cmake ninja-build make gcc gcc-c++ \
-            openssl-devel zlib-devel c-ares-devel
+        #dnf install -y \
+        #    cmake ninja-build make gcc gcc-c++ \
+        #    openssl-devel zlib-devel c-ares-devel
+        dnf install -y ninja-build openssl-devel zlib-devel c-ares-devel
 
         # Protobuf from distro (keeps protoc available even if source build is skipped)
         # dnf install -y protobuf-devel protobuf-compiler
@@ -40,6 +41,20 @@ if [ -f /etc/os-release ]; then
             echo "grpc-devel not available. Building and installing Protobuf + gRPC from source..."
 
             PREFIX="/usr/local"
+
+            # If the container previously had a different source-installed gRPC/Protobuf/Abseil
+            # under /usr/local, wipe those bits to avoid ABI mismatches (notably Abseil LTS
+            # namespaces like absl::lts_20220623 vs absl::lts_20250512).
+            rm -rf \
+              "${PREFIX}/lib/cmake/grpc" "${PREFIX}/lib64/cmake/grpc" \
+              "${PREFIX}/lib/cmake/protobuf" "${PREFIX}/lib64/cmake/protobuf" \
+              "${PREFIX}/lib/cmake/absl" "${PREFIX}/lib64/cmake/absl" \
+              "${PREFIX}/include/absl" "${PREFIX}/include/google/protobuf" "${PREFIX}/include/grpc" \
+              "${PREFIX}/bin/grpc_cpp_plugin" "${PREFIX}/bin/protoc" "${PREFIX}/bin/protoc-"* || true
+            rm -f \
+              "${PREFIX}/lib/"libgrpc*.a "${PREFIX}/lib/"libgpr*.a "${PREFIX}/lib/"libaddress_sorting*.a "${PREFIX}/lib/"libre2*.a "${PREFIX}/lib/"libupb*.a \
+              "${PREFIX}/lib64/"libabsl_*.a "${PREFIX}/lib64/"libprotobuf*.so* "${PREFIX}/lib64/"libprotoc*.so* \
+              "${PREFIX}/lib/"libprotobuf*.a "${PREFIX}/lib/"libprotoc*.a || true
 
             # Build and install gRPC dependencies from source in a consistent way.
             #
@@ -60,10 +75,19 @@ if [ -f /etc/os-release ]; then
             export PATH="${PREFIX}/bin:${PATH}"
             export CMAKE_PREFIX_PATH="${PREFIX}:${CMAKE_PREFIX_PATH:-}"
 
+            # Ensure a consistent C++ standard across Abseil/Protobuf/gRPC.
+            # Abseil's options.h defaults to "auto" selection for std::string_view
+            # (ABSL_OPTION_USE_STD_STRING_VIEW=2). If one library is built in
+            # C++17+ and another in C++14, they will disagree on whether
+            # `absl::string_view` is a typedef to `std::string_view` or Abseil's
+            # own type, leading to link-time ABI mismatches.
+            CMAKE_STD_FLAGS="-DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON"
+
             echo "Building and installing Abseil (from gRPC submodule) into ${PREFIX}..."
             cmake -S /tmp/grpc-src/third_party/abseil-cpp -B /tmp/absl-build -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+                ${CMAKE_STD_FLAGS} \
                 -DABSL_PROPAGATE_CXX_STD=ON \
                 -DCMAKE_INSTALL_PREFIX="${PREFIX}"
             cmake --build /tmp/absl-build
@@ -77,6 +101,7 @@ if [ -f /etc/os-release ]; then
             cmake -S /tmp/protobuf-src -B /tmp/protobuf-build -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+                ${CMAKE_STD_FLAGS} \
                 -Dprotobuf_BUILD_TESTS=OFF \
                 -DBUILD_SHARED_LIBS=ON \
                 -Dprotobuf_ABSL_PROVIDER=package \
@@ -90,6 +115,7 @@ if [ -f /etc/os-release ]; then
             cmake -S /tmp/grpc-src -B /tmp/grpc-build -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+                ${CMAKE_STD_FLAGS} \
                 -DgRPC_INSTALL=ON \
                 -DgRPC_BUILD_TESTS=OFF \
                 -DgRPC_BUILD_CODEGEN=ON \

@@ -833,6 +833,7 @@ if(CUOPT_ENABLE_GRPC)
     gRPC::grpc++
   )
   target_link_options(cuopt_grpc_server PRIVATE -Wl,--enable-new-dtags)
+  set_property(TARGET cuopt_grpc_server PROPERTY INSTALL_RPATH "$ORIGIN/../${lib_dir}")
 
   install(TARGETS cuopt_grpc_server
     COMPONENT runtime
