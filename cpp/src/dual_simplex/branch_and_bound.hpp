@@ -228,6 +228,9 @@ class branch_and_bound_t {
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
+  // Initialize diving heuristics settings
+  void initialize_diving_heuristics_settings(std::vector<bnb_worker_type_t>& diving_strategies);
+
   // Ramp-up phase of the solver, where we greedily expand the tree until
   // there is enough unexplored nodes. This is done recursively using OpenMP tasks.
   void exploration_ramp_up(mip_node_t<i_t, f_t>* node, i_t initial_heap_size);

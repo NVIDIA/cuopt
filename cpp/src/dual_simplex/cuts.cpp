@@ -147,8 +147,6 @@ void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
     const i_t i = sorted_indices[0];
 
     if (cut_distances_[i] <= min_cut_distance) {
-      // settings_.log.printf("Cut %d distance %e <= %e. Stopping\n", i, cut_distances_[i],
-      // min_cut_distance);
       break;
     }
 
@@ -385,7 +383,6 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cuts(
     const i_t j = knapsack_inequality.i[k];
     if (!is_slack_[j]) {
       if (solution[h] == 0.0) {
-        // printf("x%d in cover. relaxation %e\n", j, xstar[j]);
         cut.i.push_back(j);
         cut.x.push_back(-1.0);
       }
@@ -725,9 +722,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     const i_t slack       = slack_map[i];
     const f_t slack_value = xstar[slack];
 
-    // printf("MIR %d/%d. row %d nz %d slack %e score %e\n", h, max_cuts, i, row_nz, slack_value,
-    // max_score);
-
     if (max_score <= 0.0) { break; }
 
     sparse_vector_t<i_t, f_t> inequality(Arow, i);
@@ -736,7 +730,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     f_t fractional_part_rhs    = fractional_part(inequality_rhs);
     if (generate_cg_cut && fractional_part_rhs > 1e-6 && fractional_part_rhs < (1 - 1e-6)) {
       // Try to generate a CG cut
-      // printf("Trying to generate a CG cut from row %d\n", i);
       sparse_vector_t<i_t, f_t> cg_inequality = inequality;
       f_t cg_inequality_rhs                   = inequality_rhs;
       if (fractional_part(inequality_rhs) < 0.5) {
@@ -749,8 +742,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
       i_t cg_status = cg.generate_strong_cg_cut(
         lp, settings, var_types, cg_inequality, cg_inequality_rhs, xstar, cg_cut, cg_cut_rhs);
       if (cg_status == 0) {
-        // printf("Adding CG cut nz %ld status %d row %d rhs %e inequality nz %d\n",
-        // cg_cut.i.size(), cg_status, i, cg_inequality_rhs, cg_inequality.i.size());
         cut_pool_.add_cut(cut_type_t::CHVATAL_GOMORY, cg_cut, cg_cut_rhs);
       }
     }
@@ -800,9 +791,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     const i_t max_aggregated = 6;
 
     while (!add_cut && num_aggregated < max_aggregated) {
-      // printf("\t add_cut %d num_aggregated %d nz %ld\n", static_cast<i_t>(add_cut),
-      // num_aggregated, inequality.i.size());
-
       sparse_vector_t<i_t, f_t> transformed_inequality;
       inequality.squeeze(transformed_inequality);
       f_t transformed_rhs = inequality_rhs;
@@ -820,12 +808,9 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
           transformed_inequality, transformed_rhs, var_types, cut_1, cut_1_rhs);
         f_t cut_1_violation = mir.compute_violation(cut_1, cut_1_rhs, transformed_xstar);
         if (cut_1_violation > 1e-6) {
-          // printf("Cut 1: Found violation of %e\n", cut_1_violation);
           transformed_cuts.push_back(cut_1);
           transformed_cut_rhs.push_back(cut_1_rhs);
           transformed_violations.push_back(cut_1_violation);
-        } else {
-          // printf("Cut 1: No violation %e\n", cut_1_violation);
         }
       }
 
@@ -839,7 +824,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
             if (abs_aj > max_coeff) { max_coeff = abs_aj; }
           }
         }
-        // printf("Cut 2 max_coeff %e size %ld\n", max_coeff, transformed_inequality.i.size());
 
         if (max_coeff > 1e-6 && max_coeff != 1.0) {
           sparse_vector_t<i_t, f_t> scaled_inequality = transformed_inequality;
@@ -853,12 +837,9 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
           mir.generate_cut_nonnegative(scaled_inequality, scaled_rhs, var_types, cut_2, cut_2_rhs);
           f_t cut_2_violation = mir.compute_violation(cut_2, cut_2_rhs, transformed_xstar);
           if (cut_2_violation > 1e-6) {
-            // printf("Cut 2: Found violation of %e\n", cut_2_violation);
             transformed_cuts.push_back(cut_2);
             transformed_cut_rhs.push_back(cut_2_rhs);
             transformed_violations.push_back(cut_2_violation);
-          } else {
-            // printf("Cut 2: no violation %e\n", cut_2_violation);
           }
         }
       }
@@ -872,7 +853,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
 
         // Get the biggest violation
         const i_t best_index = permuted[0];
-        // printf("\tBest index %d\n", best_index);
         f_t max_viol = transformed_violations[best_index];
         cut          = transformed_cuts[best_index];
         cut_rhs      = transformed_cut_rhs[best_index];
@@ -884,15 +864,11 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
           mir.remove_small_coefficients(lp.lower, lp.upper, cut, cut_rhs);
           mir.substitute_slacks(lp, Arow, cut, cut_rhs);
           f_t viol = mir.compute_violation(cut, cut_rhs, xstar);
-          // printf("after slacks and small coeff. Violation %e\n", viol);
           add_cut = true;
         }
       }
 
       if (add_cut) {
-        if (num_aggregated > 0) {
-          // settings.log.printf("MIR cut with aggregation %d\n", num_aggregated);
-        }
         if (settings.mir_cuts != 0) {
           cut_pool_.add_cut(cut_type_t::MIXED_INTEGER_ROUNDING, cut, cut_rhs);
         }
@@ -921,8 +897,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
             }
           }
         }
-        // printf("\tnum_continuous %d max_off_bound %e var %d\n", num_continuous, max_off_bound,
-        // max_off_bound_var);
 
         if (num_continuous == 0 || max_off_bound < 1e-6) { break; }
 
@@ -967,11 +941,10 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
               aggregated_rows.push_back(pivot_row);
               aggregated_mark[pivot_row] = 1;
             } else {
-              // printf("\tno potential rows to aggregate\n");
+              // No potential rows to aggregate
               break;
             }
           } else {
-            settings.log.printf("Bad col len\n");
             assert(col_len > 1);
           }
         }
@@ -1063,7 +1036,6 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
         i_t cg_status = cg.generate_strong_cg_cut(
           lp, settings, var_types, cg_inequality, cg_inequality_rhs, xstar, cg_cut, cg_cut_rhs);
         if (cg_status == 0) {
-          // printf("Adding CG cut nz %ld\n", cg_cut.i.size());
           cut_pool_.add_cut(cut_type_t::CHVATAL_GOMORY, cg_cut, cg_cut_rhs);
         }
       }
@@ -1079,12 +1051,10 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
       f_t cut_A_distance = 0.0;
       if (mir_status == 0) {
         if (cut_A.i.size() == 0) {
-          settings.log.printf("No coefficients in cut A\n");
           continue;
         }
         mir.substitute_slacks(lp, Arow, cut_A, cut_A_rhs);
         if (cut_A.i.size() == 0) {
-          settings.log.printf("No coefficients in cut A after substituting slacks\n");
           A_valid = false;
         } else {
           // Check that the cut is violated
@@ -1109,12 +1079,10 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
       f_t cut_B_distance = 0.0;
       if (mir_status == 0) {
         if (cut_B.i.size() == 0) {
-          settings.log.printf("No coefficients in cut B\n");
           continue;
         }
         mir.substitute_slacks(lp, Arow, cut_B, cut_B_rhs);
         if (cut_B.i.size() == 0) {
-          settings.log.printf("No coefficients in cut B after substituting slacks\n");
           B_valid = false;
         } else {
           // Check that the cut is violated
@@ -1214,9 +1182,9 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
       }
     }
   }
-  // TODO: abar has lots of small coefficients. It would be good to drop them.
-  // But we need to be careful not to accidently create a base (in)equality
-  // that cuts off an integer solution.
+  // TODO: abar has lots of small coefficients. Double check that
+  // we do not accidently create a base (in)equality
+  // that cuts off an integer solution, when we drop the small coefficients.
 
   i_t small_coeff              = 0;
   const f_t drop_tol           = 1e-12;
@@ -1277,14 +1245,13 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
   // Skip cuts that are shallow
   const f_t shallow_tol = 1e-2;
   if (std::abs(x_j - std::round(x_j)) < shallow_tol) {
-    // settings_.log.printf("Skipping shallow cut %d. b_bar[%d] = %e x_j %e\n", i, i, b_bar[i],
-    // x_j);
+    // Skip cuts where integer variable has small fractional part
     return -1;
   }
 
   const f_t f_val = b_bar_[i] - std::floor(b_bar_[i]);
   if (f_val < 0.01 || f_val > 0.99) {
-    // settings_.log.printf("Skipping cut %d. b_bar[%d] = %e f_val %e\n", i, i, b_bar[i], f_val);
+    // Skip cuts with rhs has small fractional part
     return -1;
   }
 
@@ -1331,7 +1298,7 @@ mixed_integer_rounding_cut_t<i_t, f_t>::mixed_integer_rounding_cut_t(
   needs_complement_ = false;
   for (i_t j = 0; j < num_vars_; j++) {
     if (lp.lower[j] < 0) {
-      // settings_.log.printf("Variable %d has negative lower bound %e\n", j, lp.lower[j]);
+      settings_.log.debug("Variable %d has negative lower bound %e\n", j, lp.lower[j]);
     }
     const f_t uj      = lp.upper[j];
     const f_t lj      = lp.lower[j];
@@ -1799,17 +1766,21 @@ void mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(const lp_problem_
     if (is_slack_[j]) {
       found_slack           = true;
       const i_t slack_start = lp.A.col_start[j];
+#ifdef CHECK_SLACKS
       const i_t slack_end   = lp.A.col_start[j + 1];
       const i_t slack_len   = slack_end - slack_start;
       if (slack_len != 1) {
         printf("Slack %d has %d nzs in colum\n", j, slack_len);
         assert(slack_len == 1);
       }
+#endif
       const f_t alpha = lp.A.x[slack_start];
+#ifdef CHECK_SLACKS
       if (std::abs(alpha) != 1.0) {
         printf("Slack %d has non-unit coefficient %e\n", j, alpha);
         assert(std::abs(alpha) == 1.0);
       }
+#endif
 
       // Do the substitution
       // Slack variable s_j participates in row i of the constraint matrix
@@ -1827,8 +1798,6 @@ void mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(const lp_problem_
       // sum_{k != j} C(k) * x_k + sum_{h != j} -C(j)/alpha * A(i, h) * x_h >= cut_rhs - C(j)/alpha
       // * rhs_i
       const i_t i = slack_rows_[j];
-      // printf("Found slack %d in cut. lo %e up %e. Slack row %d\n", j, lp.lower[j], lp.upper[j],
-      // i);
       cut_rhs -= cj * lp.rhs[i] / alpha;
       const i_t row_start = Arow.row_start[i];
       const i_t row_end   = Arow.row_start[i + 1];
@@ -1862,8 +1831,6 @@ void mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(const lp_problem_
   }
 
   if (found_slack) {
-    // printf("Found slack. Nz increased from %d to %d: %d\n", cut.i.size(), cut_nz, cut_nz -
-    // cut.i.size());
     cut.i.reserve(cut_nz);
     cut.x.reserve(cut_nz);
     cut.i.clear();
@@ -2268,9 +2235,6 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_helper(
                         // You might also be able to adjust p here to avoid this issue
           }
           i_t p = static_cast<i_t>(std::ceil(value));
-          if (fractional_part(value) < 1e-12) {
-            // printf("Warning: p %d value %.16e is close to an integer\n", p, value, p + 1);
-          }
           if (verbose) {
             printf("j %d a_j %e f_a_j %e p %d value %.16e\n", j, a_j, f_a_j, p, value);
           }
@@ -2368,7 +2332,6 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut(
     f_t violation                     = dot - cut_rhs;
     const f_t min_violation_threshold = 1e-6;
     if (violation > min_violation_threshold) {
-      // printf("CG violation %e nz %ld\n", violation, cut.i.size());
       //  Note that no slacks are currently present. Since slacks are currently treated as
       //  continuous. However, this may change. We may need to substitute out the slacks here
 

@@ -124,10 +124,16 @@ bool check_guess(const lp_problem_t<i_t, f_t>& original_lp,
 }
 
 template <typename i_t, typename f_t>
-void set_uninitialized_steepest_edge_norms(std::vector<f_t>& edge_norms)
+void set_uninitialized_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
+                                           const std::vector<i_t>& basic_list,
+                                           std::vector<f_t>& edge_norms)
 {
-  for (i_t j = 0; j < edge_norms.size(); ++j) {
-    if (edge_norms[j] <= 0.0) { edge_norms[j] = 1e-4; }
+  if (edge_norms.size() != lp.num_cols) {
+    edge_norms.resize(lp.num_cols, -1.0);
+  }
+  for (i_t k = 0; k < lp.num_rows; k++) {
+    const i_t j = basic_list[k];
+    if (edge_norms[j] < 0.0) { edge_norms[j] = 1e-4; }
   }
 }
 
@@ -748,6 +754,34 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
     default:
       log.debug("Unknown variable selection method: %d\n", type);
       return {-1, rounding_direction_t::NONE};
+  }
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::initialize_diving_heuristics_settings(
+  std::vector<bnb_worker_type_t>& diving_strategies)
+{
+  diving_strategies.reserve(4);
+
+  if (settings_.diving_settings.pseudocost_diving != 0) {
+    diving_strategies.push_back(bnb_worker_type_t::PSEUDOCOST_DIVING);
+  }
+
+  if (settings_.diving_settings.line_search_diving != 0) {
+    diving_strategies.push_back(bnb_worker_type_t::LINE_SEARCH_DIVING);
+  }
+
+  if (settings_.diving_settings.guided_diving != 0) {
+    diving_strategies.push_back(bnb_worker_type_t::GUIDED_DIVING);
+  }
+
+  if (settings_.diving_settings.coefficient_diving != 0) {
+    diving_strategies.push_back(bnb_worker_type_t::COEFFICIENT_DIVING);
+    calculate_variable_locks(original_lp_, var_up_locks_, var_down_locks_);
+  }
+
+  if (diving_strategies.empty()) {
+    settings_.log.printf("Warning: All diving heuristics are disabled!\n");
   }
 }
 
@@ -1607,7 +1641,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 
       // Set the edge norms to a default value
       edge_norms.resize(original_lp_.num_cols, -1.0);
-      set_uninitialized_steepest_edge_norms<i_t, f_t>(edge_norms);
+      set_uninitialized_steepest_edge_norms<i_t, f_t>(original_lp_, basic_list, edge_norms);
       user_objective = root_crossover_soln_.user_objective;
       iter           = root_crossover_soln_.iterations;
       solver_name    = "Barrier/PDLP and Crossover";
@@ -1655,28 +1689,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   original_lp_.A.to_compressed_row(Arow_);
 
   std::vector<bnb_worker_type_t> diving_strategies;
-  diving_strategies.reserve(4);
-
-  if (settings_.diving_settings.pseudocost_diving != 0) {
-    diving_strategies.push_back(bnb_worker_type_t::PSEUDOCOST_DIVING);
-  }
-
-  if (settings_.diving_settings.line_search_diving != 0) {
-    diving_strategies.push_back(bnb_worker_type_t::LINE_SEARCH_DIVING);
-  }
-
-  if (settings_.diving_settings.guided_diving != 0) {
-    diving_strategies.push_back(bnb_worker_type_t::GUIDED_DIVING);
-  }
-
-  if (settings_.diving_settings.coefficient_diving != 0) {
-    diving_strategies.push_back(bnb_worker_type_t::COEFFICIENT_DIVING);
-    calculate_variable_locks(original_lp_, var_up_locks_, var_down_locks_);
-  }
-
-  if (diving_strategies.empty()) {
-    settings_.log.printf("Warning: All diving heuristics are disabled!\n");
-  }
+  initialize_diving_heuristics_settings(diving_strategies);
 
   if (guess_.size() != 0) {
     std::vector<f_t> crushed_guess;
@@ -1760,7 +1773,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   assert(root_vstatus_.size() == original_lp_.num_cols);
-  set_uninitialized_steepest_edge_norms<i_t, f_t>(edge_norms_);
+  set_uninitialized_steepest_edge_norms<i_t, f_t>(original_lp_, basic_list, edge_norms_);
 
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
   local_lower_bounds_.assign(settings_.num_bfs_workers, root_objective_);
@@ -2070,13 +2083,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                          original_lp_.A.col_start[original_lp_.A.n]);
   }
 
-  if (edge_norms_.size() != original_lp_.num_cols) {
-    edge_norms_.resize(original_lp_.num_cols, -1.0);
-  }
-  for (i_t k = 0; k < original_lp_.num_rows; k++) {
-    const i_t j = basic_list[k];
-    if (edge_norms_[j] < 0.0) { edge_norms_[j] = 1e-4; }
-  }
+  set_uninitialized_steepest_edge_norms(original_lp_, basic_list, edge_norms_);
 
   pc_.resize(original_lp_.num_cols);
   strong_branching<i_t, f_t>(original_lp_,
