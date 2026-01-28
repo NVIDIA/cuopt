@@ -376,7 +376,9 @@ class QuadraticExpression:
             if mshape[0] != mshape[1]:
                 raise ValueError("qmatrix should be a square matrix")
             if len(qvars) != mshape[0]:
-                raise ValueError("qvars length mismatch. Please check docs")
+                raise ValueError(
+                    "qvars length mismatch. Should match with qmatrix length. Please check docs for more details."
+                )
         self.qvars1 = qvars1
         self.qvars2 = qvars2
         self.qcoefficients = qcoefficients
