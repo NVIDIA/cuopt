@@ -680,6 +680,10 @@ cuopt_int_t cuOptCreateQuadraticProblem(
       gpu_problem.set_constraint_bounds(rhs, num_constraints);
       gpu_problem.set_variable_lower_bounds(lower_bounds, num_variables);
       gpu_problem.set_variable_upper_bounds(upper_bounds, num_variables);
+      if (num_variables > 0) {
+        std::vector<var_t> variable_types_host(num_variables, var_t::CONTINUOUS);
+        gpu_problem.set_variable_types(variable_types_host.data(), num_variables);
+      }
 
       // Create view pointing to GPU data
       problem_and_stream->create_view_from_gpu_problem();
@@ -798,6 +802,10 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
       gpu_problem.set_constraint_upper_bounds(constraint_upper_bounds, num_constraints);
       gpu_problem.set_variable_lower_bounds(variable_lower_bounds, num_variables);
       gpu_problem.set_variable_upper_bounds(variable_upper_bounds, num_variables);
+      if (num_variables > 0) {
+        std::vector<var_t> variable_types_host(num_variables, var_t::CONTINUOUS);
+        gpu_problem.set_variable_types(variable_types_host.data(), num_variables);
+      }
 
       // Create view pointing to GPU data
       problem_and_stream->create_view_from_gpu_problem();
