@@ -3005,7 +3005,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                                                squared_infeasibilities,
                                                infeasibility_indices,
                                                entering_index,
-                                               primal_infeasibility);
+                                               primal_infeasibility_squared);
 
     phase2::clean_up_infeasibilities(squared_infeasibilities, infeasibility_indices);
 

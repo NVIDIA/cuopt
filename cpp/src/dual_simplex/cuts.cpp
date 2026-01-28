@@ -1174,7 +1174,11 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
     for (i_t p = row_start; p < row_end; p++) {
       const i_t jj = Arow.j[p];
       if (nonbasic_mark_[jj] == 1) {
-        x_workspace_[jj] += u_bar_i * Arow.x[p];
+        const f_t val = u_bar_i * Arow.x[p];
+        const f_t y = val - c_workspace_[jj];
+        const f_t t = x_workspace_[jj] + y;
+        c_workspace_[jj] = (t - x_workspace_[jj]) - y;
+        x_workspace_[jj] = t;
         if (!x_mark_[jj]) {
           x_mark_[jj] = 1;
           abar_indices.push_back(jj);
@@ -1208,6 +1212,7 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
   for (i_t jj : abar_indices) {
     x_workspace_[jj] = 0.0;
     x_mark_[jj]      = 0;
+    c_workspace_[jj] = 0.0;
   }
   abar_indices.clear();
 

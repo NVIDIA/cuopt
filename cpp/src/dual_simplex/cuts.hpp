@@ -294,7 +294,8 @@ class tableau_equality_t {
     : b_bar_(lp.num_rows, 0.0),
       nonbasic_mark_(lp.num_cols, 0),
       x_workspace_(lp.num_cols, 0.0),
-      x_mark_(lp.num_cols, 0)
+      x_mark_(lp.num_cols, 0),
+      c_workspace_(lp.num_cols, 0.0)
   {
     basis_update.b_solve(lp.rhs, b_bar_);
     for (i_t j : nonbasic_list) {
@@ -320,6 +321,7 @@ class tableau_equality_t {
   std::vector<i_t> nonbasic_mark_;
   std::vector<f_t> x_workspace_;
   std::vector<i_t> x_mark_;
+  std::vector<f_t> c_workspace_;
 };
 
 template <typename i_t, typename f_t>
