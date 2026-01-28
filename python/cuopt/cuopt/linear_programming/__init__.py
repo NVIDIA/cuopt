@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from cuopt.linear_programming import internals
-from cuopt.linear_programming import solver_settings
 from cuopt.linear_programming.data_model import DataModel
 from cuopt.linear_programming.problem import Problem
 from cuopt.linear_programming.solution import Solution

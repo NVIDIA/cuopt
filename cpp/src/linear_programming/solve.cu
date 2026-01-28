@@ -1426,12 +1426,14 @@ optimization_problem_t<i_t, f_t> data_model_view_to_optimization_problem(
   optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
   op_problem.set_maximize(view.get_sense());
 
-  op_problem.set_csr_constraint_matrix(view.get_constraint_matrix_values().data(),
-                                       view.get_constraint_matrix_values().size(),
-                                       view.get_constraint_matrix_indices().data(),
-                                       view.get_constraint_matrix_indices().size(),
-                                       view.get_constraint_matrix_offsets().data(),
-                                       view.get_constraint_matrix_offsets().size());
+  if (view.get_constraint_matrix_offsets().size() > 0) {
+    op_problem.set_csr_constraint_matrix(view.get_constraint_matrix_values().data(),
+                                         view.get_constraint_matrix_values().size(),
+                                         view.get_constraint_matrix_indices().data(),
+                                         view.get_constraint_matrix_indices().size(),
+                                         view.get_constraint_matrix_offsets().data(),
+                                         view.get_constraint_matrix_offsets().size());
+  }
 
   if (view.get_constraint_bounds().size() != 0) {
     op_problem.set_constraint_bounds(view.get_constraint_bounds().data(),
