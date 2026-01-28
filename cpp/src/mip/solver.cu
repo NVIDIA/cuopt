@@ -108,9 +108,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   }
 
   diversity_manager_t<i_t, f_t> dm(context);
-  dm.timer              = timer_;
+  dm.timer                = timer_;
   const bool run_presolve = context.settings.presolve;
-  bool presolve_success = run_presolve ? dm.run_presolve(timer_.remaining_time()) : true;
+  bool presolve_success   = run_presolve ? dm.run_presolve(timer_.remaining_time()) : true;
   if (!presolve_success) {
     CUOPT_LOG_INFO("Problem proven infeasible in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
@@ -163,20 +163,23 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
 
     // Fill in the settings for branch and bound
-    branch_and_bound_settings.time_limit           = timer_.get_time_limit();
-    branch_and_bound_settings.node_limit           = context.settings.node_limit;
+    branch_and_bound_settings.time_limit            = timer_.get_time_limit();
+    branch_and_bound_settings.node_limit            = context.settings.node_limit;
     branch_and_bound_settings.reliability_branching = context.settings.reliability_branching;
-    branch_and_bound_settings.print_presolve_stats = false;
-    branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
-    branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
-    branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
+    branch_and_bound_settings.print_presolve_stats  = false;
+    branch_and_bound_settings.absolute_mip_gap_tol  = context.settings.tolerances.absolute_mip_gap;
+    branch_and_bound_settings.relative_mip_gap_tol  = context.settings.tolerances.relative_mip_gap;
+    branch_and_bound_settings.integer_tol    = context.settings.tolerances.integrality_tolerance;
     branch_and_bound_settings.max_cut_passes = context.settings.max_cut_passes;
-    branch_and_bound_settings.mir_cuts = context.settings.mir_cuts;
-    branch_and_bound_settings.mixed_integer_gomory_cuts = context.settings.mixed_integer_gomory_cuts;
+    branch_and_bound_settings.mir_cuts       = context.settings.mir_cuts;
+    branch_and_bound_settings.mixed_integer_gomory_cuts =
+      context.settings.mixed_integer_gomory_cuts;
     branch_and_bound_settings.knapsack_cuts = context.settings.knapsack_cuts;
-    branch_and_bound_settings.strong_chvatal_gomory_cuts = context.settings.strong_chvatal_gomory_cuts;
-    branch_and_bound_settings.reduced_cost_strengthening = context.settings.reduced_cost_strengthening;
-    branch_and_bound_settings.cut_change_threshold = context.settings.cut_change_threshold;
+    branch_and_bound_settings.strong_chvatal_gomory_cuts =
+      context.settings.strong_chvatal_gomory_cuts;
+    branch_and_bound_settings.reduced_cost_strengthening =
+      context.settings.reduced_cost_strengthening;
+    branch_and_bound_settings.cut_change_threshold  = context.settings.cut_change_threshold;
     branch_and_bound_settings.cut_min_orthogonality = context.settings.cut_min_orthogonality;
 
     if (context.settings.num_cpu_threads < 0) {

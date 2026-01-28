@@ -1132,7 +1132,6 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
   }
   WT.col_start[cuts_basic.m] = WT_nz;
 
-
 #ifdef CHECK_W
   {
     for (i_t k = 0; k < cuts_basic.m; k++) {
@@ -1145,7 +1144,12 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
       CBT_col_sparse.to_dense(CBT_col_dense);
       for (i_t h = 0; h < m; h++) {
         if (std::abs(CBT_col_dense[h] - CBT_col[h]) > 1e-6) {
-          printf("W: col %d CBT_col_dense[%d] = %e CBT_col[%d] = %e\n", k, h, CBT_col_dense[h], h, CBT_col[h]);
+          printf("W: col %d CBT_col_dense[%d] = %e CBT_col[%d] = %e\n",
+                 k,
+                 h,
+                 CBT_col_dense[h],
+                 h,
+                 CBT_col[h]);
           exit(1);
         }
       }
@@ -1199,7 +1203,6 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
 
     V_row.to_compressed_col(V);
 
-
 #ifdef CHECK_V
     csc_matrix_t<i_t, f_t> CB_col(cuts_basic.m, m, 0);
     cuts_basic.to_compressed_col(CB_col);
@@ -1209,11 +1212,11 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
       for (i_t h = num_updates_ - 1; h >= 0; --h) {
         // T_h = ( I + u_h v_h^T)
         // T_h * x = x + u_h * v_h^T * x = x + theta * u_h
-        const i_t u_col = 2 * h;
-        const i_t v_col = 2 * h + 1;
-        f_t theta = dot_product(v_col, U_col);
+        const i_t u_col     = 2 * h;
+        const i_t v_col     = 2 * h + 1;
+        f_t theta           = dot_product(v_col, U_col);
         const i_t col_start = S_.col_start[u_col];
-        const i_t col_end = S_.col_start[u_col + 1];
+        const i_t col_end   = S_.col_start[u_col + 1];
         for (i_t p = col_start; p < col_end; ++p) {
           const i_t i = S_.i[p];
           U_col[i] += theta * S_.x[p];
@@ -1225,7 +1228,12 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
       CB_col.load_a_column(k, CB_col_dense);
       for (i_t l = 0; l < cuts_basic.m; l++) {
         if (std::abs(CB_col_dense[l] - CB_column[l]) > 1e-6) {
-          printf("V: col %d CB_col_dense[%d] = %e CB_column[%d] = %e\n", k, l, CB_col_dense[l], l, CB_column[l]);
+          printf("V: col %d CB_col_dense[%d] = %e CB_column[%d] = %e\n",
+                 k,
+                 l,
+                 CB_col_dense[l],
+                 l,
+                 CB_column[l]);
           exit(1);
         }
       }
@@ -1247,7 +1255,7 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
   i_t L_nz = L0_.col_start[m];
   csc_matrix_t<i_t, f_t> new_L(m + cuts_basic.m, m + cuts_basic.m, L_nz + V_nz + cuts_basic.m);
   i_t predicted_nz = L_nz + V_nz + cuts_basic.m;
-  L_nz = 0;
+  L_nz             = 0;
   for (i_t j = 0; j < m; ++j) {
     new_L.col_start[j]  = L_nz;
     const i_t col_start = L0_.col_start[j];
@@ -2264,18 +2272,16 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
   if (L0_.m != A.m) { resize(A.m); }
   std::vector<i_t> q;
   i_t status = factorize_basis(A,
-                      settings,
-                      basic_list,
-                      L0_,
-                      U0_,
-                      row_permutation_,
-                      inverse_row_permutation_,
-                      q,
-                      deficient,
-                      slacks_needed);
-  if (status == -2) {
-    return -2;
-  }
+                               settings,
+                               basic_list,
+                               L0_,
+                               U0_,
+                               row_permutation_,
+                               inverse_row_permutation_,
+                               q,
+                               deficient,
+                               slacks_needed);
+  if (status == -2) { return -2; }
   if (status == -1) {
     settings.log.debug("Initial factorization failed\n");
     basis_repair(
@@ -2299,15 +2305,15 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
 #endif
 
     status = factorize_basis(A,
-                        settings,
-                        basic_list,
-                        L0_,
-                        U0_,
-                        row_permutation_,
-                        inverse_row_permutation_,
-                        q,
-                        deficient,
-                        slacks_needed);
+                             settings,
+                             basic_list,
+                             L0_,
+                             U0_,
+                             row_permutation_,
+                             inverse_row_permutation_,
+                             q,
+                             deficient,
+                             slacks_needed);
     if (status == -2) { return -2; }
     if (status == -1) {
 #ifdef CHECK_L_FACTOR

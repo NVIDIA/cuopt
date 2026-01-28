@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -125,7 +125,7 @@ template <typename i_t, typename f_t>
 f_t sparse_vector_t<i_t, f_t>::dot(const std::vector<f_t>& x_dense) const
 {
   const i_t nz = i.size();
-  f_t dot = 0.0;
+  f_t dot      = 0.0;
   for (i_t k = 0; k < nz; ++k) {
     dot += x[k] * x_dense[i[k]];
   }
@@ -238,12 +238,10 @@ void sparse_vector_t<i_t, f_t>::squeeze(sparse_vector_t<i_t, f_t>& y) const
 {
   y.n = n;
 
-  i_t nz = 0;
+  i_t nz      = 0;
   const i_t n = x.size();
   for (i_t k = 0; k < n; k++) {
-    if (x[k] != 0.0) {
-      nz++;
-    }
+    if (x[k] != 0.0) { nz++; }
   }
   y.i.reserve(nz);
   y.x.reserve(nz);

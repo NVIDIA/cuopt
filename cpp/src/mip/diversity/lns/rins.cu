@@ -276,9 +276,8 @@ void rins_t<i_t, f_t>::run_rins()
                                                                        f_t objective) {
     rins_solution_queue.push_back(solution);
   };
-  dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(branch_and_bound_problem,
-                                                              branch_and_bound_settings,
-                                                              dual_simplex::tic());
+  dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(
+    branch_and_bound_problem, branch_and_bound_settings, dual_simplex::tic());
   branch_and_bound.set_initial_guess(cuopt::host_copy(fixed_assignment, rins_handle.get_stream()));
   branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
 

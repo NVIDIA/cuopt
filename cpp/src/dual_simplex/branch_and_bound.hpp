@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include <dual_simplex/diving_heuristics.hpp>
 #include <dual_simplex/cuts.hpp>
+#include <dual_simplex/diving_heuristics.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/mip_node.hpp>
 #include <dual_simplex/node_queue.hpp>
@@ -121,7 +121,9 @@ class branch_and_bound_t {
                                     std::vector<i_t>& nonbasic_list,
                                     std::vector<f_t>& edge_norms);
 
-  i_t find_reduced_cost_fixings(f_t upper_bound, std::vector<f_t>& lower_bounds, std::vector<f_t>& upper_bounds);
+  i_t find_reduced_cost_fixings(f_t upper_bound,
+                                std::vector<f_t>& lower_bounds,
+                                std::vector<f_t>& upper_bounds);
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
@@ -210,7 +212,8 @@ class branch_and_bound_t {
   void report(char symbol, f_t obj, f_t lower_bound, i_t node_depth, i_t node_int_infeas);
 
   // Set the solution when found at the root node
-  void set_solution_at_root(mip_solution_t<i_t, f_t>& solution, const cut_info_t<i_t, f_t>& cut_info);
+  void set_solution_at_root(mip_solution_t<i_t, f_t>& solution,
+                            const cut_info_t<i_t, f_t>& cut_info);
 
   // Set the final solution.
   void set_final_solution(mip_solution_t<i_t, f_t>& solution, f_t lower_bound);

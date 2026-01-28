@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -409,11 +409,11 @@ i_t csr_matrix_t<i_t, f_t>::append_rows(const csr_matrix_t<i_t, f_t>& C)
 template <typename i_t, typename f_t>
 i_t csr_matrix_t<i_t, f_t>::append_row(const sparse_vector_t<i_t, f_t>& c)
 {
-  const i_t old_m = this->m;
+  const i_t old_m  = this->m;
   const i_t old_nz = this->row_start[old_m];
-  const i_t c_nz = c.i.size();
+  const i_t c_nz   = c.i.size();
   const i_t new_nz = old_nz + c_nz;
-  const i_t new_m = old_m + 1;
+  const i_t new_m  = old_m + 1;
 
   this->j.resize(new_nz);
   this->x.resize(new_nz);
@@ -427,7 +427,7 @@ i_t csr_matrix_t<i_t, f_t>::append_row(const sparse_vector_t<i_t, f_t>& c)
     nz++;
   }
 
-  this->m = new_m;
+  this->m      = new_m;
   this->nz_max = new_nz;
   return 0;
 }
@@ -640,7 +640,10 @@ i_t csr_matrix_t<i_t, f_t>::check_matrix(std::string matrix_name) const
     const i_t row_end   = this->row_start[i + 1];
     for (i_t p = row_start; p < row_end; ++p) {
       const i_t j = this->j[p];
-      if (j < 0 || j >= this->n) { printf("CSR Error: column index %d not in range [0, %d)\n", j, this->n); return -1;}
+      if (j < 0 || j >= this->n) {
+        printf("CSR Error: column index %d not in range [0, %d)\n", j, this->n);
+        return -1;
+      }
       if (col_marker[j] == i) {
         printf("CSR Error (%s) : repeated column index %d in row %d\n", matrix_name.c_str(), j, i);
         return -1;

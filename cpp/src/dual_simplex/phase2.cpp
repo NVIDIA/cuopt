@@ -1231,12 +1231,8 @@ i_t initialize_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
       last_log = tic();
       settings.log.printf("Initialized %d of %d steepest edge norms in %.2fs\n", k, m, now);
     }
-    if (toc(start_time) > settings.time_limit) {
-      return -1;
-    }
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      return -2;
-    }
+    if (toc(start_time) > settings.time_limit) { return -1; }
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return -2; }
   }
   return 0;
 }
@@ -1737,7 +1733,6 @@ f_t dual_infeasibility(const lp_problem_t<i_t, f_t>& lp,
   return sum_infeasible;
 }
 
-
 template <typename i_t, typename f_t>
 f_t primal_infeasibility_breakdown(const lp_problem_t<i_t, f_t>& lp,
                                    const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -1747,10 +1742,10 @@ f_t primal_infeasibility_breakdown(const lp_problem_t<i_t, f_t>& lp,
                                    f_t& nonbasic_infeas,
                                    f_t& basic_over)
 {
-  const i_t n    = lp.num_cols;
-  f_t primal_inf = 0;
-  basic_infeas = 0.0;
-  basic_over = 0.0;
+  const i_t n     = lp.num_cols;
+  f_t primal_inf  = 0;
+  basic_infeas    = 0.0;
+  basic_over      = 0.0;
   nonbasic_infeas = 0.0;
   for (i_t j = 0; j < n; ++j) {
     if (x[j] < lp.lower[j]) {
@@ -1758,9 +1753,7 @@ f_t primal_infeasibility_breakdown(const lp_problem_t<i_t, f_t>& lp,
       const f_t infeas = -x[j] + lp.lower[j];
       if (vstatus[j] == variable_status_t::BASIC) {
         basic_infeas += infeas;
-        if (infeas > settings.primal_tol) {
-          basic_over += infeas;
-        }
+        if (infeas > settings.primal_tol) { basic_over += infeas; }
       } else {
         nonbasic_infeas += infeas;
       }
@@ -1782,9 +1775,7 @@ f_t primal_infeasibility_breakdown(const lp_problem_t<i_t, f_t>& lp,
       const f_t infeas = x[j] - lp.upper[j];
       if (vstatus[j] == variable_status_t::BASIC) {
         basic_infeas += infeas;
-        if (infeas > settings.primal_tol) {
-          basic_over += infeas;
-        }
+        if (infeas > settings.primal_tol) { basic_over += infeas; }
       } else {
         nonbasic_infeas += infeas;
       }
@@ -2111,9 +2102,9 @@ void prepare_optimality(i_t info,
   const i_t m = lp.num_rows;
   const i_t n = lp.num_cols;
 
-  sol.objective      = compute_objective(lp, sol.x);
-  sol.user_objective = compute_user_objective(lp, sol.objective);
-  f_t perturbation   = phase2::amount_of_perturbation(lp, objective);
+  sol.objective         = compute_objective(lp, sol.x);
+  sol.user_objective    = compute_user_objective(lp, sol.objective);
+  f_t perturbation      = phase2::amount_of_perturbation(lp, objective);
   f_t orig_perturbation = perturbation;
   if (perturbation > 1e-6 && phase == 2) {
     // Try to remove perturbation
@@ -2155,21 +2146,23 @@ void prepare_optimality(i_t info,
     }
   }
 
-  if (primal_infeas > 10.0*settings.primal_tol)
-  {
-    f_t basic_infeas = 0.0;
+  if (primal_infeas > 10.0 * settings.primal_tol) {
+    f_t basic_infeas    = 0.0;
     f_t nonbasic_infeas = 0.0;
-    f_t basic_over = 0.0;
-    phase2::primal_infeasibility_breakdown(lp, settings, vstatus, x, basic_infeas, nonbasic_infeas, basic_over);
-    printf("Primal infeasibility %e/%e (Basic %e, Nonbasic %e, Basic over %e). Perturbation %e/%e. Info %d\n",
-           primal_infeas,
-           orig_primal_infeas,
-           basic_infeas,
-           nonbasic_infeas,
-           basic_over,
-           orig_perturbation,
-           perturbation,
-           info);
+    f_t basic_over      = 0.0;
+    phase2::primal_infeasibility_breakdown(
+      lp, settings, vstatus, x, basic_infeas, nonbasic_infeas, basic_over);
+    printf(
+      "Primal infeasibility %e/%e (Basic %e, Nonbasic %e, Basic over %e). Perturbation %e/%e. Info "
+      "%d\n",
+      primal_infeas,
+      orig_primal_infeas,
+      basic_infeas,
+      nonbasic_infeas,
+      basic_over,
+      orig_perturbation,
+      perturbation,
+      info);
   }
 }
 
@@ -2412,25 +2405,17 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     } else {
       std::fill(delta_y_steepest_edge.begin(), delta_y_steepest_edge.end(), -1);
       f_t steepest_edge_start = tic();
-      i_t status = phase2::initialize_steepest_edge_norms(
-            lp, settings, start_time, basic_list, ft, delta_y_steepest_edge);
+      i_t status              = phase2::initialize_steepest_edge_norms(
+        lp, settings, start_time, basic_list, ft, delta_y_steepest_edge);
       f_t steepest_edge_time = toc(steepest_edge_start);
-      if (status == -2) {
-        return dual::status_t::CONCURRENT_LIMIT;
-      }
-      if (status == -1) {
-        return dual::status_t::TIME_LIMIT;
-      }
+      if (status == -2) { return dual::status_t::CONCURRENT_LIMIT; }
+      if (status == -1) { return dual::status_t::TIME_LIMIT; }
     }
   } else {
     // Check that none of the basic variables have a steepest edge that is nonpositive
-    for (i_t k = 0; k < m; k++)
-    {
+    for (i_t k = 0; k < m; k++) {
       const i_t j = basic_list[k];
-      if (delta_y_steepest_edge[j] <= 0.0)
-      {
-        delta_y_steepest_edge[j] = 1e-4;
-      }
+      if (delta_y_steepest_edge[j] <= 0.0) { delta_y_steepest_edge[j] = 1e-4; }
     }
     settings.log.printf("using exisiting steepest edge %e\n",
                         vector_norm2<i_t, f_t>(delta_y_steepest_edge));
@@ -2512,8 +2497,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     }
     timers.pricing_time += timers.stop_timer();
     if (leaving_index == -1) {
-
-
 #ifdef CHECK_BASIS_UPDATE
       for (i_t k = 0; k < basic_list.size(); k++) {
         const i_t jj = basic_list[k];
@@ -2528,9 +2511,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
         b_transpose_multiply(lp, basic_list, ubar_dense, BTu_dense);
         for (i_t l = 0; l < m; l++) {
           if (l != k) {
-              settings.log.printf("BTu_dense[%d] = %e i %d\n", l, BTu_dense[l], k);
+            settings.log.printf("BTu_dense[%d] = %e i %d\n", l, BTu_dense[l], k);
           } else {
-              settings.log.printf("BTu_dense[%d] = %e != 1.0 i %d\n", l, BTu_dense[l], k);
+            settings.log.printf("BTu_dense[%d] = %e != 1.0 i %d\n", l, BTu_dense[l], k);
           }
         }
         for (i_t h = 0; h < m; h++) {
@@ -2545,16 +2528,28 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 #endif
 
 #ifdef CHECK_PRIMAL_INFEASIBILITIES
-      primal_infeasibility_squared = phase2::compute_initial_primal_infeasibilities(
-        lp, settings, basic_list, x, squared_infeasibilities, infeasibility_indices, primal_infeasibility);
+      primal_infeasibility_squared =
+        phase2::compute_initial_primal_infeasibilities(lp,
+                                                       settings,
+                                                       basic_list,
+                                                       x,
+                                                       squared_infeasibilities,
+                                                       infeasibility_indices,
+                                                       primal_infeasibility);
       if (primal_infeasibility > settings.primal_tol) {
-        const i_t nz      = infeasibility_indices.size();
+        const i_t nz = infeasibility_indices.size();
         for (i_t k = 0; k < nz; ++k) {
           const i_t j              = infeasibility_indices[k];
           const f_t squared_infeas = squared_infeasibilities[j];
           const f_t val            = squared_infeas / delta_y_steepest_edge[j];
           if (squared_infeas >= 0.0 && delta_y_steepest_edge[j] < 0.0) {
-            printf("Iter %d potential leaving %d val %e squared infeas %e delta_y_steepest_edge %e\n", iter, j, val, squared_infeas, delta_y_steepest_edge[j]);
+            printf(
+              "Iter %d potential leaving %d val %e squared infeas %e delta_y_steepest_edge %e\n",
+              iter,
+              j,
+              val,
+              squared_infeas,
+              delta_y_steepest_edge[j]);
           }
         }
       }

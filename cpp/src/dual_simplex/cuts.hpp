@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -13,22 +13,25 @@
 #include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
 
-
 #include <cmath>
 
 namespace cuopt::linear_programming::dual_simplex {
 
 enum cut_type_t : int8_t {
-   MIXED_INTEGER_GOMORY = 0,
-   MIXED_INTEGER_ROUNDING  = 1,
-   KNAPSACK = 2,
-   CHVATAL_GOMORY = 3
+  MIXED_INTEGER_GOMORY   = 0,
+  MIXED_INTEGER_ROUNDING = 1,
+  KNAPSACK               = 2,
+  CHVATAL_GOMORY         = 3
 };
 
 template <typename i_t, typename f_t>
 struct cut_info_t {
-  bool has_cuts() const { return num_gomory_cuts + num_mir_cuts + num_knapsack_cuts + num_cg_cuts > 0; }
-  void record_cut_types(std::vector<cut_type_t>& cut_types) {
+  bool has_cuts() const
+  {
+    return num_gomory_cuts + num_mir_cuts + num_knapsack_cuts + num_cg_cuts > 0;
+  }
+  void record_cut_types(std::vector<cut_type_t>& cut_types)
+  {
     for (cut_type_t cut_type : cut_types) {
       if (cut_type == cut_type_t::MIXED_INTEGER_GOMORY) {
         num_gomory_cuts++;
@@ -41,15 +44,15 @@ struct cut_info_t {
       }
     }
   }
-  i_t num_gomory_cuts = 0;
-  i_t num_mir_cuts = 0;
+  i_t num_gomory_cuts   = 0;
+  i_t num_mir_cuts      = 0;
   i_t num_knapsack_cuts = 0;
-  i_t num_cg_cuts = 0;
+  i_t num_cg_cuts       = 0;
 };
 
-
 template <typename i_t, typename f_t>
-void print_cut_info(const simplex_solver_settings_t<i_t, f_t>& settings, const cut_info_t<i_t, f_t>& cut_info)
+void print_cut_info(const simplex_solver_settings_t<i_t, f_t>& settings,
+                    const cut_info_t<i_t, f_t>& cut_info)
 {
   if (cut_info.has_cuts()) {
     settings.log.printf("Gomory cuts   : %d\n", cut_info.num_gomory_cuts);
@@ -88,14 +91,16 @@ void print_cut_types(const std::string& prefix,
 }
 
 template <typename f_t>
-f_t fractional_part(f_t a) { return a - std::floor(a); }
+f_t fractional_part(f_t a)
+{
+  return a - std::floor(a);
+}
 
 // Routines for verifying cuts against a saved solution
 template <typename i_t, typename f_t>
 void read_saved_solution_for_cut_verification(const lp_problem_t<i_t, f_t>& lp,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
                                               std::vector<f_t>& saved_solution);
-
 
 template <typename i_t, typename f_t>
 void write_solution_for_cut_verification(const lp_problem_t<i_t, f_t>& lp,
@@ -149,7 +154,9 @@ class cut_pool_t {
   void score_cuts(std::vector<f_t>& x_relax);
 
   // We return the cuts in the form best_cuts*x <= best_rhs
-  i_t get_best_cuts(csr_matrix_t<i_t, f_t>& best_cuts, std::vector<f_t>& best_rhs, std::vector<cut_type_t>& best_cut_types);
+  i_t get_best_cuts(csr_matrix_t<i_t, f_t>& best_cuts,
+                    std::vector<f_t>& best_rhs,
+                    std::vector<cut_type_t>& best_cut_types);
 
   void age_cuts();
 
@@ -160,7 +167,7 @@ class cut_pool_t {
   void print_cutpool_types() { print_cut_types("In cut pool", cut_type_, settings_); }
 
  private:
-  f_t cut_distance(i_t row, const std::vector<f_t>& x, f_t& cut_violation, f_t &cut_norm);
+  f_t cut_distance(i_t row, const std::vector<f_t>& x, f_t& cut_violation, f_t& cut_norm);
   f_t cut_density(i_t row);
   f_t cut_orthogonality(i_t i, i_t j);
 
@@ -245,8 +252,8 @@ class cut_generation_t {
                      const std::vector<f_t>& xstar,
                      const std::vector<i_t>& basic_list,
                      const std::vector<i_t>& nonbasic_list);
- private:
 
+ private:
   // Generate all mixed integer gomory cuts
   void generate_gomory_cuts(const lp_problem_t<i_t, f_t>& lp,
                             const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -282,8 +289,8 @@ template <typename i_t, typename f_t>
 class tableau_equality_t {
  public:
   tableau_equality_t(const lp_problem_t<i_t, f_t>& lp,
-                                         basis_update_mpf_t<i_t, f_t>& basis_update,
-                                         const std::vector<i_t> nonbasic_list)
+                     basis_update_mpf_t<i_t, f_t>& basis_update,
+                     const std::vector<i_t> nonbasic_list)
     : b_bar_(lp.num_rows, 0.0),
       nonbasic_mark_(lp.num_cols, 0),
       x_workspace_(lp.num_cols, 0.0),
@@ -297,16 +304,16 @@ class tableau_equality_t {
 
   // Generates the base inequalities: C*x == d that will be turned into cuts
   i_t generate_base_equality(const lp_problem_t<i_t, f_t>& lp,
-                               const simplex_solver_settings_t<i_t, f_t>& settings,
-                               csr_matrix_t<i_t, f_t>& Arow,
-                               const std::vector<variable_type_t>& var_types,
-                               basis_update_mpf_t<i_t, f_t>& basis_update,
-                               const std::vector<f_t>& xstar,
-                               const std::vector<i_t>& basic_list,
-                               const std::vector<i_t>& nonbasic_list,
-                               i_t i,
-                               sparse_vector_t<i_t, f_t>& inequality,
-                               f_t& inequality_rhs);
+                             const simplex_solver_settings_t<i_t, f_t>& settings,
+                             csr_matrix_t<i_t, f_t>& Arow,
+                             const std::vector<variable_type_t>& var_types,
+                             basis_update_mpf_t<i_t, f_t>& basis_update,
+                             const std::vector<f_t>& xstar,
+                             const std::vector<i_t>& basic_list,
+                             const std::vector<i_t>& nonbasic_list,
+                             i_t i,
+                             sparse_vector_t<i_t, f_t>& inequality,
+                             f_t& inequality_rhs);
 
  private:
   std::vector<f_t> b_bar_;
@@ -344,7 +351,7 @@ class mixed_integer_rounding_cut_t {
   // and   w_j = u_j - x_j for j in U
   // back to an inequality on the original variables
   // sum_j a_j x_j >= beta
-  void to_original(const lp_problem_t<i_t, f_t>&lp,
+  void to_original(const lp_problem_t<i_t, f_t>& lp,
                    sparse_vector_t<i_t, f_t>& inequality,
                    f_t& rhs);
 
@@ -355,7 +362,6 @@ class mixed_integer_rounding_cut_t {
                                  const std::vector<f_t>& upper_bounds,
                                  sparse_vector_t<i_t, f_t>& cut,
                                  f_t& cut_rhs);
-
 
   // Given an inequality sum_j a_j x_j >= beta, x_j >= 0, x_j in Z, j in I
   // generate an MIR cut of the form sum_j d_j x_j >= delta
@@ -441,13 +447,12 @@ class strong_cg_cut_t {
                                           f_t& cut_rhs);
 
  private:
-
- i_t generate_strong_cg_cut_helper(const std::vector<i_t>& indicies,
-                                   const std::vector<f_t>& coefficients,
-                                   f_t rhs,
-                                   const std::vector<variable_type_t>& var_types,
-                                   sparse_vector_t<i_t, f_t>& cut,
-                                   f_t& cut_rhs);
+  i_t generate_strong_cg_cut_helper(const std::vector<i_t>& indicies,
+                                    const std::vector<f_t>& coefficients,
+                                    f_t rhs,
+                                    const std::vector<variable_type_t>& var_types,
+                                    sparse_vector_t<i_t, f_t>& cut,
+                                    f_t& cut_rhs);
 
   std::vector<i_t> transformed_variables_;
 };
@@ -481,5 +486,4 @@ void remove_cuts(lp_problem_t<i_t, f_t>& lp,
                  std::vector<i_t>& nonbasic_list,
                  basis_update_mpf_t<i_t, f_t>& basis_update);
 
-}
-
+}  // namespace cuopt::linear_programming::dual_simplex

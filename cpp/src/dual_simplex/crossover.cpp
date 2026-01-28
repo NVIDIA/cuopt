@@ -1378,7 +1378,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       settings.log.debug("Num flips %d\n", num_flips);
       solution = phase1_solution;
       print_crossover_info(lp, settings, vstatus, solution, "Dual phase 1 complete");
-      dual_infeas = dual_infeasibility(lp, settings, vstatus, solution.z);
+      dual_infeas           = dual_infeasibility(lp, settings, vstatus, solution.z);
       dual::status_t status = dual::status_t::NUMERICAL;
       if (dual_infeas <= settings.dual_tol) {
         std::vector<f_t> edge_norms;
