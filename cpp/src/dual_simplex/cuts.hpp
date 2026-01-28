@@ -28,6 +28,19 @@ enum cut_type_t : int8_t {
 template <typename i_t, typename f_t>
 struct cut_info_t {
   bool has_cuts() const { return num_gomory_cuts + num_mir_cuts + num_knapsack_cuts + num_cg_cuts > 0; }
+  void record_cut_types(std::vector<cut_type_t>& cut_types) {
+    for (cut_type_t cut_type : cut_types) {
+      if (cut_type == cut_type_t::MIXED_INTEGER_GOMORY) {
+        num_gomory_cuts++;
+      } else if (cut_type == cut_type_t::MIXED_INTEGER_ROUNDING) {
+        num_mir_cuts++;
+      } else if (cut_type == cut_type_t::KNAPSACK) {
+        num_knapsack_cuts++;
+      } else if (cut_type == cut_type_t::CHVATAL_GOMORY) {
+        num_cg_cuts++;
+      }
+    }
+  }
   i_t num_gomory_cuts = 0;
   i_t num_mir_cuts = 0;
   i_t num_knapsack_cuts = 0;
@@ -77,11 +90,21 @@ void print_cut_types(const std::string& prefix,
 template <typename f_t>
 f_t fractional_part(f_t a) { return a - std::floor(a); }
 
-
+// Routines for verifying cuts against a saved solution
 template <typename i_t, typename f_t>
 void read_saved_solution_for_cut_verification(const lp_problem_t<i_t, f_t>& lp,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
                                               std::vector<f_t>& saved_solution);
+
+
+template <typename i_t, typename f_t>
+void write_solution_for_cut_verification(const lp_problem_t<i_t, f_t>& lp,
+                                         const std::vector<f_t>& solution);
+
+template <typename i_t, typename f_t>
+void verify_cuts_against_saved_solution(const csr_matrix_t<i_t, f_t>& cuts,
+                                        const std::vector<f_t>& cut_rhs,
+                                        const std::vector<f_t>& saved_solution);
 
 template <typename i_t, typename f_t>
 f_t minimum_violation(const csr_matrix_t<i_t, f_t>& C,

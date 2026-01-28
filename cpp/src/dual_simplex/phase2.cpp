@@ -1232,11 +1232,9 @@ i_t initialize_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Initialized %d of %d steepest edge norms in %.2fs\n", k, m, now);
     }
     if (toc(start_time) > settings.time_limit) {
-      printf("initialize_steepest_edge time limit\n");
       return -1;
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      printf("initialize_steepest_edge concurrent_halt\n");
       return -2;
     }
   }
@@ -2417,7 +2415,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       i_t status = phase2::initialize_steepest_edge_norms(
             lp, settings, start_time, basic_list, ft, delta_y_steepest_edge);
       f_t steepest_edge_time = toc(steepest_edge_start);
-      printf("Initialized steepest edge norms in %.2fs\n", steepest_edge_time);
       if (status == -2) {
         return dual::status_t::CONCURRENT_LIMIT;
       }
@@ -2426,20 +2423,13 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       }
     }
   } else {
-
     // Check that none of the basic variables have a steepest edge that is nonpositive
     for (i_t k = 0; k < m; k++)
     {
       const i_t j = basic_list[k];
-      bool fix_needed = false;
       if (delta_y_steepest_edge[j] <= 0.0)
       {
-        fix_needed = true;
-        //printf("Basic variable %d has a nonpositive steepest edge %e\n", j, delta_y_steepest_edge[j]);
         delta_y_steepest_edge[j] = 1e-4;
-      }
-      if (fix_needed) {
-        //printf("Basic variable had nonpositive steepest edge\n");
       }
     }
     settings.log.printf("using exisiting steepest edge %e\n",
@@ -2554,10 +2544,10 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
 #endif
 
+#ifdef CHECK_PRIMAL_INFEASIBILITIES
       primal_infeasibility_squared = phase2::compute_initial_primal_infeasibilities(
         lp, settings, basic_list, x, squared_infeasibilities, infeasibility_indices, primal_infeasibility);
       if (primal_infeasibility > settings.primal_tol) {
-
         const i_t nz      = infeasibility_indices.size();
         for (i_t k = 0; k < nz; ++k) {
           const i_t j              = infeasibility_indices[k];
@@ -2565,13 +2555,10 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
           const f_t val            = squared_infeas / delta_y_steepest_edge[j];
           if (squared_infeas >= 0.0 && delta_y_steepest_edge[j] < 0.0) {
             printf("Iter %d potential leaving %d val %e squared infeas %e delta_y_steepest_edge %e\n", iter, j, val, squared_infeas, delta_y_steepest_edge[j]);
-            //delta_y_steepest_edge[j] = 1e-4;
           }
         }
-
-        //printf("No leaving variable. Updated primal infeasibility: %e\n", primal_infeasibility);
-        //continue;
       }
+#endif
 
       phase2::prepare_optimality(0,
                                  primal_infeasibility,

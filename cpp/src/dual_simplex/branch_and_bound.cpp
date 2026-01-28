@@ -338,10 +338,9 @@ void branch_and_bound_t<i_t, f_t>::report(char symbol, f_t obj, f_t lower_bound,
 
 template <typename i_t, typename f_t>
 i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
-                                                             std::vector<f_t>& lower_bounds,
-                                                             std::vector<f_t>& upper_bounds)
+                                                            std::vector<f_t>& lower_bounds,
+                                                            std::vector<f_t>& upper_bounds)
 {
-  mutex_original_lp_.lock();
   std::vector<f_t> reduced_costs = root_relax_soln_.z;
   lower_bounds = original_lp_.lower;
   upper_bounds = original_lp_.upper;
@@ -353,7 +352,6 @@ i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
   i_t num_fixed = 0;
   i_t num_cols_to_check = reduced_costs.size(); // Reduced costs will be smaller than the original problem because we have added slacks for cuts
   for (i_t j = 0; j < num_cols_to_check; j++) {
-    //printf("Variable %d type %d reduced cost %e\n", j, var_types_[j], reduced_costs[j]);
     if (!std::isfinite(reduced_costs[j])) {
       printf("Variable %d reduced cost is %e\n", j, reduced_costs[j]);
       continue;
@@ -371,7 +369,6 @@ i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
                                       ? std::floor(new_upper_bound + weaken)
                                       : new_upper_bound;
         if (reduced_cost_upper_bound < upper_j) {
-          //printf("Improved upper bound for variable %d from %e to %e (%e)\n", j, upper_j, reduced_cost_upper_bound, new_upper_bound);
           num_improved++;
           upper_bounds[j] = reduced_cost_upper_bound;
           bounds_changed[j] = true;
@@ -384,7 +381,6 @@ i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
                                       ? std::ceil(new_lower_bound - weaken)
                                       : new_lower_bound;
         if (reduced_cost_lower_bound > lower_j) {
-          //printf("Improved lower bound for variable %d from %e to %e (%e)\n", j, lower_j, reduced_cost_lower_bound, new_lower_bound);
           num_improved++;
           lower_bounds[j] = reduced_cost_lower_bound;
           bounds_changed[j] = true;
@@ -398,29 +394,8 @@ i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
   }
 
   if (num_fixed > 0 || num_improved > 0) {
-    printf("Reduced costs: Found %d improved bounds and %d fixed variables (%.1f%%)\n", num_improved, num_fixed, 100.0*static_cast<f_t>(num_fixed)/static_cast<f_t>(num_integer_variables_));
+    settings_.log.printf("Reduced costs: Found %d improved bounds and %d fixed variables (%.1f%%)\n", num_improved, num_fixed, 100.0*static_cast<f_t>(num_fixed)/static_cast<f_t>(num_integer_variables_));
   }
-
-  if (0 && num_improved > 0) {
-    lp_problem_t<i_t, f_t> new_lp = original_lp_;
-    new_lp.lower                  = lower_bounds;
-    new_lp.upper                  = upper_bounds;
-    std::vector<char> row_sense;
-    csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
-    original_lp_.A.to_compressed_row(Arow);
-    bounds_strengthening_t<i_t, f_t> node_presolve(new_lp, Arow, row_sense, var_types_);
-    bool feasible = node_presolve.bounds_strengthening(new_lp.lower, new_lp.upper, settings_);
-
-    i_t bnd_num_improved = 0;
-    for (i_t j = 0; j < original_lp_.num_cols; j++) {
-      if (new_lp.lower[j] > original_lp_.lower[j]) { bnd_num_improved++; }
-      if (new_lp.upper[j] < original_lp_.upper[j]) { bnd_num_improved++; }
-    }
-    if (bnd_num_improved != num_improved) {
-      printf("Bound strengthening: Found %d improved bounds\n", bnd_num_improved);
-    }
-  }
-  mutex_original_lp_.unlock();
   return num_fixed;
 }
 
@@ -641,32 +616,9 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
 
   if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
     solver_status_ = mip_status_t::OPTIMAL;
-#if 1
+#ifdef CHECK_CUTS_AGAINST_SAVED_SOLUTION
     if (settings_.sub_mip == 0) {
-      FILE* fid = NULL;
-      fid       = fopen("solution.dat", "w");
-      if (fid != NULL) {
-        printf("Writing solution.dat\n");
-
-        std::vector<f_t> residual = original_lp_.rhs;
-        matrix_vector_multiply(original_lp_.A, 1.0, incumbent_.x, -1.0, residual);
-        printf("|| A*x - b ||_inf %e\n", vector_norm_inf<i_t, f_t>(residual));
-        auto hash_combine_f = [](size_t seed, f_t x) {
-          seed ^= std::hash<f_t>{}(x) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-          return seed;
-        };
-        printf(
-          "incumbent size %ld original lp cols %d\n", incumbent_.x.size(), original_lp_.num_cols);
-        i_t n       = original_lp_.num_cols;
-        size_t seed = n;
-        fprintf(fid, "%d\n", n);
-        for (i_t j = 0; j < n; ++j) {
-          fprintf(fid, "%.17g\n", incumbent_.x[j]);
-          seed = hash_combine_f(seed, incumbent_.x[j]);
-        }
-        printf("Solution hash: %20x\n", seed);
-        fclose(fid);
-      }
+      write_solution_for_cut_verification(original_lp_, incumbent_.x);
     }
 #endif
     if (gap > 0 && gap <= settings_.absolute_mip_gap_tol) {
@@ -817,6 +769,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   logger_t& log)
 {
 
+#ifdef DEBUG_BRANCHING
   if (node_ptr->depth > num_integer_variables_) {
     std::vector<i_t> branched_variables(original_lp_.num_cols, 0);
     std::vector<f_t> branched_lower(original_lp_.num_cols, std::numeric_limits<f_t>::quiet_NaN());
@@ -844,6 +797,8 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
       printf("Depth %d > num_integer_variables %d\n", node_ptr->depth, num_integer_variables_);
     }
   }
+#endif
+
   std::vector<variable_status_t>& leaf_vstatus = node_ptr->vstatus;
   assert(leaf_vstatus.size() == leaf_problem.num_cols);
 
@@ -984,6 +939,7 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
     i_t leaf_num_fractional =
       fractional_variables(settings_, leaf_solution.x, var_types_, leaf_fractional);
 
+#ifdef DEBUG_FRACTIONAL_FIXED
     // Check if any of the fractional variables were fixed to their bounds
     for (i_t j : leaf_fractional)
     {
@@ -999,6 +955,7 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
           leaf_vstatus[j]);
       }
     }
+#endif
 
 
     f_t leaf_objective    = compute_objective(leaf_problem, leaf_solution.x);
@@ -1839,7 +1796,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   cut_generation_t<i_t, f_t> cut_generation(cut_pool, original_lp_, settings_, Arow_, new_slacks_, var_types_);
 
   std::vector<f_t> saved_solution;
-#if 1
+#ifdef CHECK_CUTS_AGAINST_SAVED_SOLUTION
   read_saved_solution_for_cut_verification(original_lp_, settings_, saved_solution);
 #endif
 
@@ -1882,20 +1839,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
       if (num_cuts == 0)
       {
-        //settings_.log.printf("No cuts found\n");
         break;
       }
-      for (i_t k = 0; k < cut_types.size(); k++) {
-        if (cut_types[k] == cut_type_t::MIXED_INTEGER_GOMORY) {
-          cut_info.num_gomory_cuts++;
-        } else if (cut_types[k] == cut_type_t::MIXED_INTEGER_ROUNDING) {
-          cut_info.num_mir_cuts++;
-        } else if (cut_types[k] == cut_type_t::KNAPSACK) {
-          cut_info.num_knapsack_cuts++;
-        } else if (cut_types[k] == cut_type_t::CHVATAL_GOMORY) {
-          cut_info.num_cg_cuts++;
-        }
-      }
+      cut_info.record_cut_types(cut_types);
 #if 1
       cut_pool.print_cutpool_types();
       print_cut_types("In LP      ", cut_types, settings_);
@@ -1913,19 +1859,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
 #endif
       // Check against saved solution
-#if 1
-      if (saved_solution.size() > 0) {
-        csc_matrix_t<i_t, f_t> cuts_to_add_col(cuts_to_add.m, cuts_to_add.n, cuts_to_add.row_start[cuts_to_add.m]);
-        cuts_to_add.to_compressed_col(cuts_to_add_col);
-        std::vector<f_t> Cx(cuts_to_add.m);
-        matrix_vector_multiply(cuts_to_add_col, 1.0, saved_solution, 0.0, Cx);
-        for (i_t k = 0; k < num_cuts; k++) {
-          //printf("Cx[%d] = %e cut_rhs[%d] = %e\n", k, Cx[k], k, cut_rhs[k]);
-          if (Cx[k] > cut_rhs[k] + 1e-6) {
-            printf("Cut %d is violated by saved solution. Cx %e cut_rhs %e Diff: %e\n", k, Cx[k], cut_rhs[k], Cx[k] - cut_rhs[k]);
-          }
-        }
-      }
+#ifdef CHECK_CUTS_AGAINST_SAVED_SOLUTION
+      verify_cuts_against_saved_solution(cuts_to_add, cut_rhs, saved_solution);
 #endif
       cut_pool_size = cut_pool.pool_size();
 
@@ -1968,9 +1903,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         std::vector<f_t> lower_bounds;
         std::vector<f_t> upper_bounds;
         find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);
+        mutex_upper_.unlock();
+        mutex_original_lp_.lock();
         original_lp_.lower = lower_bounds;
         original_lp_.upper = upper_bounds;
-        mutex_upper_.unlock();
+        mutex_original_lp_.unlock();
       }
 
       // Try to do bound strengthening
@@ -1986,7 +1923,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
       f_t node_presolve_start_time = tic();
       bounds_strengthening_t<i_t, f_t> node_presolve(original_lp_, Arow_, row_sense, var_types_);
+      mutex_original_lp_.lock();
       bool feasible = node_presolve.bounds_strengthening(original_lp_.lower, original_lp_.upper, settings_);
+      mutex_original_lp_.unlock();
       f_t node_presolve_time = toc(node_presolve_start_time);
       if( 1 || node_presolve_time > 1.0) {
         settings_.log.printf("Node presolve time %.2f seconds\n", node_presolve_time);

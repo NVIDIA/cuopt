@@ -708,6 +708,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(const lp_problem_t<i_t, f_t>&
       f_t nz_score = lp.num_cols - row_nz;
 
       const i_t slack       = slack_map[i];
+      assert(slack >= 0);
       const f_t slack_value = xstar[slack];
 
       f_t slack_score = -std::log10(1e-16 + std::abs(slack_value));
@@ -953,7 +954,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(const lp_problem_t<i_t, f_t>&
         }
 
         // The variable that is farthest from its bound is used as a pivot
-        if (max_off_bound_var > 0) {
+        if (max_off_bound_var >= 0) {
           const i_t col_start = lp.A.col_start[max_off_bound_var];
           const i_t col_end   = lp.A.col_start[max_off_bound_var + 1];
           const i_t col_len   = col_end - col_start;
@@ -1010,14 +1011,14 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(const lp_problem_t<i_t, f_t>&
       for (i_t row : aggregated_rows) {
         score[row] = 0.0;
       }
-
-      // Clear the aggregated mark
-      for (i_t row : aggregated_rows) {
-        aggregated_mark[row] = 0;
-      }
-      // Clear the aggregated rows
-      aggregated_rows.clear();
     }
+
+    // Clear the aggregated mark
+    for (i_t row : aggregated_rows) {
+      aggregated_mark[row] = 0;
+    }
+    // Clear the aggregated rows
+    aggregated_rows.clear();
 
     // Set the score of the current row to zero
     score[i] = 0.0;
@@ -2379,7 +2380,7 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_helper(
       }
     }
     printf("\n");
-    printf("Original inequality rhs %e nz %d\n", rhs,  coefficients.size());
+    printf("Original inequality rhs %e nz %ld\n", rhs, coefficients.size());
     for (i_t q = 0; q < nz; q++) {
       printf("%e x%d ", coefficients[q], indicies[q]);
     }
@@ -2679,6 +2680,7 @@ void remove_cuts(lp_problem_t<i_t, f_t>& lp,
   std::vector<i_t> is_slack(lp.num_cols, 0);
   for (i_t j : new_slacks) {
     is_slack[j] = 1;
+#ifdef CHECK_SLACKS
     // Check that slack column length is 1
     const i_t col_start = lp.A.col_start[j];
     const i_t col_end = lp.A.col_start[j + 1];
@@ -2687,6 +2689,7 @@ void remove_cuts(lp_problem_t<i_t, f_t>& lp,
       printf("Remove cuts: Slack %d has %d nzs in column\n", j, col_len);
       assert(col_len == 1);
     }
+#endif
   }
 
   for (i_t k = original_rows; k < lp.num_rows; k++) {
@@ -2875,6 +2878,55 @@ void read_saved_solution_for_cut_verification(const lp_problem_t<i_t, f_t>& lp,
   }
 }
 
+template <typename i_t, typename f_t>
+void write_solution_for_cut_verification(const lp_problem_t<i_t, f_t>& lp,
+                                         const std::vector<f_t>& solution)
+{
+  FILE* fid = NULL;
+  fid       = fopen("solution.dat", "w");
+  if (fid != NULL) {
+    printf("Writing solution.dat\n");
+
+    std::vector<f_t> residual = lp.rhs;
+    matrix_vector_multiply(lp.A, 1.0, solution, -1.0, residual);
+    printf("|| A*x - b ||_inf %e\n", vector_norm_inf<i_t, f_t>(residual));
+    auto hash_combine_f = [](size_t seed, f_t x) {
+      seed ^= std::hash<f_t>{}(x) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+      return seed;
+    };
+    printf(
+      "incumbent size %ld original lp cols %d\n", solution.size(), lp.num_cols);
+    i_t n       = lp.num_cols;
+    size_t seed = n;
+    fprintf(fid, "%d\n", n);
+    for (i_t j = 0; j < n; ++j) {
+      fprintf(fid, "%.17g\n", solution[j]);
+      seed = hash_combine_f(seed, solution[j]);
+    }
+    printf("Solution hash: %20x\n", seed);
+    fclose(fid);
+  }
+}
+
+template <typename i_t, typename f_t>
+void verify_cuts_against_saved_solution(const csr_matrix_t<i_t, f_t>& cuts,
+                                        const std::vector<f_t>& cut_rhs,
+                                        const std::vector<f_t>& saved_solution)
+{
+  if (saved_solution.size() > 0) {
+    csc_matrix_t<i_t, f_t> cuts_to_add_col(cuts.m, cuts.n, cuts.row_start[cuts.m]);
+    cuts.to_compressed_col(cuts_to_add_col);
+    std::vector<f_t> Cx(cuts.m);
+    matrix_vector_multiply(cuts_to_add_col, 1.0, saved_solution, 0.0, Cx);
+    const i_t num_cuts = cuts.m;
+    for (i_t k = 0; k < num_cuts; k++) {
+      if (Cx[k] > cut_rhs[k] + 1e-6) {
+        printf("Cut %d is violated by saved solution. Cx %e cut_rhs %e Diff: %e\n", k, Cx[k], cut_rhs[k], Cx[k] - cut_rhs[k]);
+      }
+    }
+  }
+}
+
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template class cut_pool_t<int, double>;
 template class cut_generation_t<int, double>;
@@ -2915,6 +2967,17 @@ void read_saved_solution_for_cut_verification<int, double>(
   const lp_problem_t<int, double>& lp,
   const simplex_solver_settings_t<int, double>& settings,
   std::vector<double>& saved_solution);
+
+template
+void write_solution_for_cut_verification<int, double>(
+  const lp_problem_t<int, double>& lp,
+  const std::vector<double>& solution);
+
+template
+void verify_cuts_against_saved_solution<int, double>(
+  const csr_matrix_t<int, double>& cuts,
+  const std::vector<double>& cut_rhs,
+  const std::vector<double>& saved_solution);
 #endif
 
 } // namespace cuopt::linear_programming::dual_simplex

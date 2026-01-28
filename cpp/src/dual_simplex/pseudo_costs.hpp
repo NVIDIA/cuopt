@@ -52,16 +52,6 @@ class pseudo_costs_t {
                          const std::vector<f_t>& solution,
                          logger_t& log);
 
-  i_t reliable_variable_selection(const lp_problem_t<i_t, f_t>& lp,
-                                  const simplex_solver_settings_t<i_t, f_t>& settings,
-                                  const std::vector<variable_type_t>& var_types,
-                                  const std::vector<variable_status_t>& vstatus,
-                                  const std::vector<f_t>& edge_norms,
-                                  const std::vector<i_t>& fractional,
-                                  const std::vector<f_t>& solution,
-                                  f_t current_obj,
-                                  logger_t& log);
-
   void update_pseudo_costs_from_strong_branching(const std::vector<i_t>& fractional,
                                                  const std::vector<f_t>& root_soln);
   std::vector<f_t> pseudo_cost_sum_up;

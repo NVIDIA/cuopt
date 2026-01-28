@@ -150,6 +150,10 @@ class branch_and_bound_t {
   std::vector<omp_atomic_t<f_t>> local_lower_bounds_;
 
   // Mutex for the original LP
+  // The heuristics threads look at the original LP. But the main thread modifies the
+  // size of the original LP by adding slacks for cuts. Heuristic threads should lock
+  // this mutex when accessing the original LP. The main thread should lock this mutex
+  // when modifying the original LP.
   omp_mutex_t mutex_original_lp_;
 
   // Mutex for upper bound
