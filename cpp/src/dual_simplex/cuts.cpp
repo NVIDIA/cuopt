@@ -150,7 +150,7 @@ void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
       break;
     }
 
-    if (cut_age_[i] > 0) { settings_.log.printf("Adding cut with age %d\n", cut_age_[i]); }
+    if (verbose && cut_age_[i] > 0) { settings_.log.printf("Adding cut with age %d\n", cut_age_[i]); }
     if (verbose) {
       settings_.log.printf(
         "Scored cuts %d. Adding cut %d score %e\n", scored_cuts_, i, cut_scores_[i]);
