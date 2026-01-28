@@ -238,7 +238,7 @@ void sparse_vector_t<i_t, f_t>::squeeze(sparse_vector_t<i_t, f_t>& y) const
 {
   y.n = n;
 
-  i_t nz      = 0;
+  i_t nz       = 0;
   const i_t nx = x.size();
   for (i_t k = 0; k < nx; k++) {
     if (x[k] != 0.0) { nz++; }

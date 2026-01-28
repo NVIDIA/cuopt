@@ -128,9 +128,7 @@ void set_uninitialized_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
                                            const std::vector<i_t>& basic_list,
                                            std::vector<f_t>& edge_norms)
 {
-  if (edge_norms.size() != lp.num_cols) {
-    edge_norms.resize(lp.num_cols, -1.0);
-  }
+  if (edge_norms.size() != lp.num_cols) { edge_norms.resize(lp.num_cols, -1.0); }
   for (i_t k = 0; k < lp.num_rows; k++) {
     const i_t j = basic_list[k];
     if (edge_norms[j] < 0.0) { edge_norms[j] = 1e-4; }

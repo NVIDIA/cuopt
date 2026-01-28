@@ -146,11 +146,11 @@ void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
   while (scored_cuts_ < max_cuts && !sorted_indices.empty()) {
     const i_t i = sorted_indices[0];
 
-    if (cut_distances_[i] <= min_cut_distance) {
-      break;
-    }
+    if (cut_distances_[i] <= min_cut_distance) { break; }
 
-    if (verbose && cut_age_[i] > 0) { settings_.log.printf("Adding cut with age %d\n", cut_age_[i]); }
+    if (verbose && cut_age_[i] > 0) {
+      settings_.log.printf("Adding cut with age %d\n", cut_age_[i]);
+    }
     if (verbose) {
       settings_.log.printf(
         "Scored cuts %d. Adding cut %d score %e\n", scored_cuts_, i, cut_scores_[i]);
@@ -741,9 +741,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
       f_t cg_cut_rhs;
       i_t cg_status = cg.generate_strong_cg_cut(
         lp, settings, var_types, cg_inequality, cg_inequality_rhs, xstar, cg_cut, cg_cut_rhs);
-      if (cg_status == 0) {
-        cut_pool_.add_cut(cut_type_t::CHVATAL_GOMORY, cg_cut, cg_cut_rhs);
-      }
+      if (cg_status == 0) { cut_pool_.add_cut(cut_type_t::CHVATAL_GOMORY, cg_cut, cg_cut_rhs); }
     }
 
     // Remove the slack from the equality to get an inequality
@@ -853,9 +851,9 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
 
         // Get the biggest violation
         const i_t best_index = permuted[0];
-        f_t max_viol = transformed_violations[best_index];
-        cut          = transformed_cuts[best_index];
-        cut_rhs      = transformed_cut_rhs[best_index];
+        f_t max_viol         = transformed_violations[best_index];
+        cut                  = transformed_cuts[best_index];
+        cut_rhs              = transformed_cut_rhs[best_index];
 
         if (max_viol > 1e-6) {
           // TODO: Divide by 1/2*violation, 1/4*violation, 1/8*violation
@@ -864,7 +862,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
           mir.remove_small_coefficients(lp.lower, lp.upper, cut, cut_rhs);
           mir.substitute_slacks(lp, Arow, cut, cut_rhs);
           f_t viol = mir.compute_violation(cut, cut_rhs, xstar);
-          add_cut = true;
+          add_cut  = true;
         }
       }
 
@@ -1035,9 +1033,7 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
         f_t cg_cut_rhs;
         i_t cg_status = cg.generate_strong_cg_cut(
           lp, settings, var_types, cg_inequality, cg_inequality_rhs, xstar, cg_cut, cg_cut_rhs);
-        if (cg_status == 0) {
-          cut_pool_.add_cut(cut_type_t::CHVATAL_GOMORY, cg_cut, cg_cut_rhs);
-        }
+        if (cg_status == 0) { cut_pool_.add_cut(cut_type_t::CHVATAL_GOMORY, cg_cut, cg_cut_rhs); }
       }
 
       if (settings.mixed_integer_gomory_cuts == 0) { continue; }
@@ -1050,9 +1046,7 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
       bool A_valid       = false;
       f_t cut_A_distance = 0.0;
       if (mir_status == 0) {
-        if (cut_A.i.size() == 0) {
-          continue;
-        }
+        if (cut_A.i.size() == 0) { continue; }
         mir.substitute_slacks(lp, Arow, cut_A, cut_A_rhs);
         if (cut_A.i.size() == 0) {
           A_valid = false;
@@ -1078,9 +1072,7 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
       bool B_valid       = false;
       f_t cut_B_distance = 0.0;
       if (mir_status == 0) {
-        if (cut_B.i.size() == 0) {
-          continue;
-        }
+        if (cut_B.i.size() == 0) { continue; }
         mir.substitute_slacks(lp, Arow, cut_B, cut_B_rhs);
         if (cut_B.i.size() == 0) {
           B_valid = false;
@@ -1174,9 +1166,9 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
     for (i_t p = row_start; p < row_end; p++) {
       const i_t jj = Arow.j[p];
       if (nonbasic_mark_[jj] == 1) {
-        const f_t val = u_bar_i * Arow.x[p];
-        const f_t y = val - c_workspace_[jj];
-        const f_t t = x_workspace_[jj] + y;
+        const f_t val    = u_bar_i * Arow.x[p];
+        const f_t y      = val - c_workspace_[jj];
+        const f_t t      = x_workspace_[jj] + y;
         c_workspace_[jj] = (t - x_workspace_[jj]) - y;
         x_workspace_[jj] = t;
         if (!x_mark_[jj]) {
@@ -1772,8 +1764,8 @@ void mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(const lp_problem_
       found_slack           = true;
       const i_t slack_start = lp.A.col_start[j];
 #ifdef CHECK_SLACKS
-      const i_t slack_end   = lp.A.col_start[j + 1];
-      const i_t slack_len   = slack_end - slack_start;
+      const i_t slack_end = lp.A.col_start[j + 1];
+      const i_t slack_len = slack_end - slack_start;
       if (slack_len != 1) {
         printf("Slack %d has %d nzs in colum\n", j, slack_len);
         assert(slack_len == 1);
