@@ -1,6 +1,26 @@
 # Release Notes
 
+## Release Notes 26.02
 
+### New Features (26.02)
+
+-
+
+### Breaking Changes (26.02)
+
+-
+
+### Improvements (26.02)
+
+-
+
+### Bug Fixes (26.02)
+
+-
+
+### Documentation (26.02)
+
+-
 
 ## Release Notes 25.12
 
