@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -105,6 +105,14 @@ cdef char* c_get_string(string in_str):
     # copy except the terminating char
     strcpy(c_string, in_str.c_str())
     return c_string
+
+
+cdef object _vector_to_numpy(vector[double]& vec):
+    cdef Py_ssize_t size = vec.size()
+    if size == 0:
+        return np.array([], dtype=np.float64)
+    cdef double* data_ptr = vec.data()
+    return np.asarray(<double[:size]> data_ptr, dtype=np.float64).copy()
 
 
 def get_data_ptr(array):
@@ -300,9 +308,13 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
     sol_ret = move(sol_ret_ptr.get()[0])
 
     if sol_ret.problem_type == ProblemCategory.MIP or sol_ret.problem_type == ProblemCategory.IP: # noqa
-        solution = DeviceBuffer.c_from_unique_ptr(
-            move(sol_ret.mip_ret.solution_)
-        )
+        if sol_ret.mip_ret.is_device_memory_:
+            solution = DeviceBuffer.c_from_unique_ptr(
+                move(sol_ret.mip_ret.solution_)
+            )
+            solution = series_from_buf(solution, pa.float64()).to_numpy()
+        else:
+            solution = _vector_to_numpy(sol_ret.mip_ret.solution_host_)
         termination_status = sol_ret.mip_ret.termination_status_
         error_status = sol_ret.mip_ret.error_status_
         error_message = sol_ret.mip_ret.error_message_
@@ -316,8 +328,6 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         max_variable_bound_violation = sol_ret.mip_ret.max_variable_bound_violation_ # noqa
         num_nodes = sol_ret.mip_ret.nodes_
         num_simplex_iterations = sol_ret.mip_ret.simplex_iterations_
-
-        solution = series_from_buf(solution, pa.float64()).to_numpy()
 
         return Solution(
             ProblemCategory(sol_ret.problem_type),
@@ -339,15 +349,20 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         )
 
     else:
-        primal_solution = DeviceBuffer.c_from_unique_ptr(
-            move(sol_ret.lp_ret.primal_solution_)
-        )
-        dual_solution = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.dual_solution_)) # noqa
-        reduced_cost = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.reduced_cost_)) # noqa
+        if sol_ret.lp_ret.is_device_memory_:
+            primal_solution = DeviceBuffer.c_from_unique_ptr(
+                move(sol_ret.lp_ret.primal_solution_)
+            )
+            dual_solution = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.dual_solution_)) # noqa
+            reduced_cost = DeviceBuffer.c_from_unique_ptr(move(sol_ret.lp_ret.reduced_cost_)) # noqa
 
-        primal_solution = series_from_buf(primal_solution, pa.float64()).to_numpy()
-        dual_solution = series_from_buf(dual_solution, pa.float64()).to_numpy()
-        reduced_cost = series_from_buf(reduced_cost, pa.float64()).to_numpy()
+            primal_solution = series_from_buf(primal_solution, pa.float64()).to_numpy()
+            dual_solution = series_from_buf(dual_solution, pa.float64()).to_numpy()
+            reduced_cost = series_from_buf(reduced_cost, pa.float64()).to_numpy()
+        else:
+            primal_solution = _vector_to_numpy(sol_ret.lp_ret.primal_solution_host_)
+            dual_solution = _vector_to_numpy(sol_ret.lp_ret.dual_solution_host_)
+            reduced_cost = _vector_to_numpy(sol_ret.lp_ret.reduced_cost_host_)
 
         termination_status = sol_ret.lp_ret.termination_status_
         error_status = sol_ret.lp_ret.error_status_
@@ -363,33 +378,74 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
 
         # In BatchSolve, we don't get the warm start data
         if not is_batch:
-            current_primal_solution = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_primal_solution_)
-            )
-            current_dual_solution = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_dual_solution_)
-            )
-            initial_primal_average = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.initial_primal_average_)
-            )
-            initial_dual_average = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.initial_dual_average_)
-            )
-            current_ATY = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.current_ATY_)
-            )
-            sum_primal_solutions = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.sum_primal_solutions_)
-            )
-            sum_dual_solutions = DeviceBuffer.c_from_unique_ptr(
-                move(sol_ret.lp_ret.sum_dual_solutions_)
-            )
-            last_restart_duality_gap_primal_solution = DeviceBuffer.c_from_unique_ptr( # noqa
-                move(sol_ret.lp_ret.last_restart_duality_gap_primal_solution_)
-            )
-            last_restart_duality_gap_dual_solution = DeviceBuffer.c_from_unique_ptr( # noqa
-                move(sol_ret.lp_ret.last_restart_duality_gap_dual_solution_)
-            )
+            if sol_ret.lp_ret.is_device_memory_:
+                current_primal_solution = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.current_primal_solution_)
+                )
+                current_dual_solution = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.current_dual_solution_)
+                )
+                initial_primal_average = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.initial_primal_average_)
+                )
+                initial_dual_average = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.initial_dual_average_)
+                )
+                current_ATY = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.current_ATY_)
+                )
+                sum_primal_solutions = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.sum_primal_solutions_)
+                )
+                sum_dual_solutions = DeviceBuffer.c_from_unique_ptr(
+                    move(sol_ret.lp_ret.sum_dual_solutions_)
+                )
+                last_restart_duality_gap_primal_solution = DeviceBuffer.c_from_unique_ptr( # noqa
+                    move(sol_ret.lp_ret.last_restart_duality_gap_primal_solution_)
+                )
+                last_restart_duality_gap_dual_solution = DeviceBuffer.c_from_unique_ptr( # noqa
+                    move(sol_ret.lp_ret.last_restart_duality_gap_dual_solution_)
+                )
+                current_primal_solution = series_from_buf(
+                    current_primal_solution, pa.float64()
+                ).to_numpy()
+                current_dual_solution = series_from_buf(
+                    current_dual_solution, pa.float64()
+                ).to_numpy()
+                initial_primal_average = series_from_buf(
+                    initial_primal_average, pa.float64()
+                ).to_numpy()
+                initial_dual_average = series_from_buf(
+                    initial_dual_average, pa.float64()
+                ).to_numpy()
+                current_ATY = series_from_buf(
+                    current_ATY, pa.float64()
+                ).to_numpy()
+                sum_primal_solutions = series_from_buf(
+                    sum_primal_solutions, pa.float64()
+                ).to_numpy()
+                sum_dual_solutions = series_from_buf(
+                    sum_dual_solutions, pa.float64()
+                ).to_numpy()
+                last_restart_duality_gap_primal_solution = series_from_buf(
+                    last_restart_duality_gap_primal_solution,
+                    pa.float64()
+                ).to_numpy()
+                last_restart_duality_gap_dual_solution = series_from_buf(
+                    last_restart_duality_gap_dual_solution,
+                    pa.float64()
+                ).to_numpy()
+            else:
+                current_primal_solution = np.array([], dtype=np.float64)
+                current_dual_solution = np.array([], dtype=np.float64)
+                initial_primal_average = np.array([], dtype=np.float64)
+                initial_dual_average = np.array([], dtype=np.float64)
+                current_ATY = np.array([], dtype=np.float64)
+                sum_primal_solutions = np.array([], dtype=np.float64)
+                sum_dual_solutions = np.array([], dtype=np.float64)
+                last_restart_duality_gap_primal_solution = np.array([], dtype=np.float64)
+                last_restart_duality_gap_dual_solution = np.array([], dtype=np.float64)
+
             initial_primal_weight = sol_ret.lp_ret.initial_primal_weight_
             initial_step_size = sol_ret.lp_ret.initial_step_size_
             total_pdlp_iterations = sol_ret.lp_ret.total_pdlp_iterations_
@@ -398,36 +454,6 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             last_restart_kkt_score = sol_ret.lp_ret.last_restart_kkt_score_
             sum_solution_weight = sol_ret.lp_ret.sum_solution_weight_
             iterations_since_last_restart = sol_ret.lp_ret.iterations_since_last_restart_ # noqa
-
-            current_primal_solution = series_from_buf(
-                current_primal_solution, pa.float64()
-            ).to_numpy()
-            current_dual_solution = series_from_buf(
-                current_dual_solution, pa.float64()
-            ).to_numpy()
-            initial_primal_average = series_from_buf(
-                initial_primal_average, pa.float64()
-            ).to_numpy()
-            initial_dual_average = series_from_buf(
-                initial_dual_average, pa.float64()
-            ).to_numpy()
-            current_ATY = series_from_buf(
-                current_ATY, pa.float64()
-            ).to_numpy()
-            sum_primal_solutions = series_from_buf(
-                sum_primal_solutions, pa.float64()
-            ).to_numpy()
-            sum_dual_solutions = series_from_buf(
-                sum_dual_solutions, pa.float64()
-            ).to_numpy()
-            last_restart_duality_gap_primal_solution = series_from_buf(
-                last_restart_duality_gap_primal_solution,
-                pa.float64()
-            ).to_numpy()
-            last_restart_duality_gap_dual_solution = series_from_buf(
-                last_restart_duality_gap_dual_solution,
-                pa.float64()
-            ).to_numpy()
 
             return Solution(
                 ProblemCategory(sol_ret.problem_type),
