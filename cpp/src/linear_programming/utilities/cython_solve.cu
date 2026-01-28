@@ -10,6 +10,7 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/cython_solve.hpp>
+#include <cuopt/linear_programming/utilities/remote_solve.hpp>
 #include <mip/logger.hpp>
 #include <mps_parser/data_model_view.hpp>
 #include <mps_parser/mps_data_model.hpp>
@@ -21,6 +22,7 @@
 
 #include <rmm/device_buffer.hpp>
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -142,47 +144,61 @@ linear_programming_ret_t call_solve_lp(
   const bool use_pdlp_solver_mode = true;
   auto solution                   = cuopt::linear_programming::solve_lp(
     op_problem, solver_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
-  linear_programming_ret_t lp_ret{
-    std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release()),
-    std::make_unique<rmm::device_buffer>(solution.get_dual_solution().release()),
-    std::make_unique<rmm::device_buffer>(solution.get_reduced_cost().release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().current_primal_solution_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().current_dual_solution_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().initial_primal_average_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().initial_dual_average_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().current_ATY_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().sum_primal_solutions_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().sum_dual_solutions_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().last_restart_duality_gap_primal_solution_.release()),
-    std::make_unique<rmm::device_buffer>(
-      solution.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.release()),
-    solution.get_pdlp_warm_start_data().initial_primal_weight_,
-    solution.get_pdlp_warm_start_data().initial_step_size_,
-    solution.get_pdlp_warm_start_data().total_pdlp_iterations_,
-    solution.get_pdlp_warm_start_data().total_pdhg_iterations_,
-    solution.get_pdlp_warm_start_data().last_candidate_kkt_score_,
-    solution.get_pdlp_warm_start_data().last_restart_kkt_score_,
-    solution.get_pdlp_warm_start_data().sum_solution_weight_,
-    solution.get_pdlp_warm_start_data().iterations_since_last_restart_,
-    solution.get_termination_status(),
-    solution.get_error_status().get_error_type(),
-    solution.get_error_status().what(),
-    solution.get_additional_termination_information().l2_primal_residual,
-    solution.get_additional_termination_information().l2_dual_residual,
-    solution.get_additional_termination_information().primal_objective,
-    solution.get_additional_termination_information().dual_objective,
-    solution.get_additional_termination_information().gap,
-    solution.get_additional_termination_information().number_of_steps_taken,
-    solution.get_additional_termination_information().solve_time,
-    solution.get_additional_termination_information().solved_by_pdlp};
+  linear_programming_ret_t lp_ret{};
+  const auto& stats          = solution.get_additional_termination_information();
+  auto& warm_start           = solution.get_pdlp_warm_start_data();
+  lp_ret.termination_status_ = solution.get_termination_status();
+  lp_ret.error_status_       = solution.get_error_status().get_error_type();
+  lp_ret.error_message_      = solution.get_error_status().what();
+  lp_ret.l2_primal_residual_ = stats.l2_primal_residual;
+  lp_ret.l2_dual_residual_   = stats.l2_dual_residual;
+  lp_ret.primal_objective_   = stats.primal_objective;
+  lp_ret.dual_objective_     = stats.dual_objective;
+  lp_ret.gap_                = stats.gap;
+  lp_ret.nb_iterations_      = stats.number_of_steps_taken;
+  lp_ret.solve_time_         = stats.solve_time;
+  lp_ret.solved_by_pdlp_     = stats.solved_by_pdlp;
+
+  lp_ret.initial_primal_weight_         = warm_start.initial_primal_weight_;
+  lp_ret.initial_step_size_             = warm_start.initial_step_size_;
+  lp_ret.total_pdlp_iterations_         = warm_start.total_pdlp_iterations_;
+  lp_ret.total_pdhg_iterations_         = warm_start.total_pdhg_iterations_;
+  lp_ret.last_candidate_kkt_score_      = warm_start.last_candidate_kkt_score_;
+  lp_ret.last_restart_kkt_score_        = warm_start.last_restart_kkt_score_;
+  lp_ret.sum_solution_weight_           = warm_start.sum_solution_weight_;
+  lp_ret.iterations_since_last_restart_ = warm_start.iterations_since_last_restart_;
+
+  if (solution.is_device_memory()) {
+    lp_ret.primal_solution_ =
+      std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release());
+    lp_ret.dual_solution_ =
+      std::make_unique<rmm::device_buffer>(solution.get_dual_solution().release());
+    lp_ret.reduced_cost_ =
+      std::make_unique<rmm::device_buffer>(solution.get_reduced_cost().release());
+    lp_ret.current_primal_solution_ =
+      std::make_unique<rmm::device_buffer>(warm_start.current_primal_solution_.release());
+    lp_ret.current_dual_solution_ =
+      std::make_unique<rmm::device_buffer>(warm_start.current_dual_solution_.release());
+    lp_ret.initial_primal_average_ =
+      std::make_unique<rmm::device_buffer>(warm_start.initial_primal_average_.release());
+    lp_ret.initial_dual_average_ =
+      std::make_unique<rmm::device_buffer>(warm_start.initial_dual_average_.release());
+    lp_ret.current_ATY_ = std::make_unique<rmm::device_buffer>(warm_start.current_ATY_.release());
+    lp_ret.sum_primal_solutions_ =
+      std::make_unique<rmm::device_buffer>(warm_start.sum_primal_solutions_.release());
+    lp_ret.sum_dual_solutions_ =
+      std::make_unique<rmm::device_buffer>(warm_start.sum_dual_solutions_.release());
+    lp_ret.last_restart_duality_gap_primal_solution_ = std::make_unique<rmm::device_buffer>(
+      warm_start.last_restart_duality_gap_primal_solution_.release());
+    lp_ret.last_restart_duality_gap_dual_solution_ = std::make_unique<rmm::device_buffer>(
+      warm_start.last_restart_duality_gap_dual_solution_.release());
+    lp_ret.is_device_memory_ = true;
+  } else {
+    lp_ret.primal_solution_host_ = solution.get_primal_solution_host();
+    lp_ret.dual_solution_host_   = solution.get_dual_solution_host();
+    lp_ret.reduced_cost_host_    = solution.get_reduced_cost_host();
+    lp_ret.is_device_memory_     = false;
+  }
 
   return lp_ret;
 }
@@ -205,20 +221,28 @@ mip_ret_t call_solve_mip(
     error_type_t::ValidationError,
     "MIP solve cannot be called on an LP problem!");
   auto solution = cuopt::linear_programming::solve_mip(op_problem, solver_settings);
-  mip_ret_t mip_ret{std::make_unique<rmm::device_buffer>(solution.get_solution().release()),
-                    solution.get_termination_status(),
-                    solution.get_error_status().get_error_type(),
-                    solution.get_error_status().what(),
-                    solution.get_objective_value(),
-                    solution.get_mip_gap(),
-                    solution.get_solution_bound(),
-                    solution.get_total_solve_time(),
-                    solution.get_presolve_time(),
-                    solution.get_max_constraint_violation(),
-                    solution.get_max_int_violation(),
-                    solution.get_max_variable_bound_violation(),
-                    solution.get_num_nodes(),
-                    solution.get_num_simplex_iterations()};
+  mip_ret_t mip_ret{};
+  mip_ret.termination_status_           = solution.get_termination_status();
+  mip_ret.error_status_                 = solution.get_error_status().get_error_type();
+  mip_ret.error_message_                = solution.get_error_status().what();
+  mip_ret.objective_                    = solution.get_objective_value();
+  mip_ret.mip_gap_                      = solution.get_mip_gap();
+  mip_ret.solution_bound_               = solution.get_solution_bound();
+  mip_ret.total_solve_time_             = solution.get_total_solve_time();
+  mip_ret.presolve_time_                = solution.get_presolve_time();
+  mip_ret.max_constraint_violation_     = solution.get_max_constraint_violation();
+  mip_ret.max_int_violation_            = solution.get_max_int_violation();
+  mip_ret.max_variable_bound_violation_ = solution.get_max_variable_bound_violation();
+  mip_ret.nodes_                        = solution.get_num_nodes();
+  mip_ret.simplex_iterations_           = solution.get_num_simplex_iterations();
+
+  if (solution.is_device_memory()) {
+    mip_ret.solution_ = std::make_unique<rmm::device_buffer>(solution.get_solution().release());
+    mip_ret.is_device_memory_ = true;
+  } else {
+    mip_ret.solution_host_    = solution.get_solution_host();
+    mip_ret.is_device_memory_ = false;
+  }
   return mip_ret;
 }
 
@@ -228,6 +252,110 @@ std::unique_ptr<solver_ret_t> call_solve(
   unsigned int flags,
   bool is_batch_mode)
 {
+  // Check if remote solve is configured FIRST (before any CUDA operations)
+  if (linear_programming::is_remote_solve_enabled()) {
+    // Data coming from Python is in CPU memory - mark it as such
+    data_model->set_is_device_memory(false);
+
+    solver_ret_t response;
+
+    // Determine if LP or MIP based on variable types
+    bool is_mip    = false;
+    auto var_types = data_model->get_variable_types();
+    for (size_t i = 0; i < var_types.size(); ++i) {
+      if (var_types.data()[i] == 'I' || var_types.data()[i] == 'B') {
+        is_mip = true;
+        break;
+      }
+    }
+
+    if (!is_mip) {
+      // LP: call solve_lp with nullptr handle - remote solve doesn't need GPU
+      auto solution =
+        linear_programming::solve_lp(nullptr, *data_model, solver_settings->get_pdlp_settings());
+
+      auto term_info = solution.get_additional_termination_information();
+      linear_programming_ret_t lp_ret{};
+
+      if (solution.is_device_memory()) {
+        // GPU data (shouldn't happen for remote solve, but handle gracefully)
+        lp_ret.primal_solution_ =
+          std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release());
+        lp_ret.dual_solution_ =
+          std::make_unique<rmm::device_buffer>(solution.get_dual_solution().release());
+        lp_ret.reduced_cost_ =
+          std::make_unique<rmm::device_buffer>(solution.get_reduced_cost().release());
+        lp_ret.is_device_memory_ = true;
+      } else {
+        // CPU data from remote solve - avoid device buffer allocations so CPU-only
+        // clients don't initialize CUDA.
+        lp_ret.primal_solution_host_ = std::move(solution.get_primal_solution_host());
+        lp_ret.dual_solution_host_   = std::move(solution.get_dual_solution_host());
+        lp_ret.reduced_cost_host_    = std::move(solution.get_reduced_cost_host());
+        lp_ret.is_device_memory_     = false;
+      }
+
+      // No warm-start data in remote stub path
+      lp_ret.initial_primal_weight_         = 0.0;
+      lp_ret.initial_step_size_             = 0.0;
+      lp_ret.total_pdlp_iterations_         = 0;
+      lp_ret.total_pdhg_iterations_         = 0;
+      lp_ret.last_candidate_kkt_score_      = 0.0;
+      lp_ret.last_restart_kkt_score_        = 0.0;
+      lp_ret.sum_solution_weight_           = 0.0;
+      lp_ret.iterations_since_last_restart_ = 0;
+
+      lp_ret.termination_status_ = solution.get_termination_status();
+      lp_ret.error_status_       = solution.get_error_status().get_error_type();
+      lp_ret.error_message_      = solution.get_error_status().what();
+      lp_ret.l2_primal_residual_ = term_info.l2_primal_residual;
+      lp_ret.l2_dual_residual_   = term_info.l2_dual_residual;
+      lp_ret.primal_objective_   = term_info.primal_objective;
+      lp_ret.dual_objective_     = term_info.dual_objective;
+      lp_ret.gap_                = term_info.gap;
+      lp_ret.nb_iterations_      = term_info.number_of_steps_taken;
+      lp_ret.solve_time_         = term_info.solve_time;
+      lp_ret.solved_by_pdlp_     = term_info.solved_by_pdlp;
+      response.lp_ret            = std::move(lp_ret);
+      response.problem_type      = linear_programming::problem_category_t::LP;
+    } else {
+      // MIP: call solve_mip with nullptr handle - remote solve doesn't need GPU
+      auto solution =
+        linear_programming::solve_mip(nullptr, *data_model, solver_settings->get_mip_settings());
+
+      mip_ret_t mip_ret{};
+
+      if (solution.is_device_memory()) {
+        // GPU data (shouldn't happen for remote solve, but handle gracefully)
+        mip_ret.solution_ = std::make_unique<rmm::device_buffer>(solution.get_solution().release());
+        mip_ret.is_device_memory_ = true;
+      } else {
+        // CPU data from remote solve - avoid device buffer allocations so CPU-only
+        // clients don't initialize CUDA.
+        mip_ret.solution_host_    = std::move(solution.get_solution_host());
+        mip_ret.is_device_memory_ = false;
+      }
+
+      mip_ret.termination_status_           = solution.get_termination_status();
+      mip_ret.error_status_                 = solution.get_error_status().get_error_type();
+      mip_ret.error_message_                = solution.get_error_status().what();
+      mip_ret.objective_                    = solution.get_objective_value();
+      mip_ret.mip_gap_                      = solution.get_mip_gap();
+      mip_ret.solution_bound_               = solution.get_solution_bound();
+      mip_ret.total_solve_time_             = solution.get_total_solve_time();
+      mip_ret.presolve_time_                = solution.get_presolve_time();
+      mip_ret.max_constraint_violation_     = solution.get_max_constraint_violation();
+      mip_ret.max_int_violation_            = solution.get_max_int_violation();
+      mip_ret.max_variable_bound_violation_ = solution.get_max_variable_bound_violation();
+      mip_ret.nodes_                        = solution.get_num_nodes();
+      mip_ret.simplex_iterations_           = solution.get_num_simplex_iterations();
+      response.mip_ret                      = std::move(mip_ret);
+      response.problem_type                 = linear_programming::problem_category_t::MIP;
+    }
+
+    return std::make_unique<solver_ret_t>(std::move(response));
+  }
+
   raft::common::nvtx::range fun_scope("Call Solve");
   rmm::cuda_stream stream(static_cast<rmm::cuda_stream::flags>(flags));
   const raft::handle_t handle_{stream};
@@ -239,28 +367,32 @@ std::unique_ptr<solver_ret_t> call_solve(
     response.lp_ret =
       call_solve_lp(op_problem, solver_settings->get_pdlp_settings(), is_batch_mode);
     response.problem_type = linear_programming::problem_category_t::LP;
-    // Reset stream to per-thread default as non-blocking stream is out of scope after the
-    // function returns.
-    response.lp_ret.primal_solution_->set_stream(rmm::cuda_stream_per_thread);
-    response.lp_ret.dual_solution_->set_stream(rmm::cuda_stream_per_thread);
-    response.lp_ret.reduced_cost_->set_stream(rmm::cuda_stream_per_thread);
-    response.lp_ret.current_primal_solution_->set_stream(rmm::cuda_stream_per_thread);
-    response.lp_ret.current_dual_solution_->set_stream(rmm::cuda_stream_per_thread);
-    response.lp_ret.initial_primal_average_->set_stream(rmm::cuda_stream_per_thread);
-    response.lp_ret.initial_dual_average_->set_stream(rmm::cuda_stream_per_thread);
-    response.lp_ret.current_ATY_->set_stream(rmm::cuda_stream_per_thread);
-    response.lp_ret.sum_primal_solutions_->set_stream(rmm::cuda_stream_per_thread);
-    response.lp_ret.sum_dual_solutions_->set_stream(rmm::cuda_stream_per_thread);
-    response.lp_ret.last_restart_duality_gap_primal_solution_->set_stream(
-      rmm::cuda_stream_per_thread);
-    response.lp_ret.last_restart_duality_gap_dual_solution_->set_stream(
-      rmm::cuda_stream_per_thread);
+    if (response.lp_ret.is_device_memory_) {
+      // Reset stream to per-thread default as non-blocking stream is out of scope after the
+      // function returns.
+      response.lp_ret.primal_solution_->set_stream(rmm::cuda_stream_per_thread);
+      response.lp_ret.dual_solution_->set_stream(rmm::cuda_stream_per_thread);
+      response.lp_ret.reduced_cost_->set_stream(rmm::cuda_stream_per_thread);
+      response.lp_ret.current_primal_solution_->set_stream(rmm::cuda_stream_per_thread);
+      response.lp_ret.current_dual_solution_->set_stream(rmm::cuda_stream_per_thread);
+      response.lp_ret.initial_primal_average_->set_stream(rmm::cuda_stream_per_thread);
+      response.lp_ret.initial_dual_average_->set_stream(rmm::cuda_stream_per_thread);
+      response.lp_ret.current_ATY_->set_stream(rmm::cuda_stream_per_thread);
+      response.lp_ret.sum_primal_solutions_->set_stream(rmm::cuda_stream_per_thread);
+      response.lp_ret.sum_dual_solutions_->set_stream(rmm::cuda_stream_per_thread);
+      response.lp_ret.last_restart_duality_gap_primal_solution_->set_stream(
+        rmm::cuda_stream_per_thread);
+      response.lp_ret.last_restart_duality_gap_dual_solution_->set_stream(
+        rmm::cuda_stream_per_thread);
+    }
   } else {
     response.mip_ret      = call_solve_mip(op_problem, solver_settings->get_mip_settings());
     response.problem_type = linear_programming::problem_category_t::MIP;
-    // Reset stream to per-thread default as non-blocking stream is out of scope after the
-    // function returns.
-    response.mip_ret.solution_->set_stream(rmm::cuda_stream_per_thread);
+    if (response.mip_ret.is_device_memory_) {
+      // Reset stream to per-thread default as non-blocking stream is out of scope after the
+      // function returns.
+      response.mip_ret.solution_->set_stream(rmm::cuda_stream_per_thread);
+    }
   }
 
   // Reset warmstart data streams in solver_settings to per-thread default before destroying our
@@ -327,7 +459,13 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
   auto start_solver = std::chrono::high_resolution_clock::now();
 
   // Limit parallelism as too much stream overlap gets too slow
-  const int max_thread = compute_max_thread(data_models);
+  int max_thread = 1;
+  if (linear_programming::is_remote_solve_enabled()) {
+    constexpr std::size_t max_total = 4;
+    max_thread = static_cast<int>(std::min(std::max<std::size_t>(size, 1), max_total));
+  } else {
+    max_thread = compute_max_thread(data_models);
+  }
 
   if (solver_settings->get_parameter<int>(CUOPT_METHOD) == CUOPT_METHOD_CONCURRENT) {
     CUOPT_LOG_INFO("Concurrent mode not supported for batch solve. Using PDLP instead. ");

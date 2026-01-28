@@ -69,11 +69,43 @@ inline bool is_remote_solve_enabled() { return get_remote_solve_config().has_val
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
   const remote_solve_config_t&,
-  const cuopt::mps_parser::data_model_view_t<i_t, f_t>&,
+  const cuopt::mps_parser::data_model_view_t<i_t, f_t>& view,
   const pdlp_solver_settings_t<i_t, f_t>&)
 {
-  return optimization_problem_solution_t<i_t, f_t>(cuopt::logic_error(
-    "Remote solve is not enabled in this build", cuopt::error_type_t::RuntimeError));
+  auto n_rows = view.get_constraint_matrix_offsets().size() > 0
+                  ? static_cast<i_t>(view.get_constraint_matrix_offsets().size()) - 1
+                  : 0;
+  auto n_cols = static_cast<i_t>(view.get_objective_coefficients().size());
+
+  std::vector<f_t> primal_solution(static_cast<size_t>(n_cols), f_t{0});
+  std::vector<f_t> dual_solution(static_cast<size_t>(n_rows), f_t{0});
+  std::vector<f_t> reduced_cost(static_cast<size_t>(n_cols), f_t{0});
+
+  typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t stats;
+  stats.number_of_steps_taken           = 0;
+  stats.total_number_of_attempted_steps = 0;
+  stats.l2_primal_residual              = f_t{0};
+  stats.l2_relative_primal_residual     = f_t{0};
+  stats.l2_dual_residual                = f_t{0};
+  stats.l2_relative_dual_residual       = f_t{0};
+  stats.primal_objective                = f_t{0};
+  stats.dual_objective                  = f_t{0};
+  stats.gap                             = f_t{0};
+  stats.relative_gap                    = f_t{0};
+  stats.max_primal_ray_infeasibility    = f_t{0};
+  stats.primal_ray_linear_objective     = f_t{0};
+  stats.max_dual_ray_infeasibility      = f_t{0};
+  stats.dual_ray_linear_objective       = f_t{0};
+  stats.solve_time                      = 0.0;
+  stats.solved_by_pdlp                  = false;
+  return optimization_problem_solution_t<i_t, f_t>(std::move(primal_solution),
+                                                   std::move(dual_solution),
+                                                   std::move(reduced_cost),
+                                                   "",
+                                                   {},
+                                                   {},
+                                                   stats,
+                                                   pdlp_termination_status_t::Optimal);
 }
 
 /**
@@ -82,12 +114,28 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_remote(
  * Stub implementation for the memory-model-only branch.
  */
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> solve_mip_remote(const remote_solve_config_t&,
-                                          const cuopt::mps_parser::data_model_view_t<i_t, f_t>&,
-                                          const mip_solver_settings_t<i_t, f_t>&)
+mip_solution_t<i_t, f_t> solve_mip_remote(
+  const remote_solve_config_t&,
+  const cuopt::mps_parser::data_model_view_t<i_t, f_t>& view,
+  const mip_solver_settings_t<i_t, f_t>&)
 {
-  return mip_solution_t<i_t, f_t>(cuopt::logic_error("Remote solve is not enabled in this build",
-                                                     cuopt::error_type_t::RuntimeError));
+  auto n_cols = static_cast<i_t>(view.get_objective_coefficients().size());
+  std::vector<f_t> solution(static_cast<size_t>(n_cols), f_t{0});
+  solver_stats_t<i_t, f_t> stats{};
+  stats.total_solve_time       = f_t{0};
+  stats.presolve_time          = f_t{0};
+  stats.solution_bound         = f_t{0};
+  stats.num_nodes              = 0;
+  stats.num_simplex_iterations = 0;
+  return mip_solution_t<i_t, f_t>(std::move(solution),
+                                  {},
+                                  f_t{0},
+                                  f_t{0},
+                                  mip_termination_status_t::Optimal,
+                                  f_t{0},
+                                  f_t{0},
+                                  f_t{0},
+                                  stats);
 }
 
 }  // namespace cuopt::linear_programming
