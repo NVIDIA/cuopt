@@ -1612,7 +1612,7 @@ TEST(pdlp_class, strong_branching_test)
   auto solver_settings             = pdlp_solver_settings_t<int, double>{};
   solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
   solver_settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable3;
-  solver_settings.presolve         = false;
+  solver_settings.presolver        = cuopt::linear_programming::presolver_t::None;
 
   const int n_fractional = fractional.size();
   const int batch_size   = n_fractional * 2;

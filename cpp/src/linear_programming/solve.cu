@@ -759,7 +759,7 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     pdlp_solver_settings_t<i_t, f_t> warm_start_settings = settings;
     warm_start_settings.new_bounds.clear();
     warm_start_settings.method               = cuopt::linear_programming::method_t::PDLP;
-    warm_start_settings.presolve             = false;
+    warm_start_settings.presolver            = cuopt::linear_programming::presolver_t::None;
     warm_start_settings.pdlp_solver_mode     = pdlp_solver_mode_t::Stable3;
     warm_start_settings.detect_infeasibility = false;
     warm_start_settings.iteration_limit      = iteration_limit;
@@ -790,7 +790,7 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   pdlp_solver_settings_t<i_t, f_t> batch_settings = settings;
   const auto original_new_bounds                  = batch_settings.new_bounds;
   batch_settings.method                           = cuopt::linear_programming::method_t::PDLP;
-  batch_settings.presolve                         = false;
+  batch_settings.presolver                        = presolver_t::None;
   batch_settings.pdlp_solver_mode                 = pdlp_solver_mode_t::Stable3;
   batch_settings.detect_infeasibility             = false;
   batch_settings.iteration_limit                  = iteration_limit;
