@@ -12,23 +12,26 @@ client = RequestClient()
 def _run_incumbent_callback(cuoptproc, include_set_callback):  # noqa
     data = {
         "csr_constraint_matrix": {
-            "offsets": [0, 2],
-            "indices": [0, 1],
-            "values": [1.0, 1.0],
+            "offsets": [0, 3, 6, 9],
+            "indices": [0, 1, 2, 0, 1, 2, 0, 1, 2],
+            "values": [2.0, 1.0, 3.0, 4.0, 5.0, 1.0, 1.0, 2.0, 2.0],
         },
-        "constraint_bounds": {"upper_bounds": [5000.0], "lower_bounds": [0.0]},
+        "constraint_bounds": {
+            "upper_bounds": [9000.0, 12000.0, 7000.0],
+            "lower_bounds": [0.0, 0.0, 0.0],
+        },
         "objective_data": {
-            "coefficients": [1.2, 1.7],
+            "coefficients": [3.1, 2.7, 1.9],
             "scalability_factor": 1.0,
             "offset": 0.0,
         },
         "variable_bounds": {
-            "upper_bounds": [3000.0, 5000.0],
-            "lower_bounds": [0.0, 0.0],
+            "upper_bounds": [4000.0, 5000.0, 3500.0],
+            "lower_bounds": [0.0, 0.0, 0.0],
         },
         "maximize": "True",
-        "variable_names": ["x", "y"],
-        "variable_types": ["I", "I"],
+        "variable_names": ["x", "y", "z"],
+        "variable_types": ["I", "I", "I"],
         "solver_config": {
             "time_limit": 30,
             "tolerances": {"optimality": 0.0001},
