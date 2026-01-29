@@ -1319,7 +1319,9 @@ static data_model_view_t<i_t, f_t> create_view_from_mps_data_model(
 
   view.set_maximize(mps_data_model.get_sense());
 
-  if (!mps_data_model.get_constraint_matrix_values().empty()) {
+  // Always set constraint matrix if offsets exist (even for empty problems with 0 constraints)
+  // Validation requires at least offsets=[0] to be set
+  if (!mps_data_model.get_constraint_matrix_offsets().empty()) {
     view.set_csr_constraint_matrix(mps_data_model.get_constraint_matrix_values().data(),
                                    mps_data_model.get_constraint_matrix_values().size(),
                                    mps_data_model.get_constraint_matrix_indices().data(),
@@ -1426,6 +1428,7 @@ optimization_problem_t<i_t, f_t> data_model_view_to_optimization_problem(
   optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
   op_problem.set_maximize(view.get_sense());
 
+  // Set constraint matrix if offsets are present (includes empty problems with offsets=[0])
   if (view.get_constraint_matrix_offsets().size() > 0) {
     op_problem.set_csr_constraint_matrix(view.get_constraint_matrix_values().data(),
                                          view.get_constraint_matrix_values().size(),
