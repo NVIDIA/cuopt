@@ -1,12 +1,13 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
 
+#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <linear_programming/pdhg.hpp>
 
 #include <mip/solution/solution.cuh>
@@ -49,6 +50,7 @@ class pdlp_initial_scaling_strategy_t {
                                   rmm::device_uvector<i_t>& A_T_offsets,
                                   rmm::device_uvector<i_t>& A_T_indices,
                                   pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr,
+                                  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
                                   bool running_mip = false);
 
   void scale_problem();
@@ -67,9 +69,12 @@ class pdlp_initial_scaling_strategy_t {
                          rmm::device_uvector<f_t>& dual_solution,
                          rmm::device_uvector<f_t>& dual_slack) const;
   void unscale_solutions(solution_t<i_t, f_t>& solution) const;
-  rmm::device_uvector<f_t>& get_constraint_matrix_scaling_vector();
-  rmm::device_uvector<f_t>& get_variable_scaling_vector();
+  const rmm::device_uvector<f_t>& get_constraint_matrix_scaling_vector() const;
+  const rmm::device_uvector<f_t>& get_variable_scaling_vector() const;
   const problem_t<i_t, f_t>& get_scaled_op_problem();
+
+  f_t get_h_bound_rescaling() const;
+  f_t get_h_objective_rescaling() const;
 
   void bound_objective_rescaling();
 
@@ -107,6 +112,7 @@ class pdlp_initial_scaling_strategy_t {
   rmm::device_uvector<f_t>& A_T_;
   rmm::device_uvector<i_t>& A_T_offsets_;
   rmm::device_uvector<i_t>& A_T_indices_;
+  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
   bool running_mip_;
 };
 }  // namespace cuopt::linear_programming::detail

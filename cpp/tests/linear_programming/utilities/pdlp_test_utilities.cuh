@@ -58,21 +58,22 @@ static void test_objective_sanity(
 // Check that the primal variables respected the variable bounds
 static void test_constraint_sanity(
   const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
-  const optimization_problem_solution_t<int, double>& solution,
+  const optimization_problem_solution_t<int, double>::additional_termination_information_t&
+    termination_information,
+  const rmm::device_uvector<double>& primal_solution,
   double epsilon        = tolerance,
   bool presolve_enabled = false)
 {
-  const std::vector<double> primal_vars =
-    host_copy(solution.get_primal_solution(), solution.get_primal_solution().stream());
-  const std::vector<double>& values                  = op_problem.get_constraint_matrix_values();
-  const std::vector<int>& indices                    = op_problem.get_constraint_matrix_indices();
-  const std::vector<int>& offsets                    = op_problem.get_constraint_matrix_offsets();
+  const std::vector<double> primal_vars = host_copy(primal_solution, primal_solution.stream());
+  const std::vector<double>& values     = op_problem.get_constraint_matrix_values();
+  const std::vector<int>& indices       = op_problem.get_constraint_matrix_indices();
+  const std::vector<int>& offsets       = op_problem.get_constraint_matrix_offsets();
   const std::vector<double>& constraint_lower_bounds = op_problem.get_constraint_lower_bounds();
   const std::vector<double>& constraint_upper_bounds = op_problem.get_constraint_upper_bounds();
   const std::vector<double>& variable_lower_bounds   = op_problem.get_variable_lower_bounds();
   const std::vector<double>& variable_upper_bounds   = op_problem.get_variable_upper_bounds();
-  std::vector<double> residual(solution.get_dual_solution().size(), 0.0);
-  std::vector<double> viol(solution.get_dual_solution().size(), 0.0);
+  std::vector<double> residual(constraint_lower_bounds.size(), 0.0);
+  std::vector<double> viol(constraint_lower_bounds.size(), 0.0);
 
   // No dual solution and residual for presolved problems
   if (!presolve_enabled) {
@@ -97,9 +98,7 @@ static void test_constraint_sanity(
       viol.cbegin(), viol.cend(), 0.0, [](double acc, double val) { return acc + val * val; });
     l2_primal_residual = std::sqrt(l2_primal_residual);
 
-    EXPECT_NEAR(l2_primal_residual,
-                solution.get_additional_termination_information().l2_primal_residual,
-                epsilon);
+    EXPECT_NEAR(l2_primal_residual, termination_information.l2_primal_residual, epsilon);
 
     // Check if primal residual is indeed respecting the default tolerance
     pdlp_solver_settings_t solver_settings = pdlp_solver_settings_t<int, double>{};

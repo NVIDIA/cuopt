@@ -6,10 +6,14 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <linear_programming/cusparse_view.hpp>
+#include <linear_programming/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <linear_programming/pdlp.cuh>
+#include <linear_programming/pdlp_constants.hpp>
 #include <linear_programming/restart_strategy/pdlp_restart_strategy.cuh>
 #include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <linear_programming/translate.hpp>
+#include <linear_programming/utilities/ping_pong_graph.cuh>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <linear_programming/utils.cuh>
 #include <utilities/logger.hpp>
@@ -59,88 +63,88 @@ static void init_handler(const raft::handle_t* handle_ptr)
 
 // Corresponds to the first good general settings we found
 // It's what was used for the GTC results
-static void set_Stable1()
+static void set_Stable1(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
 {
-  pdlp_hyper_params::initial_step_size_scaling                                  = 1.6;
-  pdlp_hyper_params::default_l_inf_ruiz_iterations                              = 1;
-  pdlp_hyper_params::do_pock_chambolle_scaling                                  = true;
-  pdlp_hyper_params::do_ruiz_scaling                                            = true;
-  pdlp_hyper_params::default_alpha_pock_chambolle_rescaling                     = 1.3;
-  pdlp_hyper_params::default_artificial_restart_threshold                       = 0.5;
-  pdlp_hyper_params::compute_initial_step_size_before_scaling                   = false;
-  pdlp_hyper_params::compute_initial_primal_weight_before_scaling               = true;
-  pdlp_hyper_params::initial_primal_weight_c_scaling                            = 2.2;
-  pdlp_hyper_params::initial_primal_weight_b_scaling                            = 4.6;
-  pdlp_hyper_params::major_iteration                                            = 52;
-  pdlp_hyper_params::min_iteration_restart                                      = 0;
-  pdlp_hyper_params::restart_strategy                                           = 1;
-  pdlp_hyper_params::never_restart_to_average                                   = false;
-  pdlp_hyper_params::host_default_reduction_exponent                            = 0.5;
-  pdlp_hyper_params::host_default_growth_exponent                               = 0.9;
-  pdlp_hyper_params::host_default_primal_weight_update_smoothing                = 0.3;
-  pdlp_hyper_params::host_default_sufficient_reduction_for_restart              = 0.2;
-  pdlp_hyper_params::host_default_necessary_reduction_for_restart               = 0.5;
-  pdlp_hyper_params::host_primal_importance                                     = 1.8;
-  pdlp_hyper_params::host_primal_distance_smoothing                             = 0.6;
-  pdlp_hyper_params::host_dual_distance_smoothing                               = 0.2;
-  pdlp_hyper_params::compute_last_restart_before_new_primal_weight              = false;
-  pdlp_hyper_params::artificial_restart_in_main_loop                            = false;
-  pdlp_hyper_params::rescale_for_restart                                        = false;
-  pdlp_hyper_params::update_primal_weight_on_initial_solution                   = false;
-  pdlp_hyper_params::update_step_size_on_initial_solution                       = false;
-  pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = true;
-  pdlp_hyper_params::project_initial_primal                                     = false;
-  pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
-  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
-  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
-  pdlp_hyper_params::bound_objective_rescaling                                  = false;
-  pdlp_hyper_params::use_reflected_primal_dual                                  = false;
-  pdlp_hyper_params::use_fixed_point_error                                      = false;
-  pdlp_hyper_params::reflection_coefficient                                     = 1.0;
-  pdlp_hyper_params::use_conditional_major                                      = false;
+  hyper_params.initial_step_size_scaling                                  = 1.6;
+  hyper_params.default_l_inf_ruiz_iterations                              = 1;
+  hyper_params.do_pock_chambolle_scaling                                  = true;
+  hyper_params.do_ruiz_scaling                                            = true;
+  hyper_params.default_alpha_pock_chambolle_rescaling                     = 1.3;
+  hyper_params.default_artificial_restart_threshold                       = 0.5;
+  hyper_params.compute_initial_step_size_before_scaling                   = false;
+  hyper_params.compute_initial_primal_weight_before_scaling               = true;
+  hyper_params.initial_primal_weight_c_scaling                            = 2.2;
+  hyper_params.initial_primal_weight_b_scaling                            = 4.6;
+  hyper_params.major_iteration                                            = 52;
+  hyper_params.min_iteration_restart                                      = 0;
+  hyper_params.restart_strategy                                           = 1;
+  hyper_params.never_restart_to_average                                   = false;
+  hyper_params.reduction_exponent                                         = 0.5;
+  hyper_params.growth_exponent                                            = 0.9;
+  hyper_params.primal_weight_update_smoothing                             = 0.3;
+  hyper_params.sufficient_reduction_for_restart                           = 0.2;
+  hyper_params.necessary_reduction_for_restart                            = 0.5;
+  hyper_params.primal_importance                                          = 1.8;
+  hyper_params.primal_distance_smoothing                                  = 0.6;
+  hyper_params.dual_distance_smoothing                                    = 0.2;
+  hyper_params.compute_last_restart_before_new_primal_weight              = false;
+  hyper_params.artificial_restart_in_main_loop                            = false;
+  hyper_params.rescale_for_restart                                        = false;
+  hyper_params.update_primal_weight_on_initial_solution                   = false;
+  hyper_params.update_step_size_on_initial_solution                       = false;
+  hyper_params.handle_some_primal_gradients_on_finite_bounds_as_residuals = true;
+  hyper_params.project_initial_primal                                     = false;
+  hyper_params.use_adaptive_step_size_strategy                            = true;
+  hyper_params.initial_step_size_max_singular_value                       = false;
+  hyper_params.initial_primal_weight_combined_bounds                      = true;
+  hyper_params.bound_objective_rescaling                                  = false;
+  hyper_params.use_reflected_primal_dual                                  = false;
+  hyper_params.use_fixed_point_error                                      = false;
+  hyper_params.reflection_coefficient = 1.0;  // TODO test with other values
+  hyper_params.use_conditional_major  = false;
 }
 
 // Even better general setting due to proper primal gradient handling for KKT restart and initial
 // projection
-static void set_Stable2()
+static void set_Stable2(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
 {
-  pdlp_hyper_params::initial_step_size_scaling                                  = 1.0;
-  pdlp_hyper_params::default_l_inf_ruiz_iterations                              = 10;
-  pdlp_hyper_params::do_pock_chambolle_scaling                                  = true;
-  pdlp_hyper_params::do_ruiz_scaling                                            = true;
-  pdlp_hyper_params::default_alpha_pock_chambolle_rescaling                     = 1.0;
-  pdlp_hyper_params::default_artificial_restart_threshold                       = 0.36;
-  pdlp_hyper_params::compute_initial_step_size_before_scaling                   = false;
-  pdlp_hyper_params::compute_initial_primal_weight_before_scaling               = false;
-  pdlp_hyper_params::initial_primal_weight_c_scaling                            = 1.0;
-  pdlp_hyper_params::initial_primal_weight_b_scaling                            = 1.0;
-  pdlp_hyper_params::major_iteration                                            = 40;
-  pdlp_hyper_params::min_iteration_restart                                      = 10;
-  pdlp_hyper_params::restart_strategy                                           = 1;
-  pdlp_hyper_params::never_restart_to_average                                   = false;
-  pdlp_hyper_params::host_default_reduction_exponent                            = 0.3;
-  pdlp_hyper_params::host_default_growth_exponent                               = 0.6;
-  pdlp_hyper_params::host_default_primal_weight_update_smoothing                = 0.5;
-  pdlp_hyper_params::host_default_sufficient_reduction_for_restart              = 0.2;
-  pdlp_hyper_params::host_default_necessary_reduction_for_restart               = 0.8;
-  pdlp_hyper_params::host_primal_importance                                     = 1.0;
-  pdlp_hyper_params::host_primal_distance_smoothing                             = 0.5;
-  pdlp_hyper_params::host_dual_distance_smoothing                               = 0.5;
-  pdlp_hyper_params::compute_last_restart_before_new_primal_weight              = true;
-  pdlp_hyper_params::artificial_restart_in_main_loop                            = false;
-  pdlp_hyper_params::rescale_for_restart                                        = true;
-  pdlp_hyper_params::update_primal_weight_on_initial_solution                   = false;
-  pdlp_hyper_params::update_step_size_on_initial_solution                       = false;
-  pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = false;
-  pdlp_hyper_params::project_initial_primal                                     = true;
-  pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
-  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
-  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
-  pdlp_hyper_params::bound_objective_rescaling                                  = false;
-  pdlp_hyper_params::use_reflected_primal_dual                                  = false;
-  pdlp_hyper_params::use_fixed_point_error                                      = false;
-  pdlp_hyper_params::reflection_coefficient                                     = 1.0;
-  pdlp_hyper_params::use_conditional_major                                      = false;
+  hyper_params.initial_step_size_scaling                                  = 1.0;
+  hyper_params.default_l_inf_ruiz_iterations                              = 10;
+  hyper_params.do_pock_chambolle_scaling                                  = true;
+  hyper_params.do_ruiz_scaling                                            = true;
+  hyper_params.default_alpha_pock_chambolle_rescaling                     = 1.0;
+  hyper_params.default_artificial_restart_threshold                       = 0.36;
+  hyper_params.compute_initial_step_size_before_scaling                   = false;
+  hyper_params.compute_initial_primal_weight_before_scaling               = false;
+  hyper_params.initial_primal_weight_c_scaling                            = 1.0;
+  hyper_params.initial_primal_weight_b_scaling                            = 1.0;
+  hyper_params.major_iteration                                            = 40;
+  hyper_params.min_iteration_restart                                      = 10;
+  hyper_params.restart_strategy                                           = 1;
+  hyper_params.never_restart_to_average                                   = false;
+  hyper_params.reduction_exponent                                         = 0.3;
+  hyper_params.growth_exponent                                            = 0.6;
+  hyper_params.primal_weight_update_smoothing                             = 0.5;
+  hyper_params.sufficient_reduction_for_restart                           = 0.2;
+  hyper_params.necessary_reduction_for_restart                            = 0.8;
+  hyper_params.primal_importance                                          = 1.0;
+  hyper_params.primal_distance_smoothing                                  = 0.5;
+  hyper_params.dual_distance_smoothing                                    = 0.5;
+  hyper_params.compute_last_restart_before_new_primal_weight              = true;
+  hyper_params.artificial_restart_in_main_loop                            = false;
+  hyper_params.rescale_for_restart                                        = true;
+  hyper_params.update_primal_weight_on_initial_solution                   = false;
+  hyper_params.update_step_size_on_initial_solution                       = false;
+  hyper_params.handle_some_primal_gradients_on_finite_bounds_as_residuals = false;
+  hyper_params.project_initial_primal                                     = true;
+  hyper_params.use_adaptive_step_size_strategy                            = true;
+  hyper_params.initial_step_size_max_singular_value                       = false;
+  hyper_params.initial_primal_weight_combined_bounds                      = true;
+  hyper_params.bound_objective_rescaling                                  = false;
+  hyper_params.use_reflected_primal_dual                                  = false;
+  hyper_params.use_fixed_point_error                                      = false;
+  hyper_params.reflection_coefficient                                     = 1.0;
+  hyper_params.use_conditional_major                                      = false;
 }
 
 /* 1 - 1 mapping of cuPDLPx(+) function from Haihao and al.
@@ -159,154 +163,146 @@ static void set_Stable2()
  *   year={2024}
  * }
  */
-static void set_Stable3()
+static void set_Stable3(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
 {
-  pdlp_hyper_params::initial_step_size_scaling                = 1.0;
-  pdlp_hyper_params::default_l_inf_ruiz_iterations            = 10;
-  pdlp_hyper_params::do_pock_chambolle_scaling                = true;
-  pdlp_hyper_params::do_ruiz_scaling                          = true;
-  pdlp_hyper_params::default_alpha_pock_chambolle_rescaling   = 1.0;
-  pdlp_hyper_params::default_artificial_restart_threshold     = 0.36;
-  pdlp_hyper_params::compute_initial_step_size_before_scaling = false;
-  pdlp_hyper_params::compute_initial_primal_weight_before_scaling =
+  hyper_params.initial_step_size_scaling                = 1.0;
+  hyper_params.default_l_inf_ruiz_iterations            = 10;
+  hyper_params.do_pock_chambolle_scaling                = true;
+  hyper_params.do_ruiz_scaling                          = true;
+  hyper_params.default_alpha_pock_chambolle_rescaling   = 1.0;
+  hyper_params.default_artificial_restart_threshold     = 0.36;
+  hyper_params.compute_initial_step_size_before_scaling = false;
+  hyper_params.compute_initial_primal_weight_before_scaling =
     true;  // TODO this is maybe why he disabled primal weight when bound rescaling is on, because
            // TODO try with false
-  pdlp_hyper_params::initial_primal_weight_c_scaling = 1.0;
-  pdlp_hyper_params::initial_primal_weight_b_scaling = 1.0;
-  pdlp_hyper_params::major_iteration                 = 200;  // TODO Try with something smaller
-  pdlp_hyper_params::min_iteration_restart           = 0;
-  pdlp_hyper_params::restart_strategy                = 3;
-  pdlp_hyper_params::never_restart_to_average        = true;
-  pdlp_hyper_params::host_default_reduction_exponent = 0.3;
-  pdlp_hyper_params::host_default_growth_exponent    = 0.6;
-  pdlp_hyper_params::host_default_primal_weight_update_smoothing                = 0.5;
-  pdlp_hyper_params::host_default_sufficient_reduction_for_restart              = 0.2;
-  pdlp_hyper_params::host_default_necessary_reduction_for_restart               = 0.8;
-  pdlp_hyper_params::host_primal_importance                                     = 1.0;
-  pdlp_hyper_params::host_primal_distance_smoothing                             = 0.5;
-  pdlp_hyper_params::host_dual_distance_smoothing                               = 0.5;
-  pdlp_hyper_params::compute_last_restart_before_new_primal_weight              = true;
-  pdlp_hyper_params::artificial_restart_in_main_loop                            = false;
-  pdlp_hyper_params::rescale_for_restart                                        = true;
-  pdlp_hyper_params::update_primal_weight_on_initial_solution                   = false;
-  pdlp_hyper_params::update_step_size_on_initial_solution                       = false;
-  pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = false;
-  pdlp_hyper_params::project_initial_primal                                     = true;
-  pdlp_hyper_params::use_adaptive_step_size_strategy                            = false;
-  pdlp_hyper_params::initial_step_size_max_singular_value                       = true;
-  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = false;
-  pdlp_hyper_params::bound_objective_rescaling                                  = true;
-  pdlp_hyper_params::use_reflected_primal_dual                                  = true;
-  pdlp_hyper_params::use_fixed_point_error                                      = true;
-  pdlp_hyper_params::use_conditional_major                                      = true;
+  hyper_params.initial_primal_weight_c_scaling  = 1.0;
+  hyper_params.initial_primal_weight_b_scaling  = 1.0;
+  hyper_params.major_iteration                  = 200;  // TODO Try with something smaller
+  hyper_params.min_iteration_restart            = 0;
+  hyper_params.restart_strategy                 = 3;
+  hyper_params.never_restart_to_average         = true;
+  hyper_params.reduction_exponent               = 0.3;
+  hyper_params.growth_exponent                  = 0.6;
+  hyper_params.primal_weight_update_smoothing   = 0.5;
+  hyper_params.sufficient_reduction_for_restart = 0.2;
+  hyper_params.necessary_reduction_for_restart  = 0.8;
+  hyper_params.primal_importance                = 1.0;
+  hyper_params.primal_distance_smoothing        = 0.5;
+  hyper_params.dual_distance_smoothing          = 0.5;
+  hyper_params.compute_last_restart_before_new_primal_weight              = true;
+  hyper_params.artificial_restart_in_main_loop                            = false;
+  hyper_params.rescale_for_restart                                        = true;
+  hyper_params.update_primal_weight_on_initial_solution                   = false;
+  hyper_params.update_step_size_on_initial_solution                       = false;
+  hyper_params.handle_some_primal_gradients_on_finite_bounds_as_residuals = false;
+  hyper_params.project_initial_primal          = true;  // TODO I think he doesn't do it anymore
+  hyper_params.use_adaptive_step_size_strategy = false;
+  hyper_params.initial_step_size_max_singular_value  = true;
+  hyper_params.initial_primal_weight_combined_bounds = false;
+  hyper_params.bound_objective_rescaling             = true;
+  hyper_params.use_reflected_primal_dual             = true;
+  hyper_params.use_fixed_point_error                 = true;
+  hyper_params.use_conditional_major                 = true;
 }
 
 // Legacy/Original/Initial PDLP settings
-static void set_Methodical1()
+static void set_Methodical1(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
 {
-  pdlp_hyper_params::initial_step_size_scaling                                  = 1.0;
-  pdlp_hyper_params::default_l_inf_ruiz_iterations                              = 5;
-  pdlp_hyper_params::do_pock_chambolle_scaling                                  = true;
-  pdlp_hyper_params::do_ruiz_scaling                                            = true;
-  pdlp_hyper_params::default_alpha_pock_chambolle_rescaling                     = 1.0;
-  pdlp_hyper_params::default_artificial_restart_threshold                       = 0.5;
-  pdlp_hyper_params::compute_initial_step_size_before_scaling                   = false;
-  pdlp_hyper_params::compute_initial_primal_weight_before_scaling               = false;
-  pdlp_hyper_params::initial_primal_weight_c_scaling                            = 1.0;
-  pdlp_hyper_params::initial_primal_weight_b_scaling                            = 1.0;
-  pdlp_hyper_params::major_iteration                                            = 64;
-  pdlp_hyper_params::min_iteration_restart                                      = 0;
-  pdlp_hyper_params::restart_strategy                                           = 2;
-  pdlp_hyper_params::never_restart_to_average                                   = false;
-  pdlp_hyper_params::host_default_reduction_exponent                            = 0.3;
-  pdlp_hyper_params::host_default_growth_exponent                               = 0.6;
-  pdlp_hyper_params::host_default_primal_weight_update_smoothing                = 0.5;
-  pdlp_hyper_params::host_default_sufficient_reduction_for_restart              = 0.1;
-  pdlp_hyper_params::host_default_necessary_reduction_for_restart               = 0.9;
-  pdlp_hyper_params::host_primal_importance                                     = 1.0;
-  pdlp_hyper_params::host_primal_distance_smoothing                             = 0.5;
-  pdlp_hyper_params::host_dual_distance_smoothing                               = 0.5;
-  pdlp_hyper_params::compute_last_restart_before_new_primal_weight              = true;
-  pdlp_hyper_params::artificial_restart_in_main_loop                            = false;
-  pdlp_hyper_params::rescale_for_restart                                        = false;
-  pdlp_hyper_params::update_primal_weight_on_initial_solution                   = false;
-  pdlp_hyper_params::update_step_size_on_initial_solution                       = false;
-  pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = true;
-  pdlp_hyper_params::project_initial_primal                                     = false;
-  pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
-  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
-  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
-  pdlp_hyper_params::bound_objective_rescaling                                  = false;
-  pdlp_hyper_params::use_reflected_primal_dual                                  = false;
-  pdlp_hyper_params::use_fixed_point_error                                      = false;
-  pdlp_hyper_params::reflection_coefficient                                     = 1.0;
-  pdlp_hyper_params::use_conditional_major                                      = false;
+  hyper_params.initial_step_size_scaling                                  = 1.0;
+  hyper_params.default_l_inf_ruiz_iterations                              = 5;
+  hyper_params.do_pock_chambolle_scaling                                  = true;
+  hyper_params.do_ruiz_scaling                                            = true;
+  hyper_params.default_alpha_pock_chambolle_rescaling                     = 1.0;
+  hyper_params.default_artificial_restart_threshold                       = 0.5;
+  hyper_params.compute_initial_step_size_before_scaling                   = false;
+  hyper_params.compute_initial_primal_weight_before_scaling               = false;
+  hyper_params.initial_primal_weight_c_scaling                            = 1.0;
+  hyper_params.initial_primal_weight_b_scaling                            = 1.0;
+  hyper_params.major_iteration                                            = 64;
+  hyper_params.min_iteration_restart                                      = 0;
+  hyper_params.restart_strategy                                           = 2;
+  hyper_params.never_restart_to_average                                   = false;
+  hyper_params.reduction_exponent                                         = 0.3;
+  hyper_params.growth_exponent                                            = 0.6;
+  hyper_params.primal_weight_update_smoothing                             = 0.5;
+  hyper_params.sufficient_reduction_for_restart                           = 0.1;
+  hyper_params.necessary_reduction_for_restart                            = 0.9;
+  hyper_params.primal_importance                                          = 1.0;
+  hyper_params.primal_distance_smoothing                                  = 0.5;
+  hyper_params.dual_distance_smoothing                                    = 0.5;
+  hyper_params.compute_last_restart_before_new_primal_weight              = true;
+  hyper_params.artificial_restart_in_main_loop                            = false;
+  hyper_params.rescale_for_restart                                        = false;
+  hyper_params.update_primal_weight_on_initial_solution                   = false;
+  hyper_params.update_step_size_on_initial_solution                       = false;
+  hyper_params.handle_some_primal_gradients_on_finite_bounds_as_residuals = true;
+  hyper_params.project_initial_primal                                     = false;
+  hyper_params.use_adaptive_step_size_strategy                            = true;
+  hyper_params.initial_step_size_max_singular_value                       = false;
+  hyper_params.initial_primal_weight_combined_bounds                      = true;
+  hyper_params.bound_objective_rescaling                                  = false;
+  hyper_params.use_reflected_primal_dual                                  = false;
+  hyper_params.use_fixed_point_error                                      = false;
+  hyper_params.reflection_coefficient                                     = 1.0;
+  hyper_params.use_conditional_major                                      = false;
 }
 
 // Can be extremly faster but usually leads to more divergence
 // Used for the blog post results
-static void set_Fast1()
+static void set_Fast1(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
 {
-  pdlp_hyper_params::initial_step_size_scaling                                  = 0.8;
-  pdlp_hyper_params::default_l_inf_ruiz_iterations                              = 6;
-  pdlp_hyper_params::do_pock_chambolle_scaling                                  = true;
-  pdlp_hyper_params::do_ruiz_scaling                                            = false;
-  pdlp_hyper_params::default_alpha_pock_chambolle_rescaling                     = 2.0;
-  pdlp_hyper_params::default_artificial_restart_threshold                       = 0.3;
-  pdlp_hyper_params::compute_initial_step_size_before_scaling                   = false;
-  pdlp_hyper_params::compute_initial_primal_weight_before_scaling               = true;
-  pdlp_hyper_params::initial_primal_weight_c_scaling                            = 1.2;
-  pdlp_hyper_params::initial_primal_weight_b_scaling                            = 1.2;
-  pdlp_hyper_params::major_iteration                                            = 76;
-  pdlp_hyper_params::min_iteration_restart                                      = 6;
-  pdlp_hyper_params::restart_strategy                                           = 1;
-  pdlp_hyper_params::never_restart_to_average                                   = true;
-  pdlp_hyper_params::host_default_reduction_exponent                            = 0.4;
-  pdlp_hyper_params::host_default_growth_exponent                               = 0.6;
-  pdlp_hyper_params::host_default_primal_weight_update_smoothing                = 0.5;
-  pdlp_hyper_params::host_default_sufficient_reduction_for_restart              = 0.3;
-  pdlp_hyper_params::host_default_necessary_reduction_for_restart               = 0.9;
-  pdlp_hyper_params::host_primal_importance                                     = 0.8;
-  pdlp_hyper_params::host_primal_distance_smoothing                             = 0.8;
-  pdlp_hyper_params::host_dual_distance_smoothing                               = 0.3;
-  pdlp_hyper_params::compute_last_restart_before_new_primal_weight              = true;
-  pdlp_hyper_params::artificial_restart_in_main_loop                            = true;
-  pdlp_hyper_params::rescale_for_restart                                        = true;
-  pdlp_hyper_params::update_primal_weight_on_initial_solution                   = false;
-  pdlp_hyper_params::update_step_size_on_initial_solution                       = false;
-  pdlp_hyper_params::handle_some_primal_gradients_on_finite_bounds_as_residuals = true;
-  pdlp_hyper_params::project_initial_primal                                     = false;
-  pdlp_hyper_params::use_adaptive_step_size_strategy                            = true;
-  pdlp_hyper_params::initial_step_size_max_singular_value                       = false;
-  pdlp_hyper_params::initial_primal_weight_combined_bounds                      = true;
-  pdlp_hyper_params::bound_objective_rescaling                                  = false;
-  pdlp_hyper_params::use_reflected_primal_dual                                  = false;
-  pdlp_hyper_params::use_fixed_point_error                                      = false;
-  pdlp_hyper_params::reflection_coefficient                                     = 1.0;
-  pdlp_hyper_params::use_conditional_major                                      = false;
+  hyper_params.initial_step_size_scaling                                  = 0.8;
+  hyper_params.default_l_inf_ruiz_iterations                              = 6;
+  hyper_params.do_pock_chambolle_scaling                                  = true;
+  hyper_params.do_ruiz_scaling                                            = false;
+  hyper_params.default_alpha_pock_chambolle_rescaling                     = 2.0;
+  hyper_params.default_artificial_restart_threshold                       = 0.3;
+  hyper_params.compute_initial_step_size_before_scaling                   = false;
+  hyper_params.compute_initial_primal_weight_before_scaling               = true;
+  hyper_params.initial_primal_weight_c_scaling                            = 1.2;
+  hyper_params.initial_primal_weight_b_scaling                            = 1.2;
+  hyper_params.major_iteration                                            = 76;
+  hyper_params.min_iteration_restart                                      = 6;
+  hyper_params.restart_strategy                                           = 1;
+  hyper_params.never_restart_to_average                                   = true;
+  hyper_params.reduction_exponent                                         = 0.4;
+  hyper_params.growth_exponent                                            = 0.6;
+  hyper_params.primal_weight_update_smoothing                             = 0.5;
+  hyper_params.sufficient_reduction_for_restart                           = 0.3;
+  hyper_params.necessary_reduction_for_restart                            = 0.9;
+  hyper_params.primal_importance                                          = 0.8;
+  hyper_params.primal_distance_smoothing                                  = 0.8;
+  hyper_params.dual_distance_smoothing                                    = 0.3;
+  hyper_params.compute_last_restart_before_new_primal_weight              = true;
+  hyper_params.artificial_restart_in_main_loop                            = true;
+  hyper_params.rescale_for_restart                                        = true;
+  hyper_params.update_primal_weight_on_initial_solution                   = false;
+  hyper_params.update_step_size_on_initial_solution                       = false;
+  hyper_params.handle_some_primal_gradients_on_finite_bounds_as_residuals = true;
+  hyper_params.project_initial_primal                                     = false;
+  hyper_params.use_adaptive_step_size_strategy                            = true;
+  hyper_params.initial_step_size_max_singular_value                       = false;
+  hyper_params.initial_primal_weight_combined_bounds                      = true;
+  hyper_params.bound_objective_rescaling                                  = false;
+  hyper_params.use_reflected_primal_dual                                  = false;
+  hyper_params.use_fixed_point_error                                      = false;
+  hyper_params.reflection_coefficient                                     = 1.0;
+  hyper_params.use_conditional_major                                      = false;
 }
 
 template <typename i_t, typename f_t>
-void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t> const& settings)
+void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t>& settings)
 {
   if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Stable2)
-    set_Stable2();
+    set_Stable2(settings.hyper_params);
   else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Stable1)
-    set_Stable1();
+    set_Stable1(settings.hyper_params);
   else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Methodical1)
-    set_Methodical1();
+    set_Methodical1(settings.hyper_params);
   else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Fast1)
-    set_Fast1();
+    set_Fast1(settings.hyper_params);
   else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Stable3)
-    set_Stable3();
-}
-
-void setup_device_symbols(rmm::cuda_stream_view stream_view)
-{
-  raft::common::nvtx::range fun_scope("Setting device symbol");
-  detail::set_adaptive_step_size_hyper_parameters(stream_view);
-  detail::set_restart_hyper_parameters(stream_view);
-  detail::set_pdlp_hyper_parameters(stream_view);
+    set_Stable3(settings.hyper_params);
 }
 
 std::atomic<int> global_concurrent_halt{0};
@@ -345,23 +341,25 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   problem.handle_ptr->sync_stream();
 
   // Should be filled with more information from dual simplex
-  typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t info;
-  info.solved_by_pdlp                  = false;
-  info.primal_objective                = solution.user_objective;
-  info.dual_objective                  = solution.user_objective;
-  info.gap                             = 0.0;
-  info.relative_gap                    = 0.0;
-  info.solve_time                      = duration;
-  info.number_of_steps_taken           = solution.iterations;
-  info.total_number_of_attempted_steps = solution.iterations;
-  info.l2_primal_residual              = solution.l2_primal_residual;
-  info.l2_dual_residual                = solution.l2_dual_residual;
-  info.l2_relative_primal_residual     = solution.l2_primal_residual / (1.0 + norm_user_objective);
-  info.l2_relative_dual_residual       = solution.l2_dual_residual / (1.0 + norm_rhs);
-  info.max_primal_ray_infeasibility    = 0.0;
-  info.primal_ray_linear_objective     = 0.0;
-  info.max_dual_ray_infeasibility      = 0.0;
-  info.dual_ray_linear_objective       = 0.0;
+  std::vector<
+    typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
+    info(1);
+  info[0].solved_by_pdlp                  = false;
+  info[0].primal_objective                = solution.user_objective;
+  info[0].dual_objective                  = solution.user_objective;
+  info[0].gap                             = 0.0;
+  info[0].relative_gap                    = 0.0;
+  info[0].solve_time                      = duration;
+  info[0].number_of_steps_taken           = solution.iterations;
+  info[0].total_number_of_attempted_steps = solution.iterations;
+  info[0].l2_primal_residual              = solution.l2_primal_residual;
+  info[0].l2_dual_residual                = solution.l2_dual_residual;
+  info[0].l2_relative_primal_residual  = solution.l2_primal_residual / (1.0 + norm_user_objective);
+  info[0].l2_relative_dual_residual    = solution.l2_dual_residual / (1.0 + norm_rhs);
+  info[0].max_primal_ray_infeasibility = 0.0;
+  info[0].primal_ray_linear_objective  = 0.0;
+  info[0].max_dual_ray_infeasibility   = 0.0;
+  info[0].dual_ray_linear_objective    = 0.0;
 
   pdlp_termination_status_t termination_status = to_termination_status(status);
   auto sol = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
@@ -370,8 +368,8 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
                                                        problem.objective_name,
                                                        problem.var_names,
                                                        problem.row_names,
-                                                       info,
-                                                       termination_status);
+                                                       std::move(info),
+                                                       {termination_status});
 
   if (termination_status != pdlp_termination_status_t::Optimal &&
       termination_status != pdlp_termination_status_t::TimeLimit &&
@@ -613,21 +611,23 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
       cuopt::device_copy(vertex_solution.z, problem.handle_ptr->get_stream());
 
     // Should be filled with more information from dual simplex
-    typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t info;
-    info.primal_objective      = vertex_solution.user_objective;
-    info.number_of_steps_taken = vertex_solution.iterations;
-    auto crossover_end         = std::chrono::high_resolution_clock::now();
+    std::vector<
+      typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
+      info(1);
+    info[0].primal_objective      = vertex_solution.user_objective;
+    info[0].number_of_steps_taken = vertex_solution.iterations;
+    auto crossover_end            = std::chrono::high_resolution_clock::now();
     auto crossover_duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(crossover_end - start_solver);
-    info.solve_time    = crossover_duration.count() / 1000.0;
+    info[0].solve_time = crossover_duration.count() / 1000.0;
     auto sol_crossover = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
                                                                    final_dual_solution,
                                                                    final_reduced_cost,
                                                                    problem.objective_name,
                                                                    problem.var_names,
                                                                    problem.row_names,
-                                                                   info,
-                                                                   termination_status);
+                                                                   std::move(info),
+                                                                   {termination_status});
     sol.copy_from(problem.handle_ptr, sol_crossover);
     CUOPT_LOG_CONDITIONAL_INFO(
       !settings.inside_mip, "Crossover status %s", sol.get_termination_status_string().c_str());
@@ -639,6 +639,246 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     *settings.concurrent_halt = 1;
   }
   return sol;
+}
+
+template <typename i_t, typename f_t>
+static size_t batch_pdlp_memory_estimator(const optimization_problem_t<i_t, f_t>& problem,
+                                          int trial_batch_size,
+                                          int max_batch_size)
+{
+  size_t total_memory = 0;
+  // In PDLP we store the scaled version of the problem which contains all of those
+  total_memory += problem.get_constraint_matrix_indices().size() * sizeof(i_t);
+  total_memory += problem.get_constraint_matrix_offsets().size() * sizeof(i_t);
+  total_memory += problem.get_constraint_matrix_values().size() * sizeof(f_t);
+  total_memory *= 2;  // To account for the A_t matrix
+  total_memory += problem.get_objective_coefficients().size() * sizeof(f_t);
+  total_memory += problem.get_constraint_bounds().size() * sizeof(f_t);
+  total_memory += problem.get_variable_lower_bounds().size() * sizeof(f_t);
+  total_memory += problem.get_variable_upper_bounds().size() * sizeof(f_t);
+  total_memory += problem.get_constraint_lower_bounds().size() * sizeof(f_t);
+  total_memory += problem.get_constraint_upper_bounds().size() * sizeof(f_t);
+
+  // Batch data estimator
+
+  // Data from PDHG
+  total_memory += trial_batch_size * problem.get_n_variables() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_constraints() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_variables() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_constraints() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_variables() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_variables() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_constraints() * sizeof(f_t);
+
+  // Data from the saddle point state
+  total_memory += trial_batch_size * problem.get_n_variables() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_constraints() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_variables() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_constraints() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_constraints() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_variables() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_variables() * sizeof(f_t);
+
+  // Data for the convergeance information
+  total_memory += trial_batch_size * problem.get_n_constraints() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_variables() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_variables() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_constraints() * sizeof(f_t);
+
+  // Data for the localized duality gap container
+  total_memory += trial_batch_size * problem.get_n_variables() * sizeof(f_t);
+  total_memory += trial_batch_size * problem.get_n_constraints() * sizeof(f_t);
+
+  // Data for the solution
+  total_memory += problem.get_n_variables() * max_batch_size * sizeof(f_t);
+  total_memory += problem.get_n_constraints() * max_batch_size * sizeof(f_t);
+  total_memory += problem.get_n_variables() * max_batch_size * sizeof(f_t);
+
+  // Add a 50% overhead to make sure we have enough memory considering other parts of the solver may
+  // allocate at the same time
+  total_memory *= 1.5;
+
+  // Data from saddle point state
+  return total_memory;
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
+  optimization_problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  // Hyper parameter than can be changed, I have put what I believe to be the best
+  bool primal_dual_init         = true;
+  bool primal_weight_init       = true;
+  bool use_optimal_batch_size   = false;
+  constexpr int iteration_limit = 100000;
+  // Shouldn't we work on the unpresolved and/or unscaled problem for PDLP?
+  // Shouldn't we put an iteration limit? If yes what should we do with the partial solutions?
+
+  rmm::cuda_stream_view stream = problem.get_handle_ptr()->get_stream();
+
+  rmm::device_uvector<f_t> initial_primal(0, stream);
+  rmm::device_uvector<f_t> initial_dual(0, stream);
+  f_t initial_step_size     = std::numeric_limits<f_t>::signaling_NaN();
+  f_t initial_primal_weight = std::numeric_limits<f_t>::signaling_NaN();
+
+  cuopt_assert(settings.new_bounds.size() > 0, "Batch size should be greater than 0");
+  const int max_batch_size  = settings.new_bounds.size();
+  int memory_max_batch_size = max_batch_size;
+
+  // Check if we don't hit the limit using max_batch_size
+  const size_t memory_estimate =
+    batch_pdlp_memory_estimator(problem, max_batch_size, max_batch_size);
+  size_t free_mem, total_mem;
+  RAFT_CUDA_TRY(cudaMemGetInfo(&free_mem, &total_mem));
+
+  if (memory_estimate > free_mem) {
+    use_optimal_batch_size = true;
+    // Decrement batch size iteratively until we find a batch size that fits
+    while (memory_max_batch_size > 1) {
+      const size_t memory_estimate =
+        batch_pdlp_memory_estimator(problem, memory_max_batch_size, max_batch_size);
+      if (memory_estimate <= free_mem) { break; }
+      memory_max_batch_size--;
+    }
+    const size_t min_estimate =
+      batch_pdlp_memory_estimator(problem, memory_max_batch_size, max_batch_size);
+    cuopt_expects(min_estimate <= free_mem,
+                  error_type_t::OutOfMemoryError,
+                  "Insufficient GPU memory for batch PDLP (min batch size still too large)");
+  }
+
+  int optimal_batch_size = use_optimal_batch_size
+                             ? detail::optimal_batch_size_handler(problem, memory_max_batch_size)
+                             : max_batch_size;
+  cuopt_assert(optimal_batch_size != 0 && optimal_batch_size <= max_batch_size,
+               "Optimal batch size should be between 1 and max batch size");
+  using f_t2 = typename type_2<f_t>::type;
+
+  // If need warm start, solve the LP alone
+  if (primal_dual_init || primal_weight_init) {
+    pdlp_solver_settings_t<i_t, f_t> warm_start_settings = settings;
+    warm_start_settings.new_bounds.clear();
+    warm_start_settings.method               = cuopt::linear_programming::method_t::PDLP;
+    warm_start_settings.presolve             = false;
+    warm_start_settings.pdlp_solver_mode     = pdlp_solver_mode_t::Stable3;
+    warm_start_settings.detect_infeasibility = false;
+    warm_start_settings.iteration_limit      = iteration_limit;
+    warm_start_settings.inside_mip           = true;
+    optimization_problem_solution_t<i_t, f_t> original_solution =
+      solve_lp(problem, warm_start_settings);
+    if (primal_dual_init) {
+      initial_primal    = rmm::device_uvector<f_t>(original_solution.get_primal_solution(),
+                                                original_solution.get_primal_solution().stream());
+      initial_dual      = rmm::device_uvector<f_t>(original_solution.get_dual_solution(),
+                                              original_solution.get_dual_solution().stream());
+      initial_step_size = original_solution.get_pdlp_warm_start_data().initial_step_size_;
+    }
+    if (primal_weight_init) {
+      initial_primal_weight = original_solution.get_pdlp_warm_start_data().initial_primal_weight_;
+    }
+  }
+
+  rmm::device_uvector<f_t> full_primal_solution(problem.get_n_variables() * max_batch_size, stream);
+  rmm::device_uvector<f_t> full_dual_solution(problem.get_n_constraints() * max_batch_size, stream);
+  rmm::device_uvector<f_t> full_reduced_cost(problem.get_n_variables() * max_batch_size, stream);
+
+  std::vector<
+    typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
+    full_info;
+  std::vector<pdlp_termination_status_t> full_status;
+
+  pdlp_solver_settings_t<i_t, f_t> batch_settings = settings;
+  const auto original_new_bounds                  = batch_settings.new_bounds;
+  batch_settings.method                           = cuopt::linear_programming::method_t::PDLP;
+  batch_settings.presolve                         = false;
+  batch_settings.pdlp_solver_mode                 = pdlp_solver_mode_t::Stable3;
+  batch_settings.detect_infeasibility             = false;
+  batch_settings.iteration_limit                  = iteration_limit;
+  batch_settings.inside_mip                       = true;
+  if (primal_dual_init) {
+    batch_settings.set_initial_primal_solution(
+      initial_primal.data(), initial_primal.size(), initial_primal.stream());
+    batch_settings.set_initial_dual_solution(
+      initial_dual.data(), initial_dual.size(), initial_dual.stream());
+    batch_settings.set_initial_step_size(initial_step_size);
+  }
+  if (primal_weight_init) { batch_settings.set_initial_primal_weight(initial_primal_weight); }
+
+  for (int i = 0; i < max_batch_size; i += optimal_batch_size) {
+    const int current_batch_size = std::min(optimal_batch_size, max_batch_size - i);
+    // Only take the new bounds from [i, i + current_batch_size)
+    batch_settings.new_bounds = std::vector<std::tuple<i_t, f_t, f_t>>(
+      original_new_bounds.begin() + i, original_new_bounds.begin() + i + current_batch_size);
+
+    auto sol = solve_lp(problem, batch_settings);
+
+    // Copy results
+    raft::copy(full_primal_solution.data() + i * problem.get_n_variables(),
+               sol.get_primal_solution().data(),
+               problem.get_n_variables() * current_batch_size,
+               stream);
+    raft::copy(full_dual_solution.data() + i * problem.get_n_constraints(),
+               sol.get_dual_solution().data(),
+               problem.get_n_constraints() * current_batch_size,
+               stream);
+    raft::copy(full_reduced_cost.data() + i * problem.get_n_variables(),
+               sol.get_reduced_cost().data(),
+               problem.get_n_variables() * current_batch_size,
+               stream);
+
+    auto info = sol.get_additional_termination_informations();
+    full_info.insert(full_info.end(), info.begin(), info.end());
+
+    auto status = sol.get_terminations_status();
+    full_status.insert(full_status.end(), status.begin(), status.end());
+  }
+
+  return optimization_problem_solution_t<i_t, f_t>(full_primal_solution,
+                                                   full_dual_solution,
+                                                   full_reduced_cost,
+                                                   problem.get_objective_name(),
+                                                   problem.get_variable_names(),
+                                                   problem.get_row_names(),
+                                                   std::move(full_info),
+                                                   std::move(full_status));
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> batch_pdlp_solve(
+  raft::handle_t const* handle_ptr,
+  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_model,
+  const std::vector<i_t>& fractional,
+  const std::vector<f_t>& root_soln_x,
+  pdlp_solver_settings_t<i_t, f_t> const& settings_const)
+{
+  cuopt_expects(fractional.size() == root_soln_x.size(),
+                error_type_t::ValidationError,
+                "Fractional and root solution must have the same size");
+  cuopt_expects(settings_const.new_bounds.empty(),
+                error_type_t::ValidationError,
+                "Settings must not have new bounds");
+
+  pdlp_solver_settings_t<i_t, f_t> settings(settings_const);
+
+  // Lower bounds can sometimes generate infeasible instances that we struggle to detect
+  constexpr bool only_upper = false;
+  int batch_size            = only_upper ? fractional.size() : fractional.size() * 2;
+
+  for (size_t i = 0; i < fractional.size(); ++i)
+    settings.new_bounds.push_back({fractional[i],
+                                   mps_model.get_variable_lower_bounds()[fractional[i]],
+                                   std::floor(root_soln_x[i])});
+  if (!only_upper) {
+    for (size_t i = 0; i < fractional.size(); i++)
+      settings.new_bounds.push_back({fractional[i],
+                                     std::ceil(root_soln_x[i]),
+                                     mps_model.get_variable_upper_bounds()[fractional[i]]});
+  }
+
+  optimization_problem_t<i_t, f_t> op_problem =
+    mps_data_model_to_optimization_problem(handle_ptr, mps_model);
+
+  return run_batch_pdlp(op_problem, settings);
 }
 
 template <typename i_t, typename f_t>
@@ -835,7 +1075,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool is_batch_mode)
 {
   try {
-    print_version_info();
+    if (!settings_const.inside_mip) print_version_info();
+
     pdlp_solver_settings_t<i_t, f_t> settings(settings_const);
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
@@ -862,16 +1103,20 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       raft::common::nvtx::range fun_scope("Check problem representation");
       // This is required as user might forget to set some fields
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
-      problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
+      // In batch PDLP for strong branching, the initial solutions will be by design out of bounds
+      if (settings.new_bounds.size() == 0)
+        problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
     }
 
-    CUOPT_LOG_INFO(
-      "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
-      op_problem.get_n_constraints(),
-      op_problem.get_n_variables(),
-      0,
-      op_problem.get_nnz());
-    op_problem.print_scaling_information();
+    if (!settings_const.inside_mip) {
+      CUOPT_LOG_INFO(
+        "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
+        op_problem.get_n_constraints(),
+        op_problem.get_n_variables(),
+        0,
+        op_problem.get_nnz());
+      op_problem.print_scaling_information();
+    }
 
     // Check for crossing bounds. Return infeasible if there are any
     if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
@@ -882,11 +1127,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     auto lp_timer = cuopt::timer_t(settings.time_limit);
     detail::problem_t<i_t, f_t> problem(op_problem);
 
-    double presolve_time = 0.0;
+    [[maybe_unused]] double presolve_time = 0.0;
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
     auto run_presolve = settings.presolve;
     run_presolve = run_presolve && settings.get_pdlp_warm_start_data().total_pdlp_iterations_ == -1;
-    if (!run_presolve) { CUOPT_LOG_INFO("Third-party presolve is disabled, skipping"); }
+    if (!run_presolve && !settings_const.inside_mip) {
+      CUOPT_LOG_INFO("Third-party presolve is disabled, skipping");
+    }
 
     if (run_presolve) {
       detail::sort_csr(op_problem);
@@ -911,9 +1158,11 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       CUOPT_LOG_INFO("Papilo presolve time: %f", presolve_time);
     }
 
-    CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
-                   problem.presolve_data.objective_offset,
-                   problem.presolve_data.objective_scaling_factor);
+    if (!settings_const.inside_mip) {
+      CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
+                     problem.presolve_data.objective_offset,
+                     problem.presolve_data.objective_scaling_factor);
+    }
 
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
@@ -922,8 +1171,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
-
-    setup_device_symbols(op_problem.get_handle_ptr()->get_stream());
 
     auto solution = solve_lp_with_method(problem, settings, lp_timer, is_batch_mode);
 
@@ -944,18 +1191,22 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                       settings.dual_postsolve,
                       op_problem.get_handle_ptr()->get_stream());
 
-      auto full_stats = solution.get_additional_termination_information();
+      std::vector<
+        typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
+        term_vec = solution.get_additional_termination_informations();
+      std::vector<pdlp_termination_status_t> status_vec = solution.get_terminations_status();
 
       // Create a new solution with the full problem solution
-      solution = optimization_problem_solution_t<i_t, f_t>(primal_solution,
-                                                           dual_solution,
-                                                           reduced_costs,
-                                                           solution.get_pdlp_warm_start_data(),
-                                                           op_problem.get_objective_name(),
-                                                           op_problem.get_variable_names(),
-                                                           op_problem.get_row_names(),
-                                                           full_stats,
-                                                           solution.get_termination_status());
+      solution =
+        optimization_problem_solution_t<i_t, f_t>(primal_solution,
+                                                  dual_solution,
+                                                  reduced_costs,
+                                                  std::move(solution.get_pdlp_warm_start_data()),
+                                                  op_problem.get_objective_name(),
+                                                  op_problem.get_variable_names(),
+                                                  op_problem.get_row_names(),
+                                                  std::move(term_vec),
+                                                  std::move(status_vec));
     }
 
     if (settings.sol_file != "") {
@@ -1090,10 +1341,17 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     const timer_t& timer,                                                              \
     bool is_batch_mode);                                                               \
                                                                                        \
+  template optimization_problem_solution_t<int, F_TYPE> batch_pdlp_solve(              \
+    raft::handle_t const* handle_ptr,                                                  \
+    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& mps_data_model,            \
+    const std::vector<int>& fractional,                                                \
+    const std::vector<F_TYPE>& root_soln_x,                                            \
+    pdlp_solver_settings_t<int, F_TYPE> const& settings);                              \
+                                                                                       \
   template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem( \
     raft::handle_t const* handle_ptr,                                                  \
     const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);               \
-  template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE> const& settings);
+  template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE>& settings);
 
 #if MIP_INSTANTIATE_FLOAT
 INSTANTIATE(float)

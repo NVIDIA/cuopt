@@ -356,7 +356,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cuts(
 
   if (verbose) { settings.log.printf("Calling solve_knapsack_problem\n"); }
   f_t objective = solve_knapsack_problem(values, weights, seperation_rhs, solution);
-  if (objective != objective) { return -1; }
+  if (std::isnan(objective)) { return -1; }
   if (verbose) {
     settings.log.printf("objective %e objective_constant %e\n", objective, objective_constant);
   }

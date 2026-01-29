@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -68,7 +68,7 @@ struct pdlp_warm_start_data_t {
 
   // Copy constructor for when copying the solver_settings object in the PDLP object
   pdlp_warm_start_data_t(const pdlp_warm_start_data_t<i_t, f_t>& other);
-  pdlp_warm_start_data_t& operator=(pdlp_warm_start_data_t<i_t, f_t>&& other) = default;
+  pdlp_warm_start_data_t& operator=(pdlp_warm_start_data_t&& other) = default;
 
  private:
   // Check sizes through assertion
