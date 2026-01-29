@@ -362,12 +362,12 @@ def getsolverlogs(
     description="Note: for use with self-hosted cuOpt instances. "
     "Return incumbent solutions from the MIP solver produced for "
     "this id since the last GET. Result will be a list of the form "
-    "[{'solution': [1.0, 1.0], 'cost': 2.0}] where each item "
-    "contains the fields 'solution' (a list of floats) and "
-    "'cost' (a float). "
+    "[{'solution': [1.0, 1.0], 'cost': 2.0, 'bound': 1.5}] where each item "
+    "contains the fields 'solution' (a list of floats), "
+    "'cost' (a float), and 'bound' (a float). "
     "An empty list indicates that there are no current incumbent solutions "
-    "at this time. A sentinel value of [{'solution': [], 'cost': None}] "
-    "indicates that no future incumbent values will be produced. "
+    "at this time. A sentinel value of [{'solution': [], 'cost': None, "
+    "'bound': None}] indicates that no future incumbent values will be produced. "
     "The 'id' is the reqId value returned from a POST to /cuopt/request",
     summary="Get incumbent solutions for MIP (self-hosted)",
     response_model=List[IncumbentSolution],

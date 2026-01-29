@@ -828,6 +828,7 @@ class LPSolve(StrictModel):
 class IncumbentSolution(StrictModel):
     solution: List[float]
     cost: Union[float, None]
+    bound: Union[float, None]
 
 
 lp_example_data = {

@@ -37,6 +37,12 @@ bool presolve_data_t<i_t, f_t>::pre_process_assignment(problem_t<i_t, f_t>& prob
   cuopt_assert(assignment.size() == problem.original_problem_ptr->get_n_variables(),
                "size mismatch");
 
+  // NOTE: We can apply substitutions and fixed variables here.
+  // However, variable fixing and substitutions are already included in the problem and objective
+  // offsets. So the only advantage of applying them here would be to check the compatibility of the
+  // assignment values. It is not so important as we would be correcting the infeasibility by
+  // keeping the correct substitution.
+
   // create a temp assignment with the var size after bounds standardization (free vars added)
   rmm::device_uvector<f_t> temp_assignment(additional_var_used.size(),
                                            problem.handle_ptr->get_stream());
