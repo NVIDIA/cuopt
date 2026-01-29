@@ -59,17 +59,17 @@ cache:
       - cuda-version =${{ cuda_version }}
       - cmake ${{ cmake_version }}
       - ninja
-      - grpc-cpp
-      - libprotobuf
+      - libgrpc >=1.62
+      - libprotobuf >=4.25
       - tbb-devel
       - zlib
       - bzip2
     host:
       - cpp-argparse
       - cuda-version =${{ cuda_version }}
-      - grpc-cpp
+      - libgrpc >=1.62
       - libraft-headers =${{ minor_version }}
-      - libprotobuf
+      - libprotobuf >=4.25
       - librmm =${{ minor_version }}
       - rapids-logger =0.2
       - cuda-nvtx-dev
@@ -112,7 +112,6 @@ outputs:
         by_name:
           - cuda-nvtx
           - cuda-version
-          - grpc-cpp
           - libcurand
           - libcudss
           - libcusparse
@@ -152,8 +151,8 @@ outputs:
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
         - libboost-devel
         - cuda-version =${{ cuda_version }}
-        - grpc-cpp
-        - libprotobuf
+        - libgrpc >=1.62
+        - libprotobuf >=4.25
         - rapids-logger =0.2
         - librmm =${{ minor_version }}
         - libcublas
@@ -163,7 +162,6 @@ outputs:
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
         - libboost-devel
-        - libprotobuf
         - librmm =${{ minor_version }}
         - cuda-nvrtc
         - libcudss
@@ -171,12 +169,9 @@ outputs:
         by_name:
           - cuda-nvtx
           - cuda-version
-          - grpc-cpp
           - libcudss
           - libcurand
           - libcusparse
-          - libgrpc
-          - libprotobuf
           - librmm
           - libboost
           - libboost_iostreams
@@ -218,12 +213,9 @@ outputs:
         by_name:
           - cuda-nvtx
           - cuda-version
-          - grpc-cpp
           - libcurand
           - libcusparse
           - libcudss
-          - libgrpc
-          - libprotobuf
           - librmm
           - libboost
           - libboost_iostreams

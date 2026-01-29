@@ -302,8 +302,8 @@ dependencies:
           - tbb-devel
           - zlib
           - bzip2
-          - grpc-cpp
-          - libprotobuf
+          - libgrpc >=1.62
+          - libprotobuf >=4.25
   test_cpp:
     common:
       - output_types: [conda]

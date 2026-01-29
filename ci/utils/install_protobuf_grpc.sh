@@ -66,8 +66,8 @@ if [ -f /etc/os-release ]; then
             # To avoid that, we install Abseil first (from gRPC's submodule), then
             # build Protobuf and gRPC against that same installed Abseil.
 
-            # Keep in sync with conda (grpc-cpp) baseline.
-            GRPC_VERSION="v1.51.1"
+            # Keep in sync with conda (libgrpc >=1.62) baseline.
+            GRPC_VERSION="v1.64.2"
             rm -rf /tmp/grpc-src /tmp/grpc-build /tmp/absl-build
             git clone --depth 1 --branch "${GRPC_VERSION}" --recurse-submodules https://github.com/grpc/grpc.git /tmp/grpc-src
 
@@ -94,8 +94,8 @@ if [ -f /etc/os-release ]; then
             cmake --install /tmp/absl-build
 
             echo "Building and installing Protobuf into ${PREFIX} (using installed Abseil)..."
-            # Match a Protobuf version known to work with gRPC v1.51.x.
-            PROTOBUF_VERSION="v3.21.12"
+            # Match a Protobuf version known to work with gRPC v1.64.x.
+            PROTOBUF_VERSION="v26.1"
             rm -rf /tmp/protobuf-src /tmp/protobuf-build
             git clone --depth 1 --branch "${PROTOBUF_VERSION}" https://github.com/protocolbuffers/protobuf.git /tmp/protobuf-src
             cmake -S /tmp/protobuf-src -B /tmp/protobuf-build -G Ninja \
@@ -131,7 +131,7 @@ if [ -f /etc/os-release ]; then
             cmake --install /tmp/grpc-build
 
             # Avoid accidentally mixing Rocky's old protobuf headers/libs (3.5.x)
-            # with the source-installed protobuf (31.x) during subsequent builds.
+            # with the source-installed protobuf (26.x) during subsequent builds.
             # dnf remove -y protobuf-compiler protobuf-devel protobuf || true
 
             # Ensure the runtime linker can find /usr/local libs (Rocky8 doesn't
