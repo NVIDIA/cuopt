@@ -1,5 +1,5 @@
 # cmake-format: off
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
@@ -14,7 +14,6 @@ set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/saddle_point.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cusparse_view.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_hyper_params.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_warm_start_data.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/initial_scaling_strategy/initial_scaling.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/step_size_strategy/adaptive_step_size_strategy.cu
@@ -24,6 +23,7 @@ set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/termination_strategy/termination_strategy.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/termination_strategy/infeasibility_information.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/termination_strategy/convergence_information.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/optimal_batch_size_handler/optimal_batch_size_handler.cu
 )
 
 # C and Python adapter files

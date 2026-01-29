@@ -88,8 +88,8 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     }
   }
   if (max_config > 1) {
-    int config_id             = -1;  // Default value
-    const char* env_config_id = std::getenv("CUOPT_CONFIG_ID");
+    [[maybe_unused]] int config_id = -1;  // Default value
+    const char* env_config_id      = std::getenv("CUOPT_CONFIG_ID");
     if (env_config_id != nullptr) {
       try {
         config_id = std::stoi(env_config_id);

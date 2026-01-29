@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
 #include <raft/core/device_span.hpp>
@@ -82,7 +83,8 @@ class mip_solver_settings_t {
   bool heuristics_only = false;
   i_t num_cpu_threads  = -1;  // -1 means use default number of threads in branch and bound
   i_t num_gpus         = 1;
-  bool log_to_console  = true;
+  i_t mip_batch_pdlp_strong_branching = 0;
+  bool log_to_console                 = true;
   std::string log_file;
   std::string sol_file;
   std::string user_problem_file;
@@ -94,6 +96,9 @@ class mip_solver_settings_t {
   // this is for extracting info from different places of the solver during
   // benchmarks
   benchmark_info_t* benchmark_info_ptr = nullptr;
+
+  // TODO check with Akif and Alice
+  pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
 
  private:
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;

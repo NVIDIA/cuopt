@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -13,8 +13,10 @@
 #include <linear_programming/cusparse_view.hpp>
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <linear_programming/pdhg.hpp>
+#include <linear_programming/pdlp_climber_strategy.hpp>
 #include <linear_programming/restart_strategy/pdlp_restart_strategy.cuh>
 #include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
+#include <linear_programming/swap_and_resize_helper.cuh>
 #include <linear_programming/termination_strategy/termination_strategy.hpp>
 
 #include <mip/problem/problem.cuh>
@@ -27,10 +29,11 @@
 #include <rmm/device_uvector.hpp>
 
 #include <optional>
+#include <unordered_set>
+
 #include "linear_programming/termination_strategy/convergence_information.hpp"
 
 namespace cuopt::linear_programming::detail {
-void set_pdlp_hyper_parameters(rmm::cuda_stream_view stream_view);
 /**
  * @brief Solver for an optimization problem (Currently only linear program) to be solved,
  * pdlp_parameters and pdlp_internal_state
@@ -55,19 +58,25 @@ class pdlp_solver_t {
    * @param[in] op_problem An problem_t<i_t, f_t> object with a
    * representation of a linear program
    */
-  pdlp_solver_t(
-    problem_t<i_t, f_t>& op_problem,
-    pdlp_solver_settings_t<i_t, f_t> const& settings = pdlp_solver_settings_t<i_t, f_t>{},
-    bool is_batch_mode                               = false);
+  pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
+                pdlp_solver_settings_t<i_t, f_t> const& settings,
+                bool is_batch_mode = false);
 
   optimization_problem_solution_t<i_t, f_t> run_solver(const timer_t& timer);
 
-  f_t get_primal_weight_h() const;
-  f_t get_step_size_h() const;
+  f_t get_primal_weight_h(i_t id) const;
+  f_t get_step_size_h(i_t id) const;
   i_t get_total_pdhg_iterations() const;
   f_t get_relative_dual_tolerance_factor() const;
   f_t get_relative_primal_tolerance_factor() const;
   detail::pdlp_termination_strategy_t<i_t, f_t>& get_current_termination_strategy();
+
+  void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
+  void resize_context(i_t new_size);
+  void swap_all_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
+  void resize_all_context(i_t new_size);
+  void resize_and_swap_all_context_loop(
+    const std::unordered_set<i_t>& climber_strategies_to_remove);
 
   void set_problem_ptr(problem_t<i_t, f_t>* problem_ptr_);
 
@@ -100,6 +109,8 @@ class pdlp_solver_t {
     const pdlp_termination_status_t& termination_status,
     bool is_average = false);
   std::optional<optimization_problem_solution_t<i_t, f_t>> check_termination(const timer_t& timer);
+  std::optional<optimization_problem_solution_t<i_t, f_t>> check_batch_termination(
+    const timer_t& timer);
   std::optional<optimization_problem_solution_t<i_t, f_t>> check_limits(const timer_t& timer);
   void record_best_primal_so_far(const detail::pdlp_termination_strategy_t<i_t, f_t>& current,
                                  const detail::pdlp_termination_strategy_t<i_t, f_t>& average,
@@ -121,8 +132,13 @@ class pdlp_solver_t {
   void update_primal_dual_solutions(std::optional<const rmm::device_uvector<f_t>*> primal,
                                     std::optional<const rmm::device_uvector<f_t>*> dual);
 
+  std::vector<pdlp_climber_strategy_t> climber_strategies_;
+  bool batch_mode_{false};
+
   raft::handle_t const* handle_ptr_;
   rmm::cuda_stream_view stream_view_;
+  // Intentionnaly take a copy to avoid an unintentional modification in the calling context
+  const pdlp_solver_settings_t<i_t, f_t> settings_;
 
   problem_t<i_t, f_t>* problem_ptr;
   // Combined bounds in op_problem_scaled_ will only be scaled if
@@ -135,8 +151,8 @@ class pdlp_solver_t {
   i_t primal_size_h_;
   i_t dual_size_h_;
 
-  rmm::device_scalar<f_t> primal_step_size_;
-  rmm::device_scalar<f_t> dual_step_size_;
+  rmm::device_uvector<f_t> primal_step_size_;
+  rmm::device_uvector<f_t> dual_step_size_;
 
   /**
   The primal and dual step sizes are parameterized as:
@@ -150,9 +166,9 @@ class pdlp_solver_t {
   The parameter primal_weight is adjusted smoothly at each restart; to balance the
   primal and dual distances traveled since the last restart.
   */
-  rmm::device_scalar<f_t> primal_weight_;
-  rmm::device_scalar<f_t> best_primal_weight_;
-  rmm::device_scalar<f_t> step_size_;
+  rmm::device_uvector<f_t> primal_weight_;
+  rmm::device_uvector<f_t> best_primal_weight_;
+  rmm::device_uvector<f_t> step_size_;
 
   // Step size strategy
   detail::adaptive_step_size_strategy_t<i_t, f_t> step_size_strategy_;
@@ -163,12 +179,16 @@ class pdlp_solver_t {
   void halpern_update();
 
  private:
-  // Intentionnaly take a copy to avoid an unintentional modification in the calling context
-  const pdlp_solver_settings_t<i_t, f_t> settings_;
-
-  void compute_fixed_error(bool& has_restarted);
+  void compute_fixed_error(std::vector<int>& has_restarted);
 
   pdlp_warm_start_data_t<i_t, f_t> get_filled_warmed_start_data();
+
+  void transpose_primal_dual_to_row(rmm::device_uvector<f_t>& primal_to_transpose,
+                                    rmm::device_uvector<f_t>& dual_to_transpose,
+                                    rmm::device_uvector<f_t>& dual_slack_to_transpose);
+  void transpose_primal_dual_back_to_col(rmm::device_uvector<f_t>& primal_to_transpose,
+                                         rmm::device_uvector<f_t>& dual_to_transpose,
+                                         rmm::device_uvector<f_t>& dual_slack_to_transpose);
 
   // Initial scaling strategy
   detail::pdlp_initial_scaling_strategy_t<i_t, f_t> initial_scaling_strategy_;
@@ -204,6 +224,11 @@ class pdlp_solver_t {
   std::optional<f_t> initial_primal_weight_;
   std::optional<f_t> initial_step_size_;
   std::optional<i_t> initial_k_;
+
+  const rmm::device_scalar<f_t> reusable_device_scalar_value_1_;
+  const rmm::device_scalar<f_t> reusable_device_scalar_value_0_;
+
+  optimization_problem_solution_t<i_t, f_t> batch_solution_to_return_;
 
   // Only used if save_best_primal_so_far is toggeled
   optimization_problem_solution_t<i_t, f_t> best_primal_solution_so_far;

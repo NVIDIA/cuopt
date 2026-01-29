@@ -150,6 +150,7 @@ void test_multi_probe(std::string path)
   problem_checking_t<int, double>::check_problem_representation(op_problem);
   detail::problem_t<int, double> problem(op_problem);
   mip_solver_settings_t<int, double> default_settings{};
+  pdlp_hyper_params::pdlp_hyper_params_t hyper_params{};
   detail::pdlp_initial_scaling_strategy_t<int, double> scaling(&handle_,
                                                                problem,
                                                                10,
@@ -158,6 +159,7 @@ void test_multi_probe(std::string path)
                                                                problem.reverse_offsets,
                                                                problem.reverse_constraints,
                                                                nullptr,
+                                                               hyper_params,
                                                                true);
   detail::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
   detail::bound_presolve_t<int, double> bnd_prb_0(solver.context);
