@@ -45,6 +45,7 @@ inline std::optional<remote_solve_config_t> get_remote_solve_config()
   if (host != nullptr && port != nullptr && host[0] != '\0' && port[0] != '\0') {
     try {
       int port_num = std::stoi(port);
+      if (port_num < 1 || port_num > 65535) { return std::nullopt; }
       return remote_solve_config_t{std::string(host), port_num};
     } catch (...) {
       // Invalid port number, fall back to local solve

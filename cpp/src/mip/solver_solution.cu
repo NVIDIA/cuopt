@@ -147,24 +147,32 @@ bool mip_solution_t<i_t, f_t>::is_device_memory() const
 template <typename i_t, typename f_t>
 const rmm::device_uvector<f_t>& mip_solution_t<i_t, f_t>::get_solution() const
 {
+  EXE_CUOPT_EXPECTS(solution_ != nullptr,
+                    "Device solution not available (call to_device or construct with GPU data).");
   return *solution_;
 }
 
 template <typename i_t, typename f_t>
 rmm::device_uvector<f_t>& mip_solution_t<i_t, f_t>::get_solution()
 {
+  EXE_CUOPT_EXPECTS(solution_ != nullptr,
+                    "Device solution not available (call to_device or construct with GPU data).");
   return *solution_;
 }
 
 template <typename i_t, typename f_t>
 std::vector<f_t>& mip_solution_t<i_t, f_t>::get_solution_host()
 {
+  EXE_CUOPT_EXPECTS(solution_host_ != nullptr,
+                    "Host solution not available (call to_host or construct with CPU data).");
   return *solution_host_;
 }
 
 template <typename i_t, typename f_t>
 const std::vector<f_t>& mip_solution_t<i_t, f_t>::get_solution_host() const
 {
+  EXE_CUOPT_EXPECTS(solution_host_ != nullptr,
+                    "Host solution not available (call to_host or construct with CPU data).");
   return *solution_host_;
 }
 

@@ -20,6 +20,7 @@
 #include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <linear_programming/utils.cuh>
+#include <raft/util/cudart_utils.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
 #include <utilities/version_info.hpp>
@@ -477,15 +478,15 @@ cpu_problem_data_t<i_t, f_t> copy_view_to_cpu(raft::handle_t const* handle_ptr,
   auto var_types_span = gpu_view.get_variable_types();
   if (var_types_span.size() > 0) {
     cpu_data.variable_types.resize(var_types_span.size());
-    cudaMemcpyAsync(cpu_data.variable_types.data(),
-                    var_types_span.data(),
-                    var_types_span.size() * sizeof(char),
-                    cudaMemcpyDeviceToHost,
-                    stream);
+    RAFT_CUDA_TRY(cudaMemcpyAsync(cpu_data.variable_types.data(),
+                                  var_types_span.data(),
+                                  var_types_span.size() * sizeof(char),
+                                  cudaMemcpyDeviceToHost,
+                                  stream));
   }
 
   // Synchronize to ensure all copies are complete
-  cudaStreamSynchronize(stream);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
 
   return cpu_data;
 }

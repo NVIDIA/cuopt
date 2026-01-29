@@ -90,7 +90,7 @@ class optimization_problem_solution_t : public base_solution_t {
     double solve_time{std::numeric_limits<double>::signaling_NaN()};
 
     /** Whether the problem was solved by PDLP or Dual Simplex */
-    bool solved_by_pdlp{false};
+    bool solved_by_pdlp{true};
   };
 
   /**
@@ -509,9 +509,6 @@ class optimization_problem_solution_t : public base_solution_t {
 
   // Flag indicating where solution data is stored
   bool is_device_memory_ = true;
-
-  // Flag indicating if solved by PDLP (vs dual simplex)
-  bool solved_by_pdlp_ = true;
 
   pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
 

@@ -51,15 +51,21 @@ class TestRemoteSolveEnvironment:
     """Test remote solve environment variable detection and handling."""
 
     def setup_method(self):
-        """Clean up environment before each test."""
+        """Save and clean environment before each test."""
+        self._orig_env = {
+            "CUOPT_REMOTE_HOST": os.environ.get("CUOPT_REMOTE_HOST"),
+            "CUOPT_REMOTE_PORT": os.environ.get("CUOPT_REMOTE_PORT"),
+        }
         for var in ["CUOPT_REMOTE_HOST", "CUOPT_REMOTE_PORT"]:
             if var in os.environ:
                 del os.environ[var]
 
     def teardown_method(self):
-        """Clean up environment after each test."""
-        for var in ["CUOPT_REMOTE_HOST", "CUOPT_REMOTE_PORT"]:
-            if var in os.environ:
+        """Restore original environment after each test."""
+        for var, value in self._orig_env.items():
+            if value is not None:
+                os.environ[var] = value
+            elif var in os.environ:
                 del os.environ[var]
 
     def test_local_solve_by_default(self):

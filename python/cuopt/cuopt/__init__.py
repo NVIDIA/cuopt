@@ -20,7 +20,9 @@ def __getattr__(name):
     """Lazy import submodules to support CPU-only hosts with remote solve."""
     if name in _submodules:
         import importlib
-        return importlib.import_module(f"cuopt.{name}")
+        module = importlib.import_module(f"cuopt.{name}")
+        globals()[name] = module
+        return module
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -28,4 +30,4 @@ def __dir__():
     return __all__ + _submodules
 
 
-__all__ = ["__git_commit__", "__version__", "__version_major_minor__"]
+__all__ = ["__git_commit__", "__version__", "__version_major_minor__", *_submodules]

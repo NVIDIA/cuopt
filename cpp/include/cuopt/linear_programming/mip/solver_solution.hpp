@@ -52,7 +52,21 @@ class mip_solution_t : public base_solution_t {
                  rmm::cuda_stream_view stream_view);
   mip_solution_t(const cuopt::logic_error& error_status, rmm::cuda_stream_view stream_view);
 
-  // CPU-only constructors for remote solve
+  /**
+   * @brief Construct a CPU-only solution for remote solve results.
+   *
+   * @param solution Host-side solution vector
+   * @param var_names Variable names (host-side)
+   * @param objective Objective value
+   * @param mip_gap MIP gap
+   * @param termination_status Termination status for the solve
+   * @param max_constraint_violation Maximum constraint violation
+   * @param max_int_violation Maximum integer violation
+   * @param max_variable_bound_violation Maximum variable bound violation
+   * @param stats Solver statistics (host-side)
+   *
+   * @note This constructor stores data in host memory and sets is_device_memory() to false.
+   */
   mip_solution_t(std::vector<f_t> solution,
                  std::vector<std::string> var_names,
                  f_t objective,
@@ -63,7 +77,24 @@ class mip_solution_t : public base_solution_t {
                  f_t max_variable_bound_violation,
                  solver_stats_t<i_t, f_t> stats);
 
+  /**
+   * @brief Construct a CPU-only solution with termination status and stats.
+   *
+   * @param termination_status Termination status for a remote solve
+   * @param stats Solver statistics (host-side)
+   *
+   * @note This constructor stores data in host memory and sets is_device_memory() to false.
+   *       Use this when a remote solve terminates without a full solution vector.
+   */
   mip_solution_t(mip_termination_status_t termination_status, solver_stats_t<i_t, f_t> stats);
+
+  /**
+   * @brief Construct a CPU-only solution for error cases.
+   *
+   * @param error_status Error status describing the failure
+   *
+   * @note This constructor stores data in host memory and sets is_device_memory() to false.
+   */
   mip_solution_t(const cuopt::logic_error& error_status);
 
   bool is_mip() const override { return true; }

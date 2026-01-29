@@ -295,7 +295,7 @@ std::unique_ptr<solver_ret_t> call_solve(
         lp_ret.is_device_memory_     = false;
       }
 
-      // No warm-start data in remote stub path
+      // Remote stub path doesn't provide warm-start data yet.
       lp_ret.initial_primal_weight_         = 0.0;
       lp_ret.initial_step_size_             = 0.0;
       lp_ret.total_pdlp_iterations_         = 0;
@@ -461,6 +461,7 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
   // Limit parallelism as too much stream overlap gets too slow
   int max_thread = 1;
   if (linear_programming::is_remote_solve_enabled()) {
+    // Cap parallelism for remote solve to avoid overwhelming the remote service.
     constexpr std::size_t max_total = 4;
     max_thread = static_cast<int>(std::min(std::max<std::size_t>(size, 1), max_total));
   } else {

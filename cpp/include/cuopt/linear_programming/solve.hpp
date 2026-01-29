@@ -149,14 +149,14 @@ optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
 /**
  * @brief Convert a data_model_view_t to an optimization_problem_t.
  *
- * This function copies data from the view (which points to GPU memory)
+ * This function copies data from the view (which can point to CPU or GPU memory)
  * into an owning optimization_problem_t.
  *
  * @tparam i_t Data type of indexes
  * @tparam f_t Data type of the variables and their weights in the equations
  *
  * @param[in] handle_ptr  A raft::handle_t object with its corresponding CUDA stream.
- * @param[in] view  A data_model_view_t<i_t, f_t> object with spans pointing to GPU memory
+ * @param[in] view  A data_model_view_t<i_t, f_t> object with spans pointing to CPU or GPU memory
  * @return optimization_problem_t<i_t, f_t> owning container for the problem
  */
 template <typename i_t, typename f_t>

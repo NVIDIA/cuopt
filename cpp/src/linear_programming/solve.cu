@@ -44,6 +44,7 @@
 #include <raft/common/nvtx.hpp>
 #include <raft/core/device_setter.hpp>
 #include <raft/core/handle.hpp>
+#include <raft/util/cudart_utils.hpp>
 
 #include <cstring>  // For std::memcpy
 #include <thread>   // For std::thread
@@ -1466,13 +1467,14 @@ optimization_problem_t<i_t, f_t> data_model_view_to_optimization_problem(
     std::vector<char> host_var_types(var_types.size());
     if (err == cudaSuccess && attrs.type == cudaMemoryTypeDevice) {
       // Source is on GPU - copy to host
-      cudaMemcpy(host_var_types.data(),
-                 var_types.data(),
-                 var_types.size() * sizeof(char),
-                 cudaMemcpyDeviceToHost);
+      RAFT_CUDA_TRY(cudaMemcpy(host_var_types.data(),
+                               var_types.data(),
+                               var_types.size() * sizeof(char),
+                               cudaMemcpyDeviceToHost));
     } else {
       // Source is on host (or unregistered) - direct copy
-      cudaGetLastError();  // Clear any error from cudaPointerGetAttributes
+      if (err != cudaSuccess) { cudaGetLastError(); }  // Clear cudaPointerGetAttributes error
+      if (err != cudaSuccess && err != cudaErrorInvalidValue) { RAFT_CUDA_TRY(err); }
       std::memcpy(host_var_types.data(), var_types.data(), var_types.size() * sizeof(char));
     }
 
@@ -1519,21 +1521,22 @@ optimization_problem_t<i_t, f_t> data_model_view_to_optimization_problem(
 
     if (err == cudaSuccess && attrs.type == cudaMemoryTypeDevice) {
       // Source is on GPU - copy to host
-      cudaMemcpy(Q_values.data(),
-                 view.get_quadratic_objective_values().data(),
-                 Q_values.size() * sizeof(f_t),
-                 cudaMemcpyDeviceToHost);
-      cudaMemcpy(Q_indices.data(),
-                 view.get_quadratic_objective_indices().data(),
-                 Q_indices.size() * sizeof(i_t),
-                 cudaMemcpyDeviceToHost);
-      cudaMemcpy(Q_offsets.data(),
-                 view.get_quadratic_objective_offsets().data(),
-                 Q_offsets.size() * sizeof(i_t),
-                 cudaMemcpyDeviceToHost);
+      RAFT_CUDA_TRY(cudaMemcpy(Q_values.data(),
+                               view.get_quadratic_objective_values().data(),
+                               Q_values.size() * sizeof(f_t),
+                               cudaMemcpyDeviceToHost));
+      RAFT_CUDA_TRY(cudaMemcpy(Q_indices.data(),
+                               view.get_quadratic_objective_indices().data(),
+                               Q_indices.size() * sizeof(i_t),
+                               cudaMemcpyDeviceToHost));
+      RAFT_CUDA_TRY(cudaMemcpy(Q_offsets.data(),
+                               view.get_quadratic_objective_offsets().data(),
+                               Q_offsets.size() * sizeof(i_t),
+                               cudaMemcpyDeviceToHost));
     } else {
       // Source is on host - direct copy
-      cudaGetLastError();  // Clear any error from cudaPointerGetAttributes
+      if (err != cudaSuccess) { cudaGetLastError(); }  // Clear cudaPointerGetAttributes error
+      if (err != cudaSuccess && err != cudaErrorInvalidValue) { RAFT_CUDA_TRY(err); }
       std::memcpy(Q_values.data(),
                   view.get_quadratic_objective_values().data(),
                   Q_values.size() * sizeof(f_t));

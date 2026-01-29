@@ -446,6 +446,9 @@ bool optimization_problem_solution_t<i_t, f_t>::is_device_memory() const
 template <typename i_t, typename f_t>
 rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_primal_solution()
 {
+  EXE_CUOPT_EXPECTS(primal_solution_ != nullptr,
+                    "Device primal solution not available (call to_device or construct with GPU "
+                    "data).");
   return *primal_solution_;
 }
 
@@ -453,24 +456,36 @@ template <typename i_t, typename f_t>
 const rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_primal_solution()
   const
 {
+  EXE_CUOPT_EXPECTS(primal_solution_ != nullptr,
+                    "Device primal solution not available (call to_device or construct with GPU "
+                    "data).");
   return *primal_solution_;
 }
 
 template <typename i_t, typename f_t>
 rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_dual_solution()
 {
+  EXE_CUOPT_EXPECTS(dual_solution_ != nullptr,
+                    "Device dual solution not available (call to_device or construct with GPU "
+                    "data).");
   return *dual_solution_;
 }
 
 template <typename i_t, typename f_t>
 const rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_dual_solution() const
 {
+  EXE_CUOPT_EXPECTS(dual_solution_ != nullptr,
+                    "Device dual solution not available (call to_device or construct with GPU "
+                    "data).");
   return *dual_solution_;
 }
 
 template <typename i_t, typename f_t>
 rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_reduced_cost()
 {
+  EXE_CUOPT_EXPECTS(reduced_cost_ != nullptr,
+                    "Device reduced cost not available (call to_device or construct with GPU "
+                    "data).");
   return *reduced_cost_;
 }
 
@@ -478,36 +493,54 @@ rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_reduced
 template <typename i_t, typename f_t>
 std::vector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_primal_solution_host()
 {
+  EXE_CUOPT_EXPECTS(primal_solution_host_ != nullptr,
+                    "Host primal solution not available (call to_host or construct with CPU "
+                    "data).");
   return *primal_solution_host_;
 }
 
 template <typename i_t, typename f_t>
 const std::vector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_primal_solution_host() const
 {
+  EXE_CUOPT_EXPECTS(primal_solution_host_ != nullptr,
+                    "Host primal solution not available (call to_host or construct with CPU "
+                    "data).");
   return *primal_solution_host_;
 }
 
 template <typename i_t, typename f_t>
 std::vector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_dual_solution_host()
 {
+  EXE_CUOPT_EXPECTS(dual_solution_host_ != nullptr,
+                    "Host dual solution not available (call to_host or construct with CPU "
+                    "data).");
   return *dual_solution_host_;
 }
 
 template <typename i_t, typename f_t>
 const std::vector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_dual_solution_host() const
 {
+  EXE_CUOPT_EXPECTS(dual_solution_host_ != nullptr,
+                    "Host dual solution not available (call to_host or construct with CPU "
+                    "data).");
   return *dual_solution_host_;
 }
 
 template <typename i_t, typename f_t>
 std::vector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_reduced_cost_host()
 {
+  EXE_CUOPT_EXPECTS(reduced_cost_host_ != nullptr,
+                    "Host reduced cost not available (call to_host or construct with CPU "
+                    "data).");
   return *reduced_cost_host_;
 }
 
 template <typename i_t, typename f_t>
 const std::vector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_reduced_cost_host() const
 {
+  EXE_CUOPT_EXPECTS(reduced_cost_host_ != nullptr,
+                    "Host reduced cost not available (call to_host or construct with CPU "
+                    "data).");
   return *reduced_cost_host_;
 }
 
@@ -638,7 +671,7 @@ i_t optimization_problem_solution_t<i_t, f_t>::get_nb_iterations() const
 template <typename i_t, typename f_t>
 bool optimization_problem_solution_t<i_t, f_t>::get_solved_by_pdlp() const
 {
-  return solved_by_pdlp_;
+  return termination_stats_.solved_by_pdlp;
 }
 
 //============================================================================
@@ -684,7 +717,7 @@ void optimization_problem_solution_t<i_t, f_t>::set_nb_iterations(i_t value)
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_solved_by_pdlp(bool value)
 {
-  solved_by_pdlp_ = value;
+  termination_stats_.solved_by_pdlp = value;
 }
 
 template <typename i_t, typename f_t>

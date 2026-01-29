@@ -37,17 +37,39 @@ class RemoteSolveConfigTest : public ::testing::Test {
  protected:
   void SetUp() override
   {
-    // Clean environment before each test
+    // Save original environment variables
+    const char* host_env = std::getenv("CUOPT_REMOTE_HOST");
+    const char* port_env = std::getenv("CUOPT_REMOTE_PORT");
+    saved_host_          = host_env ? std::string(host_env) : std::string();
+    saved_port_          = port_env ? std::string(port_env) : std::string();
+    had_host_            = (host_env != nullptr);
+    had_port_            = (port_env != nullptr);
+
+    // Clean environment for test
     unsetenv("CUOPT_REMOTE_HOST");
     unsetenv("CUOPT_REMOTE_PORT");
   }
 
   void TearDown() override
   {
-    // Clean environment after each test
-    unsetenv("CUOPT_REMOTE_HOST");
-    unsetenv("CUOPT_REMOTE_PORT");
+    // Restore original environment variables
+    if (had_host_) {
+      setenv("CUOPT_REMOTE_HOST", saved_host_.c_str(), 1);
+    } else {
+      unsetenv("CUOPT_REMOTE_HOST");
+    }
+    if (had_port_) {
+      setenv("CUOPT_REMOTE_PORT", saved_port_.c_str(), 1);
+    } else {
+      unsetenv("CUOPT_REMOTE_PORT");
+    }
   }
+
+ private:
+  std::string saved_host_;
+  std::string saved_port_;
+  bool had_host_ = false;
+  bool had_port_ = false;
 };
 
 TEST_F(RemoteSolveConfigTest, valid_configuration)
