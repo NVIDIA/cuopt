@@ -82,6 +82,7 @@ requirements:
     - pylibraft =${{ minor_version }}
     - python
     - rmm =${{ minor_version }}
+    - scipy >=1.14.1
     # Needed by Numba for CUDA support
     - cuda-nvcc-impl
     # TODO: Add nvjitlink here

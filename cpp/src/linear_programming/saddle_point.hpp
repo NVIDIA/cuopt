@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -12,6 +12,8 @@
 #include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
+
+#include <linear_programming/swap_and_resize_helper.cuh>
 
 namespace cuopt::linear_programming::detail {
 /**
@@ -59,7 +61,10 @@ class saddle_point_state_t {
    *
    * @throws cuopt::logic_error if the problem sizes are not larger than 0.
    */
-  saddle_point_state_t(raft::handle_t const* handle_ptr, i_t primal_size, i_t dual_size);
+  saddle_point_state_t(raft::handle_t const* handle_ptr,
+                       i_t primal_size,
+                       i_t dual_size,
+                       size_t batch_size);
 
   /**
    * @brief Copies the values of the solutions in another saddle_point_state_t
@@ -85,6 +90,9 @@ class saddle_point_state_t {
   rmm::device_uvector<f_t>& get_dual_gradient();
   rmm::device_uvector<f_t>& get_current_AtY();
   rmm::device_uvector<f_t>& get_next_AtY();
+
+  void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
+  void resize_context(i_t new_size);
 
   /**
    * @brief Gets the device-side view (with raw pointers), for ease of access

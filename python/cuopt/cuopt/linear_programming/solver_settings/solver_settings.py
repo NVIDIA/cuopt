@@ -230,7 +230,7 @@ class SolverSettings:
         ----------
         pdlp_warm_start_data : PDLPWarmStartData
             PDLP warm start data obtained from a previous solve.
-            Refer :py:meth:`cuopt.linear_programming.problem.Problem.get_pdlp_warm_start_data`  # noqa
+            Refer :py:meth:`cuopt.linear_programming.problem.Problem.getWarmstartData`  # noqa
 
         Notes
         -----

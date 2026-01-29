@@ -61,6 +61,7 @@ dependencies:
 - requests
 - rmm==26.2.*,>=0.0.0a0
 - scikit-build-core>=0.11.0
+- scipy>=1.14.1
 - sphinx
 - sphinx-copybutton
 - sphinx-design

@@ -155,6 +155,8 @@ struct simplex_solver_settings_t {
   i_t num_threads;                 // number of threads to use
   i_t random_seed;                 // random seed
   i_t num_bfs_workers;             // number of threads dedicated to the best-first search
+  i_t mip_batch_pdlp_strong_branching{0};  // 0 if not using batch PDLP for strong branching, 1 if
+                                           // using batch PDLP for strong branching
 
   diving_heuristics_settings_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
 

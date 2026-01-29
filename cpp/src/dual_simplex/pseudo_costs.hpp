@@ -66,7 +66,8 @@ class pseudo_costs_t {
 };
 
 template <typename i_t, typename f_t>
-void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
+void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
+                      const lp_problem_t<i_t, f_t>& original_lp,
                       const simplex_solver_settings_t<i_t, f_t>& settings,
                       f_t start_time,
                       const std::vector<variable_type_t>& var_types,

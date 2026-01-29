@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -7,10 +7,12 @@ from enum import Enum
 
 import cuopt_mps_parser
 import numpy as np
+from scipy.sparse import coo_matrix
 
 import cuopt.linear_programming.data_model as data_model
 import cuopt.linear_programming.solver as solver
 import cuopt.linear_programming.solver_settings as solver_settings
+import warnings
 
 
 class VType(str, Enum):
@@ -234,7 +236,9 @@ class Variable:
             case int() | float():
                 return LinearExpression([self], [float(other)], 0.0)
             case Variable():
-                return QuadraticExpression([self], [other], [1.0], [], [], 0.0)
+                return QuadraticExpression(
+                    qvars1=[self], qvars2=[other], qcoefficients=[1.0]
+                )
             case LinearExpression():
                 qvars1 = [self] * len(other.vars)
                 qvars2 = other.vars
@@ -242,7 +246,11 @@ class Variable:
                 vars = [self]
                 coeffs = [other.constant]
                 return QuadraticExpression(
-                    qvars1, qvars2, qcoeffs, vars, coeffs, 0.0
+                    qvars1=qvars1,
+                    qvars2=qvars2,
+                    qcoefficients=qcoeffs,
+                    vars=vars,
+                    coefficients=coeffs,
                 )
             case _:
                 raise ValueError(
@@ -301,12 +309,33 @@ class QuadraticExpression:
 
     Parameters
     ----------
+    qmatrix : List[List[float]] or 2D numpy array.
+        Matrix containing quadratic coefficient matrix terms.
+        Should be a square matrix with shape as (num_vars, num_vars).
+    qvars : List[Variable]
+        List of variables denoting the rows and cols in qmatrix. It is
+        a mandatory field when providing qmatrix.
+        qvars should be in the order of variables added to the problem
+        and can be obtained using problem.getVariables(). The length
+        of qvars should be equal to length of row/col in qmatrix.
     qvars1 : List[Variable]
         List of first variables for quadratic terms.
+        This should be used if adding quadratic terms in triplet (i, j, x)
+        format where i is the row variable, j is the column variable and
+        x is the corresponding coefficient. qvars1 contains all i variables
+        representing the row.
     qvars2 : List[Variable]
         List of second variables for quadratic terms.
+        This should be used if adding quadratic terms in triplet (i, j, x)
+        format where i is the row variable, j is the column variable and
+        x is the corresponding coefficient. qvars2 contains all j variables
+        representing the column.
     qcoefficients : List[float]
         List of coefficients for the quadratic terms.
+        This should be used if adding quadratic terms in triplet (i, j, x)
+        format where i is the row variable, j is the column variable and
+        x is the corresponding coefficient. qcoefficients contains all x
+        values representing coefficients for (i,j)
     vars : List[Variable]
         List of Variables for linear terms.
     coefficients : List[float]
@@ -318,16 +347,38 @@ class QuadraticExpression:
     --------
     >>> x = problem.addVariable()
     >>> y = problem.addVariable()
-    >>> # Create x^2 + 2*x*y + 3*x + 4
-    >>> quad_expr = QuadraticExpression(
-    ...     [x, x], [x, y], [1.0, 2.0],
-    ...     [x], [3.0], 4.0
+    >>> # Create objective x^2 + 2*x*y + 3*x + 4 using matrix
+    >>> quad_matrix = QuadraticExpression(
+    ...     qmatrix=[[1.0, 2.0], [0.0, 0.0]],
+    ...     qvars=[x, y]
     ... )
+    >>> quad_obj_using_matrix = quad_matrix + 3*x + 4
+    >>> # Create objective x^2 + 2*x*y + 3*x + 4 using expression
+    >>> quad_obj_using_expr = x*x + 2*x*y + 3*x + 4
     """
 
     def __init__(
-        self, qvars1, qvars2, qcoefficients, vars, coefficients, constant
+        self,
+        qmatrix=None,
+        qvars=[],
+        qvars1=[],
+        qvars2=[],
+        qcoefficients=[],
+        vars=[],
+        coefficients=[],
+        constant=0.0,
     ):
+        self.qmatrix = None
+        self.qvars = qvars
+        if qmatrix is not None:
+            self.qmatrix = coo_matrix(qmatrix)
+            mshape = self.qmatrix.shape
+            if mshape[0] != mshape[1]:
+                raise ValueError("qmatrix should be a square matrix")
+            if len(qvars) != mshape[0]:
+                raise ValueError(
+                    "qvars length mismatch. Should match with qmatrix length. Please check docs for more details."
+                )
         self.qvars1 = qvars1
         self.qvars2 = qvars2
         self.qcoefficients = qcoefficients
@@ -340,31 +391,48 @@ class QuadraticExpression:
         Returns all the quadractic variables in the expression as list
         of tuples containing Variable 1 and Variable 2 for each term.
         """
-        return list(zip(self.qvars1, self.qvars2))
+        qvars1 = self.qvars1
+        qvars2 = self.qvars2
+        if self.qmatrix is not None:
+            qvars1 = self.qvars1 + [self.qvars[i] for i in self.qmatrix.row]
+            qvars2 = self.qvars2 + [self.qvars[i] for i in self.qmatrix.col]
+        return list(zip(qvars1, qvars2))
 
     def getVariable1(self, i):
         """
         Gets first Variable at ith index in the quadratic term.
         """
-        return self.qvars1[i]
+        qvars1 = self.qvars1
+        if self.qmatrix is not None:
+            qvars1 = self.qvars1 + [self.qvars[r] for r in self.qmatrix.row]
+        return qvars1[i]
 
     def getVariable2(self, i):
         """
         Gets second Variable at ith index in the quadratic term.
         """
-        return self.qvars2[i]
+        qvars2 = self.qvars2
+        if self.qmatrix is not None:
+            qvars2 = self.qvars2 + [self.qvars[c] for c in self.qmatrix.col]
+        return qvars2[i]
 
     def getCoefficients(self):
         """
         Returns all the coefficients of the quadratic term.
         """
-        return self.qcoefficients
+        qcoefficients = self.qcoefficients
+        if self.qmatrix is not None:
+            qcoefficients = self.qcoefficients + self.qmatrix.data.tolist()
+        return qcoefficients
 
     def getCoefficient(self, i):
         """
         Gets the coefficient of the quadratic term at ith index.
         """
-        return self.qcoefficients[i]
+        qcoefficients = self.qcoefficients
+        if self.qmatrix is not None:
+            qcoefficients = self.qcoefficients + self.qmatrix.data.tolist()
+        return qcoefficients[i]
 
     def getLinearExpression(self):
         """
@@ -381,12 +449,21 @@ class QuadraticExpression:
         value = 0.0
         for i, var in enumerate(self.vars):
             value += var.Value * self.coefficients[i]
-        for i, (var1, var2) in enumerate(self.getVariables()):
+        for i, var1 in enumerate(self.qvars1):
+            var2 = self.qvars2[i]
             value += var1.Value * var2.Value * self.qcoefficients[i]
+        if self.qmatrix is not None:
+            rows_idx = self.qmatrix.row
+            cols_idx = self.qmatrix.col
+            data = self.qmatrix.data
+            for i, row_idx in enumerate(rows_idx):
+                var1 = self.qvars[row_idx]
+                var2 = self.qvars[cols_idx[i]]
+                value += var1.Value * var2.Value * data[i]
         return value + self.constant
 
     def __len__(self):
-        return len(self.vars) + len(self.qvars1)
+        return len(self.vars) + len(self.qvars1) + len(self.qvars)
 
     def __iadd__(self, other):
         # Compute expr1 += expr2
@@ -407,13 +484,20 @@ class QuadraticExpression:
                 self.constant += other.constant
                 return self
             case QuadraticExpression():
-                # Append all quadratic variables, coefficients and constants
+                # Linear expression terms
                 self.vars.extend(other.vars)
                 self.coefficients.extend(other.coefficients)
                 self.constant += other.constant
+                # Quadratic expression terms
                 self.qvars2.extend(other.qvars2)
                 self.qvars1.extend(other.qvars1)
                 self.qcoefficients.extend(other.qcoefficients)
+                # Quadratic matrix terms
+                if self.qmatrix is not None and other.qmatrix is not None:
+                    self.qmatrix += other.qmatrix
+                elif other.qmatrix is not None:
+                    self.qmatrix = other.qmatrix
+                    self.qvars = other.qvars
                 return self
             case _:
                 raise ValueError(
@@ -427,6 +511,8 @@ class QuadraticExpression:
             case int() | float():
                 # Update just the constant value
                 return QuadraticExpression(
+                    self.qmatrix,
+                    self.qvars,
                     self.qvars1,
                     self.qvars2,
                     self.qcoefficients,
@@ -439,6 +525,8 @@ class QuadraticExpression:
                 vars = self.vars + [other]
                 coeffs = self.coefficients + [1.0]
                 return QuadraticExpression(
+                    self.qmatrix,
+                    self.qvars,
                     self.qvars1,
                     self.qvars2,
                     self.qcoefficients,
@@ -452,6 +540,8 @@ class QuadraticExpression:
                 coeffs = self.coefficients + other.coefficients
                 constant = self.constant + other.constant
                 return QuadraticExpression(
+                    self.qmatrix,
+                    self.qvars,
                     self.qvars1,
                     self.qvars2,
                     self.qcoefficients,
@@ -460,15 +550,31 @@ class QuadraticExpression:
                     constant,
                 )
             case QuadraticExpression():
-                # Append all quadratic variables, coefficients and constants
-                qvars1 = self.qvars1 + other.qvars1
-                qvars2 = self.qvars2 + other.qvars2
-                qcoeffs = self.qcoefficients + other.qcoefficients
+                # Linear expression terms
                 vars = self.vars + other.vars
                 coeffs = self.coefficients + other.coefficients
                 constant = self.constant + other.constant
+                # Quadratic expression terms
+                qvars1 = self.qvars1 + other.qvars1
+                qvars2 = self.qvars2 + other.qvars2
+                qcoeffs = self.qcoefficients + other.qcoefficients
+                # Quadratic matrix terms
+                qmatrix = self.qmatrix
+                qvars = self.qvars
+                if self.qmatrix is not None and other.qmatrix is not None:
+                    qmatrix = self.qmatrix + other.qmatrix
+                elif other.qmatrix is not None:
+                    qmatrix = other.qmatrix
+                    qvars = other.qvars
                 return QuadraticExpression(
-                    qvars1, qvars2, qcoeffs, vars, coeffs, constant
+                    qmatrix,
+                    qvars,
+                    qvars1,
+                    qvars2,
+                    qcoeffs,
+                    vars,
+                    coeffs,
+                    constant,
                 )
             case _:
                 raise ValueError(
@@ -499,15 +605,22 @@ class QuadraticExpression:
                 self.constant -= other.constant
                 return self
             case QuadraticExpression():
-                # Append all quadratic variables, coefficients and constants
+                # Linear expression terms
                 self.vars.extend(other.vars)
                 for coeff in other.coefficients:
                     self.coefficients.append(-coeff)
                 self.constant -= other.constant
+                # Quadratic expression terms
                 self.qvars2.extend(other.qvars2)
                 self.qvars1.extend(other.qvars1)
                 for qcoeff in other.qcoefficients:
                     self.qcoefficients.append(-qcoeff)
+                # Quadratic matrix terms
+                if self.qmatrix is not None and other.qmatrix is not None:
+                    self.qmatrix -= other.qmatrix
+                elif other.qmatrix is not None:
+                    self.qmatrix = -other.qmatrix
+                    self.qvars = other.qvars
                 return self
             case _:
                 raise ValueError(
@@ -521,6 +634,8 @@ class QuadraticExpression:
             case int() | float():
                 # Update just the constant value
                 return QuadraticExpression(
+                    self.qmatrix,
+                    self.qvars,
                     self.qvars1,
                     self.qvars2,
                     self.qcoefficients,
@@ -533,6 +648,8 @@ class QuadraticExpression:
                 vars = self.vars + [other]
                 coeffs = self.coefficients + [-1.0]
                 return QuadraticExpression(
+                    self.qmatrix,
+                    self.qvars,
                     self.qvars1,
                     self.qvars2,
                     self.qcoefficients,
@@ -550,6 +667,8 @@ class QuadraticExpression:
                     coeffs.append(-1.0 * i)
                 constant = self.constant - other.constant
                 return QuadraticExpression(
+                    self.qmatrix,
+                    self.qvars,
                     self.qvars1,
                     self.qvars2,
                     self.qcoefficients,
@@ -558,7 +677,7 @@ class QuadraticExpression:
                     constant,
                 )
             case QuadraticExpression():
-                # Append all quadratic variables, coefficients and constants
+                # Linear expression terms
                 vars = self.vars + other.vars
                 coeffs = []
                 for i in self.coefficients:
@@ -566,6 +685,7 @@ class QuadraticExpression:
                 for i in other.coefficients:
                     coeffs.append(-1.0 * i)
                 constant = self.constant - other.constant
+                # Quadratic expression terms
                 qvars1 = self.qvars1 + other.qvars1
                 qvars2 = self.qvars2 + other.qvars2
                 qcoeffs = []
@@ -573,8 +693,23 @@ class QuadraticExpression:
                     qcoeffs.append(i)
                 for i in other.qcoefficients:
                     qcoeffs.append(-1.0 * i)
+                # Quadratic matrix terms
+                qmatrix = self.qmatrix
+                qvars = self.qvars
+                if self.qmatrix is not None and other.qmatrix is not None:
+                    qmatrix = self.qmatrix - other.qmatrix
+                elif other.qmatrix is not None:
+                    qmatrix = -other.qmatrix
+                    qvars = other.qvars
                 return QuadraticExpression(
-                    qvars1, qvars2, qcoeffs, vars, coeffs, constant
+                    qmatrix,
+                    qvars,
+                    qvars1,
+                    qvars2,
+                    qcoeffs,
+                    vars,
+                    coeffs,
+                    constant,
                 )
             case _:
                 raise ValueError(
@@ -597,6 +732,8 @@ class QuadraticExpression:
                 self.qcoefficients = [
                     qcoeff * float(other) for qcoeff in self.qcoefficients
                 ]
+                if self.qmatrix is not None:
+                    self.qmatrix *= float(other)
                 return self
             case _:
                 raise ValueError(
@@ -613,7 +750,12 @@ class QuadraticExpression:
                     qcoeff * float(other) for qcoeff in self.qcoefficients
                 ]
                 constant = self.constant * float(other)
+                qmatrix = None
+                if self.qmatrix is not None:
+                    qmatrix = self.qmatrix * float(other)
                 return QuadraticExpression(
+                    qmatrix,
+                    self.qvars,
                     self.qvars1,
                     self.qvars2,
                     qcoeffs,
@@ -641,6 +783,8 @@ class QuadraticExpression:
                     coeff / float(other) for coeff in self.qcoefficients
                 ]
                 self.constant = self.constant / float(other)
+                if self.qmatrix is not None:
+                    self.qmatrix = self.qmatrix / float(other)
                 return self
             case _:
                 raise ValueError(
@@ -657,7 +801,12 @@ class QuadraticExpression:
                     qcoeff / float(other) for qcoeff in self.qcoefficients
                 ]
                 constant = self.constant / float(other)
+                qmatrix = None
+                if self.qmatrix is not None:
+                    qmatrix = self.qmatrix / float(other)
                 return QuadraticExpression(
+                    qmatrix,
+                    self.qvars,
                     self.qvars1,
                     self.qvars2,
                     qcoeffs,
@@ -899,7 +1048,12 @@ class LinearExpression:
                 ]
                 constant = self.constant * other.constant
                 return QuadraticExpression(
-                    qvars1, qvars2, qcoeffs, vars, coeffs, constant
+                    qvars1=qvars1,
+                    qvars2=qvars2,
+                    qcoefficients=qcoeffs,
+                    vars=vars,
+                    coefficients=coeffs,
+                    constant=constant,
                 )
             case _:
                 raise ValueError(
@@ -914,6 +1068,8 @@ class LinearExpression:
                 coeffs = [coeff * float(other) for coeff in self.coefficients]
                 constant = self.constant * float(other)
                 return LinearExpression(self.vars, coeffs, constant)
+            case Variable():
+                return other * self
             case LinearExpression():
                 qvars1, qvars2, qcoeffs = [], [], []
                 for i in range(len(self.vars)):
@@ -929,10 +1085,18 @@ class LinearExpression:
                 ]
                 constant = self.constant * other.constant
                 return QuadraticExpression(
-                    qvars1, qvars2, qcoeffs, vars, coeffs, constant
+                    qvars1=qvars1,
+                    qvars2=qvars2,
+                    qcoefficients=qcoeffs,
+                    vars=vars,
+                    coefficients=coeffs,
+                    constant=constant,
                 )
-            case Variable():
-                return other * self
+            case _:
+                raise ValueError(
+                    "Can't multiply type %s by LinearExpresson"
+                    % type(other).__name__
+                )
 
     def __rmul__(self, other):
         return self * other
@@ -1140,7 +1304,6 @@ class Problem:
         self.ObjSense = MINIMIZE
         self.ObjConstant = 0.0
         self.Status = -1
-        self.ObjValue = float("nan")
         self.warmstart_data = None
 
         self.model = None
@@ -1148,8 +1311,7 @@ class Problem:
         self.rhs = None
         self.row_sense = None
         self.constraint_csr_matrix = None
-        self.objective_qcsr_matrix = None
-        self.objective_qcoo_matrix = [], [], []
+        self.objective_qmatrix = None
         self.lower_bound = None
         self.upper_bound = None
         self.var_type = None
@@ -1275,11 +1437,11 @@ class Problem:
         dm.set_row_types(np.array(self.row_sense, dtype="S1"))
         dm.set_objective_coefficients(self.objective)
         dm.set_objective_offset(self.ObjConstant)
-        if self.getQcsr():
+        if self.objective_qmatrix is not None:
             dm.set_quadratic_objective_matrix(
-                np.array(self.objective_qcsr_matrix["values"]),
-                np.array(self.objective_qcsr_matrix["column_indices"]),
-                np.array(self.objective_qcsr_matrix["row_pointers"]),
+                self.objective_qmatrix.data,
+                self.objective_qmatrix.indices,
+                self.objective_qmatrix.indptr,
             )
         dm.set_variable_lower_bounds(self.lower_bound)
         dm.set_variable_upper_bounds(self.upper_bound)
@@ -1310,9 +1472,7 @@ class Problem:
 
         self.model = None
         self.constraint_csr_matrix = None
-        self.objective_qcoo_matrix = [], [], []
-        self.objective_qcsr_matrix = None
-        self.ObjValue = float("nan")
+        self.objective_qmatrix = None
         self.warmstart_data = None
         self.solved = False
 
@@ -1480,14 +1640,21 @@ class Problem:
                         sum_coeff
                     )
                 self.ObjConstant = expr.constant
-                self.objective_qcoo_matrix = (
-                    expr.qvars1,
-                    expr.qvars2,
-                    expr.qcoefficients,
+                qrows = [var.getIndex() for var in expr.qvars1]
+                qcols = [var.getIndex() for var in expr.qvars2]
+                self.objective_qmatrix = coo_matrix(
+                    (
+                        np.array(expr.qcoefficients),
+                        (np.array(qrows), np.array(qcols)),
+                    ),
+                    shape=(self.NumVariables, self.NumVariables),
                 )
+                if expr.qmatrix is not None:
+                    self.objective_qmatrix += expr.qmatrix
+                self.objective_qmatrix = self.objective_qmatrix.tocsr()
             case _:
                 raise ValueError(
-                    "Objective must be a LinearExpression or a constant"
+                    "Objective must be a Variable, Expression or a constant"
                 )
 
     def updateObjective(self, coeffs=[], constant=None, sense=None):
@@ -1524,7 +1691,7 @@ class Problem:
         if sense:
             self.ObjSense = sense
 
-    def get_incumbent_values(self, solution, vars):
+    def getIncumbentValues(self, solution, vars):
         """
         Extract incumbent values of the vars from a problem solution.
         """
@@ -1533,7 +1700,15 @@ class Problem:
             values.append(solution[var.index])
         return values
 
-    def get_pdlp_warm_start_data(self):
+    def get_incumbent_values(self, solution, vars):
+        warnings.warn(
+            "This function is deprecated and will be removed."
+            "Please use getIncumbentValues instead.",
+            DeprecationWarning,
+        )
+        return self.getIncumbentValues(solution, vars)
+
+    def getWarmstartData(self):
         """
         Note: Applicable to only LP.
         Allows to retrieve the warm start data from the PDLP solver
@@ -1545,12 +1720,20 @@ class Problem:
         --------
         >>> problem = problem.Problem.readMPS("LP.mps")
         >>> problem.solve()
-        >>> warmstart_data = problem.get_pdlp_warm_start_data()
+        >>> warmstart_data = problem.getWarmstartData()
         >>> settings.set_pdlp_warm_start_data(warmstart_data)
         >>> updated_problem = problem.Problem.readMPS("updated_LP.mps")
         >>> updated_problem.solve(settings)
         """
         return self.warmstart_data
+
+    def get_pdlp_warm_start_data(self):
+        warnings.warn(
+            "This function is deprecated and will be removed."
+            "Please use getWarmstartData instead.",
+            DeprecationWarning,
+        )
+        return self.getWarmstartData()
 
     def getObjective(self):
         """
@@ -1643,15 +1826,20 @@ class Problem:
         coeffs = []
         for var in self.vars:
             coeffs.append(var.getObjectiveCoefficient())
-        if not self.objective_qcoo_matrix:
+        if self.objective_qmatrix is None:
             return LinearExpression(self.vars, coeffs, self.ObjConstant)
         else:
             return QuadraticExpression(
-                *self.objective_qcoo_matrix,
-                self.vars,
-                coeffs,
-                self.ObjConstant,
+                qmatrix=self.objective_qmatrix,
+                qvars=self.vars,
+                vars=self.vars,
+                coefficients=coeffs,
+                constant=self.ObjConstant,
             )
+
+    @property
+    def ObjValue(self):
+        return self.Obj.getValue()
 
     def getCSR(self):
         """
@@ -1670,32 +1858,27 @@ class Problem:
         self.constraint_csr_matrix = csr_dict
         return self.dict_to_object(csr_dict)
 
-    def getQcsr(self):
-        if self.objective_qcsr_matrix is not None:
-            return self.dict_to_object(self.objective_qcsr_matrix)
-        vars1, vars2, coeffs = self.objective_qcoo_matrix
-        if not vars1:
+    def getQCSR(self):
+        """
+        Computes and returns the CSR matrix representation of the
+        quadratic objective.
+        """
+        if self.objective_qmatrix is None:
             return None
-        Qdict = {}
-        Qcsr_dict = {"row_pointers": [0], "column_indices": [], "values": []}
-        for i, var1 in enumerate(vars1):
-            if var1.index not in Qdict:
-                Qdict[var1.index] = {}
-            row_dict = Qdict[var1.index]
-            var2 = vars2[i]
-            coeff = coeffs[i]
-            row_dict[var2.index] = (
-                row_dict[var2.index] + coeff
-                if var2.index in row_dict
-                else coeff
-            )
-        for i in range(0, self.NumVariables):
-            if i in Qdict:
-                Qcsr_dict["column_indices"].extend(list(Qdict[i].keys()))
-                Qcsr_dict["values"].extend(list(Qdict[i].values()))
-            Qcsr_dict["row_pointers"].append(len(Qcsr_dict["column_indices"]))
-        self.objective_qcsr_matrix = Qcsr_dict
-        return self.dict_to_object(Qcsr_dict)
+        qcsr_matrix = {
+            "row_pointers": self.objective_qmatrix.indptr,
+            "column_indices": self.objective_qmatrix.indices,
+            "values": self.objective_qmatrix.data,
+        }
+        return self.dict_to_object(qcsr_matrix)
+
+    def getQcsr(self):
+        warnings.warn(
+            "This function is deprecated and will be removed."
+            "Please use getQCSR instead.",
+            DeprecationWarning,
+        )
+        return self.getQCSR()
 
     def relax(self):
         """
@@ -1725,7 +1908,6 @@ class Problem:
         else:
             IsMIP = True
             self.SolutionStats = self.dict_to_object(solution.get_milp_stats())
-
         primal_sol = solution.get_primal_solution()
         reduced_cost = solution.get_reduced_cost()
         if len(primal_sol) > 0:
@@ -1744,7 +1926,6 @@ class Problem:
             if dual_sol is not None and len(dual_sol) > 0:
                 constr.DualValue = dual_sol[i]
             constr.Slack = constr.compute_slack()
-        self.ObjValue = self.Obj.getValue()
         self.solved = True
 
     def solve(self, settings=solver_settings.SolverSettings()):
@@ -1765,9 +1946,7 @@ class Problem:
         """
         if self.model is None:
             self._to_data_model()
-
         # Call Solver
         solution = solver.Solve(self.model, settings)
-
         # Post Solve
         self.populate_solution(solution)
