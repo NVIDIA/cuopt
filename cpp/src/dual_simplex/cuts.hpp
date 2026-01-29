@@ -111,7 +111,6 @@ void verify_cuts_against_saved_solution(const csr_matrix_t<i_t, f_t>& cuts,
                                         const std::vector<f_t>& cut_rhs,
                                         const std::vector<f_t>& saved_solution);
 
-
 template <typename i_t, typename f_t>
 class cut_pool_t {
  public:
