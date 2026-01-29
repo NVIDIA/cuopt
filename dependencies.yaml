@@ -302,8 +302,9 @@ dependencies:
           - tbb-devel
           - zlib
           - bzip2
-          - libgrpc >=1.62,<1.74
-          - libprotobuf >=4.25
+          - openssl  # Required for gRPC SSL (gRPC built from source via FetchContent)
+          - c-ares   # Required for gRPC (bundled c-ares incompatible with CMake 4.x)
+          # libgrpc/libprotobuf removed - built from source to avoid abseil-cpp#1624
   test_cpp:
     common:
       - output_types: [conda]

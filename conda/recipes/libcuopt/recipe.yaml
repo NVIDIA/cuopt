@@ -29,7 +29,71 @@ cache:
         export CXXFLAGS=$(echo $CXXFLAGS | sed -E 's@\-fdebug\-prefix\-map[^ ]*@@g')
         set +x
 
-        ./build.sh -n -v ${BUILD_EXTRA_FLAGS} libmps_parser libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib -DBUILD_REMOTE_SERVER=ON -DCUOPT_ENABLE_GRPC=ON\"
+        # Workaround for abseil-cpp#1624: Mutex::Dtor() not exported from shared libabseil on Linux.
+        # Build gRPC/Protobuf/Abseil from source to ensure consistent ABI and avoid symbol issues.
+        # This is the same approach used for wheel builds (ci/utils/install_protobuf_grpc.sh).
+        GRPC_VERSION="v1.64.2"
+        GRPC_INSTALL_DIR="${SRC_DIR}/grpc_install"
+        CMAKE_STD_FLAGS="-DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON"
+        
+        echo "Building gRPC ${GRPC_VERSION} and dependencies from source..."
+        rm -rf "${SRC_DIR}/grpc-src" "${GRPC_INSTALL_DIR}"
+        mkdir -p "${GRPC_INSTALL_DIR}"
+        
+        # Clone gRPC with submodules
+        git clone --depth 1 --branch "${GRPC_VERSION}" --recurse-submodules --shallow-submodules \
+            https://github.com/grpc/grpc.git "${SRC_DIR}/grpc-src"
+        
+        # Build and install Abseil first (from gRPC's submodule)
+        echo "Building Abseil..."
+        cmake -S "${SRC_DIR}/grpc-src/third_party/abseil-cpp" -B "${SRC_DIR}/absl-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            ${CMAKE_STD_FLAGS} \
+            -DABSL_PROPAGATE_CXX_STD=ON \
+            -DCMAKE_INSTALL_PREFIX="${GRPC_INSTALL_DIR}"
+        cmake --build "${SRC_DIR}/absl-build" --parallel
+        cmake --install "${SRC_DIR}/absl-build"
+        
+        # Build and install Protobuf (using installed Abseil)
+        echo "Building Protobuf..."
+        cmake -S "${SRC_DIR}/grpc-src/third_party/protobuf" -B "${SRC_DIR}/protobuf-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            ${CMAKE_STD_FLAGS} \
+            -Dprotobuf_BUILD_TESTS=OFF \
+            -Dprotobuf_ABSL_PROVIDER=package \
+            -DCMAKE_PREFIX_PATH="${GRPC_INSTALL_DIR}" \
+            -DCMAKE_INSTALL_PREFIX="${GRPC_INSTALL_DIR}"
+        cmake --build "${SRC_DIR}/protobuf-build" --parallel
+        cmake --install "${SRC_DIR}/protobuf-build"
+        
+        # Build and install gRPC (using installed Abseil and Protobuf)
+        echo "Building gRPC..."
+        cmake -S "${SRC_DIR}/grpc-src" -B "${SRC_DIR}/grpc-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            ${CMAKE_STD_FLAGS} \
+            -DgRPC_INSTALL=ON \
+            -DgRPC_BUILD_TESTS=OFF \
+            -DgRPC_BUILD_CODEGEN=ON \
+            -DgRPC_BUILD_GRPC_NODE_PLUGIN=OFF \
+            -DgRPC_ABSL_PROVIDER=package \
+            -DgRPC_PROTOBUF_PROVIDER=package \
+            -DgRPC_RE2_PROVIDER=module \
+            -DgRPC_SSL_PROVIDER=package \
+            -DgRPC_ZLIB_PROVIDER=package \
+            -DgRPC_CARES_PROVIDER=package \
+            -DCMAKE_PREFIX_PATH="${GRPC_INSTALL_DIR}" \
+            -DCMAKE_INSTALL_PREFIX="${GRPC_INSTALL_DIR}"
+        cmake --build "${SRC_DIR}/grpc-build" --parallel
+        cmake --install "${SRC_DIR}/grpc-build"
+        
+        echo "gRPC installed to: ${GRPC_INSTALL_DIR}"
+        
+        # Build libcuopt with our gRPC
+        export CMAKE_PREFIX_PATH="${GRPC_INSTALL_DIR}:${CMAKE_PREFIX_PATH:-}"
+        ./build.sh -n -v ${BUILD_EXTRA_FLAGS} libmps_parser libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib -DBUILD_REMOTE_SERVER=ON -DCMAKE_PREFIX_PATH=${GRPC_INSTALL_DIR}\"
       secrets:
         - AWS_ACCESS_KEY_ID
         - AWS_SECRET_ACCESS_KEY
@@ -59,17 +123,16 @@ cache:
       - cuda-version =${{ cuda_version }}
       - cmake ${{ cmake_version }}
       - ninja
-      - libgrpc >=1.62,<1.74
-      - libprotobuf >=4.25
+      - git  # Required for FetchContent to clone gRPC
       - tbb-devel
       - zlib
       - bzip2
+      # gRPC/Protobuf/Abseil are built from source via FetchContent to avoid
+      # abseil-cpp#1624 (Mutex::Dtor not exported from shared libabseil on Linux)
     host:
       - cpp-argparse
       - cuda-version =${{ cuda_version }}
-      - libgrpc >=1.62,<1.74
       - libraft-headers =${{ minor_version }}
-      - libprotobuf >=4.25
       - librmm =${{ minor_version }}
       - rapids-logger =0.2
       - cuda-nvtx-dev
@@ -80,6 +143,9 @@ cache:
       - tbb-devel
       - zlib
       - bzip2
+      - openssl  # Required for gRPC SSL support
+      - c-ares   # Required for gRPC (bundled c-ares incompatible with CMake 4.x)
+      # gRPC/Protobuf/Abseil are built from source via FetchContent
 
 outputs:
   - package:
@@ -115,8 +181,6 @@ outputs:
           - libcurand
           - libcudss
           - libcusparse
-          - libgrpc
-          - libprotobuf
           - librmm
           - libzlib
           - libbz2
@@ -151,13 +215,14 @@ outputs:
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
         - libboost-devel
         - cuda-version =${{ cuda_version }}
-        - libgrpc >=1.62,<1.74
-        - libprotobuf >=4.25
         - rapids-logger =0.2
         - librmm =${{ minor_version }}
         - libcublas
         - libcudss-dev >=0.7
         - libcusparse-dev
+        - openssl  # Required for gRPC SSL (built from source)
+        - c-ares   # Required for gRPC DNS resolution
+        # gRPC/Protobuf/Abseil are built from source via FetchContent
       run:
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
@@ -165,11 +230,12 @@ outputs:
         - librmm =${{ minor_version }}
         - cuda-nvrtc
         - libcudss
+        - openssl  # Required at runtime for gRPC SSL
+        - c-ares   # Required at runtime for gRPC DNS
       ignore_run_exports:
         by_name:
           - cuda-nvtx
           - cuda-version
-          - libabseil
           - libcudss
           - libcurand
           - libcusparse
@@ -214,7 +280,6 @@ outputs:
         by_name:
           - cuda-nvtx
           - cuda-version
-          - libabseil
           - libcurand
           - libcusparse
           - libcudss

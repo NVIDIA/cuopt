@@ -277,7 +277,9 @@ if(TARGET cudss AND NOT CUDSS_LIBRARIES)
   set(CUDSS_LIBRARIES cudss)
 endif()
 
-# Protocol Buffers for remote solve serialization
+# Protocol Buffers for remote solve serialization.
+# For conda builds, gRPC/Protobuf/Abseil are built from source in the recipe
+# and found via CMAKE_PREFIX_PATH to avoid abseil-cpp#1624 (Mutex::Dtor not exported).
 #
 # Prefer CONFIG mode when available (e.g. source-installed protobuf under
 # /usr/local provides ProtobufConfig.cmake). Fall back to module mode for older
@@ -294,17 +296,16 @@ endif()
 if(TARGET Protobuf::protoc AND NOT TARGET protobuf::protoc)
   add_executable(protobuf::protoc ALIAS Protobuf::protoc)
 endif()
-include_directories(${Protobuf_INCLUDE_DIRS})
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-# gRPC for remote solve service.
-#
-# We treat gRPC as required, but allow it to come from either:
-# - an installed CMake package (gRPCConfig.cmake), or
-# - an in-tree build (e.g. python/libcuopt uses FetchContent(grpc), which defines gRPC::grpc++).
+# gRPC for remote solve service
 if(NOT TARGET gRPC::grpc++)
   find_package(gRPC CONFIG REQUIRED)
 endif()
+message(STATUS "Found gRPC and Protobuf")
+
+include_directories(${Protobuf_INCLUDE_DIRS})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
 set(CUOPT_ENABLE_GRPC ON)
 add_compile_definitions(CUOPT_ENABLE_GRPC)
 message(STATUS "gRPC enabled (target gRPC::grpc++ is available)")
@@ -314,20 +315,27 @@ set(PROTO_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/linear_programming/utilities/cuo
 set(PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote.pb.cc")
 set(PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote.pb.h")
 
-# Find protoc compiler (provided by config package or target)
-if(TARGET protobuf::protoc)
+# Find protoc compiler (provided by config package, FetchContent target, or PATH)
+if(TARGET protoc)
+  # FetchContent-built protoc (regular executable target)
+  set(_PROTOBUF_PROTOC "$<TARGET_FILE:protoc>")
+  message(STATUS "Using FetchContent-built protoc")
+elseif(TARGET protobuf::protoc)
+  # Imported target from find_package
   get_target_property(_PROTOBUF_PROTOC protobuf::protoc IMPORTED_LOCATION_RELEASE)
   if(NOT _PROTOBUF_PROTOC)
     get_target_property(_PROTOBUF_PROTOC protobuf::protoc IMPORTED_LOCATION)
   endif()
-else()
+  message(STATUS "Using imported protobuf::protoc: ${_PROTOBUF_PROTOC}")
+elseif(Protobuf_PROTOC_EXECUTABLE)
   set(_PROTOBUF_PROTOC ${Protobuf_PROTOC_EXECUTABLE})
-endif()
-
-if(NOT _PROTOBUF_PROTOC)
-  # FindProtobuf.cmake can report libprotobuf without locating protoc.
+  message(STATUS "Using Protobuf_PROTOC_EXECUTABLE: ${_PROTOBUF_PROTOC}")
+else()
   # Fall back to PATH lookup (e.g. /usr/local/bin/protoc or /usr/bin/protoc).
   find_program(_PROTOBUF_PROTOC protoc)
+  if(_PROTOBUF_PROTOC)
+    message(STATUS "Found protoc on PATH: ${_PROTOBUF_PROTOC}")
+  endif()
 endif()
 
 if(NOT _PROTOBUF_PROTOC)
@@ -512,46 +520,13 @@ target_link_libraries(cuopt
 
 # Link gRPC if available
 if(CUOPT_ENABLE_GRPC)
-  # Workaround for abseil-cpp#1624: Mutex::Dtor() is not exported from shared
-  # libabseil on Linux (only on Windows DLL / macOS builds). When conda-forge's
-  # shared libabseil is used, this causes "undefined symbol" errors at runtime.
-  # Solution: statically link absl::synchronization to embed Mutex::Dtor() in libcuopt.so.
-  find_package(absl CONFIG QUIET)
-  if(absl_FOUND AND TARGET absl::synchronization)
-    get_target_property(_absl_sync_type absl::synchronization TYPE)
-    if(_absl_sync_type STREQUAL "STATIC_LIBRARY")
-      target_link_libraries(cuopt PRIVATE absl::synchronization)
-      message(STATUS "Linking Abseil synchronization statically (STATIC target)")
-    else()
-      # Shared target - try to find and link the static .a file instead
-      get_target_property(_absl_sync_loc absl::synchronization IMPORTED_LOCATION)
-      if(NOT _absl_sync_loc)
-        get_target_property(_absl_sync_loc absl::synchronization IMPORTED_LOCATION_RELEASE)
-      endif()
-      if(_absl_sync_loc)
-        string(REPLACE ".so" ".a" _absl_sync_static "${_absl_sync_loc}")
-        if(EXISTS "${_absl_sync_static}")
-          target_link_libraries(cuopt PRIVATE "${_absl_sync_static}")
-          message(STATUS "Linking Abseil synchronization statically from: ${_absl_sync_static}")
-        else()
-          message(STATUS "Abseil synchronization static lib not found at ${_absl_sync_static}, using shared")
-          target_link_libraries(cuopt PRIVATE absl::synchronization)
-        endif()
-      endif()
-    endif()
-  else()
-    # Fallback: try to find static library directly
-    find_library(ABSL_SYNCHRONIZATION_STATIC
-      NAMES libabsl_synchronization.a
-      PATHS ${CMAKE_PREFIX_PATH}/lib ${CMAKE_PREFIX_PATH}/lib64
-      NO_DEFAULT_PATH
-    )
-    if(ABSL_SYNCHRONIZATION_STATIC)
-      target_link_libraries(cuopt PRIVATE "${ABSL_SYNCHRONIZATION_STATIC}")
-      message(STATUS "Linking Abseil synchronization statically from: ${ABSL_SYNCHRONIZATION_STATIC}")
-    endif()
-  endif()
+  # For conda builds, we build gRPC and all dependencies (Abseil, Protobuf) from source
+  # as static libraries to avoid abseil-cpp#1624 (Mutex::Dtor not exported on Linux).
+  # CMake finds them via CMAKE_PREFIX_PATH set by the conda recipe.
+  #
+  # For wheel builds, gRPC is installed system-wide (also built from source).
   target_link_libraries(cuopt PRIVATE gRPC::grpc++)
+  message(STATUS "Linked gRPC::grpc++ to cuopt")
 endif()
 
 
