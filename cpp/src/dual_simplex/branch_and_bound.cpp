@@ -351,6 +351,7 @@ i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
   const f_t root_obj    = compute_objective(original_lp_, root_relax_soln_.x);
   const f_t threshold   = 1e-3;
   const f_t weaken      = 1e-5;
+  const f_t fixed_tol   = settings_.fixed_tol;
   i_t num_improved      = 0;
   i_t num_fixed         = 0;
   i_t num_cols_to_check = reduced_costs.size();  // Reduced costs will be smaller than the original
@@ -389,7 +390,7 @@ i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
         }
       }
       if (var_types_[j] == variable_type_t::INTEGER &&
-          reduced_cost_upper_bound <= reduced_cost_lower_bound) {
+          reduced_cost_upper_bound <= reduced_cost_lower_bound + fixed_tol) {
         num_fixed++;
       }
     }
@@ -2122,7 +2123,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       i_t num_to_remove = 0;
       for (i_t k = 0; k < fractional.size(); k++) {
         const i_t j = fractional[k];
-        if (original_lp_.lower[j] == original_lp_.upper[j]) {
+        if (std::abs(original_lp_.upper[j] - original_lp_.lower[j]) < settings_.fixed_tol) {
           to_remove[k] = 1;
           num_to_remove++;
         }
