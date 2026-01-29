@@ -333,7 +333,14 @@ void mip_solution_t<i_t, f_t>::log_summary() const
 template <typename i_t, typename f_t>
 void mip_solution_t<i_t, f_t>::set_solution_host(std::vector<f_t> solution)
 {
-  solution_host_    = std::make_unique<std::vector<f_t>>(std::move(solution));
+  solution_host_ = std::make_unique<std::vector<f_t>>(std::move(solution));
+
+  // Clear device storage to free GPU memory
+  solution_.reset();
+
+  // Note: solution_pool_ is typically empty for remote solves and doesn't need explicit cleanup
+  // If solution_pool_ contains device data, it will be freed when the object is destroyed
+
   is_device_memory_ = false;
 }
 
@@ -437,6 +444,13 @@ void mip_solution_t<i_t, f_t>::to_host(rmm::cuda_stream_view stream_view)
 
   // Clear GPU storage to free memory
   solution_.reset();
+
+  // Clear solution pool if it contains device buffers
+  if (!solution_pool_.empty()) {
+    // solution_pool_ contains rmm::device_uvector objects which will be freed automatically
+    // when the vector is cleared (RAII cleanup)
+    solution_pool_.clear();
+  }
 
   is_device_memory_ = false;
 }

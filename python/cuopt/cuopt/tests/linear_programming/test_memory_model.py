@@ -187,6 +187,25 @@ class TestRemoteSolveEnvironment:
 class TestEmptyConstraintMatrix:
     """Test handling of problems with no constraints (edge case for memory model)."""
 
+    def setup_method(self):
+        """Force local solve by clearing remote environment variables."""
+        self._orig_env = {
+            "CUOPT_REMOTE_HOST": os.environ.get("CUOPT_REMOTE_HOST"),
+            "CUOPT_REMOTE_PORT": os.environ.get("CUOPT_REMOTE_PORT"),
+        }
+        # Clear to ensure local solve
+        for var in ["CUOPT_REMOTE_HOST", "CUOPT_REMOTE_PORT"]:
+            if var in os.environ:
+                del os.environ[var]
+
+    def teardown_method(self):
+        """Restore original environment after each test."""
+        for var, value in self._orig_env.items():
+            if value is not None:
+                os.environ[var] = value
+            elif var in os.environ:
+                del os.environ[var]
+
     def test_empty_problem_with_objective_offset(self):
         """Test problem with no variables or constraints, only objective offset."""
         import cuopt_mps_parser

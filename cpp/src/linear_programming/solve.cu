@@ -1664,11 +1664,25 @@ cpu_problem_data_t<i_t, f_t> copy_view_to_cpu(raft::handle_t const* handle_ptr,
   auto var_types_span = gpu_view.get_variable_types();
   if (var_types_span.size() > 0) {
     cpu_data.variable_types.resize(var_types_span.size());
-    RAFT_CUDA_TRY(cudaMemcpyAsync(cpu_data.variable_types.data(),
-                                  var_types_span.data(),
-                                  var_types_span.size() * sizeof(char),
-                                  cudaMemcpyDeviceToHost,
-                                  stream));
+
+    // Check if variable_types is host-backed or device-backed
+    cudaPointerAttributes attrs;
+    cudaError_t err = cudaPointerGetAttributes(&attrs, var_types_span.data());
+
+    if (err == cudaSuccess && attrs.type == cudaMemoryTypeDevice) {
+      // Device memory - use async copy
+      RAFT_CUDA_TRY(cudaMemcpyAsync(cpu_data.variable_types.data(),
+                                    var_types_span.data(),
+                                    var_types_span.size() * sizeof(char),
+                                    cudaMemcpyDeviceToHost,
+                                    stream));
+    } else {
+      // Host memory or unregistered - use direct copy
+      if (err != cudaSuccess && err != cudaErrorInvalidValue) { RAFT_CUDA_TRY(err); }
+      std::memcpy(cpu_data.variable_types.data(),
+                  var_types_span.data(),
+                  var_types_span.size() * sizeof(char));
+    }
   }
 
   // Synchronize to ensure all copies are complete

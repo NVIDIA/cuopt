@@ -388,6 +388,7 @@ struct cpu_problem_data_t {
   std::vector<f_t> variable_lower_bounds;
   std::vector<f_t> variable_upper_bounds;
   std::vector<char> variable_types;
+  std::vector<char> row_types;
   std::vector<f_t> quadratic_objective_values;
   std::vector<i_t> quadratic_objective_indices;
   std::vector<i_t> quadratic_objective_offsets;
@@ -431,6 +432,7 @@ struct cpu_problem_data_t {
     if (!variable_types.empty()) {
       v.set_variable_types(variable_types.data(), variable_types.size());
     }
+    if (!row_types.empty()) { v.set_row_types(row_types.data(), row_types.size()); }
     if (!quadratic_objective_values.empty()) {
       v.set_quadratic_objective_matrix(quadratic_objective_values.data(),
                                        quadratic_objective_values.size(),
@@ -483,6 +485,17 @@ cpu_problem_data_t<i_t, f_t> copy_view_to_cpu(raft::handle_t const* handle_ptr,
     RAFT_CUDA_TRY(cudaMemcpyAsync(cpu_data.variable_types.data(),
                                   var_types_span.data(),
                                   var_types_span.size() * sizeof(char),
+                                  cudaMemcpyDeviceToHost,
+                                  stream));
+  }
+
+  // Row types need special handling (char array)
+  auto row_types_span = gpu_view.get_row_types();
+  if (row_types_span.size() > 0) {
+    cpu_data.row_types.resize(row_types_span.size());
+    RAFT_CUDA_TRY(cudaMemcpyAsync(cpu_data.row_types.data(),
+                                  row_types_span.data(),
+                                  row_types_span.size() * sizeof(char),
                                   cudaMemcpyDeviceToHost,
                                   stream));
   }

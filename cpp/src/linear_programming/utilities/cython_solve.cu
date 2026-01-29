@@ -263,7 +263,7 @@ std::unique_ptr<solver_ret_t> call_solve(
     bool is_mip    = false;
     auto var_types = data_model->get_variable_types();
     for (size_t i = 0; i < var_types.size(); ++i) {
-      if (var_types.data()[i] == 'I' || var_types.data()[i] == 'B') {
+      if (var_types.data()[i] == 'I') {
         is_mip = true;
         break;
       }

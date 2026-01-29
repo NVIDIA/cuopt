@@ -59,8 +59,11 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
     reduced_cost_host_(std::make_unique<std::vector<f_t>>()),
     is_device_memory_(false),
     termination_status_{{termination_status}},
+    termination_stats_{{additional_termination_information_t{}}},
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
+  cuopt_assert(termination_stats_.size() == termination_status_.size(),
+               "Termination statistics and status vectors must have the same size");
 }
 
 // CPU-only constructor for remote solve error cases
@@ -72,8 +75,11 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
     reduced_cost_host_(std::make_unique<std::vector<f_t>>()),
     is_device_memory_(false),
     termination_status_{{pdlp_termination_status_t::NoTermination}},
+    termination_stats_{{additional_termination_information_t{}}},
     error_status_(error_status)
 {
+  cuopt_assert(termination_stats_.size() == termination_status_.size(),
+               "Termination statistics and status vectors must have the same size");
 }
 
 template <typename i_t, typename f_t>
@@ -200,24 +206,37 @@ void optimization_problem_solution_t<i_t, f_t>::copy_from(
       reduced_cost_ = std::make_unique<rmm::device_uvector<f_t>>(0, handle_ptr->get_stream());
     }
 
-    // Resize to make sure they are of same size
-    primal_solution_->resize(other.primal_solution_->size(), handle_ptr->get_stream());
-    dual_solution_->resize(other.dual_solution_->size(), handle_ptr->get_stream());
-    reduced_cost_->resize(other.reduced_cost_->size(), handle_ptr->get_stream());
+    // Check source pointers before dereferencing
+    if (other.primal_solution_) {
+      primal_solution_->resize(other.primal_solution_->size(), handle_ptr->get_stream());
+      raft::copy(primal_solution_->data(),
+                 other.primal_solution_->data(),
+                 primal_solution_->size(),
+                 handle_ptr->get_stream());
+    } else {
+      primal_solution_->resize(0, handle_ptr->get_stream());
+    }
 
-    // Copy the data
-    raft::copy(primal_solution_->data(),
-               other.primal_solution_->data(),
-               primal_solution_->size(),
-               handle_ptr->get_stream());
-    raft::copy(dual_solution_->data(),
-               other.dual_solution_->data(),
-               dual_solution_->size(),
-               handle_ptr->get_stream());
-    raft::copy(reduced_cost_->data(),
-               other.reduced_cost_->data(),
-               reduced_cost_->size(),
-               handle_ptr->get_stream());
+    if (other.dual_solution_) {
+      dual_solution_->resize(other.dual_solution_->size(), handle_ptr->get_stream());
+      raft::copy(dual_solution_->data(),
+                 other.dual_solution_->data(),
+                 dual_solution_->size(),
+                 handle_ptr->get_stream());
+    } else {
+      dual_solution_->resize(0, handle_ptr->get_stream());
+    }
+
+    if (other.reduced_cost_) {
+      reduced_cost_->resize(other.reduced_cost_->size(), handle_ptr->get_stream());
+      raft::copy(reduced_cost_->data(),
+                 other.reduced_cost_->data(),
+                 reduced_cost_->size(),
+                 handle_ptr->get_stream());
+    } else {
+      reduced_cost_->resize(0, handle_ptr->get_stream());
+    }
+
     handle_ptr->sync_stream();
   } else {
     // Copy CPU data
@@ -225,9 +244,24 @@ void optimization_problem_solution_t<i_t, f_t>::copy_from(
     if (!dual_solution_host_) { dual_solution_host_ = std::make_unique<std::vector<f_t>>(); }
     if (!reduced_cost_host_) { reduced_cost_host_ = std::make_unique<std::vector<f_t>>(); }
 
-    *primal_solution_host_ = *other.primal_solution_host_;
-    *dual_solution_host_   = *other.dual_solution_host_;
-    *reduced_cost_host_    = *other.reduced_cost_host_;
+    // Check source pointers before dereferencing
+    if (other.primal_solution_host_) {
+      *primal_solution_host_ = *other.primal_solution_host_;
+    } else {
+      primal_solution_host_->clear();
+    }
+
+    if (other.dual_solution_host_) {
+      *dual_solution_host_ = *other.dual_solution_host_;
+    } else {
+      dual_solution_host_->clear();
+    }
+
+    if (other.reduced_cost_host_) {
+      *reduced_cost_host_ = *other.reduced_cost_host_;
+    } else {
+      reduced_cost_host_->clear();
+    }
   }
 
   termination_stats_  = other.termination_stats_;
@@ -330,10 +364,22 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_file(std::string_view f
       reduced_cost.data(), reduced_cost_->data(), reduced_cost_->size(), stream_view.value());
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
   } else {
-    // Already on CPU
-    primal_solution = *primal_solution_host_;
-    dual_solution   = *dual_solution_host_;
-    reduced_cost    = *reduced_cost_host_;
+    // Already on CPU - check for null pointers
+    if (primal_solution_host_) {
+      primal_solution = *primal_solution_host_;
+    } else {
+      primal_solution.clear();
+    }
+    if (dual_solution_host_) {
+      dual_solution = *dual_solution_host_;
+    } else {
+      dual_solution.clear();
+    }
+    if (reduced_cost_host_) {
+      reduced_cost = *reduced_cost_host_;
+    } else {
+      reduced_cost.clear();
+    }
   }
 
   myfile << "{ " << std::endl;
@@ -604,27 +650,58 @@ template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_primal_solution_host(std::vector<f_t> solution)
 {
   primal_solution_host_ = std::make_unique<std::vector<f_t>>(std::move(solution));
-  is_device_memory_     = false;
+
+  // Ensure all host vectors are initialized to avoid mixed state
+  if (!dual_solution_host_) { dual_solution_host_ = std::make_unique<std::vector<f_t>>(); }
+  if (!reduced_cost_host_) { reduced_cost_host_ = std::make_unique<std::vector<f_t>>(); }
+
+  // Clear device buffers to avoid memory leaks
+  primal_solution_.reset();
+  dual_solution_.reset();
+  reduced_cost_.reset();
+
+  is_device_memory_ = false;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_dual_solution_host(std::vector<f_t> solution)
 {
   dual_solution_host_ = std::make_unique<std::vector<f_t>>(std::move(solution));
-  is_device_memory_   = false;
+
+  // Ensure all host vectors are initialized to avoid mixed state
+  if (!primal_solution_host_) { primal_solution_host_ = std::make_unique<std::vector<f_t>>(); }
+  if (!reduced_cost_host_) { reduced_cost_host_ = std::make_unique<std::vector<f_t>>(); }
+
+  // Clear device buffers to avoid memory leaks
+  primal_solution_.reset();
+  dual_solution_.reset();
+  reduced_cost_.reset();
+
+  is_device_memory_ = false;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_reduced_cost_host(std::vector<f_t> reduced_cost)
 {
   reduced_cost_host_ = std::make_unique<std::vector<f_t>>(std::move(reduced_cost));
-  is_device_memory_  = false;
+
+  // Ensure all host vectors are initialized to avoid mixed state
+  if (!primal_solution_host_) { primal_solution_host_ = std::make_unique<std::vector<f_t>>(); }
+  if (!dual_solution_host_) { dual_solution_host_ = std::make_unique<std::vector<f_t>>(); }
+
+  // Clear device buffers to avoid memory leaks
+  primal_solution_.reset();
+  dual_solution_.reset();
+  reduced_cost_.reset();
+
+  is_device_memory_ = false;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_termination_stats(
   const additional_termination_information_t& stats)
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   termination_stats_[0] = stats;
 }
 
@@ -635,42 +712,49 @@ void optimization_problem_solution_t<i_t, f_t>::set_termination_stats(
 template <typename i_t, typename f_t>
 f_t optimization_problem_solution_t<i_t, f_t>::get_l2_primal_residual() const
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   return termination_stats_[0].l2_primal_residual;
 }
 
 template <typename i_t, typename f_t>
 f_t optimization_problem_solution_t<i_t, f_t>::get_l2_dual_residual() const
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   return termination_stats_[0].l2_dual_residual;
 }
 
 template <typename i_t, typename f_t>
 f_t optimization_problem_solution_t<i_t, f_t>::get_primal_objective() const
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   return termination_stats_[0].primal_objective;
 }
 
 template <typename i_t, typename f_t>
 f_t optimization_problem_solution_t<i_t, f_t>::get_dual_objective() const
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   return termination_stats_[0].dual_objective;
 }
 
 template <typename i_t, typename f_t>
 f_t optimization_problem_solution_t<i_t, f_t>::get_gap() const
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   return termination_stats_[0].gap;
 }
 
 template <typename i_t, typename f_t>
 i_t optimization_problem_solution_t<i_t, f_t>::get_nb_iterations() const
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   return termination_stats_[0].number_of_steps_taken;
 }
 
 template <typename i_t, typename f_t>
 bool optimization_problem_solution_t<i_t, f_t>::get_solved_by_pdlp() const
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   return termination_stats_[0].solved_by_pdlp;
 }
 
@@ -681,42 +765,49 @@ bool optimization_problem_solution_t<i_t, f_t>::get_solved_by_pdlp() const
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_l2_primal_residual(f_t value)
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   termination_stats_[0].l2_primal_residual = value;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_l2_dual_residual(f_t value)
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   termination_stats_[0].l2_dual_residual = value;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_primal_objective(f_t value)
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   termination_stats_[0].primal_objective = value;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_dual_objective(f_t value)
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   termination_stats_[0].dual_objective = value;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_gap(f_t value)
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   termination_stats_[0].gap = value;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_nb_iterations(i_t value)
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   termination_stats_[0].number_of_steps_taken = value;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_solved_by_pdlp(bool value)
 {
+  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
   termination_stats_[0].solved_by_pdlp = value;
 }
 
@@ -745,12 +836,18 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_sol_file(
 
   if (is_device_memory_) {
     // Copy from GPU to CPU
+    cuopt_expects(primal_solution_ != nullptr,
+                  error_type_t::ValidationError,
+                  "Device primal solution is null in write_to_sol_file");
     solution.resize(primal_solution_->size());
     raft::copy(
       solution.data(), primal_solution_->data(), primal_solution_->size(), stream_view.value());
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
   } else {
     // Already on CPU
+    cuopt_expects(primal_solution_host_ != nullptr,
+                  error_type_t::ValidationError,
+                  "Host primal solution is null in write_to_sol_file");
     solution = *primal_solution_host_;
   }
 

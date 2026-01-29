@@ -71,8 +71,8 @@ Batch solve uses the same memory model:
 
 ## Expected outputs for remote stubs
 
- - Termination status: `Optimal`
- - Objective values: `0.0`
- - Primal/dual/reduced-cost vectors: zero-filled host arrays
+- Termination status: `Optimal`
+- Objective values: `0.0`
+- Primal/dual/reduced-cost vectors: zero-filled host arrays
 
 This is useful for verifying the **CPU-only data path** without a remote service.
