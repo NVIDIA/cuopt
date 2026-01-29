@@ -169,6 +169,7 @@ outputs:
         by_name:
           - cuda-nvtx
           - cuda-version
+          - libabseil
           - libcudss
           - libcurand
           - libcusparse
@@ -213,6 +214,7 @@ outputs:
         by_name:
           - cuda-nvtx
           - cuda-version
+          - libabseil
           - libcurand
           - libcusparse
           - libcudss

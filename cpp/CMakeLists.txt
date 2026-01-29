@@ -512,6 +512,45 @@ target_link_libraries(cuopt
 
 # Link gRPC if available
 if(CUOPT_ENABLE_GRPC)
+  # Workaround for abseil-cpp#1624: Mutex::Dtor() is not exported from shared
+  # libabseil on Linux (only on Windows DLL / macOS builds). When conda-forge's
+  # shared libabseil is used, this causes "undefined symbol" errors at runtime.
+  # Solution: statically link absl::synchronization to embed Mutex::Dtor() in libcuopt.so.
+  find_package(absl CONFIG QUIET)
+  if(absl_FOUND AND TARGET absl::synchronization)
+    get_target_property(_absl_sync_type absl::synchronization TYPE)
+    if(_absl_sync_type STREQUAL "STATIC_LIBRARY")
+      target_link_libraries(cuopt PRIVATE absl::synchronization)
+      message(STATUS "Linking Abseil synchronization statically (STATIC target)")
+    else()
+      # Shared target - try to find and link the static .a file instead
+      get_target_property(_absl_sync_loc absl::synchronization IMPORTED_LOCATION)
+      if(NOT _absl_sync_loc)
+        get_target_property(_absl_sync_loc absl::synchronization IMPORTED_LOCATION_RELEASE)
+      endif()
+      if(_absl_sync_loc)
+        string(REPLACE ".so" ".a" _absl_sync_static "${_absl_sync_loc}")
+        if(EXISTS "${_absl_sync_static}")
+          target_link_libraries(cuopt PRIVATE "${_absl_sync_static}")
+          message(STATUS "Linking Abseil synchronization statically from: ${_absl_sync_static}")
+        else()
+          message(STATUS "Abseil synchronization static lib not found at ${_absl_sync_static}, using shared")
+          target_link_libraries(cuopt PRIVATE absl::synchronization)
+        endif()
+      endif()
+    endif()
+  else()
+    # Fallback: try to find static library directly
+    find_library(ABSL_SYNCHRONIZATION_STATIC
+      NAMES libabsl_synchronization.a
+      PATHS ${CMAKE_PREFIX_PATH}/lib ${CMAKE_PREFIX_PATH}/lib64
+      NO_DEFAULT_PATH
+    )
+    if(ABSL_SYNCHRONIZATION_STATIC)
+      target_link_libraries(cuopt PRIVATE "${ABSL_SYNCHRONIZATION_STATIC}")
+      message(STATUS "Linking Abseil synchronization statically from: ${ABSL_SYNCHRONIZATION_STATIC}")
+    endif()
+  endif()
   target_link_libraries(cuopt PRIVATE gRPC::grpc++)
 endif()
 
