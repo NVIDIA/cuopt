@@ -285,8 +285,10 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
     }
   }
 
+#ifdef PRINT_KNAPSACK_INFO
   i_t num_knapsack_constraints = knapsack_constraints_.size();
   settings.log.printf("Number of knapsack constraints %d\n", num_knapsack_constraints);
+#endif
 }
 
 template <typename i_t, typename f_t>

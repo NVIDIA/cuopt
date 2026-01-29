@@ -372,7 +372,7 @@ i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
         reduced_cost_upper_bound  = var_types_[j] == variable_type_t::INTEGER
                                       ? std::floor(new_upper_bound + weaken)
                                       : new_upper_bound;
-        if (reduced_cost_upper_bound < upper_j) {
+        if (reduced_cost_upper_bound < upper_j && var_types_[j] != variable_type_t::INTEGER) {
           num_improved++;
           upper_bounds[j]   = reduced_cost_upper_bound;
           bounds_changed[j] = true;
@@ -383,7 +383,7 @@ i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
         reduced_cost_lower_bound  = var_types_[j] == variable_type_t::INTEGER
                                       ? std::ceil(new_lower_bound - weaken)
                                       : new_lower_bound;
-        if (reduced_cost_lower_bound > lower_j) {
+        if (reduced_cost_lower_bound > lower_j && var_types_[j] != variable_type_t::INTEGER) {
           num_improved++;
           lower_bounds[j]   = reduced_cost_lower_bound;
           bounds_changed[j] = true;
@@ -1804,7 +1804,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   is_running           = true;
   lower_bound_ceiling_ = inf;
 
-  if (num_fractional != 0) {
+  if (num_fractional != 0 && settings_.max_cut_passes > 0) {
     settings_.log.printf(
       " | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node |   "
       "Gap    "
