@@ -1963,11 +1963,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         return mip_status_t::NUMERICAL;
       }
 
-      // Adjust the solution
-      root_relax_soln_.x.resize(original_lp_.num_cols, 0.0);
-      root_relax_soln_.y.resize(original_lp_.num_rows, 0.0);
-      root_relax_soln_.z.resize(original_lp_.num_cols, 0.0);
-
       i_t iter                    = 0;
       bool initialize_basis       = false;
       lp_settings.concurrent_halt = NULL;

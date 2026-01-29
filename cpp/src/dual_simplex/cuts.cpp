@@ -2532,6 +2532,11 @@ i_t add_cuts(const simplex_solver_settings_t<i_t, f_t>& settings,
     vstatus[j] = variable_status_t::BASIC;
   }
 
+  // Adjust the solution
+  solution.x.resize(lp.num_cols, 0.0);
+  solution.y.resize(lp.num_rows, 0.0);
+  solution.z.resize(lp.num_cols, 0.0);
+
   return 0;
 }
 
