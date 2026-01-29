@@ -413,8 +413,10 @@ struct cpu_problem_data_t {
     if (!constraint_bounds.empty()) {
       v.set_constraint_bounds(constraint_bounds.data(), constraint_bounds.size());
     }
-    if (!constraint_lower_bounds.empty() && !constraint_upper_bounds.empty()) {
+    if (!constraint_lower_bounds.empty()) {
       v.set_constraint_lower_bounds(constraint_lower_bounds.data(), constraint_lower_bounds.size());
+    }
+    if (!constraint_upper_bounds.empty()) {
       v.set_constraint_upper_bounds(constraint_upper_bounds.data(), constraint_upper_bounds.size());
     }
     if (!objective_coefficients.empty()) {

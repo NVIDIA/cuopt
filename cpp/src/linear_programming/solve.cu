@@ -1597,8 +1597,10 @@ struct cpu_problem_data_t {
     if (!constraint_bounds.empty()) {
       v.set_constraint_bounds(constraint_bounds.data(), constraint_bounds.size());
     }
-    if (!constraint_lower_bounds.empty() && !constraint_upper_bounds.empty()) {
+    if (!constraint_lower_bounds.empty()) {
       v.set_constraint_lower_bounds(constraint_lower_bounds.data(), constraint_lower_bounds.size());
+    }
+    if (!constraint_upper_bounds.empty()) {
       v.set_constraint_upper_bounds(constraint_upper_bounds.data(), constraint_upper_bounds.size());
     }
     if (!objective_coefficients.empty()) {
@@ -1662,15 +1664,15 @@ cpu_problem_data_t<i_t, f_t> copy_view_to_cpu(raft::handle_t const* handle_ptr,
   auto var_types_span = gpu_view.get_variable_types();
   if (var_types_span.size() > 0) {
     cpu_data.variable_types.resize(var_types_span.size());
-    cudaMemcpyAsync(cpu_data.variable_types.data(),
-                    var_types_span.data(),
-                    var_types_span.size() * sizeof(char),
-                    cudaMemcpyDeviceToHost,
-                    stream);
+    RAFT_CUDA_TRY(cudaMemcpyAsync(cpu_data.variable_types.data(),
+                                  var_types_span.data(),
+                                  var_types_span.size() * sizeof(char),
+                                  cudaMemcpyDeviceToHost,
+                                  stream));
   }
 
   // Synchronize to ensure all copies are complete
-  cudaStreamSynchronize(stream);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
 
   return cpu_data;
 }

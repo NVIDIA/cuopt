@@ -136,8 +136,7 @@ TEST_F(RemoteSolveConfigTest, port_zero_needs_validation_patch)
 
   auto config = get_remote_solve_config();
   // Port 0 validation is added in CodeRabbit patch
-  // Without patch, this returns valid config (will be fixed)
-  EXPECT_TRUE(config.has_value());  // Will be FALSE after patch applied
+  EXPECT_FALSE(config.has_value());  // Port 0 is invalid
 }
 
 TEST_F(RemoteSolveConfigTest, port_negative_parsed_as_large)
@@ -146,8 +145,8 @@ TEST_F(RemoteSolveConfigTest, port_negative_parsed_as_large)
   setenv("CUOPT_REMOTE_PORT", "-1", 1);
 
   auto config = get_remote_solve_config();
-  // stoi("-1") succeeds but port validation will catch it with patch
-  EXPECT_TRUE(config.has_value());  // Will be FALSE after patch applied
+  // stoi("-1") succeeds but port validation catches it
+  EXPECT_FALSE(config.has_value());  // Negative ports are invalid
 }
 
 TEST_F(RemoteSolveConfigTest, port_too_large_needs_validation_patch)
@@ -157,7 +156,7 @@ TEST_F(RemoteSolveConfigTest, port_too_large_needs_validation_patch)
 
   auto config = get_remote_solve_config();
   // Port > 65535 validation is added in CodeRabbit patch
-  EXPECT_TRUE(config.has_value());  // Will be FALSE after patch applied
+  EXPECT_FALSE(config.has_value());  // Port > 65535 is invalid
 }
 
 TEST_F(RemoteSolveConfigTest, valid_port_boundaries)
