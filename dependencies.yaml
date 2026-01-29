@@ -350,6 +350,7 @@ dependencies:
           - numba>=0.60.0
           - &pandas pandas>=2.0
           - &pyyaml pyyaml>=6.0.0
+          - scipy>=1.14.1
     specific:
       - output_types: [conda, requirements, pyproject]
         matrices:

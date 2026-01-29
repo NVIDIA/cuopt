@@ -19,7 +19,7 @@ repos:
     rev: v0.14.3
     hooks:
       - id: ruff-check
-        args: [--fix]
+        args: [--fix, --config, pyproject.toml]
       - id: ruff-format
   - repo: https://github.com/PyCQA/pydocstyle
     rev: 6.1.1
@@ -68,7 +68,6 @@ repos:
             ^[.]pre-commit-config[.]yaml$|
             Dockerfile$|
             dependencies[.]yaml$|
-            ^[.]flake8$|
             Makefile$|
             setup[.]cfg$|
             pyproject[.]toml$

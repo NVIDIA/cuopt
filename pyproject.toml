@@ -28,9 +28,23 @@ extend-exclude = [
     "__init__.py",
 ]
 
+[tool.ruff.lint]
+select = [
+    # pycodestyle (errors)
+    "E",
+    # pyflakes
+    "F",
+    # pycodestyle (warnings)
+    "W"
+]
+ignore = [
+    # (pycodestyle) line too long
+    "E501"
+]
+
 [tool.ruff.lint.per-file-ignores]
 "*.ipynb" = [
-    # unused imports
+    # (pyflakes) unused imports
     "F401",
 ]
 

@@ -12,7 +12,6 @@ docs/              @nvidia/cuopt-infra-codeowners
 container-builder/ @nvidia/cuopt-infra-codeowners
 
 #CI code owners
-.flake8                  @nvidia/cuopt-ci-codeowners
 /.github/                @nvidia/cuopt-ci-codeowners
 /ci/                     @nvidia/cuopt-ci-codeowners
 /.pre-commit-config.yaml @nvidia/cuopt-ci-codeowners

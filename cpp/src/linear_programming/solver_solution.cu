@@ -1,14 +1,18 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+
 #include <math_optimization/solution_writer.hpp>
+
 #include <mip/mip_constants.hpp>
+
 #include <utilities/logger.hpp>
+#include <utilities/macros.cuh>
 
 #include <raft/common/nvtx.hpp>
 #include <raft/util/cudart_utils.hpp>
@@ -24,9 +28,11 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
   : primal_solution_{0, stream_view},
     dual_solution_{0, stream_view},
     reduced_cost_{0, stream_view},
-    termination_status_(termination_status),
+    termination_status_{termination_status},
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
+  cuopt_assert(termination_stats_.size() == termination_status_.size(),
+               "Termination statistics and status vectors must have the same size");
 }
 
 template <typename i_t, typename f_t>
@@ -35,9 +41,11 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
   : primal_solution_{0, stream_view},
     dual_solution_{0, stream_view},
     reduced_cost_{0, stream_view},
-    termination_status_(pdlp_termination_status_t::NoTermination),
+    termination_status_{pdlp_termination_status_t::NoTermination},
     error_status_(error_status_)
 {
+  cuopt_assert(termination_stats_.size() == termination_status_.size(),
+               "Termination statistics and status vectors must have the same size");
 }
 
 template <typename i_t, typename f_t>
@@ -45,12 +53,12 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
   rmm::device_uvector<f_t>& final_primal_solution,
   rmm::device_uvector<f_t>& final_dual_solution,
   rmm::device_uvector<f_t>& final_reduced_cost,
-  pdlp_warm_start_data_t<i_t, f_t>& warm_start_data,
+  pdlp_warm_start_data_t<i_t, f_t>&& warm_start_data,
   const std::string objective_name,
   const std::vector<std::string>& var_names,
   const std::vector<std::string>& row_names,
-  additional_termination_information_t& termination_stats,
-  pdlp_termination_status_t termination_status)
+  std::vector<additional_termination_information_t>&& termination_stats,
+  std::vector<pdlp_termination_status_t>&& termination_status)
   : primal_solution_(std::move(final_primal_solution)),
     dual_solution_(std::move(final_dual_solution)),
     reduced_cost_(std::move(final_reduced_cost)),
@@ -59,9 +67,11 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
     var_names_(std::move(var_names)),
     row_names_(std::move(row_names)),
     termination_stats_(std::move(termination_stats)),
-    termination_status_(termination_status),
+    termination_status_(std::move(termination_status)),
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
+  cuopt_assert(termination_stats_.size() == termination_status_.size(),
+               "Termination statistics and status vectors must have the same size");
 }
 
 template <typename i_t, typename f_t>
@@ -72,8 +82,8 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
   const std::string objective_name,
   const std::vector<std::string>& var_names,
   const std::vector<std::string>& row_names,
-  additional_termination_information_t& termination_stats,
-  pdlp_termination_status_t termination_status)
+  std::vector<additional_termination_information_t>&& termination_stats,
+  std::vector<pdlp_termination_status_t>&& termination_status)
   : primal_solution_(std::move(final_primal_solution)),
     dual_solution_(std::move(final_dual_solution)),
     reduced_cost_(std::move(final_reduced_cost)),
@@ -81,9 +91,11 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
     var_names_(std::move(var_names)),
     row_names_(std::move(row_names)),
     termination_stats_(std::move(termination_stats)),
-    termination_status_(termination_status),
+    termination_status_(std::move(termination_status)),
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
+  cuopt_assert(termination_stats_.size() == termination_status_.size(),
+               "Termination statistics and status vectors must have the same size");
 }
 
 template <typename i_t, typename f_t>
@@ -104,10 +116,12 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
     objective_name_(objective_name),
     var_names_(var_names),
     row_names_(row_names),
-    termination_stats_(termination_stats),
-    termination_status_(termination_status),
+    termination_stats_{termination_stats},
+    termination_status_{termination_status},
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
+  cuopt_assert(termination_stats_.size() == termination_status_.size(),
+               "Termination statistics and status vectors must have the same size");
 }
 
 template <typename i_t, typename f_t>
@@ -145,41 +159,47 @@ template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::write_additional_termination_statistics_to_file(
   std::ofstream& myfile)
 {
+  cuopt_expects(termination_stats_.size() == 1,
+                error_type_t::ValidationError,
+                "Write to file only supported in non batch mode");
+
+  const auto& termination_stats = termination_stats_[0];
+
   myfile << "\t\"Additional termination information\" : { " << std::endl;
-  myfile << "\t\"Number of steps taken\" : " << termination_stats_.number_of_steps_taken << ","
+  myfile << "\t\"Number of steps taken\" : " << termination_stats.number_of_steps_taken << ","
          << std::endl;
-  if (termination_stats_.solved_by_pdlp) {
+  if (termination_stats.solved_by_pdlp) {
     myfile << "\t\"Total number of attempted steps\" : "
-           << termination_stats_.total_number_of_attempted_steps << "," << std::endl;
+           << termination_stats.total_number_of_attempted_steps << "," << std::endl;
   }
-  myfile << "\t\"Total solve time\" : " << termination_stats_.solve_time;
-  if (termination_stats_.solved_by_pdlp) {
+  myfile << "\t\"Total solve time\" : " << termination_stats.solve_time;
+  if (termination_stats.solved_by_pdlp) {
     myfile << "," << std::endl;
     myfile << "\t\t\"Convergence measures\" : { " << std::endl;
-    myfile << "\t\t\t\"Absolute primal residual\" : " << termination_stats_.l2_primal_residual
-           << "," << std::endl;
+    myfile << "\t\t\t\"Absolute primal residual\" : " << termination_stats.l2_primal_residual << ","
+           << std::endl;
     myfile << "\t\t\t\"Relative primal residual\" : "
-           << termination_stats_.l2_relative_primal_residual << "," << std::endl;
-    myfile << "\t\t\t\"Absolute dual residual\" : " << termination_stats_.l2_dual_residual << ","
+           << termination_stats.l2_relative_primal_residual << "," << std::endl;
+    myfile << "\t\t\t\"Absolute dual residual\" : " << termination_stats.l2_dual_residual << ","
            << std::endl;
-    myfile << "\t\t\t\"Relative dual residual\" : " << termination_stats_.l2_relative_dual_residual
+    myfile << "\t\t\t\"Relative dual residual\" : " << termination_stats.l2_relative_dual_residual
            << "," << std::endl;
-    myfile << "\t\t\t\"Primal objective value\" : " << termination_stats_.primal_objective << ","
+    myfile << "\t\t\t\"Primal objective value\" : " << termination_stats.primal_objective << ","
            << std::endl;
-    myfile << "\t\t\t\"Dual objective value\" : " << termination_stats_.dual_objective << ","
+    myfile << "\t\t\t\"Dual objective value\" : " << termination_stats.dual_objective << ","
            << std::endl;
-    myfile << "\t\t\t\"Gap\" : " << termination_stats_.gap << "," << std::endl;
-    myfile << "\t\t\t\"Relative gap\" : " << termination_stats_.relative_gap << std::endl;
+    myfile << "\t\t\t\"Gap\" : " << termination_stats.gap << "," << std::endl;
+    myfile << "\t\t\t\"Relative gap\" : " << termination_stats.relative_gap << std::endl;
     myfile << "\t\t}, " << std::endl;
     myfile << "\t\t\"Infeasibility measures\" : {" << std::endl;
     myfile << "\t\t\t\"Maximum error for the linear constraints and sign constraints\" : "
-           << termination_stats_.max_primal_ray_infeasibility << "," << std::endl;
+           << termination_stats.max_primal_ray_infeasibility << "," << std::endl;
     myfile << "\t\t\t\"Objective value for the extreme primal ray\" : "
-           << termination_stats_.primal_ray_linear_objective << "," << std::endl;
+           << termination_stats.primal_ray_linear_objective << "," << std::endl;
     myfile << "\t\t\t\"Maximum constraint error\" : "
-           << termination_stats_.max_dual_ray_infeasibility << "," << std::endl;
+           << termination_stats.max_dual_ray_infeasibility << "," << std::endl;
     myfile << "\t\t\t\"Objective value for the extreme dual ray\" : "
-           << termination_stats_.dual_ray_linear_objective << std::endl;
+           << termination_stats.dual_ray_linear_objective << std::endl;
     myfile << "\t\t} " << std::endl;
   } else
     myfile << std::endl;
@@ -194,10 +214,14 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_file(std::string_view f
 {
   raft::common::nvtx::range fun_scope("write final solution to file");
 
+  cuopt_expects(termination_stats_.size() == 1,
+                error_type_t::ValidationError,
+                "Write to file only supported in non batch mode");
+
   std::ofstream myfile(filename.data());
   myfile.precision(std::numeric_limits<f_t>::digits10 + 1);
 
-  if (termination_status_ == pdlp_termination_status_t::NumericalError) {
+  if (termination_status_[0] == pdlp_termination_status_t::NumericalError) {
     myfile << "{ " << std::endl;
     myfile << "\t\"Termination reason\" : \"" << get_termination_status_string() << "\"}"
            << std::endl;
@@ -219,8 +243,8 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_file(std::string_view f
   myfile << "{ " << std::endl;
   myfile << "\t\"Termination reason\" : \"" << get_termination_status_string() << "\","
          << std::endl;
-  myfile << "\t\"Objective value for " << objective_name_ << "\" : " << get_objective_value() << ","
-         << std::endl;
+  myfile << "\t\"Objective value for " << objective_name_ << "\" : " << get_objective_value(0)
+         << "," << std::endl;
   if (!var_names_.empty() && generate_variable_values) {
     myfile << "\t\"Primal variables\" : {" << std::endl;
     for (size_t i = 0; i < primal_solution.size() - 1; i++) {
@@ -254,20 +278,29 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_file(std::string_view f
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_solve_time(double ms)
 {
-  termination_stats_.solve_time = ms;
+  // TODO later batch mode: shouldn't we have a different solve time per climber?
+  // Currently the issue is that we would need one solve time per climber and one overall solve time
+  std::for_each(termination_stats_.begin(), termination_stats_.end(), [ms](auto& termination) {
+    termination.solve_time = ms;
+  });
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_termination_status(
   pdlp_termination_status_t termination_status)
 {
-  termination_status_ = termination_status;
+  cuopt_assert(termination_stats_.size() == 1,
+               "Set termination status only supported in non batch mode");
+  termination_status_[0] = termination_status;
 }
 
 template <typename i_t, typename f_t>
 double optimization_problem_solution_t<i_t, f_t>::get_solve_time() const
 {
-  return termination_stats_.solve_time;
+  // TODO later batch mode: shouldn't we have a different solve time per climber?
+  // Currently the issue is that we would need one solve time per climber and one overall solve tim
+  cuopt_assert(termination_stats_.size() > 0, "Should never happen");
+  return termination_stats_[0].solve_time;
 }
 
 template <typename i_t, typename f_t>
@@ -288,21 +321,24 @@ std::string optimization_problem_solution_t<i_t, f_t>::get_termination_status_st
 }
 
 template <typename i_t, typename f_t>
-std::string optimization_problem_solution_t<i_t, f_t>::get_termination_status_string() const
+std::string optimization_problem_solution_t<i_t, f_t>::get_termination_status_string(i_t id) const
 {
-  return get_termination_status_string(termination_status_);
+  cuopt_assert(id < termination_status_.size(), "id too big for batch size");
+  return get_termination_status_string(termination_status_[id]);
 }
 
 template <typename i_t, typename f_t>
-f_t optimization_problem_solution_t<i_t, f_t>::get_objective_value() const
+f_t optimization_problem_solution_t<i_t, f_t>::get_objective_value(i_t id) const
 {
-  return termination_stats_.primal_objective;
+  cuopt_assert(id < termination_stats_.size(), "id too big for batch size");
+  return termination_stats_[id].primal_objective;
 }
 
 template <typename i_t, typename f_t>
-f_t optimization_problem_solution_t<i_t, f_t>::get_dual_objective_value() const
+f_t optimization_problem_solution_t<i_t, f_t>::get_dual_objective_value(i_t id) const
 {
-  return termination_stats_.dual_objective;
+  cuopt_assert(id < termination_stats_.size(), "id too big for batch size");
+  return termination_stats_[id].dual_objective;
 }
 
 template <typename i_t, typename f_t>
@@ -337,7 +373,16 @@ rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_reduced
 }
 
 template <typename i_t, typename f_t>
-pdlp_termination_status_t optimization_problem_solution_t<i_t, f_t>::get_termination_status() const
+pdlp_termination_status_t optimization_problem_solution_t<i_t, f_t>::get_termination_status(
+  i_t id) const
+{
+  cuopt_assert(id < termination_status_.size(), "id too big for batch size");
+  return termination_status_[id];
+}
+
+template <typename i_t, typename f_t>
+std::vector<pdlp_termination_status_t>&
+optimization_problem_solution_t<i_t, f_t>::get_terminations_status()
 {
   return termination_status_;
 }
@@ -349,8 +394,25 @@ cuopt::logic_error optimization_problem_solution_t<i_t, f_t>::get_error_status()
 }
 
 template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t
-optimization_problem_solution_t<i_t, f_t>::get_additional_termination_information() const
+typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t
+optimization_problem_solution_t<i_t, f_t>::get_additional_termination_information(i_t id) const
+{
+  cuopt_assert(id < termination_stats_.size(), "id too big for batch size");
+  return termination_stats_[id];
+}
+
+template <typename i_t, typename f_t>
+std::vector<
+  typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
+optimization_problem_solution_t<i_t, f_t>::get_additional_termination_informations() const
+{
+  return termination_stats_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<
+  typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>&
+optimization_problem_solution_t<i_t, f_t>::get_additional_termination_informations()
 {
   return termination_stats_;
 }
@@ -366,13 +428,17 @@ template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::write_to_sol_file(
   std::string_view filename, rmm::cuda_stream_view stream_view) const
 {
+  cuopt_expects(termination_stats_.size() == 1,
+                error_type_t::ValidationError,
+                "Write to file only supported in non batch mode");
+
   auto status = get_termination_status_string();
-  if (termination_status_ != pdlp_termination_status_t::Optimal &&
-      termination_status_ != pdlp_termination_status_t::PrimalFeasible) {
+  if (termination_status_[0] != pdlp_termination_status_t::Optimal &&
+      termination_status_[0] != pdlp_termination_status_t::PrimalFeasible) {
     status = "Infeasible";
   }
 
-  auto objective_value = get_objective_value();
+  auto objective_value = get_objective_value(0);
   std::vector<f_t> solution;
   solution.resize(primal_solution_.size());
   raft::copy(

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -17,6 +17,7 @@
 
 #include <argparse/argparse.hpp>
 
+#include <cmath>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -48,7 +49,7 @@ static void parse_arguments(argparse::ArgumentParser& program)
   program.add_argument("--pdlp-solver-mode")
     .help("Solver mode for PDLP. Possible values: Stable3 (default), Methodical1, Fast1")
     .default_value("Stable3")
-    .choices("Stable3", "Methodical1", "Fast1");
+    .choices("Stable3", "Stable2", "Stable1", "Methodical1", "Fast1");
 
   program.add_argument("--method")
     .help(
@@ -81,6 +82,7 @@ static void parse_arguments(argparse::ArgumentParser& program)
 static cuopt::linear_programming::pdlp_solver_mode_t string_to_pdlp_solver_mode(
   const std::string& mode)
 {
+  if (mode == "Stable1") return cuopt::linear_programming::pdlp_solver_mode_t::Stable1;
   if (mode == "Stable2")
     return cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
   else if (mode == "Methodical1")
@@ -131,7 +133,7 @@ int main(int argc, char* argv[])
   bool use_pdlp_solver_mode = true;
   if (program.is_used("--pdlp-hyper-params-path")) {
     std::string pdlp_hyper_params_path = program.get<std::string>("--pdlp-hyper-params-path");
-    fill_pdlp_hyper_params(pdlp_hyper_params_path);
+    fill_pdlp_hyper_params(pdlp_hyper_params_path, settings.hyper_params);
     use_pdlp_solver_mode = false;
   }
 

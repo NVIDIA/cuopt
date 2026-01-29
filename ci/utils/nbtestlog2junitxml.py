@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2019-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2019-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import re
@@ -7,13 +7,13 @@ from enum import Enum
 from os import path
 from xml.etree.ElementTree import Element, ElementTree
 
-startingPatt = re.compile("^STARTING: ([\w\.\-]+)$")
+startingPatt = re.compile(r"^STARTING: ([\w\.\-]+)$")
 skippingPatt = re.compile(
-    "^SKIPPING: ([\w\.\-]+)\s*(\(([\w\.\-\ \,]+)\))?\s*$"
+    r"^SKIPPING: ([\w\.\-]+)\s*(\(([\w\.\-\ \,]+)\))?\s*$"
 )
-exitCodePatt = re.compile("^EXIT CODE: (\d+)$")
-folderPatt = re.compile("^FOLDER: ([\w\.\-]+)$")
-timePatt = re.compile("^real\s+([\d\.ms]+)$")
+exitCodePatt = re.compile(r"^EXIT CODE: (\d+)$")
+folderPatt = re.compile(r"^FOLDER: ([\w\.\-]+)$")
+timePatt = re.compile(r"^real\s+([\d\.ms]+)$")
 linePatt = re.compile("^" + ("-" * 80) + "$")
 
 

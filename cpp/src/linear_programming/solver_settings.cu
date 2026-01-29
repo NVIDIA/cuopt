@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -56,6 +56,18 @@ void pdlp_solver_settings_t<i_t, f_t>::set_initial_dual_solution(const f_t* init
 
   initial_dual_solution_ = std::make_shared<rmm::device_uvector<f_t>>(size, stream);
   raft::copy(initial_dual_solution_.get()->data(), initial_dual_solution, size, stream);
+}
+
+template <typename i_t, typename f_t>
+void pdlp_solver_settings_t<i_t, f_t>::set_initial_step_size(f_t initial_step_size)
+{
+  initial_step_size_ = std::make_optional(initial_step_size);
+}
+
+template <typename i_t, typename f_t>
+void pdlp_solver_settings_t<i_t, f_t>::set_initial_primal_weight(f_t initial_primal_weight)
+{
+  initial_primal_weight_ = std::make_optional(initial_primal_weight);
 }
 
 template <typename i_t, typename f_t>
@@ -322,6 +334,18 @@ template <typename i_t, typename f_t>
 bool pdlp_solver_settings_t<i_t, f_t>::has_initial_dual_solution() const
 {
   return initial_dual_solution_.get() != nullptr;
+}
+
+template <typename i_t, typename f_t>
+std::optional<f_t> pdlp_solver_settings_t<i_t, f_t>::get_initial_step_size() const
+{
+  return initial_step_size_;
+}
+
+template <typename i_t, typename f_t>
+std::optional<f_t> pdlp_solver_settings_t<i_t, f_t>::get_initial_primal_weight() const
+{
+  return initial_primal_weight_;
 }
 
 template <typename i_t, typename f_t>

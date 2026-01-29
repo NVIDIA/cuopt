@@ -733,7 +733,7 @@ void optimization_problem_t<i_t, f_t>::print_scaling_information() const
     const f_t inf = std::numeric_limits<f_t>::infinity();
 
     const size_t sz = vec.size();
-    f_t max_abs_val = 0.0;
+    f_t max_abs_val = f_t(0.0);
     for (size_t i = 0; i < sz; ++i) {
       const f_t val = std::abs(vec[i]);
       if (val < inf) { max_abs_val = std::max(max_abs_val, val); }
@@ -742,15 +742,15 @@ void optimization_problem_t<i_t, f_t>::print_scaling_information() const
   };
 
   auto findMinAbs = [](const std::vector<f_t>& vec) -> f_t {
-    if (vec.empty()) { return 0.0; }
+    if (vec.empty()) { return f_t(0.0); }
     const size_t sz = vec.size();
     const f_t inf   = std::numeric_limits<f_t>::infinity();
     f_t min_abs_val = inf;
     for (size_t i = 0; i < sz; ++i) {
       const f_t val = std::abs(vec[i]);
-      if (val > 0.0) { min_abs_val = std::min(min_abs_val, val); }
+      if (val > f_t(0.0)) { min_abs_val = std::min(min_abs_val, val); }
     }
-    return min_abs_val < inf ? min_abs_val : 0.0;
+    return min_abs_val < inf ? min_abs_val : f_t(0.0);
   };
 
   f_t A_max          = findMaxAbs(constraint_matrix_values);
