@@ -305,8 +305,8 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
     }
   } else {
     settings.log.printf("Strong branching using %d threads and %ld fractional variables\n",
-      settings.num_threads,
-      fractional.size());
+                        settings.num_threads,
+                        fractional.size());
     f_t strong_branching_start_time = tic();
 
 #pragma omp parallel num_threads(settings.num_threads)

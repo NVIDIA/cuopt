@@ -502,13 +502,23 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
         std::vector<i_t> q(m);
         std::vector<i_t> deficient;
         std::vector<i_t> slacks_needed;
-        i_t rank = factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+        i_t rank =
+          factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
         if (rank == -2) {
           return -2;
         } else if (rank != m) {
           settings.log.printf("Failed to factorize basis. rank %d m %d\n", rank, m);
-          basis_repair(lp.A, settings, lp.lower, lp.upper, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
-          rank = factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+          basis_repair(lp.A,
+                       settings,
+                       lp.lower,
+                       lp.upper,
+                       deficient,
+                       slacks_needed,
+                       basic_list,
+                       nonbasic_list,
+                       vstatus);
+          rank =
+            factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
           if (rank == -2) {
             return -2;
           } else if (rank == -1) {
@@ -811,12 +821,11 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
                        basic_list,
                        nonbasic_list,
                        vstatus);
-          rank  = factorize_basis(
-                lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+          rank =
+            factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
           if (rank == -2) {
             return -2;
-          }
-          else if (rank == -1) {
+          } else if (rank == -1) {
             settings.log.printf("Failed to factorize basis after repair. rank %d m %d\n", rank, m);
             return -1;
           } else {
@@ -1158,9 +1167,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   std::vector<i_t> slacks_needed;
 
   rank = factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
-  if (rank == -2) {
-    return crossover_status_t::CONCURRENT_LIMIT;
-  }
+  if (rank == -2) { return crossover_status_t::CONCURRENT_LIMIT; }
   if (rank != m) {
     settings.log.debug("Failed to factorize basis. rank %d m %d\n", rank, m);
     basis_repair(lp.A,
@@ -1375,8 +1382,8 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
                      basic_list,
                      nonbasic_list,
                      vstatus);
-        rank = factorize_basis(
-              lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+        rank =
+          factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
         if (rank == -2) {
           return crossover_status_t::CONCURRENT_LIMIT;
         } else if (rank == -1) {
@@ -1389,7 +1396,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       reorder_basic_list(q, basic_list);
       ft.reset(L, U, p);
 
-      solution = phase1_solution;
+      solution      = phase1_solution;
       i_t num_flips = 0;
       for (i_t j = 0; j < n; ++j) {
         if (vstatus[j] == variable_status_t::BASIC) { continue; }

@@ -100,26 +100,20 @@ f_t fractional_part(f_t a)
 template <typename i_t, typename f_t>
 void best_score_first_permutation(std::vector<f_t>& scores, std::vector<i_t>& permutation)
 {
-  if (permutation.size() != scores.size()) {
-    permutation.resize(scores.size());
-  }
+  if (permutation.size() != scores.size()) { permutation.resize(scores.size()); }
   std::iota(permutation.begin(), permutation.end(), 0);
-  std::sort(permutation.begin(), permutation.end(), [&](i_t a, i_t b) {
-    return scores[a] > scores[b];
-  });
+  std::sort(
+    permutation.begin(), permutation.end(), [&](i_t a, i_t b) { return scores[a] > scores[b]; });
 }
 
 // Computes a permutation of a score vector that puts the highest score last
 template <typename i_t, typename f_t>
 void best_score_last_permutation(std::vector<f_t>& scores, std::vector<i_t>& permutation)
 {
-  if (permutation.size() != scores.size()) {
-    permutation.resize(scores.size());
-  }
+  if (permutation.size() != scores.size()) { permutation.resize(scores.size()); }
   std::iota(permutation.begin(), permutation.end(), 0);
-  std::sort(permutation.begin(), permutation.end(), [&](i_t a, i_t b) {
-    return scores[a] < scores[b];
-  });
+  std::sort(
+    permutation.begin(), permutation.end(), [&](i_t a, i_t b) { return scores[a] < scores[b]; });
 }
 
 // Routines for verifying cuts against a saved solution

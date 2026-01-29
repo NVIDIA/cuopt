@@ -691,18 +691,18 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
 
       f_t slack_score = -std::log10(1e-16 + std::abs(slack_value));
 
-      const f_t nz_weight    = 1.0;
-      const f_t slack_weight = 1.0;
+      const f_t nz_weight      = 1.0;
+      const f_t slack_weight   = 1.0;
       const f_t integer_weight = 1.0;
 
-      score[i] = nz_weight * nz_score + slack_weight * slack_score + integer_weight * num_integer_in_row;
+      score[i] =
+        nz_weight * nz_score + slack_weight * slack_score + integer_weight * num_integer_in_row;
     }
   }
 
   // Sort the rows by score
   std::vector<i_t> sorted_indices;
   best_score_last_permutation(score, sorted_indices);
-
 
   // These data structures are used to track the rows that have been aggregated
   // The invariant is that aggregated_rows is empty and aggregated_mark is all zeros
@@ -711,10 +711,10 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
   std::vector<i_t> aggregated_mark(lp.num_rows, 0);
 
   const i_t max_cuts = std::min(lp.num_rows, 1000);
-  f_t work_estimate = 0.0;
+  f_t work_estimate  = 0.0;
   for (i_t h = 0; h < max_cuts; h++) {
     // Get the row with the highest score
-    const i_t i         = sorted_indices.back();
+    const i_t i = sorted_indices.back();
     sorted_indices.pop_back();
     const f_t max_score = score[i];
 
@@ -769,9 +769,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
       }
     }
 
-    if (negate_inequality == -1) {
-      continue;
-    }
+    if (negate_inequality == -1) { continue; }
 
     if (negate_inequality) {
       // inequaility'*x <= inequality_rhs
@@ -799,7 +797,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
       inequality.squeeze(transformed_inequality);
       f_t transformed_rhs = inequality_rhs;
       work_estimate += transformed_inequality.i.size();
-
 
       mir.to_nonnegative(lp, transformed_inequality, transformed_rhs);
       work_estimate += transformed_inequality.i.size();
@@ -850,7 +847,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
             transformed_cut_rhs.push_back(cut_2_rhs);
             transformed_violations.push_back(cut_2_violation);
           }
-          work_estimate += 5*transformed_inequality.i.size();
+          work_estimate += 5 * transformed_inequality.i.size();
         }
       }
 
@@ -874,8 +871,8 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
           mir.remove_small_coefficients(lp.lower, lp.upper, cut, cut_rhs);
           mir.substitute_slacks(lp, Arow, cut, cut_rhs);
           f_t viol = mir.compute_violation(cut, cut_rhs, xstar);
-          work_estimate += 10*cut.i.size();
-          add_cut  = true;
+          work_estimate += 10 * cut.i.size();
+          add_cut = true;
         }
       }
 
@@ -910,7 +907,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
         }
         work_estimate += 10 * inequality.i.size();
 
-
         if (num_continuous == 0 || max_off_bound < 1e-6) { break; }
 
         // The variable that is farthest from its bound is used as a pivot
@@ -933,7 +929,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
               }
               if (potential_rows.size() >= max_potential_rows) { break; }
             }
-            work_estimate += 5*(col_end - col_start);
+            work_estimate += 5 * (col_end - col_start);
 
             if (!potential_rows.empty()) {
               std::sort(potential_rows.begin(), potential_rows.end(), [&](i_t a, i_t b) {
@@ -984,7 +980,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     }
     // Clear the aggregated rows
     aggregated_rows.clear();
-    work_estimate += 2*aggregated_rows.size();
+    work_estimate += 2 * aggregated_rows.size();
 
     // Set the score of the current row to zero
     score[i] = 0.0;

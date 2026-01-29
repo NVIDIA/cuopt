@@ -88,13 +88,13 @@ class mip_solver_settings_t {
   i_t mir_cuts                  = -1;
   i_t mixed_integer_gomory_cuts = -1;
   i_t knapsack_cuts             = -1;
-  i_t strong_chvatal_gomory_cuts = -1;
-  i_t reduced_cost_strengthening = -1;
-  f_t cut_change_threshold       = 1e-3;
-  f_t cut_min_orthogonality      = 0.5;
+  i_t strong_chvatal_gomory_cuts      = -1;
+  i_t reduced_cost_strengthening      = -1;
+  f_t cut_change_threshold            = 1e-3;
+  f_t cut_min_orthogonality           = 0.5;
   i_t mip_batch_pdlp_strong_branching = 0;
-  i_t num_gpus                   = 1;
-  bool log_to_console            = true;
+  i_t num_gpus                        = 1;
+  bool log_to_console                 = true;
 
   std::string log_file;
   std::string sol_file;

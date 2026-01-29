@@ -464,20 +464,17 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
       }
       i_t less_rows = 0;
       for (i_t i = 0; i < dualize_info.primal_problem.num_rows; ++i) {
-        if (inequality_rows[i] == 1) {
-          less_rows++;
-        }
+        if (inequality_rows[i] == 1) { less_rows++; }
       }
       // Add slack variables to the primal problem
-      if (less_rows > 0)
-      {
+      if (less_rows > 0) {
         std::vector<f_t> slack_info = dualize_info.primal_problem.rhs;
-        matrix_vector_multiply(dualize_info.primal_problem.A, -1.0, primal_solution.x, 1.0, slack_info);
-
+        matrix_vector_multiply(
+          dualize_info.primal_problem.A, -1.0, primal_solution.x, 1.0, slack_info);
 
         lp_problem_t<i_t, f_t>& problem = dualize_info.primal_problem;
-        i_t num_cols = problem.num_cols + less_rows;
-        i_t nnz      = problem.A.col_start[problem.num_cols] + less_rows;
+        i_t num_cols                    = problem.num_cols + less_rows;
+        i_t nnz                         = problem.A.col_start[problem.num_cols] + less_rows;
         problem.A.col_start.resize(num_cols + 1);
         problem.A.i.resize(nnz);
         problem.A.x.resize(nnz);
@@ -491,15 +488,15 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
         i_t j = problem.num_cols;
         for (i_t i = 0; i < problem.num_rows; i++) {
           if (inequality_rows[i] == 1) {
-            problem.lower[j]     = 0.0;
-            problem.upper[j]     = INFINITY;
-            problem.objective[j] = 0.0;
-            problem.A.i[p]       = i;
-            problem.A.x[p]       = 1.0;
-            primal_solution.x[j]  = slack_info[i];
-            primal_solution.z[j]  = -primal_solution.y[i];
+            problem.lower[j]         = 0.0;
+            problem.upper[j]         = INFINITY;
+            problem.objective[j]     = 0.0;
+            problem.A.i[p]           = i;
+            problem.A.x[p]           = 1.0;
+            primal_solution.x[j]     = slack_info[i];
+            primal_solution.z[j]     = -primal_solution.y[i];
             problem.A.col_start[j++] = p++;
-            inequality_rows[i]   = 0;
+            inequality_rows[i]       = 0;
             less_rows--;
           }
         }
@@ -550,12 +547,12 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   if (!settings.crossover || barrier_lp.Q.n > 0) { return barrier_status; }
 
   if (settings.crossover && barrier_status == lp_status_t::OPTIMAL) {
-
     {
       std::vector<f_t> rhs = original_lp.rhs;
       matrix_vector_multiply(original_lp.A, 1.0, lp_solution.x, -1.0, rhs);
       f_t primal_residual = vector_norm_inf<i_t, f_t>(rhs);
-      settings.log.printf("Primal residual before adding artificial variables: %e\n", primal_residual);
+      settings.log.printf("Primal residual before adding artificial variables: %e\n",
+                          primal_residual);
     }
     // Check to see if we need to add artifical variables
     std::vector<i_t> artificial_variables;
@@ -603,11 +600,11 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
              lp_solution.z.size());
 #endif
 
-        std::vector<f_t> rhs = original_lp.rhs;
-        matrix_vector_multiply(original_lp.A, 1.0, lp_solution.x, -1.0, rhs);
-        f_t primal_residual = vector_norm_inf<i_t, f_t>(rhs);
-        settings.log.printf("Primal residual after adding artificial variables: %e\n", primal_residual);
-
+      std::vector<f_t> rhs = original_lp.rhs;
+      matrix_vector_multiply(original_lp.A, 1.0, lp_solution.x, -1.0, rhs);
+      f_t primal_residual = vector_norm_inf<i_t, f_t>(rhs);
+      settings.log.printf("Primal residual after adding artificial variables: %e\n",
+                          primal_residual);
     }
 
     // Run crossover
