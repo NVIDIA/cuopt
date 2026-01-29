@@ -11,7 +11,7 @@
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
 
-#include "PSLP_API.h"
+#include <PSLP/PSLP_API.h>
 
 #if !defined(__clang__)
 #pragma GCC diagnostic push

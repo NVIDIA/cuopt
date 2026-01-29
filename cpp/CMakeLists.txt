@@ -305,7 +305,11 @@ add_library(cuopt::cuopt ALIAS cuopt)
 # - include paths ---------------------------------------------------------------------------------
 message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
 
-target_include_directories(cuopt SYSTEM PRIVATE "${papilo_SOURCE_DIR}/src" "${papilo_BINARY_DIR}")
+target_include_directories(cuopt SYSTEM PRIVATE
+  "${papilo_SOURCE_DIR}/src"
+  "${papilo_BINARY_DIR}"
+  "${pslp_SOURCE_DIR}/include"
+)
 
 target_include_directories(cuopt
   PRIVATE
@@ -323,7 +327,6 @@ target_include_directories(cuopt
 
 # Link PSLP by file to avoid export dependency tracking
 target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
-target_include_directories(cuopt PRIVATE $<TARGET_PROPERTY:PSLP,INTERFACE_INCLUDE_DIRECTORIES>)
 add_dependencies(cuopt PSLP)
 
 # ##################################################################################################

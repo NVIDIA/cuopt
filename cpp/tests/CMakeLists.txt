@@ -42,7 +42,9 @@ function(ConfigureTest CMAKE_TEST_NAME)
         "${CUOPT_TEST_DIR}/../src"
         "${CUOPT_TEST_DIR}/../libmps_parser/src"
         "${CUOPT_TEST_DIR}"
-        "/home/nfs/rgandham/git-repos/PSLP/include/PSLP"
+        "${papilo_SOURCE_DIR}/src"
+        "${papilo_BINARY_DIR}"
+        "${pslp_SOURCE_DIR}/include"
     )
 
     target_link_libraries(${CMAKE_TEST_NAME}

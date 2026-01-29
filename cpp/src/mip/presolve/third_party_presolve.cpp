@@ -5,6 +5,8 @@
  */
 /* clang-format on */
 
+#include <PSLP/PSLP_sol.h>
+#include <PSLP/PSLP_stats.h>
 #include <boost/serialization/void_cast.hpp>
 #include <cuopt/error.hpp>
 #include <mip/mip_constants.hpp>
@@ -12,8 +14,6 @@
 #include <mip/presolve/third_party_presolve.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
-#include "PSLP_sol.h"
-#include "PSLP_stats.h"
 
 #include <raft/common/nvtx.hpp>
 
