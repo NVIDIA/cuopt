@@ -8,7 +8,7 @@ set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_settings.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/optimization_problem.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/problem_checking.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/utilities/protobuf_serializer.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/utilities/protobuf_serializer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/remote_solve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdlp.cu

@@ -9,6 +9,9 @@
 
 #include <utilities/logger.hpp>
 
+// Required for cudaMemcpy when compiled as C++ (not CUDA)
+#include <cuda_runtime_api.h>
+
 #include <dlfcn.h>
 #include <cmath>
 #include <limits>
