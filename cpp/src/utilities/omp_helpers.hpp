@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -53,7 +53,7 @@ class omp_atomic_t {
   T operator--() { return fetch_sub(T(1)) - 1; }
   T operator--(int) { return fetch_sub(T(1)); }
 
-  T load()
+  T load() const
   {
     T res;
 #pragma omp atomic read

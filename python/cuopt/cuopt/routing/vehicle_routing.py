@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
@@ -1540,3 +1540,52 @@ def Solve(data_model, solver_settings=None):
             solver_settings.get_config_file_name(),
         )
     return solution
+
+
+@catch_cuopt_exception
+def BatchSolve(data_model_list, solver_settings=None):
+    """
+    Solves multiple routing problems in batch mode using parallel execution.
+
+    Parameters
+    ----------
+    data_model_list: list of DataModel
+        List of data model objects representing routing problems to solve.
+    solver_settings: SolverSettings
+        Settings to configure solver configurations.
+        By default, it uses default solver settings to solve.
+
+    Returns
+    -------
+    tuple
+        A tuple containing:
+        - list of Assignment: Solutions for each routing problem
+
+    Examples
+    --------
+    >>> from cuopt import routing
+    >>> import cudf
+    >>> # Create multiple data models
+    >>> data_models = []
+    >>> for i in range(5):
+    ...     cost_matrix = cudf.DataFrame([[0, 1, 2], [1, 0, 3], [2, 3, 0]])
+    ...     dm = routing.DataModel(3, 1)
+    ...     dm.add_cost_matrix(cost_matrix)
+    ...     data_models.append(dm)
+    >>> settings = routing.SolverSettings()
+    >>> settings.set_time_limit(1.0)
+    >>> solutions, solve_time = routing.BatchSolve(data_models, settings)
+    """
+
+    if not isinstance(data_model_list, list):
+        raise ValueError("data_model_list must be a list of DataModel objects")
+    if len(data_model_list) == 0:
+        raise ValueError("data_model_list cannot be empty")
+    if not all(isinstance(dm, DataModel) for dm in data_model_list):
+        raise ValueError(
+            "All elements in data_model_list must be DataModel instances"
+        )
+    if solver_settings is None:
+        solver_settings = SolverSettings()
+
+    return vehicle_routing_wrapper.BatchSolve(data_model_list, solver_settings)

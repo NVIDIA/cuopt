@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
 
 # cython: profile=False
@@ -20,7 +20,6 @@ import numpy as np
 from numba import cuda
 
 import cudf
-from cudf.core.column_accessor import ColumnAccessor
 
 from cuopt.utilities import series_from_buf
 

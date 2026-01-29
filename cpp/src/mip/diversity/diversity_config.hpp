@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -14,8 +14,8 @@ namespace cuopt::linear_programming::detail {
 struct diversity_config_t {
   double time_ratio_on_init_lp        = 0.1;
   double max_time_on_lp               = 15.0;
-  double time_ratio_of_probing_cache  = 0.04;
-  double max_time_on_probing          = 15.0;
+  double time_ratio_of_probing_cache  = 0.1;
+  double max_time_on_probing          = 60.0;
   int max_var_diff                    = 256;
   size_t max_solutions                = 32;
   double initial_infeasibility_weight = 1000.;

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -25,9 +25,9 @@ struct request_id_t<request_t::PDP> {
   HDI int& id() { return pickup; }
   HDI void check([[maybe_unused]] int n_orders) const
   {
-    cuopt_assert(pickup >= 0, "pickup id must be stricly positive");
+    cuopt_assert(pickup >= 0, "pickup id must be strictly positive");
     cuopt_assert(pickup < n_orders, "delivery id must be lower than number of orders");
-    cuopt_assert(delivery >= 0, "delivery id must be stricly positive");
+    cuopt_assert(delivery >= 0, "delivery id must be strictly positive");
     cuopt_assert(delivery < n_orders, "delivery id must be lower than number of orders");
   }
   int pickup{};
@@ -41,7 +41,7 @@ struct request_id_t<request_t::VRP> {
   HDI int& id() { return pickup_or_delivery; }
   HDI void check([[maybe_unused]] int n_orders) const
   {
-    cuopt_assert(pickup_or_delivery >= 0, "id must be stricly positive");
+    cuopt_assert(pickup_or_delivery >= 0, "id must be strictly positive");
     cuopt_assert(pickup_or_delivery < n_orders, "id must be lower than number of orders");
   }
   int pickup_or_delivery{};

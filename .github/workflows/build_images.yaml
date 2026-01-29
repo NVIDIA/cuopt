@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 name: Build and push image variant
@@ -55,9 +55,10 @@ jobs:
           cp ./LICENSE ./ci/docker/context/LICENSE
           cp ./VERSION ./ci/docker/context/VERSION
           cp ./thirdparty/THIRD_PARTY_LICENSES ./ci/docker/context/THIRD_PARTY_LICENSES
-      - name: Copy Commit SHA
+      - name: Copy Commit SHA and commit time
         run: |
           git rev-parse HEAD > ./ci/docker/context/COMMIT_SHA
+          git log -n1 --pretty='%ct' > ./ci/docker/context/COMMIT_TIME
       - name: Login to NGC
         uses: docker/login-action@v3
         with:

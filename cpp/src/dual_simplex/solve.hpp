@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -29,6 +29,22 @@ enum class lp_status_t {
   CONCURRENT_LIMIT = 7,
   UNSET            = 8
 };
+
+static std::string lp_status_to_string(lp_status_t status)
+{
+  switch (status) {
+    case lp_status_t::OPTIMAL: return "OPTIMAL";
+    case lp_status_t::INFEASIBLE: return "INFEASIBLE";
+    case lp_status_t::UNBOUNDED: return "UNBOUNDED";
+    case lp_status_t::ITERATION_LIMIT: return "ITERATION_LIMIT";
+    case lp_status_t::TIME_LIMIT: return "TIME_LIMIT";
+    case lp_status_t::NUMERICAL_ISSUES: return "NUMERICAL_ISSUES";
+    case lp_status_t::CUTOFF: return "CUTOFF";
+    case lp_status_t::CONCURRENT_LIMIT: return "CONCURRENT_LIMIT";
+    case lp_status_t::UNSET: return "UNSET";
+  }
+  return "UNKNOWN";
+}
 
 template <typename i_t, typename f_t>
 f_t compute_objective(const lp_problem_t<i_t, f_t>& problem, const std::vector<f_t>& x);

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -70,32 +70,29 @@ class fleet_info_t {
     v_buckets_.resize(size, stream);
   }
 
-  auto to_host()
+  auto to_host(rmm::cuda_stream_view stream)
   {
     host_t h;
-    h.break_offset            = host_copy(v_break_offset_);
-    h.break_durations         = host_copy(v_break_duration_);
-    h.break_earliest          = host_copy(v_break_earliest_);
-    h.break_latest            = host_copy(v_break_latest_);
-    h.earliest_time           = host_copy(v_earliest_time_);
-    h.latest_time             = host_copy(v_latest_time_);
-    h.start_locations         = host_copy(v_start_locations_);
-    h.return_locations        = host_copy(v_return_locations_);
-    h.drop_return_trip        = host_copy(v_drop_return_trip_);
-    h.skip_first_trip         = host_copy(v_skip_first_trip_);
-    h.capacities              = host_copy(v_capacities_);
-    h.max_costs               = host_copy(v_max_costs_);
-    h.max_times               = host_copy(v_max_times_);
-    h.fixed_costs             = host_copy(v_fixed_costs_);
-    h.fleet_order_constraints = fleet_order_constraints_.to_host();
-    h.types                   = host_copy(v_types_);
-    h.buckets                 = host_copy(v_buckets_);
+    h.break_offset            = host_copy(v_break_offset_, stream);
+    h.break_durations         = host_copy(v_break_duration_, stream);
+    h.break_earliest          = host_copy(v_break_earliest_, stream);
+    h.break_latest            = host_copy(v_break_latest_, stream);
+    h.earliest_time           = host_copy(v_earliest_time_, stream);
+    h.latest_time             = host_copy(v_latest_time_, stream);
+    h.start_locations         = host_copy(v_start_locations_, stream);
+    h.return_locations        = host_copy(v_return_locations_, stream);
+    h.drop_return_trip        = host_copy(v_drop_return_trip_, stream);
+    h.skip_first_trip         = host_copy(v_skip_first_trip_, stream);
+    h.capacities              = host_copy(v_capacities_, stream);
+    h.max_costs               = host_copy(v_max_costs_, stream);
+    h.max_times               = host_copy(v_max_times_, stream);
+    h.fixed_costs             = host_copy(v_fixed_costs_, stream);
+    h.fleet_order_constraints = fleet_order_constraints_.to_host(stream);
+    h.types                   = host_copy(v_types_, stream);
+    h.buckets                 = host_copy(v_buckets_, stream);
     h.matrices                = detail::create_host_mdarray<f_t>(
       matrices_.extent[2], matrices_.extent[0], matrices_.extent[1]);
-    raft::copy(h.matrices.buffer.data(),
-               matrices_.buffer.data(),
-               matrices_.buffer.size(),
-               matrices_.buffer.stream());
+    raft::copy(h.matrices.buffer.data(), matrices_.buffer.data(), matrices_.buffer.size(), stream);
     return h;
   }
 

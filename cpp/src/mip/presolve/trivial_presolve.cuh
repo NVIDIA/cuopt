@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -104,7 +104,7 @@ void cleanup_vectors(problem_t<i_t, f_t>& pb,
 }
 
 template <typename i_t, typename f_t>
-void update_from_csr(problem_t<i_t, f_t>& pb)
+void update_from_csr(problem_t<i_t, f_t>& pb, bool remap_cache_ids)
 {
   using f_t2      = typename type_2<f_t>::type;
   auto handle_ptr = pb.handle_ptr;
@@ -181,7 +181,20 @@ void update_from_csr(problem_t<i_t, f_t>& pb)
                                               cuda::std::identity{});
     pb.presolve_data.variable_mapping.resize(used_iter - pb.presolve_data.variable_mapping.begin(),
                                              handle_ptr->get_stream());
-
+    if (remap_cache_ids) {
+      pb.original_ids.resize(pb.presolve_data.variable_mapping.size());
+      raft::copy(pb.original_ids.data(),
+                 pb.presolve_data.variable_mapping.data(),
+                 pb.presolve_data.variable_mapping.size(),
+                 handle_ptr->get_stream());
+      std::fill(pb.reverse_original_ids.begin(), pb.reverse_original_ids.end(), -1);
+      handle_ptr->sync_stream();
+      for (size_t i = 0; i < pb.original_ids.size(); ++i) {
+        cuopt_assert(pb.original_ids[i] < pb.reverse_original_ids.size(),
+                     "Variable index out of bounds");
+        pb.reverse_original_ids[pb.original_ids[i]] = i;
+      }
+    }
     RAFT_CHECK_CUDA(handle_ptr->get_stream());
   }
 
@@ -313,12 +326,13 @@ void update_from_csr(problem_t<i_t, f_t>& pb)
 template <typename i_t, typename f_t>
 void test_reverse_matches(const problem_t<i_t, f_t>& pb)
 {
-  auto h_offsets              = cuopt::host_copy(pb.offsets);
-  auto h_coefficients         = cuopt::host_copy(pb.coefficients);
-  auto h_variables            = cuopt::host_copy(pb.variables);
-  auto h_reverse_offsets      = cuopt::host_copy(pb.reverse_offsets);
-  auto h_reverse_constraints  = cuopt::host_copy(pb.reverse_constraints);
-  auto h_reverse_coefficients = cuopt::host_copy(pb.reverse_coefficients);
+  auto stream                 = pb.handle_ptr->get_stream();
+  auto h_offsets              = cuopt::host_copy(pb.offsets, stream);
+  auto h_coefficients         = cuopt::host_copy(pb.coefficients, stream);
+  auto h_variables            = cuopt::host_copy(pb.variables, stream);
+  auto h_reverse_offsets      = cuopt::host_copy(pb.reverse_offsets, stream);
+  auto h_reverse_constraints  = cuopt::host_copy(pb.reverse_constraints, stream);
+  auto h_reverse_coefficients = cuopt::host_copy(pb.reverse_coefficients, stream);
 
   std::vector<std::unordered_set<i_t>> vars_per_constr(pb.n_constraints);
   std::vector<std::unordered_set<f_t>> coeff_per_constr(pb.n_constraints);
@@ -340,12 +354,12 @@ void test_reverse_matches(const problem_t<i_t, f_t>& pb)
 }
 
 template <typename i_t, typename f_t>
-void trivial_presolve(problem_t<i_t, f_t>& problem)
+void trivial_presolve(problem_t<i_t, f_t>& problem, bool remap_cache_ids = false)
 {
   cuopt_expects(problem.preprocess_called,
                 error_type_t::RuntimeError,
                 "preprocess_problem should be called before running the solver");
-  update_from_csr(problem);
+  update_from_csr(problem, remap_cache_ids);
   problem.recompute_auxilliary_data(
     false);  // check problem representation later once cstr bounds are computed
   cuopt_func_call(test_reverse_matches(problem));

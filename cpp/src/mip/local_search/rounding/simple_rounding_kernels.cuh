@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -32,6 +32,7 @@ __global__ void simple_rounding_kernel(typename solution_t<i_t, f_t>::view_t sol
       auto cstr_idx   = solution.problem.reverse_constraints[i];
       auto cstr_coeff = solution.problem.reverse_coefficients[i];
 
+      // Here, we are storing the constraints in the following format: u <= Ax <= l
       // boxed constraint. can't be rounded safely
       if (std::isfinite(solution.problem.constraint_lower_bounds[cstr_idx]) &&
           std::isfinite(solution.problem.constraint_upper_bounds[cstr_idx])) {

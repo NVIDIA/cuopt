@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -148,8 +148,8 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       pseudo_costs_t<i_t, f_t>& pc)
 {
   pc.resize(original_lp.num_cols);
-  pc.strong_branch_down.resize(fractional.size());
-  pc.strong_branch_up.resize(fractional.size());
+  pc.strong_branch_down.assign(fractional.size(), 0);
+  pc.strong_branch_up.assign(fractional.size(), 0);
   pc.num_strong_branches_completed = 0;
 
   settings.log.printf("Strong branching using %d threads and %ld fractional variables\n",
@@ -199,7 +199,7 @@ template <typename i_t, typename f_t>
 void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_ptr,
                                                    f_t leaf_objective)
 {
-  mutex.lock();
+  std::lock_guard<omp_mutex_t> lock(mutex);
   const f_t change_in_obj = leaf_objective - node_ptr->lower_bound;
   const f_t frac          = node_ptr->branch_dir == rounding_direction_t::DOWN
                               ? node_ptr->fractional_val - std::floor(node_ptr->fractional_val)
@@ -211,7 +211,6 @@ void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_pt
     pseudo_cost_sum_up[node_ptr->branch_var] += change_in_obj / frac;
     pseudo_cost_num_up[node_ptr->branch_var]++;
   }
-  mutex.unlock();
 }
 
 template <typename i_t, typename f_t>
@@ -258,7 +257,7 @@ i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractio
                                                  const std::vector<f_t>& solution,
                                                  logger_t& log)
 {
-  mutex.lock();
+  std::lock_guard<omp_mutex_t> lock(mutex);
 
   const i_t num_fractional = fractional.size();
   std::vector<f_t> pseudo_cost_up(num_fractional);
@@ -312,9 +311,51 @@ i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractio
   log.printf(
     "pc branching on %d. Value %e. Score %e\n", branch_var, solution[branch_var], score[select]);
 
-  mutex.unlock();
-
   return branch_var;
+}
+
+template <typename i_t, typename f_t>
+f_t pseudo_costs_t<i_t, f_t>::obj_estimate(const std::vector<i_t>& fractional,
+                                           const std::vector<f_t>& solution,
+                                           f_t lower_bound,
+                                           logger_t& log)
+{
+  std::lock_guard<omp_mutex_t> lock(mutex);
+
+  const i_t num_fractional = fractional.size();
+  f_t estimate             = lower_bound;
+
+  i_t num_initialized_down;
+  i_t num_initialized_up;
+  f_t pseudo_cost_down_avg;
+  f_t pseudo_cost_up_avg;
+
+  initialized(num_initialized_down, num_initialized_up, pseudo_cost_down_avg, pseudo_cost_up_avg);
+
+  for (i_t k = 0; k < num_fractional; k++) {
+    const i_t j          = fractional[k];
+    f_t pseudo_cost_down = 0;
+    f_t pseudo_cost_up   = 0;
+
+    if (pseudo_cost_num_down[j] != 0) {
+      pseudo_cost_down = pseudo_cost_sum_down[j] / pseudo_cost_num_down[j];
+    } else {
+      pseudo_cost_down = pseudo_cost_down_avg;
+    }
+
+    if (pseudo_cost_num_up[j] != 0) {
+      pseudo_cost_up = pseudo_cost_sum_up[j] / pseudo_cost_num_up[j];
+    } else {
+      pseudo_cost_up = pseudo_cost_up_avg;
+    }
+    constexpr f_t eps = 1e-6;
+    const f_t f_down  = solution[j] - std::floor(solution[j]);
+    const f_t f_up    = std::ceil(solution[j]) - solution[j];
+    estimate += std::min(pseudo_cost_down * f_down, pseudo_cost_up * f_up);
+  }
+
+  log.printf("pseudocost estimate = %e\n", estimate);
+  return estimate;
 }
 
 template <typename i_t, typename f_t>

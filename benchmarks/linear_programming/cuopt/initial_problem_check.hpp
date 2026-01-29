@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -79,7 +79,7 @@ bool test_constraint_and_variable_sanity(
     if (variable_types[i] == 'I' && abs(primal_vars[i] - round(primal_vars[i])) > int_tol) {
       feasible_variables = false;
     }
-    // Not always stricly true because we apply variable bound clamping on the scaled problem
+    // Not always strictly true because we apply variable bound clamping on the scaled problem
     // After unscaling it, the variables might not respect exactly (this adding an epsilon)
     if (!(primal_vars[i] >= variable_lower_bounds[i] - int_tol &&
           primal_vars[i] <= variable_upper_bounds[i] + int_tol)) {

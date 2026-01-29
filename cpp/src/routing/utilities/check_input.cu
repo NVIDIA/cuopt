@@ -16,6 +16,7 @@
 #include <thrust/extrema.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/logical.h>
+#include <thrust/pair.h>
 #include <cuda/std/functional>
 
 #include <unordered_set>
@@ -33,7 +34,7 @@ template <typename T>
 void transform_absolute(rmm::device_uvector<T>& v, rmm::cuda_stream_view stream_view)
 {
   thrust::transform(
-    rmm::exec_policy(stream_view), v.begin(), v.end(), v.begin(), [] __device__(const auto& x) {
+    rmm::exec_policy(stream_view), v.begin(), v.end(), v.begin(), [] __device__(T x) -> T {
       return x < 0 ? -x : x;
     });
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
@@ -61,12 +62,12 @@ bool check_pickup_tw(const i_t* pickup_indices,
                                                                        pickup_indices);
   thrust::permutation_iterator<IterConstInt, IterConstInt> delivery_iter(latest_time,
                                                                          delivery_indices);
-  auto zip_iterator = thrust::make_zip_iterator(thrust::make_tuple(pickup_iter, delivery_iter));
-  bool violates_sanity =
-    thrust::any_of(rmm::exec_policy(stream_view),
-                   zip_iterator,
-                   zip_iterator + n_requests,
-                   [] __device__(const auto& x) { return thrust::get<0>(x) > thrust::get<1>(x); });
+  auto zip_iterator    = thrust::make_zip_iterator(thrust::make_tuple(pickup_iter, delivery_iter));
+  bool violates_sanity = thrust::any_of(
+    rmm::exec_policy(stream_view),
+    zip_iterator,
+    zip_iterator + n_requests,
+    [] __device__(const auto& x) -> bool { return thrust::get<0>(x) > thrust::get<1>(x); });
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
   return !violates_sanity;
 }
@@ -94,7 +95,7 @@ bool check_pickup_demands(const i_t* pickup_indices,
     rmm::exec_policy(stream_view),
     zip_iterator,
     zip_iterator + n_requests,
-    [] __device__(const auto& x) { return thrust::get<0>(x) != -thrust::get<1>(x); });
+    [] __device__(const auto& x) -> bool { return thrust::get<0>(x) != -thrust::get<1>(x); });
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
   return !violates_sanity;
 }
@@ -106,14 +107,14 @@ bool check_pdp_values(const i_t* pickup_indices,
                       size_t n_requests,
                       rmm::cuda_stream_view stream_view)
 {
-  auto pickup_iter   = thrust::make_permutation_iterator(values, pickup_indices);
-  auto delivery_iter = thrust::make_permutation_iterator(values, delivery_indices);
-  auto zip_iterator  = thrust::make_zip_iterator(thrust::make_tuple(pickup_iter, delivery_iter));
-  bool violates_sanity =
-    thrust::any_of(rmm::exec_policy(stream_view),
-                   zip_iterator,
-                   zip_iterator + n_requests,
-                   [] __device__(const auto& x) { return thrust::get<0>(x) != thrust::get<1>(x); });
+  auto pickup_iter     = thrust::make_permutation_iterator(values, pickup_indices);
+  auto delivery_iter   = thrust::make_permutation_iterator(values, delivery_indices);
+  auto zip_iterator    = thrust::make_zip_iterator(thrust::make_tuple(pickup_iter, delivery_iter));
+  bool violates_sanity = thrust::any_of(
+    rmm::exec_policy(stream_view),
+    zip_iterator,
+    zip_iterator + n_requests,
+    [] __device__(const auto& x) -> bool { return thrust::get<0>(x) != thrust::get<1>(x); });
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view.value()));
   return !violates_sanity;
 }
@@ -201,7 +202,7 @@ bool check_earliest_with_latest(rmm::device_uvector<i_t>& v_earliest_time,
                        v_earliest_time.begin(),
                        v_earliest_time.end(),
                        v_latest_time.begin(),
-                       [] __device__(auto x, auto y) { return x <= y; });
+                       [] __device__(i_t x, i_t y) -> bool { return x <= y; });
 }
 
 /**

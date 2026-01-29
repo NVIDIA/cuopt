@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
  * reserved. SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -135,15 +135,16 @@ void rins_t<i_t, f_t>::run_rins()
   cuopt_assert(best_sol.assignment.size() == problem_copy->n_variables, "Assignment size mismatch");
 
   rmm::device_uvector<i_t> vars_to_fix(problem_copy->n_integer_vars, rins_handle.get_stream());
-  auto end = thrust::copy_if(rins_handle.get_thrust_policy(),
-                             problem_copy->integer_indices.begin(),
-                             problem_copy->integer_indices.end(),
-                             vars_to_fix.begin(),
-                             [lpopt     = lp_opt_device.data(),
-                              pb        = problem_copy->view(),
-                              incumbent = best_sol.assignment.data()] __device__(i_t var_idx) {
-                               return pb.integer_equal(lpopt[var_idx], incumbent[var_idx]);
-                             });
+  auto end =
+    thrust::copy_if(rins_handle.get_thrust_policy(),
+                    problem_copy->integer_indices.begin(),
+                    problem_copy->integer_indices.end(),
+                    vars_to_fix.begin(),
+                    [lpopt     = lp_opt_device.data(),
+                     pb        = problem_copy->view(),
+                     incumbent = best_sol.assignment.data()] __device__(i_t var_idx) -> bool {
+                      return pb.integer_equal(lpopt[var_idx], incumbent[var_idx]);
+                    });
   vars_to_fix.resize(end - vars_to_fix.begin(), rins_handle.get_stream());
   f_t fractional_ratio = (f_t)(vars_to_fix.size()) / (f_t)problem_copy->n_integer_vars;
 
@@ -167,7 +168,7 @@ void rins_t<i_t, f_t>::run_rins()
   cuopt_assert(thrust::all_of(rins_handle.get_thrust_policy(),
                               vars_to_fix.begin(),
                               vars_to_fix.end(),
-                              [pb = problem_copy->view()] __device__(i_t var_idx) {
+                              [pb = problem_copy->view()] __device__(i_t var_idx) -> bool {
                                 return pb.is_integer_var(var_idx);
                               }),
                "All variables to fix must be integer variables");
@@ -220,7 +221,7 @@ void rins_t<i_t, f_t>::run_rins()
     &rins_handle, &fixed_problem, context.settings, context.scaling);
   fj_t<i_t, f_t> fj(fj_context);
   solution_t<i_t, f_t> fj_solution(fixed_problem);
-  fj_solution.copy_new_assignment(cuopt::host_copy(fixed_assignment));
+  fj_solution.copy_new_assignment(cuopt::host_copy(fixed_assignment, rins_handle.get_stream()));
   std::vector<f_t> default_weights(fixed_problem.n_constraints, 1.);
   cpu_fj_thread_t<i_t, f_t> cpu_fj_thread;
   cpu_fj_thread.fj_cpu             = fj.create_cpu_climber(fj_solution,
@@ -255,14 +256,20 @@ void rins_t<i_t, f_t>::run_rins()
   branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
   branch_and_bound_settings.relative_mip_gap_tol =
     std::min(current_mip_gap, (f_t)settings.target_mip_gap);
-  branch_and_bound_settings.integer_tol        = context.settings.tolerances.integrality_tolerance;
-  branch_and_bound_settings.num_threads        = 2;
-  branch_and_bound_settings.num_bfs_threads    = 1;
-  branch_and_bound_settings.num_diving_threads = 1;
-  branch_and_bound_settings.log.log            = false;
-  branch_and_bound_settings.log.log_prefix     = "[RINS] ";
-  branch_and_bound_settings.solution_callback  = [this, &rins_solution_queue](
-                                                  std::vector<f_t>& solution, f_t objective) {
+  branch_and_bound_settings.integer_tol     = context.settings.tolerances.integrality_tolerance;
+  branch_and_bound_settings.num_threads     = 2;
+  branch_and_bound_settings.num_bfs_workers = 1;
+
+  // In the future, let RINS use all the diving heuristics. For now,
+  // restricting to guided diving.
+  branch_and_bound_settings.diving_settings.num_diving_workers = 1;
+  branch_and_bound_settings.diving_settings.line_search_diving = 0;
+  branch_and_bound_settings.diving_settings.coefficient_diving = 0;
+  branch_and_bound_settings.diving_settings.pseudocost_diving  = 0;
+  branch_and_bound_settings.log.log                            = false;
+  branch_and_bound_settings.log.log_prefix                     = "[RINS] ";
+  branch_and_bound_settings.solution_callback = [&rins_solution_queue](std::vector<f_t>& solution,
+                                                                       f_t objective) {
     rins_solution_queue.push_back(solution);
   };
   dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(branch_and_bound_problem,

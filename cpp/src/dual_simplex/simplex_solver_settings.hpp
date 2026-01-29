@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -13,11 +13,28 @@
 #include <omp.h>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <functional>
 #include <limits>
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
+
+template <typename i_t, typename f_t>
+struct diving_heuristics_settings_t {
+  i_t num_diving_workers = -1;
+
+  // -1 automatic, 0 disabled, 1 enabled
+  i_t line_search_diving = -1;
+  i_t pseudocost_diving  = -1;
+  i_t guided_diving      = -1;
+  i_t coefficient_diving = -1;
+
+  i_t min_node_depth         = 10;
+  i_t node_limit             = 500;
+  f_t iteration_limit_factor = 0.05;
+  i_t backtrack_limit        = 5;
+};
 
 template <typename i_t, typename f_t>
 struct simplex_solver_settings_t {
@@ -70,14 +87,14 @@ struct simplex_solver_settings_t {
       iteration_log_frequency(1000),
       first_iteration_log(2),
       num_threads(omp_get_max_threads() - 1),
-      num_bfs_threads(std::min(num_threads / 4, 1)),
-      num_diving_threads(std::min(num_threads - num_bfs_threads, 1)),
+      num_bfs_workers(std::max(num_threads / 4, 1)),
       random_seed(0),
       inside_mip(0),
       solution_callback(nullptr),
       heuristic_preemption_callback(nullptr),
       concurrent_halt(nullptr)
   {
+    diving_settings.num_diving_workers = std::max(num_threads - num_bfs_workers, 1);
   }
 
   void set_log(bool logging) const { log.log = logging; }
@@ -137,8 +154,10 @@ struct simplex_solver_settings_t {
   i_t first_iteration_log;         // number of iterations to log at beginning of solve
   i_t num_threads;                 // number of threads to use
   i_t random_seed;                 // random seed
-  i_t num_bfs_threads;             // number of threads dedicated to the best-first search
-  i_t num_diving_threads;          // number of threads dedicated to diving
+  i_t num_bfs_workers;             // number of threads dedicated to the best-first search
+
+  diving_heuristics_settings_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
+
   i_t inside_mip;  // 0 if outside MIP, 1 if inside MIP at root node, 2 if inside MIP at leaf node
   std::function<void(std::vector<f_t>&, f_t)> solution_callback;
   std::function<void(const std::vector<f_t>&, f_t)> node_processed_callback;

@@ -17,4 +17,4 @@ This will display the complete list of command-line arguments and their usage:
     :language: shell
     :linenos:
 
-Please refer to :doc:`../lp-milp-settings` for more details on default values and other options.
+Please refer to :doc:`../lp-qp-milp-settings` for more details on default values and other options.

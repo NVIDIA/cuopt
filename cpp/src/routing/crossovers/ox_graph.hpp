@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -39,14 +39,14 @@ struct ox_graph_t {
     std::vector<int> buckets;
   };
 
-  host_t to_host()
+  host_t to_host(rmm::cuda_stream_view stream)
   {
     host_t h;
-    h.row_sizes = host_copy(row_sizes);
-    h.route_ids = host_copy(route_ids);
-    h.indices   = host_copy(indices);
-    h.weights   = host_copy(weights);
-    h.buckets   = host_copy(buckets);
+    h.row_sizes = host_copy(row_sizes, stream);
+    h.route_ids = host_copy(route_ids, stream);
+    h.indices   = host_copy(indices, stream);
+    h.weights   = host_copy(weights, stream);
+    h.buckets   = host_copy(buckets, stream);
     return h;
   }
 

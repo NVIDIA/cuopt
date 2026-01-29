@@ -16,7 +16,7 @@ Parameter/option statuses are listed below, they express how each of these optio
 
   **Removed** - These features were deprecated in a previous release and completely removed in this one.
 
-For all solver_configs fields, see the LP/MILP settings guide :doc:`lp-milp-settings` or the service openapi spec :doc:`open-api`.
+For all solver_configs fields, see the LP/QP/MILP settings guide :doc:`lp-qp-milp-settings` or the service openapi spec :doc:`open-api`.
 
 Changes to solver_configs.tolerances
 ------------------------------------

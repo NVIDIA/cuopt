@@ -48,12 +48,11 @@ EXITCODE=0
 trap "EXITCODE=1" ERR
 set +e
 
+# Run gtests from libcuopt-tests package
+export GTEST_OUTPUT=xml:${RAPIDS_TESTS_DIR}/
+
 rapids-logger "Run gtests"
-for gt in "$CONDA_PREFIX"/bin/gtests/libcuopt/*_TEST ; do
-    test_name=$(basename "${gt}")
-    echo "Running gtest $test_name"
-    timeout 20m "${gt}" --gtest_output=xml:"{RAPIDS_TESTS_DIR}"
-done
+timeout 40m ./ci/run_ctests.sh
 
 rapids-logger "Test script exiting with value: $EXITCODE"
 exit ${EXITCODE}

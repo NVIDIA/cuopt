@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -67,11 +67,11 @@ struct fleet_order_constraints_t {
     i_t n_vehicles;
   };
 
-  host_t to_host()
+  host_t to_host(rmm::cuda_stream_view stream)
   {
     host_t h;
-    h.order_service_times = host_copy(order_service_times);
-    auto tmp_order_match  = host_copy(order_match);
+    h.order_service_times = host_copy(order_service_times, stream);
+    auto tmp_order_match  = host_copy(order_match, stream);
     h.order_match         = thrust::host_vector<bool>(tmp_order_match);
     h.n_orders            = n_orders;
     h.n_vehicles          = n_vehicles;

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -16,8 +16,12 @@
 
 #include <utilities/timer.hpp>
 
+#include <thrust/pair.h>
+
 #include "bounds_update_data.cuh"
 #include "utils.cuh"
+
+#include <omp.h>
 
 namespace cuopt::linear_programming::detail {
 
@@ -30,6 +34,7 @@ class bound_presolve_t {
   struct settings_t {
     f_t time_limit{60.0};
     i_t iteration_limit{std::numeric_limits<i_t>::max()};
+    i_t num_threads = -1;
     bool parallel_bounds_update{true};
   };
 

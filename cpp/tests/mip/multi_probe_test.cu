@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -49,7 +49,7 @@ std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_
   std::cerr << "Tested with seed " << seed << "\n";
   problem.compute_n_integer_vars();
   auto [v_lb, v_ub] = extract_host_bounds<double>(problem.variable_bounds, problem.handle_ptr);
-  auto int_var_id   = host_copy(problem.integer_indices);
+  auto int_var_id   = host_copy(problem.integer_indices, problem.handle_ptr->get_stream());
   int_var_id.erase(
     std::remove_if(int_var_id.begin(),
                    int_var_id.end(),
@@ -106,10 +106,11 @@ bounds_probe_results(detail::bound_presolve_t<int, double>& bnd_prb_0,
   bnd_prb_1.solve(problem, probe_second);
   bnd_prb_1.set_updated_bounds(problem.handle_ptr, make_span(b_lb_1), make_span(b_ub_1));
 
-  auto h_lb_0 = host_copy(b_lb_0);
-  auto h_ub_0 = host_copy(b_ub_0);
-  auto h_lb_1 = host_copy(b_lb_1);
-  auto h_ub_1 = host_copy(b_ub_1);
+  auto stream = problem.handle_ptr->get_stream();
+  auto h_lb_0 = host_copy(b_lb_0, stream);
+  auto h_ub_0 = host_copy(b_ub_0, stream);
+  auto h_lb_1 = host_copy(b_lb_1, stream);
+  auto h_ub_1 = host_copy(b_ub_1, stream);
   return std::make_tuple(
     std::move(h_lb_0), std::move(h_ub_0), std::move(h_lb_1), std::move(h_ub_1));
 }
@@ -121,17 +122,18 @@ multi_probe_results(
   const std::tuple<std::vector<int>, std::vector<double>, std::vector<double>>& probe_tuple)
 {
   prb.solve(problem, probe_tuple);
-  rmm::device_uvector<double> m_lb_0(problem.n_variables, problem.handle_ptr->get_stream());
-  rmm::device_uvector<double> m_ub_0(problem.n_variables, problem.handle_ptr->get_stream());
-  rmm::device_uvector<double> m_lb_1(problem.n_variables, problem.handle_ptr->get_stream());
-  rmm::device_uvector<double> m_ub_1(problem.n_variables, problem.handle_ptr->get_stream());
+  auto stream = problem.handle_ptr->get_stream();
+  rmm::device_uvector<double> m_lb_0(problem.n_variables, stream);
+  rmm::device_uvector<double> m_ub_0(problem.n_variables, stream);
+  rmm::device_uvector<double> m_lb_1(problem.n_variables, stream);
+  rmm::device_uvector<double> m_ub_1(problem.n_variables, stream);
   prb.set_updated_bounds(problem.handle_ptr, make_span(m_lb_0), make_span(m_ub_0), 0);
   prb.set_updated_bounds(problem.handle_ptr, make_span(m_lb_1), make_span(m_ub_1), 1);
 
-  auto h_lb_0 = host_copy(m_lb_0);
-  auto h_ub_0 = host_copy(m_ub_0);
-  auto h_lb_1 = host_copy(m_lb_1);
-  auto h_ub_1 = host_copy(m_ub_1);
+  auto h_lb_0 = host_copy(m_lb_0, stream);
+  auto h_ub_0 = host_copy(m_ub_0, stream);
+  auto h_lb_1 = host_copy(m_lb_1, stream);
+  auto h_ub_1 = host_copy(m_ub_1, stream);
   return std::make_tuple(
     std::move(h_lb_0), std::move(h_ub_0), std::move(h_lb_1), std::move(h_ub_1));
 }
@@ -170,15 +172,16 @@ void test_multi_probe(std::string path)
   auto [m_lb_0, m_ub_0, m_lb_1, m_ub_1] =
     multi_probe_results(multi_probe_prs, problem, probe_tuple);
 
-  auto bnd_min_act_0 = host_copy(bnd_prb_0.upd.min_activity);
-  auto bnd_max_act_0 = host_copy(bnd_prb_0.upd.max_activity);
-  auto bnd_min_act_1 = host_copy(bnd_prb_1.upd.min_activity);
-  auto bnd_max_act_1 = host_copy(bnd_prb_1.upd.max_activity);
+  auto stream        = problem.handle_ptr->get_stream();
+  auto bnd_min_act_0 = host_copy(bnd_prb_0.upd.min_activity, stream);
+  auto bnd_max_act_0 = host_copy(bnd_prb_0.upd.max_activity, stream);
+  auto bnd_min_act_1 = host_copy(bnd_prb_1.upd.min_activity, stream);
+  auto bnd_max_act_1 = host_copy(bnd_prb_1.upd.max_activity, stream);
 
-  auto mlp_min_act_0 = host_copy(multi_probe_prs.upd_0.min_activity);
-  auto mlp_max_act_0 = host_copy(multi_probe_prs.upd_0.max_activity);
-  auto mlp_min_act_1 = host_copy(multi_probe_prs.upd_1.min_activity);
-  auto mlp_max_act_1 = host_copy(multi_probe_prs.upd_1.max_activity);
+  auto mlp_min_act_0 = host_copy(multi_probe_prs.upd_0.min_activity, stream);
+  auto mlp_max_act_0 = host_copy(multi_probe_prs.upd_0.max_activity, stream);
+  auto mlp_min_act_1 = host_copy(multi_probe_prs.upd_1.min_activity, stream);
+  auto mlp_max_act_1 = host_copy(multi_probe_prs.upd_1.max_activity, stream);
 
   for (int i = 0; i < (int)bnd_min_act_0.size(); ++i) {
     EXPECT_DOUBLE_EQ(bnd_min_act_0[i], mlp_min_act_0[i]);

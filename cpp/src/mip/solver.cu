@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -136,7 +136,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     auto opt_sol = solve_lp_with_method<i_t, f_t>(*context.problem_ptr, settings, lp_timer);
 
     solution_t<i_t, f_t> sol(*context.problem_ptr);
-    sol.copy_new_assignment(host_copy(opt_sol.get_primal_solution()));
+    sol.copy_new_assignment(
+      host_copy(opt_sol.get_primal_solution(), context.problem_ptr->handle_ptr->get_stream()));
     if (opt_sol.get_termination_status() == pdlp_termination_status_t::Optimal ||
         opt_sol.get_termination_status() == pdlp_termination_status_t::PrimalInfeasible ||
         opt_sol.get_termination_status() == pdlp_termination_status_t::DualInfeasible) {
@@ -172,13 +173,12 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     } else {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
     }
-    CUOPT_LOG_INFO("Using %d CPU threads for B&B", branch_and_bound_settings.num_threads);
 
-    i_t num_threads                              = branch_and_bound_settings.num_threads;
-    i_t num_bfs_threads                          = std::max(1, num_threads / 4);
-    i_t num_diving_threads                       = std::max(1, num_threads - num_bfs_threads);
-    branch_and_bound_settings.num_bfs_threads    = num_bfs_threads;
-    branch_and_bound_settings.num_diving_threads = num_diving_threads;
+    i_t num_threads                           = branch_and_bound_settings.num_threads;
+    i_t num_bfs_workers                       = std::max(1, num_threads / 4);
+    i_t num_diving_workers                    = std::max(1, num_threads - num_bfs_workers);
+    branch_and_bound_settings.num_bfs_workers = num_bfs_workers;
+    branch_and_bound_settings.diving_settings.num_diving_workers = num_diving_workers;
 
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =

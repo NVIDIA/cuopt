@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <thrust/pair.h>
 #include "../../solution/solution.cuh"
 #include "../move_candidates/move_candidates.cuh"
 

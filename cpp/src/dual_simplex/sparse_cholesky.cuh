@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -396,8 +396,10 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     nnz               = Arow.row_start.element(Arow.m, Arow.row_start.stream());
     const f_t density = static_cast<f_t>(nnz) / (static_cast<f_t>(n) * static_cast<f_t>(n));
 
+    // skip reordering if matrix diagonal
     if (first_factor &&
-        ((settings_.ordering == -1 && density >= 0.05) || settings_.ordering == 1) && n > 1) {
+        ((settings_.ordering == -1 && density >= 0.05 && nnz > n) || settings_.ordering == 1) &&
+        n > 1) {
       settings_.log.printf("Reordering algorithm        : AMD\n");
       // Tell cuDSS to use AMD
       cudssAlgType_t reorder_alg = CUDSS_ALG_3;

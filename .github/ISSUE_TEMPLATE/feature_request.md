@@ -1,5 +1,5 @@
 ---
-name: Feature request
+name: 🚀 Feature request
 about: Suggest an idea for cuOpt
 title: "[FEA]"
 labels: "? - Needs Triage, feature request"

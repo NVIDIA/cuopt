@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -302,7 +302,7 @@ inline std::vector<i_t> compute_prioritized_integer_indices(
                         }
                         return false;
                       });
-  auto h_priority_indices = host_copy(priority_indices);
+  auto h_priority_indices = host_copy(priority_indices, problem.pb->handle_ptr->get_stream());
   return h_priority_indices;
 }
 
@@ -315,9 +315,10 @@ void compute_probing_cache(load_balanced_bounds_presolve_t<i_t, f_t>& bound_pres
   auto priority_indices = compute_prioritized_integer_indices(bound_presolve, problem);
   // std::cout<<"priority_indices\n";
   CUOPT_LOG_DEBUG("Computing probing cache");
-  auto h_integer_indices      = host_copy(problem.pb->integer_indices);
-  auto h_var_upper_bounds     = host_copy(problem.pb->variable_upper_bounds);
-  auto h_var_lower_bounds     = host_copy(problem.pb->variable_lower_bounds);
+  auto stream                 = problem.pb->handle_ptr->get_stream();
+  auto h_integer_indices      = host_copy(problem.pb->integer_indices, stream);
+  auto h_var_upper_bounds     = host_copy(problem.pb->variable_upper_bounds, stream);
+  auto h_var_lower_bounds     = host_copy(problem.pb->variable_lower_bounds, stream);
   size_t n_of_cached_probings = 0;
   // TODO adjust the iteration limit depending on the total time limit and time it takes for single
   // var

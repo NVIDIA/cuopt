@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -21,7 +21,7 @@ static void test_variable_bounds(
 {
   const double* lower_bound_ptr = problem.get_variable_lower_bounds().data();
   const double* upper_bound_ptr = problem.get_variable_upper_bounds().data();
-  auto host_assignment          = cuopt::host_copy(solution);
+  auto host_assignment          = cuopt::host_copy(solution, solution.stream());
   double* assignment_ptr        = host_assignment.data();
   cuopt_assert(host_assignment.size() == problem.get_variable_lower_bounds().size(), "");
   cuopt_assert(host_assignment.size() == problem.get_variable_upper_bounds().size(), "");
@@ -81,7 +81,7 @@ static void test_constraint_sanity_per_row(
   const std::vector<double>& variable_upper_bounds   = op_problem.get_variable_upper_bounds();
   std::vector<double> residual(constraint_lower_bounds.size(), 0.0);
   std::vector<double> viol(constraint_lower_bounds.size(), 0.0);
-  auto h_solution = cuopt::host_copy(solution);
+  auto h_solution = cuopt::host_copy(solution, solution.stream());
   // CSR SpMV
   for (size_t i = 0; i < offsets.size() - 1; ++i) {
     for (int j = offsets[i]; j < offsets[i + 1]; ++j) {

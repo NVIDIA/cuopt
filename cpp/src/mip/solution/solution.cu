@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -229,11 +229,12 @@ void solution_t<i_t, f_t>::assign_random_within_bounds(f_t ratio_of_vars_to_rand
                                                        bool only_integers)
 {
   std::mt19937 rng(cuopt::seed_generator::get_seed());
-  std::vector<f_t> h_assignment = host_copy(assignment);
+  auto stream                   = handle_ptr->get_stream();
+  std::vector<f_t> h_assignment = host_copy(assignment, stream);
   std::uniform_real_distribution<f_t> unif_prob(0, 1);
 
-  auto variable_bounds = cuopt::host_copy(problem_ptr->variable_bounds);
-  auto variable_types  = cuopt::host_copy(problem_ptr->variable_types);
+  auto variable_bounds = cuopt::host_copy(problem_ptr->variable_bounds, stream);
+  auto variable_types  = cuopt::host_copy(problem_ptr->variable_types, stream);
   problem_ptr->handle_ptr->sync_stream();
   for (size_t i = 0; i < problem_ptr->variable_bounds.size(); ++i) {
     if (only_integers && variable_types[i] != var_t::INTEGER) { continue; }

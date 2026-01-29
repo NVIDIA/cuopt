@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -25,7 +25,7 @@ template <typename i_t, typename f_t>
 class objective_function_test_t : public base_test_t<i_t, f_t>,
                                   public ::testing::TestWithParam<std::pair<objective_t, double>> {
  public:
-  objective_function_test_t() : base_test_t<i_t, f_t>(512, 5E-2, 0) {}
+  objective_function_test_t() : base_test_t<i_t, f_t>(512, 0, 0) {}
   void SetUp() override
   {
     auto p                = GetParam();

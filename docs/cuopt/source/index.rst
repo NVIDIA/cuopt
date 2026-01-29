@@ -18,7 +18,7 @@ NVIDIA cuOpt
    :name: Features
 
    routing-features.rst
-   lp-features.rst
+   lp-qp-features.rst
    milp-features.rst
 
 ==========================

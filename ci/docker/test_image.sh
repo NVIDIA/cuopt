@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -24,6 +24,8 @@ ln -sf "$(pwd)" /opt/cuopt/cuopt
 chmod -R a+w "$(pwd)"
 
 cat > /opt/cuopt/test.sh <<EOF
+set -euo pipefail
+
 cd /opt/cuopt/cuopt
 python -m pip install pytest pexpect
 export RAPIDS_DATASET_ROOT_DIR=\$(realpath datasets)

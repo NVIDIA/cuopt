@@ -2,7 +2,7 @@
 Python API
 ========================================
 
-NVIDIA cuOpt supports Python API for routing optimization.
+NVIDIA cuOpt supports Python API for routing optimization and LP/QP/MILP optimization
 
 This section contains details on the cuOpt Python package.
 
@@ -26,8 +26,8 @@ This section contains details on the cuOpt Python package.
 
 .. toctree::
    :maxdepth: 3
-   :caption: Linear Programming and Mixed Integer Linear Programming
-   :name: LP and MILP API
+   :caption: Linear Programming, Quadratic Programming and Mixed Integer Linear Programming
+   :name: LP, QP and MILP API
    :titlesonly:
 
-   Linear Programming and Mixed Integer Linear Programming <lp-milp/index.rst>
+   LP, QP and MILP <lp-qp-milp/index.rst>

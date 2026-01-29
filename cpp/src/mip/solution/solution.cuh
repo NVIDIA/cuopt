@@ -14,6 +14,7 @@
 #include <mip/problem/problem.cuh>
 #include <mip/relaxed_lp/lp_state.cuh>
 
+#include <thrust/pair.h>
 #include <raft/util/cuda_dev_essentials.cuh>
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>

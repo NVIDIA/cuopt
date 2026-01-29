@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -158,46 +158,84 @@ void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
   // Replace Q with Q + Q^T
   i_t qn    = size_offsets - 1;  // Number of variables
   i_t q_nnz = size_indices;
-  Q_offsets_.resize(qn + 1);
-  std::fill(Q_offsets_.begin(), Q_offsets_.end(), 0);
-  Q_indices_.reserve(2 * q_nnz);
-  Q_values_.reserve(2 * q_nnz);
+  // Construct H = Q + Q^T in triplet form first
+  std::vector<i_t> H_i;
+  std::vector<i_t> H_j;
+  std::vector<f_t> H_x;
 
-  // TODO: This is very inefficient for large Q matrices
-  // Build a map from (row,col) to value for Q+Q^T
-  std::map<std::pair<i_t, i_t>, f_t> Q_map;
-  for (i_t row = 0; row < qn; ++row) {
-    size_t start = Q_offsets[row];
-    size_t end   = Q_offsets[row + 1];
-    for (size_t idx = start; idx < end; ++idx) {
-      i_t col = Q_indices[idx];
-      f_t val = Q_values[idx];
-      auto ij = std::make_pair(row, col);
-      auto ji = std::make_pair(col, row);
-      Q_map[ij] += val;
-      Q_map[ji] += val;
-    }
-  }
+  H_i.reserve(2 * q_nnz);
+  H_j.reserve(2 * q_nnz);
+  H_x.reserve(2 * q_nnz);
 
-  // Write map into CSR format (rows are built in key order, so each row's columns are sorted)
-  for (i_t row = 0; row < qn; ++row) {
-    for (auto it = Q_map.lower_bound(std::make_pair(row, 0));
-         it != Q_map.upper_bound(std::make_pair(row, std::numeric_limits<i_t>::max()));
-         ++it) {
-      i_t col = it->first.second;
-      f_t v   = it->second;
-      if (v != 0.0) {
-        Q_indices_.push_back(col);
-        Q_values_.push_back(v);
-        Q_offsets_[row + 1]++;
+  for (i_t i = 0; i < qn; ++i) {
+    i_t row_start = Q_offsets[i];
+    i_t row_end   = Q_offsets[i + 1];
+    for (i_t p = row_start; p < row_end; ++p) {
+      i_t j = Q_indices[p];
+      f_t x = Q_values[p];
+      // Add H(i,j)
+      H_i.push_back(i);
+      H_j.push_back(j);
+      if (i == j) { H_x.push_back(2 * x); }
+      if (i != j) {
+        H_x.push_back(x);
+        // Add H(j,i)
+        H_i.push_back(j);
+        H_j.push_back(i);
+        H_x.push_back(x);
       }
     }
   }
-  // Convert Q_offsets_new to cumulative sum
-  for (i_t i = 0; i < qn; ++i) {
-    Q_offsets_[i + 1] += Q_offsets_[i];
+  // Convert H to CSR format
+  // Get row counts
+  i_t H_nz = H_x.size();
+  std::vector<i_t> H_row_counts(qn, 0);
+  for (i_t k = 0; k < H_nz; ++k) {
+    H_row_counts[H_i[k]]++;
+  }
+  std::vector<i_t> H_cumulative_counts(qn + 1, 0);
+  for (i_t k = 0; k < qn; ++k) {
+    H_cumulative_counts[k + 1] = H_cumulative_counts[k] + H_row_counts[k];
+  }
+  std::vector<i_t> H_row_starts = H_cumulative_counts;
+  std::vector<i_t> H_indices(H_nz);
+  std::vector<f_t> H_values(H_nz);
+  for (i_t k = 0; k < H_nz; ++k) {
+    i_t p        = H_cumulative_counts[H_i[k]]++;
+    H_indices[p] = H_j[k];
+    H_values[p]  = H_x[k];
   }
 
+  // H_row_starts, H_indices, H_values are the CSR representation of H
+  // But this contains duplicate entries
+
+  std::vector<i_t> workspace(qn, -1);
+  Q_offsets_.resize(qn + 1);
+  std::fill(Q_offsets_.begin(), Q_offsets_.end(), 0);
+  Q_indices_.resize(H_nz);
+  Q_values_.resize(H_nz);
+  i_t nz = 0;
+  for (i_t i = 0; i < qn; ++i) {
+    i_t q               = nz;  // row i will start at q
+    const i_t row_start = H_row_starts[i];
+    const i_t row_end   = H_row_starts[i + 1];
+    for (i_t p = row_start; p < row_end; ++p) {
+      i_t j = H_indices[p];
+      if (workspace[j] >= q) {
+        Q_values_[workspace[j]] += H_values[p];  // H(i,j) is duplicate
+      } else {
+        workspace[j]   = nz;  // record where column j occurs
+        Q_indices_[nz] = j;   // keep H(i,j)
+        Q_values_[nz]  = H_values[p];
+        nz++;
+      }
+    }
+    Q_offsets_[i] = q;  // record start of row i
+  }
+
+  Q_offsets_[qn] = nz;  // finalize Q
+  Q_indices_.resize(nz);
+  Q_values_.resize(nz);
   // FIX ME:: check for positive semi definite matrix
 }
 
@@ -337,7 +375,7 @@ i_t optimization_problem_t<i_t, f_t>::get_n_integers() const
 {
   i_t n_integers = 0;
   if (get_n_variables() != 0) {
-    auto enum_variable_types = cuopt::host_copy(get_variable_types());
+    auto enum_variable_types = cuopt::host_copy(get_variable_types(), handle_ptr_->get_stream());
 
     for (size_t i = 0; i < enum_variable_types.size(); ++i) {
       if (enum_variable_types[i] == var_t::INTEGER) { n_integers++; }
@@ -591,16 +629,17 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
   data_model_view.set_maximize(get_sense());
 
   // Copy to host
-  auto constraint_matrix_values  = cuopt::host_copy(get_constraint_matrix_values());
-  auto constraint_matrix_indices = cuopt::host_copy(get_constraint_matrix_indices());
-  auto constraint_matrix_offsets = cuopt::host_copy(get_constraint_matrix_offsets());
-  auto constraint_bounds         = cuopt::host_copy(get_constraint_bounds());
-  auto objective_coefficients    = cuopt::host_copy(get_objective_coefficients());
-  auto variable_lower_bounds     = cuopt::host_copy(get_variable_lower_bounds());
-  auto variable_upper_bounds     = cuopt::host_copy(get_variable_upper_bounds());
-  auto constraint_lower_bounds   = cuopt::host_copy(get_constraint_lower_bounds());
-  auto constraint_upper_bounds   = cuopt::host_copy(get_constraint_upper_bounds());
-  auto row_types                 = cuopt::host_copy(get_row_types());
+  auto stream                    = handle_ptr_->get_stream();
+  auto constraint_matrix_values  = cuopt::host_copy(get_constraint_matrix_values(), stream);
+  auto constraint_matrix_indices = cuopt::host_copy(get_constraint_matrix_indices(), stream);
+  auto constraint_matrix_offsets = cuopt::host_copy(get_constraint_matrix_offsets(), stream);
+  auto constraint_bounds         = cuopt::host_copy(get_constraint_bounds(), stream);
+  auto objective_coefficients    = cuopt::host_copy(get_objective_coefficients(), stream);
+  auto variable_lower_bounds     = cuopt::host_copy(get_variable_lower_bounds(), stream);
+  auto variable_upper_bounds     = cuopt::host_copy(get_variable_upper_bounds(), stream);
+  auto constraint_lower_bounds   = cuopt::host_copy(get_constraint_lower_bounds(), stream);
+  auto constraint_upper_bounds   = cuopt::host_copy(get_constraint_upper_bounds(), stream);
+  auto row_types                 = cuopt::host_copy(get_row_types(), stream);
 
   // Set constraint matrix in CSR format
   if (get_nnz() != 0) {
@@ -652,7 +691,7 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
   std::vector<char> variable_types(get_n_variables());
   // Set variable types (convert from enum to char)
   if (get_n_variables() != 0) {
-    auto enum_variable_types = cuopt::host_copy(get_variable_types());
+    auto enum_variable_types = cuopt::host_copy(get_variable_types(), stream);
 
     // Convert enum types to char types
     for (size_t i = 0; i < variable_types.size(); ++i) {
@@ -677,13 +716,17 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
 template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::print_scaling_information() const
 {
-  std::vector<f_t> constraint_matrix_values = cuopt::host_copy(get_constraint_matrix_values());
-  std::vector<f_t> constraint_rhs           = cuopt::host_copy(get_constraint_bounds());
-  std::vector<f_t> objective_coefficients   = cuopt::host_copy(get_objective_coefficients());
-  std::vector<f_t> variable_lower_bounds    = cuopt::host_copy(get_variable_lower_bounds());
-  std::vector<f_t> variable_upper_bounds    = cuopt::host_copy(get_variable_upper_bounds());
-  std::vector<f_t> constraint_lower_bounds  = cuopt::host_copy(get_constraint_lower_bounds());
-  std::vector<f_t> constraint_upper_bounds  = cuopt::host_copy(get_constraint_upper_bounds());
+  auto stream = handle_ptr_->get_stream();
+  std::vector<f_t> constraint_matrix_values =
+    cuopt::host_copy(get_constraint_matrix_values(), stream);
+  std::vector<f_t> constraint_rhs         = cuopt::host_copy(get_constraint_bounds(), stream);
+  std::vector<f_t> objective_coefficients = cuopt::host_copy(get_objective_coefficients(), stream);
+  std::vector<f_t> variable_lower_bounds  = cuopt::host_copy(get_variable_lower_bounds(), stream);
+  std::vector<f_t> variable_upper_bounds  = cuopt::host_copy(get_variable_upper_bounds(), stream);
+  std::vector<f_t> constraint_lower_bounds =
+    cuopt::host_copy(get_constraint_lower_bounds(), stream);
+  std::vector<f_t> constraint_upper_bounds =
+    cuopt::host_copy(get_constraint_upper_bounds(), stream);
 
   auto findMaxAbs = [](const std::vector<f_t>& vec) -> f_t {
     if (vec.empty()) { return 0.0; }

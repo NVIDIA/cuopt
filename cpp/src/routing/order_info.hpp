@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -57,14 +57,14 @@ class order_info_t {
 
   bool is_pdp() const { return !v_pair_indices_.is_empty(); }
 
-  auto to_host()
+  auto to_host(rmm::cuda_stream_view stream)
   {
     host_t h;
-    h.earliest_time   = cuopt::host_copy(v_earliest_time_);
-    h.latest_time     = cuopt::host_copy(v_latest_time_);
-    h.demand          = cuopt::host_copy(v_demand_);
-    h.prizes          = cuopt::host_copy(v_prizes_);
-    h.order_locations = cuopt::host_copy(v_order_locations_);
+    h.earliest_time   = cuopt::host_copy(v_earliest_time_, stream);
+    h.latest_time     = cuopt::host_copy(v_latest_time_, stream);
+    h.demand          = cuopt::host_copy(v_demand_, stream);
+    h.prizes          = cuopt::host_copy(v_prizes_, stream);
+    h.order_locations = cuopt::host_copy(v_order_locations_, stream);
     h.depot_included  = depot_included_;
     return h;
   }

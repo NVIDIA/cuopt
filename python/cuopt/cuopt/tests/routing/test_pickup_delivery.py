@@ -63,7 +63,7 @@ def data_prep(order_pdf, matrix_pdf, depot):
             matrix[i][j] = matrix_pdf[my_ix][my_iy]
 
     pdf = pd.DataFrame(matrix)
-    matrix_df = cudf.DataFrame.from_pandas(pdf).astype("float32")
+    matrix_df = cudf.from_pandas(pdf).astype("float32")
 
     # Prepare pickup and delivery indices
     delivery_indices = cudf.Series(i for i in range(0, int(len(order_df) / 2)))

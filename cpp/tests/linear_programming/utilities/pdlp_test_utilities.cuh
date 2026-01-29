@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -38,7 +38,7 @@ static void test_objective_sanity(
   double objective_value,
   double epsilon = tolerance)
 {
-  const auto primal_vars = host_copy(primal_solution);
+  const auto primal_vars = host_copy(primal_solution, primal_solution.stream());
   const auto& c_vector   = op_problem.get_objective_coefficients();
   std::vector<double> out(primal_vars.size());
   std::transform(primal_vars.cbegin(),
@@ -62,7 +62,8 @@ static void test_constraint_sanity(
   double epsilon        = tolerance,
   bool presolve_enabled = false)
 {
-  const std::vector<double> primal_vars              = host_copy(solution.get_primal_solution());
+  const std::vector<double> primal_vars =
+    host_copy(solution.get_primal_solution(), solution.get_primal_solution().stream());
   const std::vector<double>& values                  = op_problem.get_constraint_matrix_values();
   const std::vector<int>& indices                    = op_problem.get_constraint_matrix_indices();
   const std::vector<int>& offsets                    = op_problem.get_constraint_matrix_offsets();
@@ -126,7 +127,7 @@ static void test_constraint_sanity(
 
   // std::all_of would work but we would need C++23 zip views
   for (size_t i = 0; i < primal_vars.size(); ++i) {
-    // Not always stricly true because we apply variable bound clamping on the scaled problem
+    // Not always strictly true because we apply variable bound clamping on the scaled problem
     // After unscaling it, the variables might not respect exactly (this adding an epsilon)
     auto condition = primal_vars[i] >= variable_lower_bounds[i] - epsilon &&
                      primal_vars[i] <= variable_upper_bounds[i] + epsilon;

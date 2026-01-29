@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -55,7 +55,7 @@ class routing_ges_test_t : public ::testing::TestWithParam<std::tuple<bool>>,
     this->populate_device_vectors();
   }
 
-  void TearDown() {}
+  void TearDown() override {}
 
   assignment_t<i_t> solve(const cuopt::routing::data_model_view_t<i_t, f_t>& data_model,
                           const cuopt::routing::solver_settings_t<i_t, f_t>& solver_settings,
@@ -163,7 +163,7 @@ class simple_routes_ges_test_t : public ::testing::TestWithParam<test_data_t<i_t
     this->populate_device_vectors();
   }
 
-  void TearDown() {}
+  void TearDown() override {}
 
   assignment_t<i_t> solve(const cuopt::routing::data_model_view_t<i_t, f_t>& data_model,
                           const cuopt::routing::solver_settings_t<i_t, f_t>& solver_settings,

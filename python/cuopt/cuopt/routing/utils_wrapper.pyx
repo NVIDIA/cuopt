@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -21,7 +21,6 @@ import numpy as np
 from numba import cuda
 
 import cudf
-from cudf.core.buffer import as_buffer
 
 from libcpp.utility cimport move
 
@@ -106,9 +105,7 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
     coordinates['x'] = series_from_buf(x_pos, pa.float32())
     coordinates['y'] = series_from_buf(y_pos, pa.float32())
 
-    matrices_buf = as_buffer(
-        DeviceBuffer.c_from_unique_ptr(move(g_ret.d_matrices_))
-    )
+    matrices_buf = DeviceBuffer.c_from_unique_ptr(move(g_ret.d_matrices_))
     desc = matrices_buf.__cuda_array_interface__
     desc["shape"] = (n_vehicle_types, n_matrix_types, locations, locations)
     desc["typestr"] = "f4"
@@ -140,9 +137,7 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
     )
 
     fleet_size = vehicles["earliest_time"].shape[0]
-    capacities_buf = as_buffer(
-        DeviceBuffer.c_from_unique_ptr(move(g_ret.d_caps_))
-    )
+    capacities_buf = DeviceBuffer.c_from_unique_ptr(move(g_ret.d_caps_))
     desc = capacities_buf.__cuda_array_interface__
     desc["shape"] = (dim, fleet_size)
     desc["typestr"] = "u2"
@@ -152,9 +147,7 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
         vehicles["capacity_" + str(i)] = capacities[i]
 
     # Fleet order constraints
-    service_times_buf = as_buffer(
-        DeviceBuffer.c_from_unique_ptr(move(g_ret.d_service_time_))
-    )
+    service_times_buf = DeviceBuffer.c_from_unique_ptr(move(g_ret.d_service_time_))
     desc = service_times_buf.__cuda_array_interface__
     desc["shape"] = (fleet_size, locations)
     desc["typestr"] = "i4"
@@ -175,9 +168,7 @@ def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
     orders["earliest_time"] = series_from_buf(earliest_time, pa.int32())
     orders["latest_time"] = series_from_buf(latest_time, pa.int32())
 
-    demands_buf = as_buffer(
-        DeviceBuffer.c_from_unique_ptr(move(g_ret.d_demands_))
-    )
+    demands_buf = DeviceBuffer.c_from_unique_ptr(move(g_ret.d_demands_))
     desc = demands_buf.__cuda_array_interface__
     desc["shape"] = (dim, locations)
     desc["typestr"] = "i2"

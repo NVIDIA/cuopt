@@ -1,8 +1,0 @@
-numpy_version:
-  - ">=1.21,<1.25"
-
-fastapi_version:
-  - ">=0.104.1"
-
-uvicorn_version:
-  - "0.34.*"

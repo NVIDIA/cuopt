@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -49,8 +49,9 @@ std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_
   auto seed = std::random_device{}();
   std::cerr << "Tested with seed " << seed << "\n";
   problem.compute_n_integer_vars();
-  auto v_bnd      = host_copy(problem.variable_bounds);
-  auto int_var_id = host_copy(problem.integer_indices);
+  auto stream     = problem.handle_ptr->get_stream();
+  auto v_bnd      = host_copy(problem.variable_bounds, stream);
+  auto int_var_id = host_copy(problem.integer_indices, stream);
   int_var_id.erase(
     std::remove_if(
       int_var_id.begin(),
@@ -106,10 +107,11 @@ bounds_probe_results(detail::bound_presolve_t<int, double>& bnd_prb_0,
   bnd_prb_1.solve(problem, probe_second);
   bnd_prb_1.set_updated_bounds(problem.handle_ptr, make_span(b_lb_1), make_span(b_ub_1));
 
-  auto h_lb_0 = host_copy(b_lb_0);
-  auto h_ub_0 = host_copy(b_ub_0);
-  auto h_lb_1 = host_copy(b_lb_1);
-  auto h_ub_1 = host_copy(b_ub_1);
+  auto stream = problem.handle_ptr->get_stream();
+  auto h_lb_0 = host_copy(b_lb_0, stream);
+  auto h_ub_0 = host_copy(b_ub_0, stream);
+  auto h_lb_1 = host_copy(b_lb_1, stream);
+  auto h_ub_1 = host_copy(b_ub_1, stream);
   return std::make_tuple(
     std::move(h_lb_0), std::move(h_ub_0), std::move(h_lb_1), std::move(h_ub_1));
 }
@@ -151,12 +153,13 @@ void test_multi_probe(std::string path)
     rmm::device_uvector<double> b_ub(problem.n_variables, problem.handle_ptr->get_stream());
     bnd_prb.set_updated_bounds(problem.handle_ptr, make_span(b_lb), make_span(b_ub));
 
-    auto h_lb = host_copy(b_lb);
-    auto h_ub = host_copy(b_ub);
+    auto stream = problem.handle_ptr->get_stream();
+    auto h_lb   = host_copy(b_lb, stream);
+    auto h_ub   = host_copy(b_ub, stream);
 
     lb_prs.solve(probe_first);
 
-    auto bnds = host_copy(lb_prs.vars_bnd);
+    auto bnds = host_copy(lb_prs.vars_bnd, stream);
     for (int i = 0; i < (int)h_lb.size(); ++i) {
       EXPECT_DOUBLE_EQ(bnds[2 * i], h_lb[i]);
       EXPECT_DOUBLE_EQ(bnds[2 * i + 1], h_ub[i]);

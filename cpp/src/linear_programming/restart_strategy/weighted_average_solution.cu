@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -79,14 +79,14 @@ void weighted_average_solution_t<i_t, f_t>::add_current_solution_to_weighted_ave
       sum_primal_solutions_.data(),
       primal_size_h_,
       a_add_scalar_times_b<f_t>(weight.data()),
-      stream_view_);
+      stream_view_.value());
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(sum_dual_solutions_.data(), dual_solution),
       sum_dual_solutions_.data(),
       dual_size_h_,
       a_add_scalar_times_b<f_t>(weight.data()),
-      stream_view_);
+      stream_view_.value());
 
     // update weight sums and count (add weight and +1 respectively)
     add_weight_sums<<<1, 1, 0, stream_view_>>>(weight.data(),

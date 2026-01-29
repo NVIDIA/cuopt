@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from cuopt.routing.assignment import Assignment, SolutionStatus
@@ -9,5 +9,5 @@ from cuopt.routing.utils import (
     update_routes_and_vehicles,
 )
 from cuopt.routing.utils_wrapper import DatasetDistribution
-from cuopt.routing.vehicle_routing import DataModel, Solve, SolverSettings
+from cuopt.routing.vehicle_routing import BatchSolve, DataModel, Solve, SolverSettings
 from cuopt.routing.vehicle_routing_wrapper import ErrorStatus, Objective

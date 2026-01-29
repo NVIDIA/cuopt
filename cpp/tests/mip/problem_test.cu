@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -234,8 +234,10 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
     fill_problem(op_problem);
     cuopt::linear_programming::detail::problem_t<int, double> problem(op_problem);
 
-    const auto constraints_lower_bounds = host_copy(problem.constraint_lower_bounds);
-    const auto constraints_upper_bounds = host_copy(problem.constraint_upper_bounds);
+    const auto constraints_lower_bounds =
+      host_copy(problem.constraint_lower_bounds, handle.get_stream());
+    const auto constraints_upper_bounds =
+      host_copy(problem.constraint_upper_bounds, handle.get_stream());
 
     EXPECT_EQ(constraints_lower_bounds[0], 1.0);
     EXPECT_EQ(constraints_upper_bounds[0], 1.0);
@@ -252,8 +254,10 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
     op_problem.set_constraint_upper_bounds(upper, 1);
     cuopt::linear_programming::detail::problem_t<int, double> problem(op_problem);
 
-    const auto constraints_lower_bounds = host_copy(problem.constraint_lower_bounds);
-    const auto constraints_upper_bounds = host_copy(problem.constraint_upper_bounds);
+    const auto constraints_lower_bounds =
+      host_copy(problem.constraint_lower_bounds, handle.get_stream());
+    const auto constraints_upper_bounds =
+      host_copy(problem.constraint_upper_bounds, handle.get_stream());
     EXPECT_EQ(constraints_lower_bounds[0], 2.0);
     EXPECT_EQ(constraints_upper_bounds[0], 3.0);
   }
@@ -270,8 +274,10 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
     fill_problem(op_problem);
     cuopt::linear_programming::detail::problem_t<int, double> problem(op_problem);
 
-    const auto constraints_lower_bounds = host_copy(problem.constraint_lower_bounds);
-    const auto constraints_upper_bounds = host_copy(problem.constraint_upper_bounds);
+    const auto constraints_lower_bounds =
+      host_copy(problem.constraint_lower_bounds, handle.get_stream());
+    const auto constraints_upper_bounds =
+      host_copy(problem.constraint_upper_bounds, handle.get_stream());
     EXPECT_EQ(constraints_lower_bounds[0], 2.0);
     EXPECT_EQ(constraints_upper_bounds[0], 3.0);
   }

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -248,13 +248,14 @@ void assignment_t<i_t>::print(std::ostream& os) const noexcept
 template <typename i_t>
 host_assignment_t<i_t>::host_assignment_t(const assignment_t<i_t>& routing_solution)
 {
-  route            = cuopt::host_copy(routing_solution.get_route());
-  truck_id         = cuopt::host_copy(routing_solution.get_truck_id());
-  stamp            = cuopt::host_copy(routing_solution.get_arrival_stamp());
-  locations        = cuopt::host_copy(routing_solution.get_order_locations());
-  node_types       = cuopt::host_copy(routing_solution.get_node_types());
-  unserviced_nodes = cuopt::host_copy(routing_solution.get_unserviced_nodes());
-  accepted         = cuopt::host_copy(routing_solution.get_accepted());
+  auto stream      = routing_solution.get_route().stream();
+  route            = cuopt::host_copy(routing_solution.get_route(), stream);
+  truck_id         = cuopt::host_copy(routing_solution.get_truck_id(), stream);
+  stamp            = cuopt::host_copy(routing_solution.get_arrival_stamp(), stream);
+  locations        = cuopt::host_copy(routing_solution.get_order_locations(), stream);
+  node_types       = cuopt::host_copy(routing_solution.get_node_types(), stream);
+  unserviced_nodes = cuopt::host_copy(routing_solution.get_unserviced_nodes(), stream);
+  accepted         = cuopt::host_copy(routing_solution.get_accepted(), stream);
 }
 
 template <typename i_t>

@@ -2,7 +2,7 @@
 Quickstart Guide
 =================
 
-NVIDIA cuOpt provides C API for LP and MILP. This section will show you how to install cuOpt C API and how to use it to solve LP and MILP problems.
+NVIDIA cuOpt provides C API for LP, QP and MILP. This section will show you how to install cuOpt C API and how to use it to solve LP, QP and MILP problems.
 
 
 Installation

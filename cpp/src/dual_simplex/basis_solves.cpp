@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -613,6 +613,8 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
 template <typename i_t, typename f_t>
 i_t basis_repair(const csc_matrix_t<i_t, f_t>& A,
                  const simplex_solver_settings_t<i_t, f_t>& settings,
+                 const std::vector<f_t>& lower,
+                 const std::vector<f_t>& upper,
                  const std::vector<i_t>& deficient,
                  const std::vector<i_t>& slacks_needed,
                  std::vector<i_t>& basis_list,
@@ -658,7 +660,15 @@ i_t basis_repair(const csc_matrix_t<i_t, f_t>& A,
     nonbasic_list[nonbasic_map[replace_j]] = bad_j;
     vstatus[replace_j]                     = variable_status_t::BASIC;
     // This is the main issue. What value should bad_j take on.
-    vstatus[bad_j] = variable_status_t::NONBASIC_FREE;
+    if (lower[bad_j] == -inf && upper[bad_j] == inf) {
+      vstatus[bad_j] = variable_status_t::NONBASIC_FREE;
+    } else if (lower[bad_j] > -inf) {
+      vstatus[bad_j] = variable_status_t::NONBASIC_LOWER;
+    } else if (upper[bad_j] < inf) {
+      vstatus[bad_j] = variable_status_t::NONBASIC_UPPER;
+    } else {
+      assert(1 == 0);
+    }
   }
 
   return 0;
@@ -849,6 +859,8 @@ template int factorize_basis<int>(const csc_matrix_t<int, double>& A,
 
 template int basis_repair<int, double>(const csc_matrix_t<int, double>& A,
                                        const simplex_solver_settings_t<int, double>& settings,
+                                       const std::vector<double>& lower,
+                                       const std::vector<double>& upper,
                                        const std::vector<int>& deficient,
                                        const std::vector<int>& slacks_needed,
                                        std::vector<int>& basis_list,

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -25,10 +25,11 @@ void fill_routes_data(solution_t<i_t, f_t, REQUEST>& sol,
                       const problem_t<i_t, f_t>& problem)
 {
   const auto n_routes    = assignment.get_vehicle_count();
-  auto h_route           = cuopt::host_copy(assignment.get_route());
-  auto h_truck_ids       = cuopt::host_copy(assignment.get_truck_id());
-  auto h_route_locations = cuopt::host_copy(assignment.get_order_locations());
-  auto h_node_types      = cuopt::host_copy(assignment.get_node_types());
+  auto stream            = sol.sol_handle->get_stream();
+  auto h_route           = cuopt::host_copy(assignment.get_route(), stream);
+  auto h_truck_ids       = cuopt::host_copy(assignment.get_truck_id(), stream);
+  auto h_route_locations = cuopt::host_copy(assignment.get_order_locations(), stream);
+  auto h_node_types      = cuopt::host_copy(assignment.get_node_types(), stream);
 
   sol.sol_handle->sync_stream();
   assignment.get_truck_id().stream().synchronize();

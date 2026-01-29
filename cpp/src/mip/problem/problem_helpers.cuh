@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -18,6 +18,7 @@
 #include <cuda_runtime_api.h>
 #include <thrust/count.h>
 #include <thrust/functional.h>
+#include <thrust/gather.h>
 #include <thrust/logical.h>
 #include <thrust/sort.h>
 
@@ -250,7 +251,7 @@ static void check_csr_representation([[maybe_unused]] const rmm::device_uvector<
   cuopt_assert(thrust::all_of(handle_ptr->get_thrust_policy(),
                               variables.cbegin(),
                               variables.cend(),
-                              [n_variables = n_variables] __device__(i_t val) {
+                              [n_variables = n_variables] __device__(i_t val) -> bool {
                                 return val >= 0 && val < n_variables;
                               }),
                "A_indices values must positive lower than the number of variables (c size).");
@@ -267,7 +268,7 @@ static bool check_var_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
                    thrust::counting_iterator(0),
                    thrust::counting_iterator((i_t)problem.variable_bounds.size()),
                    [tolerance = problem.tolerances.presolve_absolute_tolerance,
-                    var_bnd   = make_span(problem.variable_bounds)] __device__(i_t index) {
+                    var_bnd   = make_span(problem.variable_bounds)] __device__(i_t index) -> bool {
                      auto var_bounds = var_bnd[index];
                      return (get_lower(var_bounds) > get_upper(var_bounds) + tolerance);
                    });
@@ -283,7 +284,7 @@ static bool check_constraint_bounds_sanity(const detail::problem_t<i_t, f_t>& pr
                    thrust::counting_iterator((i_t)problem.constraint_lower_bounds.size()),
                    [tolerance = problem.tolerances.presolve_absolute_tolerance,
                     lb        = make_span(problem.constraint_lower_bounds),
-                    ub        = make_span(problem.constraint_upper_bounds)] __device__(i_t index) {
+                    ub = make_span(problem.constraint_upper_bounds)] __device__(i_t index) -> bool {
                      return (lb[index] > ub[index] + tolerance);
                    });
   return !crossing_bounds_detected;
@@ -313,6 +314,13 @@ static bool check_bounds_sanity(const detail::problem_t<i_t, f_t>& problem)
          check_constraint_bounds_sanity<i_t, f_t>(problem);
 }
 
+static void check_cusparse_status(cusparseStatus_t status)
+{
+  if (status != CUSPARSE_STATUS_SUCCESS) {
+    throw std::runtime_error("CUSPARSE error: " + std::string(cusparseGetErrorString(status)));
+  }
+}
+
 template <typename i_t, typename f_t>
 __global__ void kernel_convert_greater_to_less(raft::device_span<f_t> coefficients,
                                                raft::device_span<const i_t> offsets,
@@ -338,6 +346,53 @@ __global__ void kernel_convert_greater_to_less(raft::device_span<f_t> coefficien
     constraint_lower_bounds[constraint_id] = -ub;
     constraint_upper_bounds[constraint_id] = -lb;
   }
+}
+
+template <typename i_t, typename f_t>
+static void csrsort_cusparse(rmm::device_uvector<f_t>& values,
+                             rmm::device_uvector<i_t>& indices,
+                             rmm::device_uvector<i_t>& offsets,
+                             i_t rows,
+                             i_t cols,
+                             const raft::handle_t* handle_ptr)
+{
+  auto stream = offsets.stream();
+  cusparseHandle_t handle;
+  cusparseCreate(&handle);
+  cusparseSetStream(handle, stream);
+
+  i_t nnz = values.size();
+  i_t m   = rows;
+  i_t n   = cols;
+
+  cusparseMatDescr_t matA;
+  cusparseCreateMatDescr(&matA);
+  cusparseSetMatIndexBase(matA, CUSPARSE_INDEX_BASE_ZERO);
+  cusparseSetMatType(matA, CUSPARSE_MATRIX_TYPE_GENERAL);
+
+  size_t pBufferSizeInBytes = 0;
+  check_cusparse_status(cusparseXcsrsort_bufferSizeExt(
+    handle, m, n, nnz, offsets.data(), indices.data(), &pBufferSizeInBytes));
+  rmm::device_uvector<uint8_t> pBuffer(pBufferSizeInBytes, stream);
+  cuopt_assert(((intptr_t)pBuffer.data() % 128) == 0,
+               "CUSPARSE buffer size is not aligned to 128 bytes");
+  rmm::device_uvector<i_t> P(nnz, stream);
+  thrust::sequence(handle_ptr->get_thrust_policy(), P.begin(), P.end());
+
+  check_cusparse_status(cusparseXcsrsort(
+    handle, m, n, nnz, matA, offsets.data(), indices.data(), P.data(), pBuffer.data()));
+
+  // apply the permutation to the values
+  rmm::device_uvector<f_t> values_sorted(nnz, stream);
+  thrust::gather(
+    handle_ptr->get_thrust_policy(), P.begin(), P.end(), values.begin(), values_sorted.begin());
+  thrust::copy(
+    handle_ptr->get_thrust_policy(), values_sorted.begin(), values_sorted.end(), values.begin());
+
+  cusparseDestroyMatDescr(matA);
+  cusparseDestroy(handle);
+
+  check_csr_representation(values, offsets, indices, handle_ptr, cols, rows);
 }
 
 template <typename i_t, typename f_t>

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -1324,7 +1324,7 @@ compute_median(const typename pdlp_restart_strategy_t<i_t, f_t>::view_t& restart
                i_t range_low,
                i_t range_high)
 {
-  cuopt_assert(range_low < range_high, "range_low should be stricly lower than range_high");
+  cuopt_assert(range_low < range_high, "range_low should be strictly lower than range_high");
   const i_t size = range_high - range_low;
   if ((size & 1) == 0) {
     // Even, return average
@@ -1342,7 +1342,7 @@ DI void clamp_test_points(
   i_t range_low,
   i_t range_high)
 {
-  cuopt_assert(range_low < range_high, "range_low should be stricly lower than range_high");
+  cuopt_assert(range_low < range_high, "range_low should be strictly lower than range_high");
   for (int i = blockIdx.x * blockDim.x + threadIdx.x + range_low; i < range_high;
        i += blockDim.x * gridDim.x) {
     const f_t lower_bound_value = restart_strategy_view.lower_bound[i];
@@ -1522,7 +1522,7 @@ __global__ void solve_bound_constrained_trust_region_kernel(
   while (*testing_range_low != *testing_range_high) {
     const i_t range_low  = *testing_range_low;
     const i_t range_high = *testing_range_high;
-    cuopt_assert(range_low < range_high, "range_low should be stricly lower than range_high");
+    cuopt_assert(range_low < range_high, "range_low should be strictly lower than range_high");
 
     // Each of those calls perform an implicit grid sync
     const f_t test_threshold =
@@ -1682,7 +1682,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
       thrust::make_zip_iterator(thrust::make_tuple(lower_bound_.data(), upper_bound_.data())),
       primal_size_h_,
       extract_bounds_t<f_t, f_t2>(),
-      stream_view_);
+      stream_view_.value());
     raft::copy(lower_bound_.data() + primal_size_h_,
                transformed_constraint_lower_bounds_.data(),
                dual_size_h_,
@@ -1782,7 +1782,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
     } else  // No inf found, end is primal_size_h_
       testing_range_high_.set_value_async(index_end_primal, stream_view_);
     cuopt_assert(index_start_primal <= index_end_primal,
-                 "Start should be stricly smalled than end");
+                 "Start should be strictly smaller than end");
 
     cuopt_assert(!thrust::any_of(handle_ptr_->get_thrust_policy(),
                                  threshold_.data() + index_start_primal,
@@ -1866,7 +1866,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
                                     duality_gap.primal_solution_tr_.data(),
                                     primal_size_h_,
                                     clamp<f_t, f_t2>(),
-                                    stream_view_);
+                                    stream_view_.value());
 
     // project by max(min(y[i], upperbound[i]),lowerbound[i])
     raft::linalg::ternaryOp(duality_gap.dual_solution_tr_.data(),

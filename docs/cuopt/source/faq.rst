@@ -283,7 +283,7 @@ Routing FAQ
 
     So in either case, task locations are actually integer indices into another structure.
 
-    If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt as shown `here <https://github.com/NVIDIA/cuOpt-Resources/blob/main/notebooks/routing/service/cost_matrix_creation.ipynb>`__.
+    If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt as shown `here <https://github.com/NVIDIA/cuOpt-Resources/blob/release/26.02/notebooks/routing/service/cost_matrix_creation.ipynb>`__.
 
 .. dropdown:: Is it possible to define constraints such as refrigerated vehicles required for certain orders?
 

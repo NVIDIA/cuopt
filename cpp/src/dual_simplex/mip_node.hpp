@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -45,6 +45,7 @@ class mip_node_t {
       branch_var_lower(-std::numeric_limits<f_t>::infinity()),
       branch_var_upper(std::numeric_limits<f_t>::infinity()),
       fractional_val(std::numeric_limits<f_t>::infinity()),
+      objective_estimate(std::numeric_limits<f_t>::infinity()),
       vstatus(0)
   {
     children[0] = nullptr;
@@ -59,6 +60,7 @@ class mip_node_t {
       node_id(0),
       branch_var(-1),
       branch_dir(rounding_direction_t::NONE),
+      objective_estimate(std::numeric_limits<f_t>::infinity()),
       vstatus(basis)
   {
     children[0] = nullptr;
@@ -80,6 +82,7 @@ class mip_node_t {
       branch_var(branch_variable),
       branch_dir(branch_direction),
       fractional_val(branch_var_value),
+      objective_estimate(parent_node->objective_estimate),
       vstatus(basis)
 
   {
@@ -227,17 +230,19 @@ class mip_node_t {
   mip_node_t<i_t, f_t> detach_copy() const
   {
     mip_node_t<i_t, f_t> copy(lower_bound, vstatus);
-    copy.branch_var       = branch_var;
-    copy.branch_dir       = branch_dir;
-    copy.branch_var_lower = branch_var_lower;
-    copy.branch_var_upper = branch_var_upper;
-    copy.fractional_val   = fractional_val;
-    copy.node_id          = node_id;
+    copy.branch_var         = branch_var;
+    copy.branch_dir         = branch_dir;
+    copy.branch_var_lower   = branch_var_lower;
+    copy.branch_var_upper   = branch_var_upper;
+    copy.fractional_val     = fractional_val;
+    copy.objective_estimate = objective_estimate;
+    copy.node_id            = node_id;
     return copy;
   }
 
   node_status_t status;
   f_t lower_bound;
+  f_t objective_estimate;
   i_t depth;
   i_t node_id;
   i_t branch_var;
@@ -261,22 +266,6 @@ void remove_fathomed_nodes(std::vector<mip_node_t<i_t, f_t>*>& stack)
     }
   }
 }
-
-template <typename i_t, typename f_t>
-class node_compare_t {
- public:
-  bool operator()(const mip_node_t<i_t, f_t>& a, const mip_node_t<i_t, f_t>& b) const
-  {
-    return a.lower_bound >
-           b.lower_bound;  // True if a comes before b, elements that come before are output last
-  }
-
-  bool operator()(const mip_node_t<i_t, f_t>* a, const mip_node_t<i_t, f_t>* b) const
-  {
-    return a->lower_bound >
-           b->lower_bound;  // True if a comes before b, elements that come before are output last
-  }
-};
 
 template <typename i_t, typename f_t>
 class search_tree_t {
