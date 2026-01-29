@@ -7,7 +7,7 @@ set -eou pipefail
 
 RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX="true"
 export RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX
-source ./ci/rapids-init-pip
+source rapids-init-pip
 
 # Download the packages built in the previous step
 RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"

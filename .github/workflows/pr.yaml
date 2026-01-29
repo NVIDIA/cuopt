@@ -106,66 +106,47 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@main
     with:
       files_yaml: |
-        test_cpp:
+        test_python_wheels:
           - '**'
           - '!CONTRIBUTING.md'
           - '!README.md'
-          - '!ci/release/update-version-cuopt.sh'
-          - '!ci/release/update-version-rapids.sh'
+          - '!.ai/**'
+          - '!.coderabbit.yaml'
+          - '!.github/AGENTS.md'
+          - '!.github/CODE_OF_CONDUCT.md'
+          - '!.github/CODEOWNERS'
+          - '!.github/ISSUE_TEMPLATE/**'
+          - '!.github/PULL_REQUEST_TEMPLATE.md'
+          - '!.github/SECURITY.md'
+          - '!.github/.ai/**'
+          - '!.github/.coderabbit_review_guid.md'
+          - '!.github/agents/**'
+          - '!.github/copy-pr-bot.yaml'
+          - '!.github/ops-bot.yaml'
+          - '!.pre-commit-config.yaml'
+          - '!ci/build_cpp.sh'
+          - '!ci/build_docs.sh'
+          - '!ci/build_python.sh'
+          - '!ci/check_style.sh'
+          - '!ci/release/**'
+          - '!ci/run_ctests.sh'
+          - '!ci/test_python.sh'
+          - '!conda/**'
+          - '!container-builder/**'
           - '!docs/**'
+          - '!helmchart/**'
           - '!img/**'
+          - '!ngc/**'
           - '!notebooks/**'
+          - '!omniverse/**'
           - '!python/**'
           - '!readme_pages/**'
-          - '!container-builder/**'
-          - '!helm-chart/**'
-          - '!ngc/**'
-          - '!omniverse/**'
           - '!regression/**'
           - '!resources/**'
+          - '!sonar-project.properties'
+          - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
-        test_notebooks:
-          - '**'
-          - '!CONTRIBUTING.md'
-          - '!README.md'
-          - '!ci/release/update-version-cuopt.sh'
-          - '!ci/release/update-version-rapids.sh'
-          - '!docs/**'
-          - '!python/nvcf_client/**'
-        test_python:
-          - '**'
-          - '!CONTRIBUTING.md'
-          - '!README.md'
-          - '!ci/release/update-version-cuopt.sh'
-          - '!ci/release/update-version-rapids.sh'
-          - '!docs/**'
-          - '!img/**'
-          - '!notebooks/**'
-          - '!python/nvcf_client/**'
-        test_python_cuopt:
-          - '**'
-          - '!CONTRIBUTING.md'
-          - '!README.md'
-          - '!ci/release/update-version-cuopt.sh'
-          - '!ci/release/update-version-rapids.sh'
-          - '!docs/**'
-          - '!img/**'
-          - '!notebooks/**'
-          - '!python/cuopt_self_hosted/**'
-          - '!python/cuopt_server/**'
-          - '!python/nvcf_client/**'
-        test_python_cuopt_server:
-          - '**'
-          - '!CONTRIBUTING.md'
-          - '!README.md'
-          - '!ci/release/update-version-cuopt.sh'
-          - '!ci/release/update-version-rapids.sh'
-          - '!docs/**'
-          - '!img/**'
-          - '!notebooks/**'
-          - '!python/cuopt_self_hosted/**'
-          - '!python/nvcf_client/**'
   checks:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
@@ -207,7 +188,7 @@ jobs:
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, wheel-build-cuopt-sh-client, changed-files, compute-matrix-filters]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
-    #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
@@ -247,7 +228,7 @@ jobs:
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files, compute-matrix-filters]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
-    #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_cuopt_server
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
@@ -263,7 +244,7 @@ jobs:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
     secrets: inherit
     uses: ./.github/workflows/self_hosted_service_test.yaml
-    #if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     with:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
