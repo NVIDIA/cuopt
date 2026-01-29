@@ -20,6 +20,11 @@ jobs:
       - compute-matrix-filters
       - changed-files
       - checks
+      - conda-cpp-build
+      - conda-cpp-tests
+      - conda-python-build
+      - conda-python-tests
+      - docs-build
       - wheel-build-libcuopt
       - wheel-build-cuopt
       - wheel-tests-cuopt
@@ -106,6 +111,110 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@main
     with:
       files_yaml: |
+        build_docs:
+          - '**'
+          - '!.ai/**'
+          - '!.coderabbit.yaml'
+          - '!.github/AGENTS.md'
+          - '!.github/CODE_OF_CONDUCT.md'
+          - '!.github/CODEOWNERS'
+          - '!.github/ISSUE_TEMPLATE/**'
+          - '!.github/PULL_REQUEST_TEMPLATE.md'
+          - '!.github/SECURITY.md'
+          - '!.github/.ai/**'
+          - '!.github/.coderabbit_review_guid.md'
+          - '!.github/agents/**'
+          - '!.github/copy-pr-bot.yaml'
+          - '!.github/ops-bot.yaml'
+          - '!.pre-commit-config.yaml'
+          - '!ci/build_wheel*.sh'
+          - '!ci/check_style.sh'
+          - '!ci/release/**'
+          - '!ci/run_ctests.sh'
+          - '!ci/run_*.pytests.sh'
+          - '!ci/test_cpp*.sh'
+          - '!ci/test_notebooks.sh'
+          - '!ci/test_python.sh'
+          - '!ci/test_self_hosted_service.sh'
+          - '!ci/test_wheel*.sh'
+          - '!container-builder/**'
+          - '!helmchart/**'
+          - '!ngc/**'
+          - '!sonar-project.properties'
+          - '!sonarqube/**'
+          - '!ucf/**'
+          - '!utilities/**'
+        test_cpp:
+          - '**'
+          - '!CONTRIBUTING.md'
+          - '!README.md'
+          - '!.ai/**'
+          - '!.coderabbit.yaml'
+          - '!.github/AGENTS.md'
+          - '!.github/CODE_OF_CONDUCT.md'
+          - '!.github/CODEOWNERS'
+          - '!.github/ISSUE_TEMPLATE/**'
+          - '!.github/PULL_REQUEST_TEMPLATE.md'
+          - '!.github/SECURITY.md'
+          - '!.github/.ai/**'
+          - '!.github/.coderabbit_review_guid.md'
+          - '!.github/agents/**'
+          - '!.github/copy-pr-bot.yaml'
+          - '!.github/ops-bot.yaml'
+          - '!.pre-commit-config.yaml'
+          - '!ci/build_docs.sh'
+          - '!ci/build_python.sh'
+          - '!ci/build_wheel*.sh'
+          - '!ci/check_style.sh'
+          - '!ci/release/**'
+          - '!ci/test_python.sh'
+          - '!ci/test_self_hosted_service.sh'
+          - '!ci/test_wheel*.sh'
+          - '!container-builder/**'
+          - '!docs/**'
+          - '!helmchart/**'
+          - '!img/**'
+          - '!ngc/**'
+          - '!notebooks/**'
+          - '!python/**'
+          - '!sonar-project.properties'
+          - '!sonarqube/**'
+          - '!ucf/**'
+          - '!utilities/**'
+        test_python_conda:
+          - '**'
+          - '!CONTRIBUTING.md'
+          - '!README.md'
+          - '!.ai/**'
+          - '!.coderabbit.yaml'
+          - '!.github/AGENTS.md'
+          - '!.github/CODE_OF_CONDUCT.md'
+          - '!.github/CODEOWNERS'
+          - '!.github/ISSUE_TEMPLATE/**'
+          - '!.github/PULL_REQUEST_TEMPLATE.md'
+          - '!.github/SECURITY.md'
+          - '!.github/.ai/**'
+          - '!.github/.coderabbit_review_guid.md'
+          - '!.github/agents/**'
+          - '!.github/copy-pr-bot.yaml'
+          - '!.github/ops-bot.yaml'
+          - '!.pre-commit-config.yaml'
+          - '!ci/build_docs.sh'
+          - '!ci/build_wheel*.sh'
+          - '!ci/check_style.sh'
+          - '!ci/release/**'
+          - '!ci/test_self_hosted_service.sh'
+          - '!ci/test_wheel*.sh'
+          - '!container-builder/**'
+          - '!docs/**'
+          - '!helmchart/**'
+          - '!img/**'
+          - '!ngc/**'
+          - '!notebooks/**'
+          - '!sonar-project.properties'
+          - '!sonarqube/**'
+          - '!ucf/**'
+          - '!utilities/**'
         test_python_wheels:
           - '**'
           - '!CONTRIBUTING.md'
@@ -138,11 +247,7 @@ jobs:
           - '!img/**'
           - '!ngc/**'
           - '!notebooks/**'
-          - '!omniverse/**'
           - '!python/**'
-          - '!readme_pages/**'
-          - '!regression/**'
-          - '!resources/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
           - '!ucf/**'
@@ -152,6 +257,66 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
     with:
       enable_check_generated_files: false
+  conda-cpp-build:
+    needs: [checks, compute-matrix-filters]
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@main
+    with:
+      build_type: pull-request
+      script: ci/build_cpp.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
+  conda-cpp-tests:
+    needs: [conda-cpp-build, changed-files, compute-matrix-filters]
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
+    with:
+      build_type: pull-request
+      script: ci/test_cpp.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
+    secrets:
+      script-env-secret-1-key: CUOPT_DATASET_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
+      script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
+      script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+  conda-python-build:
+    needs: [conda-cpp-build, compute-matrix-filters]
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
+    with:
+      build_type: pull-request
+      script: ci/build_python.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
+  conda-python-tests:
+    needs: [conda-python-build, changed-files, compute-matrix-filters]
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda
+    with:
+      run_codecov: false
+      build_type: pull-request
+      script: ci/test_python.sh
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
+    secrets:
+      script-env-secret-1-key: CUOPT_DATASET_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
+      script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
+      script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+  docs-build:
+    needs: [conda-python-build, changed-files]
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+    with:
+      build_type: pull-request
+      node_type: "gpu-l4-latest-1"
+      arch: "amd64"
+      file_to_upload: "docs/cuopt/build/html/"
+      artifact-name: "cuopt_docs"
+      container_image: "rapidsai/ci-conda:26.04-latest"
+      script: "ci/build_docs.sh"
   wheel-build-cuopt-mps-parser:
     needs: compute-matrix-filters
     secrets: inherit
