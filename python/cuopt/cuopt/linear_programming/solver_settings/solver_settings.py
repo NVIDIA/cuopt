@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from enum import IntEnum, auto
@@ -230,7 +230,7 @@ class SolverSettings:
         ----------
         pdlp_warm_start_data : PDLPWarmStartData
             PDLP warm start data obtained from a previous solve.
-            Refer :py:meth:`cuopt.linear_programming.problem.Problem.get_pdlp_warm_start_data`  # noqa
+            Refer :py:meth:`cuopt.linear_programming.problem.Problem.getWarmstartData`  # noqa
 
         Notes
         -----
