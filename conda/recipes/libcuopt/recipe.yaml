@@ -112,9 +112,12 @@ outputs:
         by_name:
           - cuda-nvtx
           - cuda-version
+          - grpc-cpp
           - libcurand
           - libcudss
           - libcusparse
+          - libgrpc
+          - libprotobuf
           - librmm
           - libzlib
           - libbz2
@@ -168,9 +171,11 @@ outputs:
         by_name:
           - cuda-nvtx
           - cuda-version
+          - grpc-cpp
           - libcudss
           - libcurand
           - libcusparse
+          - libgrpc
           - libprotobuf
           - librmm
           - libboost
@@ -213,9 +218,12 @@ outputs:
         by_name:
           - cuda-nvtx
           - cuda-version
+          - grpc-cpp
           - libcurand
           - libcusparse
           - libcudss
+          - libgrpc
+          - libprotobuf
           - librmm
           - libboost
           - libboost_iostreams
