@@ -1378,18 +1378,22 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       settings.log.debug("Num flips %d\n", num_flips);
       solution = phase1_solution;
       print_crossover_info(lp, settings, vstatus, solution, "Dual phase 1 complete");
-      std::vector<f_t> edge_norms;
-      dual::status_t status = dual_phase2(
-        2, iter == 0 ? 1 : 0, start_time, lp, settings, vstatus, solution, iter, edge_norms);
-      if (toc(start_time) > settings.time_limit) {
-        settings.log.printf("Time limit exceeded\n");
-        return crossover_status_t::TIME_LIMIT;
+      dual_infeas           = dual_infeasibility(lp, settings, vstatus, solution.z);
+      dual::status_t status = dual::status_t::NUMERICAL;
+      if (dual_infeas <= settings.dual_tol) {
+        std::vector<f_t> edge_norms;
+        status = dual_phase2(
+          2, iter == 0 ? 1 : 0, start_time, lp, settings, vstatus, solution, iter, edge_norms);
+        if (toc(start_time) > settings.time_limit) {
+          settings.log.printf("Time limit exceeded\n");
+          return crossover_status_t::TIME_LIMIT;
+        }
+        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+          settings.log.printf("Concurrent halt\n");
+          return crossover_status_t::CONCURRENT_LIMIT;
+        }
+        solution.iterations += iter;
       }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-        settings.log.printf("Concurrent halt\n");
-        return crossover_status_t::CONCURRENT_LIMIT;
-      }
-      solution.iterations += iter;
       primal_infeas = primal_infeasibility(lp, settings, vstatus, solution.x);
       dual_infeas   = dual_infeasibility(lp, settings, vstatus, solution.z);
       primal_res    = primal_residual(lp, solution);

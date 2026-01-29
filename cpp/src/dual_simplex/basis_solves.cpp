@@ -363,7 +363,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
                                  S_perm_inv);
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
           settings.log.printf("Concurrent halt\n");
-          return -1;
+          return -2;
         }
         if (Srank != Sdim) {
           // Get the rank deficient columns
@@ -582,7 +582,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
   }
   if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
     settings.log.printf("Concurrent halt\n");
-    return -1;
+    return -2;
   }
   if (verbose) {
     printf("Right Lnz+Unz %d t %.3f\n", L.col_start[m] + U.col_start[m], toc(fact_start));
