@@ -106,6 +106,7 @@ void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
   cut_distances_.resize(cut_storage_.m, 0.0);
   cut_norms_.resize(cut_storage_.m, 0.0);
   cut_orthogonality_.resize(cut_storage_.m, 1);
+  std::fill(cut_orthogonality_.begin(), cut_orthogonality_.end(), 1.0);
   cut_scores_.resize(cut_storage_.m, 0.0);
   const bool verbose = false;
   for (i_t i = 0; i < cut_storage_.m; i++) {

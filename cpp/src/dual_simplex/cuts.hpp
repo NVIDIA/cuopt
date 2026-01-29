@@ -111,26 +111,6 @@ void verify_cuts_against_saved_solution(const csr_matrix_t<i_t, f_t>& cuts,
                                         const std::vector<f_t>& cut_rhs,
                                         const std::vector<f_t>& saved_solution);
 
-template <typename i_t, typename f_t>
-f_t minimum_violation(const csr_matrix_t<i_t, f_t>& C,
-                      const std::vector<f_t>& cut_rhs,
-                      const std::vector<f_t>& x)
-{
-  // Check to see that this is a cut i.e C*x > d
-  std::vector<f_t> Cx(C.m);
-  csc_matrix_t<i_t, f_t> C_col(C.m, C.n, 0);
-  C.to_compressed_col(C_col);
-  matrix_vector_multiply(C_col, 1.0, x, 0.0, Cx);
-  f_t min_cut_violation = inf;
-  for (i_t k = 0; k < Cx.size(); k++) {
-    if (Cx[k] <= cut_rhs[k]) {
-      printf("C*x <= d for cut %d. C*x %e rhs %e\n", k, Cx[k], cut_rhs[k]);
-      exit(1);
-    }
-    min_cut_violation = std::min(min_cut_violation, Cx[k] - cut_rhs[k]);
-  }
-  return min_cut_violation;
-}
 
 template <typename i_t, typename f_t>
 class cut_pool_t {
