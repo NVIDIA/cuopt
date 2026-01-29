@@ -35,15 +35,15 @@ cache:
         GRPC_VERSION="v1.64.2"
         GRPC_INSTALL_DIR="${SRC_DIR}/grpc_install"
         CMAKE_STD_FLAGS="-DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON"
-        
+
         echo "Building gRPC ${GRPC_VERSION} and dependencies from source..."
         rm -rf "${SRC_DIR}/grpc-src" "${GRPC_INSTALL_DIR}"
         mkdir -p "${GRPC_INSTALL_DIR}"
-        
+
         # Clone gRPC with submodules
         git clone --depth 1 --branch "${GRPC_VERSION}" --recurse-submodules --shallow-submodules \
             https://github.com/grpc/grpc.git "${SRC_DIR}/grpc-src"
-        
+
         # Build and install Abseil first (from gRPC's submodule)
         echo "Building Abseil..."
         cmake -S "${SRC_DIR}/grpc-src/third_party/abseil-cpp" -B "${SRC_DIR}/absl-build" -G Ninja \
@@ -54,7 +54,7 @@ cache:
             -DCMAKE_INSTALL_PREFIX="${GRPC_INSTALL_DIR}"
         cmake --build "${SRC_DIR}/absl-build" --parallel
         cmake --install "${SRC_DIR}/absl-build"
-        
+
         # Build and install Protobuf (using installed Abseil)
         echo "Building Protobuf..."
         cmake -S "${SRC_DIR}/grpc-src/third_party/protobuf" -B "${SRC_DIR}/protobuf-build" -G Ninja \
@@ -67,7 +67,7 @@ cache:
             -DCMAKE_INSTALL_PREFIX="${GRPC_INSTALL_DIR}"
         cmake --build "${SRC_DIR}/protobuf-build" --parallel
         cmake --install "${SRC_DIR}/protobuf-build"
-        
+
         # Build and install gRPC (using installed Abseil and Protobuf)
         echo "Building gRPC..."
         cmake -S "${SRC_DIR}/grpc-src" -B "${SRC_DIR}/grpc-build" -G Ninja \
@@ -88,9 +88,9 @@ cache:
             -DCMAKE_INSTALL_PREFIX="${GRPC_INSTALL_DIR}"
         cmake --build "${SRC_DIR}/grpc-build" --parallel
         cmake --install "${SRC_DIR}/grpc-build"
-        
+
         echo "gRPC installed to: ${GRPC_INSTALL_DIR}"
-        
+
         # Build libcuopt with our gRPC
         export CMAKE_PREFIX_PATH="${GRPC_INSTALL_DIR}:${CMAKE_PREFIX_PATH:-}"
         ./build.sh -n -v ${BUILD_EXTRA_FLAGS} libmps_parser libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib -DBUILD_REMOTE_SERVER=ON -DCMAKE_PREFIX_PATH=${GRPC_INSTALL_DIR}\"

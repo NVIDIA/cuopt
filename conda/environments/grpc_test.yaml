@@ -1,0 +1,20 @@
+# Conda environment for testing gRPC with cudf
+# Usage: conda env create -f conda/environments/grpc_test.yaml
+name: grpc_test
+
+channels:
+  - rapidsai-nightly
+  - conda-forge
+  - nvidia
+
+dependencies:
+  - python>=3.10
+  - cudf  # Latest nightly
+  - libgrpc>=1.60,<1.61
+  - libprotobuf>=4.25
+  - grpcio>=1.60,<1.61
+  - protobuf>=4.25
+  - c-ares
+  - openssl
+  - zlib
+  - pip

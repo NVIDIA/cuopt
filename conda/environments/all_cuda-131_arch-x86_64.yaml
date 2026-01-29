@@ -7,6 +7,7 @@ channels:
 dependencies:
 - breathe
 - bzip2
+- c-ares
 - c-compiler
 - ccache
 - clang-tools=20.1.4
@@ -32,8 +33,6 @@ dependencies:
 - libcurand-dev
 - libcusolver-dev
 - libcusparse-dev
-- libgrpc >=1.62,<1.74
-- libprotobuf >=4.25
 - libraft-headers==26.2.*,>=0.0.0a0
 - librmm==26.2.*,>=0.0.0a0
 - make
@@ -47,6 +46,7 @@ dependencies:
 - numba>=0.60.0
 - numpy>=1.23.5,<3.0
 - numpydoc
+- openssl
 - pandas>=2.0
 - pexpect
 - pip
