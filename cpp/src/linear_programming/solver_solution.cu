@@ -29,7 +29,7 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
     dual_solution_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
     reduced_cost_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
     is_device_memory_(true),
-    termination_status_(termination_status),
+    termination_status_{{termination_status}},
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
   cuopt_assert(termination_stats_.size() == termination_status_.size(),
@@ -43,7 +43,7 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
     dual_solution_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
     reduced_cost_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
     is_device_memory_(true),
-    termination_status_(pdlp_termination_status_t::NoTermination),
+    termination_status_{{pdlp_termination_status_t::NoTermination}},
     error_status_(error_status_)
 {
   cuopt_assert(termination_stats_.size() == termination_status_.size(),
@@ -58,7 +58,7 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
     dual_solution_host_(std::make_unique<std::vector<f_t>>()),
     reduced_cost_host_(std::make_unique<std::vector<f_t>>()),
     is_device_memory_(false),
-    termination_status_(termination_status),
+    termination_status_{{termination_status}},
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
 }
@@ -71,7 +71,7 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
     dual_solution_host_(std::make_unique<std::vector<f_t>>()),
     reduced_cost_host_(std::make_unique<std::vector<f_t>>()),
     is_device_memory_(false),
-    termination_status_(pdlp_termination_status_t::NoTermination),
+    termination_status_{{pdlp_termination_status_t::NoTermination}},
     error_status_(error_status)
 {
 }
@@ -85,8 +85,8 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
   const std::string objective_name,
   const std::vector<std::string>& var_names,
   const std::vector<std::string>& row_names,
-  additional_termination_information_t& termination_stats,
-  pdlp_termination_status_t termination_status)
+  std::vector<additional_termination_information_t>&& termination_stats,
+  std::vector<pdlp_termination_status_t>&& termination_status)
   : primal_solution_(std::make_unique<rmm::device_uvector<f_t>>(std::move(final_primal_solution))),
     dual_solution_(std::make_unique<rmm::device_uvector<f_t>>(std::move(final_dual_solution))),
     reduced_cost_(std::make_unique<rmm::device_uvector<f_t>>(std::move(final_reduced_cost))),
@@ -95,8 +95,8 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
     objective_name_(objective_name),
     var_names_(std::move(var_names)),
     row_names_(std::move(row_names)),
-    termination_stats_(termination_stats),
-    termination_status_(termination_status),
+    termination_stats_(std::move(termination_stats)),
+    termination_status_(std::move(termination_status)),
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
   cuopt_assert(termination_stats_.size() == termination_status_.size(),
@@ -111,13 +111,13 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
   const std::string objective_name,
   const std::vector<std::string>& var_names,
   const std::vector<std::string>& row_names,
-  additional_termination_information_t& termination_stats,
-  pdlp_termination_status_t termination_status)
+  std::vector<additional_termination_information_t>&& termination_stats,
+  std::vector<pdlp_termination_status_t>&& termination_status)
   : primal_solution_(std::make_unique<rmm::device_uvector<f_t>>(std::move(final_primal_solution))),
     dual_solution_(std::make_unique<rmm::device_uvector<f_t>>(std::move(final_dual_solution))),
     reduced_cost_(std::make_unique<rmm::device_uvector<f_t>>(std::move(final_reduced_cost))),
     is_device_memory_(true),
-    termination_status_(termination_status),
+    termination_status_(std::move(termination_status)),
     termination_stats_(std::move(termination_stats)),
     objective_name_(objective_name),
     var_names_(std::move(var_names)),
@@ -147,8 +147,8 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
     reduced_cost_(
       std::make_unique<rmm::device_uvector<f_t>>(final_reduced_cost, handler_ptr->get_stream())),
     is_device_memory_(true),
-    termination_status_(termination_status),
-    termination_stats_(termination_stats),
+    termination_status_{{termination_status}},
+    termination_stats_{{termination_stats}},
     objective_name_(objective_name),
     var_names_(var_names),
     row_names_(row_names),
@@ -171,8 +171,8 @@ optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
     dual_solution_host_(std::make_unique<std::vector<f_t>>(std::move(dual_solution))),
     reduced_cost_host_(std::make_unique<std::vector<f_t>>(std::move(reduced_cost))),
     is_device_memory_(false),
-    termination_status_(termination_status),
-    termination_stats_(std::move(termination_stats)),
+    termination_status_{{termination_status}},
+    termination_stats_{{termination_stats}},
     objective_name_(objective_name),
     var_names_(var_names),
     row_names_(row_names),
@@ -625,7 +625,7 @@ template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_termination_stats(
   const additional_termination_information_t& stats)
 {
-  termination_stats_ = stats;
+  termination_stats_[0] = stats;
 }
 
 //============================================================================
@@ -635,43 +635,43 @@ void optimization_problem_solution_t<i_t, f_t>::set_termination_stats(
 template <typename i_t, typename f_t>
 f_t optimization_problem_solution_t<i_t, f_t>::get_l2_primal_residual() const
 {
-  return termination_stats_.l2_primal_residual;
+  return termination_stats_[0].l2_primal_residual;
 }
 
 template <typename i_t, typename f_t>
 f_t optimization_problem_solution_t<i_t, f_t>::get_l2_dual_residual() const
 {
-  return termination_stats_.l2_dual_residual;
+  return termination_stats_[0].l2_dual_residual;
 }
 
 template <typename i_t, typename f_t>
 f_t optimization_problem_solution_t<i_t, f_t>::get_primal_objective() const
 {
-  return termination_stats_.primal_objective;
+  return termination_stats_[0].primal_objective;
 }
 
 template <typename i_t, typename f_t>
 f_t optimization_problem_solution_t<i_t, f_t>::get_dual_objective() const
 {
-  return termination_stats_.dual_objective;
+  return termination_stats_[0].dual_objective;
 }
 
 template <typename i_t, typename f_t>
 f_t optimization_problem_solution_t<i_t, f_t>::get_gap() const
 {
-  return termination_stats_.gap;
+  return termination_stats_[0].gap;
 }
 
 template <typename i_t, typename f_t>
 i_t optimization_problem_solution_t<i_t, f_t>::get_nb_iterations() const
 {
-  return termination_stats_.number_of_steps_taken;
+  return termination_stats_[0].number_of_steps_taken;
 }
 
 template <typename i_t, typename f_t>
 bool optimization_problem_solution_t<i_t, f_t>::get_solved_by_pdlp() const
 {
-  return termination_stats_.solved_by_pdlp;
+  return termination_stats_[0].solved_by_pdlp;
 }
 
 //============================================================================
@@ -681,43 +681,43 @@ bool optimization_problem_solution_t<i_t, f_t>::get_solved_by_pdlp() const
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_l2_primal_residual(f_t value)
 {
-  termination_stats_.l2_primal_residual = value;
+  termination_stats_[0].l2_primal_residual = value;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_l2_dual_residual(f_t value)
 {
-  termination_stats_.l2_dual_residual = value;
+  termination_stats_[0].l2_dual_residual = value;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_primal_objective(f_t value)
 {
-  termination_stats_.primal_objective = value;
+  termination_stats_[0].primal_objective = value;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_dual_objective(f_t value)
 {
-  termination_stats_.dual_objective = value;
+  termination_stats_[0].dual_objective = value;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_gap(f_t value)
 {
-  termination_stats_.gap = value;
+  termination_stats_[0].gap = value;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_nb_iterations(i_t value)
 {
-  termination_stats_.number_of_steps_taken = value;
+  termination_stats_[0].number_of_steps_taken = value;
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_solved_by_pdlp(bool value)
 {
-  termination_stats_.solved_by_pdlp = value;
+  termination_stats_[0].solved_by_pdlp = value;
 }
 
 template <typename i_t, typename f_t>

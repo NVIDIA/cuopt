@@ -1771,7 +1771,14 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(raft::handle_t const* handle_
     bool problem_checking,                                                              \
     bool use_pdlp_solver_mode);                                                         \
                                                                                         \
-  template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE> const& settings);
+  template optimization_problem_solution_t<int, F_TYPE> batch_pdlp_solve(               \
+    raft::handle_t const* handle_ptr,                                                   \
+    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& mps_data_model,             \
+    const std::vector<int>& fractional,                                                 \
+    const std::vector<F_TYPE>& root_soln_x,                                             \
+    pdlp_solver_settings_t<int, F_TYPE> const& settings);                               \
+                                                                                        \
+  template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE>& settings);
 
 #if MIP_INSTANTIATE_FLOAT
 INSTANTIATE(float)

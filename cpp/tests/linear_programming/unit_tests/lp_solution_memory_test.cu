@@ -87,7 +87,9 @@ TEST(pdlp_solution_memory, device_only_accessors_need_coderabbit_patch)
                                                         var_names,
                                                         row_names,
                                                         stats,
-                                                        pdlp_termination_status_t::Optimal);
+                                                        pdlp_termination_status_t::Optimal,
+                                                        &handle,
+                                                        true);
 
   EXPECT_TRUE(solution.is_device_memory());
   EXPECT_NO_THROW(solution.get_primal_solution());
