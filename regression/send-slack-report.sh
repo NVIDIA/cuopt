@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC1090
 # SPDX-FileCopyrightText: Copyright (c) 2020-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -7,11 +8,11 @@ set -e
 
 
 # Must ensure PROJECT_DIR is exported first then load rapids-mg-tools env
-export PROJECT_DIR=${PROJECT_DIR:-$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)}
+export PROJECT_DIR=${PROJECT_DIR:-$(cd "$(dirname ${BASH_SOURCE[0]})" && pwd)}
 if [ -n "$RAPIDS_MG_TOOLS_DIR" ]; then
     source ${RAPIDS_MG_TOOLS_DIR}/script-env.sh
 elif [ -n "$(which script-env.sh)" ]; then
-    source $(which script-env.sh)
+    source "$(which script-env.sh)"
 else
     echo "Error: \$RAPIDS_MG_TOOLS_DIR/script-env.sh could not be read nor was script-env.sh in PATH."
     exit 1
@@ -61,7 +62,7 @@ else
     ONE_LINE_SUMMARY="Build succeeded, all tests and benchmarks passed"
 fi
 
-RESULTS_DIR_NAME=$(basename $(getNonLinkedFileName $RESULTS_DIR))
+RESULTS_DIR_NAME=$(basename "$(getNonLinkedFileName $RESULTS_DIR)")
 
 # Upload everything
 logger "Uploading all files in $RESULTS_DIR ..."
@@ -94,7 +95,8 @@ fi
 export STATUS
 export STATUS_IMG
 export PROJECT_VERSION_STRING
-export HUMAN_READABLE_DATE="$(date '+`%D`, `%H:%M` (PT)')"
+HUMAN_READABLE_DATE="$(date '+`%D`, `%H:%M` (PT)')"
+export HUMAN_READABLE_DATE
 # These files should be created by create-html-reports.sh
 export REPORT_URL="${S3_URL_PREFIX}/${RESULTS_DIR_NAME}/report.html"
 export ASV_URL="${S3_URL_PREFIX}/${RESULTS_DIR_NAME}/benchmarks/asv/html/index.html"

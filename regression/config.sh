@@ -15,7 +15,6 @@ GPUS_PER_NODE=8
 
 # Path to the squashs file containing the container image
 IMAGE="nvidia/cuopt:26.2.0a-cuda12.9-py3.13"
-#SQSH_IMAGE=$SCRATCH_DIR/container_state/cuopt.sqsh
 
 ALL_CONFIGS_PATH=$SCRATCH_DIR/configs/
 ROUTING_CONFIGS_PATH=$SCRATCH_DIR/routing_configs/

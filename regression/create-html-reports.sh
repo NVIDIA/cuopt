@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC1090
 # SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: Apache-2.0
 

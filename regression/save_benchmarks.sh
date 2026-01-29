@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC1090
 # SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -6,11 +7,11 @@
 set -e
 
 # Must ensure PROJECT_DIR is exported first then load rapids-mg-tools env
-export PROJECT_DIR=${PROJECT_DIR:-$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)}
+export PROJECT_DIR=${PROJECT_DIR:-$(cd "$(dirname ${BASH_SOURCE[0]})" && pwd)}
 if [ -n "$RAPIDS_MG_TOOLS_DIR" ]; then
     source ${RAPIDS_MG_TOOLS_DIR}/script-env.sh
 elif [ -n "$(which script-env.sh)" ]; then
-    source $(which script-env.sh)
+    source "$(which script-env.sh)"
 else
     echo "Error: \$RAPIDS_MG_TOOLS_DIR/script-env.sh could not be read nor was script-env.sh in PATH."
     exit 1

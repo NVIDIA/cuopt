@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC1090
 # SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -15,7 +16,7 @@ if [[ -v SLURM_NODEID ]]; then
 fi
 
 # Must ensure PROJECT_DIR is exported first then load rapids-mg-tools env
-export PROJECT_DIR=${PROJECT_DIR:-$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)}
+export PROJECT_DIR=${PROJECT_DIR:-$(cd "$(dirname ${BASH_SOURCE[0]})" && pwd)}
 
 source ${PROJECT_DIR}/config.sh
 source ${PROJECT_DIR}/functions.sh

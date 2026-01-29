@@ -110,7 +110,7 @@ function cloneRepo {
     repo_name=$2
     dest_dir=$3
     mkdir -p $dest_dir
-    pushd $dest_dir > /dev/null
+    pushd $dest_dir > /dev/null || exit
     logger "Clone $repo_url in $dest_dir..."
     if [ -d $repo_name ]; then
         rm -rf $repo_name
@@ -120,7 +120,7 @@ function cloneRepo {
         fi
     fi
     git clone $repo_url
-    popd > /dev/null
+    popd > /dev/null || exit
 }
 
 # Only define this function if it has not already been defined in the
