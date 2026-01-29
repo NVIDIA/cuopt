@@ -59,7 +59,7 @@ cache:
       - cuda-version =${{ cuda_version }}
       - cmake ${{ cmake_version }}
       - ninja
-      - libgrpc >=1.62
+      - libgrpc >=1.62,<1.74
       - libprotobuf >=4.25
       - tbb-devel
       - zlib
@@ -67,7 +67,7 @@ cache:
     host:
       - cpp-argparse
       - cuda-version =${{ cuda_version }}
-      - libgrpc >=1.62
+      - libgrpc >=1.62,<1.74
       - libraft-headers =${{ minor_version }}
       - libprotobuf >=4.25
       - librmm =${{ minor_version }}
@@ -151,7 +151,7 @@ outputs:
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
         - libboost-devel
         - cuda-version =${{ cuda_version }}
-        - libgrpc >=1.62
+        - libgrpc >=1.62,<1.74
         - libprotobuf >=4.25
         - rapids-logger =0.2
         - librmm =${{ minor_version }}

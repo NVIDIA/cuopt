@@ -302,7 +302,7 @@ dependencies:
           - tbb-devel
           - zlib
           - bzip2
-          - libgrpc >=1.62
+          - libgrpc >=1.62,<1.74
           - libprotobuf >=4.25
   test_cpp:
     common:

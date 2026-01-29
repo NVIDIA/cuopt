@@ -66,7 +66,7 @@ if [ -f /etc/os-release ]; then
             # To avoid that, we install Abseil first (from gRPC's submodule), then
             # build Protobuf and gRPC against that same installed Abseil.
 
-            # Keep in sync with conda (libgrpc >=1.62) baseline.
+            # Keep in sync with conda (libgrpc >=1.62,<1.74) baseline.
             GRPC_VERSION="v1.64.2"
             rm -rf /tmp/grpc-src /tmp/grpc-build /tmp/absl-build
             git clone --depth 1 --branch "${GRPC_VERSION}" --recurse-submodules https://github.com/grpc/grpc.git /tmp/grpc-src
