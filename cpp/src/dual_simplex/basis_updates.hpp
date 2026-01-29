@@ -291,6 +291,8 @@ class basis_update_mpf_t {
     reset_stats();
   }
 
+  i_t append_cuts(const csr_matrix_t<i_t, f_t>& cuts_basic);
+
   f_t estimate_solution_density(f_t rhs_nz, f_t sum, i_t& num_calls, bool& use_hypersparse) const
   {
     num_calls++;

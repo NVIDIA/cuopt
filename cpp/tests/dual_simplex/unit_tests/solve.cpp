@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -325,5 +325,156 @@ TEST(dual_simplex, dual_variable_greater_than)
   EXPECT_NEAR(solution.z[0], 2.0, 1e-6);
   EXPECT_NEAR(solution.z[1], 0.0, 1e-6);
 }
+
+#if 0
+TEST(dual_simplex, simple_cuts)
+{
+  // minimize x + y + 2 z
+  // subject to x + y + z == 1
+  //            x, y, z >= 0
+
+  raft::handle_t handle{};
+  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem(&handle);
+  constexpr int m  = 1;
+  constexpr int n  = 3;
+  constexpr int nz = 3;
+
+  user_problem.num_rows = m;
+  user_problem.num_cols = n;
+  user_problem.objective.resize(n);
+  user_problem.objective[0] = 1.0;
+  user_problem.objective[1] = 1.0;
+  user_problem.objective[2] = 2.0;
+  user_problem.A.m          = m;
+  user_problem.A.n          = n;
+  user_problem.A.nz_max     = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start.resize(n + 1);
+  user_problem.A.col_start[0] = 0;
+  user_problem.A.col_start[1] = 1;
+  user_problem.A.col_start[2] = 2;
+  user_problem.A.col_start[3] = 3;
+  user_problem.A.i[0]         = 0;
+  user_problem.A.x[0]         = 1.0;
+  user_problem.A.i[1]         = 0;
+  user_problem.A.x[1]         = 1.0;
+  user_problem.A.i[2]         = 0;
+  user_problem.A.x[2]         = 1.0;
+  user_problem.lower.resize(n, 0.0);
+  user_problem.upper.resize(n, dual_simplex::inf);
+  user_problem.num_range_rows = 0;
+  user_problem.problem_name   = "simple_cuts";
+  user_problem.obj_scale      = 1.0;
+  user_problem.obj_constant   = 0.0;
+  user_problem.rhs.resize(m, 1.0);
+  user_problem.row_sense.resize(m, 'E');
+  user_problem.var_types.resize(
+    n, cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS);
+
+  cuopt::init_logger_t logger("", true);
+
+  cuopt::linear_programming::dual_simplex::lp_problem_t<int, double> lp(
+    user_problem.handle_ptr, 1, 1, 1);
+  cuopt::linear_programming::dual_simplex::simplex_solver_settings_t<int, double> settings;
+  settings.barrier            = false;
+  settings.barrier_presolve   = false;
+  settings.log.log            = true;
+  settings.log.log_to_console = true;
+  settings.log.printf("Test print\n");
+  std::vector<int> new_slacks;
+  cuopt::linear_programming::dual_simplex::dualize_info_t<int, double> dualize_info;
+  cuopt::linear_programming::dual_simplex::convert_user_problem(
+    user_problem, settings, lp, new_slacks, dualize_info);
+  cuopt::linear_programming::dual_simplex::lp_solution_t<int, double> solution(lp.num_rows,
+                                                                               lp.num_cols);
+  std::vector<cuopt::linear_programming::dual_simplex::variable_status_t> vstatus;
+  std::vector<double> edge_norms;
+  std::vector<int> basic_list(lp.num_rows);
+  std::vector<int> nonbasic_list;
+  cuopt::linear_programming::dual_simplex::basis_update_mpf_t<int, double> basis_update(
+    lp.num_cols, settings.refactor_frequency);
+  double start_time = dual_simplex::tic();
+  printf("Calling solve linear program with advanced basis\n");
+  EXPECT_EQ((cuopt::linear_programming::dual_simplex::solve_linear_program_with_advanced_basis(
+              lp,
+              start_time,
+              settings,
+              solution,
+              basis_update,
+              basic_list,
+              nonbasic_list,
+              vstatus,
+              edge_norms)),
+            cuopt::linear_programming::dual_simplex::lp_status_t::OPTIMAL);
+  printf("Solution objective: %e\n", solution.objective);
+  printf("Solution x: %e %e %e\n", solution.x[0], solution.x[1], solution.x[2]);
+  printf("Solution y: %e\n", solution.y[0]);
+  printf("Solution z: %e %e %e\n", solution.z[0], solution.z[1], solution.z[2]);
+  EXPECT_NEAR(solution.objective, 1.0, 1e-6);
+  EXPECT_NEAR(solution.x[0], 1.0, 1e-6);
+
+  // Add a cut z >= 1/3. Needs to be in the form  C*x <= d
+  csr_matrix_t<int, double> cuts(1, n, 1);
+  cuts.row_start[0] = 0;
+  cuts.j[0]         = 2;
+  cuts.x[0]         = -1.0;
+  cuts.row_start[1] = 1;
+  printf("cuts m %d n %d\n", cuts.m, cuts.n);
+  std::vector<double> cut_rhs(1);
+  cut_rhs[0] = -1.0 / 3.0;
+
+  std::vector<variable_type_t> var_types;
+  EXPECT_EQ(cuopt::linear_programming::dual_simplex::solve_linear_program_with_cuts(start_time,
+                                                                                    settings,
+                                                                                    cuts,
+                                                                                    cut_rhs,
+                                                                                    lp,
+                                                                                    solution,
+                                                                                    basis_update,
+                                                                                    basic_list,
+                                                                                    nonbasic_list,
+                                                                                    vstatus,
+                                                                                    edge_norms,
+                                                                                    var_types),
+            cuopt::linear_programming::dual_simplex::lp_status_t::OPTIMAL);
+  printf("Solution objective: %e\n", solution.objective);
+  printf("Solution x: %e %e %e\n", solution.x[0], solution.x[1], solution.x[2]);
+  EXPECT_NEAR(solution.objective, 4.0 / 3.0, 1e-6);
+
+  cuts.row_start.resize(3);
+  cuts.j.resize(2);
+  cuts.x.resize(2);
+  // Add cut y >= 1/3
+  cuts.j[0]         = 1;
+  cuts.row_start[2] = 2;
+  // Add cut x <= 0.0
+  cuts.j[1]         = 0;
+  cuts.x[1]         = 1.0;
+  cuts.m            = 2;
+  cut_rhs.resize(2);
+  cut_rhs[1] = 0.0;
+
+  EXPECT_EQ(cuopt::linear_programming::dual_simplex::solve_linear_program_with_cuts(start_time,
+                                                                                    settings,
+                                                                                    cuts,
+                                                                                    cut_rhs,
+                                                                                    lp,
+                                                                                    solution,
+                                                                                    basis_update,
+                                                                                    basic_list,
+                                                                                    nonbasic_list,
+                                                                                    vstatus,
+                                                                                    edge_norms,
+                                                                                    var_types),
+            cuopt::linear_programming::dual_simplex::lp_status_t::OPTIMAL);
+  printf("Solution objective: %e\n", solution.objective);
+  printf("Solution x: %e %e %e\n", solution.x[0], solution.x[1], solution.x[2]);
+  EXPECT_NEAR(solution.objective, 4.0 / 3.0, 1e-6);
+  EXPECT_NEAR(solution.x[0], 0.0, 1e-6);
+  EXPECT_NEAR(solution.x[1], 2.0 / 3.0, 1e-6);
+  EXPECT_NEAR(solution.x[2], 1.0 / 3.0, 1e-6);
+
+}
+#endif
 
 }  // namespace cuopt::linear_programming::dual_simplex::test

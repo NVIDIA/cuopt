@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -364,6 +364,75 @@ i_t csc_matrix_t<i_t, f_t>::remove_row(i_t row)
 }
 
 template <typename i_t, typename f_t>
+i_t csr_matrix_t<i_t, f_t>::append_rows(const csr_matrix_t<i_t, f_t>& C)
+{
+  const i_t old_m  = this->m;
+  const i_t n      = this->n;
+  const i_t old_nz = this->row_start[old_m];
+  const i_t C_row  = C.m;
+  if (C.n > n) {
+    printf("append_rows error: C.n %d n %d\n", C.n, n);
+    return -1;
+  }
+  const i_t C_nz   = C.row_start[C_row];
+  const i_t new_nz = old_nz + C_nz;
+  const i_t new_m  = old_m + C_row;
+
+  this->j.resize(new_nz);
+  this->x.resize(new_nz);
+  this->row_start.resize(new_m + 1);
+
+  i_t nz = old_nz;
+  for (i_t i = old_m; i < new_m; i++) {
+    const i_t k        = i - old_m;
+    const i_t nz_row   = C.row_start[k + 1] - C.row_start[k];
+    this->row_start[i] = nz;
+    nz += nz_row;
+  }
+  this->row_start[new_m] = nz;
+
+  for (i_t p = old_nz; p < new_nz; p++) {
+    const i_t q = p - old_nz;
+    this->j[p]  = C.j[q];
+  }
+
+  for (i_t p = old_nz; p < new_nz; p++) {
+    const i_t q = p - old_nz;
+    this->x[p]  = C.x[q];
+  }
+
+  this->m      = new_m;
+  this->nz_max = new_nz;
+  return 0;
+}
+
+template <typename i_t, typename f_t>
+i_t csr_matrix_t<i_t, f_t>::append_row(const sparse_vector_t<i_t, f_t>& c)
+{
+  const i_t old_m  = this->m;
+  const i_t old_nz = this->row_start[old_m];
+  const i_t c_nz   = c.i.size();
+  const i_t new_nz = old_nz + c_nz;
+  const i_t new_m  = old_m + 1;
+
+  this->j.resize(new_nz);
+  this->x.resize(new_nz);
+  this->row_start.resize(new_m + 1);
+  this->row_start[new_m] = new_nz;
+
+  i_t nz = old_nz;
+  for (i_t k = 0; k < c_nz; k++) {
+    this->j[nz] = c.i[k];
+    this->x[nz] = c.x[k];
+    nz++;
+  }
+
+  this->m      = new_m;
+  this->nz_max = new_nz;
+  return 0;
+}
+
+template <typename i_t, typename f_t>
 void csc_matrix_t<i_t, f_t>::print_matrix(FILE* fid) const
 {
   fprintf(fid, "ijx = [\n");
@@ -505,6 +574,10 @@ i_t csc_matrix_t<i_t, f_t>::check_matrix(std::string matrix_name) const
 #ifdef CHECK_MATRIX
   std::vector<i_t> row_marker(this->m, -1);
   for (i_t j = 0; j < this->n; ++j) {
+    if (j >= col_start.size()) {
+      printf("Col start too small size %ld n %d\n", col_start.size(), this->n);
+      return -1;
+    }
     const i_t col_start = this->col_start[j];
     const i_t col_end   = this->col_start[j + 1];
     if (col_start > col_end || col_start > this->col_start[this->n]) {
@@ -559,7 +632,7 @@ size_t csc_matrix_t<i_t, f_t>::hash() const
 }
 
 template <typename i_t, typename f_t>
-void csr_matrix_t<i_t, f_t>::check_matrix(std::string matrix_name) const
+i_t csr_matrix_t<i_t, f_t>::check_matrix(std::string matrix_name) const
 {
   std::vector<i_t> col_marker(this->n, -1);
   for (i_t i = 0; i < this->m; ++i) {
@@ -567,12 +640,18 @@ void csr_matrix_t<i_t, f_t>::check_matrix(std::string matrix_name) const
     const i_t row_end   = this->row_start[i + 1];
     for (i_t p = row_start; p < row_end; ++p) {
       const i_t j = this->j[p];
+      if (j < 0 || j >= this->n) {
+        printf("CSR Error: column index %d not in range [0, %d)\n", j, this->n);
+        return -1;
+      }
       if (col_marker[j] == i) {
         printf("CSR Error (%s) : repeated column index %d in row %d\n", matrix_name.c_str(), j, i);
+        return -1;
       }
       col_marker[j] = i;
     }
   }
+  return 0;
 }
 
 // x <- x + alpha * A(:, j)

@@ -222,7 +222,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
         CUOPT_LOG_INFO("%d implied integers", result->implied_integer_indices.size());
       }
       if (problem.is_objective_integral()) { CUOPT_LOG_INFO("Objective function is integral"); }
-      CUOPT_LOG_INFO("Papilo presolve time: %f", presolve_time);
+      CUOPT_LOG_INFO("Papilo presolve time: %.2f", presolve_time);
     }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());

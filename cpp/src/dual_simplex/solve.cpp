@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -8,6 +8,7 @@
 #include <dual_simplex/solve.hpp>
 
 #include <dual_simplex/barrier.hpp>
+#include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/branch_and_bound.hpp>
 #include <dual_simplex/crossover.hpp>
 #include <dual_simplex/initial_basis.hpp>
@@ -597,7 +598,7 @@ i_t solve(const user_problem_t<i_t, f_t>& problem,
 {
   i_t status;
   if (is_mip(problem) && !settings.relaxation) {
-    branch_and_bound_t branch_and_bound(problem, settings);
+    branch_and_bound_t branch_and_bound(problem, settings, tic());
     mip_solution_t<i_t, f_t> mip_solution(problem.num_cols);
     mip_status_t mip_status = branch_and_bound.solve(mip_solution);
     if (mip_status == mip_status_t::OPTIMAL) {
@@ -636,7 +637,7 @@ i_t solve_mip_with_guess(const user_problem_t<i_t, f_t>& problem,
 {
   i_t status;
   if (is_mip(problem)) {
-    branch_and_bound_t branch_and_bound(problem, settings);
+    branch_and_bound_t branch_and_bound(problem, settings, tic());
     branch_and_bound.set_initial_guess(guess);
     mip_status_t mip_status = branch_and_bound.solve(solution);
     if (mip_status == mip_status_t::OPTIMAL) {
