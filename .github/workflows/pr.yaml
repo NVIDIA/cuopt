@@ -247,7 +247,6 @@ jobs:
           - '!img/**'
           - '!ngc/**'
           - '!notebooks/**'
-          - '!python/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
           - '!ucf/**'
