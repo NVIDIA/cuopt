@@ -444,9 +444,7 @@ i_t find_dependent_rows(lp_problem_t<i_t, f_t>& problem,
   std::vector<i_t> q(m);
 
   i_t pivots = right_looking_lu_row_permutation_only(C, settings, 1e-13, tic(), q, pinv);
-  if (pivots == CONCURRENT_HALT_RETURN) {
-    return CONCURRENT_HALT_RETURN;
-  }
+  if (pivots == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
   if (pivots < m) {
     settings.log.printf("Found %d dependent rows\n", m - pivots);
     const i_t num_dependent = m - pivots;
@@ -1101,9 +1099,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     i_t infeasible;
     f_t dependent_row_start    = tic();
     const i_t independent_rows = find_dependent_rows(problem, settings, dependent_rows, infeasible);
-    if (independent_rows == CONCURRENT_HALT_RETURN) {
-      return CONCURRENT_HALT_RETURN;
-    }
+    if (independent_rows == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
     if (infeasible != kOk) {
       settings.log.printf("Found problem infeasible in presolve\n");
       return -1;
