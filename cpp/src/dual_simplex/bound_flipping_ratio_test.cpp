@@ -259,7 +259,7 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
       return;
     }
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-      entering_index = CONCURRET_HALT_RETURN;
+      entering_index = CONCURRENT_HALT_RETURN;
       return;
     }
   }

@@ -2281,7 +2281,7 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
                                q,
                                deficient,
                                slacks_needed);
-  if (status == CONCURRET_HALT_RETURN) { return CONCURRET_HALT_RETURN; }
+  if (status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
   if (status == -1) {
     settings.log.debug("Initial factorization failed\n");
     basis_repair(
@@ -2314,7 +2314,7 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
                              q,
                              deficient,
                              slacks_needed);
-    if (status == CONCURRET_HALT_RETURN) { return CONCURRET_HALT_RETURN; }
+    if (status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
     if (status == -1) {
 #ifdef CHECK_L_FACTOR
       if (L0_.check_matrix() == -1) { settings.log.printf("Bad L after basis repair\n"); }
