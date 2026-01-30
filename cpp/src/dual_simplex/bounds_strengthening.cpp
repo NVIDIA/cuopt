@@ -210,7 +210,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
       new_lb = std::max(new_lb, lower_bounds[k]);
       new_ub = std::min(new_ub, upper_bounds[k]);
 
-      if (new_lb > new_ub + 1e-6) {
+      if (new_lb > new_ub + settings.primal_tol) {
         settings.log.debug(
           "Iter:: %d, Infeasible variable after update %d, %e > %e\n", iter, k, new_lb, new_ub);
         return false;
@@ -225,8 +225,8 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
       lower[k] = std::min(new_lb, new_ub);
       upper[k] = std::max(new_lb, new_ub);
 
-      bool bounds_changed = lb_updated || ub_updated;
-      if (bounds_changed) { num_bounds_changed++; }
+      bool bounds_updated = lb_updated || ub_updated;
+      if (bounds_updated) { num_bounds_changed++; }
     }
 
     if (num_bounds_changed == 0) { break; }

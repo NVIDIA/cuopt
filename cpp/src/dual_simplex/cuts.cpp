@@ -126,6 +126,7 @@ void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
   const f_t min_orthogonality = settings_.cut_min_orthogonality;
   best_cuts_.reserve(std::min(max_cuts, cut_storage_.m));
   best_cuts_.clear();
+  scored_cuts_ = 0;
 
   if (!sorted_indices.empty()) {
     const i_t i = sorted_indices.back();
