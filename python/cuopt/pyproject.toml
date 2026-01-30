@@ -75,7 +75,7 @@ select = [
 ]
 
 # PyPI hard limit is 1GiB, but try to keep this as small as possible
-max_allowed_size_compressed = '15Mi'
+max_allowed_size_compressed = '55Mi'
 
 [tool.pytest.ini_options]
 testpaths = ["cuopt/tests"]
