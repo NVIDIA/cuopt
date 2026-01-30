@@ -1921,6 +1921,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                      nonbasic_list,
                                      root_vstatus_,
                                      edge_norms_);
+      var_types_.resize(original_lp_.num_cols, variable_type_t::CONTINUOUS);
       mutex_original_lp_.unlock();
       f_t add_cuts_time = toc(add_cuts_start_time);
       if (1 || add_cuts_time > 1.0) {
@@ -1946,8 +1947,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
 
       // Try to do bound strengthening
-      var_types_.resize(original_lp_.num_cols, variable_type_t::CONTINUOUS);
-
       std::vector<bool> bounds_changed(original_lp_.num_cols, true);
       std::vector<char> row_sense;
 #ifdef CHECK_MATRICES

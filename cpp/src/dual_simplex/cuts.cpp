@@ -2426,7 +2426,7 @@ i_t add_cuts(const simplex_solver_settings_t<i_t, f_t>& settings,
   for (i_t q = 0; q < cuts_nz; q++) {
     const i_t j = cuts.j[q];
     if (j >= lp.num_cols) {
-      settings.log.printf("j %d is greater than p %d\n", j, p);
+      settings.log.printf("Cut column index j=%d exceeds num_cols=%d\n", j, lp.num_cols);
       return -1;
     }
     C_col_degree[j]++;
