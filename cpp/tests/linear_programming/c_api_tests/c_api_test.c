@@ -1201,3 +1201,84 @@ cuOptDestroySolution(&solution);
 
 return status;
 }
+
+cuopt_int_t test_write_problem(const char* input_filename, const char* output_filename)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptOptimizationProblem problem_read = NULL;
+  cuOptSolverSettings settings = NULL;
+  cuOptSolution solution = NULL;
+  cuopt_int_t status;
+  cuopt_int_t termination_status;
+  cuopt_float_t objective_value;
+
+  /* Read the input problem */
+  status = cuOptReadProblem(input_filename, &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error reading problem from %s: %d\n", input_filename, status);
+    goto DONE;
+  }
+
+  /* Write the problem to MPS file */
+  status = cuOptWriteProblem(problem, output_filename, CUOPT_FILE_FORMAT_MPS);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error writing problem to MPS: %d\n", status);
+    goto DONE;
+  }
+  printf("Problem written to %s\n", output_filename);
+
+  /* Read the problem back */
+  status = cuOptReadProblem(output_filename, &problem_read);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error reading problem from MPS: %d\n", status);
+    goto DONE;
+  }
+  printf("Problem read back from %s\n", output_filename);
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, CUOPT_METHOD_PDLP);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting method: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem_read, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, &termination_status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, &objective_value);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+  printf("Termination status: %d, Objective: %f\n", termination_status, objective_value);
+
+  if (termination_status != CUOPT_TERIMINATION_STATUS_OPTIMAL) {
+    printf("Expected optimal status\n");
+    status = -1;
+    goto DONE;
+  }
+
+  printf("Write problem test passed\n");
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroyProblem(&problem_read);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
+}
