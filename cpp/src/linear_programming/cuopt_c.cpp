@@ -1293,8 +1293,24 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
   const auto& view = problem_and_stream_view->view;
 
   if (view.is_device_memory()) {
-    // Local path: data is already on GPU
-    // Use gpu_problem directly for optimal performance (no extra copy)
+    // PERFORMANCE OPTIMIZATION: GPU path bypasses data_model_view_t interface
+    //
+    // When data is already on GPU (optimization_problem_t exists), we call the
+    // solver directly with optimization_problem_t& instead of going through the
+    // data_model_view_t interface. This avoids an unnecessary conversion:
+    //   solve_lp(view) → data_model_view_to_optimization_problem(view) → NEW optimization_problem_t
+    //
+    // Since we already have optimization_problem_t in memory, creating another one
+    // would be redundant (GPU → GPU copy). Instead, we use the direct solver interface:
+    //   solve_lp(optimization_problem_t&)
+    //
+    // This optimization is safe because:
+    // 1. The view was created from gpu_problem (create_view_from_gpu_problem)
+    // 2. The view is only used for is_device_memory() check and is_mip() detection
+    // 3. All actual problem data is in gpu_problem, not the view
+    //
+    // For CPU paths, we always use solve_lp(handle, view, settings) which handles
+    // both remote solve and local CPU→GPU conversion.
     auto& gpu_problem = *problem_and_stream_view->gpu_problem;
 
     if (is_mip) {

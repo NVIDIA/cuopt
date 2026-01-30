@@ -24,12 +24,12 @@ namespace cuopt::linear_programming {
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
-  pdlp_termination_status_t termination_status, rmm::cuda_stream_view stream_view)
+  pdlp_termination_status_t termination_status_, rmm::cuda_stream_view stream_view)
   : primal_solution_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
     dual_solution_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
     reduced_cost_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
     is_device_memory_(true),
-    termination_status_{{termination_status}},
+    termination_status_{{termination_status_}},
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
   cuopt_assert(termination_stats_.size() == termination_status_.size(),
@@ -646,64 +646,6 @@ optimization_problem_solution_t<i_t, f_t>::get_pdlp_warm_start_data()
 // Setters for host solution data
 //============================================================================
 
-template <typename i_t, typename f_t>
-void optimization_problem_solution_t<i_t, f_t>::set_primal_solution_host(std::vector<f_t> solution)
-{
-  primal_solution_host_ = std::make_unique<std::vector<f_t>>(std::move(solution));
-
-  // Ensure all host vectors are initialized to avoid mixed state
-  if (!dual_solution_host_) { dual_solution_host_ = std::make_unique<std::vector<f_t>>(); }
-  if (!reduced_cost_host_) { reduced_cost_host_ = std::make_unique<std::vector<f_t>>(); }
-
-  // Clear device buffers to avoid memory leaks
-  primal_solution_.reset();
-  dual_solution_.reset();
-  reduced_cost_.reset();
-
-  is_device_memory_ = false;
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_solution_t<i_t, f_t>::set_dual_solution_host(std::vector<f_t> solution)
-{
-  dual_solution_host_ = std::make_unique<std::vector<f_t>>(std::move(solution));
-
-  // Ensure all host vectors are initialized to avoid mixed state
-  if (!primal_solution_host_) { primal_solution_host_ = std::make_unique<std::vector<f_t>>(); }
-  if (!reduced_cost_host_) { reduced_cost_host_ = std::make_unique<std::vector<f_t>>(); }
-
-  // Clear device buffers to avoid memory leaks
-  primal_solution_.reset();
-  dual_solution_.reset();
-  reduced_cost_.reset();
-
-  is_device_memory_ = false;
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_solution_t<i_t, f_t>::set_reduced_cost_host(std::vector<f_t> reduced_cost)
-{
-  reduced_cost_host_ = std::make_unique<std::vector<f_t>>(std::move(reduced_cost));
-
-  // Ensure all host vectors are initialized to avoid mixed state
-  if (!primal_solution_host_) { primal_solution_host_ = std::make_unique<std::vector<f_t>>(); }
-  if (!dual_solution_host_) { dual_solution_host_ = std::make_unique<std::vector<f_t>>(); }
-
-  // Clear device buffers to avoid memory leaks
-  primal_solution_.reset();
-  dual_solution_.reset();
-  reduced_cost_.reset();
-
-  is_device_memory_ = false;
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_solution_t<i_t, f_t>::set_termination_stats(
-  const additional_termination_information_t& stats)
-{
-  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
-  termination_stats_[0] = stats;
-}
 
 //============================================================================
 // Getters for termination statistics
@@ -761,48 +703,6 @@ bool optimization_problem_solution_t<i_t, f_t>::get_solved_by_pdlp() const
 //============================================================================
 // Setters for termination statistics
 //============================================================================
-
-template <typename i_t, typename f_t>
-void optimization_problem_solution_t<i_t, f_t>::set_l2_primal_residual(f_t value)
-{
-  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
-  termination_stats_[0].l2_primal_residual = value;
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_solution_t<i_t, f_t>::set_l2_dual_residual(f_t value)
-{
-  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
-  termination_stats_[0].l2_dual_residual = value;
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_solution_t<i_t, f_t>::set_primal_objective(f_t value)
-{
-  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
-  termination_stats_[0].primal_objective = value;
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_solution_t<i_t, f_t>::set_dual_objective(f_t value)
-{
-  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
-  termination_stats_[0].dual_objective = value;
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_solution_t<i_t, f_t>::set_gap(f_t value)
-{
-  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
-  termination_stats_[0].gap = value;
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_solution_t<i_t, f_t>::set_nb_iterations(i_t value)
-{
-  cuopt_assert(!termination_stats_.empty(), "termination_stats_ is empty");
-  termination_stats_[0].number_of_steps_taken = value;
-}
 
 template <typename i_t, typename f_t>
 void optimization_problem_solution_t<i_t, f_t>::set_solved_by_pdlp(bool value)

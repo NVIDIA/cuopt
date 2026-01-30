@@ -7,6 +7,7 @@
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_conversions.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/cython_solve.hpp>
@@ -33,95 +34,9 @@ namespace cython {
 
 using cuopt::linear_programming::var_t;
 
-static cuopt::linear_programming::optimization_problem_t<int, double>
-data_model_to_optimization_problem(
-  cuopt::mps_parser::data_model_view_t<int, double>* data_model,
-  cuopt::linear_programming::solver_settings_t<int, double>* solver_settings,
-  raft::handle_t const* handle_ptr)
-{
-  cuopt::linear_programming::optimization_problem_t<int, double> op_problem(handle_ptr);
-  op_problem.set_maximize(data_model->get_sense());
-  if (data_model->get_constraint_matrix_values().size() != 0 &&
-      data_model->get_constraint_matrix_indices().size() != 0 &&
-      data_model->get_constraint_matrix_offsets().size() != 0) {
-    op_problem.set_csr_constraint_matrix(data_model->get_constraint_matrix_values().data(),
-                                         data_model->get_constraint_matrix_values().size(),
-                                         data_model->get_constraint_matrix_indices().data(),
-                                         data_model->get_constraint_matrix_indices().size(),
-                                         data_model->get_constraint_matrix_offsets().data(),
-                                         data_model->get_constraint_matrix_offsets().size());
-  }
-  if (data_model->get_constraint_bounds().size() != 0) {
-    op_problem.set_constraint_bounds(data_model->get_constraint_bounds().data(),
-                                     data_model->get_constraint_bounds().size());
-  }
-  if (data_model->get_objective_coefficients().size() != 0) {
-    op_problem.set_objective_coefficients(data_model->get_objective_coefficients().data(),
-                                          data_model->get_objective_coefficients().size());
-  }
-  op_problem.set_objective_scaling_factor(data_model->get_objective_scaling_factor());
-  op_problem.set_objective_offset(data_model->get_objective_offset());
-
-  if (data_model->get_quadratic_objective_values().size() != 0 &&
-      data_model->get_quadratic_objective_indices().size() != 0 &&
-      data_model->get_quadratic_objective_offsets().size() != 0) {
-    op_problem.set_quadratic_objective_matrix(data_model->get_quadratic_objective_values().data(),
-                                              data_model->get_quadratic_objective_values().size(),
-                                              data_model->get_quadratic_objective_indices().data(),
-                                              data_model->get_quadratic_objective_indices().size(),
-                                              data_model->get_quadratic_objective_offsets().data(),
-                                              data_model->get_quadratic_objective_offsets().size());
-  }
-  if (data_model->get_variable_lower_bounds().size() != 0) {
-    op_problem.set_variable_lower_bounds(data_model->get_variable_lower_bounds().data(),
-                                         data_model->get_variable_lower_bounds().size());
-  }
-  if (data_model->get_variable_upper_bounds().size() != 0) {
-    op_problem.set_variable_upper_bounds(data_model->get_variable_upper_bounds().data(),
-                                         data_model->get_variable_upper_bounds().size());
-  }
-
-  if (data_model->get_row_types().size() != 0) {
-    op_problem.set_row_types(data_model->get_row_types().data(),
-                             data_model->get_row_types().size());
-  }
-  if (data_model->get_constraint_lower_bounds().size() != 0) {
-    op_problem.set_constraint_lower_bounds(data_model->get_constraint_lower_bounds().data(),
-                                           data_model->get_constraint_lower_bounds().size());
-  }
-  if (data_model->get_constraint_upper_bounds().size() != 0) {
-    op_problem.set_constraint_upper_bounds(data_model->get_constraint_upper_bounds().data(),
-                                           data_model->get_constraint_upper_bounds().size());
-  }
-
-  if (solver_settings->get_pdlp_warm_start_data_view()
-        .last_restart_duality_gap_dual_solution_.data() != nullptr) {
-    // Moved inside
-    cuopt::linear_programming::pdlp_warm_start_data_t<int, double> pdlp_warm_start_data(
-      solver_settings->get_pdlp_warm_start_data_view(), handle_ptr->get_stream());
-    solver_settings->get_pdlp_settings().set_pdlp_warm_start_data(pdlp_warm_start_data);
-  }
-
-  if (data_model->get_variable_types().size() != 0) {
-    std::vector<var_t> enum_variable_types(data_model->get_variable_types().size());
-    std::transform(
-      data_model->get_variable_types().data(),
-      data_model->get_variable_types().data() + data_model->get_variable_types().size(),
-      enum_variable_types.begin(),
-      [](const auto val) -> var_t { return val == 'I' ? var_t::INTEGER : var_t::CONTINUOUS; });
-    op_problem.set_variable_types(enum_variable_types.data(), enum_variable_types.size());
-  }
-
-  if (data_model->get_variable_names().size() != 0) {
-    op_problem.set_variable_names(data_model->get_variable_names());
-  }
-
-  if (data_model->get_row_names().size() != 0) {
-    op_problem.set_row_names(data_model->get_row_names());
-  }
-
-  return op_problem;
-}
+// Note: data_model_to_optimization_problem() has been replaced with
+// data_model_view_to_optimization_problem() from optimization_problem_conversions.hpp
+// Warm start handling is now done inline where needed.
 
 /**
  * @brief Wrapper for linear_programming to expose the API to cython
@@ -142,8 +57,13 @@ linear_programming_ret_t call_solve_lp(
     "LP solve cannot be called on a MIP problem!");
   const bool problem_checking     = true;
   const bool use_pdlp_solver_mode = true;
-  auto solution                   = cuopt::linear_programming::solve_lp(
+
+  // Call solver (local GPU or remote depending on CUOPT_REMOTE_HOST/PORT env vars)
+  // Note: If remote execution is enabled, solution is guaranteed to be in host memory
+  auto solution = cuopt::linear_programming::solve_lp(
     op_problem, solver_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+
+  // Extract termination statistics (scalars - same for both device and host memory)
   linear_programming_ret_t lp_ret{};
   const auto& stats          = solution.get_additional_termination_information();
   auto& warm_start           = solution.get_pdlp_warm_start_data();
@@ -159,6 +79,7 @@ linear_programming_ret_t call_solve_lp(
   lp_ret.solve_time_         = stats.solve_time;
   lp_ret.solved_by_pdlp_     = stats.solved_by_pdlp;
 
+  // Extract warm-start data (scalars - same for both device and host memory)
   lp_ret.initial_primal_weight_         = warm_start.initial_primal_weight_;
   lp_ret.initial_step_size_             = warm_start.initial_step_size_;
   lp_ret.total_pdlp_iterations_         = warm_start.total_pdlp_iterations_;
@@ -168,7 +89,9 @@ linear_programming_ret_t call_solve_lp(
   lp_ret.sum_solution_weight_           = warm_start.sum_solution_weight_;
   lp_ret.iterations_since_last_restart_ = warm_start.iterations_since_last_restart_;
 
+  // Transfer solution data - either GPU or CPU depending on where it was solved
   if (solution.is_device_memory()) {
+    // Local GPU solve: transfer device buffers
     lp_ret.primal_solution_ =
       std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release());
     lp_ret.dual_solution_ =
@@ -194,6 +117,7 @@ linear_programming_ret_t call_solve_lp(
       warm_start.last_restart_duality_gap_dual_solution_.release());
     lp_ret.is_device_memory_ = true;
   } else {
+    // Remote solve: use host vectors
     lp_ret.primal_solution_host_ = solution.get_primal_solution_host();
     lp_ret.dual_solution_host_   = solution.get_dual_solution_host();
     lp_ret.reduced_cost_host_    = solution.get_reduced_cost_host();
@@ -220,7 +144,12 @@ mip_ret_t call_solve_mip(
       (op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::IP),
     error_type_t::ValidationError,
     "MIP solve cannot be called on an LP problem!");
+
+  // Call solver (local GPU or remote depending on CUOPT_REMOTE_HOST/PORT env vars)
+  // Note: If remote execution is enabled, solution is guaranteed to be in host memory
   auto solution = cuopt::linear_programming::solve_mip(op_problem, solver_settings);
+
+  // Extract solution statistics (scalars - same for both device and host memory)
   mip_ret_t mip_ret{};
   mip_ret.termination_status_           = solution.get_termination_status();
   mip_ret.error_status_                 = solution.get_error_status().get_error_type();
@@ -236,10 +165,13 @@ mip_ret_t call_solve_mip(
   mip_ret.nodes_                        = solution.get_num_nodes();
   mip_ret.simplex_iterations_           = solution.get_num_simplex_iterations();
 
+  // Transfer solution data - either GPU or CPU depending on where it was solved
   if (solution.is_device_memory()) {
-    mip_ret.solution_ = std::make_unique<rmm::device_buffer>(solution.get_solution().release());
+    // Local GPU solve: transfer device buffer
+    mip_ret.solution_         = std::make_unique<rmm::device_buffer>(solution.get_solution().release());
     mip_ret.is_device_memory_ = true;
   } else {
+    // Remote solve: use host vector
     mip_ret.solution_host_    = solution.get_solution_host();
     mip_ret.is_device_memory_ = false;
   }
@@ -362,7 +294,17 @@ std::unique_ptr<solver_ret_t> call_solve(
 
   solver_ret_t response;
 
-  auto op_problem = data_model_to_optimization_problem(data_model, solver_settings, &handle_);
+  // Handle warm start data if present (needs to be done before creating optimization_problem_t)
+  if (solver_settings->get_pdlp_warm_start_data_view()
+        .last_restart_duality_gap_dual_solution_.data() != nullptr) {
+    cuopt::linear_programming::pdlp_warm_start_data_t<int, double> pdlp_warm_start_data(
+      solver_settings->get_pdlp_warm_start_data_view(), handle_.get_stream());
+    solver_settings->get_pdlp_settings().set_pdlp_warm_start_data(pdlp_warm_start_data);
+  }
+
+  // Use shared conversion function from optimization_problem_conversions.hpp
+  auto op_problem = cuopt::linear_programming::data_model_view_to_optimization_problem(&handle_, *data_model);
+  
   if (op_problem.get_problem_category() == linear_programming::problem_category_t::LP) {
     response.lp_ret =
       call_solve_lp(op_problem, solver_settings->get_pdlp_settings(), is_batch_mode);

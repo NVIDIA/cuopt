@@ -351,7 +351,5 @@ bool data_model_view_t<i_t, f_t>::has_quadratic_objective() const noexcept
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
 template class data_model_view_t<int, float>;
 template class data_model_view_t<int, double>;
-template class data_model_view_t<int64_t, float>;
-template class data_model_view_t<int64_t, double>;
 
 }  // namespace cuopt::mps_parser

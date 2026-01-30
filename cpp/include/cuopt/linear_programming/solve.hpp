@@ -11,6 +11,7 @@
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_conversions.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
@@ -141,27 +142,8 @@ mip_solution_t<i_t, f_t> solve_mip(
   const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
   mip_solver_settings_t<i_t, f_t> const& settings = mip_solver_settings_t<i_t, f_t>{});
 
-template <typename i_t, typename f_t>
-optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
-  raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model);
-
-/**
- * @brief Convert a data_model_view_t to an optimization_problem_t.
- *
- * This function copies data from the view (which can point to CPU or GPU memory)
- * into an owning optimization_problem_t.
- *
- * @tparam i_t Data type of indexes
- * @tparam f_t Data type of the variables and their weights in the equations
- *
- * @param[in] handle_ptr  A raft::handle_t object with its corresponding CUDA stream.
- * @param[in] view  A data_model_view_t<i_t, f_t> object with spans pointing to CPU or GPU memory
- * @return optimization_problem_t<i_t, f_t> owning container for the problem
- */
-template <typename i_t, typename f_t>
-optimization_problem_t<i_t, f_t> data_model_view_to_optimization_problem(
-  raft::handle_t const* handle_ptr, const data_model_view_t<i_t, f_t>& view);
+// Conversion functions are now declared in optimization_problem_conversions.hpp
+// (included above) and implemented in optimization_problem_conversions.cu
 
 /**
  * @brief Linear programming solve function using data_model_view_t.

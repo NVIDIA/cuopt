@@ -139,61 +139,6 @@ class mip_solution_t : public base_solution_t {
   // Setters for remote solve deserialization
   //============================================================================
 
-  /**
-   * @brief Set the solution in host memory
-   * @param solution The solution vector
-   */
-  void set_solution_host(std::vector<f_t> solution);
-
-  /**
-   * @brief Set the objective value
-   */
-  void set_objective(f_t value);
-
-  /**
-   * @brief Set the MIP gap
-   */
-  void set_mip_gap(f_t value);
-
-  /**
-   * @brief Set the solution bound
-   */
-  void set_solution_bound(f_t value);
-
-  /**
-   * @brief Set total solve time
-   */
-  void set_total_solve_time(double value);
-
-  /**
-   * @brief Set presolve time
-   */
-  void set_presolve_time(double value);
-
-  /**
-   * @brief Set max constraint violation
-   */
-  void set_max_constraint_violation(f_t value);
-
-  /**
-   * @brief Set max integer violation
-   */
-  void set_max_int_violation(f_t value);
-
-  /**
-   * @brief Set max variable bound violation
-   */
-  void set_max_variable_bound_violation(f_t value);
-
-  /**
-   * @brief Set number of nodes
-   */
-  void set_nodes(i_t value);
-
-  /**
-   * @brief Set number of simplex iterations
-   */
-  void set_simplex_iterations(i_t value);
 
   /**
    * @brief Get error string

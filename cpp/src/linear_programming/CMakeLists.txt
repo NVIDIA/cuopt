@@ -9,6 +9,7 @@ set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/optimization_problem.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/problem_checking.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solve.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/optimization_problem_conversions.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdlp.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdhg.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu

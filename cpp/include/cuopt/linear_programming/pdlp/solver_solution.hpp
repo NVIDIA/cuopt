@@ -335,29 +335,6 @@ class optimization_problem_solution_t : public base_solution_t {
   // Setters for host solution data (used by remote solve deserialization)
   //============================================================================
 
-  /**
-   * @brief Set the primal solution in host memory
-   * @param solution The primal solution vector
-   */
-  void set_primal_solution_host(std::vector<f_t> solution);
-
-  /**
-   * @brief Set the dual solution in host memory
-   * @param solution The dual solution vector
-   */
-  void set_dual_solution_host(std::vector<f_t> solution);
-
-  /**
-   * @brief Set the reduced cost in host memory
-   * @param reduced_cost The reduced cost vector
-   */
-  void set_reduced_cost_host(std::vector<f_t> reduced_cost);
-
-  /**
-   * @brief Set the termination statistics
-   * @param stats The termination statistics
-   */
-  void set_termination_stats(const additional_termination_information_t& stats);
 
   //============================================================================
   // Getters for termination statistics
@@ -404,42 +381,6 @@ class optimization_problem_solution_t : public base_solution_t {
    * @return true if solved by PDLP
    */
   bool get_solved_by_pdlp() const;
-
-  /**
-   * @brief Set L2 primal residual
-   * @param value The value
-   */
-  void set_l2_primal_residual(f_t value);
-
-  /**
-   * @brief Set L2 dual residual
-   * @param value The value
-   */
-  void set_l2_dual_residual(f_t value);
-
-  /**
-   * @brief Set primal objective
-   * @param value The value
-   */
-  void set_primal_objective(f_t value);
-
-  /**
-   * @brief Set dual objective
-   * @param value The value
-   */
-  void set_dual_objective(f_t value);
-
-  /**
-   * @brief Set gap
-   * @param value The value
-   */
-  void set_gap(f_t value);
-
-  /**
-   * @brief Set number of iterations
-   * @param value The value
-   */
-  void set_nb_iterations(i_t value);
 
   /**
    * @brief Set solved by PDLP flag
