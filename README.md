@@ -53,7 +53,7 @@ This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) projec
 
 ### Python requirements
 
-* Python >=3.10, <=3.13
+* Python >=3.11, <=3.13
 
 ### OS requirements
 

@@ -101,7 +101,7 @@ CUDA/GPU Runtime:
 
 Python:
 
-* Python >=3.10.x, <= 3.13.x
+* Python >=3.11.x, <= 3.13.x
 
 OS:
 

@@ -26,7 +26,7 @@ Dependencies are installed automatically when using the pip and Conda installati
       - 12.0+
 
    * Python:
-      - >= 3.10.* and <= 3.13.*
+      - >= 3.11.* and <= 3.13.*
 
    * NVIDIA drivers:
       - 525.60.13+ (Linux)
@@ -98,4 +98,4 @@ Thin-client for Self-Hosted
    - x86-64
    - ARM64
 
-* Python >= 3.10.x <= 3.13.x
+* Python >= 3.11.x <= 3.13.x
