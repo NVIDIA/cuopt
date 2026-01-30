@@ -9,6 +9,7 @@
 
 #include <cuopt/linear_programming/data_model_view.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_conversions.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/remote_solve.hpp>
@@ -30,121 +31,9 @@
 using namespace cuopt::mps_parser;
 using namespace cuopt::linear_programming;
 
-/**
- * @brief CPU-side storage for problem data.
- *
- * This struct stores all problem data in CPU memory. At solve time, a data_model_view_t
- * is created pointing to this data, and the solve_lp/solve_mip routines handle
- * local vs remote solve automatically.
- */
-struct problem_cpu_data_t {
-  // Problem dimensions
-  cuopt_int_t num_constraints = 0;
-  cuopt_int_t num_variables   = 0;
-
-  // Objective
-  bool maximize                  = false;
-  cuopt_float_t objective_offset = 0.0;
-  std::vector<cuopt_float_t> objective_coefficients;
-
-  // Quadratic objective (optional)
-  std::vector<cuopt_float_t> Q_values;
-  std::vector<cuopt_int_t> Q_indices;
-  std::vector<cuopt_int_t> Q_offsets;
-
-  // Constraint matrix (CSR format)
-  std::vector<cuopt_float_t> A_values;
-  std::vector<cuopt_int_t> A_indices;
-  std::vector<cuopt_int_t> A_offsets;
-
-  // Constraint bounds (two representations)
-  std::vector<char> row_types;                         // '<', '>', '=' style
-  std::vector<cuopt_float_t> constraint_bounds;        // single RHS for row_types style
-  std::vector<cuopt_float_t> constraint_lower_bounds;  // ranged style
-  std::vector<cuopt_float_t> constraint_upper_bounds;  // ranged style
-  bool uses_ranged_constraints = false;
-
-  // Variable bounds
-  std::vector<cuopt_float_t> variable_lower_bounds;
-  std::vector<cuopt_float_t> variable_upper_bounds;
-
-  // Variable types
-  std::vector<char> variable_types;  // 'C' for continuous, 'I' for integer
-
-  /**
-   * @brief Create a data_model_view_t pointing to this CPU data.
-   */
-  cuopt::linear_programming::data_model_view_t<cuopt_int_t, cuopt_float_t> create_view() const
-  {
-    cuopt::linear_programming::data_model_view_t<cuopt_int_t, cuopt_float_t> view;
-
-    view.set_maximize(maximize);
-    view.set_objective_offset(objective_offset);
-
-    if (!objective_coefficients.empty()) {
-      view.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
-    }
-
-    if (!Q_values.empty()) {
-      view.set_quadratic_objective_matrix(Q_values.data(),
-                                          Q_values.size(),
-                                          Q_indices.data(),
-                                          Q_indices.size(),
-                                          Q_offsets.data(),
-                                          Q_offsets.size());
-    }
-
-    if (!A_values.empty()) {
-      view.set_csr_constraint_matrix(A_values.data(),
-                                     A_values.size(),
-                                     A_indices.data(),
-                                     A_indices.size(),
-                                     A_offsets.data(),
-                                     A_offsets.size());
-    }
-
-    if (uses_ranged_constraints) {
-      if (!constraint_lower_bounds.empty()) {
-        view.set_constraint_lower_bounds(constraint_lower_bounds.data(),
-                                         constraint_lower_bounds.size());
-      }
-      if (!constraint_upper_bounds.empty()) {
-        view.set_constraint_upper_bounds(constraint_upper_bounds.data(),
-                                         constraint_upper_bounds.size());
-      }
-    } else {
-      if (!row_types.empty()) { view.set_row_types(row_types.data(), row_types.size()); }
-      if (!constraint_bounds.empty()) {
-        view.set_constraint_bounds(constraint_bounds.data(), constraint_bounds.size());
-      }
-    }
-
-    if (!variable_lower_bounds.empty()) {
-      view.set_variable_lower_bounds(variable_lower_bounds.data(), variable_lower_bounds.size());
-    }
-
-    if (!variable_upper_bounds.empty()) {
-      view.set_variable_upper_bounds(variable_upper_bounds.data(), variable_upper_bounds.size());
-    }
-
-    if (!variable_types.empty()) {
-      view.set_variable_types(variable_types.data(), variable_types.size());
-    }
-
-    return view;
-  }
-
-  /**
-   * @brief Check if this is a MIP (has integer variables).
-   */
-  bool is_mip() const
-  {
-    for (char vt : variable_types) {
-      if (vt == CUOPT_INTEGER) { return true; }
-    }
-    return false;
-  }
-};
+// Type alias for the common CPU problem data structure used by C API
+// This reuses the conversion infrastructure from optimization_problem_conversions.hpp
+using problem_cpu_data_t = cpu_problem_data_t<cuopt_int_t, cuopt_float_t>;
 
 struct problem_and_stream_view_t {
   problem_and_stream_view_t() : cpu_data(nullptr), gpu_problem(nullptr), handle(nullptr) {}
@@ -167,7 +56,7 @@ struct problem_and_stream_view_t {
   /**
    * @brief Check if this is a MIP problem.
    */
-  bool is_mip() const
+  bool is_mip_problem() const
   {
     if (view.is_device_memory()) {
       // GPU path: check gpu_problem's problem category
@@ -175,9 +64,12 @@ struct problem_and_stream_view_t {
       auto cat = gpu_problem->get_problem_category();
       return (cat == problem_category_t::MIP) || (cat == problem_category_t::IP);
     } else {
-      // CPU path: check variable types in cpu_data
+      // CPU path: check variable types in cpu_data for integer variables
       if (!cpu_data) return false;
-      return cpu_data->is_mip();
+      for (char vt : cpu_data->variable_types) {
+        if (vt == CUOPT_INTEGER) { return true; }
+      }
+      return false;
     }
   }
 
@@ -324,25 +216,22 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
     auto& cpu_data               = *problem_and_stream->cpu_data;
     const auto& mps              = *mps_data_model_ptr;
 
-    cpu_data.num_constraints =
-      static_cast<cuopt_int_t>(mps.get_constraint_matrix_offsets().size() - 1);
-    cpu_data.num_variables    = static_cast<cuopt_int_t>(mps.get_objective_coefficients().size());
-    cpu_data.maximize         = mps.get_sense();
-    cpu_data.objective_offset = mps.get_objective_offset();
+    cpu_data.maximize                 = mps.get_sense();
+    cpu_data.objective_scaling_factor = 1.0;
+    cpu_data.objective_offset         = mps.get_objective_offset();
 
     cpu_data.objective_coefficients = mps.get_objective_coefficients();
     cpu_data.A_values               = mps.get_constraint_matrix_values();
     cpu_data.A_indices              = mps.get_constraint_matrix_indices();
     cpu_data.A_offsets              = mps.get_constraint_matrix_offsets();
 
+    // Handle both ranged and non-ranged constraints
     if (!mps.get_constraint_lower_bounds().empty() || !mps.get_constraint_upper_bounds().empty()) {
-      cpu_data.uses_ranged_constraints = true;
       cpu_data.constraint_lower_bounds = mps.get_constraint_lower_bounds();
       cpu_data.constraint_upper_bounds = mps.get_constraint_upper_bounds();
     } else {
-      cpu_data.uses_ranged_constraints = false;
-      cpu_data.constraint_bounds       = mps.get_constraint_bounds();
-      const auto& mps_row_types        = mps.get_row_types();
+      cpu_data.constraint_bounds = mps.get_constraint_bounds();
+      const auto& mps_row_types  = mps.get_row_types();
       cpu_data.row_types.resize(mps_row_types.size());
       for (size_t i = 0; i < mps_row_types.size(); ++i) {
         cpu_data.row_types[i] = mps_row_types[i];
@@ -411,10 +300,9 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
       problem_and_stream->cpu_data = std::make_unique<problem_cpu_data_t>();
       auto& cpu_data               = *problem_and_stream->cpu_data;
 
-      cpu_data.num_constraints  = num_constraints;
-      cpu_data.num_variables    = num_variables;
-      cpu_data.maximize         = (objective_sense == CUOPT_MAXIMIZE);
-      cpu_data.objective_offset = objective_offset;
+      cpu_data.maximize                 = (objective_sense == CUOPT_MAXIMIZE);
+      cpu_data.objective_scaling_factor = 1.0;
+      cpu_data.objective_offset         = objective_offset;
 
       cpu_data.objective_coefficients.assign(objective_coefficients,
                                              objective_coefficients + num_variables);
@@ -425,7 +313,6 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
       cpu_data.A_offsets.assign(constraint_matrix_row_offsets,
                                 constraint_matrix_row_offsets + num_constraints + 1);
 
-      cpu_data.uses_ranged_constraints = false;
       cpu_data.row_types.assign(constraint_sense, constraint_sense + num_constraints);
       cpu_data.constraint_bounds.assign(rhs, rhs + num_constraints);
 
@@ -512,10 +399,9 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
       problem_and_stream->cpu_data = std::make_unique<problem_cpu_data_t>();
       auto& cpu_data               = *problem_and_stream->cpu_data;
 
-      cpu_data.num_constraints  = num_constraints;
-      cpu_data.num_variables    = num_variables;
-      cpu_data.maximize         = (objective_sense == CUOPT_MAXIMIZE);
-      cpu_data.objective_offset = objective_offset;
+      cpu_data.maximize                 = (objective_sense == CUOPT_MAXIMIZE);
+      cpu_data.objective_scaling_factor = 1.0;
+      cpu_data.objective_offset         = objective_offset;
 
       cpu_data.objective_coefficients.assign(objective_coefficients,
                                              objective_coefficients + num_variables);
@@ -526,7 +412,6 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
       cpu_data.A_offsets.assign(constraint_matrix_row_offsets,
                                 constraint_matrix_row_offsets + num_constraints + 1);
 
-      cpu_data.uses_ranged_constraints = true;
       cpu_data.constraint_lower_bounds.assign(constraint_lower_bounds,
                                               constraint_lower_bounds + num_constraints);
       cpu_data.constraint_upper_bounds.assign(constraint_upper_bounds,
@@ -622,20 +507,22 @@ cuopt_int_t cuOptCreateQuadraticProblem(
       problem_and_stream->cpu_data = std::make_unique<problem_cpu_data_t>();
       auto& cpu_data               = *problem_and_stream->cpu_data;
 
-      cpu_data.num_constraints  = num_constraints;
-      cpu_data.num_variables    = num_variables;
-      cpu_data.maximize         = (objective_sense == CUOPT_MAXIMIZE);
-      cpu_data.objective_offset = objective_offset;
+      cpu_data.maximize                 = (objective_sense == CUOPT_MAXIMIZE);
+      cpu_data.objective_scaling_factor = 1.0;
+      cpu_data.objective_offset         = objective_offset;
 
       cpu_data.objective_coefficients.assign(objective_coefficients,
                                              objective_coefficients + num_variables);
 
-      cpu_data.Q_values.assign(quadratic_objective_matrix_coefficent_values,
-                               quadratic_objective_matrix_coefficent_values + Q_nnz);
-      cpu_data.Q_indices.assign(quadratic_objective_matrix_column_indices,
-                                quadratic_objective_matrix_column_indices + Q_nnz);
-      cpu_data.Q_offsets.assign(quadratic_objective_matrix_row_offsets,
-                                quadratic_objective_matrix_row_offsets + num_variables + 1);
+      cpu_data.quadratic_objective_values.assign(
+        quadratic_objective_matrix_coefficent_values,
+        quadratic_objective_matrix_coefficent_values + Q_nnz);
+      cpu_data.quadratic_objective_indices.assign(
+        quadratic_objective_matrix_column_indices,
+        quadratic_objective_matrix_column_indices + Q_nnz);
+      cpu_data.quadratic_objective_offsets.assign(
+        quadratic_objective_matrix_row_offsets,
+        quadratic_objective_matrix_row_offsets + num_variables + 1);
 
       cpu_data.A_values.assign(constraint_matrix_coefficent_values,
                                constraint_matrix_coefficent_values + nnz);
@@ -644,7 +531,6 @@ cuopt_int_t cuOptCreateQuadraticProblem(
       cpu_data.A_offsets.assign(constraint_matrix_row_offsets,
                                 constraint_matrix_row_offsets + num_constraints + 1);
 
-      cpu_data.uses_ranged_constraints = false;
       cpu_data.row_types.assign(constraint_sense, constraint_sense + num_constraints);
       cpu_data.constraint_bounds.assign(rhs, rhs + num_constraints);
 
@@ -740,20 +626,22 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
       problem_and_stream->cpu_data = std::make_unique<problem_cpu_data_t>();
       auto& cpu_data               = *problem_and_stream->cpu_data;
 
-      cpu_data.num_constraints  = num_constraints;
-      cpu_data.num_variables    = num_variables;
-      cpu_data.maximize         = (objective_sense == CUOPT_MAXIMIZE);
-      cpu_data.objective_offset = objective_offset;
+      cpu_data.maximize                 = (objective_sense == CUOPT_MAXIMIZE);
+      cpu_data.objective_scaling_factor = 1.0;
+      cpu_data.objective_offset         = objective_offset;
 
       cpu_data.objective_coefficients.assign(objective_coefficients,
                                              objective_coefficients + num_variables);
 
-      cpu_data.Q_values.assign(quadratic_objective_matrix_coefficent_values,
-                               quadratic_objective_matrix_coefficent_values + Q_nnz);
-      cpu_data.Q_indices.assign(quadratic_objective_matrix_column_indices,
-                                quadratic_objective_matrix_column_indices + Q_nnz);
-      cpu_data.Q_offsets.assign(quadratic_objective_matrix_row_offsets,
-                                quadratic_objective_matrix_row_offsets + num_variables + 1);
+      cpu_data.quadratic_objective_values.assign(
+        quadratic_objective_matrix_coefficent_values,
+        quadratic_objective_matrix_coefficent_values + Q_nnz);
+      cpu_data.quadratic_objective_indices.assign(
+        quadratic_objective_matrix_column_indices,
+        quadratic_objective_matrix_column_indices + Q_nnz);
+      cpu_data.quadratic_objective_offsets.assign(
+        quadratic_objective_matrix_row_offsets,
+        quadratic_objective_matrix_row_offsets + num_variables + 1);
 
       cpu_data.A_values.assign(constraint_matrix_coefficent_values,
                                constraint_matrix_coefficent_values + nnz);
@@ -762,7 +650,6 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
       cpu_data.A_offsets.assign(constraint_matrix_row_offsets,
                                 constraint_matrix_row_offsets + num_constraints + 1);
 
-      cpu_data.uses_ranged_constraints = true;
       cpu_data.constraint_lower_bounds.assign(constraint_lower_bounds,
                                               constraint_lower_bounds + num_constraints);
       cpu_data.constraint_upper_bounds.assign(constraint_upper_bounds,
@@ -837,7 +724,8 @@ cuopt_int_t cuOptGetNumConstraints(cuOptOptimizationProblem problem,
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
   if (!problem_and_stream_view->view.is_device_memory()) {
-    *num_constraints_ptr = problem_and_stream_view->cpu_data->num_constraints;
+    *num_constraints_ptr =
+      static_cast<cuopt_int_t>(problem_and_stream_view->cpu_data->A_offsets.size() - 1);
   } else {
     *num_constraints_ptr = problem_and_stream_view->gpu_problem->get_n_constraints();
   }
@@ -851,7 +739,8 @@ cuopt_int_t cuOptGetNumVariables(cuOptOptimizationProblem problem, cuopt_int_t* 
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
   if (!problem_and_stream_view->view.is_device_memory()) {
-    *num_variables_ptr = problem_and_stream_view->cpu_data->num_variables;
+    *num_variables_ptr =
+      static_cast<cuopt_int_t>(problem_and_stream_view->cpu_data->objective_coefficients.size());
   } else {
     *num_variables_ptr = problem_and_stream_view->gpu_problem->get_n_variables();
   }
@@ -1268,7 +1157,7 @@ cuopt_int_t cuOptIsMIP(cuOptOptimizationProblem problem, cuopt_int_t* is_mip_ptr
   if (is_mip_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   problem_and_stream_view_t* problem_and_stream_view =
     static_cast<problem_and_stream_view_t*>(problem);
-  *is_mip_ptr = static_cast<cuopt_int_t>(problem_and_stream_view->is_mip());
+  *is_mip_ptr = static_cast<cuopt_int_t>(problem_and_stream_view->is_mip_problem());
   return CUOPT_SUCCESS;
 }
 
@@ -1287,7 +1176,7 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
   solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
     static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
 
-  bool is_mip = problem_and_stream_view->is_mip();
+  bool is_mip = problem_and_stream_view->is_mip_problem();
 
   // Use the view - solve_lp/solve_mip will check is_device_memory() to determine path
   const auto& view = problem_and_stream_view->view;

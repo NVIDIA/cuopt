@@ -24,12 +24,12 @@ namespace cuopt::linear_programming {
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
-  pdlp_termination_status_t termination_status_, rmm::cuda_stream_view stream_view)
+  pdlp_termination_status_t termination_status, rmm::cuda_stream_view stream_view)
   : primal_solution_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
     dual_solution_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
     reduced_cost_(std::make_unique<rmm::device_uvector<f_t>>(0, stream_view)),
     is_device_memory_(true),
-    termination_status_{{termination_status_}},
+    termination_status_{{termination_status}},
     error_status_(cuopt::logic_error("", cuopt::error_type_t::Success))
 {
   cuopt_assert(termination_stats_.size() == termination_status_.size(),

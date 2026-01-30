@@ -191,8 +191,9 @@ std::unique_ptr<solver_ret_t> call_solve(
 {
   raft::common::nvtx::range fun_scope("Call Solve");
 
-  // Data from Python is always in CPU memory
-  data_model->set_is_device_memory(false);
+  // Data from Python DataModel is always in CPU memory (DataModel.get_data_ptr only accepts numpy
+  // arrays)
+  cuopt_assert(!data_model->is_device_memory(), "Python data model must be in CPU memory");
 
   // Determine if LP or MIP based on variable types (uses cached value)
   auto problem_category = data_model->get_problem_category();
@@ -206,6 +207,11 @@ std::unique_ptr<solver_ret_t> call_solve(
   const raft::handle_t* handle_ptr = &handle_;
 
   // Handle warm start data if present (only for local LP solves)
+  // Warm start data arrives from Python as a view to host memory. For local GPU solves,
+  // we need to copy it to device memory before passing to the solver.
+  // This is done here at the Python boundary rather than in solve_lp because:
+  // 1. We have the CUDA handle/stream available here
+  // 2. Remote solves don't need the device copy (they use the host view directly)
   if (!is_mip && solver_settings->get_pdlp_warm_start_data_view()
                      .last_restart_duality_gap_dual_solution_.data() != nullptr) {
     cuopt::linear_programming::pdlp_warm_start_data_t<int, double> pdlp_warm_start_data(
@@ -313,14 +319,7 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
   auto start_solver = std::chrono::high_resolution_clock::now();
 
   // Limit parallelism as too much stream overlap gets too slow
-  int max_thread = 1;
-  if (linear_programming::is_remote_solve_enabled()) {
-    // Cap parallelism for remote solve to avoid overwhelming the remote service.
-    constexpr std::size_t max_total = 4;
-    max_thread = static_cast<int>(std::min(std::max<std::size_t>(size, 1), max_total));
-  } else {
-    max_thread = compute_max_thread(data_models);
-  }
+  const int max_thread = compute_max_thread(data_models);
 
   if (solver_settings->get_parameter<int>(CUOPT_METHOD) == CUOPT_METHOD_CONCURRENT) {
     CUOPT_LOG_INFO("Concurrent mode not supported for batch solve. Using PDLP instead. ");
