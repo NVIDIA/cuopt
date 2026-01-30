@@ -81,7 +81,6 @@ class mip_solver_settings_t {
 
   f_t time_limit                = std::numeric_limits<f_t>::infinity();
   i_t node_limit                = std::numeric_limits<i_t>::max();
-  i_t reliability_branching     = -1;
   bool heuristics_only          = false;
   i_t num_cpu_threads           = -1;  // -1 means use default number of threads in branch and bound
   i_t max_cut_passes            = 0;   // number of cut passes to make
