@@ -930,8 +930,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
               // No potential rows to aggregate
               break;
             }
-          } else {
-            assert(col_len > 1);
           }
         }
         num_aggregated++;  // Always increase so the loop terminates
@@ -951,9 +949,10 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     for (i_t row : aggregated_rows) {
       aggregated_mark[row] = 0;
     }
+    work_estimate += 2 * aggregated_rows.size();
     // Clear the aggregated rows
     aggregated_rows.clear();
-    work_estimate += 2 * aggregated_rows.size();
+
 
     // Set the score of the current row to zero
     score[i] = 0.0;

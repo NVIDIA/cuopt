@@ -320,12 +320,13 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::report(
   char symbol, f_t obj, f_t lower_bound, i_t node_depth, i_t node_int_infeas)
 {
-  i_t nodes_explored   = exploration_stats_.nodes_explored;
-  i_t nodes_unexplored = exploration_stats_.nodes_unexplored;
-  f_t user_obj         = compute_user_objective(original_lp_, obj);
-  f_t user_lower       = compute_user_objective(original_lp_, lower_bound);
-  f_t iter_node        = exploration_stats_.total_lp_iters / nodes_explored;
-  std::string user_gap = user_mip_gap<f_t>(user_obj, user_lower);
+  const i_t nodes_explored   = exploration_stats_.nodes_explored;
+  const i_t nodes_unexplored = exploration_stats_.nodes_unexplored;
+  const f_t user_obj         = compute_user_objective(original_lp_, obj);
+  const f_t user_lower       = compute_user_objective(original_lp_, lower_bound);
+  const f_t iters            = static_cast<f_t>(exploration_stats_.total_lp_iters);
+  const f_t iter_node        = nodes_explored > 0 ? iters / nodes_explored : iters;
+  const std::string user_gap = user_mip_gap<f_t>(user_obj, user_lower);
   settings_.log.printf("%c %10d   %10lu    %+13.6e    %+10.6e   %6d %6d   %7.1e     %s %9.2f\n",
                        symbol,
                        nodes_explored,
@@ -429,6 +430,12 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
     f_t bound_err;
     i_t num_fractional;
     mutex_original_lp_.lock();
+    if (crushed_solution.size() != original_lp_.num_cols) {
+      // original problem has been modified since the solution was crushed
+      // we need to re-crush the solution
+      crush_primal_solution<i_t, f_t>(
+        original_problem_, original_lp_, solution, new_slacks_, crushed_solution);
+    }
     is_feasible = check_guess(
       original_lp_, settings_, var_types_, crushed_solution, primal_err, bound_err, num_fractional);
     mutex_original_lp_.unlock();
@@ -2032,20 +2039,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         mutex_upper_.unlock();
       }
       f_t obj         = upper_bound_.load();
-      f_t user_obj    = compute_user_objective(original_lp_, obj);
-      f_t user_lower  = compute_user_objective(original_lp_, root_objective_);
-      std::string gap = num_fractional != 0 ? user_mip_gap<f_t>(user_obj, user_lower) : "0.0%";
-
-      settings_.log.printf("  %10d   %10lu    %+13.6e    %+10.6e   %6d %6d   %7.1e     %s %9.2f\n",
-                           0,
-                           0,
-                           user_obj,
-                           user_lower,
-                           num_fractional,
-                           0,
-                           static_cast<f_t>(iter),
-                           gap.c_str(),
-                           toc(exploration_stats_.start_time));
+      report(' ', obj, root_objective_, 0, num_fractional);
 
       f_t rel_gap = user_relative_gap(original_lp_, upper_bound_.load(), root_objective_);
       f_t abs_gap = upper_bound_.load() - root_objective_;
@@ -2112,11 +2106,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       std::vector<char> row_sense;
 
       mutex_original_lp_.lock();
-      f_t node_presolve_start_time = tic();
       bounds_strengthening_t<i_t, f_t> node_presolve(original_lp_, Arow_, row_sense, var_types_);
       bool feasible =
         node_presolve.bounds_strengthening(settings_, bounds_changed, original_lp_.lower, original_lp_.upper);
-      f_t node_presolve_time = toc(node_presolve_start_time);
       mutex_original_lp_.unlock();
 
       // Go through and check the fractional variables and remove any that are now fixed to their
