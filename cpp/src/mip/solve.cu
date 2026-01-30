@@ -204,8 +204,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
 
     auto constexpr const dual_postsolve = false;
-    detail::sort_csr(op_problem);
     if (run_presolve) {
+      detail::sort_csr(op_problem);
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
       const double presolve_time_limit = std::min(0.1 * time_limit, 60.0);

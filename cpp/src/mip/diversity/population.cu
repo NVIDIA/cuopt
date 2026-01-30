@@ -417,6 +417,11 @@ std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&&
 {
   std::lock_guard<std::recursive_mutex> lock(write_mutex);
   raft::common::nvtx::range fun_scope("add_solution");
+  // Sync the input solution's stream to ensure all device data is visible.
+  // The solution might have been created/modified on a different stream,
+  // and we need those operations to complete before reading device data
+  // for hash computation, quality calculation, and similarity comparisons.
+  sol.handle_ptr->sync_stream();
   population_hash_map.insert(sol);
   double sol_cost   = sol.get_quality(weights);
   bool best_updated = false;
@@ -431,6 +436,7 @@ std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&&
     solutions[0].first = true;
     // we only have move assignment operator
     solution_t<i_t, f_t> temp_sol(sol);
+    temp_sol.handle_ptr->sync_stream();
     solutions[0].second = std::move(temp_sol);
     indices[0].second   = sol_cost;
     best_updated        = true;

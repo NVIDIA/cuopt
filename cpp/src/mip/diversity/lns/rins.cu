@@ -76,10 +76,15 @@ void rins_t<i_t, f_t>::node_callback(const std::vector<f_t>& solution, f_t objec
 template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::enable()
 {
-  rins_thread              = std::make_unique<rins_thread_t<i_t, f_t>>();
-  rins_thread->rins_ptr    = this;
-  seed                     = cuopt::seed_generator::get_seed();
-  problem_copy             = std::make_unique<problem_t<i_t, f_t>>(*problem_ptr);
+  rins_thread           = std::make_unique<rins_thread_t<i_t, f_t>>();
+  rins_thread->rins_ptr = this;
+  seed                  = cuopt::seed_generator::get_seed();
+  problem_copy          = std::make_unique<problem_t<i_t, f_t>>(*problem_ptr);
+  // Synchronize the original stream to ensure all async device copies from the
+  // copy constructor are complete before switching to the RINS handle's stream.
+  // Without this sync, RINS operations on rins_handle's stream could race with
+  // the ongoing async copies on the original stream.
+  problem_ptr->handle_ptr->sync_stream();
   problem_copy->handle_ptr = &rins_handle;
   enabled                  = true;
 }
@@ -119,6 +124,11 @@ void rins_t<i_t, f_t>::run_rins()
     cuopt_assert(best_feasible_ref.assignment.size() == best_sol.assignment.size(),
                  "Assignment size mismatch");
     cuopt_assert(best_feasible_ref.get_feasible(), "Best feasible is not feasible");
+    // Synchronize the main solver's stream to ensure any pending GPU operations on
+    // best_feasible_ref.assignment are complete before copying. The CPU mutex only
+    // prevents concurrent CPU access; GPU operations launched by the main thread
+    // might still be in flight. Without this sync, the copy could read incomplete data.
+    best_feasible_ref.handle_ptr->sync_stream();
     expand_device_copy(best_sol.assignment, best_feasible_ref.assignment, rins_handle.get_stream());
     best_sol.handle_ptr  = &rins_handle;
     best_sol.problem_ptr = problem_copy.get();
