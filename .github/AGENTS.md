@@ -34,7 +34,3 @@ See `skills/README.md` for the full index.
 ## Machine-Readable Manifest
 
 - `.ai/skills/cuopt.yaml`
-
-## Legacy (archived)
-
-Previous agent files at `agents-legacy/` for reference.
