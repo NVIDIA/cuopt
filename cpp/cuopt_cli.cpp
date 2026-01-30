@@ -129,14 +129,14 @@ int run_single_file(const std::string& file_path,
     return -1;
   }
 
-  // Determine if this is a MIP problem by checking variable types
-  bool has_integers = false;
-  for (const auto& vt : mps_data_model.get_variable_types()) {
-    if (vt == 'I' || vt == 'B') {
-      has_integers = true;
-      break;
-    }
-  }
+  // Create a non-owning view from the mps_data_model (using shared conversion function)
+  // solve_lp/solve_mip will handle remote vs local solve based on env vars
+  auto view = cuopt::linear_programming::create_view_from_mps_data_model(mps_data_model);
+
+  // Determine if this is a MIP problem by checking problem category
+  auto problem_category = view.get_problem_category();
+  bool has_integers = (problem_category == cuopt::linear_programming::problem_category_t::MIP) ||
+                      (problem_category == cuopt::linear_programming::problem_category_t::IP);
   const bool is_mip = has_integers && !solve_relaxation;
 
   try {
@@ -162,10 +162,6 @@ int run_single_file(const std::string& file_path,
     CUOPT_LOG_ERROR("Error: %s", e.what());
     return -1;
   }
-
-  // Create a non-owning view from the mps_data_model (using shared conversion function)
-  // solve_lp/solve_mip will handle remote vs local solve based on env vars
-  auto view = cuopt::linear_programming::create_view_from_mps_data_model(mps_data_model);
 
   try {
     // Pass handle_ptr.get() - can be nullptr for remote solve

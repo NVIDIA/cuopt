@@ -14,6 +14,11 @@
 #include <type_traits>
 #include <vector>
 
+// Forward declaration to avoid circular dependency
+namespace cuopt::linear_programming {
+enum class problem_category_t : int8_t;
+}
+
 namespace cuopt::mps_parser {
 
 /**
@@ -421,9 +426,28 @@ class data_model_view_t {
    */
   bool is_device_memory() const noexcept { return is_device_memory_; }
 
+  /**
+   * @brief Get the problem category (LP, MIP, or IP)
+   *
+   * Computes the problem category based on variable types on first call, then caches the result.
+   * Uses early-exit optimization for MIP detection (exits as soon as both continuous and integer
+   * variables are found).
+   *
+   * - LP: all continuous variables
+   * - IP: all integer variables
+   * - MIP: mix of continuous and integer variables
+   *
+   * @return cuopt::linear_programming::problem_category_t
+   */
+  cuopt::linear_programming::problem_category_t get_problem_category() const;
+
  private:
   bool maximize_{false};
   bool is_device_memory_{false};  // true if spans point to GPU memory, false for CPU
+  
+  // Lazy-evaluated problem category cache
+  mutable cuopt::linear_programming::problem_category_t problem_category_;
+  mutable bool problem_category_computed_{false};
   span<f_t const> A_;
   span<i_t const> A_indices_;
   span<i_t const> A_offsets_;

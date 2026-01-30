@@ -348,6 +348,49 @@ bool data_model_view_t<i_t, f_t>::has_quadratic_objective() const noexcept
   return Q_objective_.size() > 0;
 }
 
+template <typename i_t, typename f_t>
+cuopt::linear_programming::problem_category_t data_model_view_t<i_t, f_t>::get_problem_category()
+  const
+{
+  // Return cached value if already computed
+  if (problem_category_computed_) { return problem_category_; }
+
+  // Compute problem category based on variable types
+  // Use early-exit optimization: as soon as we find both continuous and integer, it's MIP
+  bool has_continuous = false;
+  bool has_integer    = false;
+
+  for (size_t i = 0; i < variable_types_.size(); ++i) {
+    if (variable_types_.data()[i] == 'I' || variable_types_.data()[i] == 'B') {
+      has_integer = true;
+      if (has_continuous) {
+        // Found both types - it's MIP, cache and return
+        // Note: problem_category_t values: LP=0, MIP=1, IP=2
+        problem_category_ = static_cast<cuopt::linear_programming::problem_category_t>(1);  // MIP
+        problem_category_computed_ = true;
+        return problem_category_;
+      }
+    } else {  // 'C' or other continuous type
+      has_continuous = true;
+      if (has_integer) {
+        // Found both types - it's MIP, cache and return
+        problem_category_ = static_cast<cuopt::linear_programming::problem_category_t>(1);  // MIP
+        problem_category_computed_ = true;
+        return problem_category_;
+      }
+    }
+  }
+
+  // All variables are of the same type
+  if (has_integer) {
+    problem_category_ = static_cast<cuopt::linear_programming::problem_category_t>(2);  // IP
+  } else {
+    problem_category_ = static_cast<cuopt::linear_programming::problem_category_t>(0);  // LP
+  }
+  problem_category_computed_ = true;
+  return problem_category_;
+}
+
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
 template class data_model_view_t<int, float>;
 template class data_model_view_t<int, double>;

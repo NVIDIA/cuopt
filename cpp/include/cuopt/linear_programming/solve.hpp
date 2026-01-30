@@ -173,7 +173,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   const data_model_view_t<i_t, f_t>& view,
   pdlp_solver_settings_t<i_t, f_t> const& settings = pdlp_solver_settings_t<i_t, f_t>{},
   bool problem_checking                            = true,
-  bool use_pdlp_solver_mode                        = true);
+  bool use_pdlp_solver_mode                        = true,
+  bool is_batch_mode                               = false);
 
 /**
  * @brief Mixed integer programming solve function using data_model_view_t.

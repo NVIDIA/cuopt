@@ -46,22 +46,25 @@ using cuopt::linear_programming::var_t;
  * @return linear_programming_ret_t
  */
 linear_programming_ret_t call_solve_lp(
-  cuopt::linear_programming::optimization_problem_t<int, double>& op_problem,
+  raft::handle_t const* handle_ptr,
+  const cuopt::mps_parser::data_model_view_t<int, double>& view,
   cuopt::linear_programming::pdlp_solver_settings_t<int, double>& solver_settings,
   bool is_batch_mode)
 {
   raft::common::nvtx::range fun_scope("Call Solve");
+  
+  // Validate that this is an LP problem (not MIP/IP)
   cuopt_expects(
-    op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::LP,
-    error_type_t::ValidationError,
+    view.get_problem_category() == cuopt::linear_programming::problem_category_t::LP,
+    cuopt::error_type_t::ValidationError,
     "LP solve cannot be called on a MIP problem!");
+  
   const bool problem_checking     = true;
   const bool use_pdlp_solver_mode = true;
 
-  // Call solver (local GPU or remote depending on CUOPT_REMOTE_HOST/PORT env vars)
-  // Note: If remote execution is enabled, solution is guaranteed to be in host memory
+  // Call solver - handles remote/local branching and batch mode validation
   auto solution = cuopt::linear_programming::solve_lp(
-    op_problem, solver_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+    handle_ptr, view, solver_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
 
   // Extract termination statistics (scalars - same for both device and host memory)
   linear_programming_ret_t lp_ret{};
@@ -135,19 +138,22 @@ linear_programming_ret_t call_solve_lp(
  * @return mip_ret_t
  */
 mip_ret_t call_solve_mip(
-  cuopt::linear_programming::optimization_problem_t<int, double>& op_problem,
+  raft::handle_t const* handle_ptr,
+  const cuopt::mps_parser::data_model_view_t<int, double>& view,
   cuopt::linear_programming::mip_solver_settings_t<int, double>& solver_settings)
 {
   raft::common::nvtx::range fun_scope("Call Solve");
+  
+  // Validate that this is a MIP or IP problem (not pure LP)
   cuopt_expects(
-    (op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP) or
-      (op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::IP),
-    error_type_t::ValidationError,
+    (view.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP) ||
+      (view.get_problem_category() == cuopt::linear_programming::problem_category_t::IP),
+    cuopt::error_type_t::ValidationError,
     "MIP solve cannot be called on an LP problem!");
 
-  // Call solver (local GPU or remote depending on CUOPT_REMOTE_HOST/PORT env vars)
-  // Note: If remote execution is enabled, solution is guaranteed to be in host memory
-  auto solution = cuopt::linear_programming::solve_mip(op_problem, solver_settings);
+  // Call solver - handles both remote and local solves
+  // Remote: returns CPU solution, Local: returns GPU solution
+  auto solution = cuopt::linear_programming::solve_mip(handle_ptr, view, solver_settings);
 
   // Extract solution statistics (scalars - same for both device and host memory)
   mip_ret_t mip_ret{};
@@ -184,130 +190,35 @@ std::unique_ptr<solver_ret_t> call_solve(
   unsigned int flags,
   bool is_batch_mode)
 {
-  // Check if remote solve is configured FIRST (before any CUDA operations)
-  if (linear_programming::is_remote_solve_enabled()) {
-    // Data coming from Python is in CPU memory - mark it as such
-    data_model->set_is_device_memory(false);
-
-    solver_ret_t response;
-
-    // Determine if LP or MIP based on variable types
-    bool is_mip    = false;
-    auto var_types = data_model->get_variable_types();
-    for (size_t i = 0; i < var_types.size(); ++i) {
-      if (var_types.data()[i] == 'I') {
-        is_mip = true;
-        break;
-      }
-    }
-
-    if (!is_mip) {
-      // LP: call solve_lp with nullptr handle - remote solve doesn't need GPU
-      auto solution =
-        linear_programming::solve_lp(nullptr, *data_model, solver_settings->get_pdlp_settings());
-
-      auto term_info = solution.get_additional_termination_information();
-      linear_programming_ret_t lp_ret{};
-
-      if (solution.is_device_memory()) {
-        // GPU data (shouldn't happen for remote solve, but handle gracefully)
-        lp_ret.primal_solution_ =
-          std::make_unique<rmm::device_buffer>(solution.get_primal_solution().release());
-        lp_ret.dual_solution_ =
-          std::make_unique<rmm::device_buffer>(solution.get_dual_solution().release());
-        lp_ret.reduced_cost_ =
-          std::make_unique<rmm::device_buffer>(solution.get_reduced_cost().release());
-        lp_ret.is_device_memory_ = true;
-      } else {
-        // CPU data from remote solve - avoid device buffer allocations so CPU-only
-        // clients don't initialize CUDA.
-        lp_ret.primal_solution_host_ = std::move(solution.get_primal_solution_host());
-        lp_ret.dual_solution_host_   = std::move(solution.get_dual_solution_host());
-        lp_ret.reduced_cost_host_    = std::move(solution.get_reduced_cost_host());
-        lp_ret.is_device_memory_     = false;
-      }
-
-      // Remote stub path doesn't provide warm-start data yet.
-      lp_ret.initial_primal_weight_         = 0.0;
-      lp_ret.initial_step_size_             = 0.0;
-      lp_ret.total_pdlp_iterations_         = 0;
-      lp_ret.total_pdhg_iterations_         = 0;
-      lp_ret.last_candidate_kkt_score_      = 0.0;
-      lp_ret.last_restart_kkt_score_        = 0.0;
-      lp_ret.sum_solution_weight_           = 0.0;
-      lp_ret.iterations_since_last_restart_ = 0;
-
-      lp_ret.termination_status_ = solution.get_termination_status();
-      lp_ret.error_status_       = solution.get_error_status().get_error_type();
-      lp_ret.error_message_      = solution.get_error_status().what();
-      lp_ret.l2_primal_residual_ = term_info.l2_primal_residual;
-      lp_ret.l2_dual_residual_   = term_info.l2_dual_residual;
-      lp_ret.primal_objective_   = term_info.primal_objective;
-      lp_ret.dual_objective_     = term_info.dual_objective;
-      lp_ret.gap_                = term_info.gap;
-      lp_ret.nb_iterations_      = term_info.number_of_steps_taken;
-      lp_ret.solve_time_         = term_info.solve_time;
-      lp_ret.solved_by_pdlp_     = term_info.solved_by_pdlp;
-      response.lp_ret            = std::move(lp_ret);
-      response.problem_type      = linear_programming::problem_category_t::LP;
-    } else {
-      // MIP: call solve_mip with nullptr handle - remote solve doesn't need GPU
-      auto solution =
-        linear_programming::solve_mip(nullptr, *data_model, solver_settings->get_mip_settings());
-
-      mip_ret_t mip_ret{};
-
-      if (solution.is_device_memory()) {
-        // GPU data (shouldn't happen for remote solve, but handle gracefully)
-        mip_ret.solution_ = std::make_unique<rmm::device_buffer>(solution.get_solution().release());
-        mip_ret.is_device_memory_ = true;
-      } else {
-        // CPU data from remote solve - avoid device buffer allocations so CPU-only
-        // clients don't initialize CUDA.
-        mip_ret.solution_host_    = std::move(solution.get_solution_host());
-        mip_ret.is_device_memory_ = false;
-      }
-
-      mip_ret.termination_status_           = solution.get_termination_status();
-      mip_ret.error_status_                 = solution.get_error_status().get_error_type();
-      mip_ret.error_message_                = solution.get_error_status().what();
-      mip_ret.objective_                    = solution.get_objective_value();
-      mip_ret.mip_gap_                      = solution.get_mip_gap();
-      mip_ret.solution_bound_               = solution.get_solution_bound();
-      mip_ret.total_solve_time_             = solution.get_total_solve_time();
-      mip_ret.presolve_time_                = solution.get_presolve_time();
-      mip_ret.max_constraint_violation_     = solution.get_max_constraint_violation();
-      mip_ret.max_int_violation_            = solution.get_max_int_violation();
-      mip_ret.max_variable_bound_violation_ = solution.get_max_variable_bound_violation();
-      mip_ret.nodes_                        = solution.get_num_nodes();
-      mip_ret.simplex_iterations_           = solution.get_num_simplex_iterations();
-      response.mip_ret                      = std::move(mip_ret);
-      response.problem_type                 = linear_programming::problem_category_t::MIP;
-    }
-
-    return std::make_unique<solver_ret_t>(std::move(response));
-  }
-
   raft::common::nvtx::range fun_scope("Call Solve");
+  
+  // Data from Python is always in CPU memory
+  data_model->set_is_device_memory(false);
+
+  // Determine if LP or MIP based on variable types (uses cached value)
+  auto problem_category = data_model->get_problem_category();
+  bool is_mip = (problem_category == cuopt::linear_programming::problem_category_t::MIP) ||
+                (problem_category == cuopt::linear_programming::problem_category_t::IP);
+
+  // Create handle for local solve (unused for remote solve)
+  // Remote solve is detected by solve_lp/solve_mip via CUOPT_REMOTE_HOST/PORT env vars
   rmm::cuda_stream stream(static_cast<rmm::cuda_stream::flags>(flags));
   const raft::handle_t handle_{stream};
+  const raft::handle_t* handle_ptr = &handle_;
 
-  solver_ret_t response;
-
-  // Handle warm start data if present (needs to be done before creating optimization_problem_t)
-  if (solver_settings->get_pdlp_warm_start_data_view()
-        .last_restart_duality_gap_dual_solution_.data() != nullptr) {
+  // Handle warm start data if present (only for local LP solves)
+  if (!is_mip && solver_settings->get_pdlp_warm_start_data_view()
+                   .last_restart_duality_gap_dual_solution_.data() != nullptr) {
     cuopt::linear_programming::pdlp_warm_start_data_t<int, double> pdlp_warm_start_data(
       solver_settings->get_pdlp_warm_start_data_view(), handle_.get_stream());
     solver_settings->get_pdlp_settings().set_pdlp_warm_start_data(pdlp_warm_start_data);
   }
 
-  // Use shared conversion function from optimization_problem_conversions.hpp
-  auto op_problem = cuopt::linear_programming::data_model_view_to_optimization_problem(&handle_, *data_model);
-  
-  if (op_problem.get_problem_category() == linear_programming::problem_category_t::LP) {
-    response.lp_ret =
-      call_solve_lp(op_problem, solver_settings->get_pdlp_settings(), is_batch_mode);
+  solver_ret_t response;
+
+  if (!is_mip) {
+    // LP solve
+    response.lp_ret       = call_solve_lp(handle_ptr, *data_model, solver_settings->get_pdlp_settings(), is_batch_mode);
     response.problem_type = linear_programming::problem_category_t::LP;
     if (response.lp_ret.is_device_memory_) {
       // Reset stream to per-thread default as non-blocking stream is out of scope after the
@@ -328,7 +239,8 @@ std::unique_ptr<solver_ret_t> call_solve(
         rmm::cuda_stream_per_thread);
     }
   } else {
-    response.mip_ret      = call_solve_mip(op_problem, solver_settings->get_mip_settings());
+    // MIP solve
+    response.mip_ret      = call_solve_mip(handle_ptr, *data_model, solver_settings->get_mip_settings());
     response.problem_type = linear_programming::problem_category_t::MIP;
     if (response.mip_ret.is_device_memory_) {
       // Reset stream to per-thread default as non-blocking stream is out of scope after the

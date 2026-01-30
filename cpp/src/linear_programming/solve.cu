@@ -1259,13 +1259,22 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(raft::handle_t const* handle_
                                                    const data_model_view_t<i_t, f_t>& view,
                                                    pdlp_solver_settings_t<i_t, f_t> const& settings,
                                                    bool problem_checking,
-                                                   bool use_pdlp_solver_mode)
+                                                   bool use_pdlp_solver_mode,
+                                                   bool is_batch_mode)
 {
   // Initialize logger for this overload (needed for early returns)
   init_logger_t log(settings.log_file, settings.log_to_console);
 
   // Check for remote solve configuration first
   auto remote_config = get_remote_solve_config();
+
+  // Batch mode with remote solve is not yet supported
+  if (is_batch_mode && remote_config.has_value()) {
+    CUOPT_LOG_ERROR("[solve_lp] Batch mode with remote solve is not currently supported.");
+    return optimization_problem_solution_t<i_t, f_t>(
+      cuopt::logic_error("Batch mode with remote solve is not currently supported",
+                         cuopt::error_type_t::RuntimeError));
+  }
 
   if (view.is_device_memory()) {
     if (remote_config.has_value()) {
@@ -1291,7 +1300,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(raft::handle_t const* handle_
 
     // Local solve: data already on GPU - convert view to optimization_problem_t and solve
     auto op_problem = data_model_view_to_optimization_problem(handle_ptr, view);
-    return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode);
+    return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
   }
 
   // Data is on CPU
@@ -1310,7 +1319,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(raft::handle_t const* handle_
       cuopt::logic_error("No CUDA handle for CPU->GPU copy", cuopt::error_type_t::RuntimeError));
   }
   auto op_problem = data_model_view_to_optimization_problem(handle_ptr, view);
-  return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode);
+  return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
 }
 
 #define INSTANTIATE(F_TYPE)                                                             \
@@ -1339,7 +1348,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(raft::handle_t const* handle_
     const data_model_view_t<int, F_TYPE>& view,                                         \
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                                \
     bool problem_checking,                                                              \
-    bool use_pdlp_solver_mode);                                                         \
+    bool use_pdlp_solver_mode,                                                          \
+    bool is_batch_mode);                                                         \
                                                                                         \
   template optimization_problem_solution_t<int, F_TYPE> batch_pdlp_solve(               \
     raft::handle_t const* handle_ptr,                                                   \
