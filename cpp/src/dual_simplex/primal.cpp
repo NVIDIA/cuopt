@@ -296,7 +296,7 @@ primal::status_t primal_phase2(i_t phase,
   std::vector<i_t> slacks_needed;
   i_t rank =
     factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
-  if (rank == -2) {
+  if (rank == CONCURRET_HALT_RETURN) {
     return primal::status_t::CONCURRENT_LIMIT;
   } else if (rank != m) {
     settings.log.debug("Failed to factorize basis. rank %d m %d\n", rank, m);
@@ -310,7 +310,7 @@ primal::status_t primal_phase2(i_t phase,
                  nonbasic_list,
                  vstatus);
     rank = factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
-    if (rank == -2) {
+    if (rank == CONCURRET_HALT_RETURN) {
       return primal::status_t::CONCURRENT_LIMIT;
     } else if (rank == -1) {
       settings.log.printf("Failed to factorize basis after repair. rank %d m %d\n", rank, m);

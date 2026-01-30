@@ -255,11 +255,11 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
     }
 
     if (toc(start_time_) > settings_.time_limit) {
-      entering_index = -2;
+      entering_index = -3;
       return;
     }
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-      entering_index = -3;
+      entering_index = CONCURRET_HALT_RETURN;
       return;
     }
   }

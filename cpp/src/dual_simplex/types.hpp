@@ -19,4 +19,7 @@ using float64_t = double;
 
 constexpr float64_t inf = std::numeric_limits<float64_t>::infinity();
 
+// We return this constant to signal that a concurrent halt has occurred
+#define CONCURRET_HALT_RETURN -2
+
 }  // namespace cuopt::linear_programming::dual_simplex

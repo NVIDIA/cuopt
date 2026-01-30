@@ -577,7 +577,7 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
     for (i_t k = 0; k < max_vertices; k++) {
       if (vertex_to_sum[k] != 0.0) {
         settings.log.printf("Folding: Vertex %d has sum %e\n", k, vertex_to_sum[k]);
-        return -2;
+        return -1;
       }
     }
 #endif
@@ -594,7 +594,7 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
         settings.log.printf("Folding: Color %d has %ld vertices to refine. Not cleared\n",
                             k,
                             vertices_to_refine_by_color[k].size());
-        return -2;
+        return -1;
       }
     }
 #endif
@@ -604,7 +604,7 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
       if (row_color_map[i] >= total_colors_seen) {
         settings.log.printf("Folding: Row color %d is not in the colors vector\n",
                             row_color_map[i]);
-        return -2;
+        return -1;
       }
     }
     for (i_t j = 0; j < n; j++) {
@@ -612,7 +612,7 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
         settings.log.printf("Folding: Column color %d is not in the colors vector. %d\n",
                             col_color_map[j],
                             num_colors);
-        return -2;
+        return -1;
       }
     }
 #endif
@@ -634,7 +634,7 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
                 row_color_map[v],
                 color.color,
                 v);
-              return -2;
+              return -1;
             }
           }
         } else {
@@ -646,7 +646,7 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
                 col_color_map[v],
                 color.color,
                 v);
-              return -2;
+              return -1;
             }
           }
         }
@@ -655,19 +655,19 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
     // printf("Number of active colors: %d\n", num_active_colors);
     if (num_active_colors != num_colors) {
       settings.log.printf("Folding: Number of active colors does not match number of colors\n");
-      return -2;
+      return -1;
     }
     // printf("Number of active row colors: %d\n", num_active_row_colors);
     if (num_active_row_colors != num_row_colors) {
       settings.log.printf(
         "Folding: Number of active row colors does not match number of row colors\n");
-      return -2;
+      return -1;
     }
     // printf("Number of active column colors: %d\n", num_active_col_colors);
     if (num_active_col_colors != num_col_colors) {
       settings.log.printf(
         "Folding: Number of active column colors does not match number of column colors\n");
-      return -2;
+      return -1;
     }
 #endif
 
@@ -694,12 +694,12 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
     }
     if (num_row_colors >= max_vertices) {
       settings.log.printf("Folding: Too many row colors %d max %d\n", num_row_colors, max_vertices);
-      return -2;
+      return -1;
     }
     if (num_col_colors >= max_vertices) {
       settings.log.printf(
         "Folding: Too many column colors %d max %d\n", num_col_colors, max_vertices);
-      return -2;
+      return -1;
     }
 
     if (num_row_colors > row_threshold || num_col_colors > col_threshold) {

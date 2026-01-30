@@ -1232,7 +1232,7 @@ i_t initialize_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Initialized %d of %d steepest edge norms in %.2fs\n", k, m, now);
     }
     if (toc(start_time) > settings.time_limit) { return -1; }
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return -2; }
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return CONCURRET_HALT_RETURN; }
   }
   return 0;
 }
@@ -2408,7 +2408,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       i_t status              = phase2::initialize_steepest_edge_norms(
         lp, settings, start_time, basic_list, ft, delta_y_steepest_edge);
       f_t steepest_edge_time = toc(steepest_edge_start);
-      if (status == -2) { return dual::status_t::CONCURRENT_LIMIT; }
+      if (status == CONCURRET_HALT_RETURN) { return dual::status_t::CONCURRENT_LIMIT; }
       if (status == -1) { return dual::status_t::TIME_LIMIT; }
     }
   } else {
@@ -2688,8 +2688,8 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       entering_index = phase2::phase2_ratio_test(
         lp, settings, vstatus, nonbasic_list, z, delta_z, step_length, nonbasic_entering_index);
     }
-    if (entering_index == -2) { return dual::status_t::TIME_LIMIT; }
-    if (entering_index == -3) { return dual::status_t::CONCURRENT_LIMIT; }
+    if (entering_index == -3) { return dual::status_t::TIME_LIMIT; }
+    if (entering_index ==  CONCURRET_HALT_RETURN) { return dual::status_t::CONCURRENT_LIMIT; }
     if (entering_index == -1) {
       settings.log.printf("No entering variable found. Iter %d\n", iter);
       settings.log.printf("Scaled infeasibility %e\n", max_val);
