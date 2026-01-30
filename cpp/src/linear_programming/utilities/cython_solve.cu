@@ -52,13 +52,12 @@ linear_programming_ret_t call_solve_lp(
   bool is_batch_mode)
 {
   raft::common::nvtx::range fun_scope("Call Solve");
-  
+
   // Validate that this is an LP problem (not MIP/IP)
-  cuopt_expects(
-    view.get_problem_category() == cuopt::linear_programming::problem_category_t::LP,
-    cuopt::error_type_t::ValidationError,
-    "LP solve cannot be called on a MIP problem!");
-  
+  cuopt_expects(view.get_problem_category() == cuopt::linear_programming::problem_category_t::LP,
+                cuopt::error_type_t::ValidationError,
+                "LP solve cannot be called on a MIP problem!");
+
   const bool problem_checking     = true;
   const bool use_pdlp_solver_mode = true;
 
@@ -143,7 +142,7 @@ mip_ret_t call_solve_mip(
   cuopt::linear_programming::mip_solver_settings_t<int, double>& solver_settings)
 {
   raft::common::nvtx::range fun_scope("Call Solve");
-  
+
   // Validate that this is a MIP or IP problem (not pure LP)
   cuopt_expects(
     (view.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP) ||
@@ -174,7 +173,7 @@ mip_ret_t call_solve_mip(
   // Transfer solution data - either GPU or CPU depending on where it was solved
   if (solution.is_device_memory()) {
     // Local GPU solve: transfer device buffer
-    mip_ret.solution_         = std::make_unique<rmm::device_buffer>(solution.get_solution().release());
+    mip_ret.solution_ = std::make_unique<rmm::device_buffer>(solution.get_solution().release());
     mip_ret.is_device_memory_ = true;
   } else {
     // Remote solve: use host vector
@@ -191,7 +190,7 @@ std::unique_ptr<solver_ret_t> call_solve(
   bool is_batch_mode)
 {
   raft::common::nvtx::range fun_scope("Call Solve");
-  
+
   // Data from Python is always in CPU memory
   data_model->set_is_device_memory(false);
 
@@ -208,7 +207,7 @@ std::unique_ptr<solver_ret_t> call_solve(
 
   // Handle warm start data if present (only for local LP solves)
   if (!is_mip && solver_settings->get_pdlp_warm_start_data_view()
-                   .last_restart_duality_gap_dual_solution_.data() != nullptr) {
+                     .last_restart_duality_gap_dual_solution_.data() != nullptr) {
     cuopt::linear_programming::pdlp_warm_start_data_t<int, double> pdlp_warm_start_data(
       solver_settings->get_pdlp_warm_start_data_view(), handle_.get_stream());
     solver_settings->get_pdlp_settings().set_pdlp_warm_start_data(pdlp_warm_start_data);
@@ -218,7 +217,8 @@ std::unique_ptr<solver_ret_t> call_solve(
 
   if (!is_mip) {
     // LP solve
-    response.lp_ret       = call_solve_lp(handle_ptr, *data_model, solver_settings->get_pdlp_settings(), is_batch_mode);
+    response.lp_ret =
+      call_solve_lp(handle_ptr, *data_model, solver_settings->get_pdlp_settings(), is_batch_mode);
     response.problem_type = linear_programming::problem_category_t::LP;
     if (response.lp_ret.is_device_memory_) {
       // Reset stream to per-thread default as non-blocking stream is out of scope after the
@@ -240,7 +240,7 @@ std::unique_ptr<solver_ret_t> call_solve(
     }
   } else {
     // MIP solve
-    response.mip_ret      = call_solve_mip(handle_ptr, *data_model, solver_settings->get_mip_settings());
+    response.mip_ret = call_solve_mip(handle_ptr, *data_model, solver_settings->get_mip_settings());
     response.problem_type = linear_programming::problem_category_t::MIP;
     if (response.mip_ret.is_device_memory_) {
       // Reset stream to per-thread default as non-blocking stream is out of scope after the

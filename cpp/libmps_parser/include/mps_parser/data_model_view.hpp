@@ -10,6 +10,8 @@
 #include <mps_parser/utilities/span.hpp>
 
 #include <cstdint>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -444,10 +446,12 @@ class data_model_view_t {
  private:
   bool maximize_{false};
   bool is_device_memory_{false};  // true if spans point to GPU memory, false for CPU
-  
-  // Lazy-evaluated problem category cache
+
+  // Lazy-evaluated problem category cache (thread-safe with std::call_once)
+  // Using unique_ptr to make the class movable (std::once_flag is non-movable)
   mutable cuopt::linear_programming::problem_category_t problem_category_;
-  mutable bool problem_category_computed_{false};
+  mutable std::unique_ptr<std::once_flag> problem_category_flag_{
+    std::make_unique<std::once_flag>()};
   span<f_t const> A_;
   span<i_t const> A_indices_;
   span<i_t const> A_offsets_;

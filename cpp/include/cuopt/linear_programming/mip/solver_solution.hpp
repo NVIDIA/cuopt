@@ -139,7 +139,6 @@ class mip_solution_t : public base_solution_t {
   // Setters for remote solve deserialization
   //============================================================================
 
-
   /**
    * @brief Get error string
    */

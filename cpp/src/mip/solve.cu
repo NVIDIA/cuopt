@@ -289,9 +289,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
   }
 }
 
-
 // Note: create_view_from_mps_data_model() is in optimization_problem_conversions.hpp
-
 
 // Note: cpu_problem_data_t and copy_view_to_cpu are in optimization_problem_conversions.hpp
 

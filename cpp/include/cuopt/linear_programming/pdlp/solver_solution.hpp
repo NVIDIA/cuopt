@@ -335,7 +335,6 @@ class optimization_problem_solution_t : public base_solution_t {
   // Setters for host solution data (used by remote solve deserialization)
   //============================================================================
 
-
   //============================================================================
   // Getters for termination statistics
   //============================================================================

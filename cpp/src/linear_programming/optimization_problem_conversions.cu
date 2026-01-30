@@ -371,6 +371,7 @@ cuopt::mps_parser::data_model_view_t<i_t, f_t> cpu_problem_data_t<i_t, f_t>::cre
   if (!variable_types.empty()) {
     v.set_variable_types(variable_types.data(), variable_types.size());
   }
+  if (!row_types.empty()) { v.set_row_types(row_types.data(), row_types.size()); }
   if (!quadratic_objective_values.empty()) {
     v.set_quadratic_objective_matrix(quadratic_objective_values.data(),
                                      quadratic_objective_values.size(),
@@ -385,8 +386,7 @@ cuopt::mps_parser::data_model_view_t<i_t, f_t> cpu_problem_data_t<i_t, f_t>::cre
 
 template <typename i_t, typename f_t>
 cpu_problem_data_t<i_t, f_t> copy_view_to_cpu(
-  raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::data_model_view_t<i_t, f_t>& gpu_view)
+  raft::handle_t const* handle_ptr, const cuopt::mps_parser::data_model_view_t<i_t, f_t>& gpu_view)
 {
   cpu_problem_data_t<i_t, f_t> cpu_data;
   auto stream = handle_ptr->get_stream();
@@ -440,6 +440,30 @@ cpu_problem_data_t<i_t, f_t> copy_view_to_cpu(
     }
   }
 
+  // Row types need special handling (char array)
+  auto row_types_span = gpu_view.get_row_types();
+  if (row_types_span.size() > 0) {
+    cpu_data.row_types.resize(row_types_span.size());
+
+    // Check if row_types is host-backed or device-backed
+    cudaPointerAttributes attrs;
+    cudaError_t err = cudaPointerGetAttributes(&attrs, row_types_span.data());
+
+    if (err == cudaSuccess && attrs.type == cudaMemoryTypeDevice) {
+      // Device memory - use async copy
+      RAFT_CUDA_TRY(cudaMemcpyAsync(cpu_data.row_types.data(),
+                                    row_types_span.data(),
+                                    row_types_span.size() * sizeof(char),
+                                    cudaMemcpyDeviceToHost,
+                                    stream));
+    } else {
+      // Host memory or unregistered - use direct copy
+      if (err != cudaSuccess && err != cudaErrorInvalidValue) { RAFT_CUDA_TRY(err); }
+      std::memcpy(
+        cpu_data.row_types.data(), row_types_span.data(), row_types_span.size() * sizeof(char));
+    }
+  }
+
   // Synchronize to ensure all copies are complete
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
 
@@ -447,22 +471,22 @@ cpu_problem_data_t<i_t, f_t> copy_view_to_cpu(
 }
 
 // Explicit template instantiations
-#define INSTANTIATE(F_TYPE)                                                                \
-  template optimization_problem_t<int, F_TYPE> data_model_view_to_optimization_problem(    \
-    raft::handle_t const* handle_ptr,                                                      \
-    const cuopt::mps_parser::data_model_view_t<int, F_TYPE>& view);                        \
-                                                                                            \
-  template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem(     \
-    raft::handle_t const* handle_ptr,                                                      \
-    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);                   \
-                                                                                            \
+#define INSTANTIATE(F_TYPE)                                                                   \
+  template optimization_problem_t<int, F_TYPE> data_model_view_to_optimization_problem(       \
+    raft::handle_t const* handle_ptr,                                                         \
+    const cuopt::mps_parser::data_model_view_t<int, F_TYPE>& view);                           \
+                                                                                              \
+  template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem(        \
+    raft::handle_t const* handle_ptr,                                                         \
+    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);                      \
+                                                                                              \
   template cuopt::mps_parser::data_model_view_t<int, F_TYPE> create_view_from_mps_data_model( \
-    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& mps_data_model);               \
-                                                                                            \
-  template struct cpu_problem_data_t<int, F_TYPE>;                                         \
-                                                                                            \
-  template cpu_problem_data_t<int, F_TYPE> copy_view_to_cpu(                               \
-    raft::handle_t const* handle_ptr,                                                      \
+    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& mps_data_model);                  \
+                                                                                              \
+  template struct cpu_problem_data_t<int, F_TYPE>;                                            \
+                                                                                              \
+  template cpu_problem_data_t<int, F_TYPE> copy_view_to_cpu(                                  \
+    raft::handle_t const* handle_ptr,                                                         \
     const cuopt::mps_parser::data_model_view_t<int, F_TYPE>& gpu_view);
 
 #if MIP_INSTANTIATE_FLOAT
