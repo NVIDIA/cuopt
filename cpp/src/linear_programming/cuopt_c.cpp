@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -11,6 +11,7 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/utilities/timestamp_utils.hpp>
+#include <linear_programming/cuopt_c_internal.hpp>
 #include <utilities/logger.hpp>
 
 #include <mps_parser/parser.hpp>
@@ -23,31 +24,6 @@
 
 using namespace cuopt::mps_parser;
 using namespace cuopt::linear_programming;
-
-struct problem_and_stream_view_t {
-  problem_and_stream_view_t()
-    : op_problem(nullptr), stream_view(rmm::cuda_stream_per_thread), handle(stream_view)
-  {
-  }
-  raft::handle_t* get_handle_ptr() { return &handle; }
-  cuopt::linear_programming::optimization_problem_t<cuopt_int_t, cuopt_float_t>* op_problem;
-  rmm::cuda_stream_view stream_view;
-  raft::handle_t handle;
-};
-
-struct solution_and_stream_view_t {
-  solution_and_stream_view_t(bool solution_for_mip, rmm::cuda_stream_view stream_view)
-    : is_mip(solution_for_mip),
-      mip_solution_ptr(nullptr),
-      lp_solution_ptr(nullptr),
-      stream_view(stream_view)
-  {
-  }
-  bool is_mip;
-  mip_solution_t<cuopt_int_t, cuopt_float_t>* mip_solution_ptr;
-  optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* lp_solution_ptr;
-  rmm::cuda_stream_view stream_view;
-};
 
 int8_t cuOptGetFloatSize() { return sizeof(cuopt_float_t); }
 
@@ -89,6 +65,26 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
       problem_and_stream->get_handle_ptr(), *mps_data_model_ptr));
   problem_and_stream->op_problem = op_problem;
   *problem_ptr                   = static_cast<cuOptOptimizationProblem>(problem_and_stream);
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptWriteProblem(cuOptOptimizationProblem problem,
+                              const char* filename,
+                              cuopt_int_t format)
+{
+  if (problem == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (filename == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (strlen(filename) == 0) { return CUOPT_INVALID_ARGUMENT; }
+  if (format != CUOPT_FILE_FORMAT_MPS) { return CUOPT_INVALID_ARGUMENT; }
+
+  problem_and_stream_view_t* problem_and_stream_view =
+    static_cast<problem_and_stream_view_t*>(problem);
+  try {
+    problem_and_stream_view->op_problem->write_to_mps(std::string(filename));
+  } catch (const std::exception& e) {
+    CUOPT_LOG_INFO("Error writing MPS file: %s", e.what());
+    return CUOPT_MPS_FILE_ERROR;
+  }
   return CUOPT_SUCCESS;
 }
 
@@ -700,6 +696,60 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
     static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
   try {
     *parameter_value_ptr = solver_settings->get_parameter<cuopt_float_t>(parameter_name);
+  } catch (const std::exception& e) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptSetInitialPrimalSolution(cuOptSolverSettings settings,
+                                          const cuopt_float_t* primal_solution,
+                                          cuopt_int_t num_variables)
+{
+  if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (primal_solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (num_variables <= 0) { return CUOPT_INVALID_ARGUMENT; }
+
+  solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
+    static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+  try {
+    solver_settings->set_initial_pdlp_primal_solution(primal_solution, num_variables);
+  } catch (const std::exception& e) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptSetInitialDualSolution(cuOptSolverSettings settings,
+                                        const cuopt_float_t* dual_solution,
+                                        cuopt_int_t num_constraints)
+{
+  if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (dual_solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (num_constraints <= 0) { return CUOPT_INVALID_ARGUMENT; }
+
+  solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
+    static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+  try {
+    solver_settings->set_initial_pdlp_dual_solution(dual_solution, num_constraints);
+  } catch (const std::exception& e) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptAddMIPStart(cuOptSolverSettings settings,
+                             const cuopt_float_t* solution,
+                             cuopt_int_t num_variables)
+{
+  if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (num_variables <= 0) { return CUOPT_INVALID_ARGUMENT; }
+
+  solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
+    static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+  try {
+    solver_settings->get_mip_settings().add_initial_solution(solution, num_variables);
   } catch (const std::exception& e) {
     return CUOPT_INVALID_ARGUMENT;
   }
