@@ -1,0 +1,195 @@
+# LP/MILP: C API Examples
+
+## Simple LP
+
+```c
+/*
+ * Solve: minimize  -0.2*x1 + 0.1*x2
+ *        subject to  3.0*x1 + 4.0*x2 <= 5.4
+ *                    2.7*x1 + 10.1*x2 <= 4.9
+ *                    x1, x2 >= 0
+ */
+#include <cuopt/linear_programming/cuopt_c.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    cuOptOptimizationProblem problem = NULL;
+    cuOptSolverSettings settings = NULL;
+    cuOptSolution solution = NULL;
+
+    cuopt_int_t num_variables = 2;
+    cuopt_int_t num_constraints = 2;
+
+    // Constraint matrix in CSR format
+    cuopt_int_t row_offsets[] = {0, 2, 4};
+    cuopt_int_t column_indices[] = {0, 1, 0, 1};
+    cuopt_float_t values[] = {3.0, 4.0, 2.7, 10.1};
+
+    // Objective coefficients
+    cuopt_float_t objective_coefficients[] = {-0.2, 0.1};
+
+    // Constraint bounds (lower <= Ax <= upper)
+    cuopt_float_t constraint_upper_bounds[] = {5.4, 4.9};
+    cuopt_float_t constraint_lower_bounds[] = {-CUOPT_INFINITY, -CUOPT_INFINITY};
+
+    // Variable bounds
+    cuopt_float_t var_lower_bounds[] = {0.0, 0.0};
+    cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY};
+
+    // Variable types
+    char variable_types[] = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
+
+    cuopt_int_t status;
+
+    // Create problem
+    status = cuOptCreateRangedProblem(
+        num_constraints, num_variables, CUOPT_MINIMIZE,
+        0.0,  // objective offset
+        objective_coefficients,
+        row_offsets, column_indices, values,
+        constraint_lower_bounds, constraint_upper_bounds,
+        var_lower_bounds, var_upper_bounds,
+        variable_types,
+        &problem
+    );
+    if (status != CUOPT_SUCCESS) {
+        printf("Error creating problem: %d\n", status);
+        return 1;
+    }
+
+    // Create and configure solver settings
+    cuOptCreateSolverSettings(&settings);
+    cuOptSetFloatParameter(settings, CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, 0.0001);
+    cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 60.0);
+
+    // Solve
+    status = cuOptSolve(problem, settings, &solution);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error solving: %d\n", status);
+        goto cleanup;
+    }
+
+    // Get results
+    cuopt_float_t time, objective_value;
+    cuopt_int_t termination_status;
+    
+    cuOptGetSolveTime(solution, &time);
+    cuOptGetTerminationStatus(solution, &termination_status);
+    cuOptGetObjectiveValue(solution, &objective_value);
+
+    printf("Status: %d\n", termination_status);
+    printf("Time: %f s\n", time);
+    printf("Objective: %f\n", objective_value);
+
+    // Get solution values
+    cuopt_float_t* sol = malloc(num_variables * sizeof(cuopt_float_t));
+    cuOptGetPrimalSolution(solution, sol);
+    printf("x1 = %f\n", sol[0]);
+    printf("x2 = %f\n", sol[1]);
+    free(sol);
+
+cleanup:
+    cuOptDestroyProblem(&problem);
+    cuOptDestroySolverSettings(&settings);
+    cuOptDestroySolution(&solution);
+    return (status == CUOPT_SUCCESS) ? 0 : 1;
+}
+```
+
+## MILP (with integer variables)
+
+```c
+/*
+ * Same as LP but x1 is integer
+ */
+#include <cuopt/linear_programming/cuopt_c.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    cuOptOptimizationProblem problem = NULL;
+    cuOptSolverSettings settings = NULL;
+    cuOptSolution solution = NULL;
+
+    cuopt_int_t num_variables = 2;
+    cuopt_int_t num_constraints = 2;
+
+    cuopt_int_t row_offsets[] = {0, 2, 4};
+    cuopt_int_t column_indices[] = {0, 1, 0, 1};
+    cuopt_float_t values[] = {3.0, 4.0, 2.7, 10.1};
+
+    cuopt_float_t objective_coefficients[] = {-0.2, 0.1};
+    cuopt_float_t constraint_upper[] = {5.4, 4.9};
+    cuopt_float_t constraint_lower[] = {-CUOPT_INFINITY, -CUOPT_INFINITY};
+    cuopt_float_t var_lower[] = {0.0, 0.0};
+    cuopt_float_t var_upper[] = {CUOPT_INFINITY, CUOPT_INFINITY};
+
+    // x1 = INTEGER, x2 = CONTINUOUS
+    char variable_types[] = {CUOPT_INTEGER, CUOPT_CONTINUOUS};
+
+    cuopt_int_t status = cuOptCreateRangedProblem(
+        num_constraints, num_variables, CUOPT_MINIMIZE, 0.0,
+        objective_coefficients,
+        row_offsets, column_indices, values,
+        constraint_lower, constraint_upper,
+        var_lower, var_upper,
+        variable_types, &problem
+    );
+
+    cuOptCreateSolverSettings(&settings);
+    cuOptSetFloatParameter(settings, CUOPT_MIP_ABSOLUTE_TOLERANCE, 0.0001);
+    cuOptSetFloatParameter(settings, CUOPT_MIP_RELATIVE_GAP, 0.01);
+    cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 120.0);
+
+    status = cuOptSolve(problem, settings, &solution);
+
+    cuopt_float_t objective_value;
+    cuOptGetObjectiveValue(solution, &objective_value);
+    printf("Objective: %f\n", objective_value);
+
+    cuopt_float_t* sol = malloc(num_variables * sizeof(cuopt_float_t));
+    cuOptGetPrimalSolution(solution, sol);
+    printf("x1 (integer) = %f\n", sol[0]);
+    printf("x2 (continuous) = %f\n", sol[1]);
+    free(sol);
+
+    cuOptDestroyProblem(&problem);
+    cuOptDestroySolverSettings(&settings);
+    cuOptDestroySolution(&solution);
+    return 0;
+}
+```
+
+## Build & Run
+
+```bash
+# Set paths (conda example)
+export INCLUDE_PATH="${CONDA_PREFIX}/include"
+export LIB_PATH="${CONDA_PREFIX}/lib"
+
+# Compile
+gcc -I${INCLUDE_PATH} -L${LIB_PATH} -o lp_example lp_example.c -lcuopt
+
+# Run
+LD_LIBRARY_PATH=${LIB_PATH}:$LD_LIBRARY_PATH ./lp_example
+```
+
+## Constants Reference
+
+```c
+// Optimization sense
+CUOPT_MINIMIZE
+CUOPT_MAXIMIZE
+
+// Variable types
+CUOPT_CONTINUOUS
+CUOPT_INTEGER
+
+// Special values
+CUOPT_INFINITY      // Use for unbounded
+-CUOPT_INFINITY     // Use for no lower bound
+
+// Return codes
+CUOPT_SUCCESS       // 0
+```

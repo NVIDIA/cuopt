@@ -1,7 +1,8 @@
-# AGENTS.md (shim)
+# AGENTS.md
 
-The canonical AI-agent entrypoint for this repo is:
+AI-agent skills for this repo are located at:
 
-- `.github/AGENTS.md`
+- **Entry point**: `.github/AGENTS.md`
+- **Skills**: `.github/skills/`
 
-If you are a coding agent, start there.
+If you are a coding agent, start at `.github/AGENTS.md`.
