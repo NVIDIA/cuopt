@@ -100,83 +100,59 @@ f_t cut_pool_t<i_t, f_t>::cut_orthogonality(i_t i, i_t j)
 template <typename i_t, typename f_t>
 void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
 {
-  const f_t weight_distance      = 1.0;
-  const f_t weight_orthogonality = 1.0;
   const f_t min_cut_distance     = 1e-4;
   cut_distances_.resize(cut_storage_.m, 0.0);
   cut_norms_.resize(cut_storage_.m, 0.0);
-  cut_orthogonality_.resize(cut_storage_.m, 1);
-  std::fill(cut_orthogonality_.begin(), cut_orthogonality_.end(), 1.0);
-  cut_scores_.resize(cut_storage_.m, 0.0);
+
   const bool verbose = false;
   for (i_t i = 0; i < cut_storage_.m; i++) {
     f_t violation;
-    cut_distances_[i] = cut_distance(i, x_relax, violation, cut_norms_[i]);
-    cut_scores_[i] =
-      cut_distances_[i] <= min_cut_distance
-        ? 0.0
-        : weight_distance * cut_distances_[i] + weight_orthogonality * cut_orthogonality_[i];
+    f_t cut_dist = cut_distance(i, x_relax, violation, cut_norms_[i]);
+    cut_distances_[i] = cut_dist  <= min_cut_distance ? 0.0 : cut_dist;
     if (verbose) {
       settings_.log.printf(
-        "Cut %d type %d distance %+e violation %+e orthogonality %e score %.16e\n",
+        "Cut %d type %d distance %+e violation %+e cut_norm %e\n",
         i,
         static_cast<int>(cut_type_[i]),
         cut_distances_[i],
         violation,
-        cut_orthogonality_[i],
-        cut_scores_[i]);
+        cut_norms_[i]);
     }
   }
 
   std::vector<i_t> sorted_indices;
-  best_score_first_permutation(cut_scores_, sorted_indices);
-
-  std::vector<i_t> indices;
-  indices.reserve(sorted_indices.size());
+  best_score_last_permutation(cut_distances_, sorted_indices);
 
   const i_t max_cuts          = 2000;
   const f_t min_orthogonality = settings_.cut_min_orthogonality;
   best_cuts_.reserve(std::min(max_cuts, cut_storage_.m));
   best_cuts_.clear();
-  scored_cuts_ = 0;
 
-  while (scored_cuts_ < max_cuts && !sorted_indices.empty()) {
-    const i_t i = sorted_indices[0];
-
-    if (cut_distances_[i] <= min_cut_distance) { break; }
-
-    if (verbose && cut_age_[i] > 0) {
-      settings_.log.printf("Adding cut with age %d\n", cut_age_[i]);
-    }
-    if (verbose) {
-      settings_.log.printf(
-        "Scored cuts %d. Adding cut %d score %e\n", scored_cuts_, i, cut_scores_[i]);
-    }
-
+  if (!sorted_indices.empty()) {
+    const i_t i = sorted_indices.back();
+    sorted_indices.pop_back();
     best_cuts_.push_back(i);
     scored_cuts_++;
+  }
 
-    // Recompute the orthogonality for the remaining cuts
-    for (i_t k = 1; k < sorted_indices.size(); k++) {
-      const i_t j           = sorted_indices[k];
-      cut_orthogonality_[j] = std::min(cut_orthogonality_[j], cut_orthogonality(i, j));
-      if (cut_orthogonality_[j] >= min_orthogonality) {
-        indices.push_back(j);
-        if (cut_distances_[j] <= min_cut_distance) {
-          cut_scores_[j] = 0.0;  // Ignore cuts under the minimum distance threshold
-        } else {
-          cut_scores_[j] =
-            weight_distance * cut_distances_[j] + weight_orthogonality * cut_orthogonality_[j];
-        }
-      }
+  while (scored_cuts_ < max_cuts && !sorted_indices.empty()) {
+    const i_t i = sorted_indices.back();
+    sorted_indices.pop_back();
+
+    if (cut_distances_[i] <= min_cut_distance) {
+      break;
     }
 
-    sorted_indices = indices;
-    indices.clear();
-
-    std::sort(sorted_indices.begin(), sorted_indices.end(), [&](i_t a, i_t b) {
-      return cut_scores_[a] > cut_scores_[b];
-    });
+    f_t cut_ortho = 1.0;
+    const i_t best_cuts_size = best_cuts_.size();
+    for (i_t k = 0; k < best_cuts_size; k++) {
+      const i_t j = best_cuts_[k];
+      cut_ortho = std::min(cut_ortho, cut_orthogonality(i, j));
+    }
+    if (cut_ortho >= min_orthogonality) {
+      best_cuts_.push_back(i);
+      scored_cuts_++;
+    }
   }
 }
 
@@ -2233,34 +2209,23 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_helper(
       const f_t a_j = coefficients[q];
       if (var_types[j] == variable_type_t::INTEGER) {
         const f_t f_a_j = fractional_part(a_j);
-        if (f_a_j <= f_a_0) {
+        const f_t tol = 1e-4;
+        if (f_a_j <= f_a_0 + tol) {
           cut.i.push_back(j);
           cut.x.push_back((k + 1.0) * std::floor(a_j));
           if (verbose) { printf("j %d a_j %e f_a_j %e k %d\n", j, a_j, f_a_j, k); }
         } else {
-          // Need to compute the p such that
-          // f(a_0) + (p-1)/k * alpha < f(a_j) <= f(a_0) + p/k * alpha
-          const f_t value = static_cast<f_t>(k) * (f_a_j - f_a_0) / alpha;
-          if (value < 1e-6) {
-            return -1;  // Safegaurd to prevent numerical issues when f(a_j) is very close to f(a_0)
-                        // You might also be able to adjust p here to avoid this issue
-          }
-          i_t p = static_cast<i_t>(std::ceil(value));
-          if (verbose) {
-            printf("j %d a_j %e f_a_j %e p %d value %.16e\n", j, a_j, f_a_j, p, value);
-          }
-          if (f_a_0 + static_cast<f_t>(p - 1) / static_cast<f_t>(k) * alpha < f_a_j &&
-              f_a_j <= f_a_0 + static_cast<f_t>(p) / static_cast<f_t>(k) * alpha) {
+          // Find p such that p <= k * f(a_j) < p + 1
+          i_t p = static_cast<i_t>(std::floor(k * f_a_j));
+          // If f(a_j) > f(a_0) + p /k (1 - f(a_0)) then we can increase the cofficient by 1
+          const f_t rhs_j = f_a_0 + static_cast<f_t>(p) / static_cast<f_t>(k) * alpha;
+          const i_t coeff = (k + 1) * static_cast<i_t>(std::floor(a_j)) + p;
+          if (f_a_j > rhs_j + tol) {
             cut.i.push_back(j);
-            cut.x.push_back((k + 1.0) * std::floor(a_j) + p);
+            cut.x.push_back(static_cast<f_t>(coeff + 1));
           } else {
-            printf("Error: p %d f_a_0 %e f_a_j %e alpha %e value %.16e\n",
-                   p,
-                   f_a_0,
-                   f_a_j,
-                   alpha,
-                   value);
-            return -1;
+            cut.i.push_back(j);
+            cut.x.push_back(static_cast<f_t>(coeff));
           }
         }
       } else {
