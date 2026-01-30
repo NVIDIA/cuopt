@@ -100,23 +100,22 @@ f_t cut_pool_t<i_t, f_t>::cut_orthogonality(i_t i, i_t j)
 template <typename i_t, typename f_t>
 void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
 {
-  const f_t min_cut_distance     = 1e-4;
+  const f_t min_cut_distance = 1e-4;
   cut_distances_.resize(cut_storage_.m, 0.0);
   cut_norms_.resize(cut_storage_.m, 0.0);
 
   const bool verbose = false;
   for (i_t i = 0; i < cut_storage_.m; i++) {
     f_t violation;
-    f_t cut_dist = cut_distance(i, x_relax, violation, cut_norms_[i]);
-    cut_distances_[i] = cut_dist  <= min_cut_distance ? 0.0 : cut_dist;
+    f_t cut_dist      = cut_distance(i, x_relax, violation, cut_norms_[i]);
+    cut_distances_[i] = cut_dist <= min_cut_distance ? 0.0 : cut_dist;
     if (verbose) {
-      settings_.log.printf(
-        "Cut %d type %d distance %+e violation %+e cut_norm %e\n",
-        i,
-        static_cast<int>(cut_type_[i]),
-        cut_distances_[i],
-        violation,
-        cut_norms_[i]);
+      settings_.log.printf("Cut %d type %d distance %+e violation %+e cut_norm %e\n",
+                           i,
+                           static_cast<int>(cut_type_[i]),
+                           cut_distances_[i],
+                           violation,
+                           cut_norms_[i]);
     }
   }
 
@@ -139,15 +138,13 @@ void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
     const i_t i = sorted_indices.back();
     sorted_indices.pop_back();
 
-    if (cut_distances_[i] <= min_cut_distance) {
-      break;
-    }
+    if (cut_distances_[i] <= min_cut_distance) { break; }
 
-    f_t cut_ortho = 1.0;
+    f_t cut_ortho            = 1.0;
     const i_t best_cuts_size = best_cuts_.size();
     for (i_t k = 0; k < best_cuts_size; k++) {
       const i_t j = best_cuts_[k];
-      cut_ortho = std::min(cut_ortho, cut_orthogonality(i, j));
+      cut_ortho   = std::min(cut_ortho, cut_orthogonality(i, j));
     }
     if (cut_ortho >= min_orthogonality) {
       best_cuts_.push_back(i);
@@ -2209,7 +2206,7 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_helper(
       const f_t a_j = coefficients[q];
       if (var_types[j] == variable_type_t::INTEGER) {
         const f_t f_a_j = fractional_part(a_j);
-        const f_t tol = 1e-4;
+        const f_t tol   = 1e-4;
         if (f_a_j <= f_a_0 + tol) {
           cut.i.push_back(j);
           cut.x.push_back((k + 1.0) * std::floor(a_j));
