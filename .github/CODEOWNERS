@@ -12,9 +12,18 @@ docs/              @nvidia/cuopt-infra-codeowners
 container-builder/ @nvidia/cuopt-infra-codeowners
 
 #CI code owners
-/.github/                @nvidia/cuopt-ci-codeowners
-/ci/                     @nvidia/cuopt-ci-codeowners
-/.pre-commit-config.yaml @nvidia/cuopt-ci-codeowners
+/.github/                       @nvidia/cuopt-ci-codeowners
+/ci/                            @nvidia/cuopt-ci-codeowners
+/.pre-commit-config.yaml        @nvidia/cuopt-ci-codeowners
+
+#agent/infra code owners (overrides .github/ for specific paths)
+/AGENTS.md                           @nvidia/cuopt-infra-codeowners
+/.ai/                                @nvidia/cuopt-infra-codeowners
+/.github/.coderabbit_review_guide.md @nvidia/cuopt-infra-codeowners
+/.github/ISSUE_TEMPLATE/             @nvidia/cuopt-infra-codeowners
+/.github/PULL_REQUEST_TEMPLATE.md    @nvidia/cuopt-infra-codeowners
+/.github/skills/                     @nvidia/cuopt-infra-codeowners
+/.github/agents-legacy/              @nvidia/cuopt-infra-codeowners
 
 #packaging code owners
 /.devcontainer/    @nvidia/cuopt-ci-codeowners
