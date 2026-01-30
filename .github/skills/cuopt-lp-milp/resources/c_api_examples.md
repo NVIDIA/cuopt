@@ -73,7 +73,7 @@ int main() {
     // Get results
     cuopt_float_t time, objective_value;
     cuopt_int_t termination_status;
-    
+
     cuOptGetSolveTime(solution, &time);
     cuOptGetTerminationStatus(solution, &termination_status);
     cuOptGetObjectiveValue(solution, &objective_value);

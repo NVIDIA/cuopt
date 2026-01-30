@@ -85,7 +85,7 @@ transport_cost = {
 problem = Problem("FacilityLocation")
 
 # Binary variables: y[w] = 1 if warehouse w is open
-y = {w: problem.addVariable(lb=0, ub=1, vtype=INTEGER, name=f"open_{w}") 
+y = {w: problem.addVariable(lb=0, ub=1, vtype=INTEGER, name=f"open_{w}")
      for w in warehouses}
 
 # Continuous variables: x[w,c] = units shipped from w to c
@@ -157,7 +157,7 @@ max_weight = 5
 problem = Problem("Knapsack")
 
 # Binary variables: x[i] = 1 if item i is selected
-x = [problem.addVariable(lb=0, ub=1, vtype=INTEGER, name=items[i]) 
+x = [problem.addVariable(lb=0, ub=1, vtype=INTEGER, name=items[i])
      for i in range(len(items))]
 
 # Objective: maximize total value
@@ -199,7 +199,7 @@ x = {(s, c): problem.addVariable(lb=0, vtype=CONTINUOUS, name=f"x_{s}_{c}")
      for s in suppliers for c in customers}
 
 # Minimize total shipping cost
-problem.setObjective(sum(cost[s,c] * x[s,c] for s in suppliers for c in customers), 
+problem.setObjective(sum(cost[s,c] * x[s,c] for s in suppliers for c in customers),
                      sense=MINIMIZE)
 
 # Supply constraints
@@ -232,8 +232,8 @@ if problem.Status.name in ["Optimal", "FeasibleFound"]:
 if problem.Status.name == "OPTIMAL":  # Never matches!
     print(problem.ObjValue)
 
-# LP status values: Optimal, PrimalFeasible, PrimalInfeasible, 
+# LP status values: Optimal, PrimalFeasible, PrimalInfeasible,
 #                   DualInfeasible, TimeLimit, NumericalError
-# MILP status values: Optimal, FeasibleFound, Infeasible, 
+# MILP status values: Optimal, FeasibleFound, Infeasible,
 #                     Unbounded, TimeLimit, NoTermination
 ```

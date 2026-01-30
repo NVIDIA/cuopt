@@ -67,7 +67,7 @@ if status != 0:
 infeasible = solution.get_infeasible_orders()
 if len(infeasible) > 0:
     print(f"Infeasible orders: {infeasible.to_list()}")
-    
+
     # Check why each is infeasible
     for order_idx in infeasible.to_list():
         print(f"\nOrder {order_idx}:")

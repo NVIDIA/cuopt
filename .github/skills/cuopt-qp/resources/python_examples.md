@@ -57,7 +57,7 @@ if problem.Status.name in ["Optimal", "PrimalFeasible"]:
     print(f"  Stock A: {x1.getValue()*100:.2f}%")
     print(f"  Stock B: {x2.getValue()*100:.2f}%")
     print(f"  Stock C: {x3.getValue()*100:.2f}%")
-    
+
     actual_return = r1*x1.getValue() + r2*x2.getValue() + r3*x3.getValue()
     print(f"\nExpected return: {actual_return*100:.2f}%")
 ```

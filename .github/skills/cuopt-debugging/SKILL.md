@@ -101,7 +101,7 @@ if solution.get_status() != 0:
 ```python
 # Check how variable was defined
 int_var = problem.addVariable(
-    lb=0, ub=10, 
+    lb=0, ub=10,
     vtype=INTEGER,  # Must be INTEGER, not CONTINUOUS
     name="count"
 )
@@ -127,7 +127,7 @@ Common field name mistakes:
 // ❌ WRONG
 "capacities": [[50], [50]]
 
-// ✅ CORRECT  
+// ✅ CORRECT
 "capacities": [[50, 50]]
 ```
 

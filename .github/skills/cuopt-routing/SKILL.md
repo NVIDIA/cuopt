@@ -164,7 +164,7 @@ dm.set_pickup_delivery_pairs(
 ```python
 status = solution.get_status()
 # 0 = SUCCESS
-# 1 = FAIL  
+# 1 = FAIL
 # 2 = TIMEOUT
 # 3 = EMPTY
 

@@ -199,7 +199,7 @@ nvcc --version
 # For CUDA 12.x
 pip install cuopt-cu12
 
-# For CUDA 13.x  
+# For CUDA 13.x
 pip install cuopt-cu13
 ```
 

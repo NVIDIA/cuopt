@@ -250,7 +250,7 @@ Routing requires at minimum:
 
 ```json
 {
-  "reqId": "abc123", 
+  "reqId": "abc123",
   "response": {
     "status": "Optimal",
     "objective_value": 1600.0,

@@ -121,7 +121,7 @@ print(f"Submitted: {req_id}")
 for _ in range(30):
     response = requests.get(f"{SERVER}/cuopt/solution/{req_id}", headers=HEADERS)
     result = response.json()
-    
+
     if "response" in result:
         print(f"Status: {result['response'].get('status')}")
         print(f"Objective: {result['response'].get('objective_value')}")
@@ -164,5 +164,5 @@ CSR format:
 ```
 
 - `"continuous"` - real-valued
-- `"integer"` - integer-valued  
+- `"integer"` - integer-valued
 - `"binary"` - 0 or 1 only
