@@ -124,11 +124,6 @@ void rins_t<i_t, f_t>::run_rins()
     cuopt_assert(best_feasible_ref.assignment.size() == best_sol.assignment.size(),
                  "Assignment size mismatch");
     cuopt_assert(best_feasible_ref.get_feasible(), "Best feasible is not feasible");
-    // Synchronize the main solver's stream to ensure any pending GPU operations on
-    // best_feasible_ref.assignment are complete before copying. The CPU mutex only
-    // prevents concurrent CPU access; GPU operations launched by the main thread
-    // might still be in flight. Without this sync, the copy could read incomplete data.
-    best_feasible_ref.handle_ptr->sync_stream();
     expand_device_copy(best_sol.assignment, best_feasible_ref.assignment, rins_handle.get_stream());
     best_sol.handle_ptr  = &rins_handle;
     best_sol.problem_ptr = problem_copy.get();
