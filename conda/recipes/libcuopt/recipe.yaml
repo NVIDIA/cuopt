@@ -34,7 +34,7 @@ cache:
         # Uses the shared script (ci/utils/install_protobuf_grpc.sh) for both wheel and conda builds.
         GRPC_INSTALL_DIR="${SRC_DIR}/grpc_install"
 
-        bash ./ci/utils/install_protobuf_grpc.sh --prefix="${GRPC_INSTALL_DIR}" --build-dir="${SRC_DIR}"
+        bash ./ci/utils/install_protobuf_grpc.sh --prefix="${GRPC_INSTALL_DIR}" --build-dir="${SRC_DIR}" --skip-deps
 
         # Build libcuopt with our gRPC
         export CMAKE_PREFIX_PATH="${GRPC_INSTALL_DIR}:${CMAKE_PREFIX_PATH:-}"

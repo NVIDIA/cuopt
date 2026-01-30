@@ -17,14 +17,15 @@ set -euo pipefail
 # Options:
 #   --prefix=DIR       Installation prefix (default: /usr/local)
 #   --build-dir=DIR    Build directory for source builds (default: /tmp)
+#   --skip-deps        Skip installing system dependencies (for conda builds)
 #   --help             Show this help message
 #
 # Examples:
-#   # Wheel builds (install to /usr/local)
+#   # Wheel builds (install to /usr/local, installs system deps)
 #   ./install_protobuf_grpc.sh
 #
-#   # Conda builds (install to custom prefix)
-#   ./install_protobuf_grpc.sh --prefix=${GRPC_INSTALL_DIR} --build-dir=${SRC_DIR}
+#   # Conda builds (install to custom prefix, deps already available)
+#   ./install_protobuf_grpc.sh --prefix=${GRPC_INSTALL_DIR} --build-dir=${SRC_DIR} --skip-deps
 
 # Configuration - single source of truth for gRPC version
 GRPC_VERSION="v1.64.2"
@@ -32,6 +33,7 @@ GRPC_VERSION="v1.64.2"
 # Default values
 PREFIX="/usr/local"
 BUILD_DIR="/tmp"
+SKIP_DEPS=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -44,6 +46,10 @@ while [[ $# -gt 0 ]]; do
             BUILD_DIR="${1#*=}"
             shift
             ;;
+        --skip-deps)
+            SKIP_DEPS=true
+            shift
+            ;;
         --help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -52,6 +58,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --prefix=DIR       Installation prefix (default: /usr/local)"
             echo "  --build-dir=DIR    Build directory for source builds (default: /tmp)"
+            echo "  --skip-deps        Skip installing system dependencies (for conda builds)"
             echo "  --help             Show this help message"
             exit 0
             ;;
@@ -66,7 +73,44 @@ echo "=============================================="
 echo "Installing gRPC ${GRPC_VERSION} from source"
 echo "  Prefix: ${PREFIX}"
 echo "  Build dir: ${BUILD_DIR}"
+echo "  Skip deps: ${SKIP_DEPS}"
 echo "=============================================="
+
+# Install system dependencies if not skipped
+if [ "${SKIP_DEPS}" = false ]; then
+    echo ""
+    echo "Installing system dependencies..."
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        if [[ "$ID" == "rocky" || "$ID" == "centos" || "$ID" == "rhel" || "$ID" == "fedora" ]]; then
+            # Enable PowerTools (Rocky 8) or CRB (Rocky 9) for some packages
+            if [[ "${VERSION_ID%%.*}" == "8" ]]; then
+                dnf config-manager --set-enabled powertools || dnf config-manager --set-enabled PowerTools || true
+            elif [[ "${VERSION_ID%%.*}" == "9" ]]; then
+                dnf config-manager --set-enabled crb || true
+            fi
+            dnf install -y git cmake ninja-build gcc gcc-c++ openssl-devel zlib-devel c-ares-devel
+        elif [[ "$ID" == "ubuntu" || "$ID" == "debian" ]]; then
+            apt-get update
+            apt-get install -y git cmake ninja-build g++ libssl-dev zlib1g-dev libc-ares-dev
+        else
+            echo "Warning: Unknown OS '$ID'. Assuming build tools are already installed."
+        fi
+    else
+        echo "Warning: /etc/os-release not found. Assuming build tools are already installed."
+    fi
+fi
+
+# Verify required tools are available
+echo ""
+echo "Checking required tools..."
+for tool in git cmake ninja; do
+    if ! command -v "$tool" &> /dev/null; then
+        echo "Error: Required tool '$tool' not found. Please install it or use --skip-deps=false"
+        exit 1
+    fi
+done
+echo "All required tools found."
 
 # Clean up any previous installations to avoid ABI mismatches
 # (notably Abseil LTS namespaces like absl::lts_20220623 vs absl::lts_20250512)
