@@ -873,22 +873,22 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
 #endif
 
   // Reset the bound_changed markers
-  std::fill(node_presolver.bounds_changed.begin(), node_presolver.bounds_changed.end(), false);
+  std::vector<bool> bounds_changed(original_lp_.num_cols, false);
 
   // Set the correct bounds for the leaf problem
   if (recompute_bounds_and_basis) {
     leaf_problem.lower = root_lower;
     leaf_problem.upper = root_upper;
     node_ptr->get_variable_bounds(
-      leaf_problem.lower, leaf_problem.upper, node_presolver.bounds_changed);
+      leaf_problem.lower, leaf_problem.upper, bounds_changed);
 
   } else {
     node_ptr->update_branched_variable_bounds(
-      leaf_problem.lower, leaf_problem.upper, node_presolver.bounds_changed);
+      leaf_problem.lower, leaf_problem.upper, bounds_changed);
   }
 
   bool feasible =
-    node_presolver.bounds_strengthening(leaf_problem.lower, leaf_problem.upper, lp_settings);
+    node_presolver.bounds_strengthening(lp_settings, bounds_changed, leaf_problem.lower, leaf_problem.upper);
 
   dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
 
@@ -1470,6 +1470,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(bnb_worker_type_t diving_type)
   lp_problem_t<i_t, f_t> leaf_problem = original_lp_;
   std::vector<char> row_sense;
   bounds_strengthening_t<i_t, f_t> node_presolver(leaf_problem, Arow_, row_sense, var_types_);
+  std::vector<bool> bounds_changed(original_lp_.num_cols, false);
 
   const i_t m = leaf_problem.num_rows;
   basis_update_mpf_t<i_t, f_t> basis_factors(m, settings_.refactor_frequency);
@@ -1485,7 +1486,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(bnb_worker_type_t diving_type)
     if (reset_starting_bounds) {
       start_lower = original_lp_.lower;
       start_upper = original_lp_.upper;
-      std::fill(node_presolver.bounds_changed.begin(), node_presolver.bounds_changed.end(), false);
+      std::fill(bounds_changed.begin(), bounds_changed.end(), false);
       reset_starting_bounds = false;
     }
 
@@ -1500,7 +1501,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(bnb_worker_type_t diving_type)
 
     if (node_ptr.has_value()) {
       node_ptr.value()->get_variable_bounds(
-        start_lower, start_upper, node_presolver.bounds_changed);
+        start_lower, start_upper, bounds_changed);
       start_node = node_ptr.value()->detach_copy();
     }
     node_queue_.unlock();
@@ -1509,7 +1510,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(bnb_worker_type_t diving_type)
       reset_starting_bounds = true;
 
       if (upper_bound_ < start_node->lower_bound) { continue; }
-      bool is_feasible = node_presolver.bounds_strengthening(start_lower, start_upper, settings_);
+      bool is_feasible = node_presolver.bounds_strengthening(settings_, bounds_changed, start_lower, start_upper);
       if (!is_feasible) { continue; }
 
       dive_from(start_node.value(),
@@ -1953,7 +1954,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       bounds_strengthening_t<i_t, f_t> node_presolve(original_lp_, Arow_, row_sense, var_types_);
       mutex_original_lp_.lock();
       bool feasible =
-        node_presolve.bounds_strengthening(original_lp_.lower, original_lp_.upper, settings_);
+        node_presolve.bounds_strengthening(settings_, bounds_changed, original_lp_.lower, original_lp_.upper);
       mutex_original_lp_.unlock();
       f_t node_presolve_time = toc(node_presolve_start_time);
       if (1 || node_presolve_time > 1.0) {
@@ -2114,7 +2115,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       f_t node_presolve_start_time = tic();
       bounds_strengthening_t<i_t, f_t> node_presolve(original_lp_, Arow_, row_sense, var_types_);
       bool feasible =
-        node_presolve.bounds_strengthening(original_lp_.lower, original_lp_.upper, settings_);
+        node_presolve.bounds_strengthening(settings_, bounds_changed, original_lp_.lower, original_lp_.upper);
       f_t node_presolve_time = toc(node_presolve_start_time);
       mutex_original_lp_.unlock();
 

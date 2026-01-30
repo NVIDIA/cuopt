@@ -59,8 +59,7 @@ bounds_strengthening_t<i_t, f_t>::bounds_strengthening_t(
   const csr_matrix_t<i_t, f_t>& Arow,
   const std::vector<char>& row_sense,
   const std::vector<variable_type_t>& var_types)
-  : bounds_changed(problem.num_cols, false),
-    A(problem.A),
+  : A(problem.A),
     Arow(Arow),
     var_types(var_types),
     delta_min_activity(problem.num_rows),
@@ -91,9 +90,10 @@ bounds_strengthening_t<i_t, f_t>::bounds_strengthening_t(
 
 template <typename i_t, typename f_t>
 bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  const std::vector<bool>& bounds_changed,
   std::vector<f_t>& lower_bounds,
-  std::vector<f_t>& upper_bounds,
-  const simplex_solver_settings_t<i_t, f_t>& settings)
+  std::vector<f_t>& upper_bounds)
 {
   const i_t m = A.m;
   const i_t n = A.n;
