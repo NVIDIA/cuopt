@@ -17,6 +17,7 @@
 #include <mps_parser/mps_data_model.hpp>
 #include <mps_parser/writer.hpp>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/macros.cuh>
 
 #include <raft/common/nvtx.hpp>
 #include <raft/core/handle.hpp>
