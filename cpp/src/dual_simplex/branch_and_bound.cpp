@@ -350,19 +350,15 @@ i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
   upper_bounds                   = original_lp_.upper;
   std::vector<bool> bounds_changed(original_lp_.num_cols, false);
   const f_t root_obj    = compute_objective(original_lp_, root_relax_soln_.x);
-  const f_t threshold   = 1e-3;
-  const f_t weaken      = 1e-5;
+  const f_t threshold   = 100.0 * settings_.integer_tol;
+  const f_t weaken      = settings_.integer_tol;
   const f_t fixed_tol   = settings_.fixed_tol;
   i_t num_improved      = 0;
   i_t num_fixed         = 0;
   i_t num_cols_to_check = reduced_costs.size();  // Reduced costs will be smaller than the original
                                                  // problem because we have added slacks for cuts
   for (i_t j = 0; j < num_cols_to_check; j++) {
-    if (!std::isfinite(reduced_costs[j])) {
-      printf("Variable %d reduced cost is %e\n", j, reduced_costs[j]);
-      continue;
-    }
-    if (std::abs(reduced_costs[j]) > threshold) {
+    if (std::isfinite(reduced_costs[j]) && std::abs(reduced_costs[j]) > threshold) {
       const f_t lower_j            = original_lp_.lower[j];
       const f_t upper_j            = original_lp_.upper[j];
       const f_t abs_gap            = upper_bound - root_obj;
