@@ -954,7 +954,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     // Clear the aggregated rows
     aggregated_rows.clear();
 
-
     // Set the score of the current row to zero
     score[i] = 0.0;
 

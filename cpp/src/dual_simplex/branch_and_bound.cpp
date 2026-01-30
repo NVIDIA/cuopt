@@ -886,16 +886,15 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   if (recompute_bounds_and_basis) {
     leaf_problem.lower = root_lower;
     leaf_problem.upper = root_upper;
-    node_ptr->get_variable_bounds(
-      leaf_problem.lower, leaf_problem.upper, bounds_changed);
+    node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper, bounds_changed);
 
   } else {
     node_ptr->update_branched_variable_bounds(
       leaf_problem.lower, leaf_problem.upper, bounds_changed);
   }
 
-  bool feasible =
-    node_presolver.bounds_strengthening(lp_settings, bounds_changed, leaf_problem.lower, leaf_problem.upper);
+  bool feasible = node_presolver.bounds_strengthening(
+    lp_settings, bounds_changed, leaf_problem.lower, leaf_problem.upper);
 
   dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
 
@@ -1507,8 +1506,7 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(bnb_worker_type_t diving_type)
     std::optional<mip_node_t<i_t, f_t>> start_node = std::nullopt;
 
     if (node_ptr.has_value()) {
-      node_ptr.value()->get_variable_bounds(
-        start_lower, start_upper, bounds_changed);
+      node_ptr.value()->get_variable_bounds(start_lower, start_upper, bounds_changed);
       start_node = node_ptr.value()->detach_copy();
     }
     node_queue_.unlock();
@@ -1517,7 +1515,8 @@ void branch_and_bound_t<i_t, f_t>::diving_thread(bnb_worker_type_t diving_type)
       reset_starting_bounds = true;
 
       if (upper_bound_ < start_node->lower_bound) { continue; }
-      bool is_feasible = node_presolver.bounds_strengthening(settings_, bounds_changed, start_lower, start_upper);
+      bool is_feasible =
+        node_presolver.bounds_strengthening(settings_, bounds_changed, start_lower, start_upper);
       if (!is_feasible) { continue; }
 
       dive_from(start_node.value(),
@@ -1960,8 +1959,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       f_t node_presolve_start_time = tic();
       bounds_strengthening_t<i_t, f_t> node_presolve(original_lp_, Arow_, row_sense, var_types_);
       mutex_original_lp_.lock();
-      bool feasible =
-        node_presolve.bounds_strengthening(settings_, bounds_changed, original_lp_.lower, original_lp_.upper);
+      bool feasible = node_presolve.bounds_strengthening(
+        settings_, bounds_changed, original_lp_.lower, original_lp_.upper);
       mutex_original_lp_.unlock();
       f_t node_presolve_time = toc(node_presolve_start_time);
       if (1 || node_presolve_time > 1.0) {
@@ -2038,7 +2037,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         incumbent_.set_incumbent_solution(root_objective_, root_relax_soln_.x);
         mutex_upper_.unlock();
       }
-      f_t obj         = upper_bound_.load();
+      f_t obj = upper_bound_.load();
       report(' ', obj, root_objective_, 0, num_fractional);
 
       f_t rel_gap = user_relative_gap(original_lp_, upper_bound_.load(), root_objective_);
@@ -2107,8 +2106,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
       mutex_original_lp_.lock();
       bounds_strengthening_t<i_t, f_t> node_presolve(original_lp_, Arow_, row_sense, var_types_);
-      bool feasible =
-        node_presolve.bounds_strengthening(settings_, bounds_changed, original_lp_.lower, original_lp_.upper);
+      bool feasible = node_presolve.bounds_strengthening(
+        settings_, bounds_changed, original_lp_.lower, original_lp_.upper);
       mutex_original_lp_.unlock();
 
       // Go through and check the fractional variables and remove any that are now fixed to their
