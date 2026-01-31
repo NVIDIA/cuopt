@@ -1,12 +1,14 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
 
 # sets up a constraints file for 'pip' and puts its location in an exported variable PIP_EXPORT,
 # so those constraints will affect all future 'pip install' calls
+RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX="true"
+export RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX
 source rapids-init-pip
 
 # Download the packages built in the previous step
@@ -27,7 +29,6 @@ EOF
 
 # echo to expand wildcard before adding `[extra]` requires for pip
 rapids-pip-retry install \
-    --extra-index-url=https://pypi.nvidia.com \
     --constraint "${PIP_CONSTRAINT}" \
     "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
     "$(echo "${CUOPT_WHEELHOUSE}"/cuopt*.whl)[test]" \
