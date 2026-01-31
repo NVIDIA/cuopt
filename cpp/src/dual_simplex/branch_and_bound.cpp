@@ -1927,7 +1927,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       if (settings_.reduced_cost_strengthening >= 1 && upper_bound_.load() < last_upper_bound) {
         mutex_upper_.lock();
         last_upper_bound = upper_bound_.load();
-        settings_.log.printf("Looking for reduced cost fixings\n");
         std::vector<f_t> lower_bounds;
         std::vector<f_t> upper_bounds;
         find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);
@@ -1958,8 +1957,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         settings_.log.printf("Node presolve time %.2f seconds\n", node_presolve_time);
       }
       if (!feasible) {
-        settings_.log.printf("Bound strengthening failed\n");
-        return mip_status_t::NUMERICAL;
+        settings_.log.printf("Bound strengthening detected infeasibility\n");
+        return mip_status_t::INFEASIBLE;
       }
 
       i_t iter                    = 0;
@@ -2089,18 +2088,22 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     std::vector<f_t> upper_bounds;
     i_t num_fixed = find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);
     if (num_fixed > 0) {
-      original_lp_.lower = lower_bounds;
-      original_lp_.upper = upper_bounds;
-
       std::vector<bool> bounds_changed(original_lp_.num_cols, true);
       std::vector<char> row_sense;
 
-      mutex_original_lp_.lock();
       bounds_strengthening_t<i_t, f_t> node_presolve(original_lp_, Arow_, row_sense, var_types_);
-      bool feasible = node_presolve.bounds_strengthening(
+
+      mutex_original_lp_.lock();
+      original_lp_.lower = lower_bounds;
+      original_lp_.upper = upper_bounds;
+      bool feasible      = node_presolve.bounds_strengthening(
         settings_, bounds_changed, original_lp_.lower, original_lp_.upper);
       mutex_original_lp_.unlock();
-
+      if (!feasible) {
+        settings_.log.printf("Bound strengthening failed\n");
+        return mip_status_t::NUMERICAL;  // We had a feasible integer solution, but bound
+                                         // strengthening thinks we are infeasible.
+      }
       // Go through and check the fractional variables and remove any that are now fixed to their
       // bounds
       std::vector<i_t> to_remove(fractional.size(), 0);
