@@ -140,7 +140,6 @@ class branch_and_bound_t {
   lp_problem_t<i_t, f_t> original_lp_;
   std::vector<i_t> new_slacks_;
   std::vector<variable_type_t> var_types_;
-  i_t num_integer_variables_;
 
   // Variable locks (see definition 3.3 from T. Achterberg, “Constraint Integer Programming,”
   // PhD, Technischen Universität Berlin, Berlin, 2007. doi: 10.14279/depositonce-1634).

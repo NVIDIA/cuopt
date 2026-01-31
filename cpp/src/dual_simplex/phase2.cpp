@@ -2148,6 +2148,7 @@ void prepare_optimality(i_t info,
     }
   }
 
+#ifdef CHECK_PRIMAL_INFEASIBILITIES
   if (primal_infeas > 10.0 * settings.primal_tol) {
     f_t basic_infeas    = 0.0;
     f_t nonbasic_infeas = 0.0;
@@ -2166,6 +2167,7 @@ void prepare_optimality(i_t info,
       perturbation,
       info);
   }
+#endif
 }
 
 template <typename i_t, typename f_t>

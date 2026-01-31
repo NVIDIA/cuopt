@@ -253,11 +253,6 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   convert_user_problem(original_problem_, settings_, original_lp_, new_slacks_, dualize_info);
   full_variable_types(original_problem_, original_lp_, var_types_);
 
-  num_integer_variables_ = 0;
-  for (i_t j = 0; j < original_lp_.num_cols; j++) {
-    if (var_types_[j] == variable_type_t::INTEGER) { num_integer_variables_++; }
-  }
-
   // Check slack
 #ifdef CHECK_SLACKS
   assert(new_slacks_.size() == original_lp_.num_rows);
@@ -369,7 +364,7 @@ i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
         reduced_cost_upper_bound  = var_types_[j] == variable_type_t::INTEGER
                                       ? std::floor(new_upper_bound + weaken)
                                       : new_upper_bound;
-        if (reduced_cost_upper_bound < upper_j && var_types_[j] != variable_type_t::INTEGER) {
+        if (reduced_cost_upper_bound < upper_j && var_types_[j] == variable_type_t::INTEGER) {
           num_improved++;
           upper_bounds[j]   = reduced_cost_upper_bound;
           bounds_changed[j] = true;
@@ -380,7 +375,7 @@ i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
         reduced_cost_lower_bound  = var_types_[j] == variable_type_t::INTEGER
                                       ? std::ceil(new_lower_bound - weaken)
                                       : new_lower_bound;
-        if (reduced_cost_lower_bound > lower_j && var_types_[j] != variable_type_t::INTEGER) {
+        if (reduced_cost_lower_bound > lower_j && var_types_[j] == variable_type_t::INTEGER) {
           num_improved++;
           lower_bounds[j]   = reduced_cost_lower_bound;
           bounds_changed[j] = true;
@@ -395,10 +390,7 @@ i_t branch_and_bound_t<i_t, f_t>::find_reduced_cost_fixings(f_t upper_bound,
 
   if (num_fixed > 0 || num_improved > 0) {
     settings_.log.printf(
-      "Reduced costs: Found %d improved bounds and %d fixed variables (%.1f%%)\n",
-      num_improved,
-      num_fixed,
-      100.0 * static_cast<f_t>(num_fixed) / static_cast<f_t>(num_integer_variables_));
+      "Reduced costs: Found %d improved bounds and %d fixed variables\n", num_improved, num_fixed);
   }
   return num_fixed;
 }
@@ -805,7 +797,11 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   logger_t& log)
 {
 #ifdef DEBUG_BRANCHING
-  if (node_ptr->depth > num_integer_variables_) {
+  i_t num_integer_variables = 0;
+  for (i_t j = 0; j < original_lp_.num_cols; j++) {
+    if (var_types_[j] == variable_type_t::INTEGER) { num_integer_variables++; }
+  }
+  if (node_ptr->depth > num_integer_variables) {
     std::vector<i_t> branched_variables(original_lp_.num_cols, 0);
     std::vector<f_t> branched_lower(original_lp_.num_cols, std::numeric_limits<f_t>::quiet_NaN());
     std::vector<f_t> branched_upper(original_lp_.num_cols, std::numeric_limits<f_t>::quiet_NaN());
@@ -830,7 +826,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
       parent                                 = parent->parent;
     }
     if (parent == nullptr) {
-      printf("Depth %d > num_integer_variables %d\n", node_ptr->depth, num_integer_variables_);
+      printf("Depth %d > num_integer_variables %d\n", node_ptr->depth, num_integer_variables);
     }
   }
 #endif
