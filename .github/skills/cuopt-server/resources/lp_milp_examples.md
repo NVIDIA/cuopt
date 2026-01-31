@@ -66,7 +66,9 @@ curl -s -X POST "http://localhost:8000/cuopt/request" \
     "maximize": true,
     "solver_config": {
       "time_limit": 120,
-      "mip_relative_gap": 0.01
+      "tolerances": {
+        "mip_relative_gap": 0.01
+      }
     }
   }' | jq .
 ```
