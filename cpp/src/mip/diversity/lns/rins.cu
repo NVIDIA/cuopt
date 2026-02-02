@@ -80,14 +80,8 @@ void rins_t<i_t, f_t>::enable()
   rins_thread->rins_ptr = this;
   seed                  = cuopt::seed_generator::get_seed();
   problem_ptr->handle_ptr->sync_stream();
-  problem_copy = std::make_unique<problem_t<i_t, f_t>>(*problem_ptr);
-  // Synchronize the original stream to ensure all async device copies from the
-  // copy constructor are complete before switching to the RINS handle's stream.
-  // Without this sync, RINS operations on rins_handle's stream could race with
-  // the ongoing async copies on the original stream.
-  problem_ptr->handle_ptr->sync_stream();
-  problem_copy->handle_ptr = &rins_handle;
-  enabled                  = true;
+  problem_copy = std::make_unique<problem_t<i_t, f_t>>(*problem_ptr, &rins_handle);
+  enabled      = true;
 }
 
 template <typename i_t, typename f_t>
@@ -122,7 +116,6 @@ void rins_t<i_t, f_t>::run_rins()
   // copy the best from the population into a solution_t in the RINS stream
   {
     std::lock_guard<std::recursive_mutex> lock(dm.population.write_mutex);
-    dm.population.best_feasible().handle_ptr->sync_stream();
     auto& best_feasible_ref = dm.population.best_feasible();
     cuopt_assert(best_feasible_ref.assignment.size() == best_sol.assignment.size(),
                  "Assignment size mismatch");
