@@ -81,6 +81,25 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     stats.set_solution_bound(solution.get_user_objective());
     // log the objective for scripts which need it
     CUOPT_LOG_INFO("Best feasible: %f", solution.get_user_objective());
+    for (auto callback : settings.get_mip_callbacks()) {
+      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
+        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
+        std::vector<f_t> user_assignment_vec(solution.assignment.size());
+        std::vector<f_t> user_objective_vec(1);
+        std::vector<f_t> user_bound_vec(1);
+        user_objective_vec[0] = solution.get_user_objective();
+        user_bound_vec[0]     = stats.get_solution_bound();
+        raft::copy(user_assignment_vec.data(),
+                   solution.assignment.data(),
+                   solution.assignment.size(),
+                   solution.handle_ptr->get_stream());
+        solution.handle_ptr->sync_stream();
+        get_sol_callback->get_solution(user_assignment_vec.data(),
+                                       user_objective_vec.data(),
+                                       user_bound_vec.data(),
+                                       get_sol_callback->get_user_data());
+      }
+    }
     return solution.get_solution(true, stats, false);
   }
   // problem contains unpreprocessed data
@@ -179,8 +198,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                       op_problem.get_handle_ptr()->get_stream());
     }
 
-    auto timer = cuopt::timer_t(time_limit);
-    detail::sort_csr(op_problem);
+    auto timer           = cuopt::timer_t(time_limit);
     double presolve_time = 0.0;
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
     std::optional<detail::third_party_presolve_result_t<i_t, f_t>> presolve_result;
@@ -205,6 +223,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
     auto constexpr const dual_postsolve = false;
     if (run_presolve) {
+      detail::sort_csr(op_problem);
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
       const double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
