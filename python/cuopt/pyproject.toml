@@ -74,8 +74,8 @@ select = [
     "distro-too-large-compressed",
 ]
 
-# detect when package size grows significantly
-max_allowed_size_compressed = '100M'
+# PyPI hard limit is 1GiB, but try to keep this as small as possible
+max_allowed_size_compressed = '55Mi'
 
 [tool.pytest.ini_options]
 testpaths = ["cuopt/tests"]

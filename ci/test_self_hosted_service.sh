@@ -1,10 +1,12 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
 
+RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX="true"
+export RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX
 source rapids-init-pip
 
 # Download the cuopt built in the previous step
@@ -16,7 +18,6 @@ LIBCUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" r
 
 # echo to expand wildcard before adding `[extra]` requires for pip
 rapids-pip-retry install \
-    --extra-index-url=https://pypi.nvidia.com \
     "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
     "${CUOPT_WHEELHOUSE}"/cuopt*.whl \
     "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl \

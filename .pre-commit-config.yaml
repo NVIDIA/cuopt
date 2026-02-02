@@ -54,7 +54,7 @@ repos:
       - id: shellcheck
         args: ["--severity=warning"]
   - repo: https://github.com/rapidsai/pre-commit-hooks
-    rev: v1.2.1
+    rev: v1.3.3
     hooks:
       - id: verify-copyright
         args: [--fix, --spdx]
@@ -75,6 +75,12 @@ repos:
           (?x)^(
             ^cpp/tests/utilities/cxxopts.hpp
           )
+      - id: verify-pyproject-license
+        # ignore the top-level pyproject.toml, which doesn't
+        # have or need a [project] table
+        exclude: |
+          (?x)
+            ^pyproject[.]toml$
   - repo: local
     hooks:
       - id: update-versions

@@ -10,6 +10,8 @@ package_dir=$2
 
 source rapids-configure-sccache
 source rapids-date-string
+RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX="true"
+export RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX
 source rapids-init-pip
 
 # Update the version to accomdate nightly and release changes for the wheel name
@@ -26,14 +28,13 @@ RAPIDS_PIP_WHEEL_ARGS=(
   -v
   --no-deps
   --disable-pip-version-check
-  --extra-index-url=https://pypi.nvidia.com
 )
 
 # Only use --build-constraint when build isolation is enabled.
 #
 # Passing '--build-constraint' and '--no-build-isolation` together results in an error from 'pip',
 # but we want to keep environment variable PIP_CONSTRAINT set unconditionally.
-# PIP_NO_BUILD_ISOLATION=0 means "add --no-build-isolation" (ref: https://github.com/pypa/pip/issues/573
+# PIP_NO_BUILD_ISOLATION=0 means "add --no-build-isolation" (ref: https://github.com/pypa/pip/issues/5735)
 if [[ "${PIP_NO_BUILD_ISOLATION:-}" != "0" ]]; then
     RAPIDS_PIP_WHEEL_ARGS+=(--build-constraint="${PIP_CONSTRAINT}")
 fi
