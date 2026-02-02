@@ -159,3 +159,14 @@ dm = routing.DataModel(n_locations=3, n_fleet=1, n_orders=2)
 print('GPU access OK')
 "
 ```
+
+---
+
+## Additional References
+
+| Topic | Resource |
+|-------|----------|
+| Installation Guide | [NVIDIA cuOpt Docs](https://docs.nvidia.com/cuopt/user-guide/latest/installation.html) |
+| System Requirements | [cuOpt Requirements](https://docs.nvidia.com/cuopt/user-guide/latest/requirements.html) |
+| Docker Images | See `ci/docker/` in this repo |
+| Conda Recipes | See `conda/recipes/` in this repo |

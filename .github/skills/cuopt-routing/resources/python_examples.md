@@ -231,3 +231,19 @@ solution = routing.Solve(dm, routing.SolverSettings())
 if solution.get_status() == 0:
     solution.display_routes()
 ```
+
+---
+
+## Additional References (tested in CI)
+
+For more complete examples, read these files:
+
+| Example | File | Description |
+|---------|------|-------------|
+| Basic Routing | `docs/cuopt/source/cuopt-server/examples/routing/examples/basic_routing_example.py` | Server-based routing |
+| Initial Solution | `docs/cuopt/source/cuopt-server/examples/routing/examples/initial_solution_example.py` | Warm starting |
+| Smoke Test | `docs/cuopt/source/cuopt-python/routing/examples/smoke_test_example.sh` | Quick validation |
+
+These examples are tested by CI and represent canonical usage.
+
+**Note:** The Python routing API documentation is in `python/cuopt/cuopt/routing/vehicle_routing.py` (docstrings).

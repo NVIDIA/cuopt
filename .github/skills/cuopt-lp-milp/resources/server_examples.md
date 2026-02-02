@@ -168,3 +168,24 @@ CSR format:
 - `"continuous"` - real-valued
 - `"integer"` - integer-valued
 - `"binary"` - 0 or 1 only
+
+---
+
+## Additional References (tested in CI)
+
+For more complete examples, read these files:
+
+| Example | File | Description |
+|---------|------|-------------|
+| Basic LP (Python) | `docs/cuopt/source/cuopt-server/examples/lp/examples/basic_lp_example.py` | LP via REST |
+| Basic LP (curl) | `docs/cuopt/source/cuopt-server/examples/lp/examples/basic_lp_example.sh` | LP shell script |
+| MPS Input | `docs/cuopt/source/cuopt-server/examples/lp/examples/mps_file_example.py` | MPS file format |
+| MPS DataModel | `docs/cuopt/source/cuopt-server/examples/lp/examples/mps_datamodel_example.py` | MPS in payload |
+| Warmstart | `docs/cuopt/source/cuopt-server/examples/lp/examples/warmstart_example.py` | Warm starting |
+| Basic MILP (Python) | `docs/cuopt/source/cuopt-server/examples/milp/examples/basic_milp_example.py` | MILP via REST |
+| Basic MILP (curl) | `docs/cuopt/source/cuopt-server/examples/milp/examples/basic_milp_example.sh` | MILP shell script |
+| Incumbent Callback | `docs/cuopt/source/cuopt-server/examples/milp/examples/incumbent_callback_example.py` | MIP progress tracking |
+| Abort Job | `docs/cuopt/source/cuopt-server/examples/milp/examples/abort_job_example.py` | Canceling requests |
+| Batch Mode | `docs/cuopt/source/cuopt-server/examples/lp/examples/batch_mode_example.sh` | Multiple problems |
+
+These examples are tested by CI (`ci/test_doc_examples.sh`) and represent canonical usage.

@@ -63,19 +63,28 @@ payload = {
         "capacities": [[100, 100]],
         "vehicle_time_windows": [[0, 200], [0, 200]]
     },
-    "solver_config": {"time_limit": 10}
+    "solver_config": {
+        "time_limit": 10
+    }
 }
 
 # Submit
-resp = requests.post(f"{SERVER}/cuopt/request", json=payload, headers=HEADERS)
-req_id = resp.json()["reqId"]
+response = requests.post(f"{SERVER}/cuopt/request", json=payload, headers=HEADERS)
+req_id = response.json()["reqId"]
+print(f"Submitted: {req_id}")
 
-# Poll
-for _ in range(30):
-    resp = requests.get(f"{SERVER}/cuopt/solution/{req_id}", headers=HEADERS)
-    result = resp.json()
+# Poll for solution
+for attempt in range(30):
+    response = requests.get(f"{SERVER}/cuopt/solution/{req_id}", headers=HEADERS)
+    result = response.json()
+
     if "response" in result:
-        print(result["response"]["solver_response"])
+        solver_response = result["response"].get("solver_response", {})
+        print(f"Status: {solver_response.get('status')}")
+        print(f"Cost: {solver_response.get('solution_cost')}")
+        if "vehicle_data" in solver_response:
+            for vid, vdata in solver_response["vehicle_data"].items():
+                print(f"Vehicle {vid}: {vdata.get('route', [])}")
         break
     time.sleep(1)
 ```
@@ -106,27 +115,7 @@ curl -s -X POST "http://localhost:8000/cuopt/request" \
   }' | jq .
 ```
 
-## Response Format
-
-```json
-{
-  "reqId": "abc123",
-  "response": {
-    "solver_response": {
-      "status": 0,
-      "solution_cost": 45.0,
-      "vehicle_data": {
-        "0": {
-          "route": [0, 1, 2, 0],
-          "arrival_times": [0, 10, 22, 32]
-        }
-      }
-    }
-  }
-}
-```
-
-## Terminology Mapping
+## Terminology: Python vs REST
 
 | Python API | REST Server |
 |------------|-------------|
@@ -134,3 +123,36 @@ curl -s -X POST "http://localhost:8000/cuopt/request" \
 | `set_order_time_windows()` | `task_time_windows` |
 | `set_order_service_times()` | `service_times` |
 | `add_transit_time_matrix()` | `travel_time_matrix_data` |
+| `set_pickup_delivery_pairs()` | `pickup_and_delivery_pairs` |
+
+## Common Mistakes
+
+```json
+// ❌ WRONG field name
+"transit_time_matrix_data": {...}
+
+// ✅ CORRECT
+"travel_time_matrix_data": {...}
+```
+
+```json
+// ❌ WRONG capacity format (per vehicle)
+"capacities": [[50], [50]]
+
+// ✅ CORRECT (per dimension across vehicles)
+"capacities": [[50, 50]]
+```
+
+---
+
+## Additional References (tested in CI)
+
+For more complete examples, read these files:
+
+| Example | File |
+|---------|------|
+| Basic Routing (Python) | `docs/cuopt/source/cuopt-server/examples/routing/examples/basic_routing_example.py` |
+| Basic Routing (curl) | `docs/cuopt/source/cuopt-server/examples/routing/examples/basic_routing_example.sh` |
+| Initial Solution | `docs/cuopt/source/cuopt-server/examples/routing/examples/initial_solution_example.py` |
+
+These examples are tested by CI (`ci/test_doc_examples.sh`).

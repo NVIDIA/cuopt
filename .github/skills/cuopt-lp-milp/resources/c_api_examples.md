@@ -193,3 +193,17 @@ CUOPT_INFINITY      // Use for unbounded
 // Return codes
 CUOPT_SUCCESS       // 0
 ```
+
+---
+
+## Additional References (tested in CI)
+
+For more complete C examples with full error handling, see:
+
+| Resource | Location |
+|----------|----------|
+| C API Header | `cpp/include/cuopt/linear_programming/cuopt_c.h` |
+| C API Documentation | `docs/cuopt/source/cuopt-c/lp-qp-milp/lp-qp-milp-c-api.rst` |
+| LP/MILP Examples (RST) | `docs/cuopt/source/cuopt-c/lp-qp-milp/milp-examples.rst` |
+
+The header file `cuopt_c.h` contains all function signatures and parameter constants.

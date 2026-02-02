@@ -179,3 +179,18 @@ curl -s -X POST "http://localhost:8000/cuopt/request" \
 // ✅ CORRECT (per dimension across vehicles)
 "capacities": [[50, 50]]
 ```
+
+---
+
+## Additional References (tested in CI)
+
+For more complete examples, read these files:
+
+| Example | File | Description |
+|---------|------|-------------|
+| Basic Routing (Python) | `docs/cuopt/source/cuopt-server/examples/routing/examples/basic_routing_example.py` | VRP via REST |
+| Basic Routing (curl) | `docs/cuopt/source/cuopt-server/examples/routing/examples/basic_routing_example.sh` | Shell script |
+| Initial Solution | `docs/cuopt/source/cuopt-server/examples/routing/examples/initial_solution_example.py` | Warm starting |
+| Initial Solution (curl) | `docs/cuopt/source/cuopt-server/examples/routing/examples/initial_solution_example.sh` | Warm start shell |
+
+These examples are tested by CI (`ci/test_doc_examples.sh`) and represent canonical usage.

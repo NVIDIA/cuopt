@@ -209,3 +209,14 @@ print(f"Solve time: {elapsed:.2f}s")
 settings = SolverSettings()
 settings.set_parameter("log_to_console", 1)
 ```
+
+---
+
+## Additional References
+
+| Topic | Resource |
+|-------|----------|
+| Python API docstrings | `python/cuopt/cuopt/routing/vehicle_routing.py` |
+| LP/MILP Problem class | `python/cuopt/cuopt/linear_programming/problem.py` |
+| Server API spec | `docs/cuopt/source/cuopt_spec.yaml` |
+| Troubleshooting guide | [NVIDIA cuOpt Docs](https://docs.nvidia.com/cuopt/user-guide/latest/troubleshooting.html) |

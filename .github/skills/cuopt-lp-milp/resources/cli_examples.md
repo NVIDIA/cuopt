@@ -150,3 +150,17 @@ COLUMNS
 **"Problem is infeasible"**
 - Check constraint directions (L/G/E)
 - Verify RHS values are consistent
+
+---
+
+## Additional References (tested in CI)
+
+For more complete examples, read these files:
+
+| Example | File | Description |
+|---------|------|-------------|
+| Basic LP | `docs/cuopt/source/cuopt-cli/examples/lp/examples/basic_lp_example.sh` | Simple LP via CLI |
+| Basic MILP | `docs/cuopt/source/cuopt-cli/examples/milp/examples/basic_milp_example.sh` | MILP with integers |
+| Solver Parameters | `docs/cuopt/source/cuopt-cli/examples/lp/examples/solver_parameters_example.sh` | CLI options |
+
+These examples are tested by CI and represent canonical usage.

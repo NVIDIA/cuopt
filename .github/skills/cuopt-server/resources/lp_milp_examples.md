@@ -100,15 +100,21 @@ payload = {
         "lower_bounds": [0.0, 0.0]
     },
     "maximize": True,
-    "solver_config": {"time_limit": 60}
+    "solver_config": {
+        "time_limit": 60
+    }
 }
 
-resp = requests.post(f"{SERVER}/cuopt/request", json=payload, headers=HEADERS)
-req_id = resp.json()["reqId"]
+# Submit
+response = requests.post(f"{SERVER}/cuopt/request", json=payload, headers=HEADERS)
+req_id = response.json()["reqId"]
+print(f"Submitted: {req_id}")
 
+# Poll for solution
 for _ in range(30):
-    resp = requests.get(f"{SERVER}/cuopt/solution/{req_id}", headers=HEADERS)
-    result = resp.json()
+    response = requests.get(f"{SERVER}/cuopt/solution/{req_id}", headers=HEADERS)
+    result = response.json()
+
     if "response" in result:
         print(f"Status: {result['response'].get('status')}")
         print(f"Objective: {result['response'].get('objective_value')}")
@@ -120,36 +126,45 @@ for _ in range(30):
 ## CSR Matrix Format
 
 ```
-Matrix:  [2, 3]    row 0
-         [4, 2]    row 1
+Matrix:  [2, 3]    (row 0: 2*x0 + 3*x1)
+         [4, 2]    (row 1: 4*x0 + 2*x1)
 
-offsets: [0, 2, 4]       # row pointers
-indices: [0, 1, 0, 1]    # column indices
-values:  [2, 3, 4, 2]    # values
+CSR format:
+  offsets: [0, 2, 4]           # Row pointers (n_rows + 1)
+  indices: [0, 1, 0, 1]        # Column indices
+  values:  [2.0, 3.0, 4.0, 2.0] # Non-zero values
 ```
 
 ## Special Values
 
 ```json
-"lower_bounds": ["ninf", "ninf"]   // negative infinity
-"upper_bounds": ["inf", 100.0]     // positive infinity
+{
+  "constraint_bounds": {
+    "lower_bounds": ["ninf", "ninf"],
+    "upper_bounds": [100.0, "inf"]
+  }
+}
 ```
 
 ## Variable Types
 
-```json
-"variable_types": ["continuous", "integer", "binary"]
-```
+- `"continuous"` - real-valued
+- `"integer"` - integer-valued
+- `"binary"` - 0 or 1 only
 
-## Response Format
+---
 
-```json
-{
-  "reqId": "abc123",
-  "response": {
-    "status": "Optimal",
-    "objective_value": 1600.0,
-    "primal_solution": [30.0, 60.0]
-  }
-}
-```
+## Additional References (tested in CI)
+
+For more complete examples, read these files:
+
+| Example | File |
+|---------|------|
+| Basic LP (Python) | `docs/cuopt/source/cuopt-server/examples/lp/examples/basic_lp_example.py` |
+| Basic LP (curl) | `docs/cuopt/source/cuopt-server/examples/lp/examples/basic_lp_example.sh` |
+| MPS File Input | `docs/cuopt/source/cuopt-server/examples/lp/examples/mps_file_example.py` |
+| Warmstart | `docs/cuopt/source/cuopt-server/examples/lp/examples/warmstart_example.py` |
+| Basic MILP | `docs/cuopt/source/cuopt-server/examples/milp/examples/basic_milp_example.py` |
+| Incumbent Callback | `docs/cuopt/source/cuopt-server/examples/milp/examples/incumbent_callback_example.py` |
+
+These examples are tested by CI (`ci/test_doc_examples.sh`).

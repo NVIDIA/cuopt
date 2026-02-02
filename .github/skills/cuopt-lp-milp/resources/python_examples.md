@@ -237,3 +237,21 @@ if problem.Status.name == "OPTIMAL":  # Never matches!
 # MILP status values: Optimal, FeasibleFound, Infeasible,
 #                     Unbounded, TimeLimit, NoTermination
 ```
+
+---
+
+## Additional References (tested in CI)
+
+For more complete examples, read these files:
+
+| Example | File | Description |
+|---------|------|-------------|
+| Simple LP | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/simple_lp_example.py` | Basic LP setup |
+| Simple MILP | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/simple_milp_example.py` | Integer variables |
+| Production Planning | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/production_planning_example.py` | Real-world LP |
+| Expressions | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/expressions_constraints_example.py` | Advanced constraint syntax |
+| Incumbent Solutions | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/incumbent_solutions_example.py` | Tracking MIP progress |
+| Warmstart | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/pdlp_warmstart_example.py` | Warm starting LP |
+| Solution Handling | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/solution_example.py` | Working with results |
+
+These examples are tested by CI (`ci/test_doc_examples.sh`) and represent canonical usage.

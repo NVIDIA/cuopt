@@ -177,3 +177,16 @@ objective = (
 2. **Convexity** - Q should be positive semi-definite
 3. **Beta status** - API may change in future versions
 4. **Status checking** - use PascalCase: `"Optimal"` not `"OPTIMAL"`
+
+---
+
+## Additional References (tested in CI)
+
+For more complete examples, read these files:
+
+| Example | File | Description |
+|---------|------|-------------|
+| Simple QP | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/simple_qp_example.py` | Basic QP setup |
+| QP with Matrix | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/qp_matrix_example.py` | CSR matrix format for Q |
+
+These examples are tested by CI (`ci/test_doc_examples.sh`) and represent canonical usage.
