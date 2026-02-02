@@ -328,9 +328,6 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       auto set_sol_callback       = static_cast<internals::set_solution_callback_t*>(callback);
       f_t user_bound              = context.stats.get_solution_bound();
       auto callback_num_variables = problem_ptr->original_problem_ptr->get_n_variables();
-      if (problem_ptr->has_papilo_presolve_data()) {
-        callback_num_variables = problem_ptr->get_papilo_original_num_variables();
-      }
       rmm::device_uvector<f_t> incumbent_assignment(callback_num_variables,
                                                     sol.handle_ptr->get_stream());
       solution_t<i_t, f_t> outside_sol(sol);

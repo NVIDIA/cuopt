@@ -877,10 +877,10 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
     // every now and then, ensure external solutions are added to the population
     // this is done here because FJ is called within FP and also after recombiners
     // so FJ is one of the most inner and most frequent functions to be called
-    if (steps % 10000 == 0) {
-      context.diversity_manager_ptr->get_population_pointer()
-        ->add_external_solutions_to_population();
-    }
+    // if (steps % 10000 == 0) {
+    //   context.diversity_manager_ptr->get_population_pointer()
+    //     ->add_external_solutions_to_population();
+    // }
 
 #if !FJ_SINGLE_STEP
     if (steps % 500 == 0)
