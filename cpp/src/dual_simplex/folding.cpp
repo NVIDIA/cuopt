@@ -286,35 +286,58 @@ void split_colors(i_t color,
     exit(1);
   }
 
+  // Paige-Tarjan O(n log n) optimization:
+  // The LARGEST part keeps the original color ID and "inherits" its stack slot.
+  // All other parts (smaller) become new colors and are added to the stack.
+  // This ensures each vertex is added to the stack O(log n) times.
+
+  bool largest_is_sum_zero = (max_sum == 0.0);
+
+  // Collect sum=0 vertices: those in colors[color].vertices but NOT in vertices_to_refine_by_color
+  // (vertices that have no neighbors in the refining color)
+  std::vector<i_t> sum_zero_vertices;
+  if (!largest_is_sum_zero && color_sums.count(0.0) > 0) {
+    // sum=0 exists but is NOT the largest - need to create a new color for it
+    // These are vertices in the color that don't touch the refining color
+    std::unordered_set<i_t> refined_set(vertices_to_refine_by_color[color].begin(),
+                                        vertices_to_refine_by_color[color].end());
+    for (i_t v : colors[color].vertices) {
+      if (refined_set.find(v) == refined_set.end()) { sum_zero_vertices.push_back(v); }
+    }
+  }
+
   i_t vertices_considered = 0;
   for (auto& [sum, vertices] : color_sums) {
-    i_t size = vertices.size();
-    if (sum == 0.0) {
+    i_t size         = vertices.size();
+    bool is_sum_zero = (sum == 0.0);
+
+    if (is_sum_zero) {
       const i_t additional_size =
         (colors[color].vertices.size() - vertices_to_refine_by_color[color].size());
       size += additional_size;
     }
 
     bool is_largest = (sum == max_sum && size == max_size);
-
     vertices_considered += size;
-    if (sum == 0.0) {
-      // Push the current color back onto the stack
-      if (!in_stack && max_size != size && max_sum != sum) {
-        color_stack.push_back(color);
-        color_in_stack[color] = 1;
-      }
-    } else {
-      // Create a new color
-      colors.emplace_back(side_being_split, kActive, total_colors_seen, vertices);
 
-      // Push the new color onto the stack (skip largest if original not on stack)
-      if (in_stack || !is_largest) {
-        color_stack.push_back(total_colors_seen);
-        color_in_stack[total_colors_seen] = 1;
-      }
+    if (is_largest) {
+      // Largest part keeps the original color - no new color created
+      // Paige-Tarjan optimization: largest is NOT added to stack
+      continue;
+    }
 
-      for (i_t v : vertices) {
+    // Smaller parts get new colors and are added to the stack
+    // Note: for sum=0, 'vertices' is empty, so use sum_zero_vertices instead
+    const std::vector<i_t>& verts_to_use = is_sum_zero ? sum_zero_vertices : vertices;
+
+    if (!verts_to_use.empty()) {
+      colors.emplace_back(side_being_split, kActive, total_colors_seen, verts_to_use);
+
+      // All non-largest parts are added to the stack
+      color_stack.push_back(total_colors_seen);
+      color_in_stack[total_colors_seen] = 1;
+
+      for (i_t v : verts_to_use) {
         color_map_B[v] = total_colors_seen;
       }
 
@@ -323,6 +346,7 @@ void split_colors(i_t color,
       num_side_colors++;
     }
   }
+
   if (vertices_considered != colors[color].vertices.size()) {
     printf("Vertices considered %d does not match color size %ld\n",
            vertices_considered,
@@ -330,9 +354,17 @@ void split_colors(i_t color,
     exit(1);
   }
 
+  // Remove vertices that moved to new colors from the original color
   for (i_t v : vertices_to_refine_by_color[color]) {
     if (color_map_B[v] != color) { colors[color].vertices.erase(v); }
   }
+  // Also remove sum=0 vertices if they were moved (sum=0 wasn't the largest)
+  if (!largest_is_sum_zero) {
+    for (i_t v : sum_zero_vertices) {
+      colors[color].vertices.erase(v);
+    }
+  }
+
   if (colors[color].vertices.size() == 0) {
     colors[color].active = kInactive;
     num_colors--;
@@ -1330,8 +1362,8 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   settings.log.printf("Folding: Verified Y is doubly stochastic\n");
 #endif
 #endif
-#undef DEBUG
-  // Construct the matrix A_tilde
+  // #undef DEBUG
+  //  Construct the matrix A_tilde
   settings.log.debug("Folding: Constructing A_tilde\n");
   i_t A_nnz                      = problem.A.col_start[n];
   csc_matrix_t<i_t, f_t> A_tilde = augmented;
@@ -1351,7 +1383,7 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   csr_matrix_t<i_t, f_t> A_tilde_row(A_tilde.m, A_tilde.n, A_tilde.col_start[A_tilde.n]);
   A_tilde.to_compressed_row(A_tilde_row);
 
-#define DEBUG  // Uncomment to enable expensive partition verification
+// #define DEBUG  // Uncomment to enable expensive partition verification
 #ifdef DEBUG
   std::vector<i_t> row_to_color(A_tilde.m, -1);
   for (i_t k = 0; k < total_colors_seen; k++) {
@@ -1481,7 +1513,7 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   // Y.write_matrix_market(fid);
   // fclose(fid);
 #endif
-#undef DEBUG
+  // #undef DEBUG
 
   if (A_tilde.m != previous_rows || A_tilde.n != previous_cols) {
     settings.log.printf("Folding: A_tilde has %d rows and %d cols, expected %d and %d\n",
@@ -1495,7 +1527,7 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   settings.log.debug("Folding: partial A_tilde nz %d predicted %d\n", nnz, A_nnz + 2 * nz_ub);
 
   FILE* fid;
-#define DEBUG  // Uncomment to enable expensive XA=AY verification
+// #define DEBUG  // Uncomment to enable expensive XA=AY verification
 #ifdef DEBUG
 #ifdef BUILD_MATRIX_X_AND_Y
   // Verify that XA = AY
@@ -1590,8 +1622,8 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   }
 #endif
 #endif
-#undef DEBUG
-  // Construct the matrix A_prime
+  // #undef DEBUG
+  //  Construct the matrix A_prime
   settings.log.debug("Folding: Constructing A_prime\n");
   csc_matrix_t<i_t, f_t> A_prime(reduced_rows, reduced_cols, 1);
   csc_matrix_t<i_t, f_t> AD(previous_rows, reduced_cols, 1);
