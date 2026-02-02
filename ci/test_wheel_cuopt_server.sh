@@ -5,8 +5,6 @@
 
 set -eou pipefail
 
-RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX="true"
-export RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX
 source rapids-init-pip
 
 # Download the packages built in the previous step

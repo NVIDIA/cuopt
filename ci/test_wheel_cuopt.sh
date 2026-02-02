@@ -7,8 +7,6 @@ set -euo pipefail
 
 # sets up a constraints file for 'pip' and puts its location in an exported variable PIP_EXPORT,
 # so those constraints will affect all future 'pip install' calls
-RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX="true"
-export RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX
 source rapids-init-pip
 
 # Download the packages built in the previous step
