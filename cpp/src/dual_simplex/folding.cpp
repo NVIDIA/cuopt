@@ -11,6 +11,7 @@
 
 #include <map>
 #include <numeric>
+#include <random>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -202,8 +203,6 @@ void find_colors_to_split(const std::vector<i_t> colors_to_update,
       // We didn't touch all the vertices in the color. These vertices must have a sum of 0.0
       if (0.0 > max_sum_by_color[color]) { max_sum_by_color[color] = 0.0; }
       if (0.0 < min_sum_by_color[color]) { min_sum_by_color[color] = 0.0; }
-    } else {
-      // We touched all the vertices in the color. Compute the minimum sum seen
     }
   }
 
@@ -296,6 +295,8 @@ void split_colors(i_t color,
       size += additional_size;
     }
 
+    bool is_largest = (sum == max_sum && size == max_size);
+
     vertices_considered += size;
     if (sum == 0.0) {
       // Push the current color back onto the stack
@@ -307,8 +308,8 @@ void split_colors(i_t color,
       // Create a new color
       colors.emplace_back(side_being_split, kActive, total_colors_seen, vertices);
 
-      // Push the new color onto the stack
-      if (in_stack || !(max_size == size && max_sum == sum)) {
+      // Push the new color onto the stack (skip largest if original not on stack)
+      if (in_stack || !is_largest) {
         color_stack.push_back(total_colors_seen);
         color_in_stack[total_colors_seen] = 1;
       }
@@ -673,11 +674,11 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
 #endif
 
     if (toc(last_log_time) > 1.0) {
-      last_log_time = tic();
-      settings.log.printf("Folding: %d refinements %d colors in %.2fs",
-                          num_refinements,
-                          num_row_colors + num_col_colors,
-                          toc(start_time));
+      f_t elapsed        = toc(start_time);
+      i_t current_colors = num_row_colors + num_col_colors;
+      last_log_time      = tic();
+      settings.log.printf(
+        "Folding: %d refinements %d colors in %.2fs", num_refinements, current_colors, elapsed);
 #ifdef PRINT_INFO
       settings.log.debug(
         "Number of refinements %8d. Number of colors %d (row colors %d, col colors %d) stack size "
@@ -690,7 +691,7 @@ i_t color_graph(const csc_matrix_t<i_t, f_t>& A,
         color_stack.size(),
         colors_per_refinement,
         projected_colors,
-        toc(start_time));
+        elapsed);
 #endif
     }
     if (num_row_colors >= max_vertices) {
@@ -1178,6 +1179,9 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   fclose(fid);
 #endif
 
+// #define BUILD_MATRIX_X_AND_Y
+
+// #define DEBUG  // Uncomment to enable expensive D^s D = I verification
 #ifdef DEBUG
   // Verify that D^s D = I
   csc_matrix_t<i_t, f_t> D_product(reduced_cols, reduced_cols, 1);
@@ -1197,6 +1201,7 @@ void folding(lp_problem_t<i_t, f_t>& problem,
     return;
   }
 
+#ifdef BUILD_MATRIX_X_AND_Y
   // Construct the matrix X
   // X = C C^s
   settings.log.debug("Folding: Constructing X\n");
@@ -1261,7 +1266,71 @@ void folding(lp_problem_t<i_t, f_t>& problem,
     }
   }
   settings.log.printf("Folding: Verified Y is doubly stochastic\n");
+#else
+  // Verify X = Pi_P × C_s is doubly stochastic without forming X explicitly
+  // Row sums: X_row_sums = X × e = Pi_P × (C_s × e), e = ones(previous_rows)
+  // Column sums: X_col_sums = X^T × e = C_s^T × (Pi_P^T × e)
+  settings.log.printf("Folding: Verifying X is doubly stochastic (without forming X)\n");
+
+  // Row sums: X_row_sums = Pi_P × (C_s × e)
+  std::vector<f_t> e_prev_rows(previous_rows, 1.0);
+  std::vector<f_t> C_s_times_e(reduced_rows, 0.0);
+  matrix_vector_multiply(C_s, 1.0, e_prev_rows, 0.0, C_s_times_e);
+  std::vector<f_t> X_row_sums(previous_rows, 0.0);
+  matrix_vector_multiply(Pi_P, 1.0, C_s_times_e, 0.0, X_row_sums);
+  for (i_t i = 0; i < previous_rows; i++) {
+    if (std::abs(X_row_sums[i] - 1.0) > 1e-6) {
+      settings.log.printf("Folding: X_row_sums[%d] = %f\n", i, X_row_sums[i]);
+      return;
+    }
+  }
+
+  // Column sums: X_col_sums = C_s^T × (Pi_P^T × e)
+  std::vector<f_t> Pi_P_T_times_e(reduced_rows, 0.0);
+  matrix_transpose_vector_multiply(Pi_P, 1.0, e_prev_rows, 0.0, Pi_P_T_times_e);
+  std::vector<f_t> X_col_sums(previous_rows, 0.0);
+  matrix_transpose_vector_multiply(C_s, 1.0, Pi_P_T_times_e, 0.0, X_col_sums);
+  for (i_t j = 0; j < previous_rows; j++) {
+    if (std::abs(X_col_sums[j] - 1.0) > 1e-6) {
+      settings.log.printf("Folding: X_col_sums[%d] = %f\n", j, X_col_sums[j]);
+      return;
+    }
+  }
+  settings.log.printf("Folding: Verified X is doubly stochastic\n");
+
+  // Verify Y = D × D_s is doubly stochastic without forming Y explicitly
+  // Row sums: Y_row_sums = Y × e = D × (D_s × e), e = ones(previous_cols)
+  // Column sums: Y_col_sums = Y^T × e = D_s^T × (D^T × e)
+  settings.log.printf("Folding: Verifying Y is doubly stochastic (without forming Y)\n");
+
+  // Row sums: Y_row_sums = D × (D_s × e)
+  std::vector<f_t> e_prev_cols(previous_cols, 1.0);
+  std::vector<f_t> D_s_times_e(reduced_cols, 0.0);
+  matrix_vector_multiply(D_s, 1.0, e_prev_cols, 0.0, D_s_times_e);
+  std::vector<f_t> Y_row_sums(previous_cols, 0.0);
+  matrix_vector_multiply(D, 1.0, D_s_times_e, 0.0, Y_row_sums);
+  for (i_t i = 0; i < previous_cols; i++) {
+    if (std::abs(Y_row_sums[i] - 1.0) > 1e-6) {
+      settings.log.printf("Folding: Y_row_sums[%d] = %f\n", i, Y_row_sums[i]);
+      return;
+    }
+  }
+
+  // Column sums: Y_col_sums = D_s^T × (D^T × e)
+  std::vector<f_t> D_T_times_e(reduced_cols, 0.0);
+  matrix_transpose_vector_multiply(D, 1.0, e_prev_cols, 0.0, D_T_times_e);
+  std::vector<f_t> Y_col_sums(previous_cols, 0.0);
+  matrix_transpose_vector_multiply(D_s, 1.0, D_T_times_e, 0.0, Y_col_sums);
+  for (i_t j = 0; j < previous_cols; j++) {
+    if (std::abs(Y_col_sums[j] - 1.0) > 1e-6) {
+      settings.log.printf("Folding: Y_col_sums[%d] = %f\n", j, Y_col_sums[j]);
+      return;
+    }
+  }
+  settings.log.printf("Folding: Verified Y is doubly stochastic\n");
 #endif
+#endif
+#undef DEBUG
   // Construct the matrix A_tilde
   settings.log.debug("Folding: Constructing A_tilde\n");
   i_t A_nnz                      = problem.A.col_start[n];
@@ -1282,6 +1351,7 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   csr_matrix_t<i_t, f_t> A_tilde_row(A_tilde.m, A_tilde.n, A_tilde.col_start[A_tilde.n]);
   A_tilde.to_compressed_row(A_tilde_row);
 
+#define DEBUG  // Uncomment to enable expensive partition verification
 #ifdef DEBUG
   std::vector<i_t> row_to_color(A_tilde.m, -1);
   for (i_t k = 0; k < total_colors_seen; k++) {
@@ -1305,130 +1375,113 @@ void folding(lp_problem_t<i_t, f_t>& problem,
     }
   }
 
-  // Check that the partition is equitable
+  // Verify partition is equitable (only in DEBUG mode - expensive for large problems)
+  f_t equitability_tol = 1e-12;
+  settings.log.printf("Folding: Checking partition equitability (tolerance = %.2e)\n",
+                      equitability_tol);
+
+  f_t max_col_partition_error  = 0.0;
+  f_t max_row_partition_error  = 0.0;
+  i_t col_partition_violations = 0;
+  i_t row_partition_violations = 0;
+
+  // Step 1: Precompute row_col_color_sum[row][col_color]
+  std::vector<std::unordered_map<i_t, f_t>> row_col_color_sum(A_tilde.m);
+  for (i_t row = 0; row < A_tilde.m; row++) {
+    for (i_t p = A_tilde_row.row_start[row]; p < A_tilde_row.row_start[row + 1]; p++) {
+      i_t col = A_tilde_row.j[p];
+      i_t cc  = col_to_color[col];
+      if (cc >= 0) { row_col_color_sum[row][cc] += A_tilde_row.x[p]; }
+    }
+  }
+
+  // Step 2: Verify column partition
+  for (i_t h = 0; h < total_colors_seen; h++) {
+    const color_t<i_t>& row_color = colors[h];
+    if (row_color.active != kActive || row_color.row_or_column != kRow) continue;
+    if (row_color.vertices.size() < 2) continue;
+
+    auto it     = row_color.vertices.begin();
+    i_t ref_row = *it;
+    ++it;
+    for (; it != row_color.vertices.end(); ++it) {
+      i_t u = *it;
+      for (auto& [cc, ref_sum] : row_col_color_sum[ref_row]) {
+        f_t u_sum = row_col_color_sum[u][cc];
+        f_t diff  = std::abs(ref_sum - u_sum);
+        if (diff > max_col_partition_error) max_col_partition_error = diff;
+        if (diff > equitability_tol) col_partition_violations++;
+      }
+      for (auto& [cc, u_sum] : row_col_color_sum[u]) {
+        f_t ref_sum = row_col_color_sum[ref_row][cc];
+        f_t diff    = std::abs(ref_sum - u_sum);
+        if (diff > max_col_partition_error) max_col_partition_error = diff;
+        if (diff > equitability_tol) col_partition_violations++;
+      }
+    }
+  }
+  settings.log.printf("Folding: Column partition max error = %.2e, violations = %d\n",
+                      max_col_partition_error,
+                      col_partition_violations);
+
+  // Step 3: Precompute col_row_color_sum[col][row_color]
+  std::vector<std::unordered_map<i_t, f_t>> col_row_color_sum(A_tilde.n);
+  for (i_t col = 0; col < A_tilde.n; col++) {
+    for (i_t p = A_tilde.col_start[col]; p < A_tilde.col_start[col + 1]; p++) {
+      i_t row = A_tilde.i[p];
+      i_t rc  = row_to_color[row];
+      if (rc >= 0) { col_row_color_sum[col][rc] += A_tilde.x[p]; }
+    }
+  }
+
+  // Step 4: Verify row partition
   for (i_t k = 0; k < total_colors_seen; k++) {
-    const color_t<i_t> col_color = colors[k];
-    if (col_color.active == kActive) {
-      if (col_color.row_or_column == kCol) {
-        // Check sum_{w in color} Avw = sum_{w in color} Avprimew for all (v, vprime) in row color P
-        for (i_t h = 0; h < total_colors_seen; h++) {
-          const color_t<i_t> row_color = colors[h];
-          if (row_color.active == kActive && row_color.row_or_column == kRow) {
-            for (i_t u : row_color.vertices) {
-              for (i_t v : row_color.vertices) {
-                if (u != v) {
-                  f_t sum_Av      = 0.0;
-                  f_t sum_Avprime = 0.0;
-                  for (i_t p = A_tilde_row.row_start[u]; p < A_tilde_row.row_start[u + 1]; p++) {
-                    const i_t j = A_tilde_row.j[p];
-                    if (col_to_color[j] == k) { sum_Av += A_tilde_row.x[p]; }
-                  }
-                  for (i_t p = A_tilde_row.row_start[v]; p < A_tilde_row.row_start[v + 1]; p++) {
-                    const i_t j = A_tilde_row.j[p];
-                    if (col_to_color[j] == k) { sum_Avprime += A_tilde_row.x[p]; }
-                  }
-                  if (std::abs(sum_Av - sum_Avprime) > 1e-12) {
-                    settings.log.printf(
-                      "Folding: u %d v %d row color %d sum_A%d: %f sum_A%d: = %f\n",
-                      u,
-                      v,
-                      h,
-                      u,
-                      sum_Av,
-                      v,
-                      sum_Avprime);
-                    settings.log.printf("Folding: row color %d vertices: ", h);
-                    for (i_t u : row_color.vertices) {
-                      settings.log.printf("%d(%d) ", u, row_to_color[u]);
-                    }
-                    settings.log.printf("\n");
-                    settings.log.printf("col color %d vertices: ", k);
-                    for (i_t v : col_color.vertices) {
-                      settings.log.printf("%d(%d) ", v, col_to_color[v]);
-                    }
-                    settings.log.printf("\n");
-                    settings.log.printf("row %d\n", u);
-                    for (i_t p = A_tilde_row.row_start[u]; p < A_tilde_row.row_start[u + 1]; p++) {
-                      const i_t j = A_tilde_row.j[p];
-                      settings.log.printf("row %d col %d column color %d value %e\n",
-                                          u,
-                                          j,
-                                          col_to_color[j],
-                                          A_tilde_row.x[p]);
-                      if (col_to_color[j] == k) { sum_Av += A_tilde_row.x[p]; }
-                    }
-                    settings.log.printf("row %d\n", v);
-                    for (i_t p = A_tilde_row.row_start[v]; p < A_tilde_row.row_start[v + 1]; p++) {
-                      const i_t j = A_tilde_row.j[p];
-                      settings.log.printf("row %d col %d column color %d value %e\n",
-                                          v,
-                                          j,
-                                          col_to_color[j],
-                                          A_tilde_row.x[p]);
-                      if (col_to_color[j] == k) { sum_Avprime += A_tilde_row.x[p]; }
-                    }
-                    settings.log.printf("total colors seen %d\n", total_colors_seen);
-                    return;
-                  }
-                }
-              }
-            }
-          }
-        }
+    const color_t<i_t>& col_color = colors[k];
+    if (col_color.active != kActive || col_color.row_or_column != kCol) continue;
+    if (col_color.vertices.size() < 2) continue;
+
+    auto it     = col_color.vertices.begin();
+    i_t ref_col = *it;
+    ++it;
+    for (; it != col_color.vertices.end(); ++it) {
+      i_t v = *it;
+      for (auto& [rc, ref_sum] : col_row_color_sum[ref_col]) {
+        f_t v_sum = 0.0;
+        auto it_v = col_row_color_sum[v].find(rc);
+        if (it_v != col_row_color_sum[v].end()) { v_sum = it_v->second; }
+        f_t diff = std::abs(ref_sum - v_sum);
+        if (diff > max_row_partition_error) max_row_partition_error = diff;
+        if (diff > equitability_tol) row_partition_violations++;
+      }
+      for (auto& [rc, v_sum] : col_row_color_sum[v]) {
+        f_t ref_sum = col_row_color_sum[ref_col][rc];
+        f_t diff    = std::abs(ref_sum - v_sum);
+        if (diff > max_row_partition_error) max_row_partition_error = diff;
+        if (diff > equitability_tol) row_partition_violations++;
       }
     }
   }
-  settings.log.printf("Folding: Verified that the column partition is equitable\n");
+  settings.log.printf("Folding: Row partition max error = %.2e, violations = %d\n",
+                      max_row_partition_error,
+                      row_partition_violations);
 
-  for (i_t k = 0; k < num_colors; k++) {
-    const color_t<i_t>& row_color = colors[k];
-    if (row_color.active == kActive) {
-      if (row_color.row_or_column == kRow) {
-        for (i_t h = 0; h < num_colors; h++) {
-          const color_t<i_t>& col_color = colors[h];
-          if (col_color.active == kActive && col_color.row_or_column == kCol) {
-            for (i_t u : col_color.vertices) {
-              for (i_t v : col_color.vertices) {
-                if (u != v) {
-                  f_t sum_A_u = 0.0;
-                  f_t sum_A_v = 0.0;
-                  for (i_t p = A_tilde.col_start[u]; p < A_tilde.col_start[u + 1]; p++) {
-                    const i_t i = A_tilde.i[p];
-                    if (row_to_color[i] == k) { sum_A_u += A_tilde.x[p]; }
-                  }
-                  for (i_t p = A_tilde.col_start[v]; p < A_tilde.col_start[v + 1]; p++) {
-                    const i_t i = A_tilde.i[p];
-                    if (row_to_color[i] == k) { sum_A_v += A_tilde.x[p]; }
-                  }
-                  if (std::abs(sum_A_u - sum_A_v) > 1e-12) {
-                    settings.log.printf(
-                      "Folding: u %d v %d row color %d sum_A%d: %f sum_A%d: = %f\n",
-                      u,
-                      v,
-                      k,
-                      u,
-                      sum_A_u,
-                      v,
-                      sum_A_v);
-                    return;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+  if (col_partition_violations == 0 && row_partition_violations == 0) {
+    settings.log.printf("Folding: Partition is equitable within tolerance\n");
+  } else {
+    settings.log.printf("Folding: Partition has %d column + %d row violations\n",
+                        col_partition_violations,
+                        row_partition_violations);
   }
-  settings.log.printf("Folding: Verified that the row partition is equitable\n");
 
-  fid = fopen("X.txt", "w");
-  X.write_matrix_market(fid);
-  fclose(fid);
-  fid = fopen("Y.txt", "w");
-  Y.write_matrix_market(fid);
-  fclose(fid);
+  // X and Y matrices are no longer computed explicitly (memory optimization)
+  // fid = fopen("X.txt", "w");
+  // X.write_matrix_market(fid);
+  // fclose(fid);
+  // fid = fopen("Y.txt", "w");
+  // Y.write_matrix_market(fid);
+  // fclose(fid);
 #endif
+#undef DEBUG
 
   if (A_tilde.m != previous_rows || A_tilde.n != previous_cols) {
     settings.log.printf("Folding: A_tilde has %d rows and %d cols, expected %d and %d\n",
@@ -1441,7 +1494,10 @@ void folding(lp_problem_t<i_t, f_t>& problem,
 
   settings.log.debug("Folding: partial A_tilde nz %d predicted %d\n", nnz, A_nnz + 2 * nz_ub);
 
+  FILE* fid;
+#define DEBUG  // Uncomment to enable expensive XA=AY verification
 #ifdef DEBUG
+#ifdef BUILD_MATRIX_X_AND_Y
   // Verify that XA = AY
   csc_matrix_t<i_t, f_t> XA(previous_rows, previous_cols, 1);
   multiply(X, A_tilde, XA);
@@ -1456,7 +1512,85 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   csc_matrix_t<i_t, f_t> XA_AY_error(previous_rows, previous_cols, 1);
   add(XA, AY, 1.0, -1.0, XA_AY_error);
   printf("|| XA - AY ||_1 = %f\n", XA_AY_error.norm1());
+#else
+  settings.log.printf("Folding: Verifying that XA = AY\n");
+
+  // Instead of computing XA and AY and checking for equality entrywise,
+  // repeatedly generate a random vector v, compute XA*v and AY*v, and check if they are close.
+
+  {
+    settings.log.printf("Folding: Verifying that XA*v = AY*v for random vectors v\n");
+    int num_trials = 5;
+    std::vector<f_t> v(previous_cols, 0.0);
+    std::vector<f_t> x1(previous_rows, 0.0);
+    std::vector<f_t> x2(previous_rows, 0.0);
+
+    std::mt19937 rng(42);  // fixed seed for repeatability
+    std::uniform_real_distribution<f_t> dist(-1.0, 1.0);
+
+    for (int trial = 0; trial < num_trials; ++trial) {
+      f_t norm_v = 0.0;
+      // Generate random vector v
+      for (i_t i = 0; i < previous_cols; ++i) {
+        v[i] = dist(rng);
+        norm_v += v[i] * v[i];
+      }
+      norm_v = std::sqrt(norm_v);
+      // Compute x1 = XA * v = Pi_P * (C_s * (A_tilde * v))
+      matrix_vector_multiply(A_tilde, 1.0, v, 0.0, x1);  // x1 = A_tilde * v
+      std::vector<f_t> C_s_x1(reduced_rows, 0.0);
+      matrix_vector_multiply(C_s, 1.0, x1, 0.0, C_s_x1);  // C_s * (A_tilde * v)
+      std::vector<f_t> xa_v(previous_rows, 0.0);
+      matrix_vector_multiply(Pi_P, 1.0, C_s_x1, 0.0, xa_v);  // Pi_P * (C_s * (A_tilde * v))
+
+      // Compute x2 = AY * v = A_tilde * (D * (D_s * v))
+      std::vector<f_t> D_s_v(reduced_cols, 0.0);
+      matrix_vector_multiply(D_s, 1.0, v, 0.0, D_s_v);  // D_s * v
+      std::vector<f_t> yv(previous_cols, 0.0);
+      matrix_vector_multiply(D, 1.0, D_s_v, 0.0, yv);  // D * (D_s * v)
+      std::vector<f_t> ay_v(previous_rows, 0.0);
+      matrix_vector_multiply(A_tilde, 1.0, yv, 0.0, ay_v);  // AY*v = A_tilde * (D * (D_s * v))
+
+      // Compute norm-2 difference
+      f_t diff = 0.0;
+      for (i_t i = 0; i < previous_rows; ++i) {
+        diff += (xa_v[i] - ay_v[i]) * (xa_v[i] - ay_v[i]);
+      }
+      diff = std::sqrt(diff);
+      settings.log.printf(
+        "Folding: Trial %d: ||XA*v - AY*v||_2 = %e, ||v||_2 = %e\n", trial, diff, norm_v);
+
+      if (diff > 1e-7 * norm_v) {
+        settings.log.printf("Folding: Large difference detected in XA*v vs AY*v, ||diff||_2 = %e\n",
+                            diff);
+        // Find and print worst offending rows
+        std::vector<std::pair<f_t, i_t>> diffs_with_idx(previous_rows);
+        for (i_t i = 0; i < previous_rows; ++i) {
+          diffs_with_idx[i] = {std::abs(xa_v[i] - ay_v[i]), i};
+        }
+        std::partial_sort(diffs_with_idx.begin(),
+                          diffs_with_idx.begin() + std::min((i_t)5, previous_rows),
+                          diffs_with_idx.end(),
+                          std::greater<std::pair<f_t, i_t>>());
+        for (i_t k = 0; k < std::min((i_t)5, previous_rows); ++k) {
+          i_t i = diffs_with_idx[k].second;
+          settings.log.printf("   i=%d: (XA*v)[%d]=%e  (AY*v)[%d]=%e  diff=%e\n",
+                              i,
+                              i,
+                              xa_v[i],
+                              i,
+                              ay_v[i],
+                              xa_v[i] - ay_v[i]);
+        }
+        return;
+      }
+    }
+    settings.log.printf(
+      "Folding: All random vector multiplication checks (XA*v==AY*v) succeeded!\n");
+  }
 #endif
+#endif
+#undef DEBUG
   // Construct the matrix A_prime
   settings.log.debug("Folding: Constructing A_prime\n");
   csc_matrix_t<i_t, f_t> A_prime(reduced_rows, reduced_cols, 1);
