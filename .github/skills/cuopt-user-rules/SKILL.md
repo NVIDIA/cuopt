@@ -69,9 +69,9 @@ description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before 
 
 ---
 
-## 4. Verify Understanding
+## 4. MUST Verify Understanding
 
-Before writing substantial code, confirm your understanding:
+**Before writing substantial code, you MUST confirm your understanding:**
 
 ```
 "Let me confirm I understand:
