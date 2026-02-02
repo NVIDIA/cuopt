@@ -120,6 +120,7 @@ void rins_t<i_t, f_t>::run_rins()
   // copy the best from the population into a solution_t in the RINS stream
   {
     std::lock_guard<std::recursive_mutex> lock(dm.population.write_mutex);
+    dm.population.best_feasible().handle_ptr->sync_stream();
     auto& best_feasible_ref = dm.population.best_feasible();
     cuopt_assert(best_feasible_ref.assignment.size() == best_sol.assignment.size(),
                  "Assignment size mismatch");
