@@ -101,15 +101,20 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                 error_type_t::RuntimeError,
                 "preprocess_problem should be called before running the solver");
 
+  diversity_manager_t<i_t, f_t> dm(context);
   if (context.problem_ptr->empty) {
     CUOPT_LOG_INFO("Problem fully reduced in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
+    for (auto callback : context.settings.get_mip_callbacks()) {
+      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
+        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
+        dm.population.invoke_get_solution_callback(sol, get_sol_callback);
+      }
+    }
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
-
-  diversity_manager_t<i_t, f_t> dm(context);
   dm.timer              = timer_;
   bool presolve_success = dm.run_presolve(timer_.remaining_time());
   if (!presolve_success) {
@@ -123,6 +128,12 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     CUOPT_LOG_INFO("Problem full reduced in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
+    for (auto callback : context.settings.get_mip_callbacks()) {
+      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
+        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
+        dm.population.invoke_get_solution_callback(sol, get_sol_callback);
+      }
+    }
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
@@ -144,6 +155,14 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
         opt_sol.get_termination_status() == pdlp_termination_status_t::PrimalInfeasible ||
         opt_sol.get_termination_status() == pdlp_termination_status_t::DualInfeasible) {
       sol.set_problem_fully_reduced();
+    }
+    if (opt_sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
+      for (auto callback : context.settings.get_mip_callbacks()) {
+        if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
+          auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
+          dm.population.invoke_get_solution_callback(sol, get_sol_callback);
+        }
+      }
     }
     context.problem_ptr->post_process_solution(sol);
     return sol;
