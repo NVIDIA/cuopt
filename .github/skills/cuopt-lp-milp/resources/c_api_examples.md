@@ -159,6 +159,10 @@ int main() {
         var_lower, var_upper,
         variable_types, &problem
     );
+    if (status != CUOPT_SUCCESS) {
+        printf("Error creating problem: %d\n", status);
+        return 1;
+    }
 
     cuOptCreateSolverSettings(&settings);
     cuOptSetFloatParameter(settings, CUOPT_MIP_ABSOLUTE_TOLERANCE, 0.0001);
@@ -166,21 +170,33 @@ int main() {
     cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 120.0);
 
     status = cuOptSolve(problem, settings, &solution);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error solving: %d\n", status);
+        goto cleanup;
+    }
 
-    cuopt_float_t objective_value;
-    cuOptGetObjectiveValue(solution, &objective_value);
-    printf("Objective: %f\n", objective_value);
+    if (solution != NULL) {
+        cuopt_float_t objective_value;
+        cuOptGetObjectiveValue(solution, &objective_value);
+        printf("Objective: %f\n", objective_value);
 
-    cuopt_float_t* sol = malloc(num_variables * sizeof(cuopt_float_t));
-    cuOptGetPrimalSolution(solution, sol);
-    printf("x1 (integer) = %f\n", sol[0]);
-    printf("x2 (continuous) = %f\n", sol[1]);
-    free(sol);
+        cuopt_float_t* sol = malloc(num_variables * sizeof(cuopt_float_t));
+        if (sol == NULL) {
+            printf("Error: memory allocation failed\n");
+            status = -1;
+            goto cleanup;
+        }
+        cuOptGetPrimalSolution(solution, sol);
+        printf("x1 (integer) = %f\n", sol[0]);
+        printf("x2 (continuous) = %f\n", sol[1]);
+        free(sol);
+    }
 
+cleanup:
     cuOptDestroyProblem(&problem);
     cuOptDestroySolverSettings(&settings);
     cuOptDestroySolution(&solution);
-    return 0;
+    return (status == CUOPT_SUCCESS) ? 0 : 1;
 }
 ```
 

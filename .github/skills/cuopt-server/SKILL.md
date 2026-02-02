@@ -133,11 +133,14 @@ payload = {
     },
     "task_data": {
         "task_locations": [1, 2],
-        "demand": [[10, 20]]
+        "demand": [[10, 20]],
+        "task_time_windows": [[0, 100], [0, 100]],  # optional
+        "service_times": [5, 5]                      # optional
     },
     "fleet_data": {
         "vehicle_locations": [[0, 0]],
-        "capacities": [[50]]
+        "capacities": [[50]],
+        "vehicle_time_windows": [[0, 200]]          # optional
     },
     "solver_config": {"time_limit": 5}
 }

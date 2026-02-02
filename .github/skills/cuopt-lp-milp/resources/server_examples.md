@@ -49,7 +49,7 @@ curl -s "http://localhost:8000/cuopt/solution/$REQID" \
 
 ```bash
 # Add integer variable types
-curl -s -X POST "http://localhost:8000/cuopt/request" \
+REQID=$(curl -s -X POST "http://localhost:8000/cuopt/request" \
   -H "Content-Type: application/json" \
   -H "CLIENT-VERSION: custom" \
   -d '{
@@ -77,7 +77,21 @@ curl -s -X POST "http://localhost:8000/cuopt/request" \
         "mip_relative_gap": 0.01
       }
     }
-  }' | jq .
+  }' | jq -r '.reqId')
+
+echo "Request ID: $REQID"
+
+# Poll for solution (MILP may take longer than LP)
+while true; do
+  RESULT=$(curl -s "http://localhost:8000/cuopt/solution/$REQID" \
+    -H "CLIENT-VERSION: custom")
+  STATUS=$(echo "$RESULT" | jq -r '.response.status // empty')
+  if [ -n "$STATUS" ]; then
+    echo "$RESULT" | jq .
+    break
+  fi
+  sleep 2
+done
 ```
 
 ## LP Request (Python)
@@ -151,11 +165,14 @@ CSR format:
 ```json
 {
   "constraint_bounds": {
-    "lower_bounds": ["ninf", "ninf"],  // -infinity
-    "upper_bounds": [100.0, "inf"]      // +infinity
+    "lower_bounds": ["ninf", "ninf"],
+    "upper_bounds": [100.0, "inf"]
   }
 }
 ```
+
+- `"ninf"` — negative infinity (-∞)
+- `"inf"` — positive infinity (+∞)
 
 ## Variable Types
 

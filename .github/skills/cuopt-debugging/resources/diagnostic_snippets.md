@@ -92,14 +92,11 @@ assert cost_matrix.shape[0] == dm.n_locations, "Matrix size != n_locations"
 ### Check Data Types
 
 ```python
-print(f"cost_matrix dtype: {cost_matrix.dtypes}")
-print(f"order_locations dtype: {order_locations.dtype}")
-print(f"demand dtype: {demand.dtype}")
-
-# Should be:
-# cost_matrix: float32
-# order_locations: int32
-# demand: int32
+# For numpy arrays, use .dtype directly
+# For pandas/cudf DataFrames, use .values.dtype or .to_numpy().dtype
+print(f"cost_matrix dtype: {cost_matrix.values.dtype}")  # float32
+print(f"order_locations dtype: {order_locations.values.dtype}")  # int32
+print(f"demand dtype: {demand.values.dtype}")  # int32
 ```
 
 ### Verify Time Windows Feasibility

@@ -8,6 +8,8 @@ sleep 5
 curl http://localhost:8000/cuopt/health
 ```
 
+> **Note:** Using `--ip 0.0.0.0` binds to all interfaces for development convenience; use `--ip 127.0.0.1` or a specific interface in production or untrusted networks.
+
 ## Basic VRP (curl)
 
 ```bash

@@ -212,7 +212,7 @@ for c in customers:
 
 problem.solve()
 
-if problem.Status.name == "Optimal":
+if problem.Status.name in ("Optimal", "PrimalFeasible"):
     print(f"Total cost: ${problem.ObjValue:.2f}")
     for s in suppliers:
         for c in customers:

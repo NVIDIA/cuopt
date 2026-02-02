@@ -86,10 +86,13 @@ problem.setObjective(
     sense=MINIMIZE
 )
 
-problem.solve(SolverSettings())
+result = problem.solve(SolverSettings())
 
-print(f"x = {x.getValue():.4f}")  # Should be ~3
-print(f"y = {y.getValue():.4f}")  # Should be ~4
+if problem.Status.name in ["Optimal", "PrimalFeasible"]:
+    print(f"x = {x.getValue():.4f}")  # Should be ~3
+    print(f"y = {y.getValue():.4f}")  # Should be ~4
+else:
+    raise RuntimeError(f"Solver failed with status: {problem.Status.name}")
 ```
 
 ## Quadratic with Linear Constraints
@@ -141,9 +144,12 @@ problem.setObjective(x*x - 4*x, sense=MINIMIZE)
 
 problem.solve()
 
-print(f"x = {x.getValue():.4f}")  # Should be 2
-print(f"Minimized value = {problem.ObjValue:.4f}")  # Should be -4
-print(f"Original maximum = {-problem.ObjValue:.4f}")  # Should be 4
+if problem.Status.name in ["Optimal", "PrimalFeasible"]:
+    print(f"x = {x.getValue():.4f}")  # Should be 2
+    print(f"Minimized value = {problem.ObjValue:.4f}")  # Should be -4
+    print(f"Original maximum = {-problem.ObjValue:.4f}")  # Should be 4
+else:
+    print(f"Solver did not find optimal solution. Status: {problem.Status.name}")
 ```
 
 ## Expanding Covariance Matrix

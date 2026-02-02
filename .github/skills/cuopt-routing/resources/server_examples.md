@@ -127,7 +127,7 @@ for attempt in range(30):
 ## Pickup and Delivery (curl)
 
 ```bash
-curl -s -X POST "http://localhost:8000/cuopt/request" \
+REQID=$(curl -s -X POST "http://localhost:8000/cuopt/request" \
   -H "Content-Type: application/json" \
   -H "CLIENT-VERSION: custom" \
   -d '{
@@ -149,7 +149,15 @@ curl -s -X POST "http://localhost:8000/cuopt/request" \
     "solver_config": {
       "time_limit": 10
     }
-  }' | jq .
+  }' | jq -r '.reqId')
+
+echo "Request ID: $REQID"
+
+# Poll for solution
+sleep 2
+curl -s "http://localhost:8000/cuopt/solution/$REQID" \
+  -H "Content-Type: application/json" \
+  -H "CLIENT-VERSION: custom" | jq .
 ```
 
 ## Terminology Reference

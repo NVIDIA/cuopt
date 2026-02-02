@@ -42,7 +42,8 @@ curl -s "http://localhost:8000/cuopt/solution/$REQID" -H "CLIENT-VERSION: custom
 ## MILP Request (curl)
 
 ```bash
-curl -s -X POST "http://localhost:8000/cuopt/request" \
+# Submit MILP request and capture reqId
+REQID=$(curl -s -X POST "http://localhost:8000/cuopt/request" \
   -H "Content-Type: application/json" \
   -H "CLIENT-VERSION: custom" \
   -d '{
@@ -70,7 +71,12 @@ curl -s -X POST "http://localhost:8000/cuopt/request" \
         "mip_relative_gap": 0.01
       }
     }
-  }' | jq .
+  }' | jq -r '.reqId')
+# Note: objective_data also supports optional "scalability_factor" and "offset" fields
+
+# Poll for solution (MILP may take longer than LP)
+sleep 3
+curl -s "http://localhost:8000/cuopt/solution/$REQID" -H "CLIENT-VERSION: custom" | jq .
 ```
 
 ## LP Request (Python)
