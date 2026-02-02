@@ -1,5 +1,26 @@
 # LP/MILP: C API Examples
 
+## Required Headers
+
+```c
+#include <cuopt/linear_programming/cuopt_c.h>   // Core API
+#include <cuopt/linear_programming/constants.h> // Parameter name macros (CUOPT_TIME_LIMIT, etc.)
+```
+
+## Parameter Setting Functions
+
+**Important:** Use the correct function for each parameter type:
+
+| Function | Use For | Example |
+|----------|---------|---------|
+| `cuOptSetFloatParameter` | Float params (tolerances, time_limit) | `cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 60.0)` |
+| `cuOptSetIntegerParameter` | Integer params (log_to_console, method) | `cuOptSetIntegerParameter(settings, CUOPT_LOG_TO_CONSOLE, 1)` |
+| `cuOptSetParameter` | String params | `cuOptSetParameter(settings, "custom_param", "value")` |
+
+**Common mistake:** Using non-existent function names like `cuOptSetIntParameter` (correct: `cuOptSetIntegerParameter`).
+
+---
+
 ## Simple LP
 
 ```c
@@ -10,6 +31,7 @@
  *                    x1, x2 >= 0
  */
 #include <cuopt/linear_programming/cuopt_c.h>
+#include <cuopt/linear_programming/constants.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -104,6 +126,7 @@ cleanup:
  * Same as LP but x1 is integer
  */
 #include <cuopt/linear_programming/cuopt_c.h>
+#include <cuopt/linear_programming/constants.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -194,6 +217,46 @@ CUOPT_INFINITY      // Use for unbounded
 CUOPT_SUCCESS       // 0
 ```
 
+## Parameter Name Constants (from constants.h)
+
+```c
+// Float parameters (use with cuOptSetFloatParameter)
+CUOPT_TIME_LIMIT                    // "time_limit"
+CUOPT_ABSOLUTE_PRIMAL_TOLERANCE     // "absolute_primal_tolerance"
+CUOPT_ABSOLUTE_DUAL_TOLERANCE       // "absolute_dual_tolerance"
+CUOPT_RELATIVE_PRIMAL_TOLERANCE     // "relative_primal_tolerance"
+CUOPT_RELATIVE_DUAL_TOLERANCE       // "relative_dual_tolerance"
+CUOPT_MIP_ABSOLUTE_GAP              // "mip_absolute_gap"
+CUOPT_MIP_RELATIVE_GAP              // "mip_relative_gap"
+CUOPT_MIP_ABSOLUTE_TOLERANCE        // "mip_absolute_tolerance"
+CUOPT_MIP_RELATIVE_TOLERANCE        // "mip_relative_tolerance"
+CUOPT_MIP_INTEGRALITY_TOLERANCE     // "mip_integrality_tolerance"
+
+// Integer parameters (use with cuOptSetIntegerParameter)
+CUOPT_LOG_TO_CONSOLE                // "log_to_console"
+CUOPT_ITERATION_LIMIT               // "iteration_limit"
+CUOPT_METHOD                        // "method" (see CUOPT_METHOD_* values)
+CUOPT_PDLP_SOLVER_MODE              // "pdlp_solver_mode" (see CUOPT_PDLP_SOLVER_MODE_* values)
+CUOPT_PRESOLVE                      // "presolve"
+CUOPT_NUM_CPU_THREADS               // "num_cpu_threads"
+CUOPT_NUM_GPUS                      // "num_gpus"
+
+// Method values (for CUOPT_METHOD)
+CUOPT_METHOD_CONCURRENT             // 0 - Run multiple methods concurrently
+CUOPT_METHOD_PDLP                   // 1 - PDLP solver
+CUOPT_METHOD_DUAL_SIMPLEX           // 2 - Dual simplex
+CUOPT_METHOD_BARRIER                // 3 - Barrier method
+
+// PDLP solver mode values (for CUOPT_PDLP_SOLVER_MODE)
+CUOPT_PDLP_SOLVER_MODE_STABLE1      // 0
+CUOPT_PDLP_SOLVER_MODE_STABLE2      // 1
+CUOPT_PDLP_SOLVER_MODE_METHODICAL1  // 2
+CUOPT_PDLP_SOLVER_MODE_FAST1        // 3
+CUOPT_PDLP_SOLVER_MODE_STABLE3      // 4
+```
+
+> **Complete list:** See `cpp/include/cuopt/linear_programming/constants.h` for all 50+ parameter constants including termination status codes, constraint senses, and file format constants.
+
 ---
 
 ## Additional References (tested in CI)
@@ -202,8 +265,11 @@ For more complete C examples with full error handling, see:
 
 | Resource | Location |
 |----------|----------|
+| **Constants Header** | `cpp/include/cuopt/linear_programming/constants.h` |
 | C API Header | `cpp/include/cuopt/linear_programming/cuopt_c.h` |
 | C API Documentation | `docs/cuopt/source/cuopt-c/lp-qp-milp/lp-qp-milp-c-api.rst` |
-| LP/MILP Examples (RST) | `docs/cuopt/source/cuopt-c/lp-qp-milp/milp-examples.rst` |
+| Simple LP Example | `docs/cuopt/source/cuopt-c/lp-qp-milp/examples/simple_lp_example.c` |
+| Simple MILP Example | `docs/cuopt/source/cuopt-c/lp-qp-milp/examples/simple_milp_example.c` |
+| MPS File Example | `docs/cuopt/source/cuopt-c/lp-qp-milp/examples/mps_file_example.c` |
 
-The header file `cuopt_c.h` contains all function signatures and parameter constants.
+The `constants.h` header contains all parameter name macros, termination status codes, method values, and constraint sense constants.
