@@ -282,19 +282,6 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
         if (context.settings.mip_scaling) {
           rmm::device_uvector<f_t> dummy(0, temp_sol.handle_ptr->get_stream());
           context.scaling.unscale_solutions(temp_sol.assignment, dummy);
-          // Need to get unscaled problem as well
-          problem_t<i_t, f_t> n_problem(*sol.problem_ptr->original_problem_ptr);
-          auto scaled_sol(temp_sol);
-          scaled_sol.problem_ptr = &n_problem;
-          scaled_sol.resize_to_original_problem();
-          scaled_sol.compute_feasibility();
-          if (!scaled_sol.get_feasible()) {
-            CUOPT_LOG_DEBUG(
-              "Discard infeasible after unscaling. Unscaled objective = %g Excess = %g",
-              scaled_sol.get_objective(),
-              scaled_sol.get_total_excess());
-            return;
-          }
         }
         if (problem_ptr->has_papilo_presolve_data()) {
           problem_ptr->papilo_uncrush_assignment(temp_sol.assignment);
@@ -367,7 +354,13 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                       outside_sol.get_feasible(),
                       outside_sol.get_user_objective(),
                       outside_sol.get_total_excess());
-
+      if (std::abs(outside_sol.get_user_objective() - outside_sol_objective) > 1e-6) {
+        cuopt_func_call(
+          CUOPT_LOG_DEBUG("External solution objective mismatch: outside_sol.get_user_objective() "
+                          "= %g, outside_sol_objective = %g",
+                          outside_sol.get_user_objective(),
+                          outside_sol_objective));
+      }
       cuopt_assert(std::abs(outside_sol.get_user_objective() - outside_sol_objective) <= 1e-6,
                    "External solution objective mismatch");
       auto h_outside_sol = outside_sol.get_host_assignment();
