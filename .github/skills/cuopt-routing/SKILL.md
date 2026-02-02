@@ -126,6 +126,42 @@ dm.set_pickup_delivery_pairs(
 )
 ```
 
+### Precedence Constraints
+
+Use `add_order_precedence()` to require certain orders to be visited before others.
+
+**Important:** This is a per-node API — call it once for each order that has predecessors.
+
+```python
+import numpy as np
+
+# Order 2 must come after orders 0 and 1
+dm.add_order_precedence(
+    node_id=2,                           # this order
+    preceding_nodes=np.array([0, 1])     # must come after these
+)
+
+# Order 3 must come after order 2
+dm.add_order_precedence(
+    node_id=3,
+    preceding_nodes=np.array([2])
+)
+```
+
+**Rules:**
+- Call once per order that has predecessors
+- `preceding_nodes` is a numpy array of order indices
+- Circular dependencies are NOT allowed (A before B before A)
+- Orders without precedence constraints don't need a call
+
+**Example: Assembly sequence**
+```python
+# Task B requires Task A to be done first
+# Task C requires Tasks A and B to be done first
+dm.add_order_precedence(1, np.array([0]))     # B after A
+dm.add_order_precedence(2, np.array([0, 1]))  # C after A and B
+```
+
 ## Quick Reference: REST Server
 
 ### Terminology Difference
@@ -179,6 +215,43 @@ else:
         print(f"Infeasible orders: {infeasible.to_list()}")
 ```
 
+## Solution DataFrame Schema
+
+`solution.get_route()` returns a `cudf.DataFrame` with these columns:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `route` | int | Order/task index in the route sequence |
+| `truck_id` | int | Vehicle ID assigned to this stop |
+| `location` | int | Location index (0 = depot typically) |
+| `arrival_stamp` | float | Arrival time at this location |
+
+**Example output:**
+```
+   route  arrival_stamp  truck_id  location
+0      0            0.0         1         0    # Vehicle 1 starts at depot
+1      3            2.0         1         3    # Vehicle 1 visits location 3
+2      2            4.0         1         2    # Vehicle 1 visits location 2
+3      0            5.0         1         0    # Vehicle 1 returns to depot
+4      0            0.0         0         0    # Vehicle 0 starts at depot
+5      1            1.0         0         1    # Vehicle 0 visits location 1
+6      0            3.0         0         0    # Vehicle 0 returns to depot
+```
+
+**Working with results:**
+```python
+route_df = solution.get_route()
+
+# Routes per vehicle
+for vid in route_df["truck_id"].unique().to_arrow().tolist():
+    vehicle_route = route_df[route_df["truck_id"] == vid]
+    locations = vehicle_route["location"].to_arrow().tolist()
+    print(f"Vehicle {vid}: {locations}")
+
+# Total travel time
+max_arrival = route_df["arrival_stamp"].max()
+```
+
 ## Common Issues
 
 | Problem | Likely Cause | Fix |
@@ -204,8 +277,8 @@ time_windows = cudf.Series([...], dtype="int32")
 ```python
 ss = routing.SolverSettings()
 ss.set_time_limit(30)           # seconds
-ss.set_number_of_climbers(64)   # parallel search threads
-ss.set_solution_scope(0)        # 0=optimize, 1=feasibility only
+ss.set_verbose_mode(True)       # enable progress output
+ss.set_error_logging_mode(True) # log constraint errors if infeasible
 ```
 
 ## Examples

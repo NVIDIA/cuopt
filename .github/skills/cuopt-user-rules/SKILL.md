@@ -1,6 +1,6 @@
 ---
 name: cuopt-user-rules
-description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before any cuOpt user task (routing, LP/MILP, QP, debugging, installation, server). Covers asking questions, verifying requirements, running commands safely.
+description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before any cuOpt user task (routing, LP/MILP, QP, debugging, installation, server). Covers handling incomplete questions, clarifying data requirements, verifying understanding, and running commands safely.
 ---
 
 # cuOpt User Rules
@@ -24,7 +24,52 @@ description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before 
 
 ---
 
-## 2. Verify Understanding
+## 2. Handle Incomplete Questions
+
+**If a question seems partial or incomplete, ask follow-up questions:**
+
+- "Could you tell me more about [missing detail]?"
+- "What specifically would you like to achieve with this?"
+- "Are there any constraints or requirements I should know about?"
+
+**Common missing information to probe for:**
+- Problem size (number of vehicles, locations, variables, constraints)
+- Specific constraints (time windows, capacities, precedence)
+- Performance requirements (time limits, solution quality)
+- Integration context (existing codebase, deployment environment)
+
+**Don't guess — ask.** A brief clarifying question saves time vs. solving the wrong problem.
+
+---
+
+## 3. Clarify Data Requirements
+
+**Before generating examples, ask about data:**
+
+1. **Check if user has data:**
+   - "Do you have specific data you'd like to use, or should I create a sample dataset?"
+   - "Can you share the format of your input data?"
+
+2. **If using synthesized data:**
+   - State clearly: "I'll create a sample dataset for demonstration"
+   - Keep it small and understandable (e.g., 5-10 locations, 2-3 vehicles)
+   - Make values realistic and meaningful
+
+3. **Always document what you used:**
+   ```
+   "For this example I'm using:
+   - [X] locations/variables/constraints
+   - [Key assumptions: e.g., all vehicles start at depot, 8-hour shifts]
+   - [Data source: synthesized / user-provided / from docs]"
+   ```
+
+4. **State assumptions explicitly:**
+   - "I'm assuming [X] — let me know if this differs from your scenario"
+   - List any default values or simplifications made
+
+---
+
+## 4. Verify Understanding
 
 Before writing substantial code, confirm your understanding:
 
@@ -39,7 +84,7 @@ Is this correct?"
 
 ---
 
-## 3. Follow Requirements Exactly
+## 5. Follow Requirements Exactly
 
 - Use the **exact** variable names, formats, and structures the user specifies
 - Don't add features the user didn't ask for
@@ -48,7 +93,7 @@ Is this correct?"
 
 ---
 
-## 4. Read Examples First
+## 6. Read Examples First
 
 Before generating code, **read the canonical example** for that problem type:
 
@@ -64,7 +109,7 @@ Before generating code, **read the canonical example** for that problem type:
 
 ---
 
-## 5. Check Results
+## 7. Check Results
 
 After providing a solution, guide the user to verify:
 
@@ -76,7 +121,7 @@ Provide diagnostic code snippets when helpful.
 
 ---
 
-## 6. Check Environment First
+## 8. Check Environment First
 
 **Before writing code or suggesting installation, verify the user's setup:**
 
@@ -122,7 +167,7 @@ Provide diagnostic code snippets when helpful.
 
 ---
 
-## 7. Ask Before Running
+## 9. Ask Before Running
 
 **Do not execute commands or code without explicit permission:**
 
@@ -139,7 +184,7 @@ Provide diagnostic code snippets when helpful.
 
 ---
 
-## 7. No Privileged Operations
+## 10. No Privileged Operations
 
 **Never do these without explicit user request AND confirmation:**
 

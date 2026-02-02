@@ -28,6 +28,7 @@ Diagnose and fix issues with cuOpt solutions, errors, and performance.
    - The error message (exact text)
    - The code that produces it
    - Problem size (variables, constraints, locations)
+   - Share important log messages or status of on-going run.
 
 ## Quick Diagnosis by Symptom
 
@@ -228,8 +229,8 @@ settings.set_parameter("mip_relative_gap", 0.05)  # 5% gap
 
 ```python
 ss = routing.SolverSettings()
-ss.set_time_limit(30)
-ss.set_number_of_climbers(32)  # Reduce if memory-bound
+ss.set_time_limit(60)           # Increase time for better solutions
+ss.set_verbose_mode(True)       # See progress during solve
 ```
 
 ## Diagnostic Checklist
