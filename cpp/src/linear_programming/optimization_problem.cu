@@ -17,11 +17,21 @@
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 
+#include <rmm/exec_policy.hpp>
+
+#include <thrust/binary_search.h>
 #include <thrust/count.h>
+#include <thrust/equal.h>
+#include <thrust/gather.h>
+#include <thrust/iterator/permutation_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/sort.h>
+#include <thrust/tuple.h>
 
 #include <cuda_profiler_api.h>
 
 #include <algorithm>
+#include <unordered_map>
 
 namespace cuopt::linear_programming {
 
@@ -76,6 +86,257 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(
     var_names_{other.get_variable_names()},
     row_names_{other.get_row_names()}
 {
+}
+
+/**
+ * @brief Compare two CSR matrices for equivalence under row and column permutations.
+ *
+ * @param this_offsets Row offsets of first matrix
+ * @param this_indices Column indices of first matrix
+ * @param this_values Values of first matrix
+ * @param other_offsets Row offsets of second matrix
+ * @param other_indices Column indices of second matrix
+ * @param other_values Values of second matrix
+ * @param d_row_perm_inv Inverse row permutation (maps other's row indices to this's)
+ * @param d_col_perm_inv Inverse column permutation (maps other's col indices to this's)
+ * @param n_cols Number of columns (used for sort key computation)
+ * @param stream CUDA stream
+ * @return true if matrices are equivalent under the given permutations
+ */
+template <typename i_t, typename f_t>
+static bool csr_matrices_equivalent_with_permutation(const rmm::device_uvector<i_t>& this_offsets,
+                                                     const rmm::device_uvector<i_t>& this_indices,
+                                                     const rmm::device_uvector<f_t>& this_values,
+                                                     const rmm::device_uvector<i_t>& other_offsets,
+                                                     const rmm::device_uvector<i_t>& other_indices,
+                                                     const rmm::device_uvector<f_t>& other_values,
+                                                     const rmm::device_uvector<i_t>& d_row_perm_inv,
+                                                     const rmm::device_uvector<i_t>& d_col_perm_inv,
+                                                     i_t n_cols,
+                                                     rmm::cuda_stream_view stream)
+{
+  const i_t nnz = static_cast<i_t>(this_values.size());
+  if (nnz != static_cast<i_t>(other_values.size())) { return false; }
+  if (nnz == 0) { return true; }
+
+  auto policy = rmm::exec_policy(stream);
+
+  // Expand CSR row offsets to row indices for 'this'
+  rmm::device_uvector<i_t> this_rows(nnz, stream);
+  rmm::device_uvector<i_t> this_cols(nnz, stream);
+  rmm::device_uvector<f_t> this_vals(nnz, stream);
+
+  // upper_bound returns 1-based indices; convert to 0-based
+  thrust::upper_bound(policy,
+                      this_offsets.begin(),
+                      this_offsets.end(),
+                      thrust::make_counting_iterator<i_t>(0),
+                      thrust::make_counting_iterator<i_t>(nnz),
+                      this_rows.begin());
+  thrust::transform(
+    policy, this_rows.begin(), this_rows.end(), this_rows.begin(), [] __device__(i_t r) {
+      return r - 1;
+    });
+
+  thrust::copy(policy, this_indices.begin(), this_indices.end(), this_cols.begin());
+  thrust::copy(policy, this_values.begin(), this_values.end(), this_vals.begin());
+
+  // For 'other': expand and apply inverse permutations to map to 'this' coordinate system
+  rmm::device_uvector<i_t> other_rows(nnz, stream);
+  rmm::device_uvector<i_t> other_cols(nnz, stream);
+  rmm::device_uvector<f_t> other_vals(nnz, stream);
+
+  thrust::upper_bound(policy,
+                      other_offsets.begin(),
+                      other_offsets.end(),
+                      thrust::make_counting_iterator<i_t>(0),
+                      thrust::make_counting_iterator<i_t>(nnz),
+                      other_rows.begin());
+  thrust::transform(
+    policy, other_rows.begin(), other_rows.end(), other_rows.begin(), [] __device__(i_t r) {
+      return r - 1;
+    });
+
+  thrust::gather(
+    policy, other_rows.begin(), other_rows.end(), d_row_perm_inv.begin(), other_rows.begin());
+
+  thrust::gather(
+    policy, other_indices.begin(), other_indices.end(), d_col_perm_inv.begin(), other_cols.begin());
+
+  thrust::copy(policy, other_values.begin(), other_values.end(), other_vals.begin());
+
+  // Create sort keys: row * n_cols + col (to sort by row then column)
+  rmm::device_uvector<int64_t> this_keys(nnz, stream);
+  rmm::device_uvector<int64_t> other_keys(nnz, stream);
+
+  const int64_t n_cols_64 = n_cols;
+  thrust::transform(policy,
+                    thrust::make_zip_iterator(this_rows.begin(), this_cols.begin()),
+                    thrust::make_zip_iterator(this_rows.end(), this_cols.end()),
+                    this_keys.begin(),
+                    [n_cols_64] __device__(thrust::tuple<i_t, i_t> rc) {
+                      return static_cast<int64_t>(thrust::get<0>(rc)) * n_cols_64 +
+                             static_cast<int64_t>(thrust::get<1>(rc));
+                    });
+
+  thrust::transform(policy,
+                    thrust::make_zip_iterator(other_rows.begin(), other_cols.begin()),
+                    thrust::make_zip_iterator(other_rows.end(), other_cols.end()),
+                    other_keys.begin(),
+                    [n_cols_64] __device__(thrust::tuple<i_t, i_t> rc) {
+                      return static_cast<int64_t>(thrust::get<0>(rc)) * n_cols_64 +
+                             static_cast<int64_t>(thrust::get<1>(rc));
+                    });
+
+  thrust::sort_by_key(policy, this_keys.begin(), this_keys.end(), this_vals.begin());
+  thrust::sort_by_key(policy, other_keys.begin(), other_keys.end(), other_vals.begin());
+
+  if (!thrust::equal(policy, this_keys.begin(), this_keys.end(), other_keys.begin())) {
+    return false;
+  }
+
+  if (!thrust::equal(policy, this_vals.begin(), this_vals.end(), other_vals.begin())) {
+    return false;
+  }
+
+  return true;
+}
+
+template <typename i_t, typename f_t>
+bool optimization_problem_t<i_t, f_t>::is_equivalent(
+  const optimization_problem_t<i_t, f_t>& other) const
+{
+  if (maximize_ != other.maximize_) { return false; }
+  if (n_vars_ != other.n_vars_) { return false; }
+  if (n_constraints_ != other.n_constraints_) { return false; }
+  if (objective_scaling_factor_ != other.objective_scaling_factor_) { return false; }
+  if (objective_offset_ != other.objective_offset_) { return false; }
+  if (problem_category_ != other.problem_category_) { return false; }
+  if (A_.size() != other.A_.size()) { return false; }
+
+  if (var_names_.empty() || other.var_names_.empty()) { return false; }
+  if (row_names_.empty() || other.row_names_.empty()) { return false; }
+
+  // Build variable permutation: var_perm[i] = index j in other where var_names_[i] ==
+  // other.var_names_[j]
+  std::unordered_map<std::string, i_t> other_var_idx;
+  for (size_t j = 0; j < other.var_names_.size(); ++j) {
+    other_var_idx[other.var_names_[j]] = static_cast<i_t>(j);
+  }
+  std::vector<i_t> var_perm(n_vars_);
+  for (i_t i = 0; i < n_vars_; ++i) {
+    auto it = other_var_idx.find(var_names_[i]);
+    if (it == other_var_idx.end()) { return false; }
+    var_perm[i] = it->second;
+  }
+
+  // Build row permutation: row_perm[i] = index j in other where row_names_[i] ==
+  // other.row_names_[j]
+  std::unordered_map<std::string, i_t> other_row_idx;
+  for (size_t j = 0; j < other.row_names_.size(); ++j) {
+    other_row_idx[other.row_names_[j]] = static_cast<i_t>(j);
+  }
+  std::vector<i_t> row_perm(n_constraints_);
+  for (i_t i = 0; i < n_constraints_; ++i) {
+    auto it = other_row_idx.find(row_names_[i]);
+    if (it == other_row_idx.end()) { return false; }
+    row_perm[i] = it->second;
+  }
+
+  // Upload permutations to GPU
+  rmm::device_uvector<i_t> d_var_perm(n_vars_, stream_view_);
+  rmm::device_uvector<i_t> d_row_perm(n_constraints_, stream_view_);
+  raft::copy(d_var_perm.data(), var_perm.data(), n_vars_, stream_view_);
+  raft::copy(d_row_perm.data(), row_perm.data(), n_constraints_, stream_view_);
+
+  auto policy = rmm::exec_policy(stream_view_);
+
+  auto permuted_eq = [&](auto this_begin, auto this_end, auto other_begin, auto perm_begin) {
+    auto other_perm = thrust::make_permutation_iterator(other_begin, perm_begin);
+    return thrust::equal(policy, this_begin, this_end, other_perm);
+  };
+
+  // Compare variable-indexed arrays
+  if (c_.size() != other.c_.size()) { return false; }
+  if (!permuted_eq(c_.begin(), c_.end(), other.c_.begin(), d_var_perm.begin())) { return false; }
+  if (variable_lower_bounds_.size() != other.variable_lower_bounds_.size()) { return false; }
+  if (!permuted_eq(variable_lower_bounds_.begin(),
+                   variable_lower_bounds_.end(),
+                   other.variable_lower_bounds_.begin(),
+                   d_var_perm.begin())) {
+    return false;
+  }
+  if (variable_upper_bounds_.size() != other.variable_upper_bounds_.size()) { return false; }
+  if (!permuted_eq(variable_upper_bounds_.begin(),
+                   variable_upper_bounds_.end(),
+                   other.variable_upper_bounds_.begin(),
+                   d_var_perm.begin())) {
+    return false;
+  }
+  if (variable_types_.size() != other.variable_types_.size()) { return false; }
+  if (!permuted_eq(variable_types_.begin(),
+                   variable_types_.end(),
+                   other.variable_types_.begin(),
+                   d_var_perm.begin())) {
+    return false;
+  }
+
+  // Compare constraint-indexed arrays
+  if (b_.size() != other.b_.size()) { return false; }
+  if (!permuted_eq(b_.begin(), b_.end(), other.b_.begin(), d_row_perm.begin())) { return false; }
+  if (constraint_lower_bounds_.size() != other.constraint_lower_bounds_.size()) { return false; }
+  if (!permuted_eq(constraint_lower_bounds_.begin(),
+                   constraint_lower_bounds_.end(),
+                   other.constraint_lower_bounds_.begin(),
+                   d_row_perm.begin())) {
+    return false;
+  }
+  if (constraint_upper_bounds_.size() != other.constraint_upper_bounds_.size()) { return false; }
+  if (!permuted_eq(constraint_upper_bounds_.begin(),
+                   constraint_upper_bounds_.end(),
+                   other.constraint_upper_bounds_.begin(),
+                   d_row_perm.begin())) {
+    return false;
+  }
+  if (row_types_.size() != other.row_types_.size()) { return false; }
+  if (!permuted_eq(
+        row_types_.begin(), row_types_.end(), other.row_types_.begin(), d_row_perm.begin())) {
+    return false;
+  }
+
+  // Build inverse permutations on CPU (needed for CSR comparisons)
+  std::vector<i_t> var_perm_inv(n_vars_);
+  for (i_t i = 0; i < n_vars_; ++i) {
+    var_perm_inv[var_perm[i]] = i;
+  }
+  std::vector<i_t> row_perm_inv(n_constraints_);
+  for (i_t i = 0; i < n_constraints_; ++i) {
+    row_perm_inv[row_perm[i]] = i;
+  }
+
+  // Upload inverse permutations to GPU
+  rmm::device_uvector<i_t> d_var_perm_inv(n_vars_, stream_view_);
+  rmm::device_uvector<i_t> d_row_perm_inv(n_constraints_, stream_view_);
+  raft::copy(d_var_perm_inv.data(), var_perm_inv.data(), n_vars_, stream_view_);
+  raft::copy(d_row_perm_inv.data(), row_perm_inv.data(), n_constraints_, stream_view_);
+
+  // Constraint matrix (A) comparison with row and column permutations
+  if (!csr_matrices_equivalent_with_permutation(A_offsets_,
+                                                A_indices_,
+                                                A_,
+                                                other.A_offsets_,
+                                                other.A_indices_,
+                                                other.A_,
+                                                d_row_perm_inv,
+                                                d_var_perm_inv,
+                                                n_vars_,
+                                                stream_view_)) {
+    return false;
+  }
+
+  // Q matrix writing to MPS not supported yet. Don't check for equivalence here
+
+  return true;
 }
 
 template <typename i_t, typename f_t>

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -104,6 +104,20 @@ class optimization_problem_t {
 
   optimization_problem_t(raft::handle_t const* handle_ptr);
   optimization_problem_t(const optimization_problem_t<i_t, f_t>& other);
+
+  /**
+   * @brief Check if this optimization problem is equivalent to another.
+   *
+   * Two problems are considered equivalent if they represent the same mathematical
+   * optimization problem, potentially with variables and constraints in a different order.
+   * The mapping between problems is determined by matching variable names and row names.
+   * Essentially checks for graph isomorphism given label mappings.
+   *
+   * @param other The other optimization problem to compare against.
+   * @return true if the problems are equivalent (up to permutation of variables/constraints),
+   *         false otherwise.
+   */
+  bool is_equivalent(const optimization_problem_t<i_t, f_t>& other) const;
 
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
 
