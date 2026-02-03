@@ -2158,7 +2158,7 @@ void prepare_optimality(i_t info,
     f_t basic_over      = 0.0;
     phase2::primal_infeasibility_breakdown(
       lp, settings, vstatus, x, basic_infeas, nonbasic_infeas, basic_over);
-    printf(
+    settings.log.printf(
       "Primal infeasibility %e/%e (Basic %e, Nonbasic %e, Basic over %e). Perturbation %e/%e. Info "
       "%d\n",
       primal_infeas,
@@ -2560,7 +2560,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
           const f_t squared_infeas = squared_infeasibilities[j];
           const f_t val            = squared_infeas / delta_y_steepest_edge[j];
           if (squared_infeas >= 0.0 && delta_y_steepest_edge[j] < 0.0) {
-            printf(
+            settings.log.printf(
               "Iter %d potential leaving %d val %e squared infeas %e delta_y_steepest_edge %e\n",
               iter,
               j,
