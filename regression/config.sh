@@ -27,10 +27,6 @@ WORKER_RMM_POOL_SIZE=${WORKER_RMM_POOL_SIZE:-24G}
 
 DATASETS_DIR=$SCRATCH_DIR/datasets
 
-REPO_DIR_NAME=cuopt
-RESULT_DIR_NAME=cuopt-regression
-SSH_CREDS=/home/iroy/.ssh/
-
 # Assume CUOPT_SLACK_APP_ID is defined!
 CUOPT_SLACK_APP_ID="MY_SLACK_APP_ID"
 WEBHOOK_URL=${WEBHOOK_URL:-https://hooks.slack.com/services/${CUOPT_SLACK_APP_ID}}

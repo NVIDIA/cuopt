@@ -3,9 +3,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# NOTE: this script is currently run from cron using this crontab entry:
-# 30 2 * * * bash --login -c 'env RAPIDS_MG_TOOLS_DIR=/lustre/fsw/datascience_rapids_cugraphgnn/ramakrishnap/Projects/regression_testing/multi-gpu-tools /lustre/fsw/datascience_rapids_cugraphgnn/ramakrishnap/Proje>
-
 # Abort script on first error to ensure script-env.sh is sourced.
 set -e
 
@@ -75,6 +72,8 @@ if [[ $TESTING_FAILED == 0 ]]; then
             --gpus-per-node $GPUS_PER_NODE \
             --time=4:00:00 \
             --export=ALL \
+            --exclusive \
+            -K \
             --container-mounts ${ROUTING_CONFIGS_PATH}:${ROUTING_CONFIGS_PATH},${CUOPT_SCRIPTS_DIR}:${CUOPT_SCRIPTS_DIR},${OUTPUT_DIR}:${OUTPUT_DIR} \
             --container-image=$IMAGE \
             --output=${BENCHMARK_RESULTS_DIR}/benchmark_routing_log.txt \
@@ -90,7 +89,8 @@ if [[ $TESTING_FAILED == 0 ]]; then
             --gpus-per-node $GPUS_PER_NODE \
             --time=4:00:00 \
             --export=ALL \
-            --exclusive -K\
+            --exclusive \
+            -K \
             --container-mounts ${LP_DATASETS_PATH}:${LP_DATASETS_PATH},${CUOPT_SCRIPTS_DIR}:${CUOPT_SCRIPTS_DIR},${OUTPUT_DIR}:${OUTPUT_DIR} \
             --container-image=$IMAGE \
             --output=${BENCHMARK_RESULTS_DIR}/benchmark_lp_log.txt \
@@ -105,7 +105,8 @@ if [[ $TESTING_FAILED == 0 ]]; then
             --gpus-per-node $GPUS_PER_NODE \
             --time=4:00:00 \
             --export=ALL \
-            --exclusive -K\
+            --exclusive \
+            -K \
             --container-mounts ${MIP_DATASETS_PATH}:${MIP_DATASETS_PATH},${CUOPT_SCRIPTS_DIR}:${CUOPT_SCRIPTS_DIR},${OUTPUT_DIR}:${OUTPUT_DIR} \
             --container-image=$IMAGE \
             --output=${BENCHMARK_RESULTS_DIR}/benchmark_mip_log.txt \
