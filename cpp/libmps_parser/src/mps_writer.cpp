@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -138,6 +138,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 
   // Keep a single integer section marker by going over constraints twice and writing out
   // integral/nonintegral nonzeros ordered map
+  std::vector<bool> var_in_constraint(n_variables, false);
   std::map<i_t, std::vector<std::pair<i_t, f_t>>> integral_col_nnzs;
   std::map<i_t, std::vector<std::pair<i_t, f_t>>> continuous_col_nnzs;
   for (size_t row_id = 0; row_id < (size_t)n_constraints; row_id++) {
@@ -150,12 +151,37 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
       } else {
         continuous_col_nnzs[var].emplace_back(row_id, constraint_matrix_values[k]);
       }
+      var_in_constraint[var] = true;
+    }
+  }
+
+  // Record and explicitely declared variables not contained in any constraint.
+  std::vector<i_t> orphan_continuous_vars;
+  std::vector<i_t> orphan_integer_vars;
+  for (i_t var = 0; var < n_variables; ++var) {
+    if (!var_in_constraint[var]) {
+      if (variable_types[var] == 'I') {
+        orphan_integer_vars.push_back(var);
+      } else {
+        orphan_continuous_vars.push_back(var);
+      }
     }
   }
 
   for (size_t is_integral = 0; is_integral < 2; is_integral++) {
-    auto& col_map = is_integral ? integral_col_nnzs : continuous_col_nnzs;
+    auto& col_map     = is_integral ? integral_col_nnzs : continuous_col_nnzs;
+    auto& orphan_vars = is_integral ? orphan_integer_vars : orphan_continuous_vars;
     if (is_integral) mps_file << "    MARK0001  'MARKER'                 'INTORG'\n";
+    for (auto& var_id : orphan_vars) {
+      std::string col_name = var_id < problem_.get_variable_names().size()
+                               ? problem_.get_variable_names()[var_id]
+                               : "C" + std::to_string(var_id);
+      // Write that column even if it is orphan as has a zero objective coefficient.
+      // Some tools require variables to be declared in "COLUMNS" before any "BOUNDS" statements.
+      mps_file << "    " << col_name << " "
+               << (problem_.get_objective_name().empty() ? "OBJ" : problem_.get_objective_name())
+               << " " << objective_coefficients[var_id] << "\n";
+    }
     for (auto& [var_id, nnzs] : col_map) {
       std::string col_name = var_id < problem_.get_variable_names().size()
                                ? problem_.get_variable_names()[var_id]
@@ -222,24 +248,34 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   // BOUNDS section
   mps_file << "BOUNDS\n";
   for (size_t j = 0; j < (size_t)n_variables; j++) {
-    std::string col_name = j < problem_.get_variable_names().size()
-                             ? problem_.get_variable_names()[j]
-                             : "C" + std::to_string(j);
+    std::string col_name        = j < problem_.get_variable_names().size()
+                                    ? problem_.get_variable_names()[j]
+                                    : "C" + std::to_string(j);
+    std::string lower_bound_str = variable_types[j] == 'I' ? "LI" : "LO";
+    std::string upper_bound_str = variable_types[j] == 'I' ? "UI" : "UP";
 
     if (variable_lower_bounds[j] == -std::numeric_limits<f_t>::infinity() &&
         variable_upper_bounds[j] == std::numeric_limits<f_t>::infinity()) {
       mps_file << " FR BOUND1    " << col_name << "\n";
+    }
+    // Ambiguity exists in the spec about the case where upper_bound == 0 and lower_bound == 0, and
+    // only UP is specified. Handle fixed variables explicitely to avoid this pitfall.
+    else if (variable_lower_bounds[j] == variable_upper_bounds[j]) {
+      mps_file << " FX BOUND1    " << col_name << " " << variable_lower_bounds[j] << "\n";
     } else {
-      if (variable_lower_bounds[j] != 0.0 || objective_coefficients[j] == 0.0 ||
-          variable_types[j] != 'C') {
+      if (variable_lower_bounds[j] != 0.0) {
         if (variable_lower_bounds[j] == -std::numeric_limits<f_t>::infinity()) {
           mps_file << " MI BOUND1    " << col_name << "\n";
         } else {
-          mps_file << " LO BOUND1    " << col_name << " " << variable_lower_bounds[j] << "\n";
+          mps_file << " " << lower_bound_str << " BOUND1    " << col_name << " "
+                   << variable_lower_bounds[j] << "\n";
         }
       }
-      if (variable_upper_bounds[j] != std::numeric_limits<f_t>::infinity()) {
-        mps_file << " UP BOUND1    " << col_name << " " << variable_upper_bounds[j] << "\n";
+      // Integer variables get different default bounds compared to continuous variables
+      if (variable_upper_bounds[j] != std::numeric_limits<f_t>::infinity() ||
+          variable_types[j] == 'I') {
+        mps_file << " " << upper_bound_str << " BOUND1    " << col_name << " "
+                 << variable_upper_bounds[j] << "\n";
       }
     }
   }

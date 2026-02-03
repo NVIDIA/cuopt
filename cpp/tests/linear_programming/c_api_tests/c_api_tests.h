@@ -36,7 +36,7 @@ cuopt_int_t test_quadratic_problem(cuopt_int_t* termination_status_ptr,
                                    cuopt_float_t* objective_ptr);
 cuopt_int_t test_quadratic_ranged_problem(cuopt_int_t* termination_status_ptr,
                                           cuopt_float_t* objective_ptr);
-
+cuopt_int_t test_write_problem(const char* input_filename, const char* output_filename);
 #ifdef __cplusplus
 }
 #endif
