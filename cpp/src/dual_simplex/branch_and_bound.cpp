@@ -909,7 +909,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
                                                 leaf_edge_norms);
 
     if (lp_status == dual::status_t::NUMERICAL) {
-      log.printf("Numerical issue node %d. Resolving from scratch.\n", node_ptr->node_id);
+      log.debug("Numerical issue node %d. Resolving from scratch.\n", node_ptr->node_id);
       lp_status_t second_status = solve_linear_program_with_advanced_basis(leaf_problem,
                                                                            lp_start_time,
                                                                            lp_settings,
@@ -1853,15 +1853,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                    basic_list,
                                    nonbasic_list);
       f_t cut_generation_time = toc(cut_start_time);
-      if (1 || cut_generation_time > 1.0) {
-        settings_.log.printf("Cut generation time %.2f seconds\n", cut_generation_time);
+      if (cut_generation_time > 1.0) {
+        settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);
       }
       // Score the cuts
       f_t score_start_time = tic();
       cut_pool.score_cuts(root_relax_soln_.x);
       f_t score_time = toc(score_start_time);
-      if (1 || score_time > 1.0) {
-        settings_.log.printf("Cut scoring time %.2f seconds\n", score_time);
+      if (score_time > 1.0) {
+        settings_.log.debug("Cut scoring time %.2f seconds\n", score_time);
       }
       // Get the best cuts from the cut pool
       csr_matrix_t<i_t, f_t> cuts_to_add(0, original_lp_.num_cols, 0);
@@ -1870,7 +1870,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
       if (num_cuts == 0) { break; }
       cut_info.record_cut_types(cut_types);
-#if 1
+#ifdef PRINT_CUT_POOL_TYPES
       cut_pool.print_cutpool_types();
       print_cut_types("In LP      ", cut_types, settings_);
       printf("Cut pool size: %d\n", cut_pool.pool_size());
@@ -1916,8 +1916,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       var_types_.resize(original_lp_.num_cols, variable_type_t::CONTINUOUS);
       mutex_original_lp_.unlock();
       f_t add_cuts_time = toc(add_cuts_start_time);
-      if (1 || add_cuts_time > 1.0) {
-        settings_.log.printf("Add cuts time %.2f seconds\n", add_cuts_time);
+      if (add_cuts_time > 1.0) {
+        settings_.log.debug("Add cuts time %.2f seconds\n", add_cuts_time);
       }
       if (add_cuts_status != 0) {
         settings_.log.printf("Failed to add cuts\n");
@@ -1957,8 +1957,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       original_lp_.upper = new_upper;
       mutex_original_lp_.unlock();
       f_t node_presolve_time = toc(node_presolve_start_time);
-      if (1 || node_presolve_time > 1.0) {
-        settings_.log.printf("Node presolve time %.2f seconds\n", node_presolve_time);
+      if (node_presolve_time > 1.0) {
+        settings_.log.debug("Node presolve time %.2f seconds\n", node_presolve_time);
       }
       if (!feasible) {
         settings_.log.printf("Bound strengthening detected infeasibility\n");
@@ -1983,8 +1983,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                                   iter,
                                                                   edge_norms_);
       f_t dual_phase2_time        = toc(dual_phase2_start_time);
-      if (1 || dual_phase2_time > 1.0) {
-        settings_.log.printf("Dual phase2 time %.2f seconds\n", dual_phase2_time);
+      if (dual_phase2_time > 1.0) {
+        settings_.log.debug("Dual phase2 time %.2f seconds\n", dual_phase2_time);
       }
       if (cut_status == dual::status_t::TIME_LIMIT) {
         solver_status_ = mip_status_t::TIME_LIMIT;
@@ -2019,8 +2019,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                   basis_update);
       mutex_original_lp_.unlock();
       f_t remove_cuts_time = toc(remove_cuts_start_time);
-      if (1 || remove_cuts_time > 1.0) {
-        settings_.log.printf("Remove cuts time %.2f seconds\n", remove_cuts_time);
+      if (remove_cuts_time > 1.0) {
+        settings_.log.debug("Remove cuts time %.2f seconds\n", remove_cuts_time);
       }
       fractional.clear();
       num_fractional = fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
@@ -2048,7 +2048,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       const f_t factor        = settings_.cut_change_threshold;
       const f_t min_objective = 1e-3;
       if (change_in_objective <= factor * std::max(min_objective, std::abs(root_relax_objective))) {
-        settings_.log.printf(
+        settings_.log.debug(
           "Change in objective %.16e is less than 1e-3 of root relax objective %.16e\n",
           change_in_objective,
           root_relax_objective);
@@ -2061,8 +2061,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   print_cut_info(settings_, cut_info);
 
   if (cut_info.has_cuts()) {
-    settings_.log.printf("Cut pool size : %d\n", cut_pool_size);
-    settings_.log.printf("Size with cuts: %d constraints, %d variables, %d nonzeros\n",
+    settings_.log.printf("Cut pool size  : %d\n", cut_pool_size);
+    settings_.log.printf("Size with cuts : %d constraints, %d variables, %d nonzeros\n",
                          original_lp_.num_rows,
                          original_lp_.num_cols,
                          original_lp_.A.col_start[original_lp_.A.n]);
@@ -2090,7 +2090,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   if (settings_.reduced_cost_strengthening >= 2 && upper_bound_.load() < last_upper_bound) {
-    settings_.log.printf("Looking for reduced cost fixings\n");
     std::vector<f_t> lower_bounds;
     std::vector<f_t> upper_bounds;
     i_t num_fixed = find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);

@@ -35,9 +35,6 @@ void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type,
     return;
   }
   cut_storage_.append_row(cut_squeezed);
-#ifdef PRINT_ADD_CUTS
-  settings_.log.printf("Added cut %d to pool\n", cut_storage_.m - 1);
-#endif
   rhs_storage_.push_back(rhs);
   cut_type_.push_back(cut_type);
   cut_age_.push_back(0);
@@ -204,7 +201,7 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   csr_matrix_t<i_t, f_t>& Arow,
   const std::vector<i_t>& new_slacks,
-  const std::vector<variable_type_t>& var_types)
+  const std::vector<variable_type_t>& var_types) : settings_(settings)
 {
   const bool verbose = false;
   knapsack_constraints_.reserve(lp.num_rows);
@@ -245,7 +242,7 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
       if (std::abs(beta - std::round(beta)) <= settings.integer_tol) {
         if (beta > 0.0 && beta <= sum_pos && std::abs(sum_pos / (row_len - 1) - beta) > 1e-3) {
           if (verbose) {
-            printf(
+            settings.log.printf(
               "Knapsack constraint %d row len %d beta %e sum_pos %e sum_pos / (row_len - 1) %e\n",
               i,
               row_len,
@@ -378,11 +375,11 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cuts(
   if (violation >= -tol) { return -1; }
 
 #ifdef PRINT_KNAPSACK_CUT
-  printf("knapsack cut (cover %d): \n", cover_size);
+  settings.log.printf("knapsack cut (cover %d): \n", cover_size);
   for (i_t k = 0; k < cut.i.size(); k++) {
-    printf("x%d coeff %g value %g\n", cut.i[k], -cut.x[k], xstar[cut.i[k]]);
+    settings.log.printf("x%d coeff %g value %g\n", cut.i[k], -cut.x[k], xstar[cut.i[k]]);
   }
-  printf("cut_rhs %g\n", -cut_rhs);
+  settings.log.printf("cut_rhs %g\n", -cut_rhs);
 #endif
   return 0;
 }
@@ -475,7 +472,7 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
 
   const bool verbose = false;
 
-  if (verbose) { printf("all_integers %d\n", all_integers); }
+  if (verbose) { settings_.log.printf("all_integers %d\n", all_integers); }
 
   // Compute the scaling factor and comptue the scaled integer values
   f_t scale = 1.0;
@@ -488,7 +485,7 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
     const f_t epsilon = 0.1;
     scale             = epsilon * vmax / static_cast<f_t>(n);
     if (scale <= 0.0) { return std::numeric_limits<f_t>::quiet_NaN(); }
-    if (verbose) { printf("scale %g epsilon %g vmax %g n %d\n", scale, epsilon, vmax, n); }
+    if (verbose) { settings_.log.printf("scale %g epsilon %g vmax %g n %d\n", scale, epsilon, vmax, n); }
     for (i_t i = 0; i < n; ++i) {
       scaled_values[i] = static_cast<i_t>(std::floor(values[i] / scale));
     }
@@ -496,11 +493,11 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
 
   i_t sum_value     = std::accumulate(scaled_values.begin(), scaled_values.end(), 0);
   const i_t INT_INF = std::numeric_limits<i_t>::max() / 2;
-  if (verbose) { printf("sum value %d\n", sum_value); }
+  if (verbose) { settings_.log.printf("sum value %d\n", sum_value); }
   const i_t max_size = 10000;
   if (sum_value <= 0.0 || sum_value >= max_size) {
     if (verbose) {
-      printf("sum value %d is negative or too large using greedy solution\n", sum_value);
+      settings_.log.printf("sum value %d is negative or too large using greedy solution\n", sum_value);
     }
     return greedy_knapsack_problem(values, weights, rhs, solution);
   }
@@ -567,7 +564,7 @@ void cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
       lp, settings, Arow, new_slacks, var_types, basis_update, xstar, basic_list, nonbasic_list);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
-      settings.log.printf("Gomory and CG cut generation time %.2f seconds\n", cut_generation_time);
+      settings.log.debug("Gomory and CG cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
 
@@ -577,7 +574,7 @@ void cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     generate_knapsack_cuts(lp, settings, Arow, new_slacks, var_types, xstar);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
-      settings.log.printf("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
+      settings.log.debug("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
 
@@ -587,7 +584,7 @@ void cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     generate_mir_cuts(lp, settings, Arow, new_slacks, var_types, xstar);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
-      settings.log.printf("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
+      settings.log.debug("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
 }
@@ -730,7 +727,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
           if (inequality.x[k] == -1.0 && lp.lower[j] >= 0.0) {
             negate_inequality = 0;
           } else {
-            printf("Bad slack %d in inequality: aj %e lo %e up %e\n",
+            settings.log.debug("Bad slack %d in inequality: aj %e lo %e up %e\n",
                    j,
                    inequality.x[k],
                    lp.lower[j],
@@ -916,7 +913,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
               sparse_vector_t<i_t, f_t> pivot_row_inequality(Arow, pivot_row);
               f_t pivot_row_rhs = lp.rhs[pivot_row];
               work_estimate += pivot_row_inequality.i.size();
-              // printf("\tCombining with %d\n", pivot_row);
               mir.combine_rows(lp,
                                Arow,
                                max_off_bound_var,
@@ -1103,11 +1099,7 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
 #ifdef PRINT_CUT_INFO
   settings_.log.printf("Generating cut for variable %d relaxed value %e row %d\n", j, x_j, i);
 #endif
-#ifdef PRINT_BASIS
-  for (i_t h = 0; h < basic_list.size(); h++) {
-    settings_.log.printf("basic_list[%d] = %d\n", h, basic_list[h]);
-  }
-#endif
+
 
   // Solve B^T u_bar = e_i
   sparse_vector_t<i_t, f_t> e_i(lp.num_rows, 1);
@@ -1204,7 +1196,7 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
   const f_t tableau_tol = 1e-6;
   f_t a_bar_dot_xstar   = a_bar.dot(xstar);
   if (std::abs(a_bar_dot_xstar - b_bar_[i]) > tableau_tol) {
-    printf("bad tableau equality. error %e\n", std::abs(a_bar_dot_xstar - b_bar_[i]));
+    settings.log.debug("bad tableau equality. error %e\n", std::abs(a_bar_dot_xstar - b_bar_[i]));
     return -1;
   }
 
@@ -1212,18 +1204,6 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
   // So x_j + a_bar^T x_N >= b_bar_i
   // And x_j + a_bar^T x_N <= b_bar_i
   // Or -x_j - a_bar^T x_N >= -b_bar_i
-
-#ifdef PRINT_CUT
-  {
-    settings_.log.printf("Cut %d\n", i);
-    for (i_t k = 0; k < a_bar.i.size(); k++) {
-      const i_t jj = a_bar.i[k];
-      const f_t aj = a_bar.x[k];
-      settings_.log.printf("(%d, %e) ", jj, aj);
-    }
-    settings_.log.printf("\nEnd cut %d b_bar[%d] = %e\n", i, b_bar[i]);
-  }
-#endif
 
   // Skip cuts that are shallow
   const f_t shallow_tol = 1e-2;
@@ -1797,7 +1777,7 @@ void mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(const lp_problem_
         } else {
           const f_t aij = Arow.x[q];
           if (std::abs(aij) != 1.0) {
-            printf("Slack row %d has non-unit coefficient %e for variable %d\n", i, aij, j);
+            settings_.log.printf("Slack row %d has non-unit coefficient %e for variable %d\n", i, aij, j);
             assert(std::abs(aij) == 1.0);
           }
         }
@@ -2229,7 +2209,7 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_helper(
       }
     }
   } else {
-    printf("Error: k %d lower %e f(a_0) %e upper %e\n", k, lower, f_a_0, upper);
+    if (verbose) { printf("Error: k %d lower %e f(a_0) %e upper %e\n", k, lower, f_a_0, upper); }
     return -1;
   }
   cut_rhs = (k + 1.0) * std::floor(rhs);
@@ -2571,7 +2551,6 @@ void remove_cuts(lp_problem_t<i_t, f_t>& lp,
   }
 
   if (cuts_to_remove.size() > 0) {
-    // settings.log.printf("Removing %d cuts\n", cuts_to_remove.size());
     std::vector<i_t> marked_rows(lp.num_rows, 0);
     for (i_t i : cuts_to_remove) {
       marked_rows[i] = 1;

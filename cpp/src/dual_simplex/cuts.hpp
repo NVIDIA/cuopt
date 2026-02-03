@@ -55,10 +55,10 @@ void print_cut_info(const simplex_solver_settings_t<i_t, f_t>& settings,
                     const cut_info_t<i_t, f_t>& cut_info)
 {
   if (cut_info.has_cuts()) {
-    settings.log.printf("Gomory cuts   : %d\n", cut_info.num_gomory_cuts);
-    settings.log.printf("MIR cuts      : %d\n", cut_info.num_mir_cuts);
-    settings.log.printf("Knapsack cuts : %d\n", cut_info.num_knapsack_cuts);
-    settings.log.printf("CG cuts       : %d\n", cut_info.num_cg_cuts);
+    settings.log.printf("Gomory cuts    : %d\n", cut_info.num_gomory_cuts);
+    settings.log.printf("MIR cuts       : %d\n", cut_info.num_mir_cuts);
+    settings.log.printf("Knapsack cuts  : %d\n", cut_info.num_knapsack_cuts);
+    settings.log.printf("Strong CG cuts : %d\n", cut_info.num_cg_cuts);
   }
 }
 
@@ -223,6 +223,7 @@ class knapsack_generation_t {
 
   std::vector<i_t> is_slack_;
   std::vector<i_t> knapsack_constraints_;
+  const simplex_solver_settings_t<i_t, f_t>& settings_;
 };
 
 // Forward declaration
