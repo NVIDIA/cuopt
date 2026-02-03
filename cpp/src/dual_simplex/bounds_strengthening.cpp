@@ -104,13 +104,13 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
 
   if (!bounds_changed.empty()) {
     std::fill(constraint_changed.begin(), constraint_changed.end(), false);
-    for (i_t i = 0; i < n; ++i) {
-      if (bounds_changed[i]) {
-        const i_t row_start = A.col_start[i];
-        const i_t row_end   = A.col_start[i + 1];
-        for (i_t p = row_start; p < row_end; ++p) {
-          const i_t j           = A.i[p];
-          constraint_changed[j] = true;
+    for (i_t j = 0; j < n; ++j) {
+      if (bounds_changed[j]) {
+        const i_t col_start = A.col_start[j];
+        const i_t col_end   = A.col_start[j + 1];
+        for (i_t p = col_start; p < col_end; ++p) {
+          const i_t i           = A.i[p];
+          constraint_changed[i] = true;
         }
       }
     }
@@ -179,9 +179,9 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
       f_t new_lb = old_lb;
       f_t new_ub = old_ub;
 
-      const i_t row_start = A.col_start[k];
-      const i_t row_end   = A.col_start[k + 1];
-      for (i_t p = row_start; p < row_end; ++p) {
+      const i_t col_start = A.col_start[k];
+      const i_t col_end   = A.col_start[k + 1];
+      for (i_t p = col_start; p < col_end; ++p) {
         const i_t i = A.i[p];
 
         if (!constraint_changed[i]) { continue; }
@@ -216,7 +216,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
         return false;
       }
       if (new_lb != old_lb || new_ub != old_ub) {
-        for (i_t p = row_start; p < row_end; ++p) {
+        for (i_t p = col_start; p < col_end; ++p) {
           const i_t i                = A.i[p];
           constraint_changed_next[i] = true;
         }
