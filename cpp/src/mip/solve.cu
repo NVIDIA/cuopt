@@ -94,7 +94,6 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
       if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
         auto temp_sol(solution);
         auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-        std::vector<f_t> user_assignment_vec(solution.assignment.size());
         std::vector<f_t> user_objective_vec(1);
         std::vector<f_t> user_bound_vec(1);
         user_objective_vec[0] = solution.get_user_objective();
@@ -102,6 +101,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
         if (problem.has_papilo_presolve_data()) {
           problem.papilo_uncrush_assignment(temp_sol.assignment);
         }
+        std::vector<f_t> user_assignment_vec(temp_sol.assignment.size());
         raft::copy(user_assignment_vec.data(),
                    temp_sol.assignment.data(),
                    temp_sol.assignment.size(),
