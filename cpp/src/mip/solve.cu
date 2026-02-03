@@ -63,6 +63,15 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
   auto hyper_params                                     = settings.hyper_params;
   hyper_params.update_primal_weight_on_initial_solution = false;
   hyper_params.update_step_size_on_initial_solution     = true;
+  if (settings.get_mip_callbacks().size() > 0) {
+    auto callback_num_variables = problem.original_problem_ptr->get_n_variables();
+    if (problem.has_papilo_presolve_data()) {
+      callback_num_variables = problem.get_papilo_original_num_variables();
+    }
+    for (auto callback : settings.get_mip_callbacks()) {
+      callback->template setup<f_t>(callback_num_variables);
+    }
+  }
   // if the input problem is empty: early exit
   if (problem.empty) {
     detail::solution_t<i_t, f_t> solution(problem);

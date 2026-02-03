@@ -179,20 +179,20 @@ void presolve_data_t<i_t, f_t>::set_papilo_presolve_data(
   i_t original_num_variables)
 {
   if (original_num_variables <= 0) {
-    CUOPT_LOG_ERROR("Papilo presolve data invalid: original_num_variables=%d",
+    CUOPT_LOG_DEBUG("Papilo presolve data invalid: original_num_variables=%d",
                     original_num_variables);
     return;
   }
   if (reduced_to_original.empty()) {
-    CUOPT_LOG_ERROR("Papilo presolve data invalid: reduced_to_original is empty");
+    CUOPT_LOG_DEBUG("Papilo presolve data invalid: reduced_to_original is empty");
     return;
   }
   if (original_to_reduced.empty()) {
-    CUOPT_LOG_ERROR("Papilo presolve data invalid: original_to_reduced is empty");
+    CUOPT_LOG_DEBUG("Papilo presolve data invalid: original_to_reduced is empty");
     return;
   }
   if (original_to_reduced.size() != static_cast<size_t>(original_num_variables)) {
-    CUOPT_LOG_ERROR(
+    CUOPT_LOG_DEBUG(
       "Papilo presolve data invalid: original_to_reduced.size()=%zu "
       "original_num_variables=%d",
       original_to_reduced.size(),
@@ -202,7 +202,7 @@ void presolve_data_t<i_t, f_t>::set_papilo_presolve_data(
   for (size_t i = 0; i < reduced_to_original.size(); ++i) {
     const auto original_idx = reduced_to_original[i];
     if (original_idx < 0 || original_idx >= original_num_variables) {
-      CUOPT_LOG_ERROR(
+      CUOPT_LOG_DEBUG(
         "Papilo presolve data invalid: reduced_to_original[%zu]=%d out of range [0,%d)",
         i,
         original_idx,
@@ -213,7 +213,7 @@ void presolve_data_t<i_t, f_t>::set_papilo_presolve_data(
   for (size_t i = 0; i < original_to_reduced.size(); ++i) {
     const auto reduced_idx = original_to_reduced[i];
     if (reduced_idx < -1 || reduced_idx >= static_cast<i_t>(reduced_to_original.size())) {
-      CUOPT_LOG_ERROR(
+      CUOPT_LOG_DEBUG(
         "Papilo presolve data invalid: original_to_reduced[%zu]=%d out of range [-1,%zu)",
         i,
         reduced_idx,

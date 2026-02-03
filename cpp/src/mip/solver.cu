@@ -85,15 +85,6 @@ struct branch_and_bound_solution_helper_t {
 template <typename i_t, typename f_t>
 solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 {
-  if (context.settings.get_mip_callbacks().size() > 0) {
-    auto callback_num_variables = context.problem_ptr->original_problem_ptr->get_n_variables();
-    if (context.problem_ptr->has_papilo_presolve_data()) {
-      callback_num_variables = context.problem_ptr->get_papilo_original_num_variables();
-    }
-    for (auto callback : context.settings.get_mip_callbacks()) {
-      callback->template setup<f_t>(callback_num_variables);
-    }
-  }
   //  we need to keep original problem const
   cuopt_assert(context.problem_ptr != nullptr, "invalid problem pointer");
   context.problem_ptr->tolerances = context.settings.get_tolerances();
