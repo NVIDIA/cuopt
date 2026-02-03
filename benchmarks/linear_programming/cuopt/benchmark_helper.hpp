@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -24,8 +24,11 @@
 #include <rmm/mr/owning_wrapper.hpp>
 #include <rmm/mr/pool_memory_resource.hpp>
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <map>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
@@ -56,7 +59,9 @@ void parse_value(std::istringstream& iss, bool& value)
   iss >> std::boolalpha >> value;
 }
 
-void fill_pdlp_hyper_params(const std::string& pdlp_hyper_params_path)
+void fill_pdlp_hyper_params(
+  const std::string& pdlp_hyper_params_path,
+  cuopt::linear_programming::pdlp_hyper_params::pdlp_hyper_params_t& params)
 {
   if (!std::filesystem::exists(pdlp_hyper_params_path)) {
     std::cerr << "PDLP config file path is not a valid: " << pdlp_hyper_params_path << std::endl;
@@ -66,67 +71,55 @@ void fill_pdlp_hyper_params(const std::string& pdlp_hyper_params_path)
   std::string line;
 
   std::map<std::string, double*> double_settings = {
-    {"initial_step_size_scaling",
-     &cuopt::linear_programming::pdlp_hyper_params::initial_step_size_scaling},
-    {"default_alpha_pock_chambolle_rescaling",
-     &cuopt::linear_programming::pdlp_hyper_params::default_alpha_pock_chambolle_rescaling},
-    {"default_reduction_exponent",
-     &cuopt::linear_programming::pdlp_hyper_params::host_default_reduction_exponent},
-    {"default_growth_exponent",
-     &cuopt::linear_programming::pdlp_hyper_params::host_default_growth_exponent},
-    {"default_primal_weight_update_smoothing",
-     &cuopt::linear_programming::pdlp_hyper_params::host_default_primal_weight_update_smoothing},
-    {"default_sufficient_reduction_for_restart",
-     &cuopt::linear_programming::pdlp_hyper_params::host_default_sufficient_reduction_for_restart},
-    {"default_necessary_reduction_for_restart",
-     &cuopt::linear_programming::pdlp_hyper_params::host_default_necessary_reduction_for_restart},
-    {"default_artificial_restart_threshold",
-     &cuopt::linear_programming::pdlp_hyper_params::default_artificial_restart_threshold},
-    {"initial_primal_weight_c_scaling",
-     &cuopt::linear_programming::pdlp_hyper_params::initial_primal_weight_c_scaling},
-    {"initial_primal_weight_b_scaling",
-     &cuopt::linear_programming::pdlp_hyper_params::initial_primal_weight_b_scaling},
-    {"primal_importance", &cuopt::linear_programming::pdlp_hyper_params::host_primal_importance},
-    {"primal_distance_smoothing",
-     &cuopt::linear_programming::pdlp_hyper_params::host_primal_distance_smoothing},
-    {"dual_distance_smoothing",
-     &cuopt::linear_programming::pdlp_hyper_params::host_dual_distance_smoothing}};
+    {"initial_step_size_scaling", &params.initial_step_size_scaling},
+    {"default_alpha_pock_chambolle_rescaling", &params.default_alpha_pock_chambolle_rescaling},
+    {"default_reduction_exponent", &params.reduction_exponent},
+    {"default_growth_exponent", &params.growth_exponent},
+    {"default_primal_weight_update_smoothing", &params.primal_weight_update_smoothing},
+    {"default_sufficient_reduction_for_restart", &params.sufficient_reduction_for_restart},
+    {"default_necessary_reduction_for_restart", &params.necessary_reduction_for_restart},
+    {"default_artificial_restart_threshold", &params.default_artificial_restart_threshold},
+    {"initial_primal_weight_c_scaling", &params.initial_primal_weight_c_scaling},
+    {"initial_primal_weight_b_scaling", &params.initial_primal_weight_b_scaling},
+    {"primal_importance", &params.primal_importance},
+    {"primal_distance_smoothing", &params.primal_distance_smoothing},
+    {"dual_distance_smoothing", &params.dual_distance_smoothing},
+    {"reflection_coefficient", &params.reflection_coefficient},
+    {"restart_k_p", &params.restart_k_p},
+    {"restart_k_i", &params.restart_k_i},
+    {"restart_k_d", &params.restart_k_d},
+    {"restart_i_smooth", &params.restart_i_smooth}};
 
   std::map<std::string, int*> int_settings = {
-    {"default_l_inf_ruiz_iterations",
-     &cuopt::linear_programming::pdlp_hyper_params::default_l_inf_ruiz_iterations},
-    {"major_iteration", &cuopt::linear_programming::pdlp_hyper_params::major_iteration},
-    {"min_iteration_restart", &cuopt::linear_programming::pdlp_hyper_params::min_iteration_restart},
-    {"restart_strategy", &cuopt::linear_programming::pdlp_hyper_params::restart_strategy},
+    {"default_l_inf_ruiz_iterations", &params.default_l_inf_ruiz_iterations},
+    {"major_iteration", &params.major_iteration},
+    {"min_iteration_restart", &params.min_iteration_restart},
+    {"restart_strategy", &params.restart_strategy},
   };
 
   std::map<std::string, bool*> bool_settings = {
-    {"do_pock_chambolle_scaling",
-     &cuopt::linear_programming::pdlp_hyper_params::do_pock_chambolle_scaling},
-    {"do_ruiz_scaling", &cuopt::linear_programming::pdlp_hyper_params::do_ruiz_scaling},
-    {"compute_initial_step_size_before_scaling",
-     &cuopt::linear_programming::pdlp_hyper_params::compute_initial_step_size_before_scaling},
+    {"do_pock_chambolle_scaling", &params.do_pock_chambolle_scaling},
+    {"do_ruiz_scaling", &params.do_ruiz_scaling},
+    {"compute_initial_step_size_before_scaling", &params.compute_initial_step_size_before_scaling},
     {"compute_initial_primal_weight_before_scaling",
-     &cuopt::linear_programming::pdlp_hyper_params::compute_initial_primal_weight_before_scaling},
-    {"never_restart_to_average",
-     &cuopt::linear_programming::pdlp_hyper_params::never_restart_to_average},
+     &params.compute_initial_primal_weight_before_scaling},
+    {"never_restart_to_average", &params.never_restart_to_average},
     {"compute_last_restart_before_new_primal_weight",
-     &cuopt::linear_programming::pdlp_hyper_params::compute_last_restart_before_new_primal_weight},
-    {"artificial_restart_in_main_loop",
-     &cuopt::linear_programming::pdlp_hyper_params::artificial_restart_in_main_loop},
-    {"rescale_for_restart", &cuopt::linear_programming::pdlp_hyper_params::rescale_for_restart},
-    {"update_primal_weight_on_initial_solution",
-     &cuopt::linear_programming::pdlp_hyper_params::update_primal_weight_on_initial_solution},
-    {"update_step_size_on_initial_solution",
-     &cuopt::linear_programming::pdlp_hyper_params::update_step_size_on_initial_solution},
+     &params.compute_last_restart_before_new_primal_weight},
+    {"artificial_restart_in_main_loop", &params.artificial_restart_in_main_loop},
+    {"rescale_for_restart", &params.rescale_for_restart},
+    {"update_primal_weight_on_initial_solution", &params.update_primal_weight_on_initial_solution},
+    {"update_step_size_on_initial_solution", &params.update_step_size_on_initial_solution},
     {"handle_some_primal_gradients_on_finite_bounds_as_residuals",
-     &cuopt::linear_programming::pdlp_hyper_params::
-       handle_some_primal_gradients_on_finite_bounds_as_residuals},
-    {"project_initial_primal",
-     &cuopt::linear_programming::pdlp_hyper_params::project_initial_primal},
-    {"use_adaptive_step_size_strategy",
-     &cuopt::linear_programming::pdlp_hyper_params::use_adaptive_step_size_strategy},
-  };
+     &params.handle_some_primal_gradients_on_finite_bounds_as_residuals},
+    {"project_initial_primal", &params.project_initial_primal},
+    {"use_adaptive_step_size_strategy", &params.use_adaptive_step_size_strategy},
+    {"initial_step_size_max_singular_value", &params.initial_step_size_max_singular_value},
+    {"initial_primal_weight_combined_bounds", &params.initial_primal_weight_combined_bounds},
+    {"bound_objective_rescaling", &params.bound_objective_rescaling},
+    {"use_reflected_primal_dual", &params.use_reflected_primal_dual},
+    {"use_fixed_point_error", &params.use_fixed_point_error},
+    {"use_conditional_major", &params.use_conditional_major}};
 
   while (std::getline(file, line)) {
     std::istringstream iss(line);
