@@ -285,7 +285,6 @@ void population_t<i_t, f_t>::invoke_get_solution_callback(
              temp_sol.assignment.size(),
              temp_sol.handle_ptr->get_stream());
   temp_sol.handle_ptr->sync_stream();
-  CUOPT_LOG_INFO("Calling callback with objective: %f", user_objective);
   callback->get_solution(user_assignment_vec.data(),
                          user_objective_vec.data(),
                          user_bound_vec.data(),
