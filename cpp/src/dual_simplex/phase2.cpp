@@ -1979,6 +1979,7 @@ void set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
                                     std::vector<f_t>& x)
 {
   const i_t n = lp.num_cols;
+  f_t tol = 1e-10;
   for (i_t j = 0; j < n; ++j) {
     // We set z_j = 0 for basic variables
     // But we explicitally skip setting basic variables here
@@ -1996,9 +1997,9 @@ void set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
       }
       x[j]       = lp.lower[j];
       vstatus[j] = variable_status_t::NONBASIC_FIXED;
-    } else if (z[j] == 0 && lp.lower[j] > -inf && vstatus[j] == variable_status_t::NONBASIC_LOWER) {
+    } else if (z[j] >= -tol && lp.lower[j] > -inf && vstatus[j] == variable_status_t::NONBASIC_LOWER) {
       x[j] = lp.lower[j];
-    } else if (z[j] == 0 && lp.upper[j] < inf && vstatus[j] == variable_status_t::NONBASIC_UPPER) {
+    } else if (z[j] <=  tol && lp.upper[j] < inf && vstatus[j] == variable_status_t::NONBASIC_UPPER) {
       x[j] = lp.upper[j];
     } else if (z[j] >= 0 && lp.lower[j] > -inf) {
       if (vstatus[j] != variable_status_t::NONBASIC_LOWER) {
@@ -2475,6 +2476,16 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   i_t sparse_delta_z = 0;
   i_t dense_delta_z  = 0;
   phase2::phase2_timers_t<i_t, f_t> timers(false);
+
+  if (phase == 2) {
+    settings.log.printf("%5d %+.16e %7d %.8e %.2e %.2f\n",
+                        0,
+                        compute_user_objective(lp, obj),
+                        infeasibility_indices.size(),
+                        primal_infeasibility_squared,
+                        0.0,
+                        toc(start_time));
+  }
 
   while (iter < iter_limit) {
     // Pricing
