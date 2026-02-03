@@ -20,6 +20,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -89,7 +90,7 @@ TEST(cuts, test_cuts_1)
   EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
 
   double obj_val = solution.get_objective_value();
-  // Expected objective value from documentation example is approximately 303.5
+  // Expected objective value from documentation example is approximately -28
   EXPECT_NEAR(-28, obj_val, 1e-3);
 
   EXPECT_EQ(solution.get_num_nodes(), 0);
@@ -158,7 +159,7 @@ TEST(cuts, test_cuts_2)
   EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
 
   double obj_val = solution.get_objective_value();
-  // Expected objective value from documentation example is approximately 303.5
+  // Expected objective value from documentation example is approximately -126
   EXPECT_NEAR(-126, obj_val, 1e-3);
 
   EXPECT_EQ(solution.get_num_nodes(), 0);

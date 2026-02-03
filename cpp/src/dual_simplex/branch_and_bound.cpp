@@ -131,7 +131,7 @@ void set_uninitialized_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
   if (edge_norms.size() != lp.num_cols) { edge_norms.resize(lp.num_cols, -1.0); }
   for (i_t k = 0; k < lp.num_rows; k++) {
     const i_t j = basic_list[k];
-    if (edge_norms[j] < 0.0) { edge_norms[j] = 1e-4; }
+    if (edge_norms[j] <= 0.0) { edge_norms[j] = 1e-4; }
   }
 }
 
@@ -2035,9 +2035,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       f_t rel_gap = user_relative_gap(original_lp_, upper_bound_.load(), root_objective_);
       f_t abs_gap = upper_bound_.load() - root_objective_;
       if (rel_gap < settings_.relative_mip_gap_tol || abs_gap < settings_.absolute_mip_gap_tol) {
-        if (settings_.solution_callback != nullptr) {
-          settings_.solution_callback(root_relax_soln_.x, root_objective_);
-        }
+        set_solution_at_root(solution, cut_info);
         set_final_solution(solution, root_objective_);
         return mip_status_t::OPTIMAL;
       }
