@@ -26,31 +26,6 @@
 using namespace cuopt::mps_parser;
 using namespace cuopt::linear_programming;
 
-struct problem_and_stream_view_t {
-  problem_and_stream_view_t()
-    : op_problem(nullptr), stream_view(rmm::cuda_stream_per_thread), handle(stream_view)
-  {
-  }
-  raft::handle_t* get_handle_ptr() { return &handle; }
-  cuopt::linear_programming::optimization_problem_t<cuopt_int_t, cuopt_float_t>* op_problem;
-  rmm::cuda_stream_view stream_view;
-  raft::handle_t handle;
-};
-
-struct solution_and_stream_view_t {
-  solution_and_stream_view_t(bool solution_for_mip, rmm::cuda_stream_view stream_view)
-    : is_mip(solution_for_mip),
-      mip_solution_ptr(nullptr),
-      lp_solution_ptr(nullptr),
-      stream_view(stream_view)
-  {
-  }
-  bool is_mip;
-  mip_solution_t<cuopt_int_t, cuopt_float_t>* mip_solution_ptr;
-  optimization_problem_solution_t<cuopt_int_t, cuopt_float_t>* lp_solution_ptr;
-  rmm::cuda_stream_view stream_view;
-};
-
 class c_get_solution_callback_t : public cuopt::internals::get_solution_callback_t {
  public:
   explicit c_get_solution_callback_t(cuOptMIPGetSolutionCallback callback) : callback_(callback) {}
@@ -803,6 +778,7 @@ cuopt_int_t cuOptSetMIPSetSolutionCallback(cuOptSolverSettings settings,
   auto callback_wrapper                     = std::make_unique<c_set_solution_callback_t>(callback);
   settings_handle->settings->set_mip_callback(callback_wrapper.get(), user_data);
   settings_handle->callbacks.push_back(std::move(callback_wrapper));
+  return CUOPT_SUCCESS;
 }
 
 cuopt_int_t cuOptSetInitialPrimalSolution(cuOptSolverSettings settings,
