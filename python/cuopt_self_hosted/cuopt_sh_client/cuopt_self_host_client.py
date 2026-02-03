@@ -537,6 +537,11 @@ class CuOptServiceSelfHostClient:
                         response, reqId
                     )
                     raise ValueError(err)
+            if incumbent_callback is not None and reqId is not None:
+                try:
+                    self._get_incumbents(reqId, incumbent_callback)
+                except Exception:
+                    pass
             return response
 
         finally:

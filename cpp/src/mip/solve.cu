@@ -107,6 +107,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                    temp_sol.assignment.size(),
                    temp_sol.handle_ptr->get_stream());
         solution.handle_ptr->sync_stream();
+        CUOPT_LOG_INFO("Calling callback with objective: %f", solution.get_user_objective());
         get_sol_callback->get_solution(user_assignment_vec.data(),
                                        user_objective_vec.data(),
                                        user_bound_vec.data(),
