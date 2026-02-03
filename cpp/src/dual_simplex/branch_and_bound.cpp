@@ -748,10 +748,10 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
     i_t leaf_num_fractional =
       fractional_variables(settings_, leaf_solution.x, var_types_, leaf_fractional);
 
-    f_t leaf_objective    = compute_objective(leaf_problem, leaf_solution.x);
-    node_ptr->lower_bound = leaf_objective;
+    f_t leaf_objective = compute_objective(leaf_problem, leaf_solution.x);
     search_tree.graphviz_node(log, node_ptr, "lower bound", leaf_objective);
     pc_.update_pseudo_costs(node_ptr, leaf_objective);
+    node_ptr->lower_bound = leaf_objective;
 
     if (worker_data->worker_type == bnb_worker_type_t::BEST_FIRST) {
       if (settings_.node_processed_callback != nullptr) {
