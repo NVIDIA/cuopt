@@ -95,7 +95,7 @@ class mip_solver_settings_t {
 
   /** Initial primal solutions */
   std::vector<std::shared_ptr<rmm::device_uvector<f_t>>> initial_solutions;
-  bool mip_scaling = true;
+  bool mip_scaling = false;
   bool presolve    = true;
   // this is for extracting info from different places of the solver during
   // benchmarks
