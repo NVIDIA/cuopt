@@ -14,6 +14,7 @@ import os
 import tempfile
 import json
 from sphinx.util.fileutil import copy_asset_file
+from pathlib import Path
 
 # Run cuopt server help command and save output
 subprocess.run(
@@ -333,16 +334,17 @@ def skip_unwanted_inherited_members(app, what, name, obj, skip, options):
     return skip
 
 
-def write_project_json(app, builder):
+def write_project_json(app, _builder):
     json_data = {
         "name": "cuopt",
         "version": cuopt.__version__,
         "url": "https://github.com/nvidia/cuopt",
-        "description": "NVIDIA cuOpt is a optimization engine",
+        "description": "NVIDIA cuOpt is an optimization engine",
     }
-    with tempfile.NamedTemporaryFile("w+") as f:
-        json.dump(json_data, f)
-        f.flush()
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "project.json"
+        with open(path, "w") as f:
+            json.dump(json_data, f)
         copy_asset_file(f.name, app.outdir / "project.json")
 
 
