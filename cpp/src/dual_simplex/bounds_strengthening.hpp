@@ -23,7 +23,7 @@ class bounds_strengthening_t {
   // If bound_changed is empty, then all constraints are scanned for changes.
   // Otherwise, bounds_changed must be a vector of length n, where n is the number of variables.
   bool bounds_strengthening(const simplex_solver_settings_t<i_t, f_t>& settings,
-                            const std::vector<bool>& bound_changed,
+                            const std::vector<bool>& bounds_changed,
                             std::vector<f_t>& lower_bounds,
                             std::vector<f_t>& upper_bounds);
 
