@@ -26,6 +26,9 @@ ConfigureTest(INCUMBENT_CALLBACK_TEST
 ConfigureTest(DOC_EXAMPLE_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/doc_example_test.cu
 )
+ConfigureTest(CUTS_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/cuts_test.cu
+)
 ConfigureTest(UNIT_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/integer_with_real_bounds.cu
