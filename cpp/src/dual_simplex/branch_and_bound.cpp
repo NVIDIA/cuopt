@@ -1950,8 +1950,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       bounds_strengthening_t<i_t, f_t> node_presolve(original_lp_, Arow_, row_sense, var_types_);
       std::vector<f_t> new_lower = original_lp_.lower;
       std::vector<f_t> new_upper = original_lp_.upper;
-      bool feasible = node_presolve.bounds_strengthening(
-        settings_, bounds_changed, new_lower, new_upper);
+      bool feasible =
+        node_presolve.bounds_strengthening(settings_, bounds_changed, new_lower, new_upper);
       mutex_original_lp_.lock();
       original_lp_.lower = new_lower;
       original_lp_.upper = new_upper;

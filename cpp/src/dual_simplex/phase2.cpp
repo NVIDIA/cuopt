@@ -1979,7 +1979,7 @@ void set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
                                     std::vector<f_t>& x)
 {
   const i_t n = lp.num_cols;
-  f_t tol = 1e-10;
+  f_t tol     = 1e-10;
   for (i_t j = 0; j < n; ++j) {
     // We set z_j = 0 for basic variables
     // But we explicitally skip setting basic variables here
@@ -1997,9 +1997,11 @@ void set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
       }
       x[j]       = lp.lower[j];
       vstatus[j] = variable_status_t::NONBASIC_FIXED;
-    } else if (z[j] >= -tol && lp.lower[j] > -inf && vstatus[j] == variable_status_t::NONBASIC_LOWER) {
+    } else if (z[j] >= -tol && lp.lower[j] > -inf &&
+               vstatus[j] == variable_status_t::NONBASIC_LOWER) {
       x[j] = lp.lower[j];
-    } else if (z[j] <=  tol && lp.upper[j] < inf && vstatus[j] == variable_status_t::NONBASIC_UPPER) {
+    } else if (z[j] <= tol && lp.upper[j] < inf &&
+               vstatus[j] == variable_status_t::NONBASIC_UPPER) {
       x[j] = lp.upper[j];
     } else if (z[j] >= 0 && lp.lower[j] > -inf) {
       if (vstatus[j] != variable_status_t::NONBASIC_LOWER) {
