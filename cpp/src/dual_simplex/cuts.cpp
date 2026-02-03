@@ -201,7 +201,8 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   csr_matrix_t<i_t, f_t>& Arow,
   const std::vector<i_t>& new_slacks,
-  const std::vector<variable_type_t>& var_types) : settings_(settings)
+  const std::vector<variable_type_t>& var_types)
+  : settings_(settings)
 {
   const bool verbose = false;
   knapsack_constraints_.reserve(lp.num_rows);
@@ -485,7 +486,9 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
     const f_t epsilon = 0.1;
     scale             = epsilon * vmax / static_cast<f_t>(n);
     if (scale <= 0.0) { return std::numeric_limits<f_t>::quiet_NaN(); }
-    if (verbose) { settings_.log.printf("scale %g epsilon %g vmax %g n %d\n", scale, epsilon, vmax, n); }
+    if (verbose) {
+      settings_.log.printf("scale %g epsilon %g vmax %g n %d\n", scale, epsilon, vmax, n);
+    }
     for (i_t i = 0; i < n; ++i) {
       scaled_values[i] = static_cast<i_t>(std::floor(values[i] / scale));
     }
@@ -497,7 +500,8 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
   const i_t max_size = 10000;
   if (sum_value <= 0.0 || sum_value >= max_size) {
     if (verbose) {
-      settings_.log.printf("sum value %d is negative or too large using greedy solution\n", sum_value);
+      settings_.log.printf("sum value %d is negative or too large using greedy solution\n",
+                           sum_value);
     }
     return greedy_knapsack_problem(values, weights, rhs, solution);
   }
@@ -728,10 +732,10 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
             negate_inequality = 0;
           } else {
             settings.log.debug("Bad slack %d in inequality: aj %e lo %e up %e\n",
-                   j,
-                   inequality.x[k],
-                   lp.lower[j],
-                   lp.upper[j]);
+                               j,
+                               inequality.x[k],
+                               lp.lower[j],
+                               lp.upper[j]);
             negate_inequality = -1;
             break;
           }
@@ -1099,7 +1103,6 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
 #ifdef PRINT_CUT_INFO
   settings_.log.printf("Generating cut for variable %d relaxed value %e row %d\n", j, x_j, i);
 #endif
-
 
   // Solve B^T u_bar = e_i
   sparse_vector_t<i_t, f_t> e_i(lp.num_rows, 1);
@@ -1777,7 +1780,8 @@ void mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(const lp_problem_
         } else {
           const f_t aij = Arow.x[q];
           if (std::abs(aij) != 1.0) {
-            settings_.log.printf("Slack row %d has non-unit coefficient %e for variable %d\n", i, aij, j);
+            settings_.log.printf(
+              "Slack row %d has non-unit coefficient %e for variable %d\n", i, aij, j);
             assert(std::abs(aij) == 1.0);
           }
         }
