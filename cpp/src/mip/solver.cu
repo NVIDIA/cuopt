@@ -146,8 +146,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     return sol;
   }
 
-  namespace dual_simplex = cuopt::linear_programming::dual_simplex;
-  dual_simplex::mip_status_t bb_status;
+  namespace dual_simplex               = cuopt::linear_programming::dual_simplex;
+  dual_simplex::mip_status_t bb_status = dual_simplex::mip_status_t::UNSET;
   dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
   dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
   std::unique_ptr<dual_simplex::branch_and_bound_t<i_t, f_t>> branch_and_bound;

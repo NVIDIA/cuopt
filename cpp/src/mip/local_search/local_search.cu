@@ -137,7 +137,7 @@ void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
     cpu_fj->halted = true;
   }
 
-  scratch_cpu_fj_on_lp_opt->halted = true;
+  if (scratch_cpu_fj_on_lp_opt) scratch_cpu_fj_on_lp_opt->halted = true;
 }
 
 template <typename i_t, typename f_t>

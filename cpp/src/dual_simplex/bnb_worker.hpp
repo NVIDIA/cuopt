@@ -179,10 +179,11 @@ class bnb_worker_pool_t {
     }
   }
 
+  // Here, we are assuming that the master is the only
+  // thread that can retrieve/pop an idle worker.
   bnb_worker_data_t<i_t, f_t>* get_idle_worker()
   {
     std::lock_guard<omp_mutex_t> lock(mutex_);
-
     if (idle_workers_.empty()) {
       return nullptr;
     } else {
@@ -191,26 +192,14 @@ class bnb_worker_pool_t {
     }
   }
 
+  // Here, we are assuming that the master is the only
+  // thread that can retrieve/pop an idle worker.
   void pop_idle_worker()
   {
     std::lock_guard<omp_mutex_t> lock(mutex_);
     if (!idle_workers_.empty()) {
       idle_workers_.pop_front();
       num_idle_workers_--;
-    }
-  }
-
-  bnb_worker_data_t<i_t, f_t>* get_and_pop_idle_worker()
-  {
-    std::lock_guard<omp_mutex_t> lock(mutex_);
-
-    if (idle_workers_.empty()) {
-      return nullptr;
-    } else {
-      i_t idx = idle_workers_.front();
-      idle_workers_.pop_front();
-      num_idle_workers_--;
-      return workers_[idx].get();
     }
   }
 
