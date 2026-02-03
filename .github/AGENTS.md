@@ -30,7 +30,3 @@ See `skills/README.md` for the full index.
 - [cuopt-examples repo](https://github.com/NVIDIA/cuopt-examples)
 - [GitHub Issues](https://github.com/NVIDIA/cuopt/issues)
 - [Developer Forums](https://forums.developer.nvidia.com/c/ai-data-science/nvidia-cuopt/514)
-
-## Machine-Readable Manifest
-
-- `.ai/skills/cuopt.yaml`
