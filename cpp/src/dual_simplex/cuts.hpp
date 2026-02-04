@@ -13,6 +13,13 @@
 #include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
 
+#include <algorithm>
+#include <array>
+#include <numeric>
+#include <string>
+#include <vector>
+
+#include <cstdint>
 #include <cmath>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -271,7 +278,7 @@ class tableau_equality_t {
  public:
   tableau_equality_t(const lp_problem_t<i_t, f_t>& lp,
                      basis_update_mpf_t<i_t, f_t>& basis_update,
-                     const std::vector<i_t> nonbasic_list)
+                     const std::vector<i_t>& nonbasic_list)
     : b_bar_(lp.num_rows, 0.0),
       nonbasic_mark_(lp.num_cols, 0),
       x_workspace_(lp.num_cols, 0.0),
