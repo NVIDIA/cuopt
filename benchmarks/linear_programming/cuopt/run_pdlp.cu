@@ -77,6 +77,11 @@ static void parse_arguments(argparse::ArgumentParser& program)
     .choices(0, 1);
 
   program.add_argument("--solution-path").help("Path where solution file will be generated");
+
+  program.add_argument("--pdlp-fp32")
+    .help("Use FP32 (float) precision instead of FP64 (double). Only PDLP method without presolve and crossover is supported.")
+    .default_value(false)
+    .implicit_value(true);
 }
 
 static cuopt::linear_programming::pdlp_solver_mode_t string_to_pdlp_solver_mode(
@@ -94,15 +99,16 @@ static cuopt::linear_programming::pdlp_solver_mode_t string_to_pdlp_solver_mode(
   return cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
 }
 
-static cuopt::linear_programming::pdlp_solver_settings_t<int, double> create_solver_settings(
+template <typename f_t>
+static cuopt::linear_programming::pdlp_solver_settings_t<int, f_t> create_solver_settings(
   const argparse::ArgumentParser& program)
 {
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
-    cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
+  cuopt::linear_programming::pdlp_solver_settings_t<int, f_t> settings =
+    cuopt::linear_programming::pdlp_solver_settings_t<int, f_t>{};
 
-  settings.time_limit      = program.get<double>("--time-limit");
+  settings.time_limit      = static_cast<f_t>(program.get<double>("--time-limit"));
   settings.iteration_limit = program.get<int>("--iteration-limit");
-  settings.set_optimality_tolerance(program.get<double>("--optimality-tolerance"));
+  settings.set_optimality_tolerance(static_cast<f_t>(program.get<double>("--optimality-tolerance")));
   settings.pdlp_solver_mode =
     string_to_pdlp_solver_mode(program.get<std::string>("--pdlp-solver-mode"));
   settings.method = static_cast<cuopt::linear_programming::method_t>(program.get<int>("--method"));
@@ -110,6 +116,37 @@ static cuopt::linear_programming::pdlp_solver_settings_t<int, double> create_sol
   settings.presolve  = program.get<int>("--presolve");
 
   return settings;
+}
+
+template <typename f_t>
+static int run_solver(const argparse::ArgumentParser& program, const raft::handle_t& handle_)
+{
+  // Initialize solver settings from binary arguments
+  cuopt::linear_programming::pdlp_solver_settings_t<int, f_t> settings =
+    create_solver_settings<f_t>(program);
+
+  bool use_pdlp_solver_mode = true;
+  if (program.is_used("--pdlp-hyper-params-path")) {
+    std::string pdlp_hyper_params_path = program.get<std::string>("--pdlp-hyper-params-path");
+    fill_pdlp_hyper_params(pdlp_hyper_params_path, settings.hyper_params);
+    use_pdlp_solver_mode = false;
+  }
+
+  // Parse MPS file
+  cuopt::mps_parser::mps_data_model_t<int, f_t> op_problem =
+    cuopt::mps_parser::parse_mps<int, f_t>(program.get<std::string>("--path"));
+
+  // Solve LP problem
+  bool problem_checking = true;
+  cuopt::linear_programming::optimization_problem_solution_t<int, f_t> solution =
+    cuopt::linear_programming::solve_lp(
+      &handle_, op_problem, settings, problem_checking, use_pdlp_solver_mode);
+
+  // Write solution to file if requested
+  if (program.is_used("--solution-path"))
+    solution.write_to_file(program.get<std::string>("--solution-path"), handle_.get_stream());
+
+  return 0;
 }
 
 int main(int argc, char* argv[])
@@ -126,17 +163,6 @@ int main(int argc, char* argv[])
     return 1;
   }
 
-  // Initialize solver settings from binary arguments
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
-    create_solver_settings(program);
-
-  bool use_pdlp_solver_mode = true;
-  if (program.is_used("--pdlp-hyper-params-path")) {
-    std::string pdlp_hyper_params_path = program.get<std::string>("--pdlp-hyper-params-path");
-    fill_pdlp_hyper_params(pdlp_hyper_params_path, settings.hyper_params);
-    use_pdlp_solver_mode = false;
-  }
-
   // Setup up RMM memory pool
   auto memory_resource = make_pool();
   rmm::mr::set_current_device_resource(memory_resource.get());
@@ -144,19 +170,11 @@ int main(int argc, char* argv[])
   // Initialize raft handle and running stream
   const raft::handle_t handle_{};
 
-  // Parse MPS file
-  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
-    cuopt::mps_parser::parse_mps<int, double>(program.get<std::string>("--path"));
-
-  // Solve LP problem
-  bool problem_checking = true;
-  cuopt::linear_programming::optimization_problem_solution_t<int, double> solution =
-    cuopt::linear_programming::solve_lp(
-      &handle_, op_problem, settings, problem_checking, use_pdlp_solver_mode);
-
-  // Write solution to file if requested
-  if (program.is_used("--solution-path"))
-    solution.write_to_file(program.get<std::string>("--solution-path"), handle_.get_stream());
-
-  return 0;
+  // Run solver with appropriate precision
+  bool use_fp32 = program.get<bool>("--pdlp-fp32");
+  if (use_fp32) {
+    return run_solver<float>(program, handle_);
+  } else {
+    return run_solver<double>(program, handle_);
+  }
 }
