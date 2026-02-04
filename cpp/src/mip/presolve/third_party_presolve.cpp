@@ -303,7 +303,7 @@ void check_presolve_status(const papilo::PresolveStatus& status)
 void check_postsolve_status(const papilo::PostsolveStatus& status)
 {
   switch (status) {
-    case papilo::PostsolveStatus::kOk: CUOPT_LOG_INFO("Post-solve status: succeeded"); break;
+    case papilo::PostsolveStatus::kOk: CUOPT_LOG_DEBUG("Post-solve status: succeeded"); break;
     case papilo::PostsolveStatus::kFailed:
       CUOPT_LOG_INFO(
         "Post-solve status: Post solved solution violates constraints. This is most likely due to "
