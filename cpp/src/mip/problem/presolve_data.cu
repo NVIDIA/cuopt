@@ -183,10 +183,6 @@ void presolve_data_t<i_t, f_t>::set_papilo_presolve_data(
                     original_num_variables);
     return;
   }
-  if (reduced_to_original.empty()) {
-    CUOPT_LOG_DEBUG("Papilo presolve data invalid: reduced_to_original is empty");
-    return;
-  }
   if (original_to_reduced.empty()) {
     CUOPT_LOG_DEBUG("Papilo presolve data invalid: original_to_reduced is empty");
     return;
@@ -232,8 +228,10 @@ template <typename i_t, typename f_t>
 void presolve_data_t<i_t, f_t>::papilo_uncrush_assignment(
   problem_t<i_t, f_t>& problem, rmm::device_uvector<f_t>& assignment) const
 {
-  if (papilo_presolve_ptr == nullptr) { return; }
-  cuopt_assert(!papilo_reduced_to_original_map.empty(), "Papilo reduced_to_original map is empty");
+  if (papilo_presolve_ptr == nullptr) {
+    CUOPT_LOG_INFO("Papilo presolve data not set, skipping uncrushing assignment");
+    return;
+  }
   cuopt_assert(assignment.size() == papilo_reduced_to_original_map.size(),
                "Papilo uncrush assignment size mismatch");
   auto h_assignment = cuopt::host_copy(assignment, problem.handle_ptr->get_stream());
