@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """
@@ -41,7 +41,7 @@ def update_versions(version_file_path, versions_file_path):
     # Create new entry for the current version
     new_entry = {
         "version": version,
-        "url": f"../{version}/",
+        "url": f"https://docs.nvidia.com/cuopt/user-guide/{version}/",
         "name": "latest",
         "preferred": True,
     }
@@ -52,6 +52,7 @@ def update_versions(version_file_path, versions_file_path):
     # Write updated versions back to file
     with open(versions_file_path, "w") as f:
         json.dump(versions, f, indent=2)
+        f.write("\n")
 
     return True
 
