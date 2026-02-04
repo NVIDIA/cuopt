@@ -133,7 +133,7 @@ void translate_to_crossover_problem(const detail::problem_t<i_t, f_t>& problem,
   std::vector<f_t> slack(problem.n_constraints);
   std::vector<f_t> tmp_x = cuopt::host_copy(sol.get_primal_solution(), stream);
   stream.synchronize();
-  dual_simplex::matrix_vector_multiply(lp.A, 1.0, tmp_x, 0.0, slack);
+  dual_simplex::matrix_vector_multiply(lp.A, f_t(1.0), tmp_x, f_t(0.0), slack);
   CUOPT_LOG_DEBUG("Multiplied A and x");
 
   lp.A.col_start.resize(problem.n_variables + problem.n_constraints + 1);

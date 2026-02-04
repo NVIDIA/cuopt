@@ -20,8 +20,10 @@
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 #include <cuopt/linear_programming/solve.hpp>
+
 #include <mip/problem/problem.cuh>
 #include <mps_parser/parser.hpp>
+#include <mip/mip_constants.hpp>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -45,10 +47,13 @@
 
 namespace cuopt::linear_programming::test {
 
-constexpr double afiro_primal_objective = -464;
-
+constexpr double afiro_primal_objective = -464.0;
+#if PDLP_INSTANTIATE_FLOAT
+constexpr float afiro_primal_objective_f32 = -464.0f;
+#endif
 // Accept a 1% error
-static bool is_incorrect_objective(double reference, double objective)
+template <typename f_t>
+static bool is_incorrect_objective(f_t reference, f_t objective)
 {
   if (reference == 0) { return std::abs(objective) > 0.01; }
   if (objective == 0) { return std::abs(reference) > 0.01; }
@@ -1866,6 +1871,110 @@ TEST(pdlp_class, some_climber_hit_iteration_limit)
     }
   }
 }
+
+#if PDLP_INSTANTIATE_FLOAT
+TEST(pdlp_class, run_float32)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, float> op_problem =
+    cuopt::mps_parser::parse_mps<int, float>(path, true);
+
+  auto solver_settings   = pdlp_solver_settings_t<int, float>{};
+  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
+
+  optimization_problem_solution_t<int, float> solution =
+    solve_lp(&handle_, op_problem, solver_settings);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+
+  EXPECT_FALSE(is_incorrect_objective(
+    afiro_primal_objective_f32,
+    solution.get_additional_termination_information().primal_objective));
+}
+
+TEST(pdlp_class, float32_dual_simplex_throws_validation_error)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, float> op_problem =
+    cuopt::mps_parser::parse_mps<int, float>(path, true);
+
+  auto solver_settings   = pdlp_solver_settings_t<int, float>{};
+  solver_settings.method = cuopt::linear_programming::method_t::DualSimplex;
+
+  optimization_problem_solution_t<int, float> solution =
+    solve_lp(&handle_, op_problem, solver_settings);
+  EXPECT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
+}
+
+TEST(pdlp_class, float32_barrier_throws_validation_error)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, float> op_problem =
+    cuopt::mps_parser::parse_mps<int, float>(path, true);
+
+  auto solver_settings   = pdlp_solver_settings_t<int, float>{};
+  solver_settings.method = cuopt::linear_programming::method_t::Barrier;
+
+  optimization_problem_solution_t<int, float> solution =
+    solve_lp(&handle_, op_problem, solver_settings);
+  EXPECT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
+}
+
+TEST(pdlp_class, float32_concurrent_throws_validation_error)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, float> op_problem =
+    cuopt::mps_parser::parse_mps<int, float>(path, true);
+
+  auto solver_settings   = pdlp_solver_settings_t<int, float>{};
+  solver_settings.method = cuopt::linear_programming::method_t::Concurrent;
+
+  optimization_problem_solution_t<int, float> solution =
+    solve_lp(&handle_, op_problem, solver_settings);
+  EXPECT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
+}
+
+TEST(pdlp_class, float32_presolve_throws_validation_error)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, float> op_problem =
+    cuopt::mps_parser::parse_mps<int, float>(path, true);
+
+  auto solver_settings    = pdlp_solver_settings_t<int, float>{};
+  solver_settings.method  = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.presolve = true;
+
+  optimization_problem_solution_t<int, float> solution =
+    solve_lp(&handle_, op_problem, solver_settings);
+  EXPECT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
+}
+
+TEST(pdlp_class, float32_crossover_throws_validation_error)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, float> op_problem =
+    cuopt::mps_parser::parse_mps<int, float>(path, true);
+
+  auto solver_settings    = pdlp_solver_settings_t<int, float>{};
+  solver_settings.method  = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.crossover = true;
+
+  optimization_problem_solution_t<int, float> solution =
+    solve_lp(&handle_, op_problem, solver_settings);
+  EXPECT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
+}
+#endif
 
 }  // namespace cuopt::linear_programming::test
 

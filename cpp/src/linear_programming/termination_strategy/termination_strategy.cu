@@ -681,7 +681,7 @@ void pdlp_termination_strategy_t<i_t, f_t>::print_termination_criteria(i_t itera
     bool per_constraint_residual,                                                              \
     int batch_size);
 
-#if MIP_INSTANTIATE_FLOAT
+#if PDLP_INSTANTIATE_FLOAT
 INSTANTIATE(float)
 #endif
 

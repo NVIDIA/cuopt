@@ -208,7 +208,7 @@ class pdlp_solver_settings_t {
   bool detect_infeasibility{false};
   bool strict_infeasibility{false};
   i_t iteration_limit{std::numeric_limits<i_t>::max()};
-  double time_limit{std::numeric_limits<double>::infinity()};
+  f_t time_limit{std::numeric_limits<f_t>::infinity()};
   pdlp_solver_mode_t pdlp_solver_mode{pdlp_solver_mode_t::Stable3};
   bool log_to_console{true};
   std::string log_file{""};

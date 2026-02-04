@@ -58,21 +58,21 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
   // clang-format off
   // Float parameters
   float_parameters = {
-    {CUOPT_TIME_LIMIT, &mip_settings.time_limit, 0.0, std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
-    {CUOPT_TIME_LIMIT, &pdlp_settings.time_limit, 0.0, std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
-    {CUOPT_ABSOLUTE_DUAL_TOLERANCE, &pdlp_settings.tolerances.absolute_dual_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_RELATIVE_DUAL_TOLERANCE, &pdlp_settings.tolerances.relative_dual_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, &pdlp_settings.tolerances.absolute_primal_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_RELATIVE_PRIMAL_TOLERANCE, &pdlp_settings.tolerances.relative_primal_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_ABSOLUTE_GAP_TOLERANCE, &pdlp_settings.tolerances.absolute_gap_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_RELATIVE_GAP_TOLERANCE, &pdlp_settings.tolerances.relative_gap_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_MIP_ABSOLUTE_TOLERANCE, &mip_settings.tolerances.absolute_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_MIP_RELATIVE_TOLERANCE, &mip_settings.tolerances.relative_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_MIP_INTEGRALITY_TOLERANCE, &mip_settings.tolerances.integrality_tolerance, 0.0, 1e-1, 1e-5},
-    {CUOPT_MIP_ABSOLUTE_GAP, &mip_settings.tolerances.absolute_mip_gap, 0.0, CUOPT_INFINITY, 1e-10},
-    {CUOPT_MIP_RELATIVE_GAP, &mip_settings.tolerances.relative_mip_gap, 0.0, 1e-1, 1e-4},
-    {CUOPT_PRIMAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.primal_infeasible_tolerance, 0.0, 1e-1, 1e-10},
-    {CUOPT_DUAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.dual_infeasible_tolerance, 0.0, 1e-1, 1e-10}
+    {CUOPT_TIME_LIMIT, &mip_settings.time_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
+    {CUOPT_TIME_LIMIT, &pdlp_settings.time_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
+    {CUOPT_ABSOLUTE_DUAL_TOLERANCE, &pdlp_settings.tolerances.absolute_dual_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_RELATIVE_DUAL_TOLERANCE, &pdlp_settings.tolerances.relative_dual_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, &pdlp_settings.tolerances.absolute_primal_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_RELATIVE_PRIMAL_TOLERANCE, &pdlp_settings.tolerances.relative_primal_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_ABSOLUTE_GAP_TOLERANCE, &pdlp_settings.tolerances.absolute_gap_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_RELATIVE_GAP_TOLERANCE, &pdlp_settings.tolerances.relative_gap_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_MIP_ABSOLUTE_TOLERANCE, &mip_settings.tolerances.absolute_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_MIP_RELATIVE_TOLERANCE, &mip_settings.tolerances.relative_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_MIP_INTEGRALITY_TOLERANCE, &mip_settings.tolerances.integrality_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-5)},
+    {CUOPT_MIP_ABSOLUTE_GAP, &mip_settings.tolerances.absolute_mip_gap, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(1e-10)},
+    {CUOPT_MIP_RELATIVE_GAP, &mip_settings.tolerances.relative_mip_gap, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_PRIMAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.primal_infeasible_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-10)},
+    {CUOPT_DUAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.dual_infeasible_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-10)}
    };
 
   // Int parameters

@@ -946,7 +946,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 {
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if PDLP_INSTANTIATE_FLOAT
 template class cusparse_sp_mat_descr_wrapper_t<int, float>;
 template class cusparse_dn_vec_descr_wrapper_t<float>;
 template class cusparse_dn_mat_descr_wrapper_t<float>;
@@ -960,7 +960,7 @@ template class cusparse_view_t<int, double>;
 #endif
 
 #if CUDA_VER_12_4_UP
-#if MIP_INSTANTIATE_FLOAT
+#if PDLP_INSTANTIATE_FLOAT
 template void my_cusparsespmm_preprocess<float>(cusparseHandle_t,
                                                 cusparseOperation_t,
                                                 cusparseOperation_t,

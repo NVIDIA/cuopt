@@ -41,6 +41,59 @@
 
 namespace cuopt::linear_programming::detail {
 
+// Templated wrapper for cuBLAS geam function
+// cublasSgeam for float, cublasDgeam for double
+template <typename T>
+inline cublasStatus_t cublasGeam(cublasHandle_t handle,
+                                 cublasOperation_t transa,
+                                 cublasOperation_t transb,
+                                 int m,
+                                 int n,
+                                 const T* alpha,
+                                 const T* A,
+                                 int lda,
+                                 const T* beta,
+                                 const T* B,
+                                 int ldb,
+                                 T* C,
+                                 int ldc);
+
+template <>
+inline cublasStatus_t cublasGeam<float>(cublasHandle_t handle,
+                                        cublasOperation_t transa,
+                                        cublasOperation_t transb,
+                                        int m,
+                                        int n,
+                                        const float* alpha,
+                                        const float* A,
+                                        int lda,
+                                        const float* beta,
+                                        const float* B,
+                                        int ldb,
+                                        float* C,
+                                        int ldc)
+{
+  return cublasSgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
+}
+
+template <>
+inline cublasStatus_t cublasGeam<double>(cublasHandle_t handle,
+                                         cublasOperation_t transa,
+                                         cublasOperation_t transb,
+                                         int m,
+                                         int n,
+                                         const double* alpha,
+                                         const double* A,
+                                         int lda,
+                                         const double* beta,
+                                         const double* B,
+                                         int ldb,
+                                         double* C,
+                                         int ldc)
+{
+  return cublasDgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
+}
+
 template <typename i_t, typename f_t>
 static size_t batch_size_handler(const problem_t<i_t, f_t>& op_problem,
                                  const pdlp_solver_settings_t<i_t, f_t>& settings)
@@ -1869,7 +1922,7 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_to_row(
   rmm::device_uvector<f_t> dual_slack_transposed(
     is_dual_slack_empty ? 0 : primal_size_h_ * climber_strategies_.size(), stream_view_);
 
-  CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
+  CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
                            CUBLAS_OP_T,
                            CUBLAS_OP_N,
                            climber_strategies_.size(),
@@ -1884,7 +1937,7 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_to_row(
                            climber_strategies_.size()));
 
   if (!is_dual_slack_empty) {
-    CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
+    CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
                              CUBLAS_OP_T,
                              CUBLAS_OP_N,
                              climber_strategies_.size(),
@@ -1898,7 +1951,7 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_to_row(
                              dual_slack_transposed.data(),
                              climber_strategies_.size()));
   }
-  CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
+  CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
                            CUBLAS_OP_T,
                            CUBLAS_OP_N,
                            climber_strategies_.size(),
@@ -1945,7 +1998,7 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
   rmm::device_uvector<f_t> dual_slack_transposed(
     is_dual_slack_empty ? 0 : primal_size_h_ * climber_strategies_.size(), stream_view_);
 
-  CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
+  CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
                            CUBLAS_OP_T,
                            CUBLAS_OP_N,
                            primal_size_h_,
@@ -1960,7 +2013,7 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
                            primal_size_h_));
 
   if (!is_dual_slack_empty) {
-    CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
+    CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
                              CUBLAS_OP_T,
                              CUBLAS_OP_N,
                              primal_size_h_,
@@ -1975,7 +2028,7 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
                              primal_size_h_));
   }
 
-  CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
+  CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
                            CUBLAS_OP_T,
                            CUBLAS_OP_N,
                            dual_size_h_,
@@ -2858,7 +2911,7 @@ pdlp_solver_t<i_t, f_t>::get_current_termination_strategy()
   return current_termination_strategy_;
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if PDLP_INSTANTIATE_FLOAT
 template class pdlp_solver_t<int, float>;
 
 template __global__ void compute_weights_initial_primal_weight_from_squared_norms<float>(

@@ -1159,7 +1159,7 @@ rmm::device_uvector<f_t>& pdhg_solver_t<i_t, f_t>::get_dual_solution()
   return current_saddle_point_state_.get_dual_solution();
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if PDLP_INSTANTIATE_FLOAT
 template class pdhg_solver_t<int, float>;
 #endif
 #if MIP_INSTANTIATE_DOUBLE

@@ -1062,7 +1062,7 @@ bool optimization_problem_t<i_t, f_t>::has_quadratic_objective() const
   return !Q_values_.empty();
 }
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
-#if MIP_INSTANTIATE_FLOAT
+#if PDLP_INSTANTIATE_FLOAT
 template class optimization_problem_t<int, float>;
 #endif
 #if MIP_INSTANTIATE_DOUBLE

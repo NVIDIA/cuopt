@@ -596,7 +596,7 @@ adaptive_step_size_strategy_t<i_t, f_t>::view()
     F_TYPE * dual_step_size,                                                                   \
     int* pdhg_iteration);
 
-#if MIP_INSTANTIATE_FLOAT
+#if PDLP_INSTANTIATE_FLOAT
 INSTANTIATE(float)
 #endif
 

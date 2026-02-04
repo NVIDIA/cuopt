@@ -10,6 +10,7 @@
 #include <dual_simplex/sparse_vector.hpp>
 
 #include <dual_simplex/types.hpp>
+#include <mip/mip_constants.hpp>
 
 // #include <thrust/for_each.h>
 // #include <thrust/iterator/counting_iterator.h>
@@ -849,6 +850,12 @@ f_t sparse_dot(const std::vector<i_t>& xind,
   }
   return dot;
 }
+
+#if PDLP_INSTANTIATE_FLOAT
+// Minimal float instantiation for LP usage
+template class csc_matrix_t<int, float>;
+template class csr_matrix_t<int, float>;
+#endif
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template class csc_matrix_t<int, double>;
