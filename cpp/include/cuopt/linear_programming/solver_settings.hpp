@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -81,7 +81,8 @@ class solver_settings_t {
   void add_initial_mip_solution(const f_t* initial_solution,
                                 i_t size,
                                 rmm::cuda_stream_view stream = rmm::cuda_stream_default);
-  void set_mip_callback(internals::base_solution_callback_t* callback = nullptr);
+  void set_mip_callback(internals::base_solution_callback_t* callback = nullptr,
+                        void* user_data                               = nullptr);
 
   const pdlp_warm_start_data_view_t<i_t, f_t>& get_pdlp_warm_start_data_view() const noexcept;
   const std::vector<internals::base_solution_callback_t*> get_mip_callbacks() const;

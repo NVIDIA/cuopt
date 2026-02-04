@@ -10,6 +10,7 @@
 
 #include <cuopt/error.hpp>
 
+#include <mip/diversity/diversity_manager.cuh>
 #include <mip/mip_constants.hpp>
 #include <mip/relaxed_lp/relaxed_lp.cuh>
 #include <mip/utils.cuh>
@@ -81,12 +82,13 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
                                                       /*randomize=*/counter > 0);
 
     cpu_fj.fj_cpu->log_prefix           = "******* scratch " + std::to_string(counter) + ": ";
-    cpu_fj.fj_cpu->improvement_callback = [&population](f_t obj, const std::vector<f_t>& h_vec) {
+    cpu_fj.fj_cpu->improvement_callback = [&population, problem_ptr = context.problem_ptr](
+                                            f_t obj, const std::vector<f_t>& h_vec) {
       population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
       if (obj < local_search_best_obj) {
         CUOPT_LOG_TRACE("******* New local search best obj %g, best overall %g",
-                        context.problem_ptr->get_user_obj_from_solver_obj(obj),
-                        context.problem_ptr->get_user_obj_from_solver_obj(
+                        problem_ptr->get_user_obj_from_solver_obj(obj),
+                        problem_ptr->get_user_obj_from_solver_obj(
                           population.is_feasible() ? population.best_feasible().get_objective()
                                                    : std::numeric_limits<f_t>::max()));
         local_search_best_obj = obj;
@@ -245,7 +247,7 @@ void local_search_t<i_t, f_t>::generate_fast_solution(solution_t<i_t, f_t>& solu
   fj.settings.update_weights         = true;
   fj.settings.feasibility_run        = true;
   fj.settings.time_limit             = std::min(30., timer.remaining_time());
-  while (!timer.check_time_limit()) {
+  while (!context.diversity_manager_ptr->check_b_b_preemption() && !timer.check_time_limit()) {
     timer_t constr_prop_timer = timer_t(std::min(timer.remaining_time(), 2.));
     // do constraint prop on lp optimal solution
     constraint_prop.apply_round(solution, 1., constr_prop_timer);
