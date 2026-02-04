@@ -13,6 +13,12 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
+
+#define RATIO_TEST_NO_ENTERING_VARIABLE -1
+#define RATIO_TEST_CONCURRENT_LIMIT CONCURRENT_HALT_RETURN   // -2
+#define RATIO_TEST_TIME_LIMIT -3
+#define RATIO_TEST_NUMERICAL_ISSUES -4
+
 template <typename i_t, typename f_t>
 class bound_flipping_ratio_test_t {
  public:

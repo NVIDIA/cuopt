@@ -2696,7 +2696,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                                                  delta_z_indices,
                                                  nonbasic_mark);
       entering_index = bfrt.compute_step_length(step_length, nonbasic_entering_index);
-      if (entering_index == -4) {
+      if (entering_index == RATIO_TEST_NUMERICAL_ISSUES) {
         settings.log.printf("Numerical issues encountered in ratio test.\n");
         return dual::status_t::NUMERICAL;
       }
@@ -2705,9 +2705,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       entering_index = phase2::phase2_ratio_test(
         lp, settings, vstatus, nonbasic_list, z, delta_z, step_length, nonbasic_entering_index);
     }
-    if (entering_index == -3) { return dual::status_t::TIME_LIMIT; }
+    if (entering_index == RATIO_TEST_TIME_LIMIT) { return dual::status_t::TIME_LIMIT; }
     if (entering_index == CONCURRENT_HALT_RETURN) { return dual::status_t::CONCURRENT_LIMIT; }
-    if (entering_index == -1) {
+    if (entering_index == RATIO_TEST_NO_ENTERING_VARIABLE) {
       settings.log.printf("No entering variable found. Iter %d\n", iter);
       settings.log.printf("Scaled infeasibility %e\n", max_val);
       f_t perturbation = phase2::amount_of_perturbation(lp, objective);
