@@ -84,9 +84,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::single_pass(i_t start,
   step_length       = min_val;
   nonbasic_entering = candidate;
   // this should be temporary, find root causes where the candidate is not filled
-  if (nonbasic_entering == -1) {
-    return RATIO_TEST_NUMERICAL_ISSUES;
-  }
+  if (nonbasic_entering == -1) { return RATIO_TEST_NUMERICAL_ISSUES; }
   const i_t j = entering_index = nonbasic_list_[nonbasic_entering];
 
   constexpr bool verbose = false;

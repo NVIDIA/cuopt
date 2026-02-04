@@ -41,13 +41,8 @@ struct cut_info_t {
       num_cuts[static_cast<int>(cut_type)]++;
     }
   }
-  const char* cut_type_names[MAX_CUT_TYPE] = {
-    "Gomory   ",
-    "MIR      ",
-    "Knapsack ",
-    "Strong CG"
-  };
-  std::array<i_t, MAX_CUT_TYPE> num_cuts = {0};
+  const char* cut_type_names[MAX_CUT_TYPE] = {"Gomory   ", "MIR      ", "Knapsack ", "Strong CG"};
+  std::array<i_t, MAX_CUT_TYPE> num_cuts   = {0};
 };
 
 template <typename i_t, typename f_t>
@@ -71,9 +66,7 @@ void print_cut_types(const std::string& prefix,
   settings.log.printf("%s: ", prefix.c_str());
   for (i_t i = 0; i < MAX_CUT_TYPE; i++) {
     settings.log.printf("%s cuts: %d ", cut_info.cut_type_names[i], cut_info.num_cuts[i]);
-    if (i < MAX_CUT_TYPE - 1) {
-      settings.log.printf(", ");
-    }
+    if (i < MAX_CUT_TYPE - 1) { settings.log.printf(", "); }
   }
   settings.log.printf("\n");
 }

@@ -386,10 +386,7 @@ void color_lower_bounds(const csc_matrix_t<i_t, f_t>& A,
   col_lower_bound = static_cast<i_t>(unique_col_sums.size());
 }
 
-enum coloring_status_t : int8_t {
-  COLORING_SUCCESS = 0,
-  COLORING_FAILED = -1
-};
+enum coloring_status_t : int8_t { COLORING_SUCCESS = 0, COLORING_FAILED = -1 };
 
 template <typename i_t, typename f_t>
 coloring_status_t color_graph(const csc_matrix_t<i_t, f_t>& A,
