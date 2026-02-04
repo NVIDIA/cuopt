@@ -19,8 +19,8 @@
 #include <string>
 #include <vector>
 
-#include <cstdint>
 #include <cmath>
+#include <cstdint>
 
 namespace cuopt::linear_programming::dual_simplex {
 
