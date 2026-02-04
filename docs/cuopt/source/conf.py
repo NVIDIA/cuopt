@@ -345,7 +345,7 @@ def write_project_json(app, _builder):
         path = Path(d) / "project.json"
         with open(path, "w") as f:
             json.dump(json_data, f)
-        copy_asset_file(f.name, app.outdir / "project.json")
+        copy_asset_file(path, app.outdir / "project.json")
 
 
 intersphinx_mapping = {
