@@ -73,7 +73,7 @@ class third_party_presolve_t {
   Presolver* pslp_presolver_{nullptr};
 
   // Papilo postsolve storage
-  papilo::PostsolveStorage<double> papilo_post_solve_storage_;
+  papilo::PostsolveStorage<f_t> papilo_post_solve_storage_;
 };
 
 }  // namespace cuopt::linear_programming::detail

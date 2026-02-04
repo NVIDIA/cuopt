@@ -255,9 +255,10 @@ PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>&
   }
 
   // Call PSLP presolver
-  ctx.settings    = default_settings();
-  auto start_time = std::chrono::high_resolution_clock::now();
-  ctx.presolver   = new_presolver(h_coefficients.data(),
+  ctx.settings          = default_settings();
+  ctx.settings->verbose = false;
+  auto start_time       = std::chrono::high_resolution_clock::now();
+  ctx.presolver         = new_presolver(h_coefficients.data(),
                                 h_variables.data(),
                                 h_offsets.data(),
                                 num_rows,
@@ -679,16 +680,16 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(rmm::device_uvector<f_t>& prima
   postsolve(
     pslp_presolver_, h_primal_solution.data(), h_dual_solution.data(), h_reduced_costs.data());
 
-  auto reduced_prob = pslp_presolver_->reduced_prob;
-  int n_rows        = reduced_prob->m;
-  int n_cols        = reduced_prob->n;
+  auto uncrushed_sol = pslp_presolver_->sol;
+  int n_rows         = uncrushed_sol->dim_x;
+  int n_cols         = uncrushed_sol->dim_y;
 
   primal_solution.resize(n_cols, stream_view);
   dual_solution.resize(n_rows, stream_view);
   reduced_costs.resize(n_cols, stream_view);
-  raft::copy(primal_solution.data(), pslp_presolver_->sol->x, n_cols, stream_view);
-  raft::copy(dual_solution.data(), pslp_presolver_->sol->y, n_rows, stream_view);
-  raft::copy(reduced_costs.data(), pslp_presolver_->sol->z, n_cols, stream_view);
+  raft::copy(primal_solution.data(), uncrushed_sol->x, n_cols, stream_view);
+  raft::copy(dual_solution.data(), uncrushed_sol->y, n_rows, stream_view);
+  raft::copy(reduced_costs.data(), uncrushed_sol->z, n_cols, stream_view);
 }
 
 template <typename i_t, typename f_t>
