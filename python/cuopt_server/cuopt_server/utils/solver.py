@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
@@ -67,6 +67,7 @@ def solve_LP_sync(
     validation_only=False,
     reqId="",
     intermediate_sender=None,
+    incumbent_set_solutions=False,
     solver_logging=False,
 ):
     from cuopt_server.utils.linear_programming.data_validation import (
@@ -111,6 +112,7 @@ def solve_LP_sync(
             reqId,
             intermediate_sender,
             warmstart_data,
+            incumbent_set_solutions,
         )
         warnings.extend(addl_warnings)
     else:
@@ -336,10 +338,10 @@ def process_async_solve(
     solver_exit, solver_complete, job_queue, results_queue, abort_list, gpu_id
 ):
     # Send incumbent solutions
-    def send_solution(id, solution, cost):
+    def send_solution(id, solution, cost, bound):
         results_queue.put(
             SolverIntermediateResponse(
-                id, {"solution": solution, "cost": cost}
+                id, {"solution": solution, "cost": cost, "bound": bound}
             )
         )
 

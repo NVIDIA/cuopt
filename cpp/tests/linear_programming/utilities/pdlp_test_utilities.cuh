@@ -40,9 +40,37 @@ static void test_objective_sanity(
 {
   const auto primal_vars = host_copy(primal_solution, primal_solution.stream());
   const auto& c_vector   = op_problem.get_objective_coefficients();
+  if (primal_vars.size() != c_vector.size()) {
+    EXPECT_EQ(primal_vars.size(), c_vector.size());
+    return;
+  }
   std::vector<double> out(primal_vars.size());
   std::transform(primal_vars.cbegin(),
                  primal_vars.cend(),
+                 c_vector.cbegin(),
+                 out.begin(),
+                 std::multiplies<double>());
+
+  double sum = std::reduce(out.cbegin(), out.cend(), 0.0);
+
+  EXPECT_NEAR(sum, objective_value, epsilon);
+}
+
+// Compute on the CPU x * c to check that the returned objective value is correct
+static void test_objective_sanity(
+  const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
+  const std::vector<double>& primal_solution,
+  double objective_value,
+  double epsilon = tolerance)
+{
+  const auto& c_vector = op_problem.get_objective_coefficients();
+  if (primal_solution.size() != c_vector.size()) {
+    EXPECT_EQ(primal_solution.size(), c_vector.size());
+    return;
+  }
+  std::vector<double> out(primal_solution.size());
+  std::transform(primal_solution.cbegin(),
+                 primal_solution.cend(),
                  c_vector.cbegin(),
                  out.begin(),
                  std::multiplies<double>());

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -25,8 +25,10 @@ void mip_solver_settings_t<i_t, f_t>::add_initial_solution(const f_t* initial_so
 
 template <typename i_t, typename f_t>
 void mip_solver_settings_t<i_t, f_t>::set_mip_callback(
-  internals::base_solution_callback_t* callback)
+  internals::base_solution_callback_t* callback, void* user_data)
 {
+  if (callback == nullptr) { return; }
+  callback->set_user_data(user_data);
   mip_callbacks_.push_back(callback);
 }
 

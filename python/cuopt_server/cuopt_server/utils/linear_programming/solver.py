@@ -8,7 +8,10 @@ import time
 from fastapi import HTTPException
 
 from cuopt import linear_programming
-from cuopt.linear_programming.internals import GetSolutionCallback
+from cuopt.linear_programming.internals import (
+    GetSolutionCallback,
+    SetSolutionCallback,
+)
 from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_DUAL_TOLERANCE,
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
@@ -77,13 +80,43 @@ class CustomGetSolutionCallback(GetSolutionCallback):
         super().__init__()
         self.req_id = req_id
         self.sender = sender
+        self.solutions = []
 
-    def get_solution(self, solution, solution_cost):
+    def get_solution(self, solution, solution_cost, solution_bound, user_data):
+        if user_data is not None:
+            assert user_data == self.req_id
+        solution_list = solution.tolist()
+        solution_cost_val = float(solution_cost[0])
+        solution_bound_val = float(solution_bound[0])
+        self.solutions.append(
+            {
+                "solution": solution_list,
+                "cost": solution_cost_val,
+                "bound": solution_bound_val,
+            }
+        )
         self.sender(
             self.req_id,
-            solution.copy_to_host(),
-            solution_cost.copy_to_host()[0],
+            solution_list,
+            solution_cost_val,
+            solution_bound_val,
         )
+
+
+class CustomSetSolutionCallback(SetSolutionCallback):
+    def __init__(self, get_callback, req_id):
+        super().__init__()
+        self.req_id = req_id
+        self.get_callback = get_callback
+        self.n_callbacks = 0
+
+    def set_solution(self, solution, solution_cost, solution_bound, user_data):
+        if user_data is not None:
+            assert user_data == self.req_id
+        self.n_callbacks += 1
+        if self.get_callback.solutions:
+            solution[:] = self.get_callback.solutions[-1]["solution"]
+            solution_cost[0] = float(self.get_callback.solutions[-1]["cost"])
 
 
 def warn_on_objectives(solver_config):
@@ -411,7 +444,13 @@ def get_solver_exception_type(status, message):
         return RuntimeError(msg)
 
 
-def solve(LP_data, reqId, intermediate_sender, warmstart_data):
+def solve(
+    LP_data,
+    reqId,
+    intermediate_sender,
+    warmstart_data,
+    incumbent_set_solutions,
+):
     notes = []
 
     def get_if_attribute_is_valid_else_none(attr):
@@ -538,7 +577,11 @@ def solve(LP_data, reqId, intermediate_sender, warmstart_data):
                 if intermediate_sender is not None
                 else None
             )
-            solver_settings.set_mip_callback(callback)
+            if callback is not None:
+                solver_settings.set_mip_callback(callback, reqId)
+                if incumbent_set_solutions:
+                    set_callback = CustomSetSolutionCallback(callback, reqId)
+                    solver_settings.set_mip_callback(set_callback, reqId)
             solve_begin_time = time.time()
             sol = linear_programming.Solve(
                 data_model, solver_settings=solver_settings

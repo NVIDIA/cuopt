@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -160,6 +160,9 @@ class population_t {
   void start_threshold_adjustment();
 
   void diversity_step(i_t max_iterations_without_improvement);
+
+  void invoke_get_solution_callback(solution_t<i_t, f_t>& sol,
+                                    internals::get_solution_callback_t* callback);
 
   // does some consistency tests
   bool test_invariant();
