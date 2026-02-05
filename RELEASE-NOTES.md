@@ -5,10 +5,9 @@
 ### New Features (26.02)
 
 - Parallel reliability branching inside MIP solver
-- Cuts are now added at the root node: Gomory, Knapsack, MIR, CG
-- Add option to use batch PDLP instead of parallel Dual Simplex when running Strong Branching at the root (off by default). Based on [Batched First-Order Methods for Parallel LP Solving in MIP](https://arxiv.org/abs/2601.21990) ([Nicolas Blin](https://github.com/Kh4ster), [Stefano Gualandi](https://github.com/stegua), [Christopher Maes](https://github.com/chris-maes), [Andrea Lodi](https://github.com/andrealodi), [Bartolomeo Stellato](https://github.com/bstellato))
-- BatchPDLP solver option for initializing pseudocosts via strong-branching
-- New infeasibility detection for PDLP's default solver mode Stable3 (off by default)
+- Mixed Integer Gomory, Knapsack, Mixed Integer Round, and Strong Chvatal Gomory cuts are now added at root node
+- Added an option to use batch PDLP when running strong branching at the root. Based on [Batched First-Order Methods for Parallel LP Solving in MIP](https://arxiv.org/abs/2601.21990) ([Nicolas Blin](https://github.com/Kh4ster), [Stefano Gualandi](https://github.com/stegua), [Christopher Maes](https://github.com/chris-maes), [Andrea Lodi](https://github.com/andrealodi), [Bartolomeo Stellato](https://github.com/bstellato))
+- New infeasibility detection option for PDLP's default solver mode Stable3
 - Solutions callbacks added to C API
 - Multiple new diving techniques added for finding integer feasible solutions
 - PSLP presolve option for LP
@@ -33,7 +32,7 @@
 ### Bug Fixes (26.02)
 
 - Fix out-of-bounds in dense-column detection in barrier
-- Correct infeasible-list handling to avoid incorrect infeasibility reports
+- Correct infeasible-list handling to avoid incorrect infeasibility reports in dual simplex
 - Fix race conditions found via Clang host build + ThreadSanitizer
 - Resolve CUDA–Numba version mismatches with cuDF
 - Fix device code to include required trailing return types
