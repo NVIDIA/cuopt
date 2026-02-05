@@ -516,6 +516,7 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
                        slacks_needed,
                        basic_list,
                        nonbasic_list,
+                       superbasic_list,
                        vstatus);
           rank =
             factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
@@ -583,6 +584,55 @@ f_t primal_residual(const lp_problem_t<i_t, f_t>& lp, const lp_solution_t<i_t, f
   std::vector<f_t> primal_residual = lp.rhs;
   matrix_vector_multiply(lp.A, 1.0, solution.x, -1.0, primal_residual);
   return vector_norm_inf<i_t, f_t>(primal_residual);
+}
+
+template <typename i_t, typename f_t>
+void find_primal_superbasic_variables(const lp_problem_t<i_t, f_t>& lp,
+                                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                                      const lp_solution_t<i_t, f_t>& initial_solution,
+                                      lp_solution_t<i_t, f_t>& solution,
+                                      std::vector<variable_status_t>& vstatus,
+                                      std::vector<i_t>& nonbasic_list,
+                                      std::vector<i_t>& superbasic_list)
+{
+  const i_t n                   = lp.num_cols;
+  const f_t fixed_tolerance     = settings.fixed_tol;
+  constexpr f_t basis_threshold = 1e-6;
+  nonbasic_list.clear();
+  superbasic_list.clear();
+
+  for (i_t j = 0; j < n; ++j) {
+    if (vstatus[j] != variable_status_t::BASIC) {
+      const f_t lower_infeas      = lp.lower[j] - initial_solution.x[j];
+      const f_t lower_bound_slack = initial_solution.x[j] - lp.lower[j];
+      const f_t upper_infeas      = initial_solution.x[j] - lp.upper[j];
+      const f_t upper_bound_slack = lp.upper[j] - initial_solution.x[j];
+      if (std::abs(lp.lower[j] - lp.upper[j]) < fixed_tolerance) {
+        vstatus[j] = variable_status_t::NONBASIC_FIXED;
+        nonbasic_list.push_back(j);
+      } else if (lower_infeas > 0 && lp.lower[j] > -inf) {
+        vstatus[j]    = variable_status_t::NONBASIC_LOWER;
+        solution.x[j] = lp.lower[j];
+        nonbasic_list.push_back(j);
+      } else if (upper_infeas > 0 && lp.upper[j] < inf) {
+        vstatus[j]    = variable_status_t::NONBASIC_UPPER;
+        solution.x[j] = lp.upper[j];
+        nonbasic_list.push_back(j);
+      } else if (lower_bound_slack < basis_threshold && lp.lower[j] > -inf) {
+        vstatus[j] = variable_status_t::NONBASIC_LOWER;
+        nonbasic_list.push_back(j);
+      } else if (upper_bound_slack < basis_threshold && lp.upper[j] < inf) {
+        vstatus[j] = variable_status_t::NONBASIC_UPPER;
+        nonbasic_list.push_back(j);
+      } else if (lp.lower[j] == -inf && lp.upper[j] == inf) {
+        vstatus[j] = variable_status_t::NONBASIC_FREE;
+        nonbasic_list.push_back(j);
+      } else {
+        vstatus[j] = variable_status_t::SUPERBASIC;
+        superbasic_list.push_back(j);
+      }
+    }
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -761,6 +811,8 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
     f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
 #endif
 
+    bool recompute_superbasic_list = false;
+
     if (leaving_index != -1) {
       // Move superbasic variable into the basis
       vstatus[s]          = variable_status_t::BASIC;
@@ -820,7 +872,10 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
                        slacks_needed,
                        basic_list,
                        nonbasic_list,
+                       superbasic_list,
                        vstatus);
+          // We need to be careful. As basis_repair may have changed the superbasic list
+          recompute_superbasic_list = true;
           rank =
             factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
           if (rank == CONCURRENT_HALT_RETURN) {
@@ -846,8 +901,13 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
       }
     }
 
-    // Remove superbasic variable
-    superbasic_list.pop_back();
+    if (recompute_superbasic_list) {
+      find_primal_superbasic_variables(
+        lp, settings, solution, solution, vstatus, nonbasic_list, superbasic_list);
+    } else {
+      // Remove superbasic variable
+      superbasic_list.pop_back();
+    }
 
     num_pushes++;
     if (num_pushes % settings.iteration_log_frequency == 0 || toc(last_print_time) > 10.0 ||
@@ -1178,6 +1238,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
                  slacks_needed,
                  basic_list,
                  nonbasic_list,
+                 superbasic_list,
                  vstatus);
     rank = factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
     if (rank == CONCURRENT_HALT_RETURN) {
@@ -1210,41 +1271,8 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   settings.log.debug("nonbasic list size %ld n - m %d\n", nonbasic_list.size(), n - m);
   print_crossover_info(lp, settings, vstatus, solution, "Dual push complete");
 
-  nonbasic_list.clear();
-  superbasic_list.clear();
-
-  for (i_t j = 0; j < n; ++j) {
-    if (vstatus[j] != variable_status_t::BASIC) {
-      const f_t lower_infeas      = lp.lower[j] - initial_solution.x[j];
-      const f_t lower_bound_slack = initial_solution.x[j] - lp.lower[j];
-      const f_t upper_infeas      = initial_solution.x[j] - lp.upper[j];
-      const f_t upper_bound_slack = lp.upper[j] - initial_solution.x[j];
-      if (std::abs(lp.lower[j] - lp.upper[j]) < fixed_tolerance) {
-        vstatus[j] = variable_status_t::NONBASIC_FIXED;
-        nonbasic_list.push_back(j);
-      } else if (lower_infeas > 0 && lp.lower[j] > -inf) {
-        vstatus[j]    = variable_status_t::NONBASIC_LOWER;
-        solution.x[j] = lp.lower[j];
-        nonbasic_list.push_back(j);
-      } else if (upper_infeas > 0 && lp.upper[j] < inf) {
-        vstatus[j]    = variable_status_t::NONBASIC_UPPER;
-        solution.x[j] = lp.upper[j];
-        nonbasic_list.push_back(j);
-      } else if (lower_bound_slack < basis_threshold && lp.lower[j] > -inf) {
-        vstatus[j] = variable_status_t::NONBASIC_LOWER;
-        nonbasic_list.push_back(j);
-      } else if (upper_bound_slack < basis_threshold && lp.upper[j] < inf) {
-        vstatus[j] = variable_status_t::NONBASIC_UPPER;
-        nonbasic_list.push_back(j);
-      } else if (lp.lower[j] == -inf && lp.upper[j] == inf) {
-        vstatus[j] = variable_status_t::NONBASIC_FREE;
-        nonbasic_list.push_back(j);
-      } else {
-        vstatus[j] = variable_status_t::SUPERBASIC;
-        superbasic_list.push_back(j);
-      }
-    }
-  }
+  find_primal_superbasic_variables(
+    lp, settings, initial_solution, solution, vstatus, nonbasic_list, superbasic_list);
 
   if (superbasic_list.size() > 0) {
     std::vector<f_t> save_x = solution.x;
@@ -1381,6 +1409,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
                      slacks_needed,
                      basic_list,
                      nonbasic_list,
+                     superbasic_list,
                      vstatus);
         rank =
           factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);

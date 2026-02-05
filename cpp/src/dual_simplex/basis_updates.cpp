@@ -2265,6 +2265,7 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
 {
   std::vector<i_t> deficient;
   std::vector<i_t> slacks_needed;
+  std::vector<i_t> superbasic_list;  // Empty superbasic list
 
   if (L0_.m != A.m) { resize(A.m); }
   std::vector<i_t> q;
@@ -2281,8 +2282,16 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
   if (status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
   if (status == -1) {
     settings.log.debug("Initial factorization failed\n");
-    basis_repair(
-      A, settings, lower, upper, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
+    basis_repair(A,
+                 settings,
+                 lower,
+                 upper,
+                 deficient,
+                 slacks_needed,
+                 basic_list,
+                 nonbasic_list,
+                 superbasic_list,
+                 vstatus);
 
 #ifdef CHECK_BASIS_REPAIR
     const i_t m = A.m;
