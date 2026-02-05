@@ -14,6 +14,7 @@
 #include <mip/presolve/gf2_presolve.hpp>
 #include <mip/presolve/third_party_presolve.hpp>
 #include <utilities/logger.hpp>
+#include <utilities/macros.cuh>
 #include <utilities/timer.hpp>
 
 #include <raft/common/nvtx.hpp>
@@ -718,17 +719,45 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(rmm::device_uvector<f_t>& prima
 }
 
 template <typename i_t, typename f_t>
-third_party_presolve_t<i_t, f_t>::~third_party_presolve_t()
+void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution_pslp(
+  const std::vector<f_t>& reduced_primal, std::vector<f_t>& full_primal) const
 {
-  if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
-  if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
+  // This code path should be never called, as this is meant for callbacks and they are not
+  // supported for LPs
+  auto reduced_problem = pslp_presolver_->reduced_prob;
+
+  int reduced_n_rows = reduced_problem->m;
+  int reduced_n_cols = reduced_problem->n;
+
+  cuopt_assert(reduced_n_cols == reduced_primal.size(), "Reduced problem columns mismatch");
+
+  std::vector<f_t> reduced_dual_vec(reduced_n_rows);
+  std::vector<f_t> reduced_reduced_costs_vec(reduced_n_cols);
+
+  postsolve(pslp_presolver_,
+            reduced_primal.data(),
+            reduced_dual_vec.data(),
+            reduced_reduced_costs_vec.data());
+
+  auto uncrushed_sol = pslp_presolver_->sol;
+  int n_cols         = uncrushed_sol->dim_y;
+
+  full_primal.resize(n_cols);
+  std::copy(uncrushed_sol->x, uncrushed_sol->x + n_cols, full_primal.begin());
 }
 
 template <typename i_t, typename f_t>
 void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
   const std::vector<f_t>& reduced_primal, std::vector<f_t>& full_primal) const
 {
-  // FIXME:: handle PSLP presolver
+  if (presolver_ == cuopt::linear_programming::presolver_t::PSLP) {
+    cuopt_assert(false,
+                 "This code path should be never called, as this is meant for callbacks and they "
+                 "are not supported for LPs");
+    uncrush_primal_solution_pslp(reduced_primal, full_primal);
+    return;
+  }
+
   papilo::Solution<f_t> reduced_sol(reduced_primal);
   papilo::Solution<f_t> full_sol;
   papilo::Message Msg{};
@@ -739,6 +768,13 @@ void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
   auto status     = post_solver.undo(reduced_sol, full_sol, papilo_post_solve_storage_, is_optimal);
   check_postsolve_status(status);
   full_primal = std::move(full_sol.primal);
+}
+
+template <typename i_t, typename f_t>
+third_party_presolve_t<i_t, f_t>::~third_party_presolve_t()
+{
+  if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
+  if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
 }
 
 #if MIP_INSTANTIATE_FLOAT
