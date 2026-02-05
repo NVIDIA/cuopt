@@ -154,7 +154,7 @@ TEST(cuts, test_cuts_2)
 
   settings.time_limit                  = test_time_limit;
   settings.max_cut_passes              = 10;
-  settings.presolve                    = false;
+  settings.presolver                   = presolver_t::None;
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
   EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
 

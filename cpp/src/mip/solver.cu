@@ -107,7 +107,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     return sol;
   }
   dm.timer                = timer_;
-  const bool run_presolve = context.settings.presolve;
+  const bool run_presolve = context.settings.presolver != presolver_t::None;
   bool presolve_success   = run_presolve ? dm.run_presolve(timer_.remaining_time()) : true;
   if (!presolve_success) {
     CUOPT_LOG_INFO("Problem proven infeasible in presolve");
