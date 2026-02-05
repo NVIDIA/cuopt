@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -414,7 +414,7 @@ worker() {
             args="$args --method $METHOD"
         fi
 
-        CUDA_VISIBLE_DEVICES=$gpu_devices cuopt_cli "$mps_file" --time-limit $TIME_LIMIT $args --relative-primal-tolerance 1.0e-6 --relative-dual-tolerance 1.0e-6 --relative-gap-tolerance 1.0e-6 --absolute-primal-tolerance 1.0e-6 --absolute-dual-tolerance 1.0e-6 --absolute-gap-tolerance 1.0e-6
+        CUDA_VISIBLE_DEVICES=$gpu_devices cuopt_cli "$mps_file" --time-limit $TIME_LIMIT $args
     done
 }
 
