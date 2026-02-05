@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -74,6 +74,7 @@ Optional Arguments:
     --n-batches        Number of batches
     --log-to-console   Log to console
     --model-list       File containing a list of models to run
+    --pdlp-tolerances  Tolerances for PDLP solver (default: 1e-4)
     -h, --help         Show this help message and exit
 
 Examples:
@@ -187,6 +188,11 @@ while [[ $# -gt 0 ]]; do
             MODEL_LIST="$2"
             shift 2
             ;;
+        --pdlp-tolerances)
+            echo "PDLP_TOLERANCES: $2"
+            PDLP_TOLERANCES="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1"
             print_help
@@ -214,6 +220,7 @@ BATCH_NUM=${BATCH_NUM:-0}
 N_BATCHES=${N_BATCHES:-1}
 LOG_TO_CONSOLE=${LOG_TO_CONSOLE:-true}
 MODEL_LIST=${MODEL_LIST:-}
+PDLP_TOLERANCES=${PDLP_TOLERANCES:-1e-4}
 
 # Validate GPUS_PER_INSTANCE
 if [[ "$GPUS_PER_INSTANCE" != "1" && "$GPUS_PER_INSTANCE" != "2" ]]; then
@@ -412,6 +419,9 @@ worker() {
         fi
         if [ -n "$METHOD" ]; then
             args="$args --method $METHOD"
+        fi
+        if [ -n "$PDLP_TOLERANCES" ]; then
+            args="$args --absolute-primal-tolerance $PDLP_TOLERANCES --absolute-dual-tolerance $PDLP_TOLERANCES --relative-primal-tolerance $PDLP_TOLERANCES --relative-dual-tolerance $PDLP_TOLERANCES --absolute-gap-tolerance $PDLP_TOLERANCES --relative-gap-tolerance $PDLP_TOLERANCES"
         fi
 
         CUDA_VISIBLE_DEVICES=$gpu_devices cuopt_cli "$mps_file" --time-limit $TIME_LIMIT $args
