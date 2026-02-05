@@ -707,8 +707,8 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(rmm::device_uvector<f_t>& prima
     pslp_presolver_, h_primal_solution.data(), h_dual_solution.data(), h_reduced_costs.data());
 
   auto uncrushed_sol = pslp_presolver_->sol;
-  int n_rows         = uncrushed_sol->dim_x;
-  int n_cols         = uncrushed_sol->dim_y;
+  int n_cols         = uncrushed_sol->dim_x;
+  int n_rows         = uncrushed_sol->dim_y;
 
   primal_solution.resize(n_cols, stream_view);
   dual_solution.resize(n_rows, stream_view);
@@ -740,7 +740,7 @@ void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution_pslp(
             reduced_reduced_costs_vec.data());
 
   auto uncrushed_sol = pslp_presolver_->sol;
-  int n_cols         = uncrushed_sol->dim_y;
+  int n_cols         = uncrushed_sol->dim_x;
 
   full_primal.resize(n_cols);
   std::copy(uncrushed_sol->x, uncrushed_sol->x + n_cols, full_primal.begin());
