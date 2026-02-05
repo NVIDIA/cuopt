@@ -359,6 +359,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     pdlp_settings.inside_mip                           = true;
     pdlp_settings.pdlp_solver_mode                     = pdlp_solver_mode_t::Stable2;
     pdlp_settings.num_gpus                             = context.settings.num_gpus;
+    pdlp_settings.presolver                            = presolver_t::None;
 
     timer_t lp_timer(lp_time_limit);
     auto lp_result = solve_lp_with_method<i_t, f_t>(*problem_ptr, pdlp_settings, lp_timer);

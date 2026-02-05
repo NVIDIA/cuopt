@@ -186,7 +186,8 @@ struct PSLPContext {
 
 template <typename i_t, typename f_t>
 PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>& op_problem,
-                                         bool maximize)
+                                         bool maximize,
+                                         const double time_limit)
 {
   PSLPContext ctx;
   raft::common::nvtx::range fun_scope("Build and run PSLP presolver");
@@ -257,10 +258,11 @@ PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>&
   }
 
   // Call PSLP presolver
-  ctx.settings          = default_settings();
-  ctx.settings->verbose = false;
-  auto start_time       = std::chrono::high_resolution_clock::now();
-  ctx.presolver         = new_presolver(h_coefficients.data(),
+  ctx.settings           = default_settings();
+  ctx.settings->verbose  = false;
+  ctx.settings->max_time = time_limit;
+  auto start_time        = std::chrono::high_resolution_clock::now();
+  ctx.presolver          = new_presolver(h_coefficients.data(),
                                 h_variables.data(),
                                 h_offsets.data(),
                                 num_rows,
@@ -541,10 +543,10 @@ void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
 
 template <typename i_t, typename f_t>
 std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_t, f_t>::apply_pslp(
-  optimization_problem_t<i_t, f_t> const& op_problem)
+  optimization_problem_t<i_t, f_t> const& op_problem, const double time_limit)
 {
   f_t original_obj_offset = op_problem.get_objective_offset();
-  auto ctx                = build_and_run_pslp_presolver(op_problem, maximize_);
+  auto ctx                = build_and_run_pslp_presolver(op_problem, maximize_, time_limit);
 
   // Free previously allocated presolver and settings
   if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
@@ -582,7 +584,9 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
       false, error_type_t::RuntimeError, "PSLP presolver is not supported for MIP problems");
   }
 
-  if (presolver == cuopt::linear_programming::presolver_t::PSLP) { return apply_pslp(op_problem); }
+  if (presolver == cuopt::linear_programming::presolver_t::PSLP) {
+    return apply_pslp(op_problem, time_limit);
+  }
 
   papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem, category, maximize_);
 

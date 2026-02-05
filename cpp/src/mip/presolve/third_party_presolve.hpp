@@ -74,7 +74,7 @@ class third_party_presolve_t {
 
  private:
   std::optional<third_party_presolve_result_t<i_t, f_t>> apply_pslp(
-    optimization_problem_t<i_t, f_t> const& op_problem);
+    optimization_problem_t<i_t, f_t> const& op_problem, const double time_limit);
 
   void undo_pslp(rmm::device_uvector<f_t>& primal_solution,
                  rmm::device_uvector<f_t>& dual_solution,

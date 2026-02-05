@@ -137,6 +137,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     settings.time_limit = timer_.remaining_time();
     auto lp_timer       = timer_t(settings.time_limit);
     settings.method     = method_t::Concurrent;
+    settings.presolver  = presolver_t::None;
 
     auto opt_sol = solve_lp_with_method<i_t, f_t>(*context.problem_ptr, settings, lp_timer);
 
