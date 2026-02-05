@@ -1130,6 +1130,16 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     auto lp_timer = cuopt::timer_t(settings.time_limit);
     detail::problem_t<i_t, f_t> problem(op_problem);
 
+    // handle default presolve 
+    if (settings.presolver == presolver_t::Default) {
+      if (op_problem.get_n_variables() > 1e6 || op_problem.get_n_constraints() > 1e6) {
+        settings.presolver = presolver_t::PSLP;
+        CUOPT_LOG_INFO("Using PSLP presolver");
+      } else {
+        settings.presolver = presolver_t::None;
+      }
+    }
+
     [[maybe_unused]] double presolve_time = 0.0;
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
     auto run_presolve = settings.presolver != presolver_t::None;

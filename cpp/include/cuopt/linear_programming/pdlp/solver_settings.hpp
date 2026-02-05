@@ -226,7 +226,7 @@ class pdlp_solver_settings_t {
   bool eliminate_dense_columns{true};
   bool save_best_primal_so_far{false};
   bool first_primal_feasible{false};
-  presolver_t presolver{presolver_t::None};
+  presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
   int num_gpus{1};
   method_t method{method_t::Concurrent};
