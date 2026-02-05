@@ -2018,6 +2018,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         if (scratch_status == lp_status_t::OPTIMAL) {
           // We recovered
           cut_status = convert_lp_status_to_dual_status(scratch_status);
+          exploration_stats_.total_lp_iters += root_relax_soln_.iterations;
+          root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
         } else {
           settings_.log.printf("Cut status %s\n", dual::status_to_string(cut_status).c_str());
           return mip_status_t::NUMERICAL;
