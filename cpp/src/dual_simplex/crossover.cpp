@@ -811,8 +811,6 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
     f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
 #endif
 
-    bool recompute_superbasic_list = false;
-
     if (leaving_index != -1) {
       // Move superbasic variable into the basis
       vstatus[s]          = variable_status_t::BASIC;
@@ -836,6 +834,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
       }
       basic_list[basic_leaving_index] = s;
       nonbasic_list.push_back(leaving_index);
+      superbasic_list.pop_back();  // Remove superbasic variable
 
       // Refactor or Update
       bool should_refactor = ft.num_updates() > 100;
@@ -875,7 +874,8 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
                        superbasic_list,
                        vstatus);
           // We need to be careful. As basis_repair may have changed the superbasic list
-          recompute_superbasic_list = true;
+          find_primal_superbasic_variables(
+            lp, settings, solution, solution, vstatus, nonbasic_list, superbasic_list);
           rank =
             factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
           if (rank == CONCURRENT_HALT_RETURN) {
@@ -899,14 +899,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
         vstatus[s] = variable_status_t::NONBASIC_UPPER;
         nonbasic_list.push_back(s);
       }
-    }
-
-    if (recompute_superbasic_list) {
-      find_primal_superbasic_variables(
-        lp, settings, solution, solution, vstatus, nonbasic_list, superbasic_list);
-    } else {
-      // Remove superbasic variable
-      superbasic_list.pop_back();
+      superbasic_list.pop_back();  // Remove superbasic variable
     }
 
     num_pushes++;
