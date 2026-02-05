@@ -285,7 +285,10 @@ PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>&
 
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
-  Presolver* pslp_presolver, raft::handle_t const* handle_ptr, bool maximize)
+  Presolver* pslp_presolver,
+  raft::handle_t const* handle_ptr,
+  bool maximize,
+  f_t original_obj_offset)
 {
   raft::common::nvtx::range fun_scope("Build optimization problem from PSLP");
   auto reduced_prob = pslp_presolver->reduced_prob;
@@ -295,7 +298,13 @@ optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
   double obj_offset = reduced_prob->obj_offset;
 
   optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
-  op_problem.set_objective_offset(maximize ? -obj_offset : obj_offset);
+
+  obj_offset = maximize ? -obj_offset : obj_offset;
+
+  // PSLP does not allow setting the objective offset, so we add the original objective offset to
+  // the reduced objective offset
+  obj_offset += original_obj_offset;
+  op_problem.set_objective_offset(obj_offset);
   op_problem.set_maximize(maximize);
   op_problem.set_problem_category(problem_category_t::LP);
 
@@ -303,7 +312,6 @@ optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
     reduced_prob->Ax, nnz, reduced_prob->Ai, nnz, reduced_prob->Ap, n_rows + 1);
 
   std::vector<f_t> h_obj_coeffs(n_cols);
-  // std::copy(h_obj_coeffs.begin(), h_obj_coeffs.end(), reduced_prob->c);
   std::copy(reduced_prob->c, reduced_prob->c + n_cols, h_obj_coeffs.begin());
   if (maximize) {
     for (size_t i = 0; i < n_cols; ++i) {
@@ -315,7 +323,6 @@ optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
   op_problem.set_constraint_upper_bounds(reduced_prob->rhs, n_rows);
   op_problem.set_variable_lower_bounds(reduced_prob->lbs, n_cols);
   op_problem.set_variable_upper_bounds(reduced_prob->ubs, n_cols);
-  // op_problem.set_variable_types(h_var_types.data(), n_cols);
 
   return op_problem;
 }
@@ -530,12 +537,13 @@ template <typename i_t, typename f_t>
 std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_t, f_t>::apply_pslp(
   optimization_problem_t<i_t, f_t> const& op_problem)
 {
-  auto ctx        = build_and_run_pslp_presolver(op_problem, maximize_);
-  pslp_presolver_ = ctx.presolver;
-  pslp_stgs_      = ctx.settings;
+  f_t original_obj_offset = op_problem.get_objective_offset();
+  auto ctx                = build_and_run_pslp_presolver(op_problem, maximize_);
+  pslp_presolver_         = ctx.presolver;
+  pslp_stgs_              = ctx.settings;
 
   auto opt_problem = build_optimization_problem_from_pslp<i_t, f_t>(
-    pslp_presolver_, op_problem.get_handle_ptr(), maximize_);
+    pslp_presolver_, op_problem.get_handle_ptr(), maximize_, original_obj_offset);
 
   return std::make_optional(third_party_presolve_result_t<i_t, f_t>{opt_problem, {}});
 }
