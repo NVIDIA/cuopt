@@ -1097,9 +1097,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       }
     }
 
-    // For LP, if presolver is default, use PSLP
-    if (settings.presolver == presolver_t::Default) { settings.presolver = presolver_t::PSLP; }
-
     raft::common::nvtx::range fun_scope("Running solver");
 
     if (problem_checking) {
