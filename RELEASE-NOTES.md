@@ -4,8 +4,15 @@
 
 ### New Features (26.02)
 
-- Add option to use batch PDLP instead of parallel Dual Simplex when running Strong Branching at the root [#805](https://github.com/NVIDIA/cuopt/pull/805) (off by default). Based on [Batched First-Order Methods for Parallel LP Solving in MIP](https://arxiv.org/abs/2601.21990) ([Nicolas Blin](https://github.com/Kh4ster), [Stefano Gualandi](https://github.com/stegua), [Christopher Maes](https://github.com/chris-maes), [Andrea Lodi](https://github.com/andrealodi), [Bartolomeo Stellato](https://github.com/bstellato))
-- New infeasiblity detection for PDLP's default solver mode Stable3 (off by default) [#805](https://github.com/NVIDIA/cuopt/pull/805)
+- Parallel reliability branching inside MIP solver
+- Cuts are now added at the root node: Gomory, Knapsack, MIR, CG
+- Add option to use batch PDLP instead of parallel Dual Simplex when running Strong Branching at the root (off by default). Based on [Batched First-Order Methods for Parallel LP Solving in MIP](https://arxiv.org/abs/2601.21990) ([Nicolas Blin](https://github.com/Kh4ster), [Stefano Gualandi](https://github.com/stegua), [Christopher Maes](https://github.com/chris-maes), [Andrea Lodi](https://github.com/andrealodi), [Bartolomeo Stellato](https://github.com/bstellato))
+- BatchPDLP solver option for initializing pseudocosts via strong-branching
+- New infeasibility detection for PDLP's default solver mode Stable3 (off by default)
+- Solutions callbacks added to C API
+- Multiple new diving techniques added for finding integer feasible solutions
+- PSLP presolve option for LP
+- Add batch solve for routing to boost throughput for many similar instances
 
 ### Breaking Changes (26.02)
 
@@ -13,15 +20,32 @@
 
 ### Improvements (26.02)
 
-- Improved primal/dual warm start for PDLP's default solver mode Stable3 [#805](https://github.com/NVIDIA/cuopt/pull/805)
+- Improved primal/dual warm start for PDLP's default solver mode Stable3
+- Quadratic objectives can now be constructed via a matrix in Python API
+- QP barrier now updates and solves augmented system on the GPU
+- Probing implications and better variable ordering to strengthen presolve and branching
+- Replace deprecated cuDF Column/Buffer APIs with pylibcudf and public cuDF interfaces
+- Modernize dependency pinnings; make CUDA runtime linkage static for portability
+- Build/tooling: add `--split-compile`, `--jobserver`, Clang host build, ThreadSanitizer, improved container scripts, and branch/commit metadata in images
+- Use explicit `cudaStream_t` with `cub::DeviceTransform` and non-blocking streams for GPU control
+- Enable barrier LP tests, add regression testing, and add SonarQube static analysis
 
 ### Bug Fixes (26.02)
 
--
+- Fix out-of-bounds in dense-column detection in barrier
+- Correct infeasible-list handling to avoid incorrect infeasibility reports
+- Fix race conditions found via Clang host build + ThreadSanitizer
+- Resolve CUDA–Numba version mismatches with cuDF
+- Fix device code to include required trailing return types
+- Fix crossover dualization issues in LP crossover
+- Repair container build and test failures
+- Miscellaneous additional fixes and stability improvements
 
 ### Documentation (26.02)
 
--
+- Update README and top-level docs for current build and usage
+- Document new repository branching strategies and release-cycle details in README and CONTRIBUTING
+- Add best practices for batch solving
 
 ## Release Notes 25.12
 
