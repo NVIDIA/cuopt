@@ -625,7 +625,7 @@ i_t basis_repair(const csc_matrix_t<i_t, f_t>& A,
   const i_t m = A.m;
   const i_t n = A.n;
   assert(basis_list.size() == m);
-  assert(nonbasic_list.size() == n - m);
+  assert(nonbasic_list.size() + superbasic_list.size() == n - m);
 
   // Create slack_map
   std::vector<i_t> slack_map(m);  // slack_map[i] = j if column j is e_i
