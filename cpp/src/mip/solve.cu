@@ -178,6 +178,10 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     mip_solver_settings_t<i_t, f_t> settings(settings_const);
     if (settings.presolver == presolver_t::Default || settings.presolver == presolver_t::PSLP) {
       settings.presolver = presolver_t::Papilo;
+      if (settings.presolver == presolver_t::PSLP) {
+        CUOPT_LOG_INFO(
+          "PSLP presolver is not supported for MIP problems, using Papilo presolver instead");
+      }
     }
     constexpr f_t max_time_limit = 1000000000;
     f_t time_limit =
@@ -316,8 +320,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
         // add third party presolve time to cuopt presolve time
         full_stats.presolve_time += presolve_time;
 
-        // FIXME:: reduced_solution.get_stats() is not correct, we need to compute the stats for the
-        // full problem
+        // FIXME:: reduced_solution.get_stats() is not correct, we need to compute the stats for
+        // the full problem
         full_sol.post_process_completed = true;  // hack
         sol                             = full_sol.get_solution(true, full_stats);
       }

@@ -40,6 +40,13 @@ class third_party_presolve_t {
  public:
   third_party_presolve_t() = default;
 
+  // Delete copy constructor, copy assignment operator, move constructor, and move assignment
+  // operator This is because we are using PSLP pointers
+  third_party_presolve_t(const third_party_presolve_t&)            = delete;
+  third_party_presolve_t& operator=(const third_party_presolve_t&) = delete;
+  third_party_presolve_t(third_party_presolve_t&&)                 = delete;
+  third_party_presolve_t& operator=(third_party_presolve_t&&)      = delete;
+
   std::optional<third_party_presolve_result_t<i_t, f_t>> apply(
     optimization_problem_t<i_t, f_t> const& op_problem,
     problem_category_t category,

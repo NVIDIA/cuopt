@@ -8,7 +8,6 @@
 #include <PSLP/PSLP_sol.h>
 #include <PSLP/PSLP_stats.h>
 #include <PSLP/PSLP_status.h>
-#include <boost/serialization/void_cast.hpp>
 #include <cuopt/error.hpp>
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/gf2_presolve.hpp>
@@ -295,6 +294,9 @@ optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
   f_t original_obj_offset)
 {
   raft::common::nvtx::range fun_scope("Build optimization problem from PSLP");
+  cuopt_expects(pslp_presolver != nullptr && pslp_presolver->reduced_prob != nullptr,
+                error_type_t::RuntimeError,
+                "PSLP presolver is not initialized");
   auto reduced_prob = pslp_presolver->reduced_prob;
   int n_rows        = reduced_prob->m;
   int n_cols        = reduced_prob->n;
@@ -543,8 +545,13 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
 {
   f_t original_obj_offset = op_problem.get_objective_offset();
   auto ctx                = build_and_run_pslp_presolver(op_problem, maximize_);
-  pslp_presolver_         = ctx.presolver;
-  pslp_stgs_              = ctx.settings;
+
+  // Free previously allocated presolver and settings
+  if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
+  if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
+
+  pslp_presolver_ = ctx.presolver;
+  pslp_stgs_      = ctx.settings;
 
   if (ctx.status == PresolveStatus_::INFEASIBLE || ctx.status == PresolveStatus_::UNBNDORINFEAS) {
     return std::nullopt;
