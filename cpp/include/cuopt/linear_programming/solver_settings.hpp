@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -93,6 +93,7 @@ class solver_settings_t {
   const std::vector<parameter_info_t<i_t>>& get_int_parameters() const;
   const std::vector<parameter_info_t<bool>>& get_bool_parameters() const;
   const std::vector<parameter_info_t<std::string>>& get_string_parameters() const;
+  const std::vector<std::string> get_parameter_names() const;
 
  private:
   pdlp_solver_settings_t<i_t, f_t> pdlp_settings;

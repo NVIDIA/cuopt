@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -61,6 +61,8 @@ cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt
         ) except +
 
         string get_parameter_as_string(const string& name) except +
+
+        vector[string] get_parameter_names() except +
 
         # LP settings
         void set_initial_pdlp_primal_solution(
