@@ -1129,12 +1129,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     // handle default presolve
     if (settings.presolver == presolver_t::Default) {
-      if (op_problem.get_n_variables() > 1e6 || op_problem.get_n_constraints() > 1e6) {
-        settings.presolver = presolver_t::PSLP;
-        CUOPT_LOG_INFO("Using PSLP presolver");
-      } else {
-        settings.presolver = presolver_t::None;
-      }
+      settings.presolver = presolver_t::PSLP;
+      CUOPT_LOG_INFO("Using PSLP presolver");
     }
 
     [[maybe_unused]] double presolve_time = 0.0;
