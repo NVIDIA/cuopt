@@ -235,6 +235,7 @@ PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>&
   std::vector<var_t> h_var_types(var_types.size());
   raft::copy(h_var_types.data(), var_types.data(), var_types.size(), stream_view);
 
+  stream_view.synchronize();
   if (maximize) {
     for (size_t i = 0; i < h_obj_coeffs.size(); ++i) {
       h_obj_coeffs[i] = -h_obj_coeffs[i];
@@ -727,6 +728,8 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(rmm::device_uvector<f_t>& prima
   raft::copy(primal_solution.data(), uncrushed_sol->x, n_cols, stream_view);
   raft::copy(dual_solution.data(), uncrushed_sol->y, n_rows, stream_view);
   raft::copy(reduced_costs.data(), uncrushed_sol->z, n_cols, stream_view);
+
+  stream_view.synchronize();
 }
 
 template <typename i_t, typename f_t>
