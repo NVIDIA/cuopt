@@ -1169,7 +1169,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       }
       problem       = detail::problem_t<i_t, f_t>(result->reduced_problem);
       presolve_time = lp_timer.elapsed_time();
-      CUOPT_LOG_INFO("External presolve time: %f", presolve_time);
+      CUOPT_LOG_INFO("%s presolve time: %f",
+                     settings.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
+                     presolve_time);
     }
 
     if (!settings_const.inside_mip) {

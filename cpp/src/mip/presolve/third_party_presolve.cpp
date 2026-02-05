@@ -7,6 +7,7 @@
 
 #include <PSLP/PSLP_sol.h>
 #include <PSLP/PSLP_stats.h>
+#include <PSLP/PSLP_status.h>
 #include <boost/serialization/void_cast.hpp>
 #include <cuopt/error.hpp>
 #include <mip/mip_constants.hpp>
@@ -178,8 +179,9 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
 }
 
 struct PSLPContext {
-  Presolver* presolver = nullptr;
-  Settings* settings   = nullptr;
+  Presolver* presolver  = nullptr;
+  Settings* settings    = nullptr;
+  PresolveStatus status = PresolveStatus_::UNCHANGED;
 };
 
 template <typename i_t, typename f_t>
@@ -270,9 +272,10 @@ PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>&
                                 h_var_ub.data(),
                                 h_obj_coeffs.data(),
                                 ctx.settings);
+
   assert(ctx.presolver != nullptr && "Presolver initialization failed");
-  PresolveStatus status = run_presolver(ctx.presolver);
-  auto end_time         = std::chrono::high_resolution_clock::now();
+  ctx.status    = run_presolver(ctx.presolver);
+  auto end_time = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
   CUOPT_LOG_INFO("PSLP presolver time: %d milliseconds", duration.count());
   CUOPT_LOG_INFO("PSLP Presolved problem: %d constraints, %d variables, %d non-zeros",
@@ -541,6 +544,10 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
   auto ctx                = build_and_run_pslp_presolver(op_problem, maximize_);
   pslp_presolver_         = ctx.presolver;
   pslp_stgs_              = ctx.settings;
+
+  if (ctx.status == PresolveStatus_::INFEASIBLE || ctx.status == PresolveStatus_::UNBNDORINFEAS) {
+    return std::nullopt;
+  }
 
   auto opt_problem = build_optimization_problem_from_pslp<i_t, f_t>(
     pslp_presolver_, op_problem.get_handle_ptr(), maximize_, original_obj_offset);
