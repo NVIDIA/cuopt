@@ -9,8 +9,10 @@
 
 #include <cuopt/linear_programming/cuopt_c.h>
 
+#include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef _cplusplus
 #error "This file must be compiled as C code"
@@ -129,6 +131,179 @@ cuopt_int_t test_bad_parameter_name() {
 DONE:
   cuOptDestroySolverSettings(&settings);
   return status;
+}
+
+typedef struct mip_callback_context_t {
+  cuopt_int_t n_variables;
+  int get_calls;
+  int set_calls;
+  int error;
+  cuopt_float_t last_objective;
+  cuopt_float_t last_solution_bound;
+  cuopt_float_t* last_solution;
+} mip_callback_context_t;
+
+static void mip_get_solution_callback(const cuopt_float_t* solution,
+                                      const cuopt_float_t* objective_value,
+                                      const cuopt_float_t* solution_bound,
+                                      void* user_data)
+{
+  mip_callback_context_t* context = (mip_callback_context_t*)user_data;
+  if (context == NULL) { return; }
+  context->get_calls += 1;
+  if (context->last_solution == NULL) {
+    context->last_solution =
+      (cuopt_float_t*)malloc(context->n_variables * sizeof(cuopt_float_t));
+    if (context->last_solution == NULL) {
+      context->error = 1;
+      return;
+    }
+  }
+  memcpy(context->last_solution,
+         solution,
+         context->n_variables * sizeof(cuopt_float_t));
+  memcpy(&context->last_objective, objective_value, sizeof(cuopt_float_t));
+  memcpy(&context->last_solution_bound, solution_bound, sizeof(cuopt_float_t));
+}
+
+static void mip_set_solution_callback(cuopt_float_t* solution,
+                                      cuopt_float_t* objective_value,
+                                      const cuopt_float_t* solution_bound,
+                                      void* user_data)
+{
+  mip_callback_context_t* context = (mip_callback_context_t*)user_data;
+  if (context == NULL) { return; }
+  context->set_calls += 1;
+  memcpy(&context->last_solution_bound, solution_bound, sizeof(cuopt_float_t));
+  if (context->last_solution == NULL) { return; }
+  memcpy(solution,
+         context->last_solution,
+         context->n_variables * sizeof(cuopt_float_t));
+  memcpy(objective_value, &context->last_objective, sizeof(cuopt_float_t));
+}
+
+static cuopt_int_t test_mip_callbacks_internal(int include_set_callback)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings = NULL;
+  cuOptSolution solution = NULL;
+  mip_callback_context_t context = {0};
+
+#define NUM_ITEMS       8
+#define NUM_CONSTRAINTS 1
+  cuopt_int_t num_items    = NUM_ITEMS;
+  cuopt_float_t max_weight = 102;
+  cuopt_float_t value[]    = {15, 100, 90, 60, 40, 15, 10, 1};
+  cuopt_float_t weight[]   = {2, 20, 20, 30, 40, 30, 60, 10};
+
+  cuopt_int_t num_variables   = NUM_ITEMS;
+  cuopt_int_t num_constraints = NUM_CONSTRAINTS;
+
+  cuopt_int_t row_offsets[] = {0, NUM_ITEMS};
+  cuopt_int_t column_indices[NUM_ITEMS];
+
+  cuopt_float_t rhs[]         = {max_weight};
+  char constraint_sense[] = {CUOPT_LESS_THAN};
+  cuopt_float_t lower_bounds[NUM_ITEMS];
+  cuopt_float_t upper_bounds[NUM_ITEMS];
+  char variable_types[NUM_ITEMS];
+  cuopt_int_t status;
+
+  for (cuopt_int_t j = 0; j < NUM_ITEMS; j++) {
+    column_indices[j] = j;
+  }
+
+  for (cuopt_int_t j = 0; j < NUM_ITEMS; j++) {
+    variable_types[j] = CUOPT_INTEGER;
+    lower_bounds[j]   = 0;
+    upper_bounds[j]   = 1;
+  }
+
+  status = cuOptCreateProblem(num_constraints,
+                              num_variables,
+                              CUOPT_MAXIMIZE,
+                              0,
+                              value,
+                              row_offsets,
+                              column_indices,
+                              weight,
+                              constraint_sense,
+                              rhs,
+                              lower_bounds,
+                              upper_bounds,
+                              variable_types,
+                              &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating optimization problem\n");
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings\n");
+    goto DONE;
+  }
+
+  context.n_variables = num_variables;
+  status = cuOptSetMIPGetSolutionCallback(settings, mip_get_solution_callback, &context);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting get-solution callback\n");
+    goto DONE;
+  }
+
+  if (include_set_callback) {
+    status = cuOptSetMIPSetSolutionCallback(settings, mip_set_solution_callback, &context);
+    if (status != CUOPT_SUCCESS) {
+      printf("Error setting set-solution callback\n");
+      goto DONE;
+    }
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem\n");
+    goto DONE;
+  }
+
+  if (context.error != 0) {
+    printf("Error in callback data transfer\n");
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+
+  if (context.last_solution_bound != context.last_solution_bound) {
+    printf("Error reading solution bound in callback\n");
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+
+  if (context.get_calls < 1) {
+    printf("Expected get-solution callback to be called at least once\n");
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+  if (include_set_callback && context.set_calls < 1) {
+    printf("Expected set-solution callback to be called at least once\n");
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+
+DONE:
+  if (context.last_solution != NULL) { free(context.last_solution); }
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
+}
+
+cuopt_int_t test_mip_get_callbacks_only()
+{
+  return test_mip_callbacks_internal(0);
+}
+
+cuopt_int_t test_mip_get_set_callbacks()
+{
+  return test_mip_callbacks_internal(1);
 }
 
 cuopt_int_t burglar_problem()
@@ -1200,4 +1375,85 @@ cuOptDestroySolverSettings(&settings);
 cuOptDestroySolution(&solution);
 
 return status;
+}
+
+cuopt_int_t test_write_problem(const char* input_filename, const char* output_filename)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptOptimizationProblem problem_read = NULL;
+  cuOptSolverSettings settings = NULL;
+  cuOptSolution solution = NULL;
+  cuopt_int_t status;
+  cuopt_int_t termination_status;
+  cuopt_float_t objective_value;
+
+  /* Read the input problem */
+  status = cuOptReadProblem(input_filename, &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error reading problem from %s: %d\n", input_filename, status);
+    goto DONE;
+  }
+
+  /* Write the problem to MPS file */
+  status = cuOptWriteProblem(problem, output_filename, CUOPT_FILE_FORMAT_MPS);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error writing problem to MPS: %d\n", status);
+    goto DONE;
+  }
+  printf("Problem written to %s\n", output_filename);
+
+  /* Read the problem back */
+  status = cuOptReadProblem(output_filename, &problem_read);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error reading problem from MPS: %d\n", status);
+    goto DONE;
+  }
+  printf("Problem read back from %s\n", output_filename);
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, CUOPT_METHOD_PDLP);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting method: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem_read, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, &termination_status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, &objective_value);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+  printf("Termination status: %d, Objective: %f\n", termination_status, objective_value);
+
+  if (termination_status != CUOPT_TERIMINATION_STATUS_OPTIMAL) {
+    printf("Expected optimal status\n");
+    status = -1;
+    goto DONE;
+  }
+
+  printf("Write problem test passed\n");
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroyProblem(&problem_read);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
 }

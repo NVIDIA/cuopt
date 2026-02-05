@@ -20,6 +20,12 @@ template <typename i_t, typename f_t>
 class problem_t;
 
 template <typename i_t, typename f_t>
+class solution_t;
+
+template <typename i_t, typename f_t>
+class third_party_presolve_t;
+
+template <typename i_t, typename f_t>
 struct substitution_t {
   f_t timestamp;
   i_t substituting_var;
@@ -52,6 +58,10 @@ class presolve_data_t {
       variable_mapping(other.variable_mapping, stream),
       fixed_var_assignment(other.fixed_var_assignment, stream),
       var_flags(other.var_flags, stream),
+      papilo_presolve_ptr(other.papilo_presolve_ptr),
+      papilo_reduced_to_original_map(other.papilo_reduced_to_original_map),
+      papilo_original_to_reduced_map(other.papilo_original_to_reduced_map),
+      papilo_original_num_variables(other.papilo_original_num_variables),
       variable_substitutions(other.variable_substitutions)
   {
   }
@@ -76,6 +86,21 @@ class presolve_data_t {
     additional_var_id_per_var.assign(problem.n_variables, -1);
   }
 
+  bool pre_process_assignment(problem_t<i_t, f_t>& problem, rmm::device_uvector<f_t>& assignment);
+  void post_process_assignment(problem_t<i_t, f_t>& problem,
+                               rmm::device_uvector<f_t>& current_assignment,
+                               bool resize_to_original_problem = true);
+  void post_process_solution(problem_t<i_t, f_t>& problem, solution_t<i_t, f_t>& solution);
+
+  void set_papilo_presolve_data(const third_party_presolve_t<i_t, f_t>* presolver_ptr,
+                                std::vector<i_t> reduced_to_original,
+                                std::vector<i_t> original_to_reduced,
+                                i_t original_num_variables);
+  bool has_papilo_presolve_data() const { return papilo_presolve_ptr != nullptr; }
+  i_t get_papilo_original_num_variables() const { return papilo_original_num_variables; }
+  void papilo_uncrush_assignment(problem_t<i_t, f_t>& problem,
+                                 rmm::device_uvector<f_t>& assignment) const;
+
   presolve_data_t(presolve_data_t&&)                 = default;
   presolve_data_t& operator=(presolve_data_t&&)      = default;
   presolve_data_t& operator=(const presolve_data_t&) = delete;
@@ -91,6 +116,10 @@ class presolve_data_t {
   rmm::device_uvector<f_t> fixed_var_assignment;
   rmm::device_uvector<i_t> var_flags;
 
+  const third_party_presolve_t<i_t, f_t>* papilo_presolve_ptr{nullptr};
+  std::vector<i_t> papilo_reduced_to_original_map{};
+  std::vector<i_t> papilo_original_to_reduced_map{};
+  i_t papilo_original_num_variables{0};
   // Variable substitutions from probing: x_substituted = offset + coefficient * x_substituting
   // Applied in post_process_assignment to recover substituted variable values
   std::vector<substitution_t<i_t, f_t>> variable_substitutions;

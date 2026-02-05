@@ -524,7 +524,7 @@ void diversity_manager_t<i_t, f_t>::diversity_step(i_t max_iterations_without_im
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::set_new_user_bound(f_t new_bound)
 {
-  stats.solution_bound = new_bound;
+  stats.set_solution_bound(new_bound);
 }
 
 template <typename i_t, typename f_t>

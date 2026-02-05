@@ -383,9 +383,10 @@ void solver_settings_t<i_t, f_t>::add_initial_mip_solution(const f_t* solution,
 }
 
 template <typename i_t, typename f_t>
-void solver_settings_t<i_t, f_t>::set_mip_callback(internals::base_solution_callback_t* callback)
+void solver_settings_t<i_t, f_t>::set_mip_callback(internals::base_solution_callback_t* callback,
+                                                   void* user_data)
 {
-  mip_settings.set_mip_callback(callback);
+  mip_settings.set_mip_callback(callback, user_data);
 }
 
 template <typename i_t, typename f_t>

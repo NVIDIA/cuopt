@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -8,6 +8,7 @@
 #include "feasibility_pump.cuh"
 
 #include <cuopt/error.hpp>
+#include <mip/diversity/diversity_manager.cuh>
 #include <mip/mip_constants.hpp>
 #include <mip/problem/host_helper.cuh>
 #include <mip/relaxed_lp/relaxed_lp.cuh>
@@ -477,7 +478,7 @@ bool feasibility_pump_t<i_t, f_t>::run_single_fp_descent(solution_t<i_t, f_t>& s
              solution.assignment.size(),
              solution.handle_ptr->get_stream());
   while (true) {
-    if (timer.check_time_limit()) {
+    if (context.diversity_manager_ptr->check_b_b_preemption() || timer.check_time_limit()) {
       CUOPT_LOG_DEBUG("FP time limit reached!");
       round(solution);
       return false;

@@ -21,6 +21,7 @@
 #include <utilities/omp_helpers.hpp>
 
 #include <omp.h>
+#include <functional>
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -98,6 +99,11 @@ class branch_and_bound_t {
 
   // Set a solution based on the user problem during the course of the solve
   void set_new_solution(const std::vector<f_t>& solution);
+
+  void set_user_bound_callback(std::function<void(f_t)> callback)
+  {
+    user_bound_callback_ = std::move(callback);
+  }
 
   void set_concurrent_lp_root_solve(bool enable) { enable_concurrent_lp_root_solve_ = enable; }
 
@@ -187,9 +193,11 @@ class branch_and_bound_t {
   // In case, a best-first thread encounters a numerical issue when solving a node,
   // its blocks the progression of the lower bound.
   omp_atomic_t<f_t> lower_bound_ceiling_;
+  std::function<void(f_t)> user_bound_callback_;
 
   void report_heuristic(f_t obj);
   void report(char symbol, f_t obj, f_t lower_bound, i_t node_depth);
+  void update_user_bound(f_t lower_bound);
 
   // Set the final solution.
   void set_final_solution(mip_solution_t<i_t, f_t>& solution, f_t lower_bound);

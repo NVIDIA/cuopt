@@ -1,0 +1,23 @@
+{
+    "test_name": "test_name",
+    "file_name": "test_name_data.json",
+    "metrics": {
+        "total_objective_value": {
+            "threshold": 5,
+            "unit": "total_objective_value"
+        },
+	    "vehicle_count": {
+            "threshold": 5,
+            "unit": "vehicle_count"
+        },
+	    "solver_time": {
+            "threshold": 5,
+            "unit": "seconds"
+        },
+        "gpu_memory_usage": {
+            "threshold": 20,
+            "unit": "MB"
+        }
+    },
+    "details": "Add details about you test"
+}

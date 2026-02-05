@@ -622,8 +622,18 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
     if (col_flags[i].test(papilo::ColFlag::kImplInt)) implied_integer_indices.push_back(i);
   }
 
-  return std::make_optional(
-    third_party_presolve_result_t<i_t, f_t>{opt_problem, implied_integer_indices});
+  auto const& col_map = result.postsolve.origcol_mapping;
+  reduced_to_original_map_.assign(col_map.begin(), col_map.end());
+  original_to_reduced_map_.assign(op_problem.get_n_variables(), -1);
+  for (size_t i = 0; i < reduced_to_original_map_.size(); ++i) {
+    auto original_idx = reduced_to_original_map_[i];
+    if (original_idx >= 0 && static_cast<size_t>(original_idx) < original_to_reduced_map_.size()) {
+      original_to_reduced_map_[original_idx] = static_cast<i_t>(i);
+    }
+  }
+
+  return std::make_optional(third_party_presolve_result_t<i_t, f_t>{
+    opt_problem, implied_integer_indices, reduced_to_original_map_, original_to_reduced_map_});
 }
 
 template <typename i_t, typename f_t>
@@ -705,6 +715,23 @@ third_party_presolve_t<i_t, f_t>::~third_party_presolve_t()
 {
   if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
   if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
+}
+
+template <typename i_t, typename f_t>
+void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
+  const std::vector<f_t>& reduced_primal, std::vector<f_t>& full_primal) const
+{
+  // FIXME:: handle PSLP presolver
+  papilo::Solution<f_t> reduced_sol(reduced_primal);
+  papilo::Solution<f_t> full_sol;
+  papilo::Message Msg{};
+  Msg.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
+  papilo::Postsolve<f_t> post_solver{Msg, papilo_post_solve_storage_.getNum()};
+
+  bool is_optimal = false;
+  auto status     = post_solver.undo(reduced_sol, full_sol, papilo_post_solve_storage_, is_optimal);
+  check_postsolve_status(status);
+  full_primal = std::move(full_sol.primal);
 }
 
 #if MIP_INSTANTIATE_FLOAT

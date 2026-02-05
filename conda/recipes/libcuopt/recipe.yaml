@@ -36,7 +36,7 @@ cache:
         - AWS_SESSION_TOKEN
       env:
         # Enable assertions (-a flag) for PR builds, but not for nightly or release builds
-        BUILD_EXTRA_FLAGS: '${{ "-a" if build_type == "pull-request" else "" }}'
+        BUILD_EXTRA_FLAGS: '${{ "-a --host-lineinfo" if build_type == "pull-request" else "" }}'
         CMAKE_C_COMPILER_LAUNCHER: ${{ env.get("CMAKE_C_COMPILER_LAUNCHER") }}
         CMAKE_CUDA_COMPILER_LAUNCHER: ${{ env.get("CMAKE_CUDA_COMPILER_LAUNCHER") }}
         CMAKE_CXX_COMPILER_LAUNCHER: ${{ env.get("CMAKE_CXX_COMPILER_LAUNCHER") }}

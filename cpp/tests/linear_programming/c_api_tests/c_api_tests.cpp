@@ -1,13 +1,17 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include "c_api_tests.h"
 
+#include <filesystem>
+#include <iostream>
+
 #include <cuopt/linear_programming/cuopt_c.h>
+#include <linear_programming/cuopt_c_internal.hpp>
 
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
@@ -88,6 +92,10 @@ TEST(c_api, solve_time_bb_preemption)
 
 TEST(c_api, bad_parameter_name) { EXPECT_EQ(test_bad_parameter_name(), CUOPT_INVALID_ARGUMENT); }
 
+TEST(c_api, mip_get_callbacks_only) { EXPECT_EQ(test_mip_get_callbacks_only(), CUOPT_SUCCESS); }
+
+TEST(c_api, mip_get_set_callbacks) { EXPECT_EQ(test_mip_get_set_callbacks(), CUOPT_SUCCESS); }
+
 TEST(c_api, burglar) { EXPECT_EQ(burglar_problem(), CUOPT_SUCCESS); }
 
 TEST(c_api, test_missing_file) { EXPECT_EQ(test_missing_file(), CUOPT_MPS_FILE_ERROR); }
@@ -128,3 +136,92 @@ TEST(c_api, test_quadratic_ranged_problem)
   EXPECT_EQ(termination_status, (int)CUOPT_TERIMINATION_STATUS_OPTIMAL);
   EXPECT_NEAR(objective, -32.0, 1e-3);
 }
+
+TEST(c_api, test_write_problem)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string input_file = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
+  std::string temp_file = std::filesystem::temp_directory_path().string() + "/c_api_test_write.mps";
+  EXPECT_EQ(test_write_problem(input_file.c_str(), temp_file.c_str()), CUOPT_SUCCESS);
+  std::filesystem::remove(temp_file);
+}
+
+static bool test_mps_roundtrip(const std::string& mps_file_path)
+{
+  using cuopt::linear_programming::problem_and_stream_view_t;
+
+  cuOptOptimizationProblem original_handle = nullptr;
+  cuOptOptimizationProblem reread_handle   = nullptr;
+  bool result                              = false;
+
+  std::string model_basename = std::filesystem::path(mps_file_path).filename().string();
+  std::string temp_file =
+    std::filesystem::temp_directory_path().string() + "/roundtrip_temp_" + model_basename;
+
+  if (cuOptReadProblem(mps_file_path.c_str(), &original_handle) != CUOPT_SUCCESS) {
+    std::cerr << "Failed to read original MPS file: " << mps_file_path << std::endl;
+    goto cleanup;
+  }
+
+  if (cuOptWriteProblem(original_handle, temp_file.c_str(), CUOPT_FILE_FORMAT_MPS) !=
+      CUOPT_SUCCESS) {
+    std::cerr << "Failed to write MPS file: " << temp_file << std::endl;
+    goto cleanup;
+  }
+
+  if (cuOptReadProblem(temp_file.c_str(), &reread_handle) != CUOPT_SUCCESS) {
+    std::cerr << "Failed to re-read MPS file: " << temp_file << std::endl;
+    goto cleanup;
+  }
+
+  {
+    auto* original_problem_wrapper = static_cast<problem_and_stream_view_t*>(original_handle);
+    auto* reread_problem_wrapper   = static_cast<problem_and_stream_view_t*>(reread_handle);
+
+    result =
+      original_problem_wrapper->op_problem->is_equivalent(*reread_problem_wrapper->op_problem);
+  }
+
+cleanup:
+  std::filesystem::remove(temp_file);
+  cuOptDestroyProblem(&original_handle);
+  cuOptDestroyProblem(&reread_handle);
+
+  return result;
+}
+
+class WriteRoundtripTestFixture : public ::testing::TestWithParam<std::string> {};
+TEST_P(WriteRoundtripTestFixture, roundtrip)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  EXPECT_TRUE(test_mps_roundtrip(rapidsDatasetRootDir + GetParam()));
+}
+INSTANTIATE_TEST_SUITE_P(c_api,
+                         WriteRoundtripTestFixture,
+                         ::testing::Values("/linear_programming/afiro_original.mps",
+                                           "/mip/50v-10.mps",
+                                           "/mip/fiball.mps",
+                                           "/mip/gen-ip054.mps",
+                                           "/mip/sct2.mps",
+                                           "/mip/uccase9.mps",
+                                           "/mip/drayage-25-23.mps",
+                                           "/mip/tr12-30.mps",
+                                           "/mip/neos-3004026-krka.mps",
+                                           "/mip/ns1208400.mps",
+                                           "/mip/gmu-35-50.mps",
+                                           "/mip/n2seq36q.mps",
+                                           "/mip/seymour1.mps",
+                                           "/mip/rmatr200-p5.mps",
+                                           "/mip/cvs16r128-89.mps",
+                                           "/mip/thor50dday.mps",
+                                           "/mip/stein9inf.mps",
+                                           "/mip/neos5.mps",
+                                           "/mip/neos5-free-bound.mps",
+                                           "/mip/crossing_var_bounds.mps",
+                                           "/mip/cod105_max.mps",
+                                           "/mip/sudoku.mps",
+                                           "/mip/presolve-infeasible.mps",
+                                           "/mip/swath1.mps",
+                                           "/mip/enlight_hard.mps",
+                                           "/mip/enlight11.mps",
+                                           "/mip/supportcase22.mps"));

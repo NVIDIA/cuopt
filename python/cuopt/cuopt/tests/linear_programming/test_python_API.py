@@ -322,34 +322,45 @@ def test_read_write_mps_and_relaxation():
         assert v.getValue() == pytest.approx(expected_values_lp[i])
 
 
-def test_incumbent_solutions():
+def _run_incumbent_solutions(include_set_callback):
     # Callback for incumbent solution
     class CustomGetSolutionCallback(GetSolutionCallback):
-        def __init__(self):
+        def __init__(self, user_data):
             super().__init__()
             self.n_callbacks = 0
             self.solutions = []
+            self.user_data = user_data
 
-        def get_solution(self, solution, solution_cost):
+        def get_solution(
+            self, solution, solution_cost, solution_bound, user_data
+        ):
+            assert user_data is self.user_data
             self.n_callbacks += 1
             assert len(solution) > 0
             assert len(solution_cost) == 1
+            assert len(solution_bound) == 1
 
             self.solutions.append(
                 {
-                    "solution": solution.copy_to_host(),
-                    "cost": solution_cost.copy_to_host()[0],
+                    "solution": solution.tolist(),
+                    "cost": float(solution_cost[0]),
+                    "bound": float(solution_bound[0]),
                 }
             )
 
     class CustomSetSolutionCallback(SetSolutionCallback):
-        def __init__(self, get_callback):
+        def __init__(self, get_callback, user_data):
             super().__init__()
             self.n_callbacks = 0
             self.get_callback = get_callback
+            self.user_data = user_data
 
-        def set_solution(self, solution, solution_cost):
+        def set_solution(
+            self, solution, solution_cost, solution_bound, user_data
+        ):
+            assert user_data is self.user_data
             self.n_callbacks += 1
+            assert len(solution_bound) == 1
             if self.get_callback.solutions:
                 solution[:] = self.get_callback.solutions[-1]["solution"]
                 solution_cost[0] = float(
@@ -363,11 +374,17 @@ def test_incumbent_solutions():
     prob.addConstraint(3 * x + 2 * y <= 190)
     prob.setObjective(5 * x + 3 * y, sense=sense.MAXIMIZE)
 
-    get_callback = CustomGetSolutionCallback()
-    set_callback = CustomSetSolutionCallback(get_callback)
+    user_data = {"source": "test_incumbent_solutions"}
+    get_callback = CustomGetSolutionCallback(user_data)
+    set_callback = (
+        CustomSetSolutionCallback(get_callback, user_data)
+        if include_set_callback
+        else None
+    )
     settings = SolverSettings()
-    settings.set_mip_callback(get_callback)
-    settings.set_mip_callback(set_callback)
+    settings.set_mip_callback(get_callback, user_data)
+    if include_set_callback:
+        settings.set_mip_callback(set_callback, user_data)
     settings.set_parameter("time_limit", 1)
 
     prob.solve(settings)
@@ -381,6 +398,14 @@ def test_incumbent_solutions():
         assert 2 * x_val + 4 * y_val >= 230
         assert 3 * x_val + 2 * y_val <= 190
         assert 5 * x_val + 3 * y_val == cost
+
+
+def test_incumbent_get_solutions():
+    _run_incumbent_solutions(include_set_callback=False)
+
+
+def test_incumbent_get_set_solutions():
+    _run_incumbent_solutions(include_set_callback=True)
 
 
 def test_warm_start():

@@ -108,6 +108,9 @@
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
 #define CUOPT_METHOD_BARRIER      3
 
+/* @brief File format constants for problem I/O */
+#define CUOPT_FILE_FORMAT_MPS 0
+
 /* @brief Status codes constants */
 #define CUOPT_SUCCESS          0
 #define CUOPT_INVALID_ARGUMENT 1

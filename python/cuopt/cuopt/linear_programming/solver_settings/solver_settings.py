@@ -245,7 +245,7 @@ class SolverSettings:
         """
         self.pdlp_warm_start_data = pdlp_warm_start_data
 
-    def set_mip_callback(self, callback):
+    def set_mip_callback(self, callback, user_data):
         """
         Note: Only supported for MILP
 
@@ -256,36 +256,53 @@ class SolverSettings:
         callback : class for function callback
             Callback class that inherits from GetSolutionCallback
             or SetSolutionCallback.
+        user_data : object
+            User context passed to the callback.
+
+        Notes
+        -----
+        Registering a SetSolutionCallback disables presolve.
 
         Examples
         --------
         >>> # Callback for incumbent solution
         >>> class CustomGetSolutionCallback(GetSolutionCallback):
-        >>>     def __init__(self):
+        >>>     def __init__(self, user_data):
         >>>         super().__init__()
         >>>         self.n_callbacks = 0
         >>>         self.solutions = []
+        >>>         self.user_data = user_data
         >>>
-        >>>     def get_solution(self, solution, solution_cost):
+        >>>     def get_solution(
+        >>>         self, solution, solution_cost, solution_bound, user_data
+        >>>     ):
+        >>>         assert user_data is self.user_data
         >>>         self.n_callbacks += 1
         >>>         assert len(solution) > 0
         >>>         assert len(solution_cost) == 1
+        >>>         assert len(solution_bound) == 1
         >>>
         >>>         self.solutions.append(
         >>>             {
-        >>>                 "solution": solution.copy_to_host(),
-        >>>                 "cost": solution_cost.copy_to_host()[0],
+        >>>                 "solution": solution.tolist(),
+        >>>                 "cost": float(solution_cost[0]),
+        >>>                 "bound": float(solution_bound[0]),
         >>>             }
         >>>         )
         >>>
         >>> class CustomSetSolutionCallback(SetSolutionCallback):
-        >>>     def __init__(self, get_callback):
+        >>>     def __init__(self, get_callback, user_data):
         >>>         super().__init__()
         >>>         self.n_callbacks = 0
         >>>         self.get_callback = get_callback
+        >>>         self.user_data = user_data
         >>>
-        >>>     def set_solution(self, solution, solution_cost):
+        >>>     def set_solution(
+        >>>         self, solution, solution_cost, solution_bound, user_data
+        >>>     ):
+        >>>         assert user_data is self.user_data
         >>>         self.n_callbacks += 1
+        >>>         assert len(solution_bound) == 1
         >>>         if self.get_callback.solutions:
         >>>             solution[:] =
         >>>             self.get_callback.solutions[-1]["solution"]
@@ -293,11 +310,14 @@ class SolverSettings:
         >>>                 self.get_callback.solutions[-1]["cost"]
         >>>             )
         >>>
-        >>> get_callback = CustomGetSolutionCallback()
-        >>> set_callback = CustomSetSolutionCallback(get_callback)
-        >>> settings.set_mip_callback(get_callback)
-        >>> settings.set_mip_callback(set_callback)
+        >>> user_data = {"source": "example"}
+        >>> get_callback = CustomGetSolutionCallback(user_data)
+        >>> set_callback = CustomSetSolutionCallback(get_callback, user_data)
+        >>> settings.set_mip_callback(get_callback, user_data)
+        >>> settings.set_mip_callback(set_callback, user_data)
         """
+        if callback is not None:
+            callback.user_data = user_data
         self.mip_callbacks.append(callback)
 
     def get_mip_callbacks(self):
