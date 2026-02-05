@@ -1529,10 +1529,10 @@ void folding(lp_problem_t<i_t, f_t>& problem,
 
   settings.log.debug("Folding: partial A_tilde nz %d predicted %d\n", nnz, A_nnz + 2 * nz_ub);
 
-  FILE* fid;
 // #define DEBUG  // Uncomment to enable expensive XA=AY verification
 #ifdef DEBUG
 #ifdef BUILD_MATRIX_X_AND_Y
+  FILE* fid;
   // Verify that XA = AY
   csc_matrix_t<i_t, f_t> XA(previous_rows, previous_cols, 1);
   multiply(X, A_tilde, XA);
